@@ -26,14 +26,12 @@ function render(inputs: {
     accessories: string[];
     hair: string[];
   };
-  showBundleActions: boolean;
 }): ComponentFixture<OutfitComposer> {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({ imports: [OutfitComposer] });
   const fixture = TestBed.createComponent(OutfitComposer);
   fixture.componentRef.setInput('items', inputs.items);
   fixture.componentRef.setInput('slots', inputs.slots);
-  fixture.componentRef.setInput('showBundleActions', inputs.showBundleActions);
   fixture.detectChanges();
   return fixture;
 }
@@ -52,7 +50,6 @@ describe('OutfitComposer (v4 outfit-composer.tsx)', () => {
     const fixture = render({
       items: [suit, jacket, pants],
       slots: { top: ['suit'], bottom: ['suit', 'pants'], footwear: [], accessories: [], hair: [] },
-      showBundleActions: true,
     });
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     // The bundle card (with actions) is present…
@@ -71,7 +68,6 @@ describe('OutfitComposer (v4 outfit-composer.tsx)', () => {
     const fixture = render({
       items: [waves],
       slots: { top: [], bottom: [], footwear: [], accessories: [], hair: ['waves'] },
-      showBundleActions: false,
     });
     const el = fixture.nativeElement as HTMLElement;
     // Five rows now — the registry drives the loop, so hair arrived with it.
@@ -81,22 +77,20 @@ describe('OutfitComposer (v4 outfit-composer.tsx)', () => {
     expect(el.textContent ?? '').toContain('Marcel Waves');
   });
 
-  it('hides bundle actions when showBundleActions=false (v4 `showActions`)', () => {
+  it('bundle cards always carry Take off and Break apart (v4 `9ecebf986` dropped `showBundleActions`)', () => {
     const fixture = render({
       items: [suit, jacket, pants],
       slots: { top: ['suit'], bottom: ['suit'], footwear: [], accessories: [], hair: [] },
-      showBundleActions: false,
     });
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(text).not.toContain('Take off bundle');
-    expect(text).not.toContain('Break apart');
+    expect(text).toContain('Take off bundle');
+    expect(text).toContain('Break apart');
   });
 
   it('mounts the pull-down ABOVE the bundle cards and slot rows (v4 `aec86a613` :81)', () => {
     const fixture = render({
       items: [suit, jacket, pants],
       slots: { top: ['suit'], bottom: ['suit'], footwear: [], accessories: [], hair: [] },
-      showBundleActions: true,
     });
     const root = (fixture.nativeElement as HTMLElement).querySelector('.space-y-2')!;
     const kinds = [...root.children].map((c) => c.tagName.toLowerCase());
@@ -109,7 +103,6 @@ describe('OutfitComposer (v4 outfit-composer.tsx)', () => {
     const fixture = render({
       items: [suit, jacket, pants],
       slots: { top: [], bottom: [], footwear: [], accessories: [], hair: [] },
-      showBundleActions: true,
     });
     const emitted: { slot: string; itemId: string }[] = [];
     fixture.componentInstance.addToSlot.subscribe((e) => emitted.push(e));
@@ -129,7 +122,6 @@ describe('OutfitComposer (v4 outfit-composer.tsx)', () => {
     const fixture = render({
       items: [jacket, pants],
       slots: { top: [], bottom: [], footwear: [], accessories: [], hair: [] },
-      showBundleActions: false,
     });
     const pick = (fixture.nativeElement as HTMLElement).querySelector('qt-outfit-quick-pick')!;
     // v4 renders nothing at all here; `hidden` keeps it out of the Tailwind
@@ -156,7 +148,6 @@ describe('OutfitComposer (v4 outfit-composer.tsx)', () => {
     const fixture = render({
       items: [pearls, jacket],
       slots: { top: [], bottom: [], footwear: [], accessories: ['pearls'], hair: [] },
-      showBundleActions: true,
     });
     const el = fixture.nativeElement as HTMLElement;
     // No bundle card — one slot only.

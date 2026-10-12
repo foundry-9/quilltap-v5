@@ -1,3 +1,4 @@
+import type { DebugElement } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
@@ -14,6 +15,11 @@ import {
 } from './wardrobe-control-dialog';
 import { WardrobeDialogService } from './wardrobe-dialog.service';
 import { ToastService } from '../ui/toast.service';
+import { addToSlotGesture, wearGesture, type StagedGesture } from './staged-live-outfits';
+import { WardrobeBrowser } from './wardrobe-browser';
+import type { WardrobeItemActions } from './wardrobe-item-actions';
+import { WardrobeItemOverlays } from './wardrobe-item-overlays';
+import type { WardrobeListData } from './wardrobe-list-data';
 
 type AnyRequest = CoreRequest & Record<string, unknown>;
 
@@ -75,6 +81,9 @@ function defaultRoute(req: AnyRequest): Record<string, unknown> | Error {
     case 'projectWardrobeInstructionsGet':
     case 'wardrobeInstructionsGet':
       return { instructions: null };
+    // P4.D285: the browser reads its container's folder tree on every open.
+    case 'wardrobeFoldersList':
+      return { folders: [] };
     default:
       return new Error(`unexpected ${req.type}`);
   }
@@ -117,6 +126,7 @@ async function renderInner(
     providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: core }],
   });
   const fixture = TestBed.createComponent(WardrobeControlDialogInner);
+  roots.set(fixture.componentInstance, fixture.debugElement);
   fixture.componentRef.setInput('initialCharacterId', 'c1');
   fixture.componentRef.setInput('chatId', chatId);
   fixture.detectChanges();
@@ -124,20 +134,16 @@ async function renderInner(
   return { fixture, component: fixture.componentInstance, seen };
 }
 
-/** Reach the protected surface for state-level assertions. */
-function inner(component: WardrobeControlDialogInner): {
+/** Each rendered inner's fixture, so the adapter below can reach its children. */
+const roots = new WeakMap<WardrobeControlDialogInner, DebugElement>();
+
+/** The dialog's own surface after the Phase-F split (P4.D285). */
+interface InnerSurface {
   rightTab: { (): string; set(v: string): void };
   liveStagedByChar: () => Record<string, EquippedSlots>;
   fittingSlots: { (): EquippedSlots; set(v: EquippedSlots): void };
-  titleFilter: { (): string; set(v: string): void };
-  handleEquipItem: (item: WardrobeItemDto) => void;
-  handleAddToSlot: (item: WardrobeItemDto, slot: string) => void;
-  handleSlotAdd: (slot: string, itemId: string) => void;
-  handleSlotRemove: (slot: string, itemId: string) => void;
-  handleSlotClear: (slot: string) => void;
   rowEquip: (item: WardrobeItemDto) => void;
-  fittingAdd: (slot: string, itemId: string) => void;
-  fittingClear: (slot: string) => void;
+  rowAddToSlot: (item: WardrobeItemDto, slot: string) => void;
   wearFitting: () => Promise<void>;
   requestClose: () => void;
   useFittingActions: () => boolean;
@@ -147,22 +153,94 @@ function inner(component: WardrobeControlDialogInner): {
   };
   selectedCharacterId: () => string | null;
   isCharacterScope: () => boolean;
-  listItems: () => WardrobeItemDto[];
-  resolutionPool: () => WardrobeItemDto[];
-  canManageItem: (item: WardrobeItemDto) => boolean;
   selectedContainerLabel: () => string;
-  transferExcludeDestination: () => { scope: string; id: string | null } | null;
   pickContainer: (value: string) => void;
-  handleDuplicate: (item: WardrobeItemDto) => Promise<void>;
-  handleToggleDefault: (item: WardrobeItemDto) => Promise<void>;
-  handleToggleArchived: (item: WardrobeItemDto) => Promise<void>;
-  handleDelete: (item: WardrobeItemDto) => Promise<void>;
   showArchived: { (): boolean; set(v: boolean): void };
+  data: WardrobeListData;
+  actions: WardrobeItemActions;
+  liveHandlers: { onAddToSlot(s: string, id: string): void; onRemoveFromSlot(s: string, id: string): void; onClearSlot(s: string): void };
+  fittingHandlers: { onAddToSlot(s: string, id: string): void; onClearSlot(s: string): void };
+  applyLive(g: StagedGesture): void;
+  itemsById(): Map<string, WardrobeItemDto>;
+}
+
+/** The browser's filter state (it moved out of the dialog with the left column). */
+interface BrowserSurface {
+  titleFilter: { (): string; set(v: string): void };
+  slotFilter: { set(v: string): void };
   showShared: { (): boolean; set(v: boolean): void };
   filteredItems: () => WardrobeItemDto[];
-  transferringItem: { (): WardrobeItemDto | null; set(v: WardrobeItemDto | null): void };
-} {
-  return component as unknown as ReturnType<typeof inner>;
+}
+
+function browserOf(component: WardrobeControlDialogInner): BrowserSurface {
+  return roots.get(component)!.query(By.directive(WardrobeBrowser))
+    .componentInstance as unknown as BrowserSurface;
+}
+
+/**
+ * Reach the protected surface for state-level assertions. **Re-pinned at the
+ * Phase-F split (P4.D285):** the spec's cases keep their pre-split vocabulary
+ * and this adapter maps each name onto where v4 `9ecebf986` / `4a38222e6`
+ * moved it — the filters onto the browser, the row handlers onto the actions
+ * store (`handleDuplicate` → `actions.duplicate`, …), the lists onto the
+ * list-data store, the Live / Builder handlers onto the shared composer
+ * gestures, the transfer exclusion onto the overlays. The pairing is the
+ * port's evidence that each behaviour survived the move.
+ */
+function inner(component: WardrobeControlDialogInner) {
+  const c = component as unknown as InnerSurface;
+  const overlays = () =>
+    roots.get(component)!.query(By.directive(WardrobeItemOverlays))
+      .componentInstance as unknown as { transferExclude(): { scope: string; id: string | null } | null };
+  return {
+    rightTab: c.rightTab,
+    liveStagedByChar: c.liveStagedByChar,
+    fittingSlots: c.fittingSlots,
+    get titleFilter() {
+      return browserOf(component).titleFilter;
+    },
+    /** v4 pre-split `handleEquipItem` → the Live arm of `rowEquip`'s gesture. */
+    handleEquipItem: (item: WardrobeItemDto) =>
+      c.applyLive(wearGesture(item.types[0], item.id, c.itemsById())),
+    /** v4 pre-split `handleAddToSlot` → the Live arm of `rowAddToSlot`. */
+    handleAddToSlot: (item: WardrobeItemDto, slot: string) => {
+      if (!item.types.includes(slot as never)) return;
+      c.applyLive(addToSlotGesture(slot as never, item, c.itemsById()));
+    },
+    handleSlotAdd: (slot: string, itemId: string) => c.liveHandlers.onAddToSlot(slot, itemId),
+    handleSlotRemove: (slot: string, itemId: string) => c.liveHandlers.onRemoveFromSlot(slot, itemId),
+    handleSlotClear: (slot: string) => c.liveHandlers.onClearSlot(slot),
+    rowEquip: (item: WardrobeItemDto) => c.rowEquip(item),
+    fittingAdd: (slot: string, itemId: string) => c.fittingHandlers.onAddToSlot(slot, itemId),
+    fittingClear: (slot: string) => c.fittingHandlers.onClearSlot(slot),
+    wearFitting: () => c.wearFitting(),
+    fittingResetToDefaults: () => (component as unknown as { fittingResetToDefaults(): void }).fittingResetToDefaults(),
+    fittingResetToWorn: () => (component as unknown as { fittingResetToWorn(): void }).fittingResetToWorn(),
+    fittingClearAll: () => (component as unknown as { fittingClearAll(): void }).fittingClearAll(),
+    requestClose: () => c.requestClose(),
+    useFittingActions: c.useFittingActions,
+    selectedContainer: c.selectedContainer,
+    selectedCharacterId: c.selectedCharacterId,
+    isCharacterScope: c.isCharacterScope,
+    listItems: () => c.data.listItems(),
+    resolutionPool: () => c.data.resolutionPool(),
+    canManageItem: (item: WardrobeItemDto) => c.data.canManage(item),
+    selectedContainerLabel: c.selectedContainerLabel,
+    transferExcludeDestination: () => overlays().transferExclude(),
+    pickContainer: (value: string) => c.pickContainer(value),
+    handleDuplicate: (item: WardrobeItemDto) => c.actions.duplicate(item),
+    handleToggleDefault: (item: WardrobeItemDto) => c.actions.toggleDefault(item),
+    handleToggleArchived: (item: WardrobeItemDto) => c.actions.toggleArchived(item),
+    handleDelete: (item: WardrobeItemDto) => c.actions.remove(item),
+    showArchived: c.showArchived,
+    get showShared() {
+      return browserOf(component).showShared;
+    },
+    filteredItems: () => browserOf(component).filteredItems(),
+    transferringItem: Object.assign(() => c.actions.transfer()?.item ?? null, {
+      set: (v: WardrobeItemDto | null) => (v ? c.actions.move(v) : c.actions.closeTransfer()),
+    }),
+  };
 }
 
 const equips = (seen: AnyRequest[]): AnyRequest[] =>
@@ -187,8 +265,7 @@ describe('WardrobeControlDialogInner — chat-aware behavior', () => {
     // …and the Hair chip narrows the wardrobe LIST to hairdos (v4
     // `filteredItems`). Scope to the rows: the Builder's slot rows carry the
     // default-outfit shirt regardless of the filter.
-    const c = component as unknown as { slotFilter: { set(v: string): void } };
-    c.slotFilter.set('hair');
+    browserOf(component).slotFilter.set('hair');
     fixture.detectChanges();
     const rows = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('qt-wardrobe-item-row'),
@@ -327,6 +404,8 @@ describe('WardrobeControlDialogInner — chat-aware behavior', () => {
           // P4.D121: the dressing-instructions section reads on open. A READ,
           // and the point of this assertion is that no MUTATION fires.
           'characterWardrobeInstructionsGet',
+          // P4.D285: the browser reads its container's folder tree. A READ.
+          'wardrobeFoldersList',
         ].includes(r.type as string),
       ),
     ).toBe(true);
@@ -568,6 +647,8 @@ describe('the asTab chrome switch (v4 WardrobeShell :128-164 / WardrobeView :105
           // P4.D121: the dressing-instructions section reads on open. A READ,
           // and the point of this assertion is that no MUTATION fires.
           'characterWardrobeInstructionsGet',
+          // P4.D285: the browser reads its container's folder tree. A READ.
+          'wardrobeFoldersList',
         ].includes(r.type as string),
       ),
     ).toBe(true);
@@ -624,8 +705,9 @@ describe('WardrobeControlDialog host — the remount key (v4 :92-93)', () => {
 
     service.open({ characterId: 'c1' });
     await settle(fixture);
-    const first = fixture.debugElement.query(By.directive(WardrobeControlDialogInner))
-      .componentInstance as WardrobeControlDialogInner;
+    const firstDe = fixture.debugElement.query(By.directive(WardrobeControlDialogInner));
+    const first = firstDe.componentInstance as WardrobeControlDialogInner;
+    roots.set(first, firstDe);
     inner(first).titleFilter.set('sweater');
 
     // Same key → same instance survives.
@@ -638,8 +720,9 @@ describe('WardrobeControlDialog host — the remount key (v4 :92-93)', () => {
     // Different key → a NEW inner with fresh state.
     service.open({ characterId: 'c2' });
     await settle(fixture);
-    const second = fixture.debugElement.query(By.directive(WardrobeControlDialogInner))
-      .componentInstance as WardrobeControlDialogInner;
+    const secondDe = fixture.debugElement.query(By.directive(WardrobeControlDialogInner));
+    const second = secondDe.componentInstance as WardrobeControlDialogInner;
+    roots.set(second, secondDe);
     expect(second).not.toBe(first);
     expect(inner(second).titleFilter()).toBe('');
   });
@@ -880,30 +963,78 @@ const titles = (component: WardrobeControlDialogInner): string[] =>
 describe('WardrobeControlDialogInner — Show shared', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  // v4's first test, 1:1.
-  it('lists shared items by default and drops them when unticked, keeping the character’s own', async () => {
-    const { fixture, component } = await renderInner(null, sharedRoute);
-    expect(titles(component)).toEqual(['Apple Watch', 'Linen Shirt']);
+  /*
+   * P4.D285 — v4's three cases REWRITTEN in the span
+   * (`__tests__/unit/components/wardrobe/wardrobe-control-dialog.shared-filter.
+   * test.tsx` at `4a38222e6`), transcribed 1:1: a borrowed wardrobe now sits
+   * behind ONE tier row at the closet's root instead of its rows being listed
+   * there. (The pre-span pair — "lists shared items by default …" and "leaves
+   * the archived toggle alone" over a flat list — is RETIRED by v4's rewrite.)
+   */
+  const rowTitled = (fixture: ComponentFixture<unknown>, title: string): Element | null =>
+    (fixture.nativeElement as HTMLElement).querySelector(`qt-wardrobe-item-row [title="${title}"]`);
+  const generalTierRow = (fixture: ComponentFixture<unknown>): HTMLElement | null =>
+    Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+        '[data-testid="wardrobe-tier-row"]',
+      ),
+    ).find((row) => row.textContent?.includes('General')) ?? null;
+
+  it('shows each shared wardrobe as a tier row by default and drops it when unticked, keeping the character’s own', async () => {
+    const { fixture } = await renderInner(null, sharedRoute);
+
+    // Default on: the closet's root lists Alice's own garment, then one tier
+    // row per wardrobe she borrows from; entering it shows its items.
+    expect(rowTitled(fixture, 'Linen Shirt')).not.toBeNull();
+    expect(generalTierRow(fixture)).not.toBeNull();
+    expect(rowTitled(fixture, 'Apple Watch')).toBeNull();
     expect(sharedBox(fixture)!.checked).toBe(true);
 
+    generalTierRow(fixture)!.click();
+    await settle(fixture);
+    expect(rowTitled(fixture, 'Apple Watch')).not.toBeNull();
+    expect(rowTitled(fixture, 'Linen Shirt')).toBeNull();
+
+    // Unticking while inside a shared wardrobe goes back to the closet.
     sharedBox(fixture)!.click();
     await settle(fixture);
-    expect(titles(component)).toEqual(['Linen Shirt']);
+    expect(rowTitled(fixture, 'Apple Watch')).toBeNull();
+    expect(generalTierRow(fixture)).toBeNull();
+    expect(rowTitled(fixture, 'Linen Shirt')).not.toBeNull();
 
     // And back again — hiding is a view filter, not a fetch.
     sharedBox(fixture)!.click();
     await settle(fixture);
-    expect(titles(component)).toEqual(['Apple Watch', 'Linen Shirt']);
+    expect(generalTierRow(fixture)).not.toBeNull();
   });
 
-  // v4's second test, 1:1.
+  it('a search looks in the shared wardrobes too, and honours the toggle', async () => {
+    const { fixture } = await renderInner(null, sharedRoute);
+    expect(rowTitled(fixture, 'Linen Shirt')).not.toBeNull();
+
+    const search = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+      'input[aria-label="Search wardrobe by title"]',
+    )!;
+    search.value = 'watch';
+    search.dispatchEvent(new Event('input'));
+    await settle(fixture);
+    expect(rowTitled(fixture, 'Apple Watch')).not.toBeNull();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Searching everywhere');
+
+    sharedBox(fixture)!.click();
+    await settle(fixture);
+    expect(rowTitled(fixture, 'Apple Watch')).toBeNull();
+  });
+
   it('leaves the archived toggle alone', async () => {
-    const { fixture, component } = await renderInner(null, sharedRoute);
+    const { fixture } = await renderInner(null, sharedRoute);
+
+    expect(generalTierRow(fixture)).not.toBeNull();
     expect(archivedBox(fixture).checked).toBe(false);
 
     sharedBox(fixture)!.click();
     await settle(fixture);
-    expect(titles(component)).toEqual(['Linen Shirt']);
+    expect(generalTierRow(fixture)).toBeNull();
     expect(archivedBox(fixture).checked).toBe(false);
   });
 
@@ -1280,7 +1411,12 @@ describe('WardrobeControlDialogInner — Generate image (v4 7c8572869)', () => {
     TestBed.inject(ToastService)
       .toasts()
       .map((t) => ({ type: t.type, message: t.message }));
+  // Re-pinned (P4.D285): the handler and its in-flight set moved to the actions store.
   type Gen = { handleGenerateImage(i: WardrobeItemDto): Promise<void>; generatingImageIds(): ReadonlySet<string> };
+  const gen = (component: WardrobeControlDialogInner): Gen => {
+    const actions = (component as unknown as { actions: WardrobeItemActions }).actions;
+    return { handleGenerateImage: (i) => actions.generateImage(i), generatingImageIds: () => actions.generatingImageIds() };
+  };
 
   it('the rows opt in, and a character garment is drawn in its own vault', async () => {
     const fetchFn = stubGenerate(201, { rerouted: false, current: 'f1' });
@@ -1288,13 +1424,13 @@ describe('WardrobeControlDialogInner — Generate image (v4 7c8572869)', () => {
     const row = fixture.debugElement.queryAll(By.css('qt-wardrobe-item-row'))[0];
     expect(row.componentInstance.canGenerateImage()).toBe(true);
     const before = seen.filter((r) => (r.type as string) === 'characterWardrobeList').length;
-    await (component as unknown as Gen).handleGenerateImage(HAT);
+    await gen(component).handleGenerateImage(HAT);
     await settle(fixture);
     expect(fetchFn.mock.calls[0][0]).toBe('/api/v1/wardrobe/hat/images?scope=character&id=c1&action=generate');
     expect((fetchFn.mock.calls[0][1] as RequestInit).body).toBe('{}');
     expect(toasts()).toContainEqual({ type: 'success', message: 'A portrait of "Hat" is hung' });
     expect(seen.filter((r) => (r.type as string) === 'characterWardrobeList').length).toBeGreaterThan(before);
-    expect((component as unknown as Gen).generatingImageIds().size).toBe(0);
+    expect(gen(component).generatingImageIds().size).toBe(0);
   });
 
   it('a shared garment in the character view goes to General; a browsed container is its own home', async () => {
@@ -1302,7 +1438,7 @@ describe('WardrobeControlDialogInner — Generate image (v4 7c8572869)', () => {
     const { fixture, component } = await renderInner(null);
     const cape = dto({ id: 'cape', title: 'Cape' });
     (cape as { characterId: string | null }).characterId = null;
-    await (component as unknown as Gen).handleGenerateImage(cape);
+    await gen(component).handleGenerateImage(cape);
     expect(fetchFn.mock.calls[0][0]).toBe('/api/v1/wardrobe/cape/images?scope=general&action=generate');
     expect(toasts()).toContainEqual({
       type: 'success',
@@ -1310,19 +1446,19 @@ describe('WardrobeControlDialogInner — Generate image (v4 7c8572869)', () => {
     });
     inner(component).selectedContainer.set({ scope: 'project', id: 'p1' });
     await settle(fixture);
-    await (component as unknown as Gen).handleGenerateImage(cape);
+    await gen(component).handleGenerateImage(cape);
     expect(fetchFn.mock.calls[1][0]).toBe('/api/v1/wardrobe/cape/images?scope=project&id=p1&action=generate');
   });
 
   it('a failure toasts the route’s sentence, or v4’s fallback', async () => {
     stubGenerate(400, { error: 'No image profiles are configured' });
     const { component } = await renderInner(null);
-    await (component as unknown as Gen).handleGenerateImage(HAT);
+    await gen(component).handleGenerateImage(HAT);
     expect(toasts()).toContainEqual({ type: 'error', message: 'No image profiles are configured' });
     vi.stubGlobal('fetch', vi.fn(async () => {
       throw 'offline';
     }));
-    await (component as unknown as Gen).handleGenerateImage(HAT);
+    await gen(component).handleGenerateImage(HAT);
     expect(toasts()).toContainEqual({ type: 'error', message: 'Failed to generate a picture' });
   });
 
@@ -1336,7 +1472,7 @@ describe('WardrobeControlDialogInner — Generate image (v4 7c8572869)', () => {
     );
     vi.stubGlobal('fetch', fetchFn);
     const { fixture, component } = await renderInner(null);
-    const g = component as unknown as Gen;
+    const g = gen(component);
     const first = g.handleGenerateImage(HAT);
     expect(g.generatingImageIds().has('hat')).toBe(true);
     await g.handleGenerateImage(HAT);
@@ -1352,7 +1488,8 @@ describe('WardrobeControlDialogInner — Generate image (v4 7c8572869)', () => {
 describe('WardrobeControlDialogInner — the editor’s picture change reloads the list', () => {
   it('re-reads the list when the editor reports a picture change', async () => {
     const { fixture, component, seen } = await renderInner(null);
-    (component as unknown as { editingItem: { set(v: WardrobeItemDto): void } }).editingItem.set(HAT);
+    inner(component);
+    (component as unknown as { actions: WardrobeItemActions }).actions.openEditor(HAT);
     await settle(fixture);
     const editor = fixture.debugElement.query((d) => d.name === 'qt-wardrobe-item-editor');
     expect(editor).not.toBeNull();
@@ -1430,7 +1567,12 @@ describe('WardrobeControlDialogInner — the row picture viewer (v4 01a83539d)',
     handleOpenImage(item: WardrobeItemDto): void;
     viewingImage(): { item: WardrobeItemDto; container: { scope: string; id: string | null } } | null;
   };
-  const v = (component: WardrobeControlDialogInner): Viewing => component as unknown as Viewing;
+  // Re-pinned (P4.D285): `handleOpenImage` / `viewingImage` moved to the
+  // actions store as `openImage` / `imageView` (v4 `useWardrobeItemActions`).
+  const v = (component: WardrobeControlDialogInner): Viewing => {
+    const actions = (component as unknown as { actions: WardrobeItemActions }).actions;
+    return { handleOpenImage: (i) => actions.openImage(i), viewingImage: () => actions.imageView() };
+  };
   const frame = (): HTMLElement | null => document.body.querySelector('qt-full-screen-image-viewer');
 
   const PICTURED_HAT = dto({ id: 'hat', title: 'Hat', types: ['accessories'], imageFileId: 'file-hat' });
@@ -1470,8 +1612,11 @@ describe('WardrobeControlDialogInner — the row picture viewer (v4 01a83539d)',
     expect(v(component).viewingImage()!.container).toEqual({ scope: 'project', id: 'p1' });
     inner(component).selectedContainer.set({ scope: 'group', id: 'g1' });
     await settle(fixture);
+    // Re-pinned (P4.D285, v4 `4a38222e6` `addressOf`): a container view
+    // addresses every row through the browsed container — origin-first is the
+    // CHARACTER view's rule only (`useWardrobeItemActions.ts:134-138`).
     v(component).handleOpenImage(borrowed);
-    expect(v(component).viewingImage()!.container).toEqual({ scope: 'project', id: 'p1' });
+    expect(v(component).viewingImage()!.container).toEqual({ scope: 'group', id: 'g1' });
   });
 
   it('a General archetype with no origin in the character view opens through General', async () => {
@@ -1528,5 +1673,194 @@ describe('WardrobeControlDialogInner — the row picture viewer (v4 01a83539d)',
     expect(v(component).viewingImage()).toBeNull();
     expect(frame()).toBeNull();
     expect(closes).toBe(0);
+  });
+});
+
+/**
+ * P4.D285 — bug 198 (v4 `e23fb095b`). v4's half (a) stopped a CACHED
+ * snapshot from an earlier dialog visit seeding the staging. v5 MEASURED: no
+ * such cache exists — the outfit store is built per inner mount and the inner
+ * is destroyed on close — so this is the PIN of that invariant (a second open
+ * re-reads `chatOutfitGet`; nothing seeds before it lands), plus half (b), the
+ * `chats` topic re-read (v4 `topic-map.ts:72-76`).
+ */
+describe('WardrobeControlDialog — bug 198: the worn snapshot is never stale', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const outfitReads = (seen: AnyRequest[]): number =>
+    seen.filter((r) => (r.type as string) === 'chatOutfitGet').length;
+
+  it('every open of the dialog re-reads the chat’s outfit — nothing crosses a close', async () => {
+    const seen: AnyRequest[] = [];
+    const core = {
+      ...coreStreamStub(),
+      dispatchData: vi.fn(async (req: CoreRequest) => {
+        const r = req as AnyRequest;
+        seen.push(r);
+        const out = defaultRoute(r);
+        if (out instanceof Error) throw out;
+        return out;
+      }),
+    } as unknown as CoreClient;
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [WardrobeControlDialog],
+      providers: [
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: core },
+        WardrobeDialogService,
+      ],
+    });
+    const service = TestBed.inject(WardrobeDialogService);
+    const fixture = TestBed.createComponent(WardrobeControlDialog);
+    fixture.detectChanges();
+
+    service.open({ characterId: 'c1', chatId: 'chat-1' });
+    await settle(fixture);
+    const afterFirst = outfitReads(seen);
+    expect(afterFirst).toBeGreaterThanOrEqual(1);
+
+    service.close();
+    await settle(fixture);
+    service.open({ characterId: 'c1', chatId: 'chat-1' });
+    await settle(fixture);
+    expect(outfitReads(seen)).toBeGreaterThan(afterFirst);
+  });
+
+  it('the staging does not seed — and the Live tab paints nothing worn — until a read lands', async () => {
+    let refuse = true;
+    const { fixture, component, seen } = await renderInner('chat-1', (req) =>
+      (req.type as string) === 'chatOutfitGet' && refuse
+        ? new Error('the snapshot has not arrived')
+        : defaultRoute(req),
+    );
+    // The boot read never landed: nothing seeded, nothing worn painted.
+    expect(inner(component).liveStagedByChar()).toEqual({});
+    expect(
+      (component as unknown as { liveDisplaySlots(): EquippedSlots }).liveDisplaySlots(),
+    ).toEqual({ top: [], bottom: [], footwear: [], accessories: [], hair: [] });
+    refuse = false;
+    await (component as unknown as { outfit: { refreshOutfit(): Promise<unknown> } }).outfit.refreshOutfit();
+    await settle(fixture);
+    expect(inner(component).liveStagedByChar()['c1']).toEqual(WORN);
+    expect(seen.filter((r) => (r.type as string) === 'chatOutfitGet').length).toBe(2);
+  });
+
+  it('a `chats` hint for THIS chat re-reads the worn snapshot; another chat’s does not', async () => {
+    const { fixture, seen } = await renderInner('chat-1');
+    const stream = TestBed.inject(CoreClient) as unknown as { frames: { next(f: unknown): void } };
+    const before = outfitReads(seen);
+    stream.frames.next({ v: 1, topic: 'chats', at: 1, id: 'chat-2' });
+    await settle(fixture);
+    expect(outfitReads(seen)).toBe(before);
+    stream.frames.next({ v: 1, topic: 'chats', at: 1, id: 'chat-1' });
+    await settle(fixture);
+    expect(outfitReads(seen)).toBe(before + 1);
+  });
+
+  it('out of chat a `chats` hint reads nothing', async () => {
+    const { fixture, seen } = await renderInner(null);
+    const stream = TestBed.inject(CoreClient) as unknown as { frames: { next(f: unknown): void } };
+    stream.frames.next({ v: 1, topic: 'chats', at: 1 });
+    await settle(fixture);
+    expect(outfitReads(seen)).toBe(0);
+  });
+
+  it('a re-read never re-seeds the staging (Bug 61’s contract holds)', async () => {
+    const { fixture, component } = await renderInner('chat-1');
+    inner(component).handleSlotClear('top');
+    expect(inner(component).liveStagedByChar()['c1'].top).toEqual([]);
+    const stream = TestBed.inject(CoreClient) as unknown as { frames: { next(f: unknown): void } };
+    stream.frames.next({ v: 1, topic: 'chats', at: 1, id: 'chat-1' });
+    await settle(fixture);
+    expect(inner(component).liveStagedByChar()['c1'].top).toEqual([]);
+  });
+});
+
+/**
+ * P4.D285 — bug 229 through the REAL dialog (v4 `97f0d8cb8`; R-O): the
+ * Move-to-folder picker's open state is the actions store's, so the dialog's
+ * Escape / backdrop gate counts it. v5's vector is the document Escape.
+ */
+describe('WardrobeControlDialogInner — bug 229: the folder picker counts as an overlay', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('with the picker open, a click inside it and ONE Escape leave the dialog open; the next Escape is the dialog’s', async () => {
+    const { fixture, component } = await renderInner('chat-1');
+    const closed = vi.fn();
+    component.closed.subscribe(closed);
+    const actions = (component as unknown as { actions: WardrobeItemActions }).actions;
+    actions.openFolderPicker([SHIRT]);
+    await settle(fixture);
+    const el = fixture.nativeElement as HTMLElement;
+    const listbox = el.querySelector('[role="listbox"][aria-label="Folders"]')!;
+    expect(listbox).not.toBeNull();
+    expect((component as unknown as { overlayOpen(): boolean }).overlayOpen()).toBe(true);
+
+    const top = Array.from(listbox.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(
+      (o) => o.textContent?.includes('top level'),
+    )!;
+    top.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    top.click();
+    (el.querySelector('.qt-dialog-overlay') as HTMLElement).click();
+    await settle(fixture);
+    expect(closed).not.toHaveBeenCalled();
+    expect(el.querySelector('[role="listbox"][aria-label="Folders"]')).not.toBeNull();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await settle(fixture);
+    expect(el.querySelector('[role="listbox"][aria-label="Folders"]')).toBeNull();
+    expect(closed).not.toHaveBeenCalled();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await settle(fixture);
+    expect(closed).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * P4.D285 — bug 191's client gate (v4 `9ecebf986` `wardrobe-control-dialog.
+ * tsx:290-297`, `lib/wardrobe/wearable.ts`): every wear gesture refuses an
+ * archived garment with the server's words, and stages nothing.
+ */
+describe('WardrobeControlDialogInner — an archived garment cannot be put on (bug 191)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const RELIC = dto({ id: 'relic', title: 'Moth-eaten Spats', types: ['footwear'], archivedAt: '2026-01-01T00:00:00.000Z' });
+  const route = (req: AnyRequest): Record<string, unknown> | Error =>
+    (req.type as string) === 'characterWardrobeList' &&
+    (req as { characterId?: string }).characterId === 'c1'
+      ? { wardrobeItems: [SHIRT, HAT, RELIC] }
+      : defaultRoute(req);
+
+  it('Wear / Try on, + to a slot and the composer picker all refuse it, toasting v4’s sentence', async () => {
+    const { component } = await renderInner('chat-1', route);
+    const toasts = TestBed.inject(ToastService);
+    const showError = vi.spyOn(toasts, 'showError').mockImplementation(() => '');
+    const c = inner(component);
+    const before = JSON.stringify(c.liveStagedByChar());
+    const fittingBefore = JSON.stringify(c.fittingSlots());
+
+    c.rightTab.set('live');
+    c.rowEquip(RELIC);
+    (component as unknown as { rowAddToSlot(i: WardrobeItemDto, s: string): void }).rowAddToSlot(RELIC, 'footwear');
+    c.handleSlotAdd('footwear', 'relic');
+    c.rightTab.set('builder');
+    c.rowEquip(RELIC);
+    c.fittingAdd('footwear', 'relic');
+
+    expect(showError).toHaveBeenCalledTimes(5);
+    expect(showError).toHaveBeenCalledWith('Item "Moth-eaten Spats" is archived and cannot be worn');
+    expect(JSON.stringify(c.liveStagedByChar())).toBe(before);
+    expect(JSON.stringify(c.fittingSlots())).toBe(fittingBefore);
+  });
+
+  it('taking an archived garment OFF is never refused (archiving undresses nobody)', async () => {
+    const { component } = await renderInner('chat-1', route);
+    const toasts = TestBed.inject(ToastService);
+    const showError = vi.spyOn(toasts, 'showError').mockImplementation(() => '');
+    inner(component).handleSlotRemove('top', 'shirt');
+    expect(showError).not.toHaveBeenCalled();
+    expect(inner(component).liveStagedByChar()['c1'].top).toEqual([]);
   });
 });

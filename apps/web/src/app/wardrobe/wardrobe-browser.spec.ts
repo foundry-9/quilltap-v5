@@ -679,6 +679,27 @@ describe('WardrobeBrowser — filing (v4 `WardrobeBrowser.tsx:249-381`)', () => 
     expect(crumbs()).toEqual(['Wardrobe']);
   });
 
+  it('unticking Show shared inside a tier goes back to the closet, and re-ticking stays there', async () => {
+    const { el, fixture } = await renderBrowser(characterContainer, makeData([COAT, BORROWED], ownOnly));
+    const shared = Array.from(el.querySelectorAll('label'))
+      .find((l) => l.textContent?.includes('Show shared'))!
+      .querySelector('input')!;
+    tierRowsShown(el)[0].click();
+    await settle(fixture);
+    expect(byTitle(el, 'Project Cape')).toBeNull();
+    expect(folderRows(el)[0].textContent).toContain('Capes');
+    shared.click();
+    await settle(fixture);
+    expect(Array.from(nav(el).querySelectorAll('button')).map((b) => b.textContent?.trim())).toEqual([
+      'Wardrobe',
+    ]);
+    shared.click();
+    await settle(fixture);
+    // Back at the closet's root, with the tier row offered again.
+    expect(tierRowsShown(el)).toHaveLength(1);
+    expect(byTitle(el, 'Greatcoat')).not.toBeNull();
+  });
+
   it('a tier row carries its chip and live count; the tier crumb names it', async () => {
     const archivedBorrowed = item('veil', 'Old Veil', '', {
       characterId: null,

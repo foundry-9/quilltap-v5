@@ -18,58 +18,40 @@ import type { CharacterListItem, WardrobeItemDto, WardrobeSlotType } from '../co
 import { characterAvatarSrc } from '../screens/characters/characters.api';
 import { AvatarGenerationPane, type ImageProfileSummary } from './avatar-generation-pane';
 import {
-  addItemToSlot,
   buildDefaultOutfitWithCredit,
   cloneSlots,
   EMPTY_EQUIPPED_SLOTS,
   freshSlots,
-  nextCopyTitle,
-  takeOffBundleFromSlots,
-  breakApartBundleInSlots,
-  wearItemIntoSlots,
-  type EquippedBundle,
   type EquippedSlots,
 } from './equipped-slots';
 import { WARDROBE_SLOT_TYPES } from './slot-meta';
 import { createOutfitStore, type OutfitStore } from './outfit-store';
 import {
+  addToSlotGesture,
   appendWornBundleIds,
   buildSetAllEquipBody,
   classifyStagedOutfits,
+  createComposerHandlers,
   equippedSlotsEqual,
   rebaseStagedGestures,
-  wornBundleIdsFor,
-  type SlotsMutator,
+  wearGesture,
+  wearRefusal,
   type StagedGesture,
 } from './staged-live-outfits';
 import { OutfitComposer } from './outfit-composer';
 import { WardrobeDialogService } from './wardrobe-dialog.service';
-import { WardrobeItemEditor } from './wardrobe-item-editor';
-import { WardrobeItemRow } from './wardrobe-item-row';
-import { WardrobeTransferDialog, type TransferMode } from './wardrobe-transfer-dialog';
-import { generateWardrobeItemImage } from './item-images.api';
-import { WardrobeImageViewer } from './wardrobe-image-viewer';
-import {
-  sortAndFilterWardrobeItems,
-  WARDROBE_LIST_SORTS,
-  type WardrobeListSort,
-} from './wear-display';
+import { WardrobeBrowser, type WardrobeRowWearControls } from './wardrobe-browser';
+import { WardrobeItemOverlays } from './wardrobe-item-overlays';
+import { createWardrobeItemActions } from './wardrobe-item-actions';
+import { createWardrobeListData } from './wardrobe-list-data';
 import {
   GENERAL_CONTAINER,
+  GENERAL_WARDROBE_NAME,
   decodeWardrobeContainer,
   encodeWardrobeContainer,
-  homeContainerForItem,
   type WardrobeContainer,
 } from './wardrobe-container';
-import {
-  deleteWardrobeItem,
-  dispatchWardrobe,
-  duplicateWardrobeItem,
-  loadCharacterWardrobeItems,
-  loadWardrobeContainerItems,
-  setWardrobeItemArchived,
-  toggleItemDefault,
-} from './wardrobe.api';
+import { dispatchWardrobe } from './wardrobe.api';
 import { WardrobeInstructionsSection } from './wardrobe-instructions-section';
 import { ToastService } from '../ui/toast.service';
 import { onTabActivated } from '../workspace/workspace-contract';
@@ -87,11 +69,7 @@ interface ContainerSummary {
   name: string;
 }
 
-type SlotFilter = 'all' | WardrobeSlotType;
-const SLOT_FILTERS: SlotFilter[] = ['all', ...WARDROBE_SLOT_TYPES];
-type ItemKind = 'items' | 'outfits';
 type RightTab = 'live' | 'builder';
-type EditorIntent = 'create-single' | 'create-bundle';
 
 /**
  * The inner wardrobe dialog body — a port of v4
@@ -119,6 +97,24 @@ type EditorIntent = 'create-single' | 'create-bundle';
  * is NOT shipped (tier 3 — its `analyze-image` verb is refusal-armed in lane
  * P4.9f1 per §4; a dead button is worse than an absent one).
  *
+ * THE PHASE-F SPLIT (v4 `9ecebf986` + `4a38222e6`, P4.D285): the left column
+ * is the shared `qt-wardrobe-browser` (folders, tier rows, select mode), the
+ * editor / transfer / picture overlays are `qt-wardrobe-item-overlays`, the
+ * row actions and every overlay's open state are the actions store
+ * (`wardrobe-item-actions.ts` — its `overlayOpen` counts the Move-to-folder
+ * picker, bug 229), and the lists are the list-data store
+ * (`wardrobe-list-data.ts`). The dialog lays them out and keeps the staging.
+ * Every wear gesture is a composer gesture (`staged-live-outfits.ts`) and is
+ * refused for an archived garment with v4's sentence (bug 191, `wearRefusal`).
+ *
+ * BUG 198 (v4 `e23fb095b`): the worn snapshot is read per mount (the outfit
+ * store is built at boot and the inner dialog is destroyed on close, so no
+ * earlier visit's snapshot can seed the staging — measured, not assumed), and
+ * re-read on the `chats` realtime topic, which a tool-driven outfit change
+ * fires (v4's `chats` → `wardrobe.outfit(id)` topic row; v5 has no outfit
+ * query key, so the dialog subscribes itself — `realtime-topic-map.ts`
+ * unchanged).
+ *
  * THE `asTab` CHROME SWITCH (v4 `WardrobeShell`, `:128-164`; p4.9j3): with
  * `asTab` true the body renders BARE in a `qt-wardrobe-tab` scroll container —
  * no overlay, no title header/close, no footer, no Escape/backdrop close (v4
@@ -133,11 +129,9 @@ type EditorIntent = 'create-single' | 'create-bundle';
     NgTemplateOutlet,
     AvatarGenerationPane,
     OutfitComposer,
-    WardrobeImageViewer,
+    WardrobeBrowser,
     WardrobeInstructionsSection,
-    WardrobeItemEditor,
-    WardrobeItemRow,
-    WardrobeTransferDialog,
+    WardrobeItemOverlays,
   ],
   host: {
     '(document:keydown.escape)': 'onEscape($event)',
@@ -282,167 +276,15 @@ type EditorIntent = 'create-single' | 'create-bundle';
           <qt-wardrobe-instructions-section [container]="selectedContainer()" />
 
           <div class="grid md:grid-cols-2 gap-4">
-            <!-- LEFT: Wardrobe list (v4 :920-1032) -->
-            <section class="flex flex-col min-h-0 relative">
-              <div class="flex flex-col gap-2 mb-2">
-                <input
-                  type="search"
-                  [value]="titleFilter()"
-                  (input)="titleFilter.set($any($event.target).value)"
-                  placeholder="Search wardrobe…"
-                  class="qt-input qt-input-sm"
-                  aria-label="Search wardrobe by title"
-                />
-                <!-- v4 3ee3b1342 :1312-1345 — the tablist shares a wrapping row
-                     with the Sort select. -->
-                <div class="flex flex-wrap items-center justify-between gap-2">
-                <div
-                  role="tablist"
-                  aria-label="Item kind"
-                  class="inline-flex gap-1 qt-bg-muted/50 rounded-lg p-1 self-start"
-                >
-                  @for (k of itemKinds; track k) {
-                    <button
-                      type="button"
-                      role="tab"
-                      [attr.aria-selected]="kindFilter() === k"
-                      (click)="kindFilter.set(k)"
-                      class="px-3 py-1 rounded text-xs font-medium transition-colors"
-                      [class.qt-bg-default]="kindFilter() === k"
-                      [class.text-foreground]="kindFilter() === k"
-                      [class.shadow-sm]="kindFilter() === k"
-                      [class.qt-text-secondary]="kindFilter() !== k"
-                    >
-                      {{ k === 'items' ? 'Items' : 'Outfits' }}
-                    </button>
-                  }
-                </div>
-                  <label class="flex items-center gap-2 qt-text-xs qt-text-secondary">
-                    Sort
-                    <select
-                      class="qt-select qt-select-sm"
-                      aria-label="Sort wardrobe"
-                      (change)="onListSort($event)"
-                    >
-                      @for (s of listSorts; track s.value) {
-                        <option [value]="s.value" [selected]="listSort() === s.value">
-                          {{ s.label }}
-                        </option>
-                      }
-                    </select>
-                  </label>
-                </div>
-                <div class="flex flex-wrap gap-1">
-                  @for (slot of slotFilters; track slot) {
-                    <button
-                      type="button"
-                      (click)="slotFilter.set(slot)"
-                      class="qt-button-sm"
-                      [class.qt-button-secondary]="slotFilter() === slot"
-                      [class.qt-button-ghost]="slotFilter() !== slot"
-                    >
-                      {{ slot === 'all' ? 'All' : slot[0].toUpperCase() + slot.slice(1) }}
-                    </button>
-                  }
-                </div>
-                <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-                  <label class="flex items-center gap-2 qt-text-xs qt-text-secondary">
-                    <input
-                      type="checkbox"
-                      class="qt-checkbox"
-                      [checked]="showArchived()"
-                      (change)="onShowArchived($event)"
-                    />
-                    Show archived
-                  </label>
-                  <!-- Only the character view merges in other tiers; browsing a
-                       container, every row already belongs to it, so the toggle
-                       would sit there governing nothing. -->
-                  @if (isCharacterScope()) {
-                    <label class="flex items-center gap-2 qt-text-xs qt-text-secondary">
-                      <input
-                        type="checkbox"
-                        class="qt-checkbox"
-                        [checked]="showShared()"
-                        (change)="onShowShared($event)"
-                      />
-                      Show shared
-                    </label>
-                  }
-                  <!-- v4 3ee3b1342 :1386-1395 — NOT scope-gated: it governs
-                       the list in every view. -->
-                  <label class="flex items-center gap-2 qt-text-xs qt-text-secondary">
-                    <input
-                      type="checkbox"
-                      class="qt-checkbox"
-                      [checked]="neverWornOnly()"
-                      (change)="onNeverWornOnly($event)"
-                    />
-                    Never worn
-                  </label>
-                </div>
-              </div>
-
-              <div class="flex-1 overflow-y-auto space-y-1 max-h-[55vh] pb-12">
-                @if (!selectedContainer()) {
-                  <div class="text-sm qt-text-secondary px-3 py-4">
-                    Select a wardrobe to browse.
-                  </div>
-                } @else if (listLoading()) {
-                  <div class="text-sm qt-text-secondary px-3 py-4">Loading…</div>
-                } @else if (filteredItems().length === 0) {
-                  <div class="text-sm qt-text-secondary px-3 py-4">
-                    No items match this filter.
-                  </div>
-                } @else {
-                  @for (item of filteredItems(); track item.id) {
-                    <!-- inChat gates the row's Wear/+Layer visibility; we want
-                         them visible whenever a character is selected (v4
-                         :1202-1210). Browsing a shared container there is
-                         nobody to dress, so they hide. -->
-                    <qt-wardrobe-item-row
-                      [item]="item"
-                      [allItems]="resolutionPool()"
-                      [inChat]="isCharacterScope()"
-                      [canManage]="canManageItem"
-                      [equipLabel]="useFittingActions() ? 'Try on' : 'Wear'"
-                      [addAction]="useFittingActions() ? 'add' : 'layer'"
-                      [isUpdatingDefault]="updatingDefaultId() === item.id"
-                      canArchive
-                      canGenerateImage
-                      [generatingImageIds]="generatingImageIds()"
-                      canOpenImage
-                      (openImage)="handleOpenImage($event)"
-                      (generateImage)="handleGenerateImage($event)"
-                      (toggleArchived)="handleToggleArchived($event)"
-                      (toggleDefault)="handleToggleDefault($event)"
-                      (edit)="editingItem.set($event)"
-                      (duplicate)="handleDuplicate($event)"
-                      (move)="openTransfer($event, 'move')"
-                      (copyItem)="openTransfer($event, 'copy')"
-                      (delete)="handleDelete($event)"
-                      (equip)="rowEquip($event)"
-                      (addToSlot)="rowAddToSlot($event.item, $event.slot)"
-                    />
-                  }
-                }
-              </div>
-
-              <!-- Sticky create controls (v4 :1013-1031; the Import-from-image
-                   entry is a tier-3 deferral — no dead button). -->
-              <div
-                class="sticky bottom-0 -mx-1 px-1 pt-2 pb-1 qt-bg-default border-t qt-border-default flex items-center gap-2 justify-end"
-              >
-                <button
-                  type="button"
-                  class="qt-button-primary qt-button-sm"
-                  [disabled]="!selectedContainer()"
-                  (click)="creatingNew.set('create-single')"
-                >
-                  + New Item
-                </button>
-              </div>
-            </section>
+            <!-- LEFT: the shared browser (v4 4a38222e6 :478-497) -->
+            <qt-wardrobe-browser
+              [container]="selectedContainer()"
+              [data]="data"
+              [actions]="actions"
+              [showArchived]="showArchived()"
+              (showArchivedChange)="showArchived.set($event)"
+              [wear]="wearControls()"
+            />
 
             <!-- RIGHT: Live outfit / Outfit Builder — Builder always present;
                  Live outfit only when there's a chat to mutate against. -->
@@ -482,12 +324,11 @@ type EditorIntent = 'create-single' | 'create-bundle';
                     <qt-outfit-composer
                       [items]="items()"
                       [slots]="liveDisplaySlots()"
-                      [showBundleActions]="true"
-                      (addToSlot)="handleSlotAdd($event.slot, $event.itemId)"
-                      (removeFromSlot)="handleSlotRemove($event.slot, $event.itemId)"
-                      (clearSlot)="handleSlotClear($event)"
-                      (takeOffBundle)="handleLiveTakeOffBundle($event)"
-                      (breakApartBundle)="handleLiveBreakApartBundle($event)"
+                      (addToSlot)="liveHandlers.onAddToSlot($event.slot, $event.itemId)"
+                      (removeFromSlot)="liveHandlers.onRemoveFromSlot($event.slot, $event.itemId)"
+                      (clearSlot)="liveHandlers.onClearSlot($event)"
+                      (takeOffBundle)="liveHandlers.onTakeOffBundle($event)"
+                      (breakApartBundle)="liveHandlers.onBreakApartBundle($event)"
                     />
                   </div>
                 } @else {
@@ -572,12 +413,11 @@ type EditorIntent = 'create-single' | 'create-bundle';
                     <qt-outfit-composer
                       [items]="items()"
                       [slots]="fittingSlots()"
-                      [showBundleActions]="true"
-                      (addToSlot)="fittingAdd($event.slot, $event.itemId)"
-                      (removeFromSlot)="fittingRemove($event.slot, $event.itemId)"
-                      (clearSlot)="fittingClear($event)"
-                      (takeOffBundle)="handleFittingTakeOffBundle($event)"
-                      (breakApartBundle)="handleFittingBreakApartBundle($event)"
+                      (addToSlot)="fittingHandlers.onAddToSlot($event.slot, $event.itemId)"
+                      (removeFromSlot)="fittingHandlers.onRemoveFromSlot($event.slot, $event.itemId)"
+                      (clearSlot)="fittingHandlers.onClearSlot($event)"
+                      (takeOffBundle)="fittingHandlers.onTakeOffBundle($event)"
+                      (breakApartBundle)="fittingHandlers.onBreakApartBundle($event)"
                     />
                   </div>
                 }
@@ -601,62 +441,13 @@ type EditorIntent = 'create-single' | 'create-bundle';
           </div>
     </ng-template>
 
-    <!-- A row's picture, full screen — above the dialog and the editor
-         (v4 01a83539d :1682-1691; no note, no prev/next). -->
-    @if (viewingImage(); as viewing) {
-      @if (viewing.item.imageFileId; as fileId) {
-        <qt-wardrobe-image-viewer
-          [itemId]="viewing.item.id"
-          [itemTitle]="viewing.item.title"
-          [container]="viewing.container"
-          [fileId]="fileId"
-          (closed)="viewingImage.set(null)"
-        />
-      }
-    }
-
-    <!-- Inline editor — stacked on top of the dialog (v4 :1213-1246). -->
-    @if ((editingItem() || creatingNew()) && selectedContainer(); as container) {
-      <qt-wardrobe-item-editor
-        [characterId]="selectedCharacterId()"
-        [item]="editingItem()"
-        [isShared]="false"
-        [projectId]="dialogProjectId()"
-        [container]="container"
-        [containerLabel]="selectedContainerLabel()"
-        [initialMode]="editorInitialMode()"
-        [initialComponentItemIds]="
-          creatingNew() === 'create-bundle' ? createBundleComponents() : undefined
-        "
-        [autoFocusTitle]="creatingNew() === 'create-bundle'"
-        (closed)="closeEditor()"
-        (saved)="onEditorSaved()"
-        (imageChanged)="reloadCurrentItems()"
-      />
-    }
-
-    <!-- Transfer dialog — stacked on top of the dialog (v4 :1248-1269). -->
-    @if (transferringItem(); as item) {
-      @if (transferIntent(); as intent) {
-        @if (selectedContainer()) {
-          <!-- Browsing a shared container, the item's home is known exactly —
-               name it as the source and drop it from the destination list. In
-               the character view the home tier of a merged shared item isn't
-               tracked, so the server probes, and only a character-owned item's
-               own vault can be safely excluded (v4 :1474-1493). -->
-          <qt-wardrobe-transfer-dialog
-            [mode]="intent"
-            [item]="item"
-            [sourceCharacterId]="selectedCharacterId()"
-            [sourceProjectId]="dialogProjectId()"
-            [source]="isCharacterScope() ? null : selectedContainer()"
-            [excludeDestination]="transferExcludeDestination()"
-            (closed)="closeTransfer()"
-            (transferred)="onTransferred()"
-          />
-        }
-      }
-    }
+    <!-- The overlays the browser's row actions open (v4 4a38222e6 :650-655). -->
+    <qt-wardrobe-item-overlays
+      [container]="selectedContainer()"
+      [containerLabel]="selectedContainerLabel()"
+      [data]="data"
+      [actions]="actions"
+    />
   `,
 })
 export class WardrobeControlDialogInner {
@@ -672,18 +463,15 @@ export class WardrobeControlDialogInner {
   readonly asTab = input<boolean>(false);
   readonly closed = output<void>();
 
-  protected readonly itemKinds: ItemKind[] = ['items', 'outfits'];
-  protected readonly slotFilters = SLOT_FILTERS;
-
   protected readonly characters = signal<CharacterSummary[]>([]);
   protected readonly projects = signal<ContainerSummary[]>([]);
   protected readonly groups = signal<ContainerSummary[]>([]);
   /**
    * Which wardrobe is being browsed: a character's merged view, or one shared
    * container (Quilltap General, a project, a group) edited in place
-   * (v4 `:192-197`). `selectedCharacterId` is now DERIVED from it — a shared
-   * container has no character, which is what hides the right-hand
-   * outfit column and the character-only actions.
+   * (v4 `:209-227`). `selectedCharacterId` is DERIVED from it — a shared
+   * container has no character, which is what hides the right-hand outfit
+   * column and the character-only actions.
    */
   protected readonly selectedContainer = signal<WardrobeContainer | null>(null);
   protected readonly isCharacterScope = computed(
@@ -692,53 +480,37 @@ export class WardrobeControlDialogInner {
   protected readonly selectedCharacterId = computed(() =>
     this.isCharacterScope() ? (this.selectedContainer()?.id ?? null) : null,
   );
-  /** The merged four-tier read — the character view's list (v4 `:198`). */
-  protected readonly items = signal<WardrobeItemDto[]>([]);
-  protected readonly itemsLoading = signal(false);
-  /** One shared container's own contents, and its resolution pool (v4 `:199-204`). */
-  protected readonly containerItems = signal<WardrobeItemDto[]>([]);
-  protected readonly containerResolutionItems = signal<WardrobeItemDto[]>([]);
-  protected readonly containerItemsLoading = signal(false);
-  protected readonly dialogProjectId = signal<string | null>(null);
 
-  protected readonly editingItem = signal<WardrobeItemDto | null>(null);
-  protected readonly transferringItem = signal<WardrobeItemDto | null>(null);
-  protected readonly transferIntent = signal<TransferMode | null>(null);
-  /** null = no editor open; 'create-single' / 'create-bundle' = new item. */
-  protected readonly creatingNew = signal<EditorIntent | null>(null);
-  /** Pre-populated component ids when Save-as-outfit opens the editor. */
-  protected readonly createBundleComponents = signal<string[]>([]);
-  protected readonly slotFilter = signal<SlotFilter>('all');
-  protected readonly kindFilter = signal<ItemKind>('items');
   /**
-   * "Show archived" (v4 `:203-207`). Flipping it re-fetches every tier with
+   * "Show archived" (v4 `:229-236`). Flipping it re-reads every tier with
    * `includeArchived` rather than filtering what is already loaded — the server
    * owns the hiding, so this list can never disagree with the API.
    */
   protected readonly showArchived = signal(false);
+
+  /** v4 `useWardrobeListData(selectedContainer, { chatId, includeArchived })` (`:237`). */
+  protected readonly data = createWardrobeListData(this.core, {
+    container: () => this.selectedContainer(),
+    chatId: () => this.chatId(),
+    includeArchived: () => this.showArchived(),
+  });
+  /** The character's wearable pool (empty in a shared view) — v4 `items` (`:238`). */
+  protected readonly items = this.data.characterItems;
+
   /**
-   * "Show shared" (v4 `055cac45a`), the mirror image of the archived toggle:
-   * on by default, and a purely client-side filter. Ownership isn't a fetch
-   * parameter — the character view's list *is* the merge of the character's
-   * own garments with every shared tier above them — so hiding shared items
-   * means dropping the un-manageable rows after the merge, not asking the
-   * server for less. Flipping it must therefore NOT re-fetch: the reload
-   * effect above deliberately does not track it.
-   *
-   * Never persisted: v4 keeps no memory of it across dialog opens.
+   * v4 `useWardrobeItemActions(…)` (`:254-259`). v4's imperative
+   * `showConfirmation` is `window.confirm` here (the recorded divergence at
+   * the top of this file).
    */
-  protected readonly showShared = signal(true);
-  /**
-   * List ordering and the "Never worn" filter (v4 `3ee3b1342`, wear ledger
-   * §5.3; `:229-235`). Dialog state only — like the toggles above, they are not
-   * persisted. The filter composes with any sort. Neither is a fetch
-   * parameter: the reload effect does not track them.
-   */
-  protected readonly listSort = signal<WardrobeListSort>('title');
-  protected readonly neverWornOnly = signal(false);
-  protected readonly listSorts = WARDROBE_LIST_SORTS;
-  protected readonly titleFilter = signal('');
-  protected readonly updatingDefaultId = signal<string | null>(null);
+  protected readonly actions = createWardrobeItemActions({
+    core: this.core,
+    toasts: this.toasts,
+    container: () => this.selectedContainer(),
+    listItems: () => this.data.listItems(),
+    confirm: (message) => window.confirm(message),
+    reloadLists: () => this.data.reload(),
+    reloadOutfit: () => this.reloadOutfit(),
+  });
 
   protected readonly imageProfiles = signal<ImageProfileSummary[]>([]);
   protected readonly selectedImageProfileId = signal<string | null>(null);
@@ -746,7 +518,7 @@ export class WardrobeControlDialogInner {
   protected readonly previewUrl = signal<string | null>(null);
   protected readonly previewFilename = signal<string | null>(null);
 
-  /** Fitting room — transient; never hits the equip API (v4 :196-202). */
+  /** Fitting room — transient; never hits the equip API (v4 `useFittingRoom`). */
   protected readonly fittingSlots = signal<EquippedSlots>(freshSlots());
   /**
    * The outfits (bundles) the Builder's composition put on — the claim its Try
@@ -762,11 +534,11 @@ export class WardrobeControlDialogInner {
   protected readonly resetMenuOpen = signal(false);
   private fittingSeedKey: string | null = null;
 
-  // -------- Staged Live-outfit edits (v4 :227-238) --------
+  // -------- Staged Live-outfit edits (v4 `useStagedLiveOutfits`) --------
   //
   // Per-slot tweaks on the Live tab used to call the equip API one at a time,
   // and the server fired a fresh avatar regen + Aurora announcement on every
-  // call. Now: every Live-tab mutation stages here, keyed by character. On
+  // call. Now: every Live-tab gesture stages here, keyed by character. On
   // Done, each character whose staged slots differ from their baseline gets
   // one `set_all` — so at most one announcement and one regen per character
   // per dialog session.
@@ -775,12 +547,11 @@ export class WardrobeControlDialogInner {
   private readonly liveSeededByChar = new Set<string>();
   /**
    * Gestures made before the worn snapshot arrived, keyed by character (v4
-   * `:232-239`, `pendingLiveMutatorsRef`). In that window there is nothing to
-   * stage onto, so the gesture paints against an empty fallback and is recorded
-   * here; the seeding effect replays it onto the real slots. Without this the
-   * fast click is either overwritten by the first seed (Bug 61's silent loss)
-   * or committed against an empty base, undressing everything the user never
-   * touched.
+   * `pendingRef`). In that window there is nothing to stage onto, so the
+   * gesture paints against an empty fallback and is recorded here; the seeding
+   * effect replays it onto the real slots. Without this the fast click is
+   * either overwritten by the first seed (Bug 61's silent loss) or committed
+   * against an empty base, undressing everything the user never touched.
    */
   private readonly pendingLiveMutators: Record<string, StagedGesture[]> = {};
   /**
@@ -793,6 +564,11 @@ export class WardrobeControlDialogInner {
   protected outfit!: OutfitStore;
   private booted = false;
 
+  /** The worn slots of the character being dressed, in chat (v4 `wornSlots`, `:268`). */
+  private wornSlotsFor(characterId: string | null): EquippedSlots | undefined {
+    return this.isInChat && this.booted ? this.outfit.slotsFor(characterId) : undefined;
+  }
+
   constructor() {
     // One-time boot once the inputs resolve (the component remounts per
     // context key, so this runs exactly once per context).
@@ -800,17 +576,15 @@ export class WardrobeControlDialogInner {
       const initialCharacterId = this.initialCharacterId();
       const chatId = this.chatId();
       if (this.booted) return;
-      this.booted = true;
       untracked(() => {
         this.isInChat = chatId !== null;
         this.rightTab.set(this.isInChat ? 'live' : 'builder');
         this.selectedContainer.set(
           initialCharacterId ? { scope: 'character', id: initialCharacterId } : null,
         );
-        this.outfit = createOutfitStore(this.core, chatId, () => {
-          const id = this.selectedCharacterId();
-          return id ? [id] : [];
-        });
+        // Bug 198: a fresh store per mount — no earlier visit's snapshot.
+        this.outfit = createOutfitStore(this.core, chatId);
+        this.booted = true;
         void this.loadCharacters();
         void this.loadSharedContainers();
         void this.loadImageProfiles();
@@ -818,27 +592,15 @@ export class WardrobeControlDialogInner {
       });
     });
 
-    // Reload whichever view is on display whenever the browsed container
-    // changes (v4's two hooks refire on their deps: the merged character read,
-    // or the single shared container's own list).
-    effect(() => {
-      const container = this.selectedContainer();
-      // Tracked deliberately: flipping "Show archived" is a NEW REQUEST on
-      // every tier, exactly as v4's two hooks refire on their `includeArchived`
-      // dep — never a client-side pass over what is already loaded.
-      this.showArchived();
-      untracked(() => void this.reloadForContainer(container));
-    });
-
-    // Fitting-room seeding (v4 :299-320): once per character. In chat wait
-    // for the worn snapshot AND items; out of chat wait for items so the
-    // defaults can be picked out.
+    // Fitting-room seeding (v4 `useFittingRoom`): once per character. In chat
+    // wait for the worn snapshot; out of chat wait for items so the defaults
+    // can be picked out.
     effect(() => {
       const characterId = this.selectedCharacterId();
       const items = this.items();
-      const outfitState = this.booted ? this.outfit.outfitState() : {};
+      if (this.booted) this.outfit.equippedOutfit();
       if (!characterId) return;
-      const wornSlots = this.isInChat ? outfitState[characterId]?.slots : undefined;
+      const wornSlots = this.wornSlotsFor(characterId);
       if (this.isInChat && !wornSlots) return;
       if (items.length === 0 && !wornSlots) return;
 
@@ -856,18 +618,17 @@ export class WardrobeControlDialogInner {
       untracked(() => this.fittingSlots.set(seed.slots));
     });
 
-    // Seed staged Live slots once a worn snapshot exists for this character
-    // (v4 :322-341). The baseline is captured separately so the Done flush can
-    // skip no-op commits; the seeded-set gates re-seeding so refreshOutfit
-    // round-trips don't blow away in-progress edits — and anything staged
-    // *before* this first seed is replayed onto the snapshot rather than
-    // discarded by it, since the item list is clickable well before the outfit
-    // chain's three round trips finish (Bug 61).
+    // Seed staged Live slots once a worn snapshot exists for this character.
+    // The baseline is captured separately so the Done flush can skip no-op
+    // commits; the seeded-set gates re-seeding so a refetch doesn't blow away
+    // in-progress edits — and anything staged *before* this first seed is
+    // replayed onto the snapshot rather than discarded by it, since the item
+    // list is clickable well before the snapshot arrives (Bug 61).
     effect(() => {
       const characterId = this.selectedCharacterId();
-      const outfitState = this.booted ? this.outfit.outfitState() : {};
+      if (this.booted) this.outfit.equippedOutfit();
       if (!this.isInChat || !characterId) return;
-      const wornSlots = outfitState[characterId]?.slots;
+      const wornSlots = this.wornSlotsFor(characterId);
       if (!wornSlots) return;
       const seedKey = `${characterId}|${this.chatId() ?? 'no-chat'}`;
       if (this.liveSeededByChar.has(seedKey)) return;
@@ -887,14 +648,14 @@ export class WardrobeControlDialogInner {
       );
     });
 
-    // As a rail-opened workspace tab, navigating back refreshes the garment
-    // list. Safe mid-edit: the fitting-room/live seeding is ref-gated, so a
-    // reload never blows away staged slots. v4
-    // `wardrobe-control-dialog.tsx:175-180`.
+    // As a rail-opened workspace tab, navigating back refreshes the lists.
+    // Safe mid-edit: the fitting-room/live seeding is gated, so a reload never
+    // blows away staged slots. v4 `:263-265` (`actions.refresh()`).
     onTabActivated(() => {
-      void this.reloadCurrentItems();
+      void this.actions.refresh();
     });
 
+    const realtime = inject(RealtimeService);
     // P4.D261 (R-H, v4 `b3f937076` `job-topics.ts`): a finished wardrobe-picture
     // job publishes `characters` (id = the item's character) + `mountPoints`,
     // and v4's wardrobe views watch both. v5's list is signal-held, so no
@@ -902,15 +663,31 @@ export class WardrobeControlDialogInner {
     // itself, scoped to the selected character (an id-less, collection-wide
     // hint fires too; it says nothing about which rows). `mountPoints` resolves
     // to nothing in the SPA (`realtime-topic-map.ts`) and stays so.
-    inject(RealtimeService).onTopic(
+    realtime.onTopic(
       'characters',
-      () => void this.reloadCurrentItems(),
+      () => void this.data.reload(),
       () => this.selectedCharacterId(),
+    );
+    // Bug 198's realtime half (v4 `e23fb095b` `topic-map.ts:72-76`): a
+    // tool-driven outfit change lands as messages (the tool rows + Aurora's
+    // announcement), which publish `chats`; the worn snapshot re-reads so the
+    // un-staged display and "Reset to worn" point at what the chat really
+    // wears. The staging itself never re-seeds (Bug 61's contract).
+    realtime.onTopic(
+      'chats',
+      () => void this.reloadOutfit(),
+      () => this.chatId(),
     );
   }
 
+  /** v4's `wardrobe.outfit(chatId)` invalidation — chat-only. */
+  private async reloadOutfit(): Promise<void> {
+    if (!this.isInChat || !this.booted) return;
+    await this.outfit.refreshOutfit();
+  }
+
   // ---------------------------------------------------------------------------
-  // Loads
+  // Loads (v4 `useWardrobeCatalogue`, `:79-116`)
   // ---------------------------------------------------------------------------
 
   /** v4 `:249-270` — load characters once; sort by name; auto-select first. */
@@ -987,119 +764,12 @@ export class WardrobeControlDialogInner {
     }
   }
 
-  private async reloadItems(characterId: string | null): Promise<void> {
-    if (!characterId) {
-      this.items.set([]);
-      return;
-    }
-    this.itemsLoading.set(true);
-    try {
-      const result = await loadCharacterWardrobeItems(this.core, characterId, {
-        chatId: this.chatId(),
-        includeArchived: this.showArchived(),
-      });
-      this.items.set(result.items);
-      this.dialogProjectId.set(result.projectId);
-    } finally {
-      this.itemsLoading.set(false);
-    }
-  }
-
-  private async reloadContainerItems(container: WardrobeContainer | null): Promise<void> {
-    this.containerItemsLoading.set(true);
-    try {
-      const result = await loadWardrobeContainerItems(this.core, container, {
-        includeArchived: this.showArchived(),
-      });
-      this.containerItems.set(result.items);
-      this.containerResolutionItems.set(result.resolutionItems);
-    } finally {
-      this.containerItemsLoading.set(false);
-    }
-  }
-
-  /** Load whichever of the two views the given container selects. */
-  private async reloadForContainer(container: WardrobeContainer | null): Promise<void> {
-    if (container && container.scope !== 'character') {
-      this.items.set([]);
-      await this.reloadContainerItems(container);
-      return;
-    }
-    this.containerItems.set([]);
-    this.containerResolutionItems.set([]);
-    await this.reloadItems(container?.id ?? null);
-  }
-
-  /** v4 `:206-209` `reloadActiveItems` — refresh whichever view is on display. */
-  protected async reloadCurrentItems(): Promise<void> {
-    await this.reloadForContainer(this.selectedContainer());
-  }
-
-  // ---------------------------------------------------------------------------
-  // Filtered items (v4 :340-352)
-  // ---------------------------------------------------------------------------
-  /**
-   * What the left column lists: the merged wearable pool in the character
-   * view, or exactly the browsed container's contents otherwise. The
-   * resolution pool additionally folds in General archetypes so a shared
-   * composite can still show its components (v4 `:432-440`).
-   */
-  protected readonly listItems = computed(() =>
-    this.isCharacterScope() ? this.items() : this.containerItems(),
-  );
-  protected readonly resolutionPool = computed(() =>
-    this.isCharacterScope() ? this.items() : this.containerResolutionItems(),
-  );
-  protected readonly listLoading = computed(() =>
-    this.isCharacterScope() ? this.itemsLoading() : this.containerItemsLoading(),
-  );
-
-  /**
-   * Full management (edit / star / duplicate / delete) is for items living in
-   * the viewed container; anything merged in from a shared tier elsewhere keeps
-   * only Move and Copy (v4 `:442-450`). Bound as a field so the row's
-   * `canManage` input gets one stable reference.
-   */
-  protected readonly canManageItem = (item: WardrobeItemDto): boolean => {
-    if (this.isCharacterScope()) return Boolean(item.characterId);
-    return this.containerItems().some((c) => c.id === item.id);
-  };
-
-  protected readonly filteredItems = computed(() => {
-    // v4 `3ee3b1342` `:520` — the sort (title by default) and the never-worn
-    // filter, then the existing filters.
-    const sorted = sortAndFilterWardrobeItems(this.listItems(), {
-      sort: this.listSort(),
-      neverWornOnly: this.neverWornOnly(),
-    });
-    const term = this.titleFilter().trim().toLowerCase();
-    const kindFilter = this.kindFilter();
-    const slotFilter = this.slotFilter();
-    const showShared = this.showShared();
-    return sorted.filter((i) => {
-      // No archived filter here on purpose: the fetch already omitted them
-      // unless "Show archived" is ticked, and a second client-side pass would
-      // be a place for the two rules to drift apart (v4 `:463-465`). Shared
-      // items are the other way round — the server can't omit them without
-      // dismantling the merge, so the one rule for "is this shared" is
-      // `canManageItem`, the same predicate that badges the row, and badge and
-      // filter cannot drift apart.
-      if (!showShared && !this.canManageItem(i)) return false;
-      const isComposite = (i.componentItemIds ?? []).length > 0;
-      if (kindFilter === 'items' && isComposite) return false;
-      if (kindFilter === 'outfits' && !isComposite) return false;
-      if (slotFilter !== 'all' && !i.types.includes(slotFilter)) return false;
-      if (term && !i.title.toLowerCase().includes(term)) return false;
-      return true;
-    });
-  });
-
   protected readonly selectedCharacter = computed(
     () => this.characters().find((c) => c.id === this.selectedCharacterId()) ?? null,
   );
 
   /** Display name of the browsed container, for the editor's pinned note
-   *  (v4 `:997-1011`). */
+   *  (v4 `:374-386`). */
   protected readonly selectedContainerLabel = computed(() => {
     const container = this.selectedContainer();
     if (!container) return '';
@@ -1107,7 +777,7 @@ export class WardrobeControlDialogInner {
       case 'character':
         return this.selectedCharacter()?.name ?? '';
       case 'general':
-        return 'Quilltap General';
+        return GENERAL_WARDROBE_NAME;
       case 'project':
         return this.projects().find((p) => p.id === container.id)?.name ?? 'This project';
       case 'group':
@@ -1117,302 +787,126 @@ export class WardrobeControlDialogInner {
 
   private readonly itemsById = computed(() => new Map(this.items().map((i) => [i.id, i])));
 
-  /** While the editor/transfer modal is up, backdrop/Escape must not close the
-   *  outer dialog (v4 `editorOpen`, `:841-843`). */
-  protected readonly editorOpen = computed(() =>
-    Boolean(
-      this.editingItem() ||
-        this.creatingNew() ||
-        (this.transferringItem() && this.transferIntent()) ||
-        // v4 `01a83539d` `:1198-1204` — the picture viewer too.
-        this.viewingImage(),
-    ),
-  );
+  /**
+   * While an overlay is up (the editor, the move/copy dialog, the picture, the
+   * Move-to-folder picker), backdrop / Escape must not close the outer dialog
+   * (v4 `overlayOpen`, `:390`; bug 229 — the picker counts from day one, R-O).
+   */
+  protected readonly overlayOpen = computed(() => this.actions.overlayOpen());
 
   // ---------------------------------------------------------------------------
-  // Item action handlers (v4 :357-448)
+  // The wear gestures (v4 `:290-350`)
   // ---------------------------------------------------------------------------
 
-  protected async handleToggleDefault(item: WardrobeItemDto): Promise<void> {
-    const container = this.selectedContainer();
-    if (!container) return;
-    this.updatingDefaultId.set(item.id);
-    try {
-      await toggleItemDefault(this.core, item, container);
-      await this.reloadCurrentItems();
-    } catch (err) {
-      this.toasts.showError(err instanceof Error ? err.message : 'Failed to update item');
-    } finally {
-      this.updatingDefaultId.set(null);
-    }
-  }
-
   /**
-   * The row whose picture is open full screen, with the container its images
-   * route is addressed through (v4 `01a83539d` `:263-267`).
+   * An archived garment is retired: every wear gesture refuses it with the
+   * same words the equip route and `wardrobe_wear` use (bug 191).
    */
-  protected readonly viewingImage = signal<{
-    item: WardrobeItemDto;
-    container: WardrobeContainer;
-  } | null>(null);
+  private readonly refuseIfUnwearable = (item: WardrobeItemDto): boolean => {
+    const refusal = wearRefusal(item);
+    if (refusal) this.toasts.showError(refusal);
+    return refusal !== null;
+  };
 
-  /**
-   * Open a row's current picture full screen. A borrowed row is addressed
-   * through the wardrobe its origin names; otherwise the same rule as every
-   * other row action. (v4 `01a83539d` `:613-629`.)
-   */
-  protected handleOpenImage(item: WardrobeItemDto): void {
-    const container: WardrobeContainer | null = item.origin
-      ? { scope: item.origin.scope, id: item.origin.id }
-      : this.isCharacterScope()
-        ? homeContainerForItem(item)
-        : this.selectedContainer();
-    if (!container || !item.imageFileId) return;
-    this.viewingImage.set({ item, container });
-  }
-
-  /**
-   * Items whose picture is being drawn right now (v4 `7c8572869` `:275`) — a
-   * SET, since an item can appear more than once (as itself and as a
-   * component of an outfit row).
-   */
-  protected readonly generatingImageIds = signal<ReadonlySet<string>>(new Set());
-
-  /**
-   * Draw a picture of one garment with the designated wardrobe profile (no
-   * picker — the editor has that). Offered only on manageable rows, so the
-   * item lives where its other management actions address it (v4
-   * `:606-636`). v4 invalidates `queryKeys.wardrobe.images(item.id)` too; v5
-   * holds no such cache — an open editor's Picture section refetches on its
-   * own change, and the list reload repaints the row's thumbnail.
-   */
-  protected async handleGenerateImage(item: WardrobeItemDto): Promise<void> {
-    const container = this.selectedContainer();
-    if (!container) return;
-    if (this.generatingImageIds().has(item.id)) return;
-    const home = this.isCharacterScope() ? homeContainerForItem(item) : container;
-    this.generatingImageIds.update((prev) => new Set(prev).add(item.id));
-    try {
-      const result = await generateWardrobeItemImage(item.id, home);
-      this.toasts.showSuccess(
-        result.rerouted
-          ? `A portrait of "${item.title}" is hung — drawn at the uncensored desk`
-          : `A portrait of "${item.title}" is hung`,
-      );
-      await this.reloadCurrentItems();
-    } catch (error) {
-      this.toasts.showError(error instanceof Error ? error.message : 'Failed to generate a picture');
-    } finally {
-      this.generatingImageIds.update((prev) => {
-        const next = new Set(prev);
-        next.delete(item.id);
-        return next;
-      });
-    }
-  }
-
-  protected onShowArchived(event: Event): void {
-    this.showArchived.set((event.target as HTMLInputElement).checked);
-  }
-
-  protected onShowShared(event: Event): void {
-    this.showShared.set((event.target as HTMLInputElement).checked);
-  }
-
-  protected onListSort(event: Event): void {
-    this.listSort.set((event.target as HTMLSelectElement).value as WardrobeListSort);
-  }
-
-  protected onNeverWornOnly(event: Event): void {
-    this.neverWornOnly.set((event.target as HTMLInputElement).checked);
-  }
-
-  /**
-   * v4 `handleToggleArchived` (`:508-534`). Single-click, no confirm: archiving
-   * hides a garment, it does not destroy one. A failed write toasts v4's fixed
-   * sentence and leaves the list alone.
-   */
-  protected async handleToggleArchived(item: WardrobeItemDto): Promise<void> {
-    const container = this.selectedContainer();
-    if (!container) return;
-    try {
-      await setWardrobeItemArchived(this.core, item, container);
-    } catch (err) {
-      this.toasts.showError(err instanceof Error ? err.message : 'Failed to update item');
-      return;
-    }
-    await this.reloadCurrentItems();
-  }
-
-  protected async handleDelete(item: WardrobeItemDto): Promise<void> {
-    const container = this.selectedContainer();
-    if (!container) return;
-    if (!window.confirm(`Delete "${item.title}"? This cannot be undone.`)) return;
-    try {
-      await deleteWardrobeItem(this.core, item, container);
-    } catch (err) {
-      this.toasts.showError(err instanceof Error ? err.message : 'Failed to delete item');
-      return;
-    }
-    this.toasts.showSuccess(`Deleted "${item.title}"`);
-    await this.reloadCurrentItems();
-    await this.refreshWornOutfit();
-  }
-
-  /**
-   * v4 `:521-590`. Duplicate is only offered for manageable items (kebab
-   * gating), so the copy stays where the original lives: the selected
-   * character's vault in the character view, or the browsed shared container
-   * itself. The new title is uniquified against the LIST on display.
-   */
-  protected async handleDuplicate(item: WardrobeItemDto): Promise<void> {
-    const container = this.selectedContainer();
-    if (!container) return;
-    const characterId = this.selectedCharacterId();
-    const target: WardrobeContainer | null = this.isCharacterScope()
-      ? characterId
-        ? { scope: 'character', id: characterId }
-        : null
-      : container;
-    if (!target) return;
-    const title = nextCopyTitle(
-      item.title,
-      this.listItems().map((i) => i.title),
-    );
-    try {
-      await duplicateWardrobeItem(this.core, target, item, title);
-    } catch (err) {
-      this.toasts.showError(err instanceof Error ? err.message : 'Failed to duplicate item');
-      return;
-    }
-    this.toasts.showSuccess(`Duplicated "${item.title}"`);
-    await this.reloadCurrentItems();
-    await this.refreshWornOutfit();
-  }
-
-  /**
-   * v4's `isInChat && selectedCharacterId` guard, which appears verbatim after
-   * every mutation since `d7263f39` — browsing a shared container there is
-   * nobody to re-dress, so the outfit chain stays put.
-   */
-  private async refreshWornOutfit(): Promise<void> {
+  /** Land a gesture on the Live tab's staging (v4 `useStagedLiveOutfits.apply`). */
+  private applyLive(gesture: StagedGesture): void {
     const characterId = this.selectedCharacterId();
     if (!this.isInChat || !characterId) return;
-    this.outfit.invalidateWardrobe(characterId);
-    await this.outfit.refreshOutfit();
-  }
-
-  // -------- Live-tab staging mutators (v4 :455-528) --------
-  //
-  // Every Live-tab gesture goes through `updateLiveStaged`, which mutates the
-  // staged slots for the current character. None of these touch the server.
-  private updateLiveStaged(mutator: SlotsMutator, wornBundleIds: readonly string[] = []): void {
-    const characterId = this.selectedCharacterId();
-    if (!characterId) return;
     // Until the worn snapshot has seeded there is no honest base to stage
     // onto: the gesture paints against an empty fallback, and is recorded so
-    // the seed can replay it onto the real slots (v4 `:467-476`).
+    // the seed can replay it onto the real slots (v4 `:111-116`).
     const seedKey = `${characterId}|${this.chatId() ?? 'no-chat'}`;
-    if (this.isInChat && !this.liveSeededByChar.has(seedKey)) {
+    if (!this.liveSeededByChar.has(seedKey)) {
       const queued = this.pendingLiveMutators[characterId] ?? [];
-      this.pendingLiveMutators[characterId] = [...queued, { mutate: mutator, wornBundleIds }];
+      this.pendingLiveMutators[characterId] = [...queued, gesture];
     }
-    // v4 `3ee3b1342` `:733-738` — the outfits this gesture put on.
-    if (wornBundleIds.length > 0) {
+    // v4 `3ee3b1342` — the outfits this gesture put on.
+    if (gesture.wornBundleIds.length > 0) {
       this.liveWornBundlesByChar[characterId] = appendWornBundleIds(
         this.liveWornBundlesByChar[characterId],
-        wornBundleIds,
+        gesture.wornBundleIds,
       );
     }
     this.liveStagedByChar.update((prev) => {
-      const wornFallback = this.outfit.outfitState()[characterId]?.slots;
+      const wornFallback = this.wornSlotsFor(characterId);
       const current =
         prev[characterId] ??
         (wornFallback ? cloneSlots(wornFallback) : cloneSlots(EMPTY_EQUIPPED_SLOTS));
-      return { ...prev, [characterId]: mutator(current) };
+      return { ...prev, [characterId]: gesture.mutate(current) };
     });
   }
 
-  /** v4 `:476-482` — "Wear" honors the item's `replace` flag across every slot
-   *  it covers. Pure state; fires no route. */
-  protected handleEquipItem(item: WardrobeItemDto): void {
-    if (!this.isInChat) return;
-    const itemsById = this.itemsById();
-    this.updateLiveStaged((prev) => wearItemIntoSlots(prev, item, itemsById), wornBundleIdsFor(item));
+  /** Land a gesture on the Outfit Builder (v4 `useFittingRoom.apply`). */
+  private applyFitting(gesture: StagedGesture): void {
+    this.fittingSlots.update((prev) => gesture.mutate(prev));
+    if (gesture.wornBundleIds.length > 0) {
+      this.fittingWornBundleIds = appendWornBundleIds(
+        this.fittingWornBundleIds,
+        gesture.wornBundleIds,
+      );
+    }
   }
 
-  /** v4 `:490-499` — pure state; fires no route. Since 4.8.2 the slot-add
-   *  goes through `addItemToSlot`, so a bundle contributes the parts that
-   *  cover this slot rather than its own id. */
-  protected handleAddToSlot(item: WardrobeItemDto, slot: WardrobeSlotType): void {
-    if (!this.isInChat) return;
+  /** v4 `:299-308` — the two composers' handlers, one shared implementation. */
+  protected readonly liveHandlers = createComposerHandlers({
+    itemsById: () => this.itemsById(),
+    apply: (g) => this.applyLive(g),
+    refuse: this.refuseIfUnwearable,
+  });
+  protected readonly fittingHandlers = createComposerHandlers({
+    itemsById: () => this.itemsById(),
+    apply: (g) => this.applyFitting(g),
+    refuse: this.refuseIfUnwearable,
+  });
+
+  /**
+   * v4 `:326` — row buttons route to the Builder's transient state when the
+   * builder tab is active (or always out of chat), else to the Live-tab
+   * staging map. Both paths defer the server commit until Done / Try on.
+   */
+  protected readonly useFittingActions = computed(
+    () => !this.isInChat || this.rightTab() === 'builder',
+  );
+
+  /** v4 `:328-337` — honours the item's `replace` flag across every slot it covers. */
+  protected rowEquip(item: WardrobeItemDto): void {
+    if (this.refuseIfUnwearable(item)) return;
+    const gesture = wearGesture(item.types[0], item.id, this.itemsById());
+    if (this.useFittingActions()) this.applyFitting(gesture);
+    else this.applyLive(gesture);
+  }
+
+  /** v4 `:339-350`. */
+  protected rowAddToSlot(item: WardrobeItemDto, slot: WardrobeSlotType): void {
+    if (this.useFittingActions()) {
+      this.fittingHandlers.onAddToSlot(slot, item.id);
+      return;
+    }
     if (!item.types.includes(slot)) return;
-    const itemsById = this.itemsById();
-    this.updateLiveStaged(
-      (prev) => addItemToSlot(prev, slot, item, itemsById),
-      wornBundleIdsFor(item),
-    );
+    if (this.refuseIfUnwearable(item)) return;
+    this.applyLive(addToSlotGesture(slot, item, this.itemsById()));
   }
 
-  /** v4 `:499-512` — picking from a slot row wears the item (fills every slot
-   *  it covers) rather than dropping it into the one row. Pure state. */
-  protected handleSlotAdd(slot: WardrobeSlotType, itemId: string): void {
-    if (!this.isInChat) return;
-    const itemsById = this.itemsById();
-    const item = itemsById.get(itemId);
-    this.updateLiveStaged(
-      (prev) =>
-        item
-          ? wearItemIntoSlots(prev, item, itemsById)
-          : prev[slot].includes(itemId)
-            ? prev
-            : { ...prev, [slot]: [...prev[slot], itemId] },
-      item ? wornBundleIdsFor(item) : [],
-    );
-  }
-
-  /** v4 `:514-520` — pure state; fires no route. */
-  protected handleSlotRemove(slot: WardrobeSlotType, itemId: string): void {
-    if (!this.isInChat) return;
-    this.updateLiveStaged((prev) => ({ ...prev, [slot]: prev[slot].filter((id) => id !== itemId) }));
-  }
-
-  /** v4 `:522-528`. */
-  protected handleSlotClear(slot: WardrobeSlotType): void {
-    if (!this.isInChat) return;
-    this.updateLiveStaged((prev) => ({ ...prev, [slot]: [] }));
-  }
+  /** v4 `:478-497` — the browser's row wear controls, character view only. */
+  protected readonly wearControls = computed<WardrobeRowWearControls | undefined>(() =>
+    this.isCharacterScope()
+      ? {
+          equipLabel: this.useFittingActions() ? 'Try on' : 'Wear',
+          addAction: this.useFittingActions() ? 'add' : 'layer',
+          onEquip: (item) => this.rowEquip(item),
+          onAddToSlot: (item, slot) => this.rowAddToSlot(item, slot),
+        }
+      : undefined,
+  );
 
   // ---------------------------------------------------------------------------
-  // Fitting-room mutations — transient; never hit the equip API (v4 :531-587).
+  // The Outfit Builder's resets (v4 `useFittingRoom`)
   // ---------------------------------------------------------------------------
-  protected fittingAdd(slot: WardrobeSlotType, itemId: string): void {
-    const itemsById = this.itemsById();
-    const item = itemsById.get(itemId);
-    if (!item) return;
-    this.fittingSlots.update((prev) => wearItemIntoSlots(prev, item, itemsById));
-    this.fittingWornBundleIds = appendWornBundleIds(
-      this.fittingWornBundleIds,
-      wornBundleIdsFor(item),
-    );
-  }
 
-  protected fittingRemove(slot: WardrobeSlotType, itemId: string): void {
-    this.fittingSlots.update((prev) => ({
-      ...prev,
-      [slot]: prev[slot].filter((id) => id !== itemId),
-    }));
-  }
-
-  protected fittingClear(slot: WardrobeSlotType): void {
-    this.fittingSlots.update((prev) => ({ ...prev, [slot]: [] }));
-  }
-
-  /** v4 `:551-564`. */
   protected fittingResetToWorn(): void {
     const characterId = this.selectedCharacterId();
     if (!characterId) return;
-    const wornSlots = this.outfit.outfitState()[characterId]?.slots;
+    const wornSlots = this.wornSlotsFor(characterId);
     const target = wornSlots ? cloneSlots(wornSlots) : cloneSlots(EMPTY_EQUIPPED_SLOTS);
     if (
       !equippedSlotsEqual(this.fittingSlots(), target) &&
@@ -1424,7 +918,7 @@ export class WardrobeControlDialogInner {
     this.fittingWornBundleIds = [];
   }
 
-  /** v4 `:566-577` (+ `3ee3b1342` `:850-860` — the defaults' credit). */
+  /** v4 (+ `3ee3b1342` — the defaults' credit). */
   protected fittingResetToDefaults(): void {
     const { slots: target, wornBundles } = buildDefaultOutfitWithCredit(this.items());
     if (
@@ -1437,7 +931,6 @@ export class WardrobeControlDialogInner {
     this.fittingWornBundleIds = wornBundles.map((b) => b.id);
   }
 
-  /** v4 `:579-587`. */
   protected fittingClearAll(): void {
     if (
       !equippedSlotsEqual(this.fittingSlots(), EMPTY_EQUIPPED_SLOTS) &&
@@ -1450,9 +943,10 @@ export class WardrobeControlDialogInner {
   }
 
   /**
-   * v4 `:589-609` — open the editor in bundle mode with `componentItemIds`
-   * pre-populated from the staged slots (composite ids preserved by
-   * reference; the server's cycle detection + union-of-types handles it).
+   * v4 `:363-366` — open the editor in bundle mode with `componentItemIds`
+   * pre-populated from the staged slots in slot order, distinct (v4
+   * `useFittingRoom.componentIds`; composite ids preserved by reference — the
+   * server's cycle detection + union-of-types handles it).
    */
   protected handleSaveAsOutfit(): void {
     if (!this.selectedCharacterId()) return;
@@ -1467,31 +961,14 @@ export class WardrobeControlDialogInner {
         }
       }
     }
-    this.createBundleComponents.set(components);
-    this.creatingNew.set('create-bundle');
-  }
-
-  protected handleLiveTakeOffBundle(bundle: EquippedBundle): void {
-    this.updateLiveStaged((prev) => takeOffBundleFromSlots(prev, bundle));
-  }
-
-  protected handleLiveBreakApartBundle(bundle: EquippedBundle): void {
-    this.updateLiveStaged((prev) => breakApartBundleInSlots(prev, bundle, this.itemsById()));
-  }
-
-  protected handleFittingTakeOffBundle(bundle: EquippedBundle): void {
-    this.fittingSlots.update((prev) => takeOffBundleFromSlots(prev, bundle));
-  }
-
-  protected handleFittingBreakApartBundle(bundle: EquippedBundle): void {
-    this.fittingSlots.update((prev) => breakApartBundleInSlots(prev, bundle, this.itemsById()));
+    this.actions.openCreate('bundle', components);
   }
 
   /**
-   * Flush staged Live-tab edits on close (v4 `:654-712`): for each character
-   * whose staged slots differ from their baseline, fire ONE `set_all` (which
-   * triggers a single avatar regen + Aurora announcement server-side). If
-   * nothing is dirty, no requests go out.
+   * Flush staged Live-tab edits on close (v4 `useStagedLiveOutfits.flush`):
+   * for each character whose staged slots differ from their baseline, fire ONE
+   * `set_all` (which triggers a single avatar regen + Aurora announcement
+   * server-side). If nothing is dirty, no requests go out.
    *
    * A character staged against no baseline at all is *not* clean — their worn
    * snapshot never arrived, so the staging was built on an empty fallback and
@@ -1534,7 +1011,6 @@ export class WardrobeControlDialogInner {
           chatId,
           ...buildSetAllEquipBody(characterId, slots, wornBundleIds),
         });
-        this.outfit.invalidateWardrobe(characterId);
         this.liveBaselineByChar[characterId] = cloneSlots(slots);
         // Committed: the claims went with the slots, so start the next round
         // clean (v4 `:974-979`).
@@ -1545,14 +1021,14 @@ export class WardrobeControlDialogInner {
       }
     }
     // A committed outfit may have put garments on — every wear tally is
-    // stale. v4 invalidates `queryKeys.wardrobe.all`; v5's list is
-    // signal-held, so the equivalent is the list reload (v4 `:982-983`).
-    void this.reloadCurrentItems();
+    // stale. v4 invalidates `queryKeys.wardrobe.all`; v5's lists are
+    // signal-held, so the equivalent is the lists' reload + the outfit's.
+    void this.data.reload();
     await this.outfit.refreshOutfit();
     return allOk;
   }
 
-  /** v4 `:687-692` — Done: flush, then close only when every commit stuck. */
+  /** v4 `:352-356` — Done: flush, then close only when every commit stuck. */
   protected requestClose(): void {
     void (async () => {
       const ok = await this.flushStagedLiveOutfits();
@@ -1561,9 +1037,9 @@ export class WardrobeControlDialogInner {
   }
 
   /**
-   * v4 `:700-722` — wear the fitting-room composition: atomic replace via
-   * `mode: 'set_all'`. On success the dialog closes — Aurora + avatar gen
-   * fire immediately server-side.
+   * v4 `useFittingRoom.wear` — wear the fitting-room composition: atomic
+   * replace via `mode: 'set_all'`. On success the dialog closes — Aurora +
+   * avatar gen fire immediately server-side.
    */
   protected async wearFitting(): Promise<void> {
     const characterId = this.selectedCharacterId();
@@ -1580,46 +1056,14 @@ export class WardrobeControlDialogInner {
       return;
     }
     this.toasts.showSuccess('Worn!');
-    this.outfit.invalidateWardrobe(characterId);
-    void this.reloadCurrentItems();
+    void this.data.reload();
     await this.outfit.refreshOutfit();
     this.closed.emit();
   }
 
-  /**
-   * v4 `:724-730` — row buttons route to the Builder's transient state when
-   * the builder tab is active (or always out of chat), else to the Live-tab
-   * staging map. Both paths defer the server commit until Done / Try on.
-   */
-  protected readonly useFittingActions = computed(
-    () => !this.isInChat || this.rightTab() === 'builder',
-  );
-
-  /** v4 `:732-743`. */
-  protected rowEquip(item: WardrobeItemDto): void {
-    if (this.useFittingActions()) {
-      const itemsById = this.itemsById();
-      this.fittingSlots.update((prev) => wearItemIntoSlots(prev, item, itemsById));
-      this.fittingWornBundleIds = appendWornBundleIds(
-        this.fittingWornBundleIds,
-        wornBundleIdsFor(item),
-      );
-      return;
-    }
-    this.handleEquipItem(item);
-  }
-
-  /** v4 `:745-754`. */
-  protected rowAddToSlot(item: WardrobeItemDto, slot: WardrobeSlotType): void {
-    if (this.useFittingActions()) {
-      this.fittingAdd(slot, item.id);
-      return;
-    }
-    this.handleAddToSlot(item, slot);
-  }
-
   // ---------------------------------------------------------------------------
-  // Avatar generation (v4 :759-817)
+  // Avatar generation (v4 `AvatarGenerationPane`; the pane is presentational
+  // here — the strings are identical either side of v4's ownership move)
   // ---------------------------------------------------------------------------
   protected async handleGenerateAvatar(): Promise<void> {
     const characterId = this.selectedCharacterId();
@@ -1680,43 +1124,18 @@ export class WardrobeControlDialogInner {
   // Render helpers
   // ---------------------------------------------------------------------------
 
-  /** What the Live tab actually paints (v4 `:822-831`): staged slots once
+  /** What the Live tab actually paints (v4 `displaySlots`): staged slots once
    *  seeding captured a baseline, else the worn snapshot, else empty. */
   protected readonly liveDisplaySlots = computed<EquippedSlots>(() => {
     const characterId = this.selectedCharacterId();
     if (!characterId) return EMPTY_EQUIPPED_SLOTS as EquippedSlots;
+    if (this.booted) this.outfit.equippedOutfit();
     return (
       this.liveStagedByChar()[characterId] ??
-      (this.booted ? this.outfit.outfitState()[characterId]?.slots : undefined) ??
+      this.wornSlotsFor(characterId) ??
       (EMPTY_EQUIPPED_SLOTS as EquippedSlots)
     );
   });
-
-  protected readonly editorInitialMode = computed<'single' | 'bundle' | undefined>(() => {
-    switch (this.creatingNew()) {
-      case 'create-bundle':
-        return 'bundle';
-      case 'create-single':
-        return 'single';
-      default:
-        return undefined;
-    }
-  });
-
-  // ---------------------------------------------------------------------------
-  // Stacked-dialog wiring (v4 :1213-1269)
-  // ---------------------------------------------------------------------------
-  protected closeEditor(): void {
-    this.editingItem.set(null);
-    this.creatingNew.set(null);
-    this.createBundleComponents.set([]);
-  }
-
-  protected async onEditorSaved(): Promise<void> {
-    this.closeEditor();
-    await this.reloadCurrentItems();
-    await this.refreshWornOutfit();
-  }
 
   /** The stable `general:` option value (v4 `encodeWardrobeContainer`). */
   protected readonly generalContainerValue = encodeWardrobeContainer(GENERAL_CONTAINER);
@@ -1738,41 +1157,11 @@ export class WardrobeControlDialogInner {
     this.selectedContainer.set(decodeWardrobeContainer(value));
   }
 
-  /**
-   * The container hidden from the transfer dialog's destination list
-   * (v4 `:1483-1491`): browsing a shared container, that container itself;
-   * in the character view, only a character-OWNED item's own vault — a merged
-   * shared item's home tier isn't tracked there, so nothing can be excluded.
-   */
-  protected readonly transferExcludeDestination = computed<WardrobeContainer | null>(() => {
-    const container = this.selectedContainer();
-    if (!container) return null;
-    if (!this.isCharacterScope()) return container;
-    const characterId = this.transferringItem()?.characterId;
-    return characterId ? { scope: 'character', id: characterId } : null;
-  });
-
-  protected openTransfer(item: WardrobeItemDto, intent: TransferMode): void {
-    this.transferringItem.set(item);
-    this.transferIntent.set(intent);
-  }
-
-  protected closeTransfer(): void {
-    this.transferringItem.set(null);
-    this.transferIntent.set(null);
-  }
-
-  protected async onTransferred(): Promise<void> {
-    this.closeTransfer();
-    await this.reloadCurrentItems();
-    await this.refreshWornOutfit();
-  }
-
   // ---------------------------------------------------------------------------
   // Close plumbing
   // ---------------------------------------------------------------------------
   protected onBackdrop(): void {
-    if (this.editorOpen()) return;
+    if (this.overlayOpen()) return;
     this.requestClose();
   }
 
@@ -1786,7 +1175,9 @@ export class WardrobeControlDialogInner {
     // In tab mode v4 renders no BaseModal, so Escape never closes the surface
     // (only the Reset menu above). The reset-menu arm still fires either way.
     if (this.asTab()) return;
-    if (this.editorOpen()) return;
+    // An overlay (the Move-to-folder picker included — bug 229) owns this
+    // Escape; it closes itself.
+    if (this.overlayOpen()) return;
     this.requestClose();
   }
 

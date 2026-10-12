@@ -178711,3 +178711,68 @@ component was run, and the lane has no Rust family (the order's regen rule).
   gated, each with an ungated twin — plus 10 filing / view rows);
   `wardrobe-item-overlays.spec.ts` 8. **Red-first:** RED BY CONSTRUCTION on
   `main`. Green 19 + 4 skipped / 8.
+
+### Unit 7 — the dialog split, bug 198, bug 191, the outfit store (SPA 0.5.842)
+- `wardrobe-control-dialog.ts` re-laid on v4 `4a38222e6`'s post-split
+  dialog: the left column is `<qt-wardrobe-browser>` (`wear` controls in a
+  character view only — v4 `:478-497`), the viewer / editor / transfer are
+  `<qt-wardrobe-item-overlays>`, the lists are `createWardrobeListData`, the
+  row handlers + overlay state are `createWardrobeItemActions` (confirm =
+  `window.confirm`, the recorded divergence); `overlayOpen` (was
+  `editorOpen`) = `actions.overlayOpen()` and gates backdrop + Escape — the
+  picker counted (R-O). Staging stays inline (v4's `useStagedLiveOutfits` /
+  `useFittingRoom` mechanisms were already v5's), now landing v4's gestures:
+  `applyLive` / `applyFitting`, `liveHandlers` / `fittingHandlers` =
+  `createComposerHandlers(…, refuse)`, `rowEquip` = `wearGesture(types[0])`,
+  `rowAddToSlot` live arm = `addToSlotGesture`; `refuseIfUnwearable` toasts
+  `wearRefusal` (bug 191, v4 `:290-297`) at all four wear entries.
+  `onTabActivated` → `actions.refresh()`; `handleSaveAsOutfit` →
+  `actions.openCreate('bundle', …)`; `GENERAL_WARDROBE_NAME` for the label.
+- **Bug 198 (R-J):** `outfit-store.ts` REWRITTEN as v4 `useChatOutfit`
+  (`createOutfitStore(core, chatId)`, `equippedOutfit`, `slotsFor` —
+  `equipped[cid] ?? EMPTY` once read, undefined before; first-read-only
+  `loading`; stale answers dropped). The dialog reads `slotsFor` everywhere
+  it read `outfitState()[cid]?.slots`. **Behaviour change toward v4:** a
+  character the chat never dressed AND who owns no wardrobe items now seeds
+  empty slots (v5 `main` left them unseeded forever — the old store only
+  kept characters with items or an entry). The realtime half:
+  `onTopic('chats', reloadOutfit, () => chatId())` beside the `characters`
+  hook — `core/realtime-topic-map.ts` UNCHANGED (`onTopic` suffices; v5 has
+  no outfit query key to add to the `chats` row — recorded per R-J).
+  **DELETED (R-J ruling, survey §6):** the four per-mode equip primitives,
+  `fetchWardrobeForCharacter`, `WardrobeCache` / `WardrobeItemSummary` /
+  `resolveItemDetails` / `expandSummaryComposites` / `itemsBySlot` — no v4
+  twin after the span, no v5 caller outside the store's spec; the spec's
+  rows for them retired with them (`expand-composites.ts`'s header re-pointed).
+- `outfit-composer.ts` / `equipped-bundle-card.ts`: `showBundleActions` /
+  `showActions` DROPPED (v4 `9ecebf986`); the bundle chips lose `uppercase`
+  (v4's `SlotBadge` move, survey §1.9).
+- **A port bug the transcription caught (fixed in `wardrobe-browser.ts`):**
+  `onShowShared` read `inOwnTier()` AFTER flipping `showShared`, so unticking
+  inside a borrowed tier never navigated home and re-ticking dropped the
+  operator back inside the tier; v4's handler closes over the pre-flip
+  render. RED measured on v4's rewritten Show-shared case and a new browser
+  row before the fix; green after.
+- **Specs.** `wardrobe-control-dialog.spec.ts` RE-PINNED through ONE adapter
+  (`inner()` maps the cases' pre-split names onto the browser / stores /
+  overlays — the pairing is the evidence each behaviour survived the move):
+  the Show-shared pair REPLACED by v4's three rewritten cases (tier rows; the
+  search; the archived toggle); the container-view picture case re-pinned
+  (v4 `addressOf`: a container view addresses every row through the browsed
+  container — origin-first is the character view's rule); the two "reads
+  only" whitelists gain `wardrobeFoldersList`. NEW: bug 198 ×5 (a second
+  open re-reads; nothing seeds before a read lands; `chats` hint for this
+  chat only; none out of chat; a re-read never re-seeds), bug 229 ×1 through
+  the real dialog (click + backdrop + ONE Escape inside the picker; the next
+  Escape is the dialog's), bug 191 ×2. `outfit-store.spec.ts` REWRITTEN (7:
+  v4's `useChatOutfit` case transcribed — "a fresh store answers undefined
+  until ITS read lands" — plus the arms). `outfit-composer.spec.ts`: the
+  hide-actions case → "always carry both". 73 + 7 + the race spec unchanged.
+  **Red-first:** the bug-229 / bug-191 / `chats` cases RED BY CONSTRUCTION
+  on `main` (no actions store, no refusal — survey: "v5 has no client-side
+  refusal" — no `chats` hook); the bug-198 open / seed pins are GREEN on
+  `main` by design (§R.4(g): v5 does not reproduce bug 198 — they pin it).
+- **P4.D261 Tier-3 carries (Tier 3 item 10):** unchanged by the split —
+  items 23–26 and the checkbox-stays-ticked-after-a-failed-save pattern stand
+  as recorded (the split erases none; the browser's archived checkbox is the
+  same controlled `[checked]` binding).

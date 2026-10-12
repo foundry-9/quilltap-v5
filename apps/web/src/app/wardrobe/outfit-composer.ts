@@ -15,8 +15,10 @@ import { OutfitQuickPick } from './outfit-quick-pick';
  * Renders an equipped outfit (live or staged) as an outfit pull-down, then
  * bundle cards, then slot rows, with picker controls for adding/removing items
  * (v4 `components/wardrobe/outfit-composer.tsx`). Controlled — the parent owns
- * the slots state and provides callbacks for mutation; bundle actions (Take off
- * / Break apart) can be hidden via `showBundleActions=false`.
+ * the slots state and provides callbacks for mutation. Bundle cards (Take off
+ * / Break apart) appear only for a legacy outfit still worn as its own id, and
+ * always carry both actions — v4 dropped the `showBundleActions` prop in
+ * `9ecebf986` (every host passed the handlers).
  *
  * The pool is split by kind (v4 `aec86a613`): composed outfits (composites)
  * live in the `Wear an outfit…` pull-down at the top, garments in the per-slot
@@ -34,7 +36,6 @@ import { OutfitQuickPick } from './outfit-quick-pick';
         <qt-equipped-bundle-card
           [bundle]="bundle"
           [itemsById]="itemsById()"
-          [showActions]="showBundleActions()"
           (takeOff)="takeOffBundle.emit($event)"
           (breakApart)="breakApartBundle.emit($event)"
         />
@@ -57,8 +58,6 @@ export class OutfitComposer {
   readonly items = input.required<WardrobeItemDto[]>();
   /** Current equipped (or staged) slots. */
   readonly slots = input.required<EquippedSlots>();
-  /** When true, bundle cards expose Take off / Break apart. */
-  readonly showBundleActions = input.required<boolean>();
 
   readonly addToSlot = output<{ slot: WardrobeSlotType; itemId: string }>();
   readonly removeFromSlot = output<{ slot: WardrobeSlotType; itemId: string }>();

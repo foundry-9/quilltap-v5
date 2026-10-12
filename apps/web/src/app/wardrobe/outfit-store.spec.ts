@@ -1,309 +1,125 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { CoreClient } from '../core/core-client';
-import type { CoreRequest, WardrobeItemDto } from '../core/core-contract';
-import {
-  createOutfitStore,
-  expandSummaryComposites,
-  resolveItemDetails,
-  type WardrobeItemSummary,
-} from './outfit-store';
+import type { CoreRequest } from '../core/core-contract';
+import { EMPTY_EQUIPPED_SLOTS, freshSlots, type EquippedSlots } from './equipped-slots';
+import { createOutfitStore } from './outfit-store';
 
-type AnyRequest = CoreRequest & Record<string, unknown>;
+/**
+ * P4.D285 — v4 `lib/hooks/use-outfit.ts` `useChatOutfit` at `4a38222e6`
+ * (`e23fb095b`, bug 198). The first case is v4 `__tests__/unit/hooks/
+ * useChatOutfit.test.tsx` transcribed: v4 seeds a TanStack cache with Laura
+ * dressed; v5 has no cross-visit cache (the store is per dialog mount —
+ * survey §2, measured), so the transcription is "a fresh store answers
+ * undefined until ITS read lands, then the fresh snapshot". The rest pin
+ * `slotsFor`'s arms and the read's edges.
+ */
 
-function stubCore(
-  route: (req: AnyRequest) => Record<string, unknown> | Error,
-): { core: CoreClient; seen: AnyRequest[] } {
-  const seen: AnyRequest[] = [];
-  const dispatchData = vi.fn(async (req: CoreRequest) => {
-    const r = req as AnyRequest;
-    seen.push(r);
-    const out = route(r);
-    if (out instanceof Error) throw out;
-    return out;
-  });
-  return { core: { dispatchData } as unknown as CoreClient, seen };
+const CHAT = 'chat-1';
+const LAURA = 'laura';
+
+function outfitWith(top: string[]): Record<string, EquippedSlots> {
+  return { [LAURA]: { ...freshSlots(), top } };
 }
 
-function dto(partial: Partial<WardrobeItemDto> & { id: string }): WardrobeItemDto {
-  return {
-    title: partial.id,
-    types: ['top'],
-    componentItemIds: [],
-    isDefault: false,
-    replace: false,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-    ...partial,
-  } as WardrobeItemDto;
+function fakeCore(answer: () => Promise<Record<string, unknown>>) {
+  const seen: Array<Record<string, unknown>> = [];
+  const core = {
+    dispatchData: vi.fn(async (req: CoreRequest) => {
+      seen.push(req as unknown as Record<string, unknown>);
+      return answer();
+    }),
+  } as unknown as CoreClient;
+  return { core, seen };
 }
 
-function summary(partial: Partial<WardrobeItemSummary> & { id: string }): WardrobeItemSummary {
-  return {
-    title: partial.id,
-    types: ['top'],
-    isDefault: false,
-    componentItemIds: [],
-    ...partial,
-  };
-}
-
-describe('expandSummaryComposites (v4 use-outfit.ts:70-101)', () => {
-  it('walks composites to leaves, tolerating cycles and unknown ids', () => {
-    const byId = new Map(
-      [
-        summary({ id: 'suit', componentItemIds: ['jacket', 'pants'] }),
-        summary({ id: 'jacket' }),
-        summary({ id: 'pants', types: ['bottom'] }),
-        summary({ id: 'loop', componentItemIds: ['loop'] }),
-      ].map((s) => [s.id, s]),
+describe('createOutfitStore (v4 `useChatOutfit` — bug 198)', () => {
+  it('withholds every snapshot until this store’s own fetch lands', async () => {
+    let release!: () => void;
+    const { core, seen } = fakeCore(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ equippedOutfit: outfitWith([]) });
+        }),
     );
-    expect(expandSummaryComposites(['suit', 'ghost'], byId)).toEqual([
-      'jacket',
-      'pants',
-      'ghost',
-    ]);
-    // A direct cycle drops the branch rather than recursing (v4 :84).
-    expect(expandSummaryComposites(['loop'], byId)).toEqual([]);
+    const store = createOutfitStore(core, CHAT);
+    const pending = store.refreshOutfit();
+    // Nothing answers while the read is in flight.
+    expect(store.slotsFor(LAURA)).toBeUndefined();
+    expect(store.loading()).toBe(true);
+    expect(seen).toEqual([{ type: 'chatOutfitGet', chatId: CHAT }]);
+    release();
+    await pending;
+    expect(store.slotsFor(LAURA)?.top).toEqual([]);
+    expect(store.loading()).toBe(false);
   });
 
-  it('stops at maxDepth, surfacing the composite id itself (v4 :85-88)', () => {
-    const byId = new Map(
-      [
-        summary({ id: 'a', componentItemIds: ['b'] }),
-        summary({ id: 'b', componentItemIds: ['c'] }),
-        summary({ id: 'c' }),
-      ].map((s) => [s.id, s]),
-    );
-    expect(expandSummaryComposites(['a'], byId, 1)).toEqual(['b']);
+  it('a second open builds a second store, which reads again (no snapshot crosses mounts)', async () => {
+    const answers = [outfitWith(['blouse']), outfitWith([])];
+    const { core, seen } = fakeCore(async () => ({ equippedOutfit: answers.shift() }));
+    const first = createOutfitStore(core, CHAT);
+    await first.refreshOutfit();
+    expect(first.slotsFor(LAURA)?.top).toEqual(['blouse']);
+    const second = createOutfitStore(core, CHAT);
+    expect(second.slotsFor(LAURA)).toBeUndefined();
+    await second.refreshOutfit();
+    expect(second.slotsFor(LAURA)?.top).toEqual([]);
+    expect(seen).toHaveLength(2);
   });
-});
 
-describe('resolveItemDetails (v4 use-outfit.ts:185-213)', () => {
-  it('projects expanded leaves back only into slots their own types cover', () => {
-    const items = [
-      summary({ id: 'suit', types: ['top', 'bottom'], componentItemIds: ['jacket', 'pants'] }),
-      summary({ id: 'jacket', title: 'Jacket', types: ['top'] }),
-      summary({ id: 'pants', title: 'Pants', types: ['bottom'] }),
-    ];
-    const out = resolveItemDetails(
-      { top: ['suit'], bottom: ['suit'], footwear: [], accessories: [], hair: [] },
-      items,
-    );
-    expect(out['top']).toEqual([{ itemId: 'jacket', title: 'Jacket' }]);
-    expect(out['bottom']).toEqual([{ itemId: 'pants', title: 'Pants' }]);
-    expect(out['footwear']).toEqual([]);
+  it('a character the chat never dressed reads empty slots once fetched; a null id reads undefined', async () => {
+    const { core } = fakeCore(async () => ({ equippedOutfit: outfitWith(['blouse']) }));
+    const store = createOutfitStore(core, CHAT);
+    await store.refreshOutfit();
+    expect(store.slotsFor('nora')).toEqual(EMPTY_EQUIPPED_SLOTS);
+    expect(store.slotsFor(null)).toBeUndefined();
+    expect(store.equippedOutfit()).toEqual(outfitWith(['blouse']));
   });
-});
 
-describe('createOutfitStore (v4 use-outfit.ts)', () => {
-  it('chat-less: refreshOutfit returns null without firing; equips are no-ops (v4 :15-17,:219-220,:298)', async () => {
-    const { core, seen } = stubCore(() => new Error('no dispatch expected'));
-    const store = createOutfitStore(core, null, () => ['c1']);
+  it('an answer without equippedOutfit reads as {} (v4 `data?.equippedOutfit ?? {}`)', async () => {
+    const { core } = fakeCore(async () => ({}));
+    const store = createOutfitStore(core, CHAT);
+    expect(await store.refreshOutfit()).toEqual({});
+    expect(store.slotsFor(LAURA)).toEqual(EMPTY_EQUIPPED_SLOTS);
+  });
+
+  it('a chat-less store never reads', async () => {
+    const { core, seen } = fakeCore(async () => ({}));
+    const store = createOutfitStore(core, null);
     expect(await store.refreshOutfit()).toBeNull();
-    expect(await store.equipItem('c1', 'i1')).toBeNull();
-    expect(await store.replaceItem('c1', 'i1')).toBeNull();
-    expect(await store.addToSlot('c1', 'top', 'i1')).toBeNull();
-    expect(await store.removeFromSlot('c1', 'top', 'i1')).toBeNull();
     expect(seen).toEqual([]);
+    expect(store.slotsFor(LAURA)).toBeUndefined();
+    expect(store.loading()).toBe(false);
   });
 
-  it('fetchWardrobeForCharacter merges personal + archetype tiers; archetypes get "(shared)" and never isDefault (v4 :152-166)', async () => {
-    const { core, seen } = stubCore((req) => {
-      switch (req.type as string) {
-        case 'characterWardrobeList':
-          return { wardrobeItems: [dto({ id: 'a', title: 'Own', isDefault: true })] };
-        case 'wardrobeList':
-          return {
-            wardrobeItems: [
-              dto({ id: 'a', title: 'Own' }),
-              dto({ id: 's', title: 'Cloak', isDefault: true, characterId: null }),
-            ],
-          };
-        default:
-          return new Error(`unexpected ${req.type}`);
-      }
+  it('a failed read resolves null and keeps the snapshot it had', async () => {
+    let fail = false;
+    const { core } = fakeCore(async () => {
+      if (fail) throw new Error('down');
+      return { equippedOutfit: outfitWith(['blouse']) };
     });
-    const store = createOutfitStore(core, 'chat-1', () => []);
-    const items = await store.fetchWardrobeForCharacter('c1');
-    expect(items.map((i) => [i.id, i.title, i.isDefault])).toEqual([
-      ['a', 'Own', true],
-      ['s', 'Cloak (shared)', false],
-    ]);
-    // The cache short-circuits a second fetch (v4 :124-126).
-    const before = seen.length;
-    await store.fetchWardrobeForCharacter('c1');
-    expect(seen.length).toBe(before);
-    // …until invalidated (v4 :451-457).
-    store.invalidateWardrobe('c1');
-    await store.fetchWardrobeForCharacter('c1');
-    expect(seen.length).toBeGreaterThan(before);
-  });
-
-  it('refreshOutfit merges outfit keys with known characterIds and resolves details (v4 :224-253)', async () => {
-    const { core, seen } = stubCore((req) => {
-      switch (req.type as string) {
-        case 'chatOutfitGet':
-          return {
-            equippedOutfit: {
-              c1: { top: ['shirt'], bottom: [], footwear: [], accessories: [], hair: [] },
-            },
-          };
-        case 'characterWardrobeList':
-          return (req as { characterId?: string }).characterId === 'c1'
-            ? { wardrobeItems: [dto({ id: 'shirt', title: 'Shirt' })] }
-            : { wardrobeItems: [] };
-        case 'wardrobeList':
-          return { wardrobeItems: [] };
-        default:
-          return new Error(`unexpected ${req.type}`);
-      }
-    });
-    const store = createOutfitStore(core, 'chat-1', () => ['c1', 'c2']);
-    const state = await store.refreshOutfit();
-    expect(seen[0]).toEqual({ type: 'chatOutfitGet', chatId: 'chat-1' });
-    // c1 has slots + items; c2 has neither → excluded (v4 :245 comment).
-    expect(Object.keys(state ?? {})).toEqual(['c1']);
-    expect(state?.['c1'].itemsBySlot['top']).toEqual([{ itemId: 'shirt', title: 'Shirt' }]);
-  });
-
-  it('the four equip actions send v4\'s exact per-mode bodies (:303,:343,:380,:419-424) and update optimistically', async () => {
-    const { core, seen } = stubCore((req) => {
-      switch (req.type as string) {
-        case 'chatOutfitGet':
-          return {
-            equippedOutfit: { c1: { top: [], bottom: [], footwear: [], accessories: [], hair: [] } },
-          };
-        case 'characterWardrobeList':
-          return {
-            wardrobeItems: [
-              dto({ id: 'shirt', title: 'Shirt' }),
-              dto({ id: 'hat', title: 'Hat', types: ['accessories'] }),
-            ],
-          };
-        case 'wardrobeList':
-          return { wardrobeItems: [] };
-        case 'chatEquip':
-          return { equippedSlots: {} };
-        default:
-          return new Error(`unexpected ${req.type}`);
-      }
-    });
-    const store = createOutfitStore(core, 'chat-1', () => ['c1']);
+    const store = createOutfitStore(core, CHAT);
     await store.refreshOutfit();
-    seen.length = 0;
-
-    await store.equipItem('c1', 'shirt');
-    await store.replaceItem('c1', 'shirt');
-    await store.addToSlot('c1', 'accessories', 'hat');
-    await store.removeFromSlot('c1', 'accessories', 'hat');
-    await store.removeFromSlot('c1', 'top', null);
-
-    expect(seen).toEqual([
-      { type: 'chatEquip', chatId: 'chat-1', characterId: 'c1', mode: 'wear', itemId: 'shirt' },
-      { type: 'chatEquip', chatId: 'chat-1', characterId: 'c1', mode: 'replace', itemId: 'shirt' },
-      {
-        type: 'chatEquip',
-        chatId: 'chat-1',
-        characterId: 'c1',
-        mode: 'add_to_slot',
-        slot: 'accessories',
-        itemId: 'hat',
-      },
-      {
-        type: 'chatEquip',
-        chatId: 'chat-1',
-        characterId: 'c1',
-        mode: 'remove_from_slot',
-        slot: 'accessories',
-        itemId: 'hat',
-      },
-      // A missing itemId clears the slot — and the body OMITS itemId (v4 :419-424).
-      { type: 'chatEquip', chatId: 'chat-1', characterId: 'c1', mode: 'clear_slot', slot: 'top' },
-    ]);
-
-    // The optimistic state reflects the final mutations.
-    const state = store.outfitState();
-    expect(state['c1'].slots.top).toEqual([]);
-    expect(state['c1'].slots.accessories).toEqual([]);
+    fail = true;
+    expect(await store.refreshOutfit()).toBeNull();
+    expect(store.slotsFor(LAURA)?.top).toEqual(['blouse']);
+    expect(store.loading()).toBe(false);
   });
 
-  it('a failed equip dispatch returns null and leaves state untouched (v4 :305-308)', async () => {
-    const { core } = stubCore((req) => {
-      switch (req.type as string) {
-        case 'chatOutfitGet':
-          return {
-            equippedOutfit: { c1: { top: ['x'], bottom: [], footwear: [], accessories: [], hair: [] } },
-          };
-        case 'characterWardrobeList':
-          return { wardrobeItems: [dto({ id: 'x' })] };
-        case 'wardrobeList':
-          return { wardrobeItems: [] };
-        case 'chatEquip':
-          return new Error('boom');
-        default:
-          return new Error(`unexpected ${req.type}`);
-      }
+  it('a late answer from an earlier read never overwrites a newer one', async () => {
+    const releases: Array<() => void> = [];
+    const answers = [outfitWith(['stale']), outfitWith(['fresh'])];
+    const { core } = fakeCore(() => {
+      const answer = answers.shift();
+      return new Promise((resolve) => releases.push(() => resolve({ equippedOutfit: answer })));
     });
-    const store = createOutfitStore(core, 'chat-1', () => ['c1']);
-    await store.refreshOutfit();
-    expect(await store.removeFromSlot('c1', 'top', 'x')).toBeNull();
-    expect(store.outfitState()['c1'].slots.top).toEqual(['x']);
-  });
-  /**
-   * v4 4.8.2 `61574563`: `use-outfit.ts`'s three optimistic `computeDisplacedSlots`
-   * calls each hand the cached wardrobe in as `itemsById`, so the optimistic
-   * paint dissolves a bundle exactly as the server's persisted result will.
-   * Drop the lookup at any one of the three and this goes red.
-   */
-  it('the optimistic equip paths dissolve a bundle into its parts (v4 use-outfit.ts:321,:361,:404)', async () => {
-    const { core } = stubCore((req) => {
-      switch (req.type as string) {
-        case 'chatOutfitGet':
-          return {
-            equippedOutfit: { c1: { top: [], bottom: [], footwear: [], accessories: [], hair: [] } },
-          };
-        case 'characterWardrobeList':
-          return {
-            wardrobeItems: [
-              dto({ id: 'leaf-top', title: 'Leaf Top', types: ['top'] }),
-              dto({ id: 'leaf-shoe', title: 'Leaf Shoe', types: ['footwear'] }),
-              dto({
-                id: 'bundle',
-                title: 'Man in Black',
-                types: ['top', 'footwear'],
-                componentItemIds: ['leaf-top', 'leaf-shoe'],
-              }),
-            ],
-          };
-        case 'wardrobeList':
-          return { wardrobeItems: [] };
-        case 'chatEquip':
-          return { equippedSlots: {} };
-        default:
-          return new Error(`unexpected ${req.type}`);
-      }
-    });
-    const store = createOutfitStore(core, 'chat-1', () => ['c1']);
-    await store.refreshOutfit();
-
-    await store.equipItem('c1', 'bundle');
-    expect(store.outfitState()['c1'].slots).toEqual({
-      top: ['leaf-top'],
-      bottom: [],
-      footwear: ['leaf-shoe'],
-      accessories: [],
-      hair: [],
-    });
-
-    await store.removeFromSlot('c1', 'top', null);
-    await store.removeFromSlot('c1', 'footwear', null);
-    await store.replaceItem('c1', 'bundle');
-    expect(store.outfitState()['c1'].slots.top).toEqual(['leaf-top']);
-    expect(store.outfitState()['c1'].slots.footwear).toEqual(['leaf-shoe']);
-
-    await store.removeFromSlot('c1', 'top', null);
-    await store.addToSlot('c1', 'top', 'bundle');
-    expect(store.outfitState()['c1'].slots.top).toEqual(['leaf-top']);
+    const store = createOutfitStore(core, CHAT);
+    const a = store.refreshOutfit();
+    const b = store.refreshOutfit();
+    releases[1]();
+    await b;
+    releases[0]();
+    await a;
+    expect(store.slotsFor(LAURA)?.top).toEqual(['fresh']);
   });
 });

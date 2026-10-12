@@ -14,9 +14,9 @@
  * cycle must never break a chat. Cycles are logged and the offending branch is
  * truncated.
  *
- * NOT the same function as `outfit-store.ts`'s `expandSummaryComposites`, which
- * is the port of v4's *client-local* expander in `lib/hooks/use-outfit.ts` and
- * reports no cycles. Both exist in v4 too; keep them apart.
+ * (v4's second, *client-local* expander — `expandSummaryComposites` in the
+ * pre-span `lib/hooks/use-outfit.ts` — was deleted with that hook in
+ * `9ecebf986`; v5's `outfit-store.ts` port of it went with it, P4.D285.)
  */
 
 /**

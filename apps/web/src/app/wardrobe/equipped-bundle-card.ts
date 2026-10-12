@@ -29,32 +29,30 @@ import { WARDROBE_SLOT_META } from './slot-meta';
           </div>
           <div class="flex flex-wrap gap-1 mt-1">
             @for (slot of bundle().occupiedSlots; track slot) {
-              <span class="qt-badge uppercase" [class]="slotMeta[slot].badgeClass">
+              <span class="qt-badge" [class]="slotMeta[slot].badgeClass">
                 {{ slotMeta[slot].label }}
               </span>
             }
           </div>
         </div>
-        @if (showActions()) {
-          <div class="flex items-center gap-1 flex-shrink-0">
-            <button
-              type="button"
-              (click)="breakApart.emit(bundle())"
-              class="qt-button-ghost qt-button-sm"
-              title="Replace this bundle with its individual items"
-            >
-              Break apart
-            </button>
-            <button
-              type="button"
-              (click)="takeOff.emit(bundle())"
-              class="qt-button-ghost qt-button-sm"
-              title="Take this bundle off"
-            >
-              Take off bundle
-            </button>
-          </div>
-        }
+        <div class="flex items-center gap-1 flex-shrink-0">
+          <button
+            type="button"
+            (click)="breakApart.emit(bundle())"
+            class="qt-button-ghost qt-button-sm"
+            title="Replace this bundle with its individual items"
+          >
+            Break apart
+          </button>
+          <button
+            type="button"
+            (click)="takeOff.emit(bundle())"
+            class="qt-button-ghost qt-button-sm"
+            title="Take this bundle off"
+          >
+            Take off bundle
+          </button>
+        </div>
       </div>
     </div>
   `,
@@ -63,8 +61,6 @@ export class EquippedBundleCard {
   readonly bundle = input.required<EquippedBundle>();
   /** Lookup for resolving the composite's title. */
   readonly itemsById = input.required<Map<string, WardrobeItemDto>>();
-  /** When false, hide Take off / Break apart (v4 `showActions`, default true). */
-  readonly showActions = input(true);
 
   readonly takeOff = output<EquippedBundle>();
   readonly breakApart = output<EquippedBundle>();

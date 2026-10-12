@@ -660,9 +660,14 @@ export class WardrobeBrowser {
   }
 
   protected onShowShared(checked: boolean): void {
+    // Read BEFORE the flip (v4's handler closes over the render's
+    // `inOwnTier`): once hidden, a borrowed tier already reads as the root,
+    // so asking afterwards would never navigate — and re-ticking would drop
+    // the operator back inside the tier they left.
+    const wasInOwnTier = this.inOwnTier();
     this.showShared.set(checked);
     // Hiding shared wardrobes from inside one goes back to the closet.
-    if (!checked && !this.inOwnTier()) this.navigate(OWN_TIER, '');
+    if (!checked && !wasInOwnTier) this.navigate(OWN_TIER, '');
   }
 
   protected readonly filteredItems = computed(() => {

@@ -182,6 +182,12 @@ _Docs-only change._
 
 The two help pages v4's wardrobe programme moved between `01a83539d` and `4a38222e6` are copied whole from `git show 4a38222e6:help/<page>`: `help/wardrobe.md` (the folders section, the archive paragraphs, "Retiring a garment twice changes nothing", the analyst-profile paragraph for Import from image, "Slots this outfit covers", "Show archived") and `help/project-wardrobe.md` (the card is the shared browser). The tree stays at 131 files, md5-identical to the pin. `help_tree_equivalence` and `help_section_size_equivalence` were regenerated at the pin (131 docs, 766 sections) and measured red before the copy, green after; `help_tree_embed_guard` and `host_help_docs_boot` are unchanged at 131. `help_tree_equivalence`'s history comment gains the P4.D287 line. No crate source changed; the host rebuilds its embedded help table but is not bumped.
 
+#### 2026-10-12 — feat(spa): the wardrobe dialog's Phase-F split, bug 198's outfit refresh and bug 191's wear refusal (P4.D285 unit 7)
+
+_Versions: SPA 0.5.842._
+
+The wardrobe dialog now lays out shared pieces instead of owning them: its left column is the new folder browser, its overlays are the shared overlays component, its row actions and overlay state live in the actions store, and its lists come from the list-data store. Every wear gesture goes through the shared composer gestures and refuses an archived garment with `Item "<title>" is archived and cannot be worn`. The folder picker counts as an overlay, so a click or Escape inside it no longer closes the dialog. The worn snapshot is re-read on the `chats` realtime topic. `outfit-store.ts` is now a port of v4's `useChatOutfit` (`slotsFor` answers empty slots for an undressed character once read); the four per-mode equip primitives and the per-character wardrobe fetch are deleted. The composer and bundle card drop their show-actions props. Fixes a browser bug found by v4's rewritten Show-shared case: unticking Show shared inside a borrowed wardrobe now returns to the closet.
+
 #### 2026-10-12 — feat(spa): the wardrobe folder browser and the shared item overlays (P4.D285 unit 6)
 
 _Versions: SPA 0.5.841._
