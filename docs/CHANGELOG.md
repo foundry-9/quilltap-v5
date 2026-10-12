@@ -182,6 +182,12 @@ _Docs-only change._
 
 The two help pages v4's wardrobe programme moved between `01a83539d` and `4a38222e6` are copied whole from `git show 4a38222e6:help/<page>`: `help/wardrobe.md` (the folders section, the archive paragraphs, "Retiring a garment twice changes nothing", the analyst-profile paragraph for Import from image, "Slots this outfit covers", "Show archived") and `help/project-wardrobe.md` (the card is the shared browser). The tree stays at 131 files, md5-identical to the pin. `help_tree_equivalence` and `help_section_size_equivalence` were regenerated at the pin (131 docs, 766 sections) and measured red before the copy, green after; `help_tree_embed_guard` and `host_help_docs_boot` are unchanged at 131. `help_tree_equivalence`'s history comment gains the P4.D287 line. No crate source changed; the host rebuilds its embedded help table but is not bumped.
 
+#### 2026-10-12 — feat(spa): the composer gesture builders, shared composer handlers and the archived-wear refusal (P4.D285 unit 3)
+
+_Versions: SPA 0.5.838._
+
+`staged-live-outfits.ts` gains v4's six composer gesture builders (`wearGesture`, `addToSlotGesture`, `removeFromSlotGesture`, `clearSlotGesture`, `takeOffBundleGesture`, `breakApartBundleGesture`), `createComposerHandlers` (v4's `useComposerHandlers` as a factory with an optional refusal guard), and bug 191's `wearRefusal` / `archivedWearMessage` (`Item "<title>" is archived and cannot be worn`). `equipped-slots.ts` gains `isComposite`, `addIdToSlot` and `removeIdFromSlot`, and `breakApartBundleInSlots` takes a read-only map. v4's five composer-gesture cases are transcribed; the dialog adopts these in a later unit.
+
 #### 2026-10-12 — feat(spa): the wardrobe folder verbs in the contract and the folders API (P4.D285 unit 2)
 
 _Versions: SPA 0.5.837._

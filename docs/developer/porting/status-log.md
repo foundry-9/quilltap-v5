@@ -178570,3 +178570,22 @@ component was run, and the lane has no Rust family (the order's regen rule).
   container, path)`.
 - **Spec:** `wardrobe-folders.api.spec.ts` 9 cases. **Red-first:** RED BY
   CONSTRUCTION on `main` (module + verbs absent). Green 1 / 9.
+
+### Unit 3 — the composer gestures, `createComposerHandlers`, `wearRefusal` (SPA 0.5.838)
+- `staged-live-outfits.ts`: v4 `staged-live-outfits.ts:166-229` (the six
+  gesture builders) + `useComposerHandlers.ts:45-67` as
+  `createComposerHandlers({ itemsById: () => Map, apply, refuse? })` (a
+  factory reading the pool at call time) + v4 `lib/wardrobe/wearable.ts:15-25`
+  (`archivedWearMessage`, `wearRefusal`; bug 191's client gate). Kept inside
+  this owned file rather than new `composer-handlers.ts` / `wearable.ts`
+  modules (the Ownership table names `staged-live-outfits.ts`).
+  `newlyWornArchivedItems` NOT ported — the server's `set_all` refusal is
+  P4.D282's; no SPA caller at the pin.
+- `equipped-slots.ts`: `isComposite`, `addIdToSlot`, `removeIdFromSlot`
+  (v4 `wardrobe.types.ts:390-412`); `breakApartBundleInSlots` takes a
+  `ReadonlyMap` (type-only).
+- **Spec:** NEW `composer-gestures.spec.ts` — v4 `composer-gestures.test.ts`
+  transcribed (5) + bundle gestures (2) + slot helpers (2) + handlers (2) +
+  `wearRefusal` (1) = 12. **Red-first:** RED BY CONSTRUCTION on `main` (no
+  builder, handler or refusal exists — survey §1.2: "v5 has no gesture
+  builders"). Green with the two neighbouring specs: 3 / 50.

@@ -45,6 +45,43 @@ export type EquippedOutfitState = Record<string, EquippedSlots>;
  *  `freshSlots()` for a mutable copy, as v4's callers do via `cloneSlots`). */
 export const EMPTY_EQUIPPED_SLOTS: Readonly<EquippedSlots> = freshSlots();
 
+/**
+ * True for an outfit — an item with component ids (v4 `4a38222e6`
+ * `wardrobe.types.ts:390-392` `isComposite`, which replaced the inline
+ * `componentItemIds.length > 0` checks in `9ecebf986`).
+ */
+export function isComposite(item: { componentItemIds?: readonly string[] | null }): boolean {
+  return (item.componentItemIds?.length ?? 0) > 0;
+}
+
+/**
+ * A copy of `slots` with `itemId` appended to `slot` (layering). No-op copy
+ * when the id is already there. (v4 `wardrobe.types.ts:394-402`.)
+ */
+export function addIdToSlot(
+  slots: EquippedSlots,
+  slot: WardrobeSlotType,
+  itemId: string,
+): EquippedSlots {
+  const next = cloneSlots(slots);
+  if (!next[slot].includes(itemId)) next[slot] = [...next[slot], itemId];
+  return next;
+}
+
+/**
+ * A copy of `slots` with `itemId` filtered out of `slot`; with `itemId`
+ * omitted, the slot is cleared. (v4 `wardrobe.types.ts:404-412`.)
+ */
+export function removeIdFromSlot(
+  slots: EquippedSlots,
+  slot: WardrobeSlotType,
+  itemId?: string,
+): EquippedSlots {
+  const next = cloneSlots(slots);
+  next[slot] = itemId === undefined ? [] : next[slot].filter((id) => id !== itemId);
+  return next;
+}
+
 // `equippedSlotsEqual` MOVED to `staged-live-outfits.ts` at 4.8.2 (v4
 // `07d4ccce` lifted it out of the dialog into that module alongside the rebase
 // and classification helpers it serves). Import it from there.
@@ -300,7 +337,7 @@ export function takeOffBundleFromSlots(slots: EquippedSlots, bundle: EquippedBun
 export function breakApartBundleInSlots(
   slots: EquippedSlots,
   bundle: EquippedBundle,
-  itemsById: Map<string, WardrobeItemDto>,
+  itemsById: ReadonlyMap<string, WardrobeItemDto>,
 ): EquippedSlots {
   const composite = itemsById.get(bundle.compositeId);
   if (!composite) return slots;

@@ -22,7 +22,20 @@
  * `e2e/wardrobe-flow.spec.ts`); v4 has now fixed it, so v5 ports the fix.
  */
 
-import { cloneSlots, WARDROBE_SLOT_TYPES, type EquippedSlots } from './equipped-slots';
+import {
+  addIdToSlot,
+  addItemToSlot,
+  breakApartBundleInSlots,
+  cloneSlots,
+  removeIdFromSlot,
+  takeOffBundleFromSlots,
+  wearItemIntoSlots,
+  WARDROBE_SLOT_TYPES,
+  type EquippedBundle,
+  type EquippedSlots,
+  type WardrobeItemDto,
+  type WardrobeSlotType,
+} from './equipped-slots';
 
 /** A staging gesture: pure, and safe to replay against a different base. */
 export type SlotsMutator = (prev: EquippedSlots) => EquippedSlots;
@@ -187,4 +200,127 @@ export function classifyStagedOutfits(
   }
 
   return { dirty, unresolved };
+}
+
+// ============================================================================
+// COMPOSER GESTURES (v4 `4a38222e6` `staged-live-outfits.ts:166-229`)
+//
+// The six things an outfit composer can do to a slot bag, as replayable
+// gestures. Every surface that stages an outfit (the dialog's Live tab and
+// Outfit Builder; v4's chat-start composer too — v5's new-chat outfit selector
+// mounts no composer) builds its handlers from these via
+// `createComposerHandlers`, so the surfaces cannot drift.
+// ============================================================================
+
+const plain = (mutate: SlotsMutator): StagedGesture => ({ mutate, wornBundleIds: [] });
+
+/**
+ * Wear an item across every slot it covers, honouring its `replace` flag
+ * (`wearItemIntoSlots`). An id the pool doesn't know is appended to the slot
+ * the gesture started in. Wearing an outfit claims its id for the wear ledger.
+ */
+export function wearGesture(
+  slot: WardrobeSlotType,
+  itemId: string,
+  itemsById: ReadonlyMap<string, WardrobeItemDto>,
+): StagedGesture {
+  const item = itemsById.get(itemId);
+  if (!item) return plain((prev) => addIdToSlot(prev, slot, itemId));
+  return {
+    mutate: (prev) => wearItemIntoSlots(prev, item, itemsById),
+    wornBundleIds: wornBundleIdsFor(item),
+  };
+}
+
+/** Layer an item into one slot only (`addItemToSlot`). */
+export function addToSlotGesture(
+  slot: WardrobeSlotType,
+  item: WardrobeItemDto,
+  itemsById: ReadonlyMap<string, WardrobeItemDto>,
+): StagedGesture {
+  return {
+    mutate: (prev) => addItemToSlot(prev, slot, item, itemsById),
+    wornBundleIds: wornBundleIdsFor(item),
+  };
+}
+
+/** Take one id out of one slot. */
+export function removeFromSlotGesture(slot: WardrobeSlotType, itemId: string): StagedGesture {
+  return plain((prev) => removeIdFromSlot(prev, slot, itemId));
+}
+
+/** Empty one slot. */
+export function clearSlotGesture(slot: WardrobeSlotType): StagedGesture {
+  return plain((prev) => removeIdFromSlot(prev, slot));
+}
+
+/** Take a legacy whole-composite card off every slot it occupies. */
+export function takeOffBundleGesture(bundle: EquippedBundle): StagedGesture {
+  return plain((prev) => takeOffBundleFromSlots(prev, bundle));
+}
+
+/** Dissolve a legacy whole-composite card into its leaves. */
+export function breakApartBundleGesture(
+  bundle: EquippedBundle,
+  itemsById: ReadonlyMap<string, WardrobeItemDto>,
+): StagedGesture {
+  return plain((prev) => breakApartBundleInSlots(prev, bundle, itemsById));
+}
+
+/** The composer's five handlers (v4 `useComposerHandlers.ts` `ComposerHandlers`). */
+export interface ComposerHandlers {
+  onAddToSlot: (slot: WardrobeSlotType, itemId: string) => void;
+  onRemoveFromSlot: (slot: WardrobeSlotType, itemId: string) => void;
+  onClearSlot: (slot: WardrobeSlotType) => void;
+  onTakeOffBundle: (bundle: EquippedBundle) => void;
+  onBreakApartBundle: (bundle: EquippedBundle) => void;
+}
+
+/**
+ * v4 `components/wardrobe/hooks/useComposerHandlers.ts` as a plain factory —
+ * the handlers read `itemsById()` at call time, so one set serves the dialog's
+ * whole life. `refuse` returns true to refuse putting `item` on (bug 191's
+ * archived refusal); the guard says why itself.
+ */
+export function createComposerHandlers(opts: {
+  itemsById: () => ReadonlyMap<string, WardrobeItemDto>;
+  /** Land a gesture on this surface's slots (and its worn-bundle claims). */
+  apply: (gesture: StagedGesture) => void;
+  refuse?: (item: WardrobeItemDto) => boolean;
+}): ComposerHandlers {
+  const { itemsById, apply, refuse } = opts;
+  return {
+    // Picking an item wears it across every slot it covers (layering or
+    // replacing per its flag) rather than dropping it into the one row the
+    // picker was opened from. The outfit pull-down arrives here too.
+    onAddToSlot: (slot, itemId) => {
+      const pool = itemsById();
+      const item = pool.get(itemId);
+      if (item && refuse?.(item)) return;
+      apply(wearGesture(slot, itemId, pool));
+    },
+    onRemoveFromSlot: (slot, itemId) => apply(removeFromSlotGesture(slot, itemId)),
+    onClearSlot: (slot) => apply(clearSlotGesture(slot)),
+    onTakeOffBundle: (bundle) => apply(takeOffBundleGesture(bundle)),
+    onBreakApartBundle: (bundle) => apply(breakApartBundleGesture(bundle, itemsById())),
+  };
+}
+
+// ============================================================================
+// THE WEAR REFUSAL (v4 `4a38222e6` `lib/wardrobe/wearable.ts:15-25`, bug 191)
+//
+// Item lookups include archived items on purpose, so a garment archived after
+// a chat dressed in it can still be named. Putting one *on* is another matter:
+// an archived item is retired, and every wear gesture refuses it with the same
+// words the server's `?action=equip` and the `wardrobe_wear` tool use.
+// ============================================================================
+
+/** The refusal every wear path gives for an archived item. */
+export function archivedWearMessage(title: string): string {
+  return `Item "${title}" is archived and cannot be worn`;
+}
+
+/** Why `item` may not be put on, or null when it may. */
+export function wearRefusal(item: { title: string; archivedAt?: string | null }): string | null {
+  return item.archivedAt ? archivedWearMessage(item.title) : null;
 }
