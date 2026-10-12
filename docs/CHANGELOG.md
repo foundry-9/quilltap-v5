@@ -242,6 +242,12 @@ _Versions: SPA 0.5.836._
 
 Adds `wardrobe/folders.ts` (v4 `lib/wardrobe/folders.ts` at `4a38222e6`, the whole client-safe module: path helpers, the normaliser family, the error classes) and `wardrobe/folder-view.ts` (v4's pure browser view rules: own tier vs borrowed tiers, child folder rows, tier rows). `wardrobe-container.ts` gains `containerForListedItem`, which addresses a listed item through the wardrobe its `origin` names before falling back to the character/General rule. `WardrobeItemDto` gains the shared `folder?` field. Specs: v4's 19 folder cases transcribed, 14 folder-view rule rows, 2 addressing rows.
 
+#### 2026-10-12 — feat(spa): wardrobe item drafts, buildCompositeTypes and the slot chips (P4.D286 unit 1)
+
+_Versions: SPA 0.5.836._
+
+Ports three client-safe v4 modules from the `4a38222e6` pin. `wardrobe/item-draft.ts` is v4's `lib/wardrobe/item-draft.ts`: the one draft shape (`folder` included), `draftToPayload`, `payloadForEdit` (drops an unchanged folder, case-insensitive), and a zod-free `validateDraft` that reports `wardrobeItemFieldsSchema`'s first issue in key order (`Title is required`, `At least one type is required`, zod 4.6.5's folder-cap sentence). `wardrobe/composite-types.ts` adds `buildCompositeTypes` (widen, never narrow) and `isComposite`. `wardrobe/slot-ui.ts` adds `SlotBadge` (the slot's display label) and `SlotCheckboxGroup`. `WardrobeItemDto` gains the shared `folder?` line (C3 §1). Specs: v4's five `item-draft` cases plus the validator's order and cap, five `buildCompositeTypes` vectors, the slot-ui markup.
+
 #### 2026-10-12 — docs(porting): order the `4a38222e6` wardrobe-programme drift catch-up round — nine lanes, one keystone, pinned at `4a38222e6`
 
 _Docs-only change._

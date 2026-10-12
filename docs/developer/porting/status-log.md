@@ -178908,3 +178908,32 @@ component was run, and the lane has no Rust family (the order's regen rule).
 - **Cleanup:** the worktree's `target/` (only two symlinks onto main's
   release bins) removed; `apps/web/test-results` + the lane's scratch
   (`/tmp/p4d285`) removed; no pin worktree was created.
+
+## P4.D286 — the wardrobe SPA's item editor, row, transfer dialog and picture cleanup (lane record, 2026-10-12)
+
+Branch `claude/wardrobe-spa-editor-images-cleanup-ce8ba9`, cut from `main`
+`aeaefc218` (the orders' commit). SPA-only; no `crates/` hunk.
+
+**§R.2 probe at lane start (2026-10-12):** branch `main`, tree clean,
+`4ce64fa1e..main` empty, `1a2b2164c..bugfix` empty;
+`git show 4a38222e6:package.json` reads `4.10.0-dev.148`. No v4 moved. No
+regen (no Rust family); every v4 read is `git show 4a38222e6:<path>`.
+
+### Unit 1 — item drafts, `buildCompositeTypes`, the slot chips
+
+- `wardrobe/item-draft.ts` — v4 `lib/wardrobe/item-draft.ts` 1:1 (`folder`,
+  `payloadForEdit`). `validateDraft` is zod-free (recorded divergence in the
+  header): the three rules a draft can break, in `wardrobeItemFieldsSchema`'s
+  key order (zod reports `issues[0]`), the folder cap's sentence measured
+  against the pin's zod 4.6.5 (`Too big: expected string to have <=900
+  characters`).
+- `wardrobe/composite-types.ts` — `buildCompositeTypes` + `isComposite`;
+  re-uses `unionTypes` from `equipped-slots.ts` (P4.D285's file, imported, not
+  edited).
+- `wardrobe/slot-ui.ts` — `SlotBadge` (`[attr.class]`, v4 token order) and
+  `SlotCheckboxGroup` (v4 `onBlur` → `focusout`).
+- `core-contract.ts` — the shared C3 §1 `folder?` line, byte-identical.
+- Specs: `item-draft.spec.ts` (v4's 5 + 2 v5), `composite-types.spec.ts` (5
+  vectors + `isComposite`), `slot-ui.spec.ts` (6). New modules, so no red
+  count (nothing pre-existing pinned them).
+- SPA gate: lint ok; vitest 489 files / 9,335 tests; build ok.
