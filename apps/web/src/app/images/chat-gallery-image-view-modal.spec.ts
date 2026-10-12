@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChatGalleryEntry } from '../core/core-contract';
+import { ToastService } from '../ui/toast.service';
 import { ChatGalleryImageViewModal } from './chat-gallery-image-view-modal';
 
 function entry(over: Partial<ChatGalleryEntry> = {}): ChatGalleryEntry {
@@ -282,5 +283,28 @@ describe('ChatGalleryImageViewModal', () => {
     expect(spy).toHaveBeenCalledOnce();
     expect(clicked[0].href).toContain('/api/v1/files/file-1?download=1');
     expect(clicked[0].download).toBe('shot.png');
+  });
+
+  // v4 :67-75 — a Copy that throws (no clipboard write method) toasts v4's
+  // failure sentence and logs v4's line; a bare boolean branch left the
+  // rejection unhandled and the user untold (the `01a83539d` unification).
+  it("a failed Copy toasts v4's failure sentence and logs its line (:67-75)", async () => {
+    const fixture = await render();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ blob: async () => new Blob(['x'], { type: 'image/png' }) })));
+    vi.stubGlobal('ClipboardItem', class {
+      constructor(readonly items: unknown) {}
+    });
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { write: vi.fn(async () => Promise.reject(new Error('denied'))) },
+    });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    (body().querySelector('button[title="Copy to clipboard"]') as HTMLButtonElement).click();
+    await flush(fixture);
+    const toasts = TestBed.inject(ToastService).toasts().map((t) => t.message);
+    expect(toasts).toContain('Failed to copy image to clipboard');
+    expect(errors).toHaveBeenCalledWith('Failed to copy image to clipboard:', {
+      error: 'No clipboard write method available',
+    });
   });
 });

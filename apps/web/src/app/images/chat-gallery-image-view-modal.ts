@@ -180,9 +180,17 @@ export class ChatGalleryImageViewModal {
    * of the `78b381a96` round).
    */
   protected async handleCopyToClipboard(): Promise<void> {
-    if (await copyImageToClipboard(this.entry().url)) {
+    // v4 `:67-75` — the helper THROWS when no clipboard write method exists
+    // (`core/clipboard-utils.ts`); v4's try/catch reaches `console.error` +
+    // the error toast, where a bare `if` left an unhandled rejection and no
+    // toast (the `01a83539d` unification's §3 review).
+    try {
+      await copyImageToClipboard(this.entry().url);
       this.toasts.showSuccess('Image copied to clipboard');
-    } else {
+    } catch (error) {
+      console.error('Failed to copy image to clipboard:', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       this.toasts.showError('Failed to copy image to clipboard');
     }
   }
