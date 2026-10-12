@@ -242,6 +242,12 @@ _Versions: SPA 0.5.836._
 
 Adds `wardrobe/folders.ts` (v4 `lib/wardrobe/folders.ts` at `4a38222e6`, the whole client-safe module: path helpers, the normaliser family, the error classes) and `wardrobe/folder-view.ts` (v4's pure browser view rules: own tier vs borrowed tiers, child folder rows, tier rows). `wardrobe-container.ts` gains `containerForListedItem`, which addresses a listed item through the wardrobe its `origin` names before falling back to the character/General rule. `WardrobeItemDto` gains the shared `folder?` field. Specs: v4's 19 folder cases transcribed, 14 folder-view rule rows, 2 addressing rows.
 
+#### 2026-10-12 — feat(spa): the wardrobe item editor's Folder field (P4.D286 unit 4)
+
+_Versions: SPA 0.5.839._
+
+Ports v4 `4a38222e6`'s `WardrobeFolderField` into the item editor, between Title and the Picture section. It offers the top level, every folder of the destination wardrobe as a crumb (`Formal › Evening`), and **New folder…**, which reveals a path input (`e.g., Formal/Evening`; Escape returns to the list without closing the editor; Pick does the same). A value the tree doesn't list yet is still offered, matched case-insensitively. The folders come from the item's home on edit and from the chosen Add-to destination on create, over the `wardrobeFoldersList` verb; a failed or missing read leaves the top level and New folder… with v4's warn line. The field creates nothing itself: the path rides the save body as `folder` and the server files it. The list helper, `isSameFolder` and `folderCrumb` are private twins of P4.D285's exports until unification.
+
 #### 2026-10-12 — fix(spa): the wardrobe item editor keeps an archived part's slot and edits an item on its own tier (P4.D286 unit 3, bug 190)
 
 _Versions: SPA 0.5.838._

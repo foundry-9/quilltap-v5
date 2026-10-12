@@ -42,6 +42,7 @@ import { WardrobeComponentPicker } from './item-editor/wardrobe-component-picker
 import { WardrobeModeChangePrompt } from './item-editor/wardrobe-mode-change-prompt';
 import { WardrobeWearHistorySection } from './item-editor/wear-history-section';
 import { WardrobeItemImageSection } from './item-editor/wardrobe-item-image-section';
+import { WardrobeFolderField } from './item-editor/wardrobe-folder-field';
 import { ToastService } from '../ui/toast.service';
 
 type EditorMode = 'single' | 'bundle';
@@ -111,6 +112,7 @@ function charCountClass(current: number, max: number): string {
     WardrobeModeChangePrompt,
     WardrobeWearHistorySection,
     WardrobeItemImageSection,
+    WardrobeFolderField,
   ],
   template: `
     <!-- Overlay — z values sit above the qt-dialog-overlay (z-[60]) so this
@@ -266,6 +268,13 @@ function charCountClass(current: number, max: number): string {
               <p class="mt-1 text-xs qt-text-destructive">Enter a title</p>
             }
           </div>
+
+          <!-- Folder — the operator's filing, in both modes (v4 4a38222e6 :621-622). -->
+          <qt-wardrobe-folder-field
+            [container]="folderContainer()"
+            [value]="folder()"
+            (valueChange)="folder.set($event)"
+          />
 
           <!-- Picture — directly under Title, the most visible thing in the
                form. Inert in create mode: a fresh item has no id yet (v4

@@ -178981,3 +178981,33 @@ regen (no Rust family); every v4 read is `git show 4a38222e6:<path>`.
   `Add at least one component` guard pin was green before (it is unchanged
   in v4).
 - SPA gate: lint ok; vitest 489 / 9,346; build ok.
+
+### Unit 4 — the Folder field
+
+- NEW `item-editor/wardrobe-folder-field.ts` — v4 `WardrobeFolderField.tsx`
+  (93 lines) 1:1: strings verbatim (`Folder`, `Wardrobe (top level)`, `New
+  folder…`, `e.g., Formal/Evening`, `Pick`, the help sentence), `NEW_FOLDER
+  = '\u0000new'`, the options rule (`:30-36`), `selected` (`:38`), Escape
+  stopped (`:53-58`); the read re-issued per destination (v4's tier-keyed
+  query). The editor mounts it between Title and Picture with
+  `folderContainer()`.
+- **Premise correction (C3 §2 vs the hunks):** C3 §2 says the field consumes
+  `createWardrobeFolder` "(create-on-save)". v4's field and editor call NO
+  create-folder at the pin — "created on save" is the SERVER resolving the
+  body's `folder` (survey §3 / §13.4 agree). Ported as the hunks have it; the
+  field consumes the folder LIST only.
+- **HANDOFF(P4.D285) — three private twins in the field's file:**
+  `listWardrobeFolders(core, container)` (C3 §2; the `wardrobeFoldersList`
+  literal CAST to `CoreRequest` because the request type lives in P4.D285's
+  `core-contract.ts` region), `isSameFolder`, `folderCrumb` (C3 §3). The
+  unifier deletes all three and imports P4.D285's. The twin carries v4's
+  `use-wardrobe-folders.ts` warn line (`[useWardrobeFolders] Failed to load
+  wardrobe folders`, `{ tierKey, error }` — `tierKey` here is
+  `encodeWardrobeContainer`, NOT v4's `wardrobeTierKey`; P4.D285's port
+  decides the real key).
+- **Red-first:** `wardrobe-folder-field.spec.ts` (8) RED (module absent),
+  GREEN after; the editor spec's Picture-order pin RE-PINNED (Title → Folder
+  → Picture) + 2 new editor cases (destination follows Add-to; the home on
+  edit + the pick rides the save); two candidate-read pins filter the field's
+  read out (`listReads`).
+- SPA gate: lint ok; vitest 490 / 9,356; build ok.

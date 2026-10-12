@@ -99,6 +99,11 @@ async function render(
   return { fixture, component: fixture.componentInstance, seen };
 }
 
+/** The wardrobe LIST reads (the Folder field's own read filtered out). */
+function listReads(seen: AnyRequest[]): AnyRequest[] {
+  return seen.filter((r) => (r.type as string) !== 'wardrobeFoldersList');
+}
+
 /** The toast stack this render raised, newest last. */
 function toasts(): { type: string; message: string }[] {
   return TestBed.inject(ToastService)
@@ -312,7 +317,7 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
         }
       },
     );
-    expect(seen.map((r) => [r.type, r['scope'], r['includeArchived']])).toEqual([
+    expect(listReads(seen).map((r) => [r.type, r['scope'], r['includeArchived']])).toEqual([
       ['characterWardrobeList', undefined, true],
       ['characterWardrobeList', 'group', true],
       ['projectWardrobeList', undefined, true],
@@ -653,7 +658,7 @@ describe('the editor pinned to a shared container (v4 d7263f39)', () => {
 
   it('component candidates are the container + General, General alone when it IS the container (v4 :187-199)', async () => {
     const project = await render({ characterId: null, item: null, container: PROJECT });
-    expect(project.seen.map((r) => r.type as string).sort()).toEqual([
+    expect(listReads(project.seen).map((r) => r.type as string).sort()).toEqual([
       'projectWardrobeList',
       'wardrobeList',
     ]);
@@ -661,7 +666,7 @@ describe('the editor pinned to a shared container (v4 d7263f39)', () => {
     expect(project.seen.some((r) => (r.type as string) === 'characterWardrobeList')).toBe(false);
 
     const general = await render({ characterId: null, item: null, container: GENERAL });
-    expect(general.seen.map((r) => r.type as string)).toEqual(['wardrobeList']);
+    expect(listReads(general.seen).map((r) => r.type as string)).toEqual(['wardrobeList']);
 
     // P4.D261 (v4 `cc80dc89d` :215-242): the container's own read is LOCAL —
     // its rows carry no origin chip even when the read tagged them.
@@ -695,7 +700,7 @@ describe('the editor pinned to a shared container (v4 d7263f39)', () => {
       projectId: 'other-project',
       container: GROUP,
     });
-    expect(pinned.seen.map((r) => r.type as string).sort()).toEqual([
+    expect(listReads(pinned.seen).map((r) => r.type as string).sort()).toEqual([
       'groupWardrobeList',
       'wardrobeList',
     ]);
@@ -783,7 +788,12 @@ describe('the editor’s Picture section (v4 7c8572869)', () => {
     expect(section).not.toBeNull();
     expect(host.querySelector('[data-testid="wardrobe-item-image-inert"]')).not.toBeNull();
     const block = section.closest('qt-wardrobe-item-image-section')!;
-    expect(block.previousElementSibling!.querySelector('#wardrobe-title')).not.toBeNull();
+    // RE-PINNED by P4.D286: v4 `4a38222e6` (`:621-630`) puts the Folder field
+    // between Title and the Picture section.
+    expect(block.previousElementSibling!.tagName.toLowerCase()).toBe('qt-wardrobe-folder-field');
+    expect(
+      block.previousElementSibling!.previousElementSibling!.querySelector('#wardrobe-title'),
+    ).not.toBeNull();
     expect(block.nextElementSibling!.textContent).toContain('Type(s) *');
     expect(imageReads(seen)).toEqual([]);
   });
@@ -890,6 +900,72 @@ describe('the editor and an archived or unseen component (bug 190)', () => {
     expect(c.effectiveTypes()).toEqual(['top', 'accessories']);
     expect(component.buildSaveRequest()).toMatchObject({
       item: { componentItemIds: ['shirt', 'gone'], types: ['top', 'accessories'] },
+    });
+  });
+});
+
+/**
+ * P4.D286 — the Folder field in the editor (v4 `4a38222e6`
+ * `wardrobe-item-editor.tsx:364-375`, `:621-622`): it reads the folders of
+ * the item's home on edit and of the CHOSEN destination on create, and what
+ * it picks rides the save as `folder`.
+ */
+describe('the editor’s Folder field (v4 4a38222e6)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const folderReads = (seen: AnyRequest[]): AnyRequest[] =>
+    seen.filter((r) => (r.type as string) === 'wardrobeFoldersList');
+  const answer = (req: AnyRequest): Record<string, unknown> =>
+    (req.type as string) === 'wardrobeFoldersList'
+      ? { folders: [{ path: 'Formal/Evening', name: 'Evening', itemCount: 1 }] }
+      : { wardrobeItems: [] };
+
+  it('reads the destination’s folders on create, following the Add-to choice', async () => {
+    const { fixture, component, seen } = await render({ projectId: 'p1' }, answer);
+    expect(folderReads(seen)).toEqual([
+      { type: 'wardrobeFoldersList', scope: 'character', containerId: 'char-1' },
+    ]);
+    (component as unknown as { createScope: { set(v: string): void } }).createScope.set('project');
+    fixture.detectChanges();
+    await settle(fixture);
+    (component as unknown as { createScope: { set(v: string): void } }).createScope.set('global');
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(folderReads(seen).map((r) => [r['scope'], r['containerId']])).toEqual([
+      ['character', 'char-1'],
+      ['project', 'p1'],
+      ['general', undefined],
+    ]);
+  });
+
+  it('reads the item’s home on edit, and a picked folder rides the save', async () => {
+    const { fixture, component, seen } = await render(
+      {
+        item: item({
+          id: 'pj',
+          characterId: null,
+          origin: { scope: 'project', id: 'p7', name: 'Thornfield' },
+        }),
+      },
+      answer,
+    );
+    expect(folderReads(seen)).toEqual([
+      { type: 'wardrobeFoldersList', scope: 'project', containerId: 'p7' },
+    ]);
+    const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+      'select#wardrobe-folder',
+    )!;
+    expect([...select.options].map((o) => o.textContent!.trim())).toEqual([
+      'Wardrobe (top level)',
+      'Formal › Evening',
+      'New folder…',
+    ]);
+    select.value = 'Formal/Evening';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(component.buildSaveRequest()).toMatchObject({
+      type: 'projectWardrobeUpdate',
+      item: { folder: 'Formal/Evening' },
     });
   });
 });
