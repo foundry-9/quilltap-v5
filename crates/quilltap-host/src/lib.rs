@@ -53,6 +53,7 @@ pub mod image_import_fetch;
 pub mod instances;
 pub mod job_pump;
 pub mod lock;
+pub mod memory_consolidation;
 pub mod paths;
 pub mod providers;
 pub mod spine;

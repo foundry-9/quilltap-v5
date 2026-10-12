@@ -1,0 +1,44 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "0c000000-0000-4000-8000-0000000000ee",
+  "otherUserId": "0c000000-0000-4000-8000-0000000000ff",
+  "seedTimestamp": "2026-08-01T00:00:00.000Z",
+  "now": "2026-10-08T12:00:00.000Z",
+  "subject": { "id": "0c5b0000-0000-4000-8000-000000000001", "name": "Laura", "identity": "A cartographer of the northern reaches." },
+  "selfie": { "id": "0c5b0000-0000-4000-8000-000000000002", "name": "Self" },
+  "orphanSubjectId": "0c5b0000-0000-4000-8000-0000000000aa",
+  "archived": { "id": "0c5b0000-0000-4000-8000-000000000003", "name": "Ghost" },
+  "storeTypeMismatch": { "id": "0c5b0000-0000-4000-8000-000000000004", "name": "Fennel" },
+  "filesystemVault": { "id": "0c5b0000-0000-4000-8000-000000000005", "name": "Pewter" },
+  "vaultless": { "id": "0c5b0000-0000-4000-8000-000000000006", "name": "Wren" },
+  "danglingVault": { "id": "0c5b0000-0000-4000-8000-000000000007", "name": "Quill", "mountPointId": "0c5b0000-0000-4000-8000-0000000000dd" },
+  "hoarder": { "id": "0c5b0000-0000-4000-8000-000000000008", "name": "Hoarder", "rows": 2001, "dims": 64 },
+  "quiet": { "id": "0c5b0000-0000-4000-8000-000000000009", "name": "Quiet" },
+  "holders": [
+    { "index": 1, "id": "0c010000-0000-4000-8000-000000000001", "name": "Friday", "identity": "The Estate's keeper.", "description": "Tall, unhurried, ink on the cuffs." },
+    { "index": 2, "id": "0c020000-0000-4000-8000-000000000001", "name": "Marigold", "identity": "A courier of letters.", "description": null },
+    { "index": 3, "id": "0c030000-0000-4000-8000-000000000001", "name": "Hollis", "identity": null, "description": "A tinker." },
+    { "index": 4, "id": "0c040000-0000-4000-8000-000000000001", "name": "Juniper", "identity": "A gardener.", "description": null },
+    { "index": 5, "id": "0c050000-0000-4000-8000-000000000001", "name": "Ottoline", "identity": "A navigator.", "description": null },
+    { "index": 6, "id": "0c060000-0000-4000-8000-000000000001", "name": "Barnaby", "identity": "A bookbinder.", "description": null },
+    { "index": 7, "id": "0c070000-0000-4000-8000-000000000001", "name": "Cressida", "identity": "A clockmaker.", "description": null },
+    { "index": 8, "id": "0c080000-0000-4000-8000-000000000001", "name": "Tobias", "identity": "A lamplighter.", "description": null },
+    { "index": 9, "id": "0c090000-0000-4000-8000-000000000001", "name": "Ysolde", "identity": "A cartwright.", "description": null }
+  ],
+  "chats": {
+    "plain": "0cc00000-0000-4000-8000-000000000001",
+    "locked": "0cc00000-0000-4000-8000-000000000002",
+    "unmoderated": "0cc00000-0000-4000-8000-000000000003"
+  },
+  "profiles": {
+    "cheap": { "id": "0cf00000-0000-4000-8000-000000000001", "name": "Cheap", "provider": "OPENAI", "modelName": "gpt-cheap", "isCheap": true, "isDangerousCompatible": false },
+    "consolidation": { "id": "0cf00000-0000-4000-8000-000000000002", "name": "Binder", "provider": "ANTHROPIC", "modelName": "claude-binder", "isCheap": false, "isDangerousCompatible": false },
+    "desk": { "id": "0cf00000-0000-4000-8000-000000000003", "name": "Desk", "provider": "OPENROUTER", "modelName": "dolphin-desk", "isCheap": false, "isDangerousCompatible": true }
+  },
+  "chatSettingsId": "0cd00000-0000-4000-8000-000000000001",
+  "vaultDocs": {
+    "othersLaura": "Laura charts the northern coast and keeps her own counsel.",
+    "staleCommonplace": "---\ntype: commonplace-digest\nsubjectCharacterId: \"stale\"\nupdatedAt: \"2026-01-01T00:00:00.000Z\"\n---\n# Laura\n\n- An older note.\n"
+  },
+  "mountWritePlant": { "name": "qt_consolidation_fail_write", "marker": "FAILWRITE", "message": "planted document write failure" }
+}

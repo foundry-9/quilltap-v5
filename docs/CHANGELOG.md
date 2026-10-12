@@ -539,6 +539,71 @@ _Versions: core 0.0.1266._
 Ports the prompt half of v4 `d58548051`'s fold-grain OTHER pass (pin `01a83539d`). `other_body_for_cap` and `get_other_memory_extraction_prompt` take a grain; the fold grain puts the six-line `GRAIN — READ THIS FIRST` block (after any autonomous preamble) before the OTHER body. The turn body is byte-identical to before. New `build_fold_other_extraction_messages` renders the window as `CONVERSATION STRETCH (N messages, in the order spoken)` through the same dated, 1,500-unit render as the fold-episode builder, now one shared function. The cap is raised to 1 and not clamped by the token budget. New `extract_other_memories_from_fold` runs it under the per-turn task type `memory-extraction-other`, attributed to the observer. No caller yet.
 
 `extract-memory-task-prompts.py` learns the pin's `otherBodyForCap(perSubjectCap, grain)` shape: it asserts the `grainBlock` preamble, strips the leading `${grainBlock}` and emits `FOLD_GRAIN_OTHER_BLOCK`. `prompt_text.rs` was regenerated from the pin. `memory_tasks_equivalence` gains six `extractOtherMemoriesFromFold` cases against v4's real extractor, including the executor's task type and character id.
+#### 2026-10-10 — docs(porting): P4.D271 lane close — gate, sweep, handoffs
+
+_Docs-only change._
+
+The P4.D271 order is marked LANE COMPLETE, and the status log gains the lane-close record: the red-first results, how each ruling was built (R-I overturned by measurement), the hand-offs to P4.D270 and the unifier, all nine measurements, v4 commits observed past the pin, the dogfood rows and the closing versions.
+
+#### 2026-10-10 — test(memory): P4.D271 make the consolidation families independent of fixture rebuilds
+
+_No crate versions bumped._
+
+The bridge, service and trigger families share one fixture pair that each recipe rebuilds, and every rebuild mints new vault ids. Two comparands depended on those ids, and the template's memory ids could sort behind ids minted during a run. The vault ids are now masked, the document projections are ordered by path and content, and the template ids sort first. All three families pass against any rebuild.
+
+#### 2026-10-09 — test(logging): P4.D271 cover the memory-consolidation task type in the log-type corpus
+
+_No crate versions bumped._
+
+`task_type_log_mapping_equivalence` asks v4 about every task type v5's log-type map names; `memory-consolidation` was missing from its corpus, so the family failed. Added in v4's declaration order; green.
+
+#### 2026-10-09 — test(memory): P4.D271 pin the two unreachable consolidation catches negative
+
+_Versions: core 0.0.1273._
+
+A core unit test asserts no core source emits v4's two consolidation log lines that v4's own code can never reach (the dispatcher's watermark-check catch and the service's mirror-failure catch), so neither gets ported by mistake.
+
+#### 2026-10-09 — feat(memory): P4.D271 the consolidation API actions
+
+_Versions: core 0.0.1272._
+
+The five memory-consolidation dispatch verbs now answer: get/set the consolidation settings, get/set the extraction-mode settings, and `memoryConsolidate` (a dry run in-process through the host's runner, or a queued real run). The settings POSTs keep v4's behaviour where any POST resets every unsent field to its default; a new test table records that so a v4 fix shows up. New family `memory_consolidation_routes_equivalence` (30 cases). The P4.D265 wire-contract test drops the five refusal rows these verbs replaced.
+
+#### 2026-10-09 — feat(memory): P4.D271 consolidation triggers, queue and job handler
+
+_Versions: core 0.0.1271, host 0.0.196._
+
+The `MEMORY_CONSOLIDATION` job now runs. New `enqueue_memory_consolidation` (deduped per character and per dry-run flag, one attempt), `enqueue_job_at` / `enqueue_memory_housekeeping_at` (a scheduled start time), the job handler (automatic runs exit when consolidation is disabled; a dry run logs its clusters), and the host registration, which also installs the process-wide consolidation runner. Triggers: the daily housekeeping pass now runs scheduled consolidation first and delays housekeeping 30 minutes when it enqueued anything, and after a job completes, characters whose memory rows were inserted during it are checked against the watermark (debounced 10 minutes, throttled 6 hours). The housekeeping pass also gains v4's start, per-user and completion log lines. New tier-2 family `consolidation_triggers_tier2_equivalence`, including the recorded insert-window divergence table.
+
+#### 2026-10-09 — feat(memory): P4.D271 the consolidation service
+
+_Versions: core 0.0.1270._
+
+New `services::consolidation::run_consolidation`, a port of v4's memory consolidation run: load the hot corpus by subject bucket, cluster it, pick the clusters to fold, ask the model once per cluster under the Concierge posture of the members' chats, plan the digests, embed them (a cluster whose digest cannot be embedded is dropped), write the whole plan in one transaction, and mirror the touched buckets into the holder's vault. A dry run reports what it would do and writes nothing. Also a process-wide `ConsolidationRunner` slot the host fills, so the API's dry run can reach the model. New tier-3 family `consolidation_service_tier3_equivalence` (15 runs: reports, 209 log lines, the memory and vector tables, the mirror files and the LLM log counts).
+
+#### 2026-10-09 — feat(memory): P4.D271 the Commonplace digest vault bridge + the consolidation fixture
+
+_Versions: core 0.0.1269._
+
+New `services::commonplace_digest_vault_bridge`, a port of v4's mirror of a character's memory digests into `Commonplace/<Subject>.md` and `Commonplace/Self.md` in the holder's vault: archived / missing / no-vault guards, an unchanged file is left alone (the `updatedAt` line is ignored in the compare), and a failure on one file does not stop the others. The holder's vault is resolved through the overlay read, so a dangling vault logs v4's own warning text. A new consolidation fixture builder (through v4's real repositories) seeds the bridge, service and trigger families. New tier-2 family `commonplace_digest_vault_bridge_tier2_equivalence` (14 calls, their log lines, and the written documents, folders and chunks).
+
+#### 2026-10-09 — feat(memory): P4.D271 the consolidation write planner
+
+_Versions: core 0.0.1268._
+
+New `consolidation_plan` module, a port of v4's pure consolidation write planner: digest ids, supersession and contradictions with the five-hop remap, the create and update shapes in v4's key order, tier moves, standalones and inbound-link rewiring. New tier-1 family `consolidation_plan_equivalence` compares 17 whole plans and 30 helper rows against v4's real functions.
+
+#### 2026-10-09 — feat(memory): P4.D271 the consolidation prompt family
+
+_Versions: core 0.0.1267._
+
+New `consolidation_tasks` module, a port of v4's one-call-per-cluster consolidation task: the system prompt (generated mechanically from v4's source by a new extraction script), the user-message builder, a Zod-faithful validator for the model's answer with v4's reason strings, and the async task runner (`memory-consolidation`, 4,000 tokens). A new `llm_json` helper renders V8's `JSON.parse` failure text for an object-slice parse, which is what v4's "unparseable JSON" reason carries. New tier-1 family `consolidation_tasks_equivalence` (111 rows from v4's real functions).
+
+#### 2026-10-09 — feat(memory): P4.D271 the consolidation clusterer
+
+_Versions: core 0.0.1266._
+
+New `consolidation_clustering` module, a port of v4's memory-consolidation clusterer: digest attraction, average-linkage agglomeration with the Lance–Williams update, the one-day episodic window, the age-based size floor, the "anything new?" check and the per-run budget. Pairwise similarities are stored as f32, as v4 stores them in a `Float32Array`. New tier-1 family `consolidation_clustering_equivalence` (113 rows from v4's real functions) includes a pair whose similarity clusters only because of the f32 rounding.
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._

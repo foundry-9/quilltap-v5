@@ -1,0 +1,278 @@
+{
+ "cases": [
+  {
+   "name": "consolidation_get",
+   "method": "GET",
+   "action": "consolidation-config"
+  },
+  {
+   "name": "consolidation_set_enable",
+   "method": "POST",
+   "action": "consolidation-config",
+   "body": {
+    "enabled": true
+   }
+  },
+  {
+   "name": "clobber_cold_retention",
+   "stored": {
+    "consolidation": {
+     "enabled": true,
+     "clusterThreshold": 0.5,
+     "watermark": 300
+    }
+   },
+   "method": "POST",
+   "action": "consolidation-config",
+   "body": {
+    "coldRetentionDays": 90
+   }
+  },
+  {
+   "name": "clobber_null_cold_retention",
+   "stored": {
+    "consolidation": {
+     "enabled": true,
+     "coldRetentionDays": 30
+    }
+   },
+   "method": "POST",
+   "action": "consolidation-config",
+   "body": {
+    "coldRetentionDays": null
+   }
+  },
+  {
+   "name": "consolidation_set_empty",
+   "stored": {
+    "consolidation": {
+     "enabled": true,
+     "minClusterSize": 5
+    }
+   },
+   "method": "POST",
+   "action": "consolidation-config",
+   "body": {}
+  },
+  {
+   "name": "consolidation_set_profile",
+   "method": "POST",
+   "action": "consolidation-config",
+   "body": {
+    "connectionProfileId": "some-profile",
+    "maxClustersPerRun": 12
+   }
+  },
+  {
+   "name": "consolidation_threshold_out_of_range",
+   "stored": {
+    "consolidation": {
+     "enabled": true
+    }
+   },
+   "method": "POST",
+   "action": "consolidation-config",
+   "body": {
+    "clusterThreshold": 1.5
+   }
+  },
+  {
+   "name": "consolidation_min_size_too_small",
+   "method": "POST",
+   "action": "consolidation-config",
+   "body": {
+    "minClusterSize": 1
+   }
+  },
+  {
+   "name": "consolidation_max_clusters_zero",
+   "method": "POST",
+   "action": "consolidation-config",
+   "body": {
+    "maxClustersPerRun": 0
+   }
+  },
+  {
+   "name": "consolidation_watermark_float",
+   "method": "POST",
+   "action": "consolidation-config",
+   "body": {
+    "watermark": 2.5
+   }
+  },
+  {
+   "name": "consolidation_enabled_null",
+   "method": "POST",
+   "action": "consolidation-config",
+   "body": {
+    "enabled": null
+   }
+  },
+  {
+   "name": "consolidation_body_array",
+   "method": "POST",
+   "action": "consolidation-config",
+   "body": [
+    1
+   ]
+  },
+  {
+   "name": "extraction_get",
+   "method": "GET",
+   "action": "extraction-mode-config"
+  },
+  {
+   "name": "extraction_set_turn",
+   "method": "POST",
+   "action": "extraction-mode-config",
+   "body": {
+    "otherPass": "turn"
+   }
+  },
+  {
+   "name": "clobber_fold_candidates",
+   "stored": {
+    "extraction": {
+     "otherPass": "fold",
+     "perTurnOtherFloor": 0.5
+    }
+   },
+   "method": "POST",
+   "action": "extraction-mode-config",
+   "body": {
+    "foldCandidatesPerSubject": 5
+   }
+  },
+  {
+   "name": "extraction_unknown_pass",
+   "method": "POST",
+   "action": "extraction-mode-config",
+   "body": {
+    "otherPass": "never"
+   }
+  },
+  {
+   "name": "extraction_floor_negative",
+   "method": "POST",
+   "action": "extraction-mode-config",
+   "body": {
+    "perTurnOtherFloor": -1
+   }
+  },
+  {
+   "name": "consolidate_non_uuid",
+   "method": "POST",
+   "action": "consolidate",
+   "body": {
+    "characterId": "c1"
+   }
+  },
+  {
+   "name": "consolidate_absent_id",
+   "method": "POST",
+   "action": "consolidate",
+   "body": {}
+  },
+  {
+   "name": "consolidate_threshold_3",
+   "method": "POST",
+   "action": "consolidate",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002",
+    "clusterThreshold": 3
+   }
+  },
+  {
+   "name": "consolidate_max_zero",
+   "method": "POST",
+   "action": "consolidate",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002",
+    "maxClustersPerRun": 0
+   }
+  },
+  {
+   "name": "consolidate_max_1001",
+   "method": "POST",
+   "action": "consolidate",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002",
+    "maxClustersPerRun": 1001
+   }
+  },
+  {
+   "name": "consolidate_max_float",
+   "method": "POST",
+   "action": "consolidate",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002",
+    "maxClustersPerRun": 2.5
+   }
+  },
+  {
+   "name": "consolidate_dry_null",
+   "method": "POST",
+   "action": "consolidate",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002",
+    "dryRun": null
+   }
+  },
+  {
+   "name": "consolidate_unknown_character",
+   "method": "POST",
+   "action": "consolidate",
+   "body": {
+    "characterId": "00000000-0000-4000-8000-0000000000ff"
+   }
+  },
+  {
+   "name": "consolidate_enqueue",
+   "method": "POST",
+   "action": "consolidate",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "consolidate_enqueue_dedupe",
+   "method": "POST",
+   "action": "consolidate",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000001",
+    "maxClustersPerRun": 7,
+    "clusterThreshold": 0.9
+   },
+   "twice": true
+  },
+  {
+   "name": "consolidate_dry_run_no_rows",
+   "method": "POST",
+   "action": "consolidate",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002",
+    "dryRun": true
+   }
+  },
+  {
+   "name": "consolidate_dry_run_capped_override",
+   "method": "POST",
+   "action": "consolidate",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002",
+    "dryRun": true,
+    "maxClustersPerRun": 99,
+    "clusterThreshold": 0.6
+   }
+  },
+  {
+   "name": "consolidate_dry_false_enqueues",
+   "method": "POST",
+   "action": "consolidate",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002",
+    "dryRun": false
+   }
+  }
+ ]
+}

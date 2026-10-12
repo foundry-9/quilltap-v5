@@ -54,6 +54,7 @@ pub mod image_profiles;
 // === P4.6ar: the llm-logs read surface (lane A) ===
 pub mod llm_logs;
 pub mod memories;
+pub mod memory_consolidation;
 pub mod memory_maintenance;
 pub mod mount_files;
 pub mod mount_points;

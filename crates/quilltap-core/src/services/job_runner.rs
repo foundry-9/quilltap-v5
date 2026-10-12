@@ -499,6 +499,11 @@ impl JobRunner {
                     &job.job_type,
                     &payload,
                 );
+                crate::services::consolidation_triggers::check_consolidation_watermark_after_job(
+                    &self.inner.db,
+                    job,
+                )
+                .await;
                 // === end job-completion hooks ===
             }
             JobOutcome::Failed(message) => {

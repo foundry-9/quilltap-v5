@@ -3984,6 +3984,12 @@ impl SpineFactory for ProductionSpineFactory {
                 Box::new(HeadShouldersBackfillJobHandler { wire: wire.clone() }),
             ),
             // === end P4.82 ===
+            // P4.D271 (R-E): installs the process-global consolidation runner
+            // too (the API's in-process dry run).
+            (
+                "MEMORY_CONSOLIDATION".to_string(),
+                crate::memory_consolidation::memory_consolidation_job_handler(wire.clone()),
+            ),
         ];
 
         // The provider wire-actions driver (the P4.6 unification wire): the
