@@ -1583,7 +1583,7 @@ fn run_store_identity_case(name: &str, case: &Value, user_id: &str, failures: &m
     let got_v5 = classify_identity_dump(&stores, &docs, &pre_ids);
     let oracle_stores = case["stores"].as_array().cloned().unwrap_or_default();
     let oracle_docs = case["docs"].as_array().cloned().unwrap_or_default();
-    let mut got_v4 = classify_identity_dump(&oracle_stores, &oracle_docs, &pre_ids);
+    let got_v4 = classify_identity_dump(&oracle_stores, &oracle_docs, &pre_ids);
     // [P4.D272 R-D] bug 186's free-name pick, carved until P4.D274 lands.
 
     // The classification must actually key on a PRESERVED archive id — otherwise

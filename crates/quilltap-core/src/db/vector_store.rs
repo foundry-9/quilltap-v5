@@ -44,13 +44,23 @@ use crate::embedding_vector::cosine_similarity;
 /// P4.D265 (v4 `d58548051`): `cold` is v4's `metadata.tier === 'cold'` — NOT
 /// persisted with the index; stamped from the memories table at
 /// [`CharacterVectorStore::load`] and kept in step by
-/// [`CharacterVectorStore::set_tier`]. A freshly added vector is hot (v4's
-/// callers pass metadata without a tier, and an absent tier reads hot).
+/// [`CharacterVectorStore::set_tier`]. A freshly added vector carries NO tier
+/// (v4's callers pass metadata without one, and an absent tier reads hot) —
+/// tri-state, so that `set_tier(…, Hot)` on an added entry COUNTS it as
+/// changed, exactly as v4's `entry.metadata.tier !== tier` does for
+/// `undefined` (the `01a83539d` unification's §3 review).
 #[derive(Debug, Clone)]
 struct VectorEntry {
     id: String,
     embedding: Vec<f32>,
-    cold: bool,
+    /// `Some(true)` cold, `Some(false)` hot (stamped at load), `None` unstamped.
+    cold: Option<bool>,
+}
+
+impl VectorEntry {
+    fn is_cold(&self) -> bool {
+        self.cold == Some(true)
+    }
 }
 
 /// v4's `'hot' | 'cold'` tier argument to [`CharacterVectorStore::set_tier`].
@@ -136,7 +146,7 @@ impl CharacterVectorStore {
             entries.push(VectorEntry {
                 id: row.id.clone(),
                 embedding: row.embedding.clone(),
-                cold: cold_ids.contains(&row.id),
+                cold: Some(cold_ids.contains(&row.id)),
             });
         }
         tracing::debug!(
@@ -228,7 +238,7 @@ impl CharacterVectorStore {
 
         let mut results: Vec<VectorSearchResult> = Vec::with_capacity(self.entries.len());
         for entry in &self.entries {
-            if !filter(&entry.id, entry.cold) {
+            if !filter(&entry.id, entry.is_cold()) {
                 continue;
             }
             if entry.embedding.len() != query.len() {
@@ -258,7 +268,9 @@ impl CharacterVectorStore {
     /// P4.D265 — v4 `isHotVector` for one loaded id: `true` unless the entry is
     /// stamped cold. An ABSENT id answers `true` (v4: "absent reads as hot").
     pub fn is_hot(&self, id: &str) -> bool {
-        self.index.get(id).is_none_or(|&i| !self.entries[i].cold)
+        self.index
+            .get(id)
+            .is_none_or(|&i| !self.entries[i].is_cold())
     }
 
     /// P4.D265 (v4 `d58548051`) — v4 `setTier(ids, tier)` (`:506-522`): re-stamp
@@ -267,11 +279,13 @@ impl CharacterVectorStore {
     /// {context: CharacterVectorStore.setTier, characterId, tier, requested,
     /// changed}` — logged even when `changed` is 0. An id not in the store is
     /// skipped (it counts in `requested` only).
-    pub fn set_tier(&mut self, ids: &[String], tier: Tier) {
-        let cold = tier == Tier::Cold;
+    pub fn set_tier(&mut self, ids: &[String], tier: Tier) -> usize {
+        let cold = Some(tier == Tier::Cold);
         let mut changed = 0usize;
         for id in ids {
             if let Some(&i) = self.index.get(id) {
+                // An unstamped (freshly added) entry always counts, as v4's
+                // `undefined !== tier` does.
                 if self.entries[i].cold != cold {
                     self.entries[i].cold = cold;
                     changed += 1;
@@ -286,6 +300,7 @@ impl CharacterVectorStore {
             changed = changed,
             "Re-stamped vector tiers"
         );
+        changed
     }
 
     /// Add a vector (v4 `addVector`). Validates the dimension against the store's
@@ -304,18 +319,19 @@ impl CharacterVectorStore {
         }
 
         // v4 replaces the whole entry (`entries.set(id, {…, metadata})`), and its
-        // callers' metadata carries no tier — so a re-added vector reads hot.
+        // callers' metadata carries no tier — so a (re-)added vector is
+        // unstamped and reads hot.
         match self.index.get(id).copied() {
             Some(i) => {
                 self.entries[i].embedding = embedding;
-                self.entries[i].cold = false;
+                self.entries[i].cold = None;
             }
             None => {
                 self.index.insert(id.to_string(), self.entries.len());
                 self.entries.push(VectorEntry {
                     id: id.to_string(),
                     embedding,
-                    cold: false,
+                    cold: None,
                 });
             }
         }
@@ -447,10 +463,25 @@ mod tests {
             s.entries.push(VectorEntry {
                 id: (*id).to_string(),
                 embedding: v.clone(),
-                cold: false,
+                cold: Some(false),
             });
         }
         s
+    }
+
+    /// v4 `setTier` counts an entry `addVector` added after `load()` (its
+    /// metadata has no `tier`, and `undefined !== 'hot'`), while a loaded hot
+    /// entry re-stamped hot does not count.
+    #[test]
+    fn set_tier_counts_an_unstamped_added_entry() {
+        let mut s = store_with(&[("loaded-hot", vec![1.0, 0.0])]);
+        s.add_vector("added", vec![0.0, 1.0]).unwrap();
+        assert!(s.is_hot("added"));
+        let changed = s.set_tier(&["loaded-hot".to_string(), "added".to_string()], Tier::Hot);
+        assert_eq!(changed, 1, "only the unstamped entry changes");
+        assert_eq!(s.set_tier(&["added".to_string()], Tier::Hot), 0);
+        assert_eq!(s.set_tier(&["added".to_string()], Tier::Cold), 1);
+        assert!(!s.is_hot("added"));
     }
 
     /// P4.D265: the hot-only filter runs BEFORE the top-K — a cold entry that
@@ -483,7 +514,9 @@ mod tests {
     fn set_tier_counts_changes_and_always_logs() {
         let mut s = store_with(&[("a", vec![1.0]), ("b", vec![1.0])]);
         let ids = vec!["a".to_string(), "ghost".to_string()];
-        let lines = crate::test_support::captured(|| s.set_tier(&ids, Tier::Cold));
+        let lines = crate::test_support::captured(|| {
+            s.set_tier(&ids, Tier::Cold);
+        });
         assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(
             lines[0].ends_with(
@@ -492,7 +525,9 @@ mod tests {
             ),
             "{lines:?}"
         );
-        let lines = crate::test_support::captured(|| s.set_tier(&ids, Tier::Cold));
+        let lines = crate::test_support::captured(|| {
+            s.set_tier(&ids, Tier::Cold);
+        });
         assert!(lines[0].ends_with("requested=2 changed=0"), "{lines:?}");
         // A re-add reads hot again (v4 replaces the entry's metadata).
         s.add_vector("a", vec![1.0]).unwrap();

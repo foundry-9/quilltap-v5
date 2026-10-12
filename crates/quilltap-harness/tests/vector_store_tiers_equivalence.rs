@@ -156,7 +156,7 @@ fn vector_store_tiers_match_oracle() {
                     "hot" => Tier::Hot,
                     _ => Tier::Cold,
                 };
-                let ((), lines) =
+                let (_changed, lines) =
                     quilltap_core::test_support::captured_with(|| store.set_tier(&ids, tier));
                 assert_eq!(got_lines(lines), want_lines(op), "op {i}: setTier lines");
                 compared += 1;

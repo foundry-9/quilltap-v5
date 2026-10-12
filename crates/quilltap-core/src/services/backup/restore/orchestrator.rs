@@ -2328,10 +2328,18 @@ fn restore_mount_family(
     let mut restored_mount_point_ids: HashSet<String> = HashSet::new();
     {
         let repo = crate::db::doc_mount_points::DocMountPointsRepository::new(mount);
+        // v4 `restore.ts:602` — `new Set((await docMountPoints.findAll()).map(mp
+        // => mp.name))`: `findAll` is the Zod-filtered read, so a target row the
+        // schema refuses holds no name here (P4.D274's `read_store_name_rows`;
+        // the `01a83539d` unification's §3 review — the keystone's raw name
+        // list counted such a row as taken).
         let mut taken: std::collections::HashSet<String> =
-            crate::db::fallback::find_all_or_empty("doc_mount_points", || repo.find_all_names())
-                .into_iter()
-                .collect();
+            crate::db::fallback::find_all_or_empty("doc_mount_points", || {
+                crate::db::store_name_reconcile::read_store_name_rows(mount)
+            })
+            .into_iter()
+            .map(|row| row.name)
+            .collect();
         for raw in &data.doc_mount_points {
             let mp = &super::mount_index_coercion::coerce_doc_mount_point_row(raw);
             // v4's `nextUniqueMountPointName(taken, mpData.name)` calls
