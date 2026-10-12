@@ -178950,3 +178950,34 @@ regen (no Rust family); every v4 read is `git show 4a38222e6:<path>`.
   unported source (4/4: raw-key chips, no ` · archived`, no designation when
   additive, wrong title), GREEN after.
 - SPA gate: lint ok; vitest 489 / 9,339; build ok.
+
+### Unit 3 — the editor: bug 190, origin-routed edits, the draft
+
+- `wardrobe-item-editor.ts` — candidates through `loadCharacterWardrobeItems`
+  (four tiers) / `loadWardrobeContainerItems` (container + General), both
+  `includeArchived: true` (v4 `:189-225`), `local = sharedContainer ?
+  localIds.has : Boolean(characterId)`, `archived` on every candidate;
+  eligible drops archived non-members (`:244-246`); `computedTypes` /
+  `effectiveTypes` through `buildCompositeTypes` (`:262-280`); the `replace`
+  gate dropped (`:282-295`); Keep locks `effectiveTypes` (`:323-329`); the
+  unresolved chip (`:437-453`); `itemHomeContainer = sharedContainer ??
+  containerForListedItem(item)` (`:355-361`); `folderContainer` (`:364-375`,
+  consumed by unit 4's field); the body through `draftToPayload` +
+  `payloadForEdit` (`:384-396`); `handleSave` = one guard + `validateDraft`;
+  Type(s) through `SlotCheckboxGroup`; wear history `isComposite(item)`.
+- **HANDOFF(P4.D285) — `containerForListedItem`:** a private twin in the
+  editor (P4.D285 owns `wardrobe-container.ts` and adds the export). The
+  unifier deletes the twin, imports theirs.
+- **HANDOFF(P4.D285) — `isShared`:** the input is ACCEPTED AND IGNORED (v4
+  removed the prop; the editor no longer reads it) because
+  `wardrobe-control-dialog.ts` (P4.D285) still binds `[isShared]="false"`;
+  removing it here breaks that template's compile. The unifier deletes the
+  input once the host drops the binding.
+- **Red-first:** `wardrobe-item-editor.spec.ts` re-pinned + grown — 11 RED on
+  unported source (payload trim/`folder`, the `initialFolder` + send-only-
+  when-changed case, the origin-routed PUT, the four-tier `includeArchived`
+  reads, the slot labels, the additive designation, Keep's effective types,
+  the toast sentences, the three bug-190 cases), all GREEN after (39/39). The
+  `Add at least one component` guard pin was green before (it is unchanged
+  in v4).
+- SPA gate: lint ok; vitest 489 / 9,346; build ok.

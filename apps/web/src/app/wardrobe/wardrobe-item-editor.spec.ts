@@ -51,6 +51,7 @@ async function render(
     initialMode: 'single' | 'bundle';
     container: { scope: string; id: string | null } | null;
     containerLabel: string;
+    initialFolder: string;
   }> = {},
   route: (req: AnyRequest) => Record<string, unknown> | Error = () => ({ wardrobeItems: [] }),
 ): Promise<Handle> {
@@ -89,6 +90,9 @@ async function render(
   if (inputs.container !== undefined) fixture.componentRef.setInput('container', inputs.container);
   if (inputs.containerLabel !== undefined) {
     fixture.componentRef.setInput('containerLabel', inputs.containerLabel);
+  }
+  if (inputs.initialFolder !== undefined) {
+    fixture.componentRef.setInput('initialFolder', inputs.initialFolder);
   }
   fixture.detectChanges();
   await settle(fixture);
@@ -172,26 +176,97 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
       selectedTypes: { set(v: string[]): void };
       replace: { set(v: boolean): void };
     };
-    c.title.set('Charcoal Sweater');
+    c.title.set('  Charcoal Sweater  ');
     c.selectedTypes.set(['top']);
     c.replace.set(true); // single mode → forced back to false on save
-    expect(component.buildSaveRequest()).toMatchObject({
-      item: {
-        title: 'Charcoal Sweater',
-        description: null,
-        imagePrompt: null,
-        types: ['top'],
-        appropriateness: null,
-        isDefault: false,
-        componentItemIds: [],
-        replace: false,
-      },
+    // P4.D286 — through v4 `item-draft.ts`'s `draftToPayload` (`9ecebf986`):
+    // the title is trimmed, and a create always files the item (`folder`,
+    // `''` = the top level).
+    expect((component.buildSaveRequest() as { item: unknown }).item).toEqual({
+      title: 'Charcoal Sweater',
+      description: null,
+      imagePrompt: null,
+      types: ['top'],
+      appropriateness: null,
+      isDefault: false,
+      componentItemIds: [],
+      replace: false,
+      folder: '',
+    });
+  });
+
+  /**
+   * P4.D286 — v4 `4a38222e6` `wardrobe-item-editor.tsx:135`, `:396`: a create
+   * files the item in the browsed folder; an edit sends `folder` ONLY when it
+   * changed (`payloadForEdit`, case-insensitive), so a hand-made Scriptorium
+   * folder is never re-resolved.
+   */
+  it('files a create in initialFolder; an edit sends folder only when it changed (v4 4a38222e6)', async () => {
+    const create = await render({ initialFolder: 'Formal/Evening' });
+    const cc = create.component as unknown as {
+      title: { set(v: string): void };
+      selectedTypes: { set(v: string[]): void };
+    };
+    cc.title.set('Opera Cloak');
+    cc.selectedTypes.set(['top']);
+    expect(create.component.buildSaveRequest()).toMatchObject({
+      type: 'characterWardrobeCreate',
+      item: { folder: 'Formal/Evening' },
+    });
+
+    const edit = await render({ item: item({ id: 'w9', folder: 'Hats: Summer' }) });
+    const ec = edit.component as unknown as { folder: { set(v: string): void } };
+    expect(
+      (edit.component.buildSaveRequest() as { item: Record<string, unknown> }).item,
+    ).not.toHaveProperty('folder');
+    ec.folder.set('hats: SUMMER');
+    expect(
+      (edit.component.buildSaveRequest() as { item: Record<string, unknown> }).item,
+    ).not.toHaveProperty('folder');
+    ec.folder.set('Hats/Winter');
+    expect(edit.component.buildSaveRequest()).toMatchObject({
+      type: 'characterWardrobeUpdate',
+      itemId: 'w9',
+      item: { folder: 'Hats/Winter' },
     });
   });
 
   it('isShared on edit is fixed by the item tier — a shared item without the input still routes global (v4 :57-62)', async () => {
     const { component } = await render({ item: item({ id: 's2', characterId: null }) });
     expect(component.buildSaveRequest()).toMatchObject({ type: 'wardrobeUpdate', itemId: 's2' });
+  });
+
+  /**
+   * P4.D286 — v4 `9ecebf986` `wardrobe-item-editor.tsx:355-362`: an edit PUTs
+   * the wardrobe the item's ORIGIN names (`containerForListedItem`) — a project
+   * or group garment edited from the character view must never leak into
+   * Quilltap General, which v5's old `isShared → General` rule did.
+   */
+  it('a project- or group-origin item edited from the character view PUTs its own tier (v4 :355-362)', async () => {
+    const fromProject = await render({
+      item: item({
+        id: 'pj',
+        characterId: null,
+        origin: { scope: 'project', id: 'p7', name: 'Thornfield' },
+      }),
+    });
+    expect(fromProject.component.buildSaveRequest()).toMatchObject({
+      type: 'projectWardrobeUpdate',
+      projectId: 'p7',
+      itemId: 'pj',
+    });
+    const fromGroup = await render({
+      item: item({
+        id: 'gp',
+        characterId: null,
+        origin: { scope: 'group', id: 'g7', name: 'The Regiment' },
+      }),
+    });
+    expect(fromGroup.component.buildSaveRequest()).toMatchObject({
+      type: 'groupWardrobeUpdate',
+      groupId: 'g7',
+      itemId: 'gp',
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -201,7 +276,11 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
   // with `origin` (`wardrobe-item-editor.tsx:215-242`) — the personal read is
   // LOCAL (no origin, whatever the read said); a borrowed read keeps the
   // origin its endpoint attached, or `null` when it arrived without one.
-  it('loads candidates from the three tiers, de-duped, carrying the borrowed tiers’ origins (v4 :215-242)', async () => {
+  // RE-PINNED by P4.D286: v4 `9ecebf986` reads the candidates through the
+  // same tier loaders every list uses (`:189-225`) — FOUR tiers (the group
+  // tier the old effect never read), every one with `includeArchived` (bug
+  // 190), and a row is local when it is character-owned.
+  it('loads candidates from the four tiers with archived items, de-duped, carrying the borrowed tiers’ origins (v4 :189-225)', async () => {
     const PROJECT_ORIGIN = { scope: 'project' as const, id: 'p1', name: 'Thornfield' };
     const GENERAL_ORIGIN = { scope: 'general' as const, id: null, name: 'Quilltap General' };
     const { component, seen } = await render(
@@ -218,7 +297,7 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
             return {
               wardrobeItems: [
                 item({ id: 'a', origin: PROJECT_ORIGIN }),
-                item({ id: 'b', origin: PROJECT_ORIGIN }),
+                item({ id: 'b', characterId: null, origin: PROJECT_ORIGIN }),
               ],
             };
           case 'wardrobeList':
@@ -233,10 +312,11 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
         }
       },
     );
-    expect(seen.map((r) => r.type)).toEqual([
-      'characterWardrobeList',
-      'projectWardrobeList',
-      'wardrobeList',
+    expect(seen.map((r) => [r.type, r['scope'], r['includeArchived']])).toEqual([
+      ['characterWardrobeList', undefined, true],
+      ['characterWardrobeList', 'group', true],
+      ['projectWardrobeList', undefined, true],
+      ['wardrobeList', undefined, true],
     ]);
     const candidates = (
       component as unknown as { candidates: () => Array<{ id: string; origin: unknown }> }
@@ -271,7 +351,8 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
     const labels = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('label.inline-flex.items-center'),
     ).map((l) => l.textContent?.trim());
-    expect(labels).toEqual(['top', 'bottom', 'footwear', 'accessories', 'hair']);
+    // P4.D286 — v4 `9ecebf986` `SlotCheckboxGroup`: the display labels.
+    expect(labels).toEqual(['Top', 'Bottom', 'Footwear', 'Accessories', 'Hair']);
 
     const c = component as unknown as {
       title: { set(v: string): void };
@@ -305,7 +386,11 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
     expect(c.computedTypes()).toEqual(['top', 'footwear']);
   });
 
-  it('a replace composite may designate slots beyond the union; union slots are locked on (v4 :232-257)', async () => {
+  // RE-PINNED by P4.D286: v4 `9ecebf986` (`:270-295`, bug 190) dropped the
+  // `if (!replace) return` gate — EVERY composite covers its components'
+  // slots plus the ones it designates (`buildCompositeTypes`), so an
+  // additive outfit designates too.
+  it('any composite may designate slots beyond the union; union slots are locked on (v4 :270-295)', async () => {
     const { component } = await render({ initialMode: 'bundle' }, (req) =>
       (req.type as string) === 'characterWardrobeList'
         ? { wardrobeItems: [item({ id: 'shirt', types: ['top'] })] }
@@ -320,16 +405,18 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
     };
     c.componentItemIds.set(['shirt']);
     c.bundleDesignatedTypes.set([]);
-    // Additive composite: coverage is exactly the union.
+    // Nothing designated: coverage is exactly the union.
     expect(c.effectiveTypes()).toEqual(['top']);
-    // Toggling a type in additive bundle mode is a no-op (v4 :246 `if (!replace) return`).
-    c.handleTypeToggle('bottom');
-    expect(c.effectiveTypes()).toEqual(['top']);
-    // Replace composite: designation widens beyond the union…
-    c.replace.set(true);
+    // An additive composite designates beyond the union…
     c.handleTypeToggle('bottom');
     expect(c.effectiveTypes()).toEqual(['top', 'bottom']);
-    // …but a union slot cannot be toggled off (v4 :247 `if (computedTypes.includes) return`).
+    // …and so does a replace one; toggling again takes it back out.
+    c.replace.set(true);
+    c.handleTypeToggle('hair');
+    expect(c.effectiveTypes()).toEqual(['top', 'bottom', 'hair']);
+    c.handleTypeToggle('hair');
+    expect(c.effectiveTypes()).toEqual(['top', 'bottom']);
+    // A union slot cannot be toggled off (v4 :286 `if (computedTypes.includes) return`).
     c.handleTypeToggle('top');
     expect(c.effectiveTypes()).toEqual(['top', 'bottom']);
   });
@@ -362,6 +449,24 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
     expect(c.componentItemIds()).toEqual([]);
   });
 
+  it('Keep locks in the EFFECTIVE types, designated slots included (v4 9ecebf986 :323-329)', async () => {
+    const { component } = await render(
+      { item: item({ id: 'kit', types: ['top', 'hair'], componentItemIds: ['shirt'] }) },
+      (req) =>
+        (req.type as string) === 'characterWardrobeList' && req['scope'] === undefined
+          ? { wardrobeItems: [item({ id: 'shirt', types: ['top'] })] }
+          : { wardrobeItems: [] },
+    );
+    const c = component as unknown as {
+      handleModeChange: (m: string) => void;
+      handleConfirmKeepTypes: () => void;
+      selectedTypes: () => string[];
+    };
+    c.handleModeChange('single');
+    c.handleConfirmKeepTypes();
+    expect(c.selectedTypes()).toEqual(['top', 'hair']);
+  });
+
   it('seeding: components imply bundle mode; initialMode wins (v4 :96-101)', async () => {
     const a = await render({ item: item({ componentItemIds: ['x'] }) });
     expect((a.component as unknown as { editorMode: () => string }).editorMode()).toBe('bundle');
@@ -372,6 +477,10 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
   // -------------------------------------------------------------------------
   // Validation gauntlet (v4 :317-335)
   // -------------------------------------------------------------------------
+  // RE-PINNED by P4.D286: v4 `9ecebf986` (`:377-394`) toasts the ROUTES'
+  // schema sentences through `validateDraft`; only `Add at least one
+  // component` is still hand-written, and `Selected components do not cover
+  // any slots` is gone (a composite always covers its designated slots).
   it('handleSave surfaces the v4 validation messages in order and fires no dispatch', async () => {
     const { component, seen } = await render();
     const c = component as unknown as {
@@ -382,10 +491,23 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
     };
     const baseline = seen.length;
     await c.handleSave();
-    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Enter a title' });
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Title is required' });
     c.title.set('Hat');
     await c.handleSave();
-    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Select at least one type' });
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'At least one type is required' });
+    expect(seen.length).toBe(baseline);
+  });
+
+  it('a bundle with no components keeps its own toast (v4 :379-382)', async () => {
+    const { component, seen } = await render({ initialMode: 'bundle' });
+    const c = component as unknown as {
+      handleSave: () => Promise<void>;
+      title: { set(v: string): void };
+    };
+    const baseline = seen.length;
+    c.title.set('Sunday Best');
+    await c.handleSave();
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Add at least one component' });
     expect(seen.length).toBe(baseline);
   });
 
@@ -684,5 +806,90 @@ describe('the editor’s Picture section (v4 7c8572869)', () => {
     );
     (section.componentInstance as { imageChanged: { emit(): void } }).imageChanged.emit();
     expect(out).toHaveLength(1);
+  });
+});
+
+/**
+ * P4.D286 — bug 190 (v4 `9ecebf986` `wardrobe-item-editor.tsx:189-295`,
+ * `:437-453`, at the pin `4a38222e6`): an outfit whose part was archived keeps
+ * that part's slot. The candidate reads include archived items, an archived
+ * part already in the outfit stays listed (flagged) while an archived
+ * non-member is hidden, the slots never narrow below the stored ones, and a
+ * component the editor cannot resolve keeps a chip and still saves.
+ */
+describe('the editor and an archived or unseen component (bug 190)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const ARCHIVED = '2026-09-01T00:00:00.000Z';
+  const reads = (req: AnyRequest): Record<string, unknown> =>
+    (req.type as string) === 'characterWardrobeList' && req['scope'] === undefined
+      ? {
+          wardrobeItems: [
+            item({ id: 'shirt', types: ['top'] }),
+            item({ id: 'old-hat', title: 'Old Hat', types: ['accessories'], archivedAt: ARCHIVED }),
+            item({ id: 'old-boots', title: 'Old Boots', types: ['footwear'], archivedAt: ARCHIVED }),
+          ],
+        }
+      : { wardrobeItems: [] };
+  const outfit = item({
+    id: 'kit',
+    title: 'Walking Kit',
+    types: ['top', 'accessories'],
+    componentItemIds: ['shirt', 'old-hat'],
+  });
+  type Cands = { id: string; archived?: boolean }[];
+
+  it('keeps an archived part listed (flagged) and its slot; hides an archived non-member', async () => {
+    const { component } = await render({ item: outfit }, reads);
+    const c = component as unknown as {
+      candidates: () => Cands;
+      eligibleCandidates: () => Cands;
+      effectiveTypes: () => string[];
+      computedTypes: () => string[];
+    };
+    expect(c.candidates().map((x) => [x.id, x.archived])).toEqual([
+      ['shirt', false],
+      ['old-hat', true],
+      ['old-boots', true],
+    ]);
+    expect(c.eligibleCandidates().map((x) => x.id)).toEqual(['shirt', 'old-hat']);
+    expect(c.computedTypes()).toEqual(['top', 'accessories']);
+    expect(c.effectiveTypes()).toEqual(['top', 'accessories']);
+    // The save carries the slot the archived part covers.
+    expect(component.buildSaveRequest()).toMatchObject({
+      item: { types: ['top', 'accessories'], componentItemIds: ['shirt', 'old-hat'] },
+    });
+  });
+
+  it('shows the archived part in the picker as “ · archived”', async () => {
+    const { fixture } = await render({ item: outfit }, reads);
+    const metas = [...(fixture.nativeElement as HTMLElement).querySelectorAll('ul li label')].map(
+      (l) => [...l.querySelectorAll('span')].at(-1)!.textContent!.trim(),
+    );
+    expect(metas).toContain('Accessories · archived');
+    expect(metas).not.toContain('Footwear · archived');
+  });
+
+  it('a component it cannot resolve keeps a chip, keeps its stored slot, and still saves', async () => {
+    const { fixture, component } = await render(
+      { item: { ...outfit, componentItemIds: ['shirt', 'gone'] } },
+      reads,
+    );
+    const c = component as unknown as {
+      selectedComponents: () => { id: string; title: string }[];
+      effectiveTypes: () => string[];
+    };
+    expect(c.selectedComponents().map((x) => [x.id, x.title])).toEqual([
+      ['shirt', 'Charcoal Sweater'],
+      ['gone', 'A garment beyond this wardrobe’s reach'],
+    ]);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'A garment beyond this wardrobe’s reach',
+    );
+    // `accessories` came only from the stored types — it is not narrowed away.
+    expect(c.effectiveTypes()).toEqual(['top', 'accessories']);
+    expect(component.buildSaveRequest()).toMatchObject({
+      item: { componentItemIds: ['shirt', 'gone'], types: ['top', 'accessories'] },
+    });
   });
 });

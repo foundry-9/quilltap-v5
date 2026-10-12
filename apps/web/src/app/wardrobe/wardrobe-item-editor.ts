@@ -13,15 +13,26 @@ import {
 } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
-import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
+import type { WardrobeItemDto, WardrobeOrigin, WardrobeSlotType } from '../core/core-contract';
 import { MarkdownField } from '../editor/markdown-field';
-import { WARDROBE_SLOT_TYPES, unionTypes } from './equipped-slots';
+import { buildCompositeTypes, isComposite } from './composite-types';
+import {
+  draftFromItem,
+  draftToPayload,
+  emptyDraft,
+  payloadForEdit,
+  validateDraft,
+  type WardrobeItemDraft,
+  type WardrobeItemPayload,
+} from './item-draft';
+import { SlotCheckboxGroup } from './slot-ui';
 import { GENERAL_CONTAINER, type WardrobeContainer } from './wardrobe-container';
 import {
   containerCreateRequest,
-  containerListRequest,
   containerUpdateRequest,
   dispatchWardrobe,
+  loadCharacterWardrobeItems,
+  loadWardrobeContainerItems,
   type WardrobeContainerRequest,
   type WardrobeLaneRequest,
 } from './wardrobe.api';
@@ -38,6 +49,25 @@ type EditorMode = 'single' | 'bundle';
 /** Where a newly-created wardrobe item is written
  *  (v4 `wardrobe-item-editor.tsx:23`). */
 export type WardrobeCreateScope = 'character' | 'global' | 'project';
+
+/**
+ * v4 `lib/wardrobe/wardrobe-container.ts` `containerForListedItem`
+ * (`9ecebf986`, `:88-102` at the pin `4a38222e6`) — the container a listed
+ * item is addressed through: the `origin` the collection read attached wins;
+ * without one a character-owned item lives in its character's vault and
+ * anything else is taken for a General archetype.
+ *
+ * HANDOFF(P4.D285): a private twin of P4.D285's NEW export in
+ * `wardrobe-container.ts` (its file); the unifier deletes this twin and
+ * imports theirs by name.
+ */
+function containerForListedItem(item: {
+  characterId?: string | null;
+  origin?: WardrobeOrigin | null;
+}): WardrobeContainer {
+  if (item.origin) return { scope: item.origin.scope, id: item.origin.id };
+  return item.characterId ? { scope: 'character', id: item.characterId } : GENERAL_CONTAINER;
+}
 
 /** v4 `lib/utils/char-count.ts` `charCountClass` — the qt-* colour class for a
  *  character-count indicator by proximity to `max`. */
@@ -56,6 +86,15 @@ function charCountClass(current: number, max: number): string {
  *
  * Stacks above the wardrobe control dialog (v4 z-[70]/z-[80], `:399/:407`).
  *
+ * At the pin `4a38222e6` (`9ecebf986` + `4a38222e6`, P4.D286): the form is
+ * one `item-draft` (validated by the routes' own rules, an unchanged folder
+ * never re-sent on edit); the candidate pool is the character's whole reach
+ * (own vault, groups, project, General) or the pinned container + General,
+ * archived items INCLUDED so an outfit whose part was archived keeps that
+ * part's slot (bug 190); a composite's slots are `buildCompositeTypes` —
+ * widen, never narrow — for additive and replace outfits alike; an edit PUTs
+ * the wardrobe the item's origin names; and the Folder field files the item.
+ *
  * DIVERGENCES (deliberate, recorded): the parent reloads on success (the
  * `project-wardrobe-manager` precedent); the description markdown editor is
  * the shared `qt-markdown-field` (v4 `MarkdownLexicalEditor`,
@@ -67,6 +106,7 @@ function charCountClass(current: number, max: number): string {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     MarkdownField,
+    SlotCheckboxGroup,
     WardrobeComponentPicker,
     WardrobeModeChangePrompt,
     WardrobeWearHistorySection,
@@ -240,19 +280,11 @@ function charCountClass(current: number, max: number): string {
           @if (!isBundle()) {
             <div>
               <span class="qt-label mb-2 block">Type(s) *</span>
-              <div class="flex flex-wrap gap-3" (focusout)="touchedTypes.set(true)">
-                @for (type of slotTypes; track type) {
-                  <label class="inline-flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      [checked]="selectedTypes().includes(type)"
-                      (change)="handleTypeToggle(type)"
-                      class="qt-checkbox"
-                    />
-                    <span class="text-sm capitalize text-foreground">{{ type }}</span>
-                  </label>
-                }
-              </div>
+              <qt-slot-checkbox-group
+                [value]="selectedTypes()"
+                (toggle)="handleTypeToggle($event)"
+                (groupBlur)="touchedTypes.set(true)"
+              />
               @if (showTypesError()) {
                 <p class="mt-1 text-xs qt-text-destructive">Select at least one type</p>
               }
@@ -367,7 +399,7 @@ function charCountClass(current: number, max: number): string {
                 [itemId]="editing.id"
                 [container]="home"
                 [createdAt]="editing.createdAt"
-                [isComposite]="(editing.componentItemIds?.length ?? 0) > 0"
+                [isComposite]="isComposite(editing)"
               />
             }
           }
@@ -416,7 +448,13 @@ export class WardrobeItemEditor {
    *  (v4 `:31-32`). */
   readonly characterId = input.required<string | null>();
   readonly item = input<WardrobeItemDto | null>(null);
-  /** Whether this item is being created/edited as a shared item. */
+  /**
+   * ACCEPTED AND IGNORED — v4 `9ecebf986` REMOVED the `isShared` prop: on edit
+   * the item's own tier decides, on create the "Add to" selector does.
+   * HANDOFF(P4.D285): kept only because the wardrobe dialog (P4.D285's file)
+   * still binds `[isShared]="false"`; the unifier deletes this input once
+   * that host drops the binding.
+   */
   readonly isSharedInput = input(false, { alias: 'isShared' });
   /** Project context (the chat's project) — when present the create-scope
    *  selector offers a "this project" destination (v4 `:34-38`). */
@@ -437,6 +475,9 @@ export class WardrobeItemEditor {
   readonly initialMode = input<EditorMode | undefined>(undefined);
   /** Focus the title field on mount (Save-as-outfit, v4 `:131-134`). */
   readonly autoFocusTitle = input(false);
+  /** Create only: the folder the browser is showing, where the new item is
+   *  filed by default (v4 `4a38222e6` `:65-66`). */
+  readonly initialFolder = input('');
 
   readonly closed = output<void>();
   readonly saved = output<void>();
@@ -444,7 +485,7 @@ export class WardrobeItemEditor {
    *  behind the editor can refresh their thumbnails. */
   readonly imageChanged = output<void>();
 
-  protected readonly slotTypes = WARDROBE_SLOT_TYPES;
+  protected readonly isComposite = isComposite;
 
   protected readonly isEditing = computed(() => this.item() !== null);
   /** A non-character container pins the editor to that container (v4 `:75-76`). */
@@ -453,27 +494,39 @@ export class WardrobeItemEditor {
     return container && container.scope !== 'character' ? container : null;
   });
   /** Whether the item lives in a shared tier rather than a character vault
-   *  (v4 `:57-62`): on edit fixed by the item's own tier; on create the
-   *  "Add to" selector governs routing and this only seeds the notice. */
+   *  (v4 `:94-97`): fixed by the item's own tier on edit; on create the
+   *  "Add to" selector (`createScope`) governs routing. */
   protected readonly isShared = computed(() => {
     const existing = this.item();
-    return this.isSharedInput() || (existing !== null && !existing.characterId);
+    return existing !== null && !existing.characterId;
   });
 
   /**
-   * The item's own container when editing — where the wear history (and, with
-   * #82, its pictures) are read. Pinned to a shared container, that
-   * container; otherwise the item keeps its existing tier (v4 `3ee3b1342` /
-   * `7c8572869` `:386-393`). Null in create mode. This is the EDITOR's rule
-   * (it keys off `isShared` and the editor's `characterId`), not
-   * `homeContainerForItem` — v4 keeps the two apart, and so does v5.
+   * The item's own route when editing — where Update PUTs, where the wear
+   * history and the pictures are read. Pinned to a shared container, that
+   * container; otherwise the wardrobe the item's origin names (v4 `9ecebf986`
+   * `:355-361`: "an edit must never leak a project or group item into
+   * Quilltap General"). Null in create mode.
    */
   protected readonly itemHomeContainer = computed<WardrobeContainer | null>(() => {
-    if (!this.item()) return null;
-    return (
-      this.sharedContainer() ??
-      (this.isShared() ? GENERAL_CONTAINER : { scope: 'character', id: this.characterId() })
-    );
+    const existing = this.item();
+    if (!existing) return null;
+    return this.sharedContainer() ?? containerForListedItem(existing);
+  });
+
+  /**
+   * The wardrobe whose folders the Folder field offers: the item's home on
+   * edit, the chosen destination on create (v4 `4a38222e6` `:364-375`).
+   */
+  protected readonly folderContainer = computed<WardrobeContainer | null>(() => {
+    if (this.isEditing()) return this.itemHomeContainer();
+    const shared = this.sharedContainer();
+    if (shared) return shared;
+    const projectId = this.projectId();
+    if (this.createScope() === 'project' && projectId) return { scope: 'project', id: projectId };
+    if (this.createScope() === 'global') return GENERAL_CONTAINER;
+    const characterId = this.characterId();
+    return characterId ? { scope: 'character', id: characterId } : null;
   });
 
   /** Destination for a NEW item (v4 `:63-68`). */
@@ -521,12 +574,19 @@ export class WardrobeItemEditor {
   protected readonly imagePrompt = signal('');
   protected readonly appropriateness = signal('');
   protected readonly isDefault = signal(false);
+  /** Folder under `Wardrobe/` (`''` = root) — the item's own on edit,
+   *  `initialFolder` on create (v4 `4a38222e6` `:135`). */
+  protected readonly folder = signal('');
+  /** The draft the form was seeded from (v4 `initialDraft`, `:125`) — an edit
+   *  compares its folder against this one's. */
+  private initialDraft: WardrobeItemDraft = emptyDraft();
 
   protected readonly selectedTypes = signal<WardrobeSlotType[]>([]);
   protected readonly componentItemIds = signal<string[]>([]);
-  /** Composite equip behaviour (v4 `:85-92`): `replace: false` = additive
-   *  layering; `bundleDesignatedTypes` lets a replace-composite designate
-   *  slots beyond its components' union, seeded from the stored types. */
+  /** Composite equip behaviour (v4 `:139-147`): `replace: false` = additive
+   *  layering; `bundleDesignatedTypes` are the slots a composite covers beyond
+   *  its components' union — seeded from the stored types, so editing only
+   *  ever widens (`buildCompositeTypes`). */
   protected readonly replace = signal(false);
   protected readonly bundleDesignatedTypes = signal<WardrobeSlotType[]>([]);
   /** Editor mode is independent of `componentItemIds` so the user can switch
@@ -562,17 +622,23 @@ export class WardrobeItemEditor {
       if (this.seededFor !== undefined && this.seededFor === item) return;
       this.seededFor = item;
       untracked(() => {
-        this.createScope.set(this.isSharedInput() ? 'global' : 'character');
-        this.title.set(item?.title ?? '');
-        this.description.set(item?.description ?? '');
-        this.imagePrompt.set(item?.imagePrompt ?? '');
-        this.appropriateness.set(item?.appropriateness ?? '');
-        this.isDefault.set(item?.isDefault ?? false);
-        this.selectedTypes.set(item?.types ?? []);
-        const seedComponents = initialComponents ?? item?.componentItemIds ?? [];
+        // v4 `:101` — a create always starts in the character scope (the
+        // removed `isShared` prop no longer seeds it).
+        this.createScope.set('character');
+        // The one form-state shape (v4 `:123-147`), seeded from the item or blank.
+        const draft = item ? draftFromItem(item) : emptyDraft();
+        this.initialDraft = draft;
+        this.title.set(draft.title);
+        this.description.set(draft.description);
+        this.imagePrompt.set(draft.imagePrompt);
+        this.appropriateness.set(draft.appropriateness);
+        this.isDefault.set(draft.isDefault);
+        this.selectedTypes.set(draft.types);
+        this.folder.set(item ? draft.folder : this.initialFolder());
+        const seedComponents = initialComponents ?? draft.componentItemIds;
         this.componentItemIds.set(seedComponents);
-        this.replace.set(item?.replace ?? false);
-        this.bundleDesignatedTypes.set(item?.types ?? []);
+        this.replace.set(draft.replace);
+        this.bundleDesignatedTypes.set(draft.types);
         // v4 :96-101 — initialMode wins; else components imply bundle.
         this.editorMode.set(initialMode ?? (seedComponents.length > 0 ? 'bundle' : 'single'));
         if (this.autoFocusTitle()) {
@@ -581,12 +647,12 @@ export class WardrobeItemEditor {
       });
     });
 
-    // Load candidate items once per (characterId, projectId, container) — in
-    // the character view this character's wardrobe + project + shared
-    // archetypes; pinned to a shared container, that container's items + the
-    // General archetypes (General alone when it IS the container). v4
-    // `:176-241`, keyed on `container?.scope` / `container?.id` as v4's dep
-    // array is.
+    // Load candidate items once per (characterId, projectId, container) —
+    // through the same tier loaders every wardrobe list uses (v4 `9ecebf986`
+    // `:189-225`): in the character view the character's whole reach (own
+    // vault, groups, project, General); pinned to a shared container that
+    // container + General. Keyed on `container?.scope` / `container?.id` as
+    // v4's dep array is.
     effect(() => {
       const characterId = this.characterId();
       const projectId = this.projectId();
@@ -602,52 +668,39 @@ export class WardrobeItemEditor {
     const shared = this.sharedContainer();
     this.candidatesLoading.set(true);
     try {
-      // The three tier reads, in parallel (v4 :187-199); each fails soft.
-      // Pinned to a shared container the FIRST read is that container's own
-      // list — its items are the local (manageable) set, not shared imports —
-      // and the project tier drops out entirely. General needs no first read:
-      // the archetype read below already IS its list.
-      const [personal, project, archetype] = await Promise.all([
-        shared
-          ? shared.scope === 'general'
-            ? Promise.resolve(null)
-            : dispatchWardrobe(this.core, containerListRequest(shared)).catch(() => null)
-          : characterId
-            ? this.core
-                .dispatchData({ type: 'characterWardrobeList', characterId })
-                .catch(() => null)
-            : Promise.resolve(null),
-        !shared && projectId
-          ? this.core
-              .dispatchData({ type: 'projectWardrobeList', projectId })
-              .catch(() => null)
-          : Promise.resolve(null),
-        dispatchWardrobe(this.core, { type: 'wardrobeList' }).catch(() => null),
-      ]);
-
-      const collected: CandidateItem[] = [];
-      // `local` lists are the wardrobe being edited; anything else is
-      // borrowed and keeps the origin its endpoint attached (v4 `cc80dc89d`
-      // :213-228).
-      const push = (data: Record<string, unknown> | null, local: boolean): void => {
-        const list = (data?.['wardrobeItems'] as WardrobeItemDto[] | undefined) ?? [];
-        for (const w of list) {
-          if (collected.some((c) => c.id === w.id)) continue;
-          collected.push({
+      // Archived items are included so a composite whose parts were archived
+      // still resolves (and keeps) their slots (bug 190, v4 `:189-198`).
+      let pool: WardrobeItemDto[];
+      let localIds: Set<string> | null = null;
+      if (shared) {
+        const loaded = await loadWardrobeContainerItems(this.core, shared, {
+          includeArchived: true,
+        });
+        pool = loaded.resolutionItems;
+        localIds = new Set(loaded.items.map((i) => i.id));
+      } else {
+        pool = (
+          await loadCharacterWardrobeItems(this.core, characterId, {
+            projectId,
+            includeArchived: true,
+          })
+        ).items;
+      }
+      this.candidates.set(
+        pool.map((w) => {
+          // Items in the wardrobe being edited get no origin chip; borrowed
+          // ones keep the origin their read attached (v4 `:207-219`).
+          const local = localIds ? localIds.has(w.id) : Boolean(w.characterId);
+          return {
             id: w.id,
             title: w.title,
             types: w.types,
             componentItemIds: Array.isArray(w.componentItemIds) ? w.componentItemIds : [],
             origin: local ? null : (w.origin ?? null),
-          });
-        }
-      };
-      // In a shared container the first read IS the container's list; its
-      // items are the local (manageable) set, not shared imports.
-      push(personal, true);
-      push(project, false);
-      push(archetype, false);
-      this.candidates.set(collected);
+            archived: Boolean(w.archivedAt),
+          };
+        }),
+      );
     } finally {
       this.candidatesLoading.set(false);
     }
@@ -691,9 +744,15 @@ export class WardrobeItemEditor {
       }
     }
     const search = this.componentSearch().trim().toLowerCase();
-    return this.candidates()
-      .filter((c) => !excluded.has(c.id))
-      .filter((c) => (search ? c.title.toLowerCase().includes(search) : true));
+    const componentItemIds = this.componentItemIds();
+    return (
+      this.candidates()
+        .filter((c) => !excluded.has(c.id))
+        // An archived item can't be newly bundled, but one already in the
+        // outfit stays listed so it can be taken out (v4 `9ecebf986` `:244-246`).
+        .filter((c) => !c.archived || componentItemIds.includes(c.id))
+        .filter((c) => (search ? c.title.toLowerCase().includes(search) : true))
+    );
   });
 
   /** v4 `:211-219`. */
@@ -708,30 +767,36 @@ export class WardrobeItemEditor {
 
   protected readonly isBundle = computed(() => this.editorMode() === 'bundle');
 
-  /** Auto-computed types from components (v4 `:226-230`) — the server runs the
-   *  exact same union; mirrored so the UI always shows what's about to save. */
+  /** The chosen components this editor can resolve. */
+  private readonly resolvedComponents = computed(() =>
+    this.candidates().filter((c) => this.componentItemIds().includes(c.id)),
+  );
+
+  /** The slots the chosen components cover (union) — locked on in the slot
+   *  designation (v4 `9ecebf986` `:262-268`). */
   protected readonly computedTypes = computed<WardrobeSlotType[]>(() => {
     if (this.componentItemIds().length === 0) return [];
-    const components = this.candidates().filter((c) => this.componentItemIds().includes(c.id));
-    return unionTypes(components);
+    return buildCompositeTypes(this.resolvedComponents());
   });
 
-  /** v4 `:232-241` — bundle coverage = component union, optionally widened by
-   *  designated slots for a replace composite; single mode = user-selected. */
-  protected readonly effectiveTypes = computed<WardrobeSlotType[]>(() => {
-    if (!this.isBundle()) return this.selectedTypes();
-    if (!this.replace()) return this.computedTypes();
-    return WARDROBE_SLOT_TYPES.filter(
-      (s) => this.computedTypes().includes(s) || this.bundleDesignatedTypes().includes(s),
-    );
-  });
+  /**
+   * Bundle coverage = the component union widened by the designated slots —
+   * `buildCompositeTypes`, the server's own rule (v4 `:270-280`). It never
+   * narrows: a component this editor can't resolve, or one removed, leaves
+   * the slots the item already claimed in place until the user unticks them.
+   * In single mode, types are always user-selected.
+   */
+  protected readonly effectiveTypes = computed<WardrobeSlotType[]>(() =>
+    this.isBundle()
+      ? buildCompositeTypes(this.resolvedComponents(), this.bundleDesignatedTypes())
+      : this.selectedTypes(),
+  );
 
-  /** v4 `:243-257`. */
+  /** v4 `:282-295`. */
   protected handleTypeToggle(type: WardrobeSlotType): void {
     if (this.isBundle()) {
-      // Only a replace composite designates slots, and only beyond the
-      // component union — union slots are always covered (locked on).
-      if (!this.replace()) return;
+      // Designated slots beyond the component union; union slots are always
+      // covered (locked on).
       if (this.computedTypes().includes(type)) return;
       this.bundleDesignatedTypes.update((prev) =>
         prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
@@ -771,9 +836,10 @@ export class WardrobeItemEditor {
     this.editorMode.set(next);
   }
 
-  /** v4 `:285-291` — drop the components but lock in the computed types. */
+  /** v4 `:323-329` — drop the components but lock in the types they had
+   *  been computing (the EFFECTIVE ones, designated slots included). */
   protected handleConfirmKeepTypes(): void {
-    this.selectedTypes.set(this.computedTypes());
+    this.selectedTypes.set(this.effectiveTypes());
     this.componentItemIds.set([]);
     this.editorMode.set('single');
     this.showKeepResetPrompt.set(false);
@@ -813,11 +879,26 @@ export class WardrobeItemEditor {
       (this.isBundle() && this.componentItemIds().length === 0),
   );
 
-  protected readonly selectedComponents = computed(() =>
-    this.componentItemIds()
-      .map((id) => this.candidates().find((c) => c.id === id))
-      .filter((c): c is CandidateItem => Boolean(c)),
-  );
+  /**
+   * Every component keeps a chip — one this editor can't resolve (a store it
+   * can't see) shows as such rather than vanishing, and still saves (v4
+   * `9ecebf986` `:437-453`). While the candidates load, only the resolvable.
+   */
+  protected readonly selectedComponents = computed<CandidateItem[]>(() => {
+    const candidates = this.candidates();
+    const ids = this.componentItemIds();
+    if (this.candidatesLoading()) return candidates.filter((c) => ids.includes(c.id));
+    return ids.map(
+      (id) =>
+        candidates.find((c) => c.id === id) ?? {
+          id,
+          title: 'A garment beyond this wardrobe’s reach',
+          types: [],
+          componentItemIds: [],
+          origin: null,
+        },
+    );
+  });
 
   protected appropriatenessCountClass(): string {
     return charCountClass(this.appropriateness().length, 200);
@@ -826,96 +907,91 @@ export class WardrobeItemEditor {
     return charCountClass(this.imagePrompt().length, 200);
   }
 
+  /** The form as a draft (v4 `:384-390`). */
+  private currentDraft(): WardrobeItemDraft {
+    const isBundle = this.isBundle();
+    return {
+      title: this.title(),
+      description: this.description(),
+      imagePrompt: this.imagePrompt(),
+      appropriateness: this.appropriateness(),
+      isDefault: this.isDefault(),
+      types: isBundle ? this.effectiveTypes() : this.selectedTypes(),
+      componentItemIds: isBundle ? this.componentItemIds() : [],
+      replace: this.replace(),
+      folder: this.folder(),
+    };
+  }
+
   /**
-   * The save request, routed BY CONTAINER then BY TIER — v4 `:405-430`
-   * transcribed exactly:
+   * The body for this save: `draftToPayload`, and on an edit without the
+   * folder when it is unchanged (v4 `:396` — "An edit that leaves the folder
+   * alone doesn't send it").
+   */
+  private payloadFor(payload: WardrobeItemPayload): Record<string, unknown> {
+    const body = this.isEditing() ? payloadForEdit(payload, this.initialDraft.folder) : payload;
+    return { ...body };
+  }
+
+  /**
+   * The save request, routed BY CONTAINER then BY TIER — v4 `9ecebf986`
+   * `:400-417`:
    *
-   *     sharedContainer && isEditing  → PUT  wardrobeItemUrl(container, id)
+   *     isEditing                     → PUT  wardrobeItemUrl(itemHomeContainer, id)
+   *       (itemHomeContainer = sharedContainer ?? containerForListedItem(item))
    *     sharedContainer && !isEditing → POST wardrobeCollectionUrl(container)
-   *     isEditing && isShared         → PUT  /api/v1/wardrobe/{item.id}
-   *     isEditing && !isShared        → PUT  /api/v1/characters/{cid}/wardrobe/{item.id}
    *     createScope==='project'
    *       && projectId                → POST /api/v1/projects/{projectId}/wardrobe
    *     createScope==='global'        → POST /api/v1/wardrobe
    *     otherwise                     → POST /api/v1/characters/{cid}/wardrobe
    *
    * The shared-container arm is `d7263f39`'s bug fix, and **v5 measurably had
-   * the bug**: before this unit an edit to any shared item PUT
-   * `wardrobeUpdate` — Quilltap General — no matter which store the item
-   * actually lived in, so editing a project or group garment silently forked a
-   * General copy. Pinning the editor to the browsed container closes it.
+   * the bug**: before P4.D35 an edit to any shared item PUT `wardrobeUpdate`
+   * — Quilltap General — no matter which store the item actually lived in.
+   * `9ecebf986` closes the same hole from the character view: a project- or
+   * group-origin item there PUTs its origin's route, where v5's old
+   * `isShared → General` rule forked a General copy.
    *
    * Exposed for the unit spec that pins every branch.
    */
-  buildSaveRequest(): WardrobeLaneRequest | WardrobeContainerRequest {
-    const isBundle = this.isBundle();
-    const typesToSave = isBundle ? this.effectiveTypes() : this.selectedTypes();
-    const componentsToSave = isBundle ? this.componentItemIds() : [];
-    // The payload (v4 :342-352) — `replace` is composite-only; leaf items
-    // always replace their slots.
-    const item: Record<string, unknown> = {
-      title: this.title(),
-      description: this.description() || null,
-      imagePrompt: this.imagePrompt() || null,
-      types: typesToSave,
-      appropriateness: this.appropriateness() || null,
-      isDefault: this.isDefault(),
-      componentItemIds: componentsToSave,
-      replace: isBundle ? this.replace() : false,
-    };
-
+  buildSaveRequest(
+    payload: WardrobeItemPayload = draftToPayload(this.currentDraft()),
+  ): WardrobeLaneRequest | WardrobeContainerRequest {
+    const item = this.payloadFor(payload);
     const existing = this.item();
-    const projectId = this.projectId();
+    const home = this.itemHomeContainer();
+    if (existing && home) return containerUpdateRequest(home, existing.id, item);
     const shared = this.sharedContainer();
-    if (shared) {
-      return this.isEditing() && existing
-        ? containerUpdateRequest(shared, existing.id, item)
-        : containerCreateRequest(shared, item);
-    }
-    const characterId = this.characterId();
-    if (this.isEditing() && existing) {
-      return this.isShared() || !characterId
-        ? { type: 'wardrobeUpdate', itemId: existing.id, item }
-        : {
-            type: 'characterWardrobeUpdate',
-            characterId,
-            itemId: existing.id,
-            item,
-          };
-    }
+    if (shared) return containerCreateRequest(shared, item);
+    const projectId = this.projectId();
     if (this.createScope() === 'project' && projectId) {
       return { type: 'projectWardrobeCreate', projectId, item };
     }
+    const characterId = this.characterId();
     if (this.createScope() === 'global' || !characterId) {
       return { type: 'wardrobeCreate', item };
     }
     return { type: 'characterWardrobeCreate', characterId, item };
   }
 
-  /** v4 `:317-386` — the validation gauntlet, then the tier-routed save. */
+  /** v4 `:377-435` — one guard, the routes' own validation, the routed save. */
   protected async handleSave(): Promise<void> {
     this.submitAttempted.set(true);
-    if (!this.title().trim()) {
-      this.toasts.showError('Enter a title');
-      return;
-    }
-    if (!this.isBundle() && this.selectedTypes().length === 0) {
-      this.toasts.showError('Select at least one type');
-      return;
-    }
     if (this.isBundle() && this.componentItemIds().length === 0) {
       this.toasts.showError('Add at least one component');
       return;
     }
-    if (this.isBundle() && this.computedTypes().length === 0) {
-      this.toasts.showError('Selected components do not cover any slots');
+    // One validation, the routes' own body schema (title, at least one slot).
+    const validation = validateDraft(this.currentDraft());
+    if (!validation.ok) {
+      this.toasts.showError(validation.error);
       return;
     }
 
     this.saving.set(true);
     try {
-      await dispatchWardrobe(this.core, this.buildSaveRequest());
-      // v4 `wardrobe-item-editor.tsx:383` — the success toast, before onSave.
+      await dispatchWardrobe(this.core, this.buildSaveRequest(validation.payload));
+      // v4 `:432` — the success toast, before onSave.
       this.toasts.showSuccess(this.isEditing() ? 'Wardrobe item updated' : 'Wardrobe item created');
       this.saved.emit();
     } catch (err) {

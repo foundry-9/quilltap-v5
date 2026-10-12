@@ -242,6 +242,12 @@ _Versions: SPA 0.5.836._
 
 Adds `wardrobe/folders.ts` (v4 `lib/wardrobe/folders.ts` at `4a38222e6`, the whole client-safe module: path helpers, the normaliser family, the error classes) and `wardrobe/folder-view.ts` (v4's pure browser view rules: own tier vs borrowed tiers, child folder rows, tier rows). `wardrobe-container.ts` gains `containerForListedItem`, which addresses a listed item through the wardrobe its `origin` names before falling back to the character/General rule. `WardrobeItemDto` gains the shared `folder?` field. Specs: v4's 19 folder cases transcribed, 14 folder-view rule rows, 2 addressing rows.
 
+#### 2026-10-12 — fix(spa): the wardrobe item editor keeps an archived part's slot and edits an item on its own tier (P4.D286 unit 3, bug 190)
+
+_Versions: SPA 0.5.838._
+
+Ports v4 `9ecebf986`'s item-editor hunks and `4a38222e6`'s `folder` threading at the `4a38222e6` pin. The component candidates now come through the same tier loaders every list uses, with archived items included: four tiers in the character view (the group tier was never read before), the pinned container plus General otherwise. An archived part already in an outfit stays listed and keeps its slot; an archived non-member is hidden; a component the editor cannot resolve keeps a chip (`A garment beyond this wardrobe’s reach`) and still saves (bug 190). A composite's slots are `buildCompositeTypes` for additive and replace outfits alike, so the `replace` gate on designation is gone and Keep locks in the effective types. An edit PUTs the wardrobe the item's origin names, so a project or group garment edited from the character view no longer forks a Quilltap General copy. The body is built through `item-draft` (title trimmed, `folder` always on a create, omitted on an edit that leaves it alone), and the save toasts the routes' own sentences (`Title is required`, `At least one type is required`). The single-mode Type(s) boxes print slot labels. The editor gains `initialFolder`; `isShared` is accepted and ignored until the dialog drops the binding.
+
 #### 2026-10-12 — feat(spa): the component picker's slot labels, archived parts and always-shown designation (P4.D286 unit 2)
 
 _Versions: SPA 0.5.837._
