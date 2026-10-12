@@ -63,6 +63,13 @@ describe('wardrobeItemImagesUrl (v4 :51-62)', () => {
       '/api/v1/wardrobe/i/images?scope=general&action=generate',
     );
   });
+  // P4.D286 — v4 `9ecebf986` `item-images-client.ts:51-58`: `link-image` joins
+  // the union (its helper lands with the import-from-image vertical — R-L).
+  it('names the link-image action', () => {
+    expect(wardrobeItemImagesUrl('i', { scope: 'character', id: 'c1' }, 'link-image')).toBe(
+      '/api/v1/wardrobe/i/images?scope=character&id=c1&action=link-image',
+    );
+  });
 });
 
 describe('the picture byte URLs (v4 :64-72, through the origin-aware apiUrl)', () => {

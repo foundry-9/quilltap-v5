@@ -179081,3 +179081,19 @@ regen (no Rust family); every v4 read is `git show 4a38222e6:<path>`.
   `defineProperty`s gain `writable: true` (unit 5's order-dependent
   `courier-bubble` pollution).
 - SPA gate: lint ok; vitest 490 / 9,374; build ok.
+
+### Unit 7 — the transfer dialog's `isComposite`; `'link-image'`; the thumbnail (Tier 2 item 11)
+
+- `wardrobe-transfer-dialog.ts` — `isComposite` from `composite-types` (v4
+  `WardrobeTransferDialog.tsx:5`, `:75` — the whole span hunk). NO folder
+  control (the order's ruling; v4 `transfers/route.ts:19-20` carries it).
+  `WardrobeTransferApplyRequest` unchanged.
+- `item-images.api.ts` — `'link-image'` in `WardrobeItemImageAction` (v4
+  `item-images-client.ts:51-58`); a URL case added to
+  `item-images.api.spec.ts` (RED at compile before, GREEN after).
+- **Tier 2 item 11 MEASURED:** `git diff 3e6e2f590 4a38222e6` AND
+  `01a83539d..4a38222e6` of `wardrobe-item-thumbnail.tsx`,
+  `WardrobeModeChangePrompt.tsx`, `WardrobeWearHistorySection.tsx`,
+  `WardrobeItemImageSection.tsx`, `constants.ts` — all EMPTY. v5's twins are
+  current; nothing to port.
+- SPA gate: lint ok; vitest 490 / 9,375; build ok.

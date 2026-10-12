@@ -54,11 +54,14 @@ export type {
  * `save-to-store` join the union. v5 rides the two C2 verbs for them
  * ({@link listWardrobeSaveTargets} / {@link saveWardrobeImageToStore}); the
  * members are kept so {@link wardrobeItemImagesUrl} names every action v4's
- * does.
+ * does. `link-image` joins at `9ecebf986` (`:51-58`); its client helper
+ * (`linkWardrobeItemImage`) lands with the import-from-image vertical, which
+ * is its only v4 caller (R-L — `analyze-image` stays refused).
  */
 export type WardrobeItemImageAction =
   | 'generate'
   | 'upload'
+  | 'link-image'
   | 'set-current'
   | 'delete-image'
   | 'save-targets'

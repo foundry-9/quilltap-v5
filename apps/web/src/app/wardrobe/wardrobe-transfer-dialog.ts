@@ -19,6 +19,7 @@ import {
   type WardrobeTransferComponentMode,
   type WardrobeTransferScope,
 } from './wardrobe.api';
+import { isComposite } from './composite-types';
 import { sameWardrobeContainer, type WardrobeContainer } from './wardrobe-container';
 import { ToastService } from '../ui/toast.service';
 
@@ -247,7 +248,7 @@ export class WardrobeTransferDialog {
    * (v4 `:88-94`). The component mounts per open, so v4's reset-on-open
    * collapses into this initial read.
    */
-  protected readonly isComposite = computed(() => (this.item().componentItemIds ?? []).length > 0);
+  protected readonly isComposite = computed(() => isComposite(this.item()));
   protected readonly componentMode = signal<WardrobeTransferComponentMode>('copy');
 
   private loaded = false;

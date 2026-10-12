@@ -242,6 +242,12 @@ _Versions: SPA 0.5.836._
 
 Adds `wardrobe/folders.ts` (v4 `lib/wardrobe/folders.ts` at `4a38222e6`, the whole client-safe module: path helpers, the normaliser family, the error classes) and `wardrobe/folder-view.ts` (v4's pure browser view rules: own tier vs borrowed tiers, child folder rows, tier rows). `wardrobe-container.ts` gains `containerForListedItem`, which addresses a listed item through the wardrobe its `origin` names before falling back to the character/General rule. `WardrobeItemDto` gains the shared `folder?` field. Specs: v4's 19 folder cases transcribed, 14 folder-view rule rows, 2 addressing rows.
 
+#### 2026-10-12 — refactor(spa): the transfer dialog's shared isComposite and the link-image action name (P4.D286 unit 7)
+
+_Versions: SPA 0.5.842._
+
+The two remaining small hunks of v4 `9ecebf986` at the `4a38222e6` pin. The wardrobe transfer dialog reads `isComposite` from `composite-types` (v4's only change to the dialog; it gains no folder control, since the server carries each item's folder). `WardrobeItemImageAction` gains `'link-image'`; its client helper lands with the import-from-image vertical, its only caller.
+
 #### 2026-10-12 — fix(spa): a wardrobe picture whose bytes are gone is removed through the wardrobe route (P4.D286 unit 6, bug 194)
 
 _Versions: SPA 0.5.841._
