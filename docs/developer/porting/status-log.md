@@ -178852,3 +178852,59 @@ component was run, and the lane has no Rust family (the order's regen rule).
   alone (8/8) and the very next full run was green (9,429 / 4 skipped). An
   intermittent cross-file isolation flake whose trigger is file-to-worker
   assignment; no file of this lane touches the clipboard.
+
+### Lane close — P4.D285 (SPA 0.5.845)
+- **v4 moved:** `c2795733f` ("Fix bugs 203–226: memory system defects from
+  the refactor audit") observed on `main` at 2026-10-12 17:04 CDT, past the
+  planning probe's `4ce64fa1e`. Never read, never ported (§R.1); for the next
+  `/driftcheck`.
+- **Gate (final tree):** `npm run lint` ok; `npm run build` ok; `npm test`
+  **495 files / 9,429 passed / 4 skipped** (the four gated browser cases);
+  Playwright by FILE (one run at a time): `wardrobe-flow` 18 / 0,
+  `projects-flow` 7 / 0, `wardrobe-folders-flow` 1 / 0 / 4 skipped (gated).
+  `cargo fmt --all --check` ok. **No `crates/` / `Cargo.*` hunk on the branch
+  (measured: `git diff --stat main -- crates/ Cargo.toml Cargo.lock` empty),
+  so the workspace clippy / test gates have nothing of this lane's to judge —
+  not run; the unifier's union gate covers the workspace.**
+- **Versions at close:** SPA **0.5.845** (from 0.5.835; +1 per commit, ten
+  commits). No crate bumped; harness frozen.
+- **Tier 1:** items 1–7 LANDED (units 1–9). **Tier 2:** item 8 —
+  `mergeWearableTiers` NOT TAKEN (no spec needed it; v5's first-wins merge is
+  the measured equivalent, survey §1.8); the `avatar-generation-pane.ts`
+  ownership move NOT TAKEN (optional; strings identical either side —
+  recorded in the dialog's section comment). Item 9 LANDED (the outfit-store
+  header re-pointed; `wardrobe-control-dialog.race.spec.ts` re-read and green
+  UNCHANGED). **Tier 3:** item 10 — P4.D261's items 23–26 + the
+  checkbox-stays-ticked pattern CARRIED (the split erases none); item 11 —
+  nothing beyond C2 / C3 §0 was needed (no STOP).
+- **Ruled divergences named this lane:** none new as both-ways tables (the
+  SPA has no oracle); the recorded mechanism divergences are in each unit
+  (R-J signals, `qt-modal` Escape, the collapsible chrome, `window.confirm`).
+- **HANDOFFs to the unifier (all after P4.D286 is picked):**
+  1. `wardrobe-browser.ts` — bind `[selection]="selectionFor(item)"`,
+     `[folderCrumb]="crumbFor(item)"`, `(onMoveToFolder)="openPickerFor([$event])"`
+     on the row (unit 6 — exact hunk there); flip `P4D286_ROW_LANDED` in
+     `wardrobe-browser.spec.ts` (measured 23 / 23 with a stand-in row).
+  2. `wardrobe-item-overlays.ts` — `[initialFolder]` on the editor and
+     `(removed)="actions().refresh()"` on the viewer (unit 6). The latter IS
+     P4.D286's §R.10(m) dialog handoff — its host moved from the dialog into
+     the overlays component.
+  3. `wardrobe.api.ts` `duplicateWardrobeItem` — body through P4.D286's
+     `draftToPayload({ ...draftFromItem(item), title })` (§R.10(l), unit 4).
+  4. `e2e/wardrobe-flow.spec.ts` — flip `P4D286_ROW_LANDED`;
+     `e2e/wardrobe-folders-flow.spec.ts` — flip `P4D279_SERVER_LANDED` and
+     `P4D286_ROW_LANDED`, run alone on 4336 (§S.9).
+  5. C3 §2 consumers (P4.D286's Folder field): the folder API takes the
+     `CoreClient` first — `listWardrobeFolders(core, container)`,
+     `createWardrobeFolder(core, container, path)` (the v5 data-layer idiom).
+- **💸 for the dogfood pass (the Friday COPY):** the folder breadcrumb and
+  New folder on a real character; Select + bulk move with the picker's inline
+  New folder…; the picker's bug-229 click and Escape from a CHAT's wardrobe;
+  Show shared's tier rows on a character borrowing from a project AND a group
+  AND General; the Prospero card's browser on a real project (folders,
+  instructions, the editor's project label); a tool-driven `wardrobe_take_off`
+  while the dialog is open, then Reset to worn (bug 198's realtime half); an
+  archived garment refused at Wear / + / the composer (bug 191's toast).
+- **Cleanup:** the worktree's `target/` (only two symlinks onto main's
+  release bins) removed; `apps/web/test-results` + the lane's scratch
+  (`/tmp/p4d285`) removed; no pin worktree was created.
