@@ -116,6 +116,18 @@ const P4D255_SERVER_LANDED = true;
  */
 const P4D265_SERVER_LANDED = true;
 
+/**
+ * ACTIVATE-AT-UNIFY (P4.D285 → P4.D286). v4 `9ecebf986` renamed the row's
+ * kebab items *Move* / *Copy* to **Move to another wardrobe…** / **Copy to
+ * another wardrobe…** (`wardrobe-item-row.tsx:465, :478`) — the ROW is the
+ * sibling SPA lane's, so until it is on the branch the menu still says Move /
+ * Copy. The three transfer beats click through these names; flip to `true` at
+ * unification (§S.9) and the bare names retire.
+ */
+const P4D286_ROW_LANDED = false;
+const MOVE_TO_WARDROBE = P4D286_ROW_LANDED ? 'Move to another wardrobe…' : 'Move';
+const COPY_TO_WARDROBE = P4D286_ROW_LANDED ? 'Copy to another wardrobe…' : 'Copy';
+
 /** The garment the wear-ledger beats create fresh, so its tally starts at zero. */
 const LEDGER_GARMENT = 'Ledger Spats';
 
@@ -702,19 +714,19 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
    * P4.D188 — the "Show shared" tickbox (v4 `055cac45a`), LIVE.
    *
    * Serial position matters: this beat runs directly after the container
-   * selector beat, which creates a garment in Quilltap General. That row then
-   * appears in Aria's MERGED character view, which is the whole population
-   * the toggle governs. Her own garments stay.
+   * selector beat, which creates a garment in Quilltap General. That garment
+   * then appears in Aria's MERGED character view, which is the whole
+   * population the toggle governs. Her own garments stay.
    *
-   * RE-PINNED by P4.D261: the population used to be found by its `· shared`
-   * text, which v4 `cc80dc89d` retired for the origin chip — and the chip
-   * renders only when the server tags the row with an `origin` (P4.D256), so a
-   * pre-round server's borrowed rows carry NO marker at all. The borrowed row
-   * is therefore named (`Domino Mask`, the General garment the selector beat
-   * left), which holds against both servers; the chip itself is asserted by
-   * the gated origin-chip beat below.
+   * RE-PINNED by P4.D285 (v4 `4a38222e6`, the folder browser): a borrowed
+   * wardrobe no longer lists its rows at the closet's root — it is ONE tier row
+   * (`Group: …` / `Project: …` / `General`, chipped Shared / Project / Group),
+   * entered like a folder; **Show shared** hides the tier rows, and unticking
+   * inside one goes back to the closet (v4's rewritten
+   * `wardrobe-control-dialog.shared-filter.test.tsx`, transcribed in the
+   * dialog spec). Rows that need no server change — this beat runs LIVE.
    */
-  test('the Show shared tickbox hides the merged shared rows and leaves the archived toggle alone (P4.D188)', async ({
+  test('the Show shared tickbox hides the borrowed wardrobes’ tier rows and leaves the archived toggle alone (P4.D188 / P4.D285)', async ({
     page,
   }) => {
     test.setTimeout(90_000);
@@ -724,12 +736,9 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await openWardrobeDialog(page);
 
     const dialog = page.getByRole('dialog');
-    const rows = dialog.locator('.qt-card-interactive');
-    // Every BORROWED row carries the origin chip (v4 `cc80dc89d`) — the whole
-    // population, now the union serves `origin` (restored from the lane's
-    // pre-round `Domino Mask` narrowing at the unification).
-    const sharedRows = rows.filter({ has: page.locator('.qt-badge-wardrobe-shared') });
-    const ownRows = dialog.locator('.qt-card-interactive').filter({ hasText: 'Brass Goggles' });
+    const generalTier = dialog.getByTestId('wardrobe-tier-row').filter({ hasText: 'General' });
+    const domino = dialog.locator('qt-wardrobe-item-row').filter({ hasText: 'Domino Mask' });
+    const ownRows = dialog.locator('qt-wardrobe-item-row').filter({ hasText: 'Brass Goggles' });
 
     const sharedBox = dialog.locator('label').filter({ hasText: 'Show shared' }).locator('input');
     const archivedBox = dialog
@@ -737,27 +746,43 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
       .filter({ hasText: 'Show archived' })
       .locator('input');
 
-    // Default ON, and the merged view carries at least one borrowed row.
+    // Default ON: the closet's root lists her own garment and ONE tier row for
+    // Quilltap General (chip "Shared"); the borrowed garment is not at the root.
     await expect(sharedBox).toBeChecked();
     await expect(ownRows).toHaveCount(1);
-    const sharedBefore = await sharedRows.count();
-    expect(
-      sharedBefore,
+    await expect(
+      generalTier,
       'the container-selector beat should have left a Quilltap General garment for Aria to inherit',
-    ).toBeGreaterThan(0);
+    ).toHaveCount(1, { timeout: 10_000 });
+    await expect(generalTier.locator('.qt-badge-wardrobe-shared')).toHaveText('Shared');
+    await expect(domino).toHaveCount(0);
 
-    // Untick: every badged row goes, her own stays.
+    // Entering the tier shows its garments; the crumb names it.
+    await generalTier.click();
+    await expect(domino.first()).toBeVisible();
+    await expect(ownRows).toHaveCount(0);
+    await expect(dialog.getByRole('navigation', { name: 'Wardrobe folders' })).toContainText(
+      'General',
+    );
+
+    // Untick inside the tier: back at the closet, no tier row.
     await sharedBox.uncheck();
-    await expect(sharedRows).toHaveCount(0);
+    await expect(domino).toHaveCount(0);
+    await expect(generalTier).toHaveCount(0);
     await expect(ownRows).toHaveCount(1);
-    // The archived toggle is untouched by all of this (v4's second test).
+    // The archived toggle is untouched by all of this (v4's third test).
     await expect(archivedBox).not.toBeChecked();
 
-    // Re-tick: the borrowed rows come back. Hiding is a view filter, not a
-    // fetch — the same count, from the list already in hand.
+    // Re-tick: the tier row comes back. Hiding is a view filter, not a fetch.
     await sharedBox.check();
-    await expect(sharedRows).toHaveCount(sharedBefore);
+    await expect(generalTier).toHaveCount(1);
     await expect(archivedBox).not.toBeChecked();
+
+    // A search looks in the shared wardrobes too (v4's second test).
+    await dialog.getByLabel('Search wardrobe by title').fill('Domino');
+    await expect(domino.first()).toBeVisible();
+    await expect(dialog.getByText('Searching everywhere')).toBeVisible();
+    await dialog.getByLabel('Search wardrobe by title').fill('');
 
     // Browsing a shared container directly, the tickbox is not there at all:
     // every listed row already belongs to the container on display.
@@ -767,6 +792,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
       dialog.locator('label').filter({ hasText: 'Show shared' }),
     ).toHaveCount(0);
     await expect(dialog.locator('label').filter({ hasText: 'Show archived' })).toHaveCount(1);
+    await expect(dialog.getByTestId('wardrobe-tier-row')).toHaveCount(0);
 
     await dialog.getByRole('button', { name: 'Done' }).click();
     await expect(dialog).toBeHidden();
@@ -817,7 +843,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
 
     // Copy: two choices, and the move is nowhere on offer.
     await kitRow.getByRole('button', { name: 'More actions' }).click();
-    await page.getByRole('menuitem', { name: 'Copy' }).click();
+    await page.getByRole('menuitem', { name: COPY_TO_WARDROBE, exact: true }).click();
     const copyDialog = page.getByRole('dialog').filter({ hasText: 'Copy wardrobe item' });
     await expect(copyDialog.getByText('This outfit bundles 1 component')).toBeVisible();
     await expect(copyDialog.locator('input[name="wardrobe-transfer-components"]')).toHaveCount(2);
@@ -857,7 +883,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
 
     // Move: three choices, defaulting to moving them along.
     await kitRow.getByRole('button', { name: 'More actions' }).click();
-    await page.getByRole('menuitem', { name: 'Move' }).click();
+    await page.getByRole('menuitem', { name: MOVE_TO_WARDROBE, exact: true }).click();
     const moveDialog = page.getByRole('dialog').filter({ hasText: 'Move wardrobe item' });
     await expect(moveDialog.locator('input[name="wardrobe-transfer-components"]')).toHaveCount(3);
     await expect(
@@ -906,7 +932,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
       .first();
     await expect(kitRow).toBeVisible();
     await kitRow.getByRole('button', { name: 'More actions' }).click();
-    await page.getByRole('menuitem', { name: 'Move' }).click();
+    await page.getByRole('menuitem', { name: MOVE_TO_WARDROBE, exact: true }).click();
 
     const moveDialog = page.getByRole('dialog').filter({ hasText: 'Move wardrobe item' });
     await moveDialog.locator('select').selectOption('general:');
@@ -1203,8 +1229,15 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     // Stage: Wear the goggles (a pure client-side staging gesture). A leaf item
     // layers rather than replacing (`wearItemIntoSlots`, `replace: false`), so
     // the staged slate becomes the seeded accessory PLUS the goggles.
+    //
+    // RE-PINNED by P4.D285: the component-transfer beat above carried Brass
+    // Goggles to Quilltap General, so in Aria's view it is BORROWED and sits
+    // behind the General tier row (v4 `4a38222e6`) — enter the tier first. A
+    // borrowed garment still wears (the row's Wear shows whenever a character
+    // is being dressed).
+    await dialog.getByTestId('wardrobe-tier-row').filter({ hasText: 'General' }).click();
     const gogglesRow = dialog
-      .locator('.qt-card-interactive')
+      .locator('qt-wardrobe-item-row')
       .filter({ hasText: 'Brass Goggles' })
       .first();
     await gogglesRow.getByRole('button', { name: 'Wear', exact: true }).click();
@@ -1445,6 +1478,9 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
 
     // The General garment the container-selector beat left, merged into Aria's
     // view: borrowed, so it carries v4's chip with its `Borrowed from` title.
+    // RE-PINNED by P4.D285: it lives behind the General tier row now (v4
+    // `4a38222e6`), so enter the tier first.
+    await dialog.getByTestId('wardrobe-tier-row').filter({ hasText: 'General' }).click();
     const borrowed = dialog.locator('qt-wardrobe-item-row').filter({ hasText: 'Domino Mask' }).first();
     const chip = borrowed.locator('.qt-badge-wardrobe-shared');
     await expect(chip).toHaveText('Shared · Quilltap General', { timeout: 10_000 });
@@ -1453,6 +1489,10 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     // Her own garment carries none. (The fixture's Flight Jacket: by this beat
     // the Move beat has carried Brass Goggles to General, so a `Brass Goggles`
     // row here IS borrowed — the unification's §S.9 finding.)
+    await dialog
+      .getByRole('navigation', { name: 'Wardrobe folders' })
+      .getByRole('button', { name: 'Wardrobe', exact: true })
+      .click();
     const ownJacket = dialog.locator('qt-wardrobe-item-row').filter({ hasText: 'Flight Jacket' }).first();
     await expect(ownJacket).toBeVisible();
     await expect(ownJacket.locator('.qt-badge-wardrobe-shared')).toHaveCount(0);

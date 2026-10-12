@@ -182,6 +182,12 @@ _Docs-only change._
 
 The two help pages v4's wardrobe programme moved between `01a83539d` and `4a38222e6` are copied whole from `git show 4a38222e6:help/<page>`: `help/wardrobe.md` (the folders section, the archive paragraphs, "Retiring a garment twice changes nothing", the analyst-profile paragraph for Import from image, "Slots this outfit covers", "Show archived") and `help/project-wardrobe.md` (the card is the shared browser). The tree stays at 131 files, md5-identical to the pin. `help_tree_equivalence` and `help_section_size_equivalence` were regenerated at the pin (131 docs, 766 sections) and measured red before the copy, green after; `help_tree_embed_guard` and `host_help_docs_boot` are unchanged at 131. `help_tree_equivalence`'s history comment gains the P4.D287 line. No crate source changed; the host rebuilds its embedded help table but is not bumped.
 
+#### 2026-10-12 — test(spa): re-pin the wardrobe and project-card e2e beats to the folder browser; add the gated wardrobe-folders walk (P4.D285 unit 9)
+
+_Versions: SPA 0.5.844._
+
+`e2e/wardrobe-flow.spec.ts`: the Show-shared beat now asserts a borrowed wardrobe as one tier row (chip "Shared") hidden by Show shared, the origin-chip and in-chat staging beats enter the General tier row before reaching borrowed garments, and the three Move/Copy menu clicks go through a switch that flips to "Move to another wardrobe…" / "Copy to another wardrobe…" when the sibling row lane lands. `e2e/projects-flow.spec.ts`: the Wardrobe card beat creates through the item editor and deletes through the row menu. New `e2e/wardrobe-folders-flow.spec.ts` (own server on port 4336): a live tier-row beat plus four folder beats (new folder, the Move-to-folder picker with bug 229's click/Escape, select + bulk move + rename + delete-folder, search crumbs) gated until the server and row lanes land.
+
 #### 2026-10-12 — feat(spa): the Prospero Wardrobe card becomes the shared wardrobe browser (P4.D285 unit 8)
 
 _Versions: SPA 0.5.843._

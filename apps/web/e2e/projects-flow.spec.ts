@@ -493,7 +493,12 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
     await expect(card.getByRole('heading', { name: 'Cleo', exact: true })).toBeVisible();
   });
 
-  // P4.6o — the project Wardrobe card (inline draft form + rows).
+  // P4.6o — the project Wardrobe card. RE-PINNED by P4.D285: v4 `9ecebf986`
+  // deleted `ProjectWardrobeManager` (the inline draft form + `li` rows) and
+  // made the card the shared wardrobe browser (`WardrobeCard.tsx` at
+  // `4a38222e6`) — `+ New Item` opens the item editor, the rows are the
+  // browser's `qt-wardrobe-item-row`s, and Delete is the row kebab's (with
+  // `window.confirm`).
   test('the Wardrobe card: create a default item, see its badges, delete it', async ({ page }) => {
     test.setTimeout(60_000);
     await page.goto(`${PROJ_BASE_URL}/prospero`);
@@ -506,43 +511,53 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
 
     const card = page.locator('qt-project-wardrobe-card');
     await expect(card).toBeVisible({ timeout: 10_000 });
-    const newBtn = card.getByRole('button', { name: '+ New wardrobe item' });
+    const newBtn = card.getByRole('button', { name: '+ New Item' });
     if (!(await newBtn.isVisible().catch(() => false))) {
       await card.getByRole('button', { name: /^Wardrobe \(/ }).click();
       await expect(newBtn).toBeVisible({ timeout: 10_000 });
     }
+    // The browser's folder bar: the project's own closet, no borrowed tiers.
+    await expect(card.getByTestId('wardrobe-folder-bar')).toBeVisible();
+    await expect(card.getByTestId('wardrobe-tier-row')).toHaveCount(0);
 
-    // --- Create a default (top) garment ---
+    // --- Create a default (top) garment through the item editor ---
     await newBtn.click();
-    const title = card.getByPlaceholder('e.g. House livery jacket');
+    const editor = page.locator('qt-wardrobe-item-editor');
+    const title = editor.locator('#wardrobe-title');
     await expect(title).toBeVisible();
     await title.fill('Walk livery cloak');
-    await card
-      // v4 `8bb1a958` renamed this checkbox's label from the bare "Default
-      // item" to say WHO it dresses, now that a project-tier default reaches
-      // every character in the project (P4.D39).
+    // The editor starts with no slot (the deleted inline form defaulted to
+    // Top) — tick it, so the garment is still a Top.
+    await editor
+      .locator('label')
+      .filter({ hasText: /^\s*top\s*$/i })
+      .locator('input[type="checkbox"]')
+      .first()
+      .check();
+    await editor
+      // v4 `8bb1a958`: the default checkbox says WHO it dresses (P4.D39).
       .locator('label', { hasText: 'Worn by default by every character in this project' })
       .locator('input[type="checkbox"]')
       .check();
-    await card.getByRole('button', { name: 'Create item' }).click();
+    await editor.getByRole('button', { name: 'Create', exact: true }).click();
 
-    const row = card.locator('li', { hasText: 'Walk livery cloak' });
+    const row = card.locator('qt-wardrobe-item-row', { hasText: 'Walk livery cloak' });
     await expect(row).toBeVisible({ timeout: 10_000 });
-    // RE-PINNED by P4.D261: v4 `cc80dc89d` prints the row's slots through
-    // `formatSlotLabels` (`ProjectWardrobeManager.tsx:361`) — `Top`, not `top`.
-    await expect(row).toContainText('Top');
-    await expect(row).toContainText('Default');
-    // v4 `3ee3b1342` `:366-369` — every row carries its wear line; a fresh
-    // garment reads `Never worn` (a pre-round server sends no annotation,
-    // which reads the same).
+    // The slot badge: `top` today, `Top` once P4.D286's SlotBadge prints labels.
+    await expect(row).toContainText(/top/i);
+    await expect(row).toContainText('· default');
+    // v4 `3ee3b1342` — every row carries its wear line; a fresh garment reads
+    // `Never worn`.
     await expect(row.getByTestId('wardrobe-wear-line')).toHaveText('Never worn');
 
-    // --- Delete (window.confirm) ---
+    // --- Delete through the row kebab (window.confirm) ---
     page.once('dialog', (d) => void d.accept());
-    await row.getByRole('button', { name: 'Delete' }).click();
-    await expect(card.locator('li', { hasText: 'Walk livery cloak' })).toHaveCount(0, {
-      timeout: 10_000,
-    });
+    await row.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+    await expect(card.locator('qt-wardrobe-item-row', { hasText: 'Walk livery cloak' })).toHaveCount(
+      0,
+      { timeout: 10_000 },
+    );
   });
 });
 

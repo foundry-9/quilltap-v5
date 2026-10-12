@@ -178799,3 +178799,56 @@ component was run, and the lane has no Rust family (the order's regen rule).
 - **Spec:** NEW `project-wardrobe-card.spec.ts` 3. **Red-first:** RED BY
   CONSTRUCTION on `main` (the card mounted the manager; no browser). Green
   with the prospero tree: 6 files / 79.
+
+### Unit 9 — the e2e re-pins + the new folders walk (SPA 0.5.844)
+- `e2e/wardrobe-flow.spec.ts` (P4.D285's, §R.10(k)):
+  - `:717` Show shared RE-PINNED to v4's tier rows (one `wardrobe-tier-row`
+    "General" with chip `Shared`; the borrowed row NOT at the root; enter it;
+    untick inside → the closet; re-tick → the tier row; the search finds the
+    borrowed row with "Searching everywhere"; no tickbox / no tier rows in a
+    container view).
+  - `:1432` origin chip: enters the General tier row first, back via the
+    `Wardrobe` crumb.
+  - **NOT predicted by the survey (§7 U9 named two reds), measured:** the
+    in-chat staging beat (`:1084`) wore *Brass Goggles* from the root, but the
+    component-transfer beat carries it to General first, so it is BORROWED
+    and behind the General tier row — re-pinned to enter the tier. Its red
+    cascaded (Playwright restarts the worker after a failure and the new
+    worker's `beforeAll` rebuilds a FRESH instance) into the origin-chip,
+    ledger, wear-history and Picture beats — five reds, one root cause.
+  - `:820` / `:860` / `:909` the menu clicks go through `MOVE_TO_WARDROBE` /
+    `COPY_TO_WARDROBE` behind `const P4D286_ROW_LANDED = false` (`exact:
+    true` — after P4.D286 a bare `Move` would also match **Move to folder…**).
+    **Unifier: flip `P4D286_ROW_LANDED` → `true` in this file** (§S.9).
+- `e2e/projects-flow.spec.ts` `:497`: the Wardrobe-card beat REWRITTEN onto
+  the browser + editor (`+ New Item`, `#wardrobe-title`, the Top slot ticked —
+  the deleted inline form defaulted it — the default checkbox, `Create`,
+  `qt-wardrobe-item-row` with `· default` / the slot / `Never worn`, kebab
+  `More actions` → `Delete` + `window.confirm`); the slot assertion is
+  case-insensitive so P4.D286's `SlotBadge` labels hold it.
+- NEW `e2e/wardrobe-folders-flow.spec.ts` (port **4336**, own instance over
+  the `characters-*` pair — `wardrobe-flow`'s recipe; serial): the LIVE
+  tier-row beat (a General garment made through the General container, the
+  tier row + chip + count, entered, no filing controls inside, hidden by Show
+  shared), and four beats gated on `P4D279_SERVER_LANDED` (+
+  `P4D286_ROW_LANDED` where the row's affordances are driven): New folder →
+  enter → "Nothing hangs here yet." → the refused `images` name + Escape
+  closes the input only; **Move to folder…** with `(here now)` disabled, the
+  bug-229 click + ONE Escape inside the picker, the move toast, `(here now)`
+  inside the folder; Select + bulk move + the picker's inline `New folder…` +
+  inline Rename + delete-folder with v4's confirmation + "moved up a peg";
+  the search crumb + "Searching everywhere". **Unifier: flip both constants
+  → `true` and run this file alone (§S.9).**
+- **Runs (by FILE, one at a time, port 4329 / 4325 / 4336, main's release
+  bins `target/release/quilltap{,-web}` symlinked into the worktree at
+  `aeaefc218`'s build):** `wardrobe-flow` **18 passed** (1.3 m);
+  `projects-flow` **7 passed** (1.0 m); `wardrobe-folders-flow` **1 passed /
+  4 skipped** (gated) (59 s). Before the in-chat re-pin: 13 passed / 5
+  failed (the cascade above).
+- **Observed, not this lane's (recorded):** one full `npm test` run had 8
+  reds in `chat/courier-bubble.spec.ts` (`Cannot assign to read only
+  property 'clipboard' of object '#<Navigator>'` — another spec in the same
+  vitest worker leaves `navigator.clipboard` non-writable); the file passes
+  alone (8/8) and the very next full run was green (9,429 / 4 skipped). An
+  intermittent cross-file isolation flake whose trigger is file-to-worker
+  assignment; no file of this lane touches the clipboard.
