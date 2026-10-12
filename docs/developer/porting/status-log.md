@@ -178776,3 +178776,26 @@ component was run, and the lane has no Rust family (the order's regen rule).
   items 23–26 and the checkbox-stays-ticked-after-a-failed-save pattern stand
   as recorded (the split erases none; the browser's archived checkbox is the
   same controlled `[checked]` binding).
+
+### Unit 8 — the Prospero card on the shared browser (SPA 0.5.843)
+- `screens/prospero/cards/project-wardrobe-card.ts` REWRITTEN as v4
+  `app/prospero/[id]/components/WardrobeCard.tsx` (`4a38222e6`): list-data +
+  actions for `{ scope: 'project', id }`, title `Wardrobe (N)` from
+  `data.listItems().length`, the description unchanged,
+  `<qt-wardrobe-instructions-section>` + `<qt-wardrobe-browser
+  [scrollList]="false">` in the collapsible body, `<qt-wardrobe-item-overlays
+  containerLabel="projectName || 'This project'">` OUTSIDE it (v4 mounts them
+  outside its `expanded` gate). New `projectName` input.
+- DELETED: `screens/prospero/wardrobe/project-wardrobe-manager.ts` + spec (11
+  cases, retired with the component — v4 deleted `ProjectWardrobeManager.tsx`)
+  and `screens/prospero/wardrobe.api.ts` whole (the `projectWardrobeMutator`
+  / `WardrobeMutator` family; its only consumers were the card, the manager
+  and its spec; the `WARDROBE_SLOT_TYPES` re-export had no importer).
+- `screens/prospero/project-detail.ts`: ONE edit — the card gets
+  `[projectName]="project()!.name"` (v4 `ProjectDetailView.tsx:190-195`; the
+  order's U8 names it; no lane owns the file this round).
+- **Recorded divergences:** v5's `qt-collapsible-card` chrome for v4's
+  header button + chevron; `window.confirm` for `showConfirmation`.
+- **Spec:** NEW `project-wardrobe-card.spec.ts` 3. **Red-first:** RED BY
+  CONSTRUCTION on `main` (the card mounted the manager; no browser). Green
+  with the prospero tree: 6 files / 79.

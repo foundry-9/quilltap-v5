@@ -182,6 +182,12 @@ _Docs-only change._
 
 The two help pages v4's wardrobe programme moved between `01a83539d` and `4a38222e6` are copied whole from `git show 4a38222e6:help/<page>`: `help/wardrobe.md` (the folders section, the archive paragraphs, "Retiring a garment twice changes nothing", the analyst-profile paragraph for Import from image, "Slots this outfit covers", "Show archived") and `help/project-wardrobe.md` (the card is the shared browser). The tree stays at 131 files, md5-identical to the pin. `help_tree_equivalence` and `help_section_size_equivalence` were regenerated at the pin (131 docs, 766 sections) and measured red before the copy, green after; `help_tree_embed_guard` and `host_help_docs_boot` are unchanged at 131. `help_tree_equivalence`'s history comment gains the P4.D287 line. No crate source changed; the host rebuilds its embedded help table but is not bumped.
 
+#### 2026-10-12 — feat(spa): the Prospero Wardrobe card becomes the shared wardrobe browser (P4.D285 unit 8)
+
+_Versions: SPA 0.5.843._
+
+The project page's Wardrobe card now mounts the shared folder browser on the project's wardrobe, with the dressing-instructions section above it, an uncapped list, and the item overlays (editor, move/copy, picture) labelled with the project's name. `ProjectWardrobeManager`, its spec, and the project-only wardrobe mutator are deleted, as v4 deleted theirs. The project detail page passes the project name to the card.
+
 #### 2026-10-12 — feat(spa): the wardrobe dialog's Phase-F split, bug 198's outfit refresh and bug 191's wear refusal (P4.D285 unit 7)
 
 _Versions: SPA 0.5.842._

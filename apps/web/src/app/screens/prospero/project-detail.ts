@@ -144,7 +144,11 @@ import {
             [projectName]="project()!.name"
             [defaultOpen]="firstVisit()"
           />
-          <qt-project-wardrobe-card [projectId]="id()" [defaultOpen]="firstVisit()" />
+          <qt-project-wardrobe-card
+            [projectId]="id()"
+            [projectName]="project()!.name"
+            [defaultOpen]="firstVisit()"
+          />
 
           <qt-project-characters-card [project]="project()!" [defaultOpen]="firstVisit()" />
           <qt-project-model-behavior-card [project]="project()!" [defaultOpen]="firstVisit()" />
