@@ -182,6 +182,12 @@ _Docs-only change._
 
 The two help pages v4's wardrobe programme moved between `01a83539d` and `4a38222e6` are copied whole from `git show 4a38222e6:help/<page>`: `help/wardrobe.md` (the folders section, the archive paragraphs, "Retiring a garment twice changes nothing", the analyst-profile paragraph for Import from image, "Slots this outfit covers", "Show archived") and `help/project-wardrobe.md` (the card is the shared browser). The tree stays at 131 files, md5-identical to the pin. `help_tree_equivalence` and `help_section_size_equivalence` were regenerated at the pin (131 docs, 766 sections) and measured red before the copy, green after; `help_tree_embed_guard` and `host_help_docs_boot` are unchanged at 131. `help_tree_equivalence`'s history comment gains the P4.D287 line. No crate source changed; the host rebuilds its embedded help table but is not bumped.
 
+#### 2026-10-12 — feat(spa): the wardrobe folder browser and the shared item overlays (P4.D285 unit 6)
+
+_Versions: SPA 0.5.841._
+
+New `wardrobe/wardrobe-browser.ts` ports v4's `WardrobeBrowser`: the search / kind / sort / slot / archived / shared / never-worn filters, a breadcrumb folder bar ("Searching everywhere" while searching), folder rows first (inline Rename, Delete through a confirmation that says where the items go), then one tier row per borrowed wardrobe in a character view (`Group: …` / `Project: …` / `General`, chipped Shared / Project / Group, hidden by Show shared), then the folder's items; New folder; Select mode with a sticky bar and bulk Move to folder…; the folder picker mounted from the actions store; and + New Item filing into the folder being browsed. View state is remembered per container without reset effects. New `wardrobe/wardrobe-item-overlays.ts` mounts the picture viewer, item editor and move/copy dialog for any browser host, with v4's origin-aware transfer source and exclusion. Not mounted by the dialog yet.
+
 #### 2026-10-12 — feat(spa): the Move-to-folder picker dialog (P4.D285 unit 5)
 
 _Versions: SPA 0.5.840._

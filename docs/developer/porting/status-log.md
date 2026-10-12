@@ -178652,3 +178652,62 @@ component was run, and the lane has no Rust family (the order's regen rule).
   test of its own — its two browser cases are transcribed in the browser's
   spec); `wardrobe-folders.api.spec.ts` +1. **Red-first:** RED BY
   CONSTRUCTION on `main`. Green 2 / 20.
+
+### Unit 6 — the browser + the overlays (SPA 0.5.841)
+- NEW `wardrobe/wardrobe-browser.ts` — v4 `WardrobeBrowser.tsx` at
+  `97f0d8cb8` (`:96-696`) + `WardrobeFolderRow` (`:698-804`): every string
+  byte-exact from the pin (search placeholder / aria; `Item kind` tabs; `Sort`;
+  slot filters now `WARDROBE_SLOT_META[slot].label` — byte-equal to v5's old
+  capitalised keys; `Show archived` / `Show shared` (untick inside a tier →
+  the closet root) / `Never worn`; the folder bar `Wardrobe folders` nav with
+  `Searching everywhere`, the crumbs + `aria-current`; `New folder` (hidden
+  while searching, disabled while open) + `Select` (`aria-pressed`); the new
+  folder input `Folder name — Enter to make it, Esc to think better of it`;
+  `Select a wardrobe to browse.` / `Loading…` / `Nothing hangs here yet.` /
+  `No items match this filter.`; folder rows (`Folder actions for …`,
+  `Rename` / `Delete`, `Rename folder …`); tier rows (`qt-badge
+  qt-badge-wardrobe-shared` Shared / Project / Group, `N item(s)`); the sticky
+  select bar (`N selected`, `Move to folder…`, `Cancel`; sticky only with
+  `scrollList`); `+ New Item` with `{ folder: inOwnTier ? currentFolder : '' }`.
+  Toasts: `The folder "…" is ready for hanging things in`, `Renamed to "…"`,
+  `Folder removed; N item(s) moved up a peg` / `Folder removed`, `"…" now
+  hangs in …` / `N items now hang in …` (`the top of the wardrobe`), with v4's
+  four fallbacks; the delete confirmation's three sentences.
+  View state keyed per container / view exactly as v4 (`{ key, … }` tuples
+  read through `computed`s — no reset effect).
+  **Recorded divergences:** no `Import from image` button (the standing
+  `analyze-image` deferral, R-L — v4 shows it only when a host passes the
+  callback); every folder call ends in `actions.refreshLists()` (v4's
+  `onSettled`, R-J); the folder row's rename guards a second submit (a blur
+  after a successful Enter) — v4's React unmount fires no blur, so the guard
+  only keeps v4's one-call behaviour.
+- NEW `wardrobe/wardrobe-item-overlays.ts` — v4 `WardrobeItemOverlays`
+  (`:806-892`): viewer / editor / transfer from the actions store; the
+  transfer `source` / `excludeDestination` are v4's ORIGIN-AWARE values
+  (survey §1.3 — v5 `main` passed `null` / ignored origin). The editor's
+  `isShared` binding is dropped (v4 dropped the prop; P4.D286 removes it).
+- **HANDOFF (to the unifier, after P4.D286 is picked) — the browser's row
+  bindings (C3 §5).** In `apps/web/src/app/wardrobe/wardrobe-browser.ts`, on
+  the `<qt-wardrobe-item-row>` immediately after
+  `(addToSlot)="wear()?.onAddToSlot($event.item, $event.slot)"`, add:
+  ```
+                  [selection]="selectionFor(item)"
+                  [folderCrumb]="crumbFor(item)"
+                  (onMoveToFolder)="openPickerFor([$event])"
+  ```
+  (the output name per C3 §5 — if P4.D286 spelled the output differently,
+  bind that name), then flip `const P4D286_ROW_LANDED = false` → `true` in
+  `wardrobe-browser.spec.ts` (4 gated cases: v4's search-crumbs, select-mode,
+  picker-disables-current and bug-229 kebab cases). **Measured in-lane:** with
+  a throwaway stand-in row carrying C3 §5's three affordances (never
+  committed) and the hunk above applied, the browser spec ran **23 / 23**.
+- **HANDOFF — the overlays (C3 §6).** In `wardrobe-item-overlays.ts` on
+  `<qt-wardrobe-item-editor>` add `[initialFolder]="editor.kind === 'create'
+  ? (editor.folder ?? '') : ''"`; on `<qt-wardrobe-image-viewer>` add
+  `(removed)="actions().refresh()"` (bug 194 — P4.D286's §R.10(m) handoff for
+  the dialog lands HERE now, since the dialog's viewer host moved into the
+  overlays).
+- **Specs:** `wardrobe-browser.spec.ts` 23 (v4's nine transcribed — four
+  gated, each with an ungated twin — plus 10 filing / view rows);
+  `wardrobe-item-overlays.spec.ts` 8. **Red-first:** RED BY CONSTRUCTION on
+  `main`. Green 19 + 4 skipped / 8.
