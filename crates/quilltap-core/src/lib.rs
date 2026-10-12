@@ -235,6 +235,7 @@ pub mod progressions;
 pub mod realtime;
 pub mod recall_history;
 pub mod recall_tags;
+pub mod recall_tuning;
 pub mod rng_patterns;
 pub mod sampling_params;
 pub mod scenario_text;

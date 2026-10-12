@@ -12,6 +12,15 @@
 //! Run:
 //!   QT_ORACLE_RECALL_TAGS=/tmp/oracle-recall-tags.ndjson \
 //!     cargo test -p quilltap-harness --test recall_tags_equivalence
+//!
+//! P4.D267 (the recall multiplier retuning, v4 `f7d8064be`, pin `01a83539d`)
+//! grew three DATA-DRIVEN row kinds whose inputs ride in the row: `gate`
+//! (`boostGateThreshold` / `boostGateStrength`), `multT` (the seven fns under
+//! an overridden table) and `combineT` (`combineRecallMultipliers` under a
+//! tuning and / or a relevance). The tuning INPUT is validated + resolved by
+//! v5's real `recall_tuning` here and by v4's real schema + resolver there.
+//! The pre-existing rows' expected values moved ONLY by regeneration (fresh
+//! 1.3 / 1.15; the 1.4 boost cap, which fires with no relevance).
 
 // Data-driven case tables use multi-field tuples by design; the complexity lint
 // is noise here.
@@ -20,13 +29,16 @@
 use std::collections::{HashMap, HashSet};
 
 use quilltap_core::recall_tags::{
-    combine_recall_multipliers, context_multiplier, fresh_event_multiplier,
-    occurred_within_multiplier, parse_targeting_tags, participant_multiplier,
-    recently_whispered_multiplier, scope_project_multiplier, temporal_multiplier, ContextTag,
-    MemoryTagView, RecallContext, RecallMultiplier, ScopePolicy, ScopeTag, TargetingTags,
-    TemporalTag, TimeWindow,
+    boost_gate_strength, boost_gate_threshold, combine_recall_multipliers, context_multiplier,
+    fresh_event_multiplier, occurred_within_multiplier, parse_targeting_tags,
+    participant_multiplier, recently_whispered_multiplier, scope_project_multiplier,
+    temporal_multiplier, BoostGate, ContextTag, MemoryTagView, RecallContext, RecallMultiplier,
+    RecallRelevance, ScopePolicy, ScopeTag, TargetingTags, TemporalTag, TimeWindow,
+    RECALL_MULTIPLIERS,
 };
+use quilltap_core::recall_tuning::{resolve_recall_tuning, validate_recall_tuning_input};
 use serde::Deserialize;
+use serde_json::Value;
 
 const EPS: f64 = 1e-12;
 
@@ -103,6 +115,8 @@ fn load(path: &str) -> Indexed {
                     combine.insert(id, (multiplier, fired, exclude));
                 }
             }
+            // P4.D267's data-driven kinds — `retuning_rows_match_oracle`.
+            Some("gate" | "multT" | "combineT") => {}
             other => panic!("unexpected oracle row kind: {other:?}"),
         }
     }
@@ -249,7 +263,7 @@ fn recall_tags_matches_oracle() {
         ),
     ];
     for (id, t, mp, cp, pol) in scope_cases {
-        let got = scope_project_multiplier(t, mp, cp, pol);
+        let got = scope_project_multiplier(t, mp, cp, pol, &RECALL_MULTIPLIERS);
         assert_mult(&idx, &format!("scope/{id}"), &got);
     }
 
@@ -261,7 +275,11 @@ fn recall_tags_matches_oracle() {
         TemporalTag::Present,
         TemporalTag::Future,
     ] {
-        let got = temporal_multiplier(tags(t, ScopeTag::Wide, ContextTag::Information), false);
+        let got = temporal_multiplier(
+            tags(t, ScopeTag::Wide, ContextTag::Information),
+            false,
+            &RECALL_MULTIPLIERS,
+        );
         assert_mult(&idx, &format!("temporal/{}", t.as_str()), &got);
     }
     // Episodic overhaul: the explicit retrospective arms.
@@ -272,7 +290,11 @@ fn recall_tags_matches_oracle() {
         TemporalTag::Future,
     ] {
         for retro in [false, true] {
-            let got = temporal_multiplier(tags(t, ScopeTag::Wide, ContextTag::Information), retro);
+            let got = temporal_multiplier(
+                tags(t, ScopeTag::Wide, ContextTag::Information),
+                retro,
+                &RECALL_MULTIPLIERS,
+            );
             assert_mult(
                 &idx,
                 &format!("temporal-retro/{}-{retro}", t.as_str()),
@@ -362,7 +384,7 @@ fn recall_tags_matches_oracle() {
             created_at: *created,
             ..Default::default()
         };
-        let got = occurred_within_multiplier(&mem, w.as_ref());
+        let got = occurred_within_multiplier(&mem, w.as_ref(), &RECALL_MULTIPLIERS);
         assert_mult(&idx, &format!("window/{id}"), &got);
     }
 
@@ -589,7 +611,7 @@ fn recall_tags_matches_oracle() {
             chat_id: *chat,
             ..Default::default()
         };
-        let got = fresh_event_multiplier(&mem, *now, *current_chat);
+        let got = fresh_event_multiplier(&mem, *now, *current_chat, &RECALL_MULTIPLIERS);
         assert_mult(&idx, &format!("fresh/{id}"), &got);
     }
 
@@ -604,7 +626,11 @@ fn recall_tags_matches_oracle() {
         ("null-turn", ContextTag::Philosophy, None),
     ];
     for (id, mem_ctx, turn) in ctx_cases {
-        let got = context_multiplier(tags(TemporalTag::Present, ScopeTag::Wide, mem_ctx), turn);
+        let got = context_multiplier(
+            tags(TemporalTag::Present, ScopeTag::Wide, mem_ctx),
+            turn,
+            &RECALL_MULTIPLIERS,
+        );
         assert_mult(&idx, &format!("context/{id}"), &got);
     }
 
@@ -621,7 +647,7 @@ fn recall_tags_matches_oracle() {
             about_character_id: about,
             ..Default::default()
         };
-        let got = participant_multiplier(&mem, &present);
+        let got = participant_multiplier(&mem, &present, &RECALL_MULTIPLIERS);
         assert_mult(&idx, &format!("participant/{id}"), &got);
     }
 
@@ -638,7 +664,7 @@ fn recall_tags_matches_oracle() {
             id: mem_id,
             ..Default::default()
         };
-        let got = recently_whispered_multiplier(&mem, Some(&set), false);
+        let got = recently_whispered_multiplier(&mem, Some(&set), false, &RECALL_MULTIPLIERS);
         assert_mult(&idx, &format!("recent/{id}"), &got);
     }
     // Episodic overhaul: the suspended (retrospective re-ask) arm.
@@ -651,7 +677,7 @@ fn recall_tags_matches_oracle() {
             id: Some("M1"),
             ..Default::default()
         };
-        let got = recently_whispered_multiplier(&mem, Some(&set), suspended);
+        let got = recently_whispered_multiplier(&mem, Some(&set), suspended, &RECALL_MULTIPLIERS);
         assert_mult(&idx, &format!("recent/{id}"), &got);
     }
 
@@ -947,8 +973,10 @@ fn recall_tags_matches_oracle() {
             recently_whispered_ids: recent_set.as_ref(),
             current_chat_id: cc.current_chat_id,
             now_ms: cc.now_ms,
+            tuning: None,
+            present_participant_names: &[],
         };
-        let got = combine_recall_multipliers(&mem, &ctx);
+        let got = combine_recall_multipliers(&mem, &ctx, None);
         let (wm, wf, we) = idx
             .combine
             .get(cc.id)
@@ -971,4 +999,208 @@ fn recall_tags_matches_oracle() {
         idx.mult.len(),
         idx.combine.len()
     );
+}
+
+// ---------------------------------------------------------------------------
+// P4.D267 — the data-driven retuning rows.
+// ---------------------------------------------------------------------------
+
+fn opt_str(v: &Value) -> Option<&str> {
+    v.as_str()
+}
+
+fn strings(v: &Value) -> Vec<String> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn context_tag(v: &Value) -> Option<ContextTag> {
+    v.as_str().and_then(ContextTag::from_kw)
+}
+
+fn temporal_tag(v: &Value) -> Option<TemporalTag> {
+    v.as_str().and_then(TemporalTag::from_kw)
+}
+
+/// The owned pieces a row's `ctx` borrows into a [`RecallContext`].
+struct CtxParts {
+    present: Vec<String>,
+    whispered: Option<HashSet<String>>,
+    window: Option<TimeWindow>,
+    tuning: Option<quilltap_core::recall_tuning::ResolvedRecallTuning>,
+}
+
+fn ctx_parts(ctx: &Value, tuning_input: Option<&Value>) -> CtxParts {
+    CtxParts {
+        present: strings(&ctx["presentAboutCharacterIds"]),
+        whispered: ctx
+            .get("recentlyWhisperedIds")
+            .map(|v| strings(v).into_iter().collect()),
+        window: ctx.get("occurredWithin").and_then(|w| {
+            Some(TimeWindow {
+                from: w["from"].as_str()?.to_string(),
+                to: w["to"].as_str()?.to_string(),
+            })
+        }),
+        tuning: tuning_input.map(|raw| {
+            let (input, _) = validate_recall_tuning_input(raw)
+                .unwrap_or_else(|e| panic!("rust refused a v4-valid tuning input: {e:?}"));
+            resolve_recall_tuning(Some(&input))
+        }),
+    }
+}
+
+fn recall_ctx<'a>(ctx: &'a Value, parts: &'a CtxParts) -> RecallContext<'a> {
+    RecallContext {
+        current_project_id: opt_str(&ctx["currentProjectId"]),
+        scope_policy: if ctx["scopePolicy"] == "exclude" {
+            ScopePolicy::Exclude
+        } else {
+            ScopePolicy::DownWeight
+        },
+        present_about_character_ids: &parts.present,
+        turn_context: context_tag(&ctx["turnContext"]),
+        turn_temporal: temporal_tag(&ctx["turnTemporal"]),
+        turn_retrospective: ctx["turnRetrospective"] == true,
+        occurred_within: parts.window.as_ref(),
+        expand_related: false,
+        recently_whispered_ids: parts.whispered.as_ref(),
+        current_chat_id: opt_str(&ctx["currentChatId"]),
+        now_ms: ctx["nowMs"].as_f64(),
+        tuning: parts.tuning.as_ref(),
+        present_participant_names: &[],
+    }
+}
+
+fn tag_view<'a>(mem: &'a Value, keywords: &'a [String]) -> MemoryTagView<'a> {
+    MemoryTagView {
+        id: opt_str(&mem["id"]),
+        project_id: opt_str(&mem["projectId"]),
+        keywords,
+        about_character_id: opt_str(&mem["aboutCharacterId"]),
+        occurred_at: opt_str(&mem["occurredAt"]),
+        created_at: opt_str(&mem["createdAt"]),
+        chat_id: opt_str(&mem["chatId"]),
+    }
+}
+
+fn want_fired(row: &Value) -> Vec<String> {
+    strings(&row["fired"])
+}
+
+#[test]
+fn retuning_rows_match_oracle() {
+    let path = match std::env::var("QT_ORACLE_RECALL_TAGS") {
+        Ok(p) => p,
+        Err(_) => {
+            eprintln!("SKIP: set QT_ORACLE_RECALL_TAGS to the oracle NDJSON (see test header).");
+            return;
+        }
+    };
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
+    let (mut n_gate, mut n_mult, mut n_combine) = (0, 0, 0);
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let row: Value = serde_json::from_str(line).unwrap();
+        let id = row["id"].as_str().unwrap_or("");
+        match row["kind"].as_str() {
+            Some("gate") => {
+                let g = &row["gate"];
+                let gate = BoostGate {
+                    abs: g["abs"].as_f64(),
+                    margin: g["margin"].as_f64(),
+                    ramp: g["ramp"].as_f64().unwrap(),
+                };
+                let best = row["best"].as_f64().unwrap();
+                let cosine = row["cosine"].as_f64().unwrap();
+                let t = boost_gate_threshold(&gate, best);
+                let st = boost_gate_strength(&gate, cosine, best);
+                let wt = row["threshold"].as_f64().unwrap();
+                assert!(
+                    (t - wt).abs() <= EPS,
+                    "gate '{id}' threshold: rust={t} oracle={wt}"
+                );
+                let ws = row["strength"].as_f64().unwrap();
+                assert!(
+                    (st - ws).abs() <= EPS,
+                    "gate '{id}' strength: rust={st} oracle={ws}"
+                );
+                n_gate += 1;
+            }
+            Some("multT") => {
+                let keywords = strings(&row["memory"]["keywords"]);
+                let mem = tag_view(&row["memory"], &keywords);
+                let parts = ctx_parts(&row["ctx"], row.get("tuningInput"));
+                let ctx = recall_ctx(&row["ctx"], &parts);
+                let m = &parts.tuning.as_ref().unwrap().multipliers;
+                let t = parse_targeting_tags(&keywords);
+                let got = match row["fn"].as_str().unwrap() {
+                    "scope" => scope_project_multiplier(
+                        t,
+                        mem.project_id,
+                        ctx.current_project_id,
+                        ctx.scope_policy,
+                        m,
+                    ),
+                    "temporal" => temporal_multiplier(t, ctx.turn_retrospective, m),
+                    "window" => occurred_within_multiplier(&mem, ctx.occurred_within, m),
+                    "fresh" => fresh_event_multiplier(&mem, ctx.now_ms, ctx.current_chat_id, m),
+                    "context" => context_multiplier(t, ctx.turn_context, m),
+                    "participant" => {
+                        participant_multiplier(&mem, ctx.present_about_character_ids, m)
+                    }
+                    _ => recently_whispered_multiplier(
+                        &mem,
+                        ctx.recently_whispered_ids,
+                        ctx.turn_retrospective,
+                        m,
+                    ),
+                };
+                let wm = row["multiplier"].as_f64().unwrap();
+                assert!(
+                    (got.multiplier - wm).abs() <= EPS,
+                    "multT '{id}': rust={} oracle={wm}",
+                    got.multiplier
+                );
+                let fired: Vec<String> = got.fired.iter().map(|f| f.to_string()).collect();
+                assert_eq!(fired, want_fired(&row), "multT '{id}' fired");
+                assert_eq!(got.exclude, row["exclude"] == true, "multT '{id}' exclude");
+                n_mult += 1;
+            }
+            Some("combineT") => {
+                let keywords = strings(&row["memory"]["keywords"]);
+                let mem = tag_view(&row["memory"], &keywords);
+                let parts = ctx_parts(&row["ctx"], row.get("tuningInput"));
+                let ctx = recall_ctx(&row["ctx"], &parts);
+                let relevance = row.get("relevance").map(|r| RecallRelevance {
+                    cosine: r["cosine"].as_f64().unwrap(),
+                    best_cosine: r["bestCosine"].as_f64().unwrap(),
+                });
+                let got = combine_recall_multipliers(&mem, &ctx, relevance);
+                let wm = row["multiplier"].as_f64().unwrap();
+                assert!(
+                    (got.multiplier - wm).abs() <= EPS,
+                    "combineT '{id}': rust={} oracle={wm}",
+                    got.multiplier
+                );
+                assert_eq!(got.fired, want_fired(&row), "combineT '{id}' fired");
+                assert_eq!(
+                    got.exclude,
+                    row["exclude"] == true,
+                    "combineT '{id}' exclude"
+                );
+                n_combine += 1;
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        n_gate > 0 && n_mult > 0 && n_combine > 0,
+        "retuning rows missing — regenerate the oracle"
+    );
+    eprintln!("OK: recall-tags retuning rows matched oracle ({n_gate} gate, {n_mult} multT, {n_combine} combineT).");
 }

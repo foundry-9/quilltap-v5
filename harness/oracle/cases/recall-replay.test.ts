@@ -13,10 +13,20 @@
  * frozen to the corpus `$nowMs` (the search decay seam; the Rust side passes
  * the same value as `now_ms`).
  *
- * Emits one NDJSON line per case: `{ name, status, body }` where `body` is the
- * route's JSON (the full replay result on 200; `{ error }` on 4xx). The one
- * legitimate nondeterminism — the search path's `lastAccessedAt` bump — never
- * reaches the emitted shape.
+ * Emits one NDJSON line per case: `{ name, status, body, distillCalls, lines }`
+ * where `body` is the route's JSON (the full replay result on 200; `{ error }`
+ * — plus `details` on a validation 400 — on 4xx), `distillCalls` counts the
+ * cheap-LLM executor calls (a pinned-signals case must make none), and `lines`
+ * are the route's two `[Chats v1]` lines, the RecallReplay service's three and
+ * the search's `[Memory]` lines, captured by splicing a transport into the
+ * singleton logger (`LOG_LEVEL=debug`).
+ *
+ * P4.D267 (v4 `f7d8064be` / `3f7320138` / `d58548051`, pin `01a83539d`): each
+ * copy first gets v4's REAL `add-memory-tiers-v1` (`applyMemoryTiersMigration`,
+ * idempotent on the already-widened pair — §R.3), and a case may carry a
+ * `plantSql` run on the copy after open (identically on the Rust side) — the
+ * `asOf` cutoff's newer memory. Since `3f7320138` the replay's searches stamp
+ * nothing at all.
  *
  * Real-DB-under-jest (memory-gate-tier3 recipe): resetModules + doMock past
  * jest.setup's global DB mocks + better-sqlite3 → better-sqlite3-multiple-
@@ -42,7 +52,20 @@ interface CaseSpec {
   distill: DistillSpec;
   deleteChatSettings?: boolean;
   deleteConnections?: boolean;
+  plantSql?: string;
 }
+
+/** The lines this family pins (v4's exact messages). */
+const CAPTURED = new Set([
+  '[Chats v1] Recall replay requested',
+  '[Chats v1] Recall replay failed',
+  'Recall replay using pinned signals',
+  'Recall replay corpus cutoff',
+  'Recall replay complete',
+  '[Memory] TF-IDF embeddings: recall boost gate off',
+  '[Memory] Specific entity anchors chosen',
+  '[Memory] Background reservation (R6)',
+]);
 interface Spec {
   $nowMs: number;
   chatId: string;
@@ -92,6 +115,7 @@ async function main(): Promise<void> {
   (global as { Date: DateConstructor }).Date = FakeDate;
 
   const lines: string[] = [];
+  const { applyMemoryTiersMigration } = await import('../fixtures/apply-memory-tiers-migration');
 
   for (const c of spec.cases) {
     const scratch = mkdtempSync(join(tmpdir(), 'qt-replay-oracle-'));
@@ -100,13 +124,18 @@ async function main(): Promise<void> {
     const mountWork = join(scratch, 'mount-work.db');
     copyFileSync(mainFixture, mainWork);
     copyFileSync(mountFixture, mountWork);
+    // §R.3: v4's REAL tier migration on the copy (a no-op on the widened pair).
+    await applyMemoryTiersMigration(mainWork, {
+      pepperBase64: fixtureSpec.testPepperBase64,
+      ledger: false,
+    });
 
     process.env.ENCRYPTION_MASTER_PEPPER = fixtureSpec.testPepperBase64;
     process.env.SQLITE_PATH = mainWork;
     process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
     process.env.QUILLTAP_DATA_DIR = scratch;
     delete process.env.SQLITE_WAL_MODE;
-    process.env.LOG_LEVEL = 'error';
+    process.env.LOG_LEVEL = 'debug';
 
     jest.resetModules();
     jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
@@ -123,10 +152,12 @@ async function main(): Promise<void> {
     );
     // The ONE model mock: the cheap-LLM executor. The canned text runs through
     // v4's REAL parse callback (the same seam memory-tasks-tier1 uses).
+    let distillCalls = 0;
     jest.doMock('@/lib/memory/cheap-llm-tasks/core-execution', () => ({
       __esModule: true,
       executeCheapLLMTask: jest.fn(
         async (_sel: unknown, _messages: unknown, _uid: unknown, parse: unknown) => {
+          distillCalls++;
           if (c.distill.kind === 'fail') {
             return { success: false, error: 'canned failure' } as never;
           }
@@ -139,8 +170,30 @@ async function main(): Promise<void> {
       ),
     }));
 
+    const { logger } = await import('@/lib/logger');
+    const captured: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+    const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+    internal.transports.splice(0, internal.transports.length, {
+      write: (d: unknown) => {
+        const data = d as {
+          level: string;
+          message: string;
+          context?: Record<string, unknown>;
+          error?: { message: string };
+        };
+        if (!CAPTURED.has(data.message)) return;
+        const { service: _s, environment: _e, ...fields } = data.context ?? {};
+        if (data.error) fields.error = data.error.message;
+        captured.push({ level: data.level, message: data.message, fields });
+      },
+    });
+
     const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
     await initializeDatabase();
+    if (c.plantSql) {
+      const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+      getRawDatabase()!.exec(c.plantSql);
+    }
     const { initializePlugins } = await import('@/lib/startup/plugin-initialization');
     await initializePlugins();
     const { getRepositories } = await import('@/lib/repositories/factory');
@@ -172,7 +225,7 @@ async function main(): Promise<void> {
     await closeDatabase();
     rmSync(scratch, { recursive: true, force: true });
 
-    lines.push(JSON.stringify({ name: c.name, status, body }));
+    lines.push(JSON.stringify({ name: c.name, status, body, distillCalls, lines: captured }));
   }
 
   (global as { Date: DateConstructor }).Date = RealDate;

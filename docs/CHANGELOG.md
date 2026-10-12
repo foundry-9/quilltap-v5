@@ -235,6 +235,64 @@ Ports the pure half of v4's memory-merge work (`3f7320138` F3/F9, at the `01a835
 - `memory_gate.rs` gains `MAX_REINFORCEMENT_FOOTNOTES = 8`, `count_reinforcement_footnotes` and `append_capped_footnotes`.
 - New `memory_merge.rs` holds `plan_memory_merge` and `MemoryMergePlan`. The plan folds losers into a survivor: capped footnotes, summed counts (`?? 1` only for absent/null), the link union minus the group, the earliest `occurredAt` by `Date.parse`, and the UTF-16 string max of `lastReinforcedAt`. The patch keeps v4's key order.
 - New tier-1 family `memory_merge_plan_equivalence` with oracle `memory-merge-plan.ts`, driving v4's real `planMemoryMerge` and footnote helpers: 1 constant, 17 append and 35 plan rows, with the patch compared byte-wise. Mutation proofs: a date compare for `lastReinforcedAt` turns 3 rows red, and `str::cmp` turns the 2 astral rows red.
+#### 2026-10-09 — docs(porting): P4.D267 lane close — gate, R-D table, handoffs
+
+_Docs-only change._
+
+The P4.D267 order is marked LANE COMPLETE. The status log records:
+
+- **Workspace gate:** 709 binaries, 4,669 passed, 8 failed. Every red is a sibling's by design or a recorded handoff.
+- **Own-family sweep from the pin:** 4/4 passing, plus `precompute` 12/12 from a lane-private recipe copy.
+- **Cross-lane measurements:** the R-D families before and after this lane.
+- **Handoffs:** two stale doc comments for P4.D268, and the `p4_d265_wire_contract` refusal rows for the unifier.
+- **Dogfood:** the 💸 rows for the next pass.
+
+#### 2026-10-09 — feat(memory): P4.D267 chatRecallReplay honours memoryBudget, tuning, pinned signals and asOf (v4 `f7d8064be` R7)
+
+_Versions: core 0.0.1268._
+
+The recall-replay verb gains v4's four harness fields.
+
+- **`memoryBudget`** sizes the new path's head through `size_memory_pools` (e.g. 8000 on a retrospective turn → head 30). The default table limit becomes `max(25, head + 10)`.
+- **`tuning`** is validated against v4's strict schema (refusals are 400 `Validation error` with Zod's issues in `details`) and applies to the new path only.
+- **`signals`** reuses a saved distillation, so no cheap-LLM call is made; the chat-settings / profile checks still run, as in v4.
+- **`asOf`** leaves out memories created at or after the turn's opening message and weights the rest at the turn's clock.
+- A JSON `null` for `tuning`, `signals` or `asOf` is refused as v4 refuses it.
+- Replay embeddings are memoized for the life of the process (500 entries, oldest dropped first), so repeat runs embed identical vectors.
+- The result gains `oldHeadSize`, `newHeadSize`, `tuning`, `signalsPinned`, `asOf` and `excludedAfterAsOf`.
+- New log lines: v4's `[Chats v1] Recall replay requested` / `… failed` and the service's pinned-signals, corpus-cutoff and completion lines.
+
+Differential: `recall_replay_equivalence` grows from 15 to 41 cases (budgets, tunings incl. `{}` and LEGACY, strict refusals, pinned signals, `asOf` with a planted newer memory). It now also compares the distill-call count, the validation `details` and 182 captured log lines.
+
+#### 2026-10-09 — feat(memory): P4.D267 hot-only semantic search with the retuning knobs; search stops stamping (v4 `f7d8064be` / `d58548051` / `3f7320138`)
+
+_Versions: core 0.0.1267._
+
+`search_memories_semantic` now runs v4's recall-retuning knobs and its hot-only rule.
+
+- **Relevance gate (R1)** on every candidate, including related-expansion neighbours (gated on their own cosine). It is OFF when the query embedded through `BUILTIN` (TF-IDF) and no tuning was given, with v4's debug line. An explicit tuning turns it back on.
+- **Specific entity anchors (R4):** every entity phrase is counted through a per-phrase hit cache; present participants and zero-hit names are dropped and the rarest are chosen, with v4's debug line. Without R4 the phrases are filtered before the first three are taken (was: take three, then filter).
+- **Background reservation (R6)**, a new pure `reserve_background_slots`. Inert at the defaults.
+- **Hot-only:** `include_cold` (default false) is honoured in the vector scan (filtered before top-K), the anchor / literal hits, hydration, related expansion and the text fallback.
+- **The other harness knobs:** `exclude_memory_ids` (filtered inside the scan), `weight_clock_ms` (not on the text fallback, which stays on the wall clock), and a new `embedding_memo` + `recall_tuning` on `SemanticSearchOptions`.
+- **No more stamping:** search no longer writes `lastAccessedAt` (v4 F6). `bump_access_times` is deleted. Delivery sites stamp what they deliver (P4.D268).
+- **Three v4 lines the search never ported:** the once-per-key embedding-dimension-mismatch WARN, the probe-failure DEBUG and the semantic-failure WARN.
+
+Differential: NEW `semantic_search_tuning_tier3_equivalence` over a NEW committed `semantic-search-tuning-main.db`, built at the pin through v4's real repositories and vector store. It has 26 cases and 5 pure reserve rows, and a scripted embedding boundary on both sides.
+
+#### 2026-10-09 — feat(memory): P4.D267 the recall multiplier retuning — capped/gated combine + recall_tuning (v4 `f7d8064be` pin `01a83539d`)
+
+_Versions: core 0.0.1266._
+
+Ports the pure half of v4's recall multiplier retuning.
+
+- `recall_tags`: the twelve free multiplier constants become one `RECALL_MULTIPLIERS` table (fresh boost 1.6/1.35 → 1.3/1.15) that every multiplier fn takes last. New `BoostGate`, `boost_gate_threshold`, `boost_gate_strength`, `RecallRelevance` and `recall_tuning_of`. `RecallContext` gains `tuning` and `present_participant_names`.
+- `combine_recall_multipliers` takes an optional relevance and splits boosts from penalties. The product of boosts is capped (1.4 by default, labelled `cap1.4`) even with no relevance; with a relevance and a gate, boosts fade below the gate (`gate×0.NN`); the fresh / window boosts can bypass the gate.
+- NEW `recall_tuning`: `ResolvedRecallTuning`, `DEFAULT_RECALL_TUNING`, `resolve_recall_tuning`, `select_specific_anchors`, `describe_recall_tuning`, and Zod-faithful validators for the replay's `tuning` and `signals` body fields.
+- `api/zod_issues` gains the `unrecognized_keys` issue (strict-object tail).
+- Search callers pass no relevance yet, so they get the cap but not the gate; the search knobs land next.
+
+Differentials: NEW `recall_tuning_equivalence` (115 rows); `recall_tags_equivalence` regenerated at the pin and grown by 96 data-driven gate / overridden-table / tuned-combine rows.
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._

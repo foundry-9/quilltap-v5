@@ -35,6 +35,9 @@ import {
   occurredWithinMultiplier,
   freshEventMultiplier,
   combineRecallMultipliers,
+  boostGateThreshold,
+  boostGateStrength,
+  type BoostGate,
   type TargetingTags,
   type TemporalTag,
   type ScopeTag,
@@ -42,6 +45,7 @@ import {
   type ScopePolicy,
   type RecallContext,
 } from '@/lib/memory/recall-tags';
+import { RecallTuningInputSchema, resolveRecallTuning } from '@/lib/memory/recall-tuning';
 
 // Each row is tagged by `kind` so the Rust side dispatches to the right fn.
 // `mult` rows carry the RecallMultiplier shape ({ multiplier, fired, exclude? });
@@ -537,4 +541,180 @@ for (const [id, memory, ctx] of combineCases) {
   rows.push({ kind: 'combine', id, multiplier: r.multiplier, fired: r.fired, exclude: r.exclude });
 }
 
+
+// ---------------------------------------------------------------------------
+// P4.D267 — the recall multiplier retuning (v4 `f7d8064be`, pin `01a83539d`).
+// These rows are DATA-DRIVEN: each carries its own inputs (memory, ctx, the
+// tuning INPUT, the relevance) so the Rust side recomputes from the same bytes.
+// The tuning input runs through v4's real schema + resolver on this side and
+// through v5's validator + resolver on that side.
+// ---------------------------------------------------------------------------
+type Extra =
+  | { kind: 'gate'; id: string; gate: BoostGate; best: number; cosine: number; threshold: number; strength: number }
+  | { kind: 'multT'; id: string; fn: string; memory: unknown; ctx: unknown; tuningInput: unknown; multiplier: number; fired: string[]; exclude?: boolean }
+  | { kind: 'combineT'; id: string; memory: unknown; ctx: unknown; tuningInput?: unknown; relevance?: unknown; multiplier: number; fired: string[]; exclude: boolean };
+const extra: Extra[] = [];
+
+// ---- boostGateThreshold / boostGateStrength grid ----
+const gates: Array<[string, BoostGate]> = [
+  ['abs-only', { abs: 0.45, margin: null, ramp: 0.1 }],
+  ['margin-only', { abs: null, margin: 0.15, ramp: 0.1 }],
+  ['both', { abs: 0.45, margin: 0.15, ramp: 0.1 }],
+  ['both-ramp0', { abs: 0.45, margin: 0.15, ramp: 0 }],
+  ['wide-ramp', { abs: 0.3, margin: 0.05, ramp: 0.25 }],
+];
+const probes: Array<[string, number, number]> = [
+  ['above', 0.7, 0.72],
+  ['at', 0.57, 0.72],
+  ['inside', 0.52, 0.72],
+  ['below-ramp', 0.3, 0.72],
+  ['low-best-above-abs', 0.5, 0.511],
+  ['low-best-at-abs', 0.45, 0.511],
+  ['low-best-inside', 0.4, 0.511],
+  ['low-best-edge', 0.35, 0.511],
+  ['low-best-below', 0.2, 0.511],
+  ['tie-125', 0.3625, 0.5],
+  ['zero-best', 0.1, 0],
+];
+for (const [gid, gate] of gates) {
+  for (const [pid, cosine, best] of probes) {
+    extra.push({
+      kind: 'gate',
+      id: `${gid}/${pid}`,
+      gate,
+      best,
+      cosine,
+      threshold: boostGateThreshold(gate, best),
+      strength: boostGateStrength(gate, cosine, best),
+    });
+  }
+}
+
+// ---- JSON → v4 shapes (sets ride as arrays) ----
+type J = Record<string, unknown>;
+const toCtx = (c: J, tuningInput?: unknown): RecallContext => {
+  const ctx = { ...c } as J;
+  if (Array.isArray(ctx.recentlyWhisperedIds)) ctx.recentlyWhisperedIds = new Set(ctx.recentlyWhisperedIds as string[]);
+  if (tuningInput !== undefined) ctx.tuning = resolveRecallTuning(RecallTuningInputSchema.parse(tuningInput));
+  return ctx as unknown as RecallContext;
+};
+
+const NOW = Date.parse('2026-10-08T12:00:00.000Z');
+const HOUR = 60 * 60 * 1000;
+const baseCtx: J = {
+  currentProjectId: 'proj-a',
+  scopePolicy: 'down-weight',
+  turnContext: 'information',
+  presentAboutCharacterIds: ['char-present'],
+  currentChatId: 'chat-here',
+  nowMs: NOW,
+};
+const boosted: J = {
+  id: 'm-boosted',
+  projectId: 'proj-a',
+  keywords: ['scope: narrow', 'information', 'present'],
+  aboutCharacterId: 'char-present',
+  createdAt: new Date(NOW - 2 * HOUR).toISOString(),
+  chatId: 'chat-elsewhere',
+};
+const past: J = { ...boosted, keywords: ['scope: narrow', 'information', 'past'] };
+const freshOnly: J = { id: 'f', keywords: [], createdAt: boosted.createdAt, chatId: 'chat-elsewhere' };
+const penaltyOnly: J = { id: 'p', keywords: ['moment'], createdAt: '2026-01-01T00:00:00.000Z', chatId: 'chat-elsewhere' };
+const window3h = { from: new Date(NOW - 3 * HOUR).toISOString(), to: new Date(NOW).toISOString() };
+const GATE = { boostGateAbs: 0.45, boostGateMargin: 0.15, boostGateRamp: 0.1 };
+const LEGACY = { boostGateAbs: 0, boostGateMargin: 0, boostCap: 4, multipliers: { freshEvent24h: 1.6, freshEvent48h: 1.35 }, specificAnchors: false };
+const OVERRIDE_ALL = {
+  boostCap: 10,
+  multipliers: {
+    scopeNarrowSameProject: 1.25, scopeNarrowCrossProjectDownWeight: 0.25, temporalPast: 0.8, temporalMoment: 0.65,
+    contextMatch: 1.15, participantPresent: 1.3, recentlyWhispered: 0.55, temporalPastRetrospective: 1.2,
+    temporalMomentRetrospective: 1.05, occurredWithinWindow: 1.35, freshEvent24h: 1.45, freshEvent48h: 1.2,
+  },
+};
+
+// ---- the seven fns under an overridden table ----
+const multTCases: Array<[string, string, J, J]> = [
+  ['scope-same', 'scope', { id: 'm', projectId: 'proj-a', keywords: ['scope: narrow'] }, baseCtx],
+  ['scope-cross', 'scope', { id: 'm', projectId: 'proj-b', keywords: ['scope: narrow'] }, baseCtx],
+  ['temporal-past', 'temporal', { id: 'm', keywords: ['past'] }, baseCtx],
+  ['temporal-past-retro', 'temporal', { id: 'm', keywords: ['past'] }, { ...baseCtx, turnRetrospective: true }],
+  ['temporal-moment', 'temporal', { id: 'm', keywords: ['moment'] }, baseCtx],
+  ['temporal-moment-retro', 'temporal', { id: 'm', keywords: ['moment'] }, { ...baseCtx, turnRetrospective: true }],
+  ['window-in', 'window', { id: 'm', keywords: [], createdAt: boosted.createdAt }, { ...baseCtx, occurredWithin: window3h }],
+  ['fresh24', 'fresh', freshOnly, baseCtx],
+  ['fresh48', 'fresh', { ...freshOnly, createdAt: new Date(NOW - 30 * HOUR).toISOString() }, baseCtx],
+  ['context', 'context', { id: 'm', keywords: ['information'] }, baseCtx],
+  ['participant', 'participant', { id: 'm', keywords: [], aboutCharacterId: 'char-present' }, baseCtx],
+  ['recent', 'recent', { id: 'm', keywords: [] }, { ...baseCtx, recentlyWhisperedIds: ['m'] }],
+];
+for (const [id, fn, mem, c] of multTCases) {
+  const ctx = toCtx(c, OVERRIDE_ALL);
+  const memory = mem as never as Parameters<typeof combineRecallMultipliers>[0];
+  const t = parseTargetingTags((mem.keywords as string[]) ?? []);
+  const m = ctx.tuning!.multipliers;
+  const retro = ctx.turnRetrospective === true;
+  const r =
+    fn === 'scope' ? scopeProjectMultiplier(t, mem.projectId as string, ctx.currentProjectId, ctx.scopePolicy, m)
+    : fn === 'temporal' ? temporalMultiplier(t, retro, m)
+    : fn === 'window' ? occurredWithinMultiplier(memory, ctx.occurredWithin, m)
+    : fn === 'fresh' ? freshEventMultiplier(memory, ctx.nowMs, ctx.currentChatId, m)
+    : fn === 'context' ? contextMultiplier(t, ctx.turnContext, m)
+    : fn === 'participant' ? participantMultiplier(memory, ctx.presentAboutCharacterIds, m)
+    : recentlyWhisperedMultiplier(memory, ctx.recentlyWhisperedIds, retro, m);
+  extra.push({ kind: 'multT', id, fn, memory: mem, ctx: c, tuningInput: OVERRIDE_ALL, multiplier: r.multiplier, fired: r.fired, exclude: r.exclude });
+}
+
+// ---- combineRecallMultipliers under tuning / relevance ----
+const combineTCases: Array<[string, J, J, unknown, { cosine: number; bestCosine: number } | undefined]> = [
+  ['defaults-no-relevance-capped', boosted, baseCtx, undefined, undefined],
+  ['defaults-below-gate', boosted, baseCtx, undefined, { cosine: 0.33, bestCosine: 0.511 }],
+  ['defaults-above-gate-capped', boosted, baseCtx, undefined, { cosine: 0.6, bestCosine: 0.6 }],
+  ['defaults-halfway', boosted, baseCtx, undefined, { cosine: 0.4, bestCosine: 0.511 }],
+  ['tuned-strip', boosted, baseCtx, GATE, { cosine: 0.33, bestCosine: 0.511 }],
+  ['tuned-halfway', boosted, baseCtx, GATE, { cosine: 0.4, bestCosine: 0.511 }],
+  ['tuned-tie-125', boosted, baseCtx, GATE, { cosine: 0.3625, bestCosine: 0.5 }],
+  ['tuned-tie-625', boosted, baseCtx, GATE, { cosine: 0.4125, bestCosine: 0.5 }],
+  ['penalties-in-full', past, baseCtx, GATE, { cosine: 0.2, bestCosine: 0.6 }],
+  ['penalty-only-below-gate', penaltyOnly, baseCtx, GATE, { cosine: 0.1, bestCosine: 0.6 }],
+  ['cap-1.6', boosted, baseCtx, { boostCap: 1.6 }, undefined],
+  ['cap-4-no-label', boosted, baseCtx, { boostCap: 4 }, undefined],
+  ['cap-int-2', boosted, baseCtx, { boostCap: 2 }, undefined],
+  ['overridden-multipliers', boosted, baseCtx, { boostCap: 4, multipliers: { freshEvent24h: 1.3 } }, undefined],
+  ['fresh-bypass', boosted, baseCtx, { ...GATE, freshBypassesGate: true }, { cosine: 0.33, bestCosine: 0.69 }],
+  ['both-bypass', boosted, { ...baseCtx, occurredWithin: window3h }, { boostGateAbs: 0.45, boostGateMargin: 0.15, boostCap: 4, freshBypassesGate: true, windowBypassesGate: true }, { cosine: 0.3, bestCosine: 0.69 }],
+  ['window-bypass-only', boosted, { ...baseCtx, occurredWithin: window3h }, { ...GATE, boostCap: 4, windowBypassesGate: true }, { cosine: 0.3, bestCosine: 0.69 }],
+  ['bypass-still-capped', boosted, baseCtx, { boostGateAbs: 0.45, boostCap: 1.4, freshBypassesGate: true }, { cosine: 0.6, bestCosine: 0.6 }],
+  ['fresh-only-under-bypass', freshOnly, { ...baseCtx, turnContext: null }, { boostGateAbs: 0.45, freshBypassesGate: true }, { cosine: 0.2, bestCosine: 0.6 }],
+  ['fresh-only-no-bypass', freshOnly, { ...baseCtx, turnContext: null }, { boostGateAbs: 0.45 }, { cosine: 0.2, bestCosine: 0.6 }],
+  ['tuning-without-relevance', boosted, baseCtx, GATE, undefined],
+  ['margin-only-gate', boosted, baseCtx, { boostGateAbs: 0, boostGateMargin: 0.1, boostGateRamp: 0.2, boostCap: 4 }, { cosine: 0.45, bestCosine: 0.6 }],
+  ['hard-step', boosted, baseCtx, { boostGateAbs: 0.45, boostGateMargin: 0, boostGateRamp: 0, boostCap: 4 }, { cosine: 0.449, bestCosine: 0.6 }],
+  ['legacy-relevance', boosted, baseCtx, LEGACY, { cosine: 0.1, bestCosine: 0.9 }],
+  ['gate-off-capped', boosted, baseCtx, { boostGateAbs: 0, boostGateMargin: 0 }, { cosine: 0.1, bestCosine: 0.9 }],
+  ['exclude-under-tuning', { ...boosted, projectId: 'proj-b' }, { ...baseCtx, scopePolicy: 'exclude' }, GATE, { cosine: 0.1, bestCosine: 0.9 }],
+  ['override-all-relevance', boosted, baseCtx, { ...OVERRIDE_ALL, ...GATE }, { cosine: 0.42, bestCosine: 0.7 }],
+  [
+    'jest-maximal-stack',
+    { id: 'M1', projectId: 'P1', chatId: 'chat-other', aboutCharacterId: 'C1', keywords: ['past', 'scope: narrow', 'history'], occurredAt: freshAt(3 * FRESH_HOUR) },
+    { currentProjectId: 'P1', scopePolicy: 'down-weight', currentChatId: FRESH_CHAT, nowMs: FRESH_NOW, turnRetrospective: true, turnContext: 'history', presentAboutCharacterIds: ['C1'], occurredWithin: { from: freshAt(24 * FRESH_HOUR), to: freshAt(0) } },
+    undefined,
+    undefined,
+  ],
+  [
+    'jest-maximal-stack-gated',
+    { id: 'M1', projectId: 'P1', chatId: 'chat-other', aboutCharacterId: 'C1', keywords: ['past', 'scope: narrow', 'history'], occurredAt: freshAt(3 * FRESH_HOUR) },
+    { currentProjectId: 'P1', scopePolicy: 'down-weight', currentChatId: FRESH_CHAT, nowMs: FRESH_NOW, turnRetrospective: true, turnContext: 'history', presentAboutCharacterIds: ['C1'], recentlyWhisperedIds: ['M1'], occurredWithin: { from: freshAt(24 * FRESH_HOUR), to: freshAt(0) } },
+    undefined,
+    { cosine: 0.41, bestCosine: 0.55 },
+  ],
+];
+for (const [id, mem, c, tuningInput, relevance] of combineTCases) {
+  const r = combineRecallMultipliers(mem as never, toCtx(c, tuningInput), relevance);
+  const row: Extra = { kind: 'combineT', id, memory: mem, ctx: c, multiplier: r.multiplier, fired: r.fired, exclude: r.exclude };
+  if (tuningInput !== undefined) row.tuningInput = tuningInput;
+  if (relevance !== undefined) row.relevance = relevance;
+  extra.push(row);
+}
+
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');
+for (const r of extra) process.stdout.write(JSON.stringify(r) + '\n');
