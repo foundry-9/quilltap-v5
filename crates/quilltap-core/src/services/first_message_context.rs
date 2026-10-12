@@ -151,7 +151,11 @@ async fn load_for_participant<P: EmbeddingProvider>(
     // Vec of (id, ParticipantMemory) + a membership check.
     let mut memory_map: Vec<(String, ParticipantMemory)> = Vec::new();
 
-    // 1. Recent inter-character memories (up to 3).
+    // 1. Recent inter-character memories (up to 3). Hot tier only (v4's JS
+    // `m.tier !== 'cold'`); consolidated digests lead — a stable partition that
+    // keeps the repository's importance/recency order within each group (v4
+    // `d58548051`; v4 rebuilds even with zero or all digests, whose output is
+    // identical to `digests_first`'s early return — P4.D268 R-J).
     let recent = {
         let cid = speaking_character_id.to_string();
         let about = participant.character_id.clone();
@@ -159,6 +163,12 @@ async fn load_for_participant<P: EmbeddingProvider>(
             memories_read::find_by_character_about_character(conn, &cid, &about)
         })?
     };
+    let recent = crate::services::memory_recap::digests_first(
+        recent
+            .into_iter()
+            .filter(|m| !crate::memory_injector::memory_is_cold(m))
+            .collect(),
+    );
     let recent_count = 3.min(recent.len());
     for memory in recent.iter().take(recent_count) {
         let Some(id) = mem_id(memory) else { continue };
@@ -218,6 +228,11 @@ async fn load_for_participant<P: EmbeddingProvider>(
         };
         if let Ok(text_results) = text {
             for memory in &text_results {
+                // v4: `if (memory.tier === 'cold') continue` — BEFORE the dedup
+                // and the `>= limit` break.
+                if crate::memory_injector::memory_is_cold(memory) {
+                    continue;
+                }
                 let Some(id) = mem_id(memory) else { continue };
                 if !map_has(&memory_map, &id) {
                     memory_map.push((id, participant_memory(participant, memory)));
@@ -230,15 +245,22 @@ async fn load_for_participant<P: EmbeddingProvider>(
     }
 
     // 4. Sort by importance desc, take top N. v4's `.sort((a,b) => b.importance -
-    // a.importance)` is stable — keep insertion order among ties.
-    let mut memories: Vec<ParticipantMemory> = memory_map.into_iter().map(|(_, m)| m).collect();
-    memories.sort_by(|a, b| {
-        b.importance
-            .partial_cmp(&a.importance)
+    // a.importance)` is stable — keep insertion order among ties. The (id,
+    // memory) pairs ride through the sort so the stamp sees the selected ids.
+    let mut selected = memory_map;
+    selected.sort_by(|a, b| {
+        b.1.importance
+            .partial_cmp(&a.1.importance)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
-    memories.truncate(limit);
-    Ok(memories)
+    selected.truncate(limit);
+
+    // The greeting is composed from exactly these — they count as accessed
+    // (v4 `3f7320138` F6; awaited inline, P4.D268 R-D).
+    let ids: Vec<String> = selected.iter().map(|(id, _)| id.clone()).collect();
+    crate::services::memory_access::mark_memories_accessed(db, speaking_character_id, &ids).await;
+
+    Ok(selected.into_iter().map(|(_, m)| m).collect())
 }
 
 /// v4 `loadProjectContext`. Returns `None` for a missing project or on failure

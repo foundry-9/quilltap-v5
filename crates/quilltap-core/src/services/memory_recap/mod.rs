@@ -651,6 +651,20 @@ pub struct MemoryRecapParams<'a> {
     pub now_ms: f64,
 }
 
+/// v4 `digestsFirst(memories)` (`memory-recap.ts:248-252`, `d58548051`): a
+/// stable partition — consolidated digests first, everything else after, each
+/// group keeping the repository's order. None or all digests → the input as-is.
+pub fn digests_first(memories: Vec<Value>) -> Vec<Value> {
+    let is_digest = crate::memory_injector::memory_is_digest;
+    let digests = memories.iter().filter(|m| is_digest(m)).count();
+    if digests == 0 || digests == memories.len() {
+        return memories;
+    }
+    let (mut first, rest): (Vec<Value>, Vec<Value>) = memories.into_iter().partition(is_digest);
+    first.extend(rest);
+    first
+}
+
 /// v4 `generateMemoryRecap`. Fetches memories across importance tiers, summarizes
 /// via the cheap LLM, builds the two conversation lists from vault summaries, and
 /// assembles the recap content. Any error → `{ content: '' }` (best-effort).
@@ -673,7 +687,14 @@ pub async fn generate_memory_recap<E: EmbeddingProvider, C: CompletionProvider>(
                 TIER_LOW_LIMIT,
             )
         }) {
-            Ok((high, medium, low)) => TieredMemories { high, medium, low },
+            // Hot rows only (the repo guarantees it); digests lead the high
+            // bucket so the narrative is built on consolidated knowledge
+            // before loose shards (v4 `d58548051`).
+            Ok((high, medium, low)) => TieredMemories {
+                high: digests_first(high),
+                medium,
+                low,
+            },
             Err(_) => return MemoryRecapResult::default(),
         }
     };
@@ -759,6 +780,41 @@ fn memory_inputs(v: &Value) -> MemoryInputs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// v4 `memory-recap.test.ts` "puts consolidated digests ahead of loose
+    /// shards in the high bucket" — the partition `generate_memory_recap` applies.
+    #[test]
+    fn digests_first_puts_digests_ahead_of_shards_keeping_order() {
+        use serde_json::json;
+        let high = vec![
+            json!({ "id": "a", "summary": "shard A", "source": "AUTO" }),
+            json!({ "id": "d", "summary": "digest D", "source": "CONSOLIDATED" }),
+            json!({ "id": "b", "summary": "shard B" }),
+        ];
+        let ordered = digests_first(high);
+        let out: Vec<&str> = ordered
+            .iter()
+            .map(|m| m["summary"].as_str().unwrap())
+            .collect();
+        assert_eq!(out, vec!["digest D", "shard A", "shard B"]);
+    }
+
+    /// v4's early return: none or all digests → the input untouched.
+    #[test]
+    fn digests_first_with_none_or_all_digests_is_the_identity() {
+        use serde_json::json;
+        let none = vec![
+            json!({ "id": "a" }),
+            json!({ "id": "b", "source": "MANUAL" }),
+        ];
+        assert_eq!(digests_first(none.clone()), none);
+        let all = vec![
+            json!({ "id": "b", "source": "CONSOLIDATED" }),
+            json!({ "id": "a", "source": "CONSOLIDATED" }),
+        ];
+        assert_eq!(digests_first(all.clone()), all);
+        assert!(digests_first(Vec::new()).is_empty());
+    }
 
     #[test]
     fn ramp_limit_endpoints_and_midpoint() {

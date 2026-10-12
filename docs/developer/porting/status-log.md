@@ -175937,3 +175937,208 @@ Branch `claude/recall-engine-tuning-hot-search-46824c`, cut at P4.D265's lane cl
   - `chatRecallReplay` with `memoryBudget: 8000` → `newHeadSize` 15 non-retro (limit 25); `tuning: {boostGateAbs: 0, boostGateMargin: 0}` → `tuning: 'gate off'`; a second run with the first run's `signals` → no cheap call and an identical `query`; `asOf: true` on an old turn → `excludedAfterAsOf > 0`; `tuning: {nope: 1}` → 400 with the `unrecognized_keys` detail; `asOf: null` → 400;
   - a real turn's search leaves `lastAccessedAt` untouched for every undelivered candidate.
 - **Versions at close:** core 0.0.1268. Host, web, cli, tauri and SPA are untouched; the harness stays frozen at 0.0.1110.
+
+## P4.D268 — context delivery: frozen archive, digests, pools, access stamps (lane `claude/p4-context-delivery-frozen-archive-d66e11`)
+
+### Lane start (2026-10-09)
+- **Base:** `18e41e403`, P4.D265's lane tip. It holds `KEYSTONE` `609d9d9f2` plus four tests/docs-only Tier 2 commits; the sibling stage-2 worktrees were cut at the same tip. C1 is unchanged after `KEYSTONE`.
+- **§R.2 probe (20:39 CDT):** v4 `main` checkout on `main`, tree clean. **v4 moved:** `3e6e2f590`, `7a8d6dacc` and `9ecebf986` observed past `01a83539d` at 20:39 CDT. `bugfix` unmoved (`1a2b2164c`). Out of scope (§R.1); recorded for `/driftcheck`.
+- **Pin:** `/tmp/qt-v4-pin-p4d268-01a83539d`, `rev-parse HEAD` = `01a83539dd1c2db31b056d6427b31a04f91563a7`, `package.json` `4.10.0-dev.143`, `node_modules/openai` `7.30.0`. The live lockfile differs from the pin's only in the version stamp, so the symlinked `node_modules` matches the pin.
+- **M1:** the region is at `job_runner.rs:496-497`, after the `topics_for_completed_job` loop in the Completed arm, outside the mark's `if/else`. `job` (`&BackgroundJob`) and `payload` (`Value`, parsed at `:484`) are in scope.
+- **M2:** `MemoryPoolSizing { head_token_budget: i64, head_entries: usize, archive_token_budget: i64, archive_size: usize }`. `DigestSubject { SelfSubject, Any, About(String) }`. `search_filtered`'s closure receives `(id, is_cold)`. `mark_memories_accessed` is async and returns `()`.
+
+### Unit 1 — `services/frozen_archive.rs` rewritten (Tier 1 item 2; R-A, R-C, R-I)
+- The cache is a lane-local `FrozenArchiveCache { entries: Vec<(String, CacheEntry)> }`: insertion-ordered, index 0 is the LRU, linear scans. The process-global `OnceLock<Mutex<…>>` wraps one instance and locks with `unwrap_or_else(PoisonError::into_inner)`.
+- `get_or_compute_frozen_archive(db, character_id, chat_id, compaction_generation, size, present_character_ids, now_ms)` follows R-C. Presence is a first-seen dedupe, dropping `""` and the responder, then a UTF-16 code-unit sort (R-I). The final order keeps `locale_compare`. An `Err` is propagated and not cached.
+- **The R-A API:**
+  - `pub fn invalidate_frozen_archive(character_id: &str)` — unchanged signature; drops every chat's entry for the character.
+  - `pub fn invalidate_all_frozen_archives()`.
+  - `pub fn invalidate_frozen_archives_for_completed_job(job_id: &str, job_type: &str, payload: &serde_json::Value)`.
+  - `reset_frozen_archive_cache_for_tests()` keeps its signature.
+- The composition is `compose_frozen_archive` over injected reads, so the unit tests drive v4's mocked-repository cases on LOCAL cache instances with counting fetchers and never race the global. 23 tests: v4's 11 top-level and 5 `digest composition` cases verbatim, plus `size = 0`, the propagated `Err`, the code-unit presence sort, `localeCompare`, the capture pins for `Composed`/`Computed` and both invalidation lines with their silence legs, and the job hook's four v4 cases plus the `""`, non-string and `dryRun: "true"` edges. v4's catch WARN is pinned NEGATIVE.
+- `build_context` passes `&input.chat.id`, with `None` size and no present ids until unit 5.
+
+### Unit 1 landed — `048c45dfb`
+The status header records the R-A signatures.
+
+### Unit 2 — the region call (Tier 1 item 3; R-B)
+- `job_runner.rs` gains exactly one line, inside P4.D265's marker: `crate::services::frozen_archive::invalidate_frozen_archives_for_completed_job(&job.id, &job.job_type, &payload);`. Nothing else in the file moved.
+- **Red-first:** `frozen_archive::tests::runner::a_completed_housekeeping_job_drops_the_characters_archives` drives a stub `MEMORY_HOUSEKEEPING` handler through the real `JobRunner::pump_claim`. Before the line it FAILED (`the swept character's archive is gone` — the entry survived). After the line, all 24 `frozen_archive` tests pass.
+- **R-B, a recorded divergence on an arm unreachable in v4:** the region sits after both mark arms, so the hook fires even when `mark_completed` failed. v4 fires it only inside the `applyWritesAtomically` try. v5's handler writes committed before the mark, so invalidating is correct. There is no v4 output to compare, so there is no ruled table.
+
+### Red-first at the KEYSTONE tip (Tier 1 item 1)
+The recipe sweep ran from the pin against a scratch worktree at the base `18e41e403`: 19 families, results in `/tmp/p4d268/redfirst-keystone.json`. 6 red, 13 ok.
+- **RED, this lane's cause:**
+  - `memory_injector` — `debug[0].memoryId` is `None` vs v4's `Some` (F6).
+  - `build_context_tier3` — `plain_single_char_turn`'s archive carried a predecessor op's "Pantry crate" rows, from the character-keyed cache with no reset. `memoriesIncluded` 28 vs 30.
+- **RED, a sibling's cause:**
+  - `precompute` — `spoke-then-window-searches` `recallAdjustment.multiplier` 1.36 vs 1.105. P4.D267's retuning (§R.13(c)).
+  - `orchestrator_tier3` — `simple_json_then_native_tool_call`: v4 consumed two `key-textblock` streams vs one. P4.D270's fold OTHER call (§R.13(f)).
+  - `enclave_step_tier3` — `chats.otherExtractionWatermarkMessageId`: null vs set. P4.D270 (§R.13(f)).
+  - `brahma_orchestrator_tier3` — 9 rows, `no canned stream queued (2 msgs)`. Classified after unit 5.
+- **OK at KEYSTONE:** `first_message_context`, `search_tools`, `carina_query_tier3`, `character_optimizer_tier3`, `announcer_tier3`, `in_scene_voiced_tier3`, `help_chat_orchestrator_tier3`, `answer_confirmation_tier3`, `regenerate_swipe_tier3`, `primary_stream_tier3`, `salon_swipe_generate`, `turn_orchestrator_tier2`, `chat_continuation_tier2`. None of their corpora holds a digest or a cold row; this lane's rows add them.
+
+### Unit 2 landed — `42fa387c0`
+
+### Unit 3 — the injector (Tier 1 item 4; R-F, R-H, R-J)
+- New `format_digest_provenance`. The suffix sits on the inter, archive and head lines only, inside the token estimate.
+- The debug `memoryId` is set on all four formatters, plus `DebugInterCharacterMemoryInfo.memory_id`.
+- The inter importance half sorts digests first, then by weight (stable).
+- There is ONE `injector_memory_from_json`, with `source` and `consolidated_from_len`, plus `memory_is_cold` and `memory_is_digest`. Carina's and build_context's copies were removed; voice-rewrite repoints at the shared projection. Carina's `injector_result_from_search` still drops `recall_adjustment` (R-F).
+- **Differential:** `memory-injector.ts` + `memory_injector_equivalence.rs`, regenerated from the pin: 110 rows, `grep -c 'from 14 notes'` = 2. The `wireMem` row carries `source` + `consolidatedFromLen`.
+  - Added: 6 `provenance` rows; `mem-digest-no-suffix`, `frozen-digest-suffix` and `head-digest-suffix`; the two tips-budget pairs (frozen: 2 → 1 used at the plain budget of 38); `inter-digests-lead`; `inter-digest-with-relevance`.
+  - Floors: provenance ≥ 6, printed suffix lines ≥ 6, debug `memoryId` ≥ 20.
+  - RED at KEYSTONE (memoryId), green here. **Mutation:** reverting the digests-first sort reddens `inter-digests-lead`.
+
+### Unit 3 landed — `7f09383ce`
+
+### Unit 4 — buildContext (Tier 1 item 5; R-D, R-H, R-K, R-L)
+- **Sizing.** `ordinary_sizing` / `retro_sizing` = `size_memory_pools(budget.memory_budget as f64, …)`, computed before the archive.
+- **The archive call.** It takes `&input.chat.id`, `Some(ordinary.archive_size)`, and the present ids: the `participant_characters` keys minus the responder, or none.
+- **The fallback search.** Its limit is `(retro|ordinary).head_entries * 3`. `present_participant_names` = `[character.name, …participant names]`, non-empty only.
+- **The turn's sizing.** `turn_sizing` supplies the head and archive budgets and `max_entries`.
+- **The lines.** `[ContextManager] Memory pools sized` has 10 keys in v4's order. The inter DEBUG line moved to camelCase keys (R-L, the unit pin moved).
+- **The stamps** (archive + head, then inter), awaited inline (R-D).
+- **Inter digests.** `INTER_CHAR_DIGEST_LIMIT = 2`; inter digests are fetched per other id, then the partition, then a first-seen dedupe.
+- **R-H.** `DebugInterCharacterOut.memory_id`, skipped when `None`. `orchestrator.rs:5415`'s test literal gains `memory_id: None` mechanically. `loaded_memories_from_debug` is unchanged.
+- **R-K, unchanged.** The archive's `.unwrap_or_default()` and the inter reads' `?` stay (v4 pushes warnings — the Tier 3 item 19 deferral).
+- **Unit pin:** `inter_character_log_tests::the_pools_line_and_the_delivered_stamp`.
+  - The pools line has exact keys and values at the 2,000 floor (head 300/8, archive 1,700/28). The stamp `count` equals `headUsed + archiveUsed`. A `skipMemories` turn logs neither line.
+  - The pin uses its own chat id. The archive cache is process-global and its siblings build `chat-1` for the same character, which made the pin flake in the full lib run.
+- **Differential `build_context_tier3`** (fixture + oracle regenerated at the pin into `/tmp/p4d268/bc/`; 283 rows; `grep -c 'from 3 notes'` = 4; `Memory pools sized` 27; `Marking memories accessed` 27):
+  - The cache is RESET per op on both sides.
+  - New per-op `deliveryLog` rows: `Composed` / `Computed archive`, the pools line and the stamp, with message, key order and values. Floors require every message to appear.
+  - The spec is append-only; `plantSql` / `unplantSql` were added to the op shape on both sides.
+  - Two ops were added:
+    - `p4d268_archive_bites_at_floor_with_self_digest` — profile window 8,000, so `memoryBudget` is 2,000 and the archive is 28 of 31 hot rows. A self digest with three sources is selected first and prints ` (from 3 notes)`; a cold 0.99 row is absent. **GREEN.**
+    - `p4d268_multi_character_digests_lead` — two digests about Bea (3 and 2 sources, importance 0.4 and 0.5) lead the inter importance half ahead of the 0.7 partition row. The archive takes them first (8k split, size 60).
+  - **Result:** all 68 prior ops are GREEN, including KEYSTONE's red `plain_single_char_turn`. That op's KEYSTONE red was the FIXED 25-row archive vs v4's budget-sized 60, which cut `Sketched…` (0.8) behind the 0.95 pantry crates — F7, this lane. It was not cross-op cache bleed, as the red-first note guessed.
+  - **UNION-PENDING(P4.D267) — `p4d268_multi_character_digests_lead`, two rows:**
+    - The planted COLD row about Bea (`…000005`) reaches v5's dynamic head (`headUsed` 1 vs 0; head stamp `count` 33 vs 32).
+    - It also reaches the inter-character relevance half (inter stamp `count` 5 vs 4). Both arrive via KEYSTONE's unfiltered `search_memories_semantic` (text fallback, score 0.00625).
+    - With the delivery assert relaxed, the built-context diff was exactly those two entries, plus `memories` / `total` token counts and `memoriesIncluded` 38 vs 36. The archive and the inter importance half exclude the cold row on both sides. P4.D267's hot filter turns the op green on the union.
+
+### Unit 4 landed — `0336c29ec`
+
+### Unit 5 — pre-compute + orchestrator (Tier 1 item 6; R-G)
+- **Pre-compute.** `ProactiveRecallInput.present_participant_names: &'a [String]` is threaded into `RecallContextInput`. The search uses `limit: Some(PROACTIVE_RECALL_POOL_SIZE)` (90). `finish_outcome` returns ALL results; the `take(10)` and its doc were removed. The unit test `caps_memories_at_ten` became `returns_the_whole_proactive_pool` (v4's renamed jest case).
+- **Orchestrator.** It builds `present_participant_names` (the `character_name`, then every `participant_characters` value's `name`, non-empty) and passes it. The `build_context.rs` test literal gains `present_participant_names: &[]`.
+- **`precompute` family** (R-G — this lane's files; regenerated at the pin from the committed `episodic-recall` pair copied into `/tmp/p4d268/`):
+  - The marked `// === P4.D268: pool-size rows (append-only) ===` blocks on both sides add per-case `plantSql`, executed on the case's copy, and the optional `presentParticipantNames` key (absent from the corpus, so v4 sees `undefined`).
+  - New case `p4d268-pool-returns-whole-pool`: 9 clones (memories and `vector_entries`) of the three memories the query matches, giving a 12-row pool.
+    - It is compared by length plus the SORTED id set; the other four fields are compared whole.
+    - It is GREEN in isolation. **Mutation:** restoring `take(10)` reddens it (`length` 10 vs 12). The `limit` 90 vs 20 is not observable at a 12-row pool; the constant is P4.D265's tier-1 `memory_pools_equivalence`.
+- **UNION-PENDING(P4.D267) — `precompute_equivalence`, `spoke-then-window-searches`** (`preSearchedMemories[1].recallAdjustment.multiplier` 1.36 vs 1.105). This is unchanged from the KEYSTONE red. Because it is the second case, the loop stops there on this branch, so the pool row was measured with a local, uncommitted case filter.
+- **HANDOFFs received for the `precompute` files:** none at the time of this unit.
+
+### Unit 5 landed — `037b3372b`
+
+### Unit 6 — first-message + recap (Tier 1 item 7; R-J)
+- **`load_for_participant`:**
+  - the about-participant read filtered with `!memory_is_cold`, then `digests_first` before the take-3;
+  - the text fallback's `if memory_is_cold { continue }` BEFORE the dedupe and the `>= limit` break;
+  - the `(id, memory)` pairs kept through the stable sort and truncate;
+  - the stamp over the selected ids, awaited inline (R-D).
+- **Recap.** NEW `pub fn digests_first(Vec<Value>) -> Vec<Value>` in `memory_recap/mod.rs` (v4 `:248-252`, including the 0-or-all early return). `generate_memory_recap` applies it to `high` only. Unit tests mirror `memory-recap.test.ts:140-156`, plus the identity legs.
+- **`first_message_context` differential** (fixture rebuilt by its unchanged builder at the pin into `/tmp/p4d268/fmc/`; the spec is append-only):
+  - Per-case `plantSql` / `unplantSql`, and a per-case `accessLog` row (v4's logger debug patched; `setImmediate` flush) compared against v5's `global_capture` lines. The floor is ≥ 4 stamp lines.
+  - `p4d268_alice_digests_lead_cold_filtered` — **GREEN.** The output is `[0.95, 0.9, 0.7, general 0.5, 0.3 digest]`, stamp `count` 5.
+  - **UNION-PENDING(P4.D267) — `p4d268_carol_text_fallback_skips_cold`.** v5 delivers the planted cold row. KEYSTONE's `search_memories_text` (the semantic search's own fallback) is not hot-filtered, where v4's `:1448` is. So v5's semantic search "works" and the first-message text fallback never runs.
+    - With P4.D267's filter SIMULATED locally (one uncommitted `retain(!memory_is_cold)` in `search_memories_text`), the family is GREEN.
+    - With that simulation AND my skip removed, it is RED. So the row pins this lane's skip on the union.
+    - The case runs last, so every other case is evaluated on this branch.
+  - The planned Bob shape was replaced. Speaker Two's existing "Bob" note keeps v4's semantic search non-empty, so the first-message fallback could never run.
+- **Recap order via `build_context_tier3`:** the new op `p4d268_recap_digests_lead_the_high_bucket` plants a newest plain row (2024-06-02) and a digest (2024-06-01). v4's recap prompt lists the digest first. **GREEN; mutation:** dropping `digests_first` reddens the op. My three appended ops were reordered so the UNION-PENDING multi op runs LAST.
+- **Gate note:** `activity_registry::records_a_blip_once_a_span_outlives_the_threshold` failed once in the full core lib run and passed 3/3 alone. It is a pre-existing global-counter timing flake, not this lane's.
+
+### Unit 6 landed — `b5f509ab5`
+
+### Unit 7 — Carina + voice-rewrite stamps (Tier 1 item 8; R-D, R-J)
+- **Carina.** `load_carina_memory_recall` stamps the formatted `debug_memories` ids (`!!id`) after the `content.is_empty() || memories_used == 0` return.
+- **Voice-rewrite.** `recall_for_seed` stamps after the `content.is_empty()` return. It formats through the head, so a digest carries the suffix — a recorded consequence (R-J).
+- **Differentials, regenerated at the pin into `/tmp/p4d268/fam/`:**
+  - Each oracle patches v4's `logger.debug` for `[Memory] Marking memories accessed`, emits it per case (`accessLog`), and flushes with `setImmediate` before its `bumped` dump.
+  - Each Rust side captures with `global_capture` (`capture_async` for Carina; a `p4d268_cap` wrapper around `rt.block_on` for the two sync families) and compares the lines, with a non-vacuous floor.
+  - **All three GREEN:** `carina_query_tier3` (63 rows, 1 stamp line), `announcer_tier3` (15 cases, 13 stamp lines), `in_scene_voiced_tier3` (28 rows, 13 stamp lines).
+  - **R-E's predicted `bumped` UNION-PENDING rows did NOT materialise.** In every case of these corpora the delivered set equals the returned set, so KEYSTONE's search-wide bump and v4's delivered-only stamp mark the same rows. No UNION-PENDING row is recorded for these families.
+
+### Unit 7 landed — `e5acfc10a`
+
+### Unit 8 — the `search` tool (Tier 1 item 9)
+- **Source:** `include_cold: true` on the memory search's options. NEW `pub fn memory_archived_label(&Value) -> Option<String>`: `!memory_is_cold` → `None`; a non-empty string `supersededById` → `(archived — superseded by {id})` (U+2014); else `(archived)`. `memory_result` inserts `archivedLabel` after `source` only when `Some`. The formatter header is `[Result {n} - Memory{ archived}]` (truthy). The post-truncate stamp is gated on `context.character_id`, before the INFO (R-D).
+- **Differential** (`search_tools`; fixture built at the pin by its unchanged builder into `/tmp/p4d268/st/`; both oracles regenerated; `grep -c 'archived —'` = 3):
+  - 5 `p4d268_label_*` rows run v4's REAL `memoryArchivedLabel`: its four jest shapes plus an empty `supersededById` → `(archived)`.
+  - `p4d268_format_archived_header` runs v4's jest case 4 through the REAL formatter.
+  - `p4d268_search_archived_labels` returns the two planted cold rows with labels, byte-compared through `to_string`, key order included.
+  - `p4d268_search_limit_cuts_a_memory` plants a hot memory with its own 8-d Float32 vector on the celestial axis (score 0.5). `limit: 2` cuts it below two knowledge hits. v4's `accessLog` is `[]`.
+  - Every search case compares the `[Memory] Marking memories accessed` line, a new `accessLog` row field. The Rust `Capture` layer also takes the `quilltap::memories` target. The plants and inputs ride the oracle rows, so each is written ONCE.
+  - `info_cases_run` 30 → 32.
+- **GREEN.** The cold rows' presence is green on this branch because KEYSTONE's search is unfiltered.
+- **Mutation:** stamping the pre-cut list reddens exactly `p4d268_search_limit_cuts_a_memory` (v4 `[]`, v5 `count=1`).
+- **Retired design:** the first limit-cut shape could not discriminate. Its planted memory had no vector, so it never reached the pre-cut list.
+
+### Unit 8 landed — `f00572660`
+
+### Unit 9 — the optimizer hot-only (Tier 1 item 10)
+- **M2 applied.** `store.search_filtered(&embedding, 500, |_id, is_cold| !is_cold)`; P4.D265's closure takes `(id, is_cold)`. `candidate_memories.retain(|m| !memory_is_cold(m))` runs after the three branches, before the date filters.
+- **Differential `character_optimizer_tier3`.** Regenerated at the pin from the committed `character-generators` pair, copied into `/tmp/p4d268/opt/`; 31 cases. Per-case `plantSql` runs on both sides (a Rust current-thread `block_on` over `Db::write`).
+  - Three new cases: `p4d268_cold_excluded_no_query`, `…_text` and `…_semantic`. Each plants one reinforced (rc 9), importance-0.99 COLD about-self row whose text matches `lantern` and whose 4-d Float32 vector sits on the `the brass ring` axis.
+  - **GREEN.**
+  - **Mutations:** removing both filters reddens all three new cases. Removing only the tier filter reddens `no_query` and `text`. `semantic` stays green because the vector pre-filter still drops the row.
+  - **Recorded gap:** the vector pre-filter in isolation is not observable. The tier filter after the semantic branch drops the same row, and "before the top-500" only matters past 500 entries. This lane is fully responsible for the gap (no `memory_service` call on this path).
+
+### Unit 9 landed — `883281ba4`
+
+### Unit 10 — NEW `frozen_archive_tier2_equivalence` (Tier 1 item 11)
+- **Files.** `crates/quilltap-harness/tests/frozen_archive_tier2_equivalence.rs`, `harness/oracle/cases/frozen-archive-tier2.test.ts` (jest, real DB) and `harness/oracle/fixtures/frozen-archive-tier2.json` (33 plant statements, 99 ops).
+- **The v4 side.** It drives v4's REAL cache fns and REAL `invalidateFrozenArchivesForCompletedJob` (`processor-host` doMocked as in v4's own test). It runs over a COPY of the committed `memories` pair with `applyMemoryTiersMigration` applied (encrypted copy). Lines are captured through a transport spliced into the singleton's SHARED transport array, so the `jobs:dispatcher` child is captured, with `module` / `service` / `environment` dropped. Only `Date` is frozen (`nowMs` 2026-06-01).
+- **The v5 side.** `ensure_memory_tiers_columns` runs on the copy, then the same plants, then the same ops through the public fns, with `global_capture` and the per-op ids + lines compared.
+- **Corpus.**
+  - 4 digests about A, 3 about B, 6 self digests: the caps 3 and 5 bite, and `a0004` returns via the fill.
+  - A cold digest and a cold shard, never selected.
+  - A NULL-tier row: v4's `hydrateRawRows` drops it, and so does v5 — KEYSTONE Q2's measurement holds.
+  - A `reinforcedImportance` tie (id ASC), and old-important vs fresh-middling.
+  - An UPPER-CASE id `F2680000-…-0000000C9999`. v4's `MemorySchema` accepts it. `localeCompare` sorts it after `…c0006`; code-unit order sorts it first. The planned `…E0AA` id sorted first under both orders and was replaced.
+  - 10 fillers and two rows for O.
+  - Ops: sizes 4 / 25 / 28 / 60 / default; present `[]`, `[A]`, `[B, A, R]`, `[A, B]`; hits; a generation bump; a size change; a presence change; two chats then `invalidate` (O survives); `invalidateAll` twice (the second is silent); a silent `invalidate`; the 64-chat LRU walk (touch, overflow, hit, miss); the hook for HOUSEKEEPING {O, user-wide, `dryRun: true`, `""`}, CONSOLIDATION {R} and EXTRACTION (no-op), each followed by a `get` that shows a hit or a miss.
+- **Result:** 99/99 GREEN. Fresh NDJSON at `/tmp/p4d268/fa/oracle.ndjson`: `grep -c 'Composed archive'` = 81, `grep -c 'Invalidated frozen memory archives after job'` = 4. All five line classes appear; ≥ 5 hits.
+- **RED at KEYSTONE.** Measured in the scratch base worktree at `18e41e403`, after unit 1 had landed — the KEYSTONE code is identical, so the measurement is equivalent to "before item 2's commit". The family does not compile: `E0432` (`invalidate_all_frozen_archives`, `invalidate_frozen_archives_for_completed_job` unresolved) + `E0061` (5 arguments, not 7). 2 errors.
+- **Mutations:** a code-unit final sort reddens 16 ops; dropping the presence freshness check reddens 1 op.
+- `recipe_sweep.py --self-test` exits 0; the header extracts via `--show`.
+
+### Unit 10 landed — `192ea8af8`
+The first commit `ff9d903f8` was amended to `192ea8af8` before anything consumed it. Its doc comment tripped clippy's `doc_lazy_continuation`, and the commit had slipped through because the clippy pipe went into `grep`, which masked the exit code.
+
+### P4.D268 lane close (2026-10-10)
+- **Lane-close sweep.** One sweep, announced, from the pin against this branch: 20 families, results in `/tmp/p4d268/final-sweep.json`. **14 ok, 6 red.** Each red is either its unchanged KEYSTONE red or a named `UNION-PENDING` row.
+  - **ok:** `frozen_archive_tier2` (NEW), `memory_injector`, `search_tools`, `carina_query_tier3`, `character_optimizer_tier3`, `announcer_tier3`, `in_scene_voiced_tier3`, `help_chat_orchestrator_tier3`, `answer_confirmation_tier3`, `regenerate_swipe_tier3`, `primary_stream_tier3`, `salon_swipe_generate`, `turn_orchestrator_tier2`, `chat_continuation_tier2`.
+  - **UNION-PENDING(P4.D267)** — this lane's planted rows; P4.D267's hot filter turns them green:
+    - `build_context_tier3` `p4d268_multi_character_digests_lead` (the cold row via the unfiltered search: head 1 vs 0, inter relevance 5 vs 4 delivered);
+    - `first_message_context` `p4d268_carol_text_fallback_skips_cold` (KEYSTONE's `search_memories_text` not hot-filtered; green with P4.D267's filter simulated).
+    - Both are the LAST row of their family, so every other row is proven on this branch.
+  - **UNION-PENDING(P4.D267), unchanged since KEYSTONE:** `precompute` `spoke-then-window-searches` (multiplier 1.36 vs 1.105). This lane's pool row `p4d268-pool-returns-whole-pool` is green in isolation (unit 5).
+  - **UNION-PENDING(P4.D270), unchanged since KEYSTONE:**
+    - `orchestrator_tier3` `simple_json_then_native_tool_call` (v4 consumed two `key-textblock` streams — the fold OTHER call, §R.13(f));
+    - `enclave_step_tier3` `chats.otherExtractionWatermarkMessageId` (null vs set).
+    - **Not proven by row here:** these families stop at the first divergence. This lane's pool-sizing share in `orchestrator_tier3` (§R.13(d)) cannot be seen past P4.D270's first row, so the unifier measures it on the union.
+  - **`brahma_orchestrator_tier3`** fails the same 9 rows (`no canned stream queued … (2 msgs)`) as at KEYSTONE, so this lane did not introduce it. Its owner is NOT identified here; the likely owner is P4.D270, whose `brahma_console/prompt_text.rs` is in §R.13(f)'s family. It is flagged for the unifier to classify on the union.
+- **M6 — other buildContext-caller families measured** (KEYSTONE and close): `help_chat_orchestrator_tier3`, `brahma_orchestrator_tier3`, `answer_confirmation_tier3`, `regenerate_swipe_tier3`, `primary_stream_tier3`, `enclave_step_tier3`, `salon_swipe_generate`, `turn_orchestrator_tier2`, `chat_continuation_tier2`. No pool-sizing red was caused by this lane in any of them. `help_chat_orchestrator_tier3` is GREEN at both tips; the P4.D270 fold-OTHER residue §R.13 predicted there did not appear on this branch.
+- **M3.** No family of this lane failed on `no such column: tier`; P4.D265's in-place widen covered every committed pair. The NEW family still applies both healers (§R.3's belt).
+- **M4.** The 200k test model gives `memoryBudget` 8,000 (head 1,200 / 15, archive 60). The 2,000 floor is reachable through an 8,000-token profile window (head 300 / 8, archive 28 / 1,700). `build_context_tier3`'s corpus holds 31 hot Ada rows, so the archive bites at 28.
+- **M5.** v4's `[Memory] Marking memories accessed` and `[FrozenArchive]` lines are capturable in every jest case: a `logger.debug` patch, or the transport splice for the dispatcher child. The comparand is wired in all six delivery families plus the new one, so Tier 2 item 14 is not needed.
+- **Tier 2 item 13 — v4 doc comments carried:**
+  - the archive's prefix-cache rationale and its chat-keying rationale (`frozen_archive.rs` module doc);
+  - the job hook's commit-moment doc, reworded for the in-process runner;
+  - F6's "search no longer stamps its over-fetched candidates" at the buildContext and `search` stamp sites;
+  - the ordinary-split archive-stability note;
+  - the provenance "static fields, byte-stable" note.
+- **Checks:**
+  - fmt and clippy (both feature sets) are clean.
+  - `recipe_sweep.py --self-test` exits 0.
+  - `cargo test -p quilltap-core -p quilltap-host -p quilltap-web -p quilltap-cli --no-fail-fast` with `QT_V4_CHECKOUT` / `QT_V4_ROOT` at the pin: 113 binaries, 3,860 passed, 1 failed, 1 ignored. The failure is `cli_differential`, the 7 by-design Tier R rows (§R.3, P4.D269): `main help`, `completion bash|zsh|fish`, `recall-replay help|no chat|table`.
+- **R-H literal:** `orchestrator.rs`'s `DebugInterCharacterOut` test literal gains `memory_id: None`. **R-L:** the inter-character DEBUG pin moved to camelCase.
+- **HANDOFFs received for the `precompute` files (R-G):** none. **HANDOFFs issued:** none.
+- **💸 dogfood rows:** carried unchanged from the order's 💸 section.
+- **Versions at close:** core 0.0.1274 (+9 over KEYSTONE's 0.0.1265), host 0.0.195, web 0.0.228. The harness stays frozen at 0.0.1110.
+- **`cargo test --workspace --no-fail-fast` RAN after close (2026-10-10):** pin `QT_V4_CHECKOUT`/`QT_V4_ROOT`, `QT_ORACLE_FROZEN_ARCHIVE` set, `CARGO_INCREMENTAL=0`. 708 binaries, 4,692 passed, 2 failed, 3 ignored, zero `SKIP:` for `frozen_archive_tier2` (ran, ok). Both reds are by design per the order (`:1040`): `cli_differential` (7 rows, P4.D269) and `qtap_schema_embed_guard` (the pin's `qtap-export.schema.json` is 102,523 bytes vs 101,092 vendored; P4.D272 re-vendors it). No lane-caused red.
+- **v4 moved during the lane:** `3e6e2f590`, `7a8d6dacc`, `9ecebf986` (observed at lane start; recorded only).

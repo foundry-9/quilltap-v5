@@ -293,6 +293,24 @@ async function main(): Promise<void> {
 
   await initializeDatabase();
 
+  // P4.D268 (v4 `3f7320138` F6): the delivery stamp's DEBUG line, captured off
+  // the logger singleton this registry generation's services import.
+  const { logger: p4d268Logger } = await import('@/lib/logger');
+  let accessLog: Array<{ message: string; fields: Record<string, unknown> }> = [];
+  const p4d268PriorDebug = (p4d268Logger as unknown as { debug: (...a: unknown[]) => unknown }).debug;
+  (p4d268Logger as unknown as { debug: unknown }).debug = (message: string, fields?: unknown) => {
+    if (message === '[Memory] Marking memories accessed') {
+      accessLog.push(JSON.parse(JSON.stringify({ message, fields: fields ?? {} })));
+    }
+    return p4d268PriorDebug.call(p4d268Logger, message, fields);
+  };
+  // v4's `markMemoriesAccessed` does not await its bulk UPDATE: let it land
+  // before the `bumped` dump reads the table.
+  const flushAccess = async () => {
+    await new Promise((resolve) => setImmediate(resolve));
+    return accessLog;
+  };
+
   // Freeze the wall clock so the memory-recall block's effective-weight +
   // relative-age (which read Date.now()) match the Rust injected now_ms.
   const RealDate = Date;
@@ -315,6 +333,7 @@ async function main(): Promise<void> {
     streamCallIndex = 0;
 
     let postedEvent: unknown = null;
+    accessLog = [];
     const result = await runCarinaQuery({
       userId: spec.userId,
       chatId: spec.chat.id,
@@ -333,6 +352,7 @@ async function main(): Promise<void> {
 
     // Let any fire-and-forget settle before the next case.
     await new Promise((resolve) => setTimeout(resolve, 20));
+    lines.push(JSON.stringify({ kind: 'accessLog', call: call.name, lines: await flushAccess() }));
   }
 
   (global as { Date: DateConstructor }).Date = RealDate;

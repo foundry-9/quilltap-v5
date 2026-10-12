@@ -320,6 +320,11 @@ async function runCase(
 
   await initializeDatabase();
   const repos = getRepositories();
+  // P4.D268: the case's plants (one statement per entry) on THIS fresh copy.
+  {
+    const { rawQuery } = await import('@/lib/database/manager');
+    for (const sql of ((c as { plantSql?: string[] }).plantSql ?? [])) await rawQuery(sql);
+  }
   {
     const who = corpus.placeholderCharacterId;
     const character = (await repos.characters.findById(who)) as {

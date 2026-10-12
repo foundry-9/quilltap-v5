@@ -293,6 +293,148 @@ Ports the pure half of v4's recall multiplier retuning.
 - Search callers pass no relevance yet, so they get the cap but not the gate; the search knobs land next.
 
 Differentials: NEW `recall_tuning_equivalence` (115 rows); `recall_tags_equivalence` regenerated at the pin and grown by 96 data-driven gate / overridden-table / tuned-combine rows.
+#### 2026-10-10 — docs(porting): P4.D268 lane close — sweep, gate and union-pending records
+
+_Docs-only change._
+
+The P4.D268 order is marked LANE COMPLETE. The status log gains the lane-close record:
+
+- **Lane-close sweep.** 20 families: 14 pass and 6 fail. Each failure is either unchanged since KEYSTONE or a named row that is green only on the union with P4.D267 or P4.D270.
+- **Measurements.** The order's M1–M6 measurements are recorded.
+- **Crate tests.** Only the 7 by-design CLI differential rows owned by P4.D269 fail.
+- **Workspace gate.** 708 binaries, 4,692 passed, 3 ignored. The 2 failures are by design: the CLI differential (P4.D269) and the export-schema embed guard (P4.D272 re-vendors the schema).
+
+#### 2026-10-09 — test(memory): P4.D268 the frozen_archive_tier2 differential against v4's real cache and job hook
+
+_No crate versions bumped._
+
+New family `frozen_archive_tier2_equivalence`. A jest real-DB case drives v4's real `getOrComputeFrozenArchive`, `invalidateFrozenArchive`, `invalidateAllFrozenArchives` and the job dispatcher's `invalidateFrozenArchivesForCompletedJob`, with `processor-host` mocked as v4's own test does. It runs over a copy of the committed `memories` pair, with v4's real tier migration applied and 33 planted rows. The Rust side replays the same plants and the same 99 ops through v5's cache.
+
+Each op compares the returned ids in order and every `[FrozenArchive]` and job-hook line, including message, key order and values. The corpus covers:
+
+- the digest caps biting, cold rows never selected, and the NULL-tier row v4 drops;
+- the reinforcedImportance id tie-break, and an effective-weight order that differs from importance order;
+- an upper-case id that sorts differently under `localeCompare` and code-unit order;
+- a cache hit, a generation bump, a size change and a presence change;
+- invalidating one character, and invalidating everything twice;
+- the LRU walk, and the job hook's six payload shapes.
+
+All 99 ops match. At the KEYSTONE tip the family does not compile: the two new functions are missing and the archive function takes 5 arguments, not 7. Switching the final sort to code-unit order reddens 16 ops; dropping the presence freshness check reddens 1.
+
+#### 2026-10-09 — feat(generators): P4.D268 the character optimizer learns from hot memories only
+
+_Versions: core 0.0.1274._
+
+The optimizer's semantic branch now searches the vector store with a hot-only filter applied before the top-500 cut (`search_filtered`, v4 `isHotVector`). After the semantic, text and no-query branches, cold rows are dropped before the date filters (v4 `d58548051`).
+
+`character_optimizer_tier3` gains three cases, one per branch. Each plants a reinforced, top-importance cold about-self row, with a vector on the query axis for the semantic case, and its prompts match the base case's. Removing both filters reddens the new cases. Removing the tier filter alone reddens the no-query and text cases. The vector pre-filter alone is not observable below 500 entries.
+
+#### 2026-10-09 — feat(tools): P4.D268 the search tool sees archived memories with labels and stamps only what survives the cut
+
+_Versions: core 0.0.1273._
+
+The `search` tool's memory search now sets `include_cold: true`, so the drill-down sees the archive (v4 `d58548051`; P4.D267 honours the flag in the search engine). A cold result's metadata carries `archivedLabel`, placed between `source` and `occurredAt`. The label reads `(archived — superseded by <digest id>)` when `supersededById` is set, `(archived)` otherwise, and is absent for hot rows. It comes from the new `pub fn memory_archived_label`. The result header reads `[Result N - Memory (archived …)]`.
+
+After the cross-source sort and limit, the memories that survived are stamped through `mark_memories_accessed`, before the `Search scriptorium completed` INFO (v4 `3f7320138` F6).
+
+The `search_tools` differential adds five `memoryArchivedLabel` shapes and the header format row from v4's jest file. It adds a planted search returning a superseded cold shard and a plain cold row with their labels. It adds a mixed search where `limit: 2` cuts a planted memory (score 0.5) below two knowledge hits: v4 stamps nothing, and stamping before the cut reddens that row. Every search case now compares the stamp line.
+
+#### 2026-10-09 — feat(memory): P4.D268 Carina and voice-rewrite recall stamp only the memories they deliver
+
+_Versions: core 0.0.1272._
+
+Carina's memory recall now calls `mark_memories_accessed` for the formatted entries' ids, after its empty-result return (v4 `3f7320138` F6). The voice-rewrite `recall_for_seed` does the same after its empty-content return. Both calls are awaited inline. Because voice-rewrite formats through the dynamic head, a recalled digest now carries the ` (from N notes)` suffix there, as it does in v4.
+
+`carina_query_tier3`, `announcer_tier3` and `in_scene_voiced_tier3` each compare v4's `[Memory] Marking memories accessed` lines per case: Carina 1, announcer 13, in-scene 13. The v4 side gets a `setImmediate` flush, because v4's bulk update is not awaited, before the `bumped` table dump. All three families pass, including the `bumped` dumps.
+
+#### 2026-10-09 — feat(memory): P4.D268 first-message context drops cold rows, leads with digests and stamps what it selected; the recap's high bucket is digests-first
+
+_Versions: core 0.0.1271._
+
+Ported from v4 `d58548051` and `3f7320138` F6:
+
+- **First-message context.** `load_for_participant` filters the about-participant read to non-cold rows and puts digests first before the take-3. The text fallback skips a cold row before the dedupe and the limit break. The `(id, memory)` pairs now ride through the stable importance sort, and the selected ids are stamped through `mark_memories_accessed`.
+- **Recap.** New `memory_recap::digests_first`, v4's stable partition with its none-or-all early return. `generate_memory_recap` applies it to the HIGH bucket only.
+
+**Differentials:**
+
+- **`first_message_context`** compares a per-case `accessLog` (the `Marking memories accessed` line) and supports plant/unplant SQL. It adds an Alice case: a 0.99 cold row is excluded, and two low-importance digests lead the take-3, so the 0.3 digest survives the top-5. That case is green.
+- **A Carol case** pins the text-fallback skip. It is red on this branch because KEYSTONE's semantic text search returns the cold row (P4.D267's hot filter). With P4.D267's filter simulated locally it is green, and removing the skip reddens it.
+- **`build_context_tier3`** adds a recap op: a newest plain row and a one-day-older digest in the high bucket. The digest leads the recap prompt, and removing `digests_first` reddens the op.
+
+#### 2026-10-09 — feat(memory): P4.D268 proactive recall pulls the 90-memory pool and returns it whole; the orchestrator passes the present participants' names
+
+_Versions: core 0.0.1270._
+
+**Pre-compute.** The proactive recall search uses `limit = PROACTIVE_RECALL_POOL_SIZE` (90), up from 20, and returns every result. The `.slice(0, 10)` is gone (v4 `3f7320138` F7), because the context builder drops archive overlap and never searches again. `ProactiveRecallInput` gains `present_participant_names`, which is threaded into the recall context (v4 `f7d8064be`; P4.D267 consumes it).
+
+**Orchestrator.** It builds the names list (the responder, then every participant character's name, non-empty only) beside the present-character ids. The pre-compute unit test now pins the whole-pool return.
+
+**Differential.** `precompute` gains a marked append-only block on both sides: per-case `plantSql`, plus a `p4d268-pool-returns-whole-pool` case that clones the three matching memories nine times, vectors included. That case is compared by length plus the sorted id set (12 ids; v4 returns them all). It is green in isolation, and restoring the 10-cap reddens it by length. The family as a whole stays red on `spoke-then-window-searches`'s recall multiplier (1.36 vs 1.105), which is P4.D267's retuning.
+
+#### 2026-10-09 — feat(memory): P4.D268 buildContext sizes its memory pools from the budget, keys the archive by chat and presence, and stamps only what it delivered
+
+_Versions: core 0.0.1269._
+
+`build_context` follows v4 `3f7320138` (F5/F6/F7), `d58548051` and `f7d8064be`:
+
+- **Pool sizing.** `size_memory_pools` is computed from `memoryBudget` for the ordinary and retrospective splits. The archive is sized from the ordinary split. The fallback search limit is the turn's `head_entries × 3`. The head budget, archive budget and head entry cap come from the turn's sizing. The fixed floor constants are no longer imported.
+- **Archive call.** The archive is fetched with the chat id, the budget-sized size, and the other characters present.
+- **New DEBUG line.** `[ContextManager] Memory pools sized`, with v4's ten camelCase keys in order, after both formatters.
+- **Stamps.** The archive and head stamp, and the inter-character stamp, call `mark_memories_accessed` for exactly the delivered ids, awaited inline.
+- **Inter-character digests.** Up to 2 hot digests about each other character are fetched before the partition query, then deduped by id (first seen). `loadedCount` counts the deduped list.
+- **Debug wire.** `DebugInterCharacterOut` gains `memoryId`.
+- **Recall context.** `present_participant_names` (the responder plus every participant's name) is now set on the fallback recall context.
+- **Inter-character DEBUG keys.** The line's keys move to v4's camelCase (`chatId`, `characterId`, `durationMs`, `loadedCount`, `includedCount`). The unit pin moves with them.
+
+**Differential.** `build_context_tier3` resets the archive cache before every op on both sides. It compares a new per-op `deliveryLog` row: the two `[FrozenArchive]` lines, the pools line and the stamp line, with message, key order and values. It adds two planted ops:
+
+- At the 2,000-token floor, the archive bites at 28 and a CONSOLIDATED self digest prints ` (from 3 notes)`.
+- On the 8k split, two digests about Bea lead the inter-character block.
+
+Both plants include a cold row that is never delivered from the archive or the importance half. The 68 prior ops and the floor op match. The multi-character op is red only where v5's not-yet-hot-filtered semantic search returns the planted cold row: one head entry and one inter relevance entry. That is P4.D267's share, recorded as UNION-PENDING.
+
+#### 2026-10-09 — feat(memory): P4.D268 digest provenance suffix, memoryId on every debug entry, digests lead the inter-character importance half
+
+_Versions: core 0.0.1268._
+
+The memory injector follows v4 `d58548051` and `3f7320138`:
+
+- **Provenance suffix.** New `format_digest_provenance(source, consolidated_from_len)` renders ` (from N note|notes)` for a `CONSOLIDATED` row with sources, and nothing otherwise. It is printed on the inter-character, frozen-archive and dynamic-head lines, before the metadata tag, and counted in each line's token estimate. `format_memories_for_context` (Carina's formatter) never prints it.
+- **Debug ids.** Every formatter now sets the debug `memoryId`. `DebugInterCharacterMemoryInfo` gains `memory_id`.
+- **Inter-character sort.** The importance half puts digests first, then sorts by effective weight (stable sort).
+- **One projection.** `injector_memory_from_json` is now a single `pub fn` in `memory_injector.rs`, gaining `source` and `consolidated_from_len`. The two byte-identical copies in `build_context.rs` and `carina_query.rs` are gone. Two predicates sit beside it: `memory_is_cold` (`tier == "cold"`) and `memory_is_digest`.
+
+The `memory_injector` differential grows to 110 rows:
+
+- the 6 `formatDigestProvenance` shapes;
+- a digest through each of the four formatters;
+- frozen and head rows where the suffix tips the budget, so the break comes one line earlier;
+- digests leading the inter-character importance half, including a lower-weight digest and two digests ordered by weight.
+
+Floors pin the provenance rows, the printed suffix lines and the debug `memoryId` entries.
+
+#### 2026-10-09 — feat(jobs): P4.D268 a completed housekeeping or consolidation job invalidates the frozen archives
+
+_Versions: core 0.0.1267._
+
+The job runner's completion-hook region gets its one P4.D268 call, `invalidate_frozen_archives_for_completed_job(&job.id, &job.job_type, &payload)` (v4 `job-dispatcher.ts:256`). Every non-dry `MEMORY_HOUSEKEEPING` or `MEMORY_CONSOLIDATION` completion drops that character's archives, or every archive when there is no character id, whether or not the job changed anything. The hook runs after both arms of the mark, where v4 runs it only after a successful `markCompleted` (P4.D268 R-B). In v5 the handler's writes are committed before the mark either way.
+
+A new test in `frozen_archive.rs` drives a stub `MEMORY_HOUSEKEEPING` job through `JobRunner::pump_claim`. It was red before the line: the swept character's entry survived. It now passes: the entry is gone, another character's entry survives, and the hook's DEBUG line is captured.
+
+#### 2026-10-09 — feat(memory): P4.D268 the frozen archive keyed by chat, composed digests-first, with the three invalidation entry points
+
+_Versions: core 0.0.1266._
+
+`services/frozen_archive.rs` is rewritten to v4 `01a83539d`'s `frozen-archive-cache.ts`:
+
+- The cache key is `(characterId, chatId)`. Generation, archive size and the sorted set of other characters present are freshness checks; a change in any of them replaces that chat's entry. The cache is LRU-bounded at 64 entries.
+- Composition is digests first: up to 3 hot digests about each other character present (in sorted id order), then up to 5 self digests, then the effective-weight fill over `find_most_important` (pool = 4 × size). The result is sorted by id with `localeCompare`.
+- New `invalidate_all_frozen_archives()` and `invalidate_frozen_archives_for_completed_job(job_id, job_type, payload)`. `invalidate_frozen_archive(character_id)` keeps its signature and now drops every chat's entry for the character.
+- v4's five DEBUG lines (`Composed archive`, `Computed archive`, the two invalidation lines, and the job hook's line), camelCase keys in v4's order.
+- 23 unit tests mirror v4's 16 cache cases and 4 job-hook cases, plus the `""` / non-string `characterId` and `dryRun: "true"` edges and the line capture pins.
+
+`build_context` passes the chat id. Its pool sizing and present characters come in a later commit.
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._

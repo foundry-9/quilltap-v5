@@ -208,6 +208,13 @@ async function main(): Promise<void> {
 
     const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
     await initializeDatabase();
+    // === P4.D268: pool-size rows (append-only) ===
+    // A case's planted rows (one statement per entry), on THIS case's copy.
+    {
+      const { rawQuery } = await import('@/lib/database/manager');
+      for (const sql of (c as { plantSql?: string[] }).plantSql ?? []) await rawQuery(sql);
+    }
+    // === end ===
     const { initializePlugins } = await import('@/lib/startup/plugin-initialization');
     await initializePlugins();
 
@@ -229,6 +236,10 @@ async function main(): Promise<void> {
       characterParticipant: { id: c.characterParticipantId } as never,
       isMultiCharacter: c.presentAboutCharacterIds.length > 1,
       presentAboutCharacterIds: c.presentAboutCharacterIds,
+      // P4.D268 (v4 `f7d8064be`): absent in the corpus → v4's own `undefined`.
+      ...((c as { presentParticipantNames?: string[] }).presentParticipantNames
+        ? { presentParticipantNames: (c as { presentParticipantNames?: string[] }).presentParticipantNames }
+        : {}),
       isContinueMode: c.isContinueMode,
       content: c.content,
       existingMessages: c.existingMessages as never,

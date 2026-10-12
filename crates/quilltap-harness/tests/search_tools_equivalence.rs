@@ -116,6 +116,18 @@ struct OracleRow {
     /// P4.D216: an executor case's refusal ERROR lines.
     #[serde(default)]
     refusals: Option<Value>,
+    /// P4.D268: a search case's `[Memory] Marking memories accessed` lines.
+    #[serde(default, rename = "accessLog")]
+    access_log: Option<Value>,
+    /// P4.D268: the SQL a case planted on its fresh copy (replayed here).
+    #[serde(default, rename = "plantSql")]
+    plant_sql: Vec<String>,
+    /// P4.D268: an `archived_label` case's memory shape.
+    #[serde(default)]
+    memory: Option<Value>,
+    /// P4.D268: a `format` case's results.
+    #[serde(default)]
+    results: Option<Value>,
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +179,10 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Capture {
     ) {
         let meta = event.metadata();
         let target = meta.target();
-        if target != "quilltap_core::tools::search" && target != "quilltap_core::tools::executor" {
+        if target != "quilltap_core::tools::search"
+            && target != "quilltap_core::tools::executor"
+            && target != "quilltap::memories"
+        {
             return;
         }
         // Fields stay in CALLSITE order (P4.114): v4's context object keeps its
@@ -912,6 +927,30 @@ async fn run_search(
             closed_project: false,
             as_char_b: false,
         },
+        // P4.D268 (v4 `d58548051`): the drill-down tool sees the archive —
+        // a superseded cold shard and a plain cold row, labelled.
+        SearchCase {
+            label: "p4d268_search_archived_labels",
+            args: serde_json::json!({ "query": "recall the star navigation notes", "sources": ["memories"] }),
+            operator_surface: false,
+            with_character: true,
+            wrong_user: false,
+            pool: false,
+            closed_project: false,
+            as_char_b: false,
+        },
+        // P4.D268 (v4 `3f7320138` F6): a memory the cross-source cut drops is
+        // never stamped (v4 logs no stamp line at all).
+        SearchCase {
+            label: "p4d268_search_limit_cuts_a_memory",
+            args: serde_json::json!({ "query": "guide to celestial mechanics", "limit": 2 }),
+            operator_surface: false,
+            with_character: true,
+            wrong_user: false,
+            pool: false,
+            closed_project: false,
+            as_char_b: false,
+        },
     ];
     use tracing_subscriber::layer::SubscriberExt;
     let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::<(String, Line)>::new()));
@@ -922,9 +961,26 @@ async fn run_search(
     let mut info_cases_run = 0usize;
     let mut silent_cases_run = 0usize;
     let mut log_failures: Vec<String> = Vec::new();
+    let mut access_lines_seen = 0usize;
     for c in &s_cases {
         let (main_work, mount_work) = fresh_copy(main_fixture, mount_fixture, c.label);
         let db = open_two_db(&main_work, &mount_work, &spec.test_pepper_base64);
+        // P4.D268: the case's plants, replayed from the oracle row.
+        for sql in &oracle
+            .get(c.label)
+            .unwrap_or_else(|| panic!("oracle missing case {}", c.label))
+            .plant_sql
+        {
+            let sql = sql.clone();
+            db.write(move |ws| {
+                ws.main()
+                    .connection()
+                    .execute_batch(&sql)
+                    .map_err(Into::into)
+            })
+            .await
+            .unwrap_or_else(|e| panic!("{}: plant failed: {e}", c.label));
+        }
         let ctx = SearchContext {
             user_id: if c.wrong_user {
                 spec.wrong_user_id.clone()
@@ -985,13 +1041,57 @@ async fn run_search(
         if c.pool {
             pool_cases_run += 1;
         }
-        let got_lines: Vec<Line> = captured
-            .lock()
-            .unwrap()
-            .drain(..)
+        let all_lines: Vec<(String, Line)> = captured.lock().unwrap().drain(..).collect();
+        let got_lines: Vec<Line> = all_lines
+            .iter()
             .filter(|(t, _)| t == "quilltap_core::tools::search")
-            .map(|(_, l)| l)
+            .map(|(_, l)| l.clone())
             .collect();
+        // P4.D268 (v4 `3f7320138` F6): the post-limit stamp, compared on every
+        // search case — `{characterId, count}` over what survived the cut.
+        let got_access: Vec<Line> = all_lines
+            .iter()
+            .filter(|(t, l)| {
+                t == "quilltap::memories" && l.1 == "[Memory] Marking memories accessed"
+            })
+            .map(|(_, l)| l.clone())
+            .collect();
+        let want_access: Vec<Line> = want
+            .access_log
+            .as_ref()
+            .unwrap_or_else(|| panic!("oracle case {} recorded no accessLog", c.label))
+            .as_array()
+            .expect("accessLog array")
+            .iter()
+            .map(|w| {
+                let fields = w["fields"]
+                    .as_object()
+                    .expect("fields")
+                    .iter()
+                    .map(|(k, v)| {
+                        (
+                            k.clone(),
+                            match v {
+                                Value::String(s) => s.clone(),
+                                other => other.to_string(),
+                            },
+                        )
+                    })
+                    .collect();
+                (
+                    "debug".to_string(),
+                    w["message"].as_str().unwrap().to_string(),
+                    fields,
+                )
+            })
+            .collect();
+        if got_access != want_access {
+            log_failures.push(format!(
+                "delivery stamp diverged for {}\n  v4: {want_access:?}\n  v5: {got_access:?}",
+                c.label
+            ));
+        }
+        access_lines_seen += want_access.len();
         let want_logs = want
             .logs
             .as_ref()
@@ -1026,9 +1126,46 @@ async fn run_search(
     // P4.114: 28 successes carry the INFO (30 since P4.D245's two roster cases);
     // the two validation refusals are its silence legs (measured against the
     // regenerated oracle).
+    // P4.D268: +2 (the archived-labels and limit-cut cases).
     assert_eq!(
-        info_cases_run, 30,
+        info_cases_run, 32,
         "every successful search compares the INFO"
+    );
+    // P4.D268: the stamp comparand is non-vacuous.
+    assert!(access_lines_seen >= 5, "stamp lines: {access_lines_seen}");
+
+    // ---- P4.D268: v4's REAL `memoryArchivedLabel` + the header it feeds ----
+    let mut label_rows = 0usize;
+    for (label, row) in oracle
+        .iter()
+        .filter(|(k, _)| k.starts_with("p4d268_label_"))
+    {
+        let memory = row
+            .memory
+            .as_ref()
+            .unwrap_or_else(|| panic!("{label}: no memory"));
+        let got =
+            serde_json::to_string(&quilltap_core::tools::search::memory_archived_label(memory))
+                .unwrap();
+        assert_eq!(
+            got, row.result_json,
+            "memoryArchivedLabel diverged for {label}"
+        );
+        label_rows += 1;
+    }
+    assert_eq!(label_rows, 5, "the five memoryArchivedLabel shapes");
+    let fmt = oracle
+        .get("p4d268_format_archived_header")
+        .expect("oracle missing p4d268_format_archived_header");
+    let results: Vec<Value> = fmt
+        .results
+        .clone()
+        .and_then(|v| v.as_array().cloned())
+        .unwrap();
+    assert_eq!(
+        format_search_scriptorium_results(&results),
+        fmt.formatted,
+        "the archived header diverged"
     );
     assert_eq!(silent_cases_run, 2, "both refusals are silence legs");
 

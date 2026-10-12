@@ -154,6 +154,13 @@ struct CaseSpec {
     all_profiles: Vec<Value>,
     existing_messages: Vec<Value>,
     distill: DistillSpec,
+    /// P4.D268 (v4 `f7d8064be`): `presentParticipantNames` — absent = `[]`
+    /// (v4's `undefined`; P4.D267 consumes it).
+    #[serde(default)]
+    present_participant_names: Vec<String>,
+    /// P4.D268: SQL planted on this case's copy (one statement per entry).
+    #[serde(default)]
+    plant_sql: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -418,6 +425,19 @@ async fn precompute_matches_oracle() {
             &fixture_spec.test_pepper_base64,
         )
         .expect("open fixture copy");
+        // === P4.D268: pool-size rows (append-only) ===
+        for sql in &case.plant_sql {
+            let sql = sql.clone();
+            db.write(move |ws| {
+                ws.main()
+                    .connection()
+                    .execute_batch(&sql)
+                    .map_err(Into::into)
+            })
+            .await
+            .unwrap_or_else(|e| panic!("{name}: plant failed: {e}"));
+        }
+        // === end ===
 
         let completion = CannedDistillProvider {
             response: match case.distill.kind.as_str() {
@@ -446,6 +466,7 @@ async fn precompute_matches_oracle() {
             character_name: &case.character_name,
             character_participant_id: &case.character_participant_id,
             present_about_character_ids: &case.present_about_character_ids,
+            present_participant_names: &case.present_participant_names,
             is_continue_mode: case.is_continue_mode,
             content: &case.content,
             existing_messages: &case.existing_messages,
@@ -539,6 +560,49 @@ async fn precompute_matches_oracle() {
             "cheapSelectionUsed": oracle.cheap_selection_used,
         });
 
+        // === P4.D268: pool-size rows (append-only) ===
+        // The pool rows compare `preSearchedMemories` by LENGTH + the SORTED id
+        // set — insensitive to P4.D267's ranking (R-G / R-E); every other field
+        // is compared whole as for any case.
+        if name.starts_with("p4d268-pool") {
+            let ids = |v: &Value| -> Vec<String> {
+                let mut ids: Vec<String> = v
+                    .as_array()
+                    .unwrap_or_else(|| panic!("{name}: preSearchedMemories is not a list: {v}"))
+                    .iter()
+                    .map(|m| m["id"].as_str().expect("memory id").to_string())
+                    .collect();
+                ids.sort();
+                ids
+            };
+            let (got_ids, want_ids) = (
+                ids(&got["preSearchedMemories"]),
+                ids(&want["preSearchedMemories"]),
+            );
+            assert!(
+                want_ids.len() > 10,
+                "{name}: the pool must exceed the retired 10-cap: {want_ids:?}"
+            );
+            assert_eq!(
+                got_ids.len(),
+                want_ids.len(),
+                "{name}: preSearchedMemories length"
+            );
+            assert_eq!(got_ids, want_ids, "{name}: preSearchedMemories id set");
+            let strip = |v: &Value| {
+                let mut v = v.clone();
+                v.as_object_mut().unwrap().remove("preSearchedMemories");
+                v
+            };
+            assert_value_eq(&strip(&got), &strip(&want), "", name);
+            println!(
+                "precompute_equivalence: {name} OK (pool {} ids)",
+                got_ids.len()
+            );
+            drop(db);
+            continue;
+        }
+        // === end ===
         assert_value_eq(&got, &want, "", name);
         println!("precompute_equivalence: {name} OK");
 

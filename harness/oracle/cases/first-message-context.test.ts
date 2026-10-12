@@ -100,7 +100,7 @@ async function main(): Promise<void> {
     };
   });
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { loadParticipantMemories, loadProjectContext, buildFirstMessageContext } = await import(
     '@/lib/chat/first-message-context'
@@ -109,8 +109,23 @@ async function main(): Promise<void> {
   await initializeDatabase();
   const repos = getRepositories();
 
+  // P4.D268 (v4 `3f7320138` F6): the delivery stamp's DEBUG line, captured off
+  // the logger singleton `memory-service.ts` imports (this registry generation).
+  const { logger } = await import('@/lib/logger');
+  let accessLog: Array<{ message: string; fields: Record<string, unknown> }> = [];
+  const priorDebug = (logger as unknown as { debug: (...a: unknown[]) => unknown }).debug;
+  (logger as unknown as { debug: unknown }).debug = (message: string, fields?: unknown) => {
+    if (typeof message === 'string' && message === '[Memory] Marking memories accessed') {
+      accessLog.push(JSON.parse(JSON.stringify({ message, fields: fields ?? {} })));
+    }
+    return priorDebug.call(logger, message, fields);
+  };
+
   const lines: string[] = [];
   for (const c of spec.cases) {
+    // P4.D268: a case's plants (one statement per entry), undone after it.
+    for (const sql of (c.plantSql ?? []) as string[]) await rawQuery(sql);
+    accessLog = [];
     let payload: unknown;
     if (c.kind === 'loadParticipantMemories') {
       const mems = await loadParticipantMemories(c.speakingCharacterId, c.otherParticipants, {
@@ -130,7 +145,10 @@ async function main(): Promise<void> {
     } else {
       throw new Error(`unknown case kind ${c.kind}`);
     }
-    lines.push(JSON.stringify({ label: c.label, ...(payload as object) }));
+    // v4's `markMemoriesAccessed` does not await its bulk UPDATE; let it land.
+    await new Promise((resolve) => setImmediate(resolve));
+    lines.push(JSON.stringify({ label: c.label, ...(payload as object), accessLog }));
+    for (const sql of (c.unplantSql ?? []) as string[]) await rawQuery(sql);
   }
 
   // Let any fire-and-forget bumpAccessTimes promises settle before closing.

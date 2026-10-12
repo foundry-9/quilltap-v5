@@ -376,6 +376,10 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
                         // recallContext, so no soft fallback — the caller asked
                         // for a window).
                         occurred_within: time_window.clone(),
+                        // The drill-down tool sees the archive too: cold shards
+                        // are returned labelled, so a character can find what a
+                        // digest replaced (v4 `d58548051`; honoured by P4.D267).
+                        include_cold: true,
                         now_ms,
                         ..Default::default()
                     };
@@ -564,6 +568,20 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
     results.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
     results.truncate(limit);
     let results: Vec<Value> = results.into_iter().map(|(_, v)| v).collect();
+
+    // Only the memories that survived the cross-source cut reach the model;
+    // those, and only those, count as accessed (v4 `3f7320138` F6 — the search
+    // no longer stamps its over-fetched candidates). v4's filter is `typeof id
+    // === 'string'`; an empty id is dropped by the stamp's own filter. Awaited
+    // inline (P4.D268 R-D).
+    if let Some(cid) = &context.character_id {
+        let returned: Vec<String> = results
+            .iter()
+            .filter(|r| r["sourceType"] == "memory")
+            .filter_map(|r| r["metadata"]["memoryId"].as_str().map(str::to_string))
+            .collect();
+        crate::services::memory_access::mark_memories_accessed(db, cid, &returned).await;
+    }
 
     // v4 `search-scriptorium-handler.ts:522` — the per-call INFO, after the sort
     // + slice, counting the LIMITED results; fields in v4's order (P4.114).
@@ -824,6 +842,11 @@ fn memory_result(memory: &Value, score: f64, effective_weight: f64) -> Value {
     if let Some(v) = memory.get("source") {
         md.insert("source".into(), v.clone());
     }
+    // `archivedLabel: memoryArchivedLabel(mr.memory)` — `undefined` (absent
+    // from the JSON) for a hot row (v4 `d58548051`).
+    if let Some(label) = memory_archived_label(memory) {
+        md.insert("archivedLabel".into(), Value::String(label));
+    }
     // `occurredAt: mr.memory.occurredAt ?? null` — nullish coalescing, so a
     // present-null column emits null (never dropped).
     md.insert(
@@ -856,6 +879,25 @@ fn memory_result(memory: &Value, score: f64, effective_weight: f64) -> Value {
         md.insert("conversationId".into(), chat_id.clone());
     }
     result_value(content, "memory", score, md)
+}
+
+/// v4 `memoryArchivedLabel(memory)` (`search-scriptorium-handler.ts:584-589`):
+/// the label for a cold-tier memory in `search` results — `(archived —
+/// superseded by <digest id>)` when a digest replaced it (a truthy
+/// `supersededById`), `(archived)` otherwise. Hot rows (anything but
+/// `tier === 'cold'`) get no label.
+pub fn memory_archived_label(memory: &Value) -> Option<String> {
+    if !crate::memory_injector::memory_is_cold(memory) {
+        return None;
+    }
+    match memory
+        .get("supersededById")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
+        Some(id) => Some(format!("(archived \u{2014} superseded by {id})")),
+        None => Some("(archived)".to_string()),
+    }
 }
 
 /// conversation metadata: `{ conversationId, interchangeIndex, conversationTitle,
@@ -987,8 +1029,15 @@ fn format_one(index: usize, result: &Value) -> String {
                 }
                 None => String::new(),
             };
+            // v4: `result.metadata.archivedLabel ? ` ${label}` : ''` (truthy).
+            let archived = md
+                .get("archivedLabel")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(|l| format!(" {l}"))
+                .unwrap_or_default();
             format!(
-                "[Result {n} - Memory] (Importance: {importance_label}, Relevance: {pct}%)\nSummary: {summary}{when_line}{source_line}\nDetails: {content}"
+                "[Result {n} - Memory{archived}] (Importance: {importance_label}, Relevance: {pct}%)\nSummary: {summary}{when_line}{source_line}\nDetails: {content}"
             )
         }
         "conversation" => {

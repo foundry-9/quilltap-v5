@@ -201,6 +201,12 @@ struct SpecOp {
     /// dedup against.
     #[serde(default)]
     seed_fold_whisper_conversations: Option<String>,
+    /// P4.D268: raw SQL planted before the op, identically on both sides.
+    #[serde(default)]
+    plant_sql: Vec<String>,
+    /// P4.D268: raw SQL run after the op's dumps (a plant never leaks forward).
+    #[serde(default)]
+    unplant_sql: Vec<String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -540,6 +546,10 @@ async fn build_context_tier3_matches_oracle() {
     // P4.D254: v4's `[Inform] Delivering …` debug lines, per op.
     let mut oracle_inform_logs: std::collections::HashMap<String, Value> =
         std::collections::HashMap::new();
+    // P4.D268: v4's delivery lines (`[FrozenArchive] …`, the F7 pools line,
+    // the F6 `Marking memories accessed` stamp), per op.
+    let mut oracle_delivery_logs: std::collections::HashMap<String, Value> =
+        std::collections::HashMap::new();
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -562,6 +572,10 @@ async fn build_context_tier3_matches_oracle() {
             }
             Some("informLog") => {
                 oracle_inform_logs
+                    .insert(v["op"].as_str().unwrap().to_string(), v["lines"].clone());
+            }
+            Some("deliveryLog") => {
+                oracle_delivery_logs
                     .insert(v["op"].as_str().unwrap().to_string(), v["lines"].clone());
             }
             Some("canned") => oracle_canned.push(serde_json::from_value(v).expect("parse canned")),
@@ -644,8 +658,22 @@ async fn build_context_tier3_matches_oracle() {
     };
 
     let mut inform_lines_seen = 0usize;
+    let mut delivery_lines_seen: std::collections::HashMap<&'static str, usize> =
+        std::collections::HashMap::new();
     for (op, (oracle_op, oracle_result)) in spec.ops.iter().zip(&oracle_results) {
         assert_eq!(&op.name, oracle_op, "op order mismatch");
+        // P4.D268: the op's plants, before anything reads.
+        for sql in &op.plant_sql {
+            let sql = sql.clone();
+            db.write(move |ws| {
+                ws.main()
+                    .connection()
+                    .execute_batch(&sql)
+                    .map_err(Into::into)
+            })
+            .await
+            .unwrap_or_else(|e| panic!("{}: plant failed: {e}", op.name));
+        }
 
         // Read the overlaid character + its vault mount id.
         let cid = op.character_id.clone();
@@ -1095,6 +1123,9 @@ async fn build_context_tier3_matches_oracle() {
                 });
         }
         inform_read_counter::reset();
+        // P4.D268: the archive cache is process-global and every op shares one
+        // chat — reset it per op, as the oracle does.
+        quilltap_core::services::frozen_archive::reset_frozen_archive_cache_for_tests();
         // P4.D254: every line `build_context` logs on this (current-thread)
         // runtime, through the process-global rig — tracing's `Interest` cache
         // makes a thread-scoped subscriber unreliable for a callsite other code
@@ -1114,6 +1145,12 @@ async fn build_context_tier3_matches_oracle() {
             .unwrap_or_else(|| panic!("{}: no 'informLog' oracle row — regenerate", op.name));
         assert_inform_delivery_lines(&op.name, &lines, want_inform_log);
         inform_lines_seen += want_inform_log.as_array().map_or(0, Vec::len);
+        let want_delivery_log = oracle_delivery_logs
+            .get(&op.name)
+            .unwrap_or_else(|| panic!("{}: no 'deliveryLog' oracle row — regenerate", op.name));
+        for (msg, n) in assert_delivery_lines(&op.name, &lines, want_delivery_log) {
+            *delivery_lines_seen.entry(msg).or_default() += n;
+        }
         if let Some(prior) = prior_chat_type {
             set_chat_type(&db, &spec.chat.id, prior).await;
         }
@@ -1217,6 +1254,25 @@ async fn build_context_tier3_matches_oracle() {
             serde_json::to_string_pretty(&got_side).unwrap(),
             serde_json::to_string_pretty(want_side).unwrap(),
         );
+        for sql in &op.unplant_sql {
+            let sql = sql.clone();
+            db.write(move |ws| {
+                ws.main()
+                    .connection()
+                    .execute_batch(&sql)
+                    .map_err(Into::into)
+            })
+            .await
+            .unwrap_or_else(|e| panic!("{}: unplant failed: {e}", op.name));
+        }
+    }
+    // P4.D268: each delivery comparand is non-vacuous.
+    for msg in DELIVERY_MESSAGES {
+        let n = delivery_lines_seen.get(msg).copied().unwrap_or(0);
+        assert!(
+            n > 0,
+            "no `{msg}` line in the oracle — the capture seam broke"
+        );
     }
 
     assert_eq!(
@@ -1296,6 +1352,65 @@ fn assert_inform_delivery_lines(op: &str, lines: &[String], want: &Value) {
         let got_ids: Value = serde_json::from_str(fields[3].1).expect("rowIdsJson parses");
         assert_eq!(got_ids, wf["rowIds"], "{op}: rowIds");
     }
+}
+
+/// P4.D268: the delivery lines this family compares — v4's own messages.
+const DELIVERY_MESSAGES: [&str; 4] = [
+    "[FrozenArchive] Composed archive",
+    "[FrozenArchive] Computed archive",
+    "[ContextManager] Memory pools sized",
+    "[Memory] Marking memories accessed",
+];
+
+/// P4.D268 (v4 `3f7320138` F5/F6/F7, `d58548051`): every delivery line
+/// `build_context` logged during the op, against v4's, in emission order —
+/// message, every key in v4's order, and every value (v4's JSON value rendered
+/// as the line renders it: a string bare, a number / bool by its JS text). An
+/// op where v4 logged none is the silence leg. Returns how many of each
+/// message matched.
+fn assert_delivery_lines(op: &str, lines: &[String], want: &Value) -> Vec<(&'static str, usize)> {
+    let parse = |l: &String| -> Option<(&'static str, Vec<(String, String)>)> {
+        let msg = DELIVERY_MESSAGES.iter().find(|m| l.contains(*m))?;
+        let (_, rest) = l.split_once(*msg)?;
+        let fields = rest
+            .split(' ')
+            .filter(|kv| !kv.is_empty())
+            .map(|kv| {
+                let (k, v) = kv
+                    .split_once('=')
+                    .unwrap_or_else(|| panic!("{op}: bad field {kv:?} in {l}"));
+                (k.to_string(), v.to_string())
+            })
+            .collect();
+        Some((msg, fields))
+    };
+    let got: Vec<(&'static str, Vec<(String, String)>)> = lines.iter().filter_map(parse).collect();
+    let want = want.as_array().expect("deliveryLog lines array");
+    let render = |v: &Value| match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
+    let want: Vec<(String, Vec<(String, String)>)> = want
+        .iter()
+        .map(|w| {
+            let fields = w["fields"]
+                .as_object()
+                .expect("fields object")
+                .iter()
+                .map(|(k, v)| (k.clone(), render(v)))
+                .collect();
+            (w["message"].as_str().unwrap().to_string(), fields)
+        })
+        .collect();
+    let got_cmp: Vec<(String, Vec<(String, String)>)> = got
+        .iter()
+        .map(|(m, f)| (m.to_string(), f.clone()))
+        .collect();
+    assert_eq!(got_cmp, want, "{op}: delivery lines (v5 left, v4 right)");
+    DELIVERY_MESSAGES
+        .iter()
+        .map(|m| (*m, got.iter().filter(|(g, _)| g == m).count()))
+        .collect()
 }
 
 /// The model context limit v4's `getModelContextLimit('ANTHROPIC', 'claude-test')`

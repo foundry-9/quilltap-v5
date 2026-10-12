@@ -85,6 +85,48 @@
         { "type": "CHARACTER", "characterId": "10000000-0000-4000-8000-000000000001", "controlledBy": "user" },
         { "type": "CHARACTER", "characterId": "10000000-0000-4000-8000-000000000002", "controlledBy": "llm" }
       ]
+    },
+    {
+      "label": "p4d268_alice_digests_lead_cold_filtered",
+      "_comment": "P4.D268 (v4 d58548051 + 3f7320138 F6): a COLD row about Alice of top importance (0.99) never enters the recent take-3; two low-importance hot digests about Alice (0.3, 0.2) LEAD it, so the take-3 is [0.3 digest, 0.2 digest, 0.95] and the 0.3 digest survives the final importance top-5. The stamp covers exactly the selected ids.",
+      "kind": "loadParticipantMemories",
+      "speakingCharacterId": "10000000-0000-4000-8000-000000000001",
+      "otherParticipants": [
+        {
+          "characterId": "10000000-0000-4000-8000-000000000002",
+          "name": "Alice",
+          "description": "a curious inventor",
+          "controlledBy": "llm"
+        }
+      ],
+      "plantSql": [
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000301', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002', 'A cold, superseded note about Alice.', 'Alice, cold and never delivered.', '[]', '[]', 0.99, 'AUTO', 1, '[]', 0.99, 'semantic', '[]', 'cold', NULL, '[]', NULL, '2024-06-01T00:00:00.000Z', '2024-06-01T00:00:00.000Z')",
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000302', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002', 'A digest of Alice''s inventions.', 'Everything about Alice, gathered.', '[]', '[]', 0.3, 'CONSOLIDATED', 1, '[]', 0.3, 'semantic', '[]', 'hot', NULL, '[\"d2680000-0000-4000-8000-000000000311\", \"d2680000-0000-4000-8000-000000000312\"]', '2024-06-01T00:00:00.000Z', '2024-06-01T00:00:00.000Z', '2024-06-01T00:00:00.000Z')",
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000303', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002', 'A digest of Alice at the salon.', 'Alice''s salon habits, gathered.', '[]', '[]', 0.2, 'CONSOLIDATED', 1, '[]', 0.2, 'semantic', '[]', 'hot', NULL, '[\"d2680000-0000-4000-8000-000000000313\", \"d2680000-0000-4000-8000-000000000314\", \"d2680000-0000-4000-8000-000000000315\"]', '2024-06-01T00:00:00.000Z', '2024-06-01T00:00:00.000Z', '2024-06-01T00:00:00.000Z')"
+      ],
+      "unplantSql": [
+        "DELETE FROM memories WHERE id IN ('d2680000-0000-4000-8000-000000000301', 'd2680000-0000-4000-8000-000000000302', 'd2680000-0000-4000-8000-000000000303')"
+      ]
+    },
+    {
+      "label": "p4d268_carol_text_fallback_skips_cold",
+      "_comment": "P4.D268 (v4 d58548051): Speaker Two's ONLY memory naming Carol is COLD (0.99, vector-less). v4's semantic search (hot-only, incl. its own text fallback) finds nothing, so loadMemoriesForParticipant's text fallback runs, reads the cold row from searchByContent, and SKIPS it (`if (memory.tier === 'cold') continue`) \u2014 Carol gets no memories and nothing is stamped. Red on a P4.D268-only branch (KEYSTONE's semantic text fallback is not hot-filtered \u2014 P4.D267); on the union it pins the skip.",
+      "kind": "loadParticipantMemories",
+      "speakingCharacterId": "10000000-0000-4000-8000-000000000005",
+      "otherParticipants": [
+        {
+          "characterId": "10000000-0000-4000-8000-000000000004",
+          "name": "Carol",
+          "description": "a quiet archivist",
+          "controlledBy": "llm"
+        }
+      ],
+      "plantSql": [
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000304', '10000000-0000-4000-8000-000000000005', NULL, 'A cold note: Carol once lost the catalog.', 'Carol, cold and never delivered.', '[]', '[]', 0.99, 'AUTO', 1, '[]', 0.99, 'semantic', '[]', 'cold', NULL, '[]', NULL, '2024-06-01T00:00:00.000Z', '2024-06-01T00:00:00.000Z')"
+      ],
+      "unplantSql": [
+        "DELETE FROM memories WHERE id = 'd2680000-0000-4000-8000-000000000304'"
+      ]
     }
   ]
 }

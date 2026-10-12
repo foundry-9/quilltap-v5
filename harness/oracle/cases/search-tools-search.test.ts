@@ -82,7 +82,13 @@ async function main(): Promise<void> {
     closedProject?: boolean;
     /** P4.D245: act as char B (the rostered one) instead of char A. */
     asCharB?: boolean;
+    /** P4.D268: SQL planted on this case's fresh copy (one statement each). */
+    plantSql?: string[];
   };
+  /** P4.D268: v4's REAL `memoryArchivedLabel` over one memory shape. */
+  type LabelCase = { label: string; tool: 'archived_label'; memory: Record<string, unknown> };
+  /** P4.D268: v4's REAL `formatSearchScriptoriumResults` over given results. */
+  type FormatCase = { label: string; tool: 'format'; results: unknown[] };
   /** P4.D216: `executeToolCallWithContext` itself — the pool/operator refusal. */
   type ExecutorCase = {
     label: string;
@@ -91,7 +97,7 @@ async function main(): Promise<void> {
     operatorSurface?: boolean;
     pool?: boolean;
   };
-  type Case = HelpCase | SearchCase | ExecutorCase;
+  type Case = HelpCase | SearchCase | ExecutorCase | LabelCase | FormatCase;
 
   const cases: Case[] = [
     // ---- help_search ----
@@ -151,6 +157,20 @@ async function main(): Promise<void> {
     { label: 'executor_pool_and_operator_refused', tool: 'executor', args: { query: 'guide to celestial mechanics', sources: ['documents'] }, pool: true, operatorSurface: true },
     { label: 'executor_pool_only_runs', tool: 'executor', args: { query: 'guide to celestial mechanics', sources: ['documents'] }, pool: true },
     { label: 'executor_operator_only_runs', tool: 'executor', args: { query: 'guide to celestial mechanics', sources: ['documents'] }, operatorSurface: true },
+    // ── P4.D268 (v4 `d58548051` + `3f7320138` F6; append-only) ──
+    // `memoryArchivedLabel`'s four jest shapes + an empty-string supersededById.
+    { label: 'p4d268_label_cold_superseded', tool: 'archived_label', memory: { tier: 'cold', supersededById: 'dig-9' } },
+    { label: 'p4d268_label_cold_plain', tool: 'archived_label', memory: { tier: 'cold', supersededById: null } },
+    { label: 'p4d268_label_hot', tool: 'archived_label', memory: { tier: 'hot', supersededById: null } },
+    { label: 'p4d268_label_absent_tier', tool: 'archived_label', memory: {} },
+    { label: 'p4d268_label_cold_empty_superseded', tool: 'archived_label', memory: { tier: 'cold', supersededById: '' } },
+    // The header the model reads (v4's jest case 4).
+    { label: 'p4d268_format_archived_header', tool: 'format', results: [{ content: 'old shard', sourceType: 'memory', relevanceScore: 0.8, metadata: { memoryId: 'm1', summary: 's', importance: 0.5, archivedLabel: '(archived \u2014 superseded by dig-9)' } }] },
+    // The drill-down tool sees the archive (`includeCold: true`): a superseded
+    // cold shard and a plain cold row, labelled in the metadata + the header.
+    { label: 'p4d268_search_archived_labels', tool: 'search', args: { query: 'recall the star navigation notes', sources: ['memories'] }, plantSql: ["INSERT INTO memories (id, characterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000401', 'c8000000-0000-4000-8000-00000000000a', 'Ada once steered by a sextant reading, since folded into a digest.', 'Old sextant shard.', '[]', '[]', 0.7, 'AUTO', 1, '[]', 0.7, 'semantic', '[]', 'cold', 'd2680000-0000-4000-8000-000000000403', '[]', '2025-12-01T00:00:00.000Z', '2025-12-01T00:00:00.000Z')", "INSERT INTO vector_entries (id, characterId, embedding, createdAt) SELECT 'd2680000-0000-4000-8000-000000000401', characterId, embedding, createdAt FROM vector_entries WHERE id = 'b1000000-0000-4000-8000-000000000001'", "INSERT INTO memories (id, characterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000402', 'c8000000-0000-4000-8000-00000000000a', 'Ada sketched a star chart that was later archived.', 'Archived star chart.', '[]', '[]', 0.6, 'AUTO', 1, '[]', 0.6, 'semantic', '[]', 'cold', NULL, '[]', '2025-12-01T00:00:00.000Z', '2025-12-01T00:00:00.000Z')", "INSERT INTO vector_entries (id, characterId, embedding, createdAt) SELECT 'd2680000-0000-4000-8000-000000000402', characterId, embedding, createdAt FROM vector_entries WHERE id = 'b1000000-0000-4000-8000-000000000001'"] },
+    // The stamp covers only the memories that survive the cross-source cut.
+    { label: 'p4d268_search_limit_cuts_a_memory', tool: 'search', args: { query: 'guide to celestial mechanics', limit: 2 }, plantSql: ["INSERT INTO memories (id, characterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000404', 'c8000000-0000-4000-8000-00000000000a', 'Ada studied celestial mechanics by lamplight.', 'Celestial mechanics study.', '[]', '[]', 0.9, 'AUTO', 1, '[]', 0.9, 'semantic', '[]', 'hot', NULL, '[]', '2025-12-01T00:00:00.000Z', '2025-12-01T00:00:00.000Z')", "INSERT INTO vector_entries (id, characterId, embedding, createdAt) VALUES ('d2680000-0000-4000-8000-000000000404', 'c8000000-0000-4000-8000-00000000000a', X'00000000000000000000003F0000000000000000000000000000000000000000', '2025-12-01T00:00:00.000Z')"] },
   ];
 
   for (const c of cases) {
@@ -221,8 +241,21 @@ async function main(): Promise<void> {
       };
     });
 
-    const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+    const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
     await initializeDatabase();
+    // P4.D268: the case's plants, on THIS fresh copy.
+    for (const sql of ((c as SearchCase).plantSql ?? [])) await rawQuery(sql);
+    // P4.D268 (v4 `3f7320138` F6): the delivery stamp's DEBUG line, off the
+    // ROOT logger `memory-service.ts` imports (this registry generation).
+    const { logger: p4d268Logger } = await import('@/lib/logger');
+    const accessLog: Array<{ message: string; fields: Record<string, unknown> }> = [];
+    const p4d268PriorDebug = (p4d268Logger as unknown as { debug: (...a: unknown[]) => unknown }).debug;
+    (p4d268Logger as unknown as { debug: unknown }).debug = (message: string, fields?: unknown) => {
+      if (message === '[Memory] Marking memories accessed') {
+        accessLog.push(JSON.parse(JSON.stringify({ message, fields: fields ?? {} })));
+      }
+      return p4d268PriorDebug.call(p4d268Logger, message, fields);
+    };
 
     // P4.D216: the pre-built pool, its minted ids read back (never transcribed).
     const buildPool = async () => {
@@ -243,7 +276,17 @@ async function main(): Promise<void> {
     let formatted: string;
     let extra: Record<string, unknown> = {};
 
-    if (c.tool === 'help_search') {
+    if (c.tool === 'archived_label') {
+      const { memoryArchivedLabel } = await import('@/lib/tools/handlers/search-scriptorium-handler');
+      resultJson = JSON.stringify(memoryArchivedLabel((c as LabelCase).memory as never) ?? null);
+      formatted = '';
+      extra = { memory: (c as LabelCase).memory };
+    } else if (c.tool === 'format') {
+      const { formatSearchScriptoriumResults } = await import('@/lib/tools/handlers/search-scriptorium-handler');
+      resultJson = '';
+      formatted = formatSearchScriptoriumResults((c as FormatCase).results as never);
+      extra = { results: (c as FormatCase).results };
+    } else if (c.tool === 'help_search') {
       // HelpSearch is a module singleton caching docs; reset it per case so it
       // reloads from THIS fresh DB copy.
       const { resetHelpSearch } = await import('@/lib/help-search');
@@ -305,6 +348,11 @@ async function main(): Promise<void> {
       // since P4.D216) — so the per-call INFO `Search scriptorium completed` is
       // compared on each success and its absence on each early return.
       extra = { logs: logLines.splice(0) };
+      // P4.D268: v4's stamp is un-awaited — let it land, then record it.
+      await new Promise((resolve) => setImmediate(resolve));
+      extra.accessLog = accessLog;
+      // The plants ride the row, so the Rust side replays the SAME SQL.
+      if (sc.plantSql) extra.plantSql = sc.plantSql;
     }
 
     // Let fire-and-forget promises settle before closing.

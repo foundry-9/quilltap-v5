@@ -180,6 +180,12 @@ interface Op {
    *  block) through the REAL writer before the op runs, so the per-turn list has
    *  something to dedup against. */
   seedFoldWhisperConversations?: string;
+  /** P4.D268: raw SQL statements (one per entry — `rawQuery` runs a single
+   *  statement) planted before the op, identically on both sides. */
+  plantSql?: string[];
+  /** P4.D268: raw SQL run after the op's dumps, so a plant never leaks
+   *  forward. */
+  unplantSql?: string[];
 }
 interface CompletionRule {
   op: string;
@@ -355,14 +361,29 @@ async function main(): Promise<void> {
   // singleton `context-manager.ts` imports (this module registry generation).
   const { logger } = await import('@/lib/logger');
   let informLog: Array<{ message: string; fields: Record<string, unknown> }> = [];
+  // P4.D268: the delivery lines — v4 `3f7320138`'s frozen-archive lines, the
+  // F7 pools line and the F6 delivery stamp, in emission order.
+  let deliveryLog: Array<{ message: string; fields: Record<string, unknown> }> = [];
+  const DELIVERY_PREFIXES = [
+    '[FrozenArchive] ',
+    '[ContextManager] Memory pools sized',
+    '[Memory] Marking memories accessed',
+  ];
   const priorDebug = (logger as unknown as { debug: (...a: unknown[]) => unknown }).debug;
   (logger as unknown as { debug: unknown }).debug = (message: string, fields?: unknown) => {
     if (typeof message === 'string' && message.startsWith('[Inform] Delivering')) {
       // Through JSON, so an `undefined` field drops out as winston drops it.
       informLog.push(JSON.parse(JSON.stringify({ message, fields: fields ?? {} })));
     }
+    if (typeof message === 'string' && DELIVERY_PREFIXES.some((p) => message.startsWith(p))) {
+      deliveryLog.push(JSON.parse(JSON.stringify({ message, fields: fields ?? {} })));
+    }
     return priorDebug.call(logger, message, fields);
   };
+  // P4.D268: the archive cache is process-global and every op shares one chat,
+  // so it is RESET before every op (both sides) — an op's archive must never
+  // depend on its predecessors.
+  const { resetFrozenArchiveCacheForTests } = await import('@/lib/memory/frozen-archive-cache');
   // P4.D50: buildContext reads `instance_settings['taboo']` itself; the op seed
   // goes through v4's real setter (normalization included).
   const { setTabooSettings } = await import('@/lib/instance-settings');
@@ -581,10 +602,17 @@ async function main(): Promise<void> {
       } as never);
     }
 
+    for (const sql of op.plantSql ?? []) await rawQuery(sql);
+    resetFrozenArchiveCacheForTests();
     informLog = [];
+    deliveryLog = [];
     const result = await buildContext(options as never);
+    // v4's `markMemoriesAccessed` does not await its bulk UPDATE; let it land
+    // before the dumps and the next op (memory note `oracle-async-tails`).
+    await new Promise((r) => setImmediate(r));
     lines.push(JSON.stringify({ kind: 'result', op: op.name, result }));
     lines.push(JSON.stringify({ kind: 'informLog', op: op.name, lines: informLog }));
+    lines.push(JSON.stringify({ kind: 'deliveryLog', op: op.name, lines: deliveryLog }));
 
     // P4.d15: the Commonplace-Book whisper ROWS this op left behind + the
     // recall-history column it persisted. Minted ids and `createdAt` are dropped
@@ -627,6 +655,7 @@ async function main(): Promise<void> {
           null,
       })
     );
+    for (const sql of op.unplantSql ?? []) await rawQuery(sql);
     if (priorChatType) {
       await rawQuery('UPDATE chats SET "chatType" = ? WHERE id = ?', [
         priorChatType.value,
