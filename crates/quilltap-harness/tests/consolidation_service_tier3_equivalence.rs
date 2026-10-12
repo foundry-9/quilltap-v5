@@ -123,7 +123,9 @@ fn fixtures_dir() -> PathBuf {
 }
 
 /// Every 36-char UUID in `s` that is not a committed value (spec text, or the
-/// deterministic `000000…` template ids / `0d…` plants) → `<id>`.
+/// deterministic `000000…` template ids / `0de…` plants) → `<id>`. The plant
+/// prefix is three characters: a MINTED id starting with `0d` (1 in 256) slipped
+/// through the two-character test at the `01a83539d` unification.
 fn mask_minted(s: &str, known: &str) -> String {
     let bytes = s.as_bytes();
     let mut out = String::new();
@@ -137,7 +139,7 @@ fn mask_minted(s: &str, known: &str) -> String {
             });
             if is_uuid {
                 let committed =
-                    known.contains(cand) || (cand.starts_with("0d") || cand.starts_with("000000"));
+                    known.contains(cand) || (cand.starts_with("0de") || cand.starts_with("000000"));
                 out.push_str(if committed { cand } else { "<id>" });
                 i += 36;
                 continue;

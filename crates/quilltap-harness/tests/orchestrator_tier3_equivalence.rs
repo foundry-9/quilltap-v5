@@ -659,6 +659,44 @@ fn clip(s: &str) -> String {
     }
 }
 
+/// For every v5 row paired to a v4 row by [`log_row_key`] whose ONLY differing
+/// cell is a `request` that decodes to the identical text, take v4's stored
+/// bytes into the v5 row (so the rows compare equal) and count it — the
+/// RULED P4.144 comparand (see the call site).
+fn fold_ruled_stored_byte_divergences(got: &mut [Value], want: &[Value]) -> usize {
+    // Pair as `report_llm_log_diffs` does — against the v4 rows no v5 row
+    // already equals, so a case with two extraction rows of one key (the same
+    // chat, the same canned reply) pairs each v5 row with its own twin.
+    let mut unmatched_want: Vec<Value> =
+        want.iter().filter(|w| !got.contains(w)).cloned().collect();
+    let mut folded = 0usize;
+    for g in got.iter_mut() {
+        if want.contains(g) {
+            continue;
+        }
+        let key = log_row_key(g);
+        let Some(pos) = unmatched_want.iter().position(|w| log_row_key(w) == key) else {
+            continue;
+        };
+        let w = unmatched_want[pos].clone();
+        let (go, wo) = (g.as_object().unwrap(), w.as_object().unwrap());
+        let differing: Vec<&String> = go.keys().filter(|k| go[*k] != wo[*k]).collect();
+        if differing.len() != 1 || differing[0] != "request" {
+            continue;
+        }
+        let (gd, wd) = (
+            decoded_log_cell(&go["request"]),
+            decoded_log_cell(&wo["request"]),
+        );
+        if gd.is_some() && gd == wd {
+            g["request"] = wo["request"].clone();
+            unmatched_want.remove(pos);
+            folded += 1;
+        }
+    }
+    folded
+}
+
 /// A window around the first byte two strings differ at (both sides).
 fn first_difference(a: &str, b: &str) -> (String, String) {
     let at = a
@@ -3014,6 +3052,19 @@ fn orchestrator_tier3_matches_oracle() {
     }
     common::sort_by_canonical_json(&mut got_logs);
     common::sort_by_canonical_json(&mut want_logs);
+    // RULED 2026-10-02 (the human, on P4.144's escalation; `memory_pipeline_
+    // jobs_tier3`'s `STORED_BYTE_DIVERGENCES` is the first pin): a `request`
+    // whose STORED brotli bytes differ from v4's while decoding to the
+    // IDENTICAL text is an accepted divergence inside the encoder (`db::
+    // text_compression`'s parity note), not behaviour — such cells are
+    // compared DECODED. The `01a83539d` round's grown MEMORY_EXTRACTION
+    // envelope (P4.D270's grain block, 11,943 raw bytes) put this family's
+    // `mid_stream_error` extraction request over the parity ceiling; the
+    // encoder was measured deterministic on it (40 encodes + 8 threads all
+    // reproduce v5's bytes) at the unification. The count is logged, not
+    // pinned: the pipeline family holds the ruled count.
+    let folded = fold_ruled_stored_byte_divergences(&mut got_logs, &want_logs);
+    eprintln!("[llm_logs] ruled stored-byte divergences folded (decoded identical): {folded}");
     report_llm_log_diffs(&got_logs, &want_logs);
     assert_eq!(
         got_logs.len(),

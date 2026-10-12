@@ -130,7 +130,7 @@ fn mask_minted(s: &str, known: &str) -> String {
             if is_uuid {
                 out.push_str(
                     if known.contains(cand)
-                        || (cand.starts_with("0d") || cand.starts_with("000000"))
+                        || (cand.starts_with("0de") || cand.starts_with("000000"))
                     {
                         cand
                     } else {

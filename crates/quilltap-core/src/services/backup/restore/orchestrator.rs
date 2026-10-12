@@ -4630,8 +4630,9 @@ mod free_store_name_tests {
                 "INSERT INTO doc_mount_points (id, name, basePath, mountType, storeType, \
                  includePatterns, excludePatterns, enabled, scanStatus, conversionStatus, \
                  fileCount, chunkCount, totalSizeBytes, createdAt, updatedAt) \
-                 VALUES ('target-lore', 'Lore', '', 'database', 'documents', '[]', '[]', 1, \
-                 'idle', 'idle', 0, 0, 0, 't', 't')",
+                 VALUES ('7a000000-0000-4000-8000-00000000a0e1', 'Lore', '', 'database', \
+                 'documents', '[]', '[]', 1, 'idle', 'idle', 0, 0, 0, \
+                 '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
                 [],
             )
             .unwrap();
@@ -4709,6 +4710,65 @@ mod free_store_name_tests {
                 "DEBUG quilltap::restore Restored document store under a free name mountPointId=a1 archived=lore name=lore (2)",
                 "DEBUG quilltap::restore Restored document store under a free name mountPointId=a3 archived=atlas name=atlas (2)",
             ]
+        );
+    }
+
+    /// v4 `restore.ts:602`'s taken set is `docMountPoints.findAll()` — the
+    /// Zod-FILTERED read — so a target row the schema refuses (here a
+    /// `createdAt` of `'t'`) holds no name: v4 tries the archive's plain name,
+    /// the UNIQUE NOCASE index refuses it, and the store fails with v4's
+    /// warning. The keystone read the raw name list and picked ` (2)` instead
+    /// (the `01a83539d` unification's §3 review).
+    #[test]
+    fn a_zod_refused_target_row_holds_no_name() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let main =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap.db"), PEPPER).unwrap();
+        let mount =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        mount
+            .connection()
+            .execute(
+                "INSERT INTO doc_mount_points (id, name, basePath, mountType, storeType, \
+                 includePatterns, excludePatterns, enabled, scanStatus, conversionStatus, \
+                 fileCount, chunkCount, totalSizeBytes, createdAt, updatedAt) \
+                 VALUES ('7a000000-0000-4000-8000-00000000a0e2', 'Lore', '', 'database', \
+                 'documents', '[]', '[]', 1, 'idle', 'idle', 0, 0, 0, 't', 't')",
+                [],
+            )
+            .unwrap();
+        let archive = data(vec![point("a1", "lore"), point("a2", "Atlas")]);
+        let mut c = Counters::default();
+        let mut w: Vec<String> = Vec::new();
+        let (restored, _lines) = crate::test_support::captured_with(|| {
+            restore_mount_family(
+                main.connection(),
+                mount.connection(),
+                &archive,
+                &archive,
+                dir.path(),
+                None,
+                &BoundEntities::default(),
+                &[],
+                &mut c,
+                &mut w,
+            )
+        });
+        assert_eq!(
+            w,
+            [
+                "Failed to restore document store \"lore\": UNIQUE constraint failed: \
+              doc_mount_points.name"
+            ]
+        );
+        let mut restored: Vec<String> = restored.into_iter().collect();
+        restored.sort();
+        assert_eq!(
+            restored,
+            ["a2"],
+            "the refused name's store did not restore; Atlas did"
         );
     }
 }
