@@ -1987,7 +1987,31 @@ Create a new archetype wardrobe item.
 }
 ```
 
-**Response**: `201 Created`
+**Response**: `201 Created` — `{ wardrobeItem }`, serialized exactly as a `GET` serializes it (with `origin` and `wear`).
+
+All four tiers' item endpoints (General, character, project, group) are one implementation, `lib/wardrobe/routes/wardrobe-route-factory.ts`, and answer alike:
+
+- `POST` and `PUT` return `{ wardrobeItem }` with `origin` and `wear`, like `GET`. (The project `POST` no longer returns the refreshed `wardrobeItems` list.) Collection `GET`s also return the tier's `mountPointId`.
+- A component cycle is a **400** on create and update, every tier.
+- A `PUT` answers 404 for a missing item before it checks `imageFileId`.
+- A composite's `types` are recomputed server-side from its components (`buildCompositeTypes`): the components' slots plus any designated extras. They widen, never narrow — a `PUT` that changes components without restating `types` keeps every slot the item already claimed.
+- A character's endpoints require the character to belong to the requesting user; a write to an archived character's vault is a **409**.
+- General's collection `GET` answers `{ wardrobeItems: [] }` while Quilltap General is unprovisioned; a write there is a 500.
+- Every item carries **`folder`**: its path under the tier's `Wardrobe/` (`''` = top level, e.g. `"Formal/Evening"`). It is derived from the item file's path on read and is never stored in frontmatter. Create and update bodies accept an optional `folder` (create defaults to the top level; update leaves it unchanged when omitted); it is resolved by `resolveWardrobeFolder` (`lib/wardrobe/folders.ts`): a folder the tier already has (in any casing, hand-made Scriptorium spellings included) is used exactly as stored; otherwise the new part is normalised — segments trimmed and sanitised like file names, at most 8 deep, never `.`/`..` or `images` — and anything else is a **400**. An update naming the item's current folder moves nothing. `create-folder` and `move-items` resolve the same way. Folders are filing only; they never affect the wearable pool. Transfers keep an item's folder at the destination.
+
+##### Wardrobe folders (every tier's collection route)
+
+The same five actions on `/api/v1/wardrobe`, `/api/v1/characters/[id]/wardrobe`, `/api/v1/projects/[id]/wardrobe` and `/api/v1/groups/[id]/wardrobe`. Clients build the URL with `wardrobeCollectionActionUrl()` (`lib/wardrobe/wardrobe-container.ts`).
+
+| Verb | Action | Body | Result |
+|---|---|---|---|
+| `GET` | `?action=folders` | — | `{ folders: [{ path, name, itemCount }] }` — every folder under `Wardrobe/` (empty ones included, `images/` excluded), sorted by path; `itemCount` counts non-archived items directly inside. A read probe: it never provisions a store, and a project or group without one answers `{ folders: [] }` |
+| `POST` | `?action=create-folder` | `{ path }` | `{ folder }`; idempotent and case-insensitive (`formal` beside `Formal` answers `Formal`); ancestors are created |
+| `POST` | `?action=rename-folder` | `{ path, name }` | `{ folder }`; `name` is one segment; items follow (the path is the truth); a sibling holding the name in any casing is a **409**; a missing folder is a **404** |
+| `POST` | `?action=delete-folder` | `{ path }` | `{ movedItems, movedFolders }`; items (archived included) and subfolders move up to the parent, merging case-insensitively; only folder rows are deleted; a folder holding non-item files (anything that is not a parseable item `.md`), or a subfolder of its own name, is a **409** before anything moves |
+| `POST` | `?action=move-items` | `{ itemIds, folder }` | `{ items }` (serialised with `origin` and `wear`); one projection for the batch; an id not filed in this tier (a borrowed item) is a **400** naming it |
+
+Folder writes against an archived character's vault are a **409**, like every other write.
 
 #### `GET /api/v1/wardrobe/[itemId]`
 
@@ -2081,9 +2105,9 @@ Get all wardrobe items for a character.
 
 The group tier is a standalone read so the client can assemble the same pool the
 server does (`useCharacterWardrobeItems` merges character > group > project >
-general). Server-side callers should use
-`repos.wardrobe.findWearablePoolForCharacter` with tiers from
-`resolveSharedWardrobeTiersForChat` rather than reassembling it.
+general, archived items dropped from each tier before shadowing). Server-side
+callers use `loadWearablePool` (`lib/wardrobe/pool.ts`) rather than
+reassembling it.
 
 **Response**: `200 OK`
 
@@ -2819,8 +2843,10 @@ Every slot is an **array** of wardrobe item ids (empty when nothing is worn ther
 #### `GET /api/v1/chats/[id]?action=outfit-summary`
 
 The same equipped state as `?action=outfit`, with each item id resolved to its title so a caller
-can render the outfit without a second round trip. Composites are expanded to their components at
-read time, exactly as `?action=outfit` does.
+can render the outfit without a second round trip. Each character's slots resolve against their own
+wearable pool (their own groups; the project and General tiers read once for the cast) by the canonical
+rule every prompt path uses (`resolveEquippedOutfitForCharacter`): composites are expanded, and each
+leaf is listed under every slot its own `types` cover — not only the slot it was equipped to.
 
 #### `GET /api/v1/chats/[id]?action=group-stores`
 

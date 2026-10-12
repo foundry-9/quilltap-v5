@@ -4,6 +4,168 @@
 
 ### 4.10-dev
 
+#### Spec: memory system refactor
+
+- `docs/developer/features/memory-system-refactor.md`: a design for rebuilding the Commonplace Book
+  end to end on six abstractions it never had — one candidate shape, one extraction context, a pure
+  admission decision applied in the parent over host-RPC, three named scores (relevance, salience,
+  protection) with one function each, one clock for event time on both the write and read side, a
+  staged recall pipeline whose delivery step is the only record of what the model saw, and one
+  maintenance job (fold near-duplicates, consolidate, demote, retire, mirror) with a parent-side
+  ledger. `vector_entries` is retired for memories in favour of `memories.embedding` + `tier` behind a
+  `memoryIndex` owner; every delete goes through `retireMemories`. Lists 28 defects to file as bugs
+  199–226 (four to fix first: recall never delivered on continue turns, orphan vectors blinding the
+  gate, chat wipe and dedup deleting manual rows and digests, entity anchors cut by the cosine floor).
+  Seven phases, each with tests, acceptance and a V4test walkthrough, shipped one PR per phase. The
+  fifteen decisions in §7 (including moving housekeeping settings to `instance_settings.memoryMaintenance`
+  and a single instance-wide calendar for event time) are locked. The four code audits the diagnosis
+  rests on (creation, gate/merge, scoring/recall, maintenance) are appended in full. Linked from
+  `ROADMAP.md`. Design only; nothing built yet.
+
+#### Wardrobe folders (spec `features/complete/wardrobe-folders.md`)
+
+- Items and outfits can be filed into folders under each tier's `Wardrobe/` (up to 8 deep; `images` reserved;
+  names case-insensitive). The folder is the file's path: `WardrobeItem.folder` is derived on read and written
+  back as the path; it is never stored in frontmatter. Folders do not affect the wearable pool.
+- The wardrobe reader is now recursive, and `isWardrobeItemDocumentPath` matches `.md` at any depth except under
+  `Wardrobe/images/` and `instructions.md` at any depth. This fixes the wear-ledger export, restore id remap and
+  ledger import for items in subfolders, and stops slug-referenced components in subfolders being dropped.
+- `projectArrayIntoVaultFolder` gains a `recursive` mode (per-folder collision suffixes, sweep at any depth,
+  `images/` never touched). Its sweep now compares paths case-insensitively, matching the store's
+  case-insensitive upsert (a casing-only change could delete the file just written).
+- `WardrobeLocation` gains `updateMany` (one projection per batch), `listFolders`, `createFolder`,
+  `renameFolder`, `deleteFolder`; new `moveItemsToFolder` and `lib/wardrobe/folder-mutations.ts`.
+- New collection actions on every tier's wardrobe route: `GET ?action=folders`, `POST ?action=create-folder`,
+  `rename-folder`, `delete-folder` (contents move up a level), `move-items`. Create/update bodies accept
+  `folder`. Transfers keep an item's folder at the destination.
+- Wardrobe browser (dialog and Prospero card): breadcrumb, folder rows, a tier row per borrowed wardrobe in a
+  character's view, search across all folders with a folder crumb per hit, New folder, Select mode with bulk
+  Move to folder…, folder Rename/Delete, and a Folder field in the item editor. Row menu: *Move to folder…*;
+  *Move* / *Copy* renamed *Move to another wardrobe…* / *Copy to another wardrobe…*.
+- `wardrobe_list` / `wardrobe_read` results carry `folder` (read-only) and render `[folder: …]`.
+- `qtap-export.schema.json` documents `folder` on wardrobe items; imported items keep their folder
+  (normalised, or the top level when it cannot be).
+- Review fixes: the wardrobe projection sweeps only files that parse as items (notes under `Wardrobe/` are
+  never deleted); a requested folder resolves against the tier's existing folders (hand-made spellings kept,
+  only new parts normalised) and an edit that keeps its folder moves nothing; folder rename stamps ids into
+  id-less files first; delete-folder pre-checks non-item files and same-name subfolders (409, nothing moved);
+  `GET ?action=folders` no longer provisions stores; projection ensures only missing folders; folder moves no
+  longer re-read the wardrobe for casing; the delete confirmation mentions archived pieces.
+
+#### Specs: scenarios from anywhere; wardrobe folders
+
+- `docs/developer/features/scenarios-from-anywhere.md`: a "Browse all scenarios" dialog over every
+  character, project, group and General scenario; a `resolveScenarioLocation` chokepoint replacing the
+  four tier modules; `chats.scenarioSource` / `scenarioNotes` so a chat remembers where its scene came
+  from and can reload it; New Chat keeps one scenario selection instead of four pointer fields (fixes the
+  form showing a project default while submitting the character default).
+- `docs/developer/features/wardrobe-folders.md`: user folders under each tier's `Wardrobe/`, with the
+  file path as the only source of truth; recursive read, predicate and projection (also fixes the flat
+  wear-ledger export/restore/import side-channels); five folder actions on the route factory; a
+  breadcrumb browser with bulk move; tools see `folder` read-only.
+- Both linked from `ROADMAP.md`. Design only; nothing built yet.
+
+#### Fix bug 198: wardrobe dialog showed a stale outfit after a tool-driven change
+
+- `useChatOutfit` refetches on every mount and `slotsFor` returns undefined until that fetch lands, so
+  the Live tab and Outfit Builder never seed from a cached snapshot from an earlier dialog visit.
+- The `chats` realtime topic now also invalidates `queryKeys.wardrobe.outfit(chatId)`, so an LLM's
+  `wardrobe_*` change refreshes the cached outfit.
+
+#### Wardrobe refactor (spec `features/complete/wardrobe-refactor.md`); fix bugs 190 and 192–197
+
+- One wardrobe location: `lib/wardrobe/location.ts` (`resolveWardrobeLocation`) replaces
+  `resolve-container.ts`, the tier switches in `item-images.ts` and the transfer route, and the route
+  factory's owner/store steps. A project or group store is provisioned only with `ensure: true`.
+  `ensure-project-store.ts` / `ensure-group-store.ts` merged into `ensure-owner-store.ts`
+  (`ensureOwnerOfficialStore(kind, …)`); `project-wardrobe.ts` / `group-wardrobe.ts` deleted. Vault
+  writers renamed `*ProjectWardrobeItem` → `*MountWardrobeItem`; folder writes take a `WardrobeMount`
+  with a `group` scope; cycles throw `WardrobeComponentCycleError`.
+- One wearable pool per request: `lib/wardrobe/pool.ts` (`loadWearablePool`, `createSharedTierLoader`,
+  `loadCastPools`) reads each tier once and resolves the group tier itself. The vault reader no longer
+  seeds components from Quilltap General; unresolved UUID refs survive parsing. `shared-tiers.ts` and
+  `hydrate-components.ts` deleted. `resolveEquippedOutfitForCharacter(pool, slots)` is synchronous.
+  `WardrobeRepository` is now `findByCharacterId`, `readSharedTiers` and owner-hint write adapters; it no
+  longer extends the base repository (the table is gone). Backup and delete-all stop reading it. The
+  legacy-row read for the startup refresh and the vault cutover moved to
+  `migrations/lib/legacy-wardrobe-rows.ts`.
+- One outfit-change pipeline: pure slot math in client-safe `slot-ops.ts` (replaces `dissolve-bundles.ts`
+  and the pure half of `outfit-displacement.ts`, which is now just `applyDisplacement`); `wear-ops.ts`
+  (`resolveWearable`, `wearItem`, `takeOffItem`) shared by the tools and `?action=equip`;
+  `outfit-change-effects.ts` (avatar refresh + Aurora announcement) for every surface;
+  `item-mutations.ts` (`createItem`, `updateItem`, `setItemArchived`). `isComposite`, `addIdToSlot`,
+  `removeIdFromSlot`, `equippedSlotsEqual` added to `wardrobe.types.ts`. The executor's seven
+  `wardrobe_*` branches are one table (`wardrobe-tool-table.ts`) with one context. "Break apart" on a
+  legacy outfit card dissolves transitively, like wearing it.
+- One route factory for all four tiers (`lib/wardrobe/routes/wardrobe-route-factory.ts`); the General
+  and character routes are configs. Deliberate contract changes: component cycle is 400 on every tier
+  (was 500 for character/General); PUT checks existence before `imageFileId`; POST/PUT return
+  `{ wardrobeItem }` with `origin` and `wear` (the project POST no longer returns the list); a
+  character's endpoints check the character is the user's; a write to an archived character is 409.
+  Item GET also carries `wear`. A project or group store that can't be provisioned, and a character
+  with no linked vault (including its `?action=instructions`), now answer 404.
+- `?action=outfit-summary` routes leaves by their own `types` (the canonical rule), per-character pools.
+- Images (Phase E): `lib/image-gen/image-attempt.ts` (`makeLoggedImageAttempt`, `decodeProviderImage`)
+  and `lib/files/generated-file-row.ts` shared by the avatar, story background, wardrobe picture,
+  `generate_image` and preview-avatar paths; `pickPhysicalDescription` replaces the per-call variant
+  choosers; `avatar-prompt.ts` / `avatar-cache.ts` moved to `lib/image-gen/`. Preview avatar now uses
+  `resolveAvatarImageProfile` and Concierge failover (422 refusal, 502 provider failure), records real
+  dimensions, and drops the "— outfit preview" label. Wardrobe picture files are named
+  `<timestamp>-<kind>.webp` with a `(2)` suffix on collision.
+- Client (Phase F): all wardrobe lists use `useWardrobeTier` (TanStack Query, `queryKeys.wardrobe.list`);
+  the character view merges tiers by the server rule (an archived personal copy no longer hides a shared
+  item). `wardrobe-control-dialog.tsx` split into hooks and panes (~1900 → ~600 lines);
+  `use-outfit.ts` is now `useChatOutfit`. `ProjectWardrobeManager` and `useProjectWardrobe` removed: the
+  Prospero card mounts the shared browser. New `item-draft.ts`, `<SlotBadge>`, `<SlotCheckboxGroup>`,
+  `containerForListedItem`; `useClickOutside` gains `escapeCapture`. Slot chips read "Top", not "top".
+- 190: the item editor's component candidates include the group tier and archived items, and composite
+  slots come from `buildCompositeTypes` (widen, never narrow) on both client and server.
+- 192: transfer source probe is vault → groups → project → General and never provisions a store.
+- 193: `wardrobe_create` with `equip_now` fires the Aurora announcement and avatar refresh.
+- 194: the full-screen viewer removes a missing wardrobe picture through the wardrobe images route.
+- 195: `wardrobe_update` keeps a composite's designated slots when its components change.
+- 196: the Almanack's per-profile image spend counts every image log type (`IMAGE_SPEND_LOG_TYPES`),
+  including `WARDROBE_ITEM_IMAGE`.
+- 197: import-from-image resolves its vision profile with `profileCanReceiveAttachment`, shrinks the
+  image for transport, refuses an answer given without the image, times out at 120 s, and uploads the
+  photograph once.
+- `WardrobeRepository` keeps `dbTarget: 'main'` for the job child's write partitioner.
+- Removed dead code: `include_presets` on `wardrobe_list`, `OUTFIT_LLM_TIMEOUT_MS`, `sortForDefaultOutfit`,
+  `NO_ITEM_SENTINELS`, `emptyEquippedState`, `WardrobeOverlayOptions.defaultsOnly`, the
+  `*_WEARER_LABEL` and `OutfitSlotName` exports, and the client items listed in the spec.
+
+#### Fix bugs 187, 188, 189 and 191 (wardrobe)
+
+- 187: a character composite no longer loses components that live in a group or project store. The
+  vault parser keeps a component reference it cannot match locally when it is a UUID (cross-tier parts
+  are always written as UUIDs), so the next write no longer persists the loss. Only an unmatched slug is
+  dropped. Also fixes group and project composites that reference General items.
+- 188: `wardrobe_archive` archives through `archivedPatch`. Archiving an already-archived item writes
+  nothing and keeps the original `archivedAt`; the tool reports `already_archived`.
+  `WardrobeRepository.archive` and `unarchive` are deleted.
+- 189: tool-queued wardrobe pictures use the chat they were asked for in. `generateWardrobeItemImage`
+  takes `chatId`, resolves the Concierge policy against the chat, routes an Unmoderated chat directly to
+  the uncensored desk, and passes the chat to the image failover, so Locked chats never fail over and
+  refusals are ledgered and announced. The job handler passes `payload.chatId`.
+- 191: archived items can't be worn from the wardrobe dialog or `?action=equip`. New
+  `lib/wardrobe/wearable.ts` (`wearRefusal`) is shared by `wardrobe_wear`, every equip mode, and the
+  dialog's wear gestures. `set_all` refuses a fitting that newly puts on an archived item; one already
+  being worn may stay.
+
+#### Wardrobe refactor plan and bugs 187–197 filed
+
+- New `docs/developer/features/complete/wardrobe-refactor.md`: a code audit of the wardrobe subsystem (tiers,
+  repository, tools, routes, image pipeline, components) and a seven-phase consolidation plan around two
+  missing abstractions, a single wardrobe location type and a per-request wearable pool. No code changes.
+- Eleven defects found by the audit are filed, open, in the bug catalogue: 187 (a character composite
+  loses group- or project-store components on the next vault read; the loss is then written back), 188
+  (`wardrobe_archive` re-stamps the archive date), 189 (tool-queued wardrobe pictures ignore the chat's
+  Concierge state), 190 (the item editor narrows a composite's slots), 191 (the dialog can wear archived
+  items), 192 (transfer probe order and store provisioning on read), 193 (create-and-equip never
+  announced), 194 (viewer cleanup bypasses wardrobe link cleanup), 195 (`wardrobe_update` narrows
+  composite types), 196 (Almanack misses wardrobe image spend), 197 (import-from-image skips the vision
+  transport safeguards).
+
 #### Wardrobe pictures open full screen, with Save to a document store
 
 - Clicking a wardrobe row's thumbnail, the item editor's current picture, or a history entry opens the
