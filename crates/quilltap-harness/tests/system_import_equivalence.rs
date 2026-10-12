@@ -122,6 +122,15 @@ fn fresh_db(tag: &str) -> ScratchDb {
     // P4.D171 and P4.D182 columns natively (`pragma_table_info` proof:
     // P4.117 lane record) — the `ensure_p4d171_columns`/`ensure_p4d182_
     // columns` heals that used to run here are now dead and removed.
+    //
+    // [P4.D272 R-B] The memory-tier columns, though, are ensured on the copy
+    // — the oracle's copy runs v4's REAL `add-memory-tiers-v1` too — so a
+    // rebuilt or vintage pair cannot turn every memory read into a matching
+    // `no such column` on both sides. A no-op on the pair P4.D265 widened.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
+        quilltap_core::test_support::ensure_memory_tiers_columns(w.connection());
+    }
     let db = Db::open(
         DbPaths {
             main,

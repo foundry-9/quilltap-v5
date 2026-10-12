@@ -176396,3 +176396,106 @@ Differentials: `maintenance_ops_tier2` compares `foldOtherCatchup` — **measure
 - **💸 for the dogfood pass:** a consolidation DRY RUN on the Friday COPY (one cheap call per selected cluster, ≤ 10; the report; `llm_logs` typed `MEMORY_EXTRACTION`; nothing else written); a REAL run on the copy (digests `CONSOLIDATED`, members `cold` + `supersededById`, `Commonplace/<Subject>.md` + `Self.md`, one `memories` + one `mountPoints` hint and one frozen-archive invalidation through the completion hooks, a second run leaving the files `unchanged`); v4's 365 existing digests revised in place, no duplicates; the settings cards resetting a tuned `clusterThreshold` on any save (R-A, observed not "fixed"); enabled + a scheduled tick (consolidation jobs, then `MEMORY_HOUSEKEEPING` at +30 min); a low watermark (e.g. 5) + a real post-turn extraction → ONE watermark run (debounce / throttle lines on later turns). The copy only.
 - **Versions at close:** core 0.0.1273, host 0.0.196; web 0.0.228 untouched (no REST edge); harness frozen 0.0.1110.
 - **Cleanup:** the pin worktree `/tmp/qt-v4-pin-p4.d271-01a83539d` was removed, this lane's `target/` deleted, and lane scratch (`/tmp/p4d271`, the `/tmp/qt-consolidation-*` oracles / fixtures / mirror) deleted.
+
+### P4.D272 lane start — the probe, the pin, the helper check, and the red-first set (instrument commit)
+- **Base.** This worktree sits on P4.D265's lane-close tip `18e41e403`, which is `KEYSTONE` `609d9d9f2` plus three test/docs commits that move no C1 surface. It is not `main`.
+- **§R.2 probe (2026-10-09 20:41 CDT).** The checkout is on `main` and clean. `log 01a83539d..main` shows **v4 moved: `9ecebf986`** (the wardrobe refactor, bugs 190 and 192–197), plus `7a8d6dacc` and `3e6e2f590` (both already noted at planning). `log 1a2b2164c..bugfix` is empty. The pin is usable: `rev-parse` = `01a83539dd1c…`, `package.json` = `4.10.0-dev.143`, `openai` = `7.30.0`. The pin is `/tmp/qt-v4-pin-p4.d272-01a83539d` with the three symlink classes. The lockfile diff `01a83539d..main` is two version-stamp lines.
+- **Helper check (Tier 1 item 1, C1 §13).** `applyMemoryTiersMigration(copy, {pepperBase64, ledger:false})` on an ENCRYPTED copy:
+  - the committed `system-data-main.db` → `not needed` (P4.D265 widened the triple in place at `KEYSTONE`: four columns, the watermark and the index were already present);
+  - the PRE-widen blob (`git show 96cfdaaf7:…/system-data-main.db`) → `+RAN add-memory-tiers-v1 (Memory tiers in place (6 changes))`, with all four columns, the watermark and `idx_memories_character_tier` present after.
+  - So the helper works both ways. R-B's per-copy migration is therefore a NO-OP today on both sides. It is kept as ordered (idempotent; §R.3 calls this harmless), so a rebuilt or vintage pair cannot go vacuous.
+- **§I.2 (seed vintage).** `qtap_schema_validate` regenerated at the pin: all 16 seed rows present, `"tier":"hot"` on 39 lines, no `no such column`. No migration is needed for that family, and it gets none.
+- **§I.6.** v4's export lines OMIT a NULL `supersededById` / `consolidatedAt` (MEM_2's line carries neither key) and a NULL chat watermark. A planted value rides in v4's `MemorySchema` slot.
+- **§I.7.** `preserveIds` with a repeated memory id: the preflight refuses the WHOLE import (`Preserve IDs collision for memory … (also seen as memory)`). So `execute_memory_tiers_preserve` drops items 12–13. The id-less pair 14–15 stays, and under preserve both land (each `_create` mints).
+- **§I.4 (v4's tails, through the real `executeImport`):** `Failed to import memory: UNIQUE constraint failed: memories.id`. The id-less one's WARN carries NO `memoryId`. The two TypeError sentences are `(memory.consolidatedFrom ?? []).map is not a function` and `(memory.relatedMemoryIds ?? []).map is not a function`. Item 9's related sentence wins, and item 17's tags sentence wins. `execute_memory_tiers`: imported 8, skipped 9.
+- **Instrument (this commit, harness + oracle only).**
+  - R-B on `system-import-execute` / `system-export` / `system-import` (oracle `applyMemoryTiersMigration`; Rust `ensure_memory_tiers_columns`).
+  - R-C: `qtap_import_equivalence`'s `array_id_columns` + `supersededById` + `dangling_memory_refs`; `system_import_state`'s `memoryLogs` with `<minted>` masking and the per-side created-ids assertion.
+  - The new cases `execute_memory_tiers`, `execute_memory_tiers_preserve` and `execute_chat_watermark` (Tier 2 item 12), with the oracle-row non-vacuity checks.
+  - `system_export`'s shared `MEMORY_TIERS_PLANT_SQL`, including the two settings rows (Tier 2 item 13).
+  - Ten `qtap-schema-validate.json` mutation rows (MC.2b).
+  - Counters: cases 61 → 64, import WARNs 48/30 → 51/44, wardrobe 48 → 51, repo-log cases 11 → 13, NEW memory logs 51/39.
+- **Red-first on the `KEYSTONE` tip, from the pin (staged under `/tmp/p4d272/`):**
+  - `qtap_schema_embed_guard`: 1 red (`v4 102523 bytes, vendored 101092`). `the_embedded_schema_is_self_consistent` is green.
+  - `qtap_schema_validate_equivalence`: 5 rows red on `valid` (`memory_tier_off_enum`, `memory_superseded_by_not_uuid`, `memory_consolidated_from_item_not_uuid`, `memory_consolidated_from_not_array`, `memory_consolidated_at_bad_date`).
+  - `system_export_equivalence`: 5 lines (the three chats streams' line 1 — the watermark appended at the end — and two memory streams' line 39 — the four keys after `updatedAt`).
+  - `qtap_import_equivalence`: `dangling memory refs: rust 72 vs oracle 0`.
+  - `system_import_state`: **49 differences over 13 cases.**
+    - Every memory-importing arm's `memoryLogs` (8 arms × 2).
+    - `execute_memory_tiers` 7 and `execute_memory_tiers_preserve` 7.
+    - **NOT predicted — a FINDING, attributed:** `execute_wardrobe_overwrite` 4, `execute_overwrite_all` 9 and `route_replace_remap` 7 (`doc_mount_*` rows), plus `store_identity_same_name_new_id` 1 (`Identity Store (2)`).
+    - A scratch oracle with v4's `reconcileStoreNames` jest-stubbed to a no-op makes all three overwrite arms' `doc_mount_*` reds VANISH. They are bug 186's end-of-import reconcile (`execute.ts:990-991`, P4.D274's hunk). The store-identity row stays: it is `import-document-stores`' free-name `(2)` (also P4.D274's).
+    - R-D applies (shaped after the port; see the carve record).
+  - `system_import_equivalence`: green. `execute_chat_watermark` was already green: the keystone's `ChatCreate` field carries the watermark through `entities.rs`' serde decode with no code here.
+
+### P4.D272 R-D — `RECONCILE_PENDING_UNION` on `system_import_state` (carve commit)
+- **Measured (§I.5).** On the `KEYSTONE` tip, `execute_wardrobe_overwrite` (4 tables), `execute_overwrite_all` (7) and `route_replace_remap` (7) were red outside every memory comparand. So was `store_identity_same_name_new_id` (v4 `Identity Store (2)`, v5 `Identity Store`).
+  - A scratch oracle with v4's `reconcileStoreNames` jest-stubbed (`jest.doMock('@/lib/mount-index/reconcile-store-names', …)`) made all three overwrite arms' rows vanish. The store-identity row stays: it is `import-document-stores`' free-name pick.
+  - Both are bug 186 (`ed8b15b50`), P4.D274's `quilltap_import/{mod,document_stores}.rs` hunks.
+  - In each overwrite arm, v4's reconcile keeps the archive vault's PRE-import `properties.json` file row (`d415a97c…`, 132 bytes) where v5 writes a fresh one. Every later minted label in the partition walk shifts with it.
+- **The carve.** `RECONCILE_PENDING_UNION` (case → tables, the 18 (case, table) rows listed) and `RECONCILE_PENDING_UNION_STORE_NAMES` (the one store cell), both in a fenced append-only region of `system_import_state.rs`. Pinned both ways:
+  - VANISHED when a listed table compares equal, or the store names agree;
+  - WRONG SHAPE unless v4 keeps `d415a97c…` and v5 does not, or unless the names are exactly `Identity Store (2)` / `Identity Store`.
+  - Proven against the stubbed oracle: every row reports VANISHED, plus the three WRONG SHAPE lines.
+  - **The unifier LIFTS it** after P4.D274 + P4.D273 (§S.5), deleting it here and in P4.D273's restore families, then re-runs `system_import_state` by name.
+- **`qtap_import_equivalence`: no reconcile move measured** — the family is green whole after MC.1 at the pin (the seed's fresh vaults take their plain names on both sides). No carve there.
+
+### P4.D272 MC.1 — the `.qtap` import's up-front memory mint + link remap (core 0.0.1266)
+- **Port** (`services/quilltap_import/memories.rs`, v4 `import-entities.ts:433-548` at `01a83539d`; `d58548051`'s +23 lines):
+  - `MemoryIdMap::mint` — one `Uuid::new_v4()` per bundle memory in bundle order, before the loop, keyed by `MemoryKey` (JS SameValueZero over the raw JSON `id`: absent / null / bool / number bits with −0 folded / string / object-identity), last-wins. It is `None` under `preserveIds` (the identity).
+  - `remap_ref` = `map.get(ref) ?? ref`.
+  - `insert_consolidation_fields`, in the payload literal's evaluation order, after the tags: `relatedMemoryIds` / `consolidatedFrom` (absent/null → `[]`, array → remapped, else v4's TypeError sentence), `tier ?? 'hot'`, `supersededById` truthy → remapped else `null`, `consolidatedAt ?? null`.
+  - The create runs under the pre-minted id. The `Imported memory` DEBUG `{memoryId, tier, source?}` comes after the push.
+  - `import_memories`' signature is unchanged (P4.D274's `mod.rs` call site and its two unit tests are untouched). The module doc carries v4's comment and the R-A / R-E / R-G notes.
+- **Green at the pin.**
+  - `qtap_import_equivalence` whole: dangling refs 0 == 0 (72 vs 0 on the tip), the tokenized arrays equal, the skip branch's 84 rows, the tier columns exact.
+  - `system_import_state`: every memory comparand on all 64 cases. `execute_memory_tiers` imported 8 / skipped 9 on both engines. The oracle-row non-vacuity holds: ≥ 6 imported, D's `consolidatedFrom` 3 elements / 2 resolving, A → D. The per-side created-ids multiset assertion holds on all 51 execute cases. The only residue is R-D's carve.
+- **Unit tests (9, NEW `mod tests`):** v4's two jest cases mirrored; R-A's shared-id and id-less collisions (with the id-less WARN omitting `memoryId`); SameValueZero keys; preserve identity (the id-less pair both land); an unknown ref keeps its source id and a skipped target's minted id dangles; the DEBUG capture pin `DEBUG …::memories Imported memory memoryId=<id> tier=cold source=AUTO`; the silence legs (refused / skipped / three TypeErrors log nothing; an absent `source` omits the field; a `null` tier logs `hot`).
+- **Neighbours green:** `cargo test -p quilltap-core --lib quilltap_import` 64/64; `import_warning_text_guard`, `fallback_home_guard`, `spelling_guard`.
+- **R-E measured (Tier 3 item 18 — DEFERRED by name).** A scratch oracle appended `{…, id: 5}` to the preserve bundle. v4 refuses it (`Failed to import memory memoryId=5 error=[{"expected":"string","code":"invalid_type","path":["id"],"message":"Invalid input: expected string, received number"}]`; imported 8 / skipped 8). v5 mints and lands it (9 / 7). This predates `d58548051` (`getPreserveIdsCreateOptions` did the same), so it is not drift and stays recorded, not fixed.
+- **R-A v4-filing draft (for the human).** "Since `d58548051`, `importMemories` mints memory ids up front into a `Map` keyed by the raw `memory.id`, and `Map.set` keeps the last mint. Two bundle memories that share an id — or two with no `id` at all (both keyed `undefined`) — now resolve to ONE minted id. The first lands and the second fails `UNIQUE constraint failed: memories.id`. Before, each minted its own id and both landed. Evidence: `system_import_state`'s `execute_memory_tiers` items 12–15 (v4 at `01a83539d`: two `Failed to import memory: UNIQUE constraint failed: memories.id` warnings, one WARN without a `memoryId`)." The number comes after P4.D271 R-A's candidate.
+- **R-G:** no heal. Existing instances keep the 72 dangling `relatedMemoryIds` their first-startup seed wrote.
+
+### P4.D272 MC.2 + MC.2b — the export schema re-vendor + the validator rows (core 0.0.1267)
+- **Re-vendor (R-F, one commit).** `git -C $PIN show 01a83539d:public/schemas/qtap-export.schema.json` → `generators/qtap-export.schema.json`. `cmp` against the pin's file is clean; md5 `6990efe6bdbed65a6052849cd7d1a2e3`; 102,523 B (101,092 before). Both size pins move with their history lines: `qtap_schema.rs` `the_embedded_schema_compiles` and `qtap_schema_embed_guard::VENDORED_BYTES`.
+  - Red-first, three stages:
+    - on the tip, the live leg red (`v4 102523 bytes, vendored 101092`) and the self-consistent leg green;
+    - after the copy, the self-consistent leg red;
+    - after the constants, both green, and the live leg RAN against the pin (zero `SKIP`).
+- **Two `qtap_schema.rs` unit rows:** a memory with `tier: "warm"` is invalid under `/data/memories/0/tier` (and `cold` is valid); a CONSOLIDATED digest with `consolidatedFrom: [uuid, uuid]` and a null `supersededById` is valid.
+- **MC.2b.** The ten mutation rows landed with the instrument commit. `qtap_schema_validate_equivalence` is green at the pin: 70 rows (24 valid, 46 invalid); 312 v4 errors vs 212 v5. The five rows that were red on the stale schema are green. The module doc records the new rows' count deltas.
+- **R-F, `ai_import_tier3` by hand at the pin.** The ONLY red is the `V4_APP_VERSION` stamp (`4.10.0-dev.143` vs `4.10.0-dev.117` — the unifier's, §S.2). With the stamp flipped locally (not committed), the family is green whole.
+
+### P4.D272 MC.3 — `schema-key-order.json` re-dumped at the pin (core 0.0.1268)
+- **Dump (R-H).** `cd $PIN && node --import tsx $V5W/harness/oracle/fixtures/dump-export-key-order.ts > …/qtap_export/schema-key-order.json` (staged at `/tmp/p4d272/schema-key-order.json` first; 7,500 → 7,621 B).
+  - The diff is EXACTLY five added lines: `chat` + `otherExtractionWatermarkMessageId` after `timelineMode`; `memory` + `tier`, `supersededById`, `consolidatedFrom`, `consolidatedAt` after `reinforcedImportance`.
+  - `python3 -I` counts: `memory` 29, `chat` 102, and `character` 46 / `chat_message` 41 / `chat_inform` 11 / `roleplay_template` 13 / `tag` 8 / `project` 24 / `group` 10 / `connection_profile` 32 / `image_profile` 13 / `embedding_profile` 14 unchanged.
+  - `key_order.rs`' doc records the regeneration.
+- **Green.** `system_export_equivalence` is byte-exact on all 61 cases at the pin. That includes every `includeMemories` stream over the planted CONSOLIDATED digest / cold member, the chats streams' planted watermark in its slot, the NULL-omitting lines (§I.6 — v5's reader already omits them), and the instance-settings stream carrying the two planted settings rows raw (Tier 2 item 13). The fresh oracle has `grep -c '"consolidatedFrom"'` = 3 and `otherExtractionWatermarkMessageId` > 0.
+  - On the tip it was 5 lines red; after the plants and before the dump the same 5.
+- **Neighbours:** `moderation_refusal_ledger_isolation_guard` 4/4 and `cargo test -p quilltap-core --lib qtap_export` 16/16 are green.
+
+### P4.D272 lane close — the gate, §I.3, the 💸 rows, versions
+- **§I.3 (the unmigrated failure shape, R-B's evidence).** Measured on the pre-widen `system-data-main.db` (`96cfdaaf7`):
+  - v4 (scratch oracle, migration removed): `execute_skip_all` / `execute_overwrite_all` import 0 memories, each `Failed to import memory: table memories has no column named tier`;
+  - v5 (throwaway test, v4's own merged payload): imported 0, the same three sentences byte for byte.
+  - The tails COINCIDE: the vacuity class. It cannot bite the committed triple, which P4.D265 widened, and R-B's per-copy migration guards a rebuilt pair.
+- **The lane's families, from the pin, regenerated fresh in one battery (`/tmp/p4d272/logs/final`), each green BY NAME with zero `SKIP`:**
+  - `qtap_schema_embed_guard` 2/2 (the live leg RAN);
+  - `qtap_schema_validate_equivalence` (70 rows);
+  - `system_export_equivalence` (61 cases);
+  - `qtap_import_equivalence`;
+  - `system_import_state` (64 cases; R-D carve only);
+  - `system_import_equivalence` (33 cases).
+  - Silent-stale greps are all > 0: export `consolidatedFrom` 3 (the lines are escaped JSON — grep the bare key) and watermark 3; import-execute `Imported memory` 10 lines, `execute_memory_tiers` 2; qtap-schema `memory_tier_off_enum` 1; the qtap-import dump carries non-empty `relatedMemoryIds`.
+- **Gate.**
+  - `cargo fmt --all --check`: clean. One unformatted assertion in MC.2's unit row was caught by the gate and folded into that commit.
+  - `cargo clippy --workspace --all-targets -D warnings` and the `quilltap-core/native-transport` variant: clean (with `apps/web/dist` built).
+  - `cargo test --workspace --no-fail-fast`, with the lane's oracle env block and `QT_V4_CHECKOUT` / `QT_V4_ROOT` = the pin: **707 binaries, 4,680 passed, 1 failed, 3 ignored.**
+    - The one red is `cli_differential`'s seven rows (`main help`, `completion bash|zsh|fish`, `recall-replay help|no chat|table`) — P4.D269's by design (§R.13(e)), the same seven P4.D265 recorded.
+  - `recipe_sweep.py --self-test` exits 0.
+- **Neighbours (item 11):** `system_import_equivalence`, `moderation_refusal_ledger_isolation_guard`, `import_warning_text_guard`, `fallback_home_guard`, `spelling_guard` and the `quilltap_import` / `qtap_export` / `qtap_schema` unit tests are green. `ai_import_tier3` is red ONLY on the unifier's `V4_APP_VERSION` stamp.
+- **HANDOFF:** none. The unifier LIFTS `RECONCILE_PENDING_UNION` here (§S.5) after P4.D274 + P4.D273.
+- **v4 moved:** `9ecebf986` observed at 2026-10-09 20:41 CDT (plus the planning-time `7a8d6dacc`, `3e6e2f590`). Not read, not ported.
+- **💸 for the dogfood pass (unchanged from the order):** a fresh `setup` instance's 42 seeded memories with 0 dangling `relatedMemoryIds` and `tier = 'hot'`; a Friday-copy `.qtap` export whose memory lines carry the four keys in slot and whose chats carry the watermark; that export re-imported into a fresh instance (`skip`) with every link resolving to the new ids and one `Imported memory` DEBUG per row; the hand-edited duplicate-id regression (R-A).
+- **Versions at close:** core 0.0.1268 (host / web / cli / tauri untouched; harness frozen 0.0.1110).

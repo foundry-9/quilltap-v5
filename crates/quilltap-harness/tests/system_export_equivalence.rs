@@ -65,6 +65,10 @@ fn fresh_db(tag: &str) -> ScratchDb {
         let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
         plant_p4d171_values(w.connection());
         plant_p4d182_values(w.connection());
+        // [P4.D272 R-B] tier-MIGRATED like the oracle's copy (a no-op on the
+        // pair P4.D265 widened in place), then the tier cells planted.
+        quilltap_core::test_support::ensure_memory_tiers_columns(w.connection());
+        plant_memory_tiers_values(w.connection());
         // [P4.D264] the oracle's `plantWardrobe`, for the `…_wardrobe` cases.
         if tag.ends_with("_wardrobe") {
             let m = quilltap_core::db::Writer::open_writable(&mount, TEST_PEPPER).unwrap();
@@ -534,3 +538,30 @@ const WEAR_PLANT_SQL: &str = "INSERT INTO \"wardrobe_wear_stats\" (\"id\", \"ite
 'a1000000-0000-4000-8000-000000000002', 9, '2026-03-01T00:00:00.000Z', \
 '2026-03-09T00:00:00.000Z', NULL, '2026-03-01T00:00:00.000Z', '2026-03-09T00:00:00.000Z')";
 // === end P4.D264 ===
+
+// === P4.D272 (append-only) ===
+
+/// [P4.D272] The oracle's `MEMORY_TIERS_PLANT_SQL`, statement for statement:
+/// `MEM_1` a CONSOLIDATED hot digest of `MEM_3`, `MEM_3` its cold superseded
+/// member, `CHAT_1`'s OTHER-extraction watermark at `MSG_11`, and raw rows for
+/// the two new instance settings (Tier 2 item 13). Every export line otherwise
+/// carries the tier columns at their defaults — the same bytes whether the
+/// key order (`schema-key-order.json`) is right or not.
+const MEMORY_TIERS_PLANT_SQL: [&str; 5] = [
+    "UPDATE \"memories\" SET \"source\" = 'CONSOLIDATED', \"tier\" = 'hot', \"consolidatedFrom\" = '[\"ad000000-0000-4000-8000-000000000003\"]', \"consolidatedAt\" = '2026-01-01T00:00:00.000Z' WHERE \"id\" = 'ad000000-0000-4000-8000-000000000001'",
+    "UPDATE \"memories\" SET \"tier\" = 'cold', \"supersededById\" = 'ad000000-0000-4000-8000-000000000001', \"consolidatedAt\" = '2026-01-01T00:00:00.000Z' WHERE \"id\" = 'ad000000-0000-4000-8000-000000000003'",
+    "UPDATE \"chats\" SET \"otherExtractionWatermarkMessageId\" = 'd1000000-0000-4000-8000-000000000001' WHERE \"id\" = 'c1000000-0000-4000-8000-000000000001'",
+    "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('memoryConsolidation', '{\"enabled\":true,\"watermark\":25}')",
+    "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('memoryExtractionMode', '{\"otherPass\":\"fold\"}')",
+];
+
+/// Run [`MEMORY_TIERS_PLANT_SQL`], each statement touching exactly one row.
+fn plant_memory_tiers_values(conn: &rusqlite::Connection) {
+    for sql in MEMORY_TIERS_PLANT_SQL {
+        let touched = conn.execute(sql, []).expect("plant the memory-tier cells");
+        assert_eq!(
+            touched, 1,
+            "the memory-tier plant must touch one row: {sql}"
+        );
+    }
+}

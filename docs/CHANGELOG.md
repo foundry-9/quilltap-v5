@@ -604,6 +604,59 @@ New `consolidation_tasks` module, a port of v4's one-call-per-cluster consolidat
 _Versions: core 0.0.1266._
 
 New `consolidation_clustering` module, a port of v4's memory-consolidation clusterer: digest attraction, average-linkage agglomeration with the Lance–Williams update, the one-day episodic window, the age-based size floor, the "anything new?" check and the per-run budget. Pairwise similarities are stored as f32, as v4 stores them in a `Float32Array`. New tier-1 family `consolidation_clustering_equivalence` (113 rows from v4's real functions) includes a pair whose similarity clusters only because of the f32 rounding.
+#### 2026-10-09 — docs(porting): P4.D272 lane close — gate, measurements, status header
+
+_Docs-only change._
+
+The P4.D272 order is marked LANE COMPLETE. The status log records:
+
+- **Unmigrated-fixture measurement.** Both engines fail every memory import with the same `no such column` tail, which is why the copies are migrated.
+- **Lane families.** All six are green from a fresh pin regeneration.
+- **Workspace gate.** The only red is `cli_differential`, owned by P4.D269.
+- **Versions at close.**
+
+#### 2026-10-09 — feat(export): P4.D272 re-dump schema-key-order.json at v4 01a83539d
+
+_Versions: core 0.0.1268._
+
+The `.qtap` export's key-order table was regenerated from v4's real schemas at the pin. Memory lines carry `tier`, `supersededById`, `consolidatedFrom` and `consolidatedAt` after `reinforcedImportance`. Chat lines carry `otherExtractionWatermarkMessageId` after `timelineMode`. Before, these keys were appended at the end. The table diff is exactly five lines, and `system_export_equivalence` is byte-exact over planted tier values.
+
+#### 2026-10-09 — feat(schema): P4.D272 re-vendor qtap-export.schema.json at v4 01a83539d
+
+_Versions: core 0.0.1267._
+
+The vendored `.qtap` export schema is byte-identical to v4's at `01a83539d` (102,523 bytes). It adds `ExportedChat.otherExtractionWatermarkMessageId`, plus `Memory.tier`, `supersededById`, `consolidatedFrom` and `consolidatedAt`. Both size pins moved. The only behavioral consumer is the AI import's validator, which now refuses an off-enum tier, non-UUID links, a bad `consolidatedAt` or a non-string watermark. New unit rows and ten validator differential rows cover the change.
+
+#### 2026-10-09 — feat(import): P4.D272 mint memory ids up front on .qtap import and remap tier links
+
+_Versions: core 0.0.1266._
+
+The `.qtap` memory importer now follows v4 `d58548051`:
+
+- Every bundle memory's id is minted before the loop, keyed by the raw source id with JS `Map` semantics.
+- `relatedMemoryIds`, `consolidatedFrom` and `supersededById` are remapped through that map. A ref outside the bundle keeps its id.
+- `tier` defaults to `hot` and `consolidatedAt` to `null`.
+- Each row is created under its pre-minted id and logs v4's `Imported memory` DEBUG.
+
+The first-startup seed no longer writes 72 dangling `relatedMemoryIds` refs. As in v4, two bundle memories that share an id, or that both lack one, now import only the first. Existing instances are not healed.
+
+#### 2026-10-09 — test(import): P4.D272 carve bug 186's store-name moves in system_import_state until P4.D274 lands
+
+_No crate versions bumped._
+
+At the pin, v4's `.qtap` import ends with a store-name reconcile and picks free `(2)` names (bug 186). That is P4.D274's port, not this lane's. Three overwrite arms' document-store tables and one store-identity name therefore differ from v5, which was confirmed by stubbing v4's reconcile in a scratch oracle. They are masked under the round's one named carve, `RECONCILE_PENDING_UNION`. The carve fails if a row stops differing or differs in a different way. The unifier removes it once P4.D274 is in.
+
+#### 2026-10-09 — test(import): P4.D272 memory-carrier instrument — tier-migrated copies, link comparands, new tier cases
+
+_No crate versions bumped._
+
+Harness and oracle changes only, measured red on the `KEYSTONE` tip before any port:
+
+- The `system-import-execute`, `system-export` and `system-import` fixture copies run the memory-tier migration on both sides. It is a no-op on the widened committed pair, and it keeps a rebuilt pair from passing vacuously.
+- `qtap_import_equivalence` compares `relatedMemoryIds` / `consolidatedFrom` / `supersededById` by relationship and counts dangling refs. On the seed, v5 leaves 72 and v4 0.
+- `system_import_state` compares v4's `Imported memory` DEBUG on every execute case and checks that the logged ids are the created rows. It gains `execute_memory_tiers`, its preserve variant and `execute_chat_watermark`.
+- `system_export` plants a CONSOLIDATED digest, a cold member, a chat watermark and the two new settings rows on both sides.
+- `qtap-schema-validate.json` gains ten tier / watermark mutation rows.
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._

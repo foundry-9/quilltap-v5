@@ -25,6 +25,7 @@
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/system-export.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
+ *   cp "$V5W/harness/oracle/fixtures/apply-memory-tiers-migration.ts" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
  *   QT_FIXTURE_SD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/system-data-mount.db \
@@ -38,6 +39,7 @@ import * as fs from 'fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
+import { applyMemoryTiersMigration } from '../fixtures/apply-memory-tiers-migration';
 import { tmpdir } from 'node:os';
 
 interface Spec {
@@ -498,6 +500,32 @@ async function plantWardrobe(): Promise<void> {
   if (edited.changes !== 1) throw new Error('plantWardrobe: the coat document not found');
 }
 
+/**
+ * [P4.D272] The memory-tier cells, planted on every case's copy after the
+ * migration (the Rust twin `plant_memory_tiers_values` runs these SAME
+ * statements, byte for byte — `MEMORY_TIERS_PLANT_SQL`): `MEM_1` becomes a
+ * CONSOLIDATED hot digest of `MEM_3`, `MEM_3` its cold superseded member,
+ * `CHAT_1` carries `MSG_11` as its OTHER-extraction watermark, and the two
+ * new instance settings get raw rows (Tier 2 item 13 — they travel raw:
+ * `NON_PORTABLE_INSTANCE_SETTING_KEYS` does not name them). Without it every
+ * export line carries the columns at their defaults, the same bytes whether
+ * the key order is right or not. Each statement must touch exactly one row.
+ */
+const MEMORY_TIERS_PLANT_SQL: string[] = [
+  "UPDATE \"memories\" SET \"source\" = 'CONSOLIDATED', \"tier\" = 'hot', \"consolidatedFrom\" = '[\"ad000000-0000-4000-8000-000000000003\"]', \"consolidatedAt\" = '2026-01-01T00:00:00.000Z' WHERE \"id\" = 'ad000000-0000-4000-8000-000000000001'",
+  "UPDATE \"memories\" SET \"tier\" = 'cold', \"supersededById\" = 'ad000000-0000-4000-8000-000000000001', \"consolidatedAt\" = '2026-01-01T00:00:00.000Z' WHERE \"id\" = 'ad000000-0000-4000-8000-000000000003'",
+  "UPDATE \"chats\" SET \"otherExtractionWatermarkMessageId\" = 'd1000000-0000-4000-8000-000000000001' WHERE \"id\" = 'c1000000-0000-4000-8000-000000000001'",
+  "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('memoryConsolidation', '{\"enabled\":true,\"watermark\":25}')",
+  "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('memoryExtractionMode', '{\"otherPass\":\"fold\"}')",
+];
+
+function plantMemoryTiersValues(db: { prepare(sql: string): { run(...a: unknown[]): unknown } }): void {
+  for (const sql of MEMORY_TIERS_PLANT_SQL) {
+    const { changes } = db.prepare(sql).run() as { changes: number };
+    if (changes !== 1) throw new Error(`plantMemoryTiersValues: ${changes} rows for ${sql}`);
+  }
+}
+
 async function runCase(
   spec: Spec,
   c: CaseSpec,
@@ -514,6 +542,9 @@ async function runCase(
   copyFileSync(fixtures.main, mainWork);
   copyFileSync(fixtures.mount, mountWork);
   copyFileSync(fixtures.llm, llmWork);
+  // [P4.D272 R-B] tier-MIGRATED through v4's REAL `add-memory-tiers-v1` (see
+  // `system-import-execute.test.ts`'s `runCase`); a no-op on the widened pair.
+  await applyMemoryTiersMigration(mainWork, { pepperBase64: spec.testPepperBase64, ledger: false });
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
   process.env.SQLITE_LLM_LOGS_PATH = llmWork;
@@ -527,6 +558,7 @@ async function runCase(
     const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
     plantP4d171Values(getRawDatabase()!);
     plantP4d182Values(getRawDatabase()!);
+    plantMemoryTiersValues(getRawDatabase()!);
   }
   if (c.wardrobe) await plantWardrobe();
 

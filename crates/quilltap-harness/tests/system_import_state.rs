@@ -213,6 +213,17 @@ fn fresh_fixture(tag: &str) -> Scratch {
         let w =
             quilltap_core::db::Writer::open_writable(&root.join("main.db"), TEST_PEPPER).unwrap();
         plant_p4d171_values(w.connection());
+        // [P4.D272 R-B] The copy is tier-MIGRATED on BOTH sides (the oracle's
+        // `runCase` runs v4's REAL `add-memory-tiers-v1` on its copy). v4's
+        // `memories.create` writes `tier` + `consolidatedFrom` on every insert
+        // and v4 never ALTERs at run time; v5 reads all 29 memory columns by
+        // name. On a pre-tier copy every memory-importing arm would fail the
+        // same way on both engines and pass for the wrong reason — measured on
+        // the pre-widen triple (`96cfdaaf7`'s `system-data-main.db`): see the
+        // P4.D272 lane record. P4.D265 widened the committed triple in place
+        // (KEYSTONE `609d9d9f2`), so this is a no-op today; it stays so a
+        // rebuilt or vintage pair cannot go vacuous.
+        quilltap_core::test_support::ensure_memory_tiers_columns(w.connection());
         // [P4.106 item 6] The committed triple predates Inform (`e7d77bb60`) too.
         // A live v5 instance has `chat_informs` before any import runs — the
         // boot chain's `ensure_chat_informs_table` — while v4's repository
@@ -1033,6 +1044,96 @@ fn v5_wardrobe_logs(lines: &[String]) -> Vec<String> {
 static WARDROBE_LOG_CASES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 static WARDROBE_LOGS_FIRED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
+/// [P4.D272] The oracle's `MEMORY_LOG_MESSAGES` — `importMemories`' per-row
+/// DEBUG (v4 `d58548051`, `import-entities.ts:531`), compared on every case
+/// whose oracle row carries `memoryLogs` as `"debug Imported memory
+/// memoryId=<L> tier=<t> source=<s>"`, where `<L>` is the id when it is a
+/// literal of the case (the pre-import fixture or the payload — every
+/// preserveIds row) and `<minted>` otherwise.
+const MEMORY_LOG_MESSAGE: &str = "Imported memory";
+
+/// v5's captured `DEBUG` lines for [`MEMORY_LOG_MESSAGE`], in the oracle's
+/// string shape (lower-case level, target dropped).
+fn v5_memory_logs(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter_map(|l| {
+            let (level, rest) = l.split_once(' ')?;
+            if level != "INFO" && level != "DEBUG" {
+                return None;
+            }
+            let (_target, rest) = rest.split_once(' ')?;
+            (rest == MEMORY_LOG_MESSAGE || rest.starts_with(&format!("{MEMORY_LOG_MESSAGE} ")))
+                .then(|| format!("{} {rest}", level.to_lowercase()))
+        })
+        .collect()
+}
+
+/// The `memoryId=` value of one memory log line.
+fn memory_log_id(line: &str) -> Option<&str> {
+    let (_, tail) = line.split_once(" memoryId=")?;
+    Some(tail.split(' ').next().unwrap_or(tail))
+}
+
+/// [`memory_log_id`] masked: a minted id → `<minted>` (R-C).
+fn mask_memory_log(line: &str, literals: &HashSet<String>) -> String {
+    match memory_log_id(line) {
+        Some(id) if !literals.contains(id) => {
+            line.replacen(&format!(" memoryId={id}"), " memoryId=<minted>", 1)
+        }
+        _ => line.to_string(),
+    }
+}
+
+/// The ids of the `memories` rows an import CREATED — the post-import rows
+/// not present, whole, in the pre-import dump — sorted (a multiset).
+fn created_memory_ids(pre: &StateDump, state: &StateDump) -> Vec<String> {
+    let rows = |d: &StateDump| -> Vec<Value> {
+        d.get("main")
+            .and_then(|t| t.get("memories"))
+            .cloned()
+            .unwrap_or_default()
+    };
+    let before = rows(pre);
+    let mut ids: Vec<String> = rows(state)
+        .into_iter()
+        .filter(|r| !before.contains(r))
+        .filter_map(|r| r.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect();
+    ids.sort();
+    ids
+}
+
+/// The per-side R-C assertion: the multiset of logged `memoryId`s equals the
+/// ids of the rows the import created.
+fn assert_logged_ids_created(
+    name: &str,
+    side: &str,
+    lines: &[String],
+    pre: &StateDump,
+    state: &StateDump,
+    failures: &mut Vec<String>,
+) {
+    let mut logged: Vec<String> = lines
+        .iter()
+        .filter_map(|l| memory_log_id(l).map(str::to_string))
+        .collect();
+    logged.sort();
+    let created = created_memory_ids(pre, state);
+    if logged != created {
+        failures.push(format!(
+            "[{name}] {side}: the `Imported memory` ids are not the created rows
+               logged:  {logged:?}
+  created: {created:?}"
+        ));
+    }
+}
+
+/// [P4.D272] How many cases compared `memoryLogs`, and how many v4 lines fired
+/// across them (non-vacuity, asserted after the run).
+static MEMORY_LOG_CASES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static MEMORY_LOGS_FIRED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// v5's captured WARN lines (`WARN <target> <message> k=v …`) for those
 /// messages, with the level and target dropped — the oracle's string shape.
 fn v5_import_warns(lines: &[String]) -> Vec<String> {
@@ -1482,7 +1583,9 @@ fn run_store_identity_case(name: &str, case: &Value, user_id: &str, failures: &m
     let got_v5 = classify_identity_dump(&stores, &docs, &pre_ids);
     let oracle_stores = case["stores"].as_array().cloned().unwrap_or_default();
     let oracle_docs = case["docs"].as_array().cloned().unwrap_or_default();
-    let got_v4 = classify_identity_dump(&oracle_stores, &oracle_docs, &pre_ids);
+    let mut got_v4 = classify_identity_dump(&oracle_stores, &oracle_docs, &pre_ids);
+    // [P4.D272 R-D] bug 186's free-name pick, carved until P4.D274 lands.
+    carve_reconcile_pending_store_names(name, &got_v5, &mut got_v4, failures);
 
     // The classification must actually key on a PRESERVED archive id — otherwise
     // everything folds to `minted` and the equality below is vacuous. Every arm's
@@ -1659,7 +1762,9 @@ fn system_import_execute_state_equivalence() {
     // …+ `execute_tag_refusals` (54 + 1 = 55).
     // …+ `execute_file_refusals` (55 + 1 = 56).
     // …+ P4.D264's five `execute_wardrobe_*` arms (56 + 5 = 61).
-    assert_eq!(ran, 61, "expected 61 cases, ran {ran}");
+    // …+ P4.D272's `execute_memory_tiers{,_preserve}` and
+    // `execute_chat_watermark` (61 + 3 = 64).
+    assert_eq!(ran, 64, "expected 64 cases, ran {ran}");
     // [P4.161 Tier 2, R-E] Non-vacuity: v4 refused four file rows AFTER their
     // bytes landed (three repository ERRORs each, `skipped` counted) and
     // landed the sound copy; the store contents are the whole-state diff's.
@@ -2290,22 +2395,26 @@ fn system_import_execute_state_equivalence() {
     // the unification review's numeric-name row, one more.
     // [P4.D264] + the five wardrobe-carrier arms (48), and the no-table
     // arm's phase-7e WARN (30).
+    // [P4.D272] + `execute_memory_tiers{,_preserve}` and
+    // `execute_chat_watermark` (51): eight `Failed to import memory` lines on
+    // the tiers arm (two of them the R-A UNIQUE tails, one id-less) and six on
+    // the preserve arm (44).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        48,
+        51,
         "cases comparing the import WARNs"
     );
     assert_eq!(
         IMPORT_WARNS_FIRED.load(Ordering::SeqCst),
-        30,
+        44,
         "v4 import WARN lines fired"
     );
     // [P4.D264] every execute case compares `wardrobeLogs`; six lines fire
     // (the skip arm's INFO + DEBUG, the overwrite and duplicate INFOs, the
-    // pictures arm's ledger INFO + picture INFO).
+    // pictures arm's ledger INFO + picture INFO). [P4.D272] 48 → 51 cases.
     assert_eq!(
         WARDROBE_LOG_CASES.load(Ordering::SeqCst),
-        48,
+        51,
         "cases comparing the wardrobe carriers' import lines"
     );
     assert_eq!(
@@ -2313,12 +2422,27 @@ fn system_import_execute_state_equivalence() {
         6,
         "v4 wardrobe carrier import lines fired"
     );
+    // [P4.D272] every execute case compares `memoryLogs` (51); v4's DEBUG
+    // fires 39 times across ten memory-importing arms — three each on the
+    // seven merged-payload arms and `execute_memory_refusals`, two on
+    // `execute_legacy_folds`, eight each on the two tiers arms.
+    assert_eq!(
+        MEMORY_LOG_CASES.load(Ordering::SeqCst),
+        51,
+        "cases comparing the `Imported memory` lines"
+    );
+    assert_eq!(
+        MEMORY_LOGS_FIRED.load(Ordering::SeqCst),
+        39,
+        "v4 `Imported memory` lines fired"
+    );
     // [P4.155 R-A] …+ the two property-refusal arms (5).
     // [P4.161] …+ the memory and inform refusal arms (7), + Tier 2's
     // prompt-template arm (8).
+    // [P4.D272] …+ the two memory-tiers arms (13).
     assert_eq!(
         REPO_LOG_CASES.load(Ordering::SeqCst),
-        11,
+        13,
         "cases that compared a refused create's repository lines"
     );
     assert_eq!(
@@ -2732,7 +2856,10 @@ fn run_execute_case(
     // `IMPORT_WARN_MESSAGES` lines — capture v5's for the same compare.
     let capture_import_warns = case.get("importWarns").is_some();
     let capture_wardrobe_logs = case.get("wardrobeLogs").is_some();
-    let capture = capture_repo_logs || capture_import_warns || capture_wardrobe_logs;
+    // [P4.D272] …and `importMemories`' per-row DEBUG.
+    let capture_memory_logs = case.get("memoryLogs").is_some();
+    let capture =
+        capture_repo_logs || capture_import_warns || capture_wardrobe_logs || capture_memory_logs;
     let db = open_db(&scratch);
     let (results, repo_lines) = db
         .write_blocking(move |ws| {
@@ -2842,6 +2969,39 @@ fn run_execute_case(
     let want_state = state_from_value(&case["state"]);
     let literals = literals_for(&pre, &case["exportData"]);
 
+    if capture_memory_logs {
+        let want_raw: Vec<String> = case["memoryLogs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|w| w.as_str().map(str::to_string))
+            .collect();
+        let got_raw = v5_memory_logs(&repo_lines);
+        let got: Vec<String> = got_raw
+            .iter()
+            .map(|l| mask_memory_log(l, &literals))
+            .collect();
+        let want: Vec<String> = want_raw
+            .iter()
+            .map(|l| mask_memory_log(l, &literals))
+            .collect();
+        if got != want {
+            failures.push(format!(
+                "[{name}] the `Imported memory` lines differ\n  rust:   {got:?}\n  oracle: {want:?}"
+            ));
+        }
+        assert_logged_ids_created(name, "rust", &got_raw, &pre, &got_state, failures);
+        assert_logged_ids_created(name, "oracle", &want_raw, &want_pre, &want_state, failures);
+        MEMORY_LOG_CASES.fetch_add(1, Ordering::SeqCst);
+        MEMORY_LOGS_FIRED.fetch_add(want_raw.len(), Ordering::SeqCst);
+    }
+    if name == "execute_memory_tiers" {
+        assert_memory_tier_links(name, &case["result"], &want_state, failures);
+    }
+    if name == "execute_chat_watermark" {
+        assert_chat_watermark_lands(name, &want_pre, &want_state, failures);
+    }
+
     // [P4.33 → bug 11] The folder-clear and store-create divergences RETIRED:
     // v4 converged, so every whole-state arm is a plain equality (no folder or
     // store labelling, no comparand subtraction).
@@ -2911,6 +3071,90 @@ fn run_execute_case(
     }
 }
 
+/// [P4.D272 (e)] Non-vacuity on the ORACLE row of `execute_memory_tiers`: at
+/// least six memories land, the digest D's stored `consolidatedFrom` carries
+/// three elements of which exactly two resolve to rows (M was skipped, so its
+/// minted id dangles by construction), and member A's `supersededById` names
+/// D. The plain state equality then proves v5 wrote the same relationships.
+fn assert_memory_tier_links(
+    name: &str,
+    result: &Value,
+    state: &StateDump,
+    failures: &mut Vec<String>,
+) {
+    let imported = result["imported"]["memories"].as_i64().unwrap_or(0);
+    if imported < 6 {
+        failures.push(format!(
+            "[{name}] only {imported} memories imported (≥ 6 expected)"
+        ));
+    }
+    let rows = state
+        .get("main")
+        .and_then(|t| t.get("memories"))
+        .cloned()
+        .unwrap_or_default();
+    let ids: HashSet<&str> = rows.iter().filter_map(|r| r["id"].as_str()).collect();
+    let by_summary = |s: &str| rows.iter().find(|r| r["summary"].as_str() == Some(s));
+    let (Some(a), Some(d)) = (by_summary("Tier memory 1"), by_summary("Tier memory 3")) else {
+        failures.push(format!(
+            "[{name}] the oracle state lacks member A or digest D"
+        ));
+        return;
+    };
+    let from: Vec<String> = d["consolidatedFrom"]
+        .as_str()
+        .and_then(|t| serde_json::from_str::<Vec<String>>(t).ok())
+        .unwrap_or_default();
+    let resolving = from.iter().filter(|f| ids.contains(f.as_str())).count();
+    if from.len() != 3 || resolving != 2 {
+        failures.push(format!(
+            "[{name}] D's consolidatedFrom should carry 3 elements, 2 resolving: {from:?} ({resolving})"
+        ));
+    }
+    if a["supersededById"] != d["id"] {
+        failures.push(format!(
+            "[{name}] A's supersededById should name D: {} vs {}",
+            a["supersededById"], d["id"]
+        ));
+    }
+}
+
+/// [P4.D272 Tier 2 item 12] Non-vacuity on the ORACLE row of
+/// `execute_chat_watermark`: a chat the import created carries a watermark,
+/// and it names a message of THAT chat.
+fn assert_chat_watermark_lands(
+    name: &str,
+    pre: &StateDump,
+    state: &StateDump,
+    failures: &mut Vec<String>,
+) {
+    let table = |d: &StateDump, t: &str| -> Vec<Value> {
+        d.get("main")
+            .and_then(|m| m.get(t))
+            .cloned()
+            .unwrap_or_default()
+    };
+    let before = table(pre, "chats");
+    let messages = table(state, "chat_messages");
+    let landed = table(state, "chats")
+        .into_iter()
+        .filter(|c| !before.contains(c))
+        .any(|c| {
+            c["otherExtractionWatermarkMessageId"]
+                .as_str()
+                .is_some_and(|w| {
+                    messages
+                        .iter()
+                        .any(|m| m["id"].as_str() == Some(w) && m["chatId"] == c["id"])
+                })
+        });
+    if !landed {
+        failures.push(format!(
+            "[{name}] no imported chat carries a watermark naming one of its own messages"
+        ));
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn compare_execute(
     name: &str,
@@ -2948,8 +3192,175 @@ fn compare_execute(
         ));
     }
     record_v5_transcript_counters(&got_norm_state);
+    let (got_norm_state, want_norm_state) = carve_reconcile_pending(
+        name,
+        got_state,
+        want_state,
+        got_norm_state,
+        want_norm_state,
+        failures,
+    );
     diff_states(name, &got_norm_state, &want_norm_state, failures);
 }
+
+// === P4.D272 R-D: RECONCILE_PENDING_UNION (append-only; LIFTED by the unifier, §S.5) ===
+
+/// [P4.D272 R-D] The round's ONE named carve (P4.D273 R-D), on this family's
+/// rows. At the pin v4's `.qtap` import ends with `reconcileStoreNames
+/// ('qtap-import')` (`execute.ts:990-991`, bug 186 — `ed8b15b50`) and its
+/// `import-document-stores` picks a free `… (2)` name; neither is ported until
+/// P4.D274 (`quilltap_import/{mod,document_stores}.rs`, §R.10(l)), which this
+/// lane does not touch.
+///
+/// **Measured, not assumed:** on the `KEYSTONE` tip these four arms were red
+/// outside every memory comparand, and a scratch oracle with v4's
+/// `reconcileStoreNames` jest-stubbed to a no-op made the three overwrite
+/// arms' rows VANISH (the store-identity row is the free-name pick, which the
+/// stub does not touch). In each overwrite arm v4's reconcile leaves the
+/// archive vault's PRE-import `properties.json` file row (`d415a97c…`, 132
+/// bytes) in place where v5 writes a fresh one, and every later minted label
+/// in the partition walk shifts with it — so the carve is per (case, table),
+/// listing exactly the tables that differ.
+///
+/// Pinned BOTH ways: a listed table that compares EQUAL is VANISHED (v4
+/// stopped moving it, or v5 already matches — lift the row), and a case whose
+/// v4 state does not keep that pre-import file row, or whose v5 state already
+/// does, is WRONG SHAPE. The unifier deletes this table (and P4.D273's twin)
+/// after picking P4.D274 + P4.D273, then re-runs `system_import_state` by name
+/// (§S.5).
+const RECONCILE_PENDING_UNION: &[(&str, &[&str])] = &[
+    (
+        "execute_wardrobe_overwrite",
+        &[
+            "mountIndex.doc_mount_documents",
+            "mountIndex.doc_mount_file_links",
+            "mountIndex.doc_mount_files",
+            "mountIndex.doc_mount_folders",
+        ],
+    ),
+    (
+        "execute_overwrite_all",
+        &[
+            "mountIndex.doc_mount_documents",
+            "mountIndex.doc_mount_file_links",
+            "mountIndex.doc_mount_files",
+            "mountIndex.doc_mount_folders",
+            "mountIndex.group_character_members",
+            "mountIndex.group_doc_mount_links",
+            "mountIndex.project_doc_mount_links",
+        ],
+    ),
+    (
+        "route_replace_remap",
+        &[
+            "mountIndex.doc_mount_documents",
+            "mountIndex.doc_mount_file_links",
+            "mountIndex.doc_mount_files",
+            "mountIndex.doc_mount_folders",
+            "mountIndex.group_character_members",
+            "mountIndex.group_doc_mount_links",
+            "mountIndex.project_doc_mount_links",
+        ],
+    ),
+];
+
+/// The archive vault's pre-import `properties.json` file row v4's reconcile
+/// keeps (the carve's shape signature).
+const RECONCILE_KEPT_FILE_ID: &str = "d415a97c-9bf9-4b54-b61e-b1c0f465b1ce";
+
+/// [P4.D272 R-D] The store-identity arm's carved cell: v4's free-name pick
+/// names the second same-named store `Identity Store (2)`; v5 keeps
+/// `Identity Store` until P4.D274. (case, store class, v4 name, v5 name).
+const RECONCILE_PENDING_UNION_STORE_NAMES: &[(&str, &str, &str, &str)] = &[(
+    "store_identity_same_name_new_id",
+    "archive-2",
+    "Identity Store (2)",
+    "Identity Store",
+)];
+
+/// Apply [`RECONCILE_PENDING_UNION`] to one case's normalized states (a no-op
+/// for an unlisted case).
+fn carve_reconcile_pending(
+    name: &str,
+    got_raw: &StateDump,
+    want_raw: &StateDump,
+    mut got: StateDump,
+    mut want: StateDump,
+    failures: &mut Vec<String>,
+) -> (StateDump, StateDump) {
+    let Some((_, tables)) = RECONCILE_PENDING_UNION.iter().find(|(c, _)| *c == name) else {
+        return (got, want);
+    };
+    let keeps = |d: &StateDump| {
+        d.get("mountIndex")
+            .and_then(|t| t.get("doc_mount_files"))
+            .is_some_and(|rows| rows.iter().any(|r| r["id"] == RECONCILE_KEPT_FILE_ID))
+    };
+    if !keeps(want_raw) || keeps(got_raw) {
+        failures.push(format!(
+            "[{name}] RECONCILE_PENDING_UNION WRONG SHAPE: expected v4 to keep the pre-import \
+             file row {RECONCILE_KEPT_FILE_ID} and v5 not to (v4 keeps: {}, v5 keeps: {})",
+            keeps(want_raw),
+            keeps(got_raw)
+        ));
+    }
+    for qualified in *tables {
+        let (part, table) = qualified.split_once('.').expect("partition.table");
+        let take = |d: &mut StateDump| d.get_mut(part).and_then(|t| t.remove(table));
+        let (g, w) = (take(&mut got), take(&mut want));
+        if g == w {
+            failures.push(format!(
+                "[{name}] RECONCILE_PENDING_UNION VANISHED: {qualified} now compares equal — lift \
+                 the row (P4.D274's reconcile landed, or v4 stopped moving it)"
+            ));
+        }
+    }
+    (got, want)
+}
+
+/// Apply [`RECONCILE_PENDING_UNION_STORE_NAMES`] to the store-identity arm's
+/// classified dumps: pin both cells, then put v5's name in v4's slot.
+fn carve_reconcile_pending_store_names(
+    name: &str,
+    got_v5: &Value,
+    got_v4: &mut Value,
+    failures: &mut Vec<String>,
+) {
+    for (case, class, v4_name, v5_name) in RECONCILE_PENDING_UNION_STORE_NAMES {
+        if *case != name {
+            continue;
+        }
+        let name_of = |d: &Value| -> Option<String> {
+            d["stores"]
+                .as_array()?
+                .iter()
+                .find(|s| s["id"] == *class)
+                .and_then(|s| s["name"].as_str().map(str::to_string))
+        };
+        let (v5, v4) = (name_of(got_v5), name_of(got_v4));
+        if v4 == v5 {
+            failures.push(format!(
+                "[{name}] RECONCILE_PENDING_UNION VANISHED: store {class} reads {v4:?} on both \
+                 sides — lift the row"
+            ));
+            continue;
+        }
+        if v4.as_deref() != Some(*v4_name) || v5.as_deref() != Some(*v5_name) {
+            failures.push(format!(
+                "[{name}] RECONCILE_PENDING_UNION WRONG SHAPE: store {class} v4 {v4:?} (want \
+                 {v4_name:?}), v5 {v5:?} (want {v5_name:?})"
+            ));
+            continue;
+        }
+        // The carve: v4's free-name pick rewrites the store's name wherever
+        // the classified dump carries it (the store row and its documents).
+        let text = serde_json::to_string(&*got_v4).expect("classified dump");
+        let swapped = text.replace(&format!("\"{v4_name}\""), &format!("\"{v5_name}\""));
+        *got_v4 = serde_json::from_str(&swapped).expect("classified dump");
+    }
+}
+
+// === end P4.D272 R-D ===
 
 fn run_route_case(
     name: &str,

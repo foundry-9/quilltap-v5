@@ -186,6 +186,122 @@
       ]
     },
     {
+      "name": "memory_tier_off_enum",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D272] v4 `d58548051`: `$defs.Memory.properties.tier` is `{type: string, enum: [hot, cold]}` \u2014 an off-enum tier is now INVALID (an acceptance tightening for a PRESENT key; `additionalProperties: true`, so no new-key refusal).",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/memories/0/tier",
+          "value": "warm"
+        }
+      ]
+    },
+    {
+      "name": "memory_tier_cold_valid",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D272] the enum's other member \u2014 still valid.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/memories/0/tier",
+          "value": "cold"
+        }
+      ]
+    },
+    {
+      "name": "memory_superseded_by_not_uuid",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D272] `supersededById` is `anyOf [UUID, null]`.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/memories/0/supersededById",
+          "value": "not-a-uuid"
+        }
+      ]
+    },
+    {
+      "name": "memory_superseded_by_null_valid",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D272] \u2026and null is allowed.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/memories/0/supersededById",
+          "value": null
+        }
+      ]
+    },
+    {
+      "name": "memory_consolidated_from_item_not_uuid",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D272] `consolidatedFrom` is `{type: array, items: UUID}`.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/memories/0/consolidatedFrom",
+          "value": [
+            "nope"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "memory_consolidated_from_not_array",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D272] \u2026so a non-array is invalid.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/memories/0/consolidatedFrom",
+          "value": "x"
+        }
+      ]
+    },
+    {
+      "name": "memory_consolidated_at_bad_date",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D272] `consolidatedAt` is `anyOf [Timestamp, null]`.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/memories/0/consolidatedAt",
+          "value": "yesterday"
+        }
+      ]
+    },
+    {
+      "name": "memory_consolidated_digest_valid",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D272] a whole CONSOLIDATED digest (`source` carries no enum in the schema, so `CONSOLIDATED` was always valid there) \u2014 valid.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/memories/0/source",
+          "value": "CONSOLIDATED"
+        },
+        {
+          "op": "set",
+          "path": "/data/memories/0/tier",
+          "value": "hot"
+        },
+        {
+          "op": "set",
+          "path": "/data/memories/0/consolidatedFrom",
+          "value": [
+            "ad000000-0000-4000-8000-000000000001",
+            "ad000000-0000-4000-8000-000000000003"
+          ]
+        },
+        {
+          "op": "set",
+          "path": "/data/memories/0/consolidatedAt",
+          "value": "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
       "name": "character_created_at_invalid_date_time",
       "from": "characters_valid_rich",
       "ops": [
@@ -496,6 +612,30 @@
               "outcome": "answered"
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "chat_watermark_not_string",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D272] v4 `d58548051`: `$defs.ExportedChat.properties.otherExtractionWatermarkMessageId` is `{type: [string, null]}`.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/otherExtractionWatermarkMessageId",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "name": "chat_watermark_null_valid",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D272] \u2026and null is allowed (the seed's own verdict is unchanged).",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/otherExtractionWatermarkMessageId",
+          "value": null
         }
       ]
     },
