@@ -7151,6 +7151,78 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round (P4.D265 → {P4.D266 ∥ P4.D267 ∥ P4.D268 ∥ P4.D269 ∥ P4.D270 ∥ P4.D271 ∥ P4.D272 ∥ P4.D273 ∥ P4.D274 ∥ P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278) — UNIFIED 2026-10-12 (ordered 2026-10-09)
+
+**UNIFIED on main (2026-10-12) — ALL FOURTEEN LANES LANDED WHOLE; the oracle
+baseline MOVES to `01a83539d`; the thirteen absorbed rows retire to the drift
+ledger's §6.** v4 stood FOUR commits past the pin at the start (`3e6e2f590`,
+`7a8d6dacc`, `9ecebf986`, `e23fb095b` — the wardrobe audit, fixes and
+seven-phase refactor, bug 198), classified by the morning `/driftcheck` and
+left UNPROCESSED in §3 (the work followed the pin); every regen, the sweep and
+every live-checkout guard ran from the `01a83539d` pin. Round record:
+`status-log.md` → "The `01a83539d` memory-programme + bugs-183–186 +
+wardrobe-viewer drift catch-up round — UNIFICATION record"; each order's
+status header carries its Unification paragraph and exactly what stays OPEN.
+The SEVENTH D23 re-dump landed (memory tiers + bug 186's NOCASE store-name
+index); `add-memory-tiers-v1` re-homed as an unstamped boot ensure; 43
+committed `*-main.db` pairs widened in place.
+**The §3 review (seven parallel readers + the unifier): NO blocking lane
+defect — the sixteenth such round; the one blocker-class item was a UNION
+obligation no lane could see (the consolidation canon's re-point onto a vault
+reader that was SILENT on NOT_FOUND where v4's one `readVaultTextFile` logs
+the absent-document line — now ONE reader through the bridge for every
+canon).** Fixed red-first on the union: the chat gallery viewer's Copy
+swallowing a thrown clipboard failure (P4.D277); P4.D273's deferred-file slot
+rule that had not landed + the reconcile census whitelist; the watermark
+trigger's strict ISO parse + silent settings-read failure (P4.D271); the
+vector store's tier stamp (a fresh vector re-stamped hot counted 0 where v4
+counts it — P4.D265) + restore 22a's raw taken-name list; a test formula.
+**The §S.9 flip caught one more real SPA defect:** the save dialog seeded its
+default album inside the TanStack query function, so a SECOND open in one
+session (the cached list, no function run) selected nothing and showed the
+first option where v4 pre-selects Quilltap General — seeded from the list
+whenever it arrives now (every door of the dialog), cache-primed spec arm red
+on the old dialog.
+**Union reds the sweep caught (six, each classified):** two fixture builders
+planting a SECOND identically-named store that bug 186's repository now
+refuses; v4's dump-borne NOCASE index INFO inside the structural pass
+(`NOCASE_INDEX_FROM_DUMP`, both ways); the lifted `RECONCILE_PENDING_UNION`
+exposing bug 186's reconcile on top of the two RULED store-binding
+divergences (`RULED_RECONCILE_CONSEQUENCES`, both ways per ruling) and the
+oracle capture's blindness to `logger.child` bindings; the pin's up-front
+memory-id minting reaching `reset_builtins`' unlabelled reference arrays; one
+non-reproducing cell.
+Gate: fmt/clippy (both feature sets)/release clean; the sweep from the pin 629 ok / 3 standing / 3 refused of 641 (six union reds, each classified and fixed, green by name); Tier R 361/0; `cargo test --workspace` 729 binaries / 4,853 / 8 (the three standing + the two env-block artifacts + three union reds fixed and green by name) / 3 ignored, zero SKIP; SPA 486 / 9,316; Playwright 375 / 0 / 6 (12.3 m) on the final tree, both §S.9 flips LIVE. Versions: core 0.0.1275, host 0.0.197, web 0.0.230,
+cli 0.0.32, SPA 0.5.835; tauri 0.0.9 unchanged; harness frozen 0.0.1110.
+
+**NEXT (in order):**
+1. **The owed dogfood pass** (`/dogfood`, the Friday COPY) — the round
+   record's 💸 list, headlined by: the store-name plan probe on the copy
+   BEFORE its first v5 boot, then the no-op memory-tiers ensure; the full
+   backup → restore in BOTH modes with the 365 CONSOLIDATED digests and every
+   store bound (#159's F5 archive, 77 → 77); housekeeping DEMOTING on a real
+   turn; a digest in a real turn's context; the hybrid / fold-grain OTHER pass
+   (💸); a consolidation DRY RUN then a REAL run (💸); the wardrobe wear note,
+   the picture viewer's Save + 409; the memory SPA cards and the help page.
+2. **The wardrobe catch-up round** (`/setupphase` from the ledger's four §3
+   rows — ONE round, never commit-by-commit): `7a8d6dacc` (bugs 187 / 188 /
+   189 / 191), `9ecebf986` (the seven-phase refactor that MOVES behaviour —
+   `wardrobe_list` drops `include_presets`, one route factory, the tools
+   through one table, `POST ?action=link-image` PORT-NEW, the backup's
+   `wardrobeItems: []`, bug 197's vision half meeting v5's REFUSAL-ARMED
+   `analyze-image`), `e23fb095b` (bug 198, SPA); `3e6e2f590`'s NO-PORT
+   ratification and the `docs/v4/` + `help/` re-vendor ride it.
+3. **The follow-ups round** (`/setupphase`): the fourteen status headers' OPEN
+   lists — led by the HUMAN RULING owed on P4.D273's carried-file
+   `mimeType` / `size` / `sha256` source (v4 keeps the archive row's, v5 the
+   blob's); the three v4-filing candidates (the settings POSTs'
+   `PARTIAL_DEFAULTS_CLOBBER`, the dup-store-id claim map's LAST row,
+   retention / dedup reaching digests); `PROBE_STORE_LOAD_FAILURE` (the vector
+   store's `load` fails where v4 starts empty); the `MEMORY_REGENERATE_CHAT`
+   handler + the fold-grain rebuild; the CLI `memories` verb; P4.D275's
+   `errorMessage` / `message` key seam across the three save doors; the
+   `js_truthy` DRY pass; dogfood #156 / #157 from the previous round.
+
 ## The `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round (P4.D265 → {P4.D266 ∥ P4.D267 ∥ P4.D268 ∥ P4.D269 ∥ P4.D270 ∥ P4.D271 ∥ P4.D272 ∥ P4.D273 ∥ P4.D274 ∥ P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278) — ORDERED 2026-10-09
 
 **Baseline `f5e953a3f`. The round is PINNED at v4 `01a83539d` ("feat(wardrobe):
@@ -7327,7 +7399,7 @@ core 0.0.1264, host 0.0.193, web 0.0.226, cli 0.0.30, SPA 0.5.821; tauri
    full backup whose embeddings restore as `number[]` with the written-rows
    count; the origin chip / wear line / Sort / Picture section / Wardrobe
    Images card in the SPA.
-2. ✅ **ORDERED 2026-10-09** as the `01a83539d` round (P4.D265–P4.D278 — the section above; widened to `ed8b15b50` + `01a83539d`, pinned at `01a83539d`). Was: **The memory-programme catch-up round** (`/setupphase`, from the ledger's
+2. ✅ **UNIFIED 2026-10-12** (the `01a83539d` round, fourteen lanes — the UNIFIED section above; the baseline moved to `01a83539d`). ✅ ORDERED 2026-10-09 as the `01a83539d` round (P4.D265–P4.D278; widened to `ed8b15b50` + `01a83539d`, pinned at `01a83539d`). Was: **The memory-programme catch-up round** (`/setupphase`, from the ledger's
    nine UNPROCESSED rows — order the four memory rows as ONE catch-up; the
    `docs/v4/releases/4.10.0.md` re-vendor rides it): the
    SEVENTH D23 re-dump (`memories.tier` / `supersededById` /

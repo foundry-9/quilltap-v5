@@ -177784,3 +177784,322 @@ Branch `claude/wardrobe-images-spa-viewer-4a334b` (worktree
   commits); no crate bumped; harness frozen. The unifier takes the higher of
   P4.D276 / P4.D277 +1 (§R.8).
 - Pin `/tmp/qt-v4-pin-p4d277-01a83539d` removed; the lane's `target/` deleted.
+
+
+## The `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round — UNIFICATION record (2026-10-12)
+
+**P4.D265 → {P4.D266 ∥ P4.D267 ∥ P4.D268 ∥ P4.D269 ∥ P4.D270 ∥ P4.D271 ∥
+P4.D272 ∥ P4.D273 ∥ P4.D274 ∥ P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278 — ALL
+FOURTEEN LANES LANDED WHOLE; the oracle baseline MOVES to `01a83539d`.**
+Branch `unify/01a83539d-round` from `main` `eb294879d` (the morning
+`/driftcheck`), the lanes MERGED (`--no-ff`) in §S.1's order (P4.D265 whole →
+P4.D274 → P4.D266 → P4.D267 → P4.D268 → P4.D269 → P4.D270 → P4.D271 → P4.D272
+→ P4.D273 → P4.D275 → P4.D278 → P4.D276 → P4.D277; ten stage-2 lanes from the
+keystone tip `18e41e403`, P4.D269 from `KEYSTONE` `609d9d9f2` alone): 150 lane
+commits. Conflicts: the version files, `Cargo.lock`, the CHANGELOG / status-log
+on nearly every lane (resolved max-version / both-sides union, the locks
+re-synced), `apps/web/package.json` + lock (P4.D277), and TWO source overlaps
+exactly where §R.10 said they would be — `api/engine.rs` (P4.D271's five arm
+bodies beside P4.D269's probe arm and P4.D275's two, adjacent hunks; every
+owner's body kept, no refusal survived) and `job_runner.rs` (P4.D268's
+invalidation call and P4.D271's watermark call, both inside the marked
+region, in its comment's order). Every other shared file (`host.rs`,
+`spine.rs`, `queue_service.rs`, `api/memories.rs`, `fallback.rs`,
+`core-contract.ts`, `lib.rs`) merged clean and composes.
+
+### The §2 probe, the pin, and the post-pin drift
+
+The probe FAILED at the start, as `/setupphase` predicted: v4 `main` stood
+FOUR commits past the pin (`3e6e2f590`, `7a8d6dacc`, `9ecebf986`,
+`e23fb095b` — v4's wardrobe audit, fixes and seven-phase refactor plus bug
+198) and the live tree was CLEAN (the 194 dirty paths of planning were that
+refactor, since committed). `/driftcheck` ran FIRST (`eb294879d` on `main`,
+pushed): the two `/setupphase`-recorded rows classified from their hunks, two
+new rows appended — ONE NO-PORT? (docs), THREE PORT (`9ecebf986` is a
+refactor that MOVES behaviour: wire bodies, status codes, a tool definition,
+tool sentences, the backup carrier, a prompt fallback), NO convergence on a
+port filing, NO schema or dependency move. The work followed the pin (the
+human's ruling): every regen, the whole sweep and every live-checkout guard
+ran from `/tmp/qt-v4-pin-unify-01a83539d` with its OWN `npm ci --offline`
+tree (`openai` 7.30.0; the pin's lockfile differs from HEAD's only in the
+version stamps). The baseline moves to `01a83539d`, not past it; the four
+rows stay §3 UNPROCESSED for the wardrobe catch-up round.
+
+### Delivered scope, verified against each order
+
+Every lane reported LANE COMPLETE; each order's Tier 1 / Tier 2 lists were
+checked against the code by SEVEN parallel §3 readers (one per lane pair, v4
+read at the pin) and the unifier. Recorded deviations accepted: P4.D271's R-I
+OVERTURNED by measurement (the vault resolves through the overlay;
+`conversation_summary_vault_bridge.rs` untouched); P4.D274's R-F wipe cadence
+overruled by measurement (five identical runs — ported literally); P4.D273's
+R-I REVERSING P4.161's pin (the refused project holds its claim); P4.D277's
+R-I departed on evidence (the copy helper THROWS — v4's try/catch kept);
+P4.D267's R-K hook not needed (the widened pair carries the tiers); P4.D266's
+R-J arithmetic corrected (2e8 days, not 1e8); P4.D269's R-G negative pin landed
+as a both-ways row (`PROBE_STORE_LOAD_FAILURE`); P4.D278's seventh Tier R red
+(`recall-replay no chat` — the grown help text) P4.D269's by construction. The
+keystone's ten `p4d265_not_yet_available` arms were ALL replaced by their
+owners this round (P4.D267 / P4.D269 / P4.D271 / P4.D275); no refusal arm
+survives on the union, and the fn + `p4_d265_wire_contract`'s refusal half
+retired with it (the decode / tri-state pins stay).
+
+### The §S.5 HANDOFFs (landed in `261fe74cd`)
+
+P4.D273's 23a `reconcile_store_names(main, mount, "restore")` with v4's two
+lines + the `Failed to tidy …` warning, and `RECONCILE_PENDING_UNION` LIFTED in
+both families (`system_restore_state`: the mask, the count, the 23a retain,
+the tidy filter; `system_import_state`: the fenced P4.D272 R-D region and its
+two calls); P4.D271's lane-local canon copy deleted and `describe_buckets`
+re-pointed at P4.D270's `pub` `load_canon_for_observer_about_subject(…,
+include_commonplace: false)` — and the ONE union blocker P4.D271's record
+warned of closed in the same hunk: `memory_processor::read_vault_text_file`
+read the repository directly and was SILENT on NOT_FOUND, where v4's one
+`readVaultTextFile` (`vault-readers.ts:53-69` → `database-store.ts:88-102`)
+logs `Document absent from database-backed store` and WARNs `Failed to read
+vault file`; it now reads through the bridge's `read_database_document_if_
+exists` (P4.D270's own Tier 2 #19 finding, closed; `characterId` threaded as
+v4 passes it at both canon sites); P4.D269 R-C (`memory_service::{anchor_view_
+of, embedding_vec_of}` `pub(crate)`, the copies gone); P4.D270 R-H (`spine.rs`
+sets `decoded.job_id`); P4.D266's two `seed_frozen_archive_for_test` probes on
+P4.D268's `(character, chat)` signature; P4.D267 R-L's two doc comments (at
+`tools/search.rs`, not the record's `services/tools/search.rs`);
+`ai_import_tier3`'s stamp `4.10.0-dev.143`; §S.9's two `P4D265_SERVER_LANDED`
+flags LIVE. R-D measured on the union: `include_cold` flipped to `false`
+reddens exactly `search_include_cold`; restored.
+
+### The §3 review — what it found (fixed on the union unless noted)
+
+**No lane shipped a blocking defect — the sixteenth such round.** The one
+blocker-class item was the union obligation above (the silent canon reader),
+which no single lane could see. Fixed, red-first where a test could be
+written:
+
+1. **P4.D277 — the chat gallery viewer's Copy (the file the lane re-based onto
+   the shared frame) ran `if (await copyImageToClipboard(…))` over a helper
+   that THROWS** (`core/clipboard-utils.ts` never returns `false`), so a failed
+   clipboard write was an unhandled rejection and the user was told nothing;
+   the wardrobe viewer beside it had v4's try/catch. Now v4
+   `ChatGalleryImageViewModal.tsx:67-75`'s shape — `console.error` + the error
+   toast; the spec arm stubs a rejecting `navigator.clipboard.write` and was
+   RED on the old handler (`fb011b362`).
+2. **P4.D273 — item 10's harness widening had NOT landed:** only the warning
+   predicate covered the deferred project files; `files_phase_last`'s census
+   slot still matched `Failed to restore file` alone, so v4's 22h-bis
+   `Replayed deferred project files` versus v5's end-of-family position was
+   green only because no census line fell between them on the committed
+   archives. Both deferred lines now ride the slot. `RECONCILE_MESSAGES` (TS +
+   Rust) gained v4's `Store-name reconcile skipped in the job child`; v5's
+   `RECONCILE_READ_FAILURE_STRICT` skip is a `V5_ONLY_RESTORE_LINES` entry no
+   committed case may log (`0772e801d`).
+3. **P4.D271 — `check_consolidation_watermark_after_job_at` parsed `startedAt`
+   with the strict `iso_to_ms`** (a non-canonical ISO from a v4-written row
+   silently dropped the window — memory note `v4-safequery-writes-and-v5-date-
+   helpers`); now `js_date_parse_ms`. Its v5-only pre-read of the settings
+   returned SILENTLY on failure where v4's one read sits inside the try that
+   logs `Consolidation watermark check failed (non-fatal)` — the same WARN
+   now (`bd7f1ca1e`).
+4. **P4.D265 — `CharacterVectorStore::set_tier` undercounted `changed` for an
+   entry added after `load()`:** `cold: bool` stamped a fresh `add_vector`
+   hot, so `setTier(ids, 'hot')` counted 0 where v4's `entry.metadata.tier !==
+   tier` counts an `undefined` tier — the consolidator's digest vector is
+   exactly that shape. Tri-state now (`Option<bool>`), `set_tier` returns its
+   count, a unit test pins the three legs. And restore 22a's `taken` names
+   read the RAW name list where v4 `restore.ts:602`'s `findAll()` is the
+   Zod-filtered read — now P4.D274's `read_store_name_rows` (`a429a7eed`).
+5. **P4.D275 — `the_list_completed_line_is_v4s` counted a picture as
+   `image_file_id.is_some()`** where production counts a non-empty id (equal
+   on the fixture; the looser formula fixed, `261fe74cd`).
+
+**Verified, no change:** both importers write every instance setting raw (the
+two new settings keys round-trip — the P4.D272 reviewer's worry); `present_
+participant_names` reaches `select_specific_anchors` as a set (P4.D268's
+reviewer); `brahma_orchestrator_tier3`'s nine KEYSTONE reds were P4.D270's
+Brahma SQL prompt sentence in the canned-stream key (green on the union).
+
+**Recorded, no code this round** (each in its order's OPEN list): P4.D266's
+float `maxMemories` rendering (`10` where v4 renders `10.5` in the reason /
+`cap` — the demotion COUNT is identical; an f64 would change every integer
+cap's JSON) and the dedup fold-failure WARN's unverified `error` text;
+P4.D268's archive-cache `Mutex` held across `compute`'s DB reads; P4.D269's
+`PROBE_STORE_LOAD_FAILURE` (v4's `CharacterVectorStore.load` catches every
+failure and starts empty; v5's `Err` → the probe's 500 — a vector-store gap
+for the follow-ups); P4.D270's unpinned hybrid floor boundary (no corpus
+candidate at exactly 0.75) and `memory_pipeline_jobs_tier3` never paying the
+fold OTHER call end to end; P4.D272's R-E deferral with no committed pin;
+P4.D273's carried-file `mimeType` / `size` / `sha256` source (a HUMAN RULING
+owed: v4 keeps the archive row's, v5 the blob's), the numeric-pointer `Map`
+edge, the doubled `carried_store_rows` read, and `js_truthy`'s NINTH private
+copy in core; P4.D274's re-scanning read-failure arm and the raw-named
+`BUILTIN_REPROVISION_FREE_NAME` pick; P4.D275's `errorMessage` key on two new
+save lines beside the gallery door's `message =` clobber, the Salon doors' `''`
+byline converged by reasoning, the `malformed_store_row` carve's literal
+counts; P4.D277's ownerless `salon-image-detail-flow` locator re-pin; P4.D267's
+two JS-NaN edges; P4.D265's untested `ledger: false` helper arm.
+
+### Union reds the gate caught
+
+The full sweep from the pin ran on the union AFTER the HANDOFFs
+(`recipe_sweep.py --run-all --v4 /tmp/qt-v4-pin-unify-01a83539d`, 641
+families, ~80 min): **629 ok / 7 run_failed / 2 regen_failed / 3 refused by
+design** — the three standing (`ariel_writers_tier3`, `memory_processor_tier3`
+with its STANDING `llm_logs` red the only failure, `search_replace`) and SIX
+union reds, every one classified and fixed on the final tree, each re-run
+green by name:
+
+- **`doc_edit_path_resolver` (regen) + `ui_search` (regen) — bug 186 refuses
+  what two fixture builders planted:** both created a SECOND store under an
+  identical name (`Shared Name`, `Logbook`), expecting v4's free-name pick to
+  land it as ` (2)`; at the pin v4's repository REFUSES the create outright
+  (`assertNameFree`). The twins are named ` (2)` outright — the name v4 used
+  to give them (`76335f8e1`, `3f66abd8e`).
+- **`degraded_sibling_open` — v4's dump-borne index INFO:** v4's rig runs the
+  structural pass as the FIRST access of a fresh in-memory mount index, so
+  `doc_mount_points`'s table-init hook creates the NOCASE name index inside
+  the pass and logs `Mount-index: created the unique document-store name
+  index`; v5 creates an absent table from the D23 dump, which already carries
+  the index (the dump is taken after v4's hook ran), so the line never
+  appears — the same schema, one line apart. `NOCASE_INDEX_FROM_DUMP`, pinned
+  both ways (v4 once per sound-mount pass, v5 never) (`76335f8e1`).
+- **`system_restore_state` — what the lifted carve was hiding:** (i) v4's
+  reconcile lines go through `logger.child({ module })`, whose binding the
+  oracle's prototype capture never sees — v5's `module` field dropped for
+  those records (with `shift_remove`: serde_json's `remove` is a swap-remove
+  that REORDERED the fields); (ii) bug 186's reconcile on top of the two RULED
+  store-binding divergences — `DUP_STORE_ID_FIRST_ROW` (v4 mints Lorian a
+  fresh vault, v5 binds her) and `ARCHIVED_CHARACTER_FALLBACK` (v5 keeps
+  Riya's fresh vault, v4 refuses the archived character) — each leaves ONE
+  side holding a vault the other does not, and v4's own planner (pinned in
+  `store_name_reconcile_equivalence`) then plans once more at `character-
+  created` and RETIRES the archived ` (2)` vault at 23a on that side only.
+  NEW `RULED_RECONCILE_CONSEQUENCES`: the extra plan, the 23a counts, the one
+  `Renamed` record and the retired row, pinned both ways per ruling
+  (`3f66abd8e`). 4/4 green.
+- **`reset_builtins` — the pin mints memory ids UP FRONT** (v4 `d58548051`),
+  so `relatedMemoryIds` / `consolidatedFrom` / `supersededById` carry minted
+  ids on both sides (a ref to a later item used to stay raw); the family's
+  normalizer now labels them through its id map. And its hand floor
+  `avatar_links == 2` was stale: the character delete's reconcile RETIRES the
+  old vaults (keeping their `images/avatar.webp` links) — 4, both sides
+  agreeing (`3f66abd8e`).
+- **`orchestrator_tier3` — the ruled P4.144 class reaching a second family:**
+  the `mid_stream_error` case's MEMORY_EXTRACTION `request` (P4.D270's grain
+  block grew the envelope to 11,943 raw bytes) stores brotli bytes 1 byte
+  longer than Node's while decoding to the IDENTICAL text — the divergence the
+  human ruled accepted on 2026-10-02 (`memory_pipeline_jobs_tier3` pins ten
+  such rows). Measured at the unification with a throwaway probe: the
+  encoder is DETERMINISTIC on that text (40 encodes + 8 threads all reproduce
+  v5's bytes, never Node's). The family now compares such a cell DECODED
+  (the ruled comparand), paired as its report pairs (a case with two
+  extraction rows of one key — the same chat, the same canned reply — pairs
+  each v5 row with its own twin; the first fold paired the wrong twin and
+  folded nothing), the count logged (1) rather than pinned — the pipeline
+  family holds the ruled count. ⚠ Three by-name runs mid-unification compared
+  the rows EQUAL before the fold existed and six others did not; the
+  encoder's determinism makes that flip unexplained — recorded for the
+  follow-ups, with the probe recipe (decode both cells, re-encode, compare).
+
+### The §S.9 flip — what the flipped beats caught
+
+Both gated beats flipped LIVE (`settings-memory-consolidation-flow.spec.ts`,
+`wardrobe-flow.spec.ts`); the full suite ran first with the flips in. **ONE
+real SPA defect, root-caused from the failure, not accepted as timing:** the
+flipped P4.D277 save beat opened the save dialog a SECOND time in one session
+and found a character vault selected where v4 pre-selects Quilltap General.
+`save-image-dialog.ts` seeded its default album INSIDE the TanStack `queryFn`;
+a second open of the dialog gets the cached list for the same key without the
+function running, so nothing was selected and the browser showed the first
+option. v4's dialog seeds from the fetched albums in an effect on every mount,
+cached or not. The seed is an `effect` over `albumsQuery.data()` now; the spec
+arm pre-populates the cache and was RED on the old dialog (`select.value`
+`mp-char` where `mp-gen` is the default); `wardrobe-flow` 18/18 by file with
+the beat green (`35c13f46c`). Every door of the dialog (the two Salon doors
+of P4.D261, the wardrobe door of P4.D277) shares the fix — the chat flows
+never re-opened the dialog in one session, which is why nothing had seen it.
+The other red of the first full run, `salon-thinking-indicator` (the P4.d17
+quill), is the recorded Salon-streaming timing cluster: 1/1 by file.
+
+### The gate
+
+- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D
+  warnings` plain AND `--features quilltap-core/native-transport`, `cargo
+  build --release`: clean on the final tree.
+- **The full sweep from the pin:** 629 ok / 3 standing / 3 refused of 641 on
+  the union, the six union reds above fixed and re-run green by name
+  (artifact: `harness/tools/sweep-results/2026-10-12-01a83539d-memory-unify.json`;
+  `--self-test` 0 failures). The `01a83539d` round's NEW families all `ok` by
+  name in the sweep: `memory_tiers_ensure`, `memory_pools`,
+  `commonplace_file`, `memory_settings_schemas`, `vector_store_tiers`,
+  `other_extraction_watermark_writers_census`, `p4_d265_wire_contract`,
+  `memory_merge_plan`, `recall_tuning`, `semantic_search_tuning_tier3`,
+  `frozen_archive_tier2`, `anchor_gate_probe_tier3`, the fold-OTHER +
+  `canon_commonplace_tier2` families, the seven consolidation families,
+  `store_claims`, `store_names`, `store_name_reconcile`,
+  `photo_album_options`, `help_section_size`.
+- **Tier R (`cli_differential`):** ok — 361 cases (P4.D269's grown corpus), 0 failures, 320.9 s.
+- **The workspace suite** (`QT_V4_CHECKOUT=QT_V4_ROOT=<pin> TZ=UTC
+  CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` with the
+  828-variable env block harvested from every family's run stage, nine
+  dup-valued names withheld): **729 binaries / 4,853 passed / 8 failed / 3 ignored, zero `SKIP:`** — the three standing reds, the two recorded env-block artifacts (`backup_uuid_remap` — its recipe refuses the repo write by design; `doc_mount_files_tier2`), and THREE union reds the suite caught, each classified and fixed, then green by name: the free-name unit test my 22a change moved (its planted target rows carried the non-uuid id `target-lore`, which v4's schema refuses as the filtered read now does — UUID ids, plus a NEW arm proving a Zod-refused target row holds no name and v4's `Failed to restore document store "lore": UNIQUE constraint failed` warning follows); `consolidation_service_tier3` whose minted-id mask treated ANY UUID starting with `0d` as a committed plant, so a minted vault id starting with `0d` (1 in 256) escaped masking — the plants' real `0de` prefix now, the same fix in `consolidation_triggers_tier2`; and `orchestrator_tier3`'s ruled cell (below). Run by name with their counts: `host_boot_p4d265_memory_tiers` 4, `host_boot_store_name_reconcile` 4, `host_boot_hardness` 34, `host_boot_backfilled_indexes` 14, `provisioning_equivalence` 3 (`QT_FRESH_SCHEMA_LIVE` dumped from the pin), `system_restore_state` 4, `degraded_sibling_open` 2, `photo_album_options` 2, `wardrobe_tools` 2, every memory / consolidation / store-name family 1/1.
+- **SPA:** lint + build clean; vitest **486 files / 9,316 tests** on the final
+  tree (incl. the new Copy arm and the cache-primed save-dialog arm).
+- **Playwright:** **375 passed / 0 failed / 6 skipped (12.3 m)** on the final tree — the six skips the standing parks; both §S.9 flips LIVE and green; the first full run (373 / 2 / 6) had the quill timing beat (1/1 by file) and the flipped save beat whose real defect is fixed above.
+- The §S.4 censuses on the union: `fallback_home_guard` 2/2, `import_warning_text_guard` 3/3, `zod_issues_home_guard` 4/4, `spelling_guard`, `dispatch_wrong_type_census` 14/14, `api_key_read_sites_census` 5/5, `help_tree_embed_guard` (131), `chat_settings_column_sites_guard`, the `chats_read` + `memories_read` alignment censuses, `doc_mount_fallback_sites_census` 6/6, `chat_informs_in_force_census` 5/5, `characters_delete_callers_census` 2/2, `doc_mount_points_name_writers_census` 2/2, `other_extraction_watermark_writers_census` 2/2; `recipe_sweep.py --self-test` 0 failures; the host boot tests' structural / index counts (`host_boot_fresh_indexes` 9, `host_boot_backfilled_indexes` 14) green.
+- The §S.7 census: `help/` 131 files md5-identical to the pin; every pin
+  `docs/**` path identical to its `docs/v4/` mirror; `handler-logging-
+  inventory.md` regenerated ONCE on the union (234 → 258 rows: 23 pinned, 96
+  unpinned, 10 recorded no-ports, 129 no-site).
+
+### Versions
+
+core 0.0.1275, host 0.0.197, web 0.0.230, cli 0.0.32 (each the highest lane
+value + 1 for the union's own source changes); SPA 0.5.835 (the higher of
+P4.D276 / P4.D277 + 1); tauri 0.0.9 unchanged; harness frozen 0.0.1110.
+
+### 💸 for the next `/dogfood` (the Friday COPY — the headline rows; each lane's list stands)
+
+- **FIRST: the store-name plan probe on the copy** before its first v5 boot
+  (P4.D274 measured ZERO planned renames on live Friday and every committed
+  fixture; the copy is older) — then the first boot: the memory-tiers ensure a
+  NO-OP (v4 HEAD booted the live instance past `add-memory-tiers-v1`), the
+  NOCASE index present, the reconcile's `planned` line.
+- A full Friday-copy backup → restore in BOTH modes with all 365 CONSOLIDATED
+  digests written and every store bound (#159's F5 archive: 77 stores → 77;
+  Friday on her 847-link vault).
+- v5 housekeeping DEMOTING (never deleting) on a real post-turn job; the
+  preview's `wouldDemote` / `coldCount`; a ≥0.90 absorb; a demoted row
+  promoted on re-observation; a dedup preview + run with ONE re-embed per
+  changed survivor.
+- A real turn's context carrying a digest with ` (from N notes)`; the frozen
+  archive keyed by chat (two chats, one character); the search tool's
+  `archivedLabel`.
+- The hybrid OTHER pass dropping sub-0.75 candidates and a context-summary
+  fold writing fold-grain OTHER memories (💸 one cheap call per observer); an
+  idle multi-character chat's catch-up job (`jobId` present); Carina's mode
+  DEBUG.
+- A consolidation DRY RUN on one character (💸 ≤ 10 cheap calls), then a REAL
+  run (digests `CONSOLIDATED`, members `cold` + `supersededById`,
+  `Commonplace/<Subject>.md` + `Self.md`); the settings card's R-A clobber
+  observed, not "fixed"; a low watermark + a real extraction → ONE run.
+- The `.qtap` round trip carrying tiers + the two settings keys; `quilltap
+  anchor-probe` + `recall-replay --tuning` on a real chat.
+- The wardrobe: `wardrobe_list`'s second-person wear note (`Worn 2× · last a
+  week ago`), `wardrobe_read`'s paragraph; the picture viewer's Save to
+  General + the second save's dated 409; a Salon message Save + a gallery
+  Save; the editor's history walk.
+- The SPA: the memory tab's nine cards, the tier filter + digest viewer,
+  Cleanup's `Archive N Memories`, the Mem chip naming consolidation; the help
+  viewer's Memory Consolidation page (first boot moves `help_docs` to 131).
+
+### Standing deferrals carried (by name)
+
+The `MEMORY_REGENERATE_CHAT` handler + the fold-grain rebuild (P4.D270 E9);
+the CLI `memories` verb (P4.D269 #19, still "not yet available"); the
+`characterIdsFromMemoryWrites` child-process trigger replaced by the ruled
+`WATERMARK_ROWID_WINDOW` (P4.D271 R-B — over-includes concurrent rows,
+under-includes the first job after boot / an enable flip, both pinned); the
+three v4-filing candidates (the settings POSTs' `PARTIAL_DEFAULTS_CLOBBER`, the
+dup-store-id claim map's LAST-row, retention / dedup reaching digests —
+`RETENTION_DELETES_SUPERSEDED_DIGEST`, `DEDUP_CROSSES_TIERS`,
+`DEDUP_DELETES_DIGEST`); the job-child reconcile arm (NO-PORT); v5's `analyze-
+image` refusal (which the wardrobe catch-up's bug 197 will meet).

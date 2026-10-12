@@ -811,25 +811,79 @@ records THERE. Update this summary only when a phase or round completes.
   demotes — **run no v5 build against live Friday before the memory catch-up**
   (ledger `d58548051`). **Next: the memory-programme catch-up round, then the
   follow-ups round (with #159/#156/#157)** — `phase-4.md`.
-- **Oracle baseline: `f5e953a3f` (2026-10-07, v4 main — "feat(startup):
-  daily database optimize before migrations", `4.10.0-dev.117`), adopted
-  at the `f5e953a3f` wardrobe-programme round's unification (2026-10-08).**
-  **Drift state, the drift-check method, and the pinned-worktree regen
-  recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
-  by `/driftcheck` and by `/unify` at baseline moves; the other porting
-  commands run the ledger's §2 freshness probe instead of re-deriving
-  drift, and lanes never write it. **Never restate the drift count here —
-  read the ledger's §1** (this bullet restated it once, went stale within
-  hours, and the restatement is gone for good). Still no `release: 4.9.0`
-  squash as of the 2026-08-29 check — re-probe BOTH branches every time. The sweep driver
-  remains the
-  sanctioned per-family regen path — never run two sweeps concurrently;
-  since P4.53 it refuses empty-stage families by name, `--self-test`
-  guards recipe headers against cross-alias defaults, and since this
-  round it pins the `--nocapture` splice against the continued-command
-  regression. The distill-transitive TZ pins, the committed-fixture rule,
-  and the venue/staging rules stand unchanged. (The superseded baseline
-  paragraphs formerly kept here "for history" are archived verbatim in
-  `docs/developer/porting/claude-md-status-history.md`.)
+- **The `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift
+  catch-up round (P4.D265 → {P4.D266 ∥ P4.D267 ∥ P4.D268 ∥ P4.D269 ∥ P4.D270
+  ∥ P4.D271 ∥ P4.D272 ∥ P4.D273 ∥ P4.D274 ∥ P4.D275} ∥ P4.D276 ∥ P4.D277 ∥
+  P4.D278): UNIFIED on main (2026-10-12) — ALL FOURTEEN LANES LANDED WHOLE;
+  the oracle baseline MOVES to `01a83539d`; the ledger's §3 holds the FOUR
+  commits v4 landed past the pin (`3e6e2f590` … `e23fb095b` — the wardrobe
+  audit, fixes and seven-phase refactor + bug 198, UNPROCESSED, classified),
+  PIN REQUIRED.** v4's memory programme whole: the SEVENTH D23 re-dump
+  (`memories.tier` / `supersededById` / `consolidatedFrom` / `consolidatedAt`,
+  `chats.otherExtractionWatermarkMessageId`, bug 186's NOCASE store-name
+  index riding the same dump) with `add-memory-tiers-v1` as an unstamped boot
+  ensure and 43 committed pairs widened in place (P4.D265, the keystone); the
+  gate's cold tier, counted reinforcement (bug 182), the footnote cap,
+  housekeeping DEMOTING instead of deleting, the dedup fold (P4.D266); the
+  recall retuning (1.3 / 1.15, the relevance gate + the 1.4 cap, specific
+  anchors), hot-only search that stamps nothing, the replay's `tuning` /
+  `signals` / `asOf` (P4.D267); the per-chat frozen archive, digests-first
+  composition, budget-sized pools, delivered-only access stamps (P4.D268);
+  the F2 anchor probe + `quilltap anchor-probe`, the list's `tier`, the
+  search's `includeCold` (P4.D269); the `hybrid` / fold-grain OTHER pass +
+  the idle catch-up + the Commonplace canon (P4.D270); the consolidation
+  engine whole — clusterer, plan, prompt family, service, triggers, API,
+  with the ruled `WATERMARK_ROWID_WINDOW` and `PARTIAL_DEFAULTS_CLOBBER`
+  (P4.D271); the `.qtap` carriers with up-front id minting (P4.D272); bug
+  185's store-claim map in BOTH restore modes — dogfood #159 CLOSED
+  (P4.D273); bug 186's unique store names + the boot / restore / import /
+  character-path reconcile + the sync line (P4.D274); bugs 183 / 184 from the
+  reader's side + the picture viewer's save-targets / save-to-store + the
+  message Save Image 409 (P4.D275); the memory SPA's nine cards, tiers,
+  digest viewer, Cleanup-archives (P4.D276); the shared full-screen frame,
+  the wardrobe picture viewer + save dialog door (P4.D277); `help/` 131 +
+  `docs/v4/` + six NO-PORT ratifications (P4.D278). **The §3 review (seven
+  readers + the unifier): NO blocking lane defect — the sixteenth such
+  round; the one blocker-class item was a union obligation — the
+  consolidation canon re-pointed onto a vault reader SILENT on NOT_FOUND
+  where v4's one reader logs the absent-document line; ONE reader now.**
+  Fixed red-first: the gallery viewer's swallowed clipboard failure, the
+  deferred-file census slot, the watermark trigger's strict parse + silent
+  read, the vector tier stamp, 22a's raw taken names; and the §S.9 flip caught
+  the save dialog seeding its default album inside the TanStack query
+  function (a second open showed the first option, not Quilltap General —
+  every door, fixed red-first). **Six union reds the
+  sweep caught, each classified** — two fixtures planting a same-named
+  store bug 186 now refuses, v4's dump-borne index INFO
+  (`NOCASE_INDEX_FROM_DUMP`), the lifted carve exposing the reconcile on top
+  of two RULED divergences (`RULED_RECONCILE_CONSEQUENCES`) + the oracle
+  capture's blindness to `logger.child`, the pin's minted memory refs, one
+  non-reproducing cell. Gate: fmt/clippy (both feature sets)/release clean; the sweep from the pin 629 ok / 3 standing / 3 refused of 641 (six union reds, each classified and fixed, green by name); Tier R 361/0; `cargo test --workspace` 729 binaries / 4,853 / 8 (the three standing + the two env-block artifacts + three union reds fixed and green by name) / 3 ignored, zero SKIP; SPA 486 / 9,316; Playwright 375 / 0 / 6 (12.3 m) on the final tree, both §S.9 flips LIVE. Versions: core 0.0.1275,
+  host 0.0.197, web 0.0.230, cli 0.0.32, SPA 0.5.835. **Next: the owed
+  dogfood pass (the store-name plan probe on the copy FIRST), then the
+  wardrobe catch-up round (`7a8d6dacc` + `9ecebf986` + `e23fb095b` as ONE
+  round), then the follow-ups round (a human ruling owed on P4.D273's
+  carried-file metadata source)** — `phase-4.md`. Round record:
+  `status-log.md`.
+- **Oracle baseline: `01a83539d` (2026-10-09, v4 main — "feat(wardrobe):
+  full-screen picture viewer with save to a document store",
+  `4.10.0-dev.143`), adopted at the `01a83539d` memory-programme round's
+  unification (2026-10-12).** **Drift state, the drift-check method, and the
+  pinned-worktree regen recipe live in `docs/developer/porting/drift-ledger.md`**
+  — maintained by `/driftcheck` and by `/unify` at baseline moves; the other
+  porting commands run the ledger's §2 freshness probe instead of
+  re-deriving drift, and lanes never write it. **Never restate the drift
+  count here — read the ledger's §1** (this bullet restated it once, went
+  stale within hours, and the restatement is gone for good). Still no
+  `release: 4.10.0` squash as of the 2026-10-12 check — re-probe BOTH
+  branches every time. The sweep driver remains the sanctioned per-family
+  regen path — never run two sweeps concurrently; it needs Python ≥ 3.12
+  (`/opt/homebrew/bin/python3.13`; the system 3.9 cannot parse it); since
+  P4.53 it refuses empty-stage families by name, `--self-test` guards recipe
+  headers against cross-alias defaults, and it pins the `--nocapture` splice
+  against the continued-command regression. The distill-transitive TZ pins,
+  the committed-fixture rule, and the venue/staging rules stand unchanged.
+  (The superseded baseline paragraphs formerly kept here "for history" are
+  archived verbatim in `docs/developer/porting/claude-md-status-history.md`.)
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.
