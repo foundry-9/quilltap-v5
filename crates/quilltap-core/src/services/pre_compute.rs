@@ -15,9 +15,9 @@
 //! W4.4a4 — differential-pinned there); this module holds ONLY the sibling
 //! proactive task. v4 runs the two in parallel purely as a latency optimization
 //! (`Promise.all`); v5 runs them sequentially at the same spine site — the
-//! parallelism has no DB-observable effect (each reads independent state and the
-//! proactive task's only writes are through `search_memories_semantic`'s
-//! access-time bump, which is order-independent of the compression cache read).
+//! parallelism has no DB-observable effect (each reads independent state; the
+//! proactive task writes nothing — v4 `3f7320138` F6 — buildContext stamps what
+//! it formats).
 //!
 //! The proactive task's outcome rides `BuildContextInput`
 //! (`pre_searched_memories` / `recall_signals`); a non-empty `pre_searched_memories`

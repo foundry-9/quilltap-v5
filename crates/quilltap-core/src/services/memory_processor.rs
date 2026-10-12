@@ -79,13 +79,30 @@ use crate::vault_overlay::sanitize_file_name;
 
 const OTHERS_FOLDER: &str = "Others";
 
-/// v4 `readVaultTextFile` (`vault-overlay/vault-readers.ts`): read a vault
-/// document's content off the mount-index partition, `None` on NOT_FOUND —
-/// and on any other failure too (v4 warns and returns null, never throws).
+/// v4 `readVaultTextFile` (`vault-overlay/vault-readers.ts:53-69`): read a
+/// vault document's content through `readDatabaseDocumentIfExists`
+/// (`database-store.ts:88-102`), `None` on NOT_FOUND — with v4's `Document
+/// absent from database-backed store` debug line — and on any other failure
+/// too (v4 warns `Failed to read vault file` and returns null, never throws).
+/// Both the extraction canons and the consolidation canon read through this
+/// ONE reader, as v4's do (the unifier folded P4.D271's lane-local copy here).
 pub fn read_vault_text_file(db: &Db, mount_point_id: &str, path: &str) -> Option<String> {
-    db.read_mount_index(|conn| Ok(read_vault_text_file_conn(conn, mount_point_id, path)))
-        .ok()
-        .flatten()
+    match crate::services::commonplace_digest_vault_bridge::read_database_document_if_exists(
+        db,
+        mount_point_id,
+        path,
+    ) {
+        Ok(content) => content,
+        Err(error) => {
+            tracing::warn!(
+                mountPointId = %mount_point_id,
+                path = %path,
+                error = %error,
+                "Failed to read vault file"
+            );
+            None
+        }
+    }
 }
 
 /// [`read_vault_text_file`] over a mount-index connection the caller already

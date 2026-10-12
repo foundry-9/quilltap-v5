@@ -7295,16 +7295,6 @@ impl CoreEngine {
 
 /// A production draw source over [`random_f64`] — one fresh OS draw per call, so
 /// a rotation of N seats consumes N independent values (P4.D172).
-/// P4.D265 (R-G): the ONE refusal body for the `01a83539d` round's new wire —
-/// agreed in advance under CLAUDE.md's no-stub rule (§R.14), each replaced by
-/// its named owner in this same round. The P4.D255 sentence shape.
-fn p4d265_not_yet_available(action: &str, owner: &str) -> Response {
-    Response::error(
-        ErrorKind::Internal,
-        format!("The '{action}' action is recognized but not yet available ({owner})."),
-    )
-}
-
 fn quilltap_draw_source() -> crate::weighted_random::DrawSource {
     crate::weighted_random::DrawSource::from_fn(random_f64)
 }

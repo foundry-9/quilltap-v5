@@ -1129,13 +1129,14 @@ mod tests {
     /// R-I: a sweep that changed anything invalidates the character's frozen
     /// archive; a no-op sweep leaves it cached. The proof: seed the cache, add a
     /// row behind its back, and see whether the next lookup recomputes.
-    // HANDOFF(P4.D268): re-point to the (character, chat) signature at union.
     fn seed_frozen_archive_for_test(db: &Db, character_id: &str) -> Vec<String> {
         crate::services::frozen_archive::get_or_compute_frozen_archive(
             db,
             character_id,
+            "chat-seed-for-test",
             7,
             None,
+            &[],
             crate::clock::now_unix_ms() as f64,
         )
         .unwrap()

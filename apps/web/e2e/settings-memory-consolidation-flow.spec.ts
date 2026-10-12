@@ -59,7 +59,7 @@ import {
  * P4.D265); it is exercised when §S.9 flips the gate.
  */
 
-const P4D265_SERVER_LANDED = false;
+const P4D265_SERVER_LANDED = true;
 const GATE_REASON =
   'awaits the P4.D265 round server (P4.D265 wire + P4.D266 housekeeping + P4.D269 tier + P4.D271 consolidation verbs) — §S.9 flips it on the union';
 

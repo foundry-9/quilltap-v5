@@ -900,7 +900,7 @@ fn the_list_completed_line_is_v4s() {
             items.iter().filter(|i| i.is_composite == Some(true)).count(),
             items.iter().filter(|i| i.wear_count == 0).count(),
             items.iter().filter(|i| i.worn_by_you == 0).count(),
-            items.iter().filter(|i| i.image_file_id.is_some()).count(),
+            items.iter().filter(|i| i.image_file_id.as_deref().is_some_and(|f| !f.is_empty())).count(),
         )
     };
 

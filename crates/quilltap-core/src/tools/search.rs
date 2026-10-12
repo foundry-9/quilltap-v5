@@ -16,10 +16,11 @@
 //! enforces the same exclusion defensively (`operatorSurface` → memory search off,
 //! documents/knowledge reach every enabled store, conversations go operator-wide).
 //!
-//! **Not purely read-only:** the memory branch's `search_memories_semantic` bumps
-//! `lastAccessedAt` on matched memories (v4's `updateAccessTimeBulk`, non-fatal).
-//! The returned metadata is computed before the bump; the differential isolates
-//! each case on a fresh fixture copy so the bump never contaminates a later case.
+//! **Search itself writes nothing** (v4 `3f7320138` F6 — `searchMemoriesSemantic`
+//! no longer bumps access); the tool stamps only the memories it returns, through
+//! `mark_memories_accessed` (delivered-only access stamps). The differential
+//! isolates each case on a fresh fixture copy so the stamp never contaminates a
+//! later case.
 
 use serde::Serialize;
 use serde_json::{json, Map, Value};

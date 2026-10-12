@@ -3302,7 +3302,10 @@ impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for MemoryExtractionJo
     fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
         Box::pin(async move {
             let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
-            let decoded = MemoryExtractionPayload::decode(&payload);
+            let mut decoded = MemoryExtractionPayload::decode(&payload);
+            // P4.D270 R-H: the catch-up lines carry the job's id (v4 passes
+            // `job.id` into `processMemoryExtraction`).
+            decoded.job_id = Some(job.id.clone());
             let completion = self.wire.completion(db);
             let embedding = self.wire.embedding(db);
             let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {

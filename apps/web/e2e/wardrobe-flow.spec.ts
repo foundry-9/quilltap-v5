@@ -114,7 +114,7 @@ const P4D255_SERVER_LANDED = true;
  * says nothing about the SPA. The viewer beats that touch no C2 verb run LIVE
  * now. Flip to `true` at unification (§S.9).
  */
-const P4D265_SERVER_LANDED = false;
+const P4D265_SERVER_LANDED = true;
 
 /** The garment the wear-ledger beats create fresh, so its tally starts at zero. */
 const LEDGER_GARMENT = 'Ledger Spats';

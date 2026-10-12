@@ -65,10 +65,7 @@ use std::time::Instant;
 
 use serde_json::{json, Map, Value};
 
-use crate::canon::{
-    load_canon_for_self, render_other_canon_block, render_self_canon_block, CanonSource,
-    CanonSourceKind,
-};
+use crate::canon::{load_canon_for_self, render_other_canon_block, render_self_canon_block};
 use crate::cheap_llm::{
     resolve_uncensored_cheap_llm_selection, selection_from_profile, CheapLlmProfile,
     CheapLlmSelection, UncensoredFallbackOptions,
@@ -765,96 +762,6 @@ fn route_for_cluster(
     }
 }
 
-/// R-F — the OTHER subject canon with `includeCommonplace: false`, which is
-/// EXACTLY the extraction pass's private hand canon (`Others/<sanitized
-/// name>.md` trimmed → identity → description → none).
-///
-/// HANDOFF(P4.D270): this is a lane-local copy of
-/// `services/memory_processor.rs`'s private `load_canon_for_observer_about_
-/// subject`. P4.D270 makes it `pub` as `load_canon_for_observer_about_subject(
-/// db, observer_mount_point_id, observer_character_id, subject,
-/// include_commonplace: bool)` and grows `CanonSource` with a `commonplace`
-/// field — so this copy's struct literals will NOT compile on the union. The
-/// unifier deletes this fn and re-points the one call below at P4.D270's `pub`
-/// fn with `include_commonplace: false`, in the SAME commit that picks the
-/// later of P4.D270 / P4.D271 (§S.5). ⚠ Measured at the pin: v4's vault read
-/// here (`readVaultTextFile` → `readDatabaseDocumentIfExists`) logs `Document
-/// absent from database-backed store` `{module: 'service', mountPointId,
-/// relativePath}` on a missing `Others/<name>.md`; `consolidation_service_
-/// tier3_equivalence` pins it. P4.D270's `pub` fn must read through the same
-/// line (this file's [`read_vault_text_file`]) or the family reddens on the
-/// re-point.
-fn load_canon_for_observer_about_subject(
-    db: &Db,
-    observer_mount_point_id: Option<&str>,
-    subject_id: &str,
-    subject_name: &str,
-    identity: Option<&str>,
-    description: Option<&str>,
-) -> CanonSource {
-    if let Some(mount_id) = observer_mount_point_id.filter(|s| !s.is_empty()) {
-        let path = format!(
-            "Others/{}.md",
-            crate::vault_overlay::sanitize_file_name(subject_name)
-        );
-        if let Some(from_vault) = read_vault_text_file(db, mount_id, &path) {
-            let trimmed = crate::jsstr::js_trim(&from_vault);
-            if !trimmed.is_empty() {
-                return CanonSource {
-                    character_id: subject_id.to_string(),
-                    character_name: subject_name.to_string(),
-                    body: Some(trimmed.to_string()),
-                    source: CanonSourceKind::Vault,
-                };
-            }
-        }
-    }
-    for (text, kind) in [
-        (identity, CanonSourceKind::Identity),
-        (description, CanonSourceKind::Description),
-    ] {
-        if let Some(t) = text.map(crate::jsstr::js_trim).filter(|s| !s.is_empty()) {
-            return CanonSource {
-                character_id: subject_id.to_string(),
-                character_name: subject_name.to_string(),
-                body: Some(t.to_string()),
-                source: kind,
-            };
-        }
-    }
-    CanonSource {
-        character_id: subject_id.to_string(),
-        character_name: subject_name.to_string(),
-        body: None,
-        source: CanonSourceKind::None,
-    }
-}
-
-/// v4 `readVaultTextFile` (`vault-overlay/vault-readers.ts:53-69`):
-/// `readDatabaseDocumentIfExists` — whose NOT_FOUND arm logs `Document absent
-/// from database-backed store` — with any other failure WARNed as `Failed to
-/// read vault file` and answered `None`. (The extraction pass's
-/// `memory_processor::read_vault_text_file` is silent on NOT_FOUND; measured
-/// against the pin, v4's canon read is not — see the HANDOFF above.)
-fn read_vault_text_file(db: &Db, mount_point_id: &str, path: &str) -> Option<String> {
-    match crate::services::commonplace_digest_vault_bridge::read_database_document_if_exists(
-        db,
-        mount_point_id,
-        path,
-    ) {
-        Ok(content) => content,
-        Err(error) => {
-            tracing::warn!(
-                mountPointId = %mount_point_id,
-                path = %path,
-                error = %error,
-                "Failed to read vault file"
-            );
-            None
-        }
-    }
-}
-
 /// v4 `findById` (the overlay read) — `None` on absence AND on a throw.
 fn character_overlay(db: &Db, id: &str) -> Option<Value> {
     let id = id.to_string();
@@ -918,16 +825,30 @@ fn describe_buckets(
                 let subject_name = str_field(&subject, "name").unwrap_or_default();
                 bucket.reference.subject_name = subject_name.clone();
                 // The cluster is handed its digest directly; the mirror would only echo it.
-                let source = load_canon_for_observer_about_subject(
-                    db,
-                    holder
-                        .get("characterDocumentMountPointId")
-                        .and_then(Value::as_str),
-                    &id_of(&subject),
-                    &subject_name,
-                    subject.get("identity").and_then(Value::as_str),
-                    subject.get("description").and_then(Value::as_str),
-                );
+                // R-F: the OTHER subject canon with `includeCommonplace: false`
+                // — EXACTLY the extraction pass's hand canon (P4.D270's `pub`
+                // loader; the cluster is handed its digest directly).
+                let source =
+                    crate::services::memory_processor::load_canon_for_observer_about_subject(
+                        db,
+                        holder
+                            .get("characterDocumentMountPointId")
+                            .and_then(Value::as_str),
+                        &holder_id,
+                        &crate::services::memory_processor::CanonSubject {
+                            id: id_of(&subject),
+                            name: subject_name.clone(),
+                            identity: subject
+                                .get("identity")
+                                .and_then(Value::as_str)
+                                .map(str::to_string),
+                            description: subject
+                                .get("description")
+                                .and_then(Value::as_str)
+                                .map(str::to_string),
+                        },
+                        false,
+                    );
                 canon.insert(bucket.key.clone(), Some(render_other_canon_block(&source)));
             }
         }

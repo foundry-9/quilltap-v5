@@ -952,13 +952,14 @@ mod tests {
         .await
         .unwrap();
         // R-I: seed the cache, then plant a row behind its back.
-        // HANDOFF(P4.D268): re-point to the (character, chat) signature at union.
         let archive = |db: &Db| -> Vec<String> {
             crate::services::frozen_archive::get_or_compute_frozen_archive(
                 db,
                 CHAR,
+                "chat-seed-for-test",
                 7,
                 None,
+                &[],
                 crate::clock::now_unix_ms() as f64,
             )
             .unwrap()

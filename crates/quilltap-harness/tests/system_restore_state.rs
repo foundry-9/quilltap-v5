@@ -95,9 +95,6 @@
 //!   row of a duplicated store id, v5 the FIRST (the one 22a restores).
 //! - [`PRESERVE_BACKFILL`] — RULED, re-pinned v5-ahead (R-B): v4 binds a
 //!   damaged store and leaves it blank; v5 completes its managed files.
-//! - `RECONCILE_PENDING_UNION` ([`mask_reconcile_pending_union`]) — lane-local
-//!   (R-D): v4's store-name reconcile has no caller on this branch; the
-//!   unifier applies the 23a hunk and LIFTS it.
 //!
 //! ## ⚠ What is left, and why each is not simply "fixed here"
 //!
@@ -1756,7 +1753,6 @@ fn system_restore_state_equivalence() {
     let mut repo_log_cases = 0usize;
     let mut restore_log_cases = 0usize;
     let mut dup_store_carved = 0usize;
-    let mut reconcile_masked: Vec<(String, usize)> = Vec::new();
     let mut empty_embedding_seen = 0usize;
 
     for case in &cases {
@@ -1913,18 +1909,7 @@ fn system_restore_state_equivalence() {
         let mut got_state = read_state(&instance);
         let mut want_owned = case["state"].clone();
 
-        // [P4.D273 R-D] `RECONCILE_PENDING_UNION` — v4's store-name reconcile
-        // (23a + the characters create path's) has no v5 caller on this
-        // branch; its moves are masked on BOTH sides until the unifier lifts
-        // the carve. Counted per case: a vacuous carve fails.
         let mut summary_carve = SummaryCarve::default();
-        let masked = reconcile_pending_union_count(&got_state, &want_owned, &case["logs"]);
-        if masked == 0 {
-            failures.push(format!(
-                "[{name}] RECONCILE_PENDING_UNION masked nothing — the carve went vacuous"
-            ));
-        }
-        reconcile_masked.push((name.to_string(), masked));
         // [P4.D273 R-A] The ruled divergence, asserted both ways on the RAW
         // dumps and then carved — BEFORE any normalization, so the
         // `<minted-N>` first-encounter labels of the remaining rows line up.
@@ -2148,10 +2133,6 @@ fn system_restore_state_equivalence() {
     );
     for f in &failures {
         eprintln!("FAILURE {f}");
-    }
-    // [P4.D273 R-D] the per-case mask counts, for the lane record.
-    for (case, n) in &reconcile_masked {
-        println!("  RECONCILE_PENDING_UNION {case}: {n} masked");
     }
     // [P4.D273 R-A] Every `DUP_STORE_ID_FIRST_ROW` case actually carved — the
     // arm cannot go vacuous.
@@ -4767,82 +4748,16 @@ fn assert_memory_tiers_restored(
     }
 }
 
-/// ## ⚠ `RECONCILE_PENDING_UNION` — lane-local, LIFTED by the unifier (P4.D273 R-D)
-///
-/// v4 at `01a83539d` renames document stores where this branch cannot: 23a's
-/// `reconcileStoreNames('restore')` and the characters create / delete paths'
-/// `character-created` / `character-deleted` reconciles (bug 186). The
-/// reconcile is P4.D274's `reconcile_store_names`, which is not on this
-/// branch's `KEYSTONE` base, so the 23a call is a recorded `HANDOFF:` hunk the
-/// unifier applies (§S.5). Until then, on EVERY case and BOTH sides, this
-/// masks exactly: (1) every `mountIndex.doc_mount_points` `name` and
-/// `updatedAt` cell ([`mask_reconcile_pending_union`], in [`compare_case`]); (2) the census records of the reconcile's lines
-/// ([`RECONCILE_MESSAGES`] and 23a's two — [`compare_restore_logs`]); (3) a
-/// `Failed to tidy document-store names after restore: …` warning
-/// ([`compare_case`]). Nothing else — `createdAt`, `id` and every pointer stay
-/// compared. Returns the cells (1) plus v4's census records (2) it masks,
-/// which the caller requires > 0.
-///
-/// **The unifier deletes this carve** after picking P4.D274 and P4.D273 (with
-/// the 23a hunk applied) and re-runs this family by name: every case must then
-/// match v4's reconcile byte for byte.
-fn reconcile_pending_union_count(
-    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
-    want: &Value,
-    want_logs: &Value,
-) -> usize {
-    let cells = |rows: &[Value]| -> usize {
-        rows.iter()
-            .map(|r| {
-                ["name", "updatedAt"]
-                    .iter()
-                    .filter(|k| r.get(**k).is_some())
-                    .count()
-            })
-            .sum()
-    };
-    let got_rows = got
-        .get("mountIndex")
-        .and_then(|p| p.get("doc_mount_points"))
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
-    let mut messages: Vec<&str> = RECONCILE_MESSAGES.to_vec();
-    messages.extend_from_slice(RECONCILE_23A_MESSAGES);
-    let census = want_logs
-        .as_array()
-        .map(|w| v4_log_records(w, &messages).len())
-        .unwrap_or(0);
-    cells(got_rows) + cells(rows_of(want, "mountIndex", "doc_mount_points")) + census
-}
-
-/// [`RECONCILE_PENDING_UNION`]'s cell half, applied by [`compare_case`] to
-/// both sides' `doc_mount_points` rows AFTER the `V5_STATS_GAP` lookups (they
-/// find the uploads store by name).
-fn mask_reconcile_pending_union(rows: &mut [Value]) {
-    for r in rows.iter_mut() {
-        for k in ["name", "updatedAt"] {
-            if r.get(k).is_some() {
-                r[k] = json!("<RECONCILE_PENDING_UNION>");
-            }
-        }
-    }
-}
-
-/// [`RECONCILE_PENDING_UNION`]'s census half: the store-name reconcile's own
-/// lines (v4 `reconcile-store-names.ts` + the characters repository's
-/// `reconcileVaultNames`), recorded by the oracle on every case.
+/// The store-name reconcile's own lines (v4 `reconcile-store-names.ts` + the
+/// characters repository's `reconcileVaultNames`), recorded by the oracle on
+/// every case and compared with the `restore.ts` lines since the unifier
+/// landed 23a (P4.D273 R-D's `RECONCILE_PENDING_UNION` carve LIFTED,
+/// 2026-10-12).
 const RECONCILE_MESSAGES: &[&str] = &[
     "Store-name reconcile planned",
     "Renamed document store to its rightful name",
     "Store-name reconcile after a character change failed",
     "Store-name reconcile skipped: mount-index database unavailable",
-];
-
-/// 23a's two `restore.ts` lines, masked with the reconcile (R-D) — they stay
-/// in [`RESTORE_TS_MESSAGES`] (the census counts 80).
-const RECONCILE_23A_MESSAGES: &[&str] = &[
-    "Post-restore store-name reconcile complete",
-    "Post-restore store-name reconcile failed",
 ];
 
 /// The `summary` adjustments a ruled carve makes: v5 leads v4's `files`
@@ -5897,6 +5812,9 @@ fn compare_restore_logs(
         return;
     };
     let mut messages: Vec<&str> = RESTORE_TS_MESSAGES.to_vec();
+    // [P4.D273 R-D, lifted at union] the store-name reconcile's own lines are
+    // compared like any other.
+    messages.extend_from_slice(RECONCILE_MESSAGES);
     // [P4.161 Tier 2 item 9] v4's `restore.ts` lines all log through ONE
     // module logger, so v5's twins all live on ONE target —
     // `quilltap::restore` (P4.158 left five on the default module target).
@@ -5963,23 +5881,6 @@ fn compare_restore_logs(
             }
         }
     }
-    // [P4.D273 R-D] `RECONCILE_PENDING_UNION`: 23a's two lines leave BOTH
-    // sides; the reconcile's own lines are never in `messages` — counted here
-    // for the record, and v5 (no reconcile on this branch) must log none.
-    let is_23a = |r: &Value| RECONCILE_23A_MESSAGES.contains(&r["message"].as_str().unwrap_or(""));
-    let census_masked = g.iter().filter(|r| is_23a(r)).count()
-        + w.iter().filter(|r| is_23a(r)).count()
-        + v4_log_records(want, RECONCILE_MESSAGES).len();
-    println!("  RECONCILE_PENDING_UNION {name}: {census_masked} census record(s) masked");
-    let v5_reconcile = v5_log_records(got_lines, RECONCILE_MESSAGES);
-    if !v5_reconcile.is_empty() {
-        failures.push(format!(
-            "[{name}] RECONCILE_PENDING_UNION: v5 logged reconcile lines {v5_reconcile:?} — the \
-             union has landed; lift the carve"
-        ));
-    }
-    g.retain(|r| !is_23a(r));
-    w.retain(|r| !is_23a(r));
     // [P4.D273 R-A] `DUP_STORE_ID_FIRST_ROW`'s v4 records — each present, then
     // gone — and v5 logged none of them.
     for drop in &carve.drop_v4_census {
@@ -6500,22 +6401,6 @@ fn compare_case(
             continue;
         }
         if k == "warnings" {
-            // [P4.D273 R-D] `RECONCILE_PENDING_UNION`'s warning half: 23a's
-            // `Failed to tidy document-store names after restore: …` leaves
-            // both sides (v5 cannot log it before the union).
-            let tidy = |v: &Value| -> Value {
-                let mut v = v.clone();
-                if let Some(ws) = v.as_array_mut() {
-                    ws.retain(|w| {
-                        !w.as_str().is_some_and(|w| {
-                            w.starts_with("Failed to tidy document-store names after restore: ")
-                        })
-                    });
-                }
-                v
-            };
-            let (gv_tidy, wv_tidy) = (tidy(gv), tidy(wv));
-            let (gv, wv) = (&gv_tidy, &wv_tidy);
             // [P4.147] the v4 warnings that ARE the #142 divergence.
             let mut wv = wv.clone();
             if let Some(ws) = wv.as_array_mut() {
@@ -6763,11 +6648,6 @@ fn compare_case(
             if table == "doc_mount_points" && !stats_masked.is_empty() {
                 mask_stats(&mut g_rows);
                 mask_stats(&mut w_rows);
-            }
-            // [P4.D273 R-D] after the stats lookups, which read names.
-            if table == "doc_mount_points" {
-                mask_reconcile_pending_union(&mut g_rows);
-                mask_reconcile_pending_union(&mut w_rows);
             }
             let g = n_got.value(&Value::Array(g_rows.clone()));
             let wnt = n_want.value(&Value::Array(w_rows.clone()));

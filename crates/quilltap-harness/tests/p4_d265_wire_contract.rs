@@ -1,7 +1,10 @@
 //! P4.D265 **contract C2** guard — the `01a83539d` round's new and grown
 //! dispatch verbs, pinned name-for-name (the `p4_d10_wire_contract`
-//! precedent), plus the agreed refusal body every new arm answers until its
-//! owning order fills it (R-G, §R.14).
+//! precedent). Until the union it also pinned the agreed refusal body every
+//! new arm answered before its owning order filled it (R-G, §R.14); on the
+//! union every arm is filled (P4.D267 / P4.D269 / P4.D271 / P4.D275), the
+//! refusal fn is gone, and each arm's behaviour is pinned by its owner's
+//! family, so that half retired with the unification (2026-10-12).
 //!
 //! The SPA lanes (P4.D276 / P4.D277) develop against these tags before they
 //! meet them live, so a rename, a serde-attribute slip or a tri-state that
@@ -11,21 +14,14 @@
 //! - a JSON `null` for `tuning` / `signals` / `asOf` / `caption` / `tags`
 //!   decodes to `Some(None)` (PRESENT — v4's Zod refuses it) while
 //!   `memoryBudget: null` decodes to `None` (v4 coerces it to absent);
-//! - each new arm, and each grown arm given a PRESENT new field, answers
-//!   `The '<type>' action is recognized but not yet available (<order>).`
-//!   (`ErrorKind::Internal`), dispatched through a booted engine.
 //!
-//! Needs no oracle or fixture: a serialization + refusal contract, not a
-//! behaviour diff (each owner's family carries the behaviour).
+//! Needs no oracle or fixture: a serialization contract, not a behaviour diff
+//! (each owner's family carries the behaviour).
 //!
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test p4_d265_wire_contract
 
-use std::sync::Arc;
-
-use quilltap_core::api::engine::{CoreConfig, CoreEngine, NoopAssembler};
-use quilltap_core::api::types::{ErrorKind, Request, Response, WardrobeContainerScope};
-use quilltap_core::api::{InstanceDirectory, QuilltapCore};
+use quilltap_core::api::types::{Request, WardrobeContainerScope};
 use serde_json::{json, Value};
 
 fn decode(body: Value) -> Request {
@@ -183,112 +179,5 @@ fn p4_d265_contract_wire_shapes() {
             ..
         } => {}
         other => panic!("absent caption / tags must stay None: {other:?}"),
-    }
-}
-
-struct EmptyInstances;
-impl InstanceDirectory for EmptyInstances {
-    fn list(&self) -> Result<quilltap_core::api::types::InstancesDto, String> {
-        Ok(quilltap_core::api::types::InstancesDto {
-            instances: vec![],
-            default_instance: None,
-        })
-    }
-}
-
-#[tokio::test]
-async fn every_new_arm_answers_its_agreed_refusal() {
-    let base = tempfile::tempdir().unwrap();
-    let data = base.path().join("data");
-    std::fs::create_dir_all(&data).unwrap();
-    quilltap_core::services::provisioning::provision_fresh_instance(
-        &data,
-        "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
-    )
-    .expect("provision");
-    let engine = CoreEngine::boot(
-        CoreConfig {
-            base_dir: base.path().to_path_buf(),
-            version: "test".to_string(),
-            env_pepper: Some("dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=".to_string()),
-            display_zone: quilltap_core::host_zone::TimeZone::UTC,
-        },
-        Box::new(NoopAssembler),
-        Arc::new(EmptyInstances),
-    )
-    .expect("boot");
-    let cases: Vec<(Value, &str, &str)> = vec![
-        (
-            json!({"type":"memoryAnchorGateProbe","characterId":"c1"}),
-            "memoryAnchorGateProbe",
-            "P4.D269",
-        ),
-        // P4.D271 filled its five arms (`memoryConsolidationConfigGet/Set`,
-        // `memoryExtractionModeConfigGet/Set`, `memoryConsolidate`); their
-        // behaviour is pinned by `memory_consolidation_routes_equivalence`.
-        (
-            json!({"type":"wardrobeItemImageSaveTargets","scope":"general","itemId":"i1"}),
-            "wardrobeItemImageSaveTargets",
-            "P4.D275",
-        ),
-        (
-            json!({"type":"wardrobeItemImageSaveToStore","scope":"general","itemId":"i1","fileId":"f","mountPointId":"m"}),
-            "wardrobeItemImageSaveToStore",
-            "P4.D275",
-        ),
-        // The two GROWN verbs refuse only when a new field is PRESENT.
-        (
-            json!({"type":"memoryList","characterId":"c1","tier":"hot"}),
-            "memoryList",
-            "P4.D269",
-        ),
-        (
-            json!({"type":"chatRecallReplay","chatId":"chat1","tuning":null}),
-            "chatRecallReplay",
-            "P4.D267",
-        ),
-        (
-            json!({"type":"chatRecallReplay","chatId":"chat1","signals":{}}),
-            "chatRecallReplay",
-            "P4.D267",
-        ),
-        (
-            json!({"type":"chatRecallReplay","chatId":"chat1","asOf":false}),
-            "chatRecallReplay",
-            "P4.D267",
-        ),
-        (
-            json!({"type":"chatRecallReplay","chatId":"chat1","memoryBudget":2000}),
-            "chatRecallReplay",
-            "P4.D267",
-        ),
-    ];
-    for (body, action, owner) in cases {
-        match engine.dispatch(decode(body.clone())).await {
-            Response::Error(e) => {
-                assert_eq!(e.kind, ErrorKind::Internal, "{body}");
-                assert_eq!(
-                    e.message,
-                    format!("The '{action}' action is recognized but not yet available ({owner})."),
-                    "{body}"
-                );
-            }
-            other => panic!("{body}: expected the agreed refusal, got {other:?}"),
-        }
-    }
-    // Absent new fields keep the EXISTING behaviour (here: the not-ready
-    // refusal of a locked/unprovisioned engine — anything but the P4.D265
-    // sentence).
-    for body in [
-        json!({"type":"memoryList","characterId":"c1"}),
-        json!({"type":"chatRecallReplay","chatId":"chat1","memoryBudget":null}),
-    ] {
-        if let Response::Error(e) = engine.dispatch(decode(body.clone())).await {
-            assert!(
-                !e.message.contains("recognized but not yet available"),
-                "{body}: {}",
-                e.message
-            );
-        }
     }
 }

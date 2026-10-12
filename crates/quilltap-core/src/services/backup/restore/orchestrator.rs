@@ -2046,6 +2046,29 @@ fn restore_on_writer(
         "All entities restored with preserved IDs - no reconciliation needed"
     );
 
+    // 23a. Store names (bug 186, v4 `ed8b15b50` `restore.ts:1279-1290`): each
+    // live vault named after its character, every vault no character points
+    // at retired, no two stores alike.
+    match crate::db::store_name_reconcile::reconcile_store_names(main, mount, "restore") {
+        Ok(result) => tracing::debug!(
+            target: "quilltap::restore",
+            renamed = result.renamed.len(),
+            skippedReason = result.skipped_reason.map_or("null", |r| r.as_str()),
+            "Post-restore store-name reconcile complete"
+        ),
+        Err(e) => {
+            let error = e.warn_text();
+            w.push(format!(
+                "Failed to tidy document-store names after restore: {error}"
+            ));
+            tracing::warn!(
+                target: "quilltap::restore",
+                error = %error,
+                "Post-restore store-name reconcile failed"
+            );
+        }
+    }
+
     // ── 24a. Compact archives arrive with no vectors at all (v4 `7189a968`,
     //    `restore.ts:873-907`): memory embeddings are NULL and every derived
     //    collection was omitted at backup time. The reconcile below

@@ -63,9 +63,10 @@ use crate::db::runtime::Db;
 use crate::db::vector_store::{CharacterVectorStore, VectorSearchResult};
 use crate::db::{memories_read, DbError};
 use crate::embedding_vector::cosine_similarity;
-use crate::episodic::{build_memory_embedding_text, js_date_parse_ms, EpisodicAnchorView};
+use crate::episodic::{build_memory_embedding_text, js_date_parse_ms};
 use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
 use crate::services::memory_gate::{MERGE_THRESHOLD, NEAR_DUPLICATE_THRESHOLD};
+use crate::services::memory_service::{anchor_view_of, embedding_vec_of};
 
 /// The tracing target for the module's own lines (v4
 /// `createServiceLogger('AnchorGateProbe')`, which renders `{ service:
@@ -155,50 +156,6 @@ pub struct RunAnchorGateProbeInput {
     /// an integer, so a fraction never reaches the read.
     pub limit: Option<f64>,
     pub embedding_profile_id: Option<String>,
-}
-
-// HANDOFF(P4.D267): promote memory_service::{anchor_view_of, embedding_vec_of}
-// to pub(crate) and delete these copies (P4.D269 R-C — `memory_service.rs` is
-// P4.D267's file this round).
-/// The anchors view a hydrated memory row satisfies in v4 (the `memory` object
-/// IS the `EpisodicAnchorView` there).
-fn anchor_view_of(memory: &Value) -> EpisodicAnchorView {
-    let entities = match memory.get("entities") {
-        Some(Value::Array(items)) => items
-            .iter()
-            .filter_map(|v| v.as_str().map(str::to_string))
-            .collect(),
-        Some(Value::String(raw)) => serde_json::from_str::<Vec<String>>(raw).unwrap_or_default(),
-        _ => Vec::new(),
-    };
-    EpisodicAnchorView {
-        occurred_at: memory
-            .get("occurredAt")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        narrative_time: memory
-            .get("narrativeTime")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        entities,
-    }
-}
-
-// HANDOFF(P4.D267): see `anchor_view_of` above.
-/// Decode the `Float32Array`-object shape `memories_read` emits for a stored
-/// embedding (`{"0": x, "1": y, …}`) back to a vector. `None` for anything
-/// else (null / absent / malformed).
-fn embedding_vec_of(memory: &Value) -> Option<Vec<f32>> {
-    let obj = memory.get("embedding")?.as_object()?;
-    let mut out = vec![0f32; obj.len()];
-    for (k, v) in obj {
-        let i: usize = k.parse().ok()?;
-        if i >= out.len() {
-            return None;
-        }
-        out[i] = v.as_f64()? as f32;
-    }
-    Some(out)
 }
 
 fn str_field<'a>(memory: &'a Value, key: &str) -> &'a str {

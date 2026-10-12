@@ -1677,7 +1677,7 @@ pub struct RebuildVectorIndexResult {
 /// The anchors view a hydrated memory row satisfies in v4 (the `memory` object
 /// IS the `EpisodicAnchorView` there — `buildMemoryEmbeddingText(summary,
 /// content, memory)`).
-fn anchor_view_of(memory: &Value) -> crate::episodic::EpisodicAnchorView {
+pub(crate) fn anchor_view_of(memory: &Value) -> crate::episodic::EpisodicAnchorView {
     let entities = match memory.get("entities") {
         Some(Value::Array(items)) => items
             .iter()
@@ -1702,7 +1702,7 @@ fn anchor_view_of(memory: &Value) -> crate::episodic::EpisodicAnchorView {
 /// Decode the `Float32Array`-object shape `memories_read` emits for a stored
 /// embedding (`{"0": x, "1": y, …}`) back to a vector. `None` for anything
 /// else (null / absent / malformed).
-fn embedding_vec_of(memory: &Value) -> Option<Vec<f32>> {
+pub(crate) fn embedding_vec_of(memory: &Value) -> Option<Vec<f32>> {
     let obj = memory.get("embedding")?.as_object()?;
     let mut out = vec![0f32; obj.len()];
     for (k, v) in obj {
