@@ -179126,3 +179126,96 @@ regen (no Rust family); every v4 read is `git show 4a38222e6:<path>`.
   unported `main` is the component-level red of units 3 and 6 (main's editor
   never read archived candidates; main's placeholder only had the refusing
   generic DELETE) — not re-measured in a browser.
+
+### Lane close — scope, handoffs, gate, 💸
+
+**Landed (Tier 1, all nine):** 1 `item-draft.ts` + `composite-types.ts` +
+`slot-ui.ts` + the shared `folder?` line (unit 1); 2 the editor — bug 190,
+the `replace` gate dropped, origin-routed edits, `validateDraft`, the zod
+toast words, `SlotCheckboxGroup` (unit 3); 3 `wardrobe-folder-field.ts` +
+`initialFolder` (units 3–4); 4 the component picker (unit 2); 5 the row
+(unit 5); 6 bug 194 + the placeholder's `remove` arm + the image section's
+`(removed)` (unit 6); 7 the transfer dialog's `isComposite` + `'link-image'`
+(unit 7); 8 the NEW e2e on 4337 (unit 8); 9 lint + build + vitest green, the
+e2e by file green.
+**Tier 2:** item 10 (the row's outside-press close) MEASURED in v4 at the pin
+and CLOSED (unit 5); item 11 (the thumbnail) MEASURED untouched — nothing to
+port (unit 7).
+**Tier 3 — DEFERRED by name (the order's own deferrals):** item 12 — the
+import-from-image modal's upload-once-then-`link-image` flow and the
+`linkWardrobeItemImage` helper (R-L; no v5 modal, `analyze-image` stays
+refused); only the `'link-image'` action name landed. Item 13 — P4.D277's
+OPEN `salon-image-detail-flow.spec` item, carried untouched.
+
+**HANDOFFs for the unifier (§S.5):**
+1. **`containerForListedItem`** — delete the private twin in
+   `wardrobe/wardrobe-item-editor.ts` (marked `HANDOFF(P4.D285)`) and import
+   P4.D285's export from `wardrobe-container.ts`.
+2. **`isShared`** — delete `WardrobeItemEditor.isSharedInput` (accepted and
+   ignored; marked `HANDOFF(P4.D285)`) once P4.D285's host no longer binds
+   `[isShared]="false"` (`wardrobe-control-dialog.ts:623` on `main`). If the
+   browser hosts the editor instead, also bind `[initialFolder]` there (C3 §6).
+3. **The Folder field's three twins** — in
+   `wardrobe/item-editor/wardrobe-folder-field.ts`, delete
+   `listWardrobeFolders` (the CAST `wardrobeFoldersList` literal), `isSameFolder`,
+   `folderCrumb`; import P4.D285's `wardrobe-folders.api.ts` /
+   `folders.ts`. If P4.D285's `listWardrobeFolders` THROWS on a failed read
+   rather than answering `[]`, keep the field's tolerance (catch → `[]` + the
+   `[useWardrobeFolders]` warn) at the call site — the field spec's failed-read
+   case pins it. Re-run `wardrobe-folder-field.spec.ts` +
+   `wardrobe-item-editor.spec.ts` by name.
+4. **§R.10(m) — the row viewer's `(removed)`** — in
+   `wardrobe-control-dialog.ts` (P4.D285), add `(removed)="reloadCurrentItems()"`
+   (or the browser's `refresh()`) to the row-thumbnail
+   `<qt-wardrobe-image-viewer>` host (`:606-615` on `main`).
+5. **§R.10(l) — Duplicate through the draft** (P4.D285's handoff, my module):
+   `duplicateWardrobeItem` builds its body as
+   `draftToPayload({ ...draftFromItem(item), title })` from
+   `wardrobe/item-draft.ts`, so a copy is filed beside the original.
+6. **The row's Angular spellings (C3 §5)** for P4.D285's browser:
+   `[canMoveToFolder]="true"` + `(moveToFolder)`, `[selection]` whose
+   `onToggle` takes NO argument, `[folderCrumb]`.
+7. **§S.9** — flip `P4D279_SERVER_LANDED` to `true` in
+   `e2e/wardrobe-items-editor-flow.spec.ts` and run it by file on 4337.
+
+**Premise corrections recorded:** C3 §2's "createWardrobeFolder
+(create-on-save)" — v4's field and editor call no create-folder; the server
+resolves the body's `folder` (unit 4). The order's "a value not in the tree
+created on save" holds — by the server.
+
+**Fixtures:** none changed; no oracle authored or invalidated (SPA-only lane;
+no regen). The e2e materializes its own instance from the committed
+`characters-*` pair at run time, untouched.
+
+**Pre-existing, recorded (not drift):** the generic `DELETE /api/v1/images/{id}`
+refusal (P4.9a2) — bug 194's override is now the only working Remove for a
+wardrobe picture; the `courier-bubble.spec.ts` order-dependent red from a
+read-only `navigator.clipboard` (hardened in this lane's viewer spec, unit 6);
+`wardrobe-flow.spec.ts:820/:860/:909`'s `Move` / `Copy` menu clicks go RED on
+this branch from the rename — P4.D285's re-pins (§R.10(k)).
+
+**v4 moved:** nothing observed — the §R.2 probe at lane start was clean and
+the pin was the only v4 read.
+
+**Versions at close:** SPA `0.5.843` (from `0.5.835`, +8 — one per commit);
+no crate touched (core / host / web / cli / tauri unchanged; harness frozen).
+
+**💸 for the dogfood pass:** the editor's Folder field creating
+`Formal › Evening` on a real vault; a composite with an archived part keeping
+its slot (bug 190); the viewer's missing-picture cleanup on a deleted blob
+(bug 194) — from the editor's history AND (after HANDOFF 4) from a row
+thumbnail; the row's select-mode checkbox on a real wardrobe; Duplicate filing
+beside the original (after HANDOFF 5).
+
+**The lane's closing gate (final tree, `27083e23e`):** SPA lint ok, vitest
+490 files / 9,375 tests, build ok; e2e by file on 4337 2 passed / 2 skipped
+(gated) / 0 failed; `cargo fmt --all --check` ok; `cargo clippy --workspace
+--all-targets -- -D warnings` ok, and with `--features
+quilltap-core/native-transport` ok; `cargo test --workspace --no-fail-fast`
+(`CARGO_INCREMENTAL=0`, no differential env — this lane owns no harness
+family) **729 binaries / 4,861 passed / 1 failed / 3 ignored**. The one red is
+`qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts` — the
+§R.13(f) family RED BY DESIGN until P4.D284 lands `WardrobeItem.folder` in
+the embedded export schema (it read the live checkout, which is past the pin;
+it is red at the pin too). No `crates/` hunk on this branch. (A first run
+without `--no-fail-fast` stopped at that binary after 433; re-run whole.)

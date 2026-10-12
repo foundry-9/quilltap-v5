@@ -242,6 +242,12 @@ _Versions: SPA 0.5.836._
 
 Adds `wardrobe/folders.ts` (v4 `lib/wardrobe/folders.ts` at `4a38222e6`, the whole client-safe module: path helpers, the normaliser family, the error classes) and `wardrobe/folder-view.ts` (v4's pure browser view rules: own tier vs borrowed tiers, child folder rows, tier rows). `wardrobe-container.ts` gains `containerForListedItem`, which addresses a listed item through the wardrobe its `origin` names before falling back to the character/General rule. `WardrobeItemDto` gains the shared `folder?` field. Specs: v4's 19 folder cases transcribed, 14 folder-view rule rows, 2 addressing rows.
 
+#### 2026-10-12 — docs(porting): close the P4.D286 lane — the SPA editor, row and picture cleanup
+
+_Docs-only change._
+
+Records the P4.D286 lane close: what landed against the order (all of Tier 1, both Tier 2 items), the two named Tier 3 deferrals, the seven handoffs for the unifier (the `containerForListedItem`, `isShared` and Folder-field twins; the row viewer's `removed` binding; Duplicate through the draft; the row's Angular input names; the e2e flag flip), the closing gate, and the dogfood rows. Marks the order LANE COMPLETE.
+
 #### 2026-10-12 — test(e2e): the wardrobe item editor, row and picture cleanup walk on port 4337 (P4.D286 unit 8)
 
 _Versions: SPA 0.5.843._
