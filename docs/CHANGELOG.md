@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-12 — docs(porting): order the `4a38222e6` wardrobe-programme drift catch-up round — nine lanes, one keystone, pinned at `4a38222e6`
+
+_Docs-only change._
+
+`/setupphase` plans the wardrobe catch-up the `01a83539d` unification named as NEXT item 2, as ONE round pinned at v4 `4a38222e6` (`4.10.0-dev.148`, the last wardrobe commit before the scenarios D23 move): nine work orders under `docs/developer/porting/work-orders/` — P4.D279 the keystone (the location + pool data layer, the recursive item predicate and `folder`, the folder rules and mutations, wear-ops over one `apply_displacement`, the effects module, the shared avatar-profile resolver, the repository shrink with LANE-REMOVE shims, six wire variants with refusal bodies), then P4.D280 tools, P4.D281 the route factory + folder actions + transfers + link-image, P4.D282 the outfit pipeline, P4.D283 images / prompts / Almanack / preview-avatar, P4.D284 carriers from `KEYSTONE`, with P4.D285 / P4.D286 (the SPA dialog and editor halves) and P4.D287 (`help/` + `docs/v4/` + the NO-PORT record) from `main`. Eight planning surveys under `work-orders/surveys/2026-10-12-setupphase-wardrobe-*.md` are the long form. The drift ledger's §3 marks the eight rows at or before the pin ORDERED and `97f0d8cb8` ORDERED ahead of the baseline (R-P); §1 records the pin. `phase-4.md` gains the ORDERED section and marks the previous NEXT item 2.
+
 #### 2026-10-12 — docs(porting): drift check records bug 228's reminted import message ids and the bug-229 folder-picker fix past the close probe
 
 _Docs-only change._
