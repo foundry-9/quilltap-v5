@@ -242,6 +242,12 @@ _Versions: SPA 0.5.836._
 
 Adds `wardrobe/folders.ts` (v4 `lib/wardrobe/folders.ts` at `4a38222e6`, the whole client-safe module: path helpers, the normaliser family, the error classes) and `wardrobe/folder-view.ts` (v4's pure browser view rules: own tier vs borrowed tiers, child folder rows, tier rows). `wardrobe-container.ts` gains `containerForListedItem`, which addresses a listed item through the wardrobe its `origin` names before falling back to the character/General rule. `WardrobeItemDto` gains the shared `folder?` field. Specs: v4's 19 folder cases transcribed, 14 folder-view rule rows, 2 addressing rows.
 
+#### 2026-10-12 — feat(spa): the component picker's slot labels, archived parts and always-shown designation (P4.D286 unit 2)
+
+_Versions: SPA 0.5.837._
+
+Ports v4 `9ecebf986`'s `WardrobeComponentPicker` hunks at the `4a38222e6` pin. The coverage chips are `SlotBadge` labels (`Accessories`, not `ACCESSORIES`); an archived candidate's meta ends ` · archived`; and the slot designation is always shown, since every composite now covers its components' slots plus the ones it designates (bug 190). The sentence reads "covers" or "clears" by `replace`, and a component's slot is locked with the title `Covered by a component — always included`. `CandidateItem` gains `archived?`.
+
 #### 2026-10-12 — feat(spa): wardrobe item drafts, buildCompositeTypes and the slot chips (P4.D286 unit 1)
 
 _Versions: SPA 0.5.836._

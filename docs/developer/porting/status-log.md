@@ -178937,3 +178937,16 @@ regen (no Rust family); every v4 read is `git show 4a38222e6:<path>`.
   vectors + `isComposite`), `slot-ui.spec.ts` (6). New modules, so no red
   count (nothing pre-existing pinned them).
 - SPA gate: lint ok; vitest 489 files / 9,335 tests; build ok.
+
+### Unit 2 — the component picker (bug 190's picker half)
+
+- `item-editor/types.ts` — `CandidateItem.archived?` (v4 `types.ts:19-20`).
+- `item-editor/wardrobe-component-picker.ts` — coverage chips through
+  `SlotBadge` (`:70`), `isComposite(c) ? ' · bundle'` + `c.archived ? ' ·
+  archived'` (`:174-178`), the designation block un-gated with v4's two
+  sentences (U+2019) and `SlotCheckboxGroup` locked on `computedTypes` titled
+  `Covered by a component — always included` (`:215-231`).
+- **Red-first:** 4 new cases in `wardrobe-component-picker.spec.ts` RED on
+  unported source (4/4: raw-key chips, no ` · archived`, no designation when
+  additive, wrong title), GREEN after.
+- SPA gate: lint ok; vitest 489 / 9,339; build ok.

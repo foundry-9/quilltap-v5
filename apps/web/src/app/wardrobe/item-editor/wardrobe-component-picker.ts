@@ -1,9 +1,10 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
-import { WARDROBE_SLOT_TYPES } from '../equipped-slots';
 import type { WardrobeSlotType } from '../../core/core-contract';
 import { GROUP_LABEL, GROUP_ORDER } from './constants';
-import { formatSlotLabels, WARDROBE_SLOT_META } from '../slot-meta';
+import { isComposite } from '../composite-types';
+import { formatSlotLabels } from '../slot-meta';
+import { SlotBadge, SlotCheckboxGroup } from '../slot-ui';
 import { wardrobeOriginLabel } from '../wardrobe-container';
 import type { CandidateGroup, CandidateItem } from './types';
 
@@ -11,12 +12,19 @@ import type { CandidateGroup, CandidateItem } from './types';
  * The bundle-mode components section (v4
  * `components/wardrobe/wardrobe-item-editor/WardrobeComponentPicker.tsx`): the
  * auto-derived coverage badges, the currently-selected component chips, the
- * searchable grouped candidate list, and the replace-slots designation. Purely
+ * searchable grouped candidate list, and the slot designation. Purely
  * presentational — all state lives in the parent WardrobeItemEditor.
+ *
+ * At the pin `4a38222e6` (`9ecebf986`): slots print through `slot-ui`'s
+ * labels, an archived candidate's meta ends ` · archived`, and the slot
+ * designation is ALWAYS shown — every composite covers its components'
+ * slots plus the ones it designates (bug 190), so an additive outfit may
+ * designate too; only the sentence above it depends on `replace`.
  */
 @Component({
   selector: 'qt-wardrobe-component-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [SlotBadge, SlotCheckboxGroup],
   template: `
     <div>
       <div class="flex items-center justify-between mb-1 gap-2">
@@ -28,7 +36,7 @@ import type { CandidateGroup, CandidateItem } from './types';
             <span class="qt-text-xs qt-text-secondary italic">no slots covered yet</span>
           } @else {
             @for (t of effectiveTypes(); track t) {
-              <span class="qt-badge uppercase" [class]="slotMeta[t].badgeClass">{{ t }}</span>
+              <qt-slot-badge [slot]="t" />
             }
           }
         </div>
@@ -123,8 +131,8 @@ import type { CandidateGroup, CandidateItem } from './types';
                           }
                           <span
                             class="shrink-0 max-w-[45%] text-right qt-text-xs qt-text-secondary"
-                            >{{ formatSlotLabels(c.types)
-                            }}{{ c.componentItemIds.length > 0 ? ' · bundle' : '' }}</span
+                            >{{ formatSlotLabels(c.types) }}{{ isComposite(c) ? ' · bundle' : ''
+                            }}{{ c.archived ? ' · archived' : '' }}</span
                           >
                         </label>
                       </li>
@@ -161,37 +169,24 @@ import type { CandidateGroup, CandidateItem } from './types';
           </span>
         </label>
 
-        @if (replace()) {
-          <div class="mt-2">
-            <p class="qt-text-xs qt-text-secondary mb-1">
-              Slots this outfit clears (its components' slots are always included):
-            </p>
-            <div class="flex flex-wrap gap-3">
-              @for (slot of slotTypes; track slot) {
-                <label
-                  class="inline-flex items-center gap-1.5"
-                  [class.opacity-60]="computedTypes().includes(slot)"
-                  [class.cursor-not-allowed]="computedTypes().includes(slot)"
-                  [class.cursor-pointer]="!computedTypes().includes(slot)"
-                  [attr.title]="
-                    computedTypes().includes(slot)
-                      ? 'Covered by a component — always cleared'
-                      : null
-                  "
-                >
-                  <input
-                    type="checkbox"
-                    class="qt-checkbox"
-                    [checked]="effectiveTypes().includes(slot)"
-                    [disabled]="computedTypes().includes(slot)"
-                    (change)="toggleType.emit(slot)"
-                  />
-                  <span class="text-sm capitalize text-foreground">{{ slot }}</span>
-                </label>
-              }
-            </div>
-          </div>
-        }
+        <!-- The slots this outfit covers. Its components' slots are always
+             in; more may be designated — a replace outfit clears them all
+             (v4 9ecebf986 :215-231). -->
+        <div class="mt-2">
+          <p class="qt-text-xs qt-text-secondary mb-1">
+            {{
+              replace()
+                ? 'Slots this outfit clears (its components’ slots are always included):'
+                : 'Slots this outfit covers (its components’ slots are always included):'
+            }}
+          </p>
+          <qt-slot-checkbox-group
+            [value]="effectiveTypes()"
+            [locked]="computedTypes()"
+            lockedTitle="Covered by a component — always included"
+            (toggle)="toggleType.emit($event)"
+          />
+        </div>
       </div>
     </div>
   `,
@@ -220,9 +215,8 @@ export class WardrobeComponentPicker {
 
   protected readonly groupOrder = GROUP_ORDER;
   protected readonly groupLabel = GROUP_LABEL;
-  protected readonly slotMeta = WARDROBE_SLOT_META;
-  protected readonly slotTypes = WARDROBE_SLOT_TYPES;
   protected readonly formatSlotLabels = formatSlotLabels;
+  protected readonly isComposite = isComposite;
 
   protected originLabelOf(c: CandidateItem): string | null {
     return wardrobeOriginLabel(c.origin);

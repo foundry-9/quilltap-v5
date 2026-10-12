@@ -19,6 +19,9 @@ export interface CandidateItem {
    * `types.ts:13-19` — replaced `isShared`.)
    */
   origin: WardrobeOrigin | null;
+  /** Archived: still resolves a composite's slots, but can't be newly
+   *  bundled (v4 `9ecebf986`, `types.ts:19-20`, bug 190). */
+  archived?: boolean;
 }
 
 /** v4 `types.ts:17` — every slot, plus the multi-slot catch-all. */
