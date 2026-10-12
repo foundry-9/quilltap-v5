@@ -183,9 +183,7 @@ fn map_write_error(e: ItemImageError, meta: &WriteMeta<'_>) -> Response {
                 "This character is archived; their wardrobe cannot be changed",
             )
         }
-        ItemImageError::Foreign { .. } => {
-            bad_request("That picture does not belong to this wardrobe item")
-        }
+        ItemImageError::Foreign { .. } => bad_request(NOT_THE_ITEMS_PICTURE),
         ItemImageError::Failed(_) => internal(),
     }
 }
@@ -537,5 +535,309 @@ pub async fn delete_on_home(
         }
         Ok(Err(e)) => map_write_error(e, &meta),
         Err(e) => map_write_error(e.into(), &meta),
+    }
+}
+
+// ===========================================================================
+// === P4.D275 === the picture viewer's save to a document store (v4 `01a83539d`)
+// ===========================================================================
+
+/// The foreign-picture refusal — one sentence for the write actions'
+/// `mapWriteError` arm and the save's own guard (v4 `route.ts:132` / `:312`).
+const NOT_THE_ITEMS_PICTURE: &str = "That picture does not belong to this wardrobe item";
+
+/// `GET …/images?scope=&id=&action=save-targets` → `{ albums }` (v4
+/// `handleSaveTargets`, `route.ts:288-294`): the item's home (the 400 / 404
+/// gate), then every enabled store a picture may be filed in
+/// ([`list_all_photo_album_options`](crate::photos::photo_album_options::list_all_photo_album_options)).
+pub async fn save_targets(
+    db: &Db,
+    scope: WardrobeContainerScope,
+    container_id: Option<&str>,
+    item_id: &str,
+) -> Response {
+    match resolve_home(db, scope, container_id, item_id).await {
+        Ok(home) => save_targets_on_home(db, scope, &home),
+        Err(r) => r,
+    }
+}
+
+/// [`save_targets`] past the gate — v4's DEBUG `[Wardrobe Images v1] Listed
+/// save targets` `{itemId, scope, count}` on the caller's thread.
+pub fn save_targets_on_home(
+    db: &Db,
+    scope: WardrobeContainerScope,
+    home: &WardrobeItemHome,
+) -> Response {
+    let albums = crate::photos::photo_album_options::list_all_photo_album_options(db);
+    tracing::debug!(
+        itemId = %home.item_id(),
+        scope = scope_str(scope),
+        count = albums.len(),
+        "{LOG_TAG} Listed save targets"
+    );
+    Response::WardrobeItemImages(json!({ "albums": albums }))
+}
+
+/// The dispatch verb's typed fields rebuilt as the body v4's
+/// `SaveImageRequestSchema` sees (P4.D275 R-H): `caption` / `tags` arrive RAW
+/// (`double_option`) — absent → the key omitted, a JSON `null` → `null` (which
+/// the parser refuses, as Zod does), a value → as sent (the parser, not serde,
+/// refuses a wrong type).
+pub fn save_to_store_body(
+    file_id: String,
+    mount_point_id: String,
+    caption: Option<Option<Value>>,
+    tags: Option<Option<Value>>,
+) -> Value {
+    let mut body = Map::new();
+    body.insert("fileId".into(), Value::String(file_id));
+    body.insert("mountPointId".into(), Value::String(mount_point_id));
+    for (key, value) in [("caption", caption), ("tags", tags)] {
+        if let Some(value) = value {
+            body.insert(key.into(), value.unwrap_or(Value::Null));
+        }
+    }
+    Value::Object(body)
+}
+
+/// `POST …/images?scope=&id=&action=save-to-store` → `{ saved, mountPoint,
+/// relativePath, linkId, keptAt, fileId, sha256 }` (v4 `handleSaveToStore`,
+/// `route.ts:297-339`): the gate, then v4's shared `SaveImageRequestSchema`
+/// over `body` (400, the joined sentences), then [`save_to_store_on_home`].
+/// `kept_at` is the injected ISO clock.
+#[allow(clippy::too_many_arguments)]
+pub async fn save_to_store(
+    db: &Db,
+    bytes: std::sync::Arc<dyn crate::photos::save_image_to_album::FileBytesStore>,
+    side_effects: std::sync::Arc<
+        dyn crate::photos::save_image_to_album::SaveImageSideEffects + Send + Sync,
+    >,
+    user_id: &str,
+    scope: WardrobeContainerScope,
+    container_id: Option<&str>,
+    item_id: &str,
+    body: &Value,
+    kept_at: &str,
+) -> Response {
+    let home = match resolve_home(db, scope, container_id, item_id).await {
+        Ok(home) => home,
+        Err(r) => return r,
+    };
+    let parsed = match crate::photos::save_attribution::parse_save_image_request(body) {
+        Ok(p) => p,
+        Err(message) => return bad_request(message),
+    };
+    save_to_store_on_home(
+        db,
+        bytes,
+        side_effects,
+        user_id,
+        scope,
+        &home,
+        parsed,
+        kept_at,
+    )
+    .await
+}
+
+/// [`save_to_store`] past the gate and the body parse, in v4's order:
+///
+/// 1. the picture must be one of the item's own (`listWardrobeItemImages`'
+///    `files.id`s) — else INFO `Refused to save a picture that is not the
+///    item's` and the 400;
+/// 2. the target must not be an ARCHIVED character's vault — else INFO
+///    `Refused to save into an archived character's vault` and the 409 `That
+///    store belongs to an archived character and cannot be written to` (no
+///    `code`);
+/// 3. [`save_image_to_album`](crate::photos::save_image_to_album::save_image_to_album)
+///    with the item's title as the default caption (an EMPTY caption is kept
+///    — v4's `??`), no chat (no scene snapshot), and the operator's byline
+///    ([`operator_attribution`](crate::photos::save_attribution::operator_attribution));
+/// 4. INFO `Saved wardrobe picture to a store` and the shared 200 body; a
+///    `SaveImageToAlbumError` is INFO `Save to store rejected` and the shared
+///    error response (409 `ALREADY_SAVED` with its riders, else 400); anything
+///    else is v4's middleware 500.
+///
+/// v4's why, carried (`route.ts:24-29`): the ITEM is never written, so the
+/// archived-character write guard does not apply — an archived character's
+/// item may be copied OUT. Every line runs on the caller's thread.
+#[allow(clippy::too_many_arguments)]
+pub async fn save_to_store_on_home(
+    db: &Db,
+    bytes: std::sync::Arc<dyn crate::photos::save_image_to_album::FileBytesStore>,
+    side_effects: std::sync::Arc<
+        dyn crate::photos::save_image_to_album::SaveImageSideEffects + Send + Sync,
+    >,
+    user_id: &str,
+    scope: WardrobeContainerScope,
+    home: &WardrobeItemHome,
+    parsed: crate::photos::save_attribution::SaveImageRequest,
+    kept_at: &str,
+) -> Response {
+    use crate::photos::save_image_response::{
+        save_image_error_code, save_image_error_response, saved_image_body,
+    };
+    let item_id = home.item_id();
+    let (file_id, mount_point_id) = (parsed.file_id.as_str(), parsed.mount_point_id.as_str());
+
+    let images = match db.read_main(|c| list_wardrobe_item_images(c, item_id)) {
+        Ok(images) => images,
+        Err(_) => return internal(),
+    };
+    if !images.iter().any(|f| f.id == file_id) {
+        tracing::info!(
+            itemId = %item_id,
+            scope = scope_str(scope),
+            fileId = %file_id,
+            mountPointId = %mount_point_id,
+            "{LOG_TAG} Refused to save a picture that is not the item's"
+        );
+        return bad_request(NOT_THE_ITEMS_PICTURE);
+    }
+
+    // v4's `getArchivedCharacterVaultMountPointIds()` — its `_findAll` read
+    // answers `[]` on a failure.
+    let archived = crate::db::fallback::find_all_or_empty("characters", || {
+        db.read_main(
+            crate::services::mount_index::document_text_search::archived_character_vault_mount_point_ids,
+        )
+    });
+    if archived.iter().any(|id| id == mount_point_id) {
+        tracing::info!(
+            itemId = %item_id,
+            scope = scope_str(scope),
+            fileId = %file_id,
+            mountPointId = %mount_point_id,
+            "{LOG_TAG} Refused to save into an archived character's vault"
+        );
+        return Response::error(
+            ErrorKind::Conflict,
+            "That store belongs to an archived character and cannot be written to",
+        );
+    }
+
+    let attribution = match db.read_main(|c| {
+        Ok(crate::photos::save_attribution::operator_attribution(
+            c, user_id,
+        ))
+    }) {
+        Ok(a) => a,
+        Err(_) => return internal(),
+    };
+    let caption = parsed
+        .caption
+        .clone()
+        .unwrap_or_else(|| home.item_title().to_string());
+    let tags = parsed.tags.clone();
+    let (mp, fid, kept) = (
+        mount_point_id.to_string(),
+        file_id.to_string(),
+        kept_at.to_string(),
+    );
+    let result = db
+        .write(move |ws| {
+            let mount = mount_conn(ws)?;
+            let input = crate::photos::save_image_to_album::SaveImageToAlbumInput {
+                mount_point_id: &mp,
+                file_id: &fid,
+                caption: Some(&caption),
+                tags: &tags,
+                chat_id: None,
+                attribution,
+            };
+            Ok(crate::photos::save_image_to_album::save_image_to_album(
+                ws.main().connection(),
+                mount,
+                &input,
+                &*bytes,
+                &*side_effects,
+                &kept,
+            ))
+        })
+        .await;
+    match result {
+        Ok(Ok(saved)) => {
+            tracing::info!(
+                itemId = %item_id,
+                scope = scope_str(scope),
+                fileId = %file_id,
+                mountPointId = %mount_point_id,
+                relativePath = %saved.relative_path,
+                linkId = %saved.link_id,
+                "{LOG_TAG} Saved wardrobe picture to a store"
+            );
+            Response::WardrobeItemImages(saved_image_body(&saved))
+        }
+        Ok(Err(err)) => {
+            tracing::info!(
+                itemId = %item_id,
+                scope = scope_str(scope),
+                fileId = %file_id,
+                mountPointId = %mount_point_id,
+                code = save_image_error_code(err.code),
+                // v4's `message` key renamed — see `chat_media`'s
+                // `[SaveImage] rejected` (the envelope clobber).
+                errorMessage = %err.message,
+                "{LOG_TAG} Save to store rejected"
+            );
+            save_image_error_response(err)
+        }
+        Err(_) => internal(),
+    }
+}
+// === end P4.D275 ===
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::photos::save_attribution::parse_save_image_request;
+
+    fn parsed(
+        caption: Option<Option<Value>>,
+        tags: Option<Option<Value>>,
+    ) -> Result<crate::photos::save_attribution::SaveImageRequest, String> {
+        parse_save_image_request(&save_to_store_body("f".into(), "m".into(), caption, tags))
+    }
+
+    /// R-H over the dispatch verb's tri-states: absent → no caption (the
+    /// handler then takes the item's title) and no tags; a JSON `null` → v4's
+    /// Zod refusal; a wrong type → the parser's refusal; `''` kept.
+    #[test]
+    fn the_dispatch_body_reaches_v4s_parser() {
+        let ok = parsed(None, None).unwrap();
+        assert_eq!(ok.caption, None);
+        assert!(ok.tags.is_empty());
+        assert_eq!(
+            serde_json::to_string(&save_to_store_body("f".into(), "m".into(), None, None)).unwrap(),
+            r#"{"fileId":"f","mountPointId":"m"}"#
+        );
+        assert_eq!(
+            parsed(Some(None), None).unwrap_err(),
+            "Invalid input: expected string, received null"
+        );
+        assert_eq!(
+            parsed(None, Some(None)).unwrap_err(),
+            "Invalid input: expected array, received null"
+        );
+        assert_eq!(
+            parsed(Some(None), Some(None)).unwrap_err(),
+            "Invalid input: expected string, received null; Invalid input: expected array, received null"
+        );
+        assert_eq!(
+            parsed(Some(Some(serde_json::json!(5))), None).unwrap_err(),
+            "Invalid input: expected string, received number"
+        );
+        assert_eq!(
+            parsed(None, Some(Some(serde_json::json!(["a", 1])))).unwrap_err(),
+            "Invalid input: expected string, received number"
+        );
+        let kept = parsed(
+            Some(Some(serde_json::json!(""))),
+            Some(Some(serde_json::json!(["a"]))),
+        )
+        .unwrap();
+        assert_eq!(kept.caption.as_deref(), Some(""));
+        assert_eq!(kept.tags, vec!["a".to_string()]);
     }
 }

@@ -35,9 +35,11 @@ use crate::db::{
     instance_settings, project_doc_mount_links::ProjectDocMountLinksRepository, projects,
 };
 use crate::photos::save_attribution::{parse_save_image_request, resolve_save_attribution};
+use crate::photos::save_image_response::{
+    save_image_error_code, save_image_error_response, saved_image_body,
+};
 use crate::photos::save_image_to_album::{
-    save_image_to_album, FileBytesStore, SaveImageErrorCode, SaveImageSideEffects,
-    SaveImageToAlbumInput,
+    save_image_to_album, FileBytesStore, SaveImageSideEffects, SaveImageToAlbumInput,
 };
 use crate::services::courier_transport::{
     cancel_external_turn, CancelExternalTurnOutcome, ResolveExternalTurnOutcome,
@@ -230,8 +232,13 @@ pub async fn message_cancel_external_turn(db: &Db, chat_id: &str, message_id: &s
 /// resolves attribution (a participant character vault matching `mountPointId`, else the
 /// active/first user persona, else the auth user, else "Quilltap"), then
 /// [`save_image_to_album`] behind the injected bytes seam. `kept_at` is the injected ISO
-/// clock. Returns v4's `{ saved, mountPoint, relativePath, linkId, keptAt, fileId, sha256 }`
-/// or `badRequest` on a [`SaveImageToAlbumError`].
+/// clock. Answers through the shared save-image responses (v4 `01a83539d`,
+/// [`crate::photos::save_image_response`]): v4's `{ saved, mountPoint, relativePath,
+/// linkId, keptAt, fileId, sha256 }`; a [`SaveImageToAlbumError`] is a 400 with its
+/// message — except `ALREADY_SAVED`, which since `01a83539d` is the gallery door's 409
+/// `{error, code, relativePath, keptAt}` (it was a 400 before). v4's `[SaveImage] saved` /
+/// `[SaveImage] rejected` INFO lines; anything else is v4's catch-all — ERROR
+/// `[SaveImage] failed` and the fixed 500 `Failed to save image`, never the DB's own text.
 #[allow(clippy::too_many_arguments)]
 pub async fn message_save_image(
     db: &Db,
@@ -262,13 +269,13 @@ pub async fn message_save_image(
     let chat = match db.read_main(move |c| chats_read::find_by_id(c, &chat_id_owned)) {
         Ok(Some(c)) => c,
         Ok(None) => return not_found("Chat"),
-        Err(e) => return internal(e),
+        Err(e) => return save_image_failed(chat_id, message_id, &e),
     };
     let chat_id_owned = chat_id.to_string();
     let messages = match db.read_main(move |c| chats_messages_read::get_messages(c, &chat_id_owned))
     {
         Ok(m) => m,
-        Err(e) => return internal(e),
+        Err(e) => return save_image_failed(chat_id, message_id, &e),
     };
     let Some(message) = find_message(&messages, message_id) else {
         return not_found("Message");
@@ -322,26 +329,50 @@ pub async fn message_save_image(
         })
         .await;
 
+    // Both lines on the CALLER's thread, after the write returns.
     match result {
-        Ok(Ok(saved)) => Response::ChatMedia(json!({
-            "saved": true,
-            "mountPoint": saved.mount_point_name,
-            "relativePath": saved.relative_path,
-            "linkId": saved.link_id,
-            "keptAt": saved.kept_at,
-            "fileId": saved.file_id,
-            "sha256": saved.sha256,
-        })),
-        Ok(Err(err)) => match err.code {
-            // v4 surfaces SaveImageToAlbumError as badRequest(message).
-            SaveImageErrorCode::ImageNotFound
-            | SaveImageErrorCode::NotAnImage
-            | SaveImageErrorCode::EmptyBytes
-            | SaveImageErrorCode::MountNotFound
-            | SaveImageErrorCode::AlreadySaved => bad_request(err.message),
-        },
-        Err(e) => internal(e),
+        Ok(Ok(saved)) => {
+            tracing::info!(
+                chatId = %chat_id,
+                messageId = %message_id,
+                fileId = %file_id,
+                mountPointId = %mount_point_id,
+                relativePath = %saved.relative_path,
+                linkId = %saved.link_id,
+                "[SaveImage] saved"
+            );
+            Response::ChatMedia(saved_image_body(&saved))
+        }
+        Ok(Err(err)) => {
+            tracing::info!(
+                chatId = %chat_id,
+                messageId = %message_id,
+                code = save_image_error_code(err.code),
+                // v4's meta key is `message`; a tracing field of that name
+                // becomes the file record's ENVELOPE message (the P4.D184
+                // `resultMessage` measurement), so the key is renamed —
+                // recorded divergence (the meta's KEY only).
+                errorMessage = %err.message,
+                "[SaveImage] rejected"
+            );
+            save_image_error_response(err)
+        }
+        Err(e) => save_image_failed(chat_id, message_id, &e),
     }
+}
+
+/// v4 `handleSaveImage`'s catch-all (`messages/[messageId]/route.ts:360-368`):
+/// anything that is not a `SaveImageToAlbumError` logs ERROR `[SaveImage]
+/// failed` `{chatId, messageId, error}` and answers the fixed `serverError(
+/// 'Failed to save image')` — never the DB's own text.
+fn save_image_failed(chat_id: &str, message_id: &str, e: &dyn std::fmt::Display) -> Response {
+    tracing::error!(
+        chatId = %chat_id,
+        messageId = %message_id,
+        error = %e,
+        "[SaveImage] failed"
+    );
+    Response::error(ErrorKind::Internal, "Failed to save image")
 }
 
 // ===========================================================================
@@ -405,9 +436,10 @@ pub fn chat_gallery(db: &Db, chat_id: &str) -> Response {
 ///
 /// The refusal ladder, in v4's order: schema → 400 (the joined sentences); no
 /// chat → 404; not in the gallery → 400 `Image is not in this chat`;
-/// `ALREADY_SAVED` → **409** with `{error, code, relativePath, keptAt}` (the one
-/// place the two doors differ — the message leg answers 400, deliberately);
-/// any other save error → 400 with its message; anything else → 500.
+/// `ALREADY_SAVED` → **409** with `{error, code, relativePath, keptAt}` (since
+/// `01a83539d` the message door answers the same 409 — both through
+/// [`crate::photos::save_image_response`]); any other save error → 400 with
+/// its message; anything else → 500.
 #[allow(clippy::too_many_arguments)]
 pub async fn chat_save_gallery_image(
     db: &Db,
@@ -529,15 +561,7 @@ pub async fn chat_save_gallery_image(
                 link_id = %saved.link_id,
                 "[SaveGalleryImage] saved"
             );
-            Response::ChatMedia(json!({
-                "saved": true,
-                "mountPoint": saved.mount_point_name,
-                "relativePath": saved.relative_path,
-                "linkId": saved.link_id,
-                "keptAt": saved.kept_at,
-                "fileId": saved.file_id,
-                "sha256": saved.sha256,
-            }))
+            Response::ChatMedia(saved_image_body(&saved))
         }
         Ok(Err(err)) => {
             tracing::info!(
@@ -546,28 +570,9 @@ pub async fn chat_save_gallery_image(
                 message = %err.message,
                 "[SaveGalleryImage] rejected"
             );
-            // Already in that album is not a failure of the request — it is the
-            // answer to it, and the dialog says so in those words.
-            if err.code == SaveImageErrorCode::AlreadySaved {
-                // v4's 409 body is `{error, code, relativePath, keptAt}` — four
-                // FLAT siblings. `code` rides the existing flat carrier (its
-                // documented purpose: "the SPA error translation keys on this
-                // first"); the two riders ride `already_saved`, which every
-                // transport spreads beside `error` through
-                // `CoreError::already_saved_wire_body` (§C.3 of the round
-                // contract; the §3 unification review found them nested under
-                // `details`, which no transport flattens).
-                let mut resp = Response::error(ErrorKind::Conflict, err.message);
-                if let Response::Error(e) = &mut resp {
-                    e.code = Some("ALREADY_SAVED".to_string());
-                    e.already_saved = Some(Box::new(crate::api::types::AlreadySavedRiders {
-                        relative_path: err.existing_relative_path,
-                        kept_at: err.existing_created_at,
-                    }));
-                }
-                return resp;
-            }
-            bad_request(err.message)
+            // Already in that album is the answer, not a failure (the shared
+            // response's 409; any other code is a 400).
+            save_image_error_response(err)
         }
         Err(e) => {
             tracing::error!(chat_id = %chat_id, error = %e, "[SaveGalleryImage] failed");

@@ -16,9 +16,11 @@
  *   - `formatWardrobeToolImageLine` for every status and `undefined`;
  *     `formatWardrobeImageHandle`;
  *   - `formatRelativeDays` at the eight rungs' boundaries;
- *   - `formatWardrobeListWearNote` and `formatWardrobeWearParagraph` under ONE
- *     pinned `nowMs` (v4's second parameter), incl. the exact lines of v4's
- *     `wardrobe-wear-readout.test.ts`.
+ *   - `formatWornRelative` (`ed8b15b50`, bug 183) at the same offsets;
+ *   - `formatWardrobeListWearNote` (the caller's share + the household's,
+ *     `ed8b15b50` bug 184 — four fields) and `formatWardrobeWearParagraph`
+ *     (reader first) under ONE pinned `nowMs` (v4's second parameter), incl.
+ *     the exact lines of v4's `wardrobe-wear-readout.test.ts`.
  *
  * Run (Node 24, from the v4 checkout or the round's pin):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
@@ -36,6 +38,7 @@ const ago = (days: number): string => new Date(NOW_MS - days * DAY).toISOString(
 async function main(): Promise<void> {
   const tig = await import('@/lib/wardrobe/tool-image-generation');
   const { formatRelativeDays } = await import('@/lib/format-time');
+  const { formatWornRelative } = await import('@/lib/wardrobe/wear-display');
   const { formatWardrobeListWearNote } = await import('@/lib/tools/handlers/wardrobe-list-handler');
   const { formatWardrobeWearParagraph } = await import('@/lib/tools/handlers/wardrobe-read-handler');
 
@@ -43,7 +46,7 @@ async function main(): Promise<void> {
   const emit = (row: Record<string, unknown>): void => {
     rows.push(row);
   };
-  emit({ kind: 'meta', baseline: 'p4.d262-tool-image-generation', nowMs: NOW_MS });
+  emit({ kind: 'meta', baseline: 'p4.d275-tool-image-generation', nowMs: NOW_MS });
 
   // ── wardrobeToolImagesEnabled ──
   const settingsShapes: Array<[string, unknown]> = [
@@ -101,31 +104,45 @@ async function main(): Promise<void> {
   emit({ kind: 'handle', id: 'f1000000-0000-4000-8000-000000000001', out: tig.formatWardrobeImageHandle('f1000000-0000-4000-8000-000000000001') });
 
   // ── formatRelativeDays ──
-  for (const days of [-2, 0, 0.999, 1, 1.5, 2, 6.999, 7, 13.99, 14, 20, 29.99, 30, 59.99, 60, 89, 364.99, 365, 729.99, 730, 2000]) {
+  const OFFSETS = [-2, 0, 0.999, 1, 1.5, 2, 6.999, 7, 13.99, 14, 20, 29.99, 30, 59.99, 60, 89, 364.99, 365, 729.99, 730, 2000];
+  for (const days of OFFSETS) {
     emit({ kind: 'relative', days, out: formatRelativeDays(NOW_MS - days * DAY, NOW_MS) });
   }
 
-  // ── formatWardrobeListWearNote ──
-  const notes: Array<[number, string | null]> = [
-    [0, null],
-    [0, ago(3)],
-    [4, null],
-    [4, ''],
-    [4, 'not a date'],
-    [4, ago(3)],
-    [1, ago(0.5)],
-    [2, ago(1)],
-    [9, ago(40)],
-    [12, ago(400)],
-    [3, '2026-06-12'],
-    [3, '2026-06-12T12:00:00+02:00'],
+  // ── formatWornRelative (bug 183) ──
+  for (const days of OFFSETS) {
+    emit({ kind: 'worn_relative', days, out: formatWornRelative(NOW_MS - days * DAY, NOW_MS) });
+  }
+
+  // ── formatWardrobeListWearNote (bug 184: [wear_count, last_worn_at, worn_by_you, last_worn_by_you_at]) ──
+  const notes: Array<[number, string | null, number, string | null]> = [
+    [0, null, 0, null],
+    [0, ago(3), 0, null],
+    [115, ago(3), 0, null],
+    [1, ago(3), 1, ago(3)],
+    [4, ago(3), 4, ago(3)],
+    [4, ago(3), 3, ago(3)],
+    [4, ago(3), 2, null],
+    [4, ago(3), 2, ''],
+    [4, ago(3), 2, 'not a date'],
+    [2, ago(9), 2, ago(9)],
+    [2, ago(40), 2, ago(40)],
+    [3, '2026-06-12', 3, '2026-06-12'],
+    [3, ago(1), 1, '2026-06-12T12:00:00+02:00'],
+    [2, ago(1), 1, ago(1)],
+    [1, ago(0.5), 1, ago(0.5)],
+    [12, ago(400), 5, ago(400)],
+    [2, ago(3), 5, ago(3)],
+    [9, ago(40), 1, ago(13.99)],
   ];
-  for (const [wear_count, last_worn_at] of notes) {
+  for (const [wear_count, last_worn_at, worn_by_you, last_worn_by_you_at] of notes) {
     emit({
       kind: 'list_note',
       wear_count,
       last_worn_at,
-      out: formatWardrobeListWearNote({ wear_count, last_worn_at } as never, NOW_MS),
+      worn_by_you,
+      last_worn_by_you_at,
+      out: formatWardrobeListWearNote({ wear_count, last_worn_at, worn_by_you, last_worn_by_you_at } as never, NOW_MS),
     });
   }
 
@@ -179,6 +196,57 @@ async function main(): Promise<void> {
         w('a0000000-0000-4000-8000-000000000004', 'Basil', false, false, 2, ago(100), ago(100)),
       ],
     }],
+    // v4's `wardrobe-wear-readout.test.ts` shapes (`ed8b15b50`, bug 184).
+    ['crowded-household-you-latest', {
+      wear_count: 116,
+      first_worn_at: '2026-06-13T10:00:00.000Z',
+      last_worn_at: ago(0.1),
+      wearers: [
+        w(YOU, 'Vivienne', true, false, 13, '2026-06-13T10:00:00.000Z', ago(0.1)),
+        w(MARGUERITE, 'Laura', false, false, 25, '2026-06-13T10:00:00.000Z', ago(3)),
+        w(GONE, 'Gary', false, false, 78, '2026-06-13T10:00:00.000Z', ago(14)),
+      ],
+    }],
+    ['single-other-wear', { wear_count: 1, first_worn_at: ago(3), last_worn_at: ago(3), wearers: [w(MARGUERITE, 'Marguerite', false, false, 1, ago(3), ago(3))] }],
+    ['you-not-latest', {
+      wear_count: 3,
+      first_worn_at: '2026-03-14T10:00:00.000Z',
+      last_worn_at: ago(14),
+      wearers: [w(MARGUERITE, 'Marguerite', false, false, 1, ago(14), ago(14)), w(YOU, 'Rosalind', true, false, 2, '2026-03-14T10:00:00.000Z', '2026-04-01T10:00:00.000Z')],
+    }],
+    ['departed-only-repeat', {
+      wear_count: 5,
+      first_worn_at: '2026-03-14T10:00:00.000Z',
+      last_worn_at: ago(3),
+      wearers: [
+        w(GONE, 'a departed character', false, true, 2, '2026-05-01T10:00:00.000Z', ago(3)),
+        w(MARGUERITE, 'Marguerite', false, false, 1, '2026-04-01T10:00:00.000Z', '2026-04-01T10:00:00.000Z'),
+        w(null, 'unattributed', false, true, 2, '2026-03-14T10:00:00.000Z', '2026-03-20T10:00:00.000Z'),
+      ],
+    }],
+    ['exactly-one-other', { wear_count: 3, first_worn_at: ago(30), last_worn_at: ago(9), wearers: [w(MARGUERITE, 'Marguerite', false, false, 3, ago(30), ago(9))] }],
+    ['twice-by-others', {
+      wear_count: 2,
+      first_worn_at: null,
+      last_worn_at: ago(40),
+      wearers: [w(MARGUERITE, 'Marguerite', false, false, 1, ago(40), ago(40)), w('a0000000-0000-4000-8000-000000000004', 'Basil', false, false, 1, ago(50), ago(50))],
+    }],
+    ['you-once-with-others', {
+      wear_count: 4,
+      first_worn_at: ago(60),
+      last_worn_at: ago(2),
+      wearers: [w(MARGUERITE, 'Marguerite', false, false, 3, ago(60), ago(2)), w(YOU, 'Rosalind', true, false, 1, ago(9), ago(9))],
+    }],
+    ['two-is-you-first-wins', {
+      wear_count: 6,
+      first_worn_at: ago(100),
+      last_worn_at: ago(1),
+      wearers: [w(YOU, 'Rosalind', true, false, 2, ago(100), ago(1)), w(YOU, 'Rosalind again', true, false, 4, ago(90), ago(40))],
+    }],
+    ['you-week-rung', { wear_count: 2, first_worn_at: ago(9), last_worn_at: ago(9), wearers: [w(YOU, 'Rosalind', true, false, 2, ago(12), ago(9))] }],
+    ['you-month-rung', { wear_count: 2, first_worn_at: ago(40), last_worn_at: ago(40), wearers: [w(YOU, 'Rosalind', true, false, 2, ago(45), ago(40))] }],
+    ['you-empty-first', { wear_count: 2, first_worn_at: '', last_worn_at: ago(3), wearers: [w(YOU, 'Rosalind', true, false, 2, '', ago(3))] }],
+    ['absent-empty-first', { wear_count: 3, first_worn_at: '', last_worn_at: ago(3), wearers: [w(MARGUERITE, 'Marguerite', false, false, 3, '', ago(3))] }],
   ];
   for (const [id, wear] of paragraphs) {
     emit({ kind: 'paragraph', id, wear: wear ?? null, out: formatWardrobeWearParagraph(wear as never, NOW_MS) });

@@ -727,6 +727,210 @@ fn the_route_lines_are_v4s() {
     );
 }
 
+/// P4.D275 — the picture viewer's save lines (v4 `route.ts:288-339` at
+/// `01a83539d`), capture-pinned on the test thread in v4's meta key order,
+/// each with its silence leg: save-targets' DEBUG `{itemId, scope, count}`;
+/// save-to-store's INFO refusals `{itemId, scope, fileId, mountPointId}` (a
+/// picture not the item's; an archived character's vault), the success INFO
+/// `+{relativePath, linkId}`, and the second save's `Save to store rejected`
+/// `+{code, errorMessage}` (v4's key is `message` — renamed for the file
+/// envelope, recorded). A body refusal and a 404 log none of them. The
+/// archived character's ITEM saves OUT (the item is never written).
+#[test]
+fn the_save_route_lines_are_v4s() {
+    use quilltap_core::api::wardrobe_item_images::{save_targets, save_to_store};
+    use quilltap_core::db::runtime::{Db, DbPaths};
+    use quilltap_core::photos::save_image_to_album::{
+        FileBytesStore, NoSideEffects, SaveImageSideEffects,
+    };
+    let (Ok(main_fixture), Ok(mount_fixture)) = (
+        std::env::var("QT_FIXTURE_WII_MAIN"),
+        std::env::var("QT_FIXTURE_WII_MOUNT"),
+    ) else {
+        eprintln!("SKIP: set QT_FIXTURE_WII_MAIN + QT_FIXTURE_WII_MOUNT (see header).");
+        return;
+    };
+    let spec: Value = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let pepper = spec["testPepperBase64"].as_str().unwrap().to_string();
+    let s = |k: &str| spec[k].as_str().unwrap().to_string();
+    let item = |k: &str| spec["items"][k]["id"].as_str().unwrap().to_string();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let (m, n) = (dir.path().join("main.db"), dir.path().join("mount.db"));
+    std::fs::copy(&main_fixture, &m).unwrap();
+    std::fs::copy(&mount_fixture, &n).unwrap();
+    let db = Db::open(
+        DbPaths {
+            main: m,
+            mount_index: Some(n),
+            llm_logs: None,
+        },
+        &pepper,
+    )
+    .unwrap();
+    let bytes: std::sync::Arc<dyn FileBytesStore> =
+        std::sync::Arc::new(quilltap_core::services::file_storage::ProductionFileBytes {
+            db: db.clone(),
+            backend: std::sync::Arc::new(quilltap_host::LocalStorageBackend::new(
+                dir.path().join("files"),
+            )),
+            codec: std::sync::Arc::new(quilltap_host::HostImageCodec),
+        });
+    let fx: std::sync::Arc<dyn SaveImageSideEffects + Send + Sync> =
+        std::sync::Arc::new(NoSideEffects);
+    let lines_of =
+        |lines: Vec<String>| -> Vec<String> { rust_lines(&lines, &["[Wardrobe Images v1]"]) };
+    let character = WardrobeContainerScope::Character;
+    let (coat, cloak, scarf) = (item("coat"), item("cloak"), item("scarf"));
+    let (cid, archived) = (s("characterId"), s("archivedCharacterId"));
+    let general = s("generalMountPointId");
+    let archived_vault: String = db
+        .read_main(|c| {
+            Ok(c.query_row(
+                "SELECT characterDocumentMountPointId FROM characters WHERE id = ?1",
+                [&archived],
+                |r| r.get::<_, String>(0),
+            )?)
+        })
+        .unwrap();
+    let pic = |item: &str| {
+        db.read_main(|c| list_wardrobe_item_images(c, item))
+            .unwrap()[0]
+            .id
+            .clone()
+    };
+    let save = |scope_id: &str, item_id: &str, body: Value| {
+        captured_with(|| {
+            rt.block_on(save_to_store(
+                &db,
+                bytes.clone(),
+                fx.clone(),
+                quilltap_core::api::engine::SINGLE_USER_ID,
+                character,
+                Some(scope_id),
+                item_id,
+                &body,
+                "2026-10-09T00:00:00.000Z",
+            ))
+        })
+    };
+
+    // save-targets → ONE DEBUG with the count; a 404 lists nothing.
+    let (resp, lines) =
+        captured_with(|| rt.block_on(save_targets(&db, character, Some(&cid), &coat)));
+    let quilltap_core::api::types::Response::WardrobeItemImages(body) = resp else {
+        panic!("save-targets answered {resp:?}");
+    };
+    let count = body["albums"].as_array().unwrap().len();
+    assert!(count > 0);
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "DEBUG [Wardrobe Images v1] Listed save targets itemId={coat} scope=character count={count}"
+        )]
+    );
+    let (_, lines) = captured_with(|| {
+        rt.block_on(save_targets(
+            &db,
+            WardrobeContainerScope::Group,
+            Some(&s("groupId")),
+            &coat,
+        ))
+    });
+    assert!(lines_of(lines).is_empty(), "a 404 lists nothing");
+
+    // A picture not the item's → the refusal INFO.
+    let foreign = pic(&scarf);
+    let (_, lines) = save(
+        &cid,
+        &coat,
+        json!({ "fileId": foreign, "mountPointId": general }),
+    );
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "INFO [Wardrobe Images v1] Refused to save a picture that is not the item's itemId={coat} scope=character fileId={foreign} mountPointId={general}"
+        )]
+    );
+    // An archived character's vault → its refusal INFO.
+    let own = pic(&coat);
+    let (_, lines) = save(
+        &cid,
+        &coat,
+        json!({ "fileId": own, "mountPointId": archived_vault }),
+    );
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "INFO [Wardrobe Images v1] Refused to save into an archived character's vault itemId={coat} scope=character fileId={own} mountPointId={archived_vault}"
+        )]
+    );
+    // Silence: a refused body logs nothing.
+    let (_, lines) = save(
+        &cid,
+        &coat,
+        json!({ "fileId": own, "mountPointId": general, "caption": null }),
+    );
+    assert!(lines_of(lines).is_empty(), "a body refusal logs nothing");
+
+    // Saved, then the second save rejected.
+    let body = json!({ "fileId": own, "mountPointId": general });
+    let (resp, lines) = save(&cid, &coat, body.clone());
+    let quilltap_core::api::types::Response::WardrobeItemImages(saved) = resp else {
+        panic!("save answered {resp:?}");
+    };
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "INFO [Wardrobe Images v1] Saved wardrobe picture to a store itemId={coat} scope=character fileId={own} mountPointId={general} relativePath={} linkId={}",
+            saved["relativePath"].as_str().unwrap(),
+            saved["linkId"].as_str().unwrap()
+        )]
+    );
+    let (resp, lines) = save(&cid, &coat, body);
+    let quilltap_core::api::types::Response::Error(e) = resp else {
+        panic!("the second save answered {resp:?}");
+    };
+    assert_eq!(e.code.as_deref(), Some("ALREADY_SAVED"));
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "INFO [Wardrobe Images v1] Save to store rejected itemId={coat} scope=character fileId={own} mountPointId={general} code=ALREADY_SAVED errorMessage={}",
+            e.message
+        )]
+    );
+
+    // The archived character's ITEM saves OUT — into the project's store
+    // (its picture's bytes are the coat's, already in General).
+    let project_store: String = db
+        .read_main(|c| {
+            Ok(c.query_row(
+                "SELECT officialMountPointId FROM projects WHERE id = ?1",
+                [s("projectId")],
+                |r| r.get::<_, String>(0),
+            )?)
+        })
+        .unwrap();
+    let cloak_pic = pic(&cloak);
+    let (resp, lines) = save(
+        &archived,
+        &cloak,
+        json!({ "fileId": cloak_pic, "mountPointId": project_store }),
+    );
+    assert!(
+        matches!(
+            resp,
+            quilltap_core::api::types::Response::WardrobeItemImages(_)
+        ),
+        "an archived character's item is copied out: {resp:?}"
+    );
+    assert!(lines_of(lines)[0]
+        .starts_with("INFO [Wardrobe Images v1] Saved wardrobe picture to a store "));
+}
+
 /// A provider no pin may reach (the archived gate refuses first).
 struct NeverProvider;
 

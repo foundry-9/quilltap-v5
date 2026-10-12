@@ -43,7 +43,18 @@ pub struct SaveImageRequest {
 /// The two arms differ, and both are pinned: an ABSENT key is Zod's type issue
 /// (`Invalid input: expected string, received undefined`), while a PRESENT
 /// empty string is the `.min(1, …)` message (`fileId is required`).
+///
+/// A body that is not an object (`null`, an array, a string, a number) is Zod
+/// 4's ONE fatal issue `Invalid input: expected object, received <type>` —
+/// nothing else is checked (P4.D275 R-F; reachable on the two Salon doors'
+/// `body` and the wardrobe viewer's REST edge).
 pub fn parse_save_image_request(body: &Value) -> Result<SaveImageRequest, String> {
+    if !body.is_object() {
+        return Err(format!(
+            "Invalid input: expected object, received {}",
+            zod_received(body)
+        ));
+    }
     let mut issues: Vec<String> = Vec::new();
 
     let file_id = string_field(body, "fileId", "fileId is required", &mut issues);
@@ -274,7 +285,24 @@ fn character_vault(
     Some((mp.id, mp.name, character_name))
 }
 
-/// v4 auth `user.name` (single-user): the `users` row's display name.
+/// The wardrobe picture viewer's byline (v4 `01a83539d`, `wardrobe/[itemId]/
+/// images/route.ts` `handleSaveToStore`): `{ name: ctx.user.name ??
+/// 'Quilltap', id: ctx.user.id ?? null, role: 'user' }` — the operator, with
+/// no persona and no chat to consult. The single-user auth id is always
+/// present, so v4's `null` arm is unreachable here.
+pub fn operator_attribution(main: &Connection, user_id: &str) -> SaveImageAttribution {
+    SaveImageAttribution {
+        name: read_user_name(main, user_id).unwrap_or_else(|| "Quilltap".to_string()),
+        id: Some(user_id.to_string()),
+        role: KeptImageAttributionRole::User,
+    }
+}
+
+/// v4 auth `user.name` (single-user): the `users` row's display name, as v4's
+/// context middleware reads it (`repos.users.findById`, `context.ts:117`,
+/// under `UserSchema.name: z.string().nullable().optional()`). An EMPTY name is
+/// kept — v4's `?? 'Quilltap'` only replaces null/undefined (P4.D275 R-E); a
+/// NULL name or a missing row is `None`.
 fn read_user_name(main: &Connection, user_id: &str) -> Option<String> {
     main.query_row(
         "SELECT name FROM users WHERE id = ?1",
@@ -283,7 +311,6 @@ fn read_user_name(main: &Connection, user_id: &str) -> Option<String> {
     )
     .ok()
     .flatten()
-    .filter(|s| !s.is_empty())
 }
 
 #[cfg(test)]
@@ -331,5 +358,76 @@ mod tests {
         assert_eq!(parsed.file_id, "not-a-uuid");
         assert!(parsed.caption.is_none());
         assert!(parsed.tags.is_empty());
+    }
+
+    /// R-F: a non-object body is Zod 4's ONE fatal issue, nothing else.
+    #[test]
+    fn a_non_object_body_is_one_issue() {
+        for (body, word) in [
+            (json!(null), "null"),
+            (json!([]), "array"),
+            (json!("x"), "string"),
+            (json!(5), "number"),
+            (json!(true), "boolean"),
+        ] {
+            assert_eq!(
+                parse_save_image_request(&body).unwrap_err(),
+                format!("Invalid input: expected object, received {word}")
+            );
+        }
+    }
+
+    /// R-H: a JSON `null` caption / tags is refused (it is not `undefined`),
+    /// in schema order after the id issues.
+    #[test]
+    fn null_caption_and_tags_are_refused_in_schema_order() {
+        let ok = json!({ "fileId": "f", "mountPointId": "m" });
+        let with = |k: &str, v: Value| {
+            let mut b = ok.clone();
+            b[k] = v;
+            b
+        };
+        assert_eq!(
+            parse_save_image_request(&with("caption", Value::Null)).unwrap_err(),
+            "Invalid input: expected string, received null"
+        );
+        assert_eq!(
+            parse_save_image_request(&with("tags", Value::Null)).unwrap_err(),
+            "Invalid input: expected array, received null"
+        );
+        assert_eq!(
+            parse_save_image_request(&json!({ "mountPointId": "", "caption": null, "tags": null }))
+                .unwrap_err(),
+            "Invalid input: expected string, received undefined; mountPointId is required; \
+             Invalid input: expected string, received null; \
+             Invalid input: expected array, received null"
+        );
+        assert_eq!(
+            parse_save_image_request(&with("caption", json!("")))
+                .unwrap()
+                .caption
+                .as_deref(),
+            Some("")
+        );
+    }
+
+    /// R-E: an empty `users.name` is KEPT (v4's `?? 'Quilltap'`); a NULL name
+    /// or a missing row is "Quilltap".
+    #[test]
+    fn the_operator_byline_keeps_an_empty_name() {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT); \
+             INSERT INTO users VALUES ('u-named', 'Charlie'), ('u-empty', ''), ('u-null', NULL);",
+        )
+        .unwrap();
+        let name = |id: &str| operator_attribution(&main, id).name;
+        assert_eq!(name("u-named"), "Charlie");
+        assert_eq!(name("u-empty"), "");
+        assert_eq!(name("u-null"), "Quilltap");
+        assert_eq!(name("u-missing"), "Quilltap");
+        let a = operator_attribution(&main, "u-named");
+        assert_eq!(a.id.as_deref(), Some("u-named"));
+        assert!(matches!(a.role, KeptImageAttributionRole::User));
     }
 }

@@ -252,6 +252,10 @@ fn iso_ts_len(b: &[u8]) -> Option<usize> {
 
 #[test]
 fn wardrobe_tools_match_oracle() {
+    // The list handler's INFO is capture-pinned in a sibling test over the
+    // same callsites: the global rig must own the subscriber first (the
+    // `test_support` module doc's `Interest` race).
+    quilltap_core::test_support::global_capture::install();
     let Ok(oracle_path) = std::env::var("QT_ORACLE_WT") else {
         eprintln!("SKIP: set QT_ORACLE_WT to the oracle NDJSON (see header).");
         return;
@@ -810,4 +814,127 @@ fn parse_oracle(text: &str) -> (Vec<Value>, Value) {
         returns.expect("oracle missing returns"),
         readback.expect("oracle missing readback"),
     )
+}
+
+/// P4.D275 R-B — v4's INFO `Wardrobe list completed` (`wardrobe-list-
+/// handler.ts:171-185`, `ed8b15b50`), capture-pinned on the test thread over
+/// the family's fixture with its ledger planted: all thirteen keys in v4's
+/// order, every count over the FINAL items (after `include_equipped`), and v4's
+/// JS truthiness — `hasTypeFilter` is TRUE for `[]`, `hasAppropriatenessFilter`
+/// FALSE for `''`. The new `neverWornByCallerCount` counts the items the CALLER
+/// has never worn (bug 184), beside the household's `neverWornCount`.
+#[test]
+fn the_list_completed_line_is_v4s() {
+    use quilltap_core::test_support::global_capture;
+    global_capture::install();
+    let (Ok(fixture_main), Ok(fixture_mount)) = (
+        std::env::var("QT_FIXTURE_WT_MAIN"),
+        std::env::var("QT_FIXTURE_WT_MOUNT"),
+    ) else {
+        eprintln!("SKIP: set QT_FIXTURE_WT_MAIN + QT_FIXTURE_WT_MOUNT (see header).");
+        return;
+    };
+    let spec: Spec = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../harness/oracle/fixtures/wardrobe-tools.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let scratch = tempfile::tempdir().unwrap();
+    let (work_main, work_mount) = (
+        scratch.path().join("main.db"),
+        scratch.path().join("mount.db"),
+    );
+    std::fs::copy(&fixture_main, &work_main).unwrap();
+    std::fs::copy(&fixture_mount, &work_mount).unwrap();
+    let main = Writer::open_writable(&work_main, &spec.test_pepper_base64).unwrap();
+    let mount = Writer::open_writable(&work_mount, &spec.test_pepper_base64).unwrap();
+    let repo = WardrobeWearStatsRepository::new(main.connection());
+    for w in &spec.wear_plant {
+        let wearer = match w.wearer.as_deref() {
+            Some("caller") => Some(spec.caller_character_id.clone()),
+            Some("recipient") => Some(spec.recipient_character_id.clone()),
+            Some("departed") => Some(spec.departed_character_id.clone()),
+            _ => None,
+        };
+        repo.increment_wears(&[WardrobeWearIncrement {
+            item_id: w.item_id.clone(),
+            wearer_character_id: wearer,
+            chat_id: w.chat_id.clone(),
+            at: w.at.clone(),
+        }])
+        .unwrap();
+    }
+    let list = |args: Value| {
+        global_capture::capture(|| {
+            wardrobe_list::execute(
+                main.connection(),
+                mount.connection(),
+                &spec.user_id,
+                &spec.chat_id,
+                &spec.caller_character_id,
+                &args,
+            )
+        })
+    };
+    let tool_lines = |lines: Vec<String>| -> Vec<String> {
+        lines
+            .into_iter()
+            .filter(|l| l.contains(" quilltap::tools "))
+            .collect()
+    };
+    let completed = |out: &wardrobe_list::WardrobeListToolOutput,
+                     total: usize,
+                     has_type: bool,
+                     has_appr: bool,
+                     include: bool| {
+        let items = &out.items;
+        format!(
+            "INFO quilltap::tools Wardrobe list completed context=wardrobe-list-handler userId={} characterId={} chatId={} totalItems={total} filteredCount={} hasTypeFilter={has_type} hasAppropriatenessFilter={has_appr} includeEquipped={include} compositeCount={} neverWornCount={} neverWornByCallerCount={} withPictureCount={}",
+            spec.user_id,
+            spec.caller_character_id,
+            spec.chat_id,
+            items.len(),
+            items.iter().filter(|i| i.is_composite == Some(true)).count(),
+            items.iter().filter(|i| i.wear_count == 0).count(),
+            items.iter().filter(|i| i.worn_by_you == 0).count(),
+            items.iter().filter(|i| i.image_file_id.is_some()).count(),
+        )
+    };
+
+    let (all, lines) = list(json!({}));
+    assert!(all.success);
+    let total = all.items.len();
+    // The fixture's shape, so the counts below are not vacuous: a shared item
+    // the household wore and the caller did not.
+    assert!(all
+        .items
+        .iter()
+        .any(|i| i.wear_count > 0 && i.worn_by_you == 0));
+    assert_eq!(
+        tool_lines(lines),
+        vec![completed(&all, total, false, false, true)]
+    );
+
+    let (some, lines) = list(json!({
+        "type_filter": [],
+        "appropriateness_filter": "",
+        "include_equipped": false
+    }));
+    assert!(some.items.len() < total, "the equipped item is dropped");
+    assert_eq!(
+        tool_lines(lines),
+        vec![completed(&some, total, true, false, false)]
+    );
+
+    let (_, lines) = list(json!({ "appropriateness_filter": " " }));
+    assert!(tool_lines(lines)[0].contains(" hasAppropriatenessFilter=true "));
+
+    // Silence: a refused input logs only the WARN, never `completed`.
+    let (_, lines) = list(json!({ "include_equipped": "yes" }));
+    let lines = tool_lines(lines);
+    assert_eq!(lines.len(), 1);
+    assert!(lines[0].starts_with("WARN quilltap::tools Wardrobe list tool validation failed "));
 }

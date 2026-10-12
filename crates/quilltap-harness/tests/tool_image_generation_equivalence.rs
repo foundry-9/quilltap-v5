@@ -11,10 +11,15 @@
 //!   the wardrobe_tools family's switch-ON scenario);
 //! - `formatWardrobeToolImageLine` / `formatWardrobeImageHandle`;
 //! - `formatRelativeDays` (`format_time::format_relative_days`) at the rungs;
+//! - `formatWornRelative` (`format_time::format_worn_relative`, `ed8b15b50` —
+//!   bug 183) at the same offsets;
 //! - `formatWardrobeListWearNote` (`tools::wardrobe_list::
-//!   format_wardrobe_list_wear_note`) and `formatWardrobeWearParagraph`
-//!   (`tools::wardrobe_read::format_wardrobe_wear_paragraph`) under ONE pinned
-//!   `nowMs`, incl. v4's own `wardrobe-wear-readout.test.ts` lines.
+//!   format_wardrobe_list_wear_note` — the caller's share with the household's
+//!   as context, `ed8b15b50` bug 184; the rows carry v4's four fields, of
+//!   which the note reads three) and `formatWardrobeWearParagraph`
+//!   (`tools::wardrobe_read::format_wardrobe_wear_paragraph`, reader first)
+//!   under ONE pinned `nowMs`, incl. v4's own `wardrobe-wear-readout.test.ts`
+//!   lines.
 //!
 //! `patchChangesLook` is module-private in v4 (`wardrobe-update-handler.ts`),
 //! so it cannot be imported here; its arms are pinned through v4's real
@@ -30,7 +35,7 @@
 //!   QT_ORACLE_TOOL_IMAGE_GENERATION=/tmp/oracle-tool-image-generation.ndjson \
 //!     cargo test -p quilltap-harness --test tool_image_generation_equivalence -- --nocapture
 
-use quilltap_core::format_time::format_relative_days;
+use quilltap_core::format_time::{format_relative_days, format_worn_relative};
 use quilltap_core::services::tool_image_generation::{
     format_wardrobe_image_handle, format_wardrobe_tool_image_line, wanted,
     wardrobe_tool_images_enabled, WardrobeToolImageResult, WardrobeToolImageStatus,
@@ -39,7 +44,7 @@ use quilltap_core::tools::wardrobe_list::format_wardrobe_list_wear_note;
 use quilltap_core::tools::wardrobe_read::{format_wardrobe_wear_paragraph, WardrobeReadWearResult};
 use serde_json::{json, Value};
 
-const BASELINE: &str = "p4.d262-tool-image-generation";
+const BASELINE: &str = "p4.d275-tool-image-generation";
 const DAY: f64 = 86_400_000.0;
 
 fn status_of(s: &str) -> WardrobeToolImageStatus {
@@ -115,9 +120,15 @@ fn tool_image_generation_matches_oracle() {
                 let days = row["days"].as_f64().unwrap();
                 json!(format_relative_days(now - days * DAY, now))
             }
+            "worn_relative" => {
+                let days = row["days"].as_f64().unwrap();
+                json!(format_worn_relative(now - days * DAY, now))
+            }
+            // v4's `Pick` names `last_worn_at`, but the note never reads it.
             "list_note" => json!(format_wardrobe_list_wear_note(
                 row["wear_count"].as_i64().unwrap(),
-                row["last_worn_at"].as_str(),
+                row["worn_by_you"].as_i64().unwrap(),
+                row["last_worn_by_you_at"].as_str(),
                 now
             )),
             "paragraph" => {
@@ -139,8 +150,9 @@ fn tool_image_generation_matches_oracle() {
         ("line", 5),
         ("handle", 1),
         ("relative", 21),
-        ("list_note", 12),
-        ("paragraph", 11),
+        ("worn_relative", 21),
+        ("list_note", 18),
+        ("paragraph", 23),
     ] {
         assert!(
             counts.get(kind).copied().unwrap_or(0) >= min,

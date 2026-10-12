@@ -148,8 +148,8 @@ pub fn archived_character_vault_mount_point_ids(main: &Connection) -> Result<Vec
     }
     tracing::debug!(
         target: "quilltap::document_text_search",
-        archived_with_vault = ids.len(),
-        characters_scanned = characters.len(),
+        archivedWithVault = ids.len(),
+        charactersScanned = characters.len(),
         "Collected archived character vault mount points",
     );
     Ok(ids)

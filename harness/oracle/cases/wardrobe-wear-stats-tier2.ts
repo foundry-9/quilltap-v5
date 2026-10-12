@@ -17,6 +17,9 @@
  *    order; the child logger's `module` is not part of the call context).
  * 3. A `dump` op records the table (rowid order, minus the three minted /
  *    clocked columns).
+ * 4. P4.D275 (`ed8b15b50`, bug 184): `findSummariesForWearer` — each map's
+ *    ordered entries (`{household, yours}` per item), its DEBUG and its
+ *    fallback ERROR.
  *
  * RULED DIVERGENCE `FIND_ALL_DROPS_NULLABLE` (the human, 2026-10-08 — FIX v5,
  * file v4): v4's inherited `findAll()` validates each row through
@@ -141,6 +144,11 @@ async function main(): Promise<void> {
           break;
         case 'findSummaries':
           result = Array.from((await repo.findSummaries(op.itemIds!)).entries());
+          break;
+        case 'findSummariesForWearer':
+          result = Array.from(
+            (await repo.findSummariesForWearer(op.itemIds!, op.characterId!)).entries(),
+          );
           break;
         case 'findHistory':
           result = await repo.findHistory(op.itemId!);

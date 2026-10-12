@@ -25,8 +25,23 @@
 //! drops the encoder-owned columns on both sides.
 //!
 //! The `[Wardrobe Images v1]` LINES are not compared here (a served host logs
-//! off the test thread); they are capture-pinned in `quilltap-core::api::
-//! wardrobe_item_images`'s tests.
+//! off the test thread); they are capture-pinned in the item-images tier-2
+//! family (`wardrobe_item_images_tier2_equivalence::the_route_lines_are_v4s`
+//! and P4.D275's `the_save_route_lines_are_v4s`).
+//!
+//! P4.D275 (v4 `01a83539d`): `GET ?action=save-targets` (and the GET action
+//! dispatch — an unknown / bare `?action` 400s BEFORE the query) and `POST
+//! ?action=save-to-store`, all on the `http` driver: v4's oracle restores the
+//! REAL storage manager for the save rows (`realStorage`), so both sides read
+//! the picture's own mount blob (M4). Requests may plant the mount partition
+//! (`mountSql`) and `repeat` (the ALREADY_SAVED 409 is the second answer). A
+//! `{ref:{store}}` resolves a vault / official store / General id and
+//! `{ref:{imageLink}}` an item's first `Wardrobe/images/` LINK id. The rows
+//! grow the `photos/` links (their `extractedText` is the kept-image sidecar —
+//! the operator's byline, M6) and their blobs; the saved file's timestamped
+//! leaf (`photos/2026-…T02-35-04.067Z-<slug>.webp`) normalizes as `<pts>`.
+//! Bodies are compared as BYTES (key order included — `serde_json`'s
+//! `preserve_order` map equality is order-blind).
 //!
 //! Regenerate (see the oracle header — the fixture is the tier-2 builder's,
 //! built into this family's OWN `/tmp/qt-wiir-*` paths: sharing the tier-2
@@ -43,7 +58,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use quilltap_core::api::types::WardrobeContainerScope;
-use quilltap_core::api::wardrobe_item_images::{generate_on_home, list_on_home, resolve_home};
+use quilltap_core::api::wardrobe_item_images::{
+    generate_on_home, list_on_home, resolve_home, save_targets_on_home,
+};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::Writer;
 use quilltap_core::model::image::{
@@ -150,6 +167,22 @@ fn tokens(s: &str) -> Vec<(usize, usize, &'static str)> {
                 continue;
             }
         }
+        // the photos leaf's timestamp: dddd-dd-ddTdd-dd-dd.dddZ (24 bytes)
+        if i + 24 <= b.len() {
+            let w = &b[i..i + 24];
+            let pat = b"dddd-dd-ddTdd-dd-dd.dddZ";
+            if w.iter().zip(pat.iter()).all(|(c, p)| {
+                if *p == b'd' {
+                    c.is_ascii_digit()
+                } else {
+                    c == p
+                }
+            }) {
+                out.push((i, i + 24, "pts"));
+                i += 24;
+                continue;
+            }
+        }
         // leaf: dddddddd-dddddd-<kind>-<8 hex>
         if i + 16 <= b.len()
             && b[i..i + 8].iter().all(u8::is_ascii_digit)
@@ -206,6 +239,8 @@ impl Normalizer {
             let tok = &s[a..z];
             if kind == "ts" {
                 out.push_str("<ts>");
+            } else if kind == "pts" {
+                out.push_str("<pts>");
             } else if self.baked.contains(tok) {
                 out.push_str(tok);
             } else {
@@ -243,7 +278,7 @@ fn baked_tokens(rows: &Value, spec: &Value) -> HashSet<String> {
     let mut out = HashSet::new();
     for text in [rows.to_string(), spec.to_string()] {
         for (a, z, kind) in tokens(&text) {
-            if kind != "ts" {
+            if kind != "ts" && kind != "pts" {
                 out.insert(text[a..z].to_string());
             }
         }
@@ -300,6 +335,16 @@ fn rows_of(
         "blobs": dump(
             mount,
             "SELECT b.* FROM doc_mount_blobs b WHERE b.fileId IN (SELECT fileId FROM doc_mount_file_links WHERE relativePath LIKE 'Wardrobe/images/%') ORDER BY b.rowid",
+            &[],
+        ),
+        "photoLinks": dump(
+            mount,
+            "SELECT * FROM doc_mount_file_links WHERE relativePath LIKE 'photos/%' ORDER BY rowid",
+            &[],
+        ),
+        "photoBlobs": dump(
+            mount,
+            "SELECT b.* FROM doc_mount_blobs b WHERE b.fileId IN (SELECT fileId FROM doc_mount_file_links WHERE relativePath LIKE 'photos/%') ORDER BY b.rowid",
             &[],
         ),
     })
@@ -366,7 +411,56 @@ impl Ctx<'_> {
         }
         q
     }
-    fn resolve_ref(&self, main: &rusqlite::Connection, r: &Value) -> String {
+    fn resolve_ref(
+        &self,
+        main: &rusqlite::Connection,
+        mount: &rusqlite::Connection,
+        r: &Value,
+    ) -> String {
+        if let Some(store) = r.get("store").and_then(Value::as_str) {
+            return match store {
+                "@general" => self.spec["generalMountPointId"]
+                    .as_str()
+                    .unwrap()
+                    .to_string(),
+                "@project" => main
+                    .query_row(
+                        "SELECT officialMountPointId FROM projects WHERE id = ?1",
+                        [self.id("@project")],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .unwrap(),
+                character => main
+                    .query_row(
+                        "SELECT characterDocumentMountPointId FROM characters WHERE id = ?1",
+                        [self.id(character)],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .unwrap(),
+            };
+        }
+        if let Some(item) = r.get("imageLink").and_then(Value::as_str) {
+            let item_id = self.item_id(item);
+            let file_id = list_wardrobe_item_images(main, &item_id).unwrap()[0]
+                .id
+                .clone();
+            let sha: String = main
+                .query_row(
+                    "SELECT sha256 FROM files WHERE id = ?1",
+                    [&file_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            return mount
+                .query_row(
+                    "SELECT l.id FROM doc_mount_file_links l JOIN doc_mount_files f ON f.id = l.fileId \
+                     WHERE l.relativePath LIKE 'Wardrobe/images/' || ?1 || '/%' AND f.sha256 = ?2 \
+                     ORDER BY l.rowid LIMIT 1",
+                    [&item_id, &sha],
+                    |row| row.get::<_, String>(0),
+                )
+                .unwrap();
+        }
         if let Some(doc) = r.get("doc").and_then(Value::as_str) {
             return main
                 .query_row(
@@ -383,12 +477,19 @@ impl Ctx<'_> {
             .id
             .clone()
     }
-    fn resolve_body(&self, main: &rusqlite::Connection, v: &Value) -> Value {
+    fn resolve_body(
+        &self,
+        main: &rusqlite::Connection,
+        mount: &rusqlite::Connection,
+        v: &Value,
+    ) -> Value {
         match v {
-            Value::Object(o) if o.contains_key("ref") => json!(self.resolve_ref(main, &o["ref"])),
+            Value::Object(o) if o.contains_key("ref") => {
+                json!(self.resolve_ref(main, mount, &o["ref"]))
+            }
             Value::Object(o) => Value::Object(
                 o.iter()
-                    .map(|(k, e)| (k.clone(), self.resolve_body(main, e)))
+                    .map(|(k, e)| (k.clone(), self.resolve_body(main, mount, e)))
                     .collect(),
             ),
             other => other.clone(),
@@ -435,10 +536,21 @@ async fn http_request(
                 .execute_batch(sql.as_str().unwrap())
                 .unwrap();
         }
+        for sql in req
+            .get("mountSql")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+        {
+            mount
+                .connection()
+                .execute_batch(sql.as_str().unwrap())
+                .unwrap();
+        }
         let body_value = req
             .get("body")
             .filter(|b| b["type"] == "json")
-            .map(|b| ctx.resolve_body(main.connection(), &b["value"]));
+            .map(|b| ctx.resolve_body(main.connection(), mount.connection(), &b["value"]));
         let baked = baked_tokens(
             &rows_of(main.connection(), mount.connection(), &ctx.item_ids()),
             ctx.spec,
@@ -448,6 +560,11 @@ async fn http_request(
     let (addr, state) = common::serve_instance(base.path(), |mut c| {
         c.terminal = false;
         c.env_pepper = Some(pepper.clone());
+        // Each request's host outlives its temp dir (it is never stopped), so
+        // its 60 s heartbeat finds the lock gone; the default handler is v4's
+        // `process.exit(1)`, which killed the binary once the P4.D275 corpus
+        // ran past a minute. A lost lock here is the test's own teardown.
+        c.on_lock_lost = Some(Arc::new(|| {}));
         c
     })
     .await;
@@ -467,11 +584,23 @@ async fn http_request(
         }
     );
     let client = reqwest::Client::new();
-    let mut rb = if req["method"] == "GET" {
-        client.get(&url)
-    } else {
-        client.post(&url)
+    let build = || {
+        if req["method"] == "GET" {
+            client.get(&url)
+        } else {
+            client.post(&url)
+        }
     };
+    // `repeat`: the same request first, its answer discarded (only JSON / text
+    // bodies repeat — no multipart row does).
+    if req.get("repeat") == Some(&json!(true)) {
+        let mut first = build().header("content-type", "application/json");
+        if let Some(v) = &body_value {
+            first = first.body(v.to_string());
+        }
+        first.send().await.unwrap();
+    }
+    let mut rb = build();
     match req.get("body").map(|b| b["type"].as_str().unwrap()) {
         Some("json") => {
             rb = rb
@@ -582,7 +711,7 @@ async fn direct_request(
     .unwrap();
     let seams = WardrobeItemImageSeams {
         provider: ErasedImageGenerate::new(MockProvider {
-            mode: req["provider"].as_str().unwrap().to_string(),
+            mode: req["provider"].as_str().unwrap_or("ok").to_string(),
             webp: ctx.spec["webp"][0].as_str().unwrap().to_string(),
         }),
         codec: Arc::new(quilltap_host::HostImageCodec),
@@ -596,6 +725,22 @@ async fn direct_request(
     let home = resolve_home(&db, scope, cid.as_deref(), &item_id)
         .await
         .unwrap_or_else(|_| panic!("direct arm needs a home"));
+    // P4.D275: the listing save-targets rows — an UNBOOTED db, as v4's oracle
+    // is (a booted host provisions built-in stores the oracle never has).
+    if req.get("action").and_then(Value::as_str) == Some("save-targets") {
+        let (status, body) = render(
+            false,
+            save_targets_on_home(&db, scope, &home),
+            axum::http::StatusCode::OK,
+        );
+        let ids = ctx.item_ids();
+        let mut out = json!({ "status": status.as_u16(), "body": body });
+        out["rows"] = db
+            .read_main(|m| db.read_mount_index(|n| Ok(rows_of(m, n, &ids))))
+            .unwrap();
+        out["__baked"] = json!(baked.into_iter().collect::<Vec<_>>());
+        return out;
+    }
     let resp = generate_on_home(
         &db,
         &seams,
@@ -626,6 +771,49 @@ async fn direct_request(
     out["__baked"] = json!(baked.into_iter().collect::<Vec<_>>());
     out
 }
+
+/// P4.D275 Tier 2 #18 — v4's `[Wardrobe Images v1]` lines' meta KEYS (in
+/// order) for the picture viewer's two actions, as the routes oracle captures
+/// them. v5's lines carry these keys — capture-pinned in the item-images
+/// tier-2 family's `the_save_route_lines_are_v4s` — save that v4's `message`
+/// is v5's `errorMessage` (a tracing field named `message` would replace the
+/// file record's envelope message; recorded).
+const V4_SAVE_LINE_KEYS: [(&str, &[&str]); 5] = [
+    (
+        "[Wardrobe Images v1] Listed save targets",
+        &["itemId", "scope", "count"],
+    ),
+    (
+        "[Wardrobe Images v1] Refused to save a picture that is not the item's",
+        &["itemId", "scope", "fileId", "mountPointId"],
+    ),
+    (
+        "[Wardrobe Images v1] Refused to save into an archived character's vault",
+        &["itemId", "scope", "fileId", "mountPointId"],
+    ),
+    (
+        "[Wardrobe Images v1] Saved wardrobe picture to a store",
+        &[
+            "itemId",
+            "scope",
+            "fileId",
+            "mountPointId",
+            "relativePath",
+            "linkId",
+        ],
+    ),
+    (
+        "[Wardrobe Images v1] Save to store rejected",
+        &[
+            "itemId",
+            "scope",
+            "fileId",
+            "mountPointId",
+            "code",
+            "message",
+        ],
+    ),
+];
 
 #[tokio::test(flavor = "multi_thread")]
 async fn wardrobe_item_images_routes_match_oracle() {
@@ -663,6 +851,36 @@ async fn wardrobe_item_images_routes_match_oracle() {
         corpus: &corpus,
     };
 
+    // Tier 2 #18: every save-action line v4 logged carries the recorded keys,
+    // and every recorded line was seen at least once.
+    let mut seen_lines = HashSet::new();
+    for row in oracle.values() {
+        for line in row
+            .get("v4Lines")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let message = line["message"].as_str().unwrap();
+            let Some((_, keys)) = V4_SAVE_LINE_KEYS.iter().find(|(m, _)| *m == message) else {
+                continue; // the P4.D263 actions' lines (pinned in core's family)
+            };
+            let got: Vec<&str> = line["keys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|k| k.as_str().unwrap())
+                .collect();
+            assert_eq!(&got, keys, "{message}: v4's meta keys moved");
+            seen_lines.insert(message.to_string());
+        }
+    }
+    assert_eq!(
+        seen_lines.len(),
+        V4_SAVE_LINE_KEYS.len(),
+        "every save line was captured: {seen_lines:?}"
+    );
+
     let mut failures = Vec::new();
     for req in requests {
         let name = req["name"].as_str().unwrap();
@@ -695,7 +913,23 @@ async fn wardrobe_item_images_routes_match_oracle() {
         }
         .value(&want);
         for part in ["status", "body", "followGet", "rows"] {
-            if got_n.get(part) != want_n.get(part) {
+            // Bytes, not `Value` equality — `preserve_order` maps compare
+            // order-blind, and v4's key order is part of the wire. NAMED CARVE
+            // `TRAIL_ENTRY_KEY_ORDER` (pre-existing, found by P4.D275's switch
+            // to bytes; recorded for the follow-ups round): the provider-
+            // generate rows' `details.trail[]` entries carry `profileKind`
+            // after `outcome` where v4 puts it after `trigger`/`evidence` —
+            // those three `direct` generate bodies stay order-blind until the
+            // trail type's field order is fixed.
+            let order_blind = part == "body"
+                && req["driver"] == "direct"
+                && req.get("action").and_then(Value::as_str) == Some("generate");
+            let differs = if order_blind {
+                got_n.get(part) != want_n.get(part)
+            } else {
+                got_n.get(part).map(|p| p.to_string()) != want_n.get(part).map(|p| p.to_string())
+            };
+            if differs {
                 failures.push(format!(
                     "{name}: {part} diverged\n  rust:   {}\n  oracle: {}",
                     got_n.get(part).unwrap_or(&Value::Null),

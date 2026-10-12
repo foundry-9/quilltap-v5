@@ -9,7 +9,9 @@
 //! (`harness/oracle/fixtures/wardrobe-wear-stats-tier2.json`). This test runs
 //! the same ops on a COPY of that base through v5's ledger and compares, per
 //! op: the result (rows minus the minted `id` / `createdAt` / `updatedAt`; a
-//! summaries Map as its ordered entries; a thrown message as `{threw}`), and
+//! summaries Map — `findSummaries`, or P4.D275's `findSummariesForWearer`
+//! (`ed8b15b50`, bug 184) with its `{household, yours}` values — as its
+//! ordered entries; a thrown message as `{threw}`), and
 //! every log line — level, message and fields, v4's call context rendered as
 //! v5's capture rig renders it. v4's logger maps onto v5 targets as:
 //! the repository's `logger.child({ module: 'wardrobe-wear' })` lines →
@@ -190,6 +192,17 @@ fn wardrobe_wear_stats_tier2_matches_oracle() {
             "findSummaries" => {
                 let ids = strs(op, "itemIds");
                 let map = repo.find_summaries(&ids);
+                Value::Array(
+                    distinct(&ids)
+                        .into_iter()
+                        .map(|id| json!([id, map[&id]]))
+                        .collect(),
+                )
+            }
+            // Map insertion order is the pre-fill's — the distinct ids'.
+            "findSummariesForWearer" => {
+                let ids = strs(op, "itemIds");
+                let map = repo.find_summaries_for_wearer(&ids, op["characterId"].as_str().unwrap());
                 Value::Array(
                     distinct(&ids)
                         .into_iter()

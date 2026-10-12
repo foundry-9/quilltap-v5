@@ -19,7 +19,16 @@
  * `json()`, `formData()` — a multipart body is a real `FormData` of real
  * `File`s). Emits `{ name, status, body, followGet?, rows }` — `rows` the
  * item-scoped `files` rows (linked to a corpus item), the `Wardrobe/images/`
- * links and their blobs.
+ * links and their blobs, and (P4.D275) the `photos/` links (their
+ * `extractedText` is the kept-image sidecar) and their blobs.
+ *
+ * P4.D275 (`01a83539d`): `mountSql` plants the mount partition; `repeat` sends
+ * the request twice and records the second (the ALREADY_SAVED 409);
+ * `realStorage` restores the REAL `@/lib/file-storage/manager` (jest.setup
+ * stubs `downloadFile` as "mock file content") so `readImageBuffer` reads the
+ * picture's own mount blob — the bytes v5's `ProductionFileBytes` reads (M4).
+ * v4's job host is held off (no runner on either side; the save enqueues
+ * embedding jobs).
  *
  * Run (Node 24, from the v4 checkout — a /tmp mirror, jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -50,7 +59,7 @@ function canonValue(v: unknown): unknown {
   return v;
 }
 
-type Ref = { item?: string; nth?: number; doc?: string };
+type Ref = { item?: string; nth?: number; doc?: string; store?: string; imageLink?: string };
 interface Part {
   name: string;
   value?: string;
@@ -71,7 +80,10 @@ interface RouteRequest {
   driver: 'http' | 'direct';
   provider?: 'ok' | 'refuseAll' | 'throw';
   sql?: string[];
+  mountSql?: string[];
   followGet?: boolean;
+  repeat?: boolean;
+  realStorage?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -109,6 +121,18 @@ function resolveId(spec: Spec, v: string): string {
   }
 }
 
+// v4's job host would claim the save's embedding jobs mid-case; hold it off
+// (`processor-host.ts` no-ops while `shuttingDown`).
+(globalThis as Record<string, unknown>).__quilltapJobHost = {
+  child: null,
+  spawning: false,
+  shuttingDown: true,
+  childCrashed: false,
+  restartTimestamps: [],
+  signalHandlersInstalled: false,
+  invalidationListeners: new Set(),
+};
+
 async function runRequest(
   spec: Spec,
   pngB64: string,
@@ -142,6 +166,11 @@ async function runRequest(
   jest.doMock('@/lib/services/llm-logging.service', () =>
     jest.requireActual('@/lib/services/llm-logging.service'),
   );
+  if (req.realStorage) {
+    jest.doMock('@/lib/file-storage/manager', () =>
+      jest.requireActual('@/lib/file-storage/manager'),
+    );
+  }
   jest.doMock('@/lib/auth/session', () => ({
     __esModule: true,
     ...jest.requireActual('@/lib/auth/session'),
@@ -204,6 +233,23 @@ async function runRequest(
     }),
   );
   const ii = await import('@/lib/wardrobe/item-images');
+  // P4.D275 Tier 2 #18: the route's own `[Wardrobe Images v1]` lines (message
+  // + meta keys, in order) — compared once against v5's capture-pinned key
+  // sets. The console transport is spliced out, so nothing reaches stdout.
+  const { logger } = await import('@/lib/logger');
+  const v4Lines: Array<{ level: string; message: string; keys: string[] }> = [];
+  (logger as unknown as { transports: Array<{ write: (d: unknown) => void }> }).transports.splice(
+    0,
+    (logger as unknown as { transports: unknown[] }).transports.length,
+    {
+      write: (d: unknown) => {
+        const data = d as { level: string; message: string; context?: Record<string, unknown> };
+        if (!data.message.startsWith('[Wardrobe Images v1]')) return;
+        const { service: _s, environment: _e, ...fields } = data.context ?? {};
+        v4Lines.push({ level: data.level, message: data.message, keys: Object.keys(fields) });
+      },
+    },
+  );
   const route = (await import('@/app/api/v1/wardrobe/[itemId]/images/route')) as {
     GET: (r: unknown, c: unknown) => Promise<{ status: number; json: () => Promise<unknown> }>;
     POST: (r: unknown, c: unknown) => Promise<{ status: number; json: () => Promise<unknown> }>;
@@ -215,8 +261,27 @@ async function runRequest(
   const midb = getRawMountIndexDatabase();
   if (!raw || !midb) throw new Error('DB handles unavailable');
   for (const sql of req.sql ?? []) raw.exec(sql);
+  for (const sql of req.mountSql ?? []) midb.exec(sql);
 
   const resolveRef = async (ref: Ref): Promise<string> => {
+    if (ref.store) {
+      if (ref.store === '@general') return (spec as unknown as { generalMountPointId: string }).generalMountPointId;
+      if (ref.store === '@project') {
+        return (raw.prepare('SELECT officialMountPointId AS id FROM projects WHERE id = ?').get(spec.projectId) as { id: string }).id;
+      }
+      return (raw
+        .prepare('SELECT characterDocumentMountPointId AS id FROM characters WHERE id = ?')
+        .get(resolveId(spec, ref.store)) as { id: string }).id;
+    }
+    if (ref.imageLink) {
+      const fileId = (await ii.listWardrobeItemImages(repos, spec.items[ref.imageLink].id))[0].id;
+      const sha = (raw.prepare('SELECT sha256 FROM files WHERE id = ?').get(fileId) as { sha256: string }).sha256;
+      return (midb
+        .prepare(
+          "SELECT l.id AS id FROM doc_mount_file_links l JOIN doc_mount_files f ON f.id = l.fileId WHERE l.relativePath LIKE 'Wardrobe/images/' || ? || '/%' AND f.sha256 = ? ORDER BY l.rowid LIMIT 1",
+        )
+        .get(spec.items[ref.imageLink].id, sha) as { id: string }).id;
+    }
     if (ref.doc) {
       const row = raw
         .prepare(
@@ -285,6 +350,9 @@ async function runRequest(
   const ctx = { params: Promise.resolve({ itemId }) };
 
   try {
+    if (req.repeat) {
+      await (req.method === 'GET' ? route.GET(request, ctx) : route.POST(request, ctx));
+    }
     const response = req.method === 'GET' ? await route.GET(request, ctx) : await route.POST(request, ctx);
     const status = response.status;
     const body = JSON.parse(JSON.stringify(await response.json()));
@@ -333,8 +401,25 @@ async function runRequest(
         "SELECT b.* FROM doc_mount_blobs b WHERE b.fileId IN (SELECT fileId FROM doc_mount_file_links WHERE relativePath LIKE 'Wardrobe/images/%') ORDER BY b.rowid",
         [],
       ),
+      photoLinks: dump(
+        midb as never,
+        "SELECT * FROM doc_mount_file_links WHERE relativePath LIKE 'photos/%' ORDER BY rowid",
+        [],
+      ),
+      photoBlobs: dump(
+        midb as never,
+        "SELECT b.* FROM doc_mount_blobs b WHERE b.fileId IN (SELECT fileId FROM doc_mount_file_links WHERE relativePath LIKE 'photos/%') ORDER BY b.rowid",
+        [],
+      ),
     };
-    return { name: req.name, status, body, ...(req.followGet ? { followGet } : {}), rows };
+    return {
+      name: req.name,
+      status,
+      body,
+      ...(req.followGet ? { followGet } : {}),
+      rows,
+      ...(v4Lines.length > 0 ? { v4Lines } : {}),
+    };
   } finally {
     await closeDatabase();
     closeMountIndexSQLiteClient();
@@ -367,7 +452,8 @@ async function main(): Promise<void> {
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  // DEBUG so the route's `Listed …` lines reach the capture (spliced, silent).
+  process.env.LOG_LEVEL = 'debug';
 
   const out: string[] = [];
   for (const req of corpus.requests) {

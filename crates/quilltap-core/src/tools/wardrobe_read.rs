@@ -135,13 +135,14 @@ fn wear_date(iso: &str) -> String {
     )
 }
 
-/// v4 `relativeWearDate(iso, nowMs)` — [`format_relative_days`] or, for an
-/// unparseable stamp, the stamp itself.
+/// v4 `relativeWearDate(iso, nowMs)` — [`format_worn_relative`] (the ladder
+/// re-worded for a phrase after "last", bug 183) or, for an unparseable
+/// stamp, the stamp itself.
 ///
-/// [`format_relative_days`]: crate::format_time::format_relative_days
+/// [`format_worn_relative`]: crate::format_time::format_worn_relative
 fn relative_wear_date(iso: &str, now_ms: f64) -> String {
     match crate::episodic::js_date_parse_ms(iso) {
-        Some(ms) => crate::format_time::format_relative_days(ms as f64, now_ms),
+        Some(ms) => crate::format_time::format_worn_relative(ms as f64, now_ms),
         None => iso.to_string(),
     }
 }
@@ -156,9 +157,24 @@ fn join_phrases(parts: &[String]) -> String {
 }
 
 /// v4 `formatWardrobeWearParagraph(wear, nowMs)` (`wardrobe-read-handler.ts:
-/// 170-188`) — the `Wear` paragraph of `wardrobe_read`: "Worn 4 times, first
-/// 14 Mar 2026, last 3 days ago by you. Also worn by Marguerite (once)." — or
-/// "Never worn." `now_ms` is the caller's clock (v4's injectable `nowMs`).
+/// 182-211`, `ed8b15b50`) — the `Wear` paragraph of `wardrobe_read`, from the
+/// reader's side first and the household's second. v4's why (bug 184): a
+/// shared item's count is never handed to a reader as if it were their own.
+///
+///  - "Never worn."
+///  - "You have worn it 4 times, first 14 Mar 2026, last 3 days ago."
+///  - "You have worn it 13 times, first 25 Jun 2026, last today. Worn 116
+///    times in all; also by Laura (25 times) and Sunny (once)."
+///  - "You have worn it twice, first 14 Mar 2026, last 6 months ago. Worn 3
+///    times in all, most recently 2 weeks ago by Marguerite; also by
+///    Marguerite (once)."
+///  - "You have never worn it. Worn 115 times by others, first 13 Jun 2026,
+///    last yesterday by Laura: Laura (25 times) and Charlie (14 times)."
+///
+/// `you` is the FIRST `is_you` wearer (v4's `find`); `latest` is `wearers[0]`
+/// (the history is most recent first), and in the you-absent arm the others'
+/// list names `latest` again, as v4's does. `now_ms` is the caller's clock
+/// (v4's injectable `nowMs`).
 pub fn format_wardrobe_wear_paragraph(
     wear: Option<&WardrobeReadWearResult>,
     now_ms: f64,
@@ -170,37 +186,76 @@ pub fn format_wardrobe_wear_paragraph(
         Some(s) if !s.is_empty() => s,
         _ => return "Never worn.".to_string(),
     };
-    let Some((latest, others)) = wear.wearers.split_first() else {
+    let Some(latest) = wear.wearers.first() else {
         return "Never worn.".to_string();
     };
     if wear.wear_count == 0 {
         return "Never worn.".to_string();
     }
+
+    let you = wear.wearers.iter().find(|w| w.is_you);
+    let others: Vec<&WardrobeReadWearerResult> =
+        wear.wearers.iter().filter(|w| !w.is_you).collect();
+    let others_list = join_phrases(
+        &others
+            .iter()
+            .map(|w| format!("{} ({})", wearer_phrase(w), times_phrase(w.wear_count)))
+            .collect::<Vec<_>>(),
+    );
+
+    if let Some(you) = you {
+        let mine = if you.wear_count == 1 {
+            format!(
+                "You have worn it once, {}.",
+                relative_wear_date(&you.last_worn_at, now_ms)
+            )
+        } else {
+            format!(
+                "You have worn it {}, first {}, last {}.",
+                times_phrase(you.wear_count),
+                wear_date(&you.first_worn_at),
+                relative_wear_date(&you.last_worn_at, now_ms)
+            )
+        };
+        if others.is_empty() {
+            return mine;
+        }
+        let most_recent = if latest.is_you {
+            String::new()
+        } else {
+            format!(
+                ", most recently {} by {}",
+                relative_wear_date(&latest.last_worn_at, now_ms),
+                wearer_phrase(latest)
+            )
+        };
+        return format!(
+            "{mine} Worn {} in all{most_recent}; also by {others_list}.",
+            times_phrase(wear.wear_count)
+        );
+    }
+
     let last = format!(
         "{} by {}",
         relative_wear_date(last_worn_at, now_ms),
         wearer_phrase(latest)
     );
-    let head = if wear.wear_count == 1 {
-        format!("Worn once, {last}.")
-    } else {
-        // v4 `wear.first_worn_at ?? wear.last_worn_at` — `??` keeps an empty
-        // string.
-        let first = wear.first_worn_at.as_deref().unwrap_or(last_worn_at);
-        format!(
-            "Worn {} times, first {}, last {last}.",
-            wear.wear_count,
-            wear_date(first)
-        )
-    };
-    if others.is_empty() {
-        return head;
+    if wear.wear_count == 1 {
+        return format!("You have never worn it. Worn once, {last}.");
     }
-    let also: Vec<String> = others
-        .iter()
-        .map(|w| format!("{} ({})", wearer_phrase(w), times_phrase(w.wear_count)))
-        .collect();
-    format!("{head} Also worn by {}.", join_phrases(&also))
+    // v4 `wear.first_worn_at ?? wear.last_worn_at` — `??` keeps an empty
+    // string.
+    let first = wear.first_worn_at.as_deref().unwrap_or(last_worn_at);
+    let head = format!(
+        "You have never worn it. Worn {} by others, first {}, last {last}",
+        times_phrase(wear.wear_count),
+        wear_date(first)
+    );
+    if others.len() > 1 {
+        format!("{head}: {others_list}.")
+    } else {
+        format!("{head}.")
+    }
 }
 
 fn str_field(item: &Value, key: &str) -> Option<String> {
@@ -338,7 +393,7 @@ fn build_wardrobe_read_wear(
         .find_history(item_id);
     let resolved = resolve_wearer_names(main, &history.wearers);
     tracing::debug!(
-        context = "wardrobe-read-handler",
+        context = LOG_CONTEXT,
         characterId = character_id,
         itemId = item_id,
         wearCount = history.wear_count,
@@ -419,15 +474,37 @@ pub fn execute(
     character_id: &str,
     args: &Value,
 ) -> WardrobeReadToolOutput {
-    let _ = user_id;
     let Some(input) = validate_locate(args) else {
+        tracing::warn!(
+            target: "quilltap::tools",
+            context = LOG_CONTEXT,
+            userId = user_id,
+            chatId = chat_id,
+            characterId = character_id,
+            input = %args,
+            "Wardrobe read tool validation failed",
+        );
         return build_read_failure("Invalid input: item_id or item_title is required.");
     };
     match run(main, mount, chat_id, character_id, &input) {
         Ok(out) => out,
-        Err(e) => build_read_failure(e.to_string()),
+        Err(e) => {
+            tracing::error!(
+                target: "quilltap::tools",
+                context = LOG_CONTEXT,
+                userId = user_id,
+                chatId = chat_id,
+                characterId = character_id,
+                error = %crate::db::fallback::error_text(&e),
+                "Wardrobe read tool execution failed",
+            );
+            build_read_failure(e.to_string())
+        }
     }
 }
+
+/// v4's `context` field on the handler's validation / execution lines.
+const LOG_CONTEXT: &str = "wardrobe-read-handler";
 
 fn run(
     main: &Connection,
@@ -541,4 +618,54 @@ pub fn format_at(output: &WardrobeReadToolOutput, now_ms: f64) -> String {
         ));
     }
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::captured_with;
+    use rusqlite::Connection;
+    use serde_json::json;
+
+    /// R-B: v4's WARN on a validation failure (`{context, userId, chatId,
+    /// characterId, input}`) and its ERROR on a failed run (`{context, userId,
+    /// chatId, characterId}` + the error), on the caller's thread.
+    #[test]
+    fn the_validation_and_failure_lines_are_v4s() {
+        let (main, mount) = (
+            Connection::open_in_memory().unwrap(),
+            Connection::open_in_memory().unwrap(),
+        );
+        let (out, lines) = captured_with(|| execute(&main, &mount, "u1", "c1", "ch1", &json!({})));
+        assert_eq!(
+            out.error.as_deref(),
+            Some("Invalid input: item_id or item_title is required.")
+        );
+        assert_eq!(
+            lines,
+            vec![r#"WARN quilltap::tools Wardrobe read tool validation failed context=wardrobe-read-handler userId=u1 chatId=c1 characterId=ch1 input={}"#.to_string()]
+        );
+        let (out, lines) = captured_with(|| {
+            execute(
+                &main,
+                &mount,
+                "u1",
+                "c1",
+                "ch1",
+                &json!({ "item_id": "i1" }),
+            )
+        });
+        let lines: Vec<String> = lines
+            .into_iter()
+            .filter(|l| l.contains(" quilltap::tools "))
+            .collect();
+        assert!(!out.success);
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(
+            lines[0].starts_with(
+                "ERROR quilltap::tools Wardrobe read tool execution failed context=wardrobe-read-handler userId=u1 chatId=c1 characterId=ch1 error=no such table: "
+            ),
+            "{lines:#?}"
+        );
+    }
 }

@@ -33,10 +33,17 @@ pub struct WardrobeListItemResult {
     pub is_own: bool,
     pub is_equipped: bool,
     pub equipped_slot: Option<String>,
-    /// Times worn across every wearer (v4 `3ee3b1342`; `0` = never worn).
+    /// Times the whole HOUSEHOLD has worn it — other characters' wears
+    /// included, so context, not the caller's own (v4 `wardrobe-list-tool.ts:
+    /// 81-92`, `ed8b15b50` bug 184; `0` = never worn by anyone).
     pub wear_count: i64,
-    /// When it was last worn, by anyone (`null` = never).
+    /// When anyone in the household last wore it (`null` = never).
     pub last_worn_at: Option<String>,
+    /// Times the CALLING character has worn it (`0` = never by them).
+    pub worn_by_you: i64,
+    /// When the calling character last wore it (`null` = never; always
+    /// serialized).
+    pub last_worn_by_you_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_composite: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -137,8 +144,15 @@ pub fn execute(
     character_id: &str,
     args: &Value,
 ) -> WardrobeListToolOutput {
-    let _ = user_id; // logging only
     let Some(input) = validate(args) else {
+        tracing::warn!(
+            target: "quilltap::tools",
+            context = LOG_CONTEXT,
+            userId = user_id,
+            characterId = character_id,
+            input = %args,
+            "Wardrobe list tool validation failed",
+        );
         return WardrobeListToolOutput {
             success: false,
             items: Vec::new(),
@@ -146,20 +160,35 @@ pub fn execute(
             error: Some(VALIDATION_ERROR.to_string()),
         };
     };
-    match run(main, mount, chat_id, character_id, &input) {
+    match run(main, mount, user_id, chat_id, character_id, &input) {
         Ok(out) => out,
-        Err(e) => WardrobeListToolOutput {
-            success: false,
-            items: Vec::new(),
-            total_count: 0,
-            error: Some(e.to_string()),
-        },
+        Err(e) => {
+            tracing::error!(
+                target: "quilltap::tools",
+                context = LOG_CONTEXT,
+                userId = user_id,
+                characterId = character_id,
+                chatId = chat_id,
+                error = %crate::db::fallback::error_text(&e),
+                "Wardrobe list tool execution failed",
+            );
+            WardrobeListToolOutput {
+                success: false,
+                items: Vec::new(),
+                total_count: 0,
+                error: Some(e.to_string()),
+            }
+        }
     }
 }
+
+/// v4's `context` field on every line the handler logs.
+const LOG_CONTEXT: &str = "wardrobe-list-handler";
 
 fn run(
     main: &Connection,
     mount: &Connection,
+    user_id: &str,
     chat_id: &str,
     character_id: &str,
     input: &ListInput,
@@ -220,24 +249,28 @@ fn run(
         })
         .collect();
 
-    // One ledger read for every listed item's "last worn" (v4 `3ee3b1342` —
-    // over the type / appropriateness-filtered items, before the
-    // `include_equipped` filter). A failed read is v4's fallback: never worn.
+    // One ledger read for every listed item's wear, the caller's own share
+    // kept apart from the household's (v4 `ed8b15b50`, bug 184 — over the type
+    // / appropriateness-filtered items, before the `include_equipped` filter).
+    // A failed read is v4's fallback: never worn.
     let filtered_ids: Vec<String> = filtered
         .iter()
         .filter_map(|item| str_field(item, "id"))
         .collect();
     let wear_summaries = crate::db::wardrobe_wear_stats::WardrobeWearStatsRepository::new(main)
-        .find_summaries(&filtered_ids);
+        .find_summaries_for_wearer(&filtered_ids, character_id);
 
     let result_items: Vec<WardrobeListItemResult> = filtered
         .into_iter()
         .map(|item| {
             let id = str_field(item, "id").unwrap_or_default();
-            let wear = wear_summaries
-                .get(&id)
-                .cloned()
-                .unwrap_or_else(crate::db::wardrobe_wear_stats::never_worn_summary);
+            let (household, yours) = match wear_summaries.get(&id) {
+                Some(wear) => (wear.household.clone(), wear.yours.clone()),
+                None => (
+                    crate::db::wardrobe_wear_stats::never_worn_summary(),
+                    crate::db::wardrobe_wear_stats::never_worn_summary(),
+                ),
+            };
             let equipped_slots = find_equipped_slots(&id, equipped.as_ref());
             let component_item_ids = component_ids_of(item);
             let is_composite = !component_item_ids.is_empty();
@@ -262,8 +295,10 @@ fn run(
                 is_own: item.get("characterId").and_then(Value::as_str) == Some(character_id),
                 is_equipped: !equipped_slots.is_empty(),
                 equipped_slot: equipped_slots.first().cloned(),
-                wear_count: wear.wear_count,
-                last_worn_at: wear.last_worn_at,
+                wear_count: household.wear_count,
+                last_worn_at: household.last_worn_at,
+                worn_by_you: yours.wear_count,
+                last_worn_by_you_at: yours.last_worn_at,
                 is_composite: if is_composite { Some(true) } else { None },
                 component_item_ids: if is_composite {
                     Some(component_item_ids)
@@ -285,6 +320,36 @@ fn run(
         result_items
     };
 
+    // v4's INFO, every count over the final items (after `include_equipped`).
+    // JS truthiness: `!!type_filter` is true for `[]`; `!!appropriateness_filter`
+    // is false for `''`.
+    tracing::info!(
+        target: "quilltap::tools",
+        context = LOG_CONTEXT,
+        userId = user_id,
+        characterId = character_id,
+        chatId = chat_id,
+        totalItems = all_items.len(),
+        filteredCount = final_items.len(),
+        hasTypeFilter = input.type_filter.is_some(),
+        hasAppropriatenessFilter = input
+            .appropriateness_filter
+            .as_deref()
+            .is_some_and(|s| !s.is_empty()),
+        includeEquipped = input.include_equipped != Some(false),
+        compositeCount = final_items
+            .iter()
+            .filter(|i| i.is_composite == Some(true))
+            .count(),
+        neverWornCount = final_items.iter().filter(|i| i.wear_count == 0).count(),
+        neverWornByCallerCount = final_items.iter().filter(|i| i.worn_by_you == 0).count(),
+        withPictureCount = final_items
+            .iter()
+            .filter(|i| i.image_file_id.as_deref().is_some_and(|f| !f.is_empty()))
+            .count(),
+        "Wardrobe list completed",
+    );
+
     let total_count = final_items.len();
     Ok(WardrobeListToolOutput {
         success: true,
@@ -294,27 +359,62 @@ fn run(
     })
 }
 
+/// v4 `listTimes(count)` (`:209-212`) — "once" or "12×" for the compact
+/// list note (2 is `2×`, never "twice").
+fn list_times(count: i64) -> String {
+    if count == 1 {
+        "once".to_string()
+    } else {
+        format!("{count}×")
+    }
+}
+
 /// v4 `formatWardrobeListWearNote(item, nowMs)` (`wardrobe-list-handler.ts:
-/// 204-212`, `3ee3b1342`) — the compact wear note a listed item carries:
-/// ` · last worn 3 days ago` or ` · never worn` (a zero count, an absent or
-/// empty `last_worn_at`, or an unparseable one). `now_ms` is the caller's
-/// clock (v4's injectable `nowMs`).
+/// 225-237`, `ed8b15b50`) — the compact wear note a listed item carries, from
+/// the caller's side with the household's total as context (bug 184):
+///
+///  - ` · never worn` — nobody has
+///  - ` · never worn by you (worn 115× by others)`
+///  - ` · worn by you 12×, last yesterday` — only the caller has worn it
+///  - ` · worn by you 12×, last yesterday (115× in the household)`
+///
+/// v4's `Pick` names `last_worn_at` but never reads it, so it is not taken
+/// here. A count with no readable date (a hand-edited row) drops the date
+/// part; the date reads through [`format_worn_relative`] (bug 183 — never
+/// "last last week"). `now_ms` is the caller's clock (v4's injectable
+/// `nowMs`).
+///
+/// [`format_worn_relative`]: crate::format_time::format_worn_relative
 pub fn format_wardrobe_list_wear_note(
     wear_count: i64,
-    last_worn_at: Option<&str>,
+    worn_by_you: i64,
+    last_worn_by_you_at: Option<&str>,
     now_ms: f64,
 ) -> String {
-    let last = match last_worn_at {
-        Some(s) if wear_count != 0 && !s.is_empty() => s,
-        _ => return " · never worn".to_string(),
-    };
-    match crate::episodic::js_date_parse_ms(last) {
-        Some(ms) => format!(
-            " · last worn {}",
-            crate::format_time::format_relative_days(ms as f64, now_ms)
-        ),
-        None => " · never worn".to_string(),
+    if wear_count == 0 {
+        return " · never worn".to_string();
     }
+    if worn_by_you == 0 {
+        return format!(
+            " · never worn by you (worn {} by others)",
+            list_times(wear_count)
+        );
+    }
+    let your_last_ms = last_worn_by_you_at
+        .filter(|s| !s.is_empty())
+        .and_then(crate::episodic::js_date_parse_ms);
+    let when = match your_last_ms {
+        Some(ms) => format!(
+            ", last {}",
+            crate::format_time::format_worn_relative(ms as f64, now_ms)
+        ),
+        None => String::new(),
+    };
+    let yours = format!("worn by you {}{when}", list_times(worn_by_you));
+    if wear_count <= worn_by_you {
+        return format!(" · {yours}");
+    }
+    format!(" · {yours} ({} in the household)", list_times(wear_count))
 }
 
 /// v4 `formatWardrobeListResults(output, nowMs = Date.now())` on the
@@ -384,8 +484,12 @@ pub fn format_at(output: &WardrobeListToolOutput, now_ms: f64) -> String {
             String::new()
         };
         // v4 `3ee3b1342` / `b3f937076`: the wear note, then the picture handle.
-        let wear_tag =
-            format_wardrobe_list_wear_note(item.wear_count, item.last_worn_at.as_deref(), now_ms);
+        let wear_tag = format_wardrobe_list_wear_note(
+            item.wear_count,
+            item.worn_by_you,
+            item.last_worn_by_you_at.as_deref(),
+            now_ms,
+        );
         let picture_tag = match item.image_file_id.as_deref() {
             Some(id) if !id.is_empty() => format!(
                 " · picture: {}",
@@ -408,4 +512,85 @@ pub fn format_at(output: &WardrobeListToolOutput, now_ms: f64) -> String {
         ));
     }
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::captured_with;
+    use rusqlite::Connection;
+    use serde_json::json;
+
+    /// R-B: v4's WARN on a validation failure (`{context, userId,
+    /// characterId, input}` — no `chatId`, v4's own key set) and its ERROR on a
+    /// failed run (`{context, userId, characterId, chatId}` + the error), on
+    /// the caller's thread; a refused input never reaches the run.
+    #[test]
+    fn the_validation_and_failure_lines_are_v4s() {
+        let (main, mount) = (
+            Connection::open_in_memory().unwrap(),
+            Connection::open_in_memory().unwrap(),
+        );
+        let (out, lines) = captured_with(|| {
+            execute(
+                &main,
+                &mount,
+                "u1",
+                "c1",
+                "ch1",
+                &json!({ "type_filter": "top" }),
+            )
+        });
+        assert_eq!(out.error.as_deref(), Some(VALIDATION_ERROR));
+        assert_eq!(
+            lines,
+            vec![r#"WARN quilltap::tools Wardrobe list tool validation failed context=wardrobe-list-handler userId=u1 characterId=ch1 input={"type_filter":"top"}"#.to_string()]
+        );
+        // An empty partition: the run fails, v4's catch answers.
+        let (out, lines) = captured_with(|| execute(&main, &mount, "u1", "c1", "ch1", &json!({})));
+        let lines: Vec<String> = lines
+            .into_iter()
+            .filter(|l| l.contains(" quilltap::tools "))
+            .collect();
+        assert!(!out.success);
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(
+            lines[0].starts_with(
+                "ERROR quilltap::tools Wardrobe list tool execution failed context=wardrobe-list-handler userId=u1 characterId=ch1 chatId=c1 error=no such table: "
+            ),
+            "{lines:#?}"
+        );
+        assert!(!lines[0].contains("Wardrobe list completed"));
+    }
+
+    /// v4's `listTimes` (`once` / `N×`, never "twice") and the note's six steps.
+    #[test]
+    fn the_wear_note_leads_with_the_caller() {
+        const NOW: f64 = 1_781_524_800_000.0; // 2026-06-15T12:00:00Z
+        let three_days = "2026-06-12T12:00:00.000Z";
+        assert_eq!(
+            format_wardrobe_list_wear_note(0, 0, None, NOW),
+            " · never worn"
+        );
+        assert_eq!(
+            format_wardrobe_list_wear_note(115, 0, None, NOW),
+            " · never worn by you (worn 115× by others)"
+        );
+        assert_eq!(
+            format_wardrobe_list_wear_note(1, 1, Some(three_days), NOW),
+            " · worn by you once, last 3 days ago"
+        );
+        assert_eq!(
+            format_wardrobe_list_wear_note(4, 3, Some(three_days), NOW),
+            " · worn by you 3×, last 3 days ago (4× in the household)"
+        );
+        assert_eq!(
+            format_wardrobe_list_wear_note(4, 2, Some(""), NOW),
+            " · worn by you 2× (4× in the household)"
+        );
+        assert_eq!(
+            format_wardrobe_list_wear_note(2, 2, Some("2026-06-06T12:00:00.000Z"), NOW),
+            " · worn by you 2×, last a week ago"
+        );
+    }
 }

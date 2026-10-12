@@ -746,6 +746,85 @@ Adds `services/backup/restore/store_claims.rs`, a port of v4's `lib/backup/resto
 One ruled divergence (`DUP_STORE_ID_FIRST_ROW`): when an archive carries two rows under one store id, v5 judges the claim by the FIRST row, which is the one 22a actually restores. v4 judges by the last row.
 
 The new tier-1 family `store_claims_equivalence` runs v4's real module over a 20-case shared corpus. It matches on every case, and the ruled divergence is asserted in both directions. The orchestrator does not use the module yet.
+#### 2026-10-10 — docs(porting): P4.D275 lane close — sweep, gate and handoff records
+
+_Docs-only change._
+
+The P4.D275 order is marked LANE COMPLETE. The status log gains the lane-close record:
+
+- **Sweep:** the nine owned families from the pin are all ok, and the six hand-run families all green.
+- **Censuses:** all green.
+- **Workspace gate:** 709 binaries, 4,688 passed, 3 failed. Two reds are by design (P4.D269, P4.D272). The third is the KEYSTONE refusal pin for the two arms this lane filled, handed to the unifier.
+- **Also recorded:** the log lines ported this lane, the divergences and findings left for the follow-ups round, and the dogfood rows.
+
+#### 2026-10-09 — feat(wardrobe): P4.D275 B3+B4 — the picture viewer's save-targets / save-to-store on both transports
+
+_Versions: core 0.0.1270, web 0.0.229._
+
+Ports v4 `01a83539d`'s wardrobe images route actions and fills the two `KEYSTONE` refusal arms.
+
+- **`save_targets`** answers `{albums}` from `list_all_photo_album_options`.
+- **`save_to_store`** runs in v4's order: the item's home, then the shared body schema, then "a picture not the item's" (400), then "an archived character's vault" (409 `{error}`), then the save. The item's title is the default caption (an empty caption is kept). The byline is the operator's (new `operator_attribution`), and the item itself is never written, so an archived character's picture can be copied out. Its answers go through the shared save-image responses, including the 409 `ALREADY_SAVED` riders. All five `[Wardrobe Images v1]` lines run on the caller thread.
+- **The dispatch arm** rebuilds the body from the raw `caption` / `tags` tri-states, so a JSON `null` is refused with v4's Zod sentence.
+- **The shared parser** refuses a non-object body with Zod's one fatal issue.
+- **The operator byline** keeps an empty `users.name`, as v4 does.
+- **The REST edge** runs GET action dispatch first (an unknown or bare `?action` is a 400 before the query), adds the POST `save-to-store` leg (an empty or unparseable body is `{}`), and renders the 409 riders on REST.
+
+The routes family grows 35 rows (save-targets, the GET dispatch, every save-to-store arm) and compares bodies as bytes. It also adds the `photos/` links and blobs to the dump, and a no-op lost-lock handler in the test.
+
+#### 2026-10-09 — feat(photos): P4.D275 B2 — every enabled store as a save target (photo_album_options)
+
+_Versions: core 0.0.1269._
+
+New `photos::photo_album_options` (v4 `01a83539d`'s `lib/photos/photo-album-options.ts`): `PhotoAlbumKind`, `PhotoAlbumOption` (v4's key order, `isDefault` last) and `list_all_photo_album_options`. It is the wardrobe picture viewer's instance-wide album list:
+
+- Archived characters' vaults are left out.
+- A character vault is named for its character; when several characters share one vault, the last one wins.
+- A project's official store is `project`; General is `general` and the default; anything else is a `document-store`.
+- The list is sorted by kind, then `localeCompare`, with a stable sort.
+- With no General configured, the first option is the default.
+
+Each of the five reads answers v4's fallback, including the degraded mount index's DEBUG. The line ends with v4's DEBUG `[photo-album-options] Listed every store as a save target`. The archived-vault DEBUG keys move to v4's camelCase (`archivedWithVault`, `charactersScanned`).
+
+New tier-2 family `photo_album_options_equivalence` runs 18 planted cases against v4's real function at the pin, comparing the albums' bytes and the ordered log lines. Three measured divergences are named both-ways carves: `ENABLED_STORE_ZOD_DROP`, `RAW_CHARACTER_ZOD_DROP` and `ENSURE_COLLECTION_RECREATES`. A v5-only pin covers the degraded mount index.
+
+#### 2026-10-09 — feat(photos): P4.D275 B1 — the shared save-image responses; the message door's ALREADY_SAVED is a 409
+
+_Versions: core 0.0.1268._
+
+New `photos::save_image_response` (v4 `01a83539d`'s `lib/photos/save-image-response.ts`). It has three parts:
+
+- `saved_image_body`: the 200 `{saved, mountPoint, relativePath, linkId, keptAt, fileId, sha256}`.
+- `save_image_error_response`: `ALREADY_SAVED` is a 409 carrying `code` and the `relativePath` / `keptAt` riders; any other code is a 400.
+- `save_image_error_code`: v4's wire strings.
+
+The chat gallery door now answers through both helpers, with byte-identical responses. The message door's `ALREADY_SAVED` moves from 400 to the same 409. The message door also gains v4's `[SaveImage] saved` / `[SaveImage] rejected` INFO lines, and its catch-all becomes v4's ERROR `[SaveImage] failed` with the fixed 500 `Failed to save image` (it had rendered the DB's own text). The rejected line's `message` key is logged as `errorMessage`: a tracing field named `message` would replace the file record's envelope message (recorded key divergence).
+
+`chat_gallery_equivalence` gains `message_save_already`: 400 on the unported tip, 409 now. The gallery rows are unchanged.
+
+#### 2026-10-09 — feat(wardrobe): P4.D275 A1/A3/A4/A5 — the wear readout from the reader's side (bugs 183 + 184)
+
+_Versions: core 0.0.1267._
+
+Converges the wardrobe tools on v4 `ed8b15b50`, this port's own bug filings 183 and 184:
+
+- **`format_time::format_worn_relative`** (bug 183): the day ladder for a phrase after "last". "last week" becomes "a week ago" and "last month" becomes "a month ago". The shared ladder and the memory-recall labels are untouched.
+- **`wardrobe_list`** (bug 184): reads the ledger through `find_summaries_for_wearer`. Each item gains `worn_by_you` / `last_worn_by_you_at` after the household's `wear_count` / `last_worn_at`. The note is v4's caller-first `formatWardrobeListWearNote` with `listTimes` (`once` / `N×`).
+- **`wardrobe_read`**: v4's reader-first `formatWardrobeWearParagraph` ("You have worn it …; Worn N times in all …").
+- **Descriptions**: both tools' descriptions are regenerated into `data.rs` through `gen-tool-catalog.mjs`. Exactly the two literals moved.
+- **Handler lines** (missing until now): `Wardrobe list completed` (thirteen keys, incl. the new `neverWornByCallerCount`), plus the validation WARN and execution ERROR of both tools. The ERROR carries the bare SQLite text.
+
+`tool_image_generation` gains a `worn_relative` kind, four-field `list_note` rows and v4's jest paragraph shapes (baseline `p4.d275-tool-image-generation`). `wardrobe_tools`, `project_roster_access`, `tool_definitions` and `chat_admin_routes` were regenerated at the pin with no corpus change. All are green.
+
+#### 2026-10-09 — feat(wardrobe): P4.D275 A2 — find_summaries_for_wearer keeps the reader's share apart (bug 184)
+
+_Versions: core 0.0.1266._
+
+Ports v4 `ed8b15b50`'s `WardrobeWearRepository.findSummariesForWearer`. New `WardrobeWearPerspective { household, yours }` and `find_summaries_for_wearer(item_ids, wearer_character_id)`. The household totals and the caller's own share come from ONE ledger read: the same chunked SELECT `find_summaries` makes, split in memory. An unattributed row never counts as anyone's own. Empty ids return with no read and no line.
+
+On success it logs v4's DEBUG `Read wear summaries for wearer {itemCount, wornCount, wearerCharacterId}`. A failed read logs v4's fallback `Error reading wear summaries for wearer` with `wearerCharacterId` and answers the pre-filled map. `find_summaries` now groups through the shared private `find_rows_by_item` with no behaviour change. `log_read_failure` takes a key-set enum for its three shapes.
+
+The tier-2 family `wardrobe_wear_stats_tier2` gains nine ops plus an absent-table op. They run against v4's real repository at the `01a83539d` pin, and the results and every log line match.
 #### 2026-10-09 — docs(porting): P4.D265 lane close — real-instance note, gate and sweep records
 
 _Docs-only change._
