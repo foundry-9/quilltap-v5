@@ -182,6 +182,12 @@ _Docs-only change._
 
 The two help pages v4's wardrobe programme moved between `01a83539d` and `4a38222e6` are copied whole from `git show 4a38222e6:help/<page>`: `help/wardrobe.md` (the folders section, the archive paragraphs, "Retiring a garment twice changes nothing", the analyst-profile paragraph for Import from image, "Slots this outfit covers", "Show archived") and `help/project-wardrobe.md` (the card is the shared browser). The tree stays at 131 files, md5-identical to the pin. `help_tree_equivalence` and `help_section_size_equivalence` were regenerated at the pin (131 docs, 766 sections) and measured red before the copy, green after; `help_tree_embed_guard` and `host_help_docs_boot` are unchanged at 131. `help_tree_equivalence`'s history comment gains the P4.D287 line. No crate source changed; the host rebuilds its embedded help table but is not bumped.
 
+#### 2026-10-12 — feat(spa): the Move-to-folder picker dialog (P4.D285 unit 5)
+
+_Versions: SPA 0.5.840._
+
+New `wardrobe/wardrobe-folder-picker-dialog.ts` ports v4's `WardrobeFolderPickerDialog`: the container's folder tree as an indented listbox with the top level first, the shared current folder disabled with "(here now)", Move / Moving… / Cancel, and an inline New folder… under the highlighted row. It closes on its own Escape (ignored while moving) and sits one layer above the wardrobe dialog. The folder-tree store now reports loading only on a container's first read, so a refresh keeps the tree on screen. Adds a small `qtAutofocus` directive for inputs mounted on a click.
+
 #### 2026-10-12 — feat(spa): the wardrobe actions store and list-data store, with the folder picker counted as an overlay (P4.D285 unit 4)
 
 _Versions: SPA 0.5.839._

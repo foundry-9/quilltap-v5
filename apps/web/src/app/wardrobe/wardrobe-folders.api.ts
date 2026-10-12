@@ -123,6 +123,10 @@ export async function moveWardrobeItemsToFolder(
 export interface WardrobeFoldersStore {
   /** The tree; empty until the read lands, and empty when it fails. */
   readonly folders: Signal<readonly WardrobeFolderDto[]>;
+  /**
+   * v4's `isLoading`: true only while the FIRST read of the current container
+   * is in flight — a refresh keeps the tree on display.
+   */
   readonly loading: Signal<boolean>;
   /**
    * Read `container`'s tree (null clears it — v4's `enabled: container !==
@@ -144,6 +148,8 @@ export function createWardrobeFoldersStore(core: CoreClient): WardrobeFoldersSto
   const folders = signal<readonly WardrobeFolderDto[]>(EMPTY);
   const loading = signal(false);
   let current: WardrobeContainer | null = null;
+  /** The container whose tree is on display ('' before the first answer). */
+  let loadedKey = '';
   let seq = 0;
 
   const load = async (container: WardrobeContainer | null): Promise<void> => {
@@ -152,16 +158,24 @@ export function createWardrobeFoldersStore(core: CoreClient): WardrobeFoldersSto
     if (!container) {
       folders.set(EMPTY);
       loading.set(false);
+      loadedKey = '';
       return;
     }
-    loading.set(true);
+    const key = `${container.scope}:${container.id ?? ''}`;
+    if (key !== loadedKey) loading.set(true);
     try {
       const next = await listWardrobeFolders(core, container);
-      if (ticket === seq) folders.set(next);
+      if (ticket === seq) {
+        folders.set(next);
+        loadedKey = key;
+      }
     } catch (error) {
-      if (ticket === seq) folders.set(EMPTY);
+      if (ticket === seq) {
+        folders.set(EMPTY);
+        loadedKey = key;
+      }
       console.warn('[useWardrobeFolders] Failed to load wardrobe folders', {
-        tierKey: `${container.scope}:${container.id ?? ''}`,
+        tierKey: key,
         error,
       });
     } finally {

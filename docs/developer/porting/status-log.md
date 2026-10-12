@@ -178623,3 +178623,32 @@ component was run, and the lane has no Rust family (the order's regen rule).
   an abandoned view is dropped by ticket.
 - **Specs:** `wardrobe-item-actions.spec.ts` 13, `wardrobe-list-data.spec.ts`
   6. **Red-first:** RED BY CONSTRUCTION on `main`. Green 2 / 19.
+
+### Unit 5 — the folder picker (SPA 0.5.840)
+- NEW `wardrobe/wardrobe-folder-picker-dialog.ts` — v4
+  `WardrobeFolderPickerDialog.tsx` (`4a38222e6`; `97f0d8cb8` does not touch
+  the file) over `qt-modal`: title `Move ${subject} to a folder`, `maxWidth
+  md`, the intro sentence, `Loading folders…`, listbox `Folders` with options
+  (`Wardrobe (top level)` first; indent `depth*16+8` px; folder icon on
+  non-root rows; `(here now)` + `aria-disabled` + `disabled` + title `Already
+  here` on the shared current folder), `New folder…` (disabled while open) →
+  input `Folder name` / `New folder name` indented `(depth(highlighted)+1)*16+8`
+  under the highlighted row, or after the list when nothing is highlighted;
+  `Create` disabled on pending / blank; Enter / Escape (stopPropagation);
+  `Cancel` (disabled while moving), `Move` / `Moving…` (disabled until a
+  non-current row is highlighted). Error toast `error.message` / `The folder
+  would not be made`.
+  **Recorded mechanism divergences:** `qt-modal` has no Escape — a document
+  `keydown.escape` listener gated by `moving` (v4 `closeOnEscape={!moving}`;
+  the `save-image-dialog.ts` precedent); `overlayClass="z-[70]"` (v4's portal
+  lands the picker above the dialog; the item editor's layer); the create's
+  `onSettled` = the picker re-reads its own tree + emits `foldersChanged` for
+  the host's `actions.refreshLists()`.
+- `wardrobe-folders.api.ts`: the store's `loading` is now v4's `isLoading`
+  (first read of a container only) — a refresh keeps the tree on display.
+- NEW `wardrobe/autofocus.directive.ts` (`qtAutofocus`): React's `autoFocus`
+  for inputs inserted on a click (`afterNextRender` → `focus()`).
+- **Specs:** `wardrobe-folder-picker-dialog.spec.ts` 10 (v4 has no picker
+  test of its own — its two browser cases are transcribed in the browser's
+  spec); `wardrobe-folders.api.spec.ts` +1. **Red-first:** RED BY
+  CONSTRUCTION on `main`. Green 2 / 20.

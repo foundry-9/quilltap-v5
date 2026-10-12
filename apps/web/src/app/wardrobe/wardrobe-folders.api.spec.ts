@@ -161,3 +161,32 @@ describe('createWardrobeFoldersStore (v4 `useWardrobeFolders`, as signals — R-
     expect(store.folders()).toEqual([]);
   });
 });
+
+describe('createWardrobeFoldersStore loading (v4 `isLoading`, not `isFetching`)', () => {
+  it('loading only on the first read of a container; a refresh keeps the tree on display', async () => {
+    let release!: () => void;
+    let gate: Promise<void> = Promise.resolve();
+    const store = createWardrobeFoldersStore(
+      fakeCore(async () => {
+        await gate;
+        return { folders: [{ path: 'A', name: 'A', itemCount: 0 }] };
+      }).core,
+    );
+    gate = new Promise((r) => (release = r));
+    const first = store.load(CHARACTER);
+    expect(store.loading()).toBe(true);
+    release();
+    await first;
+    gate = new Promise((r) => (release = r));
+    const again = store.refresh();
+    expect(store.loading()).toBe(false);
+    expect(store.folders()).toHaveLength(1);
+    release();
+    await again;
+    gate = new Promise((r) => (release = r));
+    const other = store.load(PROJECT);
+    expect(store.loading()).toBe(true);
+    release();
+    await other;
+  });
+});
