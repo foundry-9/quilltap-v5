@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-12 — docs(porting): drift check records v4's wardrobe audit, fixes and refactor past the pin
+
+_Docs-only change._
+
+`/driftcheck` with the `01a83539d` round finished and about to unify. v4 `main` is seventeen commits past the `f5e953a3f` baseline: the thirteen the round is pinned at, then four wardrobe commits landed 2026-10-09/10 — `3e6e2f590` (the seven-phase wardrobe refactor plan; bugs 187–197 filed from v4's own code audit), `7a8d6dacc` (bugs 187, 188, 189, 191: the vault parser keeps cross-tier UUID component refs, `wardrobe_archive` is idempotent with a new `already_archived` result key, a tool-queued item picture carries its chat into the Concierge policy and the image failover, every equip path refuses an archived item), `9ecebf986` (the refactor itself, 261 files: one wearable pool per request with archived items dropped per tier, one location type, one route factory for all four tiers with POST/PUT answering `origin` + `wear` and cycle → 400 / archived character → 409, the seven tools through one table so `wardrobe_create` + `equip_now` announces, `wardrobe_list` drops `include_presets` from its definition, widen-never-narrow composite slots, the transfer probe walks group before project, a new `link-image` action, preview-avatar through the Concierge failover, the Almanack counting wardrobe pictures as image spend, the backup's `wardrobeItems` always empty; bugs 190 and 192–197) and `e23fb095b` (bug 198, SPA only: the outfit read refetches on every mount and the `chats` realtime topic invalidates it). None is a convergence on a port filing; no schema, migration or dependency moved; `help/wardrobe.md` and `help/project-wardrobe.md` moved. The two rows `/setupphase` had recorded as UNCLASSIFIED are now classified (NO-PORT? and PORT) and two new rows are UNPROCESSED (PORT + PORT-NEW, PORT). The baseline stays `f5e953a3f` — the coming `/unify` moves it to `01a83539d`, not past it. Regen rule unchanged: pin required; this round's regens pin at `01a83539d`.
+
 #### 2026-10-09 — docs(porting): order the `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round — fourteen work orders (P4.D265 → {P4.D266 … P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278)
 
 _Docs-only change._
