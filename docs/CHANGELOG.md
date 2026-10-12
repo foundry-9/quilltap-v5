@@ -242,6 +242,12 @@ _Versions: SPA 0.5.836._
 
 Adds `wardrobe/folders.ts` (v4 `lib/wardrobe/folders.ts` at `4a38222e6`, the whole client-safe module: path helpers, the normaliser family, the error classes) and `wardrobe/folder-view.ts` (v4's pure browser view rules: own tier vs borrowed tiers, child folder rows, tier rows). `wardrobe-container.ts` gains `containerForListedItem`, which addresses a listed item through the wardrobe its `origin` names before falling back to the character/General rule. `WardrobeItemDto` gains the shared `folder?` field. Specs: v4's 19 folder cases transcribed, 14 folder-view rule rows, 2 addressing rows.
 
+#### 2026-10-12 — test(e2e): the wardrobe item editor, row and picture cleanup walk on port 4337 (P4.D286 unit 8)
+
+_Versions: SPA 0.5.843._
+
+Adds `e2e/wardrobe-items-editor-flow.spec.ts`, a browser walk against its own server and instance on port 4337 (the `wardrobe-flow` instance recipe). Bug 190 runs live: an outfit whose part was archived opens in the editor with the part listed `Accessories · archived` and its slot checked and locked. Bug 194 runs live: a picture whose full-size bytes will not load is removed from the viewer's placeholder through the wardrobe images route, leaving the item with no picture and never touching the generic image delete. The two folder beats (New folder… filing a garment under `Formal/Evening`, and Move to folder… present or absent by manageability) are written behind `P4D279_SERVER_LANDED = false`, to be flipped at unification once the server's folder verbs and the sibling browser lane land.
+
 #### 2026-10-12 — refactor(spa): the transfer dialog's shared isComposite and the link-image action name (P4.D286 unit 7)
 
 _Versions: SPA 0.5.842._

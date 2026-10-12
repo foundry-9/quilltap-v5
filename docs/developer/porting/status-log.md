@@ -179097,3 +179097,32 @@ regen (no Rust family); every v4 read is `git show 4a38222e6:<path>`.
   `WardrobeItemImageSection.tsx`, `constants.ts` — all EMPTY. v5's twins are
   current; nothing to port.
 - SPA gate: lint ok; vitest 490 / 9,375; build ok.
+
+### Unit 8 — `e2e/wardrobe-items-editor-flow.spec.ts` (port 4337)
+
+- NEW spec, its own server + instance on **4337** (§R.9), the
+  `wardrobe-flow.spec.ts` instance recipe verbatim (the committed
+  `characters-*` pair + the three materialized tables + the user rewrite).
+- **LIVE now (verbs on `main`):** bug 190 — an outfit (Shirt + Topper) with
+  the Topper archived through `characterWardrobeUpdate { archived: true }`;
+  Edit (under the browser's **Outfits** tab — the first run's catch: a
+  composite does not list under Items) shows `Accessories · archived` checked,
+  and the Accessories slot checked + disabled + titled `Covered by a component
+  — always included` under the "covers" sentence. Bug 194 — a hung picture
+  whose full-size URL is routed to 404 (the thumbnail still loads): the
+  viewer's placeholder Remove deletes it through `wardrobeItemImageDelete`
+  (`wardrobeItemImagesList` answers `current: null`, no images), no request
+  to `/api/v1/images/`, no refusal toast.
+- **GATED behind `const P4D279_SERVER_LANDED = false` (§S.9 — the unifier
+  flips it):** New folder… → `Formal/Evening` → Edit reopens on `Formal ›
+  Evening` (needs `wardrobeFoldersList` + `folder` on create, P4.D279 /
+  P4.D281); Move to folder… on Aria's own garment and absent from a General
+  one (needs those verbs AND P4.D285's browser binding `[canMoveToFolder]` —
+  the dialog on this branch binds none).
+- Run by FILE on 4337 (release bins from main's cloned target — no crates
+  hunk on this branch; `apps/web/dist` from the unit-7 build): first run 1
+  passed / 1 failed (the Outfits-tab miss above) / 2 skipped; after the fix
+  **2 passed / 0 failed / 2 skipped (60.0 s)**. The LIVE beats' red against
+  unported `main` is the component-level red of units 3 and 6 (main's editor
+  never read archived candidates; main's placeholder only had the refusing
+  generic DELETE) — not re-measured in a browser.
