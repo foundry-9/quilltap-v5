@@ -1,6 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   FullScreenImageAction,
@@ -255,5 +255,75 @@ describe('FullScreenImageViewer (v4 FullScreenImageViewer.tsx at 01a83539d)', ()
     fixture.componentInstance.open.set(false);
     await flush(fixture);
     expect(document.body.style.overflow).toBe('');
+  });
+});
+
+/**
+ * P4.D286 — bug 194's second v4 case (`wardrobe-image-viewer.missing-cleanup.
+ * test.tsx:76` at the pin `4a38222e6`): with no `missingCleanup` override the
+ * frame's placeholder still uses the generic image delete, and closes after
+ * it; with one, the override runs INSTEAD (v4 `FullScreenImageViewer.tsx:151-158`).
+ */
+describe('FullScreenImageViewer — the missing-picture cleanup (bug 194)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    TestBed.resetTestingModule();
+    document.body.style.overflow = '';
+  });
+
+  const removeButton = (): HTMLButtonElement =>
+    [...body().querySelectorAll('qt-deleted-image-placeholder button')].find(
+      (b) => (b.textContent ?? '').trim() === 'Remove',
+    ) as HTMLButtonElement;
+
+  it('still uses the generic image delete when no override is given', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
+    vi.stubGlobal('fetch', fetchMock);
+    const fixture = await render();
+    await miss(fixture);
+    removeButton().click();
+    await flush(fixture);
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/images/file-1', { method: 'DELETE' });
+    expect(fixture.componentInstance.closes()).toBe(1);
+  });
+
+  it('runs the override instead of the generic delete, then closes', async () => {
+    @Component({
+      imports: [FullScreenImageViewer],
+      template: `
+        <qt-full-screen-image-viewer
+          src="/api/v1/files/file-2"
+          alt="A coat"
+          imageId="file-2"
+          filename="coat.webp"
+          [missingCleanup]="cleanup"
+          (closeModal)="closes.set(closes() + 1)"
+        />
+      `,
+    })
+    class OverrideHost {
+      readonly closes = signal(0);
+      readonly calls: number[] = [];
+      readonly cleanup = async (): Promise<void> => {
+        this.calls.push(this.closes());
+      };
+    }
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [OverrideHost] });
+    const fixture = TestBed.createComponent(OverrideHost);
+    fixture.detectChanges();
+    await flush(fixture as unknown as ComponentFixture<Host>);
+    body().querySelector('qt-full-screen-image-viewer img')!.dispatchEvent(new Event('error'));
+    await flush(fixture as unknown as ComponentFixture<Host>);
+    removeButton().click();
+    await flush(fixture as unknown as ComponentFixture<Host>);
+    expect(fixture.componentInstance.calls).toEqual([0]);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.closes()).toBe(1);
   });
 });

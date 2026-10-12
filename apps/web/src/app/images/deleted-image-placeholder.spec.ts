@@ -32,6 +32,7 @@ describe('DeletedImagePlaceholder', () => {
     width?: number;
     height?: number;
     styleClass?: string;
+    remove?: () => Promise<void>;
   }): Promise<{
     fixture: ComponentFixture<DeletedImagePlaceholder>;
     cleanups: number[];
@@ -45,6 +46,7 @@ describe('DeletedImagePlaceholder', () => {
     if (inputs?.styleClass !== undefined) {
       fixture.componentRef.setInput('styleClass', inputs.styleClass);
     }
+    if (inputs?.remove !== undefined) fixture.componentRef.setInput('remove', inputs.remove);
     const cleanups: number[] = [];
     fixture.componentInstance.cleanup.subscribe(() => cleanups.push(1));
     fixture.detectChanges();
@@ -190,6 +192,50 @@ describe('DeletedImagePlaceholder', () => {
       removeButton(fixture).click();
       await flush(fixture);
       expect(fetchMock).toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * P4.D286 — bug 194 (v4 `9ecebf986` `DeletedImagePlaceholder.tsx:11-17`,
+   * `:41-55`): an `onRemove` override removes the reference through the
+   * record's own route INSTEAD of the generic DELETE (which in v5 is a loud
+   * refusal — the override is the only working Remove); a throw toasts.
+   */
+  describe('The remove override (bug 194)', () => {
+    it('calls the override instead of the generic DELETE, then emits cleanup', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const remove = vi.fn(async () => undefined);
+      const { fixture, cleanups } = await render({ remove });
+      removeButton(fixture).click();
+      await flush(fixture);
+      expect(remove).toHaveBeenCalledTimes(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(cleanups.length).toBe(1);
+    });
+
+    it('does not call it when the user cancels', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(false);
+      const remove = vi.fn(async () => undefined);
+      const { fixture, cleanups } = await render({ remove });
+      removeButton(fixture).click();
+      await flush(fixture);
+      expect(remove).not.toHaveBeenCalled();
+      expect(cleanups.length).toBe(0);
+    });
+
+    it('toasts a thrown message and emits no cleanup', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const { fixture, cleanups } = await render({
+        remove: async () => {
+          throw new Error('That picture is not one of this item’s');
+        },
+      });
+      removeButton(fixture).click();
+      await flush(fixture);
+      expect(toasts()).toEqual([{ type: 'error', message: 'That picture is not one of this item’s' }]);
+      expect(cleanups.length).toBe(0);
     });
   });
 

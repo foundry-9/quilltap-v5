@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 
 import { copyImageToClipboard } from '../core/clipboard-utils';
+import { CoreClient } from '../core/core-client';
 import type { MessageAttachment } from '../core/core-contract';
 import { downloadImageUrl } from '../core/download-utils';
 import {
@@ -10,7 +11,7 @@ import {
 } from '../images/full-screen-image-viewer';
 import { SaveImageDialog, type SaveImageTarget } from '../images/save-image-dialog';
 import { ToastService } from '../ui/toast.service';
-import { wardrobeImageUrl } from './item-images.api';
+import { deleteWardrobeItemImage, wardrobeImageUrl } from './item-images.api';
 import type { WardrobeContainer } from './wardrobe-container';
 
 /**
@@ -40,6 +41,10 @@ export function pictureFilename(title: string): string {
  * and while that dialog is up the viewer leaves the keyboard alone so Escape
  * closes only the dialog.
  *
+ * When the picture's bytes are missing, the frame's Remove deletes it through
+ * the images route's `delete-image` action rather than the generic image
+ * delete, and refreshes the wardrobe queries (bug 194, `9ecebf986`).
+ *
  * Design of record: docs/developer/features/complete/wardrobe-item-images.md
  *
  * v5 shape: mounted under an `@if` by its hosts (v4's `isOpen` has no
@@ -48,7 +53,10 @@ export function pictureFilename(title: string): string {
  * Download and Copy ride v5's `downloadImageUrl` / `copyImageToClipboard`
  * (R-I) inside v4's own try/catch shape — the copy helper THROWS when no
  * clipboard write method exists (`core/clipboard-utils.ts`), so v4's
- * `console.error` + error toast are reached as in v4.
+ * `console.error` + error toast are reached as in v4. v4's
+ * `invalidateQueries({ queryKey: queryKeys.wardrobe.all })` after the bug-194
+ * removal has no v5 cache to name: the viewer emits {@link removed} and each
+ * host answers with its own refresh (the recorded `imageChanged` idiom).
  *
  * @module wardrobe/wardrobe-image-viewer
  */
@@ -65,6 +73,7 @@ export function pictureFilename(title: string): string {
       [onPrev]="onPrev()"
       [onNext]="onNext()"
       [keyboardActive]="!saving()"
+      [missingCleanup]="handleMissingCleanup"
       zIndexClass="z-[90]"
       [actions]="actions"
       (closeModal)="closed.emit()"
@@ -89,6 +98,7 @@ export function pictureFilename(title: string): string {
 })
 export class WardrobeImageViewer {
   protected readonly toasts = inject(ToastService);
+  private readonly core = inject(CoreClient);
 
   readonly itemId = input.required<string>();
   readonly itemTitle = input.required<string>();
@@ -103,6 +113,10 @@ export class WardrobeImageViewer {
 
   /** v4 `onClose`. */
   readonly closed = output<void>();
+  /** A missing picture was removed through the wardrobe route — the host
+   *  refreshes the reads that might still show it (bug 194; fired before
+   *  {@link closed}). */
+  readonly removed = output<void>();
 
   protected readonly saving = signal(false);
   protected readonly src = computed(() => wardrobeImageUrl(this.fileId()));
@@ -125,6 +139,18 @@ export class WardrobeImageViewer {
   protected readonly attachments = computed<MessageAttachment[]>(() => [
     { id: this.fileId(), filename: this.filename(), filepath: this.src(), mimeType: 'image/webp' },
   ]);
+
+  /**
+   * The bytes are gone: remove the picture through the wardrobe's own route,
+   * which drops the mount link and the `files` row and moves the item's
+   * current pointer on — the generic image delete knows none of that (bug
+   * 194) — then refresh every wardrobe read that might still show it (v4
+   * `9ecebf986` `:73-82`). A throw reaches the placeholder's toast.
+   */
+  protected readonly handleMissingCleanup = async (): Promise<void> => {
+    await deleteWardrobeItemImage(this.core, this.itemId(), this.container(), this.fileId());
+    this.removed.emit();
+  };
 
   /** v4 `:65-74`. */
   protected handleDownload(): void {

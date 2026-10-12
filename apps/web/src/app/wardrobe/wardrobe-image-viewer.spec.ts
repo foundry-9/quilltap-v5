@@ -26,6 +26,7 @@ import { WardrobeImageViewer, pictureFilename } from './wardrobe-image-viewer';
         [onPrev]="onPrev()"
         [onNext]="onNext()"
         (closed)="closes.set(closes() + 1)"
+        (removed)="removals.push(closes())"
       />
     }
   `,
@@ -37,6 +38,8 @@ class Host {
   readonly onPrev = signal<(() => void) | undefined>(undefined);
   readonly onNext = signal<(() => void) | undefined>(undefined);
   readonly closes = signal(0);
+  /** `closes()` at each `removed` emission — pins removed-before-closed. */
+  readonly removals: number[] = [];
   readonly container: WardrobeContainer = { scope: 'character', id: 'char-1' };
 }
 
@@ -230,8 +233,12 @@ describe('WardrobeImageViewer (v4 wardrobe-image-viewer.tsx at 01a83539d)', () =
     vi.stubGlobal('ClipboardItem', class {
       constructor(readonly items: unknown) {}
     });
+    // `writable` too: a later spec in the same worker reassigns the clipboard
+    // with `Object.assign` (`chat/courier-bubble.spec.ts`), which throws on a
+    // read-only property (measured by P4.D286's gate).
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
+      writable: true,
       value: { write: vi.fn(async () => undefined) },
     });
     byTitle('Copy to clipboard')!.click();
@@ -245,8 +252,12 @@ describe('WardrobeImageViewer (v4 wardrobe-image-viewer.tsx at 01a83539d)', () =
     vi.stubGlobal('ClipboardItem', class {
       constructor(readonly items: unknown) {}
     });
+    // `writable` too: a later spec in the same worker reassigns the clipboard
+    // with `Object.assign` (`chat/courier-bubble.spec.ts`), which throws on a
+    // read-only property (measured by P4.D286's gate).
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
+      writable: true,
       value: { write: vi.fn(async () => Promise.reject(new Error('denied'))) },
     });
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -262,5 +273,85 @@ describe('WardrobeImageViewer (v4 wardrobe-image-viewer.tsx at 01a83539d)', () =
     const fixture = await render();
     key('Escape');
     expect(fixture.componentInstance.closes()).toBe(1);
+  });
+});
+
+/**
+ * P4.D286 — bug 194: v4 `9ecebf986`
+ * `__tests__/unit/components/wardrobe/wardrobe-image-viewer.missing-cleanup.test.tsx`
+ * `:50` at the pin `4a38222e6`, transcribed. A wardrobe picture whose bytes are
+ * gone is removed through the images route's `delete-image` action (v5's
+ * `wardrobeItemImageDelete` verb), never the generic image DELETE; v4's
+ * `invalidateQueries({ queryKey: queryKeys.wardrobe.all })` is the `removed`
+ * output each host answers with its refresh; then the viewer closes.
+ */
+describe('WardrobeImageViewer — missing-picture cleanup (bug 194)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    TestBed.resetTestingModule();
+    document.body.style.overflow = '';
+  });
+
+  it('removes the picture through the wardrobe images route and refreshes the wardrobe', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const fetchMock = vi.fn(async (_url: string) => ({ ok: true, json: async () => ({}) }));
+    vi.stubGlobal('fetch', fetchMock);
+    const seen: Seen = { requests: [] };
+    const fixture = await render(() => {}, seen);
+    body().querySelector('qt-full-screen-image-viewer img')!.dispatchEvent(new Event('error'));
+    await flush(fixture);
+    const remove = [...body().querySelectorAll('qt-deleted-image-placeholder button')].find(
+      (b) => (b.textContent ?? '').trim() === 'Remove',
+    ) as HTMLButtonElement;
+    remove.click();
+    await flush(fixture);
+
+    expect(seen.requests).toEqual([
+      {
+        type: 'wardrobeItemImageDelete',
+        scope: 'character',
+        containerId: 'char-1',
+        itemId: 'item-1',
+        fileId: 'file-1',
+      },
+    ]);
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/api/v1/images/'))).toBe(false);
+    // Refreshed before it closed.
+    expect(fixture.componentInstance.removals).toEqual([0]);
+    expect(fixture.componentInstance.closes()).toBe(1);
+  });
+
+  it('a refused removal toasts the server’s sentence and keeps the viewer open', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [Host],
+      providers: [
+        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
+        {
+          provide: CoreClient,
+          useValue: {
+            dispatchData: async () => {
+              throw new Error('That picture is not one of this item’s');
+            },
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(Host);
+    fixture.detectChanges();
+    await flush(fixture);
+    body().querySelector('qt-full-screen-image-viewer img')!.dispatchEvent(new Event('error'));
+    await flush(fixture);
+    (
+      [...body().querySelectorAll('qt-deleted-image-placeholder button')].find(
+        (b) => (b.textContent ?? '').trim() === 'Remove',
+      ) as HTMLButtonElement
+    ).click();
+    await flush(fixture);
+    expect(toasts()).toContain('That picture is not one of this item’s');
+    expect(fixture.componentInstance.removals).toEqual([]);
+    expect(fixture.componentInstance.closes()).toBe(0);
   });
 });

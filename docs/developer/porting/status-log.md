@@ -179049,3 +179049,35 @@ regen (no Rust family); every v4 read is `git show 4a38222e6:<path>`.
   `courier-bubble`'s `Object.assign` then throws when the two share a
   worker); green alone 8/8; the full re-run green (lint ok; vitest 490 /
   9,366; build ok). Pre-existing and order-dependent; hardened in unit 6.
+
+### Unit 6 — bug 194 (the missing-picture cleanup)
+
+- `images/deleted-image-placeholder.ts` — `remove` function input (v4
+  `onRemove`, `:11-17`) AHEAD of the generic DELETE (`:41-55`). The generic
+  arm's v5 refusal (P4.9a2) is PRE-EXISTING, recorded in the header, not
+  drift (the order's ruling).
+- `images/full-screen-image-viewer.ts` — `missingCleanup` input (v4
+  `onMissingCleanup`, `:42-48`) → `[remove]` on the placeholder (`:151-158`).
+- `wardrobe/wardrobe-image-viewer.ts` — `handleMissingCleanup` over
+  `deleteWardrobeItemImage` (`wardrobeItemImageDelete`, v4 `:73-82`) + a
+  `removed` output fired before `closed` (v4's `invalidateQueries({ queryKey:
+  queryKeys.wardrobe.all })` has no v5 cache — the recorded host-refresh
+  idiom).
+- `item-editor/wardrobe-item-image-section.ts` — `(removed)="void
+  afterChange()"` (the history re-read + `imageChanged`).
+- **HANDOFF(§R.10(m)) — `wardrobe-control-dialog.ts` (P4.D285's file), the
+  row-thumbnail viewer host (`:606-615` on `main`):** add `(removed)=
+  "reloadCurrentItems()"` to its `<qt-wardrobe-image-viewer>` (the refresh
+  the editor's `imageChanged` already calls, `:634`). Until then a picture
+  removed from the ROW viewer is deleted server-side but the row's thumbnail
+  stays until the next reload.
+- **Red-first:** 5 RED (the viewer's two bug-194 cases — v4
+  `missing-cleanup.test.tsx:50` + a refused-removal case; the placeholder's
+  three `remove`-arm cases) + the frame's override case RED at compile
+  (`missingCleanup` unknown); v4's `:76` generic-path case was GREEN before
+  (v5 already had it — a guard pin). The image section's host case proven
+  red by deleting the binding (1 RED), restored. All GREEN after.
+- `wardrobe-image-viewer.spec.ts`'s two `navigator.clipboard`
+  `defineProperty`s gain `writable: true` (unit 5's order-dependent
+  `courier-bubble` pollution).
+- SPA gate: lint ok; vitest 490 / 9,374; build ok.

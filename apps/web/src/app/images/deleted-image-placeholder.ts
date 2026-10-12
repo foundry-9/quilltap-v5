@@ -22,7 +22,13 @@ import { ToastService } from '../ui/toast.service';
  * surface is a LOUD REFUSAL (the P4.9a2 deferral — v4's orphan-cleanup DELETE
  * handler is unported; the web edge answers "recognized but not yet
  * available"), so the live button surfaces the refusal message through the
- * toast, exactly as v4 does (`DeletedImagePlaceholder.tsx:45`).
+ * toast, exactly as v4 does (`DeletedImagePlaceholder.tsx:45`). That refusal
+ * is PRE-EXISTING, not drift.
+ *
+ * {@link remove} (v4 `9ecebf986` `onRemove`, bug 194) goes AHEAD of that
+ * generic delete: a picture that belongs to a record (a wardrobe item's
+ * history) is removed through the record's own route — in v5 the ONLY
+ * working Remove, since the generic one refuses.
  */
 @Component({
   selector: 'qt-deleted-image-placeholder',
@@ -67,6 +73,15 @@ export class DeletedImagePlaceholder {
   /** v4 `className = ''` (`:22`) — carried verbatim, sniffing rules included. */
   readonly styleClass = input('');
 
+  /**
+   * Remove the dangling reference some other way than the generic
+   * `DELETE /api/v1/images/{id}` — a picture that belongs to a record (a
+   * wardrobe item's history) is removed through that record's own route, so
+   * its links and pointers go with it. Throw to report failure. (v4
+   * `9ecebf986` `:11-17`; a function input, the frame's `onPrev` idiom.)
+   */
+  readonly remove = input<(() => Promise<void>) | undefined>(undefined);
+
   /** v4 `onCleanup?.()` — emitted after a successful reference delete. */
   readonly cleanup = output<void>();
 
@@ -92,12 +107,17 @@ export class DeletedImagePlaceholder {
       return;
     }
     try {
-      const response = await fetch(apiUrl(`/api/v1/images/${this.imageId()}`), {
-        method: 'DELETE',
-      });
-      if (!response.ok) {
-        const data = (await response.json()) as { error?: string };
-        throw new Error(data.error || 'Failed to remove image reference');
+      const remove = this.remove();
+      if (remove) {
+        await remove();
+      } else {
+        const response = await fetch(apiUrl(`/api/v1/images/${this.imageId()}`), {
+          method: 'DELETE',
+        });
+        if (!response.ok) {
+          const data = (await response.json()) as { error?: string };
+          throw new Error(data.error || 'Failed to remove image reference');
+        }
       }
       this.cleanup.emit();
     } catch (err) {

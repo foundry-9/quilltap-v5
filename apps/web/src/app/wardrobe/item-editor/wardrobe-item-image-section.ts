@@ -239,6 +239,7 @@ function profileLabel(p: ImageProfileDto): string {
           [note]="viewerNote()"
           [onPrev]="viewerPrev()"
           [onNext]="viewerNext()"
+          (removed)="void afterChange()"
           (closed)="viewingIndex.set(null)"
         />
       }
@@ -453,7 +454,7 @@ export class WardrobeItemImageActive {
   }
 
   /** After any change to the picture set: refresh the history and tell the editor (v4 `:164-170`). */
-  private async afterChange(): Promise<void> {
+  protected async afterChange(): Promise<void> {
     await this.loadImages(this.item().id, this.container());
     this.imageChanged.emit();
   }

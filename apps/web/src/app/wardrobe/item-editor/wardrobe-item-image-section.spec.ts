@@ -513,3 +513,44 @@ describe('WardrobeItemImageSection — the full-screen viewer (v4 01a83539d)', (
     expect(buttonByText(entries[1], 'Delete')!.className.split(' ')[0]).toBe('pointer-events-auto');
   });
 });
+
+/**
+ * P4.D286 — bug 194's host half (v4 `9ecebf986`): the Picture section's
+ * viewer removes a picture whose bytes are gone through the wardrobe route,
+ * and the section answers the viewer's `removed` with its refresh (v4's
+ * `invalidateQueries({ queryKey: queryKeys.wardrobe.all })` — the history
+ * re-read, and `imageChanged` so the lists behind the editor refresh too).
+ */
+describe('WardrobeItemImageSection — a missing picture removed from the viewer (bug 194)', () => {
+  it('deletes through the wardrobe route, re-reads the history and tells the editor', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const fetchMock = stubFetch(200, {});
+    const h = await mount({
+      item: makeItem({ imageFileId: 'file-2' }),
+      container: { scope: 'character', id: 'char-1' },
+    });
+    h.el
+      .querySelector<HTMLButtonElement>(
+        'button[aria-label="View the picture of Midnight Lightning Flapper Dress full size"]',
+      )!
+      .click();
+    await h.settle();
+    const reads = (): number => h.seen.filter((r) => r['type'] === 'wardrobeItemImagesList').length;
+    const before = reads();
+    document.body.querySelector('qt-full-screen-image-viewer img')!.dispatchEvent(new Event('error'));
+    await h.settle();
+    buttonByText(document.body.querySelector('qt-deleted-image-placeholder')!, 'Remove')!.click();
+    await h.settle();
+    expect(h.seen).toContainEqual({
+      type: 'wardrobeItemImageDelete',
+      scope: 'character',
+      containerId: 'char-1',
+      itemId: 'item-1',
+      fileId: 'file-2',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(reads()).toBe(before + 1);
+    expect(h.changed.length).toBeGreaterThanOrEqual(1);
+    expect(document.body.querySelector('qt-full-screen-image-viewer [role="dialog"]')).toBeNull();
+  });
+});

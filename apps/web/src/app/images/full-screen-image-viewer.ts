@@ -159,6 +159,7 @@ const ARROW_BUTTON =
             [filename]="filename()"
             [width]="600"
             [height]="400"
+            [remove]="missingCleanup()"
             (cleanup)="closeModal.emit()"
           />
         } @else {
@@ -192,6 +193,14 @@ export class FullScreenImageViewer {
   /** Buttons before Close, left to right. Hidden while the image is missing. */
   readonly actions = input<readonly FullScreenImageAction[]>([]);
   /** Conditionally-`undefined` at the list ends — the arrow-visibility idiom. */
+  /**
+   * Remove a missing picture's reference (v4 `9ecebf986` `onMissingCleanup`,
+   * `:42-48`): defaults to the generic `DELETE /api/v1/images/{imageId}`; a
+   * picture owned by a record (a wardrobe item) passes that record's own
+   * removal, which knows its links and pointers (bug 194). The viewer closes
+   * after it.
+   */
+  readonly missingCleanup = input<(() => Promise<void>) | undefined>(undefined);
   readonly onPrev = input<(() => void) | undefined>(undefined);
   readonly onNext = input<(() => void) | undefined>(undefined);
   /**

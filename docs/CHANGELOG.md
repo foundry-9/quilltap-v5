@@ -242,6 +242,12 @@ _Versions: SPA 0.5.836._
 
 Adds `wardrobe/folders.ts` (v4 `lib/wardrobe/folders.ts` at `4a38222e6`, the whole client-safe module: path helpers, the normaliser family, the error classes) and `wardrobe/folder-view.ts` (v4's pure browser view rules: own tier vs borrowed tiers, child folder rows, tier rows). `wardrobe-container.ts` gains `containerForListedItem`, which addresses a listed item through the wardrobe its `origin` names before falling back to the character/General rule. `WardrobeItemDto` gains the shared `folder?` field. Specs: v4's 19 folder cases transcribed, 14 folder-view rule rows, 2 addressing rows.
 
+#### 2026-10-12 — fix(spa): a wardrobe picture whose bytes are gone is removed through the wardrobe route (P4.D286 unit 6, bug 194)
+
+_Versions: SPA 0.5.841._
+
+Ports v4 `9ecebf986`'s bug-194 fix at the `4a38222e6` pin. The missing-image placeholder gains a `remove` override that runs instead of the generic `DELETE /api/v1/images/{id}`; the full-screen viewer passes it through as `missingCleanup`; and the wardrobe picture viewer supplies one that deletes the picture with `wardrobeItemImageDelete` (which drops the mount link and the `files` row and moves the item's current pointer on), emits a new `removed` output, then closes. In v5 this is the only working Remove for a wardrobe picture, since the generic delete is a standing refusal. The Picture section answers `removed` with its own refresh; the wardrobe dialog's binding is a handoff to unification. The viewer spec's clipboard stub is now writable, which stops it from breaking `courier-bubble.spec.ts` when the two share a test worker.
+
 #### 2026-10-12 — feat(spa): the wardrobe row's Move to folder…, select mode, folder crumb and slot labels (P4.D286 unit 5)
 
 _Versions: SPA 0.5.840._
