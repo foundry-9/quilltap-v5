@@ -3434,12 +3434,15 @@ where
     // Collapse any wardrobe edits this turn's characters made into one Aurora
     // announcement each, regardless of which terminal branch we exit through. The
     // handlers recorded affected character ids into the shared set; drain it before
-    // finalize (v4 fires one `WARDROBE_OUTFIT_ANNOUNCEMENT` job per character).
-    crate::services::aurora_notifications::flush_pending_wardrobe_announcements(
+    // finalize (v4 fires one `WARDROBE_OUTFIT_ANNOUNCEMENT` job per character)
+    // through the outfit-change effects module (`outfit-change-effects.ts`'s
+    // `flushPendingWardrobeAnnouncements`, `9ecebf986`) — each schedule logs
+    // its DEBUG / WARN with `context: 'orchestrator-turn-end'`.
+    crate::services::outfit_change_effects::flush_pending_wardrobe_announcements(
         db,
         &user_id,
         &chat_id,
-        &pending_wardrobe,
+        Some(&pending_wardrobe),
     )
     .await;
 

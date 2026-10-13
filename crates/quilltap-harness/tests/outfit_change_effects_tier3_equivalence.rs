@@ -96,6 +96,9 @@ struct Step {
     #[serde(default, rename = "withSet")]
     with_set: bool,
     context: Option<String>,
+    /// `equip` steps (P4.D282): the route body minus `characterId`.
+    #[serde(default)]
+    body: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -104,6 +107,9 @@ struct OracleRow {
     set: Vec<String>,
     jobs: Value,
     logs: Vec<Value>,
+    /// The route's status, on `equip` rows only.
+    #[serde(default)]
+    status: Option<u16>,
 }
 
 /// The module's own messages — the only lines this family compares.
@@ -296,8 +302,28 @@ fn outfit_change_effects_match_oracle() {
     for (step, want) in spec.steps.iter().zip(&oracle) {
         assert_eq!(step.name, want.step, "oracle step order");
         let context: &'static str = Box::leak(step.context.clone().unwrap_or_default().into());
-        let ((), lines) = rt.block_on(global_capture::capture_async(async {
+        let (status, lines) = rt.block_on(global_capture::capture_async(async {
             match step.op.as_str() {
+                "equip" => {
+                    // P4.D282 — the chat outfit route (`chat_equip`): its
+                    // effects carry no turn set, so the announcement goes at once.
+                    let mut body = serde_json::Map::new();
+                    body.insert("characterId".into(), json!(character_of(&step.character)));
+                    if let Some(Value::Object(rest)) = &step.body {
+                        body.extend(rest.clone());
+                    }
+                    let r = quilltap_core::api::chat_outfits::chat_equip(
+                        &db,
+                        &spec.user_id,
+                        &chat_of(&step.chat),
+                        Value::Object(body),
+                    )
+                    .await;
+                    return Some(match r {
+                        quilltap_core::api::types::Response::ChatOutfit(_) => 200,
+                        other => panic!("{}: the route failed: {other:?}", step.name),
+                    });
+                }
                 "notify" => {
                     let (chat, character) = (chat_of(&step.chat), character_of(&step.character));
                     let ctx = OutfitChangeContext {
@@ -369,6 +395,7 @@ fn outfit_change_effects_match_oracle() {
                 }
                 other => panic!("unknown op {other}"),
             }
+            None
         }));
 
         let mut got_set: Vec<String> = turn_set.lock().unwrap().iter().cloned().collect();
@@ -384,7 +411,7 @@ fn outfit_change_effects_match_oracle() {
 
         let ok_set = got_set == want.set;
         let ok_jobs = got_jobs == want.jobs;
-        let ok_lines = got_lines == want_lines;
+        let ok_lines = got_lines == want_lines && status == want.status;
         if !(ok_set && ok_jobs && ok_lines) {
             failures.push(format!(
                 "{}: set {ok_set} jobs {ok_jobs} lines {ok_lines}\n  got set   {got_set:?}\n want set   {:?}\n  got jobs  {got_jobs}\n want jobs  {}\n  got lines {got_lines:?}\n want lines {want_lines:?}",
@@ -404,7 +431,27 @@ fn outfit_change_effects_match_oracle() {
         .flat_map(|r| r.logs.iter())
         .filter(|l| l["level"] == "warn")
         .collect();
-    assert_eq!(warns.len(), 3, "three steps take the catch leg: {warns:?}");
+    assert_eq!(warns.len(), 4, "four steps take the catch leg: {warns:?}");
+    // P4.D282 — the route's effects really are the route's: the announcement
+    // DEBUG and the catch WARN both carry `context: '[Chats v1] outfit-equip'`,
+    // and the route answered 200 both times (an effect never fails it).
+    for (name, level) in [
+        ("equip_clear_slot_off_a_announces_at_once", "debug"),
+        ("equip_after_drop_warns_and_still_answers", "warn"),
+    ] {
+        let row = oracle
+            .iter()
+            .find(|r| r.step == name)
+            .unwrap_or_else(|| panic!("the {name} row"));
+        assert_eq!(row.status, Some(200), "{name}");
+        assert!(
+            row.logs
+                .iter()
+                .any(|l| l["level"] == level && l["fields"]["context"] == "[Chats v1] outfit-equip"),
+            "{name}: {:?}",
+            row.logs
+        );
+    }
     assert!(
         warns
             .iter()
@@ -582,4 +629,38 @@ fn rust_line_parser_handles_spaced_values() {
     assert_eq!(fields["characterId"], "ch_1");
     assert_eq!(fields["error"], "no such table: background_jobs");
     assert!(rust_line("INFO quilltap_core::x Background job enqueued jobId=1").is_none());
+}
+
+/// P4.D282 — the orchestrator half: the end-of-turn drain is the effects
+/// module's `flush_pending_wardrobe_announcements` (v4 `orchestrator.service
+/// .ts` imports it from `outfit-change-effects.ts` at `9ecebf986`), so every
+/// per-turn announcement logs the module's DEBUG / WARN with `context:
+/// 'orchestrator-turn-end'` — the matrix's `flush` steps above. A source
+/// census, not behaviour: the orchestrator calls the module once, and the old
+/// Aurora-side drain (a bare `let _ =` per character, no lines) is gone.
+#[test]
+fn the_orchestrator_drains_the_turn_through_the_effects_module() {
+    let src = |rel: &str| {
+        let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../quilltap-core/src")
+            .join(rel);
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
+    };
+    let orchestrator = src("services/orchestrator.rs");
+    assert_eq!(
+        orchestrator
+            .matches("outfit_change_effects::flush_pending_wardrobe_announcements(")
+            .count(),
+        1,
+        "the orchestrator drains through the effects module exactly once"
+    );
+    assert!(
+        !orchestrator.contains("aurora_notifications::flush_pending_wardrobe_announcements"),
+        "the old Aurora-side drain is not called"
+    );
+    assert!(
+        !src("services/aurora_notifications.rs")
+            .contains("fn flush_pending_wardrobe_announcements"),
+        "the Aurora-side drain is folded into the effects module"
+    );
 }

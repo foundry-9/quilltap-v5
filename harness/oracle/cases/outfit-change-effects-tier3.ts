@@ -39,11 +39,21 @@ import { tmpdir } from 'node:os';
 
 interface Step {
   name: string;
-  op: 'notify' | 'record' | 'refresh' | 'schedule' | 'flush' | 'flushNoSet' | 'dropBackgroundJobs';
+  op:
+    | 'notify'
+    | 'record'
+    | 'refresh'
+    | 'schedule'
+    | 'flush'
+    | 'flushNoSet'
+    | 'dropBackgroundJobs'
+    | 'equip';
   chat?: string;
   character?: 'A' | 'B';
   withSet?: boolean;
   context?: string;
+  /** `equip` steps (P4.D282): the route body minus `characterId`. */
+  body?: Record<string, unknown>;
 }
 interface Spec {
   testPepperBase64: string;
@@ -128,6 +138,7 @@ async function main(): Promise<void> {
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
   const effects = await import('@/lib/wardrobe/outfit-change-effects');
+  const { handleEquipSlot } = await import('@/app/api/v1/chats/[id]/actions/outfit');
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -172,6 +183,7 @@ async function main(): Promise<void> {
   const lines: string[] = [];
   for (const step of spec.steps) {
     captured.length = 0;
+    let status: number | undefined;
     switch (step.op) {
       case 'notify':
         await effects.notifyWardrobeChanged(
@@ -227,6 +239,19 @@ async function main(): Promise<void> {
           chatId: chatOf(step.chat),
         });
         break;
+      case 'equip': {
+        // P4.D282 — the chat outfit route's REAL handler: its
+        // `notifyWardrobeChanged(…, '[Chats v1] outfit-equip')` carries no
+        // turn set, so the announcement is enqueued at once.
+        const req = { json: async () => ({ characterId: characterOf(step.character), ...step.body }) };
+        const res = await handleEquipSlot(req as never, chatOf(step.chat), {
+          repos,
+          user: { id: spec.userId },
+          session: {},
+        } as never);
+        status = res.status;
+        break;
+      }
       case 'dropBackgroundJobs':
         await rawQuery('DROP TABLE background_jobs', []);
         jobsTableGone = true;
@@ -241,6 +266,7 @@ async function main(): Promise<void> {
         set: Array.from(turnSet).sort(),
         jobs: await dumpJobs(),
         logs: captured.slice(),
+        ...(status !== undefined ? { status } : {}),
       }),
     );
   }

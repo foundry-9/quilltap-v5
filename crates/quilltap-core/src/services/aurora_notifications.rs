@@ -24,29 +24,26 @@
 //!    builder (swapped into an opaque participant's LLM context by the
 //!    context-builder).
 //!
-//! 3. **The wardrobe-announcement drain** — a turn's wardrobe edits collect a
+//! 3. **The wardrobe-announcement job** — a turn's wardrobe edits collect a
 //!    per-character set on the tool-execution context; at end-of-turn the
-//!    orchestrator drains it ([`flush_pending_wardrobe_announcements`]),
-//!    enqueuing one debounced `WARDROBE_OUTFIT_ANNOUNCEMENT` job per character
-//!    (via [`crate::services::queue_service::enqueue_wardrobe_outfit_announcement`]);
-//!    the job body ([`handle_wardrobe_outfit_announcement`]) later resolves the
-//!    character's equipped outfit and posts an `outfit-change` whisper.
-
-use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+//!    orchestrator drains it through the outfit-change effects module
+//!    ([`crate::services::outfit_change_effects::flush_pending_wardrobe_announcements`],
+//!    v4 `9ecebf986` moved the drain there), enqueuing one debounced
+//!    `WARDROBE_OUTFIT_ANNOUNCEMENT` job per character; the job body
+//!    ([`handle_wardrobe_outfit_announcement`]) later resolves the character's
+//!    equipped outfit over their wearable pool and posts an `outfit-change`
+//!    whisper.
 
 use serde_json::{json, Value};
 
 use crate::db::chats_messages::ChatEventInput;
-use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, DbError};
 use crate::jsstr;
-use crate::services::queue_service::enqueue_wardrobe_outfit_announcement;
-use crate::tools::wardrobe_shared::{
-    resolve_equipped_outfit_values, resolve_project_mount_point_ids_for_chat,
-};
+use crate::services::resolve_equipped::resolve_equipped_outfit_for_character;
+use crate::tools::wardrobe_shared::resolve_project_mount_point_ids_for_chat;
 use crate::wardrobe::{describe_outfit, OutfitSlotValues, Slots};
+use crate::wearable_pool::{load_wearable_pool, LoadWearablePoolOptions};
 
 // ============================================================================
 // Outfit content builders (byte-exact vs v4 `writer.ts`)
@@ -242,45 +239,10 @@ pub async fn post_outfit_change_whisper(
 }
 
 // ============================================================================
-// The wardrobe-announcement drain + job handler
+// The wardrobe-announcement job handler (the per-turn drain lives in
+// `services::outfit_change_effects` — v4 `9ecebf986` moved it to
+// `outfit-change-effects.ts`)
 // ============================================================================
-
-/// v4 `flushPendingWardrobeAnnouncements` (`wardrobe-handler-shared.ts`). Drain
-/// the per-turn `pending_wardrobe_announcements` set, enqueuing one debounced
-/// `WARDROBE_OUTFIT_ANNOUNCEMENT` job per character (collapsing N wardrobe edits
-/// in a single LLM response into one announcement per character). Idempotent —
-/// the set is emptied under the lock before any enqueue. Safe when the set is
-/// missing/empty (no-op). A single enqueue failure is swallowed (v4
-/// `scheduleWardrobeAnnouncement`'s try/catch → warn) so it never blocks the
-/// others.
-///
-/// v4 iterates the `Set` in insertion order; the v5 set is an (unordered)
-/// [`HashSet`] (a W4.1d2 decision — the legacy "no set → enqueue immediately"
-/// fallback is likewise not ported), so the drained ids are sorted for a
-/// deterministic enqueue order. Each enqueue is independent and
-/// per-character-deduped, so order does not change the set of jobs produced.
-pub async fn flush_pending_wardrobe_announcements(
-    db: &Db,
-    user_id: &str,
-    chat_id: &str,
-    pending: &Arc<Mutex<HashSet<String>>>,
-) {
-    let mut character_ids: Vec<String> = {
-        let Ok(mut guard) = pending.lock() else {
-            return;
-        };
-        if guard.is_empty() {
-            return;
-        }
-        guard.drain().collect()
-    };
-    character_ids.sort();
-    for character_id in character_ids {
-        // v4 wraps each enqueue in try/catch → warn: a scheduling failure for one
-        // character must not strand the others.
-        let _ = enqueue_wardrobe_outfit_announcement(db, user_id, chat_id, &character_id).await;
-    }
-}
 
 /// v4 `handleWardrobeOutfitAnnouncement` (`handlers/wardrobe-announcement.ts`),
 /// the debounced job body. Reads the chat's `equippedOutfit[characterId]` slots
@@ -342,16 +304,18 @@ pub async fn handle_wardrobe_outfit_announcement(db: &Db, payload: &Value) -> Re
             // loaded carries `projectId`, so the chat-keyed resolver yields the
             // identical link set.
             let project_mounts = resolve_project_mount_point_ids_for_chat(main, mount, &cid);
-            // v4 `sharedWardrobeTiersForCharacter(characterId, projectMountPointIds)`
-            // — the group tier is keyed on THIS character's own memberships.
-            let tiers = crate::wardrobe_tiers::shared_wardrobe_tiers_for_character(
+            // v4 `resolveEquippedOutfitForCharacter(await loadWearablePool(repos,
+            // characterId, projectMountPointIds), slots).outfitValues`
+            // (`9ecebf986`) — the pool's group tier is keyed on THIS
+            // character's own memberships.
+            let pool = load_wearable_pool(
                 main,
                 mount,
                 &char_id,
-                &project_mounts,
+                Some(&project_mounts),
+                LoadWearablePoolOptions::default(),
             );
-            let docs = DocMountDocumentsRepository::new(mount);
-            let outfit = resolve_equipped_outfit_values(main, &docs, &char_id, &slots, &tiers)?;
+            let outfit = resolve_equipped_outfit_for_character(&pool, &slots).outfit_values;
 
             // v4 `const character = await repos.characters.findById(characterId);
             // const charName = character?.name ?? 'A character';`

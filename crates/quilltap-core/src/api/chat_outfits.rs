@@ -697,22 +697,24 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
     let character_id = parsed.character_id.clone();
     let mode = parsed.mode.clone();
 
-    let out = with_both_conns(db, move |main, mount| {
-        let slot = parsed.slot.as_deref();
-        if matches!(parsed.mode.as_str(), "remove_from_slot" | "clear_slot") {
-            let take_off = if parsed.mode == "remove_from_slot" {
-                DisplacementMode::RemoveFromSlot
-            } else {
-                DisplacementMode::ClearSlot
-            };
+    let take_off = match parsed.mode.as_str() {
+        "remove_from_slot" => Some(DisplacementMode::RemoveFromSlot),
+        "clear_slot" => Some(DisplacementMode::ClearSlot),
+        _ => None,
+    };
+    let out = if let Some(take_off) = take_off {
+        // The take-off modes read nothing but the character's slots — no
+        // tiers, no pool, so not the mount index either (v4's
+        // `applyDisplacement` with no `itemsById`).
+        db.write(move |w| {
             let slots = apply_displacement(
-                main,
+                w.main().connection(),
                 &cid,
                 &parsed.character_id,
                 &ComputeDisplacedOptions {
                     mode: take_off,
                     item: None,
-                    slot,
+                    slot: parsed.slot.as_deref(),
                     // v4 `mode === 'remove_from_slot' ? itemId ?? undefined :
                     // undefined` — an empty string is a VALUE here (only the
                     // refine arms treat '' as falsy, and take-off has none).
@@ -725,68 +727,14 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
                 },
                 EquipSource::Ui,
             )?;
-            return Ok(EquipOutcome::SlotChanged {
+            Ok(EquipOutcome::SlotChanged {
                 slots: slots.to_value(),
-            });
-        }
-
-        let pool = load_wearable_pool(
-            main,
-            mount,
-            &parsed.character_id,
-            None,
-            LoadWearablePoolOptions {
-                operator: true,
-                chat_id: Some(&cid),
-                ..LoadWearablePoolOptions::default()
-            },
-        );
-        if parsed.mode == "set_all" {
-            let slots_value = parsed.slots.as_ref().expect("schema-guaranteed");
-            return set_all(
-                main,
-                &cid,
-                &pool,
-                slots_value,
-                parsed.worn_bundle_ids.as_deref().unwrap_or_default(),
-            );
-        }
-
-        // `equip` is the deprecated alias for `wear`.
-        let put_on = if parsed.mode == "equip" {
-            PutOnMode::Wear
-        } else {
-            PutOnMode::parse(&parsed.mode).expect("schema-guaranteed put-on mode")
-        };
-        let reference = WearableRef {
-            item_id: parsed.item_id.as_deref(),
-            item_title: None,
-        };
-        let item = match resolve_wearable(&pool, reference, put_on, slot) {
-            WearableResolution::Ok(item) => item.clone(),
-            WearableResolution::Refused { reason, message } => {
-                let response = if reason == WearableRefusal::NotFound {
-                    not_found("Wardrobe item")
-                } else {
-                    bad_request(message)
-                };
-                return Ok(EquipOutcome::RefusedPutOn { reason, response });
-            }
-        };
-        let outcome = wear_item(main, &cid, &pool, &item, put_on, slot, EquipSource::Ui)?;
-        Ok(EquipOutcome::PutOn {
-            slots: outcome.slots.to_value(),
-            mode: put_on,
-            item_id: item
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
-            outcome_effect: outcome.effect,
-            slots_affected: outcome.slots_affected,
+            })
         })
-    })
-    .await;
+        .await
+    } else {
+        put_on_or_fit(db, cid, parsed).await
+    };
 
     let updated = match out {
         Ok(EquipOutcome::SlotChanged { slots }) => {
@@ -900,6 +848,74 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
     .await;
 
     Response::ChatOutfit(json!({ "equippedSlots": updated }))
+}
+
+/// The put-on modes and `set_all` — everything that reads the character's
+/// wearable pool (and so needs the mount index), inside ONE writer closure.
+async fn put_on_or_fit(
+    db: &Db,
+    cid: String,
+    parsed: EquipBody,
+) -> Result<EquipOutcome, crate::db::DbError> {
+    with_both_conns(db, move |main, mount| {
+        let slot = parsed.slot.as_deref();
+        let pool = load_wearable_pool(
+            main,
+            mount,
+            &parsed.character_id,
+            None,
+            LoadWearablePoolOptions {
+                operator: true,
+                chat_id: Some(&cid),
+                ..LoadWearablePoolOptions::default()
+            },
+        );
+        if parsed.mode == "set_all" {
+            let slots_value = parsed.slots.as_ref().expect("schema-guaranteed");
+            return set_all(
+                main,
+                &cid,
+                &pool,
+                slots_value,
+                parsed.worn_bundle_ids.as_deref().unwrap_or_default(),
+            );
+        }
+
+        // `equip` is the deprecated alias for `wear`.
+        let put_on = if parsed.mode == "equip" {
+            PutOnMode::Wear
+        } else {
+            PutOnMode::parse(&parsed.mode).expect("schema-guaranteed put-on mode")
+        };
+        let reference = WearableRef {
+            item_id: parsed.item_id.as_deref(),
+            item_title: None,
+        };
+        let item = match resolve_wearable(&pool, reference, put_on, slot) {
+            WearableResolution::Ok(item) => item.clone(),
+            WearableResolution::Refused { reason, message } => {
+                let response = if reason == WearableRefusal::NotFound {
+                    not_found("Wardrobe item")
+                } else {
+                    bad_request(message)
+                };
+                return Ok(EquipOutcome::RefusedPutOn { reason, response });
+            }
+        };
+        let outcome = wear_item(main, &cid, &pool, &item, put_on, slot, EquipSource::Ui)?;
+        Ok(EquipOutcome::PutOn {
+            slots: outcome.slots.to_value(),
+            mode: put_on,
+            item_id: item
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            outcome_effect: outcome.effect,
+            slots_affected: outcome.slots_affected,
+        })
+    })
+    .await
 }
 
 // ===========================================================================

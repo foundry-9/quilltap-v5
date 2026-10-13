@@ -1306,26 +1306,23 @@ fn resolve_live_clothing(
         // Resolve + describe (title-only, imagePrompt-preferring).
         let cid2 = c.character_id.clone();
         let pmp = project_mount_point_ids.clone();
+        // v4 `describeEquippedOutfitTitleOnly(repos, characterId, slots,
+        // projectMountPointIds)` (`context-manager.ts:1717`, `9ecebf986`): the
+        // character's own wearable pool — group stores follow each character's
+        // own memberships, so they can't come from the turn pool (keyed on the
+        // responding character) — then the pool resolver, title-only.
         let desc = db
             .read_main(|main| {
                 db.read_mount_index(|mount| {
-                    let docs =
-                        crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
-                    // Group stores follow each character's own memberships, so
-                    // they can't come from the turn pool (which is keyed on the
-                    // responding character).
-                    let tiers = crate::wardrobe_tiers::shared_wardrobe_tiers_for_character(
-                        main, mount, &cid2, &pmp,
-                    );
-                    let values =
-                        crate::tools::wardrobe_shared::resolve_equipped_outfit_leaf_values(
-                            main, &docs, &cid2, &slots, &tiers,
-                        )?;
-                    Ok(crate::wardrobe::describe_outfit(
-                        &crate::wardrobe::build_outfit_slot_values(|slot| {
-                            crate::wardrobe::decorate_outfit_items_title_only(values.slot(slot))
-                        }),
-                    ))
+                    Ok(
+                        crate::services::resolve_equipped::describe_equipped_outfit_title_only(
+                            main,
+                            mount,
+                            &cid2,
+                            &slots,
+                            Some(&pmp),
+                        ),
+                    )
                 })
             })
             .unwrap_or_default();

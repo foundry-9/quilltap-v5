@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-12 — feat(wardrobe): the effects module wired — the orchestrator's turn-end drain through flush_pending_wardrobe_announcements, the announcement job and live-clothing line over the pool resolver, take-off without the mount index (P4.D282, v4 `9ecebf986`)
+
+_Versions: core 0.0.1281._
+
+The orchestrator's end-of-turn wardrobe drain now calls `outfit_change_effects::flush_pending_wardrobe_announcements`, so each per-turn announcement logs v4's `Wardrobe outfit announcement scheduled` / `Failed to schedule wardrobe outfit announcement` with `context: 'orchestrator-turn-end'`; Aurora's own silent drain is removed. The `WARDROBE_OUTFIT_ANNOUNCEMENT` job resolves the outfit through the character's wearable pool and the new resolver, and `build_context`'s live-clothing line goes through `describe_equipped_outfit_title_only`. The equip route's take-off modes now run on the main writer alone (v4's take-off reads only the slots), so a missing mount index no longer turns a take-off into a 500. `outfit_change_effects_tier3` gains two route steps (the route's announcement at once, and its catch WARN while the route still answers 200) and a wiring guard on the orchestrator's drain.
+
 #### 2026-10-12 — feat(wardrobe): the avatar image profile through resolve_avatar_image_profile — keyless profiles passed over, the override WARN retired, the toggle's skip DEBUG, refresh_avatar_for_outfit on chat-open and participant-join (P4.D282, v4 `9ecebf986`)
 
 _Versions: core 0.0.1280._
