@@ -179219,3 +179219,339 @@ family) **729 binaries / 4,861 passed / 1 failed / 3 ignored**. The one red is
 the embedded export schema (it read the live checkout, which is past the pin;
 it is red at the pin too). No `crates/` hunk on this branch. (A first run
 without `--no-fail-fast` stopped at that binary after 433; re-run whole.)
+
+## The `4a38222e6` wardrobe-programme drift catch-up round — UNIFICATION record (2026-10-13)
+
+**P4.D279 → {P4.D280 ∥ P4.D281 ∥ P4.D282 ∥ P4.D283 ∥ P4.D284} ∥ P4.D285 ∥
+P4.D286 ∥ P4.D287 — ALL NINE LANES LANDED; the oracle baseline MOVES
+`01a83539d` → `4a38222e6`** (v4 `main`, 2026-10-12 13:03, `4.10.0-dev.148`,
+"Wardrobe folders — file items into a tier's closet (#85)"). Branch
+`unify/wardrobe-4a38222e6` (worktree `.claude/worktrees/unify-4a38222e6`)
+from `main` `aeaefc218`, the lanes CHERRY-PICKED in §S.1's order: P4.D279
+first (a fast-forward — `KEYSTONE` `a7e8814af` + its Tier 2 to `ef8a6c411`)
+→ P4.D282 → P4.D280 → P4.D281 → P4.D283 → P4.D284 → P4.D287 → P4.D285 →
+P4.D286. Conflicts ONLY on the version files, `Cargo.lock`, the CHANGELOG and
+this log (resolved ours for the versions, then one final recount; a
+both-sides union for the docs). **ZERO source conflicts — the raw union
+compiled the first time.** The external drive disconnected once during the
+§3 survey; the session resumed after reconnection with nothing lost (`main`
+clean).
+
+### The §2 probe, `/driftcheck`, and the pin
+
+The probe FAILED at the start: v4 `main` had moved five commits past the
+ledger's recorded tip. `/driftcheck` ran FIRST (`732eebcd7` on `main`, pushed;
+merged into the unify branch as `a27e6e1c7`) and recorded `c2795733f` (bugs
+203–226) and the memory refactor's Phases A–D (`e0ac7493a`, `af48f6cc2`,
+`8af764514`, `ac6348c5f`) — NINE migrations, three of them DESTRUCTIVE (the
+dropped `chat_settings` columns, the dropped vector tables, the dropped
+`chats` watermark columns) — and wrote the LIVE-DATA HAZARDS block into the
+ledger's §1. **Every regen followed the PIN:** `/tmp/qt-v4-pin-unify-4a38222e6`
+(detached at `4a38222e6`) with its OWN `npm ci --offline` tree (`openai`
+7.30.0; the plugin and `packages/quilltap` `node_modules` symlinked — the
+lockfile diff to HEAD is version stamps only). At close the v4 checkout went
+DIRTY (51 paths of the human's in-flight memory work past `ac6348c5f`),
+recorded in the ledger's §1; no regen read it. The ledger's baseline move
+landed as `665e1704a`: the eight absorbed / ratified rows retire to §6, the
+commits past the pin stay in §3 (`97f0d8cb8`, bug 229, PORTED by P4.D285 and
+kept until the baseline passes it), and the wardrobe-folders real-instance
+hazard RETIRES (v5 now reads `Wardrobe/<sub>/*.md` recursively).
+
+### Delivered scope, verified against each order
+
+Every lane reported LANE COMPLETE; EIGHT parallel §3 readers (v4 read at the
+pin) and the unifier checked each order's Tier 1 / Tier 2 against the code.
+The lane records stand in this file and are not repeated here — P4.D279 (and
+its Tier 2), P4.D282, P4.D280, P4.D281, P4.D283 and P4.D284 as dated `###`
+entries after the `01a83539d` UNIFICATION record; `## P4.D287 —`, `## Lane
+record — P4.D285`, `## P4.D286 —`. In brief:
+
+- **P4.D279 (the KEYSTONE):** `wardrobe_folders` (the 19 rules),
+  `db/wardrobe_location`, the grown `wearable_pool`, `slot_ops` +
+  `services/outfit_displacement` (ONE `apply_displacement`), `wear_ops` +
+  `wearable`, the item + folder mutations, `outfit_change_effects`,
+  `resolve_avatar_image_profile` + `find_default`, the recursive predicate +
+  `WardrobeItem.folder` + the recursive projection, bug 187's kept UUID ref,
+  the General seed removed, the repository shrink with LANE-REMOVE shims (36
+  markers), the six C2 wire variants with refusal arms, the builder re-aims,
+  the `chat_id` carry; `db/wardrobe.rs` + `wardrobe_tier2_equivalence`
+  RETIRED (R-A).
+- **P4.D280:** the seven wardrobe tools through ONE table
+  (`tools/wardrobe_tool_table.rs`) and ONE pool; the catalog regen
+  (`wardrobe_list` drops `include_presets`; list / read render `[folder: …]`);
+  the idempotent archive; widen-never-narrow update (bug 195); `equip_now`
+  announced (bug 193); the 53-op corpus.
+- **P4.D281:** ONE route factory (`api/wardrobe_route_factory.rs`) for all
+  four tiers; the five folder actions; transfers (groups before the project,
+  never provision a source, carry the folder); `?action=link-image`
+  (PORT-NEW); the REST edges; the item GET dispatches its action first.
+- **P4.D282:** the chat equip action over one wearable pool (bug 191's
+  archived refusal, the pin's four route lines); NEW
+  `services/resolve_equipped.rs`; `apply_outfit_selections` over memoised
+  pools; `resolve_avatar_image_profile` on the avatar path (keyless profiles
+  skipped, the override WARN retired, the toggle's skip DEBUG);
+  `refresh_avatar_for_outfit` on chat-open + participant-join; the effects
+  module wired (the orchestrator's turn-end drain); a take-off divergence
+  fixed; the shims it was the last caller of deleted (`dissolve_bundles.rs`
+  and others).
+- **P4.D283:** bug 189's chat Concierge on item pictures; the shared image
+  attempt + the generated-file row; the five physical-description orders;
+  bug 196's spend types (the Almanack); bug 197's vision request
+  (`analyze-image` stays REFUSED, R-L); the preview-avatar rewrite (422 / 502,
+  the failover seam).
+- **P4.D284:** the backup's `wardrobeItems: []`; the delete-service drops its
+  wardrobe step; a `.qtap` import files a record at its `folder` and refuses
+  a non-string one with v4's warning (R-M); the export schema re-vendored
+  (103,075 bytes); the recursive side channels proven.
+- **P4.D285:** the SPA dialog's Phase-F split, the folder browser, the
+  Move-to-folder picker WITH bug 229's fix (`97f0d8cb8`, R-P), bug 198's
+  `chats`-topic outfit refresh, bug 191's wear refusal, the Prospero Wardrobe
+  card as the shared browser, six e2e re-pins, a gated
+  `wardrobe-folders-flow.spec.ts` (port 4336).
+- **P4.D286:** the SPA editor's bug-190 composite slots, the Folder field,
+  the draft + `buildCompositeTypes`, the component picker's slot labels /
+  archived parts, the row's Move to folder… / select mode / crumb / slot
+  labels, bug 194's missing-picture cleanup, the transfer dialog's shared
+  `isComposite`, a gated `wardrobe-items-editor-flow.spec.ts` (port 4337).
+- **P4.D287:** `help/wardrobe.md` + `help/project-wardrobe.md` byte-exact
+  (`help/` 131 files, md5-identical to the pin); 23 `docs/v4/` paths (the
+  order said 22; its own itemization gives 23); four NO-PORT ratifications
+  (`3e6e2f590`, `0841000c7`, `c19e5d0a9`, `0fc8ce709`).
+
+### The §S.5 HANDOFFs and the shims (`24e110237`; the SPA's in `19f68fa1e`)
+
+- **All 22 remaining LANE-REMOVE shims DELETED** (zero callers); the census
+  `no_wardrobe_lane_remove_markers_left` is GREEN. With them the unmarked
+  twins v4 deleted: `is_own_wardrobe_item`, `public_error_message`, the
+  pre-pool resolver chain, `build_wardrobe_coverage_summary_from_state`, and
+  later `SharedWardrobeTierOptions` + `SharedWardrobeTiers::{none,
+  project_only, scoped_mounts}`.
+- **ONE resolve-equipped:** P4.D283's leaf-only copy (which did not dedupe
+  equipped ids) folded onto P4.D282's `services/resolve_equipped.rs`.
+- **The tools' `coverage_summary`** = `describeOutfit(resolveEquipped(pool,
+  slots).outfitValues)` over the loaded pool (P4.D280's HANDOFF). The old
+  chain re-read the DB, never logged v4's resolver lines, and answered an
+  EMPTY summary for shared garments when the own vault was unreadable.
+- **Restore 22f-ter onto `update_in_mount`** (P4.D284's HANDOFF — the last
+  `update_project_wardrobe_item` shim call).
+- `p4_d279_wire_contract`'s refusal half RETIRED (P4.D281's HANDOFF — all six
+  C2 arms served); `dissolve_bundles_equivalence` re-pointed at `slot_ops`;
+  the `project_roster_access` op uses the pin's two resolvers;
+  `ai_import_tier3`'s `V4_APP_VERSION` → `4.10.0-dev.148`.
+- **The SPA handoffs (`19f68fa1e`):** both lanes' lists, as the readers
+  corrected them — the browser hosts P4.D286's row (`[selection]`,
+  `[folderCrumb]`, `[canMoveToFolder]` / `(moveToFolder)`); the overlays seed
+  the editor's `[initialFolder]` and refresh on a removed picture (bug 194 —
+  P4.D286's §R.10(m), whose host moved into the overlays); Duplicate through
+  `draftToPayload({ ...draftFromItem(item), title })` (§R.10(l)); the
+  editor's `containerForListedItem` / `isShared` / Folder-field twins
+  deleted onto P4.D285's exports; ONE `isComposite`; the gated beats
+  (`P4D279_SERVER_LANDED`, `P4D286_ROW_LANDED`) flipped LIVE (§S.9).
+
+### The §3 review — what it found (fixed on the union)
+
+**ONE BLOCKING finding — it would have shipped:**
+
+1. **P4.D283 — the appearance-resolution prompt sent description text v4
+   never sends.** `PhysicalDescriptionInput` gained the long / complete /
+   full texts, so the cheap-LLM appearance prompt carried a complete / long /
+   full description where v4 sends `(no description text)` — v4's
+   `CharacterAppearanceInput.physicalDescriptions[]` carries only id / name /
+   `usageContext` / short / medium (`cheap-llm-tasks/types.ts:246-252`,
+   `appearance-resolution.ts:293-300`). No fixture had a description without
+   a medium or short text, so nothing saw it. The struct is back at v4's
+   shape — the type itself is the guard (`ccd57923d`).
+
+**Should-fixes, fixed** (`ccd57923d`, `3ce6fb59a`, `85153368d`, `19f68fa1e`):
+
+- **P4.D283:** `rerouted` was duplicated two or three times on every
+  `[Image LoRA]` line (the guard's `>= 5` passed with 10 → `== 5`); the
+  default image profile read EVERY user's rows (`find_all` + filter) — now
+  v4's one-row `findDefault`; the editor's Generate wrote `''` as
+  `llm_logs.chatId` — NULL now; the story-background WARN lacked its target
+  and its pin (the lane record's "story tests re-pinned" was false) — both
+  added; the preview edge's duplicated status map → `error_to_http`.
+- **P4.D279:** the recursive wardrobe read sorted by CODE UNIT ("Decision B",
+  premised on ASCII slugs) where v4 sorts by `localeCompare` — false for
+  `Wardrobe/` (mixed-case titles and folders): `Wardrobe/Coat.md` versus
+  `Wardrobe/attic/Coat.md` flipped, so the slug claim, a title wear or a
+  component ref picked a DIFFERENT garment. Now the ICU en-US
+  `locale_compare` plus v4's missing WARN `Wardrobe items share a slug; later
+  item only addressable by UUID`. `list_folders_in_mount` returned tied
+  folders in `HashMap` order → v4's insertion order. Two new DEBUG lines
+  pinned (the frontmatter folder rendered raw, not JSON-quoted).
+  `wear_item` / `take_off_item` had NO tests (the oracle header claimed
+  `outfit_displacement_tier2` pinned them — false) → v4's
+  `wear-ops.test.ts:129-163` ported. `find_by_title` returned `by_id`'s LAST
+  copy of a duplicated own id → it returns the own match itself.
+- **P4.D281:** the six folder-action route lines (claimed capture-pinned) had
+  no pin → pinned, including R-I's raw versus resolved `folder`; the dead
+  per-tier `ItemRouteMeta` / `ItemImageCleanupMeta` variants deleted (only
+  `Location` survives).
+- **P4.D282:** the toggle-on avatar sweep's two silent failures → v4's
+  per-character and outer WARNs plus the INFO `[Chats v1] Avatar generation
+  toggled`, pinned.
+- **P4.D285 / P4.D286:** HANDOFF 1's hunk named `(onMoveToFolder)` — Angular
+  would have compiled it as a silent DOM listener with the menu item hidden;
+  the row's real `[canMoveToFolder]` / `(moveToFolder)` are bound. Two
+  `isComposite` exports → one. The folders store showed the PREVIOUS
+  container's tree while a new read was pending → EMPTY (pinned). The dialog
+  spec's adapter re-implemented the live arm (8+ cases tested the copy) →
+  the real `rowEquip` / `rowAddToSlot`. The gated editor beats were written
+  against the flat dialog (rows live in the tier + folder views) →
+  re-gestured. The hair badge reads `Hair`.
+
+### The §S.9 flip — what the flipped beats caught
+
+**ONE real v5 defect, root-caused from the failure:** Escape with a row's
+kebab menu open closed the WHOLE wardrobe dialog — the row's host
+`(document:keydown.escape)` ran after the dialog's document listener. Now a
+capture-phase listener attached only while a popover is open (v4's
+`useClickOutside` + `escapeCapture`), pinned (`19f68fa1e`). By file before the
+full run: `wardrobe-folders-flow` 5/5, `wardrobe-items-editor-flow` 4/4,
+`wardrobe-flow` 18/18.
+
+### Union reds the gate caught (each classified and fixed)
+
+- **`generators_wizard_routes` + `characters_generators_routes` —
+  `thread 'tokio-rt-worker' has overflowed its stack`.** `git bisect` → the
+  KEYSTONE `a7e8814af`; green on `main`, and green on the union with 8 MiB
+  worker stacks — frame size, not recursion. `quilltap-web`'s production
+  runtime uses the same 2 MiB default, so this was not a test-only red.
+  `CoreEngine::dispatch` returns `Box::pin(self.dispatch_impl(req))`
+  (`d19803d9b`).
+- **`consolidation_triggers_tier2_equivalence` — a CALENDAR TIME BOMB**
+  (pre-existing, not this round's): the fixture dates its memories from the
+  fixed `spec.now` (2026-10-08) but the handler step ran on the wall clock; on
+  2026-10-13 the "fresh pair" D1–D2 crossed the eligibility floor on BOTH
+  sides and the canned answer table had no topic D, so the mock failure texts
+  differed. A missing `now` is filled with `spec.now` at both seams; green
+  today and at +6 weeks (`b99d93250`).
+- **`vision_request_tier3_equivalence` (P4.D283, NEW) — REGEN failed:** the
+  recipe mirrored the cases / fixtures but not `lib/shrink-script.ts`
+  (`dc143b642`).
+- **`wardrobe_tools_avatar_trigger_equivalence`:** v4 and v5 agree
+  row-for-row, but the family's switch-ON premise failed on BOTH sides — the
+  flag-ON spec's profile was keyless, and since `9ecebf986`
+  `resolveAvatarImageProfile` skips a keyless profile. The spec is keyed; the
+  keyless arm strips it (`dc143b642`).
+- **`wardrobe_item_images_routes_equivalence`:** the six rows P4.D281 named as
+  P4.D283's `files.description` residue converged; only a clock stamp
+  remained — P4.D283's bridge writes v4's new
+  `<YYYYMMDD-HHMMSS>-<kind>.webp` leaf, and the normalizer knew only the old
+  `-<8 hex>` leaf (`dc143b642`).
+
+### The gate (final tree)
+
+- `cargo fmt --all --check`; `cargo clippy --workspace --all-targets -- -D
+  warnings` plain AND `--features quilltap-core/native-transport`; `cargo
+  build --release`: clean.
+- **The full sweep from the pin** (`recipe_sweep.py --run-all`; artifact
+  `harness/tools/sweep-results/2026-10-13-4a38222e6-wardrobe-unify.json`):
+  660 families — **648 ok / 8 run_failed / 1 regen_failed / 3 refused by
+  design** (`backup_uuid_remap` refused_repo_write; `avatar_rolls_routes` +
+  `generator_sse_wire` refused_non_extractable). Of the nine reds: the three
+  standing (`ariel_writers_tier3`, `memory_processor_tier3`,
+  `search_replace`) and the six union reds above, each fixed and re-run GREEN
+  by name. ⚠ The sweep ran while the fix agents were still editing — the
+  by-name re-runs are the proof for those families.
+- **Tier R (`cli_differential`):** 361 cases, 0 failures (336.5 s).
+- **The workspace suite** (`QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin, `cargo
+  test --workspace --no-fail-fast`): **742 binaries / 4,952 passed / 0 failed
+  / 3 ignored, zero `SKIP:`**.
+- **SPA:** lint clean; vitest **499 files / 9,496 tests**; build clean.
+- **Playwright (full suite):** 384 / 0 / 6 (12.8 m) — the gated beats flipped LIVE.
+- `handler-logging-inventory.md` regenerated ONCE from the pin: 253 rows
+  (23 PORTED-PINNED, 95 PORTED-UNPINNED, 8 NO-PORT-RECORDED, 127 NO-SITE).
+
+### Versions
+
+core 0.0.1283, host 0.0.199, web 0.0.237, SPA 0.5.846 (the union's recount
+over the highest lane values); cli 0.0.32 and tauri 0.0.9 unchanged; harness
+frozen 0.0.1110.
+
+### OPEN after this round (named follow-ups, not landed — each order's header carries its own)
+
+- **P4.D282:** the orchestrator turn-end drain is guarded by a SOURCE census,
+  not the behavioural tier-3 the order asked for (a canned turn with two
+  wardrobe tool calls → exactly one announcement job + the
+  `orchestrator-turn-end` DEBUG). **BANKED (confirmed real):** no differential
+  for the `WARDROBE_OUTFIT_ANNOUNCEMENT` job's whisper / `resolve_live_clothing`,
+  and the job lacks v4's INFO `[WardrobeAnnouncement] Starting announcement`
+  and WARN `… equippedOutfit slot shape failed validation, skipping`. The
+  toggle route's outer catch: v4 logs ERROR `[Chats v1] Error toggling avatar
+  generation` and answers `Failed to toggle avatar generation`; v5's DB-error
+  arm answers the raw error text (a wire change — left for a round).
+- **P4.D283:** the preview-avatar's `[Avatar Preview]` lines and its new
+  `IMAGE_GENERATION` `llm_logs` rows are unpinned (the routes family opens
+  `llm_logs: None`); `[WardrobeItemImage] Outfit expansion stopped short` is
+  untested (`cyclesJson` versus v4's `cycles`); the preview builder line lacks
+  v4's `characterId` logContext (beside P4.D263's carried `itemId`); two
+  `.ok().flatten()` settings reads are silent where v4 logs; the
+  `[StoryBackground]` sibling lines log snake_case keys where v4 uses
+  camelCase (pre-existing). Bug 197's `analyze-image` half stays DEFERRED
+  (R-L).
+- **P4.D279:** `[ItemMutations] Updated wardrobe item`'s `fields` key order
+  is fixed where v4's two callers order differently (the route = Zod order;
+  the tool = its own) — record a ruled divergence or carry the caller's
+  order; `vault_character_write`'s managed-field projections log the mount id
+  where v4 logs `character.id` (the flat-mode stale-delete WARN); the Prompts
+  / Scenarios vault reads still sort by code unit on the same false ASCII
+  premise the wardrobe read did (`vault_read_overlay.rs` ~381 / ~394) — the
+  scenarios round should take it.
+- **P4.D280:** the 53-op tools corpus misses take_off's remove not-found,
+  wear's not-found + archived refusal, and update / archive with no location;
+  `executor.rs`'s `run_wardrobe_tool` ignores `written` when a stage is
+  stashed (a commit failure reported as success, with the effects fired) —
+  pre-existing for create / update, now all seven tools.
+- **P4.D281 (pre-existing):** the General item PUT edge parses the body
+  before the 404; two transfers ERROR lines are never logged;
+  `image_choice_error`'s read failure flattens to a 500; a degraded mount
+  index answers 500 on two equip-adjacent routes (the #156 class).
+- **P4.D285:** the Prospero card mounts the browser while collapsed (+1
+  folders read per project page); bug 229's click arm cannot fail in v5
+  (parity only — the Escape + backdrop arms carry the contract).
+- **P4.D284, P4.D286, P4.D287:** nothing new from the review; their Tier 3
+  deferrals stand as recorded.
+
+### 💸 for the next `/dogfood` (on a Friday COPY taken BEFORE the human ran v4 past `c2795733f` — the ledger's §1 LIVE-DATA HAZARDS; each lane's list stands)
+
+- **FIRST: the store-name plan probe on the copy** (still owed from the
+  `01a83539d` round), then that round's 💸 list.
+- A garment filed into a folder by v4, read by v5's pool and worn on a real
+  turn (no duplicate at the root); the five folder actions from the SPA
+  browser on a real vault; an archived personal item no longer masking a
+  shared namesake; a cross-tier UUID component ref kept across a write.
+- `wardrobe_archive` twice ("nothing changed"); `wardrobe_create` +
+  `equip_now` announced by Aurora (bug 193); an item picture from an
+  Unmoderated chat routed direct (💸 one image call); the preview-avatar's
+  refusal 422 posed; the Almanack's image spend including wardrobe pictures.
+- A `.qtap` round trip of a filed item; a full backup carrying
+  `wardrobeItems: []`.
+- The SPA: the folder breadcrumb, Select + bulk move, the picker's bug-229
+  click + Escape from a chat's wardrobe, Show shared's tier rows, the
+  editor's Folder field creating `Formal › Evening`, the composite slots with
+  an archived part (bug 190), the viewer's missing-picture cleanup (bug 194)
+  from the editor AND a row thumbnail, Duplicate filing beside the original,
+  a tool-driven take-off while the dialog is open then Reset to worn (bug
+  198), an archived garment refused at Wear / + / the composer (bug 191);
+  Escape with a row's kebab open (the fixed defect).
+
+### NEXT (in order)
+
+1. **The owed dogfood pass** (above — this round's rows and the
+   `01a83539d` round's, on the pre-`c2795733f` copy).
+2. **The catch-up rounds** (`/driftcheck` first, once v4 commits its
+   in-flight dirt): (a) `545e299bb` scenarios from anywhere (the EIGHTH D23
+   re-dump, `add-chat-scenario-source-v1` as a boot ensure, the
+   `lib/scenarios/` location + browser + New Chat's single selection + the
+   in-chat control, `help/` 132) with `8050958be` (bug 228); (b) the memory
+   programme — `124c8aca3` + `69d38dd60` + the five memory-refactor commits
+   (`c2795733f`, `e0ac7493a`, `af48f6cc2`, `8af764514`, `ac6348c5f`; nine
+   migrations, at least one more D23 re-dump, nine boot ensures, two rulings
+   owed — the vector-table retirement ensure and the shared-instance
+   watermark-column ping-pong); `4ce64fa1e` ratified. The planner decides the
+   grouping.
+3. **A follow-ups smalls round** — the OPEN list above, with the
+   `01a83539d` round's (led by the human ruling owed on P4.D273's
+   carried-file metadata source).

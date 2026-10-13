@@ -10,10 +10,10 @@ disposition. **Generated** — regenerate with:
 | disposition | meaning | count |
 |---|---|---|
 | `PORTED-PINNED` | a v5 tracing site carries the sentence AND a test asserts it | 23 |
-| `PORTED-UNPINNED` | a v5 tracing site carries it; nothing asserts it | 96 |
-| `NO-PORT-RECORDED` | no v5 site, but a v5 comment records the decision | 10 |
-| `NO-SITE` | neither | 129 |
-| **total** | | **258** |
+| `PORTED-UNPINNED` | a v5 tracing site carries it; nothing asserts it | 95 |
+| `NO-PORT-RECORDED` | no v5 site, but a v5 comment records the decision | 8 |
+| `NO-SITE` | neither | 127 |
+| **total** | | **253** |
 
 A match inside a v5 comment never counts as a port: several sites quote a v4
 sentence precisely to record that it was deliberately not ported.
@@ -137,40 +137,39 @@ sentence precisely to record that it was deliberately not ported.
 | 190 | warn | `[CarinaMemoryExtraction] Failed to store debug logs` | — | NO-SITE |
 | 215 | warn | `[CarinaMemoryExtraction] Failed to emit token tracking event` | — | NO-SITE |
 
-### `lib/background-jobs/handlers/character-avatar.ts` — 19 line(s) (NO-SITE 2, PORTED-UNPINNED 17)
+### `lib/background-jobs/handlers/character-avatar.ts` — 18 line(s) (NO-SITE 2, PORTED-UNPINNED 16)
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 102 | info | `[CharacterAvatar] Starting avatar generation` | `services/character_avatar_job.rs:197` | PORTED-UNPINNED |
-| 128 | warn | `[CharacterAvatar] Image profile has no API key, skipping` | `services/character_avatar_job.rs:238` | PORTED-UNPINNED |
-| 138 | warn | `[CharacterAvatar] API key not found or invalid, skipping` | `services/character_avatar_job.rs:254` | PORTED-UNPINNED |
-| 167 | warn | `[CharacterAvatar] No appearance data available, skipping` | `services/character_avatar_job.rs:320` | PORTED-UNPINNED |
-| 211 | info | `[CharacterAvatar] Reused cached avatar for this configuration` | — | NO-SITE |
-| 227 | debug | `[CharacterAvatar] Concierge policy resolved` | `services/character_avatar_job.rs:433` | PORTED-UNPINNED |
-| 251 | info | `[CharacterAvatar] Unmoderated chat: routed direct to the uncensored desk` | `services/character_avatar_job.rs:485` | PORTED-UNPINNED |
-| 263 | warn | `[CharacterAvatar] Failed to build cheap LLM selection for danger classification` | `services/character_avatar_job.rs:506` | PORTED-UNPINNED |
-| 281 | info | `[CharacterAvatar] Avatar prompt classified as dangerous` | `services/character_avatar_job.rs:549` | PORTED-UNPINNED |
-| 300 | info | `[CharacterAvatar] Rerouted to uncensored image provider` | `services/character_avatar_job.rs:601` | PORTED-UNPINNED |
-| 308 | warn | `[CharacterAvatar] No uncensored image provider available, using original` | `services/character_avatar_job.rs:617` | PORTED-UNPINNED |
-| 318 | error | `[CharacterAvatar] Prompt classification failed, continuing normally` | — | NO-SITE |
-| 413 | error | `[CharacterAvatar] Image generation failed` | `services/character_avatar_job.rs:687` | PORTED-UNPINNED |
-| 430 | info | `[CharacterAvatar] Concierge uncensored reroute succeeded` | `services/character_avatar_job.rs:705` | PORTED-UNPINNED |
-| 440 | warn | `[CharacterAvatar] No images returned from provider` | `services/character_avatar_job.rs:724` | PORTED-UNPINNED |
-| 451 | warn | `[CharacterAvatar] Generated image has no data` | `services/character_avatar_job.rs:737` | PORTED-UNPINNED |
-| 544 | info | `[CharacterAvatar] Avatar image saved` | `services/character_avatar_job.rs:794` | PORTED-UNPINNED |
-| 550 | error | `[CharacterAvatar] Failed to save avatar image` | `services/character_avatar_job.rs:807` | PORTED-UNPINNED |
-| 565 | info | `[CharacterAvatar] Avatar generation completed` | `services/character_avatar_job.rs:834` | PORTED-UNPINNED |
+| 99 | info | `[CharacterAvatar] Starting avatar generation` | `services/character_avatar_job.rs:201` | PORTED-UNPINNED |
+| 125 | warn | `[CharacterAvatar] Image profile has no API key, skipping` | `services/character_avatar_job.rs:242` | PORTED-UNPINNED |
+| 135 | warn | `[CharacterAvatar] API key not found or invalid, skipping` | `services/character_avatar_job.rs:258` | PORTED-UNPINNED |
+| 164 | warn | `[CharacterAvatar] No appearance data available, skipping` | `services/character_avatar_job.rs:324` | PORTED-UNPINNED |
+| 208 | info | `[CharacterAvatar] Reused cached avatar for this configuration` | — | NO-SITE |
+| 224 | debug | `[CharacterAvatar] Concierge policy resolved` | `services/character_avatar_job.rs:437` | PORTED-UNPINNED |
+| 248 | info | `[CharacterAvatar] Unmoderated chat: routed direct to the uncensored desk` | `services/character_avatar_job.rs:489` | PORTED-UNPINNED |
+| 260 | warn | `[CharacterAvatar] Failed to build cheap LLM selection for danger classification` | `services/character_avatar_job.rs:510` | PORTED-UNPINNED |
+| 278 | info | `[CharacterAvatar] Avatar prompt classified as dangerous` | `services/character_avatar_job.rs:553` | PORTED-UNPINNED |
+| 297 | info | `[CharacterAvatar] Rerouted to uncensored image provider` | `services/character_avatar_job.rs:605` | PORTED-UNPINNED |
+| 305 | warn | `[CharacterAvatar] No uncensored image provider available, using original` | `services/character_avatar_job.rs:621` | PORTED-UNPINNED |
+| 315 | error | `[CharacterAvatar] Prompt classification failed, continuing normally` | — | NO-SITE |
+| 366 | error | `[CharacterAvatar] Image generation failed` | `services/character_avatar_job.rs:690` | PORTED-UNPINNED |
+| 383 | info | `[CharacterAvatar] Concierge uncensored reroute succeeded` | `services/character_avatar_job.rs:708` | PORTED-UNPINNED |
+| 398 | warn | `[CharacterAvatar] No image data returned from provider` | `services/character_avatar_job.rs:740` | PORTED-UNPINNED |
+| 465 | info | `[CharacterAvatar] Avatar image saved` | `services/character_avatar_job.rs:777` | PORTED-UNPINNED |
+| 471 | error | `[CharacterAvatar] Failed to save avatar image` | `services/character_avatar_job.rs:790` | PORTED-UNPINNED |
+| 486 | info | `[CharacterAvatar] Avatar generation completed` | `services/character_avatar_job.rs:817` | PORTED-UNPINNED |
 
 ### `lib/background-jobs/handlers/character-headshoulders-backfill.ts` — 6 line(s) (NO-PORT-RECORDED 1, PORTED-UNPINNED 5)
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 45 | info | `[HeadShouldersBackfill] Character not found, skipping` | `services/headshoulders_backfill_job.rs:202` | PORTED-UNPINNED |
-| 89 | warn | `[HeadShouldersBackfill] Failed to select cheap LLM, skipping` | `services/headshoulders_backfill_job.rs:109` | NO-PORT-RECORDED |
-| 98 | warn | `[HeadShouldersBackfill] No connection profile configured, skipping` | `services/headshoulders_backfill_job.rs:264` | PORTED-UNPINNED |
-| 109 | warn | `[HeadShouldersBackfill] No API key for cheap LLM selection, skipping` | `services/headshoulders_backfill_job.rs:276` | PORTED-UNPINNED |
-| 136 | warn | `[HeadShouldersBackfill] Model returned empty text, skipping write` | `services/headshoulders_backfill_job.rs:294` | PORTED-UNPINNED |
-| 153 | info | `[HeadShouldersBackfill] Populated head-and-shoulders prompt` | `services/headshoulders_backfill_job.rs:327` | PORTED-UNPINNED |
+| 46 | info | `[HeadShouldersBackfill] Character not found, skipping` | `services/headshoulders_backfill_job.rs:192` | PORTED-UNPINNED |
+| 83 | warn | `[HeadShouldersBackfill] Failed to select cheap LLM, skipping` | `services/headshoulders_backfill_job.rs:112` | NO-PORT-RECORDED |
+| 92 | warn | `[HeadShouldersBackfill] No connection profile configured, skipping` | `services/headshoulders_backfill_job.rs:254` | PORTED-UNPINNED |
+| 103 | warn | `[HeadShouldersBackfill] No API key for cheap LLM selection, skipping` | `services/headshoulders_backfill_job.rs:266` | PORTED-UNPINNED |
+| 130 | warn | `[HeadShouldersBackfill] Model returned empty text, skipping write` | `services/headshoulders_backfill_job.rs:284` | PORTED-UNPINNED |
+| 147 | info | `[HeadShouldersBackfill] Populated head-and-shoulders prompt` | `services/headshoulders_backfill_job.rs:317` | PORTED-UNPINNED |
 
 ### `lib/background-jobs/handlers/chat-danger-classification.ts` — 6 line(s) (NO-SITE 4, PORTED-UNPINNED 2)
 
@@ -321,59 +320,58 @@ sentence precisely to record that it was deliberately not ported.
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 34 | warn | `[SceneStateTracking] Chat not found, skipping` | — | NO-SITE |
-| 51 | warn | `[SceneStateTracking] Connection profile not found, trying fallback` | — | NO-SITE |
-| 57 | warn | `[SceneStateTracking] No available connection profiles, skipping` | — | NO-SITE |
-| 152 | info | `[SceneStateTracking] Content pre-classified as dangerous, routing to uncensored provider` | — | NO-SITE |
-| 164 | warn | `[SceneStateTracking] Content pre-classification failed, using standard provider` | — | NO-SITE |
-| 203 | warn | `[SceneStateTracking] Failed to load equipped wardrobe for character` | — | NO-SITE |
-| 244 | debug | `[SceneStateTracking] Concierge policy for scene-state update` | — | NO-SITE |
-| 267 | info | `[SceneStateTracking] Result looks like content refusal, retrying with uncensored provider` | — | NO-SITE |
-| 285 | info | `[SceneStateTracking] Retry with uncensored provider succeeded` | — | NO-SITE |
-| 289 | warn | `[SceneStateTracking] Retry with uncensored provider also produced poor result` | — | NO-SITE |
-| 298 | warn | `[SceneStateTracking] Failed to derive scene state` | — | NO-SITE |
-| 381 | info | `[SceneStateTracking] Scene state updated` | — | NO-SITE |
+| 35 | warn | `[SceneStateTracking] Chat not found, skipping` | — | NO-SITE |
+| 52 | warn | `[SceneStateTracking] Connection profile not found, trying fallback` | — | NO-SITE |
+| 58 | warn | `[SceneStateTracking] No available connection profiles, skipping` | — | NO-SITE |
+| 153 | info | `[SceneStateTracking] Content pre-classified as dangerous, routing to uncensored provider` | — | NO-SITE |
+| 165 | warn | `[SceneStateTracking] Content pre-classification failed, using standard provider` | — | NO-SITE |
+| 204 | warn | `[SceneStateTracking] Failed to load equipped wardrobe for character` | — | NO-SITE |
+| 245 | debug | `[SceneStateTracking] Concierge policy for scene-state update` | — | NO-SITE |
+| 268 | info | `[SceneStateTracking] Result looks like content refusal, retrying with uncensored provider` | — | NO-SITE |
+| 286 | info | `[SceneStateTracking] Retry with uncensored provider succeeded` | — | NO-SITE |
+| 290 | warn | `[SceneStateTracking] Retry with uncensored provider also produced poor result` | — | NO-SITE |
+| 299 | warn | `[SceneStateTracking] Failed to derive scene state` | — | NO-SITE |
+| 382 | info | `[SceneStateTracking] Scene state updated` | — | NO-SITE |
 
-### `lib/background-jobs/handlers/story-background.ts` — 36 line(s) (NO-SITE 29, PORTED-PINNED 1, PORTED-UNPINNED 6)
+### `lib/background-jobs/handlers/story-background.ts` — 35 line(s) (NO-SITE 27, PORTED-PINNED 1, PORTED-UNPINNED 7)
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 125 | info | `[StoryBackground] Starting background generation` | — | NO-SITE |
-| 146 | warn | `[StoryBackground] Image profile has no API key, skipping generation` | — | NO-SITE |
-| 156 | warn | `[StoryBackground] API key not found or invalid, skipping generation` | — | NO-SITE |
-| 180 | info | `[StoryBackground] Using fresh scene state for context` | — | NO-SITE |
-| 202 | warn | `[StoryBackground] No connection profiles available for prompt crafting` | — | NO-SITE |
-| 241 | info | `[StoryBackground] Uncensored retry abandoned at run time` | `services/story_background_job.rs:355` | PORTED-UNPINNED |
-| 254 | debug | `[StoryBackground] Concierge policy resolved` | `services/story_background_job.rs:370` | PORTED-UNPINNED |
-| 295 | warn | `[StoryBackground] Failed to load equipped wardrobe items for character` | — | NO-SITE |
-| 365 | warn | `[StoryBackground] Appearance resolution failed, using defaults` | — | NO-SITE |
-| 382 | info | `[StoryBackground] Used scene state for scene context` | — | NO-SITE |
-| 391 | warn | `[StoryBackground] Failed to derive scene context, using fallback` | — | NO-SITE |
-| 408 | info | `[StoryBackground] Appearance resolution fell back to defaults (likely content refusal), retrying with uncensored profile` | — | NO-SITE |
-| 426 | info | `[StoryBackground] Appearance resolution retry with uncensored profile succeeded` | — | NO-SITE |
-| 431 | warn | `[StoryBackground] Appearance resolution retry also fell back to defaults` | — | NO-SITE |
-| 437 | warn | `[StoryBackground] Appearance resolution retry with uncensored profile failed` | — | NO-SITE |
-| 466 | warn | `[StoryBackground] Appearance sanitization failed, using unsanitized` | — | NO-SITE |
-| 488 | debug | `[StoryBackground] Character flagged for cinematic concealment` | `services/story_background_job.rs:598` | PORTED-PINNED |
-| 528 | info | `[StoryBackground] "Try uncensored": painting on the uncensored understudy` | — | NO-SITE |
-| 545 | info | `[StoryBackground] Unmoderated chat: routed direct to the uncensored desk` | `services/story_background_job.rs:718` | PORTED-UNPINNED |
-| 574 | warn | `[StoryBackground] Failed to craft background prompt` | `services/story_background_job.rs:750` | PORTED-UNPINNED |
-| 589 | warn | `[StoryBackground] Empty response from safe provider, treating as content refusal` | — | NO-SITE |
-| 596 | info | `[StoryBackground] Retrying prompt crafting with uncensored profile` | — | NO-SITE |
-| 618 | info | `[StoryBackground] Retry with uncensored profile succeeded` | — | NO-SITE |
-| 624 | warn | `[StoryBackground] Retry with uncensored profile also failed` | — | NO-SITE |
-| 632 | warn | `[StoryBackground] No uncensored image prompt profile configured, cannot retry` | — | NO-SITE |
-| 674 | info | `[StoryBackground] Appended missing character enumerations to prompt` | — | NO-SITE |
-| 684 | debug | `[StoryBackground] No missing character enumerations to append` | — | NO-SITE |
-| 692 | warn | `[StoryBackground] Failed to scan prompt for missing character enumerations` | — | NO-SITE |
-| 796 | info | `[StoryBackground] Painter refused the scene; posting the Lantern\'s refusal` | — | NO-SITE |
-| 811 | error | `[StoryBackground] Image generation failed` | `services/story_background_job.rs:943` | PORTED-UNPINNED |
-| 832 | info | `[StoryBackground] Concierge uncensored reroute succeeded` | `services/story_background_job.rs:964` | PORTED-UNPINNED |
-| 844 | warn | `[StoryBackground] No images returned from provider` | — | NO-SITE |
-| 854 | warn | `[StoryBackground] Generated image has no data` | — | NO-SITE |
-| 969 | info | `[StoryBackground] Image saved successfully` | — | NO-SITE |
-| 975 | error | `[StoryBackground] Failed to save image` | — | NO-SITE |
-| 999 | info | `[StoryBackground] Story background generation completed` | — | NO-SITE |
+| 117 | info | `[StoryBackground] Starting background generation` | — | NO-SITE |
+| 138 | warn | `[StoryBackground] Image profile has no API key, skipping generation` | — | NO-SITE |
+| 148 | warn | `[StoryBackground] API key not found or invalid, skipping generation` | — | NO-SITE |
+| 172 | info | `[StoryBackground] Using fresh scene state for context` | — | NO-SITE |
+| 194 | warn | `[StoryBackground] No connection profiles available for prompt crafting` | — | NO-SITE |
+| 233 | info | `[StoryBackground] Uncensored retry abandoned at run time` | `services/story_background_job.rs:387` | PORTED-UNPINNED |
+| 246 | debug | `[StoryBackground] Concierge policy resolved` | `services/story_background_job.rs:402` | PORTED-UNPINNED |
+| 287 | warn | `[StoryBackground] Failed to load equipped wardrobe items for character` | — | NO-SITE |
+| 357 | warn | `[StoryBackground] Appearance resolution failed, using defaults` | — | NO-SITE |
+| 374 | info | `[StoryBackground] Used scene state for scene context` | — | NO-SITE |
+| 383 | warn | `[StoryBackground] Failed to derive scene context, using fallback` | — | NO-SITE |
+| 400 | info | `[StoryBackground] Appearance resolution fell back to defaults (likely content refusal), retrying with uncensored profile` | — | NO-SITE |
+| 418 | info | `[StoryBackground] Appearance resolution retry with uncensored profile succeeded` | — | NO-SITE |
+| 423 | warn | `[StoryBackground] Appearance resolution retry also fell back to defaults` | — | NO-SITE |
+| 429 | warn | `[StoryBackground] Appearance resolution retry with uncensored profile failed` | — | NO-SITE |
+| 458 | warn | `[StoryBackground] Appearance sanitization failed, using unsanitized` | — | NO-SITE |
+| 480 | debug | `[StoryBackground] Character flagged for cinematic concealment` | `services/story_background_job.rs:630` | PORTED-PINNED |
+| 520 | info | `[StoryBackground] "Try uncensored": painting on the uncensored understudy` | — | NO-SITE |
+| 537 | info | `[StoryBackground] Unmoderated chat: routed direct to the uncensored desk` | `services/story_background_job.rs:751` | PORTED-UNPINNED |
+| 566 | warn | `[StoryBackground] Failed to craft background prompt` | `services/story_background_job.rs:783` | PORTED-UNPINNED |
+| 581 | warn | `[StoryBackground] Empty response from safe provider, treating as content refusal` | — | NO-SITE |
+| 588 | info | `[StoryBackground] Retrying prompt crafting with uncensored profile` | — | NO-SITE |
+| 610 | info | `[StoryBackground] Retry with uncensored profile succeeded` | — | NO-SITE |
+| 616 | warn | `[StoryBackground] Retry with uncensored profile also failed` | — | NO-SITE |
+| 624 | warn | `[StoryBackground] No uncensored image prompt profile configured, cannot retry` | — | NO-SITE |
+| 666 | info | `[StoryBackground] Appended missing character enumerations to prompt` | — | NO-SITE |
+| 676 | debug | `[StoryBackground] No missing character enumerations to append` | — | NO-SITE |
+| 684 | warn | `[StoryBackground] Failed to scan prompt for missing character enumerations` | — | NO-SITE |
+| 743 | info | `[StoryBackground] Painter refused the scene; posting the Lantern\'s refusal` | — | NO-SITE |
+| 758 | error | `[StoryBackground] Image generation failed` | `services/story_background_job.rs:975` | PORTED-UNPINNED |
+| 779 | info | `[StoryBackground] Concierge uncensored reroute succeeded` | `services/story_background_job.rs:996` | PORTED-UNPINNED |
+| 792 | warn | `[StoryBackground] No image data returned from provider` | `services/story_background_job.rs:235` | PORTED-UNPINNED |
+| 887 | info | `[StoryBackground] Image saved successfully` | — | NO-SITE |
+| 893 | error | `[StoryBackground] Failed to save image` | — | NO-SITE |
+| 917 | info | `[StoryBackground] Story background generation completed` | — | NO-SITE |
 
 ### `lib/background-jobs/handlers/title-update.ts` — 5 line(s) (NO-PORT-RECORDED 2, PORTED-PINNED 3)
 
@@ -396,37 +394,34 @@ sentence precisely to record that it was deliberately not ported.
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 39 | info | `[WardrobeItemImage] Starting tool-queued wardrobe item image` | `services/wardrobe_item_image_job.rs:74` | PORTED-UNPINNED |
-| 56 | info | `[WardrobeItemImage] Item no longer in the character\'s wardrobe; nothing to draw` | — | NO-SITE |
-| 65 | info | `[WardrobeItemImage] Item archived since the tool call; skipping` | `services/wardrobe_item_image_job.rs:122` | PORTED-UNPINNED |
-| 80 | info | `[WardrobeItemImage] Tool-queued wardrobe item image complete` | `services/wardrobe_item_image_job.rs:149` | PORTED-UNPINNED |
-| 91 | warn | `[WardrobeItemImage] No usable image profile; skipping` | `services/wardrobe_item_image_job.rs:158` | PORTED-UNPINNED |
-| 99 | info | `[WardrobeItemImage] Owner archived since the tool call; skipping` | `services/wardrobe_item_image_job.rs:167` | PORTED-UNPINNED |
-| 107 | warn | `[WardrobeItemImage] Provider would not draw the item` | `services/wardrobe_item_image_job.rs:196` | PORTED-UNPINNED |
+| 40 | info | `[WardrobeItemImage] Starting tool-queued wardrobe item image` | `services/wardrobe_item_image_job.rs:76` | PORTED-UNPINNED |
+| 57 | info | `[WardrobeItemImage] Item no longer in the character\'s wardrobe; nothing to draw` | — | NO-SITE |
+| 66 | info | `[WardrobeItemImage] Item archived since the tool call; skipping` | `services/wardrobe_item_image_job.rs:124` | PORTED-UNPINNED |
+| 82 | info | `[WardrobeItemImage] Tool-queued wardrobe item image complete` | `services/wardrobe_item_image_job.rs:153` | PORTED-UNPINNED |
+| 93 | warn | `[WardrobeItemImage] No usable image profile; skipping` | `services/wardrobe_item_image_job.rs:162` | PORTED-UNPINNED |
+| 101 | info | `[WardrobeItemImage] Owner archived since the tool call; skipping` | `services/wardrobe_item_image_job.rs:171` | PORTED-UNPINNED |
+| 109 | warn | `[WardrobeItemImage] Provider would not draw the item` | `services/wardrobe_item_image_job.rs:200` | PORTED-UNPINNED |
 
 ## The file-attachment fallback (the describe path)
 
-### `lib/chat/file-attachment-fallback.ts` — 17 line(s) (NO-PORT-RECORDED 2, PORTED-PINNED 4, PORTED-UNPINNED 11)
+### `lib/chat/file-attachment-fallback.ts` — 14 line(s) (PORTED-PINNED 4, PORTED-UNPINNED 10)
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 197 | debug | `Uncensored vision fallback unavailable for this chat` | `services/file_fallback.rs:586` | PORTED-PINNED |
-| 237 | info | `[Attachment] Plugin cannot transport images; routing to describe-fallback` | `services/file_fallback.rs:352` | PORTED-PINNED |
-| 329 | error | `[Text Fallback] Failed to convert text file` | `services/file_fallback.rs:404` | PORTED-PINNED |
-| 388 | warn | `[Image Fallback] Failed to record IMAGE_DESCRIPTION llm log` | `services/file_fallback.rs:1049` | NO-PORT-RECORDED |
-| 459 | warn | `[Image Fallback] Reasoning model detected, increasing maxTokens from ` | `services/file_fallback.rs:704` | PORTED-UNPINNED |
-| 486 | warn | `[Image Fallback] Resize for description provider failed; sending original` | `services/file_fallback.rs:962` | NO-PORT-RECORDED |
-| 555 | warn | `[Image Fallback] Describer answered without the image; discarding its description` | `services/file_fallback.rs:800` | PORTED-UNPINNED |
-| 575 | error | `[Image Fallback] Empty response from image description LLM` | `services/file_fallback.rs:824` | PORTED-UNPINNED |
-| 612 | warn | `[Image Fallback] Suspicious response from image description LLM` | `services/file_fallback.rs:867` | PORTED-UNPINNED |
-| 625 | info | `[Image Fallback] Successfully generated description` | `services/file_fallback.rs:884` | PORTED-UNPINNED |
-| 644 | error | `[Image Fallback] Error generating description:` | `services/file_fallback.rs:911` | PORTED-UNPINNED |
-| 695 | info | `[Image Fallback] Reusing persisted description (no vision call)` | `services/file_fallback.rs:1167` | PORTED-UNPINNED |
-| 716 | warn | `[Image Fallback] Persisted-description lookup failed; falling back to vision` | `services/file_fallback.rs:1194` | PORTED-UNPINNED |
-| 770 | info | `[Image Fallback] Primary profile failed, retrying with uncensored fallback` | `services/file_fallback.rs:1285` | PORTED-UNPINNED |
-| 859 | warn | `[Image Fallback] Could not build a fallback chain for the describer` | `services/file_fallback.rs:1412` | PORTED-PINNED |
-| 869 | info | `[Image Fallback] Trying a describer stand-in` | `services/file_fallback.rs:1442` | PORTED-UNPINNED |
-| 880 | info | `[Image Fallback] Describer stand-in answered` | `services/file_fallback.rs:1464` | PORTED-UNPINNED |
+| 68 | debug | `Uncensored vision fallback unavailable for this chat` | `services/file_fallback.rs:436` | PORTED-PINNED |
+| 108 | info | `[Attachment] Plugin cannot transport images; routing to describe-fallback` | `services/file_fallback.rs:239` | PORTED-PINNED |
+| 200 | error | `[Text Fallback] Failed to convert text file` | `services/file_fallback.rs:291` | PORTED-PINNED |
+| 261 | warn | `[Image Fallback] Reasoning model detected, increasing maxTokens from ` | `services/file_fallback.rs:497` | PORTED-UNPINNED |
+| 320 | error | `[Image Fallback] Empty response from image description LLM` | `services/file_fallback.rs:616` | PORTED-UNPINNED |
+| 357 | warn | `[Image Fallback] Suspicious response from image description LLM` | `services/file_fallback.rs:659` | PORTED-UNPINNED |
+| 370 | info | `[Image Fallback] Successfully generated description` | `services/file_fallback.rs:676` | PORTED-UNPINNED |
+| 389 | error | `[Image Fallback] Error generating description:` | `services/file_fallback.rs:552` | PORTED-UNPINNED |
+| 436 | info | `[Image Fallback] Reusing persisted description (no vision call)` | `services/file_fallback.rs:769` | PORTED-UNPINNED |
+| 457 | warn | `[Image Fallback] Persisted-description lookup failed; falling back to vision` | `services/file_fallback.rs:796` | PORTED-UNPINNED |
+| 511 | info | `[Image Fallback] Primary profile failed, retrying with uncensored fallback` | `services/file_fallback.rs:887` | PORTED-UNPINNED |
+| 600 | warn | `[Image Fallback] Could not build a fallback chain for the describer` | `services/file_fallback.rs:1014` | PORTED-PINNED |
+| 610 | info | `[Image Fallback] Trying a describer stand-in` | `services/file_fallback.rs:1044` | PORTED-UNPINNED |
+| 621 | info | `[Image Fallback] Describer stand-in answered` | `services/file_fallback.rs:1066` | PORTED-UNPINNED |
 
 ## The HelpSearch cache (P4.9I2A — no v5 twin)
 

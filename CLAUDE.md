@@ -871,17 +871,65 @@ records THERE. Update this summary only when a phase or round completes.
   round, then the follow-ups round (a human ruling owed on P4.D273's
   carried-file metadata source)** — `phase-4.md`. Round record:
   `status-log.md`.
-- **Oracle baseline: `01a83539d` (2026-10-09, v4 main — "feat(wardrobe):
-  full-screen picture viewer with save to a document store",
-  `4.10.0-dev.143`), adopted at the `01a83539d` memory-programme round's
-  unification (2026-10-12).** **Drift state, the drift-check method, and the
+- **The `4a38222e6` wardrobe-programme drift catch-up round (P4.D279 →
+  {P4.D280 ∥ P4.D281 ∥ P4.D282 ∥ P4.D283 ∥ P4.D284} ∥ P4.D285 ∥ P4.D286 ∥
+  P4.D287): UNIFIED on main (2026-10-13) — ALL NINE LANES LANDED; the oracle
+  baseline MOVES to `4a38222e6`; the wardrobe-folders real-instance hazard
+  RETIRES; the commits past the pin (scenarios from anywhere, bug 228, and v4's
+  memory refactor — NINE migrations, three DESTRUCTIVE, recorded by the
+  round-start `/driftcheck` `732eebcd7` with a LIVE-DATA HAZARDS block) stay
+  in the ledger's §3, PIN REQUIRED.** v4's wardrobe programme whole: the
+  KEYSTONE (P4.D279 — one location, one wearable pool, the recursive
+  `Wardrobe/<sub>/*.md` read + `WardrobeItem.folder`, the 19 folder rules,
+  wear-ops over ONE `apply_displacement`, the effects module,
+  `resolve_avatar_image_profile`; `db/wardrobe.rs` RETIRED); the seven tools
+  through ONE table and ONE pool, bugs 193 / 195 (P4.D280); ONE route factory
+  for four tiers, the five folder actions, transfers, `link-image` PORT-NEW
+  (P4.D281); the outfit pipeline on the chat spine — the equip action, bug
+  191, `resolve_equipped`, the avatar refresh on chat-open / join, the
+  turn-end drain (P4.D282); the image side — bug 189's chat Concierge, the
+  shared image attempt, bug 196's spend types, bug 197's vision request
+  (`analyze-image` stays REFUSED), the preview-avatar rewrite (P4.D283); the
+  backup's `wardrobeItems: []` and filed `.qtap` records (P4.D284); the SPA's
+  folder browser, the picker WITH bug 229's fix, bug 198's refresh, the
+  Prospero card (P4.D285); the item editor's bug-190 composite slots, the
+  Folder field, bug 194's picture cleanup (P4.D286); `help/` 131 + 23
+  `docs/v4/` paths + four NO-PORTs (P4.D287). Cherry-picked with ZERO source
+  conflicts; §S.5 deleted all 22 remaining LANE-REMOVE shims (census green)
+  and folded the two resolve-equipped copies into ONE. **The §3 review (eight
+  readers + the unifier): ONE BLOCKING finding that would have shipped —
+  P4.D283's appearance prompt sent a long / complete / full physical
+  description where v4 sends `(no description text)`; the struct is back at
+  v4's shape.** Should-fixes red-first, led by P4.D279's recursive read in
+  CODE-UNIT order where v4 uses `localeCompare` (a mixed-case `Wardrobe/`
+  picked a DIFFERENT garment) and THREE false "pinned" claims (wear-ops, the
+  folder-action lines, the story-background WARN); the §S.9 flip caught
+  Escape with a row's kebab open closing the WHOLE wardrobe dialog. Six union
+  reds, each classified: a debug build overflowing tokio's 2 MiB worker stack
+  on the generator routes (bisected to the keystone; `CoreEngine::dispatch`
+  boxes its future), a PRE-EXISTING calendar time bomb in
+  `consolidation_triggers_tier2`, a recipe's missing lib mirror, a keyless
+  spec profile, an old picture-leaf normalizer. Gate: fmt/clippy (both
+  feature sets)/release clean; the sweep from the pin 648 ok / 8 / 1 regen /
+  3 refused of 660 (the three standing + the six union reds, each green by
+  name); Tier R 361/0; 742 binaries / 4,952 / 0 / 3 ignored, zero SKIP; SPA
+  499 / 9,496; Playwright 384 / 0 / 6 (12.8 m), the gated beats LIVE. Versions: core
+  0.0.1283, host 0.0.199, web 0.0.237, SPA 0.5.846. **Next: the owed dogfood
+  pass ONLY on a Friday copy taken before v4 ran past `c2795733f` (the
+  ledger's §1 hazards — no v5 build may open an instance v4 migrated past
+  it), then the scenarios + memory-programme catch-up rounds (`/driftcheck`
+  first; two rulings owed), then the follow-ups smalls round** —
+  `phase-4.md`. Round record: `status-log.md`.
+- **Oracle baseline: `4a38222e6` (2026-10-12, v4 main — "Wardrobe folders —
+  file items into a tier's closet (#85)", `4.10.0-dev.148`), adopted at the
+  `4a38222e6` wardrobe-programme round's unification (2026-10-13).** **Drift state, the drift-check method, and the
   pinned-worktree regen recipe live in `docs/developer/porting/drift-ledger.md`**
   — maintained by `/driftcheck` and by `/unify` at baseline moves; the other
   porting commands run the ledger's §2 freshness probe instead of
   re-deriving drift, and lanes never write it. **Never restate the drift
   count here — read the ledger's §1** (this bullet restated it once, went
   stale within hours, and the restatement is gone for good). Still no
-  `release: 4.10.0` squash as of the 2026-10-12 check — re-probe BOTH
+  `release: 4.10.0` squash as of the 2026-10-13 check — re-probe BOTH
   branches every time. The sweep driver remains the sanctioned per-family
   regen path — never run two sweeps concurrently; it needs Python ≥ 3.12
   (`/opt/homebrew/bin/python3.13`; the system 3.9 cannot parse it); since

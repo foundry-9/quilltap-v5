@@ -7151,7 +7151,105 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `4a38222e6` wardrobe-programme drift catch-up round (P4.D279 → {P4.D280 ∥ P4.D281 ∥ P4.D282 ∥ P4.D283 ∥ P4.D284} ∥ P4.D285 ∥ P4.D286 ∥ P4.D287) — ORDERED 2026-10-12
+## The `4a38222e6` wardrobe-programme drift catch-up round (P4.D279 → {P4.D280 ∥ P4.D281 ∥ P4.D282 ∥ P4.D283 ∥ P4.D284} ∥ P4.D285 ∥ P4.D286 ∥ P4.D287) — UNIFIED 2026-10-13 (ordered 2026-10-12)
+
+**UNIFIED on main (2026-10-13) — ALL NINE LANES LANDED; the oracle baseline
+MOVES to `4a38222e6`; the drift ledger's eight absorbed / ratified rows retire
+to §6, the commits past the pin stay in §3, and the wardrobe-folders
+real-instance hazard RETIRES.** The §2 probe FAILED at the start (v4 five
+commits further), so `/driftcheck` ran FIRST (`732eebcd7`, merged in): it
+recorded `c2795733f` (bugs 203–226) and the memory refactor's Phases A–D
+(`e0ac7493a`, `af48f6cc2`, `8af764514`, `ac6348c5f`) — NINE migrations, three
+DESTRUCTIVE — and wrote the LIVE-DATA HAZARDS block into the ledger's §1.
+Every regen, the sweep and every live-checkout guard ran from the
+`4a38222e6` pin (its own `npm ci --offline` tree); the v4 checkout went DIRTY
+at close (the human's in-flight memory work, recorded in §1, read by
+nothing). Round record: `status-log.md` → "The `4a38222e6` wardrobe-programme
+drift catch-up round — UNIFICATION record (2026-10-13)"; each order's status
+header carries its Unification paragraph and exactly what stays OPEN. The
+lanes were CHERRY-PICKED in §S.1's order with ZERO source conflicts (the raw
+union compiled the first time). §S.5: all 22 remaining LANE-REMOVE shims
+DELETED (the census green) with the unmarked twins v4 deleted; ONE
+resolve-equipped (P4.D283's copy folded onto P4.D282's); the tools' coverage
+summary over the loaded pool; restore 22f-ter onto `update_in_mount`; both
+SPA lanes' handoffs with the gated beats LIVE.
+**The §3 review (eight parallel readers + the unifier): ONE BLOCKING finding
+that would have shipped — P4.D283's appearance-resolution prompt sent a long /
+complete / full physical description where v4 sends `(no description text)`
+(v4's input carries only the short / medium texts); the struct is back at
+v4's shape, the type itself the guard.** Should-fixes fixed: P4.D279's
+recursive read in CODE-UNIT order where v4 uses `localeCompare` (a mixed-case
+`Wardrobe/` picked a DIFFERENT garment by slug, title or component ref) + v4's
+shared-slug WARN, tied folders in insertion order, `wear_item` /
+`take_off_item` tests ported (a false "pinned" claim), `find_by_title`'s own
+match; P4.D283's duplicated `rerouted`, the all-users default-profile read,
+the `''` `llm_logs.chatId`, the story-background WARN + pin (a false "re-pinned"
+claim), the preview edge through `error_to_http`; P4.D281's six unpinned
+folder-action lines (a false "capture-pinned" claim) + dead meta variants;
+P4.D282's silent toggle-sweep failures; the SPA's mis-named
+`(onMoveToFolder)` handoff binding, two `isComposite` exports, a stale folders
+tree during a pending read, a spec adapter testing a copy, re-gestured editor
+beats, the hair badge. **The §S.9 flip caught one more real SPA defect:**
+Escape with a row's kebab open closed the WHOLE wardrobe dialog — a
+capture-phase listener while a popover is open now (v4's `escapeCapture`),
+pinned.
+**Union reds the sweep caught (six, each classified and fixed):** a debug
+build overflowed tokio's 2 MiB worker stack on the two generator route
+families (bisected to the keystone — frame size; production uses the same
+default; `CoreEngine::dispatch` boxes its future); a PRE-EXISTING calendar
+time bomb in `consolidation_triggers_tier2` (the handler ran on the wall
+clock against a fixed-date fixture — both sides now run as of `spec.now`);
+the new vision recipe's missing `lib/shrink-script.ts` mirror; the
+avatar-trigger spec's keyless profile (both sides skip it since
+`9ecebf986`); the item-picture normalizer's old leaf shape.
+Gate: fmt/clippy (both feature sets)/release clean; the sweep from the pin 648 ok / 8 run_failed / 1 regen_failed / 3 refused of 660 (the three standing + the six union reds, each fixed and green by name); Tier R 361/0; `cargo test --workspace` 742 binaries / 4,952 / 0 / 3 ignored, zero SKIP; SPA 499 / 9,496; Playwright 384 / 0 / 6 (12.8 m) on the final tree, the gated beats LIVE. Versions: core 0.0.1283, host 0.0.199, web 0.0.237,
+SPA 0.5.846; cli 0.0.32 and tauri 0.0.9 unchanged; harness frozen 0.0.1110.
+
+**NEXT (in order):**
+1. **The owed dogfood pass** (`/dogfood`) — ⚠ ONLY on a Friday COPY taken
+   BEFORE the human ran v4 past `c2795733f`: the ledger's §1 LIVE-DATA
+   HAZARDS block — once v4 at or past `c2795733f` has migrated an instance
+   (three of its nine migrations DROP columns / tables), a v5 build at this
+   baseline must NOT open it, not live Friday and not a copy taken afterwards;
+   and the earlier hazards stand (`545e299bb`'s scenario columns; NO v5 chat
+   wipe until the memory catch-up lands). The store-name plan probe on the
+   copy FIRST (owed since the `01a83539d` round), then that round's 💸 list
+   and this round's (the round record's 💸 section): a v4-filed garment read
+   by v5's pool and worn on a real turn, the five folder actions from the SPA
+   browser, an archived personal item no longer masking a shared namesake, a
+   cross-tier UUID component ref kept across a write, `wardrobe_archive`
+   twice, `equip_now` announced by Aurora (bug 193), an Unmoderated chat's
+   item picture routed direct (💸), the preview-avatar 422, the Almanack's
+   image spend, a filed item's `.qtap` round trip + a `wardrobeItems: []`
+   backup, and the SPA rows (breadcrumb, Select + bulk move, the bug-229
+   picker, Show shared, the Folder field creating `Formal › Evening`, bug
+   190's archived part, bug 194's cleanup from the editor AND a row, Duplicate
+   filing beside the original, bug 198's Reset to worn, bug 191's refusals,
+   Escape with a row's kebab open).
+2. **The catch-up rounds** (`/driftcheck` FIRST, once v4 commits the
+   in-flight memory dirt the ledger's §1 records; the rows and their full
+   classification are the ledger's §3): (a) `545e299bb` scenarios from
+   anywhere — the EIGHTH D23 re-dump (`chats.scenarioSource` /
+   `scenarioNotes`), `add-chat-scenario-source-v1` as a boot ensure, the
+   `lib/scenarios/` location + browser + New Chat's single selection + the
+   in-chat control, `help/` 132 — with `8050958be` (bug 228's reminted
+   import message ids) and the Prompts / Scenarios vault reads' code-unit
+   sort (P4.D279's OPEN item); (b) the memory programme — `124c8aca3` +
+   `69d38dd60` + the five memory-refactor commits (`c2795733f`, `e0ac7493a`,
+   `af48f6cc2`, `8af764514`, `ac6348c5f`): nine migrations, at least one more
+   D23 re-dump, nine boot ensures, and TWO RULINGS owed before lanes start —
+   the vector-table retirement ensure and the shared-instance watermark-column
+   ping-pong (§1's hazards 2 and 3); `4ce64fa1e` ratified. The planner
+   decides the grouping; the memory side retires the §1 hazards.
+3. **A follow-ups smalls round** (`/setupphase`) — the nine status headers'
+   OPEN lists (led by P4.D282's behavioural turn-end-drain row + the
+   announcement job's differential and two missing lines; P4.D283's
+   preview-avatar lines / `llm_logs` rows and silent settings reads;
+   `run_wardrobe_tool` ignoring `written` on a stashed stage; the
+   `[ItemMutations]` `fields` order ruling; the toggle route's outer catch;
+   the 53-op corpus gaps; the #156-class degraded-mount 500s) together with
+   the `01a83539d` round's OPEN lists (led by the HUMAN RULING owed on
+   P4.D273's carried-file metadata source) and dogfood #156 / #157.
 
 **Baseline `01a83539d`. The round is PINNED at v4 `4a38222e6` ("Wardrobe
 folders — file items into a tier's closet (#85)", `4.10.0-dev.148`,
@@ -7228,16 +7326,7 @@ unification**; the ledger's §1 real-instance hazard (2) (items filed into
 folders on live Friday) is RETIRED by it, hazards (1) and (3) stand until
 the scenarios + memory Phase-0 round.
 
-**NEXT after this round unifies:** the owed dogfood pass (the standing queue
-+ the round's 💸 rows, on the Friday COPY taken before the human pulled past
-`545e299bb`); then the second catch-up round of two lane groups sharing no
-file with this one — (a) `545e299bb` scenarios from anywhere (the EIGHTH D23
-re-dump, `add-chat-scenario-source-v1` re-homed as a boot ensure, the
-`lib/scenarios/` location + browser + New Chat's single selection + the
-in-chat control, `help/` 132) and (b) the memory Phase-0 pair `124c8aca3` +
-`69d38dd60` TOGETHER + `8050958be` (bug 228's reminted import message ids,
-folded into or sequenced before the scenarios server lane) with `4ce64fa1e`
-ratified; then the follow-ups round.
+**NEXT after this round unified:** see the UNIFIED paragraph at the top of this section.
 
 ## The `01a83539d` memory-programme + bugs-183–186 + wardrobe-viewer drift catch-up round (P4.D265 → {P4.D266 ∥ P4.D267 ∥ P4.D268 ∥ P4.D269 ∥ P4.D270 ∥ P4.D271 ∥ P4.D272 ∥ P4.D273 ∥ P4.D274 ∥ P4.D275} ∥ P4.D276 ∥ P4.D277 ∥ P4.D278) — UNIFIED 2026-10-12 (ordered 2026-10-09)
 
@@ -7284,7 +7373,7 @@ Gate: fmt/clippy (both feature sets)/release clean; the sweep from the pin 629 o
 cli 0.0.32, SPA 0.5.835; tauri 0.0.9 unchanged; harness frozen 0.0.1110.
 
 **NEXT (in order):**
-1. **The owed dogfood pass** (`/dogfood`, the Friday COPY — ⚠ a copy taken
+1. ⏳ **Still owed — carried into the `4a38222e6` section's NEXT item 1 (now on a copy taken before `c2795733f`).** **The owed dogfood pass** (`/dogfood`, the Friday COPY — ⚠ a copy taken
    BEFORE the human pulls v4 past `545e299bb`: the ledger's §1 real-instance
    note records three live-data hazards once v4 runs past it on live Friday —
    the `add-chat-scenario-source-v1` columns v5 does not know, wardrobe items
@@ -7299,7 +7388,7 @@ cli 0.0.32, SPA 0.5.835; tauri 0.0.9 unchanged; harness frozen 0.0.1110.
    turn; a digest in a real turn's context; the hybrid / fold-grain OTHER pass
    (💸); a consolidation DRY RUN then a REAL run (💸); the wardrobe wear note,
    the picture viewer's Save + 409; the memory SPA cards and the help page.
-2. ✅ **ORDERED 2026-10-12 as the `4a38222e6` wardrobe-programme round (P4.D279 → {P4.D280 ∥ P4.D281 ∥ P4.D282 ∥ P4.D283 ∥ P4.D284} ∥ P4.D285 ∥ P4.D286 ∥ P4.D287; pinned at `4a38222e6`, `97f0d8cb8` carried by P4.D285) — the ORDERED section above.** Was: **The wardrobe catch-up round** (`/setupphase` from the ledger's §3 rows
+2. ✅ **UNIFIED 2026-10-13** (the `4a38222e6` round, nine lanes — the UNIFIED section above; the baseline moved to `4a38222e6`; this item's second half, the scenarios + memory catch-up, is that section's NEXT item 2). ✅ **ORDERED 2026-10-12 as the `4a38222e6` wardrobe-programme round (P4.D279 → {P4.D280 ∥ P4.D281 ∥ P4.D282 ∥ P4.D283 ∥ P4.D284} ∥ P4.D285 ∥ P4.D286 ∥ P4.D287; pinned at `4a38222e6`, `97f0d8cb8` carried by P4.D285) — the ORDERED section above.** Was: **The wardrobe catch-up round** (`/setupphase` from the ledger's §3 rows
    — ONE round, never commit-by-commit): `7a8d6dacc` (bugs 187 / 188 /
    189 / 191), `9ecebf986` (the seven-phase refactor that MOVES behaviour —
    `wardrobe_list` drops `include_presets`, one route factory, the tools
