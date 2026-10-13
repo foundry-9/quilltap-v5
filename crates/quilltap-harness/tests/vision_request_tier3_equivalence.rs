@@ -42,8 +42,9 @@
 //! Regenerate (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   TMPO=/tmp/qt-vr-oracle
-//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
 //!   cp "$V5W/harness/oracle/cases/vision-request.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/lib/shrink-script.ts" "$TMPO/lib/"
 //!   cp "$V5W/harness/oracle/fixtures/vision-request.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_FILE_ATTACH_MAIN=/tmp/qt-vr-main.db QT_FIXTURE_FILE_ATTACH_MOUNT=/tmp/qt-vr-mount.db \

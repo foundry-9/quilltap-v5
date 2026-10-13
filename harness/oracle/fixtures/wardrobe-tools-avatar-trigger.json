@@ -1,11 +1,12 @@
 {
-  "comment": "P4.123 — flag-ON companion to wardrobe-tools.json. The base spec (seed items, characters, groups) is READ from wardrobe-tools.json; this file adds the default image profile and one chat per scenario (its own chat so the trigger's pending-job dedup never crosses scenarios). Consumed by build-wardrobe-tools-fixture.ts when QT_WT_AVATAR_SPEC is set, by cases/wardrobe-tools-avatar-trigger.ts, and by wardrobe_tools_avatar_trigger_equivalence.rs.",
+  "comment": "P4.123 — flag-ON companion to wardrobe-tools.json. The base spec (seed items, characters, groups) is READ from wardrobe-tools.json; this file adds the default image profile (KEYED: since `9ecebf986` v4's `resolveAvatarImageProfile` passes over a profile with no `apiKeyId`, so a keyless default would queue no avatar job on either side and the switch-ON premise would never be exercised — only the id's presence is checked, never a key row) and one chat per scenario (its own chat so the trigger's pending-job dedup never crosses scenarios). Consumed by build-wardrobe-tools-fixture.ts when QT_WT_AVATAR_SPEC is set, by cases/wardrobe-tools-avatar-trigger.ts, and by wardrobe_tools_avatar_trigger_equivalence.rs.",
   "imageProfile": {
     "id": "eeeeeeee-0000-4000-8000-000000000001",
     "name": "Avatar Imagery",
     "provider": "OPENAI_COMPATIBLE",
     "baseUrl": "http://127.0.0.1:1/v1",
-    "modelName": "mock-image-model"
+    "modelName": "mock-image-model",
+    "apiKeyId": "eeeeeeee-0000-4000-8000-0000000000aa"
   },
   "scenarios": [
     {

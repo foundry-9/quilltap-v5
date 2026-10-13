@@ -449,16 +449,31 @@ fn line<'a>(lines: &'a [String], needle: &str) -> &'a String {
 /// Give the fixture's avatar profile an API key (P4.D282): since `9ecebf986`
 /// the resolver passes over a keyless profile (v4 `resolveAvatarImageProfile`
 /// — "each candidate must exist, belong to the user, and carry an API key"),
-/// and the committed fixture's profile is keyless. Only the presence of the
+/// and the flag-ON spec's profile is now keyed (its keyless arm strips it). Only the presence of the
 /// id is checked, never the key row.
 fn plant_profile_key(db: &Db, rt: &tokio::runtime::Runtime, profile_id: &str) {
+    set_profile_key(
+        db,
+        rt,
+        profile_id,
+        Some("eeeeeeee-0000-4000-8000-0000000000aa"),
+    );
+}
+
+/// Set (or, with `None`, clear) the profile's `apiKeyId`.
+fn set_profile_key(
+    db: &Db,
+    rt: &tokio::runtime::Runtime,
+    profile_id: &str,
+    key: Option<&'static str>,
+) {
     let profile_id = profile_id.to_string();
     rt.block_on(db.write(move |w| {
         w.main()
             .connection()
             .execute(
-                "UPDATE image_profiles SET apiKeyId = 'eeeeeeee-0000-4000-8000-0000000000aa' WHERE id = ?1",
-                [&profile_id],
+                "UPDATE image_profiles SET apiKeyId = ?1 WHERE id = ?2",
+                rusqlite::params![key, profile_id],
             )
             .map(|_| ())
             .map_err(quilltap_core::db::DbError::from)
@@ -550,9 +565,11 @@ fn trigger_read_failures_take_v4_fallback_arms() {
     drop(db);
     drop(scratch);
 
-    // The committed KEYLESS profile is passed over (measured v4: `no-image-
-    // profile`, not queued).
+    // A KEYLESS default profile is passed over (measured v4: `no-image-
+    // profile`, not queued). The flag-ON spec keys its profile (so the oracle
+    // scenarios queue avatar jobs); this arm strips the key back off.
     let (db, scratch) = open_copy(&fx_main, &fx_mount, &base.pepper, "fb-keyless");
+    set_profile_key(&db, &rt, &profile_id, None);
     let (r, lines) = quilltap_core::test_support::captured_with(|| {
         rt.block_on(trigger_avatar_generation(&db, &params(&base, &chat)))
     });

@@ -183,7 +183,10 @@ fn tokens(s: &str) -> Vec<(usize, usize, &'static str)> {
                 continue;
             }
         }
-        // leaf: dddddddd-dddddd-<kind>-<8 hex>
+        // leaf: dddddddd-dddddd-<kind>-<8 hex> (the pre-`9ecebf986` shape), or
+        // the bridge's `${timestampStem(new Date())}-${kind}.webp` (v4
+        // `wardrobe-image-bridge.ts:122-126` at the pin — no hex suffix, so the
+        // clock stamp IS the identity and maps positionally like a minted id)
         if i + 16 <= b.len()
             && b[i..i + 8].iter().all(u8::is_ascii_digit)
             && b[i + 8] == b'-'
@@ -201,6 +204,11 @@ fn tokens(s: &str) -> Vec<(usize, usize, &'static str)> {
                         .all(|c| is_hex(*c))
                 {
                     out.push((i, start + k.len() + 9, "leaf"));
+                } else if start + k.len() < b.len()
+                    && &b[start..start + k.len()] == k
+                    && b[start + k.len()] == b'.'
+                {
+                    out.push((i, start + k.len(), "leaf"));
                 }
             }
             if out.last().is_some_and(|t| t.0 == i) {
