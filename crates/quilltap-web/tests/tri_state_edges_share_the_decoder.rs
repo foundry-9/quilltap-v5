@@ -510,7 +510,9 @@ fn no_new_tri_state_variant_is_hand_built_outside_the_helper() {
 const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     ("backup_routes.rs", 3),
     ("brahma_routes.rs", 7),
-    ("characters_routes.rs", 10), // 11 hits minus the 1 CharacterRename exception
+    // P4.D281: 11 → 12 hits — the collection GET's `?action=folders` builds
+    // `WardrobeFoldersList` (typed-only).
+    ("characters_routes.rs", 11), // 12 hits minus the 1 CharacterRename exception
     ("chats_routes.rs", 1),
     ("custom_tools_routes.rs", 4),
     ("embedding_profiles_routes.rs", 9),
@@ -558,7 +560,13 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     // hand-build `CoreRequest::WardrobeItemWearHistory { scope, container_id,
     // item_id }` and (for an unknown action's 404-first lookup) a second
     // `WardrobeItemGet { item_id }` — typed-only, no tri-state.
-    ("wardrobe_routes.rs", 17),
+    // P4.D281 (v4 `9ecebf986` + `4a38222e6`): 17 → 22. The collection edges
+    // build `WardrobeFoldersList` and the four folder writes
+    // (`WardrobeFolderCreate` / `Rename` / `Delete`, `WardrobeItemsMove` — the
+    // body RAW, no tri-state) and the character collection's create
+    // (`CharacterWardrobeCreate`); the item GET's 404-first `WardrobeItemGet`
+    // is gone (the factory dispatches the action FIRST).
+    ("wardrobe_routes.rs", 22),
 ];
 
 #[test]
@@ -595,8 +603,10 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 117,
-        "117 = 115 + P4.D256's two `wardrobe_routes.rs` constructions (the item GET's \
+        total, 123,
+        "123 = 117 + P4.D281's six (five in `wardrobe_routes.rs` net — the folder list, the four \
+         folder writes and the character create, less the retired 404-first item GET — and the \
+         character edge's folder list). 117 = 115 + P4.D256's two `wardrobe_routes.rs` constructions (the item GET's \
          `WardrobeItemWearHistory` and its unknown-action 404-first `WardrobeItemGet`). \
          115 = 113 + P4.D217's two `scenario_builder_routes.rs` constructions \
          (`ScenarioBuilderBuild`, `ScenarioBuilderAbort`); the line below is the \

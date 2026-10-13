@@ -153,3 +153,110 @@ async fn the_character_wardrobe_url_serves_the_vault_and_the_group_tier() {
     assert_eq!(status, 404, "unexpected status for a missing character");
     assert_eq!(body["error"], Value::String("Character not found".into()));
 }
+
+/// P4.D281 (v4 `4a38222e6`, R-F): the five folder actions on the REST edges
+/// where their tier has one — the character collection (`GET ?action=folders`,
+/// and the NEW `POST` registration carrying the factory's whole POST map) and
+/// Quilltap General. Plumbing only: each URL resolves, carries its body into
+/// the C2 verb, and answers v4's raw envelope; the bytes are
+/// `wardrobe_folders_routes_equivalence`'s.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_folder_actions_resolve_on_the_rest_edges() {
+    let base = materialize_instance();
+    let (addr, _state) = common::serve_instance(base.path(), |mut c| {
+        c.terminal = false;
+        c
+    })
+    .await;
+    let client = reqwest::Client::new();
+    let char_url = |qs: &str| format!("http://{addr}/api/v1/characters/{ARIA}/wardrobe{qs}");
+    let general_url = |qs: &str| format!("http://{addr}/api/v1/wardrobe{qs}");
+    let send = |req: reqwest::RequestBuilder| async move {
+        let resp = req.send().await.unwrap();
+        let status = resp.status().as_u16();
+        let body: Value = resp.json().await.unwrap();
+        (status, body)
+    };
+
+    // create-folder on the character edge, then it lists.
+    let (status, body) = send(
+        client
+            .post(char_url("?action=create-folder"))
+            .json(&serde_json::json!({ "path": "Coats" })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body,
+        serde_json::json!({ "folder": { "path": "Coats", "name": "Coats", "itemCount": 0 } })
+    );
+    let (status, body) = send(client.get(char_url("?action=folders"))).await;
+    assert_eq!(status, 200, "{body}");
+    assert!(
+        body["folders"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["path"] == "Coats"),
+        "{body}"
+    );
+    // rename + delete on the same edge.
+    let (status, body) = send(
+        client
+            .post(char_url("?action=rename-folder"))
+            .json(&serde_json::json!({ "path": "Coats", "name": "Outerwear" })),
+    )
+    .await;
+    assert_eq!(
+        (status, body["folder"]["path"].clone()),
+        (200, "Outerwear".into())
+    );
+    let (status, body) = send(
+        client
+            .post(char_url("?action=delete-folder"))
+            .json(&serde_json::json!({ "path": "Outerwear" })),
+    )
+    .await;
+    assert_eq!(
+        (status, body),
+        (
+            200,
+            serde_json::json!({ "movedItems": 0, "movedFolders": 0 })
+        )
+    );
+    // A Zod refusal crosses as v4's flat 400.
+    let (status, body) = send(
+        client
+            .post(char_url("?action=move-items"))
+            .json(&serde_json::json!({ "itemIds": [], "folder": "" })),
+    )
+    .await;
+    assert_eq!(
+        (status, body["error"].clone()),
+        (400, "Validation error".into())
+    );
+    // The character collection's create rides the new POST too (201).
+    let (status, body) = send(
+        client
+            .post(char_url(""))
+            .json(&serde_json::json!({ "title": "Rain Hat", "types": ["accessories"] })),
+    )
+    .await;
+    assert_eq!(status, 201, "{body}");
+    assert_eq!(body["wardrobeItem"]["title"], "Rain Hat");
+    assert_eq!(body["wardrobeItem"]["folder"], "");
+
+    // General: the folder list (provisioned, empty) and a folder write.
+    let (status, body) = send(client.get(general_url("?action=folders"))).await;
+    assert_eq!((status, body), (200, serde_json::json!({ "folders": [] })));
+    let (status, body) = send(
+        client
+            .post(general_url("?action=create-folder"))
+            .json(&serde_json::json!({ "path": "Jewelry" })),
+    )
+    .await;
+    assert_eq!(
+        (status, body["folder"]["path"].clone()),
+        (200, "Jewelry".into())
+    );
+}

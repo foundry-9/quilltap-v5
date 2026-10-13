@@ -72,6 +72,12 @@ _Versions: core 0.0.1277._
 
 `tools/definitions/data.rs` regenerated through `gen-tool-catalog.mjs` from the pinned `tool-definitions.ts` dump. Two definitions move: `wardrobe_list` no longer declares `include_presets` and says an item's folder is filing only; `wardrobe_read` names the folder in its description. `tool_definitions_equivalence` and `tools_inventory_equivalence` pass from the pin.
 
+#### 2026-10-13 — feat(web): the wardrobe folder actions on the character and General REST edges; the item GET dispatches its action first (P4.D281, v4 `9ecebf986` + `4a38222e6`)
+
+_Versions: core 0.0.1281, web 0.0.236._
+
+`GET /api/v1/characters/{id}/wardrobe` and `GET /api/v1/wardrobe` answer `?action=folders`; the General POST and a NEW `POST /api/v1/characters/{id}/wardrobe` registration carry the route factory's whole POST map (`instructions`, `create-folder`, `rename-folder`, `delete-folder`, `move-items`, default create → 201). The unknown-action envelopes list v4's new maps. `GET /api/v1/wardrobe/{itemId}` runs the action dispatch BEFORE the item read, as the factory does — an unknown action on a missing item is now the 400. Project / group wardrobe stay dispatch-only (R-F). The tri-state construction census moves to 123.
+
 #### 2026-10-13 — feat(wardrobe): link an already-stored picture to a wardrobe item (P4.D281, v4 `9ecebf986`)
 
 _Versions: core 0.0.1280, web 0.0.235._

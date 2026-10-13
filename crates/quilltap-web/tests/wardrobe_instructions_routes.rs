@@ -204,7 +204,8 @@ async fn the_instructions_action_resolves_on_the_registered_edges() {
     // archetype where v4 refuses.
     let unknown = json!({
         "error": "Unknown action: bogus",
-        "availableActions": ["instructions"],
+        // The route factory's collection GET map (`4a38222e6` adds `folders`).
+        "availableActions": ["instructions", "folders"],
     });
     for url in [
         format!("http://{addr}/api/v1/wardrobe?action=bogus"),
@@ -231,7 +232,21 @@ async fn the_instructions_action_resolves_on_the_registered_edges() {
         .unwrap();
     assert_eq!(resp.status(), 400, "unknown-action POST must refuse");
     let body: Value = resp.json().await.unwrap();
-    assert_eq!(body, unknown);
+    // The factory's collection POST map (`4a38222e6` adds the four folder
+    // writes), in v4's literal order.
+    assert_eq!(
+        body,
+        json!({
+            "error": "Unknown action: bogus",
+            "availableActions": [
+                "instructions",
+                "create-folder",
+                "rename-folder",
+                "delete-folder",
+                "move-items"
+            ],
+        })
+    );
     let after: Value = client
         .get(format!("http://{addr}/api/v1/wardrobe"))
         .send()
@@ -251,7 +266,7 @@ async fn the_instructions_action_resolves_on_the_registered_edges() {
     // then), on both collection edges and the character wardrobe GET.
     let bare = json!({
         "error": "Unknown action: ",
-        "availableActions": ["instructions"],
+        "availableActions": ["instructions", "folders"],
     });
     for url in [
         format!("http://{addr}/api/v1/wardrobe?action="),
@@ -270,7 +285,19 @@ async fn the_instructions_action_resolves_on_the_registered_edges() {
         .unwrap();
     assert_eq!(resp.status(), 400, "bare-action POST must refuse");
     let body: Value = resp.json().await.unwrap();
-    assert_eq!(body, bare);
+    assert_eq!(
+        body,
+        json!({
+            "error": "Unknown action: ",
+            "availableActions": [
+                "instructions",
+                "create-folder",
+                "rename-folder",
+                "delete-folder",
+                "move-items"
+            ],
+        })
+    );
     let after_bare: Value = client
         .get(format!("http://{addr}/api/v1/wardrobe"))
         .send()

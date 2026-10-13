@@ -3,6 +3,9 @@
 //! v4's RAW route body (the P4.6ah lesson).
 //!
 //! - `GET|POST   /api/v1/wardrobe`                 → the GLOBAL archetype tier
+//!   (the route factory's collection: `?action=instructions | folders` on GET,
+//!   `?action=instructions | create-folder | rename-folder | delete-folder |
+//!   move-items` on POST — P4.D281, v4 `4a38222e6`)
 //! - `GET|PUT|DELETE /api/v1/wardrobe/{itemId}`    → one archetype
 //! - `GET|POST   /api/v1/wardrobe/transfers`       → the transfers pair
 //! - `POST       /api/v1/wardrobe/preview-avatar`  → the one-shot render
@@ -29,6 +32,7 @@ use std::collections::HashMap;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
+use quilltap_core::api::types::WardrobeContainerScope;
 use quilltap_core::api::{Request as CoreRequest, Response as CoreResponse};
 use quilltap_core::content_disposition::{build_content_disposition, Disposition};
 use serde_json::Value;
@@ -38,9 +42,12 @@ use crate::state::SharedState;
 use crate::text_replacements_routes::{chat_get_background, dispatch_core, error_to_http};
 
 /// Unwrap a wardrobe-family body to the raw route shape.
-fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumResponse {
+pub(crate) fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumResponse {
     match resp {
         CoreResponse::Wardrobe(v)
+        // P4.D281: the character collection's POST (create / instructions)
+        // answers the character envelope.
+        | CoreResponse::Character(v)
         | CoreResponse::ChatOutfit(v)
         | CoreResponse::ChatDialog(v)
         // === P4.D205 (v4 `e7d77bb60`) ===
@@ -107,9 +114,56 @@ fn parse_body(body: &str, on_bad_json: &str) -> Result<Value, Box<AxumResponse>>
 // /api/v1/wardrobe
 // ===========================================================================
 
-/// v4 `b86bb1a5` puts the General dressing-instructions read on this collection
-/// route behind `?action=instructions` (`withCollectionActionDispatch`);
-/// everything else is the archetype listing.
+/// v4's collection GET action map (the route factory, `4a38222e6`), in its
+/// literal order: `?action=instructions` and `?action=folders`; no action is
+/// the listing.
+pub(crate) const COLLECTION_GET_ACTIONS: [&str; 2] = ["instructions", "folders"];
+
+/// v4's collection POST action map, in its literal order; no action is the
+/// create.
+pub(crate) const COLLECTION_POST_ACTIONS: [&str; 5] = [
+    "instructions",
+    "create-folder",
+    "rename-folder",
+    "delete-folder",
+    "move-items",
+];
+
+/// The folder write verb for a collection POST action (C2 — the body rides
+/// RAW so the handler answers v4's flat `Validation error`).
+fn folder_write_request(
+    action: &str,
+    scope: WardrobeContainerScope,
+    container_id: Option<String>,
+    body: Value,
+) -> CoreRequest {
+    match action {
+        "create-folder" => CoreRequest::WardrobeFolderCreate {
+            scope,
+            container_id,
+            body,
+        },
+        "rename-folder" => CoreRequest::WardrobeFolderRename {
+            scope,
+            container_id,
+            body,
+        },
+        "delete-folder" => CoreRequest::WardrobeFolderDelete {
+            scope,
+            container_id,
+            body,
+        },
+        _ => CoreRequest::WardrobeItemsMove {
+            scope,
+            container_id,
+            body,
+        },
+    }
+}
+
+/// v4 `GET /api/v1/wardrobe` — the factory's collection GET for Quilltap
+/// General: `?action=instructions`, `?action=folders` (`4a38222e6`), else the
+/// listing. An unknown or bare `?action` is the `Unknown action` envelope.
 pub async fn wardrobe_get(
     State(state): State<SharedState>,
     Query(pairs): Query<crate::query::QueryPairs>,
@@ -117,16 +171,21 @@ pub async fn wardrobe_get(
     // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
     // so the pair list collapses to the map the rest of the handler expects.
     let query = crate::query::first_map(&pairs);
-    // v4 `withCollectionActionDispatch({ instructions }, list)` — rebuilt on
-    // `dispatchAction` by `ad1c4c37f`, so a bare `?action=` (which listed)
-    // is now the `Unknown action` envelope.
-    let action =
-        match crate::query::dispatch_action(&pairs, &["instructions"], "GET", "/api/v1/wardrobe") {
-            Ok(a) => a,
-            Err(r) => return *r,
-        };
+    let action = match crate::query::dispatch_action(
+        &pairs,
+        &COLLECTION_GET_ACTIONS,
+        "GET",
+        "/api/v1/wardrobe",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
     let req = match action {
-        Some(_instructions) => CoreRequest::WardrobeInstructionsGet,
+        Some("instructions") => CoreRequest::WardrobeInstructionsGet,
+        Some(_folders) => CoreRequest::WardrobeFoldersList {
+            scope: WardrobeContainerScope::General,
+            container_id: None,
+        },
         None => CoreRequest::WardrobeList {
             include_archived: read_include_archived(&query),
         },
@@ -137,50 +196,83 @@ pub async fn wardrobe_get(
     }
 }
 
+/// v4 `POST /api/v1/wardrobe` — the factory's collection POST for Quilltap
+/// General.
 pub async fn wardrobe_post(
     State(state): State<SharedState>,
     Query(pairs): Query<crate::query::QueryPairs>,
     body: String,
 ) -> AxumResponse {
-    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
-    // so the pair list collapses to the map the rest of the handler expects.
-    // v4 `withCollectionActionDispatch({ instructions }, create)` — a bare
-    // `?action=` (which created) is now refused as unknown (`ad1c4c37f`).
-    let action = match crate::query::dispatch_action(
+    collection_post(
+        &state,
         &pairs,
-        &["instructions"],
-        "POST",
         "/api/v1/wardrobe",
-    ) {
+        WardrobeContainerScope::General,
+        None,
+        &body,
+    )
+    .await
+}
+
+/// The factory's collection POST behind a REST edge (Quilltap General and a
+/// character's vault — R-F: project / group stay dispatch-only): the action
+/// dispatch FIRST (an unknown action never reaches the body), then
+/// `?action=instructions` (decoded through the Request enum so the
+/// required-but-nullable key keeps its tri-state), the four folder writes
+/// (`4a38222e6`), or the create (201). An unparsable body is v4's uncaught
+/// `req.json()` throw — the middleware's 500.
+pub(crate) async fn collection_post(
+    state: &SharedState,
+    pairs: &[(String, String)],
+    path: &str,
+    scope: WardrobeContainerScope,
+    container_id: Option<String>,
+    body: &str,
+) -> AxumResponse {
+    let action = match crate::query::dispatch_action(pairs, &COLLECTION_POST_ACTIONS, "POST", path)
+    {
         Ok(a) => a,
         Err(r) => return *r,
     };
-    if action.is_some() {
-        let body = match parse_body(&body, "Internal server error") {
-            Ok(v) => v,
-            Err(r) => return *r,
-        };
-        // Decoded THROUGH the Request enum so the required-but-nullable
-        // `instructions` key keeps its absent / null / value tri-state.
-        let Some(req) = quilltap_core::api::types::wardrobe_instructions_set_request(
-            &body,
-            "wardrobeInstructionsSet",
-            None,
-        ) else {
-            return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error");
-        };
-        return match dispatch_core(&state, req).await {
-            Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
-            Err(r) => r,
-        };
-    }
-    let item = match parse_body(&body, "Internal server error") {
+    let body = match parse_body(body, "Internal server error") {
         Ok(v) => v,
         Err(r) => return *r,
     };
-    match dispatch_core(&state, CoreRequest::WardrobeCreate { item }).await {
-        // v4 `created({wardrobeItem})` — 201, body raw.
-        Ok(resp) => unwrap_to_http(resp, StatusCode::CREATED),
+    let (req, success) = match action {
+        Some("instructions") => {
+            let (tag, key) = match scope {
+                WardrobeContainerScope::Character => {
+                    ("characterWardrobeInstructionsSet", Some("characterId"))
+                }
+                _ => ("wardrobeInstructionsSet", None),
+            };
+            let Some(req) = quilltap_core::api::types::wardrobe_instructions_set_request(
+                &body,
+                tag,
+                key.zip(container_id.as_deref()),
+            ) else {
+                return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error");
+            };
+            (req, StatusCode::OK)
+        }
+        Some(folder_action) => (
+            folder_write_request(folder_action, scope, container_id, body),
+            StatusCode::OK,
+        ),
+        None => (
+            match scope {
+                WardrobeContainerScope::Character => CoreRequest::CharacterWardrobeCreate {
+                    character_id: container_id.unwrap_or_default(),
+                    item: body,
+                },
+                _ => CoreRequest::WardrobeCreate { item: body },
+            },
+            // v4 `created({ wardrobeItem })` — 201, body raw.
+            StatusCode::CREATED,
+        ),
+    };
+    match dispatch_core(state, req).await {
+        Ok(resp) => unwrap_to_http(resp, success),
         Err(r) => r,
     }
 }
@@ -189,40 +281,29 @@ pub async fn wardrobe_post(
 // /api/v1/wardrobe/{itemId}
 // ===========================================================================
 
-/// v4 `GET /api/v1/wardrobe/[itemId]` — the archetype item, or (`3ee3b1342`)
-/// `?action=wear-history` → the `wardrobeItemWearHistory` verb at General
-/// scope. v4 runs the item's 404 BEFORE `dispatchAction(req, { 'wear-history'
-/// }, default)`, so an unknown action on a MISSING item is the 404 (and v4's
-/// unknown-action WARN never fires); on a present item it is the three-way
-/// rule's `Unknown action` 400. The wear-history verb runs its own 404 first.
+/// v4 `GET /api/v1/wardrobe/[itemId]` — the route factory's item GET
+/// (`9ecebf986`): `withActionDispatch({ 'wear-history' }, get)` runs BEFORE
+/// the handler loads anything, so an unknown or bare `?action` is the
+/// `Unknown action` 400 even for a MISSING item (the pre-factory route ran the
+/// item's 404 first); `?action=wear-history` → the `wardrobeItemWearHistory`
+/// verb at General scope (its own 404 first); no action → the item.
 pub async fn wardrobe_item_get(
     State(state): State<SharedState>,
     Path(item_id): Path<String>,
     Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
     const PATH: &str = "/api/v1/wardrobe/[itemId]";
-    const ACTIONS: &[&str] = &["wear-history"];
-    let request = match crate::query::action_param(&pairs) {
+    let action = match crate::query::dispatch_action(&pairs, &["wear-history"], "GET", PATH) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    let request = match action {
         None => CoreRequest::WardrobeItemGet { item_id },
-        Some("wear-history") => CoreRequest::WardrobeItemWearHistory {
-            scope: quilltap_core::api::types::WardrobeContainerScope::General,
+        Some(_wear_history) => CoreRequest::WardrobeItemWearHistory {
+            scope: WardrobeContainerScope::General,
             container_id: None,
             item_id,
         },
-        Some(unknown) => {
-            // The item's 404 first (v4's order), then the refusal.
-            return match dispatch_core(&state, CoreRequest::WardrobeItemGet { item_id }).await {
-                // Only a PRESENT item reaches the three-way rule; every core
-                // error (the 404, and a failed read — v4's GET catch answers
-                // 500 `Failed to fetch archetype wardrobe item` before
-                // `dispatchAction`) crosses as itself.
-                Ok(CoreResponse::Error(e)) => {
-                    unwrap_to_http(CoreResponse::Error(e), StatusCode::OK)
-                }
-                Ok(_) => crate::query::unknown_action_response(unknown, ACTIONS, "GET", PATH),
-                Err(r) => r,
-            };
-        }
     };
     match dispatch_core(&state, request).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),

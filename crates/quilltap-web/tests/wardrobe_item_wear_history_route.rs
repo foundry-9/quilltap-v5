@@ -139,18 +139,24 @@ async fn the_item_get_edge_serves_the_item_the_wear_history_and_v4s_refusals() {
     let (status, body) = get(G_COAT, "?action=").await;
     assert_eq!(status, 400, "{body}");
     assert_eq!(body["error"], "Unknown action: ");
-    // … but on a MISSING item the 404 wins (v4's lookup precedes the dispatch).
+    // … and on a MISSING item too: since `9ecebf986` the route factory's
+    // `withActionDispatch` runs BEFORE the handler loads anything (v4's
+    // factory test "refuses an unknown action rather than serving the item"),
+    // so the pre-factory 404-first rule is retired by measurement.
     let (status, body) = get(UNKNOWN, "?action=bogus").await;
-    assert_eq!(status, 404, "{body}");
-    assert_eq!(body["error"], "Archetype wardrobe item not found");
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(
+        body,
+        json!({ "error": "Unknown action: bogus", "availableActions": ["wear-history"] })
+    );
 }
 
-/// The `f5e953a3f` unification's §3 finding: a FAILED item read is never
-/// masked as the unknown-action 400. v4 runs `findArchetypeById` inside the
-/// GET's try/catch BEFORE `dispatchAction`, so a throw answers the catch's
-/// error, never `Unknown action`. A garbage mount index boots DEGRADED
-/// (P4.159 — the partition unavailable), so the General read itself fails;
-/// the unknown action must answer exactly what the bare GET answers.
+/// The `f5e953a3f` unification's §3 finding, re-pinned at `9ecebf986`: the
+/// pre-factory route read the item BEFORE `dispatchAction`, so a failed read
+/// answered its error, never `Unknown action`. The route factory dispatches
+/// the action FIRST — before any read — so on a DEGRADED mount index (a
+/// garbage file, P4.159) the bare GET fails with the read's error while an
+/// unknown action is still v4's 400 envelope (nothing was read to fail).
 #[tokio::test(flavor = "multi_thread")]
 async fn a_failed_item_read_is_not_masked_as_an_unknown_action() {
     let base = materialize_instance();
@@ -182,7 +188,11 @@ async fn a_failed_item_read_is_not_masked_as_an_unknown_action() {
     );
     let bogus = get("?action=bogus").await;
     assert_eq!(
-        bogus, bare,
-        "the unknown-action arm passes the core error through"
+        bogus,
+        (
+            400,
+            json!({ "error": "Unknown action: bogus", "availableActions": ["wear-history"] })
+        ),
+        "the action dispatch runs before the item read"
     );
 }

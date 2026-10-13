@@ -362,7 +362,10 @@ pub fn build_router(state: SharedState) -> Router {
         // === P4.D71: the group-tier wardrobe read (v4 8600c83f) ===
         .route(
             "/api/v1/characters/{id}/wardrobe",
-            get(characters_routes::characters_wardrobe_get),
+            get(characters_routes::characters_wardrobe_get)
+                // P4.D281: the factory's collection POST (folder writes,
+                // instructions, create).
+                .post(characters_routes::characters_wardrobe_post),
         )
         .route(
             "/api/v1/characters/{id}",

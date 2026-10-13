@@ -833,7 +833,7 @@ pub async fn characters_wardrobe_get(
     // bare `?action=` is refused as unknown rather than listing.
     let action = match crate::query::dispatch_action(
         &pairs,
-        &["instructions"],
+        &crate::wardrobe_routes::COLLECTION_GET_ACTIONS,
         "GET",
         "/api/v1/characters/[id]/wardrobe",
     ) {
@@ -841,9 +841,14 @@ pub async fn characters_wardrobe_get(
         Err(r) => return *r,
     };
     let req = match action {
-        Some(_instructions) => {
+        Some("instructions") => {
             quilltap_core::api::Request::CharacterWardrobeInstructionsGet { character_id: id }
         }
+        // P4.D281 (v4 `4a38222e6`): the folder list — `Response::Wardrobe` (C2).
+        Some(_folders) => quilltap_core::api::Request::WardrobeFoldersList {
+            scope: quilltap_core::api::types::WardrobeContainerScope::Character,
+            container_id: Some(id),
+        },
         None => quilltap_core::api::Request::CharacterWardrobeList {
             character_id: id,
             scope: query.get("scope").cloned(),
@@ -851,19 +856,31 @@ pub async fn characters_wardrobe_get(
         },
     };
     match crate::text_replacements_routes::dispatch_core(&state, req).await {
-        Ok(Response::Character(v)) => (
-            StatusCode::OK,
-            [(CONTENT_TYPE, "application/json")],
-            v.to_string(),
-        )
-            .into_response(),
-        Ok(Response::Error(e)) => crate::text_replacements_routes::error_to_http(e),
-        Ok(_) => error_json(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Unexpected core response",
-        ),
+        Ok(resp) => crate::wardrobe_routes::unwrap_to_http(resp, StatusCode::OK),
         Err(resp) => resp,
     }
+}
+
+/// v4 `POST /api/v1/characters/[id]/wardrobe` (the route factory,
+/// `9ecebf986` + `4a38222e6`) — registered by P4.D281 so the folder writes
+/// (`?action=create-folder | rename-folder | delete-folder | move-items`) are
+/// served on v4's documented path; the factory's POST map comes whole, so
+/// `?action=instructions` and the create (201) ride the same edge.
+pub async fn characters_wardrobe_post(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+    Query(pairs): Query<crate::query::QueryPairs>,
+    body: String,
+) -> AxumResponse {
+    crate::wardrobe_routes::collection_post(
+        &state,
+        &pairs,
+        "/api/v1/characters/[id]/wardrobe",
+        quilltap_core::api::types::WardrobeContainerScope::Character,
+        Some(id),
+        &body,
+    )
+    .await
 }
 
 // ===========================================================================
