@@ -185,7 +185,10 @@ mod tests {
         // `ExportedChat.otherExtractionWatermarkMessageId`, `Memory.tier` /
         // `supersededById` / `consolidatedFrom` / `consolidatedAt`, the
         // `source` description).
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 102_523);
+        // P4.D284: 103,075 at v4 `4a38222e6` (`$defs.WardrobeItem.folder`, a
+        // string of at most 900 characters, between `archivedAt` and
+        // `createdAt`).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 103_075);
     }
 
     /// The export with one memory of `minimal_characters_export`'s character.

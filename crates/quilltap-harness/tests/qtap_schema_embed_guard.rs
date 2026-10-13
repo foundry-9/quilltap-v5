@@ -51,7 +51,12 @@ mod common;
 /// description). Both `$defs` are `additionalProperties: true`, so the move is
 /// an acceptance tightening for PRESENT keys, never a new-key refusal; its
 /// only behavioural consumer is the AI import's validator.
-const VENDORED_BYTES: usize = 102_523;
+/// P4.D284: 103,075 at v4 `4a38222e6` — `$defs.WardrobeItem.folder` (a string,
+/// `maxLength` 900, after `archivedAt`): the item's folder under `Wardrobe/`,
+/// which importers file at the same path. `$defs.WardrobeItem` stays
+/// `additionalProperties: true`, so the move tightens a PRESENT `folder` only
+/// (a non-string or an over-long one).
+const VENDORED_BYTES: usize = 103_075;
 
 #[test]
 fn the_embedded_schema_is_self_consistent() {

@@ -5007,7 +5007,7 @@
     },
     {
       "name": "wardrobe_wear_path_derived",
-      "note": "a path-derived item id (no frontmatter id, or one that is not uuid-shaped) is recomputed against the REMAPPED mount; the item-path test is case-insensitive and non-recursive — instructions.md, a nested Wardrobe/Old/*.md, a Notes/*.md and a link whose document is missing are not items (their ledger rows pass through unchanged)",
+      "note": "a path-derived item id (no frontmatter id, or one that is not uuid-shaped) is recomputed against the REMAPPED mount; the item-path test is case-insensitive and RECURSIVE (v4 4a38222e6) — a nested Wardrobe/Old/Coat.md is an item and its ledger row follows the remapped mount; instructions.md at any depth, anything under Wardrobe/images/, a Notes/*.md and a link whose document is missing are not items (their ledger rows pass through unchanged)",
       "targetUserId": "11111111-2222-3333-4444-555555555555",
       "data": {
         "characters": [],
@@ -5071,6 +5071,18 @@
             "relativePath": "Wardrobe/Old/Coat.md"
           },
           {
+            "id": "wl-picdoc",
+            "fileId": "wf-picdoc",
+            "mountPointId": "mount-hat",
+            "relativePath": "Wardrobe/images/hat-item/Coat.md"
+          },
+          {
+            "id": "wl-ninstr",
+            "fileId": "wf-ninstr",
+            "mountPointId": "mount-hat",
+            "relativePath": "Wardrobe/Formal/instructions.md"
+          },
+          {
             "id": "wl-notes",
             "fileId": "wf-notes",
             "mountPointId": "mount-hat",
@@ -5106,6 +5118,16 @@
             "content": "---\ntitle: Old Coat\ntypes: [top]\n---\n"
           },
           {
+            "id": "wd-picdoc",
+            "fileId": "wf-picdoc",
+            "content": "---\ntitle: Pictured Coat\ntypes: [top]\n---\n"
+          },
+          {
+            "id": "wd-ninstr",
+            "fileId": "wf-ninstr",
+            "content": "Formal rules."
+          },
+          {
             "id": "wd-notes",
             "fileId": "wf-notes",
             "content": "---\ntitle: Notes Hat\n---\n"
@@ -5122,6 +5144,39 @@
             "itemId": "c4e19c39-2393-8719-9b8e-b08fa97e5cee",
             "wearerCharacterId": null,
             "wearCount": 3,
+            "firstWornAt": "2026-01-01T00:00:00.000Z",
+            "lastWornAt": "2026-03-01T00:00:00.000Z",
+            "lastWornChatId": null,
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          },
+          {
+            "id": "row-nested",
+            "itemId": "be6e3b80-c295-8a9e-bb24-20eb41ebc85e",
+            "wearerCharacterId": null,
+            "wearCount": 2,
+            "firstWornAt": "2026-01-01T00:00:00.000Z",
+            "lastWornAt": "2026-03-01T00:00:00.000Z",
+            "lastWornChatId": null,
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          },
+          {
+            "id": "row-picdoc",
+            "itemId": "7d788714-42ef-80de-9cd6-55e2ad953b60",
+            "wearerCharacterId": null,
+            "wearCount": 1,
+            "firstWornAt": "2026-01-01T00:00:00.000Z",
+            "lastWornAt": "2026-03-01T00:00:00.000Z",
+            "lastWornChatId": null,
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          },
+          {
+            "id": "row-ninstr",
+            "itemId": "60b04403-5868-8c54-aff3-a6136aeb2927",
+            "wearerCharacterId": null,
+            "wearCount": 1,
             "firstWornAt": "2026-01-01T00:00:00.000Z",
             "lastWornAt": "2026-03-01T00:00:00.000Z",
             "lastWornChatId": null,
@@ -5400,6 +5455,100 @@
         "groupCharacterMembers": [],
         "textReplacementRules": [],
         "wardrobeWear": []
+      }
+    },
+    {
+      "name": "wardrobe_items_filed_in_subfolders",
+      "note": "P4.D284 (v4 `4a38222e6`, jest `uuid-remapper.test.ts:940-1008`): an id-less item filed at Wardrobe/Formal/Evening/Coat.md is an item — its ledger row follows the id recomputed against the remapped mount, and its picture pointer is PLANNED (one fix); a document under Wardrobe/images/ beside it is not an item and plans nothing",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "restorePath": true,
+      "data": {
+        "characters": [],
+        "chats": [],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [
+          {
+            "id": "file-evening",
+            "linkedTo": [],
+            "tags": []
+          }
+        ],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorIndexMetas": [],
+        "vectorEntries": [],
+        "docMountPoints": [
+          {
+            "id": "mount-evening"
+          }
+        ],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [
+          {
+            "id": "link-ev",
+            "mountPointId": "mount-evening",
+            "fileId": "df-ev",
+            "relativePath": "Wardrobe/Formal/Evening/Coat.md"
+          },
+          {
+            "id": "link-evpic",
+            "mountPointId": "mount-evening",
+            "fileId": "df-evpic",
+            "relativePath": "Wardrobe/images/ev-item/Note.md"
+          }
+        ],
+        "docMountChunks": [],
+        "docMountDocuments": [
+          {
+            "id": "doc-ev",
+            "fileId": "df-ev",
+            "content": "---\ntitle: Evening Coat\ntypes: [top]\nimageFileId: file-evening\n---\n"
+          },
+          {
+            "id": "doc-evpic",
+            "fileId": "df-evpic",
+            "content": "---\ntitle: Note\ntypes: [top]\nimageFileId: file-evening\n---\n"
+          }
+        ],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [
+          {
+            "id": "row-evening",
+            "itemId": "f6c125fb-2083-8af4-a0ff-e97846c35cbe",
+            "wearerCharacterId": null,
+            "wearCount": 4,
+            "firstWornAt": "2026-01-01T00:00:00.000Z",
+            "lastWornAt": "2026-03-01T00:00:00.000Z",
+            "lastWornChatId": null,
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "updatedAt": "2026-03-01T00:00:00.000Z"
+          }
+        ]
       }
     },
     {

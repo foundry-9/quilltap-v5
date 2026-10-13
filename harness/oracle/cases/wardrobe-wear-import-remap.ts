@@ -23,6 +23,8 @@ import {
 const NOW = '2026-10-08T12:00:00.000Z';
 const ITEM_A = '11111111-1111-4111-8111-111111111111';
 const ITEM_B = '22222222-2222-4222-8222-222222222222';
+const ITEM_C = '33333333-3333-4333-8333-333333333333';
+const ITEM_D = '44444444-4444-4444-8444-444444444444';
 const DST_A = '33333333-3333-4333-8333-333333333333';
 const DST_B = '44444444-4444-4444-8444-444444444444';
 
@@ -223,7 +225,14 @@ const MAP_CASES: MapCase[] = [
       { mountPointId: 'mp-src', relativePath: 'Wardrobe/Hat.md', content: '---\ntitle: Hat\ntypes: [accessories]\n---\n' },
       { mountPointId: 'mp-src', relativePath: 'WARDROBE/Scarf.MD', content: '---\nid: not-a-uuid\ntitle: Scarf\ntypes: [accessories]\n---\n' },
       { mountPointId: 'mp-src', relativePath: 'Wardrobe/instructions.md', content: 'Dress for rain.' },
+      // P4.D284 (v4 `4a38222e6`): the item-path test is RECURSIVE — a nested
+      // item maps (its frontmatter id, to itself); `instructions.md` at any
+      // depth and anything under `Wardrobe/images/` are not items (v4 jest
+      // `import-wardrobe-wear.test.ts:258-271`).
       { mountPointId: 'mp-src', relativePath: 'Wardrobe/Old/Coat.md', content: FM(ITEM_B, 'Old Coat') },
+      { mountPointId: 'mp-src', relativePath: 'Wardrobe/Old/instructions.md', content: FM(ITEM_C, 'Old Rules') },
+      { mountPointId: 'mp-src', relativePath: `Wardrobe/images/${ITEM_A}/Coat.md`, content: FM(ITEM_D, 'Pictured Coat') },
+      { mountPointId: 'mp-src', relativePath: 'Wardrobe/Formal/Evening/Tails.md', content: '---\ntitle: Tails\ntypes: [top]\n---\n' },
       { mountPointId: 'mp-src', relativePath: 'Notes/Hat.md', content: FM(ITEM_B, 'Notes Hat') },
       { mountPointId: 'mp-skipped', relativePath: 'Wardrobe/Boots.md', content: FM(ITEM_B, 'Boots') },
     ],

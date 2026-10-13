@@ -122,6 +122,12 @@ The `4a38222e6` wardrobe-programme round's image lane, stage B from `KEYSTONE` (
 
 New families: `physical_description_equivalence` (140 rows), `image_attempt_tier3` (15), `generated_file_row_equivalence` (9), `vision_request_tier3` (22, one through the bug-151 scripted encoder). Grown: the wiig corpus (three chat plants, nine job scenarios; 32), the Almanack plants (two `WARDROBE_ITEM_IMAGE` rows), `wardrobe-routes.json` (`pv_refused_422`, `pv_provider_502`, `pv_rerouted_ok`). Re-pinned with the port: `lora_log_anchor_guard`, the in-crate avatar / story tests. Three mutation proofs red by name (an order inverted, the type list narrowed, the shrink skipped). Seven import-dead oracle cases re-aimed at the pin's moved modules. Lane record in `status-log.md`.
 
+#### 2026-10-12 — chore(schema): re-vendor the export schema with `WardrobeItem.folder`; the remap oracles cover nested wardrobe items (P4.D284, v4 `4a38222e6`)
+
+_Versions: core 0.0.1279._
+
+The vendored `.qtap` export schema is re-copied from v4 at `4a38222e6` (adds `folder` to `WardrobeItem`; 102,523 → 103,075 bytes, both size pins moved). The backup id-remap and wear-ledger import oracles now plant items filed in subfolders, pictures under `Wardrobe/images/` and nested `instructions.md`, proving the side channels follow the recursive item rule.
+
 #### 2026-10-12 — feat(import): a carried wardrobe record files at its `folder`, and a non-string one is refused with v4's warning (P4.D284, v4 `4a38222e6`)
 
 _Versions: core 0.0.1278._

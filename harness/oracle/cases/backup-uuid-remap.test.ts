@@ -279,6 +279,17 @@ function edgeCases(): Case[] {
   const hatPicContent = '---\ntitle: Hat\ntypes: [accessories]\nimageFileId: file-hat\n---\n';
   const hatItemId = pathDerivedItemId('mount-hat', 'Wardrobe/Hat.md', hatContent);
   const hatPicItemId = pathDerivedItemId('mount-old', 'Wardrobe/Hat.md', hatPicContent);
+  // P4.D284 (v4 `4a38222e6`): the item-path test is RECURSIVE, so a nested
+  // id-less item is recomputed against the remapped mount like a root one;
+  // pictures (`Wardrobe/images/**`) and `instructions.md` at any depth are not
+  // items, and their ledger rows pass through unchanged.
+  const nestedContent = '---\ntitle: Old Coat\ntypes: [top]\n---\n';
+  const nestedItemId = pathDerivedItemId('mount-hat', 'Wardrobe/Old/Coat.md', nestedContent);
+  const picDocContent = '---\ntitle: Pictured Coat\ntypes: [top]\n---\n';
+  const picDocItemId = pathDerivedItemId('mount-hat', 'Wardrobe/images/hat-item/Coat.md', picDocContent);
+  const nestedInstrItemId = pathDerivedItemId('mount-hat', 'Wardrobe/Formal/instructions.md', 'Formal rules.');
+  const eveningContent = '---\ntitle: Evening Coat\ntypes: [top]\nimageFileId: file-evening\n---\n';
+  const eveningItemId = pathDerivedItemId('mount-evening', 'Wardrobe/Formal/Evening/Coat.md', eveningContent);
   return [
     {
       name: 'all_empty',
@@ -876,7 +887,7 @@ function edgeCases(): Case[] {
     },
     {
       name: 'wardrobe_wear_path_derived',
-      note: "a path-derived item id (no frontmatter id, or one that is not uuid-shaped) is recomputed against the REMAPPED mount; the item-path test is case-insensitive and non-recursive — instructions.md, a nested Wardrobe/Old/*.md, a Notes/*.md and a link whose document is missing are not items (their ledger rows pass through unchanged)",
+      note: "a path-derived item id (no frontmatter id, or one that is not uuid-shaped) is recomputed against the REMAPPED mount; the item-path test is case-insensitive and RECURSIVE (v4 4a38222e6) — a nested Wardrobe/Old/Coat.md is an item and its ledger row follows the remapped mount; instructions.md at any depth, anything under Wardrobe/images/, a Notes/*.md and a link whose document is missing are not items (their ledger rows pass through unchanged)",
       targetUserId: t,
       data: bag({
         docMountPoints: [{ id: 'mount-hat' }],
@@ -885,6 +896,8 @@ function edgeCases(): Case[] {
           { id: 'wl-scarf', fileId: 'wf-scarf', mountPointId: 'mount-hat', relativePath: 'WARDROBE/Scarf.MD' },
           { id: 'wl-instr', fileId: 'wf-instr', mountPointId: 'mount-hat', relativePath: 'Wardrobe/instructions.md' },
           { id: 'wl-nested', fileId: 'wf-nested', mountPointId: 'mount-hat', relativePath: 'Wardrobe/Old/Coat.md' },
+          { id: 'wl-picdoc', fileId: 'wf-picdoc', mountPointId: 'mount-hat', relativePath: 'Wardrobe/images/hat-item/Coat.md' },
+          { id: 'wl-ninstr', fileId: 'wf-ninstr', mountPointId: 'mount-hat', relativePath: 'Wardrobe/Formal/instructions.md' },
           { id: 'wl-notes', fileId: 'wf-notes', mountPointId: 'mount-hat', relativePath: 'Notes/Hat.md' },
           { id: 'wl-nodoc', fileId: 'wf-nodoc', mountPointId: 'mount-other', relativePath: 'Wardrobe/Ghost.md' },
         ],
@@ -892,7 +905,9 @@ function edgeCases(): Case[] {
           { id: 'wd-hat', fileId: 'wf-hat', content: hatContent },
           { id: 'wd-scarf', fileId: 'wf-scarf', content: '---\nid: not-a-uuid\ntitle: Scarf\ntypes: [accessories]\n---\n' },
           { id: 'wd-instr', fileId: 'wf-instr', content: 'Dress for the weather.' },
-          { id: 'wd-nested', fileId: 'wf-nested', content: '---\ntitle: Old Coat\ntypes: [top]\n---\n' },
+          { id: 'wd-nested', fileId: 'wf-nested', content: nestedContent },
+          { id: 'wd-picdoc', fileId: 'wf-picdoc', content: picDocContent },
+          { id: 'wd-ninstr', fileId: 'wf-ninstr', content: 'Formal rules.' },
           { id: 'wd-notes', fileId: 'wf-notes', content: '---\ntitle: Notes Hat\n---\n' },
         ],
         wardrobeWear: [
@@ -901,6 +916,39 @@ function edgeCases(): Case[] {
             itemId: hatItemId,
             wearerCharacterId: null,
             wearCount: 3,
+            firstWornAt: '2026-01-01T00:00:00.000Z',
+            lastWornAt: '2026-03-01T00:00:00.000Z',
+            lastWornChatId: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-03-01T00:00:00.000Z',
+          },
+          {
+            id: 'row-nested',
+            itemId: nestedItemId,
+            wearerCharacterId: null,
+            wearCount: 2,
+            firstWornAt: '2026-01-01T00:00:00.000Z',
+            lastWornAt: '2026-03-01T00:00:00.000Z',
+            lastWornChatId: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-03-01T00:00:00.000Z',
+          },
+          {
+            id: 'row-picdoc',
+            itemId: picDocItemId,
+            wearerCharacterId: null,
+            wearCount: 1,
+            firstWornAt: '2026-01-01T00:00:00.000Z',
+            lastWornAt: '2026-03-01T00:00:00.000Z',
+            lastWornChatId: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-03-01T00:00:00.000Z',
+          },
+          {
+            id: 'row-ninstr',
+            itemId: nestedInstrItemId,
+            wearerCharacterId: null,
+            wearCount: 1,
             firstWornAt: '2026-01-01T00:00:00.000Z',
             lastWornAt: '2026-03-01T00:00:00.000Z',
             lastWornChatId: null,
@@ -980,6 +1028,37 @@ function edgeCases(): Case[] {
           { id: 'doc-a', fileId: 'df-a', content: '---\ntitle: A\ntypes: [top]\nimageFileId: file-missing\n---\n' },
           { id: 'doc-b', fileId: 'df-b', content: '---\ntitle: B\ntypes: [top]\nimageFileId: 42\n---\n' },
           { id: 'doc-c', fileId: 'df-c', content: '---\ntitle: C\ntypes: [top]\n---\n' },
+        ],
+      }),
+    },
+    {
+      name: 'wardrobe_items_filed_in_subfolders',
+      note: "P4.D284 (v4 `4a38222e6`, jest `uuid-remapper.test.ts:940-1008`): an id-less item filed at Wardrobe/Formal/Evening/Coat.md is an item — its ledger row follows the id recomputed against the remapped mount, and its picture pointer is PLANNED (one fix); a document under Wardrobe/images/ beside it is not an item and plans nothing",
+      targetUserId: t,
+      restorePath: true,
+      data: bag({
+        files: [{ id: 'file-evening', linkedTo: [], tags: [] }],
+        docMountPoints: [{ id: 'mount-evening' }],
+        docMountFileLinks: [
+          { id: 'link-ev', mountPointId: 'mount-evening', fileId: 'df-ev', relativePath: 'Wardrobe/Formal/Evening/Coat.md' },
+          { id: 'link-evpic', mountPointId: 'mount-evening', fileId: 'df-evpic', relativePath: 'Wardrobe/images/ev-item/Note.md' },
+        ],
+        docMountDocuments: [
+          { id: 'doc-ev', fileId: 'df-ev', content: eveningContent },
+          { id: 'doc-evpic', fileId: 'df-evpic', content: '---\ntitle: Note\ntypes: [top]\nimageFileId: file-evening\n---\n' },
+        ],
+        wardrobeWear: [
+          {
+            id: 'row-evening',
+            itemId: eveningItemId,
+            wearerCharacterId: null,
+            wearCount: 4,
+            firstWornAt: '2026-01-01T00:00:00.000Z',
+            lastWornAt: '2026-03-01T00:00:00.000Z',
+            lastWornChatId: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-03-01T00:00:00.000Z',
+          },
         ],
       }),
     },
