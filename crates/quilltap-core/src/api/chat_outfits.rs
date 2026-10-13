@@ -85,24 +85,24 @@
 use serde_json::{json, Map, Value};
 
 use crate::db::chats_outfits::ChatOutfitsRepository;
-use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::runtime::Db;
-use crate::db::wardrobe_read;
 use crate::db::wardrobe_wear_stats::{EquipSource, WornBundle};
 use crate::services::avatar_generation::AvatarGenerationParams;
 use crate::services::image_job_common::with_both_conns;
 use crate::services::outfit_change_effects::{notify_wardrobe_changed, OutfitChangeContext};
 use crate::services::outfit_displacement::apply_displacement;
+use crate::services::resolve_equipped::resolve_equipped_outfit_for_character;
 use crate::services::wardrobe_wear_commit::{commit_equipped_outfit, CommitEquippedOutfitInput};
 use crate::slot_ops::{worn_bundles_for, ComputeDisplacedOptions, DisplacementMode, WearableNode};
 use crate::wardrobe::{is_composite, Slots};
-use crate::wardrobe_tiers::SharedWardrobeTiers;
 use crate::wear_ops::{
     resolve_wearable, wear_item, PutOnMode, WearEffect, WearableRef, WearableRefusal,
     WearableResolution,
 };
 use crate::wearable::{newly_worn_archived_items, wear_refusal};
-use crate::wearable_pool::{load_wearable_pool, LoadWearablePoolOptions, WearablePool};
+use crate::wearable_pool::{
+    load_cast_pools, load_wearable_pool, LoadWearablePoolOptions, WearablePool,
+};
 
 use super::types::{ErrorKind, Response};
 
@@ -157,170 +157,106 @@ pub fn chat_outfit_get(db: &Db, chat_id: &str) -> Response {
 // GET ?action=outfit-summary (P4.9E3B — v4 handleGetOutfitSummary, outfit.ts:106)
 // ===========================================================================
 
-/// v4 `handleGetOutfitSummary` — per-character equipped outfit with resolved
-/// item titles. Each slot is an array of `{itemId, title}` (composites are
-/// expanded to their leaves before mapping; a leaf is projected only into slots
-/// its own `types` cover; an unresolvable id is silently dropped). Shape:
-/// `{ summary: { [characterId]: { [slot]: [{itemId, title}, …] } } }`.
-///
-/// The item pool seeds the shared archetype tier (Quilltap General + the chat
-/// project's stores, `includeArchived: true`) and then layers each OUTFIT-KEYED
-/// character's own vault wardrobe on top — v4 iterates the `equippedOutfit`
-/// object's own keys, not the participant roster.
+/// v4 `handleGetOutfitSummary` (`outfit.ts:112-151`) — per-character equipped
+/// outfit with resolved item titles. Each character's slots resolve against
+/// THEIR OWN wearable pool ([`load_cast_pools`] — own vault, own groups, with
+/// the chat project's stores and Quilltap General read once for the cast; the
+/// operator is reading, so the project roster does not apply) by the canonical
+/// rule ([`resolve_equipped_outfit_for_character`]): composites expanded, each
+/// leaf routed into EVERY slot its own `types` cover, deduped across the whole
+/// equipped set. An id outside the character's own pool is dropped rather than
+/// borrowing another participant's item. Shape:
+/// `{ summary: { [characterId]: { [slot]: [{itemId, title}, …] } } }`, the
+/// characters in the stored `equippedOutfit` object's own key order (v4
+/// iterates its keys, not the participant roster); DEBUG `[Chats v1] Built
+/// outfit summary`.
 pub fn chat_outfit_summary(db: &Db, chat_id: &str) -> Response {
+    // v4 `repos.chats.findById` is a FALLBACK read: a failed read logs the
+    // repository's `Error finding entity by ID` and answers `null` — the 404,
+    // never the route's catch.
+    let lookup = chat_id.to_string();
+    let chat = crate::db::fallback::find_by_id_or_none("chats", chat_id, || {
+        db.read_main(move |conn| crate::db::chats_read::find_by_id(conn, &lookup))
+    });
+    let Some(chat) = chat else {
+        return not_found("Chat");
+    };
     let cid = chat_id.to_string();
     let out = db.read_main(|main| {
         db.read_mount_index(|mount| {
-            let Some(chat) = crate::db::chats_read::find_by_id(main, &cid)? else {
-                return Ok(Err(not_found("Chat")));
-            };
             let equipped = ChatOutfitsRepository::new(main)
                 .get_equipped_outfit(&cid)
                 .unwrap_or_else(|| Value::Object(Map::new()));
             let equipped_obj = equipped.as_object().cloned().unwrap_or_default();
-
-            // Collect every itemId across all characters/slots, then bulk-resolve.
-            let mut all_item_ids: std::collections::HashSet<String> =
-                std::collections::HashSet::new();
-            for slots in equipped_obj.values() {
-                if slots.is_null() {
-                    continue;
-                }
-                for slot_key in WARDROBE_SLOT_TYPES {
-                    if let Some(ids) = slots.get(slot_key).and_then(Value::as_array) {
-                        for id in ids {
-                            if let Some(id) = id.as_str().filter(|s| !s.is_empty()) {
-                                all_item_ids.insert(id.to_string());
-                            }
-                        }
-                    }
-                }
-            }
-
-            let docs = DocMountDocumentsRepository::new(mount);
-            let mut items_by_id: std::collections::HashMap<String, Value> =
-                std::collections::HashMap::new();
-            if !all_item_ids.is_empty() {
-                // v4 `resolveProjectMountPointIds(chat.projectId)` — [] for a
-                // project-less chat or any lookup failure.
-                let project_mount_point_ids: Vec<String> = match chat
-                    .get("projectId")
-                    .and_then(Value::as_str)
-                    .filter(|s| !s.is_empty())
-                {
-                    Some(pid) => {
-                        crate::db::project_doc_mount_links::ProjectDocMountLinksRepository::new(
-                            mount,
-                        )
-                        .find_by_project_id(pid)
-                        .unwrap_or_default()
-                    }
-                    None => Vec::new(),
-                };
-                // This summary spans the whole cast, so the group tier is the
-                // *union* of the participants' memberships — unlike the
-                // per-character equip paths below, where each character sees
-                // only their own groups (v4 `8600c83f`, the one documented
-                // cast-spanning exception).
-                let mut group_mount_point_ids: Vec<String> = Vec::new();
-                for character_id in equipped_obj.keys() {
-                    for id in
-                        crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character(
-                            main,
-                            mount,
-                            character_id,
-                        )
-                    {
-                        if !group_mount_point_ids.contains(&id) {
-                            group_mount_point_ids.push(id);
-                        }
-                    }
-                }
-                let summary_tiers = SharedWardrobeTiers {
-                    group_mount_point_ids,
-                    project_mount_point_ids,
-                };
-                for arche in crate::db::archetype_wardrobe::find_archetypes(
-                    main,
-                    &docs,
-                    true,
-                    &summary_tiers,
-                )? {
-                    if let Some(id) = arche.get("id").and_then(Value::as_str) {
-                        items_by_id.insert(id.to_string(), arche.clone());
-                    }
-                }
-                for character_id in equipped_obj.keys() {
-                    for item in
-                        wardrobe_read::find_by_character_id(main, &docs, character_id, true)?
-                    {
-                        if let Some(id) = item.get("id").and_then(Value::as_str) {
-                            items_by_id.insert(id.to_string(), item.clone());
-                        }
-                    }
-                }
-            }
+            let character_ids: Vec<String> = equipped_obj.keys().cloned().collect();
+            // ALWAYS called — an empty cast still reads the project + General
+            // tiers once (v4 `loadCastPools` invokes the shared loader).
+            let pools = load_cast_pools(
+                main,
+                mount,
+                chat.get("projectId").and_then(Value::as_str),
+                &character_ids,
+            );
 
             let mut summary = Map::new();
             for (character_id, slots) in &equipped_obj {
+                let pool = pools
+                    .iter()
+                    .find(|(id, _)| id == character_id)
+                    .map(|(_, pool)| pool);
                 let mut slot_map = Map::new();
-                for slot_key in WARDROBE_SLOT_TYPES {
-                    slot_map.insert(slot_key.to_string(), Value::Array(Vec::new()));
-                }
-                if !slots.is_null() {
-                    for slot_key in WARDROBE_SLOT_TYPES {
-                        let equipped_ids: Vec<String> = slots
-                            .get(slot_key)
-                            .and_then(Value::as_array)
-                            .map(|a| {
-                                a.iter()
-                                    .filter_map(|v| v.as_str().map(str::to_string))
-                                    .collect()
-                            })
-                            .unwrap_or_default();
-                        if equipped_ids.is_empty() {
-                            continue;
+                match pool.filter(|_| !slots.is_null()) {
+                    None => {
+                        for slot_key in WARDROBE_SLOT_TYPES {
+                            slot_map.insert(slot_key.to_string(), Value::Array(Vec::new()));
                         }
-                        let expansion =
-                            crate::wardrobe::expand_composites(&equipped_ids, &items_by_id, None);
-                        let mut seen: std::collections::HashSet<String> =
-                            std::collections::HashSet::new();
-                        let mut entries: Vec<Value> = Vec::new();
-                        for leaf_id in &expansion.leaf_ids {
-                            if seen.contains(leaf_id) {
-                                continue;
-                            }
-                            let Some(leaf) = items_by_id.get(leaf_id) else {
-                                continue;
-                            };
-                            // Only project the leaf into slots its own types cover.
-                            let covers = leaf
-                                .get("types")
-                                .and_then(Value::as_array)
-                                .is_some_and(|a| a.iter().any(|t| t.as_str() == Some(slot_key)));
-                            if !covers {
-                                continue;
-                            }
-                            entries.push(json!({
-                                "itemId": leaf.get("id").cloned().unwrap_or(Value::Null),
-                                "title": leaf.get("title").cloned().unwrap_or(Value::Null),
-                            }));
-                            seen.insert(leaf_id.clone());
+                    }
+                    Some(pool) => {
+                        let resolved = resolve_equipped_outfit_for_character(
+                            pool,
+                            &Slots::from_value(Some(slots)),
+                        );
+                        for slot_key in WARDROBE_SLOT_TYPES {
+                            let entries: Vec<Value> = resolved
+                                .leaf_items_by_slot
+                                .slot(slot_key)
+                                .iter()
+                                .map(|leaf| {
+                                    json!({
+                                        "itemId": leaf.get("id").cloned().unwrap_or(Value::Null),
+                                        "title": leaf.get("title").cloned().unwrap_or(Value::Null),
+                                    })
+                                })
+                                .collect();
+                            slot_map.insert(slot_key.to_string(), Value::Array(entries));
                         }
-                        slot_map.insert(slot_key.to_string(), Value::Array(entries));
                     }
                 }
                 summary.insert(character_id.clone(), Value::Object(slot_map));
             }
 
-            Ok(Ok(Response::ChatDialog(json!({ "summary": summary }))))
+            tracing::debug!(
+                chatId = cid.as_str(),
+                characterCount = character_ids.len(),
+                context = "wardrobe",
+                "[Chats v1] Built outfit summary"
+            );
+            Ok(Response::ChatDialog(json!({ "summary": summary })))
         })
     });
     match out {
-        Ok(Ok(r)) => r,
-        Ok(Err(r)) => r,
-        // v4 catches → serverError with this exact message.
-        Err(_) => internal("Failed to fetch equipped outfit summary"),
+        Ok(r) => r,
+        // v4 catches → ERROR + serverError with this exact message. Every
+        // read above is a fallback, so only an unopenable partition (the
+        // mount index missing) reaches here.
+        Err(e) => {
+            tracing::error!(
+                chatId = chat_id,
+                error = %crate::db::fallback::error_text(&e),
+                "[Chats v1] Error fetching equipped outfit summary"
+            );
+            internal("Failed to fetch equipped outfit summary")
+        }
     }
 }
 

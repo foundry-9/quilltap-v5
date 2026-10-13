@@ -36,6 +36,19 @@ const MERGE_SOURCE: &str = "c2000000-0000-4000-8000-000000000008";
 const MERGE_TARGET: &str = "c2000000-0000-4000-8000-000000000007";
 const MARKDOWN_CHAT: &str = "c2000000-0000-4000-8000-000000000009";
 const MISSING_ID: &str = "99999999-9999-4999-8999-999999999999";
+// P4.D282 — the outfit-summary plants' ids (`build-chat-dialogs-fixture.ts`).
+const NORA: &str = "a2000000-0000-4000-8000-000000000001";
+const PIP: &str = "a2000000-0000-4000-8000-000000000002";
+const VERA: &str = "a2000000-0000-4000-8000-000000000003";
+const WREN: &str = "a2000000-0000-4000-8000-000000000004";
+const N_DEF: &str = "00000000-0000-4000-8000-0000000000a1";
+const P_BOOTS: &str = "00000000-0000-4000-8000-0000000000b2";
+const P_SCARF: &str = "00000000-0000-4000-8000-0000000000b3";
+const P_SET: &str = "00000000-0000-4000-8000-0000000000b4";
+const G_CAPE: &str = "00000000-0000-4000-8000-0000000000c1";
+const GRP_LANTERN: &str = "00000000-0000-4000-8000-0000000000d1";
+/// The planted two-slot LEAF (`plantDress`).
+const P_SMOCK: &str = "00000000-0000-4000-8000-0000000000b9";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -150,6 +163,66 @@ fn plant_inform(db: &Db, chat_id: &str) {
         w.main().chat_messages().add_message(&chat, &event)
     })
     .expect("plant the inform on the fixture copy");
+}
+
+/// P4.D282 — the oracle's `plantDress`: Pip's two-slot smock (a LEAF covering
+/// top + bottom) filed through the REAL character wardrobe location `create`,
+/// on the per-run COPY.
+fn plant_dress(db: &Db, user_id: &str) {
+    use quilltap_core::db::vault_wardrobe_public::WardrobeScope;
+    use quilltap_core::db::wardrobe_location::{
+        resolve_wardrobe_location, ResolveWardrobeLocationOptions,
+    };
+    let user = user_id.to_string();
+    db.write_blocking(move |w| {
+        let main = w.main().connection();
+        let mount = w.mount_index().expect("mount-index writer").connection();
+        let location = resolve_wardrobe_location(
+            main,
+            mount,
+            WardrobeScope::Character,
+            Some(PIP),
+            &user,
+            ResolveWardrobeLocationOptions::default(),
+        )?
+        .expect("Pip has a wardrobe location");
+        let item = quilltap_core::vault_overlay::WardrobeItem::from_read_value(&json!({
+            "id": P_SMOCK,
+            "characterId": PIP,
+            "title": "Pip’s oilcloth smock",
+            "description": null,
+            "imagePrompt": null,
+            "types": ["top", "bottom"],
+            "componentItemIds": [],
+            "appropriateness": null,
+            "isDefault": false,
+            "replace": false,
+            "migratedFromClothingRecordId": null,
+            "archivedAt": null,
+            "folder": "",
+            "createdAt": "2026-01-02T00:00:00.000Z",
+            "updatedAt": "2026-01-02T00:00:00.000Z",
+        }));
+        location
+            .create(main, mount, &item)
+            .map_err(|e| quilltap_core::db::DbError::Internal(e.message()))?;
+        Ok(())
+    })
+    .expect("plant the smock on the fixture copy");
+}
+
+/// P4.D282 — the oracle's `plantOutfit`: the chat's stored `equippedOutfit`
+/// overwritten with a raw UPDATE on the per-run COPY.
+fn plant_outfit(db: &Db, chat_id: &str, outfit: &Value) {
+    let (chat, outfit) = (chat_id.to_string(), outfit.to_string());
+    db.write_blocking(move |w| {
+        w.main().connection().execute(
+            "UPDATE chats SET \"equippedOutfit\" = ?1 WHERE id = ?2",
+            rusqlite::params![outfit, chat],
+        )?;
+        Ok(())
+    })
+    .expect("plant the outfit on the fixture copy");
 }
 
 /// The web-edge projection of a Response for this family: status + headers +
@@ -368,6 +441,109 @@ fn chat_export_matches_oracle() {
         let (db, _scratch) = fresh_db(&spec, name);
         let r = quilltap_core::api::chat_outfits::chat_outfit_summary(&db, chat);
         check(name, &r);
+    }
+    // P4.D282 (`9ecebf986`, pin `4a38222e6`) — the per-character pools and the
+    // leaf routing, each over a plant on the copy (the oracle's case list, the
+    // same outfits).
+    let cast = json!({
+        (PIP): { "top": [G_CAPE, P_SET], "footwear": [P_BOOTS] },
+        (NORA): { "top": [N_DEF], "accessories": [P_SCARF] },
+        (WREN): { "top": [GRP_LANTERN] },
+        (VERA): null,
+    });
+    for (name, dress, outfit) in [
+        (
+            "outfit_summary_leaf_spread",
+            true,
+            json!({ (PIP): { "top": [P_SMOCK] } }),
+        ),
+        (
+            "outfit_summary_composite_spread",
+            false,
+            json!({ (PIP): { "bottom": [P_SET], "accessories": [P_SCARF] } }),
+        ),
+        ("outfit_summary_cast_pools", false, cast),
+        ("outfit_summary_empty_map", false, json!({})),
+    ] {
+        let (db, _scratch) = fresh_db(&spec, name);
+        if dress {
+            plant_dress(&db, &spec.user_id);
+        }
+        plant_outfit(&db, MERGE_SOURCE, &outfit);
+        let r = quilltap_core::api::chat_outfits::chat_outfit_summary(&db, MERGE_SOURCE);
+        check(name, &r);
+    }
+
+    // P4.D282 — the summary's own line: DEBUG `[Chats v1] Built outfit summary`
+    // `{chatId, characterCount, context}` once per answered summary (logged on
+    // the caller thread — the summary is a read), the resolver's DEBUG for
+    // Pip's borrowed hat beside it; a missing chat answers 404 before either.
+    {
+        let (db, _scratch) = fresh_db(&spec, "summary-lines");
+        let (_r, lines) = quilltap_core::test_support::captured_with(|| {
+            quilltap_core::api::chat_outfits::chat_outfit_summary(&db, MERGE_SOURCE)
+        });
+        let built: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("[Chats v1] Built outfit summary"))
+            .collect();
+        assert_eq!(built.len(), 1, "{lines:#?}");
+        for field in [
+            &format!("chatId={MERGE_SOURCE}"),
+            "characterCount=2",
+            "context=wardrobe",
+        ] {
+            assert!(built[0].contains(field), "{field} in {}", built[0]);
+        }
+        assert!(built[0].starts_with("DEBUG "), "{}", built[0]);
+        let unresolved: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Equipped ids not in the wearable pool"))
+            .collect();
+        assert_eq!(unresolved.len(), 1, "{lines:#?}");
+        assert!(
+            unresolved[0].contains(&format!("characterId={PIP}"))
+                && unresolved[0].contains("unresolvedCount=1"),
+            "{}",
+            unresolved[0]
+        );
+        let (_r, lines) = quilltap_core::test_support::captured_with(|| {
+            quilltap_core::api::chat_outfits::chat_outfit_summary(&db, MISSING_ID)
+        });
+        assert!(
+            !lines.iter().any(|l| l.contains("Built outfit summary")
+                || l.contains("Error fetching equipped outfit summary")),
+            "{lines:#?}"
+        );
+    }
+    // An unreadable `chats` table: v4's `findById` is a fallback read (the
+    // repository's ERROR, then `null`), so the summary answers the 404 — its
+    // own catch (`Error fetching equipped outfit summary`) is not reached.
+    {
+        let (db, _scratch) = fresh_db(&spec, "summary-unreadable");
+        db.write_blocking(|w| {
+            w.main()
+                .connection()
+                .execute_batch("DROP TABLE chats;")
+                .map_err(quilltap_core::db::DbError::from)
+        })
+        .expect("drop chats on the copy");
+        let (r, lines) = quilltap_core::test_support::captured_with(|| {
+            quilltap_core::api::chat_outfits::chat_outfit_summary(&db, MERGE_SOURCE)
+        });
+        assert_eq!(project(&r)["status"], json!(404), "{r:?}");
+        assert!(
+            lines.iter().any(|l| l.starts_with("ERROR ")
+                && l.contains("Error finding entity by ID")
+                && l.contains("collection=chats")),
+            "{lines:#?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Error fetching equipped outfit summary")),
+            "{lines:#?}"
+        );
     }
 
     // ── ?action=group-stores (the P4.9E3B tier-2 audit port) ───────────────

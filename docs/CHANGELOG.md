@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-12 — feat(wardrobe): the outfit summary over per-character wearable pools + the pool-based equipped-outfit resolver (P4.D282, v4 `9ecebf986`)
+
+_Versions: core 0.0.1278._
+
+New `services/resolve_equipped.rs` ports v4's pure `resolveEquippedOutfitForCharacter(pool, slots)` (composites expanded over the pool's component graph, leaves deduped across the whole outfit and routed into every slot their own `types` cover; DEBUG for equipped ids outside the pool, WARN for a malformed composite) and `describeEquippedOutfitTitleOnly`. `?action=outfit-summary` now resolves each character against their own pool through `load_cast_pools` (project + General read once, never roster-gated), so a co-participant's item no longer resolves and a two-slot leaf shows under both slots; DEBUG `[Chats v1] Built outfit summary`; the chat read is a fallback read (a failed read answers 404 as v4 does). `chat_export_equivalence` gains four summary cases planted on the per-case copy (a two-slot leaf, a composite spread, a four-character cast, an empty map) plus line pins.
+
 #### 2026-10-12 — feat(wardrobe): the chat equip action over one wearable pool — wear-ops, bug 191's archived refusal, the pin's four route lines, the effects module (P4.D282, v4 `9ecebf986`)
 
 _Versions: core 0.0.1277._

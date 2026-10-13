@@ -126,6 +126,10 @@ interface CaseSpec {
   chatId: string;
   /** P4.106 item 6: plant an Inform on the per-run COPY first (see below). */
   plantInform?: boolean;
+  /** P4.D282: plant Pip's two-slot smock (a LEAF covering top + bottom) first. */
+  plantDress?: boolean;
+  /** P4.D282: replace the chat's stored `equippedOutfit` on the copy first. */
+  plantOutfit?: Record<string, unknown>;
 }
 
 /**
@@ -192,6 +196,44 @@ async function plantInform(chatId: string): Promise<void> {
   } as never);
 }
 
+/**
+ * P4.D282 (`9ecebf986`, pin `4a38222e6`) — the outfit summary's per-character
+ * pools and the leaf routing, on the per-run COPY. `plantDress` files ONE leaf
+ * that covers two slots in Pip's wardrobe through v4's REAL character
+ * location `create` (the fixture has none: its only two-slot item is a
+ * composite); `plantOutfit` overwrites the chat's stored `equippedOutfit`
+ * with a raw UPDATE — the summary reads the column, nothing else.
+ */
+const PIP = 'a2000000-0000-4000-8000-000000000002';
+const P_SMOCK = '00000000-0000-4000-8000-0000000000b9';
+async function plantDress(spec: Spec): Promise<void> {
+  const { resolveWardrobeLocation } = await import('@/lib/wardrobe/location');
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const location = await resolveWardrobeLocation('character', PIP, getRepositories(), spec.userId);
+  if (!location) throw new Error('plantDress: Pip has no wardrobe location');
+  await location.create({
+    id: P_SMOCK,
+    characterId: PIP,
+    title: 'Pip’s oilcloth smock',
+    description: null,
+    imagePrompt: null,
+    types: ['top', 'bottom'],
+    componentItemIds: [],
+    appropriateness: null,
+    isDefault: false,
+    replace: false,
+    migratedFromClothingRecordId: null,
+    archivedAt: null,
+    folder: '',
+    createdAt: '2026-01-02T00:00:00.000Z',
+    updatedAt: '2026-01-02T00:00:00.000Z',
+  } as never);
+}
+async function plantOutfit(chatId: string, outfit: Record<string, unknown>): Promise<void> {
+  const { rawQuery } = await import('@/lib/database/manager');
+  await rawQuery('UPDATE chats SET "equippedOutfit" = ? WHERE id = ?', [JSON.stringify(outfit), chatId]);
+}
+
 async function runCase(
   spec: Spec,
   c: CaseSpec,
@@ -215,6 +257,8 @@ async function runCase(
   );
   await initializeDatabase();
   if (c.plantInform) await plantInform(c.chatId);
+  if (c.plantDress) await plantDress(spec);
+  if (c.plantOutfit) await plantOutfit(c.chatId, c.plantOutfit);
 
   // The ticking frozen clock (chain-depth-frozen-clock-artifact): nothing in
   // these READ paths mints a stamp that lands in the output, but the house
@@ -358,6 +402,53 @@ async function main(): Promise<void> {
     { name: 'outfit_summary_rich', action: 'outfit-summary', chatId: MERGE_SOURCE },
     { name: 'outfit_summary_empty', action: 'outfit-summary', chatId: EXPORT_CHAT },
     { name: 'outfit_summary_chat_missing', action: 'outfit-summary', chatId: MISSING_ID },
+    // P4.D282 — the pin's per-character pools + routing (R-K's owed arms).
+    // A two-slot LEAF equipped to `top` alone lands under top AND bottom.
+    {
+      name: 'outfit_summary_leaf_spread',
+      action: 'outfit-summary',
+      chatId: MERGE_SOURCE,
+      plantDress: true,
+      plantOutfit: {
+        'a2000000-0000-4000-8000-000000000002': { top: ['00000000-0000-4000-8000-0000000000b9'] },
+      },
+    },
+    // A composite sitting in a slot NONE of its parts cover spreads its parts
+    // to their own slots (the old per-input-slot filter dropped them all).
+    {
+      name: 'outfit_summary_composite_spread',
+      action: 'outfit-summary',
+      chatId: MERGE_SOURCE,
+      plantOutfit: {
+        'a2000000-0000-4000-8000-000000000002': {
+          bottom: ['00000000-0000-4000-8000-0000000000b4'],
+          accessories: ['00000000-0000-4000-8000-0000000000b3'],
+        },
+      },
+    },
+    // A cast: Pip wears a General cape + his composite; Nora names PIP's
+    // scarf (dropped — not in her pool); Wren wears the group's lantern coat,
+    // which Pip's personal same-id copy must NOT shadow for her; a null bag
+    // reads as empty slots.
+    {
+      name: 'outfit_summary_cast_pools',
+      action: 'outfit-summary',
+      chatId: MERGE_SOURCE,
+      plantOutfit: {
+        'a2000000-0000-4000-8000-000000000002': {
+          top: ['00000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-0000000000b4'],
+          footwear: ['00000000-0000-4000-8000-0000000000b2'],
+        },
+        'a2000000-0000-4000-8000-000000000001': {
+          top: ['00000000-0000-4000-8000-0000000000a1'],
+          accessories: ['00000000-0000-4000-8000-0000000000b3'],
+        },
+        'a2000000-0000-4000-8000-000000000004': { top: ['00000000-0000-4000-8000-0000000000d1'] },
+        'a2000000-0000-4000-8000-000000000003': null,
+      },
+    },
+    // An empty map: the reads still happen; the bytes are `{ summary: {} }`.
+    { name: 'outfit_summary_empty_map', action: 'outfit-summary', chatId: MERGE_SOURCE, plantOutfit: {} },
     // P4.9E3B tier-2 audit: the group-stores read. Vera (user-controlled in
     // SR_CHAT) belongs to The Watch, whose official store surfaces; the bare
     // room has no user-controlled character and stays empty.
