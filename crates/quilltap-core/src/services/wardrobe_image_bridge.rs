@@ -5,15 +5,21 @@
 //! keyed by item id so a rename cannot orphan them:
 //!
 //! ```text
-//! Wardrobe/images/<itemId>/<yyyymmdd-hhmmss>-<kind>-<8 hex>.webp
+//! Wardrobe/images/<itemId>/<yyyymmdd-hhmmss>-<kind>.webp
 //! ```
 //!
-//! The bytes go through `link_blob_content`, which normalizes images to WebP,
-//! de-duplicates by sha256 (an Import-from-image photograph shared by N pieces
-//! is one blob behind N links) and mints the `doc_mount_files` /
-//! `doc_mount_blobs` / `doc_mount_file_links` trio. The returned storage key is
-//! the `mount-blob:{mountPointId}:{blobId}` shim every `files` row reader
-//! already understands. The PATH helpers are P4.D255's
+//! (a second picture in the same second is bumped to `… (2).webp` — v4
+//! `9ecebf986`, P4.D283: the leaf lost its `-<8 hex>` random tail when v4's
+//! bridge moved onto `storeMountFile` with `collisionStrategy: 'unique-suffix'`,
+//! which RESERVES the path it picks; v5's writer task serialises every store
+//! write, so the reservation itself has nothing to guard — P4.D279 R-B — and
+//! the leaf shape is the row-visible half, carried here). The bytes go through
+//! `link_blob_content`, which normalizes images to WebP, de-duplicates by
+//! sha256 (an Import-from-image photograph shared by N pieces is one blob
+//! behind N links) and mints the `doc_mount_files` / `doc_mount_blobs` /
+//! `doc_mount_file_links` trio. The returned storage key is the
+//! `mount-blob:{mountPointId}:{blobId}` shim every `files` row reader already
+//! understands. The PATH helpers are P4.D255's
 //! ([`crate::services::wardrobe_image_paths`], frozen for the round).
 //!
 //! The projection sweep touches `.md` documents only, so these blobs are never
@@ -94,14 +100,15 @@ impl WardrobeImageKind {
     }
 }
 
-/// What mints a fresh leaf name — v4's `new Date()` + `randomUUID()`
-/// (`wardrobe-image-bridge.ts:125`), injected so the differentials can pin
-/// both.
+/// What mints a fresh leaf name — v4's `new Date()`
+/// (`wardrobe-image-bridge.ts:125`), injected so the differentials can pin it.
 #[derive(Debug, Clone)]
 pub struct LeafSeed {
     /// The write instant, unix milliseconds (UTC).
     pub now_ms: i64,
-    /// A UUID whose first 8 characters are the leaf's random tail.
+    /// RETIRED with the `-<8 hex>` tail (v4 `9ecebf986`): a fresh leaf is
+    /// `<timestamp>-<kind>.webp` and a same-second collision bumps ` (2)`.
+    /// Kept so the seed's callers and fixtures need not move.
     pub uuid: String,
 }
 
@@ -136,9 +143,9 @@ pub struct WriteWardrobeItemImageInput<'a> {
     pub content: &'a [u8],
     pub content_type: &'a str,
     pub description: Option<&'a str>,
-    /// Re-use an exact leaf name (transfer re-linking keeps the source's).
-    /// `None` mints a fresh `<timestamp>-<kind>-<8 hex>.webp` with collision
-    /// bumping.
+    /// Re-use an exact leaf name (transfer re-linking keeps the source's; the
+    /// write upserts there). `None` mints a fresh `<timestamp>-<kind>.webp`
+    /// and bumps on collision.
     pub leaf_name: Option<&'a str>,
 }
 
@@ -172,27 +179,25 @@ pub fn write_wardrobe_item_image(
     blob_webp: &dyn WebpTranscoder,
 ) -> Result<WrittenWardrobeImage, DbError> {
     let folder = wardrobe_item_image_folder(input.item_id);
+    // v4 `9ecebf986`: a fresh picture gets a sortable `<timestamp>-<kind>.webp`
+    // leaf and lets the pipeline bump it (` (2)`, ` (3)`…) if the second is
+    // already taken (`collisionStrategy: 'unique-suffix'`); a transfer re-link
+    // keeps the source's leaf exactly and upserts there (`'overwrite'`).
+    let desired_leaf = match input.leaf_name {
+        Some(leaf) => sanitize_leaf_name(leaf),
+        None => format!(
+            "{}-{}.webp",
+            timestamp_stem(seed.now_ms),
+            input.kind.as_str()
+        ),
+    };
     let relative_path = match input.leaf_name {
-        // A given leaf is sanitized and used as-is — NO unique-suffix bump: a
-        // transfer re-links the same picture at the same path.
-        Some(leaf) => format!("{folder}/{}", sanitize_leaf_name(leaf)),
-        // The random tail keeps two writes in the same second apart:
-        // resolveUniqueRelativePath only checks, it does not reserve, and a
-        // second linkBlobContent at the same path would overwrite the first's
-        // link.
-        None => {
-            let tail: String = seed.uuid.chars().take(8).collect();
-            let desired = format!(
-                "{folder}/{}-{}-{tail}.webp",
-                timestamp_stem(seed.now_ms),
-                input.kind.as_str()
-            );
-            crate::photos::save_image_to_album::resolve_unique_relative_path(
-                mount,
-                input.mount_point_id,
-                &desired,
-            )?
-        }
+        Some(_) => format!("{folder}/{desired_leaf}"),
+        None => crate::photos::save_image_to_album::resolve_unique_relative_path(
+            mount,
+            input.mount_point_id,
+            &format!("{folder}/{desired_leaf}"),
+        )?,
     };
 
     let links = DocMountFileLinksRepository::with_blob_codec(mount, blob_webp);
@@ -201,13 +206,15 @@ pub fn write_wardrobe_item_image(
     // No transcode here: link_blob_content is the image-normalization
     // chokepoint and rewrites storedMimeType / relativePath to whatever it
     // actually stores.
+    // v4 `storeMountFile({ originalFileName: desiredLeaf })` — the leaf as
+    // ASKED, not the bumped one the link landed on.
     let basename = posix_basename(&relative_path);
     let linked = links.link_blob_content(&LinkBlobInput {
         mount_point_id: input.mount_point_id.to_string(),
         relative_path: relative_path.clone(),
-        file_name: basename.clone(),
+        file_name: basename,
         file_type: None,
-        original_file_name: Some(basename),
+        original_file_name: Some(desired_leaf.clone()),
         original_mime_type: Some(input.content_type.to_string()),
         stored_mime_type: input.content_type.to_string(),
         sha256: crate::photos::keep_image_markdown::sha256_of_buffer(input.content),

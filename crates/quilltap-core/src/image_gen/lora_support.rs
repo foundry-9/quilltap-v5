@@ -166,6 +166,8 @@ pub struct LoraLogContext {
     pub chat_id: Option<String>,
     pub job_id: Option<String>,
     pub profile_id: Option<String>,
+    /// v4 `9ecebf986`: the image attempt's `rerouted` flag (`None` elsewhere).
+    pub rerouted: Option<bool>,
 }
 
 /// Resolve LoRA support for a provider/model pair (v4 `resolveLoraSupport`).
@@ -234,6 +236,8 @@ pub fn read_loras_from_parameters(
             chat_id = ?log_context.chat_id,
             job_id = ?log_context.job_id,
             profile_id = ?log_context.profile_id,
+        rerouted = ?log_context.rerouted,
+            rerouted = ?log_context.rerouted,
             stored_type = %js_typeof(raw),
             "[Image LoRA] Ignoring a `loras` parameter that is not a list"
         );
@@ -269,16 +273,19 @@ pub fn read_loras_from_parameters(
                 spec.scale = Some(scale);
             } else {
                 tracing::warn!(
-                    provider = %log_context.provider,
-                    model = ?log_context.model,
-                    context = %log_context.context,
-                    chat_id = ?log_context.chat_id,
-                    job_id = ?log_context.job_id,
-                    profile_id = ?log_context.profile_id,
-                    source = %source,
-                    stored_scale = %raw_scale,
-                    "[Image LoRA] Dropping an out-of-range scale; the provider default applies"
-                );
+                            provider = %log_context.provider,
+                            model = ?log_context.model,
+                            context = %log_context.context,
+                            chat_id = ?log_context.chat_id,
+                            job_id = ?log_context.job_id,
+                            profile_id = ?log_context.profile_id,
+                rerouted = ?log_context.rerouted,
+                            rerouted = ?log_context.rerouted,
+                    rerouted = ?log_context.rerouted,
+                            source = %source,
+                            stored_scale = %raw_scale,
+                            "[Image LoRA] Dropping an out-of-range scale; the provider default applies"
+                        );
             }
         }
         if let Some(p) = entry.get("triggerPhrase").and_then(Value::as_str) {
@@ -305,6 +312,8 @@ pub fn read_loras_from_parameters(
             chat_id = ?log_context.chat_id,
             job_id = ?log_context.job_id,
             profile_id = ?log_context.profile_id,
+        rerouted = ?log_context.rerouted,
+            rerouted = ?log_context.rerouted,
             dropped = ?dropped,
             kept_count = kept.len(),
             "[Image LoRA] Dropped malformed entries from a profile's stored LoRA list"
@@ -348,6 +357,8 @@ pub fn cap_loras(
             chat_id = ?log_context.chat_id,
             job_id = ?log_context.job_id,
             profile_id = ?log_context.profile_id,
+        rerouted = ?log_context.rerouted,
+            rerouted = ?log_context.rerouted,
             stripped = ?loras.iter().map(|l| l.source.clone()).collect::<Vec<_>>(),
             "[Image LoRA] Stripping LoRAs — this provider/model declares no LoRA support"
         );
@@ -372,6 +383,7 @@ pub fn cap_loras(
         chat_id = ?log_context.chat_id,
         job_id = ?log_context.job_id,
         profile_id = ?log_context.profile_id,
+        rerouted = ?log_context.rerouted,
         max_loras = max,
         kept = ?kept.iter().map(|l| l.source.clone()).collect::<Vec<_>>(),
         dropped = ?loras.iter().skip(max).map(|l| l.source.clone()).collect::<Vec<_>>(),
@@ -484,6 +496,7 @@ mod log_context_tests {
             chat_id: Some("chat-77".to_string()),
             job_id: None,
             profile_id: Some("profile-9".to_string()),
+            rerouted: None,
         }
     }
 

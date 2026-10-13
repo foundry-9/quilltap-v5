@@ -1,5 +1,5 @@
 {
-  "_comment": "P4.D263 tier-3 spec for v4 lib/wardrobe/item-image-generation.ts generateWardrobeItemImage (and, from item 9, handleWardrobeItemImageGeneration) at f5e953a3f. The image provider is mocked BELOW v4's real code (createImageProvider); logLLMCall runs REAL into a scratch llm-logs DB. Per scenario both sides apply the same `sql` patches to a fresh copy, then run the op.",
+  "_comment": "P4.D263 tier-3 spec for v4 lib/wardrobe/item-image-generation.ts generateWardrobeItemImage (and, from item 9, handleWardrobeItemImageGeneration) at f5e953a3f; grown by P4.D283 (bug 189, v4 7a8d6dacc at the 4a38222e6 pin) with three planted chats — Moderated / Locked / Unmoderated by `chats.conciergeMode` — so a tool-queued picture's Concierge wiring runs for real: the `job_*` ops name a planted chat through `jobChat` (else `jobChatId`, a chat that does NOT exist: `chatFound: false` reads as Moderated), and the `chats` + `chat_messages` tables are dumped for the ledger and the announcements. The image provider is mocked BELOW v4's real code (createImageProvider); logLLMCall runs REAL into a scratch llm-logs DB. Per scenario both sides apply the same `sql` patches to a fresh copy, then run the op.",
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "userId": "0f1e2d3c-4b5a-4968-8776-655443322110",
   "user": {
@@ -460,7 +460,120 @@
       "item": "coat",
       "jobCharacter": "character",
       "provider": "throw"
+    },
+    {
+      "name": "job_moderated_ok",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "jobChat": "moderated",
+      "provider": "ok"
+    },
+    {
+      "name": "job_moderated_refused_rerouted",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "jobChat": "moderated",
+      "provider": "refuseFirst",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":true,\"uncensoredImageProfileId\":\"b2b2b2b2-0005-4000-8000-000000000005\"}'"
+      ]
+    },
+    {
+      "name": "job_moderated_refused_no_understudy",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "jobChat": "moderated",
+      "provider": "refuseAll",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":true}'"
+      ]
+    },
+    {
+      "name": "job_locked_refused",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "jobChat": "locked",
+      "provider": "refuseAll",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":true,\"uncensoredImageProfileId\":\"b2b2b2b2-0005-4000-8000-000000000005\"}'"
+      ]
+    },
+    {
+      "name": "job_locked_ok",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "jobChat": "locked",
+      "provider": "ok",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":true,\"uncensoredImageProfileId\":\"b2b2b2b2-0005-4000-8000-000000000005\"}'"
+      ]
+    },
+    {
+      "name": "job_unmoderated_direct",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "jobChat": "unmoderated",
+      "provider": "ok",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":true,\"uncensoredImageProfileId\":\"b2b2b2b2-0005-4000-8000-000000000005\"}'"
+      ]
+    },
+    {
+      "name": "job_unmoderated_no_desk",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "jobChat": "unmoderated",
+      "provider": "ok",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":true}'"
+      ]
+    },
+    {
+      "name": "job_unmoderated_off_duty",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "jobChat": "unmoderated",
+      "provider": "ok",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":false}'"
+      ]
+    },
+    {
+      "name": "job_chat_unreadable",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "jobChat": "moderated",
+      "provider": "ok",
+      "sql": [
+        "UPDATE chats SET participants = 'not json' WHERE id = 'c0c0c0c0-0002-4000-8000-000000000002'"
+      ]
     }
   ],
-  "jobChatId": "c0c0c0c0-0001-4000-8000-000000000001"
+  "jobChatId": "c0c0c0c0-0001-4000-8000-000000000001",
+  "chats": {
+    "moderated": {
+      "id": "c0c0c0c0-0002-4000-8000-000000000002",
+      "title": "Moderated fitting",
+      "conciergeMode": null
+    },
+    "locked": {
+      "id": "c0c0c0c0-0003-4000-8000-000000000003",
+      "title": "Locked fitting",
+      "conciergeMode": "locked"
+    },
+    "unmoderated": {
+      "id": "c0c0c0c0-0004-4000-8000-000000000004",
+      "title": "Unmoderated fitting",
+      "conciergeMode": "unmoderated"
+    }
+  }
 }

@@ -87,6 +87,8 @@ interface CaseEntry {
   preRound?: boolean;
   /** [P4.D256] Raw SQL on the main copy, after the ledger ensure, pre-init. */
   plants?: Array<{ sql: string; params: Array<string | number | null> }>;
+  /** P4.D283: the preview provider's mode — `ok` (default) | `refuse` | `refuseFirst` | `throw`. */
+  previewProvider?: string;
   /** [P4.D256] `?action=<x>` on an item GET (`wear-history`). */
   action?: string;
   /** [P4.D256] After the case, `GET /wardrobe/<id>?action=wear-history` for
@@ -102,8 +104,12 @@ interface Spec {
   cases: CaseEntry[];
 }
 
-/** The captured post-transcode image (the Rust render-seam replay). */
+/** The captured post-transcode image (`pv_ok_bytes` — the Rust side pins its stored bytes against it). */
 const webpCapture: { buffer?: Buffer; mimeType?: string; filename?: string } = {};
+/** P4.D283: the preview provider's scripted mode for the running case. */
+let previewMode = 'ok';
+let previewCalls = 0;
+const PREVIEW_SAFETY = '400 Your request was rejected as a result of our safety system.';
 
 function mockRequest(url: string, method = 'GET', body?: unknown): unknown {
   return {
@@ -147,23 +153,34 @@ function applyMocks(spec: Spec): void {
       },
     };
   });
-  // The preview's MODEL boundary — the canned provider image. Everything below
-  // (convertToWebP, sha256, the vault write, files.create) runs real.
+  // The preview's MODEL boundary — the canned provider image, scripted per
+  // case (P4.D283: `previewProvider` — `ok` answers; `refuse` throws OpenAI's
+  // safety sentence on every call; `refuseFirst` only on the first, so the
+  // Concierge's understudy answers; `throw` a plain failure). Everything below
+  // (makeLoggedImageAttempt, the failover, convertToWebP, sha256, the vault
+  // write, createGeneratedFileRow) runs real.
   jest.doMock('@/lib/llm/plugin-factory', () => {
     const actual = jest.requireActual('@/lib/llm/plugin-factory');
     return {
       __esModule: true,
       ...actual,
       createImageProvider: () => ({
-        generateImage: async () => ({
-          images: [
-            {
-              b64Json: spec.preview.providerImageBase64,
-              mimeType: spec.preview.providerMimeType,
-              revisedPrompt: spec.preview.revisedPrompt,
-            },
-          ],
-        }),
+        generateImage: async () => {
+          previewCalls += 1;
+          if (previewMode === 'throw') throw new Error('canned provider failure');
+          if (previewMode === 'refuse' || (previewMode === 'refuseFirst' && previewCalls === 1)) {
+            throw new Error(PREVIEW_SAFETY);
+          }
+          return {
+            images: [
+              {
+                b64Json: spec.preview.providerImageBase64,
+                mimeType: spec.preview.providerMimeType,
+                revisedPrompt: spec.preview.revisedPrompt,
+              },
+            ],
+          };
+        },
       }),
     };
   });
@@ -407,6 +424,8 @@ async function runCase(
 
   try {
     const rows: Array<Record<string, unknown>> = [];
+    previewMode = c.previewProvider ?? 'ok';
+    previewCalls = 0;
     const out = await runKind(c);
     rows.push({ name: c.name, status: out.status, body: out.body });
 

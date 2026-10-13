@@ -1,0 +1,52 @@
+{
+  "$note": [
+    "Corpus for the tier-1 physical-description pick differential (P4.D283, v4 9ecebf986).",
+    "Read by BOTH sides: harness/oracle/cases/physical-description.ts drives v4's real",
+    "pickPhysicalDescription / hasPhysicalDescription (lib/characters/physical-description.ts),",
+    "and crates/quilltap-harness/tests/physical_description_equivalence.rs drives v5's",
+    "quilltap_core::characters::physical_description over the same `desc` objects.",
+    "",
+    "Every `desc` is run under ALL FIVE profiles (head-and-shoulders, full-length, scene,",
+    "self-image, fullest); a row is emitted per (case, profile) with `pick` and `has`.",
+    "",
+    "One sentinel: a `desc` of \"__UNDEFINED__\" means the argument is JS `undefined`",
+    "(v4's `if (!desc) return ''`); `null` is passed as null. Shapes pinned: every variant",
+    "present; each variant alone (so every profile's lead AND its tail show); whitespace-only",
+    "leads that must be SKIPPED (the pre-span `||` chains took them as truthy); trailing /",
+    "leading whitespace and newlines that must be TRIMMED off the winner (the system",
+    "prompt's bytes move on this); JS-whitespace edges beyond ASCII (NBSP, the ideographic",
+    "space, a BOM, the line/paragraph separators — JS `trim` strips them all); an empty",
+    "string; interior whitespace kept; an empty object; and the head-and-shoulders crop",
+    "alone, which `scene` / `self-image` / `fullest` must NEVER answer."
+  ],
+  "cases": [
+    { "name": "all-present", "desc": { "headAndShouldersPrompt": "H&S", "shortPrompt": "SHORT", "mediumPrompt": "MEDIUM", "longPrompt": "LONG", "completePrompt": "COMPLETE", "fullDescription": "FULL" } },
+    { "name": "undefined-desc", "desc": "__UNDEFINED__" },
+    { "name": "null-desc", "desc": null },
+    { "name": "empty-object", "desc": {} },
+    { "name": "only-head-and-shoulders", "desc": { "headAndShouldersPrompt": "H&S" } },
+    { "name": "only-short", "desc": { "shortPrompt": "SHORT" } },
+    { "name": "only-medium", "desc": { "mediumPrompt": "MEDIUM" } },
+    { "name": "only-long", "desc": { "longPrompt": "LONG" } },
+    { "name": "only-complete", "desc": { "completePrompt": "COMPLETE" } },
+    { "name": "only-full", "desc": { "fullDescription": "FULL" } },
+    { "name": "every-null", "desc": { "headAndShouldersPrompt": null, "shortPrompt": null, "mediumPrompt": null, "longPrompt": null, "completePrompt": null, "fullDescription": null } },
+    { "name": "every-empty", "desc": { "headAndShouldersPrompt": "", "shortPrompt": "", "mediumPrompt": "", "longPrompt": "", "completePrompt": "", "fullDescription": "" } },
+    { "name": "every-whitespace", "desc": { "headAndShouldersPrompt": "   ", "shortPrompt": " ", "mediumPrompt": "\t", "longPrompt": "\n", "completePrompt": "\r\n", "fullDescription": " \t\n " } },
+    { "name": "v4-test-fallthrough", "desc": { "headAndShouldersPrompt": "   ", "mediumPrompt": null, "shortPrompt": "  short text  ", "longPrompt": "LONG" } },
+    { "name": "whitespace-leads-skipped", "desc": { "headAndShouldersPrompt": " ", "shortPrompt": "  ", "mediumPrompt": "   ", "longPrompt": "\n\n", "completePrompt": "\t", "fullDescription": "the full prose" } },
+    { "name": "trailing-newline-trimmed", "desc": { "shortPrompt": "a woman with copper hair\n", "mediumPrompt": "a tall woman with dark braided hair\n\n", "completePrompt": "  a broad-shouldered man in a salt-stained coat  " } },
+    { "name": "leading-whitespace-trimmed", "desc": { "headAndShouldersPrompt": "\t\tfreckled, green eyes", "fullDescription": "\n  She is tall.  \n" } },
+    { "name": "interior-whitespace-kept", "desc": { "mediumPrompt": "  two   words\tapart \n inside  " } },
+    { "name": "nbsp-and-ideographic-space-trimmed", "desc": { "shortPrompt": "  copper hair ", "longPrompt": "　ideographic　", "completePrompt": " " } },
+    { "name": "bom-and-separators-trimmed", "desc": { "mediumPrompt": "﻿a BOM-led prompt ", "fullDescription": " paragraph-separated ", "shortPrompt": "﻿" } },
+    { "name": "unicode-kept", "desc": { "shortPrompt": " naïve café — ☕ 🙂 ", "fullDescription": "日本語の説明 " } },
+    { "name": "medium-and-short-only", "desc": { "shortPrompt": "a woman", "mediumPrompt": "a woman with copper hair" } },
+    { "name": "complete-and-full-only", "desc": { "completePrompt": "COMPLETE", "fullDescription": "FULL" } },
+    { "name": "full-and-head-only", "desc": { "fullDescription": "FULL", "headAndShouldersPrompt": "H&S" } },
+    { "name": "long-and-head-only", "desc": { "longPrompt": "LONG", "headAndShouldersPrompt": "H&S" } },
+    { "name": "short-blank-medium-real", "desc": { "shortPrompt": "", "mediumPrompt": "MEDIUM" } },
+    { "name": "self-image-corpus-row", "desc": { "shortPrompt": "", "mediumPrompt": "", "longPrompt": "A long prompt.", "completePrompt": "A complete prompt.", "fullDescription": "A full description." } },
+    { "name": "extra-keys-ignored", "desc": { "id": "pd-1", "name": "Primary", "usageContext": "default", "imagePrompt": "ignored", "mediumPrompt": "MEDIUM" } }
+  ]
+}

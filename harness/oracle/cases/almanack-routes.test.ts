@@ -65,6 +65,8 @@ interface BackupSpec {
   sizeBytes: number;
 }
 interface Spec {
+  /** P4.D283 (bug 196): per-variant SQL planted on the llm-logs COPY before the data cases. */
+  llmLogPlants: { migrated: string[]; legacy: string[] };
   testPepperBase64: string;
   userId: string;
   seedTimestamp: string;
@@ -185,6 +187,16 @@ async function withDatabases<T>(
     '@/lib/database/backends/sqlite/llm-logs-client'
   );
   await initializeDatabase();
+  // P4.D283 (bug 196): the WARDROBE_ITEM_IMAGE rows, planted on the llm-logs
+  // COPY of EVERY open (the data cases AND the route flow, so the route's
+  // report and the data case's markdown stay one text) — the committed pair
+  // stays as built; the Rust side plants the same SQL in its scratch copy.
+  {
+    const { getRawLLMLogsDatabase } = await import('@/lib/database/backends/sqlite/llm-logs-client');
+    const lldb = getRawLLMLogsDatabase();
+    if (!lldb) throw new Error('llm-logs DB handle unavailable for the plants');
+    for (const sql of ctx.spec.llmLogPlants[llmVariant]) lldb.exec(sql);
+  }
   // The real bundled-plugin inventory, exactly as production sees it.
   const { initializePlugins } = await import('@/lib/startup/plugin-initialization');
   await initializePlugins();

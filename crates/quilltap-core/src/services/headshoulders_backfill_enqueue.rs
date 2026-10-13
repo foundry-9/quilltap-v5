@@ -37,12 +37,16 @@
 //! sits, and a first-boot overlay `find_all` + N enqueues on a v5-only
 //! instance. Detaching it is a small follow-up (`host.rs`, the P4.82 block).
 //!
-//! ## The scan's whitespace rule DISAGREES with the handler's, deliberately
+//! ## The scan's whitespace rule now AGREES with the handler's (v4 `9ecebf986`)
 //!
-//! `hasSeed` is `Boolean(mediumPrompt || shortPrompt || …)` — **not trimmed**,
-//! where the handler trims. So a whitespace-only `mediumPrompt` gets a job
-//! enqueued that then returns silently. Both halves are v4's and both are
-//! pinned by a fixture character.
+//! `hasSeed` was `Boolean(mediumPrompt || shortPrompt || …)` — **not
+//! trimmed** — where the handler trimmed once on the winner, so a
+//! whitespace-only `mediumPrompt` got a job enqueued that then returned
+//! silently. Both now read `pickPhysicalDescription(pd, 'scene')`
+//! (`characters::physical_description`), which skips a blank variant: the
+//! whitespace-only character is SKIPPED by the scan and seeds nothing in the
+//! handler. The fixture character that pinned the old asymmetry now pins the
+//! agreement.
 //!
 //! ## One gate that no differential can discriminate — measured, not assumed
 //!
@@ -66,6 +70,9 @@
 use rusqlite::Connection;
 use serde_json::Value;
 
+use crate::characters::physical_description::{
+    has_physical_description_value, PhysicalDescriptionProfile,
+};
 use crate::db::characters_read;
 use crate::services::headshoulders_backfill_job::head_prompt_is_filled;
 use crate::services::queue_service::enqueue_character_headshoulders_backfill_blocking;
@@ -149,21 +156,10 @@ pub fn enqueue_headshoulders_backfill(
             result.skipped += 1;
             continue;
         }
-        // v4 `Boolean(a || b || c || d || e)` — NOT trimmed here (see the
-        // module header's asymmetry note).
-        let has_seed = [
-            "mediumPrompt",
-            "shortPrompt",
-            "longPrompt",
-            "completePrompt",
-            "fullDescription",
-        ]
-        .iter()
-        .any(|k| {
-            pd.get(*k)
-                .and_then(Value::as_str)
-                .is_some_and(|s| !s.is_empty())
-        });
+        // v4 `hasPhysicalDescription(pd, 'scene')` (`9ecebf986`) — the SAME
+        // trimmed pick the handler seeds from, so the scan and the handler now
+        // agree on a whitespace-only variant (see the module header).
+        let has_seed = has_physical_description_value(Some(pd), PhysicalDescriptionProfile::Scene);
         if !has_seed {
             result.skipped += 1;
             continue;

@@ -13,6 +13,11 @@
 //! `sanitize_appearance`) + the W4.2 gatekeeper [`classify_content`] over the
 //! injected model seams.
 
+use crate::characters::physical_description::{
+    pick_physical_description, PhysicalDescriptionProfile, PhysicalDescriptionVariants,
+};
+use serde_json::Value;
+
 use crate::cheap_llm::CheapLlmSelection;
 use crate::db::runtime::Db;
 use crate::model::completion::CompletionProvider;
@@ -26,8 +31,10 @@ use crate::services::image_scene_tasks::{
 use crate::wardrobe::{describe_outfit, OutfitSlotValues};
 
 /// A physical description (the tiers the resolver + default builder read; v4
-/// `PhysicalDescription`). `id`/`name` label the selection; the four prompt
-/// tiers feed the default fallback.
+/// `PhysicalDescription`). `id`/`name` label the selection; the six variants
+/// feed the `full-length` pick (`characters::physical_description`) — since
+/// v4 `9ecebf986` that pick falls through `fullDescription` and then
+/// `headAndShouldersPrompt` BEFORE the character's name, so both ride here.
 #[derive(Clone, Debug, Default)]
 pub struct PhysicalDescription {
     pub id: String,
@@ -37,6 +44,22 @@ pub struct PhysicalDescription {
     pub medium_prompt: Option<String>,
     pub long_prompt: Option<String>,
     pub complete_prompt: Option<String>,
+    pub full_description: Option<String>,
+    pub head_and_shoulders_prompt: Option<String>,
+}
+
+impl PhysicalDescription {
+    /// The six variants as the shared pick reads them.
+    pub fn variants(&self) -> PhysicalDescriptionVariants<'_> {
+        PhysicalDescriptionVariants {
+            head_and_shoulders_prompt: self.head_and_shoulders_prompt.as_deref(),
+            short_prompt: self.short_prompt.as_deref(),
+            medium_prompt: self.medium_prompt.as_deref(),
+            long_prompt: self.long_prompt.as_deref(),
+            complete_prompt: self.complete_prompt.as_deref(),
+            full_description: self.full_description.as_deref(),
+        }
+    }
 }
 
 /// One equipped wardrobe item feeding appearance resolution (v4's per-slot leaf).
@@ -122,17 +145,163 @@ fn wardrobe_items_to_slot_values(items: &[WardrobeItemInput]) -> OutfitSlotValue
     })
 }
 
-/// v4's `physDesc` selection: `complete || long || medium || short || name`.
+/// v4's `physDesc` selection (`9ecebf986`): `pickPhysicalDescription(primary,
+/// 'full-length') || char.characterName` — complete ‖ long ‖ medium ‖ short ‖
+/// fullDescription ‖ headAndShouldersPrompt, trimmed, whitespace-only skipped,
+/// THEN the name (the pre-span chain stopped at `short`).
 fn select_phys_desc(primary: Option<&PhysicalDescription>, character_name: &str) -> String {
-    let non_empty = |v: &Option<String>| v.as_deref().filter(|s| !s.is_empty()).map(str::to_string);
-    primary
-        .and_then(|p| {
-            non_empty(&p.complete_prompt)
-                .or_else(|| non_empty(&p.long_prompt))
-                .or_else(|| non_empty(&p.medium_prompt))
-                .or_else(|| non_empty(&p.short_prompt))
-        })
-        .unwrap_or_else(|| character_name.to_string())
+    let variants = primary.map(PhysicalDescription::variants);
+    let picked =
+        pick_physical_description(variants.as_ref(), PhysicalDescriptionProfile::FullLength);
+    if picked.is_empty() {
+        character_name.to_string()
+    } else {
+        picked.to_string()
+    }
+}
+
+/// v4 `resolveEquippedOutfitForCharacter(pool, slots)`'s `leafItemsBySlot`
+/// half (`lib/wardrobe/resolve-equipped.ts`, `9ecebf986`) — the read side of
+/// the wardrobe model over the character's WEARABLE POOL (every tier the
+/// character can reach, archived included): expand each input slot's
+/// composites over `componentGraph(pool, equippedIds)`, dedupe leaves across
+/// the whole equipped set in first-seen order, then route each leaf into every
+/// output slot its own `types` declare (an atomic dress with `types=[top,
+/// bottom]` lands in both; a composite's components go where their own `types`
+/// say). No I/O: the caller loads the pool once and may reuse it.
+///
+/// HANDOFF (P4.D283 → the unifier): the whole module (`outfitValues`,
+/// `itemsById`, `describeEquippedOutfitTitleOnly`) is the outfit pipeline's
+/// surface (P4.D282); this lane needs only the leaf half for the three image
+/// prompts and lands it here, beside its consumers. Fold onto P4.D282's port
+/// when both are on main.
+pub fn resolve_equipped_outfit_for_character(
+    pool: &crate::wearable_pool::WearablePool,
+    slots: &crate::wardrobe::Slots,
+) -> crate::tools::wardrobe_shared::LeafItemsBySlot {
+    use crate::wardrobe::WARDROBE_SLOT_TYPES;
+    let mut out = crate::tools::wardrobe_shared::LeafItemsBySlot::default();
+    // v4 `allEquippedItemIds(slots)`.
+    let equipped_ids: Vec<String> = WARDROBE_SLOT_TYPES
+        .iter()
+        .flat_map(|slot| slots.slot(slot).iter().cloned())
+        .collect();
+    if equipped_ids.is_empty() {
+        return out;
+    }
+    let items_by_id = crate::wearable_pool::component_graph_lookup(pool, &equipped_ids);
+    let unresolved = equipped_ids
+        .iter()
+        .filter(|id| !items_by_id.contains_key(id.as_str()))
+        .count();
+    if unresolved > 0 {
+        tracing::debug!(
+            context = "wardrobe",
+            characterId = %pool.character_id,
+            unresolvedCount = unresolved,
+            "[resolveEquippedOutfitForCharacter] Equipped ids not in the wearable pool"
+        );
+    }
+    // First pass: expand each input slot's composites, dedupe by leaf id across
+    // the whole equipped set, and remember the order leaves were first seen.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut ordered: Vec<Value> = Vec::new();
+    for slot in WARDROBE_SLOT_TYPES {
+        // v4 `slots[slot] ?? []` — a slot bag written before this slot existed
+        // has no key at all; `Slots::from_value` reads it as empty.
+        let expanded = crate::wardrobe::expand_composites(slots.slot(slot), &items_by_id, None);
+        if !expanded.cycles.is_empty() || expanded.truncated {
+            tracing::warn!(
+                context = "wardrobe",
+                characterId = %pool.character_id,
+                slot = slot,
+                cycles = expanded.cycles.len(),
+                truncated = expanded.truncated,
+                "[resolveEquippedOutfitForCharacter] Malformed composite graph; expansion truncated"
+            );
+        }
+        for id in expanded.leaf_ids {
+            if seen.contains(&id) {
+                continue;
+            }
+            let Some(item) = items_by_id.get(&id) else {
+                continue;
+            };
+            seen.insert(id);
+            ordered.push(item.clone());
+        }
+    }
+    // Second pass: route each leaf into every output slot its own `types`
+    // declare (an empty `types` is a no-op rather than a guess).
+    for item in &ordered {
+        for t in item
+            .get("types")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+        {
+            match t.as_str() {
+                Some("top") => out.top.push(item.clone()),
+                Some("bottom") => out.bottom.push(item.clone()),
+                Some("footwear") => out.footwear.push(item.clone()),
+                Some("accessories") => out.accessories.push(item.clone()),
+                Some("hair") => out.hair.push(item.clone()),
+                _ => {}
+            }
+        }
+    }
+    out
+}
+
+/// v4 `equippedWardrobeItemsForAppearance(repos, chatId, characterId,
+/// projectMountPointIds)` (`appearance-resolution.ts:100`, `9ecebf986`) — the
+/// character's equipped slots in `chat_id`, resolved over the wearable pool
+/// and flattened per slot in `WARDROBE_SLOT_TYPES` order. `None` when the
+/// character has nothing equipped (no stored slots, or they resolve to no
+/// leaf). The slots read is v4's fallback `safeQuery`, so a failed read is no
+/// outfit.
+pub fn equipped_wardrobe_items_for_appearance(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    chat_id: &str,
+    character_id: &str,
+    project_mount_point_ids: &[String],
+) -> Option<Vec<WardrobeItemInput>> {
+    let state = crate::db::chats_outfits::ChatOutfitsRepository::new(main)
+        .get_equipped_outfit_for_character(chat_id, character_id)?;
+    let slots = crate::wardrobe::Slots::from_value(Some(&state));
+    // Group stores follow each character's own memberships, so they can't come
+    // from the shared project list — the pool resolves them itself.
+    let pool = crate::wearable_pool::load_wearable_pool(
+        main,
+        mount,
+        character_id,
+        Some(project_mount_point_ids),
+        crate::wearable_pool::LoadWearablePoolOptions::default(),
+    );
+    let resolved = resolve_equipped_outfit_for_character(&pool, &slots);
+    let mut flat: Vec<WardrobeItemInput> = Vec::new();
+    for slot in crate::wardrobe::WARDROBE_SLOT_TYPES {
+        for item in resolved.slot(slot) {
+            flat.push(WardrobeItemInput {
+                slot: slot.to_string(),
+                title: item
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                description: item
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                image_prompt: item
+                    .get("imagePrompt")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            });
+        }
+    }
+    (!flat.is_empty()).then_some(flat)
 }
 
 /// v4 `buildDefaultAppearances`.
@@ -291,6 +460,9 @@ pub async fn resolve_character_appearances<C: CompletionProvider>(
                         usage_context: pd.usage_context.clone(),
                         short_prompt: pd.short_prompt.clone(),
                         medium_prompt: pd.medium_prompt.clone(),
+                        long_prompt: pd.long_prompt.clone(),
+                        complete_prompt: pd.complete_prompt.clone(),
+                        full_description: pd.full_description.clone(),
                     }]
                 })
                 .unwrap_or_default(),

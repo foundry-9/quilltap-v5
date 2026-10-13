@@ -24,6 +24,9 @@
 
 pub mod prompt_text;
 
+use crate::characters::physical_description::{
+    pick_physical_description, PhysicalDescriptionProfile, PhysicalDescriptionVariants,
+};
 use crate::cheap_llm::CheapLlmSelection;
 use crate::jsstr::{js_trim, utf16_len, utf16_truncate};
 use crate::memory_tasks::strip_code_fences;
@@ -292,6 +295,24 @@ pub struct PhysicalDescriptionInput {
     pub usage_context: Option<String>,
     pub short_prompt: Option<String>,
     pub medium_prompt: Option<String>,
+    pub long_prompt: Option<String>,
+    pub complete_prompt: Option<String>,
+    pub full_description: Option<String>,
+}
+
+impl PhysicalDescriptionInput {
+    /// The variants the shared `scene` pick reads (never the head-and-shoulders
+    /// crop — v4's `PhysicalDescriptionInput` carries none).
+    pub fn variants(&self) -> PhysicalDescriptionVariants<'_> {
+        PhysicalDescriptionVariants {
+            head_and_shoulders_prompt: None,
+            short_prompt: self.short_prompt.as_deref(),
+            medium_prompt: self.medium_prompt.as_deref(),
+            long_prompt: self.long_prompt.as_deref(),
+            complete_prompt: self.complete_prompt.as_deref(),
+            full_description: self.full_description.as_deref(),
+        }
+    }
 }
 
 /// One equipped wardrobe item (v4's per-slot leaf, image-prompt preferred over
@@ -364,12 +385,17 @@ pub async fn resolve_appearance<C: CompletionProvider>(
                         Some(u) => format!(" (context: {u})"),
                         None => String::new(),
                     };
-                    let preview = d
-                        .medium_prompt
-                        .as_deref()
-                        .filter(|s| !s.is_empty())
-                        .or(d.short_prompt.as_deref().filter(|s| !s.is_empty()))
-                        .unwrap_or("(no description text)");
+                    // v4 `pickPhysicalDescription(d, 'scene') || '(no description
+                    // text)'` (`9ecebf986` — was `medium || short`).
+                    let picked = pick_physical_description(
+                        Some(&d.variants()),
+                        PhysicalDescriptionProfile::Scene,
+                    );
+                    let preview = if picked.is_empty() {
+                        "(no description text)"
+                    } else {
+                        picked
+                    };
                     format!("    - ID: {}, Name: \"{}\"{context}: {preview}", d.id, d.name)
                 })
                 .collect();

@@ -39,9 +39,13 @@ use serde_json::{json, Value};
 use crate::clock::iso_from_unix_ms;
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::files::generated_file_row::{
+    create_generated_file_row, GeneratedFileRowInput, GenerationRecord, StoredImageBytes,
+};
+use crate::image_gen::image_attempt::decode_provider_image;
 use crate::image_gen::Orientation;
 use crate::model::completion::CompletionProvider;
-use crate::model::image::{ImageProvider, ImageTranscoder, TranscodeInput};
+use crate::model::image::{ImageGenResponse, ImageProvider, ImageTranscoder};
 use crate::services::aesthetics::{resolve_aesthetic, AestheticKind};
 use crate::services::avatar_prompt::{build_character_avatar_prompt, AvatarPromptOptions};
 use crate::services::dangerous_content::gatekeeper::{classify_content, ModerationProvider};
@@ -663,7 +667,6 @@ where
         Orientation::Portrait,
         deps.declarations_for,
         "background-jobs.character-avatar",
-        "background-jobs.character-avatar.concierge-route",
         &concierge_policy,
         user_id,
         Some(&payload.chat_id),
@@ -712,53 +715,32 @@ where
         active_model: failover.profile.model_name,
     };
 
-    // No images / no data — WARN+RETURN. v4: `rawData = imageData.data ||
-    // imageData.b64Json; if (!rawData)` — a JS falsy check, so a missing AND an
-    // empty-string payload both no-op (W4.7f widened `data` to Option<String>).
-    let Some(image_data) = outcome.images.into_iter().next() else {
-        // v4 `:479`.
+    let generation_model = outcome.active_model;
+
+    // 10. Decode + transcode (v4 `decodeProviderImage(generationResponse,
+    // `avatar_${safeName}`)`, `9ecebf986`) + persist. No image, or one with no
+    // inline data (`data || b64Json` falsy — an empty string too), is ONE WARN
+    // carrying `imageCount` — replacing the pre-span pair (`No images returned
+    // from provider` / `Generated image has no data`).
+    let response = ImageGenResponse {
+        images: outcome.images,
+    };
+    let Some(decoded) = decode_provider_image(
+        deps.transcoder,
+        Some(&response),
+        &format!("avatar_{}", sanitize_name_for_filename(&character_name)),
+        0,
+        deps.now_ms,
+    ) else {
         tracing::warn!(
             target: LOG_TARGET,
             context = CONTEXT,
-            job_id = job_id,
-            "[CharacterAvatar] No images returned from provider"
+            jobId = job_id,
+            imageCount = response.images.len(),
+            "[CharacterAvatar] No image data returned from provider"
         );
         return Ok(());
     };
-    let raw_data = match image_data.data.as_deref() {
-        Some(d) if !d.is_empty() => d,
-        _ => {
-            // v4 `:490` — a DIFFERENT sentence from the one above: the provider
-            // did answer, the answer just carried no bytes.
-            tracing::warn!(
-                target: LOG_TARGET,
-                context = CONTEXT,
-                job_id = job_id,
-                "[CharacterAvatar] Generated image has no data"
-            );
-            return Ok(());
-        }
-    };
-    let generation_model = outcome.active_model;
-
-    // 10. Decode + transcode + persist.
-    let raw_buffer = common::decode_base64_node(raw_data);
-    let provider_mime = image_data
-        .mime_type
-        .as_deref()
-        .unwrap_or("image/png")
-        .to_string();
-    let provider_ext = provider_mime.split('/').nth(1).unwrap_or("png");
-    let provider_filename = format!(
-        "avatar_{}_{}.{provider_ext}",
-        sanitize_name_for_filename(&character_name),
-        deps.now_ms
-    );
-    let converted = deps.transcoder.transcode(&TranscodeInput {
-        bytes: raw_buffer,
-        mime_type: provider_mime.clone(),
-        filename: provider_filename,
-    });
     let now_iso = iso_from_unix_ms(deps.now_ms);
     let file_id = uuid::Uuid::new_v4().to_string();
 
@@ -770,14 +752,15 @@ where
         chat_id: payload.chat_id.clone(),
         file_id: file_id.clone(),
         now_iso: now_iso.clone(),
-        converted_bytes: converted.bytes.clone(),
-        converted_mime: converted.mime_type.clone(),
-        converted_filename: converted.filename.clone(),
-        converted_width: converted.width,
-        converted_height: converted.height,
+        sha256: decoded.sha256.clone(),
+        converted_bytes: decoded.buffer.clone(),
+        converted_mime: decoded.mime_type.clone(),
+        converted_filename: decoded.filename.clone(),
+        converted_width: decoded.width,
+        converted_height: decoded.height,
         prompt: prompt.clone(),
         generation_model,
-        revised_prompt: image_data.revised_prompt.clone(),
+        revised_prompt: decoded.revised_prompt.clone(),
         generation_key: cache_keys.key.clone(),
         blob_webp: deps.blob_webp.clone(),
     };
@@ -1009,6 +992,8 @@ struct AvatarWriteInput {
     converted_filename: String,
     converted_width: Option<f64>,
     converted_height: Option<f64>,
+    /// v4 `decoded.sha256` — the hash of the stored bytes.
+    sha256: String,
     prompt: String,
     generation_model: String,
     revised_prompt: Option<String>,
@@ -1030,7 +1015,7 @@ fn write_avatar_file(
     mount: &rusqlite::Connection,
     input: &AvatarWriteInput,
 ) -> Result<(), DbError> {
-    let sha256 = sha256_hex(&input.converted_bytes);
+    let sha256 = input.sha256.clone();
 
     // The vault is provisioned at character creation and re-asserted by the
     // startup backfill; if it is somehow missing we refuse to write rather than
@@ -1067,43 +1052,43 @@ fn write_avatar_file(
         written.size_bytes,
     );
 
-    let files = crate::db::files::FilesRepository::new(main);
-    files.create(
-        &crate::db::files::FileCreate {
-            user_id: input.user_id.clone(),
-            sha256,
-            original_filename: input.converted_filename.clone(),
-            mime_type: stored_mime,
-            size: stored_size as f64,
+    // v4 `createGeneratedFileRow(repos, { id: fileId, userId, sha256, originalFilename,
+    // stored: written, width, height, linkedTo: [chatId, characterId], tags:
+    // [characterId], generation: { prompt, model, revisedPrompt }, generationKey })`
+    // (`9ecebf986`) — `description` null (bug 132: no label on a generated
+    // picture), no project scoping (the bytes live in the vault, addressed by
+    // blob id), `source` GENERATED, `category` IMAGE by default. The
+    // generation key binds this configuration's cache key to the new image —
+    // last write wins, which is exactly what makes a forced reroll the new
+    // canonical portrait for this character in this outfit. Keyed on the
+    // REQUESTED profile, not the rerouted one.
+    create_generated_file_row(
+        main,
+        &GeneratedFileRowInput {
+            user_id: &input.user_id,
+            id: Some(&input.file_id),
+            sha256: &sha256,
+            original_filename: &input.converted_filename,
+            stored: &StoredImageBytes {
+                storage_key,
+                stored_mime_type: stored_mime,
+                size_bytes: stored_size as i64,
+            },
             width: input.converted_width,
             height: input.converted_height,
-            is_plain_text: None,
             linked_to: vec![input.chat_id.clone(), input.character_id.clone()],
-            source: "GENERATED".to_string(),
-            category: "IMAGE".to_string(),
-            generation_prompt: Some(input.prompt.clone()),
-            generation_model: Some(input.generation_model.clone()),
-            generation_revised_prompt: input.revised_prompt.clone(),
-            // Bind this configuration's cache key to the new image — last write
-            // wins, which is exactly what makes a forced reroll the new
-            // canonical portrait for this character in this outfit. Keyed on the
-            // REQUESTED profile, not the rerouted one.
-            generation_key: Some(input.generation_key.clone()),
-            // No label here — see the matching note in `story_background_job.rs`
-            // (bug 132).
-            description: None,
             tags: vec![input.character_id.clone()],
-            // No legacy `folders` row and no project scoping: the bytes live in
-            // the vault, addressed by blob id.
+            source: None,
+            generation: Some(&GenerationRecord {
+                prompt: Some(input.prompt.clone()),
+                model: Some(input.generation_model.clone()),
+                revised_prompt: input.revised_prompt.clone(),
+            }),
+            generation_key: Some(&input.generation_key),
+            description: None,
             project_id: None,
             folder_path: None,
-            storage_key: Some(storage_key),
-            file_status: "ok".to_string(),
-        },
-        &crate::db::files::CreateOptions {
-            id: input.file_id.clone(),
-            created_at: input.now_iso.clone(),
-            updated_at: input.now_iso.clone(),
+            now_iso: &input.now_iso,
         },
     )?;
     Ok(())
@@ -1113,18 +1098,6 @@ fn write_avatar_file(
 fn sanitize_name_for_filename(name: &str) -> String {
     name.chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .collect()
-}
-
-/// Lowercase hex SHA-256.
-fn sha256_hex(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
         .collect()
 }
 
@@ -1766,28 +1739,40 @@ mod log_line_tests {
         none(&lines, "[CharacterAvatar] Avatar image saved");
     }
 
-    // --- v4 `:479` / `:490` — the two empty-payload skips ---------------------
+    // --- v4 `decodeProviderImage` → null (`9ecebf986`): ONE WARN for an empty
+    // image list AND for an image carrying no bytes, `imageCount` telling them
+    // apart — replacing the pre-span pair (`:479` / `:490`). -------------------
 
     #[test]
-    fn an_empty_image_list_says_so_and_never_says_the_other_thing() {
+    fn an_empty_image_list_logs_the_one_no_data_warn_with_count_zero() {
         let (out, lines) = run(Arrangement::default(), Answer::Images(Vec::new()));
         assert!(out.is_ok(), "a benign skip: {out:?}");
 
-        let line = one(&lines, "[CharacterAvatar] No images returned from provider");
+        let line = one(
+            &lines,
+            "[CharacterAvatar] No image data returned from provider",
+        );
         assert!(
             line.starts_with("WARN quilltap::character_avatar"),
             "{line}"
         );
-        has_common_bag(line);
+        assert!(
+            line.contains("context=background-jobs.character-avatar"),
+            "v4's context: {line}"
+        );
+        assert!(line.contains(&format!("jobId={JOB}")), "the job id: {line}");
+        assert!(line.contains("imageCount=0"), "{line}");
+        // The pre-span pair is GONE on both arms.
+        none(&lines, "[CharacterAvatar] No images returned from provider");
         none(&lines, "[CharacterAvatar] Generated image has no data");
         none(&lines, "[CharacterAvatar] Avatar image saved");
         none(&lines, "[CharacterAvatar] Avatar generation completed");
     }
 
-    /// v4's `rawData = imageData.data || imageData.b64Json; if (!rawData)` — a
-    /// JS falsy test, so an EMPTY string lands here, not just a missing key.
+    /// v4's `raw = image?.data || image?.b64Json` — a JS falsy test, so an
+    /// EMPTY string lands here too, with `imageCount: 1`.
     #[test]
-    fn an_image_with_empty_data_says_the_other_thing() {
+    fn an_image_with_empty_data_logs_the_same_warn_with_count_one() {
         let (out, lines) = run(
             Arrangement::default(),
             Answer::Images(vec![GeneratedImageData {
@@ -1799,12 +1784,17 @@ mod log_line_tests {
         );
         assert!(out.is_ok(), "a benign skip: {out:?}");
 
-        let line = one(&lines, "[CharacterAvatar] Generated image has no data");
+        let line = one(
+            &lines,
+            "[CharacterAvatar] No image data returned from provider",
+        );
         assert!(
             line.starts_with("WARN quilltap::character_avatar"),
             "{line}"
         );
-        has_common_bag(line);
+        assert!(line.contains(&format!("jobId={JOB}")), "the job id: {line}");
+        assert!(line.contains("imageCount=1"), "{line}");
+        none(&lines, "[CharacterAvatar] Generated image has no data");
         none(&lines, "[CharacterAvatar] No images returned from provider");
         none(&lines, "[CharacterAvatar] Avatar image saved");
     }
@@ -1846,7 +1836,10 @@ mod log_line_tests {
         // The failure twin and every skip stayed silent.
         none(&lines, "[CharacterAvatar] Failed to save avatar image");
         none(&lines, "skipping");
-        none(&lines, "[CharacterAvatar] No images returned from provider");
+        none(
+            &lines,
+            "[CharacterAvatar] No image data returned from provider",
+        );
     }
 
     /// v4 `:589` — the write fails: ERROR, the exception on the line, the job

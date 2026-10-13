@@ -67,7 +67,13 @@ import {
 } from '@/lib/llm/errors';
 import { providerCanTransportImages } from '@/lib/llm/image-transport';
 import { LLMStreamStalledError } from '@/lib/llm/stream-watchdog';
-import { verifyImageReachedModel } from '@/lib/chat/file-attachment-fallback';
+// v4 `9ecebf986` (P4.D283): `verifyImageReachedModel` moved to the shared
+// vision request and took the request's TEXT as its third argument; the
+// describer's text is its instruction (a module-private constant there, so its
+// bytes are repeated here — `instruction_token_ceiling` pins the same 66).
+import { verifyImageReachedModel } from '@/lib/llm/vision-request';
+const IMAGE_DESCRIPTION_INSTRUCTION =
+  'Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.';
 import { acceptsApiKey, requiresApiKey } from '@/lib/plugins/provider-validation';
 import {
   buildFallbackChain,
@@ -857,7 +863,7 @@ const VERDICTS: VerdictCase[] = [
 ];
 
 for (const c of VERDICTS) {
-  const verdict = verifyImageReachedModel(c.response as never, c.attachmentId);
+  const verdict = verifyImageReachedModel(c.response as never, c.attachmentId, IMAGE_DESCRIPTION_INSTRUCTION);
   rows.push({
     kind: 'verdict',
     id: `verdict/${c.id}`,

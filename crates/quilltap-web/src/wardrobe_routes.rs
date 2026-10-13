@@ -365,6 +365,7 @@ pub async fn wardrobe_transfers_post(
 // /api/v1/wardrobe/preview-avatar | analyze-image
 // ===========================================================================
 
+// === P4.D283: preview-avatar (owned) ===
 pub async fn wardrobe_preview_avatar_post(
     State(state): State<SharedState>,
     body: String,
@@ -375,10 +376,72 @@ pub async fn wardrobe_preview_avatar_post(
         Err(r) => return *r,
     };
     match dispatch_core(&state, CoreRequest::WardrobePreviewAvatar { body }).await {
-        Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+        Ok(resp) => match preview_avatar_status_and_body(resp) {
+            Some((status, body)) => (
+                status,
+                [("content-type", "application/json")],
+                body.to_string(),
+            )
+                .into_response(),
+            None => unwrap_to_http(
+                CoreResponse::Error(quilltap_core::api::types::CoreError {
+                    kind: quilltap_core::api::types::ErrorKind::Internal,
+                    message: "Unexpected core response".to_string(),
+                    pepper_state: None,
+                    code: None,
+                    associations: None,
+                    character_id: None,
+                    entity: None,
+                    details: None,
+                    already_saved: None,
+                }),
+                StatusCode::OK,
+            ),
+        },
         Err(r) => r,
     }
 }
+
+/// v4 `preview-avatar/route.ts` (`9ecebf986`): the HTTP status and body for
+/// the preview's dispatch answer. A generation failure is `errorResponse(
+/// message, refused ? 422 : 502, { trail, refused })` — the core carries the
+/// refusal as `Unprocessable` and the provider failure as `Internal` with
+/// `details.refused === false` (the images route's idiom for its own 502),
+/// both with the `details` bag on the body; every other error is the ordinary
+/// status map with `{ error }`. `None` for a response variant the preview
+/// never answers. `pub` so the routes differential pins the edge's mapping.
+pub fn preview_avatar_status_and_body(resp: CoreResponse) -> Option<(StatusCode, Value)> {
+    use quilltap_core::api::types::ErrorKind;
+    match resp {
+        CoreResponse::Wardrobe(v) => Some((StatusCode::OK, v)),
+        CoreResponse::Error(e) => {
+            let provider_failed = e.kind == ErrorKind::Internal
+                && e.details
+                    .as_deref()
+                    .and_then(|d| d.get("refused"))
+                    .and_then(Value::as_bool)
+                    == Some(false);
+            let status = match e.kind {
+                _ if provider_failed => StatusCode::BAD_GATEWAY,
+                ErrorKind::BadRequest => StatusCode::BAD_REQUEST,
+                ErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
+                ErrorKind::Forbidden => StatusCode::FORBIDDEN,
+                ErrorKind::NotFound => StatusCode::NOT_FOUND,
+                ErrorKind::Conflict => StatusCode::CONFLICT,
+                ErrorKind::Unprocessable => StatusCode::UNPROCESSABLE_ENTITY,
+                ErrorKind::Locked | ErrorKind::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
+                ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            let mut body = serde_json::json!({ "error": e.message });
+            if let Some(d) = e.details {
+                body["details"] = *d;
+            }
+            Some((status, body))
+        }
+        _ => None,
+    }
+}
+// === end P4.D283 ===
 
 pub async fn wardrobe_analyze_image_post(
     State(state): State<SharedState>,

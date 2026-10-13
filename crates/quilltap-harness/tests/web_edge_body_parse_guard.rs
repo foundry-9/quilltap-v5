@@ -183,6 +183,18 @@ const COLLAPSE_CENSUS: &[(&str, usize, &str)] = &[
          ERROR over Tauri IPC (ruling R-A). Nothing is answered from it.",
     ),
     (
+        "crates/quilltap-web/src/wardrobe_routes.rs",
+        1,
+        "ONE site, FAITHFUL and not a body read at all (P4.D283): \
+         `preview_avatar_status_and_body` reads `details.refused` off the CORE'S \
+         OWN error response to pick v4's `refused ? 422 : 502` — the bag is \
+         built by `api/wardrobe.rs`'s preview handler as `{trail, refused: \
+         false}`, so absent and wrong-typed cannot occur; `Some(false)` is the \
+         only value that maps to 502. The request body is parsed in core \
+         (`PreviewBody`, v4's `previewAvatarSchema`). Arm: the `pv_*` rows of \
+         `wardrobe_routes_equivalence` through the edge fn.",
+    ),
+    (
         "crates/quilltap-web/src/wardrobe_images_routes.rs",
         1,
         "NOT a body read — FAITHFUL (P4.D263). The one site is `render`'s \

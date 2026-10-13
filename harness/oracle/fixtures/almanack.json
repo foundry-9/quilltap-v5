@@ -4,21 +4,47 @@
   "seedTimestamp": "2026-03-01T00:00:00.000Z",
   "pinnedNowIso": "2026-08-01T12:00:00.000Z",
   "backups": [
-    { "filename": "quilltap-2026-07-01T031500.db", "sizeBytes": 2000 },
-    { "filename": "quilltap-2026-07-15T031500.db", "sizeBytes": 2100 },
-    { "filename": "quilltap-2026-08-01T031500.db", "sizeBytes": 2200 },
-    { "filename": "quilltap-llm-logs-2026-07-15T031500.db", "sizeBytes": 300 },
-    { "filename": "quilltap-llm-logs-2026-08-01T031500.db", "sizeBytes": 310 },
-    { "filename": "quilltap-mount-index-2026-07-15T031500.db", "sizeBytes": 512 },
-    { "filename": "quilltap-mount-index-2026-08-01T031500.db", "sizeBytes": 520 },
-    { "filename": "not-a-backup.txt", "sizeBytes": 7 }
+    {
+      "filename": "quilltap-2026-07-01T031500.db",
+      "sizeBytes": 2000
+    },
+    {
+      "filename": "quilltap-2026-07-15T031500.db",
+      "sizeBytes": 2100
+    },
+    {
+      "filename": "quilltap-2026-08-01T031500.db",
+      "sizeBytes": 2200
+    },
+    {
+      "filename": "quilltap-llm-logs-2026-07-15T031500.db",
+      "sizeBytes": 300
+    },
+    {
+      "filename": "quilltap-llm-logs-2026-08-01T031500.db",
+      "sizeBytes": 310
+    },
+    {
+      "filename": "quilltap-mount-index-2026-07-15T031500.db",
+      "sizeBytes": 512
+    },
+    {
+      "filename": "quilltap-mount-index-2026-08-01T031500.db",
+      "sizeBytes": 520
+    },
+    {
+      "filename": "not-a-backup.txt",
+      "sizeBytes": 7
+    }
   ],
   "jobs": [
     {
       "id": "b6000000-0000-4000-8000-000000000001",
       "type": "MEMORY_EXTRACTION",
       "status": "PENDING",
-      "payload": { "chatId": "c1000000-0000-4000-8000-000000000001" },
+      "payload": {
+        "chatId": "c1000000-0000-4000-8000-000000000001"
+      },
       "priority": 5,
       "attempts": 0,
       "maxAttempts": 3,
@@ -30,7 +56,9 @@
       "id": "b6000000-0000-4000-8000-000000000002",
       "type": "TITLE_UPDATE",
       "status": "PROCESSING",
-      "payload": { "chatId": "c1000000-0000-4000-8000-000000000002" },
+      "payload": {
+        "chatId": "c1000000-0000-4000-8000-000000000002"
+      },
       "priority": 10,
       "attempts": 1,
       "maxAttempts": 3,
@@ -43,7 +71,9 @@
       "id": "b6000000-0000-4000-8000-000000000003",
       "type": "CONTEXT_SUMMARY",
       "status": "FAILED",
-      "payload": { "chatId": "c1000000-0000-4000-8000-000000000001" },
+      "payload": {
+        "chatId": "c1000000-0000-4000-8000-000000000001"
+      },
       "priority": 0,
       "attempts": 1,
       "maxAttempts": 3,
@@ -56,7 +86,9 @@
       "id": "b6000000-0000-4000-8000-000000000004",
       "type": "EMBEDDING_GENERATE",
       "status": "FAILED",
-      "payload": { "entityType": "MEMORY" },
+      "payload": {
+        "entityType": "MEMORY"
+      },
       "priority": 0,
       "attempts": 3,
       "maxAttempts": 3,
@@ -69,7 +101,9 @@
       "id": "b6000000-0000-4000-8000-000000000005",
       "type": "MEMORY_HOUSEKEEPING",
       "status": "COMPLETED",
-      "payload": { "chatId": "c1000000-0000-4000-8000-000000000001" },
+      "payload": {
+        "chatId": "c1000000-0000-4000-8000-000000000001"
+      },
       "priority": 0,
       "attempts": 1,
       "maxAttempts": 3,
@@ -83,7 +117,9 @@
       "id": "b6000000-0000-4000-8000-000000000006",
       "type": "CONVERSATION_RENDER",
       "status": "DEAD",
-      "payload": { "chatId": "c1000000-0000-4000-8000-000000000002" },
+      "payload": {
+        "chatId": "c1000000-0000-4000-8000-000000000002"
+      },
       "priority": 0,
       "attempts": 5,
       "maxAttempts": 5,
@@ -96,7 +132,9 @@
       "id": "b6000000-0000-4000-8000-000000000007",
       "type": "MEMORY_EXTRACTION",
       "status": "PAUSED",
-      "payload": { "chatId": "c1000000-0000-4000-8000-000000000001" },
+      "payload": {
+        "chatId": "c1000000-0000-4000-8000-000000000001"
+      },
       "priority": 2,
       "attempts": 0,
       "maxAttempts": 3,
@@ -104,5 +142,16 @@
       "createdAt": "2020-01-01T00:00:07.000Z",
       "updatedAt": "2020-01-01T00:00:07.000Z"
     }
-  ]
+  ],
+  "llmLogPlants": {
+    "_comment": "P4.D283 (bug 196, v4 9ecebf986): two WARDROBE_ITEM_IMAGE rows on the image profile (the legacy variant has no profile columns), planted by BOTH sides on the llm-logs COPY before the data cases run, so the Almanack's per-image-profile roll-up counts wardrobe pictures as image spend. The committed .db pair is NOT rebuilt (a rebuild re-mints every id). The rows carry the builder's own request / response summary shapes (v4's LLMLogSchema validates every row `findByFilter` returns — a message without `contentLength` is dropped from the token total but not from the SQL aggregates).",
+    "migrated": [
+      "INSERT INTO \"llm_logs\" (\"id\", \"userId\", \"type\", \"messageId\", \"chatId\", \"characterId\", \"autonomousRunId\", \"provider\", \"modelName\", \"connectionProfileId\", \"imageProfileId\", \"request\", \"response\", \"usage\", \"cacheUsage\", \"durationMs\", \"createdAt\", \"updatedAt\") VALUES ('77000000-0000-4000-8000-000000000001', 'e18e05bc-63e8-4539-8a85-719b7a508850', 'WARDROBE_ITEM_IMAGE', NULL, NULL, NULL, NULL, 'OPENAI_COMPATIBLE', 'mock-image-model', NULL, 'a6000000-0000-4000-8000-000000000001', '{\"messages\":[],\"messageCount\":0,\"temperature\":null,\"maxTokens\":null}', '{\"content\":\"a revised coat\",\"contentLength\":14,\"error\":null,\"finishReason\":\"stop\"}', '{\"promptTokens\":40,\"completionTokens\":0,\"totalTokens\":40}', NULL, 1800, '2026-07-24T00:00:00.000Z', '2026-07-24T00:00:00.000Z')",
+      "INSERT INTO \"llm_logs\" (\"id\", \"userId\", \"type\", \"messageId\", \"chatId\", \"characterId\", \"autonomousRunId\", \"provider\", \"modelName\", \"connectionProfileId\", \"imageProfileId\", \"request\", \"response\", \"usage\", \"cacheUsage\", \"durationMs\", \"createdAt\", \"updatedAt\") VALUES ('77000000-0000-4000-8000-000000000002', 'e18e05bc-63e8-4539-8a85-719b7a508850', 'WARDROBE_ITEM_IMAGE', NULL, NULL, NULL, NULL, 'OPENAI_COMPATIBLE', 'mock-image-model', NULL, 'a6000000-0000-4000-8000-000000000001', '{\"messages\":[],\"messageCount\":0,\"temperature\":null,\"maxTokens\":null}', '{\"content\":\"a revised coat\",\"contentLength\":14,\"error\":null,\"finishReason\":\"stop\"}', NULL, NULL, 2200, '2026-07-25T00:00:00.000Z', '2026-07-25T00:00:00.000Z')"
+    ],
+    "legacy": [
+      "INSERT INTO \"llm_logs\" (\"id\", \"userId\", \"type\", \"messageId\", \"chatId\", \"characterId\", \"autonomousRunId\", \"provider\", \"modelName\", \"request\", \"response\", \"usage\", \"cacheUsage\", \"durationMs\", \"createdAt\", \"updatedAt\") VALUES ('77000000-0000-4000-8000-000000000001', 'e18e05bc-63e8-4539-8a85-719b7a508850', 'WARDROBE_ITEM_IMAGE', NULL, NULL, NULL, NULL, 'OPENAI_COMPATIBLE', 'mock-image-model', '{\"messages\":[],\"messageCount\":0,\"temperature\":null,\"maxTokens\":null}', '{\"content\":\"a revised coat\",\"contentLength\":14,\"error\":null,\"finishReason\":\"stop\"}', '{\"promptTokens\":40,\"completionTokens\":0,\"totalTokens\":40}', NULL, 1800, '2026-07-24T00:00:00.000Z', '2026-07-24T00:00:00.000Z')",
+      "INSERT INTO \"llm_logs\" (\"id\", \"userId\", \"type\", \"messageId\", \"chatId\", \"characterId\", \"autonomousRunId\", \"provider\", \"modelName\", \"request\", \"response\", \"usage\", \"cacheUsage\", \"durationMs\", \"createdAt\", \"updatedAt\") VALUES ('77000000-0000-4000-8000-000000000002', 'e18e05bc-63e8-4539-8a85-719b7a508850', 'WARDROBE_ITEM_IMAGE', NULL, NULL, NULL, NULL, 'OPENAI_COMPATIBLE', 'mock-image-model', '{\"messages\":[],\"messageCount\":0,\"temperature\":null,\"maxTokens\":null}', '{\"content\":\"a revised coat\",\"contentLength\":14,\"error\":null,\"finishReason\":\"stop\"}', NULL, NULL, 2200, '2026-07-25T00:00:00.000Z', '2026-07-25T00:00:00.000Z')"
+    ]
+  }
 }

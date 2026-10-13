@@ -78,6 +78,9 @@
 
 use serde_json::{Map, Value};
 
+use crate::characters::physical_description::{
+    pick_physical_description_value, PhysicalDescriptionProfile,
+};
 use crate::cheap_llm::CheapLlmSelection;
 use crate::clock::iso_from_unix_ms;
 use crate::db::background_jobs::BackgroundJob;
@@ -140,29 +143,16 @@ impl HeadShouldersBackfillPayload {
     }
 }
 
-/// v4's seed fall-through: `(pd.mediumPrompt || pd.shortPrompt || pd.longPrompt
-/// || pd.completePrompt || pd.fullDescription || '').trim()`.
+/// v4's seed: `pickPhysicalDescription(pd, 'scene')` (`9ecebf986`) — medium ‖
+/// short ‖ long ‖ complete ‖ full, each candidate TRIMMED before it is judged.
 ///
-/// JS `||` on strings, so an EMPTY string falls through to the next tier — and
-/// the trim happens ONCE, on the winner, never per-candidate. A whitespace-only
-/// `mediumPrompt` therefore WINS the fall-through and then trims to nothing,
-/// which is the arm the scan disagrees with.
+/// Pre-span this was `(medium || short || … || '').trim()` — the trim happened
+/// ONCE, on the winner, so a whitespace-only `mediumPrompt` WON and then
+/// trimmed to nothing (the arm the scan used to disagree with). Now the blank
+/// falls through to the next tier, and the scan's `hasPhysicalDescription(pd,
+/// 'scene')` agrees with the handler exactly.
 fn seed_text(pd: &Value) -> String {
-    const TIERS: [&str; 5] = [
-        "mediumPrompt",
-        "shortPrompt",
-        "longPrompt",
-        "completePrompt",
-        "fullDescription",
-    ];
-    for key in TIERS {
-        if let Some(s) = pd.get(key).and_then(Value::as_str) {
-            if !s.is_empty() {
-                return js_trim(s).to_string();
-            }
-        }
-    }
-    String::new()
+    pick_physical_description_value(Some(pd), PhysicalDescriptionProfile::Scene)
 }
 
 /// v4's `pd.headAndShouldersPrompt && pd.headAndShouldersPrompt.trim()` — the

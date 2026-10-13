@@ -46,8 +46,8 @@ use quilltap_core::api::chat_outfits::{chat_equip, chat_outfit_get, chat_regener
 use quilltap_core::api::types::{ErrorKind, Response, WardrobeContainerScope};
 use quilltap_core::api::wardrobe::{
     wardrobe_create, wardrobe_delete, wardrobe_item_get, wardrobe_list, wardrobe_preview_avatar,
-    wardrobe_transfer_apply, wardrobe_transfer_destinations, wardrobe_update, AvatarPreviewImage,
-    AvatarPreviewRenderRequest, AvatarPreviewRenderer, ErasedAvatarPreview,
+    wardrobe_transfer_apply, wardrobe_transfer_destinations, wardrobe_update,
+    AvatarPreviewRenderer, ErasedAvatarPreview,
 };
 use quilltap_core::api::wardrobe_wear_history::{
     wardrobe_item_wear_history, wardrobe_item_wear_history_as,
@@ -106,6 +106,11 @@ struct CaseEntry {
     /// [P4.D256] `?action=<x>` on an item GET.
     #[serde(default)]
     action: Option<String>,
+    /// P4.D283: the preview provider's scripted mode — `ok` (default) |
+    /// `refuse` | `refuseFirst` | `throw` (the oracle's `createImageProvider`
+    /// mock answers the same way).
+    #[serde(default)]
+    preview_provider: Option<String>,
     /// [P4.D256] Chained General wear-history reads on the SAME copy →
     /// `${name}__wear_${i}` rows (the ledger a delete left behind).
     #[serde(default)]
@@ -122,7 +127,18 @@ struct Plant {
 #[serde(rename_all = "camelCase")]
 struct Spec {
     user_id: String,
+    /// P4.D283: the scripted preview provider's canned answer (a WebP both
+    /// sides pass through, so `pv_ok_bytes` pins the stored bytes).
+    preview: PreviewSpec,
     cases: Vec<CaseEntry>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewSpec {
+    provider_image_base64: String,
+    provider_mime_type: String,
+    revised_prompt: String,
 }
 
 fn fixtures_dir() -> PathBuf {
@@ -190,37 +206,67 @@ fn fresh_db(case: &CaseEntry) -> (Db, tempfile::TempDir) {
     (db, scratch)
 }
 
-/// The canned preview render — replays the oracle's captured post-transcode
-/// image (`pv_ok_bytes`), the honest model+codec boundary.
-struct CannedRenderer {
-    buffer: Vec<u8>,
+/// The scripted preview PROVIDER (P4.D283, R-G): the core's seam is now ONE raw
+/// `generateImage` per Concierge attempt plus the codec, so this answers the
+/// fixture's canned WebP (a passthrough on both sides' transcode — the stored
+/// bytes compare for real through `pv_ok_bytes`), or throws per the case's
+/// `previewProvider` mode exactly as the oracle's `createImageProvider` mock
+/// does: `refuse` OpenAI's safety sentence on every call, `refuseFirst` on the
+/// first only (the understudy answers), `throw` a plain failure.
+struct ScriptedPreviewProvider {
+    webp_b64: String,
     mime_type: String,
-    filename: String,
     revised_prompt: Option<String>,
+    mode: String,
+    calls: std::sync::Mutex<usize>,
 }
-impl AvatarPreviewRenderer for CannedRenderer {
-    fn render<'a>(
+const PREVIEW_SAFETY: &str = "400 Your request was rejected as a result of our safety system.";
+impl AvatarPreviewRenderer for ScriptedPreviewProvider {
+    fn generate<'a>(
         &'a self,
-        _req: &'a AvatarPreviewRenderRequest,
+        _provider: &'a str,
+        _api_key: &'a str,
+        _params: &'a quilltap_core::model::image::ImageGenParams,
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<
                     Output = Result<
-                        AvatarPreviewImage,
-                        quilltap_core::api::wardrobe::AvatarPreviewError,
+                        quilltap_core::model::image::ImageGenResponse,
+                        quilltap_core::model::image::ImageGenError,
                     >,
                 > + Send
                 + 'a,
         >,
     > {
-        Box::pin(async {
-            Ok(AvatarPreviewImage {
-                buffer: self.buffer.clone(),
-                mime_type: self.mime_type.clone(),
-                filename: self.filename.clone(),
-                revised_prompt: self.revised_prompt.clone(),
-            })
-        })
+        let n = {
+            let mut c = self.calls.lock().unwrap();
+            *c += 1;
+            *c
+        };
+        let out = match self.mode.as_str() {
+            "throw" => Err(quilltap_core::model::image::ImageGenError::new(
+                "canned provider failure",
+            )),
+            "refuse" => Err(quilltap_core::model::image::ImageGenError::new(
+                PREVIEW_SAFETY,
+            )),
+            "refuseFirst" if n == 1 => Err(quilltap_core::model::image::ImageGenError::new(
+                PREVIEW_SAFETY,
+            )),
+            _ => Ok(quilltap_core::model::image::ImageGenResponse {
+                images: vec![quilltap_core::model::image::GeneratedImageData {
+                    data: Some(self.webp_b64.clone()),
+                    url: None,
+                    mime_type: Some(self.mime_type.clone()),
+                    revised_prompt: self.revised_prompt.clone(),
+                }],
+            }),
+        };
+        Box::pin(async move { out })
+    }
+
+    fn codec(&self) -> std::sync::Arc<dyn quilltap_core::services::file_storage::PixelCodec> {
+        std::sync::Arc::new(quilltap_host::HostImageCodec)
     }
 }
 
@@ -402,6 +448,101 @@ fn check(
     }
 }
 
+/// P4.D283: the preview case through `preview_avatar_status_and_body` — the
+/// web edge's mapping — compared whole (`error` + `details` on a failure; the
+/// 200 body with `rerouted` + `trail`, `fileId` / `url` blanked).
+fn check_preview(
+    oracle: &HashMap<String, Value>,
+    name: &str,
+    resp: Response,
+    normalize: &[String],
+    failed: &mut Vec<String>,
+) {
+    let want = oracle
+        .get(name)
+        .unwrap_or_else(|| panic!("oracle has no case '{name}' — regenerate the NDJSON"));
+    let want_status = want["status"].as_u64().unwrap() as u16;
+    let Some((status, body)) = quilltap_web::wardrobe_routes::preview_avatar_status_and_body(resp)
+    else {
+        eprintln!("[{name}] preview answered a variant the edge never maps");
+        failed.push(name.to_string());
+        return;
+    };
+    let got = norm(&blank_paths(&body, normalize));
+    let expect = norm(&blank_paths(&want["body"], normalize));
+    if status.as_u16() != want_status || got != expect {
+        eprintln!(
+            "[{name}] PREVIEW MISMATCH:\n got  {} {got}\n want {want_status} {expect}",
+            status.as_u16()
+        );
+        failed.push(name.to_string());
+    }
+}
+
+/// P4.D283: `pv_ok_bytes` — the oracle's captured post-transcode bytes vs the
+/// `files` row v5 stored (sha256 / size / mime): the model+codec boundary is a
+/// passthrough WebP on both sides now, so the STORED bytes are comparable.
+fn check_preview_bytes(
+    oracle: &HashMap<String, Value>,
+    name: &str,
+    db: &Db,
+    resp: &Response,
+    failed: &mut Vec<String>,
+) {
+    let key = format!("{name}_bytes");
+    let Some(bytes_row) = oracle.get(&key) else {
+        eprintln!("[{key}] oracle has no bytes row — regenerate the NDJSON");
+        failed.push(key);
+        return;
+    };
+    let Some(body) = success_body(resp) else {
+        eprintln!("[{key}] the preview did not succeed: {resp:?}");
+        failed.push(key);
+        return;
+    };
+    let file_id = body["fileId"].as_str().unwrap_or_default().to_string();
+    let want_bytes = decode_bytes(bytes_row);
+    let want_sha = {
+        use sha2::Digest;
+        hex::encode(sha2::Sha256::digest(&want_bytes))
+    };
+    let want_mime = bytes_row["body"]["mimeType"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let got: Option<(String, i64, String)> = db
+        .read_main(move |c| {
+            c.query_row(
+                "SELECT sha256, size, mimeType FROM files WHERE id = ?1",
+                [&file_id],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, f64>(1)? as i64,
+                        r.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
+        })
+        .unwrap();
+    match got {
+        Some((sha, size, mime))
+            if sha == want_sha && size == want_bytes.len() as i64 && mime == want_mime => {}
+        other => {
+            eprintln!(
+                "[{key}] STORED BYTES MISMATCH: got {other:?}, want sha {want_sha} size {} mime {want_mime}",
+                want_bytes.len()
+            );
+            failed.push(key);
+        }
+    }
+}
+
 /// Pin a raw key sequence (the sorted-key `check` deliberately cannot see it).
 fn check_key_order(
     oracle: &HashMap<String, Value>,
@@ -493,24 +634,18 @@ async fn wardrobe_routes_equivalence() {
         oracle.len()
     );
 
-    // The canned preview renderer, replaying the oracle's captured transcode.
-    let renderer = if let Some(bytes_row) = oracle.get("pv_ok_bytes") {
-        ErasedAvatarPreview::new(CannedRenderer {
-            buffer: decode_bytes(bytes_row),
-            mime_type: bytes_row["body"]["mimeType"]
-                .as_str()
-                .unwrap_or("image/webp")
-                .to_string(),
-            filename: bytes_row["body"]["filename"]
-                .as_str()
-                .unwrap_or("avatar_preview.webp")
-                .to_string(),
-            revised_prompt: bytes_row["body"]["revisedPrompt"]
-                .as_str()
-                .map(str::to_string),
+    // P4.D283: the preview provider is scripted PER CASE (`previewProvider`).
+    let preview_for = |case: &CaseEntry| {
+        ErasedAvatarPreview::new(ScriptedPreviewProvider {
+            webp_b64: spec.preview.provider_image_base64.clone(),
+            mime_type: spec.preview.provider_mime_type.clone(),
+            revised_prompt: Some(spec.preview.revised_prompt.clone()),
+            mode: case
+                .preview_provider
+                .clone()
+                .unwrap_or_else(|| "ok".to_string()),
+            calls: std::sync::Mutex::new(0),
         })
-    } else {
-        ErasedAvatarPreview::none()
     };
 
     let user = spec.user_id.as_str();
@@ -577,7 +712,9 @@ async fn wardrobe_routes_equivalence() {
             "regenerateAvatar" => {
                 chat_regenerate_avatar(&db, user, case.chat_id.as_deref().unwrap(), body).await
             }
-            "previewAvatar" => wardrobe_preview_avatar(&db, &renderer, user, body, NOW, None).await,
+            "previewAvatar" => {
+                wardrobe_preview_avatar(&db, &preview_for(case), user, body, NOW, None).await
+            }
             "characterWardrobeList" => character_wardrobe_list(
                 &db,
                 user,
@@ -587,15 +724,34 @@ async fn wardrobe_routes_equivalence() {
             ),
             other => panic!("unknown case kind: {other}"),
         };
-        check(
-            &oracle,
-            &case.name,
-            &resp,
-            &case.normalize,
-            &case.classify,
-            &mut failed,
-        );
-        checks += 1;
+        if case.kind == "previewAvatar" {
+            // P4.D283 (R-G): the preview's status + WHOLE body through the web
+            // edge's own mapping — v4's 422 / 502 with `details { trail,
+            // refused }` are comparands here, not the deferred `validationError`
+            // details the generic `check` leaves out.
+            check_preview(
+                &oracle,
+                &case.name,
+                resp.clone(),
+                &case.normalize,
+                &mut failed,
+            );
+            checks += 1;
+            if case.emit_bytes {
+                check_preview_bytes(&oracle, &case.name, &db, &resp, &mut failed);
+                checks += 1;
+            }
+        } else {
+            check(
+                &oracle,
+                &case.name,
+                &resp,
+                &case.normalize,
+                &case.classify,
+                &mut failed,
+            );
+            checks += 1;
+        }
 
         // The two raw key-order claims (the richest read + the equip echo).
         // [P4.D256] + the tagged / worn reads and the wear-history payload.

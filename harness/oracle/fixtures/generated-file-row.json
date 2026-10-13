@@ -1,0 +1,232 @@
+{
+  "$note": [
+    "Corpus for the generated-file-row tier-2 differential (P4.D283, v4 9ecebf986 lib/files/generated-file-row.ts).",
+    "Both sides run every case over a FRESH copy of the wardrobe-item-image-generation fixture's MAIN db",
+    "(build-wardrobe-item-image-generation-fixture.ts — it carries the owner and the `files` table) and dump",
+    "the one `files` row the helper minted plus its `[GeneratedFileRow]` DEBUG line. `id` null = let the helper",
+    "mint one (both sides placeholder it). `now` is the v5 side's row clock; v4 stamps `new Date()` inside",
+    "`repos.files.create` — both sides placeholder every ISO timestamp. The shapes: the avatar job's row",
+    "(generationKey, two links), the Lantern's (projectId + folderPath, no tags), the tool's (inherited tags),",
+    "a wardrobe picture in each of its three sources with no generation record, a REAL description, absent",
+    "dimensions, a zero-byte store, a non-ASCII filename, and an empty linkedTo.",
+    "Every `linkedTo` / `tags` entry is a UUID: v4's `repos.files.create` validates the row through `FileEntrySchema` (`z.uuid()` on both lists) and THROWS a ZodError otherwise — the repository's gate, not this helper's; v5's `FilesRepository::create` has no such gate (recorded, outside this family)."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+  "now": "2026-03-03T03:03:03.000Z",
+  "cases": [
+    {
+      "name": "avatar_shape",
+      "input": {
+        "id": "f11e0000-0001-4000-8000-000000000001",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "originalFilename": "avatar_Abigail_Pennyworth_1700000000000.webp",
+        "stored": {
+          "storageKey": "mount-blob:m1:b1",
+          "storedMimeType": "image/webp",
+          "sizeBytes": 1234
+        },
+        "width": 832,
+        "height": 1216,
+        "linkedTo": [
+          "c0c0c0c0-0001-4000-8000-000000000001",
+          "1a2b3c4d-1001-4000-8000-000000000001"
+        ],
+        "tags": [
+          "1a2b3c4d-1001-4000-8000-000000000001"
+        ],
+        "generation": {
+          "prompt": "Solo portrait of a single woman: Abigail.",
+          "model": "gpt-image-1",
+          "revisedPrompt": "a revised portrait"
+        },
+        "generationKey": "v1:OPENAI:b2b2b2b2-0001-4000-8000-000000000001:abc"
+      }
+    },
+    {
+      "name": "story_shape_project",
+      "input": {
+        "id": "f11e0000-0002-4000-8000-000000000002",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "originalFilename": "story_background_1700000000000.webp",
+        "stored": {
+          "storageKey": "project:2b3c4d5e-1001-4000-8000-000000000001:/story-backgrounds/x.webp",
+          "storedMimeType": "image/webp",
+          "sizeBytes": 65536
+        },
+        "width": 1792,
+        "height": 1024,
+        "linkedTo": [
+          "c0c0c0c0-0001-4000-8000-000000000001",
+          "1a2b3c4d-1001-4000-8000-000000000001",
+          "1a2b3c4d-1002-4000-8000-000000000002"
+        ],
+        "generation": {
+          "prompt": "A rain-slick street at dusk.",
+          "model": "imagen-4",
+          "revisedPrompt": null
+        },
+        "projectId": "2b3c4d5e-1001-4000-8000-000000000001",
+        "folderPath": "/story-backgrounds/"
+      }
+    },
+    {
+      "name": "tool_shape_inherited_tags",
+      "input": {
+        "id": "f11e0000-0003-4000-8000-000000000003",
+        "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "originalFilename": "generated_1700000000000.webp",
+        "stored": {
+          "storageKey": "mount-blob:m2:b7",
+          "storedMimeType": "image/webp",
+          "sizeBytes": 20480
+        },
+        "width": 1024,
+        "height": 1024,
+        "linkedTo": [
+          "c0c0c0c0-0001-4000-8000-000000000001"
+        ],
+        "tags": [
+          "7a9e0000-0001-4000-8000-000000000001",
+          "7a9e0000-0002-4000-8000-000000000002"
+        ],
+        "generation": {
+          "prompt": "a brass sextant",
+          "model": "gpt-image-1",
+          "revisedPrompt": "a polished brass sextant"
+        }
+      }
+    },
+    {
+      "name": "wardrobe_generated",
+      "input": {
+        "id": "f11e0000-0004-4000-8000-000000000004",
+        "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "originalFilename": "coat.webp",
+        "stored": {
+          "storageKey": "mount-blob:m3:b9",
+          "storedMimeType": "image/webp",
+          "sizeBytes": 4096
+        },
+        "width": 1024,
+        "height": 1536,
+        "linkedTo": [
+          "5e6f7a8b-0001-4000-8000-000000000001"
+        ],
+        "tags": [
+          "5e6f7a8b-0001-4000-8000-000000000001"
+        ],
+        "source": "GENERATED",
+        "generation": {
+          "prompt": "Solo picture of a single woman: Abigail.",
+          "model": "gpt-image-1",
+          "revisedPrompt": "a revised coat"
+        }
+      }
+    },
+    {
+      "name": "wardrobe_uploaded_no_generation",
+      "input": {
+        "id": "f11e0000-0005-4000-8000-000000000005",
+        "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "originalFilename": "coat-1.webp",
+        "stored": {
+          "storageKey": "mount-blob:m3:b10",
+          "storedMimeType": "image/webp",
+          "sizeBytes": 777
+        },
+        "width": null,
+        "height": null,
+        "linkedTo": [
+          "5e6f7a8b-0001-4000-8000-000000000001"
+        ],
+        "tags": [
+          "5e6f7a8b-0001-4000-8000-000000000001"
+        ],
+        "source": "UPLOADED",
+        "generation": {
+          "prompt": null,
+          "model": null,
+          "revisedPrompt": null
+        }
+      }
+    },
+    {
+      "name": "wardrobe_imported",
+      "input": {
+        "id": "f11e0000-0006-4000-8000-000000000006",
+        "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "originalFilename": "imported.png",
+        "stored": {
+          "storageKey": "mount-blob:m3:b11",
+          "storedMimeType": "image/png",
+          "sizeBytes": 999
+        },
+        "linkedTo": [
+          "5e6f7a8b-0001-4000-8000-000000000001"
+        ],
+        "tags": [
+          "5e6f7a8b-0001-4000-8000-000000000001"
+        ],
+        "source": "IMPORTED"
+      }
+    },
+    {
+      "name": "real_description_kept",
+      "input": {
+        "id": "f11e0000-0007-4000-8000-000000000007",
+        "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "originalFilename": "described.webp",
+        "stored": {
+          "storageKey": "mount-blob:m4:b1",
+          "storedMimeType": "image/webp",
+          "sizeBytes": 10
+        },
+        "width": 8,
+        "height": 8,
+        "linkedTo": [],
+        "description": "A real description the operator wrote, not a label."
+      }
+    },
+    {
+      "name": "minted_id_default_source",
+      "input": {
+        "id": null,
+        "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "originalFilename": "x.webp",
+        "stored": {
+          "storageKey": "k",
+          "storedMimeType": "image/webp",
+          "sizeBytes": 1
+        },
+        "linkedTo": [
+          "5e6f7a8b-0001-4000-8000-000000000001"
+        ]
+      }
+    },
+    {
+      "name": "zero_bytes_non_ascii_name",
+      "input": {
+        "id": "f11e0000-0009-4000-8000-000000000009",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+        "originalFilename": "café — ☕ 🙂.webp",
+        "stored": {
+          "storageKey": "mount-blob:m5:b0",
+          "storedMimeType": "image/svg+xml",
+          "sizeBytes": 0
+        },
+        "width": null,
+        "height": 12,
+        "linkedTo": [
+          "c0c0c0c0-0001-4000-8000-000000000001"
+        ],
+        "tags": [],
+        "generation": {
+          "prompt": "",
+          "model": "",
+          "revisedPrompt": ""
+        }
+      }
+    }
+  ]
+}

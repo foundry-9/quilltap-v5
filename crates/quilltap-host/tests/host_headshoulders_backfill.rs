@@ -191,10 +191,15 @@ async fn seeded_backfill_job_runs_through_the_production_spine() {
 /// which are never deleted, not about their status.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn boot_runs_the_one_time_backfill_scan_exactly_once() {
-    // The committed pair carries eleven characters, seven of them eligible,
+    // The committed pair carries eleven characters, SIX of them eligible,
     // plus one already-PENDING backfill job whose character the dedupe skips.
+    // Six, not seven, since P4.D283 (v4 `9ecebf986`): the scan's "has a seed"
+    // is `pickPhysicalDescription`'s rule, which SKIPS a whitespace-only
+    // variant — so "Blankseed Bartholomew" (`mediumPrompt: "  \n  "`) has no
+    // seed and is not eligible, exactly as v4's scan counts him
+    // (`headshoulders_backfill_enqueue_equivalence` over this same spec).
     const SEEDED: i64 = 1;
-    const ELIGIBLE: i64 = 7;
+    const ELIGIBLE: i64 = 6;
 
     let dir = tempfile::tempdir().unwrap();
     make_instance(dir.path());

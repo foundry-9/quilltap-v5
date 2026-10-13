@@ -35,6 +35,9 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::api::system_qtap::js_truthy;
+use crate::characters::physical_description::{
+    pick_physical_description_value, PhysicalDescriptionProfile,
+};
 use crate::cheap_llm::{build_character_cache_key, profile_params_value};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, connection_profiles, DbError};
@@ -260,22 +263,14 @@ pub fn build_user_message(
     parts.join("\n")
 }
 
-/// v4 `desc.fullDescription || desc.completePrompt || desc.longPrompt ||
-/// desc.mediumPrompt || desc.shortPrompt || undefined` — the first JS-truthy
-/// value, stringified.
+/// v4 `pickPhysicalDescription(desc, 'fullest') || undefined` (`9ecebf986`) —
+/// full ‖ complete ‖ long ‖ medium ‖ short, the winner TRIMMED and a
+/// whitespace-only variant skipped. (Pre-span this was a `||` chain over any
+/// JS-truthy value, stringified; v4 now `.trim()`s, so only a string variant
+/// can win — a non-string is read as absent.)
 fn most_detailed_description(desc: &Value) -> Option<String> {
-    for key in [
-        "fullDescription",
-        "completePrompt",
-        "longPrompt",
-        "mediumPrompt",
-        "shortPrompt",
-    ] {
-        if js_truthy(desc.get(key)) {
-            return Some(to_js_string(desc.get(key).unwrap()));
-        }
-    }
-    None
+    let picked = pick_physical_description_value(Some(desc), PhysicalDescriptionProfile::Fullest);
+    (!picked.is_empty()).then_some(picked)
 }
 
 fn find_by_id<'a>(items: Option<&'a Value>, id: &str) -> Option<&'a Value> {

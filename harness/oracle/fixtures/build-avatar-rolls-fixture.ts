@@ -171,7 +171,7 @@ async function main(): Promise<void> {
   const { ensureFolderPath } = await import('@/lib/mount-index/folder-paths');
   const { buildMountBlobStorageKey } = await import('@/lib/file-storage/project-store-bridge');
   const { deriveAvatarCacheKey, deriveLegacyAvatarCacheKey } = await import(
-    '@/lib/wardrobe/avatar-cache'
+    '@/lib/image-gen/avatar-cache'
   );
 
   await initializeDatabase();

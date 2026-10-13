@@ -19,6 +19,9 @@ use serde_json::{json, Map, Value};
 use crate::db::files::{CreateOptions, FileCreate, FileRow, FilesRepository};
 use crate::db::vault_wardrobe_public::{WardrobePatch, WardrobePublicError, NO_MOUNT_MESSAGE};
 use crate::db::DbError;
+use crate::files::generated_file_row::{
+    create_generated_file_row, GeneratedFileRowInput, GenerationRecord, StoredImageBytes,
+};
 use crate::services::mount_index::blob_transcode::WebpTranscoder;
 use crate::services::wardrobe_container::{scope_str, WardrobeItemHome};
 use crate::services::wardrobe_image_bridge::{
@@ -217,33 +220,42 @@ pub fn add_wardrobe_item_image(
         blob_webp,
     )?;
 
-    let file = FileRow {
-        id: mint.file_id.clone(),
-        user_id: input.user_id.to_string(),
-        sha256: Some(written.sha256.clone()),
-        original_filename: written.leaf_name.clone(),
-        mime_type: written.stored_mime_type.clone(),
-        size: written.size_bytes,
-        width: input.width,
-        height: input.height,
-        is_plain_text: None,
-        linked_to: vec![json!(home.item_id())],
-        source: input.kind.file_source().to_string(),
-        category: "IMAGE".to_string(),
-        generation_prompt: input.generation_prompt.map(str::to_string),
-        generation_model: input.generation_model.map(str::to_string),
-        generation_revised_prompt: input.generation_revised_prompt.map(str::to_string),
-        generation_key: None,
-        description: Some(description),
-        tags: vec![json!(home.item_id())],
-        project_id: None,
-        folder_path: None,
-        storage_key: Some(written.storage_key.clone()),
-        file_status: Some("ok".to_string()),
-        created_at: mint.now_iso.clone(),
-        updated_at: mint.now_iso.clone(),
-    };
-    create_file_row(main, &file)?;
+    // v4 `createGeneratedFileRow(repos, { userId, sha256: written.sha256,
+    // originalFilename: written.leafName, stored: written, width, height, linkedTo:
+    // [itemId], tags: [itemId], source: SOURCE_BY_KIND[kind], generation })`
+    // (`9ecebf986`, P4.D283 R-R): the mount link carries the caption; the
+    // `files` row carries NO label (bug 132) — `describe_image` reads
+    // `description` as what the picture shows. Pre-span the row carried the
+    // caption too.
+    let file = create_generated_file_row(
+        main,
+        &GeneratedFileRowInput {
+            user_id: input.user_id,
+            id: Some(&mint.file_id),
+            sha256: &written.sha256,
+            original_filename: &written.leaf_name,
+            stored: &StoredImageBytes {
+                storage_key: written.storage_key.clone(),
+                stored_mime_type: written.stored_mime_type.clone(),
+                size_bytes: written.size_bytes,
+            },
+            width: input.width.map(|w| w as f64),
+            height: input.height.map(|h| h as f64),
+            linked_to: vec![home.item_id().to_string()],
+            tags: vec![home.item_id().to_string()],
+            source: Some(input.kind.file_source()),
+            generation: Some(&GenerationRecord {
+                prompt: input.generation_prompt.map(str::to_string),
+                model: input.generation_model.map(str::to_string),
+                revised_prompt: input.generation_revised_prompt.map(str::to_string),
+            }),
+            generation_key: None,
+            description: None,
+            project_id: None,
+            folder_path: None,
+            now_iso: &mint.now_iso,
+        },
+    )?;
 
     let item = home.update(
         main,

@@ -368,6 +368,15 @@ pub async fn log_llm_call(db: &Db, params: LogLlmCallParams, ctx: &LogContext) -
 /// The `LLMLogType` string constants (the TEXT column values). `TOOL_CONTINUATION`
 /// exists in v4's enum but has **no emitter** (UI-only) — carried for completeness,
 /// never written by this service.
+/// v4 `IMAGE_SPEND_LOG_TYPES` (`lib/schemas/llm-log.types.ts`, `9ecebf986`):
+/// every log type that records an image-provider call, and so counts as image
+/// spend. The Almanack's per-image-profile roll-up filters on exactly this,
+/// and the shared image attempt (`image_gen::image_attempt`) writes nothing
+/// else. A wardrobe item's picture keeps its own type so the Inspector can
+/// tell it apart, but it is spend all the same (bug 196).
+pub const IMAGE_SPEND_LOG_TYPES: &[&str] =
+    &[log_type::IMAGE_GENERATION, log_type::WARDROBE_ITEM_IMAGE];
+
 pub mod log_type {
     pub const CHAT_MESSAGE: &str = "CHAT_MESSAGE";
     pub const MEMORY_EXTRACTION: &str = "MEMORY_EXTRACTION";

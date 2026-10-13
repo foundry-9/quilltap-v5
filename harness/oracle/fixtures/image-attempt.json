@@ -1,0 +1,302 @@
+{
+  "$note": [
+    "Corpus for the image-attempt tier-3 differential (P4.D283, v4 9ecebf986 lib/image-gen/image-attempt.ts).",
+    "Both sides run over a FRESH copy of the wardrobe-item-image-generation fixture pair (its owner, chat_settings",
+    "with logging ON, image profiles + api keys). `attempts`: one makeLoggedImageAttempt(options) then the scripted",
+    "`steps` — each names a profile (a key of `profiles`), an api key and what the mocked provider does (`ok`,",
+    "`okNoRevised`, `throw`) — emitting the provider calls {provider, apiKey, params}, each step's outcome, the",
+    "`llm_logs` rows and the `[ImageAttempt]` lines. `decodes`: decodeProviderImage(response, stem, index) over",
+    "REAL convertToWebP, emitting {mimeType, filename (the ms masked), width, height, sha256, bytesHex,",
+    "revisedPrompt} or null, plus the lines. `b64Json` is v4's alternate spelling of `data` (the v5 decoders fold",
+    "both); `prebuilt.params` is a real ImageGenParams object reused verbatim for its own profile only."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+  "profiles": {
+    "designated": "b2b2b2b2-0001-4000-8000-000000000001",
+    "default": "b2b2b2b2-0002-4000-8000-000000000002",
+    "understudy": "b2b2b2b2-0005-4000-8000-000000000005"
+  },
+  "webp": "UklGRjoAAABXRUJQVlA4IC4AAACQAQCdASoEAAQAAUAmJaACdLoAA5gA/vFNr+LaR0KZD/7xn/9xn/9xn/yIAAAA",
+  "png1x1": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+  "attempts": [
+    {
+      "name": "primary_ok_wardrobe",
+      "options": {
+        "logType": "WARDROBE_ITEM_IMAGE",
+        "prompt": "an opera coat",
+        "primaryProfile": "designated",
+        "chatId": "c0c0c0c0-0001-4000-8000-000000000001",
+        "characterId": "1a2b3c4d-1001-4000-8000-000000000001",
+        "params": {
+          "overrides": {
+            "n": 1,
+            "style": "natural"
+          },
+          "orientation": "portrait",
+          "logContext": {
+            "context": "wardrobe.item-image-generation"
+          }
+        }
+      },
+      "steps": [
+        {
+          "profile": "designated",
+          "apiKey": "sk-designated",
+          "provider": "ok"
+        }
+      ]
+    },
+    {
+      "name": "reroute_labelled",
+      "options": {
+        "logType": "IMAGE_GENERATION",
+        "prompt": "a brass sextant",
+        "primaryProfile": "designated",
+        "params": {
+          "overrides": {
+            "n": 1,
+            "style": "natural"
+          },
+          "orientation": "landscape",
+          "logContext": {
+            "context": "background-jobs.story-background",
+            "jobId": "e5e5e5e5-0001-4000-8000-000000000001",
+            "chatId": "c0c0c0c0-0001-4000-8000-000000000001"
+          }
+        }
+      },
+      "steps": [
+        {
+          "profile": "understudy",
+          "apiKey": "sk-uncensored",
+          "provider": "okNoRevised"
+        }
+      ]
+    },
+    {
+      "name": "prebuilt_reused_for_own_profile_only",
+      "options": {
+        "logType": "IMAGE_GENERATION",
+        "prompt": "a portrait",
+        "primaryProfile": "designated",
+        "characterId": "1a2b3c4d-1001-4000-8000-000000000001",
+        "params": {
+          "overrides": {
+            "n": 1,
+            "style": "natural"
+          },
+          "orientation": "portrait",
+          "logContext": {
+            "context": "background-jobs.character-avatar",
+            "jobId": "e5e5e5e5-0002-4000-8000-000000000002"
+          }
+        },
+        "prebuilt": {
+          "profile": "designated",
+          "params": {
+            "prompt": "a portrait (cached)",
+            "model": "gpt-image-1",
+            "n": 1,
+            "size": "1024x1536",
+            "quality": "high"
+          }
+        }
+      },
+      "steps": [
+        {
+          "profile": "designated",
+          "apiKey": "sk-designated",
+          "provider": "okNoRevised"
+        },
+        {
+          "profile": "understudy",
+          "apiKey": "sk-uncensored",
+          "provider": "okNoRevised"
+        }
+      ]
+    },
+    {
+      "name": "failure_logged_and_rethrown",
+      "options": {
+        "logType": "IMAGE_GENERATION",
+        "prompt": "p",
+        "primaryProfile": "designated",
+        "chatId": "c0c0c0c0-0001-4000-8000-000000000001",
+        "params": {
+          "overrides": {
+            "n": 1
+          },
+          "orientation": "square",
+          "logContext": {
+            "context": "tools.generate_image",
+            "chatId": "c0c0c0c0-0001-4000-8000-000000000001"
+          }
+        }
+      },
+      "steps": [
+        {
+          "profile": "designated",
+          "apiKey": "sk-designated",
+          "provider": "throw"
+        },
+        {
+          "profile": "understudy",
+          "apiKey": "sk-uncensored",
+          "provider": "ok"
+        }
+      ]
+    },
+    {
+      "name": "chatless_default_profile",
+      "options": {
+        "logType": "IMAGE_GENERATION",
+        "prompt": "a lighthouse",
+        "primaryProfile": "default",
+        "params": {
+          "overrides": {
+            "n": 1,
+            "style": "natural"
+          },
+          "orientation": "portrait",
+          "logContext": {
+            "context": "api.v1.wardrobe.preview-avatar",
+            "characterId": "1a2b3c4d-1001-4000-8000-000000000001"
+          }
+        }
+      },
+      "steps": [
+        {
+          "profile": "default",
+          "apiKey": "sk-default",
+          "provider": "ok"
+        }
+      ]
+    }
+  ],
+  "decodes": [
+    {
+      "name": "webp_passthrough",
+      "response": {
+        "images": [
+          {
+            "data": "$webp",
+            "mimeType": "image/webp",
+            "revisedPrompt": "a revised coat"
+          }
+        ]
+      },
+      "stem": "wardrobe",
+      "index": 0
+    },
+    {
+      "name": "png_to_webp_default_mime",
+      "response": {
+        "images": [
+          {
+            "data": "$png1x1"
+          }
+        ]
+      },
+      "stem": "avatar_Abigail",
+      "index": 0
+    },
+    {
+      "name": "b64json_spelling_index_1",
+      "response": {
+        "images": [
+          {
+            "data": "$webp"
+          },
+          {
+            "b64Json": "$png1x1",
+            "mimeType": "image/png",
+            "revisedPrompt": "rp"
+          }
+        ]
+      },
+      "stem": "generated",
+      "index": 1
+    },
+    {
+      "name": "no_images",
+      "response": {
+        "images": []
+      },
+      "stem": "story_background",
+      "index": 0
+    },
+    {
+      "name": "null_response",
+      "response": null,
+      "stem": "story_background",
+      "index": 0
+    },
+    {
+      "name": "empty_data_falsy",
+      "response": {
+        "images": [
+          {
+            "data": "",
+            "mimeType": "image/png",
+            "revisedPrompt": "nothing drawn"
+          }
+        ]
+      },
+      "stem": "wardrobe",
+      "index": 0
+    },
+    {
+      "name": "url_only",
+      "response": {
+        "images": [
+          {
+            "url": "https://example.test/x.png",
+            "mimeType": "image/png"
+          }
+        ]
+      },
+      "stem": "generated",
+      "index": 0
+    },
+    {
+      "name": "index_past_end",
+      "response": {
+        "images": [
+          {
+            "data": "$webp"
+          }
+        ]
+      },
+      "stem": "generated",
+      "index": 3
+    },
+    {
+      "name": "revised_empty_to_null",
+      "response": {
+        "images": [
+          {
+            "data": "$webp",
+            "mimeType": "image/webp",
+            "revisedPrompt": ""
+          }
+        ]
+      },
+      "stem": "avatar_preview_Nix",
+      "index": 0
+    },
+    {
+      "name": "svg_unmeasured_passthrough",
+      "response": {
+        "images": [
+          {
+            "data": "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyIDIiPjxyZWN0IHdpZHRoPSIyIiBoZWlnaHQ9IjIiLz48L3N2Zz4=",
+            "mimeType": "image/svg+xml"
+          }
+        ]
+      },
+      "stem": "generated",
+      "index": 0
+    }
+  ]
+}

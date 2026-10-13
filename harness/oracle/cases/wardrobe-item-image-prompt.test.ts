@@ -44,7 +44,7 @@ import {
   buildWardrobeItemCue,
   buildWardrobeItemImagePrompt,
 } from '@/lib/wardrobe/item-image-prompt';
-import { buildFigureIdentityBlock } from '@/lib/wardrobe/avatar-prompt';
+import { buildFigureIdentityBlock } from '@/lib/image-gen/avatar-prompt';
 
 interface Case {
   name: string;

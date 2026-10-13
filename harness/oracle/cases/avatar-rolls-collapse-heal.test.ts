@@ -499,7 +499,7 @@ describe('avatar-rolls-collapse-heal oracle', () => {
       '@/migrations/state'
     );
     // The `extraFiles` keys are DERIVED through v4's own helper, never copied.
-    const { deriveLegacyAvatarCacheKey } = await import('@/lib/wardrobe/avatar-cache');
+    const { deriveLegacyAvatarCacheKey } = await import('@/lib/image-gen/avatar-cache');
     const deriveKey = (model: string | null, prompt: string) =>
       deriveLegacyAvatarCacheKey({ modelName: model, prompt });
 

@@ -134,7 +134,10 @@ fn the_export_field_spec_holds_v4s_schema_position() {
 fn exactly_one_site_writes_the_key_and_one_module_derives_it() {
     let src = core_src("services/character_avatar_job.rs");
     assert!(
-        src.contains("generation_key: Some(input.generation_key.clone()),"),
+        // P4.D283: the row is written through `files::generated_file_row::
+        // create_generated_file_row` (v4 `createGeneratedFileRow`), whose input
+        // borrows the key — the binding is the same ONE site, spelled as a borrow.
+        src.contains("generation_key: Some(&input.generation_key),"),
         "the avatar job must bind the cache key it derived (v4 `7fbf8a55b`: \
          `generationKey: cacheKeys.key`)"
     );

@@ -22,12 +22,22 @@
  *     oracle writes no row anywhere else).
  *
  * Per scenario: a FRESH module graph and fixture copy, the scenario's `sql`
- * applied to main, the op run with v4's logger spied (`[WardrobeItemImage]` /
- * `[hydrateComponentGraph]` lines), then: the result or typed error, the
- * ordered provider calls `{provider, apiKey, params}`, the main `files` table,
- * the mount-index tables, the `llm_logs` rows (id/ts placeholdered), every
- * item's pointer, and the `concierge_refusals` / `chat_messages` row counts
- * (P4.D263 R-B: a refused wardrobe picture writes neither).
+ * applied to main, the op run with v4's logger spied (`[WardrobeItemImage]`
+ * lines — the `[hydrateComponentGraph]` prefix left with the pool at
+ * `9ecebf986`; the pool's own `[WearablePool]` lines are the keystone's to
+ * pin), then: the result or typed error, the ordered provider calls
+ * `{provider, apiKey, params}`, the main `files` + `chats` + `chat_messages`
+ * tables (P4.D283, bug 189: a tool-queued picture's refusal is LEDGERED on
+ * its chat and ANNOUNCED there), the mount-index tables, the `llm_logs` rows
+ * (id/ts placeholdered; the job rows carry `chatId`), every item's pointer,
+ * and the `concierge_refusals` / `chat_messages` row counts.
+ *
+ * The `job_*` ops name a planted chat through `jobChat` (Moderated / Locked /
+ * Unmoderated by `chats.conciergeMode`); without one they pass `jobChatId`, a
+ * chat that does NOT exist (`chatFound: false` → Moderated, no chat to
+ * announce in). `job_chat_unreadable` breaks the planted chat's row so v4's
+ * `findById` (a `safeQuery`) answers null — the `Chat unreadable…` WARN above
+ * it is unreachable and the scenario pins it NEGATIVE.
  *
  * Run (Node 24, from the v4 checkout — a /tmp mirror, jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -68,6 +78,8 @@ interface Scenario {
   sql?: string[];
   /** `job` op: the payload's character (`character` | `archived`). */
   jobCharacter?: string;
+  /** `job` op: the payload's chat, a key of `spec.chats` (else `jobChatId`). */
+  jobChat?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -78,6 +90,7 @@ interface Spec {
   items: Record<string, { id: string; home: string }>;
   webp: string;
   jobChatId: string;
+  chats: Record<string, { id: string; title: string; conciergeMode: string | null }>;
   scenarios: Scenario[];
 }
 
@@ -89,7 +102,7 @@ const MOUNT_TABLES: Array<{ key: string; table: string }> = [
   { key: 'documents', table: 'doc_mount_documents' },
   { key: 'blobs', table: 'doc_mount_blobs' },
 ];
-const LOG_PREFIXES = ['[WardrobeItemImage]', '[hydrateComponentGraph]'];
+const LOG_PREFIXES = ['[WardrobeItemImage]'];
 const PLUGIN_DIRS = [
   'anthropic', 'openai', 'google', 'grok', 'deepseek',
   'z-ai', 'openrouter', 'ollama', 'openai-compatible', 'nanogpt',
@@ -233,7 +246,7 @@ async function runScenario(
         userId: spec.userId,
         type: 'WARDROBE_ITEM_IMAGE_GENERATION',
         payload: {
-          chatId: spec.jobChatId,
+          chatId: scenario.jobChat ? spec.chats[scenario.jobChat].id : spec.jobChatId,
           characterId: containerId(scenario.jobCharacter),
           itemId: spec.items[scenario.item].id,
         },
@@ -313,7 +326,13 @@ async function runScenario(
       });
       return { table, columns, rows };
     };
-    const tables: Record<string, unknown> = { files: dump(raw as never, 'files') };
+    const tables: Record<string, unknown> = {
+      files: dump(raw as never, 'files'),
+      // P4.D283 (bug 189): the ledger (`chats.moderationRefusalCount` and its
+      // companions) and the Concierge's announcement rows.
+      chats: dump(raw as never, 'chats'),
+      chatMessages: dump(raw as never, 'chat_messages'),
+    };
     for (const t of MOUNT_TABLES) tables[t.key] = dump(midb as never, t.table);
 
     const lldb = getRawLLMLogsDatabase();

@@ -25,18 +25,11 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
-use crate::files::image_processing::{
-    can_resize_image, resize_image_for_provider, ImageTranscoder, DEFAULT_QUALITY,
-};
-use crate::model::completion::{
-    CompletionAttachment, CompletionMessage, CompletionParams, CompletionProvider,
-};
+use crate::files::image_processing::ImageTranscoder;
+use crate::model::completion::{CompletionAttachment, CompletionProvider};
 use crate::services::activity_kinds::ActivityKind;
 use crate::services::activity_registry::track_activity;
-use crate::services::llm_logging::{
-    log_llm_call, log_type, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage,
-    LogResponse, LogUsage,
-};
+use crate::services::llm_logging::log_type;
 
 /// v4 `IMAGE_DESCRIPTION_INSTRUCTION` (byte-exact).
 pub const IMAGE_DESCRIPTION_INSTRUCTION: &str = "Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.";
@@ -57,138 +50,32 @@ const DEFAULT_VISION_MAX_TOKENS: i64 = 1000;
 /// climb past the ceiling and be mistaken for a real one.
 ///
 /// v4 `MIN_CHARS_PER_TOKEN` (`0b0617fee`, bug 116).
-const MIN_CHARS_PER_TOKEN: f64 = 2.5;
-
 /// The most prompt tokens [`IMAGE_DESCRIPTION_INSTRUCTION`] could plausibly cost
-/// on its own. A prompt at or below this billed for text and nothing else — no
-/// image was processed, on any provider, whatever the response says. The margin
-/// to a genuine image call is wide: the cheapest image tier in the field
-/// (OpenAI low-detail, 85 tokens) still lands a real call well clear of it, and
-/// most providers charge hundreds to thousands.
-///
-/// v4 `INSTRUCTION_TOKEN_CEILING = Math.ceil(IMAGE_DESCRIPTION_INSTRUCTION.length
-/// / MIN_CHARS_PER_TOKEN)` — DERIVED from the instruction, not written down, so
-/// editing the instruction moves the ceiling on both sides. `.length` is UTF-16
-/// units; the instruction is ASCII today, but the count is taken faithfully so a
-/// future edit cannot silently drift. A unit test pins the value at 66 (the
-/// number the live bad call is measured against, which reported 38).
+/// on its own — v4's pre-`9ecebf986` `INSTRUCTION_TOKEN_CEILING`, now the
+/// shared `textOnlyTokenCeiling(instruction)` over the describer's request
+/// text (which carries no system prompt). A unit test pins the value at 66
+/// (the number the live bad call is measured against, which reported 38).
 pub fn instruction_token_ceiling() -> i64 {
-    let units = crate::jsstr::utf16_len(IMAGE_DESCRIPTION_INSTRUCTION) as f64;
-    (units / MIN_CHARS_PER_TOKEN).ceil() as i64
+    crate::llm::vision_request::text_only_token_ceiling(IMAGE_DESCRIPTION_INSTRUCTION)
 }
 
 /// Verdict from [`verify_image_reached_model`] (v4 `ImageArrivalVerdict`).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ImageArrivalVerdict {
-    /// v4 `{ arrived: true }`.
-    Arrived,
-    /// v4 `{ arrived: false, reason }`.
-    NotArrived { reason: String },
-}
+pub use crate::llm::vision_request::ImageArrivalVerdict;
 
-impl ImageArrivalVerdict {
-    pub fn arrived(&self) -> bool {
-        matches!(self, ImageArrivalVerdict::Arrived)
-    }
-    /// The refusal sentence, or `None` when the image arrived.
-    pub fn reason(&self) -> Option<&str> {
-        match self {
-            ImageArrivalVerdict::Arrived => None,
-            ImageArrivalVerdict::NotArrived { reason } => Some(reason),
-        }
-    }
-}
-
-/// Did the image actually reach the model, or did we get 683 tokens of confident
-/// prose about a picture nobody looked at?
-///
-/// Bug 116 (v4 `0b0617fee`): `describeImageWithProfile` believed the describer's
-/// answer on its own recognisance. A NanoGPT route for an experimental vision
-/// model accepted the `image_url` part and discarded it, then answered the only
-/// thing it had — "Please describe this image in great detail." — with a
-/// detailed, sectioned, entirely invented description of a tabby kitten, which
-/// was persisted to `files.description` and short-circuited every later reader
-/// forever. Nothing threw; the failure produced well-formed prose, and the only
-/// post-hoc check in the function is a refusal detector that treats length as
-/// evidence of success.
-///
-/// Two proofs were already on the response object and neither was read:
-///
-///  1. **The plugin's attachment ledger.** `attachment_results.failed` is the
-///     plugin telling us, in so many words, that it did not send the bytes.
-///     This half would not have fired on the live incident — the plugin *did*
-///     send — but it is the detector for the neighbouring failure class, and
-///     leaving it unread is bug 91's blindness surviving one layer up.
-///  2. **The response's own token count.** `prompt_tokens` at or below what the
-///     instruction costs by itself is an arithmetic-grade, provider-agnostic
-///     statement that no image was processed. On the live call it was 38.
-///
-/// Silence is not evidence: a missing `usage`, or a zero `prompt_tokens`, means
-/// the provider reported nothing and must not be failed for it. Cache-read
-/// tokens are added back before comparing, because every plugin normalises them
-/// *out* of `prompt_tokens` (the 4.6.1 invariant) and a cache hit would
-/// otherwise read as a dropped image.
-///
-/// ⚠ Two v4 shapes reproduced deliberately rather than tidied:
-///
-///  * `mine.error || 'no reason given'` is a JS `||`, so an EMPTY error string
-///    takes the fallback (a `??` would keep the empty string).
-///  * the cache add-back SUMS `cacheReadInputTokens` and `cachedTokens`, and
-///    most of `response_parse`'s dialects set BOTH to the same number — so a
-///    cached call is double-credited. That is v4's arithmetic; it only ever
-///    makes the verdict more permissive, which is the safe direction here.
-///
-/// v4 reads `typeof promptTokens !== 'number'` where v5's `usage` is an
-/// `Option<CompletionUsage>` whose `prompt_tokens` is an `i64` — an absent
-/// `usage` is the whole of v4's non-number arm, and `<= 0` is shared.
+/// The describer's arrival check — v4's `verifyImageReachedModel(response,
+/// attachmentId, requestText)` (`lib/llm/vision-request.ts`, `9ecebf986`) over
+/// the describer's own request text, [`IMAGE_DESCRIPTION_INSTRUCTION`]; the
+/// ceiling is the same 66, the reason's WORDS are the shared module's ("the
+/// request's text costs on its own", "any answer returned is invented").
 pub fn verify_image_reached_model(
     response: &crate::model::completion::CompletionResponse,
     attachment_id: &str,
 ) -> ImageArrivalVerdict {
-    let failed: &[crate::model::stream::StreamAttachmentFailure] = response
-        .attachment_results
-        .as_ref()
-        .map(|r| r.failed.as_slice())
-        .unwrap_or(&[]);
-    if !failed.is_empty() {
-        let mine = failed
-            .iter()
-            .find(|f| f.id == attachment_id)
-            .unwrap_or(&failed[0]);
-        let detail = if mine.error.is_empty() {
-            "no reason given"
-        } else {
-            mine.error.as_str()
-        };
-        return ImageArrivalVerdict::NotArrived {
-            reason: format!("the provider reported the attachment as not sent: {detail}"),
-        };
-    }
-
-    let Some(prompt_tokens) = response.usage.map(|u| u.prompt_tokens) else {
-        return ImageArrivalVerdict::Arrived;
-    };
-    if prompt_tokens <= 0 {
-        return ImageArrivalVerdict::Arrived;
-    }
-
-    let cache_read = response
-        .cache_usage
-        .map(|c| c.cache_read_input_tokens.unwrap_or(0) + c.cached_tokens.unwrap_or(0))
-        .unwrap_or(0);
-    let billed_input = prompt_tokens + cache_read;
-    let ceiling = instruction_token_ceiling();
-    if billed_input <= ceiling {
-        return ImageArrivalVerdict::NotArrived {
-            reason: format!(
-                "the model was billed for {billed_input} prompt tokens, which is no more than the \
-                 {ceiling} the instruction costs on its own — the image was accepted and discarded \
-                 before it reached the model, and any description returned is invented"
-            ),
-        };
-    }
-
-    ImageArrivalVerdict::Arrived
+    crate::llm::vision_request::verify_image_reached_model(
+        response,
+        attachment_id,
+        IMAGE_DESCRIPTION_INSTRUCTION,
+    )
 }
 
 // ============================================================================
@@ -489,59 +376,22 @@ pub struct FallbackDeps<'a, CMP: CompletionProvider> {
     pub chat_id: Option<&'a str>,
 }
 
-/// v4 `getImageDescriptionProfile(repos, userId)`.
+/// v4 `getImageDescriptionProfile(repos, userId)` (`9ecebf986`): the shared
+/// `resolveVisionProfile(repos, userId, { prefer: 'cheap', configured:
+/// 'honour' })` — the operator's configured describer even when it cannot see
+/// (so the refusal can say why), else a profile that can receive images, cheap
+/// first — it runs on every unseen image. The `[Vision]` lines are its.
 async fn get_image_description_profile<CMP: CompletionProvider>(
     deps: &FallbackDeps<'_, CMP>,
 ) -> Result<Option<Value>, crate::db::DbError> {
-    let user_id = deps.user_id.to_string();
-    let settings = deps
-        .db
-        .read_main(move |c| crate::db::chat_settings::find_by_user_id(c, &user_id))?;
-    let image_desc_id = settings
-        .as_ref()
-        .and_then(|s| s.get("imageDescriptionProfileId"))
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string);
-
-    if let Some(id) = image_desc_id {
-        let profile = deps
-            .db
-            .read_main(move |c| crate::db::connection_profiles::find_by_id(c, &id))?;
-        if let Some(p) = profile {
-            return Ok(Some(p));
-        }
-    }
-
-    // Fallback auto-pick: vision-capable profiles, cheap first. Filter to
-    // profiles that can *actually* describe an image: the model must read
-    // pictures AND its plugin must be able to send them. A NanoGPT vision
-    // profile passes the first test and fails the second, and picking one as
-    // the describer would produce a confident description of an image the
-    // model never received (bug 91, v4 `a14a1811`).
-    let uid = deps.user_id.to_string();
-    let available = deps
-        .db
-        .read_main(move |c| crate::db::connection_profiles::find_by_user_id(c, &uid))?;
-    let vision: Vec<Value> = available
-        .into_iter()
-        .filter(|p| {
-            profile_supports_mime_type(p, "image/jpeg")
-                && crate::files::image_transport::provider_can_transport_images(
-                    p.get("provider").and_then(Value::as_str).unwrap_or(""),
-                )
-        })
-        .collect();
-    if vision.is_empty() {
-        return Ok(None);
-    }
-    if let Some(cheap) = vision
-        .iter()
-        .find(|p| p.get("isCheap").and_then(Value::as_bool) == Some(true))
-    {
-        return Ok(Some(cheap.clone()));
-    }
-    Ok(Some(vision[0].clone()))
+    crate::llm::vision_request::resolve_vision_profile(
+        deps.db,
+        deps.user_id,
+        crate::llm::vision_request::ResolveVisionProfileOptions {
+            prefer: crate::llm::vision_request::VisionPreference::Cheap,
+            configured: crate::llm::vision_request::ConfiguredVisionProfile::Honour,
+        },
+    )
 }
 
 /// v4 `getUncensoredImageDescriptionProfile(repos, userId, chatId?)` — never
@@ -608,10 +458,6 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
     file: &FallbackFile,
     profile: &Value,
 ) -> FallbackResult {
-    // v4 `file-attachment-fallback.ts:205` — `const describeStart = Date.now()`,
-    // captured at the top of the function so BOTH `logLLMCall` sites (the success
-    // row at `:351` and the failure row at `:460`) subtract from the same mark.
-    let describe_start_ms = crate::clock::now_unix_ms();
     let provider = profile
         .get("provider")
         .and_then(Value::as_str)
@@ -627,55 +473,6 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let base_url = profile
-        .get("baseUrl")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-
-    // Support check (v4: the profile might not support the specific mimeType).
-    // Both halves matter — see `needs_fallback_processing`. A describer whose
-    // plugin drops the bytes would answer from the prompt alone and invent a
-    // picture (bug 91, v4 `a14a1811`).
-    if !profile_supports_mime_type(profile, &file.mime_type) {
-        let mut result = FallbackResult::unsupported(
-            &file.filename,
-            &file.mime_type,
-            Some(format!(
-                "Image description profile ({provider} {model_name}) does not support image files"
-            )),
-        );
-        set_description_metadata(&mut result, &profile_id, &provider, &model_name);
-        return result;
-    }
-
-    // v4 `0ba942b1` (bug 97): the provider list in the message below names every
-    // entry in v4's `PROVIDER_ATTACHMENT_CAPABILITIES`
-    // (`crate::files::attachment_support`) that carries an `image/*` MIME type —
-    // keep it in step with that map. Bug 97 was this sentence recommending
-    // OpenRouter in the same breath as refusing an OpenRouter profile, because
-    // the plugin's own declaration disagreed with the map; v4's
-    // `__tests__/unit/lib/llm/image-transport.test.ts` now holds the two sources
-    // together, and `image_transport_equivalence` is its v5 twin.
-    if !crate::files::image_transport::provider_can_transport_images(&provider) {
-        let mut result = FallbackResult::unsupported(
-            &file.filename,
-            &file.mime_type,
-            Some(format!(
-                "Image description profile ({provider} {model_name}) cannot send images — the \
-                 {provider} plugin does not forward image attachments. Pick a describer on a \
-                 provider that does (OpenAI, Anthropic, Google, Grok, OpenRouter, NanoGPT, \
-                 Z.AI)."
-            )),
-        );
-        set_description_metadata(&mut result, &profile_id, &provider, &model_name);
-        return result;
-    }
-
-    // API key for the image-description profile, ownership-verified (v4
-    // `findApiKeyByIdAndUserId`, `file-attachment-fallback.ts:436`) and SENT
-    // with the vision call — `''` when the profile names none or the row is
-    // gone (v4 `apiKeyValue || ''`; P4.133, dogfood #133).
-    let api_key = resolve_api_key(deps.db, deps.user_id, profile).unwrap_or_default();
 
     // Parameters (snake_case input keys; camelCase wire output). v4 `d9c5a1c7`
     // replaced the raw `imageDescProfile.parameters` cast with
@@ -683,11 +480,7 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
     // here and the Ollama `num_ctx` injection reaches the vision call.
     let params_obj = crate::cheap_llm::profile_params_value(profile).unwrap_or_else(|| json!({}));
     // P4.D83 (v4 `d89babc4`): the three hand-rolled `typeof === 'number'` reads
-    // became `resolveSamplingParams(modelParams)` + the two defaults. The
-    // reasoning-floor logic below is unchanged; what moves is that a
-    // string-valued or camelCase knob now counts, and `top_p` reaches the wire
-    // (v4 sets `messageParams.topP`; v5's completion path could not carry one
-    // until this lane widened `CompletionParams`).
+    // became `resolveSamplingParams(modelParams)` + the two defaults.
     let sampling = crate::sampling_params::resolve_sampling_params(Some(&params_obj));
     let temperature = sampling.temperature.unwrap_or(DEFAULT_VISION_TEMPERATURE);
     let top_p = sampling.top_p;
@@ -706,106 +499,105 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
         max_tokens = 4000;
     }
 
-    // Downsize to the description provider's limit FIRST (best-effort).
-    let mut attachment_mime = file.mime_type.clone();
-    let mut attachment_data = file.data.clone().unwrap_or_default();
-    if let Some(data) = &file.data {
-        if can_resize_image(&file.mime_type) {
-            if let Some((resized_data, resized_mime)) =
-                try_downsize(deps, &provider, data, &file.mime_type)
-            {
-                attachment_data = resized_data;
-                attachment_mime = resized_mime;
-            }
-        }
-    }
-
-    // Build the vision call.
-    let messages = vec![CompletionMessage::user(IMAGE_DESCRIPTION_INSTRUCTION)];
-    let attachments = vec![CompletionAttachment {
+    // v4 `9ecebf986`: the shared vision request — the capability check (both
+    // halves: a describer whose plugin drops the bytes would answer from the
+    // prompt alone and invent a picture, bug 91), the transport shrink (bug
+    // 151 — `shrinkImageForLlmTransport`, never the stored original; the old
+    // provider-ceiling `resizeImageForProvider` leg and its `Resize for
+    // description provider failed` WARN are GONE), a hard timeout so a slow
+    // describer can never wedge the inline reply, the IMAGE_DESCRIPTION log
+    // row on either arm, and the arrival check (bug 116) — which runs ahead of
+    // every content check below, because the failure it catches produces the
+    // healthiest-looking response in the file. The caller persists whatever we
+    // return onto `files.description`, from where it short-circuits every
+    // future reader, so a wrong answer here is permanent.
+    let attachment = CompletionAttachment {
         id: file.id.clone(),
         filename: file.filename.clone(),
-        mime_type: attachment_mime.clone(),
-        data: attachment_data,
-    }];
-    let call_params = CompletionParams {
-        messages: messages.clone(),
-        model: model_name.clone(),
-        temperature: Some(temperature),
-        // v4 `if (maxTokens !== undefined && maxTokens > 0) messageParams.maxTokens = …`
-        // — a non-positive cap leaves the key OFF, so the provider default
-        // applies. v5 used to pass `0`, which the builders emitted literally.
-        max_tokens: if max_tokens > 0 {
-            Some(max_tokens)
-        } else {
-            None
+        mime_type: file.mime_type.clone(),
+        data: file.data.clone().unwrap_or_default(),
+    };
+    let sent = crate::llm::vision_request::send_vision_request(
+        deps.db,
+        deps.completion,
+        crate::llm::vision_request::VisionRequestInput {
+            profile,
+            user_id: deps.user_id,
+            attachment: &attachment,
+            system_prompt: None,
+            instruction: IMAGE_DESCRIPTION_INSTRUCTION,
+            sampling: crate::llm::vision_request::VisionSampling {
+                temperature: Some(temperature),
+                max_tokens: Some(max_tokens),
+                top_p,
+            },
+            timeout_ms: IMAGE_DESCRIPTION_TIMEOUT_MS as u64,
+            log_type: log_type::IMAGE_DESCRIPTION,
+            require_api_key: false,
+            transcoder: deps.transcoder,
         },
-        strict_max_tokens: false,
-        // v4 `if (topP !== undefined) messageParams.topP = topP` — no default.
-        top_p,
-        cache_key: None,
-        // v4's guard is `if (modelParams && typeof modelParams === 'object')`
-        // over a value the `?? {}` above already made an object (or an array,
-        // which also passes `typeof`), so it is unconditionally set.
-        profile_parameters: Some(params_obj.clone()),
-        attachments: attachments.clone(),
-        // v4's `generateImageDescription` sets no `requestTimeoutMs`.
-        request_timeout_ms: None,
+    )
+    .await;
+
+    let response = match sent {
+        Err(err) => {
+            // v4 `file-attachment-fallback.ts:632`. v4 passes an EMPTY context
+            // object and the error as its third argument; tracing has no third
+            // argument, so the error rides as the only field. The trailing
+            // colon is v4's sentence, kept. `sendVisionRequest` has already
+            // logged the failed call.
+            tracing::error!(
+                target: "quilltap::image_fallback",
+                error = %err.message,
+                "[Image Fallback] Error generating description:"
+            );
+            let mut result = FallbackResult::unsupported(
+                &file.filename,
+                &file.mime_type,
+                Some(format!(
+                    "Failed to generate image description: {}",
+                    err.message
+                )),
+            );
+            set_description_metadata(&mut result, &profile_id, &provider, &model_name);
+            return result;
+        }
+        Ok(crate::llm::vision_request::VisionRequestResult::Refused {
+            refusal, detail, ..
+        }) => {
+            use crate::llm::vision_request::VisionRequestRefusal as R;
+            let message = match refusal {
+                R::ModelCannotRead => format!(
+                    "Image description profile ({provider} {model_name}) does not support image files"
+                ),
+                // v4 `0ba942b1` (bug 97): the provider list names every entry in
+                // v4's `PROVIDER_ATTACHMENT_CAPABILITIES`
+                // (`crate::files::attachment_support`) that carries an `image/*`
+                // MIME type — keep it in step with that map.
+                R::PluginCannotSend => format!(
+                    "Image description profile ({provider} {model_name}) cannot send images — the \
+                     {provider} plugin does not forward image attachments. Pick a describer on a \
+                     provider that does (OpenAI, Anthropic, Google, Grok, OpenRouter, NanoGPT, \
+                     Z.AI)."
+                ),
+                R::ImageNotReceived => format!(
+                    "Image description profile ({provider} {model_name}) did not process the image — {detail}. Pick a describer on a model that genuinely reads images; a gateway may accept an image and route to a model that ignores it."
+                ),
+                // Unreachable here (the describer never asks `requireApiKey`);
+                // v4's `default:` arm answers the detail bare.
+                R::MissingApiKey => detail,
+            };
+            let mut result =
+                FallbackResult::unsupported(&file.filename, &file.mime_type, Some(message));
+            set_description_metadata(&mut result, &profile_id, &provider, &model_name);
+            return result;
+        }
+        Ok(crate::llm::vision_request::VisionRequestResult::Ok { response, .. }) => response,
     };
 
-    let response = deps
-        .completion
-        .send_message_keyed(&provider, base_url.as_deref(), &api_key, &call_params)
-        .await;
-
-    match response {
-        Ok(resp) => {
-            // Success-path logLLMCall (IMAGE_DESCRIPTION), best-effort.
-            log_description_success(
-                deps,
-                &provider,
-                &model_name,
-                &file.filename,
-                &attachment_mime,
-                temperature,
-                max_tokens,
-                &resp,
-                describe_start_ms,
-            )
-            .await;
-
-            // Before believing a word of it: did the image actually arrive? This
-            // has to run ahead of every content check, because the failure it
-            // catches produces the healthiest-looking response in the file —
-            // long, confident, sectioned prose that passes the refusal detector
-            // with room to spare (bug 116, v4 `0b0617fee`). The caller persists
-            // whatever we return onto `files.description`, from where it
-            // short-circuits every future reader, so a wrong answer here is
-            // permanent. It runs AFTER the llm-log row, exactly as v4 does —
-            // the call happened and stays diagnosable whatever the verdict.
-            let arrival = verify_image_reached_model(&resp, &file.id);
-            if let ImageArrivalVerdict::NotArrived { reason } = &arrival {
-                tracing::warn!(
-                    target: "quilltap::image_fallback",
-                    provider = %provider,
-                    model = %model_name,
-                    profile_id = %profile_id,
-                    filename = %file.filename,
-                    reason = %reason,
-                    // v4 `response.usage?.promptTokens` — absent when the
-                    // provider reported nothing (the plugin-ledger arm).
-                    prompt_tokens = resp.usage.map(|u| u.prompt_tokens),
-                    // v4 `response.content?.length ?? 0` — UTF-16 units.
-                    content_length = crate::jsstr::utf16_len(&resp.content),
-                    "[Image Fallback] Describer answered without the image; discarding its description"
-                );
-                let mut result = FallbackResult::unsupported(&file.filename, &file.mime_type, Some(format!(
-                    "Image description profile ({provider} {model_name}) did not process the image — {reason}. Pick a describer on a model that genuinely reads images; a gateway may accept an image and route to a model that ignores it."
-                )));
-                set_description_metadata(&mut result, &profile_id, &provider, &model_name);
-                return result;
-            }
-
+    {
+        {
+            let resp = response;
             let trimmed = crate::jsstr::js_trim(&resp.content).to_string();
             if trimmed.is_empty() {
                 // v4 `file-attachment-fallback.ts:545`. ⚠ RECORDED DIVERGENCE
@@ -900,36 +692,6 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
                 error: None,
             }
         }
-        Err(err) => {
-            // v4 `file-attachment-fallback.ts:632`. v4 passes an EMPTY context
-            // object and the error as its third argument; tracing has no third
-            // argument, so the error rides as the only field. The trailing
-            // colon is v4's sentence, kept.
-            tracing::error!(
-                target: "quilltap::image_fallback",
-                error = %err.message,
-                "[Image Fallback] Error generating description:"
-            );
-            // Failure-path logLLMCall (IMAGE_DESCRIPTION), best-effort.
-            log_description_failure(
-                deps,
-                &provider,
-                &model_name,
-                &err.message,
-                describe_start_ms,
-            )
-            .await;
-            let mut result = FallbackResult::unsupported(
-                &file.filename,
-                &file.mime_type,
-                Some(format!(
-                    "Failed to generate image description: {}",
-                    err.message
-                )),
-            );
-            set_description_metadata(&mut result, &profile_id, &provider, &model_name);
-            result
-        }
     }
 }
 
@@ -944,166 +706,6 @@ fn set_description_metadata(
         m.description_provider = Some(provider.to_string());
         m.description_model = Some(model.to_string());
     }
-}
-
-/// Resolve the profile's API key off the DB (v4 `findApiKeyByIdAndUserId`, a
-/// fallback `safeQuery`: a read error logs `Error finding API key by ID and
-/// user ID` and answers `null`, which the caller sends as `''` — P4.136).
-fn resolve_api_key(db: &Db, user_id: &str, profile: &Value) -> Option<String> {
-    let api_key_id = profile.get("apiKeyId").and_then(Value::as_str)?;
-    crate::services::api_key_service::read_api_key_scoped(db, api_key_id, user_id)
-        .map(|k| k.key_value)
-}
-
-/// Downsize a base64 image to the description provider's limit. Returns
-/// `(base64, mimeType)` only when the resize actually happened.
-///
-/// v4 `file-attachment-fallback.ts:426` warns
-/// "[Image Fallback] Resize for description provider failed; sending original"
-/// in its catch. NOT PORTED, and structurally rather than by oversight
-/// (P4.74): v4 distinguishes a resize that THREW from one that had nothing to
-/// do, while this function collapses both into `None` (the decode step is
-/// `.ok()?`). Emitting the warn on every `None` would write a line v4 does not;
-/// telling them apart means giving this function a `Result`, which is a
-/// refactor beyond a logging pass. Recorded in
-/// `docs/developer/porting/handler-logging-inventory.md`.
-fn try_downsize<CMP: CompletionProvider>(
-    deps: &FallbackDeps<'_, CMP>,
-    provider: &str,
-    base64_data: &str,
-    mime_type: &str,
-) -> Option<(String, String)> {
-    use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(base64_data.trim())
-        .ok()?;
-    let result = resize_image_for_provider(
-        provider,
-        &bytes,
-        mime_type,
-        DEFAULT_QUALITY,
-        deps.transcoder,
-    );
-    if result.was_resized {
-        let encoded = base64::engine::general_purpose::STANDARD.encode(&result.buffer);
-        Some((encoded, result.mime_type))
-    } else {
-        None
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn log_description_success<CMP: CompletionProvider>(
-    deps: &FallbackDeps<'_, CMP>,
-    provider: &str,
-    model_name: &str,
-    filename: &str,
-    attachment_mime: &str,
-    temperature: f64,
-    max_tokens: i64,
-    resp: &crate::model::completion::CompletionResponse,
-    describe_start_ms: i64,
-) {
-    let params = LogLlmCallParams {
-        user_id: deps.user_id.to_string(),
-        log_type: log_type::IMAGE_DESCRIPTION.to_string(),
-        message_id: None,
-        chat_id: None,
-        character_id: None,
-        provider: provider.to_string(),
-        model_name: model_name.to_string(),
-        // v4 `0cde7fbc` did NOT touch `lib/chat/file-attachment-fallback.ts` —
-        // this call site sets no profile id on either side.
-        connection_profile_id: None,
-        image_profile_id: None,
-        request: LogRequest {
-            messages: vec![LogRequestMessage {
-                role: "user".to_string(),
-                content: IMAGE_DESCRIPTION_INSTRUCTION.to_string(),
-                attachments: Some(vec![serde_json::json!({
-                    "filename": filename,
-                    "mimeType": attachment_mime,
-                })]),
-            }],
-            temperature: Some(temperature),
-            max_tokens: Some(max_tokens),
-            tools: None,
-        },
-        response: LogResponse {
-            content: resp.content.clone(),
-            error: None,
-            finish_reason: resp.finish_reason.clone(),
-            tool_calls: None,
-        },
-        usage: resp.usage.map(|u| LogUsage {
-            prompt_tokens: Some(u.prompt_tokens),
-            completion_tokens: Some(u.completion_tokens),
-            total_tokens: Some(u.total_tokens),
-        }),
-        cache_usage: None,
-        raw_provider_usage: None,
-        request_hashes: None,
-        duration_ms: Some((crate::clock::now_unix_ms() - describe_start_ms) as f64),
-    };
-    // v4 `file-attachment-fallback.ts:505` warns
-    // "[Image Fallback] Failed to record IMAGE_DESCRIPTION llm log"
-    // when this write throws.
-    // NOT PORTED, and the reason is structural rather than an oversight
-    // (P4.74): `log_llm_call` answers `Option<String>` and returns `None` for
-    // logging DISABLED as well as for a failed write, so `.is_none()` would
-    // emit a warning on the ordinary disabled path — a line v4 never writes.
-    // Distinguishing the two means changing that function's signature, which
-    // is outside this lane; the row is in
-    // `docs/developer/porting/handler-logging-inventory.md`.
-    //
-    // (The failure-path twin below has no sentence to carry either way: v4's
-    // catch there is deliberately empty — "Logging must never mask the
-    // original failure".)
-    let _ = log_llm_call(deps.db, params, &LogContext::none()).await;
-}
-
-async fn log_description_failure<CMP: CompletionProvider>(
-    deps: &FallbackDeps<'_, CMP>,
-    provider: &str,
-    model_name: &str,
-    error: &str,
-    describe_start_ms: i64,
-) {
-    let params = LogLlmCallParams {
-        user_id: deps.user_id.to_string(),
-        log_type: log_type::IMAGE_DESCRIPTION.to_string(),
-        message_id: None,
-        chat_id: None,
-        character_id: None,
-        provider: provider.to_string(),
-        model_name: model_name.to_string(),
-        // v4 `0cde7fbc` did NOT touch `lib/chat/file-attachment-fallback.ts` —
-        // this call site sets no profile id on either side.
-        connection_profile_id: None,
-        image_profile_id: None,
-        request: LogRequest {
-            messages: vec![LogRequestMessage {
-                role: "user".to_string(),
-                content: IMAGE_DESCRIPTION_INSTRUCTION.to_string(),
-                attachments: None,
-            }],
-            temperature: None,
-            max_tokens: None,
-            tools: None,
-        },
-        response: LogResponse {
-            content: String::new(),
-            error: Some(error.to_string()),
-            finish_reason: None,
-            tool_calls: None,
-        },
-        usage: None,
-        cache_usage: None,
-        raw_provider_usage: None,
-        request_hashes: None,
-        duration_ms: Some((crate::clock::now_unix_ms() - describe_start_ms) as f64),
-    };
-    let _ = log_llm_call(deps.db, params, &LogContext::none()).await;
 }
 
 /// v4 `generateImageDescription(file, repos, userId)` — the three tiers in order.
@@ -1542,34 +1144,11 @@ mod tests {
     use crate::test_support::captured;
     use serde_json::json;
 
-    /// P4.136: image description's key read is v4's SCOPED fallback
-    /// `findApiKeyByIdAndUserId` (`file-attachment-fallback.ts:434-439`) — a
-    /// corrupt row logs the repository's line and the caller sends `''`; a
-    /// healthy row, another user's row and a miss are silent.
-    #[test]
-    fn a_failed_key_read_logs_v4s_line_and_sends_empty() {
-        let (_dir, db) = crate::db::fallback::test_plants::db_with_api_keys(&[
-            ("k-bad", "u-1", true),
-            ("k-ok", "u-1", false),
-        ]);
-        let (key, lines) = crate::test_support::captured_with(|| {
-            resolve_api_key(&db, "u-1", &json!({"apiKeyId": "k-bad"})).unwrap_or_default()
-        });
-        assert_eq!(key, "");
-        assert_eq!(
-            lines,
-            vec!["ERROR quilltap::db Error finding API key by ID and user ID collection=connection_profiles keyId=k-bad userId=u-1 error=Invalid column type Blob at index: 4, name: key_value".to_string()]
-        );
-        let (keys, lines) = crate::test_support::captured_with(|| {
-            (
-                resolve_api_key(&db, "u-1", &json!({"apiKeyId": "k-ok"})),
-                resolve_api_key(&db, "u-2", &json!({"apiKeyId": "k-ok"})),
-                resolve_api_key(&db, "u-1", &json!({"apiKeyId": "k-gone"})),
-            )
-        });
-        assert_eq!(keys, (Some("synthetic-k-ok".to_string()), None, None));
-        assert!(lines.is_empty(), "{lines:?}");
-    }
+    // P4.136's scoped-key-read test moved with the read itself: the describer's
+    // `findApiKeyByIdAndUserId` now runs inside the shared vision request
+    // (`crate::llm::vision_request::send_vision_request`, v4 `9ecebf986`), over
+    // `api_key_service::read_api_key_scoped` — whose own tests pin the fallback
+    // line.
 
     #[test]
     fn needs_fallback_image_gated_by_flag() {
@@ -1738,7 +1317,7 @@ mod tests {
         // …and the arithmetic behind it, so a wrong `utf16_len` or a lost
         // `ceil` cannot land on 66 by luck.
         assert_eq!(crate::jsstr::utf16_len(IMAGE_DESCRIPTION_INSTRUCTION), 163);
-        assert!((163.0f64 / MIN_CHARS_PER_TOKEN).ceil() as i64 == 66);
+        assert!((163.0f64 / 2.5).ceil() as i64 == 66);
     }
 }
 

@@ -17,8 +17,10 @@
 //!
 //! P4.D263 R-D: the generation passes `containerId: payload.characterId`
 //! (which the project-aesthetic lookup ignores for a character's item) and NO
-//! profile override; the payload's `chatId` is never forwarded, so no
-//! Concierge bubble or ledger row can result.
+//! profile override. Bug 189 (v4 `7a8d6dacc`, P4.D283): the payload's
+//! `chatId` IS forwarded — the chat's Concierge state governs the picture
+//! (Locked never fails over, Unmoderated routes direct, a refusal is ledgered
+//! and announced in that chat).
 
 use serde_json::Value;
 
@@ -132,7 +134,7 @@ pub async fn handle_wardrobe_item_image_generation(
             home: &home,
             container_id: Some(&character_id),
             image_profile_id: None,
-            // P4.D279 (C1 §10): the payload's `chatId`, carried for P4.D283.
+            // v4 `chatId: payload.chatId ?? null` (bug 189).
             chat_id: Some(&chat_id),
         },
     )

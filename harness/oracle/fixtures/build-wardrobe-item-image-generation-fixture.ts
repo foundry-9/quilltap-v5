@@ -24,6 +24,14 @@
  * file per scenario (both sides). The wear ledger rides in v4's MIGRATION
  * shape (C1 §6).
  *
+ * P4.D283 (bug 189): three chats the owner's character sits in — Moderated
+ * (`conciergeMode` NULL), Locked and Unmoderated, set the way the operator's
+ * flip sets them (`UPDATE chats SET conciergeMode`) — with `chat_messages`
+ * materialized (the Concierge's refusal bubbles land there on both sides) and
+ * v4's `add-chat-refusal-ledger` migration run on the baked main DB, so the
+ * ledger columns a refusal increments exist (the refusal-ledger fixture's
+ * arrangement).
+ *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -60,6 +68,8 @@ interface Spec {
   imageProfiles: Array<Record<string, unknown> & { id: string }>;
   items: Record<string, ItemSpec>;
   chatSettings: Record<string, unknown>;
+  /** P4.D283: the planted chats, keyed by posture; `conciergeMode` NULL = Moderated. */
+  chats: Record<string, { id: string; title: string; conciergeMode: string | null }>;
 }
 
 const PINNED_TS = '2026-02-01T00:00:00.000Z';
@@ -283,10 +293,54 @@ async function main(): Promise<void> {
     spec.archivedCharacterId,
   ]);
 
+  // P4.D283 (bug 189): the chats a tool-queued picture may be asked for in.
+  let n = 0;
+  for (const chat of Object.values(spec.chats)) {
+    n += 1;
+    const participantId = `fd00c0c0-00${String(n).padStart(2, '0')}-4000-8000-000000000001`;
+    await repos.chats.create(
+      {
+        userId: spec.userId,
+        title: chat.title,
+        chatType: 'salon',
+        participants: [
+          {
+            id: participantId,
+            type: 'CHARACTER',
+            characterId: spec.characterId,
+            createdAt: PINNED_TS,
+            updatedAt: PINNED_TS,
+          },
+        ],
+      } as never,
+      pin(chat.id),
+    );
+    if (chat.conciergeMode) {
+      await rawQuery('UPDATE chats SET "conciergeMode" = ? WHERE id = ?', [
+        chat.conciergeMode,
+        chat.id,
+      ]);
+    }
+  }
+  // Materialize `chat_messages` (v4 ensures it lazily on first repo use; the
+  // Concierge's refusal bubble lands there on both sides).
+  await repos.chats.getMessages(Object.values(spec.chats)[0].id);
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
+
+  // v4's refusal-ledger columns on `chats` (`moderationRefusalCount`, …) come
+  // from a MIGRATION, not the schema; run the real one on the baked main DB.
+  const { runV4Migrations, ADD_CHAT_REFUSAL_LEDGER } = await import('../lib/v4-migrations');
+  const migrated = await runV4Migrations({
+    dbPath: mainOut,
+    pepperBase64: spec.testPepperBase64,
+    migrations: [ADD_CHAT_REFUSAL_LEDGER],
+    allowMissing: false,
+  });
+  process.stderr.write(`wardrobe-item-image-generation fixture migrations: ${migrated.join('; ')}\n`);
   process.stderr.write(
-    `built wardrobe-item-image-generation fixtures: main=${mainOut} mount=${mountOut}\n`,
+    `built wardrobe-item-image-generation fixtures: main=${mainOut} mount=${mountOut} chats=${n}\n`,
   );
   process.exit(0);
 }

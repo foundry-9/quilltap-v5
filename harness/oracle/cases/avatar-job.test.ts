@@ -423,7 +423,7 @@ async function main(): Promise<void> {
             midb0?.prepare('DELETE FROM doc_mount_blobs WHERE id = ?').run(rest.slice(sep + 1));
           }
         } else if (chat.mutateBetweenRuns === 'legacy-key') {
-          const { deriveLegacyAvatarCacheKey } = await import('@/lib/wardrobe/avatar-cache');
+          const { deriveLegacyAvatarCacheKey } = await import('@/lib/image-gen/avatar-cache');
           const rows = (await rawQuery(
             `SELECT id, generationModel, generationPrompt FROM files WHERE generationKey IS NOT NULL`,
           )) as Array<{ id: string; generationModel: string | null; generationPrompt: string | null }>;

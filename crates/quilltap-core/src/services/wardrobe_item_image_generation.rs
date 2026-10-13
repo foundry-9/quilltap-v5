@@ -9,14 +9,20 @@
 //! profile (override → designated → default; none, or its key row gone, is
 //! the ONE 400 sentence) → the owner / the component leaves / the project
 //! aesthetic mount → the prompt → the Concierge policy over the global
-//! settings and NO chat → ONE provider call (`n: 1`, `style: 'natural'`, the
-//! prompt's orientation) through the image failover chokepoint with `chatId:
-//! null` (so no announcement, no Locked state, no ledger row — purpose
-//! `wardrobe`) → the first image to WebP → `add_wardrobe_item_image` (the
-//! bridge write, the `files` row, the frontmatter pointer, in ONE
-//! `Db::write`). Each provider attempt writes ONE `llm_logs` row of type
-//! `WARDROBE_ITEM_IMAGE`, its error shape on a throw. No preview-avatar
-//! bypass, no `n > 1`, no cache.
+//! settings AND the chat a tool-queued picture was asked for in (bug 189, v4
+//! `7a8d6dacc`: Locked never fails over, Unmoderated routes direct to the
+//! uncensored desk, a refusal is ledgered and announced there; the editor's
+//! Generate has no chat — `chatId: null` reads as Moderated with no
+//! announcement and no ledger, the trail the only record) → ONE provider call
+//! (`n: 1`, `style: 'natural'`, the prompt's orientation) through the shared
+//! logged attempt (`image_gen::image_attempt`, v4 `9ecebf986`) and the image
+//! failover chokepoint (purpose `wardrobe`) → `decode_provider_image` →
+//! `add_wardrobe_item_image` (the bridge write, the `files` row — no
+//! `description`, bug 132 — the frontmatter pointer, in ONE `Db::write`). Each
+//! provider attempt writes ONE `llm_logs` row of type `WARDROBE_ITEM_IMAGE`
+//! carrying the chat id, its error shape on a throw; the Almanack counts the
+//! type as image spend (bug 196). No preview-avatar bypass, no `n > 1`, no
+//! cache.
 //!
 //! The generation's OWN lines run on the caller's thread; the item-image
 //! write's lines run inside the write closure and are pinned by
@@ -29,18 +35,19 @@ use serde_json::Value;
 use crate::db::files::FileRow;
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::image_gen::image_attempt::{
+    decode_provider_image, make_logged_image_attempt, ImageAttemptParams,
+    LoggedImageAttemptOptions, PixelCodecTranscoder, DEFAULT_IMAGE_MODEL,
+};
 use crate::image_gen::Orientation;
-use crate::model::image::{ErasedImageGenerate, ImageGenResponse};
+use crate::model::image::ErasedImageGenerate;
 use crate::services::dangerous_content::image_failover::{
     generate_image_with_concierge_failover, FailoverProfile, ImageFailoverContext, ImagePurpose,
     ImageUnderstudySource,
 };
 use crate::services::dangerous_content::provider_routing::DbApiKeys;
 use crate::services::file_storage::PixelCodec;
-use crate::services::llm_logging::{
-    log_llm_call, log_type, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage,
-    LogResponse,
-};
+use crate::services::llm_logging::log_type;
 use crate::services::route_trail::{
     RouteAttempt, RouteAttemptOutcome, RouteAttemptVia, RouteProfileKind,
 };
@@ -139,11 +146,10 @@ pub struct GenerateWardrobeItemImageArgs<'a> {
     /// The container id from the request (the project id, for the aesthetic).
     pub container_id: Option<&'a str>,
     pub image_profile_id: Option<&'a str>,
-    /// P4.D279 (C1 §10, carried for P4.D283 — bug 189): the chat the picture
-    /// is drawn for, from the `WARDROBE_ITEM_IMAGE` job payload's `chatId`
-    /// (the tool call's chat) or `None` for the editor's direct generation.
-    /// Accepted and carried; READ by P4.D283's `llm_logs.chatId` + the chat's
-    /// moderation route in this same round — until then nothing consumes it.
+    /// Bug 189 (v4 `7a8d6dacc`): the chat a tool-queued picture was asked for
+    /// in, from the `WARDROBE_ITEM_IMAGE` job payload's `chatId`. Its Concierge
+    /// state governs the call and it rides the `llm_logs` row; `None` (the
+    /// editor's direct generation) reads as Moderated with no ledger.
     pub chat_id: Option<&'a str>,
 }
 
@@ -209,23 +215,42 @@ fn resolve_component_leaves(
     }
     if home.scope == crate::api::types::WardrobeContainerScope::Character {
         if let Some(character_id) = home.character_id.as_deref() {
-            let tiers = crate::wardrobe_tiers::shared_wardrobe_tiers_for_character(
+            // v4 `9ecebf986`: every tier the character can reach (group stores
+            // included), walked from this outfit's parts only —
+            // `componentGraph(loadWearablePool(repos, characterId, []), ids)`.
+            // No project context reads as no project tier.
+            let pool = crate::wearable_pool::load_wearable_pool(
                 main,
                 mount,
                 character_id,
-                &[],
+                Some(&[]),
+                crate::wearable_pool::LoadWearablePoolOptions::default(),
             );
-            crate::tools::wardrobe_shared::hydrate_component_graph(
-                main,
-                &docs,
-                character_id,
-                &mut items_by_id,
-                &tiers,
-            );
+            for part in crate::wearable_pool::component_graph(&pool, &component_ids) {
+                if let Some(id) = part.get("id").and_then(Value::as_str) {
+                    items_by_id
+                        .entry(id.to_string())
+                        .or_insert_with(|| part.clone());
+                }
+            }
         }
     }
     let expanded =
         crate::wardrobe::expand_composites(&[home.item_id().to_string()], &items_by_id, None);
+    // v4 `9ecebf986`: a cycle or a depth cut is a DEBUG, not a failure — the
+    // leaves found so far still draw.
+    if !expanded.cycles.is_empty() || expanded.truncated {
+        // (Built outside the macro: `tracing`'s own `Value` trait shadows
+        // `serde_json::Value` inside its expansion.)
+        let cycles_json = serde_json::to_string(&expanded.cycles).unwrap_or_default();
+        tracing::debug!(
+            context = LOG_CONTEXT,
+            itemId = %home.item_id(),
+            cyclesJson = %cycles_json,
+            truncated = expanded.truncated,
+            "[WardrobeItemImage] Outfit expansion stopped short"
+        );
+    }
     expanded
         .leaf_ids
         .iter()
@@ -340,108 +365,151 @@ pub async fn generate_wardrobe_item_image(
         "[WardrobeItemImage] Generating wardrobe item image"
     );
 
+    // Bug 189 (v4 `7a8d6dacc`): the chat a tool-queued picture was asked for
+    // in governs the call. `loadChat` is `repos.chats.findById` — a `safeQuery`
+    // read, so a failed read logs v4's `Error finding entity by ID` and reads
+    // as no chat (the `[WardrobeItemImage] Chat unreadable; the failover will
+    // re-read its Concierge state` WARN around it is UNREACHABLE in v4 and is
+    // not emitted here — pinned NEGATIVE by the tier-3 family). `null` (the
+    // editor's Generate) reads as Moderated with no ledger.
+    let chat_id = args.chat_id.filter(|c| !c.is_empty());
+    let chat: Option<Value> = match chat_id {
+        Some(cid) => {
+            let cid = cid.to_string();
+            db.read_main(move |c| Ok(crate::db::chats_read::find_by_id_or_none(c, &cid)))
+                .ok()
+                .flatten()
+        }
+        None => None,
+    };
     let concierge_policy = crate::services::dangerous_content::resolver::resolve_concierge_settings(
         chat_settings.as_ref(),
-        None,
+        chat.as_ref(),
+    );
+    tracing::debug!(
+        context = LOG_CONTEXT,
+        itemId = %home.item_id(),
+        chatId = chat_id.unwrap_or("null"),
+        chatFound = chat.is_some(),
+        conciergeState = concierge_policy.state.as_str(),
+        routeDirect = concierge_policy.route_direct,
+        "[WardrobeItemImage] Concierge policy resolved"
     );
 
-    let prompt = built.prompt.clone();
+    // An Unmoderated chat goes straight to the uncensored desk, as the avatar
+    // job does: the verdict is already in. Logged whether or not it rerouted.
+    let api_keys = DbApiKeys(db.clone());
+    let mut primary_profile = FailoverProfile::from_row(&profile);
+    let mut primary_key = api_key.clone();
+    if concierge_policy.route_direct {
+        let original = crate::services::dangerous_content::provider_routing::RouteProfile {
+            id: primary_profile.id.clone(),
+            name: primary_profile.name.clone(),
+            provider: primary_profile.provider.clone(),
+            model_name: primary_profile.model_name.clone(),
+            base_url: profile
+                .get("baseUrl")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+        };
+        let route = {
+            let (orig_key, policy, uid, keys) = (
+                api_key.clone(),
+                concierge_policy.clone(),
+                user_id.to_string(),
+                DbApiKeys(db.clone()),
+            );
+            db.read_main(move |conn| {
+                Ok(
+                    crate::services::dangerous_content::provider_routing::resolve_image_provider_for_dangerous_content(
+                        conn, &keys, &original, &orig_key, &policy, &uid,
+                    ),
+                )
+            })?
+        };
+        if route.rerouted {
+            primary_profile = FailoverProfile {
+                id: route.image_profile.id.clone(),
+                name: route.image_profile.name.clone(),
+                provider: route.image_profile.provider.clone(),
+                model_name: route.image_profile.model_name.clone(),
+                row: Value::Null,
+            };
+            primary_key = route.api_key.clone();
+        }
+        tracing::info!(
+            context = LOG_CONTEXT,
+            itemId = %home.item_id(),
+            chatId = chat_id.unwrap_or("null"),
+            rerouted = route.rerouted,
+            profile = %primary_profile.name,
+            "[WardrobeItemImage] Unmoderated chat: routed direct to the uncensored desk"
+        );
+    }
+
+    // Wardrobe pictures keep their own log type; the Almanack counts it as
+    // image spend all the same (bug 196, `IMAGE_SPEND_LOG_TYPES`). v4
+    // `9ecebf986`: the shared `makeLoggedImageAttempt` — `primaryProfileId` is
+    // the RESOLVED profile (not a direct-routed `primaryProfile`), so a
+    // direct-routed Unmoderated call logs its first row as `(Concierge
+    // reroute)`, the avatar job's `effectiveImageProfile` semantics; the row
+    // carries the chat a tool-queued picture was asked for in (bug 189).
     let orientation = built.orientation;
-    let character_id = home.character_id.clone();
-    let primary_profile_id = profile_id.clone();
-    let attempt = |candidate: FailoverProfile, key: String| {
-        let prompt = prompt.clone();
-        let character_id = character_id.clone();
-        let primary_profile_id = primary_profile_id.clone();
-        async move {
-            let built = crate::image_gen::params_builder::build_image_gen_params(
-                crate::image_gen::params_builder::ImageProfileLike {
-                    provider: &candidate.provider,
-                    model_name: candidate.row.get("modelName").and_then(Value::as_str),
-                    parameters: candidate.row.get("parameters"),
-                },
-                &prompt,
-                &crate::image_gen::params_builder::ImageGenOverrides {
+    let mut attempt = make_logged_image_attempt(
+        db,
+        &seams.provider,
+        LoggedImageAttemptOptions {
+            user_id,
+            log_type: log_type::WARDROBE_ITEM_IMAGE,
+            prompt: &built.prompt,
+            primary_profile_id: &profile_id,
+            chat_id: args.chat_id,
+            character_id: home.character_id.as_deref(),
+            params: ImageAttemptParams {
+                overrides: crate::image_gen::params_builder::ImageGenOverrides {
                     n: Some(1.0),
                     style: Some("natural".to_string()),
                     ..Default::default()
                 },
-                Some(orientation),
-                "dall-e-3",
-                &crate::image_gen_data::image_declarations_for(&candidate.provider),
-                &crate::image_gen::params_builder::ImageParamsLogContext {
+                orientation: Some(orientation),
+                log_context: crate::image_gen::params_builder::ImageParamsLogContext {
                     context: LOG_CONTEXT,
-                    profile_id: Some(candidate.id.clone()),
                     ..Default::default()
                 },
-            );
-            let call_started = crate::clock::now_unix_ms();
-            let result = seams
-                .provider
-                .generate_image(&candidate.provider, &key, &built.params)
-                .await;
-            let (content, error) = match &result {
-                Ok(r) => (success_content(r, candidate.id != primary_profile_id), None),
-                Err(e) => (String::new(), Some(e.message.clone())),
-            };
-            log_llm_call(
-                db,
-                LogLlmCallParams {
-                    user_id: user_id.to_string(),
-                    log_type: log_type::WARDROBE_ITEM_IMAGE.to_string(),
-                    message_id: None,
-                    chat_id: None,
-                    character_id,
-                    provider: candidate.provider.clone(),
-                    model_name: candidate.model_name.clone(),
-                    connection_profile_id: None,
-                    image_profile_id: Some(candidate.id.clone()),
-                    request: LogRequest {
-                        messages: vec![LogRequestMessage {
-                            role: "user".to_string(),
-                            content: prompt.clone(),
-                            attachments: None,
-                        }],
-                        ..Default::default()
-                    },
-                    response: LogResponse {
-                        content,
-                        error,
-                        ..Default::default()
-                    },
-                    usage: None,
-                    cache_usage: None,
-                    raw_provider_usage: None,
-                    request_hashes: None,
-                    duration_ms: Some((crate::clock::now_unix_ms() - call_started) as f64),
-                },
-                &LogContext::none(),
-            )
-            .await;
-            result
-        }
-    };
+                fallback_model: DEFAULT_IMAGE_MODEL,
+                declarations_for: &crate::image_gen_data::image_declarations_for,
+            },
+            prebuilt: None,
+        },
+    );
 
-    let api_keys = DbApiKeys(db.clone());
     let understudy = ImageUnderstudySource {
         db,
         api_keys: &api_keys,
         user_id,
         uncensored_image_profile_id: concierge_policy.desk.image_profile_id.as_deref(),
     };
+    // Bug 189: the chokepoint receives the chat — Locked never fails over, a
+    // refusal is ledgered and announced there — and `primaryVia: 'concierge'`
+    // when the direct route swapped the desk.
+    let primary_via = if primary_profile.id != profile_id {
+        RouteAttemptVia::Concierge
+    } else {
+        RouteAttemptVia::Primary
+    };
     let failover = match generate_image_with_concierge_failover(
-        (FailoverProfile::from_row(&profile), api_key),
-        attempt,
+        (primary_profile, primary_key),
+        |candidate, key| attempt.call(candidate, key),
         &ImageFailoverContext {
             db,
             user_id,
-            chat_id: None,
-            chat: None,
+            chat_id,
+            chat: chat.as_ref(),
             purpose: ImagePurpose::Wardrobe,
             concierge_policy: &concierge_policy,
             understudy: &understudy,
             profile_kind: RouteProfileKind::Image,
-            primary_via: RouteAttemptVia::Primary,
+            primary_via,
             announce_unresolved_refusal: true,
         },
     )
@@ -483,40 +551,24 @@ pub async fn generate_wardrobe_item_image(
         }
     };
 
-    // v4 `imageData?.data || imageData?.b64Json` — the decoders fold both
-    // vendor spellings into `data`.
-    let image = failover.result.images.first();
-    let Some((image, raw)) = image.and_then(|i| {
-        i.data
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .map(|raw| (i, raw))
-    }) else {
+    // v4 `decodeProviderImage(failover.result, 'wardrobe')` (`9ecebf986`): the
+    // base64 → WebP transcode over the seams' codec, the real dimensions, the
+    // sha256, the `wardrobe_<ms>.<ext>` filename (NOT row-visible — the bridge's
+    // leaf name becomes `originalFilename`); null → the sentence below.
+    let decoded = decode_provider_image(
+        &PixelCodecTranscoder(seams.codec.as_ref()),
+        Some(&failover.result),
+        "wardrobe",
+        0,
+        crate::clock::now_unix_ms(),
+    );
+    let Some(decoded) = decoded else {
         return Err(WardrobeImageGenerationFailure::Generation {
             message: "The image provider returned no picture".to_string(),
             trail: (!failover.trail.is_empty()).then(|| failover.trail.clone()),
             refused: false,
         });
     };
-
-    let provider_mime = image
-        .mime_type
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .unwrap_or("image/png")
-        .to_string();
-    let subtype = provider_mime
-        .split('/')
-        .nth(1)
-        .filter(|s| !s.is_empty())
-        .unwrap_or("png");
-    let converted = crate::services::file_storage::convert_to_webp(
-        seams.codec.as_ref(),
-        &crate::services::image_job_common::decode_base64_node(raw),
-        &provider_mime,
-        &format!("wardrobe.{subtype}"),
-    );
-    let revised = image.revised_prompt.clone().filter(|s| !s.is_empty());
     let model_name = failover.profile.model_name.clone();
 
     let written = {
@@ -542,13 +594,13 @@ pub async fn generate_wardrobe_item_image(
                 &AddWardrobeItemImageInput {
                     user_id: &uid,
                     kind: WardrobeImageKind::Generated,
-                    content: &converted.buffer,
-                    content_type: &converted.mime_type,
-                    width: converted.width,
-                    height: converted.height,
+                    content: &decoded.buffer,
+                    content_type: &decoded.mime_type,
+                    width: decoded.width.map(|w| w as i64),
+                    height: decoded.height.map(|h| h as i64),
                     generation_prompt: Some(&prompt),
                     generation_model: Some(&model_name),
-                    generation_revised_prompt: revised.as_deref(),
+                    generation_revised_prompt: decoded.revised_prompt.as_deref(),
                 },
                 &mint,
                 &blob_webp,
@@ -591,23 +643,6 @@ fn read_both<T>(
     f: impl FnOnce(&rusqlite::Connection, &rusqlite::Connection) -> Result<T, DbError>,
 ) -> Result<T, DbError> {
     db.read_main(|main| db.read_mount_index(|mount| f(main, mount)))
-}
-
-/// v4 `response.images?.[0]?.revisedPrompt || \`Generated ${n} image(s)${rerouted
-/// ? ' (Concierge reroute)' : ''}\``.
-fn success_content(response: &ImageGenResponse, rerouted: bool) -> String {
-    response
-        .images
-        .first()
-        .and_then(|i| i.revised_prompt.clone())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| {
-            format!(
-                "Generated {} image(s){}",
-                response.images.len(),
-                if rerouted { " (Concierge reroute)" } else { "" }
-            )
-        })
 }
 
 /// v4 `resolveOwner(repos, home)` — the wearer, for a character's own item. A

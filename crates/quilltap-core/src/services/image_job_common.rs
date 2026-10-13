@@ -20,6 +20,9 @@ use crate::cheap_llm::{
     get_cheap_llm_provider, CheapLlmConfig, CheapLlmProfile, CheapLlmSelection,
 };
 use crate::db::runtime::Db;
+use crate::image_gen::image_attempt::{
+    make_logged_image_attempt, ImageAttemptParams, LoggedImageAttemptOptions, PrebuiltImageParams,
+};
 use crate::image_gen::params_builder::{
     build_image_gen_params, ImageDeclarations, ImageGenOverrides, ImageParamsLogContext,
     ImageProfileLike,
@@ -32,10 +35,6 @@ use crate::services::dangerous_content::image_failover::{
 };
 use crate::services::dangerous_content::provider_routing::ApiKeyResolver;
 use crate::services::dangerous_content::resolver::ResolvedConciergePolicy;
-use crate::services::llm_logging::{
-    log_llm_call, log_type, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage,
-    LogResponse,
-};
 use crate::services::route_trail::{RouteAttemptVia, RouteProfileKind};
 
 /// The plugin-registry declaration seam (v4's `getImageGenerationModels` +
@@ -206,78 +205,6 @@ pub(crate) struct GenOutcome {
     pub active_model: String,
 }
 
-/// v4 `logLLMCall` (character-avatar.ts / story-background.ts) — one
-/// `IMAGE_GENERATION` row per provider attempt. The avatar handler passes a
-/// `characterId`; the story handler does not (`character_id = None`). `durationMs`
-/// is v4's `Date.now() - genStartTime` — a REAL wall clock bracketing the
-/// provider call (the P4.D49 cheap-path pattern; the differentials normalize
-/// non-NULL durations, so a measured value stays oracle-neutral). Since v4
-/// `0cde7fbc` (the Almanack) it feeds real latency figures, so a hardcoded 0
-/// reads as an unmeasured row. Awaited (the writer never throws);
-/// `LogContext::none()` on the job path (Unit 4 supplies the autonomous run id
-/// later).
-#[allow(clippy::too_many_arguments)]
-async fn log_image_gen_job(
-    db: &Db,
-    user_id: &str,
-    chat_id: Option<&str>,
-    character_id: Option<&str>,
-    provider: &str,
-    model_name: &str,
-    // v4 `0cde7fbc`: `effectiveImageProfile.id` on the primary arms,
-    // `reroute.profile.id` on the Concierge-reroute arms.
-    image_profile_id: &str,
-    prompt: &str,
-    content: String,
-    error: Option<String>,
-    duration_ms: f64,
-) {
-    let params = LogLlmCallParams {
-        user_id: user_id.to_string(),
-        log_type: log_type::IMAGE_GENERATION.to_string(),
-        message_id: None,
-        chat_id: chat_id.map(str::to_string),
-        character_id: character_id.map(str::to_string),
-        provider: provider.to_string(),
-        model_name: model_name.to_string(),
-        connection_profile_id: None,
-        image_profile_id: Some(image_profile_id.to_string()),
-        request: LogRequest {
-            messages: vec![LogRequestMessage {
-                role: "user".to_string(),
-                content: prompt.to_string(),
-                attachments: None,
-            }],
-            temperature: None,
-            max_tokens: None,
-            tools: None,
-        },
-        response: LogResponse {
-            content,
-            error,
-            finish_reason: None,
-            tool_calls: None,
-        },
-        usage: None,
-        cache_usage: None,
-        raw_provider_usage: None,
-        request_hashes: None,
-        duration_ms: Some(duration_ms),
-    };
-    let _ = log_llm_call(db, params, &LogContext::none()).await;
-}
-
-/// v4 `revisedPrompt || \`Generated ${n} image(s)${suffix}\`` — the success-log
-/// content.
-fn job_success_content(response: &ImageGenResponse, suffix: &str) -> String {
-    response
-        .images
-        .first()
-        .and_then(|i| i.revised_prompt.clone())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| format!("Generated {} image(s){suffix}", response.images.len()))
-}
-
 /// v4 `buildImageGenParams` as the two image JOBS call it: `n: 1`, `style:
 /// 'natural'`, the handler's orientation, and the profile's LoRAs + residual
 /// options.
@@ -317,6 +244,7 @@ pub(crate) fn build_job_image_params(
             chat_id: chat_id.map(str::to_string),
             job_id: job_id.map(str::to_string),
             profile_id: Some(profile_id.to_string()),
+            rerouted: None,
         },
     )
     .params
@@ -324,17 +252,17 @@ pub(crate) fn build_job_image_params(
 
 /// The two image JOBS' generation through the Concierge's failover chokepoint
 /// (v4 `8bd080267`: `attemptPortrait` / `attemptBackground` handed to
-/// [`generate_image_with_concierge_failover`]). The handler owns only what is
-/// profile-specific, and this is it: the params for whichever profile the
-/// chokepoint hands over, and the `IMAGE_GENERATION` `llm_logs` row per
-/// attempt (v4 `logLLMCall`), success or failure.
-///
-/// Two comparisons, one closure, as v4 has them: the params are the PREBUILT
-/// ones (the avatar's cache-keyed object) only for the `requested_profile_id`,
-/// and every other profile rebuilds under `other_log_context`; the success
-/// row's `(Concierge reroute)` suffix keys on `≠ unsuffixed_profile_id` (the
-/// avatar's EFFECTIVE primary after a pre-flight reroute, the story's
-/// requested profile). The handlers log their own failure and rerouted lines.
+/// [`generate_image_with_concierge_failover`]). Since v4 `9ecebf986` the
+/// attempt closure is the shared `makeLoggedImageAttempt`
+/// ([`crate::image_gen::image_attempt::make_logged_image_attempt`]): the params
+/// for whichever profile the chokepoint hands over (the PREBUILT ones — the
+/// avatar's cache-keyed object — only for `requested_profile_id`; every other
+/// profile rebuilds under the ONE `log_context`, its line carrying `profileId`
+/// and `rerouted`), and the `IMAGE_GENERATION` `llm_logs` row per attempt, success
+/// or failure, whose `(Concierge reroute)` suffix keys on `≠
+/// unsuffixed_profile_id` (v4's `primaryProfileId` — the avatar's EFFECTIVE
+/// primary after a pre-flight reroute, the story's requested profile). The
+/// handlers log their own failure and rerouted lines.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn generate_job_image<I: ImageProvider, A: ApiKeyResolver>(
     db: &Db,
@@ -348,8 +276,7 @@ pub(crate) async fn generate_job_image<I: ImageProvider, A: ApiKeyResolver>(
     final_prompt: &str,
     orientation: Orientation,
     declarations_for: &ImageDeclarationsFn,
-    requested_log_context: &'static str,
-    other_log_context: &'static str,
+    log_context: &'static str,
     concierge_policy: &ResolvedConciergePolicy,
     user_id: &str,
     chat_id: Option<&str>,
@@ -363,59 +290,35 @@ pub(crate) async fn generate_job_image<I: ImageProvider, A: ApiKeyResolver>(
     // `false` (its own refusal bubble reports it); every other job `true`.
     announce_unresolved_refusal: bool,
 ) -> Result<ImageFailoverOutcome<ImageGenResponse>, ImageFailoverError> {
-    let prebuilt_params = &prebuilt_params;
-    let attempt = |profile: FailoverProfile, key: String| async move {
-        let params = match (prebuilt_params, profile.id == requested_profile_id) {
-            (Some(prebuilt), true) => prebuilt.clone(),
-            (_, is_requested) => build_job_image_params(
-                &profile.provider,
-                &profile.model_name,
-                &load_profile_parameters(db, &profile.id),
-                final_prompt,
-                orientation,
-                declarations_for,
-                if is_requested {
-                    requested_log_context
-                } else {
-                    other_log_context
-                },
-                chat_id,
-                job_id,
-                &profile.id,
-            ),
-        };
-        let suffix = if profile.id != unsuffixed_profile_id {
-            " (Concierge reroute)"
-        } else {
-            ""
-        };
-        // v4 `const startTime = Date.now()` — a real wall-clock read bracketing
-        // the provider attempt (NOT the handlers' pinned `now_ms`).
-        let start = crate::clock::now_unix_ms();
-        let result = image_provider
-            .generate_image(&profile.provider, &key, &params)
-            .await;
-        let duration_ms = (crate::clock::now_unix_ms() - start) as f64;
-        let (content, error) = match &result {
-            Ok(response) => (job_success_content(response, suffix), None),
-            Err(e) => (String::new(), Some(e.message.clone())),
-        };
-        log_image_gen_job(
-            db,
+    let mut attempt = make_logged_image_attempt(
+        db,
+        image_provider,
+        LoggedImageAttemptOptions {
             user_id,
+            log_type: crate::services::llm_logging::log_type::IMAGE_GENERATION,
+            prompt: final_prompt,
+            primary_profile_id: unsuffixed_profile_id,
             chat_id,
             character_id,
-            &profile.provider,
-            &profile.model_name,
-            &profile.id,
-            final_prompt,
-            content,
-            error,
-            duration_ms,
-        )
-        .await;
-        result
-    };
+            params: ImageAttemptParams {
+                overrides: job_overrides(),
+                orientation: Some(orientation),
+                log_context: ImageParamsLogContext {
+                    context: log_context,
+                    chat_id: chat_id.map(str::to_string),
+                    job_id: job_id.map(str::to_string),
+                    profile_id: None,
+                    rerouted: None,
+                },
+                fallback_model: DEFAULT_IMAGE_MODEL,
+                declarations_for,
+            },
+            prebuilt: prebuilt_params.map(|params| PrebuiltImageParams {
+                profile_id: requested_profile_id.to_string(),
+                params,
+            }),
+        },
+    );
     let understudy = ImageUnderstudySource {
         db,
         api_keys,
@@ -424,7 +327,7 @@ pub(crate) async fn generate_job_image<I: ImageProvider, A: ApiKeyResolver>(
     };
     generate_image_with_concierge_failover(
         (primary, primary_key),
-        attempt,
+        |profile, key| attempt.call(profile, key),
         &ImageFailoverContext {
             db,
             user_id,
@@ -733,7 +636,6 @@ mod tests {
             Orientation::Square,
             &declarations,
             "test.image-job",
-            "test.image-job.concierge-reroute",
             &settings,
             "user-1",
             None,

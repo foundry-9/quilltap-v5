@@ -33,9 +33,7 @@ use serde_json::{json, Value};
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::runtime::Db;
 use crate::db::DbError;
-use crate::image_gen::params_builder::{
-    build_image_gen_params, ImageGenOverrides, ImageParamsLogContext, ImageProfileLike,
-};
+use crate::image_gen::params_builder::{ImageGenOverrides, ImageParamsLogContext};
 use crate::image_gen::Orientation;
 use crate::image_gen_data::image_declarations_for;
 use crate::model::image::ImageGenParams;
@@ -474,64 +472,40 @@ pub async fn wardrobe_transfer_apply_with_codec(
 // POST /api/v1/wardrobe/preview-avatar (tier 2) — the render seam + handler
 // ===========================================================================
 
-/// What the preview route needs from the host: ONE raw provider render at
-/// v4's fixed portrait geometry (`size: '1024x1792'`, `style: 'natural'`,
-/// `n: 1`) ALREADY WebP-transcoded (v4 `createImageProvider(...).generateImage`
-/// → `convertToWebP`). Both halves are host capabilities (provider IO + the
-/// pixel codec), so the pair rides one erased seam; the harness cans it with
-/// the oracle-reported post-transcode bytes (the photos `*_bytes` precedent),
-/// so everything below — sha256, the vault write, the `files` row, the
-/// response — diffs for real.
-#[derive(Clone, Debug)]
-pub struct AvatarPreviewRenderRequest {
-    pub provider: String,
-    /// The request the shared builder produced (v4 `84f33ce94`). It used to be
-    /// a hand-rolled `{prompt, model, n:1, size:'1024x1792', quality,
-    /// style:'natural'}` — which read exactly ONE key off the profile and
-    /// pinned a size only OpenAI ever accepted — so the preview lied about the
-    /// avatar the same profile would really produce.
-    pub params: ImageGenParams,
-    pub api_key: String,
-    /// The character's display name (v4 mints the provider filename from it).
-    pub character_name: String,
-}
+// === P4.D283: preview-avatar (owned) ===
 
-/// The transcoded render (v4's `converted` + the provider's revised prompt).
-#[derive(Clone, Debug)]
-pub struct AvatarPreviewImage {
-    pub buffer: Vec<u8>,
-    pub mime_type: String,
-    /// The post-transcode filename (v4
-    /// `avatar_preview_<safeName>_<Date.now()>.webp` — the host mints the
-    /// stamp; the harness replays the oracle's).
-    pub filename: String,
-    pub revised_prompt: Option<String>,
-}
-
-/// A render failure, mirroring v4's arms.
-#[derive(Clone, Debug)]
-pub enum AvatarPreviewError {
-    /// The v5-only unwired-seam refusal (loud, typed — the host wire is
-    /// DEFERRED to unification; see the P4.9f1 lane record).
-    NotConfigured,
-    /// v4 `serverError('Image provider returned no image data')`.
-    NoImageData,
-    /// A thrown provider/transcode failure — v4's middleware generic 500.
-    Failed(String),
-}
-
-/// The one-shot render contract the host implements at unification.
+/// What the preview route needs from the host (P4.D283, round ruling R-G): the
+/// image-provider IO and the pixel codec — both host capabilities, riding one
+/// erased seam. The CORE threads v4's `9ecebf986` pipeline AROUND them:
+/// `resolveAvatarImageProfile` → the shared logged attempt
+/// (`image_gen::image_attempt`) inside `generate_image_with_concierge_failover`
+/// (so a refusal is retried once on the uncensored understudy and `rerouted`
+/// / `trail` are REAL) → `decode_provider_image` over the codec → the vault
+/// write → `create_generated_file_row`. The host answers ONE
+/// `provider.generateImage(params, apiKey)` per attempt and lends its codec
+/// (v4 `sharp`); the harness cans the provider and uses the real codec.
 pub trait AvatarPreviewRenderer: Send + Sync {
-    fn render<'a>(
+    /// One image-provider call (v4 `createImageProvider(profile.provider)
+    /// .generateImage(params, apiKey)`), as the chokepoint asks it per profile.
+    fn generate<'a>(
         &'a self,
-        req: &'a AvatarPreviewRenderRequest,
+        provider: &'a str,
+        api_key: &'a str,
+        params: &'a ImageGenParams,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<Output = Result<AvatarPreviewImage, AvatarPreviewError>>
-                + Send
+            dyn std::future::Future<
+                    Output = Result<
+                        crate::model::image::ImageGenResponse,
+                        crate::model::image::ImageGenError,
+                    >,
+                > + Send
                 + 'a,
         >,
     >;
+
+    /// The pixel codec `decodeProviderImage`'s `convertToWebP` runs over.
+    fn codec(&self) -> std::sync::Arc<dyn crate::services::file_storage::PixelCodec>;
 }
 
 /// A type-erased renderer (an `Arc<dyn …>`).
@@ -543,33 +517,61 @@ impl ErasedAvatarPreview {
         Self(std::sync::Arc::new(renderer))
     }
 
-    /// The not-wired default — every render answers
-    /// [`AvatarPreviewError::NotConfigured`], so the guard arms upstream stay
-    /// live and only the render step refuses.
+    /// The not-wired default — every provider call answers the loud
+    /// not-assembled refusal (as the generation's `ImageGenError`, so it surfaces
+    /// through v4's own 502 arm), and the guard arms upstream stay live.
     pub fn none() -> Self {
         struct NotConfigured;
         impl AvatarPreviewRenderer for NotConfigured {
-            fn render<'a>(
+            fn generate<'a>(
                 &'a self,
-                _req: &'a AvatarPreviewRenderRequest,
+                _provider: &'a str,
+                _api_key: &'a str,
+                _params: &'a ImageGenParams,
             ) -> std::pin::Pin<
                 Box<
-                    dyn std::future::Future<Output = Result<AvatarPreviewImage, AvatarPreviewError>>
-                        + Send
+                    dyn std::future::Future<
+                            Output = Result<
+                                crate::model::image::ImageGenResponse,
+                                crate::model::image::ImageGenError,
+                            >,
+                        > + Send
                         + 'a,
                 >,
             > {
-                Box::pin(async { Err(AvatarPreviewError::NotConfigured) })
+                Box::pin(async {
+                    Err(crate::model::image::ImageGenError::new(
+                        NOT_CONFIGURED_MESSAGE,
+                    ))
+                })
+            }
+            fn codec(&self) -> std::sync::Arc<dyn crate::services::file_storage::PixelCodec> {
+                std::sync::Arc::new(crate::services::file_storage::NotConfiguredPixelCodec)
             }
         }
         Self(std::sync::Arc::new(NotConfigured))
     }
 
-    pub async fn render(
+    /// The seam's codec.
+    pub fn codec(&self) -> std::sync::Arc<dyn crate::services::file_storage::PixelCodec> {
+        self.0.codec()
+    }
+}
+
+/// The v5-only unwired-seam refusal (loud, typed — the host wire assembles the
+/// real provider; the P4.9f1 lane record).
+const NOT_CONFIGURED_MESSAGE: &str =
+    "wardrobePreviewAvatar: the avatar-preview render seam is not assembled \
+     (the host wire is deferred to unification — the P4.9f1 lane record)";
+
+impl crate::model::image::ImageProvider for ErasedAvatarPreview {
+    async fn generate_image(
         &self,
-        req: &AvatarPreviewRenderRequest,
-    ) -> Result<AvatarPreviewImage, AvatarPreviewError> {
-        self.0.render(req).await
+        provider: &str,
+        api_key: &str,
+        params: &ImageGenParams,
+    ) -> Result<crate::model::image::ImageGenResponse, crate::model::image::ImageGenError> {
+        self.0.generate(provider, api_key, params).await
     }
 }
 
@@ -715,45 +717,48 @@ async fn run_wardrobe_preview_avatar(
         .unwrap_or_default()
         .to_string();
 
-    // Image profile: explicit override → the default → the first → none.
+    // The one-shot pick, else the user's default — each checked for an API key
+    // (v4 `resolveAvatarImageProfile(user.id, repos, { override })`, C1 §8).
     let override_id = parsed.image_profile_id.clone();
+    let uid_for_profile = user_id.to_string();
     let profile = match db.read_main(move |conn| {
-        let mut profile = None;
-        if let Some(id) = override_id.as_deref() {
-            profile = crate::db::image_profiles::find_by_id(conn, id)?;
-        }
-        if profile.is_none() {
-            let all = crate::db::image_profiles::find_all(conn)?;
-            profile = all
-                .iter()
-                .find(|p| p.get("isDefault").and_then(Value::as_bool) == Some(true))
-                .cloned()
-                .or_else(|| all.into_iter().next());
-        }
-        Ok(profile)
+        Ok(
+            crate::services::image_profile_resolution::resolve_avatar_image_profile(
+                conn,
+                &uid_for_profile,
+                override_id.as_deref(),
+                None,
+            ),
+        )
     }) {
-        Ok(Some(p)) => p,
-        Ok(None) => return bad_request("No image profile available for avatar generation"),
+        Ok(p) => p,
         Err(e) => return internal(e),
     };
-
-    // `!imageProfile.apiKeyId` — null/absent/empty are all falsy.
+    // `!imageProfile?.apiKeyId` — null/absent/empty are all falsy; one sentence
+    // for "no profile" and "a profile with no key" (v4 `9ecebf986`).
+    let Some(profile) = profile else {
+        return bad_request(NO_AVATAR_IMAGE_PROFILE_MESSAGE);
+    };
     let Some(api_key_id) = profile
         .get("apiKeyId")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
     else {
-        return bad_request("Selected image profile has no API key configured");
+        return bad_request(NO_AVATAR_IMAGE_PROFILE_MESSAGE);
     };
-    // v4 `findApiKeyByIdAndUserId` (`preview-avatar/route.ts:78-84`) is a
-    // fallback read: a read error logs its line and is `null`, so it is this
-    // 400 — never the 500 v5 had answered (P4.139).
+    // v4 `findApiKeyByIdAndUserId` is a fallback read: a read error logs its
+    // line and is `null`, so it is this 400 — never a 500 (P4.139).
     let api_key =
         match crate::services::api_key_service::read_api_key_scoped(db, &api_key_id, user_id) {
             Some(k) if !k.key_value.is_empty() => k.key_value,
             _ => return bad_request("API key for image profile is missing or invalid"),
         };
+    let profile_id = profile
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
 
     // Aurora character aesthetic — GLOBAL tier (a preview has no project context).
     let character_aesthetic = crate::services::aesthetics::resolve_aesthetic(
@@ -792,142 +797,285 @@ async fn run_wardrobe_preview_avatar(
         );
     }
     let prompt = prompt_result.prompt;
+    let leaf_counts = &prompt_result.leaf_counts;
+    let leaf_counts_json = json!({
+        "top": leaf_counts.top,
+        "bottom": leaf_counts.bottom,
+        "footwear": leaf_counts.footwear,
+        "accessories": leaf_counts.accessories,
+        "hair": leaf_counts.hair,
+    })
+    .to_string();
 
-    // The render (provider + transcode — the erased host seam).
-    // Through the shared builder, so the preview shows what the profile actually
-    // produces — LoRAs, residual options and all — rather than a hand-rolled
-    // subset that would make the preview lie about the real avatar. Portrait is
-    // resolved onto the provider's own mechanism instead of the hardcoded
-    // 1024x1792 that only OpenAI ever accepted.
-    let provider = profile
-        .get("provider")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let model_name = profile.get("modelName").and_then(Value::as_str);
-    let parameters = profile.get("parameters");
-    let params = build_image_gen_params(
-        ImageProfileLike {
-            provider: &provider,
-            model_name,
-            parameters,
+    tracing::debug!(
+        context = PREVIEW_LOG_CONTEXT,
+        characterId = %parsed.character_id,
+        profileId = %profile_id,
+        profileOverride = parsed.image_profile_id.is_some(),
+        leafCountsJson = %leaf_counts_json,
+        "[Avatar Preview] Generating preview"
+    );
+
+    // No chat: the global Concierge policy decides whether a refusal may fail
+    // over; there is no Locked state to honour and nothing to announce.
+    let uid_for_settings = user_id.to_string();
+    let chat_settings = db
+        .read_main(move |c| crate::db::chat_settings::find_by_user_id(c, &uid_for_settings))
+        .ok()
+        .flatten();
+    let concierge_policy = crate::services::dangerous_content::resolver::resolve_concierge_settings(
+        chat_settings.as_ref(),
+        None,
+    );
+
+    // Portrait through the shared builder, so the preview shows what the profile
+    // actually produces — LoRAs, residual options and all — mapped onto the
+    // provider's own shape mechanism, exactly as the chat avatar job asks (v4
+    // `makeLoggedImageAttempt`, `9ecebf986`: the `IMAGE_GENERATION` row is the
+    // attempt's now — the pre-pin preview wrote none).
+    let character_id_owned = parsed.character_id.clone();
+    let mut attempt = crate::image_gen::image_attempt::make_logged_image_attempt(
+        db,
+        renderer,
+        crate::image_gen::image_attempt::LoggedImageAttemptOptions {
+            user_id,
+            log_type: crate::services::llm_logging::log_type::IMAGE_GENERATION,
+            prompt: &prompt,
+            primary_profile_id: &profile_id,
+            chat_id: None,
+            character_id: Some(&character_id_owned),
+            params: crate::image_gen::image_attempt::ImageAttemptParams {
+                overrides: ImageGenOverrides {
+                    n: Some(1.0),
+                    style: Some("natural".to_string()),
+                    ..Default::default()
+                },
+                orientation: Some(Orientation::Portrait),
+                log_context: ImageParamsLogContext {
+                    context: PREVIEW_LOG_CONTEXT,
+                    ..Default::default()
+                },
+                fallback_model: crate::image_gen::image_attempt::DEFAULT_IMAGE_MODEL,
+                declarations_for: &image_declarations_for,
+            },
+            prebuilt: None,
         },
-        &prompt,
-        &ImageGenOverrides {
-            n: Some(1.0),
-            style: Some("natural".to_string()),
-            ..Default::default()
-        },
-        Some(Orientation::Portrait),
-        "dall-e-3",
-        &image_declarations_for(&provider),
-        &ImageParamsLogContext {
-            context: "api.v1.wardrobe.preview-avatar",
-            profile_id: profile
-                .get("id")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            ..Default::default()
+    );
+    let api_keys = crate::services::dangerous_content::provider_routing::DbApiKeys(db.clone());
+    let understudy = crate::services::dangerous_content::image_failover::ImageUnderstudySource {
+        db,
+        api_keys: &api_keys,
+        user_id,
+        uncensored_image_profile_id: concierge_policy.desk.image_profile_id.as_deref(),
+    };
+    let failover = match crate::services::dangerous_content::image_failover::generate_image_with_concierge_failover(
+        (
+            crate::services::dangerous_content::image_failover::FailoverProfile::from_row(&profile),
+            api_key,
+        ),
+        |candidate, key| attempt.call(candidate, key),
+        &crate::services::dangerous_content::image_failover::ImageFailoverContext {
+            db,
+            user_id,
+            chat_id: None,
+            chat: None,
+            purpose: crate::services::dangerous_content::image_failover::ImagePurpose::Avatar,
+            concierge_policy: &concierge_policy,
+            understudy: &understudy,
+            profile_kind: crate::services::route_trail::RouteProfileKind::Image,
+            primary_via: crate::services::route_trail::RouteAttemptVia::Primary,
+            announce_unresolved_refusal: true,
         },
     )
-    .params;
-    let render_req = AvatarPreviewRenderRequest {
-        provider,
-        params,
-        api_key,
-        character_name: character_name.clone(),
+    .await
+    {
+        Ok(f) => f,
+        Err(failure) => {
+            let trail = failure
+                .concierge_trail()
+                .map(<[crate::services::route_trail::RouteAttempt]>::to_vec);
+            let refused = trail.as_ref().is_some_and(|t| {
+                t.iter().any(|r| {
+                    r.outcome == crate::services::route_trail::RouteAttemptOutcome::Refused
+                })
+            });
+            let concierge_trail = trail.as_ref().map(|t| {
+                Value::Array(
+                    t.iter()
+                        .map(|r| json!({ "profileName": r.profile_name, "outcome": r.outcome.as_str() }))
+                        .collect(),
+                )
+                .to_string()
+            });
+            tracing::warn!(
+                context = PREVIEW_LOG_CONTEXT,
+                characterId = %parsed.character_id,
+                error = %failure.error.message,
+                refused = refused,
+                conciergeTrailJson = concierge_trail.as_deref(),
+                "[Avatar Preview] Image generation failed"
+            );
+            // v4 `errorResponse(refused ? 'The image provider declined to draw this
+            // portrait' : `Image generation failed: ${message}`, refused ? 422 :
+            // 502, { trail, refused })` — the web edge maps the 502 off
+            // `details.refused === false` (the images route's idiom).
+            let details = json!({
+                "trail": trail
+                    .as_ref()
+                    .map(|t| serde_json::to_value(t).unwrap_or(Value::Null)),
+                "refused": refused,
+            });
+            let kind = if refused {
+                ErrorKind::Unprocessable
+            } else {
+                ErrorKind::Internal
+            };
+            let message = if refused {
+                "The image provider declined to draw this portrait".to_string()
+            } else {
+                format!("Image generation failed: {}", failure.error.message)
+            };
+            let mut response = Response::error(kind, message);
+            if let Response::Error(e) = &mut response {
+                e.details = Some(Box::new(details));
+            }
+            return response;
+        }
     };
-    let image = match renderer.render(&render_req).await {
-        Ok(img) => img,
-        Err(AvatarPreviewError::NotConfigured) => {
-            return Response::error(
-                ErrorKind::Internal,
-                "wardrobePreviewAvatar: the avatar-preview render seam is not assembled \
-                 (the host wire is deferred to unification — the P4.9f1 lane record)",
-            )
-        }
-        Err(AvatarPreviewError::NoImageData) => {
-            return internal("Image provider returned no image data")
-        }
-        // v4: an uncaught provider throw → the middleware's generic 500.
-        Err(AvatarPreviewError::Failed(_)) => return internal("Internal server error"),
+
+    // v4 `decodeProviderImage(failover.result, `avatar_preview_${safeName}`)`:
+    // the decoder owns the minted name now (`_<Date.now()>.<ext>`, `.webp` after
+    // the transcode).
+    let safe_name: String = character_name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let codec = renderer.codec();
+    let decoded = crate::image_gen::image_attempt::decode_provider_image(
+        &crate::image_gen::image_attempt::PixelCodecTranscoder(codec.as_ref()),
+        Some(&failover.result),
+        &format!("avatar_preview_{safe_name}"),
+        0,
+        crate::clock::now_unix_ms(),
+    );
+    let Some(decoded) = decoded else {
+        return internal("Image provider returned no image data");
     };
 
     // Persist: the character-vault `images/history/` write + the `files` row.
     // Any failure in this block is v4's `serverError('Failed to save avatar
-    // preview')` (its try/catch around exactly this region).
-    let sha256 = crate::photos::keep_image_markdown::sha256_of_buffer(&image.buffer);
+    // preview')` (its try/catch around exactly this region). Linked to the
+    // character so it surfaces in the character's gallery, but NOT to a chat —
+    // the caller may have no chat context, and even when they do, this preview
+    // is intentionally not bound to it. No `description` label on the link or
+    // the row (bug 132): the prompt is the account of record.
     let file_id = uuid::Uuid::new_v4().to_string();
-    let model_name = render_req.params.model.clone();
-    let description = format!("{character_name} — outfit preview");
+    let model_name = failover.profile.model_name.clone();
     let character_id = parsed.character_id.clone();
-    let image_for_write = image.clone();
     let now_owned = now.to_string();
     let uid_owned = user_id.to_string();
     let file_id_owned = file_id.clone();
     let prompt_owned = prompt.clone();
+    let decoded_for_write = decoded.clone();
 
     let saved = with_both_conns(db, move |main, mount| {
         let written = crate::services::image_job_storage::write_character_avatar_to_vault(
             main,
             mount,
             &character_id,
-            &image_for_write.filename,
-            &image_for_write.buffer,
-            &image_for_write.mime_type,
-            Some(&description),
+            &decoded_for_write.filename,
+            &decoded_for_write.buffer,
+            &decoded_for_write.mime_type,
+            None,
             crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing(
                 blob_webp.as_deref(),
             ),
         )?;
-        // The vault bridge transcodes bitmap uploads; the FileEntry records the
-        // post-transcode mime/size (v4's comment, preserved).
-        crate::db::files::FilesRepository::new(main).create(
-            &crate::db::files::FileCreate {
-                user_id: uid_owned.clone(),
-                sha256: sha256.clone(),
-                original_filename: image_for_write.filename.clone(),
-                mime_type: written.stored_mime_type.clone(),
-                size: written.size_bytes as f64,
-                width: Some(1024.0),
-                height: Some(1792.0),
-                is_plain_text: None,
-                // Linked + tagged to the character, NOT to any chat (v4's
-                // deliberate isolation).
+        // The vault bridge transcodes bitmap uploads; the row records the
+        // post-transcode mime/size (v4 `createGeneratedFileRow(repos, { userId,
+        // sha256, originalFilename, stored: written, width, height, linkedTo:
+        // [characterId], tags: [characterId], generation })`).
+        crate::files::generated_file_row::create_generated_file_row(
+            main,
+            &crate::files::generated_file_row::GeneratedFileRowInput {
+                user_id: &uid_owned,
+                id: Some(&file_id_owned),
+                sha256: &decoded_for_write.sha256,
+                original_filename: &decoded_for_write.filename,
+                stored: &crate::files::generated_file_row::StoredImageBytes {
+                    storage_key: written.storage_key.clone(),
+                    stored_mime_type: written.stored_mime_type.clone(),
+                    size_bytes: written.size_bytes as i64,
+                },
+                width: decoded_for_write.width,
+                height: decoded_for_write.height,
                 linked_to: vec![character_id.clone()],
-                source: "GENERATED".to_string(),
-                category: "IMAGE".to_string(),
-                generation_prompt: Some(prompt_owned.clone()),
-                generation_model: Some(model_name.clone()),
-                generation_revised_prompt: image_for_write.revised_prompt.clone(),
-                generation_key: None,
-                description: Some(description.clone()),
                 tags: vec![character_id.clone()],
+                source: None,
+                generation: Some(&crate::files::generated_file_row::GenerationRecord {
+                    prompt: Some(prompt_owned.clone()),
+                    model: Some(model_name.clone()),
+                    revised_prompt: decoded_for_write.revised_prompt.clone(),
+                }),
+                generation_key: None,
+                description: None,
                 project_id: None,
                 folder_path: None,
-                storage_key: Some(written.storage_key.clone()),
-                file_status: "ok".to_string(),
-            },
-            &crate::db::files::CreateOptions {
-                id: file_id_owned.clone(),
-                created_at: now_owned.clone(),
-                updated_at: now_owned.clone(),
+                now_iso: &now_owned,
             },
         )?;
-        Ok(())
+        Ok(written.stored_mime_type)
     })
     .await;
 
     match saved {
-        Ok(()) => Response::Wardrobe(json!({
-            "fileId": file_id,
-            "url": format!("/api/v1/files/{file_id}?action=download"),
-            "mimeType": image.mime_type,
-            "prompt": prompt,
-        })),
-        Err(_) => internal("Failed to save avatar preview"),
+        Ok(stored_mime_type) => {
+            tracing::info!(
+                context = PREVIEW_LOG_CONTEXT,
+                characterId = %parsed.character_id,
+                fileId = %file_id,
+                profileId = %failover.profile.id,
+                rerouted = failover.rerouted,
+                "[Avatar Preview] Preview saved"
+            );
+            let trail = if failover.trail.is_empty() {
+                Value::Null
+            } else {
+                serde_json::to_value(&failover.trail).unwrap_or(Value::Null)
+            };
+            Response::Wardrobe(json!({
+                "fileId": file_id,
+                "url": format!("/api/v1/files/{file_id}?action=download"),
+                "mimeType": stored_mime_type,
+                "prompt": prompt,
+                "rerouted": failover.rerouted,
+                "trail": trail,
+            }))
+        }
+        Err(e) => {
+            // v4 `logger.error('[Avatar Preview] Failed to save preview image',
+            // { context, characterId }, error)` — the error as the record's
+            // own `error` object.
+            tracing::error!(
+                context = PREVIEW_LOG_CONTEXT,
+                characterId = %parsed.character_id,
+                error = %e,
+                "[Avatar Preview] Failed to save preview image"
+            );
+            internal("Failed to save avatar preview")
+        }
     }
 }
+
+/// v4 `preview-avatar/route.ts` `LOG_CONTEXT`.
+const PREVIEW_LOG_CONTEXT: &str = "api.v1.wardrobe.preview-avatar";
+
+/// v4 `9ecebf986`: ONE sentence for "no usable profile" and "the profile has no
+/// key" (`resolveAvatarImageProfile` already requires `apiKeyId`).
+pub const NO_AVATAR_IMAGE_PROFILE_MESSAGE: &str =
+    "No image profile is configured. Set one in Settings → Images before generating avatars.";
+
+// === end P4.D283 ===
 
 // ===========================================================================
 // POST /api/v1/wardrobe/analyze-image — REFUSAL-ARMED (tier 3, §4)

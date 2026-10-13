@@ -10,19 +10,22 @@
 //! `Default::default()` keeps every capture test green while logging an empty
 //! `context`.
 //!
-//! v4's anchors, by call site:
+//! v4's anchors, by call site (at the `4a38222e6` pin — P4.D283, v4
+//! `9ecebf986`: ONE context per site; the `.concierge-route` /
+//! `.concierge-reroute` suffixes are GONE, and the shared image attempt
+//! (`image-attempt.ts`) spreads `profileId` + `rerouted` into every build's
+//! context instead):
 //!
-//!   * `image-generation-handler.ts:339` — `tools.generate_image`
-//!   * `image-generation-handler.ts:434` — `tools.generate_image.concierge-reroute`
-//!   * `image-generation-handler.ts:869` — `tools.generate_image.style-options`
-//!     (`resolveProfileLoras`, BEFORE the params build — the one this lane
+//!   * `image-generation-handler.ts` — `tools.generate_image` (the attempt)
+//!   * `image-generation-handler.ts` — `tools.generate_image.style-options`
+//!     (`resolveProfileLoras`, BEFORE the params build — the one P4.70
 //!     restored; without it a stored-list problem raised during the crafter's
 //!     pre-pass is indistinguishable from one raised at generation time)
-//!   * `character-avatar.ts:239` / `:320` — `background-jobs.character-avatar`(`.concierge-route` —
-//!     v4 `8bd080267` renamed this one site's suffix; the other two keep `-reroute`)
-//!   * `story-background.ts:648` / `:787` — `background-jobs.story-background`(`.concierge-reroute`)
-//!   * `app/api/v1/images/route.ts:282` — `api.v1.images.generate`
-//!   * `app/api/v1/wardrobe/preview-avatar/route.ts:111` — `api.v1.wardrobe.preview-avatar`
+//!   * `character-avatar.ts` — `background-jobs.character-avatar`
+//!   * `story-background.ts` — `background-jobs.story-background`
+//!   * `item-image-generation.ts` — `wardrobe.item-image-generation`
+//!   * `app/api/v1/images/route.ts` — `api.v1.images.generate`
+//!   * `app/api/v1/wardrobe/preview-avatar/route.ts` — `api.v1.wardrobe.preview-avatar`
 //!
 //! A differential cannot see a log-only fix, so this is a source census in the
 //! `db_error_key_guard` / `archived_wearer_read_guard` idiom.
@@ -59,23 +62,19 @@ fn the_style_options_resolution_carries_v4s_anchor_and_the_chat_id() {
 
 #[test]
 fn every_v4_image_params_anchor_still_has_a_v5_call_site() {
-    // The eight literals v5 has sites for, searched across the files that own
-    // them. (`params_builder.rs`'s doc comment says "nine literals across the
-    // five consolidated sites"; the ninth is measured below.)
+    // The seven literals v5 has sites for, searched across the files that own
+    // them (`params_builder.rs`'s doc comment: ONE literal per site since v4
+    // `9ecebf986`).
     for anchor in [
         "tools.generate_image",
-        "tools.generate_image.concierge-reroute",
         "tools.generate_image.style-options",
         "background-jobs.character-avatar",
-        // v4 `8bd080267`: the avatar job's rebuild context is `.concierge-route`
-        // (`character-avatar.ts:321` at `49059fb14`), not `-reroute`.
-        "background-jobs.character-avatar.concierge-route",
         "background-jobs.story-background",
-        "background-jobs.story-background.concierge-reroute",
+        "wardrobe.item-image-generation",
         "api.v1.wardrobe.preview-avatar",
-        // P4.76 landed `POST /api/v1/images?action=generate`, so v4's ninth
-        // anchor finally has a v5 call site. The tripwire that asserted it
-        // ABSENT is gone, exactly as its own doc comment instructed.
+        // P4.76 landed `POST /api/v1/images?action=generate`, so v4's images
+        // anchor has a v5 call site. The tripwire that asserted it ABSENT is
+        // gone, exactly as its own doc comment instructed.
         "api.v1.images.generate",
     ] {
         assert!(
@@ -85,6 +84,50 @@ fn every_v4_image_params_anchor_still_has_a_v5_call_site() {
     }
 }
 
+/// v4 `9ecebf986` deleted the per-site reroute contexts
+/// (`tools.generate_image.concierge-reroute`,
+/// `background-jobs.character-avatar.concierge-route`,
+/// `background-jobs.story-background.concierge-reroute`): a rerouted build now
+/// logs under its site's ONE context with `rerouted: true`. A literal coming
+/// back is a site that stopped going through the shared attempt.
+#[test]
+fn no_retired_concierge_suffix_anchor_survives() {
+    let hay = haystack();
+    for retired in [
+        "\"tools.generate_image.concierge-reroute\"",
+        "\"background-jobs.character-avatar.concierge-route\"",
+        "\"background-jobs.story-background.concierge-reroute\"",
+    ] {
+        assert!(
+            !hay.contains(retired),
+            "the retired reroute anchor {retired} is back in a v5 call site"
+        );
+    }
+}
+
+/// The shared attempt is where `profileId` + `rerouted` ride into the builder's
+/// log context (v4 `image-attempt.ts:116`: `logContext: { ...options.params?.
+/// logContext, profileId: profile.id, rerouted }`) — and the `[Image LoRA]` +
+/// params-builder lines render the key.
+#[test]
+fn the_shared_attempt_spreads_profile_id_and_rerouted_into_the_builder_context() {
+    let attempt = source("image_gen/image_attempt.rs");
+    assert!(
+        attempt.contains("profile_id: Some(profile.id.clone()),")
+            && attempt.contains("rerouted: Some(rerouted),"),
+        "the attempt must spread `profileId` + `rerouted` into the params builder's log context"
+    );
+    let lora = source("image_gen/lora_support.rs");
+    assert!(
+        lora.matches("rerouted = ?log_context.rerouted,").count() >= 5,
+        "every `[Image LoRA]` line renders the `rerouted` key"
+    );
+    assert!(
+        source("image_gen/params_builder.rs").contains("rerouted = ?log_context.rerouted,"),
+        "the params builder's own line renders the `rerouted` key"
+    );
+}
+
 /// Every v5 file that names an image-params call-site anchor.
 fn haystack() -> String {
     [
@@ -92,6 +135,8 @@ fn haystack() -> String {
         "services/image_job_common.rs",
         "services/character_avatar_job.rs",
         "services/story_background_job.rs",
+        "services/wardrobe_item_image_generation.rs",
+        "image_gen/image_attempt.rs",
         "api/wardrobe.rs",
         "api/image_profiles.rs",
         "api/images.rs",

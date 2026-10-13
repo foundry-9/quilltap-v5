@@ -37,6 +37,9 @@
 //! (`character.description || ''`, `desc.shortPrompt || desc.mediumPrompt`, …).
 //! `.trim()` on a JS string is [`crate::jsstr::js_trim`] (Unicode whitespace).
 
+use crate::characters::physical_description::{
+    pick_physical_description, PhysicalDescriptionProfile, PhysicalDescriptionVariants,
+};
 use crate::chat_timestamp::{
     calculate_current_timestamp, should_inject_timestamp, InvalidTimezone, TimestampConfig,
 };
@@ -95,10 +98,11 @@ pub fn first_active_scenario_content(scenarios: &[ScenarioEntry]) -> String {
 
 /// The subset of `character.physicalDescription` the identity stack reads.
 ///
-/// `name` is required in v4's schema; the prompt chain is
-/// `shortPrompt || mediumPrompt || longPrompt || completePrompt ||
-/// fullDescription || ''` — note `headAndShouldersPrompt` is deliberately NOT in
-/// the chain (it feeds avatar generation, not the identity stack).
+/// `name` is required in v4's schema; the prompt chain is the shared
+/// `self-image` pick (`characters::physical_description` — short ‖ medium ‖
+/// long ‖ complete ‖ full, trimmed) — note `headAndShouldersPrompt` is
+/// deliberately NOT in that order (it feeds avatar generation, not the
+/// identity stack).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PhysicalDescription {
     pub name: String,
@@ -108,6 +112,21 @@ pub struct PhysicalDescription {
     pub long_prompt: Option<String>,
     pub complete_prompt: Option<String>,
     pub full_description: Option<String>,
+}
+
+impl PhysicalDescription {
+    /// The variants as the shared pick reads them (the identity stack never
+    /// carries the head-and-shoulders crop).
+    pub fn variants(&self) -> PhysicalDescriptionVariants<'_> {
+        PhysicalDescriptionVariants {
+            head_and_shoulders_prompt: None,
+            short_prompt: self.short_prompt.as_deref(),
+            medium_prompt: self.medium_prompt.as_deref(),
+            long_prompt: self.long_prompt.as_deref(),
+            complete_prompt: self.complete_prompt.as_deref(),
+            full_description: self.full_description.as_deref(),
+        }
+    }
 }
 
 /// The character fields the system-prompt builder consumes. A faithful subset of
@@ -359,21 +378,13 @@ pub fn build_identity_stack(options: &BuildIdentityStackOptions<'_>) -> String {
         } else {
             String::new()
         };
-        // shortPrompt || mediumPrompt || longPrompt || completePrompt ||
-        // fullDescription || '' — first non-empty.
-        let desc_text = [
-            &desc.short_prompt,
-            &desc.medium_prompt,
-            &desc.long_prompt,
-            &desc.complete_prompt,
-            &desc.full_description,
-        ]
-        .into_iter()
-        .find_map(|v| match v {
-            Some(s) if !s.is_empty() => Some(s.as_str()),
-            _ => None,
-        })
-        .unwrap_or("");
+        // v4 `pickPhysicalDescription(desc, 'self-image')` (`9ecebf986`): the
+        // order is unchanged (short ‖ medium ‖ long ‖ complete ‖ full) but the
+        // winner is TRIMMED and a whitespace-only variant falls through.
+        let desc_text = pick_physical_description(
+            Some(&desc.variants()),
+            PhysicalDescriptionProfile::SelfImage,
+        );
         if !desc_text.is_empty() {
             parts.push(format!(
                 "\n## Physical Appearance\nThis is how you look — \"{}\"{context_note}: {desc_text}",

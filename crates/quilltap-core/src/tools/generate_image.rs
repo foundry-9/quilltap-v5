@@ -61,13 +61,19 @@ use crate::cheap_llm::{
 use crate::db::doc_mount_file_links::{DocMountFileLinksRepository, LinkBlobInput};
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::files::generated_file_row::{
+    create_generated_file_row, GeneratedFileRowInput, GenerationRecord, StoredImageBytes,
+};
+use crate::image_gen::image_attempt::{
+    decode_provider_image, make_logged_image_attempt, ImageAttemptParams, LoggedImageAttemptOptions,
+};
 use crate::image_gen::params_builder::{
-    build_image_gen_params, resolve_profile_loras, ImageDeclarations, ImageDeclarationsFn,
-    ImageGenOverrides, ImageParamsLogContext, ImageProfileLike,
+    resolve_profile_loras, ImageDeclarations, ImageDeclarationsFn, ImageGenOverrides,
+    ImageParamsLogContext, ImageProfileLike,
 };
 use crate::image_gen::Orientation;
 use crate::model::completion::CompletionProvider;
-use crate::model::image::{ImageProvider, ImageTranscoder, TranscodeInput};
+use crate::model::image::{ImageProvider, ImageTranscoder};
 use crate::pronoun_gender::gender_from_pronouns;
 use crate::services::activity_kinds::ActivityKind;
 use crate::services::activity_registry::track_activity;
@@ -93,10 +99,7 @@ use crate::services::image_scene_tasks::{
     craft_image_prompt, DepictionGuideline, ExpansionClothing, ExpansionPlaceholder,
     ExpansionTiers, ImagePromptExpansionContext,
 };
-use crate::services::llm_logging::{
-    log_llm_call, log_type, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage,
-    LogResponse,
-};
+use crate::services::llm_logging::log_type;
 use crate::services::route_trail::{RouteAttempt, RouteAttemptVia, RouteProfileKind};
 // P4.D209 OUT-OF-MANDATE — the one-home fold. v4 has a SINGLE
 // `normaliseBlobRelativePath` (`lib/mount-index/blob-transcode.ts`); v5 had
@@ -1329,42 +1332,43 @@ pub(crate) fn save_generated_image(
     // Inherit tags from linked entities (e.g. the chat).
     let inherited_tags = get_inherited_tags(main, mount, &linked_to, user_id);
 
-    // Create the `files` metadata row with the new id.
+    // Create the `files` metadata row with the new id — v4 `createGeneratedFileRow(
+    // repos, { id: fileId, userId, sha256, originalFilename, stored: written, width,
+    // height, linkedTo, tags: inheritedTags, generation: { prompt, model,
+    // revisedPrompt } })` (`9ecebf986`): `description` null, no project scoping,
+    // `source` GENERATED / `category` IMAGE by default.
     let file_id = uuid::Uuid::new_v4().to_string();
     let now = crate::clock::now_iso();
-    let files = crate::db::files::FilesRepository::new(main);
-    files
-        .create(
-            &crate::db::files::FileCreate {
-                user_id: user_id.to_string(),
-                sha256: sha256.clone(),
-                original_filename: safe_name.clone(),
-                mime_type: stored.stored_mime_type.clone(),
-                size: stored.size_bytes as f64,
-                width: converted.width,
-                height: converted.height,
-                is_plain_text: None,
-                linked_to: linked_to.clone(),
-                source: "GENERATED".to_string(),
-                category: "IMAGE".to_string(),
-                generation_prompt: Some(metadata.prompt.clone()),
-                generation_model: Some(metadata.model.clone()),
-                generation_revised_prompt: metadata.revised_prompt.clone(),
-                generation_key: None,
-                description: None,
-                tags: inherited_tags,
-                project_id: None,
-                folder_path: None,
-                storage_key: Some(storage_key),
-                file_status: "ok".to_string(),
+    create_generated_file_row(
+        main,
+        &GeneratedFileRowInput {
+            user_id,
+            id: Some(&file_id),
+            sha256: &sha256,
+            original_filename: &safe_name,
+            stored: &StoredImageBytes {
+                storage_key,
+                stored_mime_type: stored.stored_mime_type.clone(),
+                size_bytes: stored.size_bytes,
             },
-            &crate::db::files::CreateOptions {
-                id: file_id.clone(),
-                created_at: now.clone(),
-                updated_at: now,
-            },
-        )
-        .map_err(|e| format!("Failed to save generated image: {e}"))?;
+            width: converted.width,
+            height: converted.height,
+            linked_to: linked_to.clone(),
+            tags: inherited_tags,
+            source: None,
+            generation: Some(&GenerationRecord {
+                prompt: Some(metadata.prompt.clone()),
+                model: Some(metadata.model.clone()),
+                revised_prompt: metadata.revised_prompt.clone(),
+            }),
+            generation_key: None,
+            description: None,
+            project_id: None,
+            folder_path: None,
+            now_iso: &now,
+        },
+    )
+    .map_err(|e| format!("Failed to save generated image: {e}"))?;
 
     // The Lantern notification (v4 `postLanternImageNotification`) is a
     // fire-and-forget the caller posts after this write returns (the seam stays
@@ -1552,35 +1556,6 @@ fn split_stem_ext(path: &str) -> (String, String) {
     }
 }
 
-/// Node `Buffer.from(s, 'base64')`: decode standard/URL-safe base64, ignoring any
-/// non-alphabet character (whitespace, newlines) and tolerating missing padding.
-fn decode_base64_node(s: &str) -> Vec<u8> {
-    fn val(c: u8) -> Option<u8> {
-        match c {
-            b'A'..=b'Z' => Some(c - b'A'),
-            b'a'..=b'z' => Some(c - b'a' + 26),
-            b'0'..=b'9' => Some(c - b'0' + 52),
-            b'+' | b'-' => Some(62),
-            b'/' | b'_' => Some(63),
-            _ => None,
-        }
-    }
-    // Collect only alphabet symbols (drop whitespace, padding, invalid chars).
-    let symbols: Vec<u8> = s.bytes().filter_map(val).collect();
-    let mut out = Vec::with_capacity(symbols.len() * 3 / 4);
-    let mut acc: u32 = 0;
-    let mut bits = 0u32;
-    for &sym in &symbols {
-        acc = (acc << 6) | sym as u32;
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            out.push((acc >> bits) as u8);
-        }
-    }
-    out
-}
-
 // ===========================================================================
 // The DB-context gather (one read closure) + the async orchestration
 // ===========================================================================
@@ -1686,46 +1661,28 @@ fn gather_db_context(
                 )
             })
             .unwrap_or_default();
-        let docs = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
         for p in resolved
             .iter()
             .filter(|p| p.entity_id.is_some() && p.physical_description.is_some())
         {
             let entity_id = p.entity_id.clone().unwrap();
-            // Equipped wardrobe (per-slot leaf items) — v4's fail-safe try/catch.
-            let mut equipped: Vec<WardrobeItemInput> = Vec::new();
-            if let Some(chat_id) = ctx.chat_id.as_deref() {
-                let slots = crate::tools::wardrobe_shared::load_current_wardrobe_state(
-                    main, chat_id, &entity_id,
-                )
-                .unwrap_or_else(|_| crate::tools::wardrobe_shared::empty_equipped_state());
-                if let Ok(leaves) =
-                    crate::tools::wardrobe_shared::resolve_equipped_leaf_items_by_slot(
+            // Equipped wardrobe (per-slot leaf items) — v4
+            // `equippedWardrobeItemsForAppearance(repos, chatId, entityId,
+            // projectMountPointIds)` (`9ecebf986`) over the wearable pool, inside
+            // v4's fail-safe try/catch (no chat → no items).
+            let equipped: Vec<WardrobeItemInput> = ctx
+                .chat_id
+                .as_deref()
+                .and_then(|chat_id| {
+                    crate::services::appearance_resolution::equipped_wardrobe_items_for_appearance(
                         main,
-                        &docs,
+                        mount,
+                        chat_id,
                         &entity_id,
-                        &slots,
-                        // Group stores follow each character's own memberships,
-                        // so they can't come from the shared project list.
-                        &crate::wardrobe_tiers::shared_wardrobe_tiers_for_character(
-                            main,
-                            mount,
-                            &entity_id,
-                            &project_mount_point_ids,
-                        ),
+                        &project_mount_point_ids,
                     )
-                {
-                    equipped = leaves
-                        .into_iter()
-                        .map(|l| WardrobeItemInput {
-                            slot: l.slot,
-                            title: l.title,
-                            description: l.description,
-                            image_prompt: l.image_prompt,
-                        })
-                        .collect();
-                }
-            }
+                })
+                .unwrap_or_default();
             appearance_inputs.push(AppearanceResolutionInput {
                 character_id: entity_id,
                 character_name: p.name.clone(),
@@ -1760,6 +1717,8 @@ fn physical_description_from_value(v: &Value) -> PhysicalDescription {
         medium_prompt: s("mediumPrompt"),
         long_prompt: s("longPrompt"),
         complete_prompt: s("completePrompt"),
+        full_description: s("fullDescription"),
+        head_and_shoulders_prompt: s("headAndShouldersPrompt"),
     }
 }
 
@@ -2545,77 +2504,6 @@ struct ProviderGenerationResult {
     route_trail: Vec<RouteAttempt>,
 }
 
-/// v4 `logLLMCall` (image-generation-handler.ts) — one `IMAGE_GENERATION` row per
-/// provider attempt (success/failure/reroute-success/reroute-failure),
-/// fire-and-forget. Awaited here (the writer never throws — the watermark
-/// precedent); `LogContext::none()` on the request path. `durationMs` is v4's
-/// `Date.now()`-delta around the provider call — a REAL wall-clock span (the
-/// P4.D49 cheap-path pattern; the differentials normalize non-NULL durations,
-/// so a measured value stays oracle-neutral). The request is a single `user`
-/// message carrying the tool prompt; no usage/cache/hashes on this path.
-#[allow(clippy::too_many_arguments)]
-async fn log_image_generation(
-    db: &Db,
-    ctx: &ImageToolExecutionContext,
-    provider: &str,
-    model_name: &str,
-    // v4 `0cde7fbc`: `imageProfile.id` on the primary arms,
-    // `reroute.profile.id` on the Concierge-reroute arms.
-    image_profile_id: &str,
-    prompt: &str,
-    content: String,
-    error: Option<String>,
-    duration_ms: f64,
-) {
-    let params = LogLlmCallParams {
-        user_id: ctx.user_id.clone(),
-        log_type: log_type::IMAGE_GENERATION.to_string(),
-        message_id: None,
-        chat_id: ctx.chat_id.clone(),
-        character_id: None,
-        provider: provider.to_string(),
-        model_name: model_name.to_string(),
-        connection_profile_id: None,
-        image_profile_id: Some(image_profile_id.to_string()),
-        request: LogRequest {
-            messages: vec![LogRequestMessage {
-                role: "user".to_string(),
-                content: prompt.to_string(),
-                attachments: None,
-            }],
-            temperature: None,
-            max_tokens: None,
-            tools: None,
-        },
-        response: LogResponse {
-            content,
-            error,
-            finish_reason: None,
-            tool_calls: None,
-        },
-        usage: None,
-        cache_usage: None,
-        raw_provider_usage: None,
-        request_hashes: None,
-        duration_ms: Some(duration_ms),
-    };
-    let _ = log_llm_call(db, params, &LogContext::none()).await;
-}
-
-/// v4 `revisedPrompt || \`Generated ${n} image(s)${suffix}\`` — the success-log
-/// content (an empty first-image `revisedPrompt` falls back to the count text).
-fn image_gen_success_content(
-    response: &crate::model::image::ImageGenResponse,
-    suffix: &str,
-) -> String {
-    response
-        .images
-        .first()
-        .and_then(|i| i.revised_prompt.clone())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| format!("Generated {} image(s){suffix}", response.images.len()))
-}
-
 /// v4 `generateImagesWithProvider` — merge params + orientation, call the provider
 /// (with the post-hoc moderation reroute), then save each image.
 #[allow(clippy::too_many_arguments)]
@@ -2640,72 +2528,41 @@ where
     T: ImageTranscoder,
     L: LanternNotificationSink,
 {
-    // One call against one profile (v4 `8bd080267`'s `attempt`). Owns
-    // everything profile-specific: the shared builder merges that profile's
-    // defaults under the tool's input, resolves the orientation onto its own
-    // mechanism and appends its LoRA trigger phrases; the LLM-log row names
-    // it. `tool_input.prompt` is already the expanded prompt, so whatever the
-    // builder appends lands in final form. Every profile but the one the call
-    // was addressed to builds under `…concierge-reroute` and logs the
-    // `(Concierge reroute)` suffix.
-    let attempt = |profile: FailoverProfile, key: String| async move {
-        let rerouted = profile.id != image_profile.id;
-        let parameters = if rerouted {
-            crate::services::image_job_common::load_profile_parameters(db, &profile.id)
-        } else {
-            image_profile.parameters.clone()
-        };
-        let params = build_image_gen_params(
-            ImageProfileLike {
-                provider: &profile.provider,
-                model_name: Some(&profile.model_name),
-                parameters: Some(&parameters),
-            },
-            &tool_input.prompt,
-            &tool_input_overrides(tool_input),
-            requested_orientation(original_input),
-            DEFAULT_IMAGE_MODEL,
-            &(deps.declarations_for)(&profile.provider),
-            &ImageParamsLogContext {
-                context: if rerouted {
-                    "tools.generate_image.concierge-reroute"
-                } else {
-                    "tools.generate_image"
+    // v4 `9ecebf986`: the shared `makeLoggedImageAttempt` — ONE context
+    // (`tools.generate_image`; the pre-span `…concierge-reroute` is gone, the
+    // builder's line carries `profileId` + `rerouted` instead), the shared
+    // builder merging that profile's defaults under the tool's input, and the
+    // `IMAGE_GENERATION` `llm_logs` row per attempt AWAITED (the pre-span
+    // closure's fire-and-forget log and its `[Image Generation] Failed to log
+    // image generation to LLM Inspector` WARN are gone). `tool_input.prompt` is
+    // already the expanded prompt, so whatever the builder appends lands in
+    // final form.
+    let mut attempt = make_logged_image_attempt(
+        db,
+        deps.image_provider,
+        LoggedImageAttemptOptions {
+            user_id: &ctx.user_id,
+            log_type: log_type::IMAGE_GENERATION,
+            prompt: &tool_input.prompt,
+            primary_profile_id: &image_profile.id,
+            chat_id: ctx.chat_id.as_deref(),
+            character_id: None,
+            params: ImageAttemptParams {
+                overrides: tool_input_overrides(tool_input),
+                orientation: requested_orientation(original_input),
+                log_context: ImageParamsLogContext {
+                    context: "tools.generate_image",
+                    chat_id: ctx.chat_id.clone(),
+                    job_id: None,
+                    profile_id: None,
+                    rerouted: None,
                 },
-                chat_id: ctx.chat_id.clone(),
-                profile_id: Some(profile.id.clone()),
-                ..Default::default()
+                fallback_model: DEFAULT_IMAGE_MODEL,
+                declarations_for: deps.declarations_for,
             },
-        )
-        .params;
-        // v4 stamps `Date.now()` around the call for `durationMs` — a real
-        // wall-clock read, NOT the pinned `deps.now_ms`.
-        let start = crate::clock::now_unix_ms();
-        let result = deps
-            .image_provider
-            .generate_image(&profile.provider, &key, &params)
-            .await;
-        let (content, error) = match &result {
-            Ok(r) => (
-                image_gen_success_content(r, if rerouted { " (Concierge reroute)" } else { "" }),
-                None,
-            ),
-            Err(e) => (String::new(), Some(e.message.clone())),
-        };
-        log_image_generation(
-            db,
-            ctx,
-            &profile.provider,
-            &profile.model_name,
-            &profile.id,
-            &tool_input.prompt,
-            content,
-            error,
-            (crate::clock::now_unix_ms() - start) as f64,
-        )
-        .await;
-        result
-    };
+            prebuilt: None,
+        },
+    );
 
     let understudy = ImageUnderstudySource {
         db,
@@ -2720,11 +2577,14 @@ where
                 name: image_profile.name.clone(),
                 provider: image_profile.provider.clone(),
                 model_name: image_profile.model_name.clone(),
-                row: Value::Null,
+                // The loaded profile's stored `parameters` ride the row, so the
+                // attempt builds the requested profile's params off them (v4
+                // `profile.parameters`) and reads the DB only for an understudy.
+                row: serde_json::json!({ "parameters": image_profile.parameters }),
             },
             image_profile.api_key.clone(),
         ),
-        attempt,
+        |profile, key| attempt.call(profile, key),
         &ImageFailoverContext {
             db,
             user_id: &ctx.user_id,
@@ -2821,27 +2681,43 @@ where
     };
 
     let mut saved = Vec::new();
-    for img in &response.images {
-        let metadata = SaveMetadata {
-            prompt: tool_input.prompt.clone(),
-            revised_prompt: img.revised_prompt.clone(),
-            model: active_model.clone(),
-            provider: active_provider.clone(),
-        };
+    for (index, img) in response.images.iter().enumerate() {
         let mime = img
             .mime_type
             .clone()
             .unwrap_or_else(|| "image/png".to_string());
 
-        // Transcode at the async layer (the seams never cross into the writer):
-        // base64-decode → WebP (the injected [`ImageTranscoder`] seam).
-        let raw_buffer = decode_base64_node(img.data.as_deref().unwrap_or_default());
-        let provider_ext = mime.split('/').nth(1).unwrap_or("png");
-        let converted = deps.transcoder.transcode(&TranscodeInput {
-            bytes: raw_buffer,
-            mime_type: mime.clone(),
-            filename: format!("generated_{}.{provider_ext}", deps.now_ms),
-        });
+        // Decode + transcode at the async layer (the seams never cross into the
+        // writer) — v4 `decodeProviderImage(generationResponse, 'generated',
+        // index)` (`9ecebf986`); an image with no inline data is the NEW
+        // `STORAGE_ERROR` sentence (pre-span an empty `data` fell into
+        // `convertToWebP(Buffer.from(''))` and surfaced as whatever that threw).
+        let Some(decoded) = decode_provider_image(
+            deps.transcoder,
+            Some(&response),
+            "generated",
+            index,
+            deps.now_ms,
+        ) else {
+            return Err(GenError {
+                code: "STORAGE_ERROR".to_string(),
+                message: "The image provider returned an image with no data".to_string(),
+                trail: Vec::new(),
+            });
+        };
+        let metadata = SaveMetadata {
+            prompt: tool_input.prompt.clone(),
+            revised_prompt: decoded.revised_prompt.clone(),
+            model: active_model.clone(),
+            provider: active_provider.clone(),
+        };
+        let converted = crate::model::image::TranscodeOutput {
+            bytes: decoded.buffer,
+            mime_type: decoded.mime_type,
+            filename: decoded.filename,
+            width: decoded.width,
+            height: decoded.height,
+        };
 
         let uid = ctx.user_id.clone();
         let chat_id = ctx.chat_id.clone();

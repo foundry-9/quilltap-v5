@@ -1,6 +1,6 @@
 /**
  * Tier-1 oracle case — the avatar configuration cache KEY derivation (v4
- * `lib/wardrobe/avatar-cache.ts` `deriveAvatarCacheKey` /
+ * `lib/image-gen/avatar-cache.ts` (MOVED from `lib/wardrobe/` at v4 `9ecebf986`) `deriveAvatarCacheKey` /
  * `deriveLegacyAvatarCacheKey` / `deriveAvatarCacheKeys`), P4.D184 / v4
  * `7fbf8a55b`.
  *
@@ -39,7 +39,7 @@ import {
   deriveAvatarCacheKey,
   deriveAvatarCacheKeys,
   deriveLegacyAvatarCacheKey,
-} from '@/lib/wardrobe/avatar-cache';
+} from '@/lib/image-gen/avatar-cache';
 import type { ImageGenParams } from '@quilltap/plugin-types';
 
 interface Case {

@@ -1,0 +1,491 @@
+{
+  "$note": [
+    "Corpus for the vision-request tier-3 differential (P4.D283, v4 9ecebf986 lib/llm/vision-request.ts, bug 197's",
+    "half where v5 has the surface). Both sides run over a FRESH copy of the file-attachment fixture pair (its chat_settings",
+    "names the OPENAI describer d1; d2 is the Z_AI uncensored vision profile, d3 the OLLAMA llava whose plugin cannot",
+    "transport images, a1 the DEEPSEEK profile that does not read images; every profile is KEYLESS). `resolve` cases run",
+    "resolveVisionProfile after the case's `sql` (on the main copy); `send` cases run sendVisionRequest against a profile",
+    "with the LLM provider mocked BELOW both sides (`provider.mode`: ok → the scripted answer; throw → a plain failure;",
+    "hang → never answers, so the request's own timeout fires), recording the params the provider was handed, the",
+    "`llm_logs` rows (REAL logLLMCall), the `[Vision]` lines and the result. The attachment is a 1x1 PNG, well under the",
+    "transport shrink's bounds on both sides (`shrunk: false`); `data: null` is the plugin-loads-it passthrough."
+  ],
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "10000000-0000-4000-8000-000000000001",
+  "instruction": "Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.",
+  "resolve": [
+    {
+      "name": "configured_cheap_honour",
+      "prefer": "cheap",
+      "configured": "honour"
+    },
+    {
+      "name": "configured_capable_skip_capable_ok",
+      "prefer": "capable",
+      "configured": "skip-incapable"
+    },
+    {
+      "name": "configured_incapable_honoured",
+      "prefer": "cheap",
+      "configured": "honour",
+      "sql": [
+        "UPDATE chat_settings SET imageDescriptionProfileId = '30000000-0000-4000-8000-0000000000d3'",
+        "UPDATE connection_profiles SET supportsImageUpload = 0 WHERE id = '30000000-0000-4000-8000-0000000000d3'"
+      ]
+    },
+    {
+      "name": "configured_incapable_skipped_prefer_capable",
+      "prefer": "capable",
+      "configured": "skip-incapable",
+      "sql": [
+        "UPDATE chat_settings SET imageDescriptionProfileId = '30000000-0000-4000-8000-0000000000d3'",
+        "UPDATE connection_profiles SET supportsImageUpload = 0 WHERE id = '30000000-0000-4000-8000-0000000000d3'"
+      ]
+    },
+    {
+      "name": "configured_incapable_skipped_prefer_cheap",
+      "prefer": "cheap",
+      "configured": "skip-incapable",
+      "sql": [
+        "UPDATE chat_settings SET imageDescriptionProfileId = '30000000-0000-4000-8000-0000000000d3'",
+        "UPDATE connection_profiles SET supportsImageUpload = 0 WHERE id = '30000000-0000-4000-8000-0000000000d3'"
+      ]
+    },
+    {
+      "name": "configured_missing_autopicks",
+      "prefer": "cheap",
+      "configured": "honour",
+      "sql": [
+        "UPDATE chat_settings SET imageDescriptionProfileId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'"
+      ]
+    },
+    {
+      "name": "none_configured_prefer_cheap",
+      "prefer": "cheap",
+      "configured": "honour",
+      "sql": [
+        "UPDATE chat_settings SET imageDescriptionProfileId = NULL"
+      ]
+    },
+    {
+      "name": "none_configured_prefer_capable",
+      "prefer": "capable",
+      "configured": "skip-incapable",
+      "sql": [
+        "UPDATE chat_settings SET imageDescriptionProfileId = NULL"
+      ]
+    },
+    {
+      "name": "nobody_can_receive",
+      "prefer": "cheap",
+      "configured": "skip-incapable",
+      "sql": [
+        "UPDATE chat_settings SET imageDescriptionProfileId = NULL",
+        "UPDATE connection_profiles SET supportsImageUpload = 0"
+      ]
+    }
+  ],
+  "send": [
+    {
+      "name": "ok_image_arrived",
+      "profile": "30000000-0000-4000-8000-0000000000d1",
+      "attachment": {
+        "id": "f0f0f0f0-0001-4000-8000-000000000001",
+        "filename": "coat.png",
+        "mimeType": "image/png",
+        "size": 70,
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      },
+      "instruction": "Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.",
+      "sampling": {
+        "temperature": 0.7,
+        "maxTokens": 1000
+      },
+      "timeoutMs": 60000,
+      "logType": "IMAGE_DESCRIPTION",
+      "requireApiKey": false,
+      "provider": {
+        "mode": "ok",
+        "content": "A burgundy velvet coat on a dress form, brass buttons catching warm light.",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 812,
+          "completionTokens": 40,
+          "totalTokens": 852
+        },
+        "attachmentResults": {
+          "sent": [
+            "f0f0f0f0-0001-4000-8000-000000000001"
+          ],
+          "failed": []
+        }
+      }
+    },
+    {
+      "name": "ok_with_system_prompt_and_topp",
+      "profile": "30000000-0000-4000-8000-0000000000d1",
+      "attachment": {
+        "id": "f0f0f0f0-0001-4000-8000-000000000001",
+        "filename": "coat.png",
+        "mimeType": "image/png",
+        "size": 70,
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      },
+      "systemPrompt": "You are a tailor's eye.",
+      "instruction": "Name the garment.",
+      "sampling": {
+        "temperature": 0.5,
+        "maxTokens": 4000,
+        "topP": 0.9
+      },
+      "timeoutMs": 60000,
+      "logType": "WARDROBE_IMAGE_ANALYSIS",
+      "requireApiKey": false,
+      "provider": {
+        "mode": "ok",
+        "content": "A coat.",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 900,
+          "completionTokens": 3,
+          "totalTokens": 903
+        }
+      }
+    },
+    {
+      "name": "ok_shrunk_scripted",
+      "profile": "30000000-0000-4000-8000-0000000000d1",
+      "attachment": {
+        "id": "f0f0f0f0-0003-4000-8000-000000000003",
+        "filename": "big-coat.png",
+        "mimeType": "image/png",
+        "size": 64,
+        "data": null
+      },
+      "instruction": "Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.",
+      "sampling": {
+        "temperature": 0.7,
+        "maxTokens": 1000
+      },
+      "timeoutMs": 60000,
+      "logType": "IMAGE_DESCRIPTION",
+      "requireApiKey": false,
+      "provider": {
+        "mode": "ok",
+        "content": "A burgundy velvet coat on a dress form, brass buttons catching warm light.",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 812,
+          "completionTokens": 40,
+          "totalTokens": 852
+        },
+        "attachmentResults": {
+          "sent": [
+            "f0f0f0f0-0001-4000-8000-000000000001"
+          ],
+          "failed": []
+        }
+      },
+      "note": "The shrink EXERCISED: a 64-byte original the scripted encoder (both sides, the bug-151 instrument) reports as 2048x1536 and shrinks to 40 bytes at the first rung — so `shrunk: true`, `sentBytes: 40`, the sent attachment and the llm_logs request carry image/webp, and the ladder's one (1024, 78) call is a comparand. Skipping the shrink turns this row RED (the Tier-2 mutation proof).",
+      "shrink": {
+        "originalLen": 64,
+        "script": {
+          "metadata": {
+            "width": 2048,
+            "height": 1536
+          },
+          "final": {
+            "width": 683,
+            "height": 1024
+          },
+          "steps": [
+            {
+              "len": 40
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "image_not_received_low_tokens",
+      "profile": "30000000-0000-4000-8000-0000000000d1",
+      "attachment": {
+        "id": "f0f0f0f0-0001-4000-8000-000000000001",
+        "filename": "coat.png",
+        "mimeType": "image/png",
+        "size": 70,
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      },
+      "instruction": "Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.",
+      "sampling": {
+        "temperature": 0.7,
+        "maxTokens": 1000
+      },
+      "timeoutMs": 60000,
+      "logType": "IMAGE_DESCRIPTION",
+      "requireApiKey": false,
+      "provider": {
+        "mode": "ok",
+        "content": "An invented, confident description of a picture nobody looked at, long enough to pass every content check.",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 38,
+          "completionTokens": 683,
+          "totalTokens": 721
+        }
+      }
+    },
+    {
+      "name": "image_not_received_ledger",
+      "profile": "30000000-0000-4000-8000-0000000000d1",
+      "attachment": {
+        "id": "f0f0f0f0-0001-4000-8000-000000000001",
+        "filename": "coat.png",
+        "mimeType": "image/png",
+        "size": 70,
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      },
+      "instruction": "Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.",
+      "sampling": {
+        "temperature": 0.7,
+        "maxTokens": 1000
+      },
+      "timeoutMs": 60000,
+      "logType": "IMAGE_DESCRIPTION",
+      "requireApiKey": false,
+      "provider": {
+        "mode": "ok",
+        "content": "Prose about nothing.",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 4000,
+          "completionTokens": 100,
+          "totalTokens": 4100
+        },
+        "attachmentResults": {
+          "sent": [],
+          "failed": [
+            {
+              "id": "f0f0f0f0-0001-4000-8000-000000000001",
+              "error": "provider does not forward attachments"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "cache_read_added_back",
+      "profile": "30000000-0000-4000-8000-0000000000d1",
+      "attachment": {
+        "id": "f0f0f0f0-0001-4000-8000-000000000001",
+        "filename": "coat.png",
+        "mimeType": "image/png",
+        "size": 70,
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      },
+      "instruction": "Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.",
+      "sampling": {
+        "temperature": 0.7,
+        "maxTokens": 1000
+      },
+      "timeoutMs": 60000,
+      "logType": "IMAGE_DESCRIPTION",
+      "requireApiKey": false,
+      "provider": {
+        "mode": "ok",
+        "content": "A real description, cached.",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 12,
+          "completionTokens": 200,
+          "totalTokens": 212
+        },
+        "cacheUsage": {
+          "cacheReadInputTokens": 1400
+        }
+      }
+    },
+    {
+      "name": "model_cannot_read",
+      "profile": "30000000-0000-4000-8000-0000000000d3",
+      "attachment": {
+        "id": "f0f0f0f0-0001-4000-8000-000000000001",
+        "filename": "coat.png",
+        "mimeType": "image/png",
+        "size": 70,
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      },
+      "instruction": "Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.",
+      "sampling": {
+        "temperature": 0.7,
+        "maxTokens": 1000
+      },
+      "timeoutMs": 60000,
+      "logType": "IMAGE_DESCRIPTION",
+      "requireApiKey": false,
+      "provider": {
+        "mode": "ok",
+        "content": "never asked",
+        "finishReason": "stop",
+        "usage": null
+      },
+      "sql": [
+        "UPDATE connection_profiles SET supportsImageUpload = 0 WHERE id = '30000000-0000-4000-8000-0000000000d3'"
+      ]
+    },
+    {
+      "name": "plugin_cannot_send",
+      "profile": "30000000-0000-4000-8000-0000000000d3",
+      "attachment": {
+        "id": "f0f0f0f0-0001-4000-8000-000000000001",
+        "filename": "coat.png",
+        "mimeType": "image/png",
+        "size": 70,
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      },
+      "instruction": "Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.",
+      "sampling": {
+        "temperature": 0.7,
+        "maxTokens": 1000
+      },
+      "timeoutMs": 60000,
+      "logType": "IMAGE_DESCRIPTION",
+      "requireApiKey": false,
+      "provider": {
+        "mode": "ok",
+        "content": "never asked",
+        "finishReason": "stop",
+        "usage": null
+      }
+    },
+    {
+      "name": "missing_api_key_required",
+      "profile": "30000000-0000-4000-8000-0000000000d1",
+      "attachment": {
+        "id": "f0f0f0f0-0001-4000-8000-000000000001",
+        "filename": "coat.png",
+        "mimeType": "image/png",
+        "size": 70,
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      },
+      "instruction": "Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.",
+      "sampling": {
+        "temperature": 0.5,
+        "maxTokens": 4000
+      },
+      "timeoutMs": 120000,
+      "logType": "WARDROBE_IMAGE_ANALYSIS",
+      "requireApiKey": true,
+      "provider": {
+        "mode": "ok",
+        "content": "never asked",
+        "finishReason": "stop",
+        "usage": null
+      }
+    },
+    {
+      "name": "keyless_sent_when_not_required",
+      "profile": "30000000-0000-4000-8000-0000000000d2",
+      "attachment": {
+        "id": "f0f0f0f0-0001-4000-8000-000000000001",
+        "filename": "coat.png",
+        "mimeType": "image/png",
+        "size": 70,
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      },
+      "instruction": "Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.",
+      "sampling": {
+        "temperature": 0.7,
+        "maxTokens": 0
+      },
+      "timeoutMs": 60000,
+      "logType": "IMAGE_DESCRIPTION",
+      "requireApiKey": false,
+      "provider": {
+        "mode": "ok",
+        "content": "A described coat, from the understudy.",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 700,
+          "completionTokens": 9,
+          "totalTokens": 709
+        }
+      }
+    },
+    {
+      "name": "provider_throws",
+      "profile": "30000000-0000-4000-8000-0000000000d1",
+      "attachment": {
+        "id": "f0f0f0f0-0001-4000-8000-000000000001",
+        "filename": "coat.png",
+        "mimeType": "image/png",
+        "size": 70,
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      },
+      "instruction": "Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.",
+      "sampling": {
+        "temperature": 0.7,
+        "maxTokens": 1000
+      },
+      "timeoutMs": 60000,
+      "logType": "IMAGE_DESCRIPTION",
+      "requireApiKey": false,
+      "provider": {
+        "mode": "throw",
+        "message": "canned vision failure"
+      }
+    },
+    {
+      "name": "provider_hangs_times_out",
+      "profile": "30000000-0000-4000-8000-0000000000d1",
+      "attachment": {
+        "id": "f0f0f0f0-0001-4000-8000-000000000001",
+        "filename": "coat.png",
+        "mimeType": "image/png",
+        "size": 70,
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+      },
+      "instruction": "Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.",
+      "sampling": {
+        "temperature": 0.7,
+        "maxTokens": 1000
+      },
+      "timeoutMs": 50,
+      "logType": "IMAGE_DESCRIPTION",
+      "requireApiKey": false,
+      "provider": {
+        "mode": "hang"
+      }
+    },
+    {
+      "name": "no_data_passthrough",
+      "profile": "30000000-0000-4000-8000-0000000000d1",
+      "attachment": {
+        "id": "f0f0f0f0-0002-4000-8000-000000000002",
+        "filename": "loaded-by-plugin.png",
+        "mimeType": "image/png",
+        "size": 1234,
+        "data": null
+      },
+      "instruction": "Please describe this image in great detail. Include all visible elements, colors, composition, mood, and any text or notable features. Be thorough and descriptive.",
+      "sampling": {
+        "temperature": 0.7,
+        "maxTokens": 1000
+      },
+      "timeoutMs": 60000,
+      "logType": "IMAGE_DESCRIPTION",
+      "requireApiKey": false,
+      "provider": {
+        "mode": "ok",
+        "content": "A described coat, loaded by the plugin.",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 650,
+          "completionTokens": 8,
+          "totalTokens": 658
+        }
+      }
+    }
+  ],
+  "$comment_profiles": "Profiles are the file-attachment fixture's three (d1 OPENAI cheap, d2 Z_AI, d3 OLLAMA llava — whose plugin cannot transport images; all keyless). An INCAPABLE profile is d3 with `supportsImageUpload = 0` planted by the case's `sql` on both sides."
+}

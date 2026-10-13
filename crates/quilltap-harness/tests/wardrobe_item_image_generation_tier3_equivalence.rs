@@ -20,18 +20,29 @@
 //!     the shared builder's output with the prompt's ORIENTATION resolved per
 //!     provider, `n: 1`, `style: 'natural'`; the `apiKey` proves which profile
 //!     (and, on a reroute, the understudy) was asked;
-//!   - the generation's own lines (`[WardrobeItemImage]`, `[hydrateComponent
-//!     Graph]`; `durationMs` placeholdered) — the item-image write's lines are
+//!   - the generation's own lines (`[WardrobeItemImage]`; `durationMs`
+//!     placeholdered — the `[hydrateComponentGraph]` prefix left with the pool
+//!     at v4 `9ecebf986`, and the pool's `[WearablePool]` lines are the
+//!     keystone's to pin, R-H) — the item-image write's lines are
 //!     `wardrobe_item_images_tier2_equivalence`'s;
-//!   - every item's pointer, the main `files` table and the six mount-index
-//!     tables (the tier-2 normalizer);
+//!   - every item's pointer, the main `files` + `chats` + `chat_messages`
+//!     tables and the six mount-index tables (the tier-2 normalizer) — P4.D283
+//!     (bug 189, v4 `7a8d6dacc`): a tool-queued picture carries the chat it was
+//!     asked for in, so its refusal is LEDGERED on `chats` and ANNOUNCED in
+//!     `chat_messages`; Locked never fails over; Unmoderated routes direct;
 //!   - the `llm_logs` rows — ONE `WARDROBE_ITEM_IMAGE` row per provider
-//!     attempt, its `response.error` shape on a throw (id / timestamps /
-//!     `durationMs` placeholdered by the shared helpers);
-//!   - P4.D263 R-B's NEGATIVE pin: the `concierge_refusals` and
-//!     `chat_messages` row counts — a refused wardrobe picture passes no chat,
-//!     so v4 writes neither (both absent tables on this fixture, on both
-//!     sides).
+//!     attempt, its `response.error` shape on a throw, the job rows carrying
+//!     `chatId` (id / timestamps / `durationMs` placeholdered by the shared
+//!     helpers);
+//!   - the `concierge_refusals` / `chat_messages` row counts (the editor's
+//!     chatless ops still write no announcement — P4.D263 R-B).
+//!
+//! The `job_*` ops name a planted chat through `jobChat` (Moderated / Locked /
+//! Unmoderated); without one they pass the spec's `jobChatId`, a chat that
+//! does NOT exist. `job_chat_unreadable` breaks the planted row so both sides'
+//! fallback read answers no chat — v4's `Chat unreadable…` WARN is UNREACHABLE
+//! (its read is a `safeQuery`) and the absence of that line on both sides is
+//! the NEGATIVE pin.
 //!
 //! Regenerate (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -46,6 +57,7 @@
 //!   QT_ORACLE_OUT=/tmp/oracle-wardrobe-item-image-generation.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=600000 \
 //!       --roots "$PWD" --roots "$TMPO/cases" -- "cases/wardrobe-item-image-generation\.test\.ts$"
+//!
 //! Run:
 //!   QT_ORACLE_WIIG=/tmp/oracle-wardrobe-item-image-generation.ndjson \
 //!   QT_FIXTURE_WIIG_MAIN=/tmp/qt-wiig-main.db QT_FIXTURE_WIIG_MOUNT=/tmp/qt-wiig-mount.db \
@@ -75,7 +87,7 @@ use quilltap_core::test_support::captured_with;
 use serde_json::{json, Map, Value};
 use wardrobe_images_support::{baked_tokens, dump_all, oracle_lines, rust_lines, Normalizer};
 
-const LOG_PREFIXES: [&str; 2] = ["[WardrobeItemImage]", "[hydrateComponentGraph]"];
+const LOG_PREFIXES: [&str; 1] = ["[WardrobeItemImage]"];
 const SAFETY: &str = "400 Your request was rejected as a result of our safety system.";
 
 struct RecordingProvider {
@@ -328,7 +340,18 @@ fn wardrobe_item_image_generation_tier3_matches_oracle() {
                     .unwrap();
             }
             let mount = Writer::open_writable(&nw, &pepper).unwrap();
-            baked_tokens(&dump_all(main.connection(), mount.connection()), &spec)
+            // The baked literals include the planted chats' ids (their
+            // participant ids live only in the `chats` rows) — P4.D283.
+            let mut baked = dump_all(main.connection(), mount.connection());
+            baked.as_object_mut().unwrap().insert(
+                "chats".into(),
+                wardrobe_images_support::dump(main.connection(), "chats"),
+            );
+            baked.as_object_mut().unwrap().insert(
+                "chatMessages".into(),
+                wardrobe_images_support::dump(main.connection(), "chat_messages"),
+            );
+            baked_tokens(&baked, &spec)
         };
         let db = Db::open(
             DbPaths {
@@ -359,14 +382,19 @@ fn wardrobe_item_image_generation_tier3_matches_oracle() {
             .to_string();
         let (result, lines) = if scenario["op"] == "job" {
             // v4 `handleWardrobeItemImageGeneration(job)` — completes (an
-            // expected skip completes too) or rethrows.
+            // expected skip completes too) or rethrows. The payload's chat is
+            // the named plant, else the spec's non-existent `jobChatId`.
+            let job_chat_id = match scenario.get("jobChat").and_then(Value::as_str) {
+                Some(key) => spec["chats"][key]["id"].clone(),
+                None => spec["jobChatId"].clone(),
+            };
             let job = quilltap_core::db::background_jobs::BackgroundJob {
                 id: "e5e5e5e5-0001-4000-8000-000000000001".into(),
                 user_id: user.clone(),
                 job_type: "WARDROBE_ITEM_IMAGE_GENERATION".into(),
                 status: "PROCESSING".into(),
                 payload: json!({
-                    "chatId": spec["jobChatId"],
+                    "chatId": job_chat_id,
                     "characterId": container_of(&spec, scenario["jobCharacter"].as_str()),
                     "itemId": item_id,
                 })
@@ -424,7 +452,7 @@ fn wardrobe_item_image_generation_tier3_matches_oracle() {
                         home: &home,
                         container_id: container.as_deref(),
                         image_profile_id: scenario.get("imageProfileId").and_then(Value::as_str),
-                        // P4.D279 (C1 §10, mechanical): carried for P4.D283; nothing reads it yet.
+                        // The editor's Generate has no chat (v4's route passes none).
                         chat_id: None,
                     },
                 ))
@@ -433,7 +461,29 @@ fn wardrobe_item_image_generation_tier3_matches_oracle() {
         };
         let (tables, ptrs) = {
             let tables = db
-                .read_main(|m| db.read_mount_index(|n| Ok(dump_all(m, n))))
+                .read_main(|m| {
+                    db.read_mount_index(|n| {
+                        // The oracle's key order (`files`, `chats`,
+                        // `chatMessages`, then the six mount tables) — the
+                        // normalizer numbers minted ids by first sight, so
+                        // both sides must walk the dump in one order.
+                        let all = dump_all(m, n);
+                        let mut tables = Map::new();
+                        tables.insert("files".into(), all["files"].clone());
+                        // P4.D283 (bug 189): the ledger + the announcements.
+                        tables.insert("chats".into(), wardrobe_images_support::dump(m, "chats"));
+                        tables.insert(
+                            "chatMessages".into(),
+                            wardrobe_images_support::dump(m, "chat_messages"),
+                        );
+                        for (k, v) in all.as_object().unwrap() {
+                            if k != "files" {
+                                tables.insert(k.clone(), v.clone());
+                            }
+                        }
+                        Ok(Value::Object(tables))
+                    })
+                })
                 .unwrap();
             (tables, rt.block_on(pointers(&db, &spec)))
         };

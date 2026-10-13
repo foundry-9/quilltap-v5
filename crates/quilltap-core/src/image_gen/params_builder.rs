@@ -111,14 +111,20 @@ pub type ImageDeclarationsFn = dyn Fn(&str) -> ImageDeclarations + Send + Sync;
 
 /// The `logContext` v4 spreads into this build's log lines. `context` is the
 /// call-site label (`'tools.generate_image'`,
-/// `'background-jobs.character-avatar'`, …) — nine literals across the five
-/// consolidated sites, and the tracing anchors the capture tests key on.
+/// `'background-jobs.character-avatar'`, …) — ONE literal per site since v4
+/// `9ecebf986` (the `.concierge-route` / `.concierge-reroute` suffixes are
+/// gone; `image_gen::image_attempt` adds `profileId` + `rerouted` to every
+/// build it makes instead), and the tracing anchors the capture tests key on.
 #[derive(Debug, Clone, Default)]
 pub struct ImageParamsLogContext {
     pub context: &'static str,
     pub chat_id: Option<String>,
     pub job_id: Option<String>,
     pub profile_id: Option<String>,
+    /// v4 `9ecebf986`: whether this build is for a profile other than the one
+    /// first asked for (a Concierge reroute). `None` where the caller is not
+    /// an image attempt.
+    pub rerouted: Option<bool>,
 }
 
 /// v4 `BuiltImageGenParams`.
@@ -183,6 +189,7 @@ pub fn resolve_profile_loras(
         chat_id: log_context.chat_id.clone(),
         job_id: log_context.job_id.clone(),
         profile_id: log_context.profile_id.clone(),
+        rerouted: log_context.rerouted,
     };
     let support = resolve_lora_support(
         Some(&declarations.models),
@@ -353,6 +360,7 @@ pub fn build_image_gen_params(
         chat_id = ?log_context.chat_id,
         job_id = ?log_context.job_id,
         profile_id = ?log_context.profile_id,
+        rerouted = ?log_context.rerouted,
         provider = %profile.provider,
         model = %params.model,
         orientation = ?orientation,

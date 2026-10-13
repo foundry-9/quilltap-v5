@@ -17,6 +17,7 @@
 //!   [`crate::services::file_fallback::profile_supports_mime_type`].
 
 pub mod attachment_support;
+pub mod generated_file_row;
 pub mod image_processing;
 pub mod image_transport;
 pub mod llm_image_budget;

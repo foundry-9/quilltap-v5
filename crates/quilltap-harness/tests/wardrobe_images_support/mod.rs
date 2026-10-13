@@ -139,7 +139,10 @@ impl Normalizer {
             )
             .unwrap(),
             iso: Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z").unwrap(),
-            leaf: Regex::new(r"\d{8}-\d{6}-(generated|uploaded|imported)-[0-9a-f]{8}").unwrap(),
+            // v4 `9ecebf986` (P4.D283): a fresh wardrobe picture's leaf is
+            // `<yyyymmdd-hhmmss>-<kind>` (the `-<8 hex>` tail is gone), bumped
+            // ` (2)`, ` (3)`… on a same-second collision.
+            leaf: Regex::new(r"\d{8}-\d{6}-(generated|uploaded|imported)(?: \(\d+\))?").unwrap(),
             sha: Regex::new(r"\b[0-9a-f]{64}\b").unwrap(),
         }
     }
@@ -227,7 +230,7 @@ pub fn baked_tokens(tables: &Value, spec: &Value) -> HashSet<String> {
     let mut out = HashSet::new();
     for re in [
         r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
-        r"\d{8}-\d{6}-(generated|uploaded|imported)-[0-9a-f]{8}",
+        r"\d{8}-\d{6}-(generated|uploaded|imported)(?: \(\d+\))?",
         r"\b[0-9a-f]{64}\b",
     ] {
         for m in Regex::new(re).unwrap().find_iter(&text) {

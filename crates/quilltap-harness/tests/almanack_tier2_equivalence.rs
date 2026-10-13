@@ -133,6 +133,16 @@ fn scratch(tag: &str, legacy_llm: bool, sp: &Value) -> Scratch {
         let size = b["sizeBytes"].as_u64().unwrap() as usize;
         std::fs::write(backups.join(name), vec![0x51u8; size]).unwrap();
     }
+    // P4.D283 (bug 196): the WARDROBE_ITEM_IMAGE rows, planted on the COPY by
+    // both sides (the oracle runs the same SQL) — the committed pair stays as
+    // built.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&llm, TEST_PEPPER).unwrap();
+        let variant = if legacy_llm { "legacy" } else { "migrated" };
+        for sql in sp["llmLogPlants"][variant].as_array().unwrap() {
+            w.connection().execute_batch(sql.as_str().unwrap()).unwrap();
+        }
+    }
     let db = Db::open(
         DbPaths {
             main: main.clone(),

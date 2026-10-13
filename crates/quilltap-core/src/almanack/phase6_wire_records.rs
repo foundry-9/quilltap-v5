@@ -154,17 +154,25 @@ fn opt_num(row: &rusqlite::Row<'_>, idx: usize) -> rusqlite::Result<Option<f64>>
     })
 }
 
-/// v4 `LLMLogsRepository.getStatsByProfile` — the per-profile roll-up.
+/// v4 `LLMLogsRepository.getStatsByProfile(userId, groupBy, { type })` — the
+/// per-profile roll-up. `log_types` is ONE type or SEVERAL (v4 `9ecebf986`,
+/// bug 196: image spend is `IMAGE_SPEND_LOG_TYPES`, so wardrobe pictures no
+/// longer vanish from the per-image-profile roll-up); the clause renders
+/// `AND "type" IN (?, ?)` — `IN (?)` for a single type, as v4's does now —
+/// and nothing when the list is empty.
 fn get_stats_by_profile(
     db: &Db,
     user_id: &str,
     group_by: GroupBy,
-    log_type: Option<&str>,
+    log_types: &[&str],
 ) -> Vec<ProfileStatsRow> {
-    let type_clause = if log_type.is_some() {
-        r#"AND "type" = ?"#
+    let type_clause = if log_types.is_empty() {
+        String::new()
     } else {
-        ""
+        format!(
+            r#"AND "type" IN ({})"#,
+            log_types.iter().map(|_| "?").collect::<Vec<_>>().join(", ")
+        )
     };
     let not_null_clause = match group_by.column() {
         Some(col) => format!(r#"AND "{col}" IS NOT NULL"#),
@@ -191,7 +199,7 @@ fn get_stats_by_profile(
     );
 
     let mut binds = vec![SqlValue::Text(user_id.to_string())];
-    if let Some(t) = log_type {
+    for t in log_types {
         binds.push(SqlValue::Text(t.to_string()));
     }
     let params: Vec<&dyn ToSql> = binds.iter().map(|v| v as &dyn ToSql).collect();
@@ -418,9 +426,15 @@ pub fn collect_wire_records(db: &Db, user_id: &str) -> Result<WireRecordsInfo, D
     let token_usage = get_total_token_usage(db, user_id);
     let by_type = get_stats_by_type(db, user_id);
     let lifetime = collect_profile_lifetime(db, user_id);
-    let connection_stats = get_stats_by_profile(db, user_id, connection_group_by, None);
+    let connection_stats = get_stats_by_profile(db, user_id, connection_group_by, &[]);
     let connection_medians = get_median_duration_by_profile(db, user_id, connection_group_by);
-    let image_stats = get_stats_by_profile(db, user_id, image_group_by, Some("IMAGE_GENERATION"));
+    // Every image-provider call counts, wardrobe pictures included (bug 196).
+    let image_stats = get_stats_by_profile(
+        db,
+        user_id,
+        image_group_by,
+        crate::services::llm_logging::IMAGE_SPEND_LOG_TYPES,
+    );
     let image_medians = get_median_duration_by_profile(db, user_id, image_group_by);
     let cache_by_provider_rows = get_cache_stats(db, user_id, "provider");
     // v4 skips the per-profile cache query entirely on the approximate arm

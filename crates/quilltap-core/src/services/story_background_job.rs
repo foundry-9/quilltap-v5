@@ -21,13 +21,20 @@
 
 use serde_json::Value;
 
+use crate::characters::physical_description::{
+    pick_physical_description_value, PhysicalDescriptionProfile,
+};
 use crate::cheap_llm::{resolve_uncensored_cheap_llm_selection, CheapLlmSelection};
 use crate::clock::iso_from_unix_ms;
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::files::generated_file_row::{
+    create_generated_file_row, GeneratedFileRowInput, GenerationRecord, StoredImageBytes,
+};
+use crate::image_gen::image_attempt::decode_provider_image;
 use crate::image_gen::Orientation;
 use crate::model::completion::CompletionProvider;
-use crate::model::image::{ImageProvider, ImageTranscoder, TranscodeInput};
+use crate::model::image::{ImageGenResponse, ImageProvider, ImageTranscoder};
 use crate::pronoun_gender::gender_prefix_from_pronouns;
 use crate::services::aesthetics::{
     get_project_official_mount_point_id, resolve_aesthetic, resolve_depiction_guidelines,
@@ -601,18 +608,19 @@ where
                     parts.join(". ")
                 }
                 None => {
-                    let primary = char.get("physicalDescription");
-                    let fallback = primary
-                        .and_then(|p| {
-                            p.get("mediumPrompt")
-                                .and_then(Value::as_str)
-                                .filter(|s| !s.is_empty())
-                                .or(p
-                                    .get("shortPrompt")
-                                    .and_then(Value::as_str)
-                                    .filter(|s| !s.is_empty()))
-                        })
-                        .unwrap_or(&name);
+                    // v4 `genderPrefix + (pickPhysicalDescription(primary, 'scene')
+                    // || char.name)` (`9ecebf986` — the pre-span chain was only
+                    // `medium || short`, so long / complete / full were skipped
+                    // straight to the name).
+                    let picked = pick_physical_description_value(
+                        char.get("physicalDescription"),
+                        PhysicalDescriptionProfile::Scene,
+                    );
+                    let fallback = if picked.is_empty() {
+                        name.as_str()
+                    } else {
+                        &picked
+                    };
                     format!("{gender_prefix}{fallback}")
                 }
             };
@@ -874,7 +882,6 @@ where
         Orientation::Landscape,
         deps.declarations_for,
         "background-jobs.story-background",
-        "background-jobs.story-background.concierge-reroute",
         &concierge_policy,
         user_id,
         Some(&payload.chat_id),
@@ -987,32 +994,31 @@ where
         active_model: failover.profile.model_name,
     };
 
-    // v4: `rawData = imageData.data || imageData.b64Json; if (!rawData)` — a JS
-    // falsy check, so a missing AND an empty-string payload both no-op (W4.7f
-    // widened `data` to Option<String>).
-    let Some(image_data) = outcome.images.into_iter().next() else {
-        return Ok(());
-    };
-    let raw_data = match image_data.data.as_deref() {
-        Some(d) if !d.is_empty() => d,
-        _ => return Ok(()),
-    };
     let generation_model = outcome.active_model;
 
-    // 11. Decode + transcode + persist.
-    let raw_buffer = common::decode_base64_node(raw_data);
-    let provider_mime = image_data
-        .mime_type
-        .as_deref()
-        .unwrap_or("image/png")
-        .to_string();
-    let provider_ext = provider_mime.split('/').nth(1).unwrap_or("png");
-    let provider_filename = format!("story_background_{}.{provider_ext}", deps.now_ms);
-    let converted = deps.transcoder.transcode(&TranscodeInput {
-        bytes: raw_buffer,
-        mime_type: provider_mime,
-        filename: provider_filename,
-    });
+    // 11. Decode + transcode (v4 `decodeProviderImage(generationResponse,
+    // 'story_background')`, `9ecebf986`) + persist. No image, or one with no
+    // inline data (`data || b64Json` falsy), is v4's ONE WARN with
+    // `imageCount` and the job completes with the backdrop as it was — v5 had
+    // returned SILENTLY here (it never carried the pre-span pair either).
+    let response = ImageGenResponse {
+        images: outcome.images,
+    };
+    let Some(decoded) = decode_provider_image(
+        deps.transcoder,
+        Some(&response),
+        "story_background",
+        0,
+        deps.now_ms,
+    ) else {
+        tracing::warn!(
+            context = "background-jobs.story-background",
+            jobId = job_id,
+            imageCount = response.images.len(),
+            "[StoryBackground] No image data returned from provider"
+        );
+        return Ok(());
+    };
     let now_iso = iso_from_unix_ms(deps.now_ms);
     let file_id = uuid::Uuid::new_v4().to_string();
     // Storage branch key: payload.projectId (NOT chat.projectId — v4 wrinkle).
@@ -1022,9 +1028,9 @@ where
         Some(
             deps.upload
                 .upload(
-                    &converted.filename,
-                    &converted.bytes,
-                    &converted.mime_type,
+                    &decoded.filename,
+                    &decoded.buffer,
+                    &decoded.mime_type,
                     project_id,
                     "/story-backgrounds/",
                 )
@@ -1041,14 +1047,15 @@ where
         user_id: user_id.to_string(),
         file_id: file_id.clone(),
         now_iso: now_iso.clone(),
-        converted_bytes: converted.bytes.clone(),
-        converted_mime: converted.mime_type.clone(),
-        converted_filename: converted.filename.clone(),
-        converted_width: converted.width,
-        converted_height: converted.height,
+        sha256: decoded.sha256.clone(),
+        converted_bytes: decoded.buffer.clone(),
+        converted_mime: decoded.mime_type.clone(),
+        converted_filename: decoded.filename.clone(),
+        converted_width: decoded.width,
+        converted_height: decoded.height,
         final_prompt: final_prompt.clone(),
         generation_model,
-        revised_prompt: image_data.revised_prompt.clone(),
+        revised_prompt: decoded.revised_prompt.clone(),
         linked_to,
         project_id: payload.project_id.clone(),
         project_upload,
@@ -1197,6 +1204,8 @@ struct StoryWriteInput {
     converted_filename: String,
     converted_width: Option<f64>,
     converted_height: Option<f64>,
+    /// v4 `decoded.sha256` — the hash of the stored bytes.
+    sha256: String,
     final_prompt: String,
     generation_model: String,
     revised_prompt: Option<String>,
@@ -1214,7 +1223,7 @@ fn write_story_file(
     mount: &rusqlite::Connection,
     input: &StoryWriteInput,
 ) -> Result<(), DbError> {
-    let sha256 = sha256_hex(&input.converted_bytes);
+    let sha256 = input.sha256.clone();
     let (storage_key, stored_mime, stored_size, file_project_id, file_folder_path) = match (
         &input.project_id,
         &input.project_upload,
@@ -1274,40 +1283,39 @@ fn write_story_file(
         }
     };
 
-    let files = crate::db::files::FilesRepository::new(main);
-    files.create(
-        &crate::db::files::FileCreate {
-            user_id: input.user_id.clone(),
-            sha256,
-            original_filename: input.converted_filename.clone(),
-            mime_type: stored_mime,
-            size: stored_size as f64,
+    // v4 `createGeneratedFileRow(repos, { id: fileId, userId, sha256, originalFilename,
+    // stored: { storageKey, storedMimeType, sizeBytes }, width, height, linkedTo,
+    // generation: { prompt: finalPrompt, model, revisedPrompt }, projectId,
+    // folderPath })` (`9ecebf986`) — `tags: []`, `description` null (bug 132: a
+    // stub such as "Story background for: <title>" shadowed the prompt and the
+    // vision path behind it; the prompt is the account of record).
+    create_generated_file_row(
+        main,
+        &GeneratedFileRowInput {
+            user_id: &input.user_id,
+            id: Some(&input.file_id),
+            sha256: &sha256,
+            original_filename: &input.converted_filename,
+            stored: &StoredImageBytes {
+                storage_key,
+                stored_mime_type: stored_mime,
+                size_bytes: stored_size as i64,
+            },
             width: input.converted_width,
             height: input.converted_height,
-            is_plain_text: None,
             linked_to: input.linked_to.clone(),
-            source: "GENERATED".to_string(),
-            category: "IMAGE".to_string(),
-            generation_prompt: Some(input.final_prompt.clone()),
-            generation_model: Some(input.generation_model.clone()),
-            generation_revised_prompt: input.revised_prompt.clone(),
-            generation_key: None,
-            // No label here. `description` is what `describe_image` and the
-            // blind-model fallback read as "what this picture shows"; a stub
-            // such as "Story background for: <title>" shadowed the prompt above
-            // and the vision path behind it (bug 132). The prompt is the
-            // account of record.
-            description: None,
             tags: Vec::new(),
-            project_id: file_project_id,
-            folder_path: file_folder_path,
-            storage_key: Some(storage_key),
-            file_status: "ok".to_string(),
-        },
-        &crate::db::files::CreateOptions {
-            id: input.file_id.clone(),
-            created_at: input.now_iso.clone(),
-            updated_at: input.now_iso.clone(),
+            source: None,
+            generation: Some(&GenerationRecord {
+                prompt: Some(input.final_prompt.clone()),
+                model: Some(input.generation_model.clone()),
+                revised_prompt: input.revised_prompt.clone(),
+            }),
+            generation_key: None,
+            description: None,
+            project_id: file_project_id.as_deref(),
+            folder_path: file_folder_path.as_deref(),
+            now_iso: &input.now_iso,
         },
     )?;
     Ok(())
@@ -1353,7 +1361,6 @@ fn build_appearance_inputs(
         crate::tools::wardrobe_shared::resolve_project_mount_point_ids_for_chat(
             main, mount, chat_id,
         );
-    let docs = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
     let mut inputs = Vec::new();
     for char in characters {
         let char_id = char
@@ -1366,38 +1373,19 @@ fn build_appearance_inputs(
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string();
-        let mut equipped: Vec<WardrobeItemInput> = Vec::new();
-        // v4 catches per-character equipped-load failures (uses no items); the
-        // read itself is v4's fallback `safeQuery`, so a failure reads `None`.
-        if let Some(state) = crate::db::chats_outfits::ChatOutfitsRepository::new(main)
-            .get_equipped_outfit_for_character(chat_id, &char_id)
-        {
-            let slots = crate::wardrobe::Slots::from_value(Some(&state));
-            if let Ok(leaves) = crate::tools::wardrobe_shared::resolve_equipped_leaf_items_by_slot(
+        // v4 `equippedWardrobeItemsForAppearance(repos, chatId, characterId,
+        // projectMountPointIds)` (`9ecebf986`) over the wearable pool; v4
+        // catches per-character equipped-load failures (uses no items), and the
+        // slots read itself is a fallback `safeQuery`, so a failure reads none.
+        let equipped: Vec<WardrobeItemInput> =
+            crate::services::appearance_resolution::equipped_wardrobe_items_for_appearance(
                 main,
-                &docs,
+                mount,
+                chat_id,
                 &char_id,
-                &slots,
-                // Group stores follow each character's own memberships, so they
-                // can't come from the shared project list.
-                &crate::wardrobe_tiers::shared_wardrobe_tiers_for_character(
-                    main,
-                    mount,
-                    &char_id,
-                    &project_mount_point_ids,
-                ),
-            ) {
-                equipped = leaves
-                    .into_iter()
-                    .map(|l| WardrobeItemInput {
-                        slot: l.slot,
-                        title: l.title,
-                        description: l.description,
-                        image_prompt: l.image_prompt,
-                    })
-                    .collect();
-            }
-        }
+                &project_mount_point_ids,
+            )
+            .unwrap_or_default();
         inputs.push(AppearanceResolutionInput {
             character_id: char_id,
             character_name: name,
@@ -1502,23 +1490,22 @@ fn append_missing_character_enumerations(prompt: &str, user_characters: &[Value]
     result
 }
 
-/// v4 `buildBasicEnumeration`: `${genderPrefix}${mediumPrompt || shortPrompt ||
-/// longPrompt || fullDescription || name}`.trim().
+/// v4 `buildBasicEnumeration` (`9ecebf986`): `${genderPrefix}${
+/// pickPhysicalDescription(primary, 'scene') || char.name}`.trim() — the
+/// `scene` order (medium ‖ short ‖ long ‖ complete ‖ full); the pre-span chain
+/// LACKED `completePrompt`, so a character with only that was enumerated by
+/// name.
 fn build_basic_enumeration(char: &Value) -> String {
     let name = char.get("name").and_then(Value::as_str).unwrap_or("");
-    let primary = char.get("physicalDescription");
-    let desc = primary
-        .and_then(|p| {
-            [
-                "mediumPrompt",
-                "shortPrompt",
-                "longPrompt",
-                "fullDescription",
-            ]
-            .iter()
-            .find_map(|k| p.get(*k).and_then(Value::as_str).filter(|s| !s.is_empty()))
-        })
-        .unwrap_or(name);
+    let picked = pick_physical_description_value(
+        char.get("physicalDescription"),
+        PhysicalDescriptionProfile::Scene,
+    );
+    let desc = if picked.is_empty() {
+        name
+    } else {
+        picked.as_str()
+    };
     let prefix = gender_prefix_from_pronouns(pronoun_subject(char));
     crate::jsstr::js_trim(&format!("{prefix}{desc}")).to_string()
 }
@@ -1543,6 +1530,8 @@ fn physical_description_from_value(v: &Value) -> PhysicalDescription {
         medium_prompt: s("mediumPrompt"),
         long_prompt: s("longPrompt"),
         complete_prompt: s("completePrompt"),
+        full_description: s("fullDescription"),
+        head_and_shoulders_prompt: s("headAndShouldersPrompt"),
     }
 }
 
@@ -1665,16 +1654,4 @@ fn ensure_legacy_folder(
         },
     )?;
     Ok(())
-}
-
-/// Lowercase hex SHA-256.
-fn sha256_hex(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
 }

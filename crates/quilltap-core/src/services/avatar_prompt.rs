@@ -3,18 +3,20 @@
 //!
 //! Builds the head-and-shoulders portrait prompt used by the avatar-generation
 //! job. Composes the ported wardrobe leaves
-//! (`resolve_equipped_outfit_leaf_values` / `decorate_outfit_items_title_only` /
+//! (`resolve_equipped_outfit_for_character` over the wearable pool / `decorate_outfit_items_title_only` /
 //! `describe_outfit_with_omit`) + the pronoun gender noun. Sync — the caller runs
 //! it inside a DB read/write closure holding both connections.
 
 use rusqlite::Connection;
 use serde_json::Value;
 
+use crate::characters::physical_description::{
+    pick_physical_description_value, PhysicalDescriptionProfile,
+};
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::DbError;
 use crate::jsstr::{js_trim_end, utf16_len, utf16_truncate};
 use crate::pronoun_gender::gender_noun_from_pronouns;
-use crate::tools::wardrobe_shared::resolve_equipped_outfit_leaf_values;
 use crate::wardrobe::{
     decorate_outfit_items_title_only, describe_outfit_with_omit, OutfitSlotName, Slots,
 };
@@ -62,7 +64,9 @@ pub struct LeafCounts {
 pub fn build_character_avatar_prompt(
     main: &Connection,
     mount: &Connection,
-    docs: &DocMountDocumentsRepository,
+    // Unused since v4 `9ecebf986` (the pool reads the tiers itself); kept so the
+    // callers' signature stands.
+    _docs: &DocMountDocumentsRepository,
     character: &Value,
     options: &AvatarPromptOptions,
 ) -> Result<AvatarPromptResult, DbError> {
@@ -92,18 +96,21 @@ pub fn build_character_avatar_prompt(
         // Pass the FULL equipped slots in so the resolver routes coverage by each
         // leaf's own `types`; render-time `omit` drops bottom/footwear so the
         // generator doesn't paste shoes/pants onto a cropped torso.
-        let resolved = resolve_equipped_outfit_leaf_values(
+        // v4 `9ecebf986`: `resolveEquippedOutfitForCharacter(await
+        // loadWearablePool(repos, character.id, projectMountPointIds ?? []),
+        // equippedSlots)` — no project context reads as no project tier, never
+        // a chat lookup.
+        let pool = crate::wearable_pool::load_wearable_pool(
             main,
-            docs,
+            mount,
             character_id,
-            slots,
-            &crate::wardrobe_tiers::shared_wardrobe_tiers_for_character(
-                main,
-                mount,
-                character_id,
-                &options.project_mount_point_ids,
-            ),
-        )?;
+            Some(&options.project_mount_point_ids),
+            crate::wearable_pool::LoadWearablePoolOptions::default(),
+        );
+        let resolved =
+            crate::services::appearance_resolution::resolve_equipped_outfit_for_character(
+                &pool, slots,
+            );
 
         top_is_bare = resolved.top.is_empty();
         let accessories = decorate_outfit_items_title_only(&resolved.accessories);
@@ -248,43 +255,18 @@ pub fn build_figure_identity_block(
     character: &Value,
     framing: FigureFraming,
 ) -> FigureIdentityBlock {
-    const HEAD_AND_SHOULDERS: [&str; 6] = [
-        "headAndShouldersPrompt",
-        "mediumPrompt",
-        "shortPrompt",
-        "longPrompt",
-        "completePrompt",
-        "fullDescription",
-    ];
-    const FULL_LENGTH: [&str; 6] = [
-        "completePrompt",
-        "longPrompt",
-        "mediumPrompt",
-        "shortPrompt",
-        "fullDescription",
-        "headAndShouldersPrompt",
-    ];
-    // v4 `if (desc)` — a present, non-null description; then the first TRUTHY
-    // variant in the framing's order, `|| ''`, trimmed.
-    let physical_text = character
-        .get("physicalDescription")
-        .filter(|d| !d.is_null())
-        .map(|desc| {
-            let order = match framing {
-                FigureFraming::HeadAndShoulders => HEAD_AND_SHOULDERS,
-                FigureFraming::FullLength => FULL_LENGTH,
-            };
-            let chosen = order
-                .iter()
-                .find_map(|k| {
-                    desc.get(*k)
-                        .and_then(Value::as_str)
-                        .filter(|s| !s.is_empty())
-                })
-                .unwrap_or("");
-            crate::jsstr::js_trim(chosen).to_string()
-        })
-        .unwrap_or_default();
+    // v4 `pickPhysicalDescription(character.physicalDescription, framing)`
+    // (`9ecebf986`): the framing's order lives in
+    // `characters::physical_description`; the first variant whose TRIM is
+    // non-empty wins (a whitespace-only variant is skipped — the pre-span
+    // chain took it as truthy and trimmed it to nothing).
+    let physical_text = pick_physical_description_value(
+        character.get("physicalDescription"),
+        match framing {
+            FigureFraming::HeadAndShoulders => PhysicalDescriptionProfile::HeadAndShoulders,
+            FigureFraming::FullLength => PhysicalDescriptionProfile::FullLength,
+        },
+    );
 
     // Anchor the figure's apparent sex from the character's pronouns. Without
     // it, a gender-neutral physical description plus an outfit cue (e.g. a
