@@ -108,6 +108,12 @@ _Versions: core 0.0.1277, web 0.0.232._
 
 The character, General, project and group wardrobe handlers now delegate to one factory (`api/wardrobe_route_factory.rs`, v4 `lib/wardrobe/routes/wardrobe-route-factory.ts` at `4a38222e6`) over the keystone's wardrobe location and item mutations. Every item body carries `origin` then `wear` on GET, POST and PUT; the collection GET answers `{ mountPointId, wardrobeItems }` on every tier, and an unprovisioned General answers `{ wardrobeItems: [] }` instead of a 500. POST answers 201 `{ wardrobeItem }` on every tier (the project / group refreshed list is gone) and accepts `folder`. A component cycle is a 400 on every tier; a write to an archived character's vault is a 409; the PUT answers 404 before it checks `imageFileId`; item routes never provision a store; the instructions POST parses its body first, and a vault-less character is 404 even when clearing (the no-op is General's alone). The log lines are v4's one set (`<tag> Listed / Created / Updated / Deleted wardrobe item`, `Read dressing instructions`, `Dressing instructions updated`, `Read wardrobe item wear history`) keyed by the tier's id key. The store tiers' list and instructions GETs became async (they provision through the writer); the engine's six arms await them. `wardrobe_item_wear_history_as` and the character instructions `_as` forms take a user for the location's ownership gate. Re-pinned by `wardrobe_routes_equivalence`, `group_wardrobe_routes_equivalence`, `wardrobe_instructions_routes_equivalence`, `projects_routes_equivalence` (all from the pin) and the new `p4d281_factory_lines_are_v4s` capture test.
 
+#### 2026-10-12 — docs(porting): P4.D283's close probe records v4 `main` at `af48f6cc2` (three commits past the ledger's `4ce64fa1e`)
+
+_Docs-only change._
+
+The lane record's §R.2 observation corrected at the final probe: v4 `main` moved a third commit (`af48f6cc2`, the memory refactor's Phase B) between the record's draft and the lane's close; tree clean, `bugfix` unmoved. An observation for `/driftcheck`, not a lane stop.
+
 #### 2026-10-12 — feat(wardrobe): the IMAGE side — bug 189's chat Concierge on item pictures, the shared image attempt + generated-file row, the five physical-description orders, bug 196's spend types, bug 197's vision request, the preview-avatar rewrite (P4.D283, v4 `4a38222e6`)
 
 _Versions: core 0.0.1277, host 0.0.198, web 0.0.232._
