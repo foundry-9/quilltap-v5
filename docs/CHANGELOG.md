@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-12 — docs(porting): P4.D279 Tier 2 — mutation proofs, the Friday-copy depth count, the full gate + own-family sweep; LANE COMPLETE
+
+_Docs-only change._
+
+The keystone's Tier 2 record: seven rule inversions each red by name, the fallback census and the archived-wearer guard rewritten over the pool, the read-only count of nested `Wardrobe/` files on the Friday copy (none — the copy predates v4's filing), the full workspace gate (742 binaries / 4,906 passed / 3 by-design reds) and the sweep of the lane's 24 families from the pin (23 ok / 1 P4.D280-owned red). The order's status header moves to LANE COMPLETE.
+
 #### 2026-10-12 — docs(porting): P4.D279's status header names `KEYSTONE` (`a7e8814af`) and the R-F spellings the stage-2 lanes compile against
 
 _Docs-only change._
