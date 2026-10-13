@@ -54,6 +54,12 @@ _Versions: core 0.0.1277._
 
 `?action=equip` now follows v4 `4a38222e6`'s `outfit.ts`. The put-on modes (`wear`, its alias `equip`, `replace`, `add_to_slot`) and `set_all` load one wearable pool for the character (operator project tier, not roster-gated) and put items on through `resolve_wearable` / `wear_item`: an id outside the pool is a 404, an archived item a 400 `Item "<title>" is archived and cannot be worn`, an uncovered `add_to_slot` slot the new 400 `Item "<title>" (types: …) cannot be added to the "<slot>" slot` (was `Wardrobe item "<title>" does not cover the <slot> slot`). `set_all` refuses an archived item only when it is newly put on. The take-off modes go straight to `apply_displacement` with no pool. New INFO lines: `[Chats v1] Wardrobe item put on`, `Wardrobe slot changed`, `Refused to put on a wardrobe item` (with `reason`), `Refused a fitting that puts on an archived item`. The two post-change effects run through `notify_wardrobe_changed`, which adds the announcement's DEBUG / WARN lines. `wardrobe_wear_commit_tier2` grows 18 ops (an `archive` op kind, three new chats) and compares the four new lines.
 
+#### 2026-10-12 — docs(porting): P4.D280 lane record — the gate, the residues, the handoffs; LANE COMPLETE
+
+_Docs-only change._
+
+Closes the P4.D280 lane: the full workspace gate (742 binaries, 4,908 passed, three expected reds owned by the census, P4.D284 and P4.D282), the avatar-trigger family's remaining `background_jobs` difference traced to P4.D282's avatar-profile resolver, the handoffs to the unifier, the dogfood rows, and the closing versions. The order's status header reads LANE COMPLETE.
+
 #### 2026-10-12 — feat(tools): the seven wardrobe tools through ONE table and ONE pool — folders in list / read, idempotent archive, widen-never-narrow update, `equip_now` announced (P4.D280, v4 `4a38222e6`)
 
 _Versions: core 0.0.1278._
