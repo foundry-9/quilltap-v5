@@ -227,10 +227,6 @@ export class WardrobeFolderRow {
  *    `onImportFromImage`, and v5's hosts have none to pass.
  *  - v4's folder mutations invalidate every tree and list in `onSettled`;
  *    here each folder call ends in `actions.refreshLists()` (R-J).
- *  - The row's three new bindings — `[selection]`, `[folderCrumb]` and the
- *    **Move to folder…** output (C3 §5) — land with P4.D286's row and are
- *    this lane's HANDOFF to the unifier (status-log, P4.D285 unit 6);
- *    `selectionFor` / `crumbFor` / `openPickerFor` are their values here.
  */
 @Component({
   selector: 'qt-wardrobe-browser',
@@ -482,6 +478,10 @@ export class WardrobeFolderRow {
                 (delete)="actions().remove($event)"
                 (equip)="wear()?.onEquip($event)"
                 (addToSlot)="wear()?.onAddToSlot($event.item, $event.slot)"
+                [selection]="selectionFor(item)"
+                [folderCrumb]="crumbFor(item)"
+                [canMoveToFolder]="true"
+                (moveToFolder)="openPickerFor([$event])"
               />
             }
           }
@@ -879,7 +879,6 @@ export class WardrobeBrowser {
    * The row's `selection` input (C3 §5) — `undefined` outside select mode.
    * Memoised per row so a binding reads the same object across change-detection
    * passes (a fresh literal each pass trips the dev-mode `NG0100` check).
-   * HANDOFF: bound by the unifier once P4.D286's row has the input.
    */
   private readonly selections = computed(() => {
     if (!this.selectMode()) return null;
@@ -898,7 +897,7 @@ export class WardrobeBrowser {
     return this.selections()?.get(item.id);
   }
 
-  /** The row's `folderCrumb` input (C3 §5) — only while searching. HANDOFF, as above. */
+  /** The row's `folderCrumb` input (C3 §5) — only while searching. */
   protected crumbFor(item: WardrobeItemDto): string | null {
     return this.searching() && item.folder ? folderCrumb(item.folder) : null;
   }

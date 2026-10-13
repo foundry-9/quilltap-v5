@@ -1,9 +1,12 @@
+import { DOCUMENT } from '@angular/common';
 import {
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   ElementRef,
+  inject,
   input,
   output,
   signal,
@@ -11,7 +14,7 @@ import {
 } from '@angular/core';
 
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
-import { isComposite } from './composite-types';
+import { isComposite } from './equipped-slots';
 import { WARDROBE_SLOT_META } from './slot-meta';
 import { SlotBadge } from './slot-ui';
 import { wardrobeOriginLabel } from './wardrobe-container';
@@ -69,8 +72,6 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
   // `_surfaces.css`'s rule for this class (P4.75, measured).
   host: {
     class: 'qt-wardrobe-item-row',
-    '(document:keydown.escape)': 'onEscape($event)',
-    '(document:mousedown)': 'onDocumentMousedown($event)',
   },
   template: `
     <div
@@ -543,6 +544,30 @@ export class WardrobeItemRow {
     out.emit(this.item());
   }
 
+  constructor() {
+    // v4 `useClickOutside(ref, close, { enabled: isOpen, onEscape, escapeCapture:
+    // true })` (`:154-167`): both listeners exist only while a popover is open
+    // (a host `(document:…)` binding would wake every row in the list, and its
+    // change detection, on every press anywhere), and the Escape listener is
+    // on the CAPTURE phase so its `stopPropagation` runs before the wardrobe
+    // dialog's own document Escape — a bubble-phase listener registered after
+    // the dialog's runs too late, and one Escape closed the whole wardrobe.
+    const doc = inject(DOCUMENT);
+    effect((onCleanup) => {
+      if (!this.kebabOpen() && !this.slotPickerOpen()) return;
+      const mousedown = (event: MouseEvent): void => this.onDocumentMousedown(event);
+      const keydown = (event: KeyboardEvent): void => {
+        if (event.key === 'Escape') this.onEscape(event);
+      };
+      doc.addEventListener('mousedown', mousedown);
+      doc.addEventListener('keydown', keydown, true);
+      onCleanup(() => {
+        doc.removeEventListener('mousedown', mousedown);
+        doc.removeEventListener('keydown', keydown, true);
+      });
+    });
+  }
+
   /**
    * v4 `useClickOutside` (`:156-167`, `document` `mousedown`): a press outside
    * the kebab (its button + menu) closes the kebab; a press outside the slot
@@ -561,7 +586,7 @@ export class WardrobeItemRow {
     }
   }
 
-  /** v4 `:114-133` — Escape closes the popovers without dismissing the modal. */
+  /** v4 `:154-167` — Escape closes the popovers without dismissing the modal. */
   protected onEscape(event: Event): void {
     if (!this.slotPickerOpen() && !this.kebabOpen()) return;
     event.stopPropagation();

@@ -29,7 +29,7 @@ import type { WardrobeListData } from './wardrobe-list-data';
  * 6); the unifier applies it and flips this constant. Each gated case has an
  * ungated twin pinning the browser's own half today.
  */
-const P4D286_ROW_LANDED = false;
+const P4D286_ROW_LANDED = true;
 
 afterEach(() => vi.restoreAllMocks());
 

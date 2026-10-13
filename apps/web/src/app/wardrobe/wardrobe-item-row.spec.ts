@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { WardrobeItemDto } from '../core/core-contract';
 import { WardrobeItemRow } from './wardrobe-item-row';
@@ -631,6 +631,28 @@ describe('WardrobeItemRow — folders, select mode, slot labels (v4 4a38222e6)',
     document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     fixture.detectChanges();
     expect(host.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it('an Escape with the kebab open closes the kebab and NEVER reaches an enclosing dialog’s document listener (v4 escapeCapture)', async () => {
+    // The wardrobe dialog's `(document:keydown.escape)` is registered BEFORE
+    // its rows; only a capture-phase listener can stop the press reaching it.
+    const enclosing = vi.fn();
+    document.addEventListener('keydown', enclosing);
+    try {
+      const fixture = await render(owned());
+      const host = fixture.nativeElement as HTMLElement;
+      kebabLabels(fixture);
+      expect(host.querySelector('[role="menu"]')).not.toBeNull();
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      fixture.detectChanges();
+      expect(host.querySelector('[role="menu"]')).toBeNull();
+      expect(enclosing).not.toHaveBeenCalled();
+      // Closed, the row listens no more: the next Escape is the dialog's.
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(enclosing).toHaveBeenCalledTimes(1);
+    } finally {
+      document.removeEventListener('keydown', enclosing);
+    }
   });
 
   it('closes the slot popover on a press outside it', async () => {

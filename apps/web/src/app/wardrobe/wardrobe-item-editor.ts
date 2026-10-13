@@ -13,9 +13,10 @@ import {
 } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
-import type { WardrobeItemDto, WardrobeOrigin, WardrobeSlotType } from '../core/core-contract';
+import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
 import { MarkdownField } from '../editor/markdown-field';
-import { buildCompositeTypes, isComposite } from './composite-types';
+import { buildCompositeTypes } from './composite-types';
+import { isComposite } from './equipped-slots';
 import {
   draftFromItem,
   draftToPayload,
@@ -26,7 +27,11 @@ import {
   type WardrobeItemPayload,
 } from './item-draft';
 import { SlotCheckboxGroup } from './slot-ui';
-import { GENERAL_CONTAINER, type WardrobeContainer } from './wardrobe-container';
+import {
+  containerForListedItem,
+  GENERAL_CONTAINER,
+  type WardrobeContainer,
+} from './wardrobe-container';
 import {
   containerCreateRequest,
   containerUpdateRequest,
@@ -50,25 +55,6 @@ type EditorMode = 'single' | 'bundle';
 /** Where a newly-created wardrobe item is written
  *  (v4 `wardrobe-item-editor.tsx:23`). */
 export type WardrobeCreateScope = 'character' | 'global' | 'project';
-
-/**
- * v4 `lib/wardrobe/wardrobe-container.ts` `containerForListedItem`
- * (`9ecebf986`, `:88-102` at the pin `4a38222e6`) — the container a listed
- * item is addressed through: the `origin` the collection read attached wins;
- * without one a character-owned item lives in its character's vault and
- * anything else is taken for a General archetype.
- *
- * HANDOFF(P4.D285): a private twin of P4.D285's NEW export in
- * `wardrobe-container.ts` (its file); the unifier deletes this twin and
- * imports theirs by name.
- */
-function containerForListedItem(item: {
-  characterId?: string | null;
-  origin?: WardrobeOrigin | null;
-}): WardrobeContainer {
-  if (item.origin) return { scope: item.origin.scope, id: item.origin.id };
-  return item.characterId ? { scope: 'character', id: item.characterId } : GENERAL_CONTAINER;
-}
 
 /** v4 `lib/utils/char-count.ts` `charCountClass` — the qt-* colour class for a
  *  character-count indicator by proximity to `max`. */
@@ -457,14 +443,6 @@ export class WardrobeItemEditor {
    *  (v4 `:31-32`). */
   readonly characterId = input.required<string | null>();
   readonly item = input<WardrobeItemDto | null>(null);
-  /**
-   * ACCEPTED AND IGNORED — v4 `9ecebf986` REMOVED the `isShared` prop: on edit
-   * the item's own tier decides, on create the "Add to" selector does.
-   * HANDOFF(P4.D285): kept only because the wardrobe dialog (P4.D285's file)
-   * still binds `[isShared]="false"`; the unifier deletes this input once
-   * that host drops the binding.
-   */
-  readonly isSharedInput = input(false, { alias: 'isShared' });
   /** Project context (the chat's project) — when present the create-scope
    *  selector offers a "this project" destination (v4 `:34-38`). */
   readonly projectId = input<string | null>(null);

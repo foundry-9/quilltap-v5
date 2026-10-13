@@ -29,6 +29,7 @@ class EditorStub {
   readonly initialMode = input<string | undefined>(undefined);
   readonly initialComponentItemIds = input<string[] | undefined>(undefined);
   readonly autoFocusTitle = input(false);
+  readonly initialFolder = input('');
   readonly closed = output<void>();
   readonly saved = output<void>();
   readonly imageChanged = output<void>();
@@ -53,6 +54,7 @@ class ViewerStub {
   readonly container = input<WardrobeContainer | null>(null);
   readonly fileId = input('');
   readonly closed = output<void>();
+  readonly removed = output<void>();
 }
 
 @Component({
@@ -139,11 +141,22 @@ describe('WardrobeItemOverlays (v4 `WardrobeBrowser.tsx:806-892`)', () => {
     expect(editor.initialMode()).toBe('bundle');
     expect(editor.initialComponentItemIds()).toEqual(['a', 'b']);
     expect(editor.autoFocusTitle()).toBe(true);
+    // v4 `:852` — a create files into the folder the browser was showing.
+    expect(editor.initialFolder()).toBe('Formal');
     const coat = item('coat', { characterId: 'alice' });
     actions.openEditor(coat);
     fixture.detectChanges();
     expect(find(EditorStub)!.item()).toBe(coat);
     expect(find(EditorStub)!.initialMode()).toBeUndefined();
+    // An edit takes the item's own folder; the browsed one is not passed.
+    expect(find(EditorStub)!.initialFolder()).toBe('');
+  });
+
+  it('a create opened at the top level files at the top level', () => {
+    const { fixture, actions, find } = render(ALICE);
+    actions.openCreate('single');
+    fixture.detectChanges();
+    expect(find(EditorStub)!.initialFolder()).toBe('');
   });
 
   it('a save closes the editor and refreshes', async () => {
@@ -203,5 +216,15 @@ describe('WardrobeItemOverlays (v4 `WardrobeBrowser.tsx:806-892`)', () => {
     expect(v.container()).toEqual({ scope: 'group', id: 'g1' });
     v.closed.emit();
     expect(actions.imageView()).toBeNull();
+  });
+
+  it('a missing picture removed in the viewer refreshes the lists, so the row loses its thumbnail (bug 194)', async () => {
+    const { fixture, actions, find, reloadLists } = render(ALICE);
+    actions.openImage(item('cape', { imageFileId: 'f1', characterId: 'alice' }));
+    fixture.detectChanges();
+    expect(reloadLists).not.toHaveBeenCalled();
+    find(ViewerStub)!.removed.emit();
+    await Promise.resolve();
+    expect(reloadLists).toHaveBeenCalledTimes(1);
   });
 });

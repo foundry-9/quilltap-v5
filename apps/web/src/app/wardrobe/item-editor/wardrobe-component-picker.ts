@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 
 import type { WardrobeSlotType } from '../../core/core-contract';
 import { GROUP_LABEL, GROUP_ORDER } from './constants';
-import { isComposite } from '../composite-types';
+import { isComposite } from '../equipped-slots';
 import { formatSlotLabels } from '../slot-meta';
 import { SlotBadge, SlotCheckboxGroup } from '../slot-ui';
 import { wardrobeOriginLabel } from '../wardrobe-container';

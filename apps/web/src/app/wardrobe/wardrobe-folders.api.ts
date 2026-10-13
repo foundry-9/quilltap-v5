@@ -121,7 +121,11 @@ export async function moveWardrobeItemsToFolder(
 
 /** One container's folder tree, held as signals (v4 `useWardrobeFolders`). */
 export interface WardrobeFoldersStore {
-  /** The tree; empty until the read lands, and empty when it fails. */
+  /**
+   * The tree; empty until the read lands (for each new container — the
+   * previous container's tree is never shown while the next one loads), and
+   * empty when it fails.
+   */
   readonly folders: Signal<readonly WardrobeFolderDto[]>;
   /**
    * v4's `isLoading`: true only while the FIRST read of the current container
@@ -162,7 +166,13 @@ export function createWardrobeFoldersStore(core: CoreClient): WardrobeFoldersSto
       return;
     }
     const key = `${container.scope}:${container.id ?? ''}`;
-    if (key !== loadedKey) loading.set(true);
+    // v4's query is keyed per container, so a new container's tree is EMPTY
+    // until its read lands — never the previous container's folders.
+    if (key !== loadedKey) {
+      loadedKey = '';
+      folders.set(EMPTY);
+      loading.set(true);
+    }
     try {
       const next = await listWardrobeFolders(core, container);
       if (ticket === seq) {

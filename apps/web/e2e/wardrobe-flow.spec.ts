@@ -124,7 +124,7 @@ const P4D265_SERVER_LANDED = true;
  * Copy. The three transfer beats click through these names; flip to `true` at
  * unification (§S.9) and the bare names retire.
  */
-const P4D286_ROW_LANDED = false;
+const P4D286_ROW_LANDED = true;
 const MOVE_TO_WARDROBE = P4D286_ROW_LANDED ? 'Move to another wardrobe…' : 'Move';
 const COPY_TO_WARDROBE = P4D286_ROW_LANDED ? 'Copy to another wardrobe…' : 'Copy';
 
@@ -568,7 +568,8 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
       .filter({ hasText: 'Marcel Waves' })
       .first();
     await expect(wavesRow).toBeVisible();
-    await expect(wavesRow.locator('.qt-badge-wardrobe-hair')).toHaveText('hair');
+    // The SlotBadge prints the slot's LABEL (v4 `slot-ui.tsx:18-20`, `meta.label`).
+    await expect(wavesRow.locator('.qt-badge-wardrobe-hair')).toHaveText('Hair');
 
     // The Hair slot row exists in the Outfit Builder and takes the hairdo.
     const hairRow = page.locator('.qt-card').filter({ hasText: 'Hair' }).first();
@@ -1094,13 +1095,19 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await expect(preview).toBeEnabled();
     await preview.click();
 
-    // v4 `preview-avatar/route.ts`: `!imageProfile.apiKeyId` →
-    // badRequest('Selected image profile has no API key configured'). v4 reports
+    // v4 `preview-avatar/route.ts:81` at `4a38222e6`: since `9ecebf986` ONE
+    // sentence covers "no usable profile" and "the profile has no key"
+    // (`resolveAvatarImageProfile` requires `apiKeyId`) — RE-PINNED at the
+    // `4a38222e6` unification (P4.D283 ported the route; the old
+    // "Selected image profile has no API key configured" is gone). v4 reports
     // it as a toast and the dialog carries no banner (P4.25).
     await expect(
       page
         .locator('[role="toast-container"] > div')
-        .filter({ hasText: 'Selected image profile has no API key configured' }),
+        .filter({
+          hasText:
+            'No image profile is configured. Set one in Settings → Images before generating avatars.',
+        }),
     ).toBeVisible({ timeout: 15_000 });
 
     await dialog.getByRole('button', { name: 'Done' }).click();

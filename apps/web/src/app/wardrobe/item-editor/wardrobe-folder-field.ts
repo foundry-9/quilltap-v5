@@ -13,69 +13,12 @@ import {
 } from '@angular/core';
 
 import { CoreClient } from '../../core/core-client';
-import type { CoreRequest } from '../../core/core-contract';
+import { folderCrumb, isSameFolder } from '../folders';
 import { encodeWardrobeContainer, type WardrobeContainer } from '../wardrobe-container';
+import { createWardrobeFoldersStore } from '../wardrobe-folders.api';
 
 /** v4 `WardrobeFolderField.tsx:17` — the select value that reveals the input. */
 const NEW_FOLDER = '\u0000new';
-
-/** v4 `lib/wardrobe/folders.ts` `WardrobeFolder` (`:69-77`). */
-interface WardrobeFolderOption {
-  path: string;
-  name: string;
-  itemCount: number;
-}
-
-/**
- * v4 `folders.ts:245-247` `isSameFolder` — folder paths compare
- * case-insensitively. HANDOFF(P4.D285): a private twin of P4.D285's
- * `wardrobe/folders.ts` export; the unifier deletes it and imports theirs.
- */
-function isSameFolder(a: string | null | undefined, b: string | null | undefined): boolean {
-  return (a ?? '').toLowerCase() === (b ?? '').toLowerCase();
-}
-
-/**
- * v4 `folders.ts:269-271` `folderCrumb` — `Formal/Evening` → `Formal ›
- * Evening` (U+203A). HANDOFF(P4.D285): a private twin, as above.
- */
-function folderCrumb(folder: string): string {
-  return (folder.length === 0 ? [] : folder.split('/')).join(' › ');
-}
-
-/**
- * The folder tree of one container — v4 `lib/hooks/use-wardrobe-folders.ts`
- * `useWardrobeFolders` (`GET …/wardrobe?action=folders` → `{ folders }`),
- * read over the C2 `wardrobeFoldersList` verb. A failed read answers no
- * folders (v4's `EMPTY` default) with v4's warn line, so the field still
- * offers the top level and **New folder…** — which is also what it does
- * against a server that predates the verb.
- *
- * HANDOFF(P4.D285): a private twin of `listWardrobeFolders(container)` in
- * P4.D285's `wardrobe/wardrobe-folders.api.ts` (C3 §2). The request type lives
- * in P4.D285's `core-contract.ts` region (C3 §1), so on this branch the literal
- * is cast; the unifier deletes this twin and calls theirs.
- */
-async function listWardrobeFolders(
-  core: CoreClient,
-  container: WardrobeContainer,
-): Promise<WardrobeFolderOption[]> {
-  const request = {
-    type: 'wardrobeFoldersList',
-    scope: container.scope,
-    ...(container.id !== null ? { containerId: container.id } : {}),
-  };
-  try {
-    const data = await core.dispatchData(request as unknown as CoreRequest);
-    return (data['folders'] as WardrobeFolderOption[] | undefined) ?? [];
-  } catch (error) {
-    console.warn('[useWardrobeFolders] Failed to load wardrobe folders', {
-      tierKey: encodeWardrobeContainer(container),
-      error,
-    });
-    return [];
-  }
-}
 
 /**
  * The item editor's Folder field — a port of v4
@@ -92,9 +35,13 @@ async function listWardrobeFolders(
  * creating the missing parts. The field itself creates nothing, and the
  * editor's `payloadForEdit` is what keeps an unchanged folder off an edit.
  *
- * v5 shape: `value` + `valueChange` are v4's `value` / `onChange`; the read is
- * re-issued whenever the destination container changes (v4's query key is the
- * container's tier key).
+ * v5 shape: `value` + `valueChange` are v4's `value` / `onChange`. The tree is
+ * v4's `useWardrobeFolders(container)` — here the shared
+ * {@link createWardrobeFoldersStore}, re-loaded whenever the destination
+ * changes (v4's query key is the container's tier key; null skips the read,
+ * v4's `enabled: container !== null`). A failed (or absent-verb) read answers
+ * no folders with v4's warn line, so the field still offers the top level and
+ * **New folder…**; a late answer for an earlier destination is dropped.
  *
  * @module wardrobe/item-editor/wardrobe-folder-field
  */
@@ -145,10 +92,14 @@ export class WardrobeFolderField {
 
   protected readonly newFolder = NEW_FOLDER;
   protected readonly typing = signal(false);
-  private readonly folders = signal<WardrobeFolderOption[]>([]);
+  private readonly store = createWardrobeFoldersStore(this.core);
   private readonly folderInput = viewChild<ElementRef<HTMLInputElement>>('folderInput');
-  private loadedFor: string | null = null;
-  private loadSeq = 0;
+  /** `container` keyed by its tier key — a fresh object for the same wardrobe
+   *  is not a new destination (v4's query key is the tier key). */
+  private readonly destination = computed(() => this.container(), {
+    equal: (a, b) =>
+      a === b || (a !== null && b !== null && encodeWardrobeContainer(a) === encodeWardrobeContainer(b)),
+  });
 
   /**
    * A folder the tree doesn't list yet (a new one, or one in another wardrobe
@@ -156,7 +107,7 @@ export class WardrobeFolderField {
    */
   protected readonly options = computed(() => {
     const value = this.value();
-    const paths = this.folders().map((f) => f.path);
+    const paths = this.store.folders().map((f) => f.path);
     if (value && !paths.some((p) => isSameFolder(p, value))) paths.push(value);
     return paths.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   });
@@ -169,20 +120,10 @@ export class WardrobeFolderField {
   protected readonly crumb = folderCrumb;
 
   constructor() {
-    // The read, once per destination; null skips it (v4 `enabled: container !== null`).
+    // The read, once per destination (the store drops a late answer).
     effect(() => {
-      const container = this.container();
-      const key = container ? encodeWardrobeContainer(container) : null;
-      if (key === this.loadedFor) return;
-      this.loadedFor = key;
-      const seq = ++this.loadSeq;
-      untracked(() => {
-        this.folders.set([]);
-        if (!container) return;
-        void listWardrobeFolders(this.core, container).then((folders) => {
-          if (seq === this.loadSeq) this.folders.set(folders);
-        });
-      });
+      const container = this.destination();
+      untracked(() => void this.store.load(container));
     });
 
     // v4 `autoFocus` on the revealed input.

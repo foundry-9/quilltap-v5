@@ -55,6 +55,7 @@ import type {
   WardrobeItemDto,
 } from '../core/core-contract';
 import type { EquippedSlots } from './equipped-slots';
+import { draftFromItem, draftToPayload } from './item-draft';
 import type { WardrobeContainer } from './wardrobe-container';
 
 // ---------------------------------------------------------------------------
@@ -553,6 +554,10 @@ export async function deleteWardrobeItem(
  * be dropped on every duplicate, so a copied garment came back describing
  * nothing. Composite references are copied verbatim; member items are not
  * cloned (v4's own debug note).
+ *
+ * The body is v4 `4a38222e6`'s `draftToPayload({ ...draftFromItem(item), title })`
+ * (`useWardrobeItemActions.ts:206`, §R.10(l)), so it carries the original's
+ * `folder` and the duplicate files beside it.
  */
 export async function duplicateWardrobeItem(
   core: CoreClient,
@@ -562,15 +567,6 @@ export async function duplicateWardrobeItem(
 ): Promise<void> {
   await dispatchWardrobe(
     core,
-    containerCreateRequest(target, {
-      title: newTitle,
-      description: item.description ?? null,
-      imagePrompt: item.imagePrompt ?? null,
-      types: item.types,
-      appropriateness: item.appropriateness ?? null,
-      isDefault: item.isDefault,
-      componentItemIds: item.componentItemIds ?? [],
-      replace: item.replace,
-    }),
+    containerCreateRequest(target, { ...draftToPayload({ ...draftFromItem(item), title: newTitle }) }),
   );
 }

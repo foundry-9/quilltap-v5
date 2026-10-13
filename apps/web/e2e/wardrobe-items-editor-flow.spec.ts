@@ -50,7 +50,7 @@ import {
  * lane. Flip to `true` at unification (the order's §S.9). The bug-190 and
  * bug-194 beats need only verbs already on `main` and run LIVE.
  */
-const P4D279_SERVER_LANDED = false;
+const P4D279_SERVER_LANDED = true;
 
 const PORT = 4337;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -255,6 +255,15 @@ test.describe('P4.D286 — the wardrobe item editor, row and picture cleanup', (
     return page.getByRole('dialog').locator('qt-wardrobe-item-row').filter({ hasText: title }).first();
   }
 
+  /** The button that enters a folder row in the browser (`wardrobe-folders-flow.spec.ts`'s idiom). */
+  function folderButton(page: Page, name: string) {
+    return page
+      .getByRole('dialog')
+      .getByTestId('wardrobe-folder-row')
+      .filter({ hasText: name })
+      .getByRole('button', { name, exact: true });
+  }
+
   test('New folder… files a new garment under Formal/Evening, and Edit reopens on it (ACTIVATE-AT-UNIFY, P4.D279)', async ({
     page,
   }) => {
@@ -285,6 +294,13 @@ test.describe('P4.D286 — the wardrobe item editor, row and picture cleanup', (
     await page.getByRole('button', { name: 'Create', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeHidden();
 
+    // Under the folder browser a row lives only in its own folder's view (v4
+    // `WardrobeBrowser.tsx:854-857`): walk into Formal › Evening to reach it.
+    await folderButton(page, 'Formal').click();
+    await folderButton(page, 'Evening').click();
+    await expect(
+      page.getByRole('dialog').getByRole('navigation', { name: 'Wardrobe folders' }),
+    ).toContainText('Evening');
     await rowOf(page, title).getByRole('button', { name: 'More actions' }).click();
     await page.getByRole('menuitem', { name: 'Edit' }).click();
     await expect(page.getByRole('heading', { name: 'Edit Wardrobe Item' })).toBeVisible();
@@ -331,6 +347,9 @@ test.describe('P4.D286 — the wardrobe item editor, row and picture cleanup', (
     await expect(page.getByRole('menuitem', { name: 'Move to another wardrobe…' })).toBeVisible();
     await page.keyboard.press('Escape');
 
+    // The borrowed garment sits behind the General tier row (v4 `4a38222e6`
+    // `WardrobeBrowser.tsx:854-857`) — enter the tier first.
+    await page.getByRole('dialog').getByTestId('wardrobe-tier-row').filter({ hasText: 'General' }).click();
     await rowOf(page, borrowed).getByRole('button', { name: 'More actions' }).click();
     await expect(page.getByRole('menuitem', { name: 'Copy to another wardrobe…' })).toBeVisible();
     await expect(page.getByRole('menuitem', { name: 'Move to folder…' })).toHaveCount(0);

@@ -23,8 +23,10 @@
  *    `queryKeys.wardrobe.lists` / `folderLists` / `outfit(chatId)`; here
  *    {@link WardrobeItemActions.refresh} calls the host's reload (the lists
  *    and, in chat, the worn outfit) and bumps {@link
- *    WardrobeItemActions.refreshTick}, which every mounted browser and picker
- *    watches to re-read its folder tree. v4's folder mutations invalidate the
+ *    WardrobeItemActions.refreshTick}, which every mounted browser watches to
+ *    re-read its folder tree. The folder picker does not watch it: it reads
+ *    its tree when it opens on a container and re-reads after its own
+ *    **New folder** settles. v4's folder mutations invalidate the
  *    lists and the folders but not the outfit — {@link
  *    WardrobeItemActions.refreshLists} is that narrower refresh.
  *  - The item writes go through `wardrobe.api.ts`'s routed helpers with the
@@ -107,7 +109,7 @@ export interface WardrobeItemActions {
   // row state
   readonly updatingDefaultId: Signal<string | null>;
   readonly generatingImageIds: Signal<ReadonlySet<string>>;
-  /** Bumped by every refresh; browsers and pickers re-read their folder tree on it. */
+  /** Bumped by every refresh; browsers re-read their folder tree on it. */
   readonly refreshTick: Signal<number>;
   // handlers
   toggleDefault(item: WardrobeItemDto): Promise<void>;

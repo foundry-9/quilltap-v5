@@ -192,7 +192,6 @@ export class FullScreenImageViewer {
   readonly filename = input.required<string>();
   /** Buttons before Close, left to right. Hidden while the image is missing. */
   readonly actions = input<readonly FullScreenImageAction[]>([]);
-  /** Conditionally-`undefined` at the list ends — the arrow-visibility idiom. */
   /**
    * Remove a missing picture's reference (v4 `9ecebf986` `onMissingCleanup`,
    * `:42-48`): defaults to the generic `DELETE /api/v1/images/{imageId}`; a
@@ -201,6 +200,7 @@ export class FullScreenImageViewer {
    * after it.
    */
   readonly missingCleanup = input<(() => Promise<void>) | undefined>(undefined);
+  /** Conditionally-`undefined` at the list ends — the arrow-visibility idiom. */
   readonly onPrev = input<(() => void) | undefined>(undefined);
   readonly onNext = input<(() => void) | undefined>(undefined);
   /**

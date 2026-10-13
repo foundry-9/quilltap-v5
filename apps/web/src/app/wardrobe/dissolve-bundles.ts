@@ -34,9 +34,9 @@ import { expandComposites } from './expand-composites';
 
 /**
  * The minimum an item has to expose to be dissolved or worn. Stated
- * structurally so the full `WardrobeItemDto` and the lighter
- * `WardrobeItemSummary` both satisfy it without conversion
- * (v4 `dissolve-bundles.ts:32-40`).
+ * structurally so the full `WardrobeItemDto` and any lighter client summary
+ * both satisfy it without conversion (v4 `dissolve-bundles.ts:32-40`; at
+ * `4a38222e6` it lives in `slot-ops.ts:43-53`).
  */
 export interface WearableNode {
   id: string;

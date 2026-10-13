@@ -19,7 +19,7 @@ import {
   type WardrobeTransferComponentMode,
   type WardrobeTransferScope,
 } from './wardrobe.api';
-import { isComposite } from './composite-types';
+import { isComposite } from './equipped-slots';
 import { sameWardrobeContainer, type WardrobeContainer } from './wardrobe-container';
 import { ToastService } from '../ui/toast.service';
 

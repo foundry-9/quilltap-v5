@@ -189,4 +189,25 @@ describe('createWardrobeFoldersStore loading (v4 `isLoading`, not `isFetching`)'
     release();
     await other;
   });
+
+  it('a container switch shows NO folders while the new read is pending — never the old container’s tree', async () => {
+    // v4's query is keyed per container (`queryKeys.wardrobe.folders(tierKey)`),
+    // so the new key's `data` is undefined → `EMPTY` until its read lands.
+    let release!: (v: Record<string, unknown>) => void;
+    let calls = 0;
+    const { core } = fakeCore(async () =>
+      calls++ === 0
+        ? { folders: [{ path: 'Character only', name: 'Character only', itemCount: 1 }] }
+        : new Promise<Record<string, unknown>>((r) => (release = r)),
+    );
+    const store = createWardrobeFoldersStore(core);
+    await store.load(CHARACTER);
+    expect(store.folders().map((f) => f.path)).toEqual(['Character only']);
+    const switching = store.load(GROUP);
+    expect(store.loading()).toBe(true);
+    expect(store.folders()).toEqual([]);
+    release({ folders: [{ path: 'Group only', name: 'Group only', itemCount: 0 }] });
+    await switching;
+    expect(store.folders().map((f) => f.path)).toEqual(['Group only']);
+  });
 });

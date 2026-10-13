@@ -36,15 +36,16 @@ import {
  * The tier-row beat needs neither and runs LIVE.
  *
  * Runs against its OWN locked server + instance dir over the committed
- * `characters-*` fixture pair (Aria, her own `Flight Jacket` and `Brass
- * Goggles`) on the spec-private port 4336 — the `wardrobe-flow.spec.ts`
+ * `characters-*` fixture pair (Aria, her own `Flight Jacket` and `Goggles` —
+ * `Brass Goggles` is a garment `wardrobe-flow.spec.ts` MAKES, not a fixture
+ * row) on the spec-private port 4336 — the `wardrobe-flow.spec.ts`
  * recipe: copy the pair, write the locked .dbkey, materialize the tables the
  * built-in stores and the transfer enumerator read, rewrite the fixture user
  * to SINGLE_USER_ID with `quilltap db --write` BEFORE launch, then boot
  * quilltap-web. No LLM send happens here.
  */
-const P4D279_SERVER_LANDED = false;
-const P4D286_ROW_LANDED = false;
+const P4D279_SERVER_LANDED = true;
+const P4D286_ROW_LANDED = true;
 
 const FOLDERS_PORT = 4336;
 const BASE_URL = `http://127.0.0.1:${FOLDERS_PORT}`;
@@ -64,6 +65,8 @@ const USER_TABLES = [
 
 /** The General garment the tier-row beat makes, so Aria has a borrowed wardrobe. */
 const GENERAL_GARMENT = 'Opera Cloak';
+/** The garment the New-folder beat creates INSIDE Formal (`+ New Item` files into the folder). */
+const FOLDER_GARMENT = 'Evening Spats';
 
 let server: ChildProcess | undefined;
 
@@ -185,7 +188,12 @@ test.describe('P4.D285 — wardrobe folders in the browser', () => {
       .getByRole('button', { name: 'Wardrobe', exact: true })
       .click();
     await page.getByRole('button', { name: 'Open wardrobe for Aria' }).click();
-    const dialog = page.getByRole('dialog');
+    // The WARDROBE dialog by its title: the folder picker is a modal of its
+    // own (`role="dialog"`, v4's `BaseModal` too), so a bare `getByRole('dialog')`
+    // is ambiguous while it is open.
+    const dialog = page
+      .getByRole('dialog')
+      .filter({ has: page.locator('.qt-dialog-title', { hasText: /^\s*Wardrobe\s*$/ }) });
     await expect(dialog.locator('.qt-dialog-title')).toHaveText('Wardrobe');
     return dialog;
   }
@@ -294,6 +302,33 @@ test.describe('P4.D285 — wardrobe folders in the browser', () => {
     await expect(dialog.getByLabel('New folder name')).toHaveCount(0);
     await expect(dialog).toBeVisible();
 
+    // `+ New Item` inside a folder files the new garment THERE (v4
+    // `WardrobeBrowser.tsx:679` → the editor's `initialFolder`, `:852`): the
+    // row appears in this folder's view, and only there.
+    await dialog.getByRole('button', { name: '+ New Item' }).click();
+    await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeVisible();
+    await page.locator('#wardrobe-title').fill(FOLDER_GARMENT);
+    await expect(page.locator('select#wardrobe-folder option:checked')).toHaveText('Formal', {
+      timeout: 10_000,
+    });
+    await page
+      .locator('qt-wardrobe-item-editor label')
+      .filter({ hasText: /^\s*top\s*$/i })
+      .locator('input[type="checkbox"]')
+      .first()
+      .click();
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeHidden({
+      timeout: 10_000,
+    });
+    await expect(crumbs(dialog)).toContainText('Formal');
+    await expect(itemRow(dialog, FOLDER_GARMENT)).toHaveCount(1, { timeout: 10_000 });
+    await expect(dialog.getByText('Nothing hangs here yet.')).toHaveCount(0);
+    // At the top level it is the folder that counts it, not a loose row.
+    await crumbs(dialog).getByRole('button', { name: 'Wardrobe', exact: true }).click();
+    await expect(itemRow(dialog, FOLDER_GARMENT)).toHaveCount(0);
+    await expect(folderRow(dialog, 'Formal')).toContainText('1 item');
+
     await dialog.getByRole('button', { name: 'Done' }).click();
     await expect(dialog).toBeHidden();
   });
@@ -339,7 +374,8 @@ test.describe('P4.D285 — wardrobe folders in the browser', () => {
       toasts(page).filter({ hasText: '"Flight Jacket" now hangs in "Formal"' }),
     ).toBeVisible({ timeout: 10_000 });
     await expect(itemRow(dialog, 'Flight Jacket')).toHaveCount(0);
-    await expect(folderRow(dialog, 'Formal')).toContainText('1 item');
+    // The New-folder beat's garment already hangs there.
+    await expect(folderRow(dialog, 'Formal')).toContainText('2 items');
 
     // Inside Formal, the picker marks Formal (here now).
     await folderRow(dialog, 'Formal').getByRole('button', { name: 'Formal', exact: true }).click();
@@ -364,9 +400,9 @@ test.describe('P4.D285 — wardrobe folders in the browser', () => {
     test.setTimeout(90_000);
     const dialog = await openAriasWardrobe(page);
 
-    // Select mode: tick Brass Goggles, the sticky bar counts it.
+    // Select mode: tick the fixture's Goggles (Aria's own), the sticky bar counts it.
     await dialog.getByRole('button', { name: 'Select', exact: true }).click();
-    await dialog.getByLabel('Select Brass Goggles').check();
+    await dialog.getByLabel('Select Goggles', { exact: true }).check();
     const bar = dialog.getByTestId('wardrobe-select-bar');
     await expect(bar).toContainText('1 selected');
     await bar.getByRole('button', { name: 'Move to folder…' }).click();
@@ -381,7 +417,7 @@ test.describe('P4.D285 — wardrobe folders in the browser', () => {
     ).toHaveAttribute('aria-selected', 'true', { timeout: 10_000 });
     await page.getByRole('button', { name: 'Move', exact: true }).click();
     await expect(
-      toasts(page).filter({ hasText: '"Brass Goggles" now hangs in "Hats"' }),
+      toasts(page).filter({ hasText: '"Goggles" now hangs in "Hats"' }),
     ).toBeVisible({ timeout: 10_000 });
     // The move ends select mode.
     await expect(bar).toHaveCount(0);
@@ -412,7 +448,7 @@ test.describe('P4.D285 — wardrobe folders in the browser', () => {
     expect(asked).toBe(
       'Send its 1 item (and any archived pieces filed there) up to the top of the wardrobe? Only the folder itself goes.',
     );
-    await expect(itemRow(dialog, 'Brass Goggles')).toHaveCount(1);
+    await expect(itemRow(dialog, 'Goggles')).toHaveCount(1);
 
     await dialog.getByRole('button', { name: 'Done' }).click();
     await expect(dialog).toBeHidden();

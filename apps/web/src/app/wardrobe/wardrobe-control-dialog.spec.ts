@@ -15,7 +15,6 @@ import {
 } from './wardrobe-control-dialog';
 import { WardrobeDialogService } from './wardrobe-dialog.service';
 import { ToastService } from '../ui/toast.service';
-import { addToSlotGesture, wearGesture, type StagedGesture } from './staged-live-outfits';
 import { WardrobeBrowser } from './wardrobe-browser';
 import type { WardrobeItemActions } from './wardrobe-item-actions';
 import { WardrobeItemOverlays } from './wardrobe-item-overlays';
@@ -160,8 +159,6 @@ interface InnerSurface {
   actions: WardrobeItemActions;
   liveHandlers: { onAddToSlot(s: string, id: string): void; onRemoveFromSlot(s: string, id: string): void; onClearSlot(s: string): void };
   fittingHandlers: { onAddToSlot(s: string, id: string): void; onClearSlot(s: string): void };
-  applyLive(g: StagedGesture): void;
-  itemsById(): Map<string, WardrobeItemDto>;
 }
 
 /** The browser's filter state (it moved out of the dialog with the left column). */
@@ -199,13 +196,18 @@ function inner(component: WardrobeControlDialogInner) {
     get titleFilter() {
       return browserOf(component).titleFilter;
     },
-    /** v4 pre-split `handleEquipItem` → the Live arm of `rowEquip`'s gesture. */
-    handleEquipItem: (item: WardrobeItemDto) =>
-      c.applyLive(wearGesture(item.types[0], item.id, c.itemsById())),
-    /** v4 pre-split `handleAddToSlot` → the Live arm of `rowAddToSlot`. */
+    /**
+     * v4 pre-split `handleEquipItem` → the REAL `rowEquip` on the Live tab
+     * (v4 `:326` routes a row to Live staging when the Live tab is showing).
+     */
+    handleEquipItem: (item: WardrobeItemDto) => {
+      c.rightTab.set('live');
+      c.rowEquip(item);
+    },
+    /** v4 pre-split `handleAddToSlot` → the REAL `rowAddToSlot` on the Live tab. */
     handleAddToSlot: (item: WardrobeItemDto, slot: string) => {
-      if (!item.types.includes(slot as never)) return;
-      c.applyLive(addToSlotGesture(slot as never, item, c.itemsById()));
+      c.rightTab.set('live');
+      c.rowAddToSlot(item, slot);
     },
     handleSlotAdd: (slot: string, itemId: string) => c.liveHandlers.onAddToSlot(slot, itemId),
     handleSlotRemove: (slot: string, itemId: string) => c.liveHandlers.onRemoveFromSlot(slot, itemId),

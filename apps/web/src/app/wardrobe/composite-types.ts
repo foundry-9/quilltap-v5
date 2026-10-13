@@ -1,7 +1,8 @@
 /**
  * A composite wardrobe item's slots — the client half of v4
  * `lib/wardrobe/composite-types.ts` (`9ecebf986`, read at the pin
- * `4a38222e6`), plus v4's `isComposite` (`lib/schemas/wardrobe.types.ts`).
+ * `4a38222e6`). v4's `isComposite` (`lib/schemas/wardrobe.types.ts:390`) lives
+ * once, beside the other `wardrobe.types.ts` helpers in `equipped-slots.ts`.
  *
  * `unionTypes` stays where it already lives (`equipped-slots.ts`, P4.9f2) and
  * is re-used here, so the union is spelled once.
@@ -26,10 +27,4 @@ export function buildCompositeTypes(
 ): WardrobeSlotType[] {
   const set = new Set<WardrobeSlotType>([...unionTypes(components), ...designated]);
   return WARDROBE_SLOT_TYPES.filter((s) => set.has(s));
-}
-
-/** An item is a composite (an outfit) when it bundles components (v4
- *  `isComposite`, `wardrobe.types.ts`). */
-export function isComposite(item: { componentItemIds?: readonly string[] | null }): boolean {
-  return (item.componentItemIds ?? []).length > 0;
 }

@@ -490,7 +490,7 @@ describe('the tier-routed row mutations (v4 wardrobe-control-dialog.tsx at d7263
     ]);
   });
 
-  it('duplicateWardrobeItem POSTs into the target container and PRESERVES the Portrait Cue (v4 :565-580)', async () => {
+  it('duplicateWardrobeItem POSTs into the target container, PRESERVES the Portrait Cue and files beside the original (v4 4a38222e6 useWardrobeItemActions.ts:206)', async () => {
     const { core, seen } = stubCore(() => ({}));
     const item = dto({
       id: 'i1',
@@ -501,6 +501,7 @@ describe('the tier-routed row mutations (v4 wardrobe-control-dialog.tsx at d7263
       isDefault: true,
       componentItemIds: ['x'],
       replace: true,
+      folder: 'Formal/Evening',
     });
     await duplicateWardrobeItem(core, CHAR_CONTAINER, item, 'Suit (copy)');
     await duplicateWardrobeItem(core, GROUP_CONTAINER, item, 'Suit (copy 2)');
@@ -517,6 +518,7 @@ describe('the tier-routed row mutations (v4 wardrobe-control-dialog.tsx at d7263
           isDefault: true,
           componentItemIds: ['x'],
           replace: true,
+          folder: 'Formal/Evening',
         },
       },
       {
@@ -531,6 +533,7 @@ describe('the tier-routed row mutations (v4 wardrobe-control-dialog.tsx at d7263
           isDefault: true,
           componentItemIds: ['x'],
           replace: true,
+          folder: 'Formal/Evening',
         },
       },
     ]);

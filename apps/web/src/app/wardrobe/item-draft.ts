@@ -22,7 +22,7 @@
  */
 
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
-import { isComposite } from './composite-types';
+import { isComposite } from './equipped-slots';
 
 /** Editable fields of a wardrobe item, as a form holds them (strings, never null). */
 export interface WardrobeItemDraft {

@@ -21,12 +21,12 @@ import { WardrobeTransferDialog } from './wardrobe-transfer-dialog';
  * server's probe across the character's tiers. (v5 `main` passed `null` in
  * every character view and excluded only a character-owned item's vault.)
  *
- * **HANDOFFs to the unifier (status-log, P4.D285 unit 6):** the editor's
- * `[initialFolder]` (C3 §6, P4.D286's new input — the browsed folder on
- * create) and the viewer's `(removed)` output (bug 194, P4.D286's own
- * §R.10(m) handoff for this host) bind once P4.D286's components carry them.
- * The editor's `isShared` binding is gone (v4 dropped the prop; P4.D286
- * removes the input) — its default was the `false` v5 passed.
+ * The editor's `initialFolder` is the folder the browser was showing when
+ * **+ New Item** opened it (v4 `:852`, C3 §6) — a create files there by
+ * default. The viewer's `removed` (bug 194) refreshes the lists, so the row
+ * behind a picture whose bytes are gone loses its thumbnail too — v4
+ * invalidates the wardrobe lists from inside the viewer; v5's viewer has no
+ * cache to name and hands the refresh to this host.
  */
 @Component({
   selector: 'qt-wardrobe-item-overlays',
@@ -42,6 +42,7 @@ import { WardrobeTransferDialog } from './wardrobe-transfer-dialog';
           [container]="view.container"
           [fileId]="fileId"
           (closed)="actions().closeImage()"
+          (removed)="actions().refresh()"
         />
       }
     }
@@ -59,6 +60,7 @@ import { WardrobeTransferDialog } from './wardrobe-transfer-dialog';
             editor.kind === 'create' && editor.mode === 'bundle' ? editor.componentItemIds : undefined
           "
           [autoFocusTitle]="editor.kind === 'create' && editor.mode === 'bundle'"
+          [initialFolder]="editor.kind === 'create' ? (editor.folder ?? '') : ''"
           (closed)="actions().closeEditor()"
           (saved)="onSaved()"
           (imageChanged)="actions().refresh()"

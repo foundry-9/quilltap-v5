@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import type { WardrobeSlotType } from '../core/core-contract';
-import { buildCompositeTypes, isComposite } from './composite-types';
+import { buildCompositeTypes } from './composite-types';
+import { isComposite } from './equipped-slots';
 
 /**
  * P4.D286 — v4 `lib/wardrobe/composite-types.ts` `buildCompositeTypes`

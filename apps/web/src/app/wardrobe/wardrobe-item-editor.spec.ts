@@ -45,7 +45,6 @@ async function render(
   inputs: Partial<{
     characterId: string | null;
     item: WardrobeItemDto | null;
-    isShared: boolean;
     projectId: string | null;
     initialComponentItemIds: string[];
     initialMode: 'single' | 'bundle';
@@ -79,7 +78,6 @@ async function render(
     inputs.characterId === undefined ? 'char-1' : inputs.characterId,
   );
   if (inputs.item !== undefined) fixture.componentRef.setInput('item', inputs.item);
-  if (inputs.isShared !== undefined) fixture.componentRef.setInput('isShared', inputs.isShared);
   if (inputs.projectId !== undefined) fixture.componentRef.setInput('projectId', inputs.projectId);
   if (inputs.initialComponentItemIds !== undefined) {
     fixture.componentRef.setInput('initialComponentItemIds', inputs.initialComponentItemIds);
@@ -121,7 +119,6 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
     it('editing a shared item PUTs the global route (:360)', async () => {
       const { component } = await render({
         item: item({ id: 'shared-1', characterId: null }),
-        isShared: true,
       });
       expect(component.buildSaveRequest()).toMatchObject({
         type: 'wardrobeUpdate',
@@ -664,6 +661,14 @@ describe('the editor pinned to a shared container (v4 d7263f39)', () => {
     ]);
     // No character read fires — there is no character in this view.
     expect(project.seen.some((r) => (r.type as string) === 'characterWardrobeList')).toBe(false);
+    // Bug 190 (v4 `4a38222e6` :187-199): the shared container's OWN read opts
+    // in to archived rows — the General read always does, so the container
+    // read is the one that proves the editor asked.
+    expect(
+      listReads(project.seen).find((r) => (r.type as string) === 'projectWardrobeList')?.[
+        'includeArchived'
+      ],
+    ).toBe(true);
 
     const general = await render({ characterId: null, item: null, container: GENERAL });
     expect(listReads(general.seen).map((r) => r.type as string)).toEqual(['wardrobeList']);
@@ -704,6 +709,11 @@ describe('the editor pinned to a shared container (v4 d7263f39)', () => {
       'groupWardrobeList',
       'wardrobeList',
     ]);
+    expect(
+      listReads(pinned.seen).find((r) => (r.type as string) === 'groupWardrobeList')?.[
+        'includeArchived'
+      ],
+    ).toBe(true);
   });
 });
 
