@@ -37,8 +37,7 @@ use crate::db::document_store_overlay::OverlayError;
 use crate::db::projects::ProjectsRepository;
 use crate::db::runtime::Db;
 use crate::db::{
-    characters_read, chat_settings, chats_read, connection_profiles, image_profiles, wardrobe_read,
-    DbError,
+    characters_read, chat_settings, chats_read, connection_profiles, image_profiles, DbError,
 };
 use crate::enclave::cron;
 use crate::enclave::lifecycle::{self, LifecycleDeps, StartManualRunResult};
@@ -47,9 +46,6 @@ use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
 use crate::model::stream::{StreamError, StreamingCompletionProvider};
 use crate::provider_manifest::Registry;
-use crate::services::avatar_generation::{
-    trigger_avatar_generation_if_enabled, AvatarGenerationParams,
-};
 use crate::services::chat_continuation::apply_chat_continuation_at_create;
 use crate::services::chat_enrichment::{enrich_participant_summary, EnrichedParticipantSummary};
 use crate::services::chat_initialize::{build_chat_context, ChatContext};
@@ -2330,15 +2326,26 @@ async fn create_initial_messages_scenario_and_staff<EMB, CMP, STR>(
     let _ = user_id;
 }
 
-/// The per-character Aurora opening-outfit whisper + avatar trigger (v4 L456-517
-/// inner body). Errors are swallowed by the caller's per-character loop.
+/// The per-character Aurora opening-outfit whisper + avatar refresh (v4
+/// `createInitialMessagesScenarioAndStaff`'s loop body, `route.ts:563-617` at
+/// `4a38222e6`). Errors are swallowed by the caller's per-character loop.
+///
+/// The equipped titles come from the character's WEARABLE POOL (v4
+/// `loadWearablePool(repos, characterId, equippedProjectMountPointIds)
+/// .getMany(ids)`, `9ecebf986`): the project tier is the create's own list
+/// (not roster-gated), the group tier the character's own memberships, own
+/// items (archived included) shadowing the shared tiers. The titles are the
+/// RAW equipped ids' — no composite expansion, as before. The pool is loaded
+/// only when something is equipped. The avatar leg is the outfit-change
+/// effect's [`refresh_avatar_for_outfit`] (`[Chats v1] chat-open`) — the Host's
+/// whisper already says what everyone is wearing, so no announcement.
 #[allow(clippy::too_many_arguments)]
 async fn post_opening_outfit_and_avatar(
     db: &Db,
     main: &Connection,
     mount: &Connection,
     outfits: &ChatOutfitsRepository<'_>,
-    docs: &DocMountDocumentsRepository<'_>,
+    _docs: &DocMountDocumentsRepository<'_>,
     chat_id: &str,
     character_id: &str,
     equipped_project_mount_point_ids: &[String],
@@ -2351,39 +2358,33 @@ async fn post_opening_outfit_and_avatar(
         return Ok(());
     };
 
+    // v4 `allEquippedItemIds(equippedSlots).filter((id) => typeof id ===
+    // 'string' && id.length > 0)` — slot order, first-seen deduped.
     let mut item_ids: Vec<String> = Vec::new();
     for slot in crate::wardrobe::WARDROBE_SLOT_TYPES {
         for id in slot_ids(&equipped_slots, slot) {
-            item_ids.push(id);
+            if !id.is_empty() && !item_ids.contains(&id) {
+                item_ids.push(id);
+            }
         }
     }
-    let equipped_items = if item_ids.is_empty() {
-        Vec::new()
-    } else {
-        wardrobe_read::find_by_ids_for_character(
-            main,
-            docs,
-            character_id,
-            &item_ids,
-            // v4 `sharedWardrobeTiersForCharacter(characterId, equippedProjectMountPointIds)`
-            // — the project tier is resolved once for the whole cast, the group
-            // tier per character.
-            &crate::wardrobe_tiers::shared_wardrobe_tiers_for_character(
-                main,
-                mount,
-                character_id,
-                equipped_project_mount_point_ids,
-            ),
-        )?
-    };
     let mut title_by_id: std::collections::HashMap<String, String> =
         std::collections::HashMap::new();
-    for item in &equipped_items {
-        if let (Some(id), Some(title)) = (
-            item.get("id").and_then(Value::as_str),
-            item.get("title").and_then(Value::as_str),
-        ) {
-            title_by_id.insert(id.to_string(), title.to_string());
+    if !item_ids.is_empty() {
+        let pool = crate::wearable_pool::load_wearable_pool(
+            main,
+            mount,
+            character_id,
+            Some(equipped_project_mount_point_ids),
+            crate::wearable_pool::LoadWearablePoolOptions::default(),
+        );
+        for item in pool.get_many(&item_ids) {
+            if let (Some(id), Some(title)) = (
+                item.get("id").and_then(Value::as_str),
+                item.get("title").and_then(Value::as_str),
+            ) {
+                title_by_id.insert(id.to_string(), title.to_string());
+            }
         }
     }
     let titles_for = |slot: &str| -> Vec<String> {
@@ -2401,21 +2402,15 @@ async fn post_opening_outfit_and_avatar(
         .to_string();
     let _ = post_opening_outfit_whisper(db, chat_id, &character_name, &outfit).await;
 
-    trigger_avatar_generation_if_enabled(
+    // P4.D238 MARKED HUNK (the `caller_context` rider) — v4
+    // `app/api/v1/chats/route.ts:609` at `4a38222e6`. Automatic (the opening
+    // outfit): cache-served like every other non-manual trigger.
+    crate::services::outfit_change_effects::refresh_avatar_for_outfit(
         db,
-        &AvatarGenerationParams {
-            user_id: SINGLE_USER_ID.to_string(),
-            chat_id: chat_id.to_string(),
-            character_id: character_id.to_string(),
-            // P4.D238 MARKED HUNK (the `caller_context` rider) — v4
-            // `app/api/v1/chats/route.ts:617`.
-            caller_context: "[Chats v1] chat-open",
-            image_profile_id_override: None,
-            equipped_slots_override: None,
-            // Automatic (the opening outfit): cache-served like every other
-            // non-manual trigger.
-            force: false,
-        },
+        SINGLE_USER_ID,
+        chat_id,
+        character_id,
+        "[Chats v1] chat-open",
     )
     .await;
     Ok(())

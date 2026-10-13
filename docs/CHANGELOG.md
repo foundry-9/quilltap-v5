@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-12 — feat(wardrobe): the avatar image profile through resolve_avatar_image_profile — keyless profiles passed over, the override WARN retired, the toggle's skip DEBUG, refresh_avatar_for_outfit on chat-open and participant-join (P4.D282, v4 `9ecebf986`)
+
+_Versions: core 0.0.1280._
+
+`trigger_avatar_generation` resolves its profile through the keystone's `resolve_avatar_image_profile` (override, then the chat's, then the user's default, each required to exist, belong to the user and carry an API key) and logs DEBUG `Avatar image profile resolved` on every call; the WARN `Avatar generation override profile not found, falling back` and the `find_all` read are gone (v4 deleted both), and the trigger's catch WARN now uses v4's `chatId` / `characterId` keys and the bare error. The toggle-on sweep uses the same resolver and logs `[Chats v1] No usable image profile; skipping initial avatar generation` when none qualifies. The chat-open whisper reads equipped titles from the character's wearable pool (`get_many`), and both chat-open and participant-join refresh the avatar through `refresh_avatar_for_outfit`. `wardrobe_tools_avatar_trigger`'s fallback row and `chat_cast_routes`' override test are re-pinned to v4's measured post-fix output; a new cast test pins the toggle's DEBUG.
+
 #### 2026-10-12 — feat(wardrobe): apply_outfit_selections over memoised wearable pools — `wearable()` candidates, `by_id` dissolves, the instructions' group tier from the pool (P4.D282, v4 `9ecebf986`)
 
 _Versions: core 0.0.1279._

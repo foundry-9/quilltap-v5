@@ -64,9 +64,13 @@ pub enum AvatarGenerationResult {
 }
 
 /// v4 `triggerAvatarGeneration`: UNCONDITIONALLY trigger avatar generation.
-/// Resolves the image profile from the override first, then the chat-level
-/// setting, then the global default. Used by the manual regenerate-avatar button
-/// — the chat-level toggle does NOT gate this path.
+/// Resolves the image profile through
+/// [`resolve_avatar_image_profile`](crate::services::image_profile_resolution::resolve_avatar_image_profile)
+/// (override → chat → the user's default, each checked for an API key; DEBUG
+/// `Avatar image profile resolved` on every call). Used by the manual
+/// regenerate-avatar button — the chat-level toggle does NOT gate this path.
+/// v4 `9ecebf986` RETIRED the WARN `Avatar generation override profile not
+/// found, falling back` (an unusable override is the resolver's DEBUG now).
 pub async fn trigger_avatar_generation(
     db: &Db,
     params: &AvatarGenerationParams,
@@ -77,14 +81,14 @@ pub async fn trigger_avatar_generation(
         Err(e) => {
             tracing::warn!(
                 context = params.caller_context,
-                chat_id = %params.chat_id,
-                character_id = %params.character_id,
-                error = %e,
+                chatId = params.chat_id.as_str(),
+                characterId = params.character_id.as_str(),
+                error = %crate::db::fallback::error_text(&e),
                 "Failed to enqueue avatar generation"
             );
             AvatarGenerationResult::NotQueued {
                 reason: "error".to_string(),
-                message: e.to_string(),
+                message: crate::db::fallback::error_text(&e),
             }
         }
     }
@@ -110,57 +114,46 @@ async fn trigger_avatar_generation_inner(
         });
     };
 
-    // Resolve image profile: explicit override → chat-level → global default.
-    let mut image_profile_id: Option<String> = None;
-
-    if let Some(over) = params
+    // Override → chat-level → the user's default, each checked for an API key
+    // (v4 `resolveAvatarImageProfile`, `9ecebf986`): a candidate that is
+    // missing, foreign, or keyless is passed over for the next rather than
+    // handed to a job that would only skip for want of a key. Every read
+    // inside is a fallback read, so the resolution never fails; a pool
+    // checkout failure is the trigger's own catch below.
+    let override_id = params
         .image_profile_id_override
-        .as_deref()
-        .filter(|s| !s.is_empty())
-    {
-        let over = over.to_string();
-        let lookup = over.clone();
-        let profile = crate::db::fallback::find_by_id_or_none("image_profiles", &over, || {
-            db.read_main(move |conn| crate::db::image_profiles::find_by_id(conn, &lookup))
-        });
-        match profile {
-            Some(p) => {
-                image_profile_id = p.get("id").and_then(Value::as_str).map(str::to_string);
-            }
-            None => tracing::warn!(
-                context = params.caller_context,
-                chat_id = %params.chat_id,
-                image_profile_id_override = %over,
-                "Avatar generation override profile not found, falling back"
+        .clone()
+        .filter(|s| !s.is_empty());
+    let (user_id, lookup, chat_row) = (params.user_id.clone(), override_id.clone(), chat.clone());
+    let profile = db.read_main(move |conn| {
+        Ok(
+            crate::services::image_profile_resolution::resolve_avatar_image_profile(
+                conn,
+                &user_id,
+                lookup.as_deref(),
+                Some(&chat_row),
             ),
-        }
-    }
-
-    if image_profile_id.is_none() {
-        if let Some(chat_profile) = chat.get("imageProfileId").and_then(Value::as_str) {
-            let chat_profile = chat_profile.to_string();
-            let lookup = chat_profile.clone();
-            let profile =
-                crate::db::fallback::find_by_id_or_none("image_profiles", &chat_profile, || {
-                    db.read_main(move |conn| crate::db::image_profiles::find_by_id(conn, &lookup))
-                });
-            if let Some(p) = profile {
-                image_profile_id = p.get("id").and_then(Value::as_str).map(str::to_string);
-            }
-        }
-    }
-
-    if image_profile_id.is_none() {
-        let all = crate::db::fallback::find_all_or_empty("image_profiles", || {
-            db.read_main(crate::db::image_profiles::find_all)
-        });
-        let default = all
-            .into_iter()
-            .find(|p| p.get("isDefault").and_then(Value::as_bool) == Some(true));
-        if let Some(p) = default {
-            image_profile_id = p.get("id").and_then(Value::as_str).map(str::to_string);
-        }
-    }
+        )
+    })?;
+    let image_profile_id = profile
+        .as_ref()
+        .and_then(|p| p.get("id"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    // v4 `!!imageProfileIdOverride` / `… && imageProfileId ===
+    // imageProfileIdOverride`; an absent profile id renders as `null`.
+    let override_requested = override_id.is_some();
+    let override_honoured =
+        override_requested && image_profile_id.is_some() && image_profile_id == override_id;
+    tracing::debug!(
+        context = params.caller_context,
+        chatId = params.chat_id.as_str(),
+        characterId = params.character_id.as_str(),
+        imageProfileId = image_profile_id.as_deref().unwrap_or("null"),
+        overrideRequested = override_requested,
+        overrideHonoured = override_honoured,
+        "Avatar image profile resolved"
+    );
 
     let Some(image_profile_id) = image_profile_id else {
         return Ok(AvatarGenerationResult::NotQueued {

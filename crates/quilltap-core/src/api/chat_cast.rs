@@ -37,9 +37,6 @@ use serde_json::{json, Value};
 use crate::db::chats::{ChatUpdate, ChatsRepository};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, DbError};
-use crate::services::avatar_generation::{
-    trigger_avatar_generation_if_enabled, AvatarGenerationParams,
-};
 use crate::services::chat_avatars;
 use crate::services::chat_participants::{
     apply_outfit_for_added_participant, enrich_participant, handle_add_participant,
@@ -189,19 +186,16 @@ async fn refresh_avatar_for_arriving_character(
         return;
     }
 
-    trigger_avatar_generation_if_enabled(
+    // v4 `refreshAvatarForOutfit(repos, { userId, chatId, characterId },
+    // '[Chats v1] participant-join')` (`participants.ts:268`, `9ecebf986`) —
+    // the outfit-change effect's avatar half (no announcement). Automatic:
+    // cache-served, so the job payload carries no `force` key at all.
+    crate::services::outfit_change_effects::refresh_avatar_for_outfit(
         db,
-        &AvatarGenerationParams {
-            user_id: user_id.to_string(),
-            chat_id: chat_id.to_string(),
-            character_id: character_id.to_string(),
-            caller_context: "[Chats v1] participant-join",
-            image_profile_id_override: None,
-            equipped_slots_override: None,
-            // Automatic: cache-served, so the job payload carries no `force`
-            // key at all (v4 passes none).
-            force: false,
-        },
+        user_id,
+        chat_id,
+        character_id,
+        "[Chats v1] participant-join",
     )
     .await;
     tracing::debug!(

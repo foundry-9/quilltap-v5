@@ -446,6 +446,44 @@ fn line<'a>(lines: &'a [String], needle: &str) -> &'a String {
         .unwrap_or_else(|| panic!("no line containing {needle:?}: {lines:#?}"))
 }
 
+/// Give the fixture's avatar profile an API key (P4.D282): since `9ecebf986`
+/// the resolver passes over a keyless profile (v4 `resolveAvatarImageProfile`
+/// — "each candidate must exist, belong to the user, and carry an API key"),
+/// and the committed fixture's profile is keyless. Only the presence of the
+/// id is checked, never the key row.
+fn plant_profile_key(db: &Db, rt: &tokio::runtime::Runtime, profile_id: &str) {
+    let profile_id = profile_id.to_string();
+    rt.block_on(db.write(move |w| {
+        w.main()
+            .connection()
+            .execute(
+                "UPDATE image_profiles SET apiKeyId = 'eeeeeeee-0000-4000-8000-0000000000aa' WHERE id = ?1",
+                [&profile_id],
+            )
+            .map(|_| ())
+            .map_err(quilltap_core::db::DbError::from)
+    }))
+    .expect("key the profile");
+}
+
+/// The trigger's reads and profile resolution at the pin `4a38222e6` (P4.D282
+/// re-pin; ledger §5.4 — measured against v4's REAL `triggerAvatarGeneration`
+/// over a copy of this fixture before the rewrite). v4 `9ecebf986` resolves
+/// the profile through `resolveAvatarImageProfile` (override → chat → the
+/// user's `findDefault`, each checked for a key) and RETIRED the WARN
+/// `Avatar generation override profile not found, falling back` and the
+/// `findAll` read (`Error finding all entities`); every call that reaches the
+/// resolution logs DEBUG `Avatar image profile resolved`. The measured v4
+/// arms: an intact keyless profile → `no-image-profile` with `[ProfileResolution]
+/// No usable avatar image profile` + the resolved line (`imageProfileId` null);
+/// `chats` gone → `chat-not-found` with no resolver line; `image_profiles` gone
+/// with an override → `[ProfileResolution] Avatar override profile unusable;
+/// falling back` (`found: false`), the no-usable line, the resolved line
+/// (`overrideRequested: true`, `overrideHonoured: false`), `no-image-profile`.
+/// The repository ERRORs (`Error finding entity by ID` / `… by filter`) are
+/// v4's fallback homes, logged through a child logger the measurement's
+/// transport splice cannot see — v5's homes are pinned here by their own
+/// bytes.
 #[test]
 fn trigger_read_failures_take_v4_fallback_arms() {
     let (Some(fx_main), Some(fx_mount)) = (
@@ -461,23 +499,82 @@ fn trigger_read_failures_take_v4_fallback_arms() {
         .enable_all()
         .build()
         .unwrap();
+    let resolved_line = |lines: &[String]| -> String {
+        let hits: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Avatar image profile resolved"))
+            .collect();
+        assert_eq!(hits.len(), 1, "{lines:#?}");
+        assert!(hits[0].starts_with("DEBUG "), "{}", hits[0]);
+        for field in [
+            "context=wardrobe-wear-handler".to_string(),
+            format!("chatId={chat}"),
+            format!("characterId={}", base.caller),
+        ] {
+            assert!(hits[0].contains(&field), "{field} in {}", hits[0]);
+        }
+        hits[0].clone()
+    };
+    let no_retired_lines = |lines: &[String]| {
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("override profile not found")
+                    || l.contains("Error finding all entities")
+                    || l.contains("Failed to enqueue")),
+            "{lines:#?}"
+        );
+    };
 
-    // Silence leg: an intact fixture queues with none of the repository lines.
+    // A keyed profile queues, with the resolved line naming it and none of the
+    // repository lines.
     let (db, scratch) = open_copy(&fx_main, &fx_mount, &base.pepper, "fb-ok");
+    plant_profile_key(&db, &rt, &profile_id);
     let (r, lines) = quilltap_core::test_support::captured_with(|| {
         rt.block_on(trigger_avatar_generation(&db, &params(&base, &chat)))
     });
     assert_eq!(r, AvatarGenerationResult::Queued);
+    let l = resolved_line(&lines);
+    for field in [
+        format!("imageProfileId={profile_id}"),
+        "overrideRequested=false".to_string(),
+        "overrideHonoured=false".to_string(),
+    ] {
+        assert!(l.contains(&field), "{field} in {l}");
+    }
     assert!(
-        !lines
-            .iter()
-            .any(|l| l.contains("Error finding") || l.contains("Failed to enqueue")),
+        !lines.iter().any(|l| l.contains("Error finding")),
         "{lines:#?}"
     );
+    no_retired_lines(&lines);
     drop(db);
     drop(scratch);
 
-    // chats table gone → v4's `findById` answers null (+ ERROR) → chat-not-found.
+    // The committed KEYLESS profile is passed over (measured v4: `no-image-
+    // profile`, not queued).
+    let (db, scratch) = open_copy(&fx_main, &fx_mount, &base.pepper, "fb-keyless");
+    let (r, lines) = quilltap_core::test_support::captured_with(|| {
+        rt.block_on(trigger_avatar_generation(&db, &params(&base, &chat)))
+    });
+    match &r {
+        AvatarGenerationResult::NotQueued { reason, .. } => assert_eq!(reason, "no-image-profile"),
+        other => panic!("expected no-image-profile, got {other:?}"),
+    }
+    let l = line(&lines, "[ProfileResolution] No usable avatar image profile");
+    assert!(
+        l.starts_with("DEBUG ") && l.contains(&format!("userId={}", base.user_id)),
+        "{l}"
+    );
+    assert!(
+        resolved_line(&lines).contains("imageProfileId=null"),
+        "{lines:#?}"
+    );
+    no_retired_lines(&lines);
+    drop(db);
+    drop(scratch);
+
+    // chats table gone → v4's `findById` answers null (+ ERROR) → chat-not-found,
+    // before any resolution.
     let (db, scratch) = open_copy(&fx_main, &fx_mount, &base.pepper, "fb-chats");
     drop_tables(&db, &rt, &["chats"]);
     let (r, lines) = quilltap_core::test_support::captured_with(|| {
@@ -491,14 +588,19 @@ fn trigger_read_failures_take_v4_fallback_arms() {
     assert!(l.starts_with("ERROR "), "{l}");
     assert!(l.contains("collection=chats"), "{l}");
     assert!(
-        !lines.iter().any(|l| l.contains("Failed to enqueue")),
-        "no catch WARN: {lines:#?}"
+        !lines
+            .iter()
+            .any(|l| l.contains("Avatar image profile resolved")),
+        "{lines:#?}"
     );
+    no_retired_lines(&lines);
     drop(db);
     drop(scratch);
 
-    // image_profiles gone → the override lookup, then `findAll`, both fall back:
-    // the override WARN, both repository ERRORs, and `no-image-profile`.
+    // image_profiles gone, with an override → the override lookup and the
+    // default lookup both fall back (their repository ERRORs), the override
+    // DEBUG, the no-usable DEBUG, the resolved line, `no-image-profile` — and
+    // NO retired WARN.
     let (db, scratch) = open_copy(&fx_main, &fx_mount, &base.pepper, "fb-profiles");
     drop_tables(&db, &rt, &["image_profiles"]);
     let mut p = params(&base, &chat);
@@ -516,24 +618,39 @@ fn trigger_read_failures_take_v4_fallback_arms() {
         "{l}"
     );
     assert!(l.contains(&format!("id={profile_id}")), "{l}");
-    let l = line(&lines, "Error finding all entities");
+    let l = line(&lines, "Error finding entity by filter");
     assert!(
         l.starts_with("ERROR ") && l.contains("collection=image_profiles"),
         "{l}"
     );
-    assert!(
-        line(&lines, "override profile not found").starts_with("WARN "),
-        "{lines:#?}"
+    let l = line(
+        &lines,
+        "[ProfileResolution] Avatar override profile unusable; falling back",
     );
-    assert!(
-        !lines.iter().any(|l| l.contains("Failed to enqueue")),
-        "no catch WARN: {lines:#?}"
-    );
+    for field in [
+        "context=image-gen.profile-resolution".to_string(),
+        format!("override={profile_id}"),
+        "found=false".to_string(),
+    ] {
+        assert!(l.contains(&field), "{field} in {l}");
+    }
+    line(&lines, "[ProfileResolution] No usable avatar image profile");
+    let l = resolved_line(&lines);
+    for field in [
+        "imageProfileId=null",
+        "overrideRequested=true",
+        "overrideHonoured=false",
+    ] {
+        assert!(l.contains(field), "{field} in {l}");
+    }
+    no_retired_lines(&lines);
     drop(db);
     drop(scratch);
 
-    // The catch keeps its ONE reachable leg: the enqueue's own write failing.
+    // The catch keeps its ONE reachable leg: the enqueue's own write failing
+    // (a keyed profile, so the resolution lands).
     let (db, scratch) = open_copy(&fx_main, &fx_mount, &base.pepper, "fb-enqueue");
+    plant_profile_key(&db, &rt, &profile_id);
     drop_tables(&db, &rt, &["background_jobs"]);
     let (r, lines) = quilltap_core::test_support::captured_with(|| {
         rt.block_on(trigger_avatar_generation(&db, &params(&base, &chat)))
@@ -543,10 +660,16 @@ fn trigger_read_failures_take_v4_fallback_arms() {
         other => panic!("expected error, got {other:?}"),
     }
     let l = line(&lines, "Failed to enqueue avatar generation");
-    assert!(
-        l.starts_with("WARN ") && l.contains("context=wardrobe-wear-handler"),
-        "{l}"
-    );
+    for field in [
+        "context=wardrobe-wear-handler".to_string(),
+        format!("chatId={chat}"),
+        format!("characterId={}", base.caller),
+    ] {
+        assert!(
+            l.starts_with("WARN ") && l.contains(&field),
+            "{field} in {l}"
+        );
+    }
     drop(db);
     drop(scratch);
 }

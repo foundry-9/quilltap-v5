@@ -34,11 +34,12 @@ use serde_json::{json, Map, Value};
 
 use crate::db::runtime::Db;
 use crate::db::{
-    characters_read, chats_read, document_store_overlay::OverlayError, image_profiles,
-    vault_character_update, DbError,
+    characters_read, chats_read, document_store_overlay::OverlayError, vault_character_update,
+    DbError,
 };
 use crate::photos::photo_link_summary::get_photo_link_summary_by_sha256;
 use crate::photos::resolve_character_avatar::resolve_character_avatar;
+use crate::services::image_profile_resolution::resolve_avatar_image_profile;
 use crate::services::queue_service::enqueue_character_avatar_generation;
 
 /// v4's `{ error, status }` failure arm for this family.
@@ -312,25 +313,26 @@ pub async fn toggle_avatar_generation(
     }
 
     if new_value {
-        // Best-effort from here down (v4's outer try/catch): resolve the image
-        // profile chat-level-first, then the marked default; silently do nothing
-        // when neither exists.
+        // Best-effort from here down (v4's outer try/catch): chat-level first,
+        // then the user's default, each checked for an API key (v4
+        // `resolveAvatarImageProfile(user.id, repos, { chat })`, `9ecebf986` —
+        // `chat` is the PRE-toggle row, as v4 reads it). With no usable
+        // profile the sweep logs v4's DEBUG and enqueues nothing.
         let cid = chat_id.to_string();
-        let chat_profile = chat
-            .get("imageProfileId")
-            .and_then(Value::as_str)
-            .map(str::to_string);
+        let (user, chat_row) = (user_id.to_string(), chat.clone());
         let resolved_profile = db.read_main(move |c| {
-            if let Some(pid) = chat_profile {
-                if let Some(p) = image_profiles::find_by_id(c, &pid)? {
-                    return Ok(s(&p, "id"));
-                }
-            }
-            Ok(image_profiles::find_all(c)?
-                .into_iter()
-                .find(|p| p.get("isDefault").and_then(Value::as_bool) == Some(true))
-                .and_then(|p| s(&p, "id")))
+            Ok(
+                resolve_avatar_image_profile(c, &user, None, Some(&chat_row))
+                    .and_then(|p| s(&p, "id")),
+            )
         });
+        if let Ok(None) = resolved_profile {
+            tracing::debug!(
+                chatId = chat_id,
+                context = "avatar-generation",
+                "[Chats v1] No usable image profile; skipping initial avatar generation"
+            );
+        }
         if let Ok(Some(image_profile_id)) = resolved_profile {
             let chat_after = db
                 .read_main(move |c| chats_read::find_by_id(c, &cid))

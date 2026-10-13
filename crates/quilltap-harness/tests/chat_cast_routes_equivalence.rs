@@ -1902,8 +1902,17 @@ fn a_poisoned_trigger_cannot_fail_the_join() {
 }
 
 #[test]
-fn an_override_profile_that_is_gone_warns_and_falls_back() {
-    // The `caller_context` rider's override WARN (v4 `avatar-generation.ts:79`).
+fn an_override_profile_that_is_gone_falls_back_quietly() {
+    // P4.D282 (v4 `9ecebf986`, pin `4a38222e6`): the override WARN `Avatar
+    // generation override profile not found, falling back` is RETIRED — an
+    // unusable override is `resolveAvatarImageProfile`'s DEBUG
+    // `[ProfileResolution] Avatar override profile unusable; falling back`
+    // `{context, override, found}`, then the chat → default tiers, and every
+    // resolution logs `Avatar image profile resolved` (measured against v4's
+    // real `triggerAvatarGeneration` at the pin: a missing override → the
+    // unusable DEBUG with `found: false`, `overrideRequested: true`,
+    // `overrideHonoured: false`). This fixture's default profile carries a
+    // key, so the trigger still queues.
     use quilltap_core::services::avatar_generation::{
         trigger_avatar_generation, AvatarGenerationParams, AvatarGenerationResult,
     };
@@ -1930,23 +1939,29 @@ fn an_override_profile_that_is_gone_warns_and_falls_back() {
         AvatarGenerationResult::Queued,
         "falls back to the default"
     );
-    let warn = line(
+    assert!(!has(&lines, "override profile not found"), "{lines:#?}");
+    let unusable = line(
         &lines,
-        "Avatar generation override profile not found, falling back",
+        "[ProfileResolution] Avatar override profile unusable; falling back",
     );
-    assert!(warn.starts_with("WARN "), "{warn}");
-    assert!(
-        warn.contains("context=[Chats v1] regenerate-avatar"),
-        "{warn}"
-    );
-    assert!(
-        warn.contains(&format!(
-            "image_profile_id_override={}",
-            spec.ids["missing"]
-        )),
-        "{warn}"
-    );
-    // Silence leg: a present override never warns.
+    assert!(unusable.starts_with("DEBUG "), "{unusable}");
+    for field in [
+        "context=image-gen.profile-resolution".to_string(),
+        format!("override={}", spec.ids["missing"]),
+        "found=false".to_string(),
+    ] {
+        assert!(unusable.contains(&field), "{field} in {unusable}");
+    }
+    let resolved = line(&lines, "Avatar image profile resolved");
+    for field in [
+        "context=[Chats v1] regenerate-avatar".to_string(),
+        format!("imageProfileId={}", spec.ids["imageProfile"]),
+        "overrideRequested=true".to_string(),
+        "overrideHonoured=false".to_string(),
+    ] {
+        assert!(resolved.contains(&field), "{field} in {resolved}");
+    }
+    // Silence leg: a usable override is honoured with no fallback line.
     let ok_params = AvatarGenerationParams {
         image_profile_id_override: Some(spec.ids["imageProfile"].clone()),
         character_id: spec.ids["cleo"].clone(),
@@ -1956,6 +1971,12 @@ fn an_override_profile_that_is_gone_warns_and_falls_back() {
         rt.block_on(trigger_avatar_generation(&db, &ok_params))
     });
     assert!(!has(&quiet, "override profile not found"), "{quiet:#?}");
+    assert!(!has(&quiet, "[ProfileResolution]"), "{quiet:#?}");
+    let resolved = line(&quiet, "Avatar image profile resolved");
+    assert!(
+        resolved.contains("overrideRequested=true") && resolved.contains("overrideHonoured=true"),
+        "{resolved}"
+    );
 }
 
 /// A `Db` over the cast fixture's main partition ONLY: every mount-index read
@@ -2120,5 +2141,74 @@ fn a_manual_join_with_claimed_bundles_is_dressed_when_the_pool_read_fails() {
         equipped["top"],
         json!(["a1b2c3d4-0000-4000-8000-0000000000aa"]),
         "{equipped}"
+    );
+}
+
+#[test]
+fn toggle_on_with_no_usable_profile_logs_v4s_debug_and_enqueues_nothing() {
+    // P4.D282 (v4 `9ecebf986`, `toggle-avatar-generation.ts:51-62`): the
+    // toggle-ON sweep resolves its profile through `resolveAvatarImageProfile(
+    // user.id, repos, { chat })` (chat-level, then the user's default, each
+    // checked for a key); with none usable it logs DEBUG `[Chats v1] No usable
+    // image profile; skipping initial avatar generation` `{chatId, context:
+    // 'avatar-generation'}` and enqueues nothing. The fixture's only profile
+    // carries a key — un-keyed on this copy, it is passed over.
+    let spec = load_spec();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let chat = spec.ids["chatMain"].clone();
+    const SKIP_LINE: &str =
+        "[Chats v1] No usable image profile; skipping initial avatar generation";
+
+    // Silence leg: the keyed profile enqueues and the line stays quiet.
+    let (db, _scratch) = fresh_db(&spec, "toggle-keyed");
+    let (r, lines) = quilltap_core::test_support::captured_with(|| {
+        rt.block_on(chat_cast::chat_toggle_avatar_generation(
+            &db,
+            &spec.user_id,
+            &chat,
+        ))
+    });
+    assert!(matches!(r, Response::ChatCast(_)), "{r:?}");
+    assert!(!has(&lines, SKIP_LINE), "{lines:#?}");
+    assert!(
+        dump_jobs(&db).as_array().is_some_and(|a| !a.is_empty()),
+        "a keyed profile enqueues the initial avatars"
+    );
+
+    // The profile un-keyed: the DEBUG, and no job.
+    let (db, _scratch) = fresh_db(&spec, "toggle-keyless");
+    rt.block_on(db.write(|w| {
+        w.main()
+            .connection()
+            .execute_batch("UPDATE image_profiles SET apiKeyId = NULL;")
+            .map_err(quilltap_core::db::DbError::from)
+    }))
+    .expect("un-key the profile");
+    let (r, lines) = quilltap_core::test_support::captured_with(|| {
+        rt.block_on(chat_cast::chat_toggle_avatar_generation(
+            &db,
+            &spec.user_id,
+            &chat,
+        ))
+    });
+    assert!(
+        matches!(r, Response::ChatCast(_)),
+        "the toggle still lands: {r:?}"
+    );
+    let l = line(&lines, SKIP_LINE);
+    assert!(l.starts_with("DEBUG "), "{l}");
+    for field in [
+        format!("chatId={chat}"),
+        "context=avatar-generation".to_string(),
+    ] {
+        assert!(l.contains(&field), "{field} in {l}");
+    }
+    assert!(
+        dump_jobs(&db).as_array().is_some_and(|a| a.is_empty()),
+        "nothing enqueued: {}",
+        dump_jobs(&db)
     );
 }
