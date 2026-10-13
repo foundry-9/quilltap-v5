@@ -23,10 +23,10 @@
 //! (`loadWearablePool` / `pool.get` / `pool.getMany` / `pool.wearable()`), and
 //! the reader no longer seeds shared archetypes into component resolution (a
 //! cross-tier ref survives parsing as its UUID — bug 187 — and the pool
-//! resolves it). The three finders below are kept ONLY as `LANE-REMOVE`
-//! wrappers over the pool so the files of the `4a38222e6` round's other lanes
-//! compile until each re-points its callers; the keystone's census
-//! `no_wardrobe_lane_remove_markers_left` fails while any marker remains.
+//! resolves it). The three finders the keystone kept as `LANE-REMOVE`
+//! wrappers over the pool for the `4a38222e6` round's other lanes were deleted
+//! at that round's unification (§S.5), once every caller had re-pointed; the
+//! census `no_wardrobe_lane_remove_markers_left` keeps them gone.
 
 use rusqlite::Connection;
 use serde_json::Value;

@@ -29,53 +29,31 @@ use crate::services::wardrobe_item_images::primitives::{
     assert_item_image_choice, ItemImageChoiceError,
 };
 
-/// The `meta` object a route hands v4's `cleanupEquippedRefs` — one variant per
-/// caller shape (tracing field names are static, so the shape is the match).
+/// The `meta` object a route hands v4's `cleanupEquippedRefs` — since the one
+/// route factory (`9ecebf986`, P4.D281) there is a single caller shape,
+/// `{ [logIdKey]: location.id, itemId, context: 'wardrobe' }`; the scope picks
+/// the key (tracing field names are static, so the shape is the match). The
+/// pre-factory per-route shapes (the character route's context-less
+/// `{ characterId, itemId }`, General's bare `{ itemId }`) went with v4's
+/// per-tier routes.
 #[derive(Debug, Clone, Copy)]
 pub enum ItemRouteMeta<'a> {
-    /// The character route: `{ characterId: id, itemId }`.
-    Character { character_id: &'a str },
-    /// The General (archetype) route: `{ itemId }`.
-    Archetype,
-    /// The project store factory: `{ projectId: id, itemId, context: 'wardrobe' }`.
-    Project { project_id: &'a str },
-    /// The group store factory: `{ groupId: id, itemId, context: 'wardrobe' }`.
-    Group { group_id: &'a str },
-    /// The one route factory (`9ecebf986`, P4.D281): `{ [logIdKey]:
-    /// location.id, itemId, context: 'wardrobe' }` — `id` is the rendered
-    /// owner id (`"null"` for General).
+    /// `{ [logIdKey]: location.id, itemId, context: 'wardrobe' }` — `id` is the
+    /// rendered owner id (`"null"` for General).
     Location {
         scope: crate::db::wardrobe_location::WardrobeScope,
         id: &'a str,
     },
 }
 
-/// One clean-up line in each of the four meta shapes; `$rest` are the keys v4
-/// spreads AFTER the meta (`itemId` is already in every meta, so `{ ...meta,
+/// One clean-up line in the factory's meta shape; `$rest` are the keys v4
+/// spreads AFTER the meta (`itemId` is already in the meta, so `{ ...meta,
 /// itemId }` adds nothing). Each line is emitted under its ROUTE's target —
 /// in v4 the route's own logger call owns it (the `[Projects v1]` lines the
 /// projects family captures sit at `quilltap_core::api::projects`).
 macro_rules! step_line {
     ($level:ident, $meta:expr, $item_id:expr, $message:expr; $($rest:tt)*) => {
         match $meta {
-            ItemRouteMeta::Character { character_id } => tracing::$level!(
-                target: "quilltap_core::api::characters",
-                characterId = %character_id, itemId = %$item_id, $($rest)* "{}", $message
-            ),
-            ItemRouteMeta::Archetype => tracing::$level!(
-                target: "quilltap_core::api::wardrobe",
-                itemId = %$item_id, $($rest)* "{}", $message
-            ),
-            ItemRouteMeta::Project { project_id } => tracing::$level!(
-                target: "quilltap_core::api::projects",
-                projectId = %project_id, itemId = %$item_id, context = "wardrobe",
-                $($rest)* "{}", $message
-            ),
-            ItemRouteMeta::Group { group_id } => tracing::$level!(
-                target: "quilltap_core::api::groups",
-                groupId = %group_id, itemId = %$item_id, context = "wardrobe",
-                $($rest)* "{}", $message
-            ),
             ItemRouteMeta::Location { scope, id } => {
                 use crate::db::wardrobe_location::WardrobeScope;
                 match scope {
@@ -228,6 +206,7 @@ pub(crate) fn parse_image_file_id(body: &serde_json::Value) -> Result<Option<Opt
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::wardrobe_location::WardrobeScope;
     use crate::test_support::captured_with;
 
     const ITEM: &str = "e9000000-0000-4000-8000-000000000001";
@@ -275,21 +254,25 @@ mod tests {
     #[test]
     fn the_ledger_rows_go_with_the_item_and_the_debug_line_carries_the_meta() {
         let main = main_db(true);
+        // The one factory's meta `{ [logIdKey]: location.id, itemId, context:
+        // 'wardrobe' }` under each tier's `logTag` (v4
+        // `lib/wardrobe/routes/wardrobe-route-factory.ts` + the four routes'
+        // configs); General's `location.id` is `null`.
         for (meta, want) in [
             (
-                ItemRouteMeta::Character { character_id: "c1" },
-                format!("[Wardrobe v1] Dropped wear-ledger rows for deleted item characterId=c1 itemId={ITEM}"),
+                ItemRouteMeta::Location { scope: WardrobeScope::Character, id: "c1" },
+                format!("[Wardrobe v1] Dropped wear-ledger rows for deleted item characterId=c1 itemId={ITEM} context=wardrobe"),
             ),
             (
-                ItemRouteMeta::Archetype,
-                format!("[Wardrobe Archetypes v1] Dropped wear-ledger rows for deleted item itemId={ITEM}"),
+                ItemRouteMeta::Location { scope: WardrobeScope::General, id: "null" },
+                format!("[Wardrobe Archetypes v1] Dropped wear-ledger rows for deleted item generalId=null itemId={ITEM} context=wardrobe"),
             ),
             (
-                ItemRouteMeta::Project { project_id: "p1" },
+                ItemRouteMeta::Location { scope: WardrobeScope::Project, id: "p1" },
                 format!("[Projects v1] Dropped wear-ledger rows for deleted item projectId=p1 itemId={ITEM} context=wardrobe"),
             ),
             (
-                ItemRouteMeta::Group { group_id: "g1" },
+                ItemRouteMeta::Location { scope: WardrobeScope::Group, id: "g1" },
                 format!("[Groups v1] Dropped wear-ledger rows for deleted item groupId=g1 itemId={ITEM} context=wardrobe"),
             ),
         ] {
@@ -319,7 +302,10 @@ mod tests {
                 &main,
                 ITEM,
                 "[Groups v1]",
-                ItemRouteMeta::Group { group_id: "g1" },
+                ItemRouteMeta::Location {
+                    scope: WardrobeScope::Group,
+                    id: "g1",
+                },
             )
         });
         assert_eq!(outcome.equipped, Ok(()));
@@ -343,7 +329,10 @@ mod tests {
                 &main,
                 ITEM,
                 "[Wardrobe v1]",
-                ItemRouteMeta::Character { character_id: "c1" },
+                ItemRouteMeta::Location {
+                    scope: WardrobeScope::Character,
+                    id: "c1",
+                },
             )
         });
         assert!(outcome.equipped.is_err());
@@ -352,7 +341,7 @@ mod tests {
         assert_eq!(warn.len(), 1, "{lines:#?}");
         assert!(
             warn[0].starts_with(&format!(
-                "[Wardrobe v1] Cleanup of equipped references had issues, proceeding with delete characterId=c1 itemId={ITEM} cleanupError="
+                "[Wardrobe v1] Cleanup of equipped references had issues, proceeding with delete characterId=c1 itemId={ITEM} context=wardrobe cleanupError="
             )),
             "{warn:?}"
         );

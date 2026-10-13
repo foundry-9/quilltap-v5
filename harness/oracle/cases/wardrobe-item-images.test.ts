@@ -311,8 +311,15 @@ async function runScenario(
         break;
       }
       case 'cleanup': {
+        // The one route factory's meta (v4 `9ecebf986`,
+        // lib/wardrobe/routes/wardrobe-route-factory.ts): `{ ...meta,
+        // mountPointId: location.mountPointId }` over `{ [logIdKey]:
+        // location.id, itemId, context: 'wardrobe' }`.
         await ii.cleanupItemImages(repos, spec.items[scenario.item].id, '[Wardrobe v1]', {
           characterId: spec.characterId,
+          itemId: spec.items[scenario.item].id,
+          context: 'wardrobe',
+          mountPointId: await mountOf('character'),
         });
         result = { done: true };
         break;

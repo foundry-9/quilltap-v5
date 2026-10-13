@@ -165,10 +165,13 @@ impl WearablePool {
             return None;
         }
         let own = &self.layers_weakest_first[3];
+        // v4 `if (own) return own;` — the own-layer match ITSELF. Not through
+        // `by_id`: the vault read is recursive and never dedupes ids, so the
+        // same item file copied into two folders is two own entries with one
+        // id, and `by_id` holds the LAST (the shadow's `set` overwrites) where
+        // v4 answers the FIRST title match — possibly a different title.
         if let Some(found) = own.iter().find(|item| item_title_lower(item) == wanted) {
-            // The own layer's items are the same `Value`s `by_id` holds for
-            // those ids (own is the strongest tier), so answer through `by_id`.
-            return self.by_id.get(item_id(found));
+            return Some(found);
         }
         self.wearable()
             .iter()
@@ -748,5 +751,32 @@ mod tests {
             .map(|i| item_id(i).to_string())
             .collect();
         assert_eq!(graph, vec!["o1", "g1", "p1"]);
+    }
+
+    /// v4 `findByTitle` returns the own-layer match ITSELF. The vault read is
+    /// recursive and never dedupes ids, so one item file copied into two
+    /// folders is two own entries with one id; `by_id` holds the LAST (the
+    /// shadow overwrites), v4 answers the FIRST whose title matches.
+    #[test]
+    fn find_by_title_answers_the_own_match_itself_under_a_duplicated_id() {
+        let own = vec![
+            item("dup", json!({ "title": "Coat", "characterId": "c1" })),
+            item("dup", json!({ "title": "Hat", "characterId": "c1" })),
+        ];
+        let p = build_wearable_pool(
+            "c1",
+            WardrobeTierMounts::default(),
+            own,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        );
+        assert_eq!(
+            p.get("dup").unwrap()["title"],
+            "Hat",
+            "by_id holds the last copy"
+        );
+        assert_eq!(p.find_by_title("coat").unwrap()["title"], "Coat");
+        assert_eq!(p.find_by_title("HAT").unwrap()["title"], "Hat");
     }
 }

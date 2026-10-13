@@ -56,6 +56,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use quilltap_core::api::types::WardrobeContainerScope;
+use quilltap_core::db::vault_wardrobe_public::WardrobeScope;
 use quilltap_core::db::Writer;
 use quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder;
 use quilltap_core::services::wardrobe_container::{resolve_wardrobe_item_home, scope_str};
@@ -312,14 +313,19 @@ fn run_op(ctx: &Ctx<'_>, scenario: &Value) -> (Value, Vec<String>) {
                 }
             }
             "cleanup" => {
+                // The one route factory's meta (`9ecebf986`, P4.D281): `{
+                // characterId, itemId, context: 'wardrobe', mountPointId }`.
                 let character_id = ctx.s("characterId");
+                let mount_point_id = ctx.mount_of("character");
                 cleanup_item_images(
                     main,
                     mount,
                     &item_id,
                     "[Wardrobe v1]",
-                    ItemImageCleanupMeta::Character {
-                        character_id: &character_id,
+                    ItemImageCleanupMeta::Location {
+                        scope: WardrobeScope::Character,
+                        id: &character_id,
+                        mount_point_id: &mount_point_id,
                     },
                 );
                 json!({ "done": true })

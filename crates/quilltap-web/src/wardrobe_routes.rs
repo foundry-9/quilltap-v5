@@ -376,68 +376,82 @@ pub async fn wardrobe_preview_avatar_post(
         Err(r) => return *r,
     };
     match dispatch_core(&state, CoreRequest::WardrobePreviewAvatar { body }).await {
-        Ok(resp) => match preview_avatar_status_and_body(resp) {
+        Ok(resp) => preview_avatar_to_http(resp),
+        Err(r) => r,
+    }
+}
+
+/// v4 `preview-avatar/route.ts` (`9ecebf986`): the HTTP answer for the
+/// preview's dispatch response. A generation failure is `errorResponse(
+/// message, refused ? 422 : 502, { trail, refused })` — the core carries the
+/// refusal as `Unprocessable` and the provider failure as `Internal` with
+/// `details.refused === false` (the images route's idiom for its own 502),
+/// both with the `details` bag on the body ([`preview_generation_failure`]).
+/// Every other error leaves through the shared [`error_to_http`] — the
+/// ordinary status map, v4's store-unavailable `{error, <entity>Id}` body,
+/// and the context middleware's ERROR line for it (P4.162).
+pub fn preview_avatar_to_http(resp: CoreResponse) -> AxumResponse {
+    match resp {
+        CoreResponse::Wardrobe(v) => (
+            StatusCode::OK,
+            [("content-type", "application/json")],
+            v.to_string(),
+        )
+            .into_response(),
+        CoreResponse::Error(e) => match preview_generation_failure(&e) {
             Some((status, body)) => (
                 status,
                 [("content-type", "application/json")],
                 body.to_string(),
             )
                 .into_response(),
-            None => unwrap_to_http(
-                CoreResponse::Error(quilltap_core::api::types::CoreError {
-                    kind: quilltap_core::api::types::ErrorKind::Internal,
-                    message: "Unexpected core response".to_string(),
-                    pepper_state: None,
-                    code: None,
-                    associations: None,
-                    character_id: None,
-                    entity: None,
-                    details: None,
-                    already_saved: None,
-                }),
-                StatusCode::OK,
-            ),
+            None => error_to_http(e),
         },
-        Err(r) => r,
+        _ => error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unexpected core response",
+        ),
     }
 }
 
-/// v4 `preview-avatar/route.ts` (`9ecebf986`): the HTTP status and body for
-/// the preview's dispatch answer. A generation failure is `errorResponse(
-/// message, refused ? 422 : 502, { trail, refused })` — the core carries the
-/// refusal as `Unprocessable` and the provider failure as `Internal` with
-/// `details.refused === false` (the images route's idiom for its own 502),
-/// both with the `details` bag on the body; every other error is the ordinary
-/// status map with `{ error }`. `None` for a response variant the preview
-/// never answers. `pub` so the routes differential pins the edge's mapping.
-pub fn preview_avatar_status_and_body(resp: CoreResponse) -> Option<(StatusCode, Value)> {
+/// The preview's own failure arms — the two `errorResponse(..., { trail,
+/// refused })` answers, each rendered `{ error, details }`: `Internal` with
+/// `details.refused === false` → 502, `Unprocessable` with the bag → 422.
+/// `None` for anything else (the shared map's).
+fn preview_generation_failure(
+    e: &quilltap_core::api::types::CoreError,
+) -> Option<(StatusCode, Value)> {
     use quilltap_core::api::types::ErrorKind;
-    match resp {
-        CoreResponse::Wardrobe(v) => Some((StatusCode::OK, v)),
-        CoreResponse::Error(e) => {
-            let provider_failed = e.kind == ErrorKind::Internal
-                && e.details
-                    .as_deref()
-                    .and_then(|d| d.get("refused"))
-                    .and_then(Value::as_bool)
-                    == Some(false);
-            let status = match e.kind {
-                _ if provider_failed => StatusCode::BAD_GATEWAY,
-                ErrorKind::BadRequest => StatusCode::BAD_REQUEST,
-                ErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
-                ErrorKind::Forbidden => StatusCode::FORBIDDEN,
-                ErrorKind::NotFound => StatusCode::NOT_FOUND,
-                ErrorKind::Conflict => StatusCode::CONFLICT,
-                ErrorKind::Unprocessable => StatusCode::UNPROCESSABLE_ENTITY,
-                ErrorKind::Locked | ErrorKind::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
-                ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            let mut body = serde_json::json!({ "error": e.message });
-            if let Some(d) = e.details {
-                body["details"] = *d;
-            }
-            Some((status, body))
-        }
+    let body = e.validation_wire_body()?;
+    let refused = e
+        .details
+        .as_deref()
+        .and_then(|d| d.get("refused"))
+        .and_then(Value::as_bool);
+    match (&e.kind, refused) {
+        (ErrorKind::Internal, Some(false)) => Some((StatusCode::BAD_GATEWAY, body)),
+        (ErrorKind::Unprocessable, _) => Some((StatusCode::UNPROCESSABLE_ENTITY, body)),
+        _ => None,
+    }
+}
+
+/// The status and JSON body [`preview_avatar_to_http`] answers, read back off
+/// the rendered response — `pub` so the routes differential pins the edge's
+/// REAL bytes (the shared arm included). `None` for a response variant the
+/// preview never answers, or a body that is not one buffered JSON value (every
+/// arm above renders a `String`, so its body is ready on the first poll).
+pub fn preview_avatar_status_and_body(resp: CoreResponse) -> Option<(StatusCode, Value)> {
+    use std::future::Future;
+    use std::task::{Context, Poll, Waker};
+    if !matches!(resp, CoreResponse::Wardrobe(_) | CoreResponse::Error(_)) {
+        return None;
+    }
+    let rendered = preview_avatar_to_http(resp);
+    let status = rendered.status();
+    let read = axum::body::to_bytes(rendered.into_body(), usize::MAX);
+    let mut read = std::pin::pin!(read);
+    match read.as_mut().poll(&mut Context::from_waker(Waker::noop())) {
+        Poll::Ready(Ok(bytes)) => serde_json::from_slice(&bytes).ok().map(|v| (status, v)),
         _ => None,
     }
 }
@@ -776,5 +790,75 @@ mod include_archived_tests {
         assert!(!read_include_archived(&q(&[("includeArchived", "false")])));
         assert!(!read_include_archived(&q(&[])));
         assert!(!read_include_archived(&q(&[("includearchived", "true")])));
+    }
+}
+
+#[cfg(test)]
+mod preview_avatar_edge_tests {
+    use super::preview_avatar_status_and_body;
+    use axum::http::StatusCode;
+    use quilltap_core::api::types::ErrorKind;
+    use quilltap_core::api::Response as CoreResponse;
+    use serde_json::json;
+
+    fn with_details(kind: ErrorKind, message: &str, refused: bool) -> CoreResponse {
+        let mut r = CoreResponse::error(kind, message.to_string());
+        if let CoreResponse::Error(e) = &mut r {
+            e.details = Some(Box::new(json!({ "trail": null, "refused": refused })));
+        }
+        r
+    }
+
+    /// v4 `errorResponse(message, refused ? 422 : 502, { trail, refused })` —
+    /// the preview's own two arms, `details` on the body.
+    #[test]
+    fn the_generation_failures_answer_422_and_502_with_their_details() {
+        assert_eq!(
+            preview_avatar_status_and_body(with_details(
+                ErrorKind::Internal,
+                "Image generation failed: boom",
+                false
+            )),
+            Some((
+                StatusCode::BAD_GATEWAY,
+                json!({ "error": "Image generation failed: boom",
+                        "details": { "trail": null, "refused": false } })
+            ))
+        );
+        assert_eq!(
+            preview_avatar_status_and_body(with_details(
+                ErrorKind::Unprocessable,
+                "The image provider declined to draw this portrait",
+                true
+            )),
+            Some((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                json!({ "error": "The image provider declined to draw this portrait",
+                        "details": { "trail": null, "refused": true } })
+            ))
+        );
+    }
+
+    /// Every other error leaves through the shared `error_to_http`: a broken
+    /// character vault answers v4's contextful `{error, characterId}` 503 (the
+    /// pre-delegation local map rendered a bare `{error}` and skipped the
+    /// middleware ERROR), and a plain 500 stays `{error}`.
+    #[test]
+    fn every_other_error_takes_the_shared_map() {
+        assert_eq!(
+            preview_avatar_status_and_body(CoreResponse::store_unavailable("character", "c-1")),
+            Some((
+                StatusCode::SERVICE_UNAVAILABLE,
+                json!({ "error": "Character vault unavailable", "characterId": "c-1" })
+            ))
+        );
+        assert_eq!(
+            preview_avatar_status_and_body(CoreResponse::error(ErrorKind::Internal, "x")),
+            Some((StatusCode::INTERNAL_SERVER_ERROR, json!({ "error": "x" })))
+        );
+        assert_eq!(
+            preview_avatar_status_and_body(CoreResponse::Wardrobe(json!({ "ok": 1 }))),
+            Some((StatusCode::OK, json!({ "ok": 1 })))
+        );
     }
 }

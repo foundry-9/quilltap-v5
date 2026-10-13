@@ -98,28 +98,16 @@ pub fn assert_item_image_choice(
     }
 }
 
-/// The meta a delete route hands [`cleanup_item_images`] — v4's `meta` object,
-/// one variant per caller shape (its keys LEAD every line, `itemId` after
-/// them unless the meta already placed it).
+/// The meta a delete route hands [`cleanup_item_images`] — v4's `meta` object
+/// (its keys LEAD every line; `itemId` is already among them). Since the one
+/// route factory (`9ecebf986`, P4.D281) there is a single caller shape, `{
+/// [logIdKey]: location.id, itemId, context: 'wardrobe', mountPointId }`; the
+/// scope picks the key (tracing field names are static, so the shape is the
+/// match). The pre-factory per-route shapes went with v4's per-tier routes.
 #[derive(Debug, Clone, Copy)]
 pub enum ItemImageCleanupMeta<'a> {
-    /// The character route: `{ characterId: id, itemId }`.
-    Character { character_id: &'a str },
-    /// The General (archetype) route: `{ itemId }`.
-    Archetype,
-    /// The project store factory: `{ projectId: id, mountPointId, context: 'wardrobe' }`.
-    Project {
-        project_id: &'a str,
-        mount_point_id: &'a str,
-    },
-    /// The group store factory: `{ groupId: id, mountPointId, context: 'wardrobe' }`.
-    Group {
-        group_id: &'a str,
-        mount_point_id: &'a str,
-    },
-    /// The one route factory (`9ecebf986`, P4.D281): `{ [logIdKey]:
-    /// location.id, itemId, context: 'wardrobe', mountPointId }` — `id` is the
-    /// rendered owner id (`"null"` for General).
+    /// `{ [logIdKey]: location.id, itemId, context: 'wardrobe', mountPointId }`
+    /// — `id` is the rendered owner id (`"null"` for General).
     Location {
         scope: crate::db::wardrobe_location::WardrobeScope,
         id: &'a str,
@@ -127,25 +115,10 @@ pub enum ItemImageCleanupMeta<'a> {
     },
 }
 
-/// One cleanup line in each of the four meta shapes (tracing field names are
-/// static, so the shape is the match).
+/// One cleanup line in the factory's meta shape.
 macro_rules! cleanup_line {
     ($level:ident, $meta:expr, $item_id:expr, $message:expr; $($rest:tt)*) => {
         match $meta {
-            ItemImageCleanupMeta::Character { character_id } => tracing::$level!(
-                characterId = %character_id, itemId = %$item_id, $($rest)* "{}", $message
-            ),
-            ItemImageCleanupMeta::Archetype => tracing::$level!(
-                itemId = %$item_id, $($rest)* "{}", $message
-            ),
-            ItemImageCleanupMeta::Project { project_id, mount_point_id } => tracing::$level!(
-                projectId = %project_id, mountPointId = %mount_point_id, context = "wardrobe",
-                itemId = %$item_id, $($rest)* "{}", $message
-            ),
-            ItemImageCleanupMeta::Group { group_id, mount_point_id } => tracing::$level!(
-                groupId = %group_id, mountPointId = %mount_point_id, context = "wardrobe",
-                itemId = %$item_id, $($rest)* "{}", $message
-            ),
             ItemImageCleanupMeta::Location { scope, id, mount_point_id } => {
                 use crate::db::wardrobe_location::WardrobeScope;
                 match scope {
@@ -249,6 +222,7 @@ pub(crate) fn remove_image_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::wardrobe_location::WardrobeScope;
     use crate::services::wardrobe_image_paths::wardrobe_item_image_path;
     use crate::test_support::captured_with;
     use rusqlite::params;
@@ -416,8 +390,10 @@ mod tests {
                 &mount,
                 ITEM,
                 "[Wardrobe v1]",
-                ItemImageCleanupMeta::Character {
-                    character_id: "char-1",
+                ItemImageCleanupMeta::Location {
+                    scope: WardrobeScope::Character,
+                    id: "char-1",
+                    mount_point_id: MP,
                 },
             )
         });
@@ -434,10 +410,12 @@ mod tests {
         assert_eq!(links, 0);
         let info: Vec<&String> = lines.iter().filter(|l| l.starts_with("INFO")).collect();
         assert_eq!(info.len(), 1, "{lines:#?}");
+        // v4's factory meta `{ [logIdKey], itemId, context: 'wardrobe' }` +
+        // `mountPointId`, then `removed` / `failed`.
         assert!(
-            info[0].ends_with(
-                "[Wardrobe v1] Removed wardrobe item images with the item characterId=char-1 itemId=7d8c4a4e-5b1d-4f3a-9a2e-1c2b3d4e5f60 removed=2 failed=0"
-            ),
+            info[0].ends_with(&format!(
+                "[Wardrobe v1] Removed wardrobe item images with the item characterId=char-1 itemId={ITEM} context=wardrobe mountPointId={MP} removed=2 failed=0"
+            )),
             "{}",
             info[0]
         );
@@ -451,7 +429,11 @@ mod tests {
                 &mount,
                 ITEM,
                 "[Wardrobe Archetypes v1]",
-                ItemImageCleanupMeta::Archetype,
+                ItemImageCleanupMeta::Location {
+                    scope: WardrobeScope::General,
+                    id: "null",
+                    mount_point_id: MP,
+                },
             )
         });
         assert_eq!(removed, 0);
@@ -479,16 +461,16 @@ mod tests {
                 &mount,
                 ITEM,
                 "[Projects v1]",
-                ItemImageCleanupMeta::Project {
-                    project_id: "p-1",
+                ItemImageCleanupMeta::Location {
+                    scope: WardrobeScope::Project,
+                    id: "p-1",
                     mount_point_id: MP,
                 },
             )
         });
         assert_eq!(removed, 1);
         assert!(lines.iter().any(|l| l.starts_with("WARN")
-            && l.contains("[Projects v1] Failed to remove a wardrobe item image; continuing projectId=p-1")
-            && l.contains(&format!("fileId={a} error=planted"))), "{lines:#?}");
+            && l.ends_with(&format!("[Projects v1] Failed to remove a wardrobe item image; continuing projectId=p-1 itemId={ITEM} context=wardrobe mountPointId={MP} fileId={a} error=planted"))), "{lines:#?}");
         assert!(
             lines.iter().any(|l| l.ends_with("removed=1 failed=1")),
             "{lines:#?}"

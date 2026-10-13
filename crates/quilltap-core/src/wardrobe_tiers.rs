@@ -19,9 +19,11 @@
 //! there whole (roster-gated, tag `[WearablePool]`), and "both tiers for a
 //! character in a chat" IS `loadWearablePool(repos, characterId, undefined,
 //! { chatId, operator })` — the pool resolves the group tier itself and
-//! answers `pool.tiers`. The two resolver fns below are kept ONLY as
-//! `LANE-REMOVE` wrappers over the pool so the files of the `4a38222e6`
-//! round's other lanes compile until each re-points its callers.
+//! answers `pool.tiers`. The `4a38222e6` round's unification deleted the
+//! `LANE-REMOVE` resolver wrappers and the helpers only they used
+//! (`SharedWardrobeTierOptions` — now the pool's `operator` option — and the
+//! `none` / `project_only` / `scoped_mounts` constructors); what is left is the
+//! carrier itself.
 //!
 //! v4 states both fields optional so a caller with no chat/project context can
 //! pass a partial object; v5 states them as plain (possibly empty) lists on one
@@ -39,58 +41,4 @@ pub struct SharedWardrobeTiers {
     pub group_mount_point_ids: Vec<String>,
     /// Document stores linked to the chat's project.
     pub project_mount_point_ids: Vec<String>,
-}
-
-impl SharedWardrobeTiers {
-    /// The no-context tiers: Quilltap General alone.
-    pub fn none() -> Self {
-        SharedWardrobeTiers::default()
-    }
-
-    /// The project tier alone, for the handful of call sites that genuinely have
-    /// no character to key the group tier on (an instance-wide archetype read).
-    pub fn project_only(project_mount_point_ids: &[String]) -> Self {
-        SharedWardrobeTiers {
-            group_mount_point_ids: Vec::new(),
-            project_mount_point_ids: project_mount_point_ids.to_vec(),
-        }
-    }
-
-    /// The mounts to fold over Quilltap General, **weakest tier first**, so a
-    /// later mount's item shadows an earlier one: project, then group (v4's
-    /// `[...projectMountPointIds, ...groupMountPointIds]`).
-    pub fn scoped_mounts(&self) -> Vec<String> {
-        let mut scoped = self.project_mount_point_ids.clone();
-        scoped.extend(self.group_mount_point_ids.iter().cloned());
-        scoped
-    }
-}
-
-/// v4 `SharedWardrobeTierOptions` (`9753d0eb2`) — now the pool's
-/// `LoadWearablePoolOptions.operator`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct SharedWardrobeTierOptions {
-    /// The human operator is choosing on the character's behalf (the Salon's
-    /// outfit dialog), so the project roster does not apply. Character tool calls
-    /// never set this.
-    pub operator: bool,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn scoped_mounts_puts_the_project_tier_first_so_group_shadows_it() {
-        let tiers = SharedWardrobeTiers {
-            group_mount_point_ids: vec!["g1".into(), "g2".into()],
-            project_mount_point_ids: vec!["p1".into()],
-        };
-        assert_eq!(tiers.scoped_mounts(), vec!["p1", "g1", "g2"]);
-    }
-
-    #[test]
-    fn no_tiers_is_general_alone() {
-        assert!(SharedWardrobeTiers::none().scoped_mounts().is_empty());
-    }
 }

@@ -312,6 +312,13 @@ pub async fn toggle_avatar_generation(
         return Err(AvatarError::internal("Failed to update chat"));
     }
 
+    tracing::info!(
+        chatId = chat_id,
+        avatarGenerationEnabled = new_value,
+        context = "avatar-generation",
+        "[Chats v1] Avatar generation toggled"
+    );
+
     if new_value {
         // Best-effort from here down (v4's outer try/catch): chat-level first,
         // then the user's default, each checked for an API key (v4
@@ -326,21 +333,47 @@ pub async fn toggle_avatar_generation(
                     .and_then(|p| s(&p, "id")),
             )
         });
-        if let Ok(None) = resolved_profile {
-            tracing::debug!(
+        // v4's outer catch: non-fatal — the toggle succeeded, generation is
+        // best-effort. v4 reads the participants off `repos.chats.update`'s
+        // returned row; v5's write answers no row, so the re-read is the one
+        // step here that can fail after the profile resolve, and it lands in
+        // the same catch.
+        let gen_error = |error: &DbError| {
+            tracing::warn!(
                 chatId = chat_id,
+                error = %crate::db::fallback::error_text(error),
                 context = "avatar-generation",
-                "[Chats v1] No usable image profile; skipping initial avatar generation"
+                "[Chats v1] Failed to enqueue initial avatar generation after toggle-on"
             );
-        }
-        if let Ok(Some(image_profile_id)) = resolved_profile {
-            let chat_after = db
-                .read_main(move |c| chats_read::find_by_id(c, &cid))
-                .ok()
-                .flatten();
+        };
+        let image_profile_id = match resolved_profile {
+            Ok(Some(id)) => Some(id),
+            Ok(None) => {
+                tracing::debug!(
+                    chatId = chat_id,
+                    context = "avatar-generation",
+                    "[Chats v1] No usable image profile; skipping initial avatar generation"
+                );
+                None
+            }
+            Err(e) => {
+                gen_error(&e);
+                None
+            }
+        };
+        let chat_after = match image_profile_id {
+            Some(_) => match db.read_main(move |c| chats_read::find_by_id(c, &cid)) {
+                Ok(row) => row,
+                Err(e) => {
+                    gen_error(&e);
+                    None
+                }
+            },
+            None => None,
+        };
+        if let (Some(image_profile_id), Some(chat_after)) = (image_profile_id, chat_after) {
             let participants = chat_after
-                .as_ref()
-                .and_then(|c| c.get("participants"))
+                .get("participants")
                 .and_then(Value::as_array)
                 .cloned()
                 .unwrap_or_default();
@@ -354,8 +387,9 @@ pub async fn toggle_avatar_generation(
                 if s(p, "controlledBy").as_deref() == Some("user") {
                     continue;
                 }
-                // v4 wraps each enqueue in its own try/catch and only warns.
-                let _ = enqueue_character_avatar_generation(
+                // v4 wraps each enqueue in its own try/catch and only warns —
+                // one character failing never strands the rest.
+                if let Err(char_error) = enqueue_character_avatar_generation(
                     db,
                     user_id,
                     chat_id,
@@ -368,10 +402,211 @@ pub async fn toggle_avatar_generation(
                     // automatic trigger.
                     false,
                 )
-                .await;
+                .await
+                {
+                    tracing::warn!(
+                        chatId = chat_id,
+                        characterId = %character_id,
+                        error = %crate::db::fallback::error_text(&char_error),
+                        context = "avatar-generation",
+                        "[Chats v1] Failed to enqueue avatar generation for character"
+                    );
+                }
             }
         }
     }
 
     Ok(json!({ "avatarGenerationEnabled": new_value }))
+}
+
+// v4 `toggle-avatar-generation.ts`'s lines on the toggle-on sweep: the INFO
+// `Avatar generation toggled`, the per-character WARN (`:77`, inside the loop's
+// own try — one character failing never strands the rest) and the outer
+// WARN (`:88`, the best-effort catch). Each is pinned with its whole field bag
+// in v4's key order, and each WARN with a SILENCE leg. The instance is a REAL
+// fresh-provisioned one with one keyed default image profile and one chat.
+#[cfg(test)]
+mod toggle_log_tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+    use crate::test_support::captured_with;
+
+    /// The pepper `provision_fresh_instance`'s own self-test uses (never a real one).
+    const PEPPER: &str = "3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=";
+    const USER: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    const CHAT: &str = "11111111-1111-4111-8111-111111111111";
+    const ALICE: &str = "22222222-2222-4222-8222-222222222222";
+    const BRAM: &str = "44444444-4444-4444-8444-444444444444";
+    const PROFILE: &str = "33333333-3333-4333-8333-333333333333";
+    const PER_CHARACTER: &str = "[Chats v1] Failed to enqueue avatar generation for character";
+    const OUTER: &str = "[Chats v1] Failed to enqueue initial avatar generation after toggle-on";
+
+    /// A fresh instance, one keyed default image profile, one chat with two
+    /// LLM-controlled characters (and a user seat the sweep skips); `plant`
+    /// runs on the main connection last.
+    fn instance(plant: &'static str) -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).expect("data dir");
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).expect("provision");
+        let db = Db::open(
+            DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: Some(data.join("quilltap-llm-logs.db")),
+            },
+            PEPPER,
+        )
+        .expect("open instance");
+        let now = "2020-01-01T00:00:00.000Z".to_string();
+        db.write_blocking(move |ws| {
+            let main = ws.main().connection();
+            crate::db::image_profiles::ImageProfilesRepository::new(main).create(
+                &crate::db::image_profiles::IpCreate {
+                    user_id: USER.to_string(),
+                    name: "Original Desk".to_string(),
+                    provider: "OPENAI".to_string(),
+                    api_key_id: Some("key-1".to_string()),
+                    base_url: None,
+                    model_name: "dall-e-3".to_string(),
+                    parameters: json!({}),
+                    is_default: true,
+                    is_dangerous_compatible: false,
+                    tags: Vec::new(),
+                },
+                &crate::db::image_profiles::CreateOptions {
+                    id: PROFILE.to_string(),
+                    created_at: now.clone(),
+                    updated_at: now.clone(),
+                },
+            )?;
+            let participant = |id: &str, character: &str, controlled_by: &str| {
+                json!({
+                    "id": id, "type": "CHARACTER", "characterId": character,
+                    "controlledBy": controlled_by, "createdAt": now, "updatedAt": now,
+                })
+            };
+            let chat_create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
+                "userId": USER,
+                "title": "A Sitting",
+                "participants": [
+                    participant("p1", ALICE, "llm"),
+                    participant("p2", BRAM, "llm"),
+                    participant("p3", "55555555-5555-4555-8555-555555555555", "user"),
+                ],
+            }))
+            .expect("chat create shape");
+            ws.main().chats().create(
+                &chat_create,
+                &crate::db::chats::CreateOptions {
+                    id: CHAT.to_string(),
+                    created_at: now.clone(),
+                    updated_at: now,
+                },
+            )?;
+            ws.main().connection().execute_batch(plant)?;
+            Ok(())
+        })
+        .expect("seed the instance");
+        (dir, db)
+    }
+
+    fn toggle(db: &Db) -> (Result<Value, AvatarError>, Vec<String>) {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        captured_with(|| rt.block_on(toggle_avatar_generation(db, USER, CHAT)))
+    }
+
+    /// The `message k=v…` tail of every line carrying `needle`.
+    fn tagged(lines: &[String], needle: &str) -> Vec<String> {
+        lines
+            .iter()
+            .filter(|l| l.contains(needle))
+            .map(|l| l.splitn(3, ' ').nth(2).unwrap_or_default().to_string())
+            .collect()
+    }
+
+    fn jobs_for(db: &Db) -> Vec<String> {
+        db.read_main(|c| {
+            let mut stmt = c.prepare(
+                "SELECT json_extract(payload, '$.characterId') FROM background_jobs \
+                 WHERE type = 'CHARACTER_AVATAR_GENERATION' ORDER BY json_extract(payload, '$.characterId')",
+            )?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .expect("read jobs")
+    }
+
+    /// The clean sweep: the INFO, both characters enqueued, and neither WARN.
+    #[test]
+    fn a_clean_toggle_on_logs_the_info_and_neither_warn() {
+        let (_dir, db) = instance("");
+        let (r, lines) = toggle(&db);
+        assert_eq!(
+            r.expect("toggled"),
+            json!({ "avatarGenerationEnabled": true })
+        );
+        assert_eq!(
+            tagged(&lines, "Avatar generation toggled"),
+            vec![format!(
+                "[Chats v1] Avatar generation toggled chatId={CHAT} avatarGenerationEnabled=true context=avatar-generation"
+            )],
+            "{lines:#?}"
+        );
+        assert!(tagged(&lines, PER_CHARACTER).is_empty(), "{lines:#?}");
+        assert!(tagged(&lines, OUTER).is_empty(), "{lines:#?}");
+        assert_eq!(jobs_for(&db), vec![ALICE.to_string(), BRAM.to_string()]);
+    }
+
+    /// One character's enqueue refused (a planted trigger on the job INSERT):
+    /// its WARN, and the other character still enqueued.
+    #[test]
+    fn a_refused_enqueue_warns_per_character_and_the_sweep_continues() {
+        let (_dir, db) = instance(
+            "CREATE TRIGGER refuse_alice BEFORE INSERT ON background_jobs \
+             WHEN json_extract(NEW.payload, '$.characterId') = '22222222-2222-4222-8222-222222222222' \
+             BEGIN SELECT RAISE(ABORT, 'planted'); END;",
+        );
+        let (r, lines) = toggle(&db);
+        assert!(r.is_ok(), "the toggle still lands: {r:?}");
+        assert_eq!(
+            tagged(&lines, PER_CHARACTER),
+            vec![format!(
+                "{PER_CHARACTER} chatId={CHAT} characterId={ALICE} error=planted context=avatar-generation"
+            )],
+            "{lines:#?}"
+        );
+        assert!(tagged(&lines, OUTER).is_empty(), "{lines:#?}");
+        assert_eq!(jobs_for(&db), vec![BRAM.to_string()]);
+    }
+
+    /// The participants re-read fails after the write (a planted trigger
+    /// leaves a BLOB title the strict read refuses): the outer WARN, nothing
+    /// enqueued, the toggle still answered.
+    #[test]
+    fn a_failed_sweep_warns_once_and_the_toggle_lands() {
+        let (_dir, db) = instance(
+            "CREATE TRIGGER corrupt_after_toggle AFTER UPDATE OF avatarGenerationEnabled ON chats \
+             BEGIN UPDATE chats SET title = X'00' WHERE id = NEW.id; END;",
+        );
+        let (r, lines) = toggle(&db);
+        assert_eq!(
+            r.expect("toggled"),
+            json!({ "avatarGenerationEnabled": true })
+        );
+        let outer = tagged(&lines, OUTER);
+        assert_eq!(outer.len(), 1, "{lines:#?}");
+        assert!(
+            outer[0].starts_with(&format!("{OUTER} chatId={CHAT} error="))
+                && outer[0].ends_with(" context=avatar-generation"),
+            "{outer:?}"
+        );
+        assert!(tagged(&lines, PER_CHARACTER).is_empty(), "{lines:#?}");
+        assert!(jobs_for(&db).is_empty());
+    }
 }
