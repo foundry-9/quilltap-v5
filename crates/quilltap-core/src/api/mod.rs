@@ -46,6 +46,7 @@ pub mod chat_outfits;
 pub mod wardrobe;
 // P4.D255 (C1 §11): refusal-bodied at KEYSTONE; P4.D263 / P4.D256 own them after.
 pub mod wardrobe_item_images;
+pub mod wardrobe_route_factory;
 pub mod wardrobe_wear_history;
 // === end P4.9f1 ===
 pub mod embedding_profiles;

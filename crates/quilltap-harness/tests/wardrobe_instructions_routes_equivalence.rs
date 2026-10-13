@@ -48,6 +48,10 @@ use serde_json::{json, Value};
 struct Spec {
     #[serde(rename = "testPepperBase64")]
     test_pepper_base64: String,
+    /// P4.D281: the factory resolves a character through the location, whose
+    /// ownership gate (R-E) reads the requesting user.
+    #[serde(rename = "userId")]
+    user_id: String,
     #[serde(rename = "characterId")]
     character_id: String,
     #[serde(rename = "vaultlessCharacterId")]
@@ -325,13 +329,21 @@ fn wardrobe_instructions_routes_match_oracle() {
         let resp = if method == "GET" {
             match scope.as_str() {
                 "character" => {
-                    quilltap_core::api::characters::character_wardrobe_instructions_get(&db, &id)
+                    quilltap_core::api::characters::character_wardrobe_instructions_get_as(
+                        &db,
+                        &spec.user_id,
+                        &id,
+                    )
                 }
-                "group" => quilltap_core::api::groups::group_wardrobe_instructions_get(&db, &id),
-                "project" => {
-                    quilltap_core::api::projects::project_wardrobe_instructions_get(&db, &id)
-                }
-                _ => quilltap_core::api::wardrobe::wardrobe_instructions_get(&db),
+                // P4.D281: the store tiers' GET resolves with `ensure: true`
+                // (v4 `scope !== 'character'`) — a write, so async.
+                "group" => rt.block_on(
+                    quilltap_core::api::groups::group_wardrobe_instructions_get(&db, &id),
+                ),
+                "project" => rt.block_on(
+                    quilltap_core::api::projects::project_wardrobe_instructions_get(&db, &id),
+                ),
+                _ => rt.block_on(quilltap_core::api::wardrobe::wardrobe_instructions_get(&db)),
             }
         } else {
             // Decode through the Request enum so the tri-state survives.
@@ -357,8 +369,9 @@ fn wardrobe_instructions_routes_match_oracle() {
             };
             match scope.as_str() {
                 "character" => rt.block_on(
-                    quilltap_core::api::characters::character_wardrobe_instructions_set(
+                    quilltap_core::api::characters::character_wardrobe_instructions_set_as(
                         &db,
+                        &spec.user_id,
                         &id,
                         &instructions,
                     ),

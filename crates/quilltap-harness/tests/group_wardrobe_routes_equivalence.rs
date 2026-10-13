@@ -549,13 +549,13 @@ fn group_wardrobe_routes_match_oracle() {
                 ));
             }
             match kind {
-                "list" => groups::group_wardrobe_list(
+                "list" => rt.block_on(groups::group_wardrobe_list(
                     &db,
                     &gid,
                     case.get("includeArchived")
                         .and_then(Value::as_bool)
                         .unwrap_or(false),
-                ),
+                )),
                 "create" => rt.block_on(groups::group_wardrobe_create(&db, &gid, body)),
                 "get" => groups::group_wardrobe_get(&db, &gid, &iid),
                 "wear-history" => {

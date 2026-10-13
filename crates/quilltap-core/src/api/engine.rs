@@ -2834,11 +2834,11 @@ impl CoreEngine {
                 group_id,
                 include_archived,
             } => match self.ready_db() {
-                Ok(db) => super::groups::group_wardrobe_list(&db, &group_id, include_archived),
+                Ok(db) => super::groups::group_wardrobe_list(&db, &group_id, include_archived).await,
                 Err(r) => r,
             },
             Request::GroupWardrobeInstructionsGet { group_id } => match self.ready_db() {
-                Ok(db) => super::groups::group_wardrobe_instructions_get(&db, &group_id),
+                Ok(db) => super::groups::group_wardrobe_instructions_get(&db, &group_id).await,
                 Err(r) => r,
             },
             Request::GroupWardrobeInstructionsSet {
@@ -3705,12 +3705,12 @@ impl CoreEngine {
                 include_archived,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::projects::project_wardrobe_list(&db, &project_id, include_archived)
+                    super::projects::project_wardrobe_list(&db, &project_id, include_archived).await
                 }
                 Err(r) => r,
             },
             Request::ProjectWardrobeInstructionsGet { project_id } => match self.ready_db() {
-                Ok(db) => super::projects::project_wardrobe_instructions_get(&db, &project_id),
+                Ok(db) => super::projects::project_wardrobe_instructions_get(&db, &project_id).await,
                 Err(r) => r,
             },
             Request::ProjectWardrobeInstructionsSet {
@@ -5477,11 +5477,11 @@ impl CoreEngine {
                 Err(r) => r,
             },
             Request::WardrobeList { include_archived } => match self.ready_db() {
-                Ok(db) => super::wardrobe::wardrobe_list(&db, include_archived),
+                Ok(db) => super::wardrobe::wardrobe_list(&db, include_archived).await,
                 Err(r) => r,
             },
             Request::WardrobeInstructionsGet => match self.ready_db() {
-                Ok(db) => super::wardrobe::wardrobe_instructions_get(&db),
+                Ok(db) => super::wardrobe::wardrobe_instructions_get(&db).await,
                 Err(r) => r,
             },
             Request::WardrobeInstructionsSet { instructions } => match self.ready_db() {

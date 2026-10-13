@@ -25,6 +25,25 @@ pub fn wardrobe_item_wear_history(
     container_id: Option<&str>,
     item_id: &str,
 ) -> Response {
+    wardrobe_item_wear_history_as(
+        db,
+        super::engine::SINGLE_USER_ID,
+        scope,
+        container_id,
+        item_id,
+    )
+}
+
+/// [`wardrobe_item_wear_history`] for a named user — since `9ecebf986` a
+/// character resolves through the wardrobe location, whose ownership gate
+/// (R-E) reads the requesting user (the differential drives the fixture's).
+pub fn wardrobe_item_wear_history_as(
+    db: &Db,
+    user_id: &str,
+    scope: WardrobeContainerScope,
+    container_id: Option<&str>,
+    item_id: &str,
+) -> Response {
     use WardrobeContainerScope as S;
     match (scope, container_id.filter(|c| !c.is_empty())) {
         (S::General, _) => super::wardrobe::wardrobe_item_wear_history_general(db, item_id),
@@ -33,7 +52,7 @@ pub fn wardrobe_item_wear_history(
             "containerId is required for a character, project or group wardrobe",
         ),
         (S::Character, Some(id)) => {
-            super::characters::character_wardrobe_wear_history(db, id, item_id)
+            super::characters::character_wardrobe_wear_history_as(db, user_id, id, item_id)
         }
         (S::Project, Some(id)) => super::projects::project_wardrobe_wear_history(db, id, item_id),
         (S::Group, Some(id)) => super::groups::group_wardrobe_wear_history(db, id, item_id),

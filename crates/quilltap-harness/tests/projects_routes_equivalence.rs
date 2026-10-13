@@ -1411,7 +1411,7 @@ fn projects_routes_match_oracle() {
         let db = fresh_db(&spec, "wl");
         check(
             "wardrobe_list",
-            &response_data(&projects::project_wardrobe_list(&db, IOTA, false)),
+            &response_data(&rt.block_on(projects::project_wardrobe_list(&db, IOTA, false))),
             false,
             &mut failed,
         );
@@ -1485,11 +1485,11 @@ fn projects_routes_match_oracle() {
         ));
         check(
             name,
-            &response_data(&projects::project_wardrobe_list(
+            &response_data(&rt.block_on(projects::project_wardrobe_list(
                 &db,
                 IOTA,
                 include_archived,
-            )),
+            ))),
             true,
             &mut failed,
         );
@@ -1545,7 +1545,7 @@ fn projects_routes_match_oracle() {
         });
         let mut body = response_data(&resp);
         let remaining: Vec<Value> =
-            response_data(&projects::project_wardrobe_list(&db, IOTA, false))
+            response_data(&rt.block_on(projects::project_wardrobe_list(&db, IOTA, false)))
                 .get("wardrobeItems")
                 .and_then(Value::as_array)
                 .map(|a| {
@@ -1612,7 +1612,7 @@ fn projects_routes_match_oracle() {
         let db = fresh_db_with_ledger(&spec, "wll");
         check(
             "wardrobe_list_with_ledger",
-            &response_data(&projects::project_wardrobe_list(&db, IOTA, false)),
+            &response_data(&rt.block_on(projects::project_wardrobe_list(&db, IOTA, false))),
             false,
             &mut failed,
         );

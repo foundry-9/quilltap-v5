@@ -19,16 +19,11 @@ use serde_json::{json, Map, Value};
 
 use crate::db::characters::CharacterCreate;
 use crate::db::database_store;
-use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::runtime::Db;
 use crate::db::tags::{
     CreateOptions as TagCreateOptions, TagCreate, TagUpdate, TagVisualStyle, TagsRepository,
 };
 use crate::db::vault_character_write::CharacterVaultWriteInput;
-use crate::db::vault_wardrobe_public::{
-    create_vault_wardrobe_item, delete_vault_wardrobe_item, update_vault_wardrobe_item,
-    WardrobePatch, WardrobePublicError,
-};
 use crate::db::{
     character_plugin_data, character_vault::create_character, characters_read,
     doc_mount_documents::DocMountDocumentsRepository, document_store_overlay::OverlayError, tags,
@@ -42,21 +37,9 @@ use crate::services::dangerous_content::chat_override::{
 };
 use crate::services::image_job_common::with_both_conns;
 use crate::services::scriptorium_status::derive_scriptorium_status;
-use crate::services::wardrobe_item_images::primitives::{
-    cleanup_item_images, ItemImageCleanupMeta,
-};
-use crate::services::wardrobe_item_route_steps::{
-    image_choice_error, log_cleanup_equipped_refs, parse_image_file_id, run_cleanup_equipped_refs,
-    ItemRouteMeta,
-};
-use crate::services::wardrobe_wear_history::{attach_wear, build_wear_history_payload};
-use crate::vault_overlay::WardrobeItem;
-use crate::wardrobe_instructions::{
-    read_wardrobe_instructions_file, write_wardrobe_instructions_file,
-};
-use crate::wardrobe_tiers::SharedWardrobeTiers;
 
 use super::types::{db_error_response, ErrorKind, Response};
+use super::wardrobe_route_factory::CHARACTER_WARDROBE;
 
 // ===========================================================================
 // Shared helpers
@@ -841,91 +824,26 @@ fn sub_array_read(db: &Db, character_id: &str, field: &str, out_key: &str) -> Re
     }
 }
 
-/// v4 `GET /characters/[id]/wardrobe` — ownership → `{ wardrobeItems }`
-/// (`repos.wardrobe.findByCharacterId(id)`, the overlaid vault read).
-///
-/// `scope = Some("group")` serves the GROUP tier instead (v4 `8600c83f`): the
-/// shared items in the `Wardrobe/` folder of every store belonging to a group
-/// this character is a member of, resolved per character and read weakest-mount
-/// first. It is a standalone read for the client-side tier merge, so it does
-/// NOT fold in the character's own vault. Any other `scope` value falls through
-/// to the vault read, as v4's `scope === 'group'` check does.
+/// v4 `GET /characters/[id]/wardrobe` — through the one route factory
+/// (`9ecebf986`): a READ of the vault's `Wardrobe/` folder → `{ mountPointId,
+/// wardrobeItems }` (origin + wear); a foreign or vault-less character is 404
+/// `Character`. `scope = Some("group")` serves the GROUP tier instead (v4
+/// `8600c83f`) — a standalone read for the client-side tier merge, each item
+/// tagged with its group, NO `mountPointId`; any other `scope` falls through
+/// to the vault read, as v4's `=== 'group'` check does.
 pub fn character_wardrobe_list(
     db: &Db,
-    _user_id: &str,
+    user_id: &str,
     character_id: &str,
     scope: Option<&str>,
     include_archived: bool,
 ) -> Response {
-    let character_id = character_id.to_string();
-    let group_scope = scope == Some("group");
-    let result = read_main_mount(db, move |main, mount| {
-        let character = match require_character(main, mount, &character_id) {
-            Ok(c) => c,
-            Err(r) => return Ok(Err(r)),
-        };
-        let docs = DocMountDocumentsRepository::new(mount);
-        if group_scope {
-            // `cc80dc89d`: kept GROUPED so each item can say which group it
-            // hangs in; the attributed read resolves id collisions exactly as
-            // the flat one does.
-            let groups = crate::db::tiered_mount_pool::resolve_group_mounts_for_character(
-                main,
-                mount,
-                &character_id,
-            );
-            let items = attach_wear(
-                main,
-                crate::db::archetype_wardrobe::find_archetypes_in_mounts_attributed(
-                    &docs,
-                    &groups,
-                    include_archived,
-                )?,
-            );
-            // R-D: v4's five camelCase keys (`groupCount` NEW in `cc80dc89d`).
-            tracing::debug!(
-                characterId = character_id.as_str(),
-                groupCount = groups.len(),
-                groupMountCount = groups
-                    .iter()
-                    .map(|g| g.mount_point_ids.len())
-                    .sum::<usize>(),
-                itemCount = items.len(),
-                context = "wardrobe",
-                "[Wardrobe v1] Group-tier wardrobe read"
-            );
-            return Ok(Ok(items));
-        }
-        let items =
-            wardrobe_read::find_by_character_id(main, &docs, &character_id, include_archived)?;
-        // `cc80dc89d` + `3ee3b1342`: `{ scope: 'character', id, name:
-        // character.name }`, then `wear`.
-        let origin = character_origin(&character_id, &character);
-        Ok(Ok(attach_wear(
-            main,
-            crate::db::archetype_wardrobe::with_origin(items, &origin),
-        )))
-    });
-    match result {
-        Ok(Ok(items)) => Response::Character(json!({ "wardrobeItems": items })),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
-}
-
-/// The character tier's read-time origin — v4 `{ scope: 'character', id, name:
-/// character.name }` off the overlaid character the route already holds.
-fn character_origin(
-    character_id: &str,
-    character: &Value,
-) -> crate::db::archetype_wardrobe::WardrobeOrigin {
-    crate::db::archetype_wardrobe::WardrobeOrigin::new(
-        crate::db::archetype_wardrobe::WardrobeOriginScope::Character,
+    super::wardrobe_route_factory::list_character_items(
+        db,
+        user_id,
         character_id,
-        character
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or_default(),
+        scope,
+        include_archived,
     )
 }
 
@@ -2673,444 +2591,98 @@ pub async fn character_plugin_data_delete(
 // Wardrobe mutations (v4 characters/[id]/wardrobe/**)
 // ===========================================================================
 
-/// A JSON `null | string` field → `Option<String>` (null/absent → `None`,
-/// string → `Some`). v4's `?? null` create-default coalesces both to null.
-fn nullable_str(body: &Value, key: &str) -> Option<String> {
-    body.get(key).and_then(Value::as_str).map(str::to_string)
-}
-
-/// A wardrobe UPDATE patch triple-state for a nullable string key: absent →
-/// `None` (unchanged), JSON `null` → `Some(None)` (clear), string →
-/// `Some(Some(s))`.
-fn patch_nullable(body: &Value, key: &str) -> Option<Option<String>> {
-    match body.get(key) {
-        None => None,
-        Some(Value::Null) => Some(None),
-        Some(Value::String(s)) => Some(Some(s.clone())),
-        Some(_) => None,
-    }
-}
-
-/// Map a public-wardrobe write failure to the dispatch refusal (v4 lets the throw
-/// surface as a 500 `serverError`).
-fn wardrobe_err(e: WardrobePublicError) -> Response {
-    match e {
-        WardrobePublicError::NoMount => {
-            internal("Character has no wardrobe vault to store the item")
-        }
-        WardrobePublicError::Cycle(m) => internal(m),
-        WardrobePublicError::Db(db) => internal(db),
-    }
-}
-
-/// v4 `POST /characters/[id]/wardrobe` — `findById` ownership →
-/// `createWardrobeItemSchema` → `repos.wardrobe.create` (mints id/timestamps →
-/// the vault-backed create) → `{ wardrobeItem }` (201).
+/// v4 `POST /characters/[id]/wardrobe` — the factory's create: Zod before the
+/// resolve, 201 `{ wardrobeItem }` (origin + wear); a cycle 400, an archived
+/// character 409.
 pub async fn character_wardrobe_create(
     db: &Db,
-    _user_id: &str,
+    user_id: &str,
     character_id: &str,
     body: Value,
 ) -> Response {
-    let cid = character_id.to_string();
-    let title = match body.get("title").and_then(Value::as_str) {
-        Some(t) if !t.is_empty() => t.to_string(),
-        _ => return bad_request("Title is required"),
-    };
-    let types: Vec<String> = body
-        .get("types")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
-    if types.is_empty() {
-        return bad_request("At least one type is required");
-    }
-    let component_item_ids: Vec<String> = body
-        .get("componentItemIds")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
-    let description = nullable_str(&body, "description");
-    let image_prompt = nullable_str(&body, "imagePrompt");
-    let appropriateness = nullable_str(&body, "appropriateness");
-    let is_default = body
-        .get("isDefault")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let replace = body
-        .get("replace")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-
-    let out = with_both_conns(db, move |main, mount| {
-        if let Err(r) = require_character_owned(main, mount, &cid)? {
-            return Ok(Err(r));
-        }
-        // Mint id/timestamps (v4 `repos.wardrobe.create` materializes them).
-        let now = crate::clock::now_iso();
-        let item = WardrobeItem {
-            id: uuid::Uuid::new_v4().to_string(),
-            character_id: Some(Some(cid.clone())),
-            title,
-            description: Some(description),
-            image_prompt: Some(image_prompt),
-            types,
-            component_item_ids,
-            appropriateness: Some(appropriateness),
-            is_default,
-            replace,
-            // v4's create sets `migratedFromClothingRecordId: null` explicitly (it
-            // appears as null in the create echo), but NOT `archivedAt` (absent),
-            // so the create echo carries the former and omits the latter.
-            migrated_from_clothing_record_id: Some(None),
-            // v4 `wardrobeItemFromCreateBody` (`7c8572869`): `imageFileId:
-            // null` on every create — echoed, never written to the file.
-            image_file_id: Some(None),
-            archived_at: None,
-            // P4.D279 (C1 §12, mechanical): `WardrobeItem.folder` arrived with v4
-            // `4a38222e6`; the owning lane replaces this with the body's / record's value.
-            folder: String::new(),
-            created_at: now.clone(),
-            updated_at: now,
-        };
-        let links = DocMountFileLinksRepository::new(mount);
-        let docs = DocMountDocumentsRepository::new(mount);
-        match create_vault_wardrobe_item(main, &links, &docs, &item) {
-            Ok(stored) => Ok(Ok(serde_json::to_value(stored).unwrap_or(Value::Null))),
-            Err(e) => Ok(Err(wardrobe_err(e))),
-        }
-    })
-    .await;
-    wrap_obj(out, "wardrobeItem")
+    super::wardrobe_route_factory::create(
+        db,
+        CHARACTER_WARDROBE,
+        Some(character_id),
+        user_id,
+        &body,
+    )
+    .await
 }
 
-/// v4 `GET /characters/[id]/wardrobe/[itemId]` — `findById` ownership →
-/// `findByIdForCharacter` (guard `characterId === id`) → `{ wardrobeItem }`.
+/// v4 `GET /characters/[id]/wardrobe/[itemId]` — the item in the vault's
+/// folder (a General archetype is not the character's — 404 `Wardrobe item`).
 pub fn character_wardrobe_get(
     db: &Db,
-    _user_id: &str,
+    user_id: &str,
     character_id: &str,
     item_id: &str,
 ) -> Response {
-    let cid = character_id.to_string();
-    let iid = item_id.to_string();
-    let result = read_main_mount(db, move |main, mount| {
-        let character = match require_character(main, mount, &cid) {
-            Ok(c) => c,
-            Err(r) => return Ok(Err(r)),
-        };
-        let docs = DocMountDocumentsRepository::new(mount);
-        match owned_wardrobe_item(
-            wardrobe_read::find_by_id_for_character(
-                main,
-                &docs,
-                &cid,
-                &iid,
-                &SharedWardrobeTiers::none(),
-            )?,
-            &cid,
-        ) {
-            // `cc80dc89d`: the single GET is tagged with the character's
-            // origin, never worn.
-            Some(item) => Ok(Ok(crate::db::archetype_wardrobe::with_origin(
-                vec![item],
-                &character_origin(&cid, &character),
-            )
-            .pop()
-            .unwrap_or(Value::Null))),
-            None => Ok(Err(not_found("Wardrobe item"))),
-        }
-    });
-    match result {
-        Ok(Ok(item)) => Response::Character(json!({ "wardrobeItem": item })),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    super::wardrobe_route_factory::item_get(
+        db,
+        CHARACTER_WARDROBE,
+        Some(character_id),
+        user_id,
+        item_id,
+    )
 }
 
-/// v4's item-route guard `!item || item.characterId !== id` (`app/api/v1/
-/// characters/[id]/wardrobe/[itemId]/route.ts` GET / PUT / DELETE):
-/// `findByIdForCharacter` also answers a Quilltap General archetype (its
-/// `characterId` is `null`), which the character's item routes must treat as
-/// absent. Without it a General id came back tagged with the CHARACTER's
-/// origin, and a DELETE scrubbed every chat's slots and dropped the
-/// archetype's wear ledger before answering 404 (the `f5e953a3f`
-/// unification's §3 finding).
-fn owned_wardrobe_item(found: Option<Value>, character_id: &str) -> Option<Value> {
-    found.filter(|item| item.get("characterId").and_then(Value::as_str) == Some(character_id))
-}
-
-/// v4 `GET /characters/[id]/wardrobe/[itemId]?action=wear-history`
-/// (`3ee3b1342`): `findById` → `404 Character`; `findByIdForCharacter` with
-/// `characterId === id` → `404 Wardrobe item`; only THEN the ledger read (the
-/// 404 runs before `findHistory`). DEBUG `[Wardrobe v1] Read wardrobe item
-/// wear history { characterId, itemId, wearCount }`. v4's GET catch answers
-/// `Failed to fetch wardrobe item` for anything that throws past the 404s.
-pub(crate) fn character_wardrobe_wear_history(
+/// v4 `GET /characters/[id]/wardrobe/[itemId]?action=wear-history` for a
+/// named user (the ownership gate — R-E — reads it; the engine passes
+/// `SINGLE_USER_ID` through `wardrobe_item_wear_history`, the differential the
+/// fixture's own user).
+pub fn character_wardrobe_wear_history_as(
     db: &Db,
+    user_id: &str,
     character_id: &str,
     item_id: &str,
 ) -> Response {
-    let cid = character_id.to_string();
-    let iid = item_id.to_string();
-    let result = read_main_mount(db, move |main, mount| {
-        if let Err(r) = require_character(main, mount, &cid) {
-            return Ok(Err(r));
-        }
-        let docs = DocMountDocumentsRepository::new(mount);
-        let found = wardrobe_read::find_by_id_for_character(
-            main,
-            &docs,
-            &cid,
-            &iid,
-            &SharedWardrobeTiers::none(),
-        )?;
-        if owned_wardrobe_item(found, &cid).is_none() {
-            return Ok(Err(not_found("Wardrobe item")));
-        }
-        let payload = build_wear_history_payload(main, mount, &iid);
-        tracing::debug!(
-            characterId = %cid,
-            itemId = %iid,
-            wearCount = payload["history"]["wearCount"].as_i64().unwrap_or(0),
-            "[Wardrobe v1] Read wardrobe item wear history"
-        );
-        Ok(Ok(payload))
-    });
-    match result {
-        Ok(Ok(payload)) => Response::WardrobeWearHistory(payload),
-        Ok(Err(r)) => r,
-        Err(_) => internal("Failed to fetch wardrobe item"),
-    }
+    super::wardrobe_route_factory::item_wear_history(
+        db,
+        CHARACTER_WARDROBE,
+        Some(character_id),
+        user_id,
+        item_id,
+    )
 }
 
-/// v4 `PUT /characters/[id]/wardrobe/[itemId]` — ownership + existence pre-check
-/// → `updateWardrobeItemSchema` patch → `repos.wardrobe.update` → `{ wardrobeItem }`.
+/// v4 `PUT /characters/[id]/wardrobe/[itemId]` — 404 → `updateWardrobeSchema`
+/// → `imageFileId` → `updateItem` → `{ wardrobeItem }` (origin + wear).
 pub async fn character_wardrobe_update(
     db: &Db,
-    _user_id: &str,
+    user_id: &str,
     character_id: &str,
     item_id: &str,
     body: Value,
 ) -> Response {
-    let cid = character_id.to_string();
-    let iid = item_id.to_string();
-    // v4 `d25dacc1`'s `archived: z.boolean().optional()` — a PRESENT non-boolean
-    // (including `null`) fails the parse, which the route does NOT catch, so the
-    // middleware answers the flat `Validation error` 400.
-    //
-    // ⚠ Banked, PRE-EXISTING and wider than this lane: v5's character item PUT
-    // validates NOTHING else — v4 runs the whole `updateWardrobeItemSchema` here
-    // (title `.min(1)`, the types enum, the nullable strings, the booleans) and
-    // v5 reads each key ad hoc. Only the key this commit ADDS is guarded; the
-    // rest is a named candidate for a maintenance lane.
-    match body.get("archived") {
-        None | Some(Value::Bool(_)) => {}
-        Some(_) => return bad_request("Validation error"),
-    }
-    let out = with_both_conns(db, move |main, mount| {
-        if let Err(r) = require_character_owned(main, mount, &cid)? {
-            return Ok(Err(r));
-        }
-        let docs = DocMountDocumentsRepository::new(mount);
-        // v4 pre-checks existence AND ownership before update
-        // (`!existing || existing.characterId !== id`).
-        let Some(existing) = owned_wardrobe_item(
-            wardrobe_read::find_by_id_for_character(
-                main,
-                &docs,
-                &cid,
-                &iid,
-                &SharedWardrobeTiers::none(),
-            )?,
-            &cid,
-        ) else {
-            return Ok(Err(not_found("Wardrobe item")));
-        };
-        // v4 `7c8572869`: `imageFileId: z.uuid().nullable().optional()` — the
-        // parse runs after the two 404s (v4's order), uncaught → `Validation
-        // error`.
-        let Ok(image_file_id) = parse_image_file_id(&body) else {
-            return Ok(Err(bad_request("Validation error")));
-        };
-        // v4 `7c8572869`: `imageChoiceError` — BEFORE the archive flag. A file
-        // that is not one of the item's own pictures is v4's 400; a failed
-        // picture read is v4's rethrow (the middleware's 500).
-        match image_choice_error(
-            main,
-            &iid,
-            image_file_id.as_ref().and_then(|o| o.as_deref()),
-        ) {
-            Ok(None) => {}
-            Ok(Some(message)) => return Ok(Err(bad_request(message))),
-            Err(_) => {
-                return Ok(Err(Response::error(
-                    ErrorKind::Internal,
-                    "Internal server error",
-                )))
-            }
-        }
-        let mut patch = WardrobePatch {
-            image_file_id,
-            ..WardrobePatch::default()
-        };
-        if let Some(t) = body.get("title").and_then(Value::as_str) {
-            patch.title = Some(t.to_string());
-        }
-        if let Some(a) = body.get("types").and_then(Value::as_array) {
-            patch.types = Some(
-                a.iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect(),
-            );
-        }
-        if let Some(a) = body.get("componentItemIds").and_then(Value::as_array) {
-            patch.component_item_ids = Some(
-                a.iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect(),
-            );
-        }
-        patch.description = patch_nullable(&body, "description");
-        patch.image_prompt = patch_nullable(&body, "imagePrompt");
-        patch.appropriateness = patch_nullable(&body, "appropriateness");
-        if let Some(v) = body.get("isDefault").and_then(Value::as_bool) {
-            patch.is_default = Some(v);
-        }
-        if let Some(v) = body.get("replace").and_then(Value::as_bool) {
-            patch.replace = Some(v);
-        }
-        // v4 `d25dacc1`: `archived` is a request-shaped boolean; the item stores
-        // a timestamp. Archiving is idempotent, so an already-archived item keeps
-        // its stamp. The character route reads the ALREADY-LOADED `existing`.
-        let archive_patch = match body.get("archived").and_then(Value::as_bool) {
-            Some(archived) => crate::wardrobe::archived_patch(
-                existing.get("archivedAt").and_then(Value::as_str),
-                archived,
-                &crate::clock::now_iso(),
-            ),
-            None => None,
-        };
-        if let Some(v) = archive_patch.clone() {
-            patch.archived_at = Some(v);
-        }
-        let links = DocMountFileLinksRepository::new(mount);
-        match update_vault_wardrobe_item(main, &links, &docs, &iid, &patch, Some(&cid)) {
-            // v4's update echo is the full read-shaped item (the merged read row,
-            // incl. `archivedAt: null`), not the write-struct — re-read for the
-            // v4-exact Value shape (the reads differential's proven bytes).
-            Ok(Some(_)) => {
-                match wardrobe_read::find_by_id_for_character(
-                    main,
-                    &docs,
-                    &cid,
-                    &iid,
-                    &SharedWardrobeTiers::none(),
-                )? {
-                    Some(item) => Ok(Ok(item)),
-                    None => Ok(Err(not_found("Wardrobe item"))),
-                }
-            }
-            Ok(None) => Ok(Err(not_found("Wardrobe item"))),
-            Err(e) => Ok(Err(wardrobe_err(e))),
-        }
-    })
-    .await;
-    wrap_obj(out, "wardrobeItem")
+    super::wardrobe_route_factory::item_update(
+        db,
+        CHARACTER_WARDROBE,
+        Some(character_id),
+        user_id,
+        item_id,
+        body,
+    )
+    .await
 }
 
-/// v4 `DELETE /characters/[id]/wardrobe/[itemId]` — ownership + existence
-/// pre-check → `cleanupEquippedRefs` (the equipped-reference scrub and, since
-/// `3ee3b1342`, the item's wear-ledger rows — each warn-and-proceed: R-A folds
-/// the scrub's former `?`, which FAILED the delete where v4 logs and proceeds)
-/// → `repos.wardrobe.delete` → (`7c8572869`) the item's pictures → the
-/// success line → `{ success: true }`.
-///
-/// Two writes, as v4's separate awaits: the clean-up's outcome is logged on
-/// the CALLING thread between them (the capture rig sees it).
+/// v4 `DELETE /characters/[id]/wardrobe/[itemId]` — the writable gate first
+/// (409 for an archived character), the equipped-reference + ledger clean-up,
+/// the delete, the pictures → `{ success: true }`.
 pub async fn character_wardrobe_delete(
     db: &Db,
-    _user_id: &str,
+    user_id: &str,
     character_id: &str,
     item_id: &str,
 ) -> Response {
-    const LOG_TAG: &str = "[Wardrobe v1]";
-    let cid = character_id.to_string();
-    let iid = item_id.to_string();
-    let cleaned = with_both_conns(db, {
-        let (cid, iid) = (cid.clone(), iid.clone());
-        move |main, mount| {
-            if let Err(r) = require_character_owned(main, mount, &cid)? {
-                return Ok(Err(r));
-            }
-            let docs = DocMountDocumentsRepository::new(mount);
-            // v4: `!existing || existing.characterId !== id` → 404 BEFORE
-            // `cleanupEquippedRefs` — a General archetype id never reaches the
-            // scrub or the ledger delete through a character's route.
-            if owned_wardrobe_item(
-                wardrobe_read::find_by_id_for_character(
-                    main,
-                    &docs,
-                    &cid,
-                    &iid,
-                    &SharedWardrobeTiers::none(),
-                )?,
-                &cid,
-            )
-            .is_none()
-            {
-                return Ok(Err(not_found("Wardrobe item")));
-            }
-            // Composite componentItemIds are intentionally left (v4).
-            Ok(Ok(run_cleanup_equipped_refs(main, &iid)))
-        }
-    })
-    .await;
-    match cleaned {
-        Ok(Ok(outcome)) => log_cleanup_equipped_refs(
-            &outcome,
-            &iid,
-            LOG_TAG,
-            ItemRouteMeta::Character { character_id: &cid },
-        ),
-        Ok(Err(r)) => return r,
-        Err(e) => return db_error_response(e),
-    }
-
-    let out = with_both_conns(db, {
-        let (cid, iid) = (cid.clone(), iid.clone());
-        move |main, mount| {
-            let links = DocMountFileLinksRepository::new(mount);
-            let docs = DocMountDocumentsRepository::new(mount);
-            match delete_vault_wardrobe_item(main, &links, &docs, &iid, Some(&cid)) {
-                Ok(true) => {
-                    cleanup_item_images(
-                        main,
-                        mount,
-                        &iid,
-                        LOG_TAG,
-                        ItemImageCleanupMeta::Character { character_id: &cid },
-                    );
-                    Ok(Ok(()))
-                }
-                Ok(false) => Ok(Err(not_found("Wardrobe item"))),
-                Err(e) => Ok(Err(wardrobe_err(e))),
-            }
-        }
-    })
-    .await;
-    if matches!(out, Ok(Ok(()))) {
-        tracing::info!(characterId = %cid, itemId = %iid, "[Wardrobe v1] Wardrobe item deleted");
-    }
-    success_or(out)
+    super::wardrobe_route_factory::item_delete(
+        db,
+        CHARACTER_WARDROBE,
+        Some(character_id),
+        user_id,
+        item_id,
+    )
+    .await
 }
 
 // ===========================================================================
@@ -3479,107 +3051,55 @@ pub async fn character_rehydrate(
 // (v4 `b86bb1a5`, `app/api/v1/characters/[id]/wardrobe/route.ts`)
 // ===========================================================================
 
-/// v4 `GET /api/v1/characters/[id]/wardrobe?action=instructions` — the vault's
-/// `Wardrobe/instructions.md`, `null` when absent OR when the character has no
-/// vault (in which case nothing is read at all).
-///
-/// ⚠ **Deliberately NOT tombstoned.** v4 reads through
-/// `repos.characters.findById`, not `resolveWardrobeMount`, so an ARCHIVED
-/// character's instructions still answer 200 while the SET refuses with 409.
-/// The asymmetry looks deliberate (a tombstone is readable, not writable) but is
-/// untested in v4; reproduced as shipped.
+/// v4 `GET /api/v1/characters/[id]/wardrobe?action=instructions` as the
+/// engine's single user — through the factory: a READ; a foreign or vault-less
+/// character is 404 `Character`; an ARCHIVED character's instructions still
+/// answer (the location reads a tombstone; only the write refuses).
 pub fn character_wardrobe_instructions_get(db: &Db, character_id: &str) -> Response {
-    let cid = character_id.to_string();
-    let out = read_main_mount(db, move |main, mount| {
-        let character = match require_character(main, mount, &cid) {
-            Ok(c) => c,
-            Err(r) => return Ok(Err(r)),
-        };
-        let mount_point_id = character
-            .get("characterDocumentMountPointId")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string);
-        let instructions = mount_point_id
-            .as_deref()
-            .and_then(|mp| read_wardrobe_instructions_file(mount, mp));
-        Ok(Ok((mount_point_id, instructions)))
-    });
-    match out {
-        Ok(Ok((mount_point_id, instructions))) => {
-            tracing::debug!(
-                character_id,
-                mount_point_id,
-                present = instructions.is_some(),
-                "[Wardrobe v1] Read character dressing instructions"
-            );
-            Response::Character(json!({ "instructions": instructions }))
-        }
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    character_wardrobe_instructions_get_as(db, super::engine::SINGLE_USER_ID, character_id)
 }
 
-/// v4 `POST /api/v1/characters/[id]/wardrobe?action=instructions`. Guard order,
-/// verbatim: find the character (404) → parse the body (`Validation error`) →
-/// `resolveWardrobeMount` (409 for an archived character, with the sentence the
-/// ROUTE owns — not `CharacterArchivedError`'s own message) → no vault: a clear
-/// is a 200 no-op, a write is a 500.
+/// [`character_wardrobe_instructions_get`] for a named user.
+pub fn character_wardrobe_instructions_get_as(
+    db: &Db,
+    user_id: &str,
+    character_id: &str,
+) -> Response {
+    super::wardrobe_route_factory::instructions_get_character(db, user_id, character_id)
+}
+
+/// v4 `POST /api/v1/characters/[id]/wardrobe?action=instructions` as the
+/// engine's single user — the body parsed FIRST, then the location (404
+/// `Character` for a foreign or vault-less one — even clearing: the harmless
+/// no-op is General's alone), then the writable gate (409 `Character is
+/// archived; dressing instructions cannot be edited`).
 pub async fn character_wardrobe_instructions_set(
     db: &Db,
     character_id: &str,
     instructions: &Option<Option<Value>>,
 ) -> Response {
-    let cid = character_id.to_string();
-    let raw = instructions.clone();
-    let out = with_both_conns(db, move |main, mount| {
-        if let Err(r) = require_character(main, mount, &cid) {
-            return Ok(Err(r));
-        }
-        // Parsed only AFTER the 404 gate: v4 runs `findById → notFound` before
-        // `instructionsBodySchema.parse`, so a missing character with an
-        // invalid body answers 404, not 400.
-        let instructions = match super::wardrobe::parse_instructions_body(&raw) {
-            Ok(v) => v,
-            Err(r) => return Ok(Err(r)),
-        };
-        let (cleared, echo) = super::wardrobe::instructions_echo(instructions.as_deref());
-        let loc = match crate::db::vault_wardrobe_public::resolve_character_wardrobe_mount_point(
-            main, &cid,
-        ) {
-            Ok(v) => v,
-            Err(DbError::CharacterArchived { .. }) => {
-                return Ok(Err(Response::error(
-                    ErrorKind::Conflict,
-                    "Character is archived; dressing instructions cannot be edited",
-                )))
-            }
-            Err(e) => return Err(e),
-        };
-        let Some(mp) = loc else {
-            if cleared {
-                return Ok(Err(Response::Character(json!({ "instructions": null }))));
-            }
-            return Ok(Err(internal(
-                "Character has no vault to hold dressing instructions",
-            )));
-        };
-        let links = DocMountFileLinksRepository::new(mount);
-        write_wardrobe_instructions_file(&links, &mp, instructions.as_deref())?;
-        Ok(Ok((mp, cleared, echo)))
-    })
-    .await;
-    match out {
-        Ok(Ok((mount_point_id, cleared, echo))) => {
-            tracing::info!(
-                character_id,
-                mount_point_id,
-                cleared,
-                "[Wardrobe v1] Character dressing instructions updated"
-            );
-            Response::Character(json!({ "instructions": echo }))
-        }
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    character_wardrobe_instructions_set_as(
+        db,
+        super::engine::SINGLE_USER_ID,
+        character_id,
+        instructions,
+    )
+    .await
+}
+
+/// [`character_wardrobe_instructions_set`] for a named user.
+pub async fn character_wardrobe_instructions_set_as(
+    db: &Db,
+    user_id: &str,
+    character_id: &str,
+    instructions: &Option<Option<Value>>,
+) -> Response {
+    super::wardrobe_route_factory::instructions_set(
+        db,
+        CHARACTER_WARDROBE,
+        Some(character_id),
+        user_id,
+        instructions,
+    )
+    .await
 }

@@ -49,7 +49,9 @@ use quilltap_core::api::wardrobe::{
     wardrobe_transfer_apply, wardrobe_transfer_destinations, wardrobe_update, AvatarPreviewImage,
     AvatarPreviewRenderRequest, AvatarPreviewRenderer, ErasedAvatarPreview,
 };
-use quilltap_core::api::wardrobe_wear_history::wardrobe_item_wear_history;
+use quilltap_core::api::wardrobe_wear_history::{
+    wardrobe_item_wear_history, wardrobe_item_wear_history_as,
+};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use serde::Deserialize;
 use serde_json::Value;
@@ -519,7 +521,7 @@ async fn wardrobe_routes_equivalence() {
         let (db, _scratch) = fresh_db(case);
         let body = case.body.clone().unwrap_or(Value::Null);
         let resp = match case.kind.as_str() {
-            "wardrobeList" => wardrobe_list(&db, case.include_archived.unwrap_or(false)),
+            "wardrobeList" => wardrobe_list(&db, case.include_archived.unwrap_or(false)).await,
             "wardrobeCreate" => wardrobe_create(&db, body).await,
             "wardrobeItemGet" => match case.action.as_deref() {
                 None => wardrobe_item_get(&db, case.item_id.as_deref().unwrap()),
@@ -557,8 +559,9 @@ async fn wardrobe_routes_equivalence() {
                     case.character_id.as_deref().unwrap(),
                     case.item_id.as_deref().unwrap(),
                 ),
-                Some("wear-history") => wardrobe_item_wear_history(
+                Some("wear-history") => wardrobe_item_wear_history_as(
                     &db,
+                    user,
                     WardrobeContainerScope::Character,
                     case.character_id.as_deref(),
                     case.item_id.as_deref().unwrap(),
@@ -731,22 +734,34 @@ fn p4d256_route_lines_are_v4s() {
         .any(|l| l.contains("character_id=") || l.contains("group_mount_count")));
     assert!(has(&lines, "Attached wear summaries to wardrobe read"));
 
-    // Each tier's wear-history DEBUG, after the payload.
+    // Each tier's wear-history DEBUG, after the payload — since `9ecebf986`
+    // the ONE factory line `<tag> Read wardrobe item wear history` keyed by the
+    // tier's `logIdKey` (`generalId: null` on General), `context` last.
     for (scope, container, item, needle) in [
         (WardrobeContainerScope::General, None, g_coat.as_str(),
-         format!("[Wardrobe Archetypes v1] Read archetype item wear history itemId={g_coat} wearCount=6")),
+         format!("[Wardrobe Archetypes v1] Read wardrobe item wear history generalId=null itemId={g_coat} wearCount=6 context=wardrobe")),
         (WardrobeContainerScope::Character, Some(aria.as_str()), w_top.as_str(),
-         format!("[Wardrobe v1] Read wardrobe item wear history characterId={aria} itemId={w_top} wearCount=2")),
+         format!("[Wardrobe v1] Read wardrobe item wear history characterId={aria} itemId={w_top} wearCount=2 context=wardrobe")),
         (WardrobeContainerScope::Group, Some(group.as_str()), g_livery.as_str(),
-         format!("[Groups v1] Read group wardrobe item wear history groupId={group} itemId={g_livery} wearCount=1 context=wardrobe")),
+         format!("[Groups v1] Read wardrobe item wear history groupId={group} itemId={g_livery} wearCount=1 context=wardrobe")),
         (WardrobeContainerScope::Project, Some(project.as_str()), p_scarf.as_str(),
-         format!("[Projects v1] Read project wardrobe item wear history projectId={project} itemId={p_scarf} wearCount=0 context=wardrobe")),
+         format!("[Projects v1] Read wardrobe item wear history projectId={project} itemId={p_scarf} wearCount=0 context=wardrobe")),
     ] {
-        let (resp, lines) = cap(&|| wardrobe_item_wear_history(&db, scope, container, item));
+        let (resp, lines) =
+            cap(&|| wardrobe_item_wear_history_as(&db, &spec.user_id, scope, container, item));
         assert!(matches!(resp, Response::WardrobeWearHistory(_)), "{scope:?}: {resp:?}");
         let built = lines.iter().position(|l| l.contains("Built wear history"));
         let read = lines.iter().position(|l| l.ends_with(&needle));
         assert!(built.is_some() && read.is_some() && built < read, "{scope:?}: {lines:#?}");
+        // R-H: the keystone's resolve line rides the same request — by tag.
+        assert!(has(&lines, "[WardrobeLocation] Resolved wardrobe location"), "{lines:#?}");
+        // The OLD per-tier titles are gone.
+        assert!(
+            !has(&lines, "Read archetype item wear history")
+                && !has(&lines, "Read group wardrobe item wear history")
+                && !has(&lines, "Read project wardrobe item wear history"),
+            "{lines:#?}"
+        );
     }
 
     // 404 BEFORE the ledger: never `Built wear history`, never a tier line.
@@ -768,7 +783,8 @@ fn p4d256_route_lines_are_v4s() {
             g_coat.as_str(),
         ),
     ] {
-        let (resp, lines) = cap(&|| wardrobe_item_wear_history(&db, scope, container, item));
+        let (resp, lines) =
+            cap(&|| wardrobe_item_wear_history_as(&db, &spec.user_id, scope, container, item));
         assert!(
             matches!(&resp, Response::Error(e) if e.kind == ErrorKind::NotFound),
             "{scope:?}: {resp:?}"
@@ -787,9 +803,214 @@ fn p4d256_route_lines_are_v4s() {
     );
     assert!(lines.is_empty(), "{lines:?}");
 
-    // Single GETs: tagged, never worn — no `Attached wear summaries` line.
+    // Single GETs: since `9ecebf986` every item body is `serializeOne` —
+    // tagged AND worn, so the one `attachWear` line fires (the reverse of the
+    // pre-factory "tagged, never worn" pin, retired by measurement).
     let (_, lines) = cap(&|| wardrobe_item_get(&db, &g_coat));
-    assert!(!has(&lines, "Attached wear summaries"), "{lines:?}");
+    assert!(has(&lines, "Attached wear summaries"), "{lines:?}");
     let (_, lines) = cap(&|| character_wardrobe_get(&db, &spec.user_id, &aria, &w_top));
-    assert!(!has(&lines, "Attached wear summaries"), "{lines:?}");
+    assert!(has(&lines, "Attached wear summaries"), "{lines:?}");
+}
+
+/// P4.D281 (v4 `9ecebf986`): the ONE route factory's lines — `<tag> Listed /
+/// Created / Updated / Deleted wardrobe item`, `<tag> Read dressing
+/// instructions`, `<tag> Dressing instructions updated` — keyed by the tier's
+/// `logIdKey` (`generalId: null` on General), v4's keys in v4's order, on the
+/// calling thread; the PUT's `archivedAt` key ONLY when the body carried
+/// `archived` (the silence leg); and none of the pre-factory per-tier titles.
+#[test]
+fn p4d281_factory_lines_are_v4s() {
+    quilltap_core::test_support::global_capture::install();
+    let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let base = spec
+        .cases
+        .iter()
+        .find(|c| c.name == "wh_general")
+        .expect("the corpus carries wh_general");
+    let (db, _scratch) = fresh_db(base);
+    let raw: Value = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let id = |k: &str| raw["ids"][k].as_str().unwrap().to_string();
+    let (aria, gmp, g_coat, project) = (
+        id("aria"),
+        id("generalMountPointId"),
+        id("gCoat"),
+        id("project"),
+    );
+    const SINGLE: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let cap = |f: &dyn Fn() -> Response| quilltap_core::test_support::global_capture::capture(f);
+    let line_ending = |lines: &[String], needle: &str| -> String {
+        lines
+            .iter()
+            .find(|l| l.ends_with(needle))
+            .cloned()
+            .unwrap_or_else(|| panic!("no line ending {needle:?}: {lines:#?}"))
+    };
+    let old_titles = [
+        "Archetype item created",
+        "Archetype item deleted",
+        "Wardrobe item deleted",
+        "Created project wardrobe item",
+        "Updated project wardrobe item",
+        "Deleted project wardrobe item",
+        "Read General dressing instructions",
+        "General dressing instructions updated",
+        "Read character dressing instructions",
+        "Read project dressing instructions",
+    ];
+    let no_old = |lines: &[String]| {
+        for t in old_titles {
+            assert!(!lines.iter().any(|l| l.contains(t)), "{t}: {lines:#?}");
+        }
+    };
+
+    // General list: `generalId: null` leads, `mountPointId`, `count`, `context`.
+    let (resp, lines) = cap(&|| rt.block_on(wardrobe_list(&db, false)));
+    let n = success_body(&resp).unwrap()["wardrobeItems"]
+        .as_array()
+        .unwrap()
+        .len();
+    let line = line_ending(
+        &lines,
+        &format!(
+            "[Wardrobe Archetypes v1] Listed wardrobe items generalId=null mountPointId={gmp} count={n} context=wardrobe"
+        ),
+    );
+    assert!(line.starts_with("DEBUG "), "{line}");
+    no_old(&lines);
+
+    // A character list keys the line by `characterId`.
+    let (resp, lines) = cap(&|| character_wardrobe_list(&db, &spec.user_id, &aria, None, false));
+    let body = success_body(&resp).unwrap();
+    let mp = body["mountPointId"].as_str().unwrap().to_string();
+    let n = body["wardrobeItems"].as_array().unwrap().len();
+    line_ending(
+        &lines,
+        &format!(
+            "[Wardrobe v1] Listed wardrobe items characterId={aria} mountPointId={mp} count={n} context=wardrobe"
+        ),
+    );
+    // R-H: a READ resolves on the calling thread, so the keystone's resolve
+    // line is visible here — asserted by tag only (the store tiers' resolve
+    // runs inside the write, on the writer thread).
+    assert!(lines
+        .iter()
+        .any(|l| l.contains("[WardrobeLocation] Resolved wardrobe location")));
+
+    // Create (INFO, `userId` second, `title` before `context`).
+    let (resp, lines) = cap(&|| {
+        rt.block_on(wardrobe_create(
+            &db,
+            serde_json::json!({ "title": "Opera Cloak", "types": ["top"] }),
+        ))
+    });
+    let created = success_body(&resp).unwrap()["wardrobeItem"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let line = line_ending(
+        &lines,
+        &format!(
+            "[Wardrobe Archetypes v1] Created wardrobe item generalId=null userId={SINGLE} mountPointId={gmp} itemId={created} title=Opera Cloak context=wardrobe"
+        ),
+    );
+    assert!(line.starts_with("INFO "), "{line}");
+    no_old(&lines);
+
+    // Update WITHOUT `archived`: no `archivedAt` key (the silence leg).
+    let (_, lines) = cap(&|| {
+        rt.block_on(wardrobe_update(
+            &db,
+            &created,
+            serde_json::json!({ "title": "Opera Cape" }),
+        ))
+    });
+    line_ending(
+        &lines,
+        &format!(
+            "[Wardrobe Archetypes v1] Updated wardrobe item generalId=null userId={SINGLE} mountPointId={gmp} itemId={created} context=wardrobe"
+        ),
+    );
+    assert!(
+        !lines.iter().any(|l| l.contains("archivedAt=")),
+        "{lines:#?}"
+    );
+    // Update WITH `archived`: `archivedAt` rides LAST, after `context`.
+    let (_, lines) = cap(&|| {
+        rt.block_on(wardrobe_update(
+            &db,
+            &created,
+            serde_json::json!({ "archived": false }),
+        ))
+    });
+    line_ending(
+        &lines,
+        &format!(
+            "[Wardrobe Archetypes v1] Updated wardrobe item generalId=null userId={SINGLE} mountPointId={gmp} itemId={created} context=wardrobe archivedAt=null"
+        ),
+    );
+
+    // Delete: `{ ...meta, mountPointId }` — `context` BEFORE `mountPointId`.
+    let (_, lines) = cap(&|| rt.block_on(wardrobe_delete(&db, &created)));
+    let line = line_ending(
+        &lines,
+        &format!(
+            "[Wardrobe Archetypes v1] Deleted wardrobe item generalId=null itemId={created} context=wardrobe mountPointId={gmp}"
+        ),
+    );
+    assert!(line.starts_with("INFO "), "{line}");
+    line_ending(
+        &lines,
+        &format!(
+            "[Wardrobe Archetypes v1] Dropped wear-ledger rows for deleted item generalId=null itemId={created} context=wardrobe"
+        ),
+    );
+    no_old(&lines);
+
+    // A 404 logs no factory line at all.
+    let (_, lines) = cap(&|| rt.block_on(wardrobe_delete(&db, &g_coat.replace('e', "f"))));
+    assert!(
+        !lines.iter().any(|l| l.contains("Deleted wardrobe item")),
+        "{lines:#?}"
+    );
+
+    // Instructions — the read and the write, General and project.
+    let (_, lines) =
+        cap(&|| rt.block_on(quilltap_core::api::wardrobe::wardrobe_instructions_get(&db)));
+    line_ending(
+        &lines,
+        &format!(
+            "[Wardrobe Archetypes v1] Read dressing instructions generalId=null mountPointId={gmp} present=false context=wardrobe"
+        ),
+    );
+    no_old(&lines);
+    let (_, lines) = cap(&|| {
+        rt.block_on(
+            quilltap_core::api::projects::project_wardrobe_instructions_set(
+                &db,
+                &project,
+                &Some(Some(Value::String("Hats indoors are fine.".into()))),
+            ),
+        )
+    });
+    let line = lines
+        .iter()
+        .find(|l| l.contains("[Projects v1] Dressing instructions updated"))
+        .unwrap_or_else(|| panic!("{lines:#?}"));
+    assert!(line.starts_with("INFO "), "{line}");
+    let tail = line.split("Dressing instructions updated").nth(1).unwrap();
+    let keys: Vec<&str> = tail
+        .split_whitespace()
+        .map(|kv| kv.split('=').next().unwrap())
+        .collect();
+    assert_eq!(
+        keys,
+        ["projectId", "userId", "mountPointId", "cleared", "context"],
+        "{line}"
+    );
+    assert!(tail.contains(&format!("projectId={project}")) && tail.contains("cleared=false"));
+    no_old(&lines);
 }

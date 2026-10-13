@@ -117,6 +117,14 @@ pub enum ItemImageCleanupMeta<'a> {
         group_id: &'a str,
         mount_point_id: &'a str,
     },
+    /// The one route factory (`9ecebf986`, P4.D281): `{ [logIdKey]:
+    /// location.id, itemId, context: 'wardrobe', mountPointId }` — `id` is the
+    /// rendered owner id (`"null"` for General).
+    Location {
+        scope: crate::db::wardrobe_location::WardrobeScope,
+        id: &'a str,
+        mount_point_id: &'a str,
+    },
 }
 
 /// One cleanup line in each of the four meta shapes (tracing field names are
@@ -138,6 +146,27 @@ macro_rules! cleanup_line {
                 groupId = %group_id, mountPointId = %mount_point_id, context = "wardrobe",
                 itemId = %$item_id, $($rest)* "{}", $message
             ),
+            ItemImageCleanupMeta::Location { scope, id, mount_point_id } => {
+                use crate::db::wardrobe_location::WardrobeScope;
+                match scope {
+                    WardrobeScope::Character => tracing::$level!(
+                        characterId = %id, itemId = %$item_id, context = "wardrobe",
+                        mountPointId = %mount_point_id, $($rest)* "{}", $message
+                    ),
+                    WardrobeScope::General => tracing::$level!(
+                        generalId = %id, itemId = %$item_id, context = "wardrobe",
+                        mountPointId = %mount_point_id, $($rest)* "{}", $message
+                    ),
+                    WardrobeScope::Project => tracing::$level!(
+                        projectId = %id, itemId = %$item_id, context = "wardrobe",
+                        mountPointId = %mount_point_id, $($rest)* "{}", $message
+                    ),
+                    WardrobeScope::Group => tracing::$level!(
+                        groupId = %id, itemId = %$item_id, context = "wardrobe",
+                        mountPointId = %mount_point_id, $($rest)* "{}", $message
+                    ),
+                }
+            }
         }
     };
 }

@@ -72,6 +72,12 @@ _Versions: core 0.0.1277._
 
 `tools/definitions/data.rs` regenerated through `gen-tool-catalog.mjs` from the pinned `tool-definitions.ts` dump. Two definitions move: `wardrobe_list` no longer declares `include_presets` and says an item's folder is filing only; `wardrobe_read` names the folder in its description. `tool_definitions_equivalence` and `tools_inventory_equivalence` pass from the pin.
 
+#### 2026-10-12 — feat(wardrobe): ONE route factory for all four wardrobe tiers (P4.D281, v4 `9ecebf986`)
+
+_Versions: core 0.0.1277, web 0.0.232._
+
+The character, General, project and group wardrobe handlers now delegate to one factory (`api/wardrobe_route_factory.rs`, v4 `lib/wardrobe/routes/wardrobe-route-factory.ts` at `4a38222e6`) over the keystone's wardrobe location and item mutations. Every item body carries `origin` then `wear` on GET, POST and PUT; the collection GET answers `{ mountPointId, wardrobeItems }` on every tier, and an unprovisioned General answers `{ wardrobeItems: [] }` instead of a 500. POST answers 201 `{ wardrobeItem }` on every tier (the project / group refreshed list is gone) and accepts `folder`. A component cycle is a 400 on every tier; a write to an archived character's vault is a 409; the PUT answers 404 before it checks `imageFileId`; item routes never provision a store; the instructions POST parses its body first, and a vault-less character is 404 even when clearing (the no-op is General's alone). The log lines are v4's one set (`<tag> Listed / Created / Updated / Deleted wardrobe item`, `Read dressing instructions`, `Dressing instructions updated`, `Read wardrobe item wear history`) keyed by the tier's id key. The store tiers' list and instructions GETs became async (they provision through the writer); the engine's six arms await them. `wardrobe_item_wear_history_as` and the character instructions `_as` forms take a user for the location's ownership gate. Re-pinned by `wardrobe_routes_equivalence`, `group_wardrobe_routes_equivalence`, `wardrobe_instructions_routes_equivalence`, `projects_routes_equivalence` (all from the pin) and the new `p4d281_factory_lines_are_v4s` capture test.
+
 #### 2026-10-12 — docs(porting): P4.D279 Tier 2 — mutation proofs, the Friday-copy depth count, the full gate + own-family sweep; LANE COMPLETE
 
 _Docs-only change._

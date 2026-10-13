@@ -56,6 +56,18 @@ fn materialize_instance() -> tempfile::TempDir {
     let w = Writer::open_writable(&data.join("quilltap-llm-logs.db"), TEST_PEPPER).unwrap();
     w.connection().execute_batch(LLM_LOGS_DDL).unwrap();
     drop(w);
+    // P4.D281: the served engine is the single user, and since `9ecebf986` a
+    // character resolves through the wardrobe location's ownership gate (R-E)
+    // — a real instance's characters all belong to v4's `SINGLE_USER_ID`, so
+    // the materialized copy is made one (the committed pair is untouched).
+    let main = Writer::open_writable(&data.join("quilltap.db"), TEST_PEPPER).unwrap();
+    main.connection()
+        .execute(
+            "UPDATE characters SET userId = 'ffffffff-ffff-ffff-ffff-ffffffffffff'",
+            [],
+        )
+        .unwrap();
+    drop(main);
     base
 }
 

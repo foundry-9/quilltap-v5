@@ -41,6 +41,13 @@ pub enum ItemRouteMeta<'a> {
     Project { project_id: &'a str },
     /// The group store factory: `{ groupId: id, itemId, context: 'wardrobe' }`.
     Group { group_id: &'a str },
+    /// The one route factory (`9ecebf986`, P4.D281): `{ [logIdKey]:
+    /// location.id, itemId, context: 'wardrobe' }` — `id` is the rendered
+    /// owner id (`"null"` for General).
+    Location {
+        scope: crate::db::wardrobe_location::WardrobeScope,
+        id: &'a str,
+    },
 }
 
 /// One clean-up line in each of the four meta shapes; `$rest` are the keys v4
@@ -69,6 +76,31 @@ macro_rules! step_line {
                 groupId = %group_id, itemId = %$item_id, context = "wardrobe",
                 $($rest)* "{}", $message
             ),
+            ItemRouteMeta::Location { scope, id } => {
+                use crate::db::wardrobe_location::WardrobeScope;
+                match scope {
+                    WardrobeScope::Character => tracing::$level!(
+                        target: "quilltap_core::api::characters",
+                        characterId = %id, itemId = %$item_id, context = "wardrobe",
+                        $($rest)* "{}", $message
+                    ),
+                    WardrobeScope::General => tracing::$level!(
+                        target: "quilltap_core::api::wardrobe",
+                        generalId = %id, itemId = %$item_id, context = "wardrobe",
+                        $($rest)* "{}", $message
+                    ),
+                    WardrobeScope::Project => tracing::$level!(
+                        target: "quilltap_core::api::projects",
+                        projectId = %id, itemId = %$item_id, context = "wardrobe",
+                        $($rest)* "{}", $message
+                    ),
+                    WardrobeScope::Group => tracing::$level!(
+                        target: "quilltap_core::api::groups",
+                        groupId = %id, itemId = %$item_id, context = "wardrobe",
+                        $($rest)* "{}", $message
+                    ),
+                }
+            }
         }
     };
 }

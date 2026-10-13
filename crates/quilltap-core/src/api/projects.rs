@@ -13,8 +13,6 @@
 use serde_json::{json, Map, Value};
 
 use super::SINGLE_USER_ID;
-use crate::db::archetype_wardrobe::{OwnerStore, WardrobeOrigin, WardrobeOriginScope};
-use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::document_store_overlay::OverlayError;
@@ -27,31 +25,16 @@ use crate::db::projects::{
     ProjectsRepository,
 };
 use crate::db::runtime::Db;
-use crate::db::vault_wardrobe_public::{
-    create_project_wardrobe_item, delete_project_wardrobe_item, update_project_wardrobe_item,
-    WardrobePatch, WardrobePublicError,
-};
-use crate::db::{archetype_wardrobe, characters_read, chats_read, tags, DbError};
+use crate::db::{characters_read, chats_read, tags, DbError};
 use crate::services::character_enrichment::enrich_with_default_image;
 use crate::services::dangerous_content::chat_override::{
     get_concierge_provenance, get_concierge_reason, get_concierge_state,
 };
 use crate::services::image_job_common::with_both_conns;
-use crate::services::wardrobe_item_images::primitives::{
-    cleanup_item_images, ItemImageCleanupMeta,
-};
-use crate::services::wardrobe_item_route_steps::{
-    image_choice_error, log_cleanup_equipped_refs, parse_image_file_id, run_cleanup_equipped_refs,
-    ItemRouteMeta,
-};
-use crate::services::wardrobe_wear_history::{attach_wear, build_wear_history_payload};
-use crate::vault_overlay::WardrobeItem;
-use crate::wardrobe_instructions::{
-    read_wardrobe_instructions_file, write_wardrobe_instructions_file,
-};
 
 use super::scenarios as scenarios_api;
 use super::types::{db_error_response, ErrorKind, Response};
+use super::wardrobe_route_factory::PROJECT_WARDROBE;
 
 // ===========================================================================
 // Shared helpers
@@ -1433,502 +1416,96 @@ pub async fn project_mount_point_unlink(
 }
 
 // ===========================================================================
-// Wardrobe (v4 [id]/wardrobe/route.ts + [itemId]/route.ts)
+// Wardrobe (v4 `projects/[id]/wardrobe/route.ts` + `[itemId]/route.ts` at
+// `9ecebf986` — registrations of the one route factory; P4.D281)
 // ===========================================================================
 //
-// PROJECT_WARDROBE_FOLDER = CHARACTER_WARDROBE_FOLDER ("Wardrobe"); the project
-// tier reuses the same vault-write functions the P4.6f character wardrobe uses,
-// pointed at the project's official store's `Wardrobe/` folder.
+// The project tier through `super::wardrobe_route_factory`: the collection
+// GET provisions the store + `Wardrobe/` folder (v4 `ensure: scope !==
+// 'character'`); create provisions; every ITEM route is a read-only resolve
+// (`officialMountPointId` — 404 `Project` when the store doesn't exist yet).
 
-fn wardrobe_err(e: WardrobePublicError) -> Response {
-    match e {
-        WardrobePublicError::Cycle(msg) => bad_request(msg),
-        WardrobePublicError::NoMount => internal("no wardrobe mount resolved"),
-        WardrobePublicError::Db(d) => internal(d),
-    }
+/// The engine's single user (the project tier has no ownership gate; v4's
+/// INFO lines log it as `userId`).
+const WARDROBE_USER_ID: &str = super::engine::SINGLE_USER_ID;
+
+/// v4 GET `/projects/[id]/wardrobe` — `{ mountPointId, wardrobeItems }`
+/// (origin + wear).
+pub async fn project_wardrobe_list(db: &Db, project_id: &str, include_archived: bool) -> Response {
+    super::wardrobe_route_factory::list_store_items(
+        db,
+        PROJECT_WARDROBE,
+        Some(project_id),
+        WARDROBE_USER_ID,
+        include_archived,
+    )
+    .await
 }
 
-/// v4 `optional string` field → `Some(v)` when present (even null-ish absent →
-/// null), used for the create/patch nullable columns.
-fn nullable_str(body: &Value, key: &str) -> Option<String> {
-    body.get(key).and_then(Value::as_str).map(str::to_string)
-}
-
-/// Resolve the project's official store mount id (v4 `ensureProjectOfficialStore`)
-/// and ensure the `Wardrobe/` folder. Returns the mount id, or the NotFound
-/// refusal when the project is absent.
-fn ensure_project_wardrobe_mount(
-    main: &rusqlite::Connection,
-    mount: &rusqlite::Connection,
-    project_id: &str,
-) -> Result<Result<OwnerStore, Response>, DbError> {
-    let store = match ensure_project_store_mount(main, mount, project_id)? {
-        Ok(store) => store,
-        Err(r) => return Ok(Err(r)),
-    };
-    let links = DocMountFileLinksRepository::new(mount);
-    let _ = links.ensure_folder_path(&store.mount_point_id, "Wardrobe");
-    Ok(Ok(store))
-}
-
-/// The store-ensure half of [`ensure_project_wardrobe_mount`] with NO
-/// `Wardrobe/` folder ensure — v4's `?action=instructions` GET calls
-/// `ensureProjectOfficialStore` alone (only its POST adds the folder ensure).
-///
-/// `cc80dc89d`: also answers the store's [`OwnerStore::origin`] — `{ scope:
-/// 'project', id, name }` from the project row this already holds (v4's
-/// factory `ownerOrigin`).
-fn ensure_project_store_mount(
-    main: &rusqlite::Connection,
-    mount: &rusqlite::Connection,
-    project_id: &str,
-) -> Result<Result<OwnerStore, Response>, DbError> {
-    let repo = ProjectsRepository::new(main, mount);
-    let Some(project) = repo.find_by_id(project_id).map_err(overlay_to_db)? else {
-        return Ok(Err(not_found("Project")));
-    };
-    let name = project.get("name").and_then(Value::as_str).unwrap_or("");
-    let Some(ensured) = ensure_official_store::<ProjectEntity>(main, mount, project_id, name)?
-    else {
-        return Ok(Err(internal("Failed to ensure project document store")));
-    };
-    Ok(Ok(OwnerStore {
-        mount_point_id: ensured.mount_point_id,
-        origin: WardrobeOrigin::new(WardrobeOriginScope::Project, project_id, name),
-    }))
-}
-
-/// v4 GET `/wardrobe`: `{ mountPointId, wardrobeItems }` (include archived).
-/// `cc80dc89d` + `3ee3b1342`: every item tagged with the project's `origin`,
-/// then its `wear` (v4 `attachWear(withOrigin(…))`).
-pub fn project_wardrobe_list(db: &Db, project_id: &str, include_archived: bool) -> Response {
-    let pid = project_id.to_string();
-    let out = read_both(db, move |main, mount| {
-        let store = match ensure_project_wardrobe_mount(main, mount, &pid)? {
-            Ok(store) => store,
-            Err(r) => return Ok(Err(r)),
-        };
-        let docs = DocMountDocumentsRepository::new(mount);
-        // v4 `d25dacc1` replaced this route's hard-coded `true` with the
-        // query param: the archived filter is SERVER-side now.
-        let items = archetype_wardrobe::read_project_wardrobe(
-            &docs,
-            &store.mount_point_id,
-            include_archived,
-        )?;
-        let items = attach_wear(main, archetype_wardrobe::with_origin(items, &store.origin));
-        Ok(Ok((store.mount_point_id, items)))
-    });
-    match out {
-        Ok(Ok((mp, items))) => {
-            Response::Project(json!({ "mountPointId": mp, "wardrobeItems": items }))
-        }
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
-}
-
-/// v4 POST `/wardrobe`: mints the item id + ISO timestamps IN THE ROUTE, creates
-/// it in the project store, re-lists. Body `{ mountPointId, wardrobeItem,
-/// wardrobeItems }` (201). Component cycles → 400.
+/// v4 POST `/projects/[id]/wardrobe` — 201 `{ wardrobeItem }` (origin + wear;
+/// the refreshed list is no longer part of the answer).
 pub async fn project_wardrobe_create(db: &Db, project_id: &str, body: Value) -> Response {
-    let pid = project_id.to_string();
-    let title = match body.get("title").and_then(Value::as_str) {
-        Some(t) if !t.is_empty() => t.to_string(),
-        _ => return bad_request("Title is required"),
-    };
-    let types: Vec<String> = body
-        .get("types")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
-    if types.is_empty() {
-        return bad_request("At least one type is required");
-    }
-    let component_item_ids: Vec<String> = body
-        .get("componentItemIds")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
-    let description = nullable_str(&body, "description");
-    let image_prompt = nullable_str(&body, "imagePrompt");
-    let appropriateness = nullable_str(&body, "appropriateness");
-    let is_default = body
-        .get("isDefault")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let replace = body
-        .get("replace")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-
-    let out = with_both_conns(db, move |main, mount| {
-        let store = match ensure_project_wardrobe_mount(main, mount, &pid)? {
-            Ok(store) => store,
-            Err(r) => return Ok(Err(r)),
-        };
-        let mp = store.mount_point_id.clone();
-        // v4 route mints id + ISO timestamps + the null columns (characterId,
-        // migratedFromClothingRecordId, archivedAt all explicit null; and
-        // `imageFileId` since `7c8572869`'s `wardrobeItemFromCreateBody`).
-        let now = crate::clock::now_iso();
-        let item = WardrobeItem {
-            id: uuid::Uuid::new_v4().to_string(),
-            character_id: Some(None),
-            title,
-            description: Some(description),
-            image_prompt: Some(image_prompt),
-            types,
-            component_item_ids,
-            appropriateness: Some(appropriateness),
-            is_default,
-            replace,
-            migrated_from_clothing_record_id: Some(None),
-            image_file_id: Some(None),
-            archived_at: Some(None),
-            // P4.D279 (C1 §12, mechanical): `WardrobeItem.folder` arrived with v4
-            // `4a38222e6`; the owning lane replaces this with the body's / record's value.
-            folder: String::new(),
-            created_at: now.clone(),
-            updated_at: now,
-        };
-        let links = DocMountFileLinksRepository::new(mount);
-        let docs = DocMountDocumentsRepository::new(mount);
-        let stored = match create_project_wardrobe_item(main, &links, &docs, &mp, &item) {
-            Ok(s) => s,
-            Err(e) => return Ok(Err(wardrobe_err(e))),
-        };
-        // `cc80dc89d` + `3ee3b1342`: the re-list is TAGGED and WORN; the
-        // `wardrobeItem` echo stays untagged (v4's `wardrobeItem: stored`).
-        let items = archetype_wardrobe::read_project_wardrobe(&docs, &mp, true)?;
-        let items = attach_wear(main, archetype_wardrobe::with_origin(items, &store.origin));
-        Ok(Ok((
-            mp,
-            serde_json::to_value(stored).unwrap_or(Value::Null),
-            items,
-        )))
-    })
-    .await;
-    match out {
-        Ok(Ok((mp, item, items))) => {
-            // P4.163: v4 `mount-wardrobe-route-factory.ts:267` (`logTag`
-            // `[Projects v1]`, `logIdKey` `projectId`).
-            tracing::info!(
-                projectId = %project_id,
-                userId = %SINGLE_USER_ID,
-                mountPointId = %mp,
-                itemId = %item.get("id").and_then(serde_json::Value::as_str).unwrap_or_default(),
-                title = %item.get("title").and_then(serde_json::Value::as_str).unwrap_or_default(),
-                context = "wardrobe",
-                "[Projects v1] Created project wardrobe item"
-            );
-            Response::Project(json!({
-                "mountPointId": mp,
-                "wardrobeItem": item,
-                "wardrobeItems": items,
-            }))
-        }
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    super::wardrobe_route_factory::create(
+        db,
+        PROJECT_WARDROBE,
+        Some(project_id),
+        WARDROBE_USER_ID,
+        &body,
+    )
+    .await
 }
 
-/// v4 GET `/wardrobe/[itemId]`: `{ wardrobeItem }` or NotFound.
+/// v4 GET `/projects/[id]/wardrobe/[itemId]` — `{ wardrobeItem }` (origin +
+/// wear), never provisioning.
 pub fn project_wardrobe_get(db: &Db, project_id: &str, item_id: &str) -> Response {
-    let pid = project_id.to_string();
-    let iid = item_id.to_string();
-    let out = read_both(db, move |main, mount| {
-        let store = match ensure_project_wardrobe_mount(main, mount, &pid)? {
-            Ok(store) => store,
-            Err(_) => return Ok(None), // v4 resolveProjectMount → notFound('Project')
-        };
-        let docs = DocMountDocumentsRepository::new(mount);
-        let items = archetype_wardrobe::read_project_wardrobe(&docs, &store.mount_point_id, true)?;
-        // `cc80dc89d`: the single GET is tagged (`origin`), never worn.
-        Ok(Some(
-            items
-                .into_iter()
-                .find(|i| i.get("id").and_then(Value::as_str) == Some(iid.as_str()))
-                .map(|i| {
-                    archetype_wardrobe::with_origin(vec![i], &store.origin)
-                        .pop()
-                        .unwrap_or(Value::Null)
-                }),
-        ))
-    });
-    match out {
-        Ok(Some(Some(item))) => Response::Project(json!({ "wardrobeItem": item })),
-        Ok(Some(None)) => not_found("Project wardrobe item"),
-        Ok(None) => not_found("Project"),
-        Err(e) => db_error_response(e),
-    }
+    super::wardrobe_route_factory::item_get(
+        db,
+        PROJECT_WARDROBE,
+        Some(project_id),
+        WARDROBE_USER_ID,
+        item_id,
+    )
 }
 
-/// v4 GET `/projects/[id]/wardrobe/[itemId]?action=wear-history` (the
-/// factory's `handleGetWearHistory`, `3ee3b1342`): the item must live in the
-/// project's store (archived included) — `404 Project` / `404 Project wardrobe
-/// item` — and only THEN is the ledger read (the 404 runs before
-/// `findHistory`). The store resolves exactly as [`project_wardrobe_get`]'s.
+/// v4 GET `/projects/[id]/wardrobe/[itemId]?action=wear-history`.
 pub(crate) fn project_wardrobe_wear_history(db: &Db, project_id: &str, item_id: &str) -> Response {
-    let pid = project_id.to_string();
-    let iid = item_id.to_string();
-    let out = read_both(db, move |main, mount| {
-        let store = match ensure_project_wardrobe_mount(main, mount, &pid)? {
-            Ok(store) => store,
-            Err(_) => return Ok(Err(not_found("Project"))),
-        };
-        let docs = DocMountDocumentsRepository::new(mount);
-        let items = archetype_wardrobe::read_project_wardrobe(&docs, &store.mount_point_id, true)?;
-        if !items
-            .iter()
-            .any(|i| i.get("id").and_then(Value::as_str) == Some(iid.as_str()))
-        {
-            return Ok(Err(not_found("Project wardrobe item")));
-        }
-        let payload = build_wear_history_payload(main, mount, &iid);
-        tracing::debug!(
-            projectId = %pid,
-            itemId = %iid,
-            wearCount = payload["history"]["wearCount"].as_i64().unwrap_or(0),
-            context = "wardrobe",
-            "[Projects v1] Read project wardrobe item wear history"
-        );
-        Ok(Ok(payload))
-    });
-    match out {
-        Ok(Ok(payload)) => Response::WardrobeWearHistory(payload),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    super::wardrobe_route_factory::item_wear_history(
+        db,
+        PROJECT_WARDROBE,
+        Some(project_id),
+        WARDROBE_USER_ID,
+        item_id,
+    )
 }
 
-/// v4 PUT `/wardrobe/[itemId]`: apply the partial patch. Body `{ wardrobeItem }`.
-/// Component cycles → 400; missing item → NotFound.
+/// v4 PUT `/projects/[id]/wardrobe/[itemId]` — 404 → Zod → `imageFileId`.
 pub async fn project_wardrobe_update(
     db: &Db,
     project_id: &str,
     item_id: &str,
     body: Value,
 ) -> Response {
-    let pid = project_id.to_string();
-    let iid = item_id.to_string();
-    let mut patch = build_wardrobe_patch(&body);
-    let archived = body.get("archived").and_then(Value::as_bool);
-    let out = with_both_conns(db, move |main, mount| {
-        let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
-            Ok(store) => store.mount_point_id,
-            Err(_) => return Ok(Err(not_found("Project"))),
-        };
-        // v4 `7c8572869`: `imageFileId: z.uuid().nullable().optional()` — the
-        // factory parses after the store resolves, uncaught → v4's middleware
-        // `Validation error`.
-        let Ok(image_file_id) = parse_image_file_id(&body) else {
-            return Ok(Err(bad_request("Validation error")));
-        };
-        // v4 `7c8572869`: `imageChoiceError` — BEFORE the archive flag. A file
-        // that is not one of the item's own pictures is v4's 400; a failed
-        // picture read is v4's rethrow (the middleware's 500).
-        match image_choice_error(
-            main,
-            &iid,
-            image_file_id.as_ref().and_then(|o| o.as_deref()),
-        ) {
-            Ok(None) => {}
-            Ok(Some(message)) => return Ok(Err(bad_request(message))),
-            Err(_) => {
-                return Ok(Err(Response::error(
-                    ErrorKind::Internal,
-                    "Internal server error",
-                )))
-            }
-        }
-        patch.image_file_id = image_file_id;
-        let links = DocMountFileLinksRepository::new(mount);
-        let docs = DocMountDocumentsRepository::new(mount);
-        // v4 `d25dacc1`: the project/group routes hold no already-loaded item, so
-        // they pay for an EXTRA O(folder) read — but ONLY when `archived` is in
-        // the body. That is where the new `Project wardrobe item not found` 404
-        // lives: it is unreachable without the key.
-        if let Some(a) = archived {
-            let items = archetype_wardrobe::read_project_wardrobe(&docs, &mp, true)?;
-            let Some(current) = items
-                .iter()
-                .find(|i| i.get("id").and_then(Value::as_str) == Some(iid.as_str()))
-            else {
-                return Ok(Err(not_found("Project wardrobe item")));
-            };
-            if let Some(v) = crate::wardrobe::archived_patch(
-                current.get("archivedAt").and_then(Value::as_str),
-                a,
-                &crate::clock::now_iso(),
-            ) {
-                patch.archived_at = Some(v);
-            }
-        }
-        // v4's `archivePatch` for the success line: present exactly when the
-        // flag changed the item (`archivedPatch` answers `null` otherwise).
-        let archive_logged = patch.archived_at.clone();
-        match update_project_wardrobe_item(main, &links, &docs, &mp, &iid, &patch) {
-            // Re-read through the overlay so the echo carries the full null-inclusive
-            // shape v4's JS object emits (the WardrobeItem struct serialize skips
-            // `None` fields; the Value read path renders them as null).
-            Ok(Some(_)) => {
-                let item = archetype_wardrobe::read_project_wardrobe(&docs, &mp, true)?
-                    .into_iter()
-                    .find(|i| i.get("id").and_then(Value::as_str) == Some(iid.as_str()))
-                    .unwrap_or(Value::Null);
-                Ok(Ok((mp, item, archive_logged)))
-            }
-            Ok(None) => Ok(Err(not_found("Project wardrobe item"))),
-            Err(e) => Ok(Err(wardrobe_err(e))),
-        }
-    })
-    .await;
-    match out {
-        Ok(Ok((mp, item, archive_logged))) => {
-            // P4.163: v4 `mount-wardrobe-route-factory.ts:357-363` — with
-            // `...(archivePatch !== null && { archivedAt })` appended LAST:
-            // the new stamp, or `null` for an unarchive (the `94fbb1ae3`
-            // boot-hardness unification's review).
-            tracing::info!(
-                projectId = %project_id,
-                userId = %SINGLE_USER_ID,
-                mountPointId = %mp,
-                itemId = %item_id,
-                context = "wardrobe",
-                archivedAt = archive_logged
-                    .as_ref()
-                    .map(|v| tracing::field::display(v.as_deref().unwrap_or("null"))),
-                "[Projects v1] Updated project wardrobe item"
-            );
-            Response::Project(json!({ "wardrobeItem": item }))
-        }
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    super::wardrobe_route_factory::item_update(
+        db,
+        PROJECT_WARDROBE,
+        Some(project_id),
+        WARDROBE_USER_ID,
+        item_id,
+        body,
+    )
+    .await
 }
 
-/// v4 DELETE `/projects/[id]/wardrobe/[itemId]` (the factory): resolve the
-/// store (404 `Project`) → `cleanupEquippedRefs` (the equipped-reference scrub
-/// and, since `3ee3b1342`, the item's wear-ledger rows — each warn-and-proceed,
-/// BEFORE the item's existence is known, as v4's factory does) → delete (404
-/// `Project wardrobe item`) → (`7c8572869`) the item's pictures → the success
-/// line. Body `{ success: true }`.
-///
-/// Two writes, as v4's separate awaits: the clean-up's outcome is logged on
-/// the CALLING thread between them (the capture rig sees it).
+/// v4 DELETE `/projects/[id]/wardrobe/[itemId]` — `{ success: true }`.
 pub async fn project_wardrobe_delete(db: &Db, project_id: &str, item_id: &str) -> Response {
-    const LOG_TAG: &str = "[Projects v1]";
-    let pid = project_id.to_string();
-    let iid = item_id.to_string();
-    let cleaned = with_both_conns(db, {
-        let (pid, iid) = (pid.clone(), iid.clone());
-        move |main, mount| {
-            let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
-                Ok(store) => store.mount_point_id,
-                Err(_) => return Ok(Err(not_found("Project"))),
-            };
-            Ok(Ok((mp, run_cleanup_equipped_refs(main, &iid))))
-        }
-    })
-    .await;
-    let mp = match cleaned {
-        Ok(Ok((mp, outcome))) => {
-            log_cleanup_equipped_refs(
-                &outcome,
-                &iid,
-                LOG_TAG,
-                ItemRouteMeta::Project { project_id: &pid },
-            );
-            mp
-        }
-        Ok(Err(r)) => return r,
-        Err(e) => return db_error_response(e),
-    };
-
-    let out = with_both_conns(db, {
-        let (pid, iid, mp) = (pid.clone(), iid.clone(), mp.clone());
-        move |main, mount| {
-            let links = DocMountFileLinksRepository::new(mount);
-            let docs = DocMountDocumentsRepository::new(mount);
-            match delete_project_wardrobe_item(main, &links, &docs, &mp, &iid) {
-                Ok(true) => {
-                    cleanup_item_images(
-                        main,
-                        mount,
-                        &iid,
-                        LOG_TAG,
-                        ItemImageCleanupMeta::Project {
-                            project_id: &pid,
-                            mount_point_id: &mp,
-                        },
-                    );
-                    Ok(Ok(()))
-                }
-                Ok(false) => Ok(Err(not_found("Project wardrobe item"))),
-                Err(e) => Ok(Err(wardrobe_err(e))),
-            }
-        }
-    })
-    .await;
-    match out {
-        Ok(Ok(())) => {
-            // P4.163: v4 `mount-wardrobe-route-factory.ts:385` (no `userId`).
-            tracing::info!(
-                projectId = %project_id,
-                mountPointId = %mp,
-                itemId = %item_id,
-                context = "wardrobe",
-                "[Projects v1] Deleted project wardrobe item"
-            );
-            Response::Project(json!({ "success": true }))
-        }
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
-}
-
-/// Build a `WardrobePatch` from the `updateWardrobeSchema.partial()` body (only
-/// present keys are set; nullable columns distinguish present-null from absent).
-fn build_wardrobe_patch(body: &Value) -> WardrobePatch {
-    let arr = |k: &str| -> Option<Vec<String>> {
-        body.get(k).and_then(Value::as_array).map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-    };
-    // A present nullable key → Some(inner) where inner mirrors null-vs-value.
-    let nullable =
-        |k: &str| -> Option<Option<String>> { body.get(k).map(|v| v.as_str().map(str::to_string)) };
-    WardrobePatch {
-        title: body
-            .get("title")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        types: arr("types"),
-        component_item_ids: arr("componentItemIds"),
-        description: nullable("description"),
-        image_prompt: nullable("imagePrompt"),
-        appropriateness: nullable("appropriateness"),
-        is_default: body.get("isDefault").and_then(Value::as_bool),
-        replace: body.get("replace").and_then(Value::as_bool),
-        archived_at: None,
-        image_file_id: None,
-        // P4.D279 (C1 §12, mechanical): `WardrobePatch.folder` arrived with v4
-        // `4a38222e6`; the owning lane fills it from the body. The clothing-record
-        // pointer is a `Partial<WardrobeItem>` key the restore pass carries.
-        folder: None,
-        migrated_from_clothing_record_id: None,
-    }
+    super::wardrobe_route_factory::item_delete(
+        db,
+        PROJECT_WARDROBE,
+        Some(project_id),
+        WARDROBE_USER_ID,
+        item_id,
+    )
+    .await
 }
 
 // ===========================================================================
@@ -2381,79 +1958,34 @@ pub async fn project_file_remove(db: &Db, project_id: &str, file_id: &str) -> Re
 // the group file with Project spellings)
 // ===========================================================================
 
-/// v4 `GET /api/v1/projects/[id]/wardrobe?action=instructions`.
-pub fn project_wardrobe_instructions_get(db: &Db, project_id: &str) -> Response {
-    let pid = project_id.to_string();
-    let out = read_both(db, move |main, mount| {
-        let mp = match ensure_project_store_mount(main, mount, &pid)? {
-            Ok(store) => store.mount_point_id,
-            Err(r) => return Ok(Err(r)),
-        };
-        let instructions = read_wardrobe_instructions_file(mount, &mp);
-        Ok(Ok((mp, instructions)))
-    });
-    match out {
-        Ok(Ok((mount_point_id, instructions))) => {
-            tracing::debug!(
-                project_id,
-                mount_point_id,
-                present = instructions.is_some(),
-                context = "wardrobe",
-                "[Projects v1] Read project dressing instructions"
-            );
-            Response::Project(json!({ "instructions": instructions }))
-        }
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+/// v4 `GET /api/v1/projects/[id]/wardrobe?action=instructions` — through the
+/// factory (`ensure: true`).
+pub async fn project_wardrobe_instructions_get(db: &Db, project_id: &str) -> Response {
+    super::wardrobe_route_factory::instructions_get_store(
+        db,
+        PROJECT_WARDROBE,
+        Some(project_id),
+        WARDROBE_USER_ID,
+    )
+    .await
 }
 
-/// v4 `POST /api/v1/projects/[id]/wardrobe?action=instructions`.
+/// v4 `POST /api/v1/projects/[id]/wardrobe?action=instructions` — the body is
+/// parsed FIRST now (an invalid body on a missing project is the 400), then
+/// the store is ensured.
 pub async fn project_wardrobe_instructions_set(
     db: &Db,
     project_id: &str,
     instructions: &Option<Option<Value>>,
 ) -> Response {
-    let pid = project_id.to_string();
-    let raw = instructions.clone();
-    let out = with_both_conns(db, move |main, mount| {
-        {
-            let repo = ProjectsRepository::new(main, mount);
-            if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
-                return Ok(Err(not_found("Project")));
-            }
-        }
-        // Parsed only AFTER the 404 gate: v4 runs `findById → notFound` before
-        // `instructionsBodySchema.parse`, so a missing project with an invalid
-        // body answers 404, not 400.
-        let instructions = match super::wardrobe::parse_instructions_body(&raw) {
-            Ok(v) => v,
-            Err(r) => return Ok(Err(r)),
-        };
-        let (cleared, echo) = super::wardrobe::instructions_echo(instructions.as_deref());
-        let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
-            Ok(store) => store.mount_point_id,
-            Err(r) => return Ok(Err(r)),
-        };
-        let links = DocMountFileLinksRepository::new(mount);
-        write_wardrobe_instructions_file(&links, &mp, instructions.as_deref())?;
-        Ok(Ok((mp, cleared, echo)))
-    })
-    .await;
-    match out {
-        Ok(Ok((mount_point_id, cleared, echo))) => {
-            tracing::info!(
-                project_id,
-                mount_point_id,
-                cleared,
-                context = "wardrobe",
-                "[Projects v1] Project dressing instructions updated"
-            );
-            Response::Project(json!({ "instructions": echo }))
-        }
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    super::wardrobe_route_factory::instructions_set(
+        db,
+        PROJECT_WARDROBE,
+        Some(project_id),
+        WARDROBE_USER_ID,
+        instructions,
+    )
+    .await
 }
 
 #[cfg(test)]

@@ -30,14 +30,8 @@
 
 use serde_json::{json, Value};
 
-use crate::db::archetype_wardrobe;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
-use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::runtime::Db;
-use crate::db::vault_wardrobe_public::{
-    create_vault_wardrobe_item, delete_vault_wardrobe_item, update_vault_wardrobe_item,
-    WardrobePatch,
-};
 use crate::db::DbError;
 use crate::image_gen::params_builder::{
     build_image_gen_params, ImageGenOverrides, ImageParamsLogContext, ImageProfileLike,
@@ -48,30 +42,12 @@ use crate::model::image::ImageGenParams;
 use crate::services::activity_kinds::ActivityKind;
 use crate::services::activity_registry::track_activity;
 use crate::services::image_job_common::with_both_conns;
-use crate::services::wardrobe_item_images::primitives::{
-    cleanup_item_images, ItemImageCleanupMeta,
-};
-use crate::services::wardrobe_item_route_steps::{
-    image_choice_error, log_cleanup_equipped_refs, parse_image_file_id, run_cleanup_equipped_refs,
-    ItemRouteMeta,
-};
 use crate::services::wardrobe_transfers::{
     self, ComponentMode, DestinationScope, ExplicitSource, SourceScope, TransferAction,
     TransferError, TransferRequest,
 };
-use crate::services::wardrobe_wear_history::attach_wear;
-use crate::vault_overlay::WardrobeItem;
-use crate::wardrobe_tiers::SharedWardrobeTiers;
 
-use crate::wardrobe_instructions::{
-    read_wardrobe_instructions_file, write_wardrobe_instructions_file,
-};
-
-use super::types::{db_error_response, ErrorKind, Response};
-
-/// The coverage slots (v4 `WardrobeItemTypeEnum` / `WARDROBE_SLOT_TYPES`) —
-/// read from the ONE registry (`4423ad10`'s consolidation).
-const WARDROBE_TYPES: [&str; 5] = crate::wardrobe::WARDROBE_SLOT_TYPES;
+use super::types::{ErrorKind, Response};
 
 fn internal(e: impl std::fmt::Display) -> Response {
     Response::error(ErrorKind::Internal, e.to_string())
@@ -97,484 +73,49 @@ fn read_main_mount<T>(
 }
 
 // ===========================================================================
-// The archetype body parse (v4 create/updateArchetypeSchema — PASS/FAIL only)
+// Quilltap General through the one route factory (v4 `app/api/v1/wardrobe/
+// route.ts` + `[itemId]/route.ts` at `9ecebf986` — registrations of
+// `lib/wardrobe/routes/wardrobe-route-factory.ts`; P4.D281)
 // ===========================================================================
 
-/// The parsed create/update body. For an update every field is optional
-/// (`updateArchetypeSchema = the same shape, all keys optional`).
-struct ArchetypeBody {
-    title: Option<String>,
-    description: Option<Option<String>>,
-    image_prompt: Option<Option<String>>,
-    types: Option<Vec<String>>,
-    appropriateness: Option<Option<String>>,
-    is_default: Option<bool>,
-    component_item_ids: Option<Vec<String>>,
-    replace: Option<bool>,
-    /// v4 `d25dacc1`'s `archived: z.boolean().optional()` — archive (`true`) or
-    /// restore (`false`); omitting it leaves the current state alone.
-    archived: Option<bool>,
-    /// v4 `7c8572869`'s update-only `imageFileId: z.uuid().nullable().optional()`.
-    image_file_id: Option<Option<String>>,
+use super::wardrobe_route_factory::{self as factory, GENERAL_WARDROBE};
+
+/// The engine's single user (General has no owner, so the factory's ownership
+/// gate never reads it; v4's INFO lines log it as `userId`).
+const USER_ID: &str = super::engine::SINGLE_USER_ID;
+
+/// v4 `GET /api/v1/wardrobe` — `{ mountPointId, wardrobeItems }` (origin +
+/// wear); an unprovisioned General answers `{ wardrobeItems: [] }`.
+pub async fn wardrobe_list(db: &Db, include_archived: bool) -> Response {
+    factory::list_store_items(db, GENERAL_WARDROBE, None, USER_ID, include_archived).await
 }
 
-/// Zod PASS/FAIL port of v4 `createArchetypeSchema` (`require_all = true`) and
-/// `updateArchetypeSchema` (`require_all = false`). The routes do not catch the
-/// ZodError, so a failure is the flat middleware `Validation error` — no issue
-/// messages to port, only the decision:
-///
-/// - `title`: string, length ≥ 1 (required on create);
-/// - `description`/`imagePrompt`/`appropriateness`: string | null | absent
-///   (`.nullable().optional()` — explicit null allowed);
-/// - `types`: array of the four slot enums, length ≥ 1 (required on create);
-/// - `isDefault`/`replace`: boolean | absent (`.optional()` — null FAILS);
-/// - `componentItemIds`: array of strings | absent (null FAILS).
-///
-/// Unknown keys are stripped (Zod's default object mode).
-fn parse_archetype_body(body: &Value, require_all: bool) -> Result<ArchetypeBody, ()> {
-    let Some(obj) = body.as_object() else {
-        return Err(());
-    };
-
-    let title = match obj.get("title") {
-        None => {
-            if require_all {
-                return Err(());
-            }
-            None
-        }
-        Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
-        Some(_) => return Err(()), // wrong type, null, or the min(1) failure
-    };
-
-    let nullable_str = |key: &str| -> Result<Option<Option<String>>, ()> {
-        match obj.get(key) {
-            None => Ok(None),
-            Some(Value::Null) => Ok(Some(None)),
-            Some(Value::String(s)) => Ok(Some(Some(s.clone()))),
-            Some(_) => Err(()),
-        }
-    };
-    let description = nullable_str("description")?;
-    let image_prompt = nullable_str("imagePrompt")?;
-    let appropriateness = nullable_str("appropriateness")?;
-
-    let types = match obj.get("types") {
-        None => {
-            if require_all {
-                return Err(());
-            }
-            None
-        }
-        Some(Value::Array(a)) => {
-            let mut out = Vec::with_capacity(a.len());
-            for v in a {
-                match v.as_str() {
-                    Some(s) if WARDROBE_TYPES.contains(&s) => out.push(s.to_string()),
-                    _ => return Err(()),
-                }
-            }
-            if out.is_empty() {
-                return Err(()); // min(1, 'At least one type is required')
-            }
-            Some(out)
-        }
-        Some(_) => return Err(()),
-    };
-
-    let boolean = |key: &str| -> Result<Option<bool>, ()> {
-        match obj.get(key) {
-            None => Ok(None),
-            Some(Value::Bool(b)) => Ok(Some(*b)),
-            Some(_) => Err(()), // null fails `.optional()`
-        }
-    };
-    let is_default = boolean("isDefault")?;
-    let replace = boolean("replace")?;
-    // v4 `d25dacc1` added `archived` to the UPDATE schema only; the CREATE
-    // schema never gained it, so an `archived` key on a create is a stripped
-    // unknown key (Zod's default object mode), not a refusal.
-    let archived = if require_all {
-        None
-    } else {
-        boolean("archived")?
-    };
-    // v4 `7c8572869`: update-only, like `archived` (the create schema strips it).
-    let image_file_id = if require_all {
-        None
-    } else {
-        parse_image_file_id(body)?
-    };
-
-    let component_item_ids = match obj.get("componentItemIds") {
-        None => None,
-        Some(Value::Array(a)) => {
-            let mut out = Vec::with_capacity(a.len());
-            for v in a {
-                match v.as_str() {
-                    Some(s) => out.push(s.to_string()),
-                    None => return Err(()),
-                }
-            }
-            Some(out)
-        }
-        Some(_) => return Err(()),
-    };
-
-    Ok(ArchetypeBody {
-        title,
-        description,
-        image_prompt,
-        types,
-        appropriateness,
-        is_default,
-        component_item_ids,
-        replace,
-        archived,
-        image_file_id,
-    })
-}
-
-// ===========================================================================
-// GET /api/v1/wardrobe — list the archetype tier
-// ===========================================================================
-
-/// v4 `GET /api/v1/wardrobe` — `repos.wardrobe.findArchetypes()` (non-archived,
-/// General only — the route has no project context) → `{wardrobeItems}`, each
-/// item tagged with the General origin (`cc80dc89d`) and then its `wear`
-/// (`3ee3b1342` — `attachWear(withOrigin(items, GENERAL_WARDROBE_ORIGIN))`).
-pub fn wardrobe_list(db: &Db, include_archived: bool) -> Response {
-    let out = read_main_mount(db, |main, mount| {
-        let docs = DocMountDocumentsRepository::new(mount);
-        let items = archetype_wardrobe::find_archetypes(
-            main,
-            &docs,
-            include_archived,
-            &SharedWardrobeTiers::none(),
-        )?;
-        Ok(attach_wear(
-            main,
-            archetype_wardrobe::with_origin(items, &archetype_wardrobe::general_wardrobe_origin()),
-        ))
-    });
-    match out {
-        Ok(items) => Response::Wardrobe(json!({ "wardrobeItems": items })),
-        // v4 catches → serverError with this exact message.
-        Err(_) => internal("Failed to fetch archetype wardrobe items"),
-    }
-}
-
-// ===========================================================================
-// POST /api/v1/wardrobe — create an archetype
-// ===========================================================================
-
-/// v4 `POST /api/v1/wardrobe` — `createArchetypeSchema.parse` (uncaught → the
-/// middleware `Validation error`), then `repos.wardrobe.create({characterId:
-/// null, ...})` → 201 `{wardrobeItem}`. A thrown vault error (no General mount,
-/// component cycle) propagates to v4's middleware → 500 `Internal server error`.
+/// v4 `POST /api/v1/wardrobe` — 201 `{ wardrobeItem }` (origin + wear); an
+/// unprovisioned General is the 500 `Quilltap General store is not
+/// provisioned yet`; a component cycle the 400.
 pub async fn wardrobe_create(db: &Db, body: Value) -> Response {
-    let parsed = match parse_archetype_body(&body, true) {
-        Ok(p) => p,
-        Err(()) => return bad_request("Validation error"),
-    };
-
-    let out = with_both_conns(db, move |main, mount| {
-        // v4 `repos.wardrobe.create` materializes id/timestamps; the route passes
-        // `migratedFromClothingRecordId: null` explicitly (echoed as null) but no
-        // `archivedAt` (omitted from the echo) — the characters-create precedent.
-        let now = crate::clock::now_iso();
-        let item = WardrobeItem {
-            id: uuid::Uuid::new_v4().to_string(),
-            character_id: Some(None),
-            title: parsed.title.clone().unwrap_or_default(),
-            description: Some(parsed.description.clone().flatten()),
-            image_prompt: Some(parsed.image_prompt.clone().flatten()),
-            types: parsed.types.clone().unwrap_or_default(),
-            component_item_ids: parsed.component_item_ids.clone().unwrap_or_default(),
-            appropriateness: Some(parsed.appropriateness.clone().flatten()),
-            is_default: parsed.is_default.unwrap_or(false),
-            replace: parsed.replace.unwrap_or(false),
-            migrated_from_clothing_record_id: Some(None),
-            // v4 `wardrobeItemFromCreateBody` (`7c8572869`): `imageFileId:
-            // null` on every create — echoed, never written to the file.
-            image_file_id: Some(None),
-            archived_at: None,
-            // P4.D279 (C1 §12, mechanical): `WardrobeItem.folder` arrived with v4
-            // `4a38222e6`; the owning lane replaces this with the body's / record's value.
-            folder: String::new(),
-            created_at: now.clone(),
-            updated_at: now,
-        };
-        let links = DocMountFileLinksRepository::new(mount);
-        let docs = DocMountDocumentsRepository::new(mount);
-        Ok(create_vault_wardrobe_item(main, &links, &docs, &item))
-    })
-    .await;
-
-    match out {
-        // v4's create rethrows (no-mount / cycle) → the middleware's generic 500.
-        Ok(Err(_)) => internal("Internal server error"),
-        Ok(Ok(stored)) => Response::Wardrobe(json!({
-            "wardrobeItem": serde_json::to_value(stored).unwrap_or(Value::Null)
-        })),
-        Err(e) => internal(e),
-    }
+    factory::create(db, GENERAL_WARDROBE, None, USER_ID, &body).await
 }
 
-// ===========================================================================
-// GET /api/v1/wardrobe/{itemId}
-// ===========================================================================
-
-/// v4 `GET /api/v1/wardrobe/[itemId]` — `findArchetypeById` (archived included)
-/// + the `characterId !== null` guard → `{wardrobeItem}` or the 404.
+/// v4 `GET /api/v1/wardrobe/[itemId]` — `{ wardrobeItem }` (origin + wear) or
+/// 404 `Archetype wardrobe item`.
 pub fn wardrobe_item_get(db: &Db, item_id: &str) -> Response {
-    let iid = item_id.to_string();
-    let out = read_main_mount(db, move |main, mount| {
-        let docs = DocMountDocumentsRepository::new(mount);
-        archetype_wardrobe::find_archetype_by_id(main, &docs, &iid, &SharedWardrobeTiers::none())
-    });
-    match out {
-        // `cc80dc89d`: the single GET is tagged with the General origin
-        // (`withOrigin([item], GENERAL_WARDROBE_ORIGIN)`), never worn.
-        Ok(Some(item)) if item.get("characterId").map(Value::is_null) == Some(true) => {
-            let item = archetype_wardrobe::with_origin(
-                vec![item],
-                &archetype_wardrobe::general_wardrobe_origin(),
-            )
-            .pop()
-            .unwrap_or(Value::Null);
-            Response::Wardrobe(json!({ "wardrobeItem": item }))
-        }
-        Ok(_) => not_found("Archetype wardrobe item"),
-        // v4 catches → serverError with this exact message.
-        Err(_) => internal("Failed to fetch archetype wardrobe item"),
-    }
+    factory::item_get(db, GENERAL_WARDROBE, None, USER_ID, item_id)
 }
 
-/// v4 `GET /api/v1/wardrobe/[itemId]?action=wear-history` (`3ee3b1342`): the
-/// item must be a General archetype (`characterId === null`) — else `404
-/// Archetype wardrobe item` — and only THEN is the ledger read (the 404 runs
-/// before `findHistory`). DEBUG `[Wardrobe Archetypes v1] Read archetype item
-/// wear history { itemId, wearCount }`; anything that throws past the 404 is
-/// the GET's own catch (`Failed to fetch archetype wardrobe item`).
+/// v4 `GET /api/v1/wardrobe/[itemId]?action=wear-history`.
 pub(crate) fn wardrobe_item_wear_history_general(db: &Db, item_id: &str) -> Response {
-    let iid = item_id.to_string();
-    let out = read_main_mount(db, move |main, mount| {
-        let docs = DocMountDocumentsRepository::new(mount);
-        let item = archetype_wardrobe::find_archetype_by_id(
-            main,
-            &docs,
-            &iid,
-            &SharedWardrobeTiers::none(),
-        )?;
-        if !matches!(&item, Some(i) if i.get("characterId").map(Value::is_null) == Some(true)) {
-            return Ok(Err(not_found("Archetype wardrobe item")));
-        }
-        let payload =
-            crate::services::wardrobe_wear_history::build_wear_history_payload(main, mount, &iid);
-        tracing::debug!(
-            itemId = %iid,
-            wearCount = payload["history"]["wearCount"].as_i64().unwrap_or(0),
-            "[Wardrobe Archetypes v1] Read archetype item wear history"
-        );
-        Ok(Ok(payload))
-    });
-    match out {
-        Ok(Ok(payload)) => Response::WardrobeWearHistory(payload),
-        Ok(Err(r)) => r,
-        Err(_) => internal("Failed to fetch archetype wardrobe item"),
-    }
+    factory::item_wear_history(db, GENERAL_WARDROBE, None, USER_ID, item_id)
 }
 
-// ===========================================================================
-// PUT /api/v1/wardrobe/{itemId}
-// ===========================================================================
-
-/// v4 `PUT /api/v1/wardrobe/[itemId]` — existence pre-check (404), then
-/// `updateArchetypeSchema.parse` (uncaught → `Validation error`), then
-/// `repos.wardrobe.update(itemId, patch, null)` → `{wardrobeItem}`. A vault
-/// throw (cycle / no mount) propagates → 500 `Internal server error`; an update
-/// that finds no item → the 404.
+/// v4 `PUT /api/v1/wardrobe/[itemId]` — 404 → Zod → `imageFileId` → update.
 pub async fn wardrobe_update(db: &Db, item_id: &str, body: Value) -> Response {
-    let iid = item_id.to_string();
-    let parsed = match parse_archetype_body(&body, false) {
-        Ok(p) => p,
-        Err(()) => return bad_request("Validation error"),
-    };
-    let mut patch = WardrobePatch {
-        title: parsed.title,
-        types: parsed.types,
-        component_item_ids: parsed.component_item_ids,
-        description: parsed.description,
-        image_prompt: parsed.image_prompt,
-        appropriateness: parsed.appropriateness,
-        is_default: parsed.is_default,
-        replace: parsed.replace,
-        archived_at: None,
-        image_file_id: parsed.image_file_id.clone(),
-        // P4.D279 (C1 §12, mechanical): `WardrobePatch.folder` arrived with v4
-        // `4a38222e6`; the owning lane fills it from the body. The clothing-record
-        // pointer is a `Partial<WardrobeItem>` key the restore pass carries.
-        folder: None,
-        migrated_from_clothing_record_id: None,
-    };
-    let archived = parsed.archived;
-    let image_file_id = parsed.image_file_id;
-
-    let out = with_both_conns(db, move |main, mount| {
-        let docs = DocMountDocumentsRepository::new(mount);
-        // Pre-check (v4 does it before the body parse, but the parse is pure —
-        // the observable order is identical for a valid id).
-        let existing = archetype_wardrobe::find_archetype_by_id(
-            main,
-            &docs,
-            &iid,
-            &SharedWardrobeTiers::none(),
-        )?;
-        let exists = matches!(
-            &existing,
-            Some(item) if item.get("characterId").map(Value::is_null) == Some(true)
-        );
-        if !exists {
-            return Ok(Err(not_found("Archetype wardrobe item")));
-        }
-        // v4 `7c8572869`: `imageChoiceError` — BEFORE the archive flag. A file
-        // that is not one of the item's own pictures is v4's 400; a failed
-        // picture read is v4's rethrow (the middleware's 500).
-        match image_choice_error(
-            main,
-            &iid,
-            image_file_id.as_ref().and_then(|o| o.as_deref()),
-        ) {
-            Ok(None) => {}
-            Ok(Some(message)) => return Ok(Err(bad_request(message))),
-            Err(_) => {
-                return Ok(Err(Response::error(
-                    ErrorKind::Internal,
-                    "Internal server error",
-                )))
-            }
-        }
-        // v4 `d25dacc1`: the General route reads the ALREADY-LOADED `existing`.
-        if let Some(a) = archived {
-            if let Some(v) = crate::wardrobe::archived_patch(
-                existing
-                    .as_ref()
-                    .and_then(|i| i.get("archivedAt"))
-                    .and_then(Value::as_str),
-                a,
-                &crate::clock::now_iso(),
-            ) {
-                patch.archived_at = Some(v);
-            }
-        }
-        let links = DocMountFileLinksRepository::new(mount);
-        match update_vault_wardrobe_item(main, &links, &docs, &iid, &patch, None) {
-            // Re-read through the overlay so the echo carries the full
-            // null-inclusive shape v4's merged JS object emits (the projects
-            // precedent — the struct serialize skips `None` fields).
-            Ok(Some(_)) => {
-                let item = archetype_wardrobe::find_archetype_by_id(
-                    main,
-                    &docs,
-                    &iid,
-                    &SharedWardrobeTiers::none(),
-                )?
-                .unwrap_or(Value::Null);
-                Ok(Ok(item))
-            }
-            Ok(None) => Ok(Err(not_found("Archetype wardrobe item"))),
-            // v4's update rethrows → the middleware's generic 500.
-            Err(_) => Ok(Err(internal("Internal server error"))),
-        }
-    })
-    .await;
-
-    match out {
-        Ok(Ok(item)) => Response::Wardrobe(json!({ "wardrobeItem": item })),
-        Ok(Err(r)) => r,
-        Err(e) => internal(e),
-    }
+    factory::item_update(db, GENERAL_WARDROBE, None, USER_ID, item_id, body).await
 }
 
-// ===========================================================================
-// DELETE /api/v1/wardrobe/{itemId}
-// ===========================================================================
-
-/// v4 `DELETE /api/v1/wardrobe/[itemId]` — existence pre-check (404),
-/// `cleanupEquippedRefs` (the equipped-reference scrub and, since `3ee3b1342`,
-/// the item's wear-ledger rows — each warn-and-proceed), then
-/// `repos.wardrobe.delete(itemId, null)`, then (`7c8572869`) the item's
-/// pictures (`cleanupItemImages`), then the success line → `{success: true}`.
-/// A thrown delete → the route's own catch (`Failed to delete archetype
-/// wardrobe item`).
-///
-/// Two writes, as v4's separate awaits: the clean-up's outcome is logged on
-/// the CALLING thread between them (the capture rig sees it).
+/// v4 `DELETE /api/v1/wardrobe/[itemId]` — `{ success: true }`.
 pub async fn wardrobe_delete(db: &Db, item_id: &str) -> Response {
-    const LOG_TAG: &str = "[Wardrobe Archetypes v1]";
-    let iid = item_id.to_string();
-    let cleaned = with_both_conns(db, {
-        let iid = iid.clone();
-        move |main, mount| {
-            let docs = DocMountDocumentsRepository::new(mount);
-            let existing = archetype_wardrobe::find_archetype_by_id(
-                main,
-                &docs,
-                &iid,
-                &SharedWardrobeTiers::none(),
-            )?;
-            let exists = matches!(
-                &existing,
-                Some(item) if item.get("characterId").map(Value::is_null) == Some(true)
-            );
-            if !exists {
-                return Ok(Err(not_found("Archetype wardrobe item")));
-            }
-            Ok(Ok(run_cleanup_equipped_refs(main, &iid)))
-        }
-    })
-    .await;
-    match cleaned {
-        Ok(Ok(outcome)) => {
-            log_cleanup_equipped_refs(&outcome, &iid, LOG_TAG, ItemRouteMeta::Archetype)
-        }
-        Ok(Err(r)) => return r,
-        Err(e) => return internal(e),
-    }
-
-    let out = with_both_conns(db, {
-        let iid = iid.clone();
-        move |main, mount| {
-            let docs = DocMountDocumentsRepository::new(mount);
-            let links = DocMountFileLinksRepository::new(mount);
-            match delete_vault_wardrobe_item(main, &links, &docs, &iid, None) {
-                Ok(true) => {
-                    cleanup_item_images(
-                        main,
-                        mount,
-                        &iid,
-                        LOG_TAG,
-                        ItemImageCleanupMeta::Archetype,
-                    );
-                    Ok(Ok(()))
-                }
-                Ok(false) => Ok(Err(not_found("Archetype wardrobe item"))),
-                // v4's delete rethrows into the route's catch → this exact message.
-                Err(_) => Ok(Err(internal("Failed to delete archetype wardrobe item"))),
-            }
-        }
-    })
-    .await;
-
-    match out {
-        Ok(Ok(())) => {
-            tracing::info!(itemId = %iid, "[Wardrobe Archetypes v1] Archetype item deleted");
-            Response::Wardrobe(json!({ "success": true }))
-        }
-        Ok(Err(r)) => r,
-        Err(e) => internal(e),
-    }
+    factory::item_delete(db, GENERAL_WARDROBE, None, USER_ID, item_id).await
 }
 
 // ===========================================================================
@@ -1409,71 +950,17 @@ pub(super) fn instructions_echo(instructions: Option<&str>) -> (bool, Value) {
     }
 }
 
-/// v4 `GET /api/v1/wardrobe?action=instructions` — the Quilltap General file.
-/// No 404 arm: an unprovisioned General reads as `{instructions: null}` without
-/// touching the mount index.
-pub fn wardrobe_instructions_get(db: &Db) -> Response {
-    let out = read_main_mount(db, |main, mount| {
-        let mount_point_id = crate::db::instance_settings::get_general_mount_point_id(main)?;
-        Ok(match mount_point_id.as_deref().filter(|s| !s.is_empty()) {
-            Some(mp) => (
-                Some(mp.to_string()),
-                read_wardrobe_instructions_file(mount, mp),
-            ),
-            None => (None, None),
-        })
-    });
-    match out {
-        Ok((mount_point_id, instructions)) => {
-            tracing::debug!(
-                mount_point_id,
-                present = instructions.is_some(),
-                "[Wardrobe Archetypes v1] Read General dressing instructions"
-            );
-            Response::Wardrobe(json!({ "instructions": instructions }))
-        }
-        Err(e) => db_error_response(e),
-    }
+/// v4 `GET /api/v1/wardrobe?action=instructions` — the Quilltap General file
+/// through the factory (`ensure: true` — the folder is ensured when General is
+/// provisioned); an unprovisioned General reads `{ instructions: null }`.
+pub async fn wardrobe_instructions_get(db: &Db) -> Response {
+    factory::instructions_get_store(db, GENERAL_WARDROBE, None, USER_ID).await
 }
 
-/// v4 `POST /api/v1/wardrobe?action=instructions`. `ensureGeneralWardrobeFolder`
-/// first: an unprovisioned General clears as a harmless no-op and refuses a
-/// write with the fixed 500 sentence.
+/// v4 `POST /api/v1/wardrobe?action=instructions` — an unprovisioned General
+/// clears as a harmless no-op and refuses a write with the fixed 500 sentence.
 pub async fn wardrobe_instructions_set(db: &Db, instructions: &Option<Option<Value>>) -> Response {
-    let instructions = match parse_instructions_body(instructions) {
-        Ok(v) => v,
-        Err(r) => return r,
-    };
-    let (cleared, echo) = instructions_echo(instructions.as_deref());
-    let out = with_both_conns(db, move |main, mount| {
-        let links = DocMountFileLinksRepository::new(mount);
-        let (mount_point_id, _folder_id) =
-            archetype_wardrobe::ensure_general_wardrobe_folder(main, &links)?;
-        let Some(mp) = mount_point_id.filter(|s| !s.is_empty()) else {
-            // Clearing instructions that can't exist yet is a harmless no-op.
-            if cleared {
-                return Ok(Err(Response::Wardrobe(json!({ "instructions": null }))));
-            }
-            return Ok(Err(internal(
-                "Quilltap General store is not provisioned yet",
-            )));
-        };
-        write_wardrobe_instructions_file(&links, &mp, instructions.as_deref())?;
-        Ok(Ok(mp))
-    })
-    .await;
-    match out {
-        Ok(Ok(mount_point_id)) => {
-            tracing::info!(
-                mount_point_id,
-                cleared,
-                "[Wardrobe Archetypes v1] General dressing instructions updated"
-            );
-            Response::Wardrobe(json!({ "instructions": echo }))
-        }
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    factory::instructions_set(db, GENERAL_WARDROBE, None, USER_ID, instructions).await
 }
 
 #[cfg(test)]

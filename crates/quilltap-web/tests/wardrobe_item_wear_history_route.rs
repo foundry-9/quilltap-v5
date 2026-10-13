@@ -57,6 +57,18 @@ fn materialize_instance() -> tempfile::TempDir {
     let w = Writer::open_writable(&data.join("quilltap-llm-logs.db"), TEST_PEPPER).unwrap();
     w.connection().execute_batch(LLM_LOGS_DDL).unwrap();
     drop(w);
+    // P4.D281: the served engine is the single user, and since `9ecebf986` a
+    // character resolves through the wardrobe location's ownership gate (R-E)
+    // — a real instance's characters all belong to v4's `SINGLE_USER_ID`, so
+    // the materialized copy is made one (the committed pair is untouched).
+    let main = Writer::open_writable(&data.join("quilltap.db"), TEST_PEPPER).unwrap();
+    main.connection()
+        .execute(
+            "UPDATE characters SET userId = 'ffffffff-ffff-ffff-ffff-ffffffffffff'",
+            [],
+        )
+        .unwrap();
+    drop(main);
     base
 }
 
@@ -83,7 +95,8 @@ async fn the_item_get_edge_serves_the_item_the_wear_history_and_v4s_refusals() {
         }
     };
 
-    // 1. No action → the item, tagged (`origin` last), never worn.
+    // 1. No action → the item, tagged and — since `9ecebf986`'s factory
+    // (`serializeOne`) — worn: `origin` then `wear`, last.
     let (status, body) = get(G_COAT, "").await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(body["wardrobeItem"]["id"], G_COAT);
@@ -91,7 +104,12 @@ async fn the_item_get_edge_serves_the_item_the_wear_history_and_v4s_refusals() {
         body["wardrobeItem"]["origin"],
         json!({ "scope": "general", "id": null, "name": "Quilltap General" })
     );
-    assert!(body["wardrobeItem"].get("wear").is_none(), "{body}");
+    assert_eq!(
+        body["wardrobeItem"]["wear"],
+        json!({ "wearCount": 0, "firstWornAt": null, "lastWornAt": null, "lastWornChatId": null })
+    );
+    let keys: Vec<&String> = body["wardrobeItem"].as_object().unwrap().keys().collect();
+    assert_eq!(keys[keys.len() - 2..], ["origin", "wear"], "{body}");
 
     // 2. `?action=wear-history` → the payload (a never-worn item here).
     let (status, body) = get(G_COAT, "?action=wear-history").await;
