@@ -385,3 +385,177 @@ pub fn delete_wardrobe_item_image(
     );
     Ok(current)
 }
+
+// === P4.D281: link-image (append-only) ===
+
+/// v4 `UnlinkableWardrobeImageError` (`item-images.ts:248-253`) — the source
+/// picture for a link is not a stored picture with a readable blob.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnlinkableWardrobeImageError {
+    pub file_id: String,
+}
+
+impl UnlinkableWardrobeImageError {
+    /// v4's `.message`.
+    pub fn message(&self) -> String {
+        format!(
+            "File {} is not a stored picture that can be linked",
+            self.file_id
+        )
+    }
+}
+
+/// What [`link_wardrobe_item_image`] can fail with: the unlinkable source (the
+/// route's 400), or anything [`add_wardrobe_item_image`] answers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkWardrobeItemImageError {
+    Unlinkable(UnlinkableWardrobeImageError),
+    Item(ItemImageError),
+}
+
+impl From<ItemImageError> for LinkWardrobeItemImageError {
+    fn from(e: ItemImageError) -> Self {
+        LinkWardrobeItemImageError::Item(e)
+    }
+}
+
+/// The `files` columns a link reads off its source picture (v4 reads the whole
+/// row through `repos.files.findById`; these are the keys it consults).
+struct LinkSource {
+    id: String,
+    category: String,
+    storage_key: Option<String>,
+    mime_type: String,
+    width: Option<i64>,
+    height: Option<i64>,
+    source: String,
+    generation_prompt: Option<String>,
+    generation_model: Option<String>,
+    generation_revised_prompt: Option<String>,
+}
+
+fn read_link_source(main: &Connection, id: &str) -> Result<Option<LinkSource>, DbError> {
+    let mut stmt = main.prepare(
+        "SELECT \"id\", \"category\", \"storageKey\", \"mimeType\", \"width\", \"height\", \
+         \"source\", \"generationPrompt\", \"generationModel\", \"generationRevisedPrompt\" \
+         FROM \"files\" WHERE \"id\" = ?1",
+    )?;
+    let mut rows = stmt.query([id])?;
+    let Some(r) = rows.next()? else {
+        return Ok(None);
+    };
+    Ok(Some(LinkSource {
+        id: r.get(0)?,
+        category: r.get(1)?,
+        storage_key: r.get(2)?,
+        mime_type: r.get(3)?,
+        width: r.get::<_, Option<f64>>(4)?.map(|w| w as i64),
+        height: r.get::<_, Option<f64>>(5)?.map(|h| h as i64),
+        source: r.get(6)?,
+        generation_prompt: r.get(7)?,
+        generation_model: r.get(8)?,
+        generation_revised_prompt: r.get(9)?,
+    }))
+}
+
+/// v4 `readMountBlob(storageKey)` — the blob's bytes, or `None` for a key that
+/// does not parse, a missing blob, or a failed read (`docMountBlobs.readData`
+/// is a FALLBACK read: WARN `Failed to read blob data`, then `null`).
+fn read_mount_blob(mount: &Connection, storage_key: &str) -> Option<Vec<u8>> {
+    let (_mount_point_id, blob_id) =
+        crate::services::file_storage::parse_mount_blob_storage_key(storage_key)?;
+    match crate::db::doc_mount_blobs::DocMountBlobsRepository::new(mount).read_data(&blob_id) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::db",
+                id = %blob_id,
+                error = %crate::db::fallback::error_text(&e),
+                "Failed to read blob data"
+            );
+            None
+        }
+    }
+}
+
+/// v4 `linkWardrobeItemImage(repos, home, { userId, sourceFileId })`
+/// (`9ecebf986`, `item-images.ts:264-302`) — give the item a picture another
+/// item already has (Import from image keeps ONE photograph as the first
+/// picture of every piece it creates, uploading it once). The bytes are read
+/// from the source's blob and written through [`add_wardrobe_item_image`],
+/// whose sha256 de-duplication makes the new link share the blob; the new
+/// `files` row is the item's own (linked + current), so deleting it never
+/// touches the source's. A source that is missing, not an `IMAGE`, keyless,
+/// or whose blob cannot be read refuses with INFO `[WardrobeImages] Refused to
+/// link a picture with no readable blob` and
+/// [`LinkWardrobeItemImageError::Unlinkable`]; DEBUG `[WardrobeImages]
+/// Linking an existing picture to a wardrobe item` otherwise.
+pub fn link_wardrobe_item_image(
+    main: &Connection,
+    mount: &Connection,
+    home: &WardrobeItemHome,
+    user_id: &str,
+    source_file_id: &str,
+    mint: &ImageMint,
+    blob_webp: &dyn WebpTranscoder,
+) -> Result<AddedWardrobeItemImage, LinkWardrobeItemImageError> {
+    // v4 `repos.files.findById` — the base `_findById`, a fallback read.
+    let source = crate::db::fallback::find_by_id_or_none("files", source_file_id, || {
+        read_link_source(main, source_file_id)
+    });
+    let bytes = source.as_ref().and_then(|s| {
+        (s.category == "IMAGE")
+            .then_some(s.storage_key.as_deref())
+            .flatten()
+            .filter(|k| !k.is_empty())
+            .filter(|k| crate::services::file_storage::parse_mount_blob_storage_key(k).is_some())
+            .and_then(|k| read_mount_blob(mount, k))
+    });
+    let (Some(source), Some(bytes)) = (source.as_ref(), bytes) else {
+        tracing::info!(
+            context = LOG_CONTEXT,
+            itemId = %home.item_id(),
+            sourceFileId = %source_file_id,
+            found = source.is_some(),
+            "[WardrobeImages] Refused to link a picture with no readable blob"
+        );
+        return Err(LinkWardrobeItemImageError::Unlinkable(
+            UnlinkableWardrobeImageError {
+                file_id: source_file_id.to_string(),
+            },
+        ));
+    };
+
+    tracing::debug!(
+        context = LOG_CONTEXT,
+        itemId = %home.item_id(),
+        sourceFileId = %source.id,
+        bytes = bytes.len(),
+        "[WardrobeImages] Linking an existing picture to a wardrobe item"
+    );
+
+    let kind = match source.source.as_str() {
+        "GENERATED" => WardrobeImageKind::Generated,
+        "UPLOADED" => WardrobeImageKind::Uploaded,
+        _ => WardrobeImageKind::Imported,
+    };
+    Ok(add_wardrobe_item_image(
+        main,
+        mount,
+        home,
+        &AddWardrobeItemImageInput {
+            user_id,
+            kind,
+            content: &bytes,
+            content_type: &source.mime_type,
+            width: source.width,
+            height: source.height,
+            generation_prompt: source.generation_prompt.as_deref(),
+            generation_model: source.generation_model.as_deref(),
+            generation_revised_prompt: source.generation_revised_prompt.as_deref(),
+        },
+        mint,
+        blob_webp,
+    )?)
+}
+// === end ===

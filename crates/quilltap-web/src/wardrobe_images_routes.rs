@@ -7,7 +7,7 @@
 //!   the dispatch runs FIRST, so an unknown or bare GET `?action` is the 400
 //!   `Unknown action: <a>` with `availableActions: ["save-targets"]` before
 //!   the query is even read — where it listed before).
-//! - `POST ?action=generate | upload | set-current | delete-image |
+//! - `POST ?action=generate | upload | link-image | set-current | delete-image |
 //!   save-to-store` (v4's `withActionDispatch` with NO default: a bare POST is
 //!   `Action parameter required`, an unknown action `Unknown action: <a>`,
 //!   both with `availableActions`).
@@ -60,10 +60,12 @@ use crate::query::{dispatch_action, dispatch_required_action, first, QueryPairs}
 use crate::state::SharedState;
 
 /// v4's POST `withActionDispatch` map, in its literal order (`01a83539d`
-/// appended `save-to-store`).
-const ACTIONS: [&str; 5] = [
+/// appended `save-to-store`; `9ecebf986` registered `link-image` AFTER
+/// `upload` and BEFORE `set-current` — the 400s' `availableActions` order).
+const ACTIONS: [&str; 6] = [
     "generate",
     "upload",
+    "link-image",
     "set-current",
     "delete-image",
     "save-to-store",
@@ -278,6 +280,40 @@ pub async fn wardrobe_item_images_post(
             rendered(true, resp, StatusCode::CREATED)
         }
         "upload" => upload(&state, &db, scope, &home, req).await,
+        "link-image" => {
+            let bytes = match Bytes::from_request(req, &state).await {
+                Ok(b) => b,
+                Err(_) => {
+                    return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
+                }
+            };
+            // v4 `handleLinkImage` (`9ecebf986`): `fileIdBodySchema.parse(await
+            // req.json())` INSIDE the try — a ZodError is `mapWriteError`'s
+            // joined 400, unparseable JSON its rethrow (the middleware's 500).
+            let body: Value = match serde_json::from_slice(&bytes) {
+                Ok(v) => v,
+                Err(_) => {
+                    return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
+                }
+            };
+            let file_id = match parse_file_id_body(&body) {
+                Ok(id) => id,
+                Err(msg) => return error_json(StatusCode::BAD_REQUEST, &msg),
+            };
+            let blob_webp: std::sync::Arc<
+                dyn quilltap_core::services::mount_index::blob_transcode::WebpTranscoder,
+            > = std::sync::Arc::new(
+                quilltap_core::services::mount_index::normalize_blob_image::PixelCodecWebp(
+                    std::sync::Arc::new(quilltap_host::HostImageCodec),
+                ),
+            );
+            let resp = quilltap_core::api::wardrobe_item_images::link_image_on_home(
+                &db, blob_webp, scope, &home, &file_id,
+            )
+            .await;
+            // v4 `created({ image, current })`.
+            rendered(false, resp, StatusCode::CREATED)
+        }
         "set-current" | "delete-image" => {
             let bytes = match Bytes::from_request(req, &state).await {
                 Ok(b) => b,
@@ -562,7 +598,8 @@ mod tests {
         );
     }
 
-    /// The two action maps, in v4's literal order (`save-to-store` LAST).
+    /// The two action maps, in v4's literal order (`link-image` third,
+    /// `save-to-store` LAST).
     #[test]
     fn the_action_maps() {
         assert_eq!(
@@ -570,6 +607,7 @@ mod tests {
             [
                 "generate",
                 "upload",
+                "link-image",
                 "set-current",
                 "delete-image",
                 "save-to-store"

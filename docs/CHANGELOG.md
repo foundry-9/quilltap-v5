@@ -72,6 +72,12 @@ _Versions: core 0.0.1277._
 
 `tools/definitions/data.rs` regenerated through `gen-tool-catalog.mjs` from the pinned `tool-definitions.ts` dump. Two definitions move: `wardrobe_list` no longer declares `include_presets` and says an item's folder is filing only; `wardrobe_read` names the folder in its description. `tool_definitions_equivalence` and `tools_inventory_equivalence` pass from the pin.
 
+#### 2026-10-13 — feat(wardrobe): link an already-stored picture to a wardrobe item (P4.D281, v4 `9ecebf986`)
+
+_Versions: core 0.0.1280, web 0.0.235._
+
+`POST /api/v1/wardrobe/{itemId}/images?action=link-image` `{ fileId }` (and the `wardrobeItemImageLink` dispatch verb) gives an item a copy-by-link of another stored picture: the source's blob is read and written through the item-picture writer, so the sha256 de-duplication shares the blob while the new `files` row is the item's own. 201 `{ image, current }`; 400 `That picture cannot be linked` for a missing / non-image / keyless / unreadable source; the archived-character 409; v4's `[WardrobeImages]` INFO / DEBUG and the route INFO. The images POST action map lists `link-image` after `upload`. The engine's last agreed-refusal helper is gone (every C2 arm is served).
+
 #### 2026-10-12 — feat(wardrobe): transfers probe groups before the project, never provision a source, and carry each item's folder (P4.D281, v4 `9ecebf986` + `4a38222e6`)
 
 _Versions: core 0.0.1279, web 0.0.234._

@@ -778,6 +778,12 @@ async fn direct_request(
 /// tier-2 family's `the_save_route_lines_are_v4s` — save that v4's `message`
 /// is v5's `errorMessage` (a tracing field named `message` would replace the
 /// file record's envelope message; recorded).
+/// P4.D281 — v4's `handleLinkImage` INFO and its meta keys (in order).
+const V4_LINK_LINE: (&str, [&str; 4]) = (
+    "[Wardrobe Images v1] Linked an existing picture to a wardrobe item",
+    ["itemId", "scope", "sourceFileId", "fileId"],
+);
+
 const V4_SAVE_LINE_KEYS: [(&str, &[&str]); 5] = [
     (
         "[Wardrobe Images v1] Listed save targets",
@@ -880,6 +886,35 @@ async fn wardrobe_item_images_routes_match_oracle() {
         V4_SAVE_LINE_KEYS.len(),
         "every save line was captured: {seen_lines:?}"
     );
+    // P4.D281 (`9ecebf986`): the link route's INFO — v4's keys, seen at least
+    // once (`link_image_ok_201`, `link_image_cross_tier_general`); v5's line
+    // carries them in this order (`p4d281_link_lines_are_v4s`).
+    let link_keys: Vec<Vec<String>> = oracle
+        .values()
+        .flat_map(|row| {
+            row.get("v4Lines")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        })
+        .filter(|l| l["message"] == V4_LINK_LINE.0)
+        .map(|l| {
+            l["keys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|k| k.as_str().unwrap().to_string())
+                .collect()
+        })
+        .collect();
+    assert!(!link_keys.is_empty(), "v4 logged no link line");
+    for keys in &link_keys {
+        assert_eq!(
+            keys, &V4_LINK_LINE.1,
+            "{}: v4's meta keys moved",
+            V4_LINK_LINE.0
+        );
+    }
 
     let mut failures = Vec::new();
     for req in requests {
@@ -943,5 +978,185 @@ async fn wardrobe_item_images_routes_match_oracle() {
         "{} divergence(s):\n{}",
         failures.len(),
         failures.join("\n\n")
+    );
+}
+
+/// P4.D281 (v4 `9ecebf986`, `item-images.ts:264-302`): `linkWardrobeItemImage`'s
+/// two lines and the route's INFO, each with v4's keys in v4's order — the
+/// DEBUG `[WardrobeImages] Linking an existing picture to a wardrobe item`
+/// `{context, itemId, sourceFileId, bytes}` on a link; the INFO `Refused to
+/// link a picture with no readable blob` `{context, itemId, sourceFileId,
+/// found}` (and NO Linking line) for a document (`found=true`) and an unknown
+/// id (`found=false`); the route's `[Wardrobe Images v1] Linked an existing
+/// picture to a wardrobe item` `{itemId, scope, sourceFileId, fileId}`.
+#[tokio::test(flavor = "multi_thread")]
+async fn p4d281_link_lines_are_v4s() {
+    use quilltap_core::services::wardrobe_container::resolve_wardrobe_item_home;
+    use quilltap_core::services::wardrobe_item_images::service::{
+        link_wardrobe_item_image, ImageMint,
+    };
+    quilltap_core::test_support::global_capture::install();
+    let (Ok(main_fixture), Ok(mount_fixture)) = (
+        std::env::var("QT_FIXTURE_WIIR_MAIN"),
+        std::env::var("QT_FIXTURE_WIIR_MOUNT"),
+    ) else {
+        eprintln!("SKIP: set QT_FIXTURE_WIIR_MAIN + QT_FIXTURE_WIIR_MOUNT (see header).");
+        return;
+    };
+    let spec: Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../harness/oracle/fixtures/wardrobe-item-images-tier2.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let s = |k: &str| spec[k].as_str().unwrap().to_string();
+    let (pepper, user, character) = (s("testPepperBase64"), s("userId"), s("characterId"));
+    let item = |k: &str| spec["items"][k]["id"].as_str().unwrap().to_string();
+    let (hat, coat) = (item("hat"), item("coat"));
+    let scratch = tempfile::tempdir().unwrap();
+    let main_path = scratch.path().join("main.db");
+    let mount_path = scratch.path().join("mount.db");
+    std::fs::copy(&main_fixture, &main_path).unwrap();
+    std::fs::copy(&mount_fixture, &mount_path).unwrap();
+
+    let main_w = quilltap_core::db::Writer::open_writable(&main_path, &pepper).unwrap();
+    let mount_w = quilltap_core::db::Writer::open_writable(&mount_path, &pepper).unwrap();
+    let (main, mount) = (main_w.connection(), mount_w.connection());
+    let picture: String = main
+        .query_row(
+            "SELECT f.id FROM files f, json_each(f.linkedTo) j WHERE j.value = ?1 \
+             AND f.category = 'IMAGE' ORDER BY f.rowid LIMIT 1",
+            [&coat],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let document: String = main
+        .query_row(
+            "SELECT f.id FROM files f, json_each(f.linkedTo) j WHERE j.value = ?1 \
+             AND f.category = 'DOCUMENT' LIMIT 1",
+            [&coat],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let home = resolve_wardrobe_item_home(
+        main,
+        mount,
+        &user,
+        WardrobeContainerScope::Character,
+        Some(&character),
+        &hat,
+    )
+    .unwrap()
+    .expect("the hat's home");
+    let codec = quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder;
+
+    // A link: the DEBUG, no refusal.
+    let (linked, lines) = quilltap_core::test_support::captured_with(|| {
+        link_wardrobe_item_image(
+            main,
+            mount,
+            &home,
+            &user,
+            &picture,
+            &ImageMint::now(),
+            &codec,
+        )
+    });
+    linked.expect("the link lands");
+    let debug = lines
+        .iter()
+        .find(|l| l.contains("[WardrobeImages] Linking an existing picture to a wardrobe item"))
+        .unwrap_or_else(|| panic!("{lines:#?}"));
+    assert!(debug.starts_with("DEBUG "), "{debug}");
+    let tail = debug.split("to a wardrobe item").nth(1).unwrap();
+    assert!(
+        tail.starts_with(&format!(
+            " context=wardrobe.item-images itemId={hat} sourceFileId={picture} bytes="
+        )),
+        "{debug}"
+    );
+    assert!(
+        !lines.iter().any(|l| l.contains("Refused to link")),
+        "{lines:#?}"
+    );
+
+    // The two refusals: `found` true (a document) and false (no such file).
+    for (file, found) in [
+        (document.as_str(), "true"),
+        ("00000000-0000-4000-8000-0000000000aa", "false"),
+    ] {
+        let (refused, lines) = quilltap_core::test_support::captured_with(|| {
+            link_wardrobe_item_image(main, mount, &home, &user, file, &ImageMint::now(), &codec)
+        });
+        assert!(refused.is_err(), "{file}");
+        let info = lines
+            .iter()
+            .find(|l| {
+                l.contains("[WardrobeImages] Refused to link a picture with no readable blob")
+            })
+            .unwrap_or_else(|| panic!("{lines:#?}"));
+        assert!(info.starts_with("INFO "), "{info}");
+        assert!(
+            info.ends_with(&format!(
+                "context=wardrobe.item-images itemId={hat} sourceFileId={file} found={found}"
+            )),
+            "{info}"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("Linking an existing")),
+            "{lines:#?}"
+        );
+    }
+    drop((main_w, mount_w));
+
+    // The route's INFO, through the verb (it runs on the calling thread).
+    let db = quilltap_core::db::runtime::Db::open(
+        quilltap_core::db::runtime::DbPaths {
+            main: main_path.clone(),
+            mount_index: Some(mount_path.clone()),
+            llm_logs: None,
+        },
+        &pepper,
+    )
+    .unwrap();
+    let rt_db = db.clone();
+    let (character, hat2, pic2) = (character.clone(), item("bare"), picture.clone());
+    let (resp, lines) = tokio::task::spawn_blocking(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        quilltap_core::test_support::global_capture::capture(|| {
+            rt.block_on(quilltap_core::api::wardrobe_item_images::link_image(
+                &rt_db,
+                std::sync::Arc::new(
+                    quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder,
+                ),
+                WardrobeContainerScope::Character,
+                Some(&character),
+                &hat2,
+                &pic2,
+            ))
+        })
+    })
+    .await
+    .unwrap();
+    let quilltap_core::api::types::Response::WardrobeItemImages(body) = &resp else {
+        panic!("the link answers its body: {resp:?}");
+    };
+    let file_id = body["current"].as_str().unwrap();
+    let bare = item("bare");
+    let line = lines
+        .iter()
+        .find(|l| l.contains("Linked an existing picture to a wardrobe item"))
+        .unwrap_or_else(|| panic!("{lines:#?}"));
+    assert!(line.starts_with("INFO "), "{line}");
+    assert!(
+        line.ends_with(&format!(
+            "[Wardrobe Images v1] Linked an existing picture to a wardrobe item itemId={bare} scope=character sourceFileId={picture} fileId={file_id}"
+        )),
+        "{line}"
     );
 }

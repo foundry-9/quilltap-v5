@@ -1,7 +1,8 @@
 //! The wardrobe item-images route — v4 `app/api/v1/wardrobe/[itemId]/images/
 //! route.ts` (`7c8572869`, #82): ONE surface for every tier, the container
-//! riding in the query. `list` (GET) and the three dispatchable POST actions —
-//! `generate`, `set-current`, `delete-image`; `upload` is a BINARY
+//! riding in the query. `list` (GET) and the dispatchable POST actions —
+//! `generate`, `link-image` (`9ecebf986`, P4.D281), `set-current`,
+//! `delete-image`; `upload` is a BINARY
 //! `quilltap-web` route with no dispatch verb (it calls [`upload`] directly).
 //!
 //! P4.D255 landed this module with the contract-C1 §11 signatures and refusal
@@ -33,9 +34,9 @@ use crate::services::wardrobe_item_image_generation::{
     WardrobeItemImageSeams, NO_WARDROBE_IMAGE_PROFILE_MESSAGE,
 };
 use crate::services::wardrobe_item_images::service::{
-    add_wardrobe_item_image, delete_wardrobe_item_image, list_wardrobe_item_images,
-    set_current_wardrobe_item_image, to_wardrobe_image_summary, AddWardrobeItemImageInput,
-    ImageMint, ItemImageError,
+    add_wardrobe_item_image, delete_wardrobe_item_image, link_wardrobe_item_image,
+    list_wardrobe_item_images, set_current_wardrobe_item_image, to_wardrobe_image_summary,
+    AddWardrobeItemImageInput, ImageMint, ItemImageError, LinkWardrobeItemImageError,
 };
 
 const LOG_TAG: &str = "[Wardrobe Images v1]";
@@ -789,6 +790,83 @@ pub async fn save_to_store_on_home(
     }
 }
 // === end P4.D275 ===
+
+// === P4.D281: link-image (v4 `9ecebf986`, PORT-NEW) ===
+
+/// `POST …/images?action=link-image` `{ fileId }` → 201 `{ image, current }`
+/// — the item gets a copy-by-link of an already-stored picture (Import from
+/// image's photograph, uploaded once). v4's order: the query (400) → the home
+/// (404) → `fileIdBodySchema` (`fileId is required`) → the link; an
+/// unlinkable source is 400 `That picture cannot be linked`; an archived
+/// character's item the 409 with its INFO.
+pub async fn link_image(
+    db: &Db,
+    blob_webp: std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>,
+    scope: WardrobeContainerScope,
+    container_id: Option<&str>,
+    item_id: &str,
+    file_id: &str,
+) -> Response {
+    match resolve_home(db, scope, container_id, item_id).await {
+        Ok(home) => link_image_on_home(db, blob_webp, scope, &home, file_id).await,
+        Err(r) => r,
+    }
+}
+
+/// [`link_image`] past the gate.
+pub async fn link_image_on_home(
+    db: &Db,
+    blob_webp: std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>,
+    scope: WardrobeContainerScope,
+    home: &WardrobeItemHome,
+    file_id: &str,
+) -> Response {
+    if let Some(r) = file_id_issue(file_id) {
+        return r;
+    }
+    let mint = ImageMint::now();
+    let (h, fid) = (home.clone(), file_id.to_string());
+    let linked = db
+        .write(move |ws| {
+            Ok(link_wardrobe_item_image(
+                ws.main().connection(),
+                mount_conn(ws)?,
+                &h,
+                super::engine::SINGLE_USER_ID,
+                &fid,
+                &mint,
+                blob_webp.as_ref(),
+            ))
+        })
+        .await;
+    let item_id = home.item_id();
+    let meta = WriteMeta {
+        item_id,
+        scope,
+        extra: MetaExtra::None,
+    };
+    match linked {
+        Ok(Ok(added)) => {
+            tracing::info!(
+                itemId = %item_id,
+                scope = scope_str(scope),
+                sourceFileId = %file_id,
+                fileId = %added.file.id,
+                "{LOG_TAG} Linked an existing picture to a wardrobe item"
+            );
+            Response::WardrobeItemImages(json!({
+                "image": to_wardrobe_image_summary(&added.file),
+                "current": added.file.id,
+            }))
+        }
+        Ok(Err(LinkWardrobeItemImageError::Unlinkable(_))) => {
+            bad_request("That picture cannot be linked")
+        }
+        Ok(Err(LinkWardrobeItemImageError::Item(e))) => map_write_error(e, &meta),
+        Err(e) => map_write_error(e.into(), &meta),
+    }
+}
+// === end P4.D281 ===
 
 #[cfg(test)]
 mod tests {

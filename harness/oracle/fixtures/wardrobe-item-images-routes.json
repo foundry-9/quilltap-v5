@@ -1658,6 +1658,204 @@
       "mountSql": [
         "INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-0000000000f5', 'Desk Drawer', '/tmp/qt-wiir-nowhere-drawer', 'filesystem', storeType, includePatterns, excludePatterns, 1, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'"
       ]
+    },
+    {
+      "name": "link_image_ok_201",
+      "method": "POST",
+      "item": "hat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "link-image",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          }
+        }
+      },
+      "followGet": true
+    },
+    {
+      "name": "link_image_cross_tier_general",
+      "method": "POST",
+      "item": "apron",
+      "query": {
+        "scope": "general"
+      },
+      "driver": "http",
+      "action": "link-image",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 1
+            }
+          }
+        }
+      },
+      "followGet": true
+    },
+    {
+      "name": "link_image_document_unlinkable",
+      "method": "POST",
+      "item": "hat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "link-image",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "doc": "coat"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "link_image_unknown_file_unlinkable",
+      "method": "POST",
+      "item": "hat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "link-image",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": "00000000-0000-4000-8000-0000000000aa"
+        }
+      }
+    },
+    {
+      "name": "link_image_missing_file_id",
+      "method": "POST",
+      "item": "hat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "link-image",
+      "body": {
+        "type": "json",
+        "value": {}
+      }
+    },
+    {
+      "name": "link_image_empty_file_id",
+      "method": "POST",
+      "item": "hat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "link-image",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": ""
+        }
+      }
+    },
+    {
+      "name": "link_image_number_file_id",
+      "method": "POST",
+      "item": "hat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "link-image",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": 5
+        }
+      }
+    },
+    {
+      "name": "link_image_unparseable",
+      "method": "POST",
+      "item": "hat",
+      "query": {
+        "scope": "character",
+        "id": "@character"
+      },
+      "driver": "http",
+      "action": "link-image",
+      "body": {
+        "type": "text",
+        "value": "{not json"
+      }
+    },
+    {
+      "name": "link_image_archived_409",
+      "method": "POST",
+      "item": "cloak",
+      "query": {
+        "scope": "character",
+        "id": "@archived"
+      },
+      "driver": "http",
+      "action": "link-image",
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "coat",
+              "nth": 0
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "link_image_404_before_body",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "group",
+        "id": "@group"
+      },
+      "driver": "http",
+      "action": "link-image",
+      "body": {
+        "type": "json",
+        "value": {}
+      }
+    },
+    {
+      "name": "link_image_400_query_first",
+      "method": "POST",
+      "item": "coat",
+      "query": {
+        "scope": "project"
+      },
+      "driver": "http",
+      "action": "link-image",
+      "body": {
+        "type": "json",
+        "value": {}
+      }
     }
   ]
 }
