@@ -280,6 +280,7 @@ pub fn take_off_item(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::captured_with;
     use crate::wearable_pool::{build_wearable_pool, WardrobeTierMounts};
     use serde_json::json;
 
@@ -451,5 +452,279 @@ mod tests {
             ),
             WearableResolution::Ok(_)
         ));
+    }
+
+    // ---- v4 `wear-ops.test.ts` `describe('wearItem')` ×3 + `describe(
+    // 'takeOffItem')`. v4 mocks `applyDisplacement` and asserts the call; v5
+    // runs the REAL one over an in-memory `chats` + `wardrobe_wear_stats` pair
+    // (the `services::outfit_displacement` rig) and reads the call back out of
+    // what it committed and the `[applyDisplacement] Outfit change committed`
+    // line it logs — mode, item, slot and source per call.
+
+    const CHAT: &str = "c0000001-0000-4000-8000-000000000001";
+    const CHAR: &str = "c1c1c1c1-0000-0000-0000-000000000001";
+
+    /// v4's test wardrobe (`shirt`, the replace-flagged `dress`) plus a
+    /// composite (`suit` = shirt + trousers) — the case v4's
+    /// `itemsById: pool.byId` argument exists for.
+    fn wear_pool() -> WearablePool {
+        let own = |id: &str, title: &str, types: &[&str], extra: Value| {
+            let mut v = json!({
+                "id": id, "title": title, "types": types, "characterId": CHAR,
+                "componentItemIds": [], "replace": false, "archivedAt": null,
+            });
+            for (k, x) in extra.as_object().unwrap() {
+                v[k] = x.clone();
+            }
+            v
+        };
+        build_wearable_pool(
+            CHAR,
+            WardrobeTierMounts::default(),
+            vec![
+                own("shirt", "Linen Shirt", &["top"], json!({})),
+                own("trousers", "Trousers", &["bottom"], json!({})),
+                own(
+                    "dress",
+                    "Sundress",
+                    &["top", "bottom"],
+                    json!({"replace": true}),
+                ),
+                own(
+                    "suit",
+                    "Suit",
+                    &["top", "bottom"],
+                    json!({"componentItemIds": ["shirt", "trousers"]}),
+                ),
+            ],
+            vec![],
+            vec![],
+            vec![],
+        )
+    }
+
+    /// A main partition with the CURRENT `chats` DDL, the wear ledger, and
+    /// one chat whose `equippedOutfit` for [`CHAR`] is `initial`.
+    fn rig(initial: Option<Value>) -> Connection {
+        let schema: Value =
+            serde_json::from_str(include_str!("services/provisioning/fresh_schema.json")).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"chats\" ("))
+            .unwrap();
+        conn.execute_batch(ddl).unwrap();
+        for sql in crate::db::wardrobe_wear_stats::WARDROBE_WEAR_STATS_DDL {
+            conn.execute_batch(sql).unwrap();
+        }
+        let outfit = initial.map(|slots| json!({ CHAR: slots }).to_string());
+        conn.execute(
+            "INSERT INTO chats (id, userId, title, equippedOutfit, createdAt, updatedAt) \
+             VALUES (?1, 'u', 't', ?2, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+            rusqlite::params![CHAT, outfit],
+        )
+        .unwrap();
+        conn
+    }
+
+    fn stored(conn: &Connection) -> Slots {
+        Slots::from_value(
+            crate::db::chats_outfits::ChatOutfitsRepository::new(conn)
+                .get_equipped_outfit_for_character(CHAT, CHAR)
+                .as_ref(),
+        )
+    }
+
+    /// The tail of every `Outfit change committed` line — one per
+    /// `applyDisplacement` call, in call order.
+    fn commits(lines: &[String]) -> Vec<String> {
+        lines
+            .iter()
+            .filter(|l| l.contains("[applyDisplacement] Outfit change committed"))
+            .map(|l| {
+                l.split_once(&format!("characterId={CHAR} "))
+                    .unwrap()
+                    .1
+                    .to_string()
+            })
+            .collect()
+    }
+
+    fn strs(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn wear_item_commits_through_apply_displacement_with_the_source_passed() {
+        let p = wear_pool();
+        let conn = rig(None);
+        let (outcome, lines) = captured_with(|| {
+            wear_item(
+                &conn,
+                CHAT,
+                &p,
+                p.get("shirt").unwrap(),
+                PutOnMode::Wear,
+                None,
+                EquipSource::Tool,
+            )
+        });
+        let outcome = outcome.unwrap();
+        assert_eq!(outcome.effect, WearEffect::Layered);
+        assert_eq!(outcome.slots_affected, strs(&["top"]));
+        assert_eq!(outcome.slots.top, strs(&["shirt"]));
+        assert_eq!(stored(&conn), outcome.slots);
+        // ONE call: `{ mode: 'wear', item, slot: undefined }`, source `tool`.
+        assert_eq!(
+            commits(&lines),
+            vec!["mode=wear itemId=shirt slot=null source=tool"]
+        );
+
+        // The `ui` source passes straight through as well.
+        let conn = rig(None);
+        let (_, lines) = captured_with(|| {
+            wear_item(
+                &conn,
+                CHAT,
+                &p,
+                p.get("shirt").unwrap(),
+                PutOnMode::Wear,
+                None,
+                EquipSource::Ui,
+            )
+            .unwrap()
+        });
+        assert_eq!(
+            commits(&lines),
+            vec!["mode=wear itemId=shirt slot=null source=ui"]
+        );
+    }
+
+    #[test]
+    fn wear_item_hands_the_pool_lookup_so_a_composite_dissolves() {
+        // v4's `itemsById: pool.byId`: without it the suit would be stored
+        // whole; with it the suit goes on as its parts.
+        let p = wear_pool();
+        let conn = rig(None);
+        let outcome = wear_item(
+            &conn,
+            CHAT,
+            &p,
+            p.get("suit").unwrap(),
+            PutOnMode::Wear,
+            None,
+            EquipSource::Ui,
+        )
+        .unwrap();
+        assert_eq!(outcome.slots.top, strs(&["shirt"]));
+        assert_eq!(outcome.slots.bottom, strs(&["trousers"]));
+        assert_eq!(stored(&conn), outcome.slots);
+        assert_eq!(outcome.effect, WearEffect::Layered);
+        assert_eq!(outcome.slots_affected, strs(&["top", "bottom"]));
+    }
+
+    #[test]
+    fn wear_item_reports_replaced_for_a_replace_flagged_item_or_the_replace_mode() {
+        let p = wear_pool();
+        let conn = rig(None);
+        let flagged = wear_item(
+            &conn,
+            CHAT,
+            &p,
+            p.get("dress").unwrap(),
+            PutOnMode::Wear,
+            None,
+            EquipSource::Ui,
+        )
+        .unwrap();
+        assert_eq!(flagged.effect, WearEffect::Replaced);
+        assert_eq!(flagged.slots_affected, strs(&["top", "bottom"]));
+
+        let conn = rig(Some(json!({ "top": ["vest"] })));
+        let by_mode = wear_item(
+            &conn,
+            CHAT,
+            &p,
+            p.get("shirt").unwrap(),
+            PutOnMode::Replace,
+            None,
+            EquipSource::Ui,
+        )
+        .unwrap();
+        assert_eq!(by_mode.effect, WearEffect::Replaced);
+        assert_eq!(by_mode.slots.top, strs(&["shirt"]), "the vest is replaced");
+
+        // Neither: a plain `wear` of an unflagged item layers.
+        let conn = rig(Some(json!({ "top": ["vest"] })));
+        let layered = wear_item(
+            &conn,
+            CHAT,
+            &p,
+            p.get("shirt").unwrap(),
+            PutOnMode::Wear,
+            None,
+            EquipSource::Ui,
+        )
+        .unwrap();
+        assert_eq!(layered.effect, WearEffect::Layered);
+        assert_eq!(layered.slots.top, strs(&["vest", "shirt"]));
+    }
+
+    #[test]
+    fn wear_item_add_to_slot_layers_into_the_one_named_slot() {
+        // `add_to_slot` is `layered` even for the replace-flagged dress, and
+        // names only the slot it went into.
+        let p = wear_pool();
+        let conn = rig(None);
+        let (outcome, lines) = captured_with(|| {
+            wear_item(
+                &conn,
+                CHAT,
+                &p,
+                p.get("dress").unwrap(),
+                PutOnMode::AddToSlot,
+                Some("bottom"),
+                EquipSource::Ui,
+            )
+        });
+        let outcome = outcome.unwrap();
+        assert_eq!(outcome.effect, WearEffect::Layered);
+        assert_eq!(outcome.slots_affected, strs(&["bottom"]));
+        assert_eq!(outcome.slots.bottom, strs(&["dress"]));
+        assert!(outcome.slots.top.is_empty());
+        assert_eq!(
+            commits(&lines),
+            vec!["mode=add_to_slot itemId=dress slot=bottom source=ui"]
+        );
+    }
+
+    #[test]
+    fn take_off_item_removes_the_item_from_each_named_slot_one_call_per_slot() {
+        let conn = rig(Some(json!({
+            "top": ["vest", "dress"],
+            "bottom": ["dress"],
+            "footwear": ["dress"],
+        })));
+        let (result, lines) =
+            captured_with(|| take_off_item(&conn, CHAT, CHAR, "dress", &strs(&["top", "bottom"])));
+        result.unwrap();
+        assert_eq!(
+            commits(&lines),
+            vec![
+                "mode=remove_from_slot itemId=dress slot=top source=take-off",
+                "mode=remove_from_slot itemId=dress slot=bottom source=take-off",
+            ]
+        );
+        let after = stored(&conn);
+        assert_eq!(after.top, strs(&["vest"]), "other layers stay");
+        assert!(after.bottom.is_empty());
+        assert_eq!(
+            after.footwear,
+            strs(&["dress"]),
+            "an unnamed slot is untouched"
+        );
     }
 }

@@ -15,8 +15,10 @@
 //!
 //! Server-only. The pure math lives in `slot_ops` for the client. The four
 //! persisted primitives this replaced (`equip_item` / `replace_item` /
-//! `add_to_slot` / `remove_from_slot` in `tools::wardrobe_shared`) survive as
-//! LANE-REMOVE shims over this one function.
+//! `add_to_slot` / `remove_from_slot` in `tools::wardrobe_shared`) are gone —
+//! the `4a38222e6` unification deleted their LANE-REMOVE shims (`24e110237`);
+//! every outfit change, the tools' and the route's, comes through here (the
+//! put-on / take-off front half is [`crate::wear_ops`]).
 //!
 //! Every function takes a raw `main: &Connection` so the callers run inside a
 //! single writer closure (the `wardrobe_transfers` precedent), or, in the

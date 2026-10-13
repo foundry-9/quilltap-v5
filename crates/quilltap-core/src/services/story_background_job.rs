@@ -31,7 +31,7 @@ use crate::db::DbError;
 use crate::files::generated_file_row::{
     create_generated_file_row, GeneratedFileRowInput, GenerationRecord, StoredImageBytes,
 };
-use crate::image_gen::image_attempt::decode_provider_image;
+use crate::image_gen::image_attempt::{decode_provider_image, DecodedProviderImage};
 use crate::image_gen::Orientation;
 use crate::model::completion::CompletionProvider;
 use crate::model::image::{ImageGenResponse, ImageProvider, ImageTranscoder};
@@ -211,6 +211,31 @@ fn nullable_string(v: &Value, key: &str) -> Option<Option<String>> {
         Some(Value::Null) => Some(None),
         _ => None,
     }
+}
+
+/// Step 11's decode (v4 `decodeProviderImage(generationResponse,
+/// 'story_background')`, `9ecebf986`). No image, or one with no inline data
+/// (`data || b64Json` falsy), is v4's ONE WARN with `imageCount` (and `None`:
+/// the job completes with the backdrop as it was) — v5 had returned SILENTLY
+/// here (it never carried the pre-span pair either). Split out so the WARN's
+/// branch and fields are pinned without driving the whole job.
+fn decode_story_image(
+    transcoder: &dyn ImageTranscoder,
+    response: &ImageGenResponse,
+    now_ms: i64,
+    job_id: &str,
+) -> Option<DecodedProviderImage> {
+    let decoded = decode_provider_image(transcoder, Some(response), "story_background", 0, now_ms);
+    if decoded.is_none() {
+        tracing::warn!(
+            target: "quilltap::story_background",
+            context = "background-jobs.story-background",
+            jobId = job_id,
+            imageCount = response.images.len(),
+            "[StoryBackground] No image data returned from provider"
+        );
+    }
+    decoded
 }
 
 /// v4 `handleStoryBackgroundGeneration`.
@@ -996,27 +1021,12 @@ where
 
     let generation_model = outcome.active_model;
 
-    // 11. Decode + transcode (v4 `decodeProviderImage(generationResponse,
-    // 'story_background')`, `9ecebf986`) + persist. No image, or one with no
-    // inline data (`data || b64Json` falsy), is v4's ONE WARN with
-    // `imageCount` and the job completes with the backdrop as it was — v5 had
-    // returned SILENTLY here (it never carried the pre-span pair either).
+    // 11. Decode + transcode + persist. No image data is a completed job
+    // with the backdrop as it was ([`decode_story_image`]'s WARN).
     let response = ImageGenResponse {
         images: outcome.images,
     };
-    let Some(decoded) = decode_provider_image(
-        deps.transcoder,
-        Some(&response),
-        "story_background",
-        0,
-        deps.now_ms,
-    ) else {
-        tracing::warn!(
-            context = "background-jobs.story-background",
-            jobId = job_id,
-            imageCount = response.images.len(),
-            "[StoryBackground] No image data returned from provider"
-        );
+    let Some(decoded) = decode_story_image(deps.transcoder, &response, deps.now_ms, job_id) else {
         return Ok(());
     };
     let now_iso = iso_from_unix_ms(deps.now_ms);
@@ -1654,4 +1664,58 @@ fn ensure_legacy_folder(
         },
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod decode_story_image_tests {
+    //! v4 `story-background.ts:790-798`: `if (!decoded)` → ONE WARN
+    //! (`context`, `jobId`, `imageCount`) under the module's target; a decoded
+    //! image is the silence leg.
+    use super::*;
+    use crate::model::image::{GeneratedImageData, PassthroughTranscoder};
+    use crate::test_support::captured_with;
+
+    fn image(data: Option<&str>) -> GeneratedImageData {
+        GeneratedImageData {
+            data: data.map(str::to_string),
+            url: None,
+            mime_type: Some("image/png".to_string()),
+            revised_prompt: None,
+        }
+    }
+
+    fn warns(lines: &[String]) -> Vec<&String> {
+        lines
+            .iter()
+            .filter(|l| l.contains("[StoryBackground]"))
+            .collect()
+    }
+
+    #[test]
+    fn no_image_data_is_v4s_one_warn_with_the_image_count() {
+        for (images, count) in [(vec![], 0), (vec![image(None), image(Some(""))], 2)] {
+            let response = ImageGenResponse { images };
+            let (decoded, lines) =
+                captured_with(|| decode_story_image(&PassthroughTranscoder, &response, 0, "job-7"));
+            assert!(decoded.is_none());
+            assert_eq!(
+                warns(&lines),
+                vec![&format!(
+                    "WARN quilltap::story_background [StoryBackground] No image data returned from provider \
+                     context=background-jobs.story-background jobId=job-7 imageCount={count}"
+                )]
+            );
+        }
+    }
+
+    #[test]
+    fn a_decoded_image_says_nothing() {
+        let response = ImageGenResponse {
+            images: vec![image(Some("iVBORw0KGgo="))],
+        };
+        let (decoded, lines) =
+            captured_with(|| decode_story_image(&PassthroughTranscoder, &response, 0, "job-7"));
+        assert!(decoded.is_some());
+        assert!(warns(&lines).is_empty(), "{lines:#?}");
+    }
 }

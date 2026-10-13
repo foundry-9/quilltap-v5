@@ -36,7 +36,7 @@
 //! `(main, links, docs)` shape and the old [`WardrobePublicError`] for the
 //! import / restore writers that still address items by owner.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::Connection;
 use serde_json::Value;
@@ -600,6 +600,62 @@ fn is_live(item: &WardrobeItem) -> bool {
     !matches!(&item.archived_at, Some(Some(a)) if !a.is_empty())
 }
 
+/// The pure half of [`list_folders_in_mount`]: the store rows' folders, then
+/// the item-implied ones, every ancestor included, the first spelling per
+/// lower-cased key winning; counted, then sorted by path at BASE strength.
+///
+/// v4 builds an insertion-ordered `Map` (rows first, then items) and V8's sort
+/// is stable, so two paths that compare EQUAL at base strength yet differ in
+/// key (`Cafe` / `Café` — accents are a separate key, case is not) keep that
+/// insertion order. A `HashMap` here would hand them to the sort in hash
+/// order, a different answer per process; a `Vec` plus a key set keeps v4's.
+fn assemble_folders(
+    row_folders: impl Iterator<Item = String>,
+    items: &[WardrobeItem],
+) -> Vec<WardrobeFolder> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut by_key: Vec<(String, String)> = Vec::new();
+    let mut add = |folder: &str| {
+        // Every ancestor is a folder too, even when only a deep path has a row.
+        let segments = folder_segments(folder);
+        for depth in 1..=segments.len() {
+            let path = segments[..depth].join("/");
+            let key = path.to_lowercase();
+            if seen.insert(key.clone()) {
+                by_key.push((key, path));
+            }
+        }
+    };
+    for folder in row_folders {
+        add(&folder);
+    }
+    for item in items {
+        if !item.folder.is_empty() {
+            add(&item.folder);
+        }
+    }
+
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for item in items {
+        if !is_live(item) || item.folder.is_empty() {
+            continue;
+        }
+        *counts.entry(item.folder.to_lowercase()).or_insert(0) += 1;
+    }
+
+    let mut folders: Vec<WardrobeFolder> = by_key
+        .into_iter()
+        .map(|(key, path)| WardrobeFolder {
+            name: folder_name(&path).to_string(),
+            item_count: counts.get(&key).copied().unwrap_or(0),
+            path,
+        })
+        .collect();
+    // Stable, as V8's is: base-equal paths keep their insertion order.
+    folders.sort_by(|a, b| crate::collation::locale_compare_base(&a.path, &b.path));
+    folders
+}
+
 /// Every folder under the tier's `Wardrobe/` (v4 `listFoldersInMount`): the
 /// union of the store's folder rows (empty folders persist as rows) and the
 /// folders implied by item paths, minus `images/`; every ancestor is a folder
@@ -615,42 +671,11 @@ pub fn list_folders_in_mount(
         DocMountFoldersRepository::new(mount).find_by_mount_point_id_or_empty(&loc.mount_point_id);
     let items = read_mount_items(mount, loc)?;
 
-    let mut by_key: HashMap<String, String> = HashMap::new();
-    let mut add = |folder: &str| {
-        let segments = folder_segments(folder);
-        for depth in 1..=segments.len() {
-            let path = segments[..depth].join("/");
-            by_key.entry(path.to_lowercase()).or_insert(path);
-        }
-    };
-    for row in &rows {
-        if let Some(folder) = folder_under_wardrobe(&row.path) {
-            add(&folder);
-        }
-    }
-    for item in &items {
-        if !item.folder.is_empty() {
-            add(&item.folder);
-        }
-    }
-
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    for item in &items {
-        if !is_live(item) || item.folder.is_empty() {
-            continue;
-        }
-        *counts.entry(item.folder.to_lowercase()).or_insert(0) += 1;
-    }
-
-    let mut folders: Vec<WardrobeFolder> = by_key
-        .iter()
-        .map(|(key, path)| WardrobeFolder {
-            path: path.clone(),
-            name: folder_name(path).to_string(),
-            item_count: counts.get(key).copied().unwrap_or(0),
-        })
-        .collect();
-    folders.sort_by(|a, b| crate::collation::locale_compare_base(&a.path, &b.path));
+    let folders = assemble_folders(
+        rows.iter()
+            .filter_map(|row| folder_under_wardrobe(&row.path)),
+        &items,
+    );
     tracing::debug!(
         mountPointId = %loc.mount_point_id,
         scope = loc.scope.as_str(),
@@ -1247,5 +1272,57 @@ mod tests {
             Some("A/images".to_string())
         );
         assert_eq!(folder_under_wardrobe("Notes/A"), None);
+    }
+
+    // v4 `listFoldersInMount`'s insertion-ordered `Map` + stable sort: rows
+    // first, then items, first spelling per lower-cased key; base-equal paths
+    // with distinct keys keep that order.
+    #[test]
+    fn folder_listing_keeps_v4s_insertion_order_for_base_equal_paths() {
+        let variants = ["cafe", "Café", "cafè", "cafê", "cafë", "cafē"];
+        let mut items: Vec<WardrobeItem> = Vec::new();
+        for (i, v) in variants.iter().enumerate().skip(3) {
+            let mut it = item(&format!("i{i}"), &[]);
+            it.folder = format!("{v}/Inner");
+            items.push(it);
+        }
+        // An archived item counts toward no folder; `CAFE` is the same key as
+        // the row's `cafe` and loses to the first spelling.
+        let mut archived = item("gone", &[]);
+        archived.folder = "cafe".to_string();
+        archived.archived_at = Some(Some("2026-03-01T00:00:00.000Z".to_string()));
+        items.push(archived);
+        let mut upper = item("upper", &[]);
+        upper.folder = "CAFE".to_string();
+        items.push(upper);
+        let rows = variants[..3].iter().map(|v| v.to_string());
+
+        let got = assemble_folders(rows, &items);
+        let paths: Vec<&str> = got.iter().map(|f| f.path.as_str()).collect();
+        // Every top-level variant is base-equal, so the stable sort leaves
+        // them in insertion order (rows, then items) — and each `/Inner`
+        // sorts after the whole tied run, in the same order.
+        assert_eq!(
+            paths,
+            vec![
+                "cafe",
+                "Café",
+                "cafè",
+                "cafê",
+                "cafë",
+                "cafē",
+                "cafê/Inner",
+                "cafë/Inner",
+                "cafē/Inner",
+            ]
+        );
+        let cafe = got.iter().find(|f| f.path == "cafe").unwrap();
+        assert_eq!(
+            cafe.item_count, 1,
+            "CAFE counts under cafe; the archived one does not"
+        );
+        assert_eq!(cafe.name, "cafe");
+        let inner = got.iter().find(|f| f.path == "cafë/Inner").unwrap();
+        assert_eq!((inner.name.as_str(), inner.item_count), ("Inner", 1));
     }
 }

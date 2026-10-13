@@ -522,7 +522,9 @@ pub fn apply_document_store_overlay_one(
 /// wearable pool (`crate::wearable_pool`) resolves it. **The reader never
 /// calls back into the repository** — the archetype seeding that lived here
 /// before `9ecebf986` is gone with v4's. Files are sorted by `relativePath`
-/// under the Decision-B code-unit order (Rust `str::cmp`) before parsing.
+/// under v4's `localeCompare` ([`crate::collation::locale_compare`]) before
+/// parsing — NOT the Decision-B code-unit order the `Prompts/` / `Scenarios/`
+/// folds above still use (see the why-comment at the sort).
 pub fn read_character_vault_wardrobe(
     repo: &DocMountDocumentsRepository,
     mount_point_id: &str,
@@ -550,9 +552,19 @@ pub fn read_character_vault_wardrobe(
     }
 
     if !item_docs.is_empty() {
-        // Decision-B code-unit sort by relativePath, then parse, then drop the
-        // files that can't yield a valid item.
-        item_docs.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+        // v4's `a.relativePath.localeCompare(b.relativePath)` (en-US,
+        // tertiary), then parse, then drop the files that can't yield a valid
+        // item. Decision B (document-store-overlay.md) chose a code-unit sort
+        // on the premise that vault filenames are ASCII slugs — false here:
+        // wardrobe files are `Wardrobe/<folder>/<sanitized title>.md`, with
+        // mixed-case operator folders, so the two orders disagree
+        // (`Wardrobe/Coat.md` is FIRST by code unit, after `Wardrobe/attic/
+        // Coat.md` by locale). The order is load-bearing: it is the item
+        // list's order, and the slug maps below go to the FIRST claimer, so it
+        // decides which of two same-titled items a `componentItems:` slug (and
+        // a title lookup) lands on.
+        item_docs
+            .sort_by(|a, b| crate::collation::locale_compare(&a.relative_path, &b.relative_path));
         let mut items: Vec<WardrobeItemFromFile> = item_docs
             .iter()
             .filter_map(|d| parse_wardrobe_item_file(&vault_doc(d), character_id))
@@ -567,6 +579,16 @@ pub fn read_character_vault_wardrobe(
             item_by_id.insert(item.id.clone(), i);
             let slug = slugify_wardrobe_title(&item.title);
             if slug.is_empty() || claimed.contains(&slug) {
+                if !slug.is_empty() {
+                    tracing::warn!(
+                        characterId = %character_id,
+                        mountPointId = %mount_point_id,
+                        slug = %slug,
+                        itemId = %item.id,
+                        title = %item.title,
+                        "Wardrobe items share a slug; later item only addressable by UUID"
+                    );
+                }
                 continue;
             }
             claimed.insert(slug.clone());
@@ -594,4 +616,183 @@ pub fn read_character_vault_wardrobe(
     };
     Ok(parse_legacy_wardrobe_json(&content)
         .map(|lw| serde_json::to_value(&lw).expect("serialize legacy wardrobe")))
+}
+
+#[cfg(test)]
+mod wardrobe_read_tests {
+    //! [`read_character_vault_wardrobe`] over a planted mount index: v4's
+    //! `localeCompare` file order (and the first-claimer slug it decides), and
+    //! the two lines the read logs — each with its silence leg.
+    use super::*;
+    use crate::test_support::captured_with;
+    use rusqlite::Connection;
+
+    const MP: &str = "mp-wardrobe";
+    const CHAR: &str = "char-w";
+
+    /// The three tables `find_many_by_mount_points_in_folder_opts` joins, in
+    /// the shape its SELECT names, holding one document per `(path, content)`.
+    fn mount(files: &[(&str, String)]) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_file_links (id TEXT, mountPointId TEXT, relativePath TEXT, \
+               fileName TEXT, fileId TEXT, lastModified TEXT);
+             CREATE TABLE doc_mount_documents (fileId TEXT, content TEXT, createdAt TEXT, updatedAt TEXT);
+             CREATE TABLE doc_mount_files (id TEXT);",
+        )
+        .unwrap();
+        for (i, (path, content)) in files.iter().enumerate() {
+            let file_id = format!("f{i}");
+            let file_name = path.rsplit('/').next().unwrap();
+            conn.execute(
+                "INSERT INTO doc_mount_file_links VALUES (?1, ?2, ?3, ?4, ?1, '2026-01-01T00:00:00.000Z')",
+                rusqlite::params![file_id, MP, path, file_name],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO doc_mount_documents VALUES (?1, ?2, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+                rusqlite::params![file_id, content],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO doc_mount_files VALUES (?1)",
+                rusqlite::params![file_id],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    /// A `Wardrobe/*.md` item file with a fixed id (so the order is legible).
+    fn item_file(n: u32, title: &str, components: &[&str]) -> String {
+        let mut out =
+            format!("---\nid: 00000000-0000-4000-8000-{n:012}\ntitle: {title}\ntypes:\n  - top\n");
+        if !components.is_empty() {
+            out.push_str("componentItems:\n");
+            for c in components {
+                out.push_str(&format!("  - {c}\n"));
+            }
+        }
+        out.push_str("---\n\n");
+        out
+    }
+
+    fn uuid(n: u32) -> String {
+        format!("00000000-0000-4000-8000-{n:012}")
+    }
+
+    fn read(conn: &Connection) -> (Vec<Value>, Vec<String>) {
+        let (out, lines) = captured_with(|| {
+            read_character_vault_wardrobe(&DocMountDocumentsRepository::new(conn), MP, CHAR)
+        });
+        let items = out.unwrap().unwrap()["items"].as_array().unwrap().clone();
+        (items, lines)
+    }
+
+    #[test]
+    fn the_recursive_read_sorts_by_locale_compare_not_code_units() {
+        // Mixed-case operator folders and sanitized-title filenames. v4's
+        // order, from Node 24's `localeCompare` (en-US):
+        //   attic/Coat, boots, coat tails, Coat, Formal/Coat, Formal/Evening/Gown
+        // where a code-unit sort puts every capitalised path first:
+        //   Coat, Formal/Coat, Formal/Evening/Gown, attic/Coat, boots, coat tails
+        let conn = mount(&[
+            ("Wardrobe/Coat.md", item_file(1, "Coat", &[])),
+            ("Wardrobe/Formal/Coat.md", item_file(2, "Coat", &[])),
+            ("Wardrobe/Formal/Evening/Gown.md", item_file(3, "Gown", &[])),
+            ("Wardrobe/attic/Coat.md", item_file(4, "Coat", &[])),
+            ("Wardrobe/boots.md", item_file(5, "boots", &[])),
+            // The composite names its part by SLUG: the first claimer of
+            // `coat` in v4's order is the attic's.
+            (
+                "Wardrobe/coat tails.md",
+                item_file(6, "coat tails", &["coat"]),
+            ),
+        ]);
+        let (items, lines) = read(&conn);
+        let ids: Vec<&str> = items.iter().map(|i| i["id"].as_str().unwrap()).collect();
+        assert_eq!(
+            ids,
+            vec![uuid(4), uuid(5), uuid(6), uuid(1), uuid(2), uuid(3)],
+            "v4's localeCompare order"
+        );
+        let tails = items.iter().find(|i| i["id"] == uuid(6)).unwrap();
+        assert_eq!(
+            tails["componentItemIds"],
+            serde_json::json!([uuid(4)]),
+            "the slug lands on the first claimer in v4's order"
+        );
+        // v4's WARN for each later claimer of `coat`, in v4's order.
+        let shared: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Wardrobe items share a slug"))
+            .collect();
+        assert_eq!(
+            shared,
+            vec![
+                &format!(
+                    "WARN quilltap_core::db::vault_read_overlay Wardrobe items share a slug; later item only addressable by UUID \
+                     characterId={CHAR} mountPointId={MP} slug=coat itemId={} title=Coat",
+                    uuid(1)
+                ),
+                &format!(
+                    "WARN quilltap_core::db::vault_read_overlay Wardrobe items share a slug; later item only addressable by UUID \
+                     characterId={CHAR} mountPointId={MP} slug=coat itemId={} title=Coat",
+                    uuid(2)
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn distinct_slugs_log_no_shared_slug_warning() {
+        // Two titles that slug to nothing (`§§`, `ßß`) skip the slug map but
+        // are not a SHARED slug — v4's `if (slug.length > 0)` keeps them quiet.
+        let conn = mount(&[
+            ("Wardrobe/Coat.md", item_file(1, "Coat", &[])),
+            ("Wardrobe/boots.md", item_file(2, "boots", &[])),
+            ("Wardrobe/sect.md", item_file(3, "§§", &[])),
+            ("Wardrobe/eszett.md", item_file(4, "ßß", &[])),
+        ]);
+        let (items, lines) = read(&conn);
+        assert_eq!(items.len(), 4);
+        assert!(
+            !lines.iter().any(|l| l.contains("share a slug")),
+            "{lines:#?}"
+        );
+    }
+
+    #[test]
+    fn the_skipped_non_item_documents_line_counts_what_the_predicate_dropped() {
+        let conn = mount(&[
+            ("Wardrobe/Coat.md", item_file(1, "Coat", &[])),
+            ("Wardrobe/instructions.md", "Dress warmly.".to_string()),
+            ("Wardrobe/images/Coat.md", item_file(2, "Picture note", &[])),
+        ]);
+        let (items, lines) = read(&conn);
+        assert_eq!(items.len(), 1, "only the garment is an item");
+        let skipped: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Wardrobe read skipped non-item documents"))
+            .collect();
+        assert_eq!(
+            skipped,
+            vec![&format!(
+                "DEBUG quilltap_core::db::vault_read_overlay Wardrobe read skipped non-item documents \
+                 characterId={CHAR} mountPointId={MP} skipped=2"
+            )]
+        );
+
+        // Silence: a folder of garments alone skips nothing and says nothing.
+        let conn = mount(&[
+            ("Wardrobe/Coat.md", item_file(1, "Coat", &[])),
+            ("Wardrobe/Formal/Gown.md", item_file(2, "Gown", &[])),
+        ]);
+        let (items, lines) = read(&conn);
+        assert_eq!(items.len(), 2);
+        assert!(
+            !lines.iter().any(|l| l.contains("skipped non-item")),
+            "{lines:#?}"
+        );
+    }
 }

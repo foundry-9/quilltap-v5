@@ -10,8 +10,13 @@
  * case plus the shapes it leaves implicit (empty / whitespace references, an
  * archived SHARED item by title, every mode × an archived item, a slot the item
  * covers vs one it does not, `newlyWornArchivedItems` with and without slots).
- * The persisted half (`wearItem` / `takeOffItem`) is one `applyDisplacement`
- * call each, pinned by `outfit_displacement_tier2_equivalence`.
+ * The persisted half (`wearItem` / `takeOffItem`) is NOT in this corpus:
+ * `outfit_displacement_tier2_equivalence` compares `applyDisplacement` itself
+ * and never reaches the wrappers. Their mode → effect / `slotsAffected`
+ * mapping, the pool's `byId` handed as the composite lookup, the source
+ * passthrough and the per-slot take-off loop are pinned by `wear_ops.rs`'s
+ * in-crate tests (v4's `describe('wearItem')` / `describe('takeOffItem')`,
+ * run against the real v5 `apply_displacement`).
  *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}

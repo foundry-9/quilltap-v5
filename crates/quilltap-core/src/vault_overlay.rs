@@ -1206,9 +1206,16 @@ pub fn parse_wardrobe_item_file(
 
     // The folder is the file's path and nothing else (`4a38222e6`). A
     // hand-edited file that carries a `folder:` key is ignored — the path wins
-    // — and says so.
+    // — and says so. v4's `hasOwnProperty('folder')`: a bare `folder:` (YAML
+    // null) counts too. v4 logs the frontmatter VALUE, so a string renders
+    // raw (as every string field does) and anything else as its JSON form —
+    // `%` on the `Value` itself would JSON-quote a string.
     let folder = crate::wardrobe_folders::folder_of_wardrobe_path(doc.relative_path);
     if let Some(frontmatter_folder) = fm_get(&fm, "folder") {
+        let frontmatter_folder = match frontmatter_folder {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
         tracing::debug!(
             characterId = %character_id,
             mountPointId = %doc.mount_point_id,
@@ -2826,5 +2833,60 @@ mod tests {
             ),
             "got: {got}"
         );
+    }
+
+    // ── `4a38222e6`: the folder is the path; a hand-edited `folder:` key is
+    // ignored with v4's DEBUG (`parsers.ts:429-437`), logging the frontmatter
+    // VALUE as v4's JSON logger does — a string raw, anything else its JSON. ──
+
+    fn folder_line(frontmatter_folder: Option<&str>) -> (WardrobeItemFromFile, Vec<String>) {
+        let mut content = "---\ntitle: Gown\ntypes:\n  - top\n".to_string();
+        if let Some(f) = frontmatter_folder {
+            content.push_str(&format!("folder:{f}\n"));
+        }
+        content.push_str("---\n\n");
+        let doc = VaultDoc {
+            content: &content,
+            mount_point_id: "mount-9",
+            relative_path: "Wardrobe/Formal/Evening/Gown.md",
+            file_name: "Gown.md",
+            created_at: "2026-01-01T00:00:00.000Z",
+            updated_at: "2026-01-01T00:00:00.000Z",
+        };
+        let mut item = None;
+        let logs = captured(|| item = parse_wardrobe_item_file(&doc, "char-7"));
+        let logs = logs
+            .into_iter()
+            .filter(|l| l.contains("frontmatter carries a `folder` key"))
+            .collect();
+        (item.expect("a valid item"), logs)
+    }
+
+    #[test]
+    fn a_frontmatter_folder_key_is_ignored_with_v4s_debug_line() {
+        const HEAD: &str = "DEBUG quilltap_core::vault_overlay Wardrobe/*.md frontmatter carries a `folder` key; the file path wins \
+             characterId=char-7 mountPointId=mount-9 relativePath=Wardrobe/Formal/Evening/Gown.md";
+        for (yaml, rendered) in [
+            // A string renders raw — never JSON-quoted.
+            (" Attic", "Attic"),
+            // Non-strings render as v4's JSON logger prints them.
+            (" 5", "5"),
+            // A bare `folder:` is YAML null: v4's `hasOwnProperty` still fires.
+            ("", "null"),
+        ] {
+            let (item, logs) = folder_line(Some(yaml));
+            assert_eq!(item.folder, "Formal/Evening", "the path wins");
+            assert_eq!(
+                logs,
+                vec![format!(
+                    "{HEAD} frontmatterFolder={rendered} folder=Formal/Evening"
+                )],
+                "folder:{yaml}"
+            );
+        }
+        // Silence: no `folder` key, no line.
+        let (item, logs) = folder_line(None);
+        assert_eq!(item.folder, "Formal/Evening");
+        assert!(logs.is_empty(), "{logs:#?}");
     }
 }

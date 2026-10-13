@@ -393,7 +393,9 @@ pub fn wear_item_into_slots(
 /// v4 `replaceItemIntoSlots` — force-swap: clear each slot in `item.types` and
 /// put the item there, ignoring the flag. (Private in v4, reached through
 /// [`compute_displaced_slots`]'s `replace` mode; pub here for the
-/// `wardrobe::replace_item_into_slots` shim.)
+/// differential — `dissolve_bundles_equivalence` drives it directly. The
+/// `wardrobe::replace_item_into_slots` shim it once backed was deleted at
+/// P4.D282.)
 pub fn replace_item_into_slots(
     current_slots: &Slots,
     item: &WearableNode,

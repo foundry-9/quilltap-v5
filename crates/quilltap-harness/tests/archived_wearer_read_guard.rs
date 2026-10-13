@@ -16,20 +16,34 @@
 //!     `find_by_title` finds an archived OWN item (so `wardrobe_archive` can
 //!     name one) but never an archived SHARED one.
 //!
+//! The WEARER's read is `services::resolve_equipped` (v4 `resolve-equipped.ts`,
+//! the ONE port since the `4a38222e6` unification): it resolves the equipped
+//! ids through `component_graph_lookup` → `component_graph`, a BFS over
+//! `pool.get` — the archived-including layer — never `wearable()`. (The three
+//! pre-`9ecebf986` `db/wardrobe_read.rs` finders this file once also pinned
+//! were LANE-REMOVE shims; the unification deleted them, `24e110237`.)
+//!
 //! The contract is pinned where it lives — in the source — the way this repo
 //! pins other load-bearing arms (`db_error_key_guard`,
 //! `outfit_instructions_wiring_guard`). Flipping either side fails this test:
-//! the audition must filter per tier, the by-id layer must not filter at all.
+//! the audition must filter per tier, the by-id layer must not filter at all,
+//! and the wearer must read the by-id layer.
 //!
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test archived_wearer_read_guard
 
 use std::path::PathBuf;
 
-/// `src[start..start+len]`, clamped to the file (the shims sit at the END of
-/// `wardrobe_read.rs`, so a fixed-width window would run off it).
+/// `src[start..start+len]`, clamped to the file and pulled back to a char
+/// boundary — `start` comes from `find` (always a boundary), but a fixed width
+/// can land inside a multi-byte character (the sources carry `—`, `→`), which
+/// would panic the slice.
 fn window(src: &str, start: usize, len: usize) -> &str {
-    &src[start..src.len().min(start + len)]
+    let mut end = src.len().min(start + len);
+    while !src.is_char_boundary(end) {
+        end -= 1;
+    }
+    &src[start..end]
 }
 
 fn source(rel: &str) -> String {
@@ -80,30 +94,45 @@ fn the_audition_excludes_archived_per_tier_and_the_by_id_layer_keeps_them() {
     );
 }
 
-/// The three pre-`9ecebf986` finders survive as LANE-REMOVE shims over the
-/// pool; each must sit on the right side of the split until it is deleted.
+/// The wearer reads the archived-INCLUDING layer: `resolve_equipped` looks the
+/// equipped ids up through `component_graph_lookup`, whose BFS answers
+/// `pool.get` — so a garment archived mid-chat keeps its title in the outfit.
 #[test]
-fn the_shims_sit_on_the_right_side_of_the_split() {
-    let src = source("db/wardrobe_read.rs");
-    let pool_fn = src
-        .find("pub fn find_wearable_pool_for_character(")
-        .expect("the pool shim exists");
+fn the_wearer_resolves_equipped_ids_through_the_by_id_layer() {
+    let resolver = source("services/resolve_equipped.rs");
+    let resolve_start = resolver
+        .find("pub fn resolve_equipped_outfit_for_character(")
+        .expect("the one resolve-equipped port exists");
+    let resolve_body = window(&resolver, resolve_start, 1200);
     assert!(
-        window(&src, pool_fn, 900).contains(".wearable()"),
-        "the audition shim must answer the pool's `wearable()`"
+        resolve_body.contains("component_graph_lookup(pool, &equipped_item_ids)"),
+        "the wearer must resolve the equipped ids through the pool's component graph"
     );
-    let ids_fn = src
-        .find("pub fn find_by_ids_for_character(")
-        .expect("the ids shim exists");
     assert!(
-        window(&src, ids_fn, 1600).contains(".by_id_ordered()"),
-        "the wearer shim must read the ARCHIVED-INCLUDING `by_id` layer"
+        !resolve_body.contains(".wearable()"),
+        "the wearer must never read the AUDITION set — an archived worn garment would vanish"
     );
-    let id_fn = src
-        .find("pub fn find_by_id_for_character(")
-        .expect("the id shim exists");
+
+    let pool = source("wearable_pool.rs");
+    let graph_start = pool
+        .find("pub fn component_graph(pool: &WearablePool, root_ids: &[String]) -> Vec<Value> {")
+        .expect("component_graph exists");
+    let graph_body = window(&pool, graph_start, 900);
     assert!(
-        window(&src, id_fn, 900).contains(".get(id)"),
-        "the single-item shim must read the ARCHIVED-INCLUDING `by_id` layer"
+        graph_body.contains("pool.get(&id)"),
+        "`component_graph` must walk the ARCHIVED-INCLUDING `by_id` layer"
     );
+    assert!(
+        !graph_body.contains("wearable()") && !graph_body.contains("is_archived_truthy"),
+        "`component_graph` must not filter archived items"
+    );
+}
+
+#[test]
+fn window_clamps_to_a_char_boundary() {
+    // `—` is three bytes; a width that ends inside it backs off to before it.
+    let src = "ab—cd";
+    assert_eq!(window(src, 0, 3), "ab");
+    assert_eq!(window(src, 0, 5), "ab—");
+    assert_eq!(window(src, 2, 100), "—cd");
 }

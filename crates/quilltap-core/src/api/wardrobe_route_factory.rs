@@ -1493,3 +1493,272 @@ pub async fn folder_action(
         FolderAction::MoveItems => items_move(db, cfg, id, user_id, body).await,
     }
 }
+
+#[cfg(test)]
+mod folder_route_lines {
+    //! The folder actions' route lines (v4 `wardrobe-route-factory.ts`
+    //! `handleGetFolders` / `handleCreateFolder` / `handleRenameFolder` /
+    //! `handleDeleteFolder` / `handleMoveItems`, `4a38222e6`), capture-pinned
+    //! byte for byte — level, `<logTag> <message>`, then v4's keys in v4's
+    //! order (`[logIdKey]` first, `context` last) — with the silence legs: a
+    //! refused action logs no route line. The differential
+    //! (`wardrobe_folders_routes_equivalence`) compares bodies and write-sets
+    //! only, so nothing else sees these.
+    //!
+    //! The route lines are logged on the CALLER's thread after the writer
+    //! answers, so the process-global capture (armed on this current-thread
+    //! runtime's one thread) sees every one of them and none of the writer
+    //! thread's mutation lines.
+    use super::*;
+    use crate::api::types::Response;
+    use crate::db::runtime::DbPaths;
+    use crate::test_support::global_capture::capture_async;
+
+    const PEPPER: &str = "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==";
+    const USER: &str = "u-folders";
+    const MISSING_PROJECT: &str = "00000000-0000-4000-8000-0000000000ff";
+
+    async fn instance(dir: &std::path::Path) -> Db {
+        let path = dir.to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            crate::services::provisioning::provision_fresh_instance(&path, PEPPER).unwrap();
+            Db::open(
+                DbPaths {
+                    main: path.join("quilltap.db"),
+                    mount_index: Some(path.join("quilltap-mount-index.db")),
+                    llm_logs: None,
+                },
+                PEPPER,
+            )
+            .unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    /// The lines one action logged under the tier's tag — the route's own
+    /// lines, not the mutation's `[FolderMutations]` ones.
+    fn route_lines(lines: Vec<String>, tag: &str) -> Vec<String> {
+        lines
+            .into_iter()
+            .filter(|l| l.contains(&format!(" {tag} ")))
+            .collect()
+    }
+
+    fn general_mount(db: &Db) -> String {
+        db.read_main(|main| {
+            Ok(main
+                .query_row(
+                    "SELECT value FROM instance_settings WHERE key = 'generalMountPointId'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .unwrap())
+        })
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn the_folder_actions_log_v4s_route_lines_and_a_refusal_logs_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = instance(dir.path()).await;
+        const TAG: &str = "[Wardrobe Archetypes v1]";
+        const HEAD: &str = "quilltap_core::api::wardrobe [Wardrobe Archetypes v1]";
+        let g = GENERAL_WARDROBE;
+
+        // create-folder provisions General (`ensure: true`) and logs the
+        // RESOLVED path. A second, case-differing create answers the stored
+        // spelling — and logs it, not what was asked for.
+        let (_, lines) = capture_async(folder_create(
+            &db,
+            g,
+            None,
+            USER,
+            &json!({ "path": "Coats" }),
+        ))
+        .await;
+        let mp = general_mount(&db);
+        let created = format!(
+            "INFO {HEAD} Created wardrobe folder generalId=null userId={USER} \
+             mountPointId={mp} folder=Coats context=wardrobe"
+        );
+        assert_eq!(route_lines(lines, TAG), vec![created.clone()]);
+        let (resp, lines) = capture_async(folder_create(
+            &db,
+            g,
+            None,
+            USER,
+            &json!({ "path": "coats" }),
+        ))
+        .await;
+        let Response::Wardrobe(body) = resp else {
+            panic!("{resp:?}")
+        };
+        assert_eq!(body["folder"]["path"], "Coats");
+        assert_eq!(route_lines(lines, TAG), vec![created]);
+
+        // GET ?action=folders — DEBUG, the count.
+        let lines =
+            crate::test_support::global_capture::capture(|| folders_list(&db, g, None, USER)).1;
+        assert_eq!(
+            route_lines(lines, TAG),
+            vec![format!(
+                "DEBUG {HEAD} Listed wardrobe folders generalId=null mountPointId={mp} \
+                 count=1 context=wardrobe"
+            )]
+        );
+
+        // move-items logs the folder AS REQUESTED (`folder: body.folder`) —
+        // `coats`, where the item lands in the stored `Coats` (R-I).
+        let Response::Wardrobe(made) = create(
+            &db,
+            g,
+            None,
+            USER,
+            &json!({ "title": "Ulster", "types": ["top"] }),
+        )
+        .await
+        else {
+            panic!("create")
+        };
+        let item_id = made["wardrobeItem"]["id"].as_str().unwrap().to_string();
+        let (resp, lines) = capture_async(items_move(
+            &db,
+            g,
+            None,
+            USER,
+            &json!({ "itemIds": [item_id], "folder": "coats" }),
+        ))
+        .await;
+        let Response::Wardrobe(body) = resp else {
+            panic!("{resp:?}")
+        };
+        assert_eq!(body["items"][0]["folder"], "Coats");
+        assert_eq!(
+            route_lines(lines, TAG),
+            vec![format!(
+                "INFO {HEAD} Moved wardrobe items to folder generalId=null userId={USER} \
+                 mountPointId={mp} folder=coats count=1 context=wardrobe"
+            )]
+        );
+
+        // rename-folder: `from` is the body's path, `to` the folder's.
+        let (_, lines) = capture_async(folder_rename(
+            &db,
+            g,
+            None,
+            USER,
+            &json!({ "path": "coats", "name": "Jackets" }),
+        ))
+        .await;
+        assert_eq!(
+            route_lines(lines, TAG),
+            vec![format!(
+                "INFO {HEAD} Renamed wardrobe folder generalId=null userId={USER} \
+                 mountPointId={mp} from=coats to=Jackets context=wardrobe"
+            )]
+        );
+
+        // Silence: a rename of a folder that is not there (404) and a create
+        // under the reserved `images/` (refused) log no route line.
+        let (resp, lines) = capture_async(folder_rename(
+            &db,
+            g,
+            None,
+            USER,
+            &json!({ "path": "Nowhere", "name": "Elsewhere" }),
+        ))
+        .await;
+        assert!(
+            matches!(&resp, Response::Error(e) if e.kind == ErrorKind::NotFound),
+            "{resp:?}"
+        );
+        assert!(route_lines(lines, TAG).is_empty());
+        let (resp, lines) = capture_async(folder_create(
+            &db,
+            g,
+            None,
+            USER,
+            &json!({ "path": "images" }),
+        ))
+        .await;
+        assert!(
+            matches!(&resp, Response::Error(e) if e.kind == ErrorKind::BadRequest),
+            "{resp:?}"
+        );
+        assert!(route_lines(lines, TAG).is_empty());
+
+        // delete-folder: `folder` as requested, then the mutation's two counts.
+        let (_, lines) = capture_async(folder_delete(
+            &db,
+            g,
+            None,
+            USER,
+            &json!({ "path": "jackets" }),
+        ))
+        .await;
+        assert_eq!(
+            route_lines(lines, TAG),
+            vec![format!(
+                "INFO {HEAD} Deleted wardrobe folder generalId=null userId={USER} \
+                 mountPointId={mp} folder=jackets movedItems=1 movedFolders=0 context=wardrobe"
+            )]
+        );
+    }
+
+    /// v4's `No store yet; no wardrobe folders` arm (`[logIdKey]: id, context`)
+    /// is ported but UNREACHABLE through the real repositories on either side:
+    /// a project whose pointer is null makes `findById` throw the contextful
+    /// store-unavailable error first (the differential's
+    /// `folders_project_null_store` is a 503 on BOTH sides — status-log,
+    /// P4.D281). So what is pinned here is that path's truth: the 503, and NO
+    /// route line — and a project that does not exist is a quiet 404.
+    #[tokio::test]
+    async fn a_store_less_project_is_a_quiet_503_and_a_missing_one_a_quiet_404() {
+        // The keystone fixture's Null Abbey: created through the real create
+        // route (so it HAS a store), then its pointer nulled.
+        let dir = tempfile::tempdir().unwrap();
+        let db = instance(dir.path()).await;
+        let made = crate::api::projects::project_create(&db, json!({ "name": "Null Abbey" })).await;
+        let Response::Project(body) = made else {
+            panic!("{made:?}")
+        };
+        let project = body["project"]["id"].as_str().unwrap().to_string();
+        let id = project.clone();
+        db.write(move |w| {
+            w.main()
+                .connection()
+                .execute(
+                    "UPDATE projects SET officialMountPointId = NULL WHERE id = ?1",
+                    rusqlite::params![id],
+                )
+                .map(|_| ())
+                .map_err(Into::into)
+        })
+        .await
+        .unwrap();
+        let (resp, lines) = crate::test_support::global_capture::capture(|| {
+            folders_list(&db, PROJECT_WARDROBE, Some(&project), USER)
+        });
+        match &resp {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::Unavailable, "{resp:?}");
+                assert_eq!(e.message, "Project document store unavailable");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(route_lines(lines, "[Projects v1]").is_empty());
+
+        let (resp, lines) = crate::test_support::global_capture::capture(|| {
+            folders_list(&db, PROJECT_WARDROBE, Some(MISSING_PROJECT), USER)
+        });
+        match &resp {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::NotFound, "{resp:?}");
+                assert_eq!(e.message, "Project not found");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(route_lines(lines, "[Projects v1]").is_empty());
+    }
+}
