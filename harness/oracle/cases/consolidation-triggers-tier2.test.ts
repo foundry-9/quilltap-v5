@@ -20,6 +20,10 @@
  * housekeeping, then disabled; the handler's gates, a dry run (one cluster's
  * call fails) and a zero-budget real run.
  *
+ * The handler steps consolidate "as of" `spec.now` — the instant the fixture's
+ * memory dates are relative to — through ONE wrapper over the real
+ * `runConsolidation` (see the 2026-10-13 time-bomb comment at the mock).
+ *
  * Output: `{kind:'step', name, value, lines}` per step; `{kind:'canned', …}`;
  * `{kind:'embedding', …}`; `{kind:'window', name, ids}`; `{kind:'jobs',
  * rows}` (every `background_jobs` row, with `scheduledAt − createdAt` as
@@ -140,6 +144,28 @@ async function main(): Promise<void> {
             return { content: response, finishReason: 'stop', usage };
           },
         }),
+      };
+    });
+    // THE TIME BOMB (red 2026-10-13): the fixture writes every memory's dates
+    // relative to the FIXED `spec.now` (2026-10-08), but the handler calls
+    // `runConsolidation` with no `now`, so the run clustered on the WALL CLOCK —
+    // the corpus's "fresh pair below the floor" (D1–D2, 9 days old) aged past
+    // the maturity floor days later and formed a topic-D cluster no answer set
+    // covers (and the immature / 2×-floor / already-considered rows cross their
+    // thresholds on later dates). The ONE seam: v4's REAL `runConsolidation`,
+    // an omitted `now` filled from `spec.now` (an explicit one passes through).
+    // v5's `CannedRunner` fills `now_ms` the same way, so both sides run "as
+    // of" the fixture's instant. Everything else stays wall-clock on both sides
+    // and is self-consistent (the planted jobs, the debounce offsets and the
+    // housekeeping window all read the same `Date.now()`).
+    const consolidationNow = new Date(spec.now);
+    jest.doMock('@/lib/memory/consolidation', () => {
+      const actual = jest.requireActual('@/lib/memory/consolidation');
+      return {
+        __esModule: true,
+        ...actual,
+        runConsolidation: (characterId: string, opts: { now?: Date } = {}) =>
+          actual.runConsolidation(characterId, { ...opts, now: opts.now ?? consolidationNow }),
       };
     });
     jest.doMock('@/lib/services/api-key.service', () => {

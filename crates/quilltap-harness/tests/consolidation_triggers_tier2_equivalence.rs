@@ -31,6 +31,16 @@
 //! finds the character. And R-B's full path (a planted claim-time mark → the
 //! region call → a `watermark` job) is exercised end to end, v5-only.
 //!
+//! **As of `spec.now` (the 2026-10-13 time bomb).** The fixture dates every
+//! memory relative to `consolidation-tier3.json`'s FIXED `now`; the handler
+//! steps run the consolidation "as of" that instant on both sides (v4's real
+//! `runConsolidation` wrapped to fill an omitted `now`; [`CannedRunner`] fills
+//! an omitted `now_ms`). Before that seam the runs read the wall clock, so the
+//! corpus's age categories drifted (D1–D2 crossed the maturity floor and the
+//! family went red with `no canned answer for topic D`). Everything else stays
+//! wall-clock and self-consistent: the planted jobs, debounce offsets and
+//! throttle / housekeeping windows all read the run's own `now`.
+//!
 //! Generate the fixture + oracle output (Node 24, from the v4 checkout or the
 //! round's pin — a /tmp mirror):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5} ; M=/tmp/qt-consolidation-oracle
@@ -92,15 +102,27 @@ fn fixtures_dir() -> PathBuf {
 struct CannedRunner {
     completion: CannedCompletionProvider,
     embedding: CannedEmbeddingProvider,
+    /// The fixture's `spec.now` — see [`CannedRunner::run`].
+    now_ms: i64,
 }
 
 impl ConsolidationRunner for CannedRunner {
+    /// THE TIME BOMB (red 2026-10-13): the fixture dates every memory relative
+    /// to the FIXED `spec.now` (2026-10-08), but the job handler runs with no
+    /// `now_ms`, so the run clustered on the WALL CLOCK — the corpus's "fresh
+    /// pair below the floor" (D1–D2, 9 days old) aged past the maturity floor
+    /// and formed a topic-D cluster no answer set covers (the immature, 2×-floor
+    /// and already-considered rows cross their thresholds on later dates too).
+    /// An omitted `now_ms` is filled from `spec.now` here, as the v4 case's
+    /// `runConsolidation` wrapper fills an omitted `now` — an explicit one is
+    /// kept, so a handler that passed its own clock still diverges.
     fn run<'a>(
         &'a self,
         db: &'a Db,
         character_id: &'a str,
-        opts: RunConsolidationOptions,
+        mut opts: RunConsolidationOptions,
     ) -> ConsolidationRunFuture<'a> {
+        opts.now_ms.get_or_insert(self.now_ms);
         Box::pin(async move {
             let executor = CheapLlmTaskExecutor::new();
             run_consolidation(
@@ -346,6 +368,7 @@ async fn consolidation_triggers_match_oracle() {
     let runner = CannedRunner {
         completion,
         embedding,
+        now_ms: quilltap_core::clock::iso_to_ms(spec["now"].as_str().unwrap()).unwrap(),
     };
     let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("test-key");
 
