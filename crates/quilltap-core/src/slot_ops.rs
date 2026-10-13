@@ -1,8 +1,9 @@
 //! Slot operations — the pure math of putting things on and taking them off
 //! (v4 `lib/wardrobe/slot-ops.ts`, `9ecebf986`; formerly
 //! `dissolve-bundles.ts` + the pure half of `outfit-displacement.ts`, whose
-//! v5 homes — [`crate::dissolve_bundles`] and the three mutators in
-//! [`crate::wardrobe`] — survive as LANE-REMOVE shims over this module).
+//! v5 homes — `dissolve_bundles` and the three mutators in
+//! [`crate::wardrobe`] — were LANE-REMOVE shims over this module until P4.D282
+//! re-pointed their last callers and deleted them).
 //!
 //! Every "put it on" gesture obeys a single rule, keyed on the item's
 //! `replace` flag and applied to *each* slot the item's `types` designate:
@@ -120,7 +121,7 @@ fn string_array(item: &Value, key: &str) -> Vec<String> {
 /// v4 `slotsOf(item)` — the recognized slots an item covers, filtering out
 /// anything unknown. Order is the item's OWN `types` order (v4 filters the
 /// array, it does not re-sort into canonical slot order). Private in v4; pub
-/// here for the `dissolve_bundles` shim's `slots_covered_by`.
+/// here for the harness (`dissolve_bundles_equivalence`'s `coveredSlots`).
 pub fn slots_of(item: &WearableNode) -> Vec<String> {
     item.types
         .iter()

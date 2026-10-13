@@ -15,9 +15,6 @@
 //!     [`read_project_wardrobe`] / [`read_group_wardrobe`] here);
 //!   - [`find_archetypes`] — General merged under the scoped tiers (a later
 //!     mount's item wins on id collision, v4's insertion-ordered `Map`);
-//!   - [`find_archetypes_in_mounts`] — the scoped read on its own, which the
-//!     `?scope=group` route and the chat-start pool's per-character group tier
-//!     both reach for directly;
 //!   - [`find_archetype_by_id`] — the single-item lookup the public read trio
 //!     falls back to;
 //!   - [`find_archetypes_in_mounts_attributed`] — the `?scope=group` read KEPT
@@ -281,24 +278,6 @@ pub fn pool_project_origin() -> WardrobeOrigin {
         id: None,
         name: "Project".to_string(),
     }
-}
-
-// LANE-REMOVE(P4.D282|P4.D281): v4 deleted WardrobeRepository.findArchetypesInMounts in 9ecebf986
-/// The pre-`9ecebf986` flat tier read over
-/// [`super::wardrobe_read::read_shared_tiers`] (later mount wins), untagged.
-pub fn find_archetypes_in_mounts(
-    docs: &DocMountDocumentsRepository,
-    mount_point_ids: &[String],
-    include_archived: bool,
-) -> Result<Vec<Value>, DbError> {
-    Ok(
-        super::wardrobe_read::read_shared_tiers(docs, mount_point_ids, include_archived, &|_| {
-            pool_project_origin()
-        })
-        .into_iter()
-        .map(without_origin)
-        .collect(),
-    )
 }
 
 // LANE-REMOVE(P4.D281): v4 deleted WardrobeRepository.findArchetypesInMountsAttributed in 9ecebf986

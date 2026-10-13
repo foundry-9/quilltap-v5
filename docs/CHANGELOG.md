@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-12 — refactor(wardrobe): delete the LANE-REMOVE shims P4.D282 was the last caller of — `dissolve_bundles`, the three `wardrobe` slot mutators, `find_archetypes_in_mounts` (P4.D282, v4 `9ecebf986`)
+
+_Versions: core 0.0.1282._
+
+With the outfit route, the summary and `apply_outfit_selections` on the wearable pool, the old `dissolve_bundles` module (every name a wrapper over `slot_ops`), the three `wardrobe.rs` slot-mutator shims and `archetype_wardrobe::find_archetypes_in_mounts` had no production callers left. `dissolve_bundles_equivalence` is re-pointed onto the `slot_ops` names (each wear row also checked against the one mode table, `compute_displaced_slots`) and the shims are deleted; the `no_wardrobe_lane_remove_markers_left` census drops from 36 to 25 markers (the rest belong to the tools, routes and images lanes).
+
 #### 2026-10-12 — feat(wardrobe): the effects module wired — the orchestrator's turn-end drain through flush_pending_wardrobe_announcements, the announcement job and live-clothing line over the pool resolver, take-off without the mount index (P4.D282, v4 `9ecebf986`)
 
 _Versions: core 0.0.1281._

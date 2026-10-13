@@ -733,50 +733,6 @@ pub fn normalize_equipped_outfit_state(stored: &Value) -> Value {
     Value::Object(out)
 }
 
-// The three pure slot mutators that lived here (`wearItemIntoSlots` /
-// `replaceItemIntoSlots` / `addItemToSlot`) moved to `lib/wardrobe/slot-ops.ts`
-// in v4 `9ecebf986`, where `wearItemIntoSlots` reads `replace` off the ITEM
-// (`item.replace === true`) instead of taking it as an argument, and every
-// mutator filters `types` through `slotsOf` (an unrecognized type lands
-// nowhere — the old mutators here routed it into `top` through `slot_mut`'s
-// fallback arm). The port is [`crate::slot_ops`]; these are shims with the OLD
-// signatures for the callers the re-aim lane has not reached yet.
-
-// LANE-REMOVE(P4.D282): v4 moved the slot mutators to slot-ops.ts in 9ecebf986
-/// Old `wear_item_into_slots(current, item, replace, lookup)` →
-/// [`crate::slot_ops::wear_item_into_slots`] over a node copy carrying the
-/// `replace` flag.
-pub fn wear_item_into_slots(
-    current: &Slots,
-    item: &crate::slot_ops::WearableNode,
-    replace: bool,
-    items_by_id: Option<&crate::slot_ops::WearableLookup>,
-) -> Slots {
-    let node = item.clone().with_replace(replace);
-    crate::slot_ops::wear_item_into_slots(current, &node, items_by_id)
-}
-
-// LANE-REMOVE(P4.D282): v4 moved the slot mutators to slot-ops.ts in 9ecebf986
-/// Old `replace_item_into_slots` → [`crate::slot_ops::replace_item_into_slots`].
-pub fn replace_item_into_slots(
-    current: &Slots,
-    item: &crate::slot_ops::WearableNode,
-    items_by_id: Option<&crate::slot_ops::WearableLookup>,
-) -> Slots {
-    crate::slot_ops::replace_item_into_slots(current, item, items_by_id)
-}
-
-// LANE-REMOVE(P4.D282): v4 moved the slot mutators to slot-ops.ts in 9ecebf986
-/// Old `add_item_to_slot` → [`crate::slot_ops::add_item_to_slot`].
-pub fn add_item_to_slot(
-    current: &Slots,
-    slot: &str,
-    item: &crate::slot_ops::WearableNode,
-    items_by_id: Option<&crate::slot_ops::WearableLookup>,
-) -> Slots {
-    crate::slot_ops::add_item_to_slot(current, slot, item, items_by_id)
-}
-
 // ===========================================================================
 // wardrobe-handler-shared.ts — describeWardrobeEffect + normalizeNoItemSentinel
 // ===========================================================================
@@ -1327,12 +1283,14 @@ mod tests {
             top: vec!["shirt".into()],
             ..Default::default()
         };
-        let node = |id: &str| crate::dissolve_bundles::WearableNode::new(id, &types(&["top"]), &[]);
-        // Layer: append.
-        let layered = wear_item_into_slots(&base, &node("vest"), false, None);
+        let node = |id: &str| crate::slot_ops::WearableNode::new(id, &types(&["top"]), &[]);
+        // Layer: append (the item's own `replace` flag off — `slot_ops` reads
+        // it off the item, v4 `9ecebf986`).
+        let layered = crate::slot_ops::wear_item_into_slots(&base, &node("vest"), None);
         assert_eq!(layered.top, types(&["shirt", "vest"]));
         // Replace: overwrite.
-        let replaced = wear_item_into_slots(&base, &node("coat"), true, None);
+        let replaced =
+            crate::slot_ops::wear_item_into_slots(&base, &node("coat").with_replace(true), None);
         assert_eq!(replaced.top, types(&["coat"]));
     }
 

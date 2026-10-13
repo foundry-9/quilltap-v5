@@ -2,20 +2,20 @@
 //! P4.D279): bundle dissolution — the pure half of v4 `61574563` "wearing a
 //! bundled outfit breaks it apart automatically", now `lib/wardrobe/slot-ops.ts`.
 //!
-//! Diffs the v5 `dissolve_bundles` SHIM (the old names over
-//! [`quilltap_core::slot_ops`]) AND the three `wardrobe` mutator shims against
-//! v4's REAL `slot-ops.ts`, field-for-field over the P4.D71 corpus (v4's old
+//! Diffs [`quilltap_core::slot_ops`] against v4's REAL `slot-ops.ts`,
+//! field-for-field over the P4.D71 corpus (v4's old
 //! unit suite case-for-case plus the shapes it leaves implicit: a
 //! depth-truncated chain, a mutual cycle, a multi-slot leaf, an already-worn
 //! leaf under `replace`, a repeated bundle in one slot) — grown with a
 //! replacing LEAF and an out-of-order `types` list carrying an unrecognized
-//! name, the two shapes `9ecebf986`'s `slotsOf` filter changes. Every
-//! shim row is ALSO run through the new `slot_ops` name, so the shim is
-//! proven a pure delegate (the P4.D282 lane deletes it).
+//! name, the two shapes `9ecebf986`'s `slotsOf` filter changes. (P4.D279
+//! kept the old `dissolve_bundles` names + the three `wardrobe` mutators as
+//! LANE-REMOVE shims proven here to be pure delegates; P4.D282 re-pointed
+//! every row onto the `slot_ops` names and deleted the shims.)
 //!
 //! `slotsCoveredBy` is private at the pin: the shape row's `coveredSlots` is
 //! DERIVED (the slots a lookup-less `replace` lands the id in, canonical
-//! order) and compared against `slots_covered_by` as a canonical-order set.
+//! order) and compared against `slot_ops::slots_of` as a canonical-order set.
 //!
 //! Generate the oracle output (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -27,7 +27,7 @@
 //!     cargo test -p quilltap-harness --test dissolve_bundles_equivalence -- --nocapture
 //!
 //! P4.D262 (v4 `3ee3b1342`, the wear ledger) adds the credit widenings:
-//! `dissolve_bundles_in_slots_with_credit` (every snapshot case),
+//! `slot_ops::dissolve_composites_in_slots` (every snapshot case),
 //! `tools::wardrobe_shared::worn_bundles_for` (v4 `wornBundlesFor`) and
 //! `services::outfit_selections::default_outfit_from_pool_with_credit` (v4
 //! `buildDefaultOutfitWithCredit`), `wornBundles` compared whole.
@@ -35,17 +35,10 @@
 use std::collections::HashMap;
 
 use quilltap_core::db::wardrobe_wear_stats::WornBundle;
-use quilltap_core::dissolve_bundles::{
-    dissolve_bundle_to_leaves, dissolve_bundles_in_slots, dissolve_bundles_in_slots_with_credit,
-    is_bundle, lay_leaves_into_slots, slots_covered_by, DissolvedLeaf, WearableLookup,
-    WearableNode,
-};
 use quilltap_core::services::outfit_selections::default_outfit_from_pool_with_credit;
-use quilltap_core::slot_ops;
+use quilltap_core::slot_ops::{self, DissolvedLeaf, WearableLookup, WearableNode};
 use quilltap_core::tools::wardrobe_shared::worn_bundles_for;
-use quilltap_core::wardrobe::{
-    add_item_to_slot, replace_item_into_slots, wear_item_into_slots, Slots, WARDROBE_SLOT_TYPES,
-};
+use quilltap_core::wardrobe::{is_composite, Slots, WARDROBE_SLOT_TYPES};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -219,7 +212,7 @@ fn assert_all_slots(got: &Slots, want: &WireSlots, label: &str) {
 /// `slotsCoveredBy` as the oracle can see it: the recognized slots, in
 /// canonical order, deduped.
 fn covered_set(node: &WearableNode) -> Vec<String> {
-    let covered = slots_covered_by(node);
+    let covered = slot_ops::slots_of(node);
     WARDROBE_SLOT_TYPES
         .iter()
         .filter(|s| covered.iter().any(|c| c == *s))
@@ -301,9 +294,11 @@ fn dissolve_bundles_matches_oracle() {
             } => {
                 let node = node_of(&universe, &id);
                 assert_eq!(covered_set(&node), want_slots, "coveredSlots '{id}'");
-                assert_eq!(is_bundle(&node), want_bundle, "isBundle '{id}'");
-                // The shim is a delegate.
-                assert_eq!(slots_covered_by(&node), slot_ops::slots_of(&node));
+                assert_eq!(
+                    is_composite(&node.component_item_ids),
+                    want_bundle,
+                    "isBundle '{id}'"
+                );
                 if node
                     .types
                     .iter()
@@ -325,7 +320,11 @@ fn dissolve_bundles_matches_oracle() {
                 // throwing on the missing field.
                 let node = WearableNode::from_value(&node);
                 assert_eq!(covered_set(&node), want_slots, "coveredSlots '{id}'");
-                assert_eq!(is_bundle(&node), want_bundle, "isBundle '{id}'");
+                assert_eq!(
+                    is_composite(&node.component_item_ids),
+                    want_bundle,
+                    "isBundle '{id}'"
+                );
                 shapes += 1;
             }
 
@@ -341,12 +340,7 @@ fn dissolve_bundles_matches_oracle() {
                     Some(n) => WearableNode::from_value(&n),
                     None => node_of(&universe, &item_id),
                 };
-                let got = dissolve_bundle_to_leaves(&node, map.as_ref());
-                assert_eq!(
-                    got,
-                    slot_ops::dissolve_composite_to_leaves(&node, map.as_ref()),
-                    "dissolve '{id}': shim ≠ slot_ops"
-                );
+                let got = slot_ops::dissolve_composite_to_leaves(&node, map.as_ref());
                 match (&got, &out) {
                     (None, None) => stored_whole += 1,
                     (Some(g), Some(w)) => {
@@ -369,19 +363,13 @@ fn dissolve_bundles_matches_oracle() {
             } => {
                 let leaves: Vec<DissolvedLeaf> = leaves.iter().map(WireLeaf::to_leaf).collect();
                 let node = node_of(&universe, &bundle_id);
-                let got =
-                    lay_leaves_into_slots(&current.to_slots(), &node, &leaves, clear_covered_slots);
-                assert_all_slots(&got, &out, &format!("lay '{id}'"));
-                assert_eq!(
-                    got,
-                    slot_ops::lay_leaves_into_slots(
-                        &current.to_slots(),
-                        &node,
-                        &leaves,
-                        clear_covered_slots
-                    ),
-                    "lay '{id}': shim ≠ slot_ops"
+                let got = slot_ops::lay_leaves_into_slots(
+                    &current.to_slots(),
+                    &node,
+                    &leaves,
+                    clear_covered_slots,
                 );
+                assert_all_slots(&got, &out, &format!("lay '{id}'"));
                 lays += 1;
             }
 
@@ -398,35 +386,40 @@ fn dissolve_bundles_matches_oracle() {
                 // `from_value` reads `replace` off the item itself, as v4 does.
                 let node = node_of(&universe, &item_id);
                 let current = current.to_slots();
-                let (got_shim, got_new) = match mode.as_str() {
+                // Each mode's primitive, and the ONE mode → primitive table
+                // (`compute_displaced_slots`) over the same gesture.
+                let displaced = |mode: slot_ops::DisplacementMode, slot: Option<&str>| {
+                    slot_ops::compute_displaced_slots(
+                        &current,
+                        &slot_ops::ComputeDisplacedOptions {
+                            mode,
+                            item: Some(&node),
+                            slot,
+                            item_id: None,
+                            items_by_id: map.as_ref(),
+                        },
+                    )
+                };
+                let (got, via_table) = match mode.as_str() {
                     "wear" => (
-                        wear_item_into_slots(&current, &node, node.replace, map.as_ref()),
                         slot_ops::wear_item_into_slots(&current, &node, map.as_ref()),
+                        displaced(slot_ops::DisplacementMode::Wear, None),
                     ),
                     "replace" => (
-                        replace_item_into_slots(&current, &node, map.as_ref()),
-                        slot_ops::compute_displaced_slots(
-                            &current,
-                            &slot_ops::ComputeDisplacedOptions {
-                                mode: slot_ops::DisplacementMode::Replace,
-                                item: Some(&node),
-                                slot: None,
-                                item_id: None,
-                                items_by_id: map.as_ref(),
-                            },
-                        ),
+                        slot_ops::replace_item_into_slots(&current, &node, map.as_ref()),
+                        displaced(slot_ops::DisplacementMode::Replace, None),
                     ),
                     "add_to_slot" => {
                         let slot = slot.as_deref().expect("add_to_slot needs a slot");
                         (
-                            add_item_to_slot(&current, slot, &node, map.as_ref()),
                             slot_ops::add_item_to_slot(&current, slot, &node, map.as_ref()),
+                            displaced(slot_ops::DisplacementMode::AddToSlot, Some(slot)),
                         )
                     }
                     other => panic!("unknown wear mode '{other}'"),
                 };
-                assert_all_slots(&got_shim, &out, &format!("wear '{id}' ({mode})"));
-                assert_eq!(got_shim, got_new, "wear '{id}': shim ≠ slot_ops");
+                assert_all_slots(&got, &out, &format!("wear '{id}' ({mode})"));
+                assert_eq!(got, via_table, "wear '{id}': primitive ≠ the mode table");
                 if node.replace && node.component_item_ids.is_empty() {
                     replacing_leaf_rows += 1;
                 }
@@ -447,7 +440,8 @@ fn dissolve_bundles_matches_oracle() {
                 out,
             } => {
                 let map = lookup_of(&universe, Some(&lookup)).expect("snapshot lookup");
-                let got = dissolve_bundles_in_slots(&current.to_slots(), &map);
+                let (got, _) =
+                    slot_ops::dissolve_composites_in_slots(&current.to_slots(), &map, None);
                 assert_all_slots(&got, &out, &format!("snapshot '{id}'"));
                 snapshots += 1;
             }
@@ -459,21 +453,12 @@ fn dissolve_bundles_matches_oracle() {
                 out,
             } => {
                 let map = lookup_of(&universe, Some(&lookup)).expect("snapshot lookup");
-                let got = dissolve_bundles_in_slots_with_credit(&current.to_slots(), &map);
-                let label = format!("snapshot_credit '{id}'");
-                assert_all_slots(&got.slots, &out.slots, &label);
-                assert_worn_bundles(&got.worn_bundles, &out.worn_bundles, &label);
-                // The plain form is the credit form's slots, always; and both
-                // are the new name with no `only` filter.
-                assert_eq!(
-                    dissolve_bundles_in_slots(&current.to_slots(), &map),
-                    got.slots
-                );
-                let (new_slots, new_bundles) =
+                let (got_slots, got_bundles) =
                     slot_ops::dissolve_composites_in_slots(&current.to_slots(), &map, None);
-                assert_eq!(new_slots, got.slots, "{label}: shim ≠ slot_ops");
-                assert_eq!(new_bundles, got.worn_bundles, "{label}: shim ≠ slot_ops");
-                if !got.worn_bundles.is_empty() {
+                let label = format!("snapshot_credit '{id}'");
+                assert_all_slots(&got_slots, &out.slots, &label);
+                assert_worn_bundles(&got_bundles, &out.worn_bundles, &label);
+                if !got_bundles.is_empty() {
                     non_empty_claims += 1;
                 }
                 snapshot_credits += 1;
@@ -556,7 +541,7 @@ fn dissolve_bundles_matches_oracle() {
         "unrecognized-type rows: {odd_type_rows}"
     );
     eprintln!(
-        "OK: dissolve-bundles (shim over slot_ops) matched oracle ({shapes} shape / \
+        "OK: dissolve-bundles (slot_ops) matched oracle ({shapes} shape / \
          {dissolves} dissolve / {lays} lay / {wears} wear / {snapshots} snapshot / \
          {snapshot_credits} credit / {worn_bundles_fors} worn_bundles_for / \
          {default_credits} default_credit cases)."

@@ -26,9 +26,9 @@ use crate::db::vault_wardrobe_public::{WardrobePublicError, NO_MOUNT_MESSAGE};
 use crate::db::wardrobe_read::{find_by_character_id, find_by_ids_for_character};
 use crate::db::wardrobe_wear_stats::{EquipSource, WornBundle};
 use crate::db::DbError;
-use crate::dissolve_bundles::{WearableLookup, WearableNode};
 use crate::services::outfit_displacement::apply_displacement;
 use crate::slot_ops::{ComputeDisplacedOptions, DisplacementMode};
+use crate::slot_ops::{WearableLookup, WearableNode};
 use crate::wardrobe::{
     describe_outfit, expand_composites, OutfitSlotValues, Slots, WARDROBE_SLOT_TYPES,
 };

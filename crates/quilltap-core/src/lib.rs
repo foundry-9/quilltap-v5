@@ -178,7 +178,6 @@ pub mod day_references;
 pub mod db;
 pub mod dbkey;
 pub mod default_system_prompt;
-pub mod dissolve_bundles;
 pub mod doc_edit;
 pub mod documents;
 pub mod embedding_blob;
