@@ -24,7 +24,14 @@
 //! - `route` → v4's REAL `handleEquipSlot` vs `api::chat_outfits::chat_equip`
 //!   (`set_all`'s `wornBundleIds` claim incl. ids that do not resolve, the
 //!   Zod refusals, `clear_slot` as `take-off`, `wear` / `add_to_slot` of a
-//!   bundle, a missing chat).
+//!   bundle, a missing chat; P4.D282 at the pin `4a38222e6`: every put-on
+//!   mode refusing an archived item (bug 191), the slot-coverage sentence, an
+//!   id outside the caller's pool — the RECIPIENT's group sash among them —
+//!   the three put-on and two take-off INFO lines, and `set_all` refusing a
+//!   NEWLY worn archived item while passing one already worn);
+//! - `archive` (P4.D282) → each side's REAL character wardrobe location
+//!   `update(itemId, { archivedAt })`, so a later route meets an archived item
+//!   (no comparand of its own beyond the dumps).
 //!
 //! Comparands per op: the result (the commit's `{slots, newlyWornLeafIds,
 //! creditedBundleIds, changed}` or its thrown message; the route's status +
@@ -57,6 +64,10 @@ use quilltap_core::api::chat_outfits::chat_equip;
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::chats_outfits::ChatOutfitsRepository;
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::db::vault_wardrobe_public::{WardrobePatch, WardrobeScope};
+use quilltap_core::db::wardrobe_location::{
+    resolve_wardrobe_location, ResolveWardrobeLocationOptions,
+};
 use quilltap_core::db::wardrobe_wear_stats::{EquipSource, WornBundle};
 use quilltap_core::db::Writer;
 use quilltap_core::model::completion::CannedCompletionProvider;
@@ -125,24 +136,40 @@ struct Op {
     /// Raw SQL run right after the op, before the dumps.
     #[serde(default, rename = "unplantSql")]
     unplant_sql: Option<String>,
+    /// `archive` ops (P4.D282): the item to stamp, and the stamp (`null`
+    /// un-archives).
+    #[serde(default, rename = "itemId")]
+    item_id: Option<String>,
+    #[serde(default, rename = "archivedAt")]
+    archived_at: Option<String>,
 }
 
 /// The messages this family compares (the oracle captures the same set).
-const CAPTURED: [&str; 6] = [
+const CAPTURED: [&str; 10] = [
     "Committed equipped outfit",
     "Equipped outfit write failed; no wears credited",
     "[applyOutfitSelections] Failed to persist equipped outfit",
     "[Chats v1] Equipped outfit replaced (set_all)",
     "[Chats v1] Some claimed worn bundles were not credited",
     "[Chats v1] Error equipping wardrobe slot",
+    // P4.D282 — the pin's route lines (`9ecebf986` + bug 191).
+    "[Chats v1] Wardrobe item put on",
+    "[Chats v1] Wardrobe slot changed",
+    "[Chats v1] Refused to put on a wardrobe item",
+    "[Chats v1] Refused a fitting that puts on an archived item",
 ];
 
 /// The lines a `route` op can compare: the ones the route logs on the
-/// caller thread (the chokepoint's run inside the writer closure).
-const ROUTE_LEVEL: [&str; 3] = [
+/// caller thread (the chokepoint's — and the pool's and the displacement's,
+/// the keystone's lines — run inside the writer closure).
+const ROUTE_LEVEL: [&str; 7] = [
     "[Chats v1] Equipped outfit replaced (set_all)",
     "[Chats v1] Some claimed worn bundles were not credited",
     "[Chats v1] Error equipping wardrobe slot",
+    "[Chats v1] Wardrobe item put on",
+    "[Chats v1] Wardrobe slot changed",
+    "[Chats v1] Refused to put on a wardrobe item",
+    "[Chats v1] Refused a fitting that puts on an archived item",
 ];
 
 fn source_of(s: &str) -> EquipSource {
@@ -189,7 +216,12 @@ fn parse_line(line: &str) -> Option<(String, String, BTreeMap<String, String>)> 
             .get(n + 1)
             .map(|(next, _)| next - 1)
             .unwrap_or(tail.len());
-        fields.insert(tail[*start..*eq].to_string(), tail[eq + 1..end].to_string());
+        // The file layer's `…Json` convention: an array / object field rides
+        // as `<key>Json` and lands in the file as `<key>` (P4.D282's
+        // `slotsAffected` / `itemIds`) — the oracle's key, its compact JSON.
+        let key = &tail[*start..*eq];
+        let key = key.strip_suffix("Json").unwrap_or(key);
+        fields.insert(key.to_string(), tail[eq + 1..end].to_string());
     }
     Some((level.to_lowercase(), message.to_string(), fields))
 }
@@ -453,6 +485,33 @@ fn wardrobe_wear_commit_matches_oracle() {
                 });
                 (status_body(&resp), lines)
             }
+            "archive" => {
+                let character = who(op.who.as_deref());
+                let item_id = op.item_id.clone().expect("archive op itemId");
+                let location = resolve_wardrobe_location(
+                    main.connection(),
+                    mount.connection(),
+                    WardrobeScope::Character,
+                    Some(&character),
+                    &base.user_id,
+                    ResolveWardrobeLocationOptions::default(),
+                )
+                .expect("resolve the character wardrobe")
+                .expect("a character wardrobe location");
+                let updated = location
+                    .update(
+                        main.connection(),
+                        mount.connection(),
+                        &item_id,
+                        &WardrobePatch {
+                            archived_at: Some(op.archived_at.clone()),
+                            ..WardrobePatch::default()
+                        },
+                    )
+                    .expect("archive the item");
+                assert!(updated.is_some(), "{}: {item_id} not updated", op.name);
+                (Value::Null, Vec::new())
+            }
             other => panic!("unknown op kind {other}"),
         };
 
@@ -556,13 +615,72 @@ fn wardrobe_wear_commit_matches_oracle() {
             .any(|l| l["message"] == "[Chats v1] Error equipping wardrobe slot"),
         "{failed_write}"
     );
+    // P4.D282: the pin's refusals really are v4's answers, so the new rows
+    // cannot go vacuous if a plant stops firing (an un-archived Old Coat would
+    // answer 200 on both sides).
+    let row = |name: &str| {
+        oracle
+            .iter()
+            .find(|r| r["name"] == name)
+            .unwrap_or_else(|| panic!("the {name} row"))
+    };
+    for (name, status, error, reason) in [
+        (
+            "route_wear_archived",
+            400,
+            "Item \"Old Coat\" is archived and cannot be worn",
+            Some("archived"),
+        ),
+        (
+            "route_add_to_slot_uncovered_slot",
+            400,
+            "Item \"Casual Outfit\" (types: top, bottom) cannot be added to the \"footwear\" slot",
+            Some("slot"),
+        ),
+        (
+            "route_wear_other_characters_group_item",
+            404,
+            "Wardrobe item not found",
+            Some("not_found"),
+        ),
+        (
+            "route_set_all_newly_worn_archived",
+            400,
+            "Item \"Old Coat\" is archived and cannot be worn",
+            None,
+        ),
+    ] {
+        let r = row(name);
+        assert_eq!(r["result"]["status"], json!(status), "{r}");
+        assert_eq!(r["result"]["body"]["error"], json!(error), "{r}");
+        let logs = r["logs"].as_array().unwrap();
+        match reason {
+            Some(reason) => assert!(
+                logs.iter().any(
+                    |l| l["message"] == "[Chats v1] Refused to put on a wardrobe item"
+                        && l["fields"]["reason"] == reason
+                ),
+                "{r}"
+            ),
+            None => assert!(
+                logs.iter().any(|l| l["message"]
+                    == "[Chats v1] Refused a fitting that puts on an archived item"),
+                "{r}"
+            ),
+        }
+    }
+    assert_eq!(
+        row("route_set_all_already_worn_archived")["result"]["status"],
+        json!(200),
+        "an archived item already worn stays"
+    );
     assert!(apply_ops >= 7, "apply ops: {apply_ops}");
     assert!(route_ops >= 10, "route ops: {route_ops}");
     assert!(
         credited_ops >= 12,
         "ops that moved the ledger: {credited_ops}"
     );
-    assert!(lines_compared >= 24, "log lines compared: {lines_compared}");
+    assert!(lines_compared >= 40, "log lines compared: {lines_compared}");
     eprintln!(
         "OK: wardrobe-wear-commit matched oracle ({} ops; {credited_ops} moved the ledger; \
          {lines_compared} log lines).",

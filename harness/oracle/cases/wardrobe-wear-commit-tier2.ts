@@ -14,7 +14,12 @@
  *     whose credit rides `outfit_llm_choose_tier3`);
  *   - `route` ops → the chat outfit route's `handleEquipSlot` (`set_all`'s
  *     `wornBundleIds` claim, the primitives' sources, a failed write's 500 (planted per op) —
- *     `outfit.test.ts`).
+ *     `outfit.test.ts`; P4.D282, pin `4a38222e6`: the pin's put-on refusals —
+ *     archived (bug 191), the slot-coverage sentence, an id outside the pool —
+ *     the three put-on and two take-off lines, and `set_all`'s archived gate);
+ *   - `archive` ops (P4.D282) → the character wardrobe location's REAL
+ *     `update(itemId, { archivedAt })` (`resolveWardrobeLocation('character',
+ *     …)`), so a later route op meets an archived item.
  * After each op it reads back the op's chat `equippedOutfit` and EVERY
  * `wardrobe_wear_stats` row (minus the minted `id` / `createdAt` /
  * `updatedAt`), and the log lines the ledger work emits, captured by splicing a
@@ -38,7 +43,7 @@ import { tmpdir } from 'node:os';
 
 interface Op {
   name: string;
-  kind: 'commit' | 'apply' | 'route';
+  kind: 'commit' | 'apply' | 'route' | 'archive';
   chat: string;
   who?: 'caller' | 'recipient';
   nextSlots?: Record<string, string[]>;
@@ -48,6 +53,9 @@ interface Op {
   sourceChat?: string;
   selections?: Array<Record<string, unknown> & { who: 'caller' | 'recipient' }>;
   body?: Record<string, unknown> & { who: 'caller' | 'recipient' };
+  /** `archive` ops: the item to stamp and the stamp (`null` un-archives). */
+  itemId?: string;
+  archivedAt?: string | null;
   /** Raw SQL run just before the op (the unification's failed-write plant). */
   plantSql?: string;
   /** Raw SQL run right after the op, before the dumps. */
@@ -62,6 +70,11 @@ const CAPTURED = new Set([
   '[Chats v1] Equipped outfit replaced (set_all)',
   '[Chats v1] Some claimed worn bundles were not credited',
   '[Chats v1] Error equipping wardrobe slot',
+  // P4.D282 — the pin's route lines (`9ecebf986` + bug 191).
+  '[Chats v1] Wardrobe item put on',
+  '[Chats v1] Wardrobe slot changed',
+  '[Chats v1] Refused to put on a wardrobe item',
+  '[Chats v1] Refused a fitting that puts on an archived item',
 ]);
 
 async function main(): Promise<void> {
@@ -121,6 +134,7 @@ async function main(): Promise<void> {
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { applyOutfitSelections } = await import('@/lib/wardrobe/apply-outfit-selections');
   const { handleEquipSlot } = await import('@/app/api/v1/chats/[id]/actions/outfit');
+  const { resolveWardrobeLocation } = await import('@/lib/wardrobe/location');
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -157,6 +171,11 @@ async function main(): Promise<void> {
         sourceChatId: op.sourceChat ?? null,
         ...(op.source ? { source: op.source as never } : {}),
       });
+    } else if (op.kind === 'archive') {
+      const location = await resolveWardrobeLocation('character', who(op.who), repos, base.userId);
+      if (!location) throw new Error(`${op.name}: no character wardrobe location`);
+      const updated = await location.update(op.itemId!, { archivedAt: op.archivedAt ?? null });
+      if (!updated) throw new Error(`${op.name}: ${op.itemId} not in the character's wardrobe`);
     } else {
       const { who: w, ...body } = op.body!;
       const req = { json: async () => ({ characterId: who(w), ...body }) };

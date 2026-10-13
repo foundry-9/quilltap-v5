@@ -1,6 +1,6 @@
 //! The chat-scoped outfit dispatch handlers (P4.9f1) — v4
-//! `app/api/v1/chats/[id]/actions/outfit.ts` (`handleGetOutfit` +
-//! `handleEquipSlot`, all SEVEN modes) and
+//! `app/api/v1/chats/[id]/actions/outfit.ts` (`handleGetOutfit`,
+//! `handleGetOutfitSummary` + `handleEquipSlot`, all SEVEN modes) and
 //! `app/api/v1/chats/[id]/actions/regenerate-avatar.ts`.
 //!
 //! Each handler is a differential port of a v4 route handler and returns a
@@ -16,36 +16,64 @@
 //! deprecated alias for `wear`." The alias is ported as its own enum member —
 //! it is NOT collapsed into `wear` (the wire rejects/accepts identically).
 //!
+//! ## One pool, three put-on modes (v4 `9ecebf986`)
+//!
+//! The put-on modes (`wear` / its alias `equip`, `replace`, `add_to_slot`) and
+//! `set_all` read ONE wearable pool for the character
+//! ([`load_wearable_pool`] — own vault, their groups, the chat's project
+//! stores, Quilltap General; the operator's project tier is not
+//! roster-gated). A put-on resolves its item through [`resolve_wearable`]: a
+//! reference outside the pool answers 404 `Wardrobe item not found`; an
+//! archived item (bug 191) answers 400 `Item "<title>" is archived and cannot
+//! be worn`; `add_to_slot` into a slot the item's `types` do not cover answers
+//! 400 `Item "<title>" (types: …) cannot be added to the "<slot>" slot` — each
+//! with INFO `[Chats v1] Refused to put on a wardrobe item` `{reason}`. The
+//! take-off modes (`remove_from_slot`, `clear_slot`) read nothing but the
+//! slots and go straight to [`apply_displacement`].
+//!
 //! ## Chat-existence looseness (v4-faithful, deliberately)
 //!
-//! `handleEquipSlot` never loads the chat: a mutation against a nonexistent
-//! chat still answers 200 with the computed slots (v4's repo `update` is a
-//! silent no-op on a missing row, and `setEquippedOutfit` returns the passed
-//! slots regardless). Since the wear ledger (v4 `3ee3b1342`) every mode writes
-//! through the chokepoint ([`commit_equipped_outfit`]), which — for the same
-//! reason — credits that wear too (measured at `f5e953a3f`: the tier-2
-//! `route_wear_missing_chat` row). The differentials pin this arm — do not
-//! "fix" it.
+//! `handleEquipSlot` never loads the chat itself: a mutation against a
+//! nonexistent chat still answers 200 with the computed slots (v4's repo
+//! `update` is a silent no-op on a missing row, and `setEquippedOutfit`
+//! returns the passed slots regardless). Every mode writes through the
+//! chokepoint ([`commit_equipped_outfit`]), which — for the same reason —
+//! credits that wear too (the tier-2 `route_wear_missing_chat` row). The
+//! pool's project tier reads the chat; a missing chat is an empty project
+//! tier, never a refusal. The differentials pin this arm — do not "fix" it.
 //!
 //! ## A FAILED slot write is a 500 (v4 `3ee3b1342`)
 //!
 //! When the slot write itself fails (a database error — v4's `safeQuery`
 //! fallback `null`), the chokepoint THROWS `Failed to save the equipped outfit
 //! …`, so v4's outer catch answers 500 `Failed to equip wardrobe slot`
-//! (ERROR `[Chats v1] Error equipping wardrobe slot` `{chatId}`) and the avatar
-//! trigger + announcement are skipped — no caller reports a change that was
-//! not saved. The old `Failed to update equipped slot` arm is unreachable in
-//! v4 now and is not ported.
+//! (ERROR `[Chats v1] Error equipping wardrobe slot` `{chatId}`) and the
+//! outfit-change effects are skipped — no caller reports a change that was not
+//! saved.
 //!
-//! ## `set_all`'s `wornBundleIds` (v4 `3ee3b1342`)
+//! ## `set_all` (v4 `3ee3b1342` + bug 191)
 //!
-//! The dialog stages bundles as their leaves, so the stored slots alone cannot
-//! say an outfit was put on. `set_all` accepts the bundles the client
-//! dissolved as a CLAIM ([`resolve_worn_bundles`]): ids the character cannot
-//! reach and items that are not bundles are dropped (the `Some claimed worn
-//! bundles were not credited` DEBUG), each survivor is expanded to its leaves
-//! server-side, and the ledger credits it only when one of those leaves was
-//! newly put on.
+//! Every id must be in the pool (400 `Wardrobe item <id> not available to this
+//! character`, no line), and no archived item may be NEWLY put on (400 + INFO
+//! `[Chats v1] Refused a fitting that puts on an archived item`) — an archived
+//! item already in the character's slots stays. The dialog stages composites
+//! as their leaves, so `set_all` accepts the composites the client dissolved
+//! as a CLAIM ([`resolve_worn_bundles`]): ids the character cannot reach and
+//! items that are not composites are dropped (the `Some claimed worn bundles
+//! were not credited` DEBUG), each survivor is expanded to its leaves over the
+//! pool, and the ledger credits it only when one of those leaves was newly put
+//! on.
+//!
+//! ## The effects
+//!
+//! Every success ends in [`notify_wardrobe_changed`] (`[Chats v1]
+//! outfit-equip`): the avatar refresh when the chat opted in, then Aurora's
+//! announcement, enqueued at once (the job itself is debounced) with its own
+//! DEBUG / WARN lines.
+//!
+//! Every route line is logged on the caller thread from what the writer
+//! closure hands back; the pool's `[WearablePool]` and the displacement's
+//! `[applyDisplacement]` lines run inside the closure (the keystone's, R-H).
 //!
 //! ## The equip body parse
 //!
@@ -61,20 +89,20 @@ use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::runtime::Db;
 use crate::db::wardrobe_read;
 use crate::db::wardrobe_wear_stats::{EquipSource, WornBundle};
-use crate::dissolve_bundles::WearableNode;
-use crate::services::avatar_generation::{
-    trigger_avatar_generation_if_enabled, AvatarGenerationParams,
-};
+use crate::services::avatar_generation::AvatarGenerationParams;
 use crate::services::image_job_common::with_both_conns;
-use crate::services::queue_service::enqueue_wardrobe_outfit_announcement;
+use crate::services::outfit_change_effects::{notify_wardrobe_changed, OutfitChangeContext};
+use crate::services::outfit_displacement::apply_displacement;
 use crate::services::wardrobe_wear_commit::{commit_equipped_outfit, CommitEquippedOutfitInput};
-use crate::tools::wardrobe_shared::{
-    add_to_slot, equip_item, lookup_for_bundle, remove_from_slot, replace_item, worn_bundles_for,
+use crate::slot_ops::{worn_bundles_for, ComputeDisplacedOptions, DisplacementMode, WearableNode};
+use crate::wardrobe::{is_composite, Slots};
+use crate::wardrobe_tiers::SharedWardrobeTiers;
+use crate::wear_ops::{
+    resolve_wearable, wear_item, PutOnMode, WearEffect, WearableRef, WearableRefusal,
+    WearableResolution,
 };
-use crate::wardrobe::Slots;
-use crate::wardrobe_tiers::{
-    resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTierOptions, SharedWardrobeTiers,
-};
+use crate::wearable::{newly_worn_archived_items, wear_refusal};
+use crate::wearable_pool::{load_wearable_pool, LoadWearablePoolOptions, WearablePool};
 
 use super::types::{ErrorKind, Response};
 
@@ -551,20 +579,17 @@ struct WornBundleClaim {
     resolved: usize,
 }
 
-/// v4 `resolveWornBundles` (`outfit.ts:220-243`) — turn a `set_all` request's
-/// `wornBundleIds` into the ledger's bundle credit. Ids the character cannot
-/// reach, and items that are not bundles, are dropped (a client cannot credit
-/// a garment it cannot see); each survivor is expanded to its leaves
-/// server-side. A read failure propagates (v4 throws to the route's catch).
-/// The claim counts ride back for v4's DEBUG `[Chats v1] Some claimed worn
-/// bundles were not credited`, which the caller logs when they differ.
+/// v4 `resolveWornBundles(pool, wornBundleIds)` (`outfit.ts:159-175`) — turn a
+/// `set_all` request's `wornBundleIds` into the ledger's composite credit. Ids
+/// the character cannot reach, and items that are not composites, are dropped
+/// (a client cannot credit a garment it cannot see); each survivor is expanded
+/// to its leaves over the pool's archived-inclusive `by_id` — no read of its
+/// own. The claim counts ride back for v4's DEBUG `[Chats v1] Some claimed
+/// worn bundles were not credited`, which the caller logs when they differ.
 fn resolve_worn_bundles(
-    main: &rusqlite::Connection,
-    docs: &DocMountDocumentsRepository,
-    character_id: &str,
+    pool: &WearablePool,
     worn_bundle_ids: &[String],
-    tiers: &crate::wardrobe_tiers::SharedWardrobeTiers,
-) -> Result<(Vec<WornBundle>, WornBundleClaim), crate::db::DbError> {
+) -> (Vec<WornBundle>, WornBundleClaim) {
     // `Array.from(new Set(ids))` — first-seen order.
     let mut ids: Vec<String> = Vec::new();
     for id in worn_bundle_ids {
@@ -577,45 +602,155 @@ fn resolve_worn_bundles(
             claimed: 0,
             resolved: 0,
         };
-        return Ok((Vec::new(), none));
+        return (Vec::new(), none);
     }
-    let bundles: Vec<Value> =
-        wardrobe_read::find_by_ids_for_character(main, docs, character_id, &ids, tiers)?
-            .into_iter()
-            .filter(|item| crate::dissolve_bundles::is_bundle(&WearableNode::from_value(item)))
-            .collect();
-    let mut result: Vec<WornBundle> = Vec::new();
-    for bundle in &bundles {
-        let node = WearableNode::from_value(bundle);
-        let lookup = lookup_for_bundle(main, docs, character_id, &node.component_item_ids, tiers);
-        result.extend(worn_bundles_for(&node, lookup.as_ref(), None));
-    }
+    let result: Vec<WornBundle> = pool
+        .get_many(&ids)
+        .into_iter()
+        .map(WearableNode::from_value)
+        .filter(|node| is_composite(&node.component_item_ids))
+        .flat_map(|node| worn_bundles_for(&node, Some(pool.by_id()), None))
+        .collect();
     let claim = WornBundleClaim {
         claimed: ids.len(),
         resolved: result.len(),
     };
-    Ok((result, claim))
+    (result, claim)
 }
 
 // ===========================================================================
 // POST ?action=equip — the handler
 // ===========================================================================
 
-/// The mode-dispatch result computed inside the write closure.
+/// The mode-dispatch result computed inside the write closure. Every line the
+/// route logs is carried out of the closure and logged on the caller thread.
 enum EquipOutcome {
-    /// The written slots, plus — for `set_all` — the credited bundle count its
-    /// INFO line reports (logged by the caller, outside the closure).
-    Updated {
+    /// `remove_from_slot` / `clear_slot` — INFO `Wardrobe slot changed`.
+    SlotChanged { slots: Value },
+    /// `wear` / `equip` / `replace` / `add_to_slot` — INFO `Wardrobe item put
+    /// on`.
+    PutOn {
         slots: Value,
-        set_all_claim: Option<WornBundleClaim>,
+        mode: PutOnMode,
+        item_id: String,
+        outcome_effect: WearEffect,
+        slots_affected: Vec<String>,
     },
+    /// `set_all` — INFO `Equipped outfit replaced (set_all)`.
+    SetAll {
+        slots: Value,
+        claim: WornBundleClaim,
+    },
+    /// A put-on mode the pool refused — INFO `Refused to put on a wardrobe
+    /// item` with the reason.
+    RefusedPutOn {
+        reason: WearableRefusal,
+        response: Response,
+    },
+    /// A fitting that puts an archived item on — INFO `Refused a fitting that
+    /// puts on an archived item`.
+    RefusedFitting {
+        item_ids: Vec<String>,
+        response: Response,
+    },
+    /// `set_all` naming an id outside the pool — 400, no line (v4 never logged
+    /// it).
     Refused(Response),
 }
 
-/// v4 `handleEquipSlot` — parse, resolve the chat's project tier, dispatch the
-/// mode to the ported primitives, then the two post-mutation legs (the
-/// avatar-if-enabled trigger + the debounced Aurora announcement, both
-/// failure-swallowed) and `{equippedSlots}`.
+/// v4 `setAll(ctx, chatId, pool, slots, wornBundleIds)` (`outfit.ts:178-215`)
+/// — commit a whole fitting at once (the dialog's Done / "Wear this fitting").
+/// Every id must be something this character can reach, and none may be an
+/// archived item being NEWLY put on: an archived garment already in one of the
+/// character's slots stays (archiving never undresses anyone).
+fn set_all(
+    main: &rusqlite::Connection,
+    chat_id: &str,
+    pool: &WearablePool,
+    slots_value: &Value,
+    worn_bundle_ids: &[String],
+) -> Result<EquipOutcome, crate::db::DbError> {
+    let character_id = pool.character_id.as_str();
+    // `Array.from(new Set(WARDROBE_SLOT_TYPES.flatMap((key) => slots[key])))`.
+    let mut all_ids: Vec<String> = Vec::new();
+    for key in WARDROBE_SLOT_TYPES {
+        for v in slots_value
+            .get(key)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            if let Some(s) = v.as_str() {
+                if !all_ids.iter().any(|x| x == s) {
+                    all_ids.push(s.to_string());
+                }
+            }
+        }
+    }
+    let found: Vec<Value> = pool.get_many(&all_ids).into_iter().cloned().collect();
+    if found.len() != all_ids.len() {
+        let found_ids: Vec<&str> = found
+            .iter()
+            .filter_map(|i| i.get("id").and_then(Value::as_str))
+            .collect();
+        let missing = all_ids
+            .iter()
+            .find(|id| !found_ids.contains(&id.as_str()))
+            .map(String::as_str)
+            .unwrap_or_default();
+        return Ok(EquipOutcome::Refused(bad_request(format!(
+            "Wardrobe item {missing} not available to this character"
+        ))));
+    }
+    let current = ChatOutfitsRepository::new(main)
+        .get_equipped_outfit_for_character(chat_id, character_id)
+        .map(|v| Slots::from_value(Some(&v)));
+    let archived = newly_worn_archived_items(&found, current.as_ref());
+    if let Some(first) = archived.first() {
+        let response = bad_request(wear_refusal(first).unwrap_or_default());
+        return Ok(EquipOutcome::RefusedFitting {
+            item_ids: archived
+                .iter()
+                .filter_map(|i| i.get("id").and_then(Value::as_str))
+                .map(str::to_string)
+                .collect(),
+            response,
+        });
+    }
+    let (worn_bundles, claim) = resolve_worn_bundles(pool, worn_bundle_ids);
+    // Through the chokepoint: a lost write throws to the outer catch (500, no
+    // effects).
+    commit_equipped_outfit(
+        main,
+        CommitEquippedOutfitInput {
+            chat_id,
+            character_id,
+            next_slots: &Slots::from_value(Some(slots_value)),
+            worn_bundles: &worn_bundles,
+            source: EquipSource::Ui,
+            at: None,
+        },
+    )?;
+    Ok(EquipOutcome::SetAll {
+        slots: slots_value.clone(),
+        claim,
+    })
+}
+
+/// v4 `handleEquipSlot` (`outfit.ts:224-283`) — parse, then:
+///
+/// - the take-off modes (`remove_from_slot`, `clear_slot`) go straight to
+///   [`apply_displacement`] — no tiers, no pool, only the character's slots;
+/// - every other mode loads ONE wearable pool for the character, with the
+///   operator's project tier (the operator is dressing the character, so the
+///   project roster does not apply): `set_all` checks the fitting against it;
+///   the three put-on modes resolve the item through [`resolve_wearable`]
+///   (a reference outside the pool → 404, an archived item or a slot the item
+///   does not cover → 400) and put it on through [`wear_item`];
+///
+/// then the outfit-change effects ([`notify_wardrobe_changed`] — the avatar
+/// refresh, then Aurora's announcement, enqueued at once) and
+/// `{equippedSlots}`.
 pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> Response {
     let parsed = match parse_equip_body(&body) {
         Ok(p) => p,
@@ -624,236 +759,188 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
 
     let cid = chat_id.to_string();
     let character_id = parsed.character_id.clone();
-    let character_id_for_tiers = character_id.clone();
+    let mode = parsed.mode.clone();
 
     let out = with_both_conns(db, move |main, mount| {
-        // Every shared tier in scope for THIS character (v4
-        // `resolveSharedWardrobeTiersForChat` — each half `[]` on any failure).
-        // The operator is dressing the character, so the project roster does not apply.
-        let tiers = resolve_shared_wardrobe_tiers_for_chat(
+        let slot = parsed.slot.as_deref();
+        if matches!(parsed.mode.as_str(), "remove_from_slot" | "clear_slot") {
+            let take_off = if parsed.mode == "remove_from_slot" {
+                DisplacementMode::RemoveFromSlot
+            } else {
+                DisplacementMode::ClearSlot
+            };
+            let slots = apply_displacement(
+                main,
+                &cid,
+                &parsed.character_id,
+                &ComputeDisplacedOptions {
+                    mode: take_off,
+                    item: None,
+                    slot,
+                    // v4 `mode === 'remove_from_slot' ? itemId ?? undefined :
+                    // undefined` — an empty string is a VALUE here (only the
+                    // refine arms treat '' as falsy, and take-off has none).
+                    item_id: if take_off == DisplacementMode::RemoveFromSlot {
+                        parsed.item_id.as_deref()
+                    } else {
+                        None
+                    },
+                    items_by_id: None,
+                },
+                EquipSource::Ui,
+            )?;
+            return Ok(EquipOutcome::SlotChanged {
+                slots: slots.to_value(),
+            });
+        }
+
+        let pool = load_wearable_pool(
             main,
             mount,
-            &cid,
-            &character_id_for_tiers,
-            SharedWardrobeTierOptions { operator: true },
+            &parsed.character_id,
+            None,
+            LoadWearablePoolOptions {
+                operator: true,
+                chat_id: Some(&cid),
+                ..LoadWearablePoolOptions::default()
+            },
         );
-        let docs = DocMountDocumentsRepository::new(mount);
+        if parsed.mode == "set_all" {
+            let slots_value = parsed.slots.as_ref().expect("schema-guaranteed");
+            return set_all(
+                main,
+                &cid,
+                &pool,
+                slots_value,
+                parsed.worn_bundle_ids.as_deref().unwrap_or_default(),
+            );
+        }
 
-        let updated: Value = match parsed.mode.as_str() {
-            "set_all" => {
-                // Atomic replace — validate every id resolves for this character
-                // before persisting. Ids collect in slot order, first-seen
-                // deduped (v4's `Set` insertion order).
-                let slots_value = parsed.slots.as_ref().expect("schema-guaranteed");
-                let mut all_ids: Vec<String> = Vec::new();
-                for key in WARDROBE_SLOT_TYPES {
-                    for v in slots_value
-                        .get(key)
-                        .and_then(Value::as_array)
-                        .into_iter()
-                        .flatten()
-                    {
-                        if let Some(s) = v.as_str() {
-                            if !all_ids.iter().any(|x| x == s) {
-                                all_ids.push(s.to_string());
-                            }
-                        }
-                    }
-                }
-                if !all_ids.is_empty() {
-                    let found = wardrobe_read::find_by_ids_for_character(
-                        main,
-                        &docs,
-                        &parsed.character_id,
-                        &all_ids,
-                        &tiers,
-                    )?;
-                    let found_ids: Vec<&str> = found
-                        .iter()
-                        .filter_map(|i| i.get("id").and_then(Value::as_str))
-                        .collect();
-                    for id in &all_ids {
-                        if !found_ids.contains(&id.as_str()) {
-                            return Ok(EquipOutcome::Refused(bad_request(format!(
-                                "Wardrobe item {id} not available to this character"
-                            ))));
-                        }
-                    }
-                }
-                let (worn_bundles, claim) = resolve_worn_bundles(
-                    main,
-                    &docs,
-                    &parsed.character_id,
-                    parsed.worn_bundle_ids.as_deref().unwrap_or_default(),
-                    &tiers,
-                )?;
-                // Through the chokepoint: a lost write throws to the outer
-                // catch (500, no trigger, no announcement).
-                commit_equipped_outfit(
-                    main,
-                    CommitEquippedOutfitInput {
-                        chat_id: &cid,
-                        character_id: &parsed.character_id,
-                        next_slots: &Slots::from_value(Some(slots_value)),
-                        worn_bundles: &worn_bundles,
-                        source: EquipSource::Ui,
-                        at: None,
-                    },
-                )?;
-                return Ok(EquipOutcome::Updated {
-                    slots: slots_value.clone(),
-                    set_all_claim: Some(claim),
-                });
-            }
-            m @ ("wear" | "equip" | "replace") => {
-                // itemId guaranteed by the schema refine.
-                let item_id = parsed.item_id.as_deref().expect("schema-guaranteed");
-                let Some(item) = wardrobe_read::find_by_id_for_character(
-                    main,
-                    &docs,
-                    &parsed.character_id,
-                    item_id,
-                    &tiers,
-                )?
-                else {
-                    return Ok(EquipOutcome::Refused(not_found("Wardrobe item")));
-                };
-                let id = item
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string();
-                let types = types_of(&item);
-                let component_item_ids = component_ids_of(&item);
-                let next = if m == "replace" {
-                    replace_item(
-                        main,
-                        &docs,
-                        &cid,
-                        &parsed.character_id,
-                        &id,
-                        &types,
-                        &component_item_ids,
-                        &tiers,
-                        EquipSource::Ui,
-                    )
+        // `equip` is the deprecated alias for `wear`.
+        let put_on = if parsed.mode == "equip" {
+            PutOnMode::Wear
+        } else {
+            PutOnMode::parse(&parsed.mode).expect("schema-guaranteed put-on mode")
+        };
+        let reference = WearableRef {
+            item_id: parsed.item_id.as_deref(),
+            item_title: None,
+        };
+        let item = match resolve_wearable(&pool, reference, put_on, slot) {
+            WearableResolution::Ok(item) => item.clone(),
+            WearableResolution::Refused { reason, message } => {
+                let response = if reason == WearableRefusal::NotFound {
+                    not_found("Wardrobe item")
                 } else {
-                    // `wear` (and its deprecated alias `equip`) honor the flag.
-                    let replace_flag = item.get("replace").and_then(Value::as_bool) == Some(true);
-                    equip_item(
-                        main,
-                        &docs,
-                        &cid,
-                        &parsed.character_id,
-                        &id,
-                        &types,
-                        &component_item_ids,
-                        replace_flag,
-                        &tiers,
-                        EquipSource::Ui,
-                    )
+                    bad_request(message)
                 };
-                next?.to_value()
-            }
-            "add_to_slot" => {
-                let item_id = parsed.item_id.as_deref().expect("schema-guaranteed");
-                let slot = parsed.slot.as_deref().expect("schema-guaranteed");
-                let Some(item) = wardrobe_read::find_by_id_for_character(
-                    main,
-                    &docs,
-                    &parsed.character_id,
-                    item_id,
-                    &tiers,
-                )?
-                else {
-                    return Ok(EquipOutcome::Refused(not_found("Wardrobe item")));
-                };
-                let types = types_of(&item);
-                if !types.iter().any(|t| t == slot) {
-                    let title = item
-                        .get("title")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default();
-                    return Ok(EquipOutcome::Refused(bad_request(format!(
-                        "Wardrobe item \"{title}\" does not cover the {slot} slot"
-                    ))));
-                }
-                let id = item
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string();
-                add_to_slot(
-                    main,
-                    &docs,
-                    &cid,
-                    &parsed.character_id,
-                    slot,
-                    &id,
-                    &types,
-                    &component_ids_of(&item),
-                    &tiers,
-                    EquipSource::Ui,
-                )?
-                .to_value()
-            }
-            "remove_from_slot" => {
-                let slot = parsed.slot.as_deref().expect("schema-guaranteed");
-                // v4 `itemId ?? undefined` — an empty string is a VALUE here
-                // (only the refine arms treat '' as falsy, and remove has none).
-                remove_from_slot(
-                    main,
-                    &cid,
-                    &parsed.character_id,
-                    slot,
-                    parsed.item_id.as_deref(),
-                )?
-                .to_value()
-            }
-            _ => {
-                // mode === 'clear_slot'
-                let slot = parsed.slot.as_deref().expect("schema-guaranteed");
-                remove_from_slot(main, &cid, &parsed.character_id, slot, None)?.to_value()
+                return Ok(EquipOutcome::RefusedPutOn { reason, response });
             }
         };
-        Ok(EquipOutcome::Updated {
-            slots: updated,
-            set_all_claim: None,
+        let outcome = wear_item(main, &cid, &pool, &item, put_on, slot, EquipSource::Ui)?;
+        Ok(EquipOutcome::PutOn {
+            slots: outcome.slots.to_value(),
+            mode: put_on,
+            item_id: item
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            outcome_effect: outcome.effect,
+            slots_affected: outcome.slots_affected,
         })
     })
     .await;
 
     let updated = match out {
-        Ok(EquipOutcome::Updated {
+        Ok(EquipOutcome::SlotChanged { slots }) => {
+            let slot = body.get("slot").and_then(Value::as_str).unwrap_or_default();
+            // v4 `itemId ?? null` — the BODY's id, even for `clear_slot`.
+            let item_id = body.get("itemId").and_then(Value::as_str).unwrap_or("null");
+            tracing::info!(
+                chatId = chat_id,
+                characterId = character_id.as_str(),
+                mode = mode.as_str(),
+                slot = slot,
+                itemId = item_id,
+                context = "wardrobe",
+                "[Chats v1] Wardrobe slot changed"
+            );
+            slots
+        }
+        Ok(EquipOutcome::PutOn {
             slots,
-            set_all_claim,
+            mode: put_on,
+            item_id,
+            outcome_effect,
+            slots_affected,
         }) => {
-            if let Some(claim) = set_all_claim {
-                if claim.resolved != claim.claimed {
-                    tracing::debug!(
-                        characterId = character_id.as_str(),
-                        claimed = claim.claimed,
-                        resolved = claim.resolved,
-                        context = "wardrobe",
-                        "[Chats v1] Some claimed worn bundles were not credited"
-                    );
-                }
-                // `wornBundleCount` is the credit CLAIM that survived
-                // resolution (v4 `wornBundles.length`).
-                tracing::info!(
-                    chatId = chat_id,
+            let slots_affected = Value::from(slots_affected).to_string();
+            tracing::info!(
+                chatId = chat_id,
+                characterId = character_id.as_str(),
+                mode = put_on.as_str(),
+                itemId = item_id.as_str(),
+                slotsAffectedJson = slots_affected.as_str(),
+                effect = outcome_effect.as_str(),
+                context = "wardrobe",
+                "[Chats v1] Wardrobe item put on"
+            );
+            slots
+        }
+        Ok(EquipOutcome::SetAll { slots, claim }) => {
+            if claim.resolved != claim.claimed {
+                tracing::debug!(
                     characterId = character_id.as_str(),
-                    wornBundleCount = claim.resolved,
+                    claimed = claim.claimed,
+                    resolved = claim.resolved,
                     context = "wardrobe",
-                    "[Chats v1] Equipped outfit replaced (set_all)"
+                    "[Chats v1] Some claimed worn bundles were not credited"
                 );
             }
+            // `wornBundleCount` is the credit CLAIM that survived resolution
+            // (v4 `wornBundles.length`).
+            tracing::info!(
+                chatId = chat_id,
+                characterId = character_id.as_str(),
+                wornBundleCount = claim.resolved,
+                context = "wardrobe",
+                "[Chats v1] Equipped outfit replaced (set_all)"
+            );
             slots
+        }
+        Ok(EquipOutcome::RefusedPutOn { reason, response }) => {
+            let item_id = body
+                .get("itemId")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            tracing::info!(
+                chatId = chat_id,
+                characterId = character_id.as_str(),
+                // The RAW body mode — `equip` stays `equip` here.
+                mode = mode.as_str(),
+                itemId = item_id,
+                reason = reason.as_str(),
+                context = "wardrobe",
+                "[Chats v1] Refused to put on a wardrobe item"
+            );
+            return response;
+        }
+        Ok(EquipOutcome::RefusedFitting { item_ids, response }) => {
+            let item_ids = Value::from(item_ids).to_string();
+            tracing::info!(
+                chatId = chat_id,
+                characterId = character_id.as_str(),
+                itemIdsJson = item_ids.as_str(),
+                context = "wardrobe",
+                "[Chats v1] Refused a fitting that puts on an archived item"
+            );
+            return response;
         }
         Ok(EquipOutcome::Refused(r)) => return r,
         // The route's outer catch — a lost slot write (the chokepoint's
         // `Failed to save the equipped outfit …`), a failed read, a failed
-        // credit — skips the trigger and the announcement.
+        // credit — skips the effects.
         Err(e) => {
             tracing::error!(
                 chatId = chat_id,
@@ -864,22 +951,17 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
         }
     };
 
-    // Post-mutation legs, both failure-swallowed (v4 awaits them in order).
-    let params = AvatarGenerationParams {
-        user_id: user_id.to_string(),
-        chat_id: chat_id.to_string(),
-        character_id: character_id.clone(),
-        // P4.D238 MARKED HUNK (the `caller_context` rider) — v4 `outfit.ts:324`.
-        caller_context: "[Chats v1] outfit-equip",
-        image_profile_id_override: None,
-        equipped_slots_override: None,
-        // Automatic (a wardrobe change): the configuration cache is exactly what
-        // should serve this — an outfit worn before costs nothing.
-        force: false,
-    };
-    trigger_avatar_generation_if_enabled(db, &params).await;
-    // v4 wraps the announcement enqueue in try/catch → warn.
-    let _ = enqueue_wardrobe_outfit_announcement(db, user_id, chat_id, &character_id).await;
+    notify_wardrobe_changed(
+        db,
+        &OutfitChangeContext {
+            user_id,
+            chat_id,
+            character_id: &character_id,
+            pending_wardrobe_announcements: None,
+        },
+        "[Chats v1] outfit-equip",
+    )
+    .await;
 
     Response::ChatOutfit(json!({ "equippedSlots": updated }))
 }
@@ -1035,32 +1117,6 @@ pub async fn chat_regenerate_avatar(
             message, ..
         } => bad_request(message),
     }
-}
-
-/// The item's `componentItemIds` (a missing/absent key reads as empty — v4's
-/// `?? []`). A non-empty list makes the item a BUNDLE, which dissolves into its
-/// leaves as it goes on.
-fn component_ids_of(item: &Value) -> Vec<String> {
-    item.get("componentItemIds")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// The item's `types` array (the read shape always carries it).
-fn types_of(item: &Value) -> Vec<String> {
-    item.get("types")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

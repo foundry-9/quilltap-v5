@@ -1,5 +1,5 @@
 {
-  "comment": "P4.D262 — the wear ledger's chokepoint, tier-2 (v4 `3ee3b1342`). A companion to wardrobe-tools.json, consumed by build-wardrobe-tools-fixture.ts through QT_WT_AVATAR_SPEC (it reads `imageProfile` + `scenarios` — one chat per scenario, each seeded with the caller's Blue Blouse, avatar generation OFF), by cases/wardrobe-wear-commit-tier2.ts and by wardrobe_wear_commit_tier2_equivalence.rs. `ops` drive v4's REAL WardrobeWearRepository.commitEquippedOutfit (`commit`), applyOutfitSelections (`apply`) and the chat outfit route's handleEquipSlot (`route`) in sequence on ONE copy; `who` names the caller / recipient. The shapes are v4's own jest cases: wardrobe-wear.repository.test.ts:237-330, apply-outfit-selections.ledger.test.ts:109-198, outfit.test.ts (set_all wornBundleIds, clear_slot take-off, the lost write's 500). Unification (`f5e953a3f`): `commit_missing_chat` / `apply_missing_chat` (renamed from `*_lost_write` — a missing chat is NOT a lost write in v4) and three FAILED-write ops whose `plantSql` plants a BEFORE UPDATE ON chats abort trigger for the one op (`unplantSql` drops it) — v4's real failed write, the route's 500.",
+  "comment": "P4.D262 — the wear ledger's chokepoint, tier-2 (v4 `3ee3b1342`). A companion to wardrobe-tools.json, consumed by build-wardrobe-tools-fixture.ts through QT_WT_AVATAR_SPEC (it reads `imageProfile` + `scenarios` — one chat per scenario, each seeded with the caller's Blue Blouse, avatar generation OFF), by cases/wardrobe-wear-commit-tier2.ts and by wardrobe_wear_commit_tier2_equivalence.rs. `ops` drive v4's REAL WardrobeWearRepository.commitEquippedOutfit (`commit`), applyOutfitSelections (`apply`) and the chat outfit route's handleEquipSlot (`route`) in sequence on ONE copy; `who` names the caller / recipient. The shapes are v4's own jest cases: wardrobe-wear.repository.test.ts:237-330, apply-outfit-selections.ledger.test.ts:109-198, outfit.test.ts (set_all wornBundleIds, clear_slot take-off, the lost write's 500). Unification (`f5e953a3f`): `commit_missing_chat` / `apply_missing_chat` (renamed from `*_lost_write` — a missing chat is NOT a lost write in v4) and three FAILED-write ops whose `plantSql` plants a BEFORE UPDATE ON chats abort trigger for the one op (`unplantSql` drops it) — v4's real failed write, the route's 500. P4.D282 (`9ecebf986` + bug 191, pin `4a38222e6`): three more scenario chats (ledger_10..12) and the equip route's pin-era arms appended — an `archive` op (`itemId` + `archivedAt`, through each side's REAL character wardrobe location `update`) un-archives the caller's Old Coat (the seed archives it), lets one fitting put it on, and archives it again; then the archived refusals for every put-on mode (`equip` logging its raw mode), the slot-coverage sentence, the 404 for an id outside the caller's pool (an unknown id, and the RECIPIENT's group sash), the three put-on successes, both take-off lines (a `clear_slot` carrying a stray `itemId` logs it), and `set_all` refusing a newly worn archived item, passing one already worn, and naming an unreachable id before the archived one.",
   "imageProfile": {
     "id": "eeeeeeee-0000-4000-8000-0000000000d2",
     "name": "Ledger Imagery",
@@ -59,6 +59,24 @@
     {
       "name": "ledger_9",
       "chatId": "bbbbbbbb-0000-4000-8000-000000000009",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    },
+    {
+      "name": "ledger_10",
+      "chatId": "bbbbbbbb-0000-4000-8000-000000000010",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    },
+    {
+      "name": "ledger_11",
+      "chatId": "bbbbbbbb-0000-4000-8000-000000000011",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    },
+    {
+      "name": "ledger_12",
+      "chatId": "bbbbbbbb-0000-4000-8000-000000000012",
       "chatType": "salon",
       "avatarGenerationEnabled": false
     }
@@ -586,6 +604,214 @@
       },
       "plantSql": "CREATE TRIGGER qt_planted_failed_write BEFORE UPDATE ON chats BEGIN SELECT RAISE(ABORT, 'planted chat write failure'); END",
       "unplantSql": "DROP TRIGGER qt_planted_failed_write"
+    },
+    {
+      "name": "unarchive_old_coat",
+      "kind": "archive",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000012",
+      "who": "caller",
+      "itemId": "a0000000-0000-4000-8000-000000000005",
+      "archivedAt": null
+    },
+    {
+      "name": "route_set_all_before_archive",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000012",
+      "body": {
+        "who": "caller",
+        "mode": "set_all",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-000000000005"
+          ]
+        }
+      }
+    },
+    {
+      "name": "archive_old_coat",
+      "kind": "archive",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000012",
+      "who": "caller",
+      "itemId": "a0000000-0000-4000-8000-000000000005",
+      "archivedAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "name": "route_wear_archived",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000010",
+      "body": {
+        "who": "caller",
+        "mode": "wear",
+        "itemId": "a0000000-0000-4000-8000-000000000005"
+      }
+    },
+    {
+      "name": "route_equip_alias_archived",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000010",
+      "body": {
+        "who": "caller",
+        "mode": "equip",
+        "itemId": "a0000000-0000-4000-8000-000000000005"
+      }
+    },
+    {
+      "name": "route_replace_archived",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000010",
+      "body": {
+        "who": "caller",
+        "mode": "replace",
+        "itemId": "a0000000-0000-4000-8000-000000000005"
+      }
+    },
+    {
+      "name": "route_add_to_slot_archived",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000010",
+      "body": {
+        "who": "caller",
+        "mode": "add_to_slot",
+        "slot": "top",
+        "itemId": "a0000000-0000-4000-8000-000000000005"
+      }
+    },
+    {
+      "name": "route_add_to_slot_uncovered_slot",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000010",
+      "body": {
+        "who": "caller",
+        "mode": "add_to_slot",
+        "slot": "footwear",
+        "itemId": "a0000000-0000-4000-8000-000000000004"
+      }
+    },
+    {
+      "name": "route_wear_not_found",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000010",
+      "body": {
+        "who": "caller",
+        "mode": "wear",
+        "itemId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+      }
+    },
+    {
+      "name": "route_wear_other_characters_group_item",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000010",
+      "body": {
+        "who": "caller",
+        "mode": "wear",
+        "itemId": "d0000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "route_equip_alias_put_on",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000010",
+      "body": {
+        "who": "caller",
+        "mode": "equip",
+        "itemId": "a0000000-0000-4000-8000-000000000002"
+      }
+    },
+    {
+      "name": "route_replace_put_on",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000010",
+      "body": {
+        "who": "caller",
+        "mode": "replace",
+        "itemId": "a0000000-0000-4000-8000-000000000003",
+        "slot": "top"
+      }
+    },
+    {
+      "name": "route_add_to_slot_put_on",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000010",
+      "body": {
+        "who": "caller",
+        "mode": "add_to_slot",
+        "slot": "accessories",
+        "itemId": "b0000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "route_remove_from_slot_logs",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000010",
+      "body": {
+        "who": "caller",
+        "mode": "remove_from_slot",
+        "slot": "bottom",
+        "itemId": "a0000000-0000-4000-8000-000000000002"
+      }
+    },
+    {
+      "name": "route_clear_slot_stray_item_id",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000010",
+      "body": {
+        "who": "caller",
+        "mode": "clear_slot",
+        "slot": "footwear",
+        "itemId": "a0000000-0000-4000-8000-000000000003"
+      }
+    },
+    {
+      "name": "route_set_all_newly_worn_archived",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000011",
+      "body": {
+        "who": "caller",
+        "mode": "set_all",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-000000000001",
+            "a0000000-0000-4000-8000-000000000005"
+          ],
+          "bottom": [
+            "a0000000-0000-4000-8000-000000000002"
+          ]
+        }
+      }
+    },
+    {
+      "name": "route_set_all_already_worn_archived",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000012",
+      "body": {
+        "who": "caller",
+        "mode": "set_all",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-000000000005"
+          ],
+          "bottom": [
+            "a0000000-0000-4000-8000-000000000002"
+          ]
+        }
+      }
+    },
+    {
+      "name": "route_set_all_unreachable_before_archived",
+      "kind": "route",
+      "chat": "bbbbbbbb-0000-4000-8000-000000000011",
+      "body": {
+        "who": "caller",
+        "mode": "set_all",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-000000000005"
+          ],
+          "bottom": [
+            "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+          ]
+        }
+      }
     }
   ]
 }

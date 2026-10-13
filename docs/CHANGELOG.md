@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-12 — feat(wardrobe): the chat equip action over one wearable pool — wear-ops, bug 191's archived refusal, the pin's four route lines, the effects module (P4.D282, v4 `9ecebf986`)
+
+_Versions: core 0.0.1277._
+
+`?action=equip` now follows v4 `4a38222e6`'s `outfit.ts`. The put-on modes (`wear`, its alias `equip`, `replace`, `add_to_slot`) and `set_all` load one wearable pool for the character (operator project tier, not roster-gated) and put items on through `resolve_wearable` / `wear_item`: an id outside the pool is a 404, an archived item a 400 `Item "<title>" is archived and cannot be worn`, an uncovered `add_to_slot` slot the new 400 `Item "<title>" (types: …) cannot be added to the "<slot>" slot` (was `Wardrobe item "<title>" does not cover the <slot> slot`). `set_all` refuses an archived item only when it is newly put on. The take-off modes go straight to `apply_displacement` with no pool. New INFO lines: `[Chats v1] Wardrobe item put on`, `Wardrobe slot changed`, `Refused to put on a wardrobe item` (with `reason`), `Refused a fitting that puts on an archived item`. The two post-change effects run through `notify_wardrobe_changed`, which adds the announcement's DEBUG / WARN lines. `wardrobe_wear_commit_tier2` grows 18 ops (an `archive` op kind, three new chats) and compares the four new lines.
+
 #### 2026-10-12 — docs(porting): P4.D279 Tier 2 — mutation proofs, the Friday-copy depth count, the full gate + own-family sweep; LANE COMPLETE
 
 _Docs-only change._
