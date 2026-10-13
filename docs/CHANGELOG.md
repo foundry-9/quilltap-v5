@@ -72,6 +72,12 @@ _Versions: core 0.0.1277._
 
 `tools/definitions/data.rs` regenerated through `gen-tool-catalog.mjs` from the pinned `tool-definitions.ts` dump. Two definitions move: `wardrobe_list` no longer declares `include_presets` and says an item's folder is filing only; `wardrobe_read` names the folder in its description. `tool_definitions_equivalence` and `tools_inventory_equivalence` pass from the pin.
 
+#### 2026-10-13 — docs(porting): P4.D281 lane close — the record, the HANDOFF, the sibling residue; LANE COMPLETE
+
+_Docs-only change._
+
+The route-factory lane's close record (the probe at close, what landed vs deferred, the one HANDOFF to retire the keystone's refusal pin, the sibling-owned residue rows, the order-prose findings, the fixtures changed, the dogfood rows, versions) and the order's status header moved to LANE COMPLETE.
+
 #### 2026-10-13 — feat(web): the wardrobe folder actions on the character and General REST edges; the item GET dispatches its action first (P4.D281, v4 `9ecebf986` + `4a38222e6`)
 
 _Versions: core 0.0.1281, web 0.0.236._
