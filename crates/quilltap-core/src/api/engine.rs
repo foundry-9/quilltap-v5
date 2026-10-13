@@ -7436,7 +7436,16 @@ fn wall_clock_ms() -> f64 {
 
 impl QuilltapCore for CoreEngine {
     fn dispatch(&self, req: Request) -> impl std::future::Future<Output = Response> + Send {
-        self.dispatch_impl(req)
+        // The dispatch future is the union of EVERY arm's state machine — it
+        // is the largest future in the process, and every transport awaits it
+        // inline on a tokio worker (2 MiB stacks: `quilltap-web`'s runtime,
+        // `#[tokio::test]`). At the `4a38222e6` round's union a debug build
+        // overflowed that stack on the generator routes (the wizard / detail
+        // generators — `generators_wizard_routes`, `characters_generators_
+        // routes`; green with 8 MiB stacks, so frame size, not recursion).
+        // ONE heap allocation per request keeps the arms off the worker stack
+        // for every caller at once.
+        Box::pin(self.dispatch_impl(req))
     }
 
     fn subscribe(&self) -> broadcast::Receiver<Event> {
