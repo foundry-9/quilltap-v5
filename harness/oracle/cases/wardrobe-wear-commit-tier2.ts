@@ -75,6 +75,13 @@ const CAPTURED = new Set([
   '[Chats v1] Wardrobe slot changed',
   '[Chats v1] Refused to put on a wardrobe item',
   '[Chats v1] Refused a fitting that puts on an archived item',
+  // P4.D282 — the four pool lines `9ecebf986` RETIRED (the pool's
+  // `[WearablePool]` lines replace them): captured so a v5 that still logs one
+  // reds against a pin that logs none.
+  '[applyOutfitSelections] Failed to read shared wardrobe tiers; using the character vault alone',
+  '[applyOutfitSelections] Failed to read group wardrobe tier; skipping it',
+  '[applyOutfitSelections] Failed to read character wardrobe; using shared tiers alone',
+  '[applyOutfitSelections] Resolved wearable pool',
 ]);
 
 async function main(): Promise<void> {

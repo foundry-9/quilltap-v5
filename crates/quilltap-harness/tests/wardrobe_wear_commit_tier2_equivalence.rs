@@ -145,7 +145,7 @@ struct Op {
 }
 
 /// The messages this family compares (the oracle captures the same set).
-const CAPTURED: [&str; 10] = [
+const CAPTURED: [&str; 14] = [
     "Committed equipped outfit",
     "Equipped outfit write failed; no wears credited",
     "[applyOutfitSelections] Failed to persist equipped outfit",
@@ -157,6 +157,13 @@ const CAPTURED: [&str; 10] = [
     "[Chats v1] Wardrobe slot changed",
     "[Chats v1] Refused to put on a wardrobe item",
     "[Chats v1] Refused a fitting that puts on an archived item",
+    // P4.D282 — the four pool lines `9ecebf986` RETIRED: a v5 that still logs
+    // one reds against a pin that logs none (the `apply` ops run on the test
+    // thread, where the capture sees them).
+    "[applyOutfitSelections] Failed to read shared wardrobe tiers; using the character vault alone",
+    "[applyOutfitSelections] Failed to read group wardrobe tier; skipping it",
+    "[applyOutfitSelections] Failed to read character wardrobe; using shared tiers alone",
+    "[applyOutfitSelections] Resolved wearable pool",
 ];
 
 /// The lines a `route` op can compare: the ones the route logs on the

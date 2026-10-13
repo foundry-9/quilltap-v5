@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-12 — feat(wardrobe): apply_outfit_selections over memoised wearable pools — `wearable()` candidates, `by_id` dissolves, the instructions' group tier from the pool (P4.D282, v4 `9ecebf986`)
+
+_Versions: core 0.0.1279._
+
+`services/outfit_selections.rs` follows v4 `apply-outfit-selections.ts` at the pin: one `SharedTierLoader` per batch plus a memoised `load_wearable_pool` per character replace the three private tier loaders and their four `[applyOutfitSelections]` pool lines (the pool's `[WearablePool]` lines replace them); defaults and the `llm_choose` candidates come from `pool.wearable()`; manual credits and the `llm_choose` pick dissolve over the archived-inclusive `pool.by_id()` (a picked composite's archived part now goes on, as v4 does); the dressing instructions take the group tier from `pool.tiers`; the creation dialog's preview resolves through the new pool resolver. `resolve_wearable_pool` now answers a `WearablePool`. The four retired lines are captured by `wardrobe_wear_commit_tier2` so a v5 that logs one reds.
+
 #### 2026-10-12 — feat(wardrobe): the outfit summary over per-character wearable pools + the pool-based equipped-outfit resolver (P4.D282, v4 `9ecebf986`)
 
 _Versions: core 0.0.1278._
