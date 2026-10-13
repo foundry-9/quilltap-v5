@@ -1014,3 +1014,97 @@ fn p4d281_factory_lines_are_v4s() {
     assert!(tail.contains(&format!("projectId={project}")) && tail.contains("cleared=false"));
     no_old(&lines);
 }
+
+/// P4.D281 (v4 `9ecebf986` + `4a38222e6`): the transfers route's success INFO
+/// `[WardrobeTransfers v1] Wardrobe item transferred` — v4's thirteen keys in
+/// v4's order, `folder` (`stored.folder ?? ''`) NEW at the pin, a null
+/// character id rendered `null` — on the calling thread; and the silence leg:
+/// a refused transfer logs no such line.
+#[test]
+fn p4d281_transfer_line_is_v4s() {
+    quilltap_core::test_support::global_capture::install();
+    let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let cap = |f: &dyn Fn() -> Response| quilltap_core::test_support::global_capture::capture(f);
+    let case = |name: &str| {
+        spec.cases
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("the corpus carries {name}"))
+    };
+
+    let ok = case("tr_move_char_to_char");
+    let (db, _scratch) = fresh_db(ok);
+    let body = ok.body.clone().unwrap();
+    let (resp, lines) = cap(&|| {
+        rt.block_on(wardrobe_transfer_apply(
+            &db,
+            &spec.user_id,
+            body.clone(),
+            NOW,
+        ))
+    });
+    let item = success_body(&resp).expect("the move succeeds")["wardrobeItem"].clone();
+    let line = lines
+        .iter()
+        .find(|l| l.contains("[WardrobeTransfers v1] Wardrobe item transferred"))
+        .unwrap_or_else(|| panic!("no transfer line: {lines:#?}"));
+    assert!(line.starts_with("INFO "), "{line}");
+    let tail = line.split("Wardrobe item transferred").nth(1).unwrap();
+    let keys: Vec<&str> = tail
+        .split_whitespace()
+        .filter(|kv| kv.contains('='))
+        .map(|kv| kv.split('=').next().unwrap())
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "userId",
+            "action",
+            "componentMode",
+            "itemId",
+            "resultItemId",
+            "folder",
+            "componentsTransferred",
+            "sourceScope",
+            "destinationScope",
+            "sourceCharacterId",
+            "destinationCharacterId",
+            "sourceMountPointId",
+            "destinationMountPointId",
+        ],
+        "{line}"
+    );
+    let item_id = item["id"].as_str().unwrap();
+    assert!(
+        tail.contains(&format!(" userId={} action=move componentMode=none itemId={item_id} resultItemId={item_id} folder= componentsTransferred=0 sourceScope=character destinationScope=character ", spec.user_id)),
+        "{line}"
+    );
+    // The read-back passed, so its ERROR stayed silent.
+    assert!(
+        !lines.iter().any(|l| l.contains("did not read back")),
+        "{lines:#?}"
+    );
+
+    // Silence: a 404 source logs no transfer line.
+    let missing = case("tr_source_missing");
+    let (db, _scratch) = fresh_db(missing);
+    let body = missing.body.clone().unwrap();
+    let (_, lines) = cap(&|| {
+        rt.block_on(wardrobe_transfer_apply(
+            &db,
+            &spec.user_id,
+            body.clone(),
+            NOW,
+        ))
+    });
+    assert!(
+        !lines
+            .iter()
+            .any(|l| l.contains("Wardrobe item transferred")),
+        "{lines:#?}"
+    );
+}

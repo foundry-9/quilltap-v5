@@ -208,8 +208,8 @@
       "preArchive": true,
       "includeArchived": true,
       "normalize": [
-        "wardrobeItems.0.updatedAt",
-        "wardrobeItems.0.archivedAt"
+        "wardrobeItems.1.updatedAt",
+        "wardrobeItems.1.archivedAt"
       ]
     },
     {

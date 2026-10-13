@@ -214,9 +214,11 @@ pub fn parse_transfer_request(body: &Value) -> Result<TransferRequest, String> {
         }
     };
 
-    // source: z.object({ scope: z.enum(['character','project','group',
-    // 'general']), id: z.string().optional() }).optional() — the explicit
-    // container (d7263f39). NOTE the enum ORDER differs from destination's.
+    // source: z.object({ scope: WardrobeScopeSchema, id: z.string().optional()
+    // }).optional() — the explicit container (d7263f39). Since `9ecebf986`
+    // BOTH source and destination take `WardrobeScopeSchema =
+    // z.enum(['character','group','project','general'])` (`location.ts:56`) —
+    // the issue sentence's ORDER moved on both.
     let mut source: Option<ExplicitSource> = None;
     match get("source") {
         None => {}
@@ -233,7 +235,7 @@ pub fn parse_transfer_request(body: &Value) -> Result<TransferRequest, String> {
             };
             if scope.is_none() {
                 issues.push(
-                    "Invalid option: expected one of \"character\"|\"project\"|\"group\"|\"general\""
+                    "Invalid option: expected one of \"character\"|\"group\"|\"project\"|\"general\""
                         .to_string(),
                 );
             }
@@ -263,7 +265,7 @@ pub fn parse_transfer_request(body: &Value) -> Result<TransferRequest, String> {
         }
     }
 
-    // destination: z.object({ scope: z.enum([...]), id: z.string().optional() })
+    // destination: z.object({ scope: WardrobeScopeSchema, id: z.string().optional() })
     let mut destination_scope: Option<DestinationScope> = None;
     let mut destination_id: Option<String> = None;
     match get("destination") {
@@ -277,7 +279,7 @@ pub fn parse_transfer_request(body: &Value) -> Result<TransferRequest, String> {
                         "character" => Some(DestinationScope::Character),
                         _ => {
                             issues.push(
-                                "Invalid option: expected one of \"general\"|\"project\"|\"group\"|\"character\""
+                                "Invalid option: expected one of \"character\"|\"group\"|\"project\"|\"general\""
                                     .to_string(),
                             );
                             None
@@ -286,7 +288,7 @@ pub fn parse_transfer_request(body: &Value) -> Result<TransferRequest, String> {
                 }
                 _ => {
                     issues.push(
-                        "Invalid option: expected one of \"general\"|\"project\"|\"group\"|\"character\""
+                        "Invalid option: expected one of \"character\"|\"group\"|\"project\"|\"general\""
                             .to_string(),
                     );
                 }
@@ -407,6 +409,40 @@ pub async fn wardrobe_transfer_apply_with_codec(
 
     match out {
         Ok(Ok(outcome)) => {
+            if let Some(f) = &outcome.read_back_failure {
+                tracing::error!(
+                    userId = user_id,
+                    outfitId = f.outfit_id.as_str(),
+                    outfitFoundAtDestination = f.outfit_found_at_destination,
+                    plannedComponentIdsJson =
+                        %serde_json::to_string(&f.planned_component_ids).unwrap_or_default(),
+                    readBackComponentIdsJson =
+                        %serde_json::to_string(&f.read_back_component_ids).unwrap_or_default(),
+                    unresolvedComponentIdsJson =
+                        %serde_json::to_string(&outcome.unresolved_component_ids).unwrap_or_default(),
+                    destinationScope = f.destination_scope,
+                    destinationMountPointId = f.destination_mount_point_id.as_str(),
+                    "[WardrobeTransfers v1] Transferred outfit did not read back with its planned component references"
+                );
+            }
+            // v4 `9ecebf986` + `4a38222e6` (`folder: stored.folder ?? ''`).
+            let t = &outcome.transferred;
+            tracing::info!(
+                userId = user_id,
+                action = wardrobe_transfers::action_str(outcome.action),
+                componentMode = t.component_mode,
+                itemId = t.item_id.as_str(),
+                resultItemId = t.result_item_id.as_str(),
+                folder = t.folder.as_str(),
+                componentsTransferred = outcome.components_transferred,
+                sourceScope = t.source_scope,
+                destinationScope = t.destination_scope,
+                sourceCharacterId = t.source_character_id.as_deref().unwrap_or("null"),
+                destinationCharacterId = t.destination_character_id.as_deref().unwrap_or("null"),
+                sourceMountPointId = t.source_mount_point_id.as_str(),
+                destinationMountPointId = t.destination_mount_point_id.as_str(),
+                "[WardrobeTransfers v1] Wardrobe item transferred"
+            );
             // v4: `{ wardrobeItem, action, componentsTransferred,
             // ...(unresolvedComponentIds when non-empty) }`.
             let mut body = json!({

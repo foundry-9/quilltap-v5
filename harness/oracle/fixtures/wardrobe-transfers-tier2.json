@@ -399,10 +399,8 @@
    "expect": "ok",
    "expectComponentsTransferred": 0,
    "expectItemId": "e5000000-0000-4000-8000-0000000000d4",
-   "expectUnresolvedComponentIds": [
-    "e5000000-0000-4000-8000-0000000000d1",
-    "e5000000-0000-4000-8000-0000000000d3"
-   ]
+   "expectUnresolvedComponentIds": [],
+   "$p4d281": "9ecebf986 / bug 187: a composite's cross-folder UUID refs are KEPT on write and read back, so moving the outfit alone leaves NO unresolved refs (the pre-bug-187 literal [d1, d3] retired by measurement — the pin's oracle omits the key)."
   },
   {
    "name": "components_null_rejected",
@@ -510,6 +508,119 @@
    },
    "expect": "error",
    "expectMessage": "An archived character's wardrobe cannot be changed"
+  },
+  {
+   "name": "move_filed_item_keeps_folder",
+   "action": "move",
+   "itemId": "e5000000-0000-4000-8000-0000000000e1",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "destination": {
+    "scope": "general"
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "copy_filed_item_to_group_keeps_folder",
+   "action": "copy",
+   "itemId": "e5000000-0000-4000-8000-0000000000e1",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "destination": {
+    "scope": "group",
+    "id": "b2000000-0000-4000-8000-000000000001"
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "move_handmade_refused_folder_lands_at_root",
+   "action": "move",
+   "itemId": "e5000000-0000-4000-8000-0000000000e2",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "destination": {
+    "scope": "general"
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "probe_group_shadows_project",
+   "action": "copy",
+   "itemId": "e5000000-0000-4000-8000-0000000000e3",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "sourceProjectId": "b1000000-0000-4000-8000-000000000001",
+   "destination": {
+    "scope": "character",
+    "id": "c7000000-0000-4000-8000-000000000002"
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "probe_project_after_groups_when_groups_miss",
+   "action": "copy",
+   "itemId": "e5000000-0000-4000-8000-0000000000d1",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000002",
+   "sourceProjectId": "b1000000-0000-4000-8000-000000000001",
+   "destination": {
+    "scope": "general"
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "probe_never_provisions_project_folder",
+   "action": "copy",
+   "itemId": "e5000000-0000-4000-8000-0000000000ff",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "sourceProjectId": "b1000000-0000-4000-8000-0000000000b2",
+   "destination": {
+    "scope": "general"
+   },
+   "expect": "error",
+   "expectMessage": "Wardrobe item not found"
+  },
+  {
+   "name": "explicit_project_source_never_provisions",
+   "action": "copy",
+   "itemId": "e5000000-0000-4000-8000-0000000000ff",
+   "source": {
+    "scope": "project",
+    "id": "b1000000-0000-4000-8000-0000000000b2"
+   },
+   "destination": {
+    "scope": "general"
+   },
+   "expect": "error",
+   "expectMessage": "Wardrobe item not found"
+  },
+  {
+   "name": "destination_bare_project_is_provisioned",
+   "action": "copy",
+   "itemId": "e5000000-0000-4000-8000-0000000000e1",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "destination": {
+    "scope": "project",
+    "id": "b1000000-0000-4000-8000-0000000000b2"
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "source_scope_enum_order",
+   "action": "copy",
+   "itemId": "x",
+   "source": {
+    "scope": "vault"
+   },
+   "destination": {
+    "scope": "general"
+   },
+   "expect": "error"
+  },
+  {
+   "name": "destination_scope_enum_order",
+   "action": "copy",
+   "itemId": "x",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "destination": {
+    "scope": "vault"
+   },
+   "expect": "error"
   }
  ],
  "groupMemberId": "b2000000-0000-4000-8000-000000000002",
@@ -767,5 +878,43 @@
    "lastWornAt": "2026-01-25T00:00:00.000Z",
    "lastWornChatId": null
   }
- ]
+ ],
+ "$p4d281": "P4.D281 (v4 9ecebf986 + 4a38222e6): a FILED source garment (filedItem in Wardrobe/<filedFolder>/), a hand-made item whose folder the rules refuse (handmadeItemPath — lands at the root), one id in BOTH the group and the project store (bug 192: the group copy is probed first), and a project whose store has no Wardrobe/ (bareProjectId — probing never provisions it).",
+ "filedItem": {
+  "id": "e5000000-0000-4000-8000-0000000000e1",
+  "title": "Opera Cape",
+  "types": [
+   "top"
+  ],
+  "description": "A cape kept with the evening things.",
+  "isDefault": false,
+  "replace": false,
+  "componentItemIds": []
+ },
+ "filedFolder": "Formal",
+ "handmadeItemPath": "Wardrobe/Formal/images/odd-boots.md",
+ "handmadeItemContent": "---\nid: e5000000-0000-4000-8000-0000000000e2\ntitle: Odd Boots\ntypes:\n  - footwear\n---\nBoots filed by hand where no wardrobe folder may be.\n",
+ "shadowGroupItem": {
+  "id": "e5000000-0000-4000-8000-0000000000e3",
+  "title": "Group Sash",
+  "types": [
+   "accessories"
+  ],
+  "description": "The group's copy of the sash.",
+  "isDefault": false,
+  "replace": false,
+  "componentItemIds": []
+ },
+ "shadowProjectItem": {
+  "id": "e5000000-0000-4000-8000-0000000000e3",
+  "title": "Project Sash",
+  "types": [
+   "accessories"
+  ],
+  "description": "The project's copy of the sash.",
+  "isDefault": false,
+  "replace": false,
+  "componentItemIds": []
+ },
+ "bareProjectId": "b1000000-0000-4000-8000-0000000000b2"
 }

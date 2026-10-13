@@ -15,9 +15,9 @@
 //! callers let it propagate, never fall back), and `update` is
 //! `location.update(itemId, patch)`.
 //!
-//! The two pre-`9ecebf986` resolvers are kept ONLY as `LANE-REMOVE` wrappers
-//! until their callers (the transfers service — P4.D281) re-point onto the
-//! location.
+//! The two pre-`9ecebf986` resolvers (`resolve_wardrobe_container`,
+//! `resolve_container_mount_point_id`) are gone: their last caller, the
+//! transfers service, moved onto the location (P4.D281).
 
 use rusqlite::Connection;
 use serde_json::Value;
@@ -174,100 +174,6 @@ pub fn resolve_wardrobe_item_home(
         container_items,
         location,
     }))
-}
-
-/// v4 `ResolvedWardrobeContainer` with its `readItems()` already read — the
-/// pre-`9ecebf986` shape (see [`resolve_wardrobe_container`]).
-#[derive(Debug, Clone)]
-pub struct ResolvedWardrobeContainer {
-    pub scope: WardrobeContainerScope,
-    /// Owning character — `character` scope only.
-    pub character_id: Option<String>,
-    /// Backing mount — `project` / `group` scopes only.
-    pub mount_point_id: Option<String>,
-    /// Every item in the container, archived included.
-    pub items: Vec<Value>,
-}
-
-// LANE-REMOVE(P4.D281): v4 deleted resolve-container.ts (resolveWardrobeContainer) in 9ecebf986
-/// The pre-`9ecebf986` container resolver over the location, with `ensure:
-/// true` (the old resolver always provisioned a project / group store —
-/// R-C: callers that move onto the location choose). Callers move to
-/// [`resolve_wardrobe_location`] + `read_items(true)`.
-pub fn resolve_wardrobe_container(
-    main: &Connection,
-    mount: &Connection,
-    user_id: &str,
-    scope: WardrobeContainerScope,
-    id: Option<&str>,
-) -> Result<Option<ResolvedWardrobeContainer>, DbError> {
-    let Some(location) = resolve_wardrobe_location(
-        main,
-        mount,
-        wardrobe_scope(scope),
-        id,
-        user_id,
-        ResolveWardrobeLocationOptions { ensure: true },
-    )?
-    else {
-        return Ok(None);
-    };
-    let items: Vec<Value> = location
-        .read_items(mount, true)?
-        .iter()
-        .map(|item| serde_json::to_value(item).expect("serialize wardrobe item"))
-        .collect();
-    Ok(Some(ResolvedWardrobeContainer {
-        scope,
-        character_id: location.character_id.clone(),
-        mount_point_id: match scope {
-            WardrobeContainerScope::Project | WardrobeContainerScope::Group => {
-                Some(location.mount_point_id.clone())
-            }
-            _ => None,
-        },
-        items,
-    }))
-}
-
-// LANE-REMOVE(P4.D281): v4 deleted resolveContainerMountPointId in 9ecebf986 (→ location.writableMountPointId)
-/// The pre-`9ecebf986` `resolveContainerMountPointId(scope, characterId,
-/// mountPointId)` with its three sentences (as [`DbError::Internal`]); for an
-/// archived character [`DbError::CharacterArchived`]. Callers move to
-/// `WardrobeLocation::writable_mount_point_id`.
-pub fn resolve_container_mount_point_id(
-    main: &Connection,
-    scope: WardrobeContainerScope,
-    character_id: Option<&str>,
-    mount_point_id: Option<&str>,
-) -> Result<String, DbError> {
-    match scope {
-        WardrobeContainerScope::Project | WardrobeContainerScope::Group => mount_point_id
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .ok_or_else(|| {
-                DbError::Internal(format!(
-                    "No store mount resolved for {} wardrobe",
-                    scope_str(scope)
-                ))
-            }),
-        WardrobeContainerScope::General => {
-            crate::db::instance_settings::get_general_mount_point_id(main)?
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| DbError::Internal("Quilltap General is not provisioned".to_string()))
-        }
-        WardrobeContainerScope::Character => {
-            let cid = character_id.unwrap_or_default();
-            crate::db::vault_wardrobe_public::resolve_character_wardrobe_mount_point(main, cid)?
-                .ok_or_else(|| {
-                    // v4 interpolates the id as given (`null` renders "null").
-                    DbError::Internal(format!(
-                        "Character {} has no linked vault",
-                        character_id.unwrap_or("null")
-                    ))
-                })
-        }
-    }
 }
 
 #[cfg(test)]

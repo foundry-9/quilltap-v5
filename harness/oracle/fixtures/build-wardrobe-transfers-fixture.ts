@@ -86,6 +86,22 @@ interface Spec {
   archivedDestCharacterId: string;
   archivedDestCharacter: Record<string, unknown>;
   wearRows: Array<Record<string, unknown>>;
+  /** P4.D281 (v4 `4a38222e6`): a garment FILED under `Wardrobe/<filedFolder>/`
+   * in the source character's vault (written through v4's real location). */
+  filedItem: ItemSpec;
+  filedFolder: string;
+  /** P4.D281: a hand-made item file whose folder the rules REFUSE (a nested
+   * `images` segment) — written raw, as the Scriptorium would; a transfer
+   * lands it at the root. */
+  handmadeItemPath: string;
+  handmadeItemContent: string;
+  /** P4.D281 (bug 192): ONE id in both the group store and the project store
+   * — the probe must find the GROUP copy first. */
+  shadowGroupItem: ItemSpec;
+  shadowProjectItem: ItemSpec;
+  /** P4.D281 (bug 192): a project whose store has no `Wardrobe/` folder — a
+   * probe or an explicit source never provisions it. */
+  bareProjectId: string;
 }
 
 const PINNED_TS = '2026-02-01T00:00:00.000Z';
@@ -480,6 +496,60 @@ async function main(): Promise<void> {
         );
     }
   }
+  // ── P4.D281 (v4 `9ecebf986` + `4a38222e6`): folders and the probe order ──
+  {
+    const { resolveWardrobeLocation } = await import('@/lib/wardrobe/location');
+    const vault = await resolveWardrobeLocation('character', spec.characterId, repos, spec.userId, {
+      ensure: true,
+    });
+    if (!vault) throw new Error('source vault did not resolve');
+    await vault.create({
+      id: spec.filedItem.id,
+      characterId: spec.characterId,
+      title: spec.filedItem.title,
+      description: spec.filedItem.description ?? null,
+      imagePrompt: spec.filedItem.imagePrompt ?? null,
+      types: spec.filedItem.types,
+      componentItemIds: spec.filedItem.componentItemIds ?? [],
+      appropriateness: spec.filedItem.appropriateness ?? null,
+      isDefault: spec.filedItem.isDefault ?? false,
+      replace: spec.filedItem.replace ?? false,
+      migratedFromClothingRecordId: null,
+      imageFileId: null,
+      archivedAt: null,
+      folder: spec.filedFolder,
+      createdAt: PINNED_TS,
+      updatedAt: PINNED_TS,
+    } as never);
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    await writeDatabaseDocument(vault.mountPointId, spec.handmadeItemPath, spec.handmadeItemContent);
+    for (const [mp, item] of [
+      [groupMp, spec.shadowGroupItem],
+      [projectMp, spec.shadowProjectItem],
+    ] as Array<[string, ItemSpec]>) {
+      await createIntoMount(mp, {
+        id: item.id,
+        characterId: null,
+        title: item.title,
+        description: item.description ?? null,
+        imagePrompt: item.imagePrompt ?? null,
+        types: item.types,
+        componentItemIds: item.componentItemIds ?? [],
+        appropriateness: item.appropriateness ?? null,
+        isDefault: item.isDefault ?? false,
+        replace: item.replace ?? false,
+        migratedFromClothingRecordId: null,
+        archivedAt: null,
+        createdAt: PINNED_TS,
+        updatedAt: PINNED_TS,
+      } as never);
+    }
+    await repos.projects.create(
+      { name: 'Bare Transfer Project' } as never,
+      { id: spec.bareProjectId, createdAt: PINNED_TS, updatedAt: PINNED_TS } as never,
+    );
+  }
+
   await rawQuery('UPDATE "characters" SET "archivedAt" = ? WHERE "id" IN (?, ?)', [
     '2026-03-01T00:00:00.000Z',
     spec.archivedSourceCharacterId,

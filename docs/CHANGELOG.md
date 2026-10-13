@@ -72,6 +72,12 @@ _Versions: core 0.0.1277._
 
 `tools/definitions/data.rs` regenerated through `gen-tool-catalog.mjs` from the pinned `tool-definitions.ts` dump. Two definitions move: `wardrobe_list` no longer declares `include_presets` and says an item's folder is filing only; `wardrobe_read` names the folder in its description. `tool_definitions_equivalence` and `tools_inventory_equivalence` pass from the pin.
 
+#### 2026-10-12 — feat(wardrobe): transfers probe groups before the project, never provision a source, and carry each item's folder (P4.D281, v4 `9ecebf986` + `4a38222e6`)
+
+_Versions: core 0.0.1279, web 0.0.234._
+
+`services/wardrobe_transfers.rs` moves onto the wardrobe location: the character-view probe is vault, then the character's group stores (the later group mount first), then the named project, then Quilltap General, and no probe or explicit source provisions a store (bug 192); only the destination is resolved with `ensure`. Items land through the keystone's `create_item` with their identity preserved, so the destination folder is created or matched as stored; a move deletes through `location.delete`; the same-location check keys on `scope:mountPointId`. Every planned item carries its `folder`, normalised — a hand-made folder the rules refuse lands at the root. The success INFO `[WardrobeTransfers v1] Wardrobe item transferred` (absent from v5 until now) lands with v4's keys incl. the new `folder`; the read-back ERROR moves to camelCase keys; the Zod enum sentence for `source.scope` and `destination.scope` follows v4's new order. The two container-resolver shims (`resolve_wardrobe_container`, `resolve_container_mount_point_id`) lost their last caller and are deleted. The transfers fixture grows a filed garment, a refused hand-made folder, a group/project shadow item and a store-without-wardrobe project; ten scenarios added (35), one stale bug-187-era literal retired.
+
 #### 2026-10-12 — feat(wardrobe): the five wardrobe folder actions on every tier (P4.D281, v4 `4a38222e6`)
 
 _Versions: core 0.0.1278, web 0.0.233._

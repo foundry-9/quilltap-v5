@@ -863,7 +863,8 @@ fn wardrobe_transfers_tier2_matches_oracle() {
                 if let Some(msg) = &expect_message {
                     let got_msg = match e {
                         TransferError::BadRequest(m) => m.clone(),
-                        TransferError::NotFound => "Wardrobe item".to_string(),
+                        // v4 `notFound('Wardrobe item')` renders `<label> not found`.
+                        TransferError::NotFound => "Wardrobe item not found".to_string(),
                         TransferError::Server(m) => m.clone(),
                         TransferError::Conflict(m) => m.clone(),
                         TransferError::Internal(m) => m.clone(),

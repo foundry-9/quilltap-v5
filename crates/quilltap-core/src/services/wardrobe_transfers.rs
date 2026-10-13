@@ -15,11 +15,15 @@
 //!     the outfit → (move only) delete travelling components + the item →
 //!     post-write read-back verification (`unresolvedComponentIds`).
 //!
-//! It composes the ported repo ops + readers: [`find_by_character_id`],
-//! [`read_general_wardrobe`] / [`read_project_wardrobe`], the public writers
-//! ([`create_vault_wardrobe_item`] / [`create_project_wardrobe_item`] /
-//! [`delete_vault_wardrobe_item`] / [`delete_project_wardrobe_item`]), and the
-//! store provisioning ([`ensure_official_store`] + [`ensure_project_wardrobe_folder`]).
+//! Since `9ecebf986` every tier is a wardrobe LOCATION
+//! ([`resolve_wardrobe_location`]): the source is probed character → GROUPS
+//! (strongest first) → project → General WITHOUT provisioning (bug 192 — v5
+//! probed the project before the groups and provisioned its store on the
+//! probe), only the destination is resolved with `ensure: true`, items land
+//! through the keystone's `create_item` with their identity preserved (the
+//! destination folder created as needed), and a move deletes through
+//! `location.delete`. Every planned item carries its `folder` (`4a38222e6`),
+//! normalised — a hand-made folder the rules refuse lands at the root.
 //!
 //! Move vs copy: `copy` mints a fresh id and `createdAt`/`updatedAt` (`now`);
 //! `move` keeps the source id + timestamps and deletes the source after the create.
@@ -41,31 +45,25 @@ use std::collections::HashMap;
 use rusqlite::Connection;
 use serde_json::{json, Value};
 
-use crate::api::types::WardrobeContainerScope;
 use crate::collation::locale_compare;
-use crate::db::archetype_wardrobe::{
-    ensure_group_wardrobe_folder, ensure_project_wardrobe_folder, read_general_wardrobe,
-    read_group_wardrobe, read_project_wardrobe, read_shared_wardrobe,
-};
 use crate::db::characters_read;
-use crate::db::doc_mount_documents::DocMountDocumentsRepository;
-use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
-use crate::db::ensure_official_store::ensure_official_store;
-use crate::db::groups::{GroupEntity, GroupsRepository};
-use crate::db::projects::{ProjectEntity, ProjectsRepository};
-use crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character;
-use crate::db::vault_wardrobe_public::{
-    create_project_wardrobe_item, create_vault_wardrobe_item, delete_project_wardrobe_item,
-    delete_vault_wardrobe_item, WardrobePublicError,
+use crate::db::groups::GroupsRepository;
+use crate::db::projects::ProjectsRepository;
+use crate::db::vault_wardrobe_public::WardrobePublicError;
+use crate::db::wardrobe_location::{
+    group_locations_for_character, resolve_wardrobe_location, ResolveWardrobeLocationOptions,
+    WardrobeLocation, WardrobeLocationError, WardrobeScope,
 };
-use crate::db::wardrobe_read::find_by_character_id;
 use crate::db::DbError;
 use crate::services::mount_index::blob_transcode::WebpTranscoder;
-use crate::services::wardrobe_container::resolve_container_mount_point_id;
 use crate::services::wardrobe_item_images::carry::{
     carry_item_images, commit_moved_images, CarryArgs, CarryMode, PendingImageMove,
 };
+use crate::services::wardrobe_item_mutations::{
+    create_item, CreateItemOptions, PreservedIdentity, WardrobeCreateBody,
+};
 use crate::vault_overlay::WardrobeItem;
+use crate::wardrobe_folders::normalize_wardrobe_folder_path_or_root;
 
 /// v4's `conflict(...)` sentence for a `CharacterArchivedError` (the route's
 /// catch, `transfers/route.ts:501-503`).
@@ -106,6 +104,17 @@ pub enum ComponentMode {
     None,
 }
 
+impl ComponentMode {
+    /// The wire / log spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ComponentMode::Move => "move",
+            ComponentMode::Copy => "copy",
+            ComponentMode::None => "none",
+        }
+    }
+}
+
 /// An explicitly named source container (v4 the `source` schema field,
 /// `d7263f39`) — used when the dialog browses a shared container directly, so
 /// the home tier is already known and nothing is probed.
@@ -139,6 +148,10 @@ pub struct TransferOutcome {
     /// Planned component references the post-write read-back could NOT resolve
     /// at the destination (empty = the key is omitted from the response).
     pub unresolved_component_ids: Vec<String>,
+    /// The read-back ERROR's payload, when the read-back failed.
+    pub read_back_failure: Option<ReadBackFailure>,
+    /// The success INFO's payload.
+    pub transferred: TransferredLine,
 }
 
 /// A transfer failure, mirroring the route's HTTP responses.
@@ -238,17 +251,15 @@ pub fn enumerate_destinations(
 
 /// A source item resolved to its tier (v4 `ResolvedSource`).
 struct ResolvedSource {
-    scope: SourceScope,
-    item: Value,
-    character_id: Option<String>,
-    mount_point_id: Option<String>,
-    /// Every item in the source container (the same list the item was found
-    /// in). Used to gather a composite's same-container components so they can
-    /// travel with it — components living in *other* tiers stay put.
-    container_items: Vec<Value>,
+    location: WardrobeLocation,
+    item: WardrobeItem,
+    /// Every item in the source folder (the same list the item was found in).
+    /// Used to gather a composite's same-folder components so they can travel
+    /// with it — components living in *other* tiers stay put.
+    container_items: Vec<WardrobeItem>,
 }
 
-/// A transfer source tier (v4 `SourceScope`).
+/// A transfer source tier (v4 `WardrobeScopeSchema` on `source.scope`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceScope {
     Character,
@@ -258,73 +269,84 @@ pub enum SourceScope {
 }
 
 impl SourceScope {
-    fn container_scope(self) -> WardrobeContainerScope {
+    fn wardrobe_scope(self) -> WardrobeScope {
         match self {
-            SourceScope::Character => WardrobeContainerScope::Character,
-            SourceScope::Group => WardrobeContainerScope::Group,
-            SourceScope::Project => WardrobeContainerScope::Project,
-            SourceScope::General => WardrobeContainerScope::General,
+            SourceScope::Character => WardrobeScope::Character,
+            SourceScope::Group => WardrobeScope::Group,
+            SourceScope::Project => WardrobeScope::Project,
+            SourceScope::General => WardrobeScope::General,
         }
     }
-
-    fn as_str(self) -> &'static str {
-        match self {
-            SourceScope::Character => "character",
-            SourceScope::Group => "group",
-            SourceScope::Project => "project",
-            SourceScope::General => "general",
-        }
-    }
-}
-
-/// A destination resolved to its tier (v4 `ResolvedDestination`).
-struct ResolvedDestination {
-    scope: DestinationScope,
-    character_id: Option<String>,
-    mount_point_id: Option<String>,
 }
 
 impl DestinationScope {
-    fn container_scope(self) -> WardrobeContainerScope {
+    fn wardrobe_scope(self) -> WardrobeScope {
         match self {
-            DestinationScope::General => WardrobeContainerScope::General,
-            DestinationScope::Project => WardrobeContainerScope::Project,
-            DestinationScope::Group => WardrobeContainerScope::Group,
-            DestinationScope::Character => WardrobeContainerScope::Character,
-        }
-    }
-
-    fn as_str(self) -> &'static str {
-        match self {
-            DestinationScope::General => "general",
-            DestinationScope::Project => "project",
-            DestinationScope::Group => "group",
-            DestinationScope::Character => "character",
+            DestinationScope::General => WardrobeScope::General,
+            DestinationScope::Project => WardrobeScope::Project,
+            DestinationScope::Group => WardrobeScope::Group,
+            DestinationScope::Character => WardrobeScope::Character,
         }
     }
 }
 
-/// v4 `locationKey` — `'general'` for the General tier (singleton), else
-/// `'<scope>:<id>'`. Used to reject a source==destination transfer.
-fn location_key(scope: &str, id: Option<&str>) -> String {
-    if scope == "general" {
-        "general".to_string()
-    } else {
-        format!("{scope}:{}", id.unwrap_or(""))
+/// A location error as the route's catch answers it: an archived character is
+/// the 409; anything else rethrows into `Failed to transfer wardrobe item`.
+impl From<WardrobeLocationError> for TransferError {
+    fn from(e: WardrobeLocationError) -> Self {
+        match e {
+            WardrobeLocationError::CharacterArchived { .. } => {
+                TransferError::Conflict(ARCHIVED_CONFLICT.to_string())
+            }
+            WardrobeLocationError::Db(e) => e.into(),
+            e => TransferError::Internal(e.message()),
+        }
     }
 }
 
-fn item_id_of(item: &Value) -> Option<&str> {
-    item.get("id").and_then(Value::as_str)
+/// v4 `findInLocation(location, itemId)` — the item among the folder's items
+/// (archived included), with the folder's items.
+fn find_in_location(
+    mount: &Connection,
+    location: WardrobeLocation,
+    item_id: &str,
+) -> Result<Option<ResolvedSource>, TransferError> {
+    let container_items = location.read_items(mount, true)?;
+    let Some(item) = container_items.iter().find(|i| i.id == item_id).cloned() else {
+        return Ok(None);
+    };
+    Ok(Some(ResolvedSource {
+        location,
+        item,
+        container_items,
+    }))
 }
 
-/// v4 `resolveSourceItem` — find the item in the character's personal wardrobe,
-/// then the named project, then the character's GROUP stores, then Quilltap
-/// General. Ownership: the source character must belong to `user_id`.
-///
-/// The group tier scans BETWEEN project and General (`8600c83f`) — without it
-/// an item moved into a group could not be moved back out, which is half of
-/// what made a group garment vanish.
+/// v4 `resolveWardrobeLocation(scope, id, repos, userId)` — a READ (never
+/// provisions).
+fn read_location(
+    main: &Connection,
+    mount: &Connection,
+    user_id: &str,
+    scope: WardrobeScope,
+    id: Option<&str>,
+) -> Result<Option<WardrobeLocation>, TransferError> {
+    Ok(resolve_wardrobe_location(
+        main,
+        mount,
+        scope,
+        id,
+        user_id,
+        ResolveWardrobeLocationOptions { ensure: false },
+    )?)
+}
+
+/// v4 `resolveSourceItem` (bug 192, `9ecebf986`) — find the item in the
+/// character's vault, then the character's GROUP stores (the LATER group mount
+/// first — later mounts shadow earlier ones, so probe strongest first), then
+/// the named project, then Quilltap General. Probing NEVER provisions: a
+/// project with no store yet is skipped, not created. The ownership gate
+/// (the character must be `user_id`'s) is the location's (R-E).
 fn resolve_source_item(
     main: &Connection,
     mount: &Connection,
@@ -333,255 +355,71 @@ fn resolve_source_item(
     source_project_id: Option<&str>,
     item_id: &str,
 ) -> Result<Option<ResolvedSource>, TransferError> {
-    let docs = DocMountDocumentsRepository::new(mount);
-
-    // Ownership gate (v4 reads findById(...).userId).
-    let Some(character) = characters_read::find_by_id_raw(main, source_character_id)? else {
+    let Some(personal) = read_location(
+        main,
+        mount,
+        user_id,
+        WardrobeScope::Character,
+        Some(source_character_id),
+    )?
+    else {
         return Ok(None);
     };
-    if character.get("userId").and_then(Value::as_str) != Some(user_id) {
-        return Ok(None);
+    if let Some(own) = find_in_location(mount, personal, item_id)? {
+        return Ok(Some(own));
     }
 
-    // TRY 1 — personal wardrobe (incl. archived).
-    let personal = find_by_character_id(main, &docs, source_character_id, true)?;
-    if let Some(item) = personal
-        .iter()
-        .find(|it| item_id_of(it) == Some(item_id))
-        .cloned()
-    {
-        return Ok(Some(ResolvedSource {
-            scope: SourceScope::Character,
-            item,
-            character_id: Some(source_character_id.to_string()),
-            mount_point_id: None,
-            container_items: personal,
-        }));
+    // The source character is the one wearing the item, so their memberships
+    // are the right scope — matching how the wearable pool resolves the tier.
+    // Later group mounts shadow earlier ones, so probe strongest first.
+    let mut groups = group_locations_for_character(main, mount, source_character_id);
+    groups.reverse();
+    for group in groups {
+        if let Some(hit) = find_in_location(mount, group, item_id)? {
+            return Ok(Some(hit));
+        }
     }
 
-    // TRY 2 — the named project's wardrobe.
-    if let Some(project_id) = source_project_id {
-        let projects = ProjectsRepository::new(main, mount);
-        if let Some(project) = projects
-            .find_by_id(project_id)
-            .map_err(|e| TransferError::Internal(format!("{e:?}")))?
-        {
-            let name = project
-                .get("name")
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-                .unwrap_or("Project");
-            if let Some(ensured) =
-                ensure_official_store::<ProjectEntity>(main, mount, project_id, name)?
-            {
-                let links = DocMountFileLinksRepository::new(mount);
-                ensure_project_wardrobe_folder(&links, &ensured.mount_point_id)?;
-                let project_items = read_project_wardrobe(&docs, &ensured.mount_point_id, true)?;
-                if let Some(item) = project_items
-                    .iter()
-                    .find(|it| item_id_of(it) == Some(item_id))
-                    .cloned()
-                {
-                    return Ok(Some(ResolvedSource {
-                        scope: SourceScope::Project,
-                        item,
-                        character_id: None,
-                        mount_point_id: Some(ensured.mount_point_id),
-                        container_items: project_items,
-                    }));
-                }
+    // v4 `if (sourceProjectId)` — an empty string is falsy too.
+    if let Some(project_id) = source_project_id.filter(|s| !s.is_empty()) {
+        if let Some(project) = read_location(
+            main,
+            mount,
+            user_id,
+            WardrobeScope::Project,
+            Some(project_id),
+        )? {
+            if let Some(hit) = find_in_location(mount, project, item_id)? {
+                return Ok(Some(hit));
             }
         }
     }
 
-    // TRY 3 — the group tier: every store of every group this character belongs
-    // to. The source character is the one wearing the item, so their
-    // memberships are the right scope — matching how the wearable pool resolves
-    // the tier.
-    let group_mount_point_ids =
-        resolve_group_mount_point_ids_for_character(main, mount, source_character_id);
-    for mount_point_id in &group_mount_point_ids {
-        let group_items = read_group_wardrobe(&docs, mount_point_id, true)?;
-        if let Some(item) = group_items
-            .iter()
-            .find(|it| item_id_of(it) == Some(item_id))
-            .cloned()
-        {
-            return Ok(Some(ResolvedSource {
-                scope: SourceScope::Group,
-                item,
-                character_id: None,
-                mount_point_id: Some(mount_point_id.clone()),
-                container_items: group_items,
-            }));
-        }
+    match read_location(main, mount, user_id, WardrobeScope::General, None)? {
+        Some(general) => find_in_location(mount, general, item_id),
+        None => Ok(None),
     }
-
-    // TRY 4 — Quilltap General.
-    let general = read_general_wardrobe(main, &docs, true)?;
-    if let Some(item) = general
-        .iter()
-        .find(|it| item_id_of(it) == Some(item_id))
-        .cloned()
-    {
-        return Ok(Some(ResolvedSource {
-            scope: SourceScope::General,
-            item,
-            character_id: None,
-            mount_point_id: None,
-            container_items: general,
-        }));
-    }
-
-    Ok(None)
-}
-
-/// v4 `resolveExplicitSource` (`d7263f39`) — resolve the item within an
-/// explicitly named source container, no probing. Used when the wardrobe dialog
-/// is browsing a shared container directly, so the caller already knows exactly
-/// where the item lives.
-fn resolve_explicit_source(
-    main: &Connection,
-    mount: &Connection,
-    user_id: &str,
-    source: &ExplicitSource,
-    item_id: &str,
-) -> Result<Option<ResolvedSource>, TransferError> {
-    let docs = DocMountDocumentsRepository::new(mount);
-
-    if source.scope == SourceScope::General {
-        let general = read_general_wardrobe(main, &docs, true)?;
-        let Some(item) = general
-            .iter()
-            .find(|it| item_id_of(it) == Some(item_id))
-            .cloned()
-        else {
-            return Ok(None);
-        };
-        return Ok(Some(ResolvedSource {
-            scope: SourceScope::General,
-            item,
-            character_id: None,
-            mount_point_id: None,
-            container_items: general,
-        }));
-    }
-
-    let Some(id) = source.id.as_deref() else {
-        return Ok(None);
-    };
-
-    if source.scope == SourceScope::Character {
-        let Some(character) = characters_read::find_by_id_raw(main, id)? else {
-            return Ok(None);
-        };
-        if character.get("userId").and_then(Value::as_str) != Some(user_id) {
-            return Ok(None);
-        }
-        let personal = find_by_character_id(main, &docs, id, true)?;
-        let Some(item) = personal
-            .iter()
-            .find(|it| item_id_of(it) == Some(item_id))
-            .cloned()
-        else {
-            return Ok(None);
-        };
-        return Ok(Some(ResolvedSource {
-            scope: SourceScope::Character,
-            item,
-            character_id: Some(id.to_string()),
-            mount_point_id: None,
-            container_items: personal,
-        }));
-    }
-
-    if source.scope == SourceScope::Project {
-        let projects = ProjectsRepository::new(main, mount);
-        let Some(project) = projects
-            .find_by_id(id)
-            .map_err(|e| TransferError::Internal(format!("{e:?}")))?
-        else {
-            return Ok(None);
-        };
-        let name = project
-            .get("name")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-            .unwrap_or("Project");
-        let Some(ensured) = ensure_official_store::<ProjectEntity>(main, mount, id, name)? else {
-            return Ok(None);
-        };
-        let links = DocMountFileLinksRepository::new(mount);
-        ensure_project_wardrobe_folder(&links, &ensured.mount_point_id)?;
-        let project_items = read_project_wardrobe(&docs, &ensured.mount_point_id, true)?;
-        let Some(item) = project_items
-            .iter()
-            .find(|it| item_id_of(it) == Some(item_id))
-            .cloned()
-        else {
-            return Ok(None);
-        };
-        return Ok(Some(ResolvedSource {
-            scope: SourceScope::Project,
-            item,
-            character_id: None,
-            mount_point_id: Some(ensured.mount_point_id),
-            container_items: project_items,
-        }));
-    }
-
-    // Group.
-    let groups = GroupsRepository::new(main, mount);
-    let Some(group) = groups
-        .find_by_id(id)
-        .map_err(|e| TransferError::Internal(format!("{e:?}")))?
-    else {
-        return Ok(None);
-    };
-    let name = group
-        .get("name")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .unwrap_or("Group");
-    let Some(ensured) = ensure_official_store::<GroupEntity>(main, mount, id, name)? else {
-        return Ok(None);
-    };
-    let links = DocMountFileLinksRepository::new(mount);
-    ensure_group_wardrobe_folder(&links, &ensured.mount_point_id)?;
-    let group_items = read_group_wardrobe(&docs, &ensured.mount_point_id, true)?;
-    let Some(item) = group_items
-        .iter()
-        .find(|it| item_id_of(it) == Some(item_id))
-        .cloned()
-    else {
-        return Ok(None);
-    };
-    Ok(Some(ResolvedSource {
-        scope: SourceScope::Group,
-        item,
-        character_id: None,
-        mount_point_id: Some(ensured.mount_point_id),
-        container_items: group_items,
-    }))
 }
 
 /// v4 `collectContainerComponents` (`f6a10055`) — the transitive closure of a
-/// composite's components that live in the same source container. Components
+/// composite's components that live in the same source folder. Components
 /// from other tiers (e.g. a General archetype bundled into a character outfit)
 /// are excluded — they are already shared and stay where they are. Cycles are
 /// tolerated via the visited set (the write layer refuses to store them, but
 /// old data gets no infinite loop here).
-fn collect_container_components(outfit: &Value, container_items: &[Value]) -> Vec<Value> {
-    let by_id: HashMap<&str, &Value> = container_items
+fn collect_container_components(
+    outfit: &WardrobeItem,
+    container_items: &[WardrobeItem],
+) -> Vec<WardrobeItem> {
+    let by_id: HashMap<&str, &WardrobeItem> = container_items
         .iter()
-        .filter_map(|it| item_id_of(it).map(|id| (id, it)))
+        .map(|it| (it.id.as_str(), it))
         .collect();
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
-    if let Some(id) = item_id_of(outfit) {
-        visited.insert(id.to_string());
-    }
-    let mut result: Vec<Value> = Vec::new();
-    let mut queue: std::collections::VecDeque<String> = component_ids_of(outfit).into();
+    visited.insert(outfit.id.clone());
+    let mut result: Vec<WardrobeItem> = Vec::new();
+    let mut queue: std::collections::VecDeque<String> =
+        outfit.component_item_ids.iter().cloned().collect();
     while let Some(id) = queue.pop_front() {
         if visited.contains(&id) {
             continue;
@@ -591,179 +429,54 @@ fn collect_container_components(outfit: &Value, container_items: &[Value]) -> Ve
             continue;
         };
         result.push((*item).clone());
-        queue.extend(component_ids_of(item));
+        queue.extend(item.component_item_ids.iter().cloned());
     }
     result
 }
 
-/// The `componentItemIds` array of a read item (absent/malformed → empty).
-fn component_ids_of(item: &Value) -> Vec<String> {
-    item.get("componentItemIds")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// v4 `resolveDestination` — validate the destination and (for project/group)
-/// provision its official store + `Wardrobe/` folder. `None` = invalid.
-fn resolve_destination(
-    main: &Connection,
-    mount: &Connection,
-    user_id: &str,
-    scope: DestinationScope,
-    id: Option<&str>,
-) -> Result<Option<ResolvedDestination>, TransferError> {
-    match scope {
-        DestinationScope::General => Ok(Some(ResolvedDestination {
-            scope,
-            character_id: None,
-            mount_point_id: None,
-        })),
-        DestinationScope::Character => {
-            let Some(id) = id else { return Ok(None) };
-            let Some(character) = characters_read::find_by_id_raw(main, id)? else {
-                return Ok(None);
-            };
-            if character.get("userId").and_then(Value::as_str) != Some(user_id) {
-                return Ok(None);
-            }
-            Ok(Some(ResolvedDestination {
-                scope,
-                character_id: Some(id.to_string()),
-                mount_point_id: None,
-            }))
-        }
-        DestinationScope::Project => {
-            let Some(id) = id else { return Ok(None) };
-            let projects = ProjectsRepository::new(main, mount);
-            let Some(project) = projects
-                .find_by_id(id)
-                .map_err(|e| TransferError::Internal(format!("{e:?}")))?
-            else {
-                return Ok(None);
-            };
-            let name = project
-                .get("name")
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-                .unwrap_or("Project");
-            let Some(ensured) = ensure_official_store::<ProjectEntity>(main, mount, id, name)?
-            else {
-                return Ok(None);
-            };
-            let links = DocMountFileLinksRepository::new(mount);
-            ensure_project_wardrobe_folder(&links, &ensured.mount_point_id)?;
-            Ok(Some(ResolvedDestination {
-                scope,
-                character_id: None,
-                mount_point_id: Some(ensured.mount_point_id),
-            }))
-        }
-        DestinationScope::Group => {
-            let Some(id) = id else { return Ok(None) };
-            let groups = GroupsRepository::new(main, mount);
-            let Some(group) = groups
-                .find_by_id(id)
-                .map_err(|e| TransferError::Internal(format!("{e:?}")))?
-            else {
-                return Ok(None);
-            };
-            let name = group
-                .get("name")
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-                .unwrap_or("Group");
-            let Some(ensured) = ensure_official_store::<GroupEntity>(main, mount, id, name)? else {
-                return Ok(None);
-            };
-            let links = DocMountFileLinksRepository::new(mount);
-            ensure_group_wardrobe_folder(&links, &ensured.mount_point_id)?;
-            Ok(Some(ResolvedDestination {
-                scope,
-                character_id: None,
-                mount_point_id: Some(ensured.mount_point_id),
-            }))
-        }
-    }
-}
-
-/// v4 `readDestinationItems` — every item (incl. archived) at the destination,
-/// for the id-collision check.
-fn read_destination_items(
-    main: &Connection,
-    mount: &Connection,
-    dest: &ResolvedDestination,
-) -> Result<Vec<Value>, TransferError> {
-    let docs = DocMountDocumentsRepository::new(mount);
-    match dest.scope {
-        DestinationScope::General => Ok(read_general_wardrobe(main, &docs, true)?),
-        DestinationScope::Character => {
-            let cid = dest.character_id.as_deref().unwrap_or_default();
-            Ok(find_by_character_id(main, &docs, cid, true)?)
-        }
-        // Project and group items both live in a mount's `Wardrobe/` folder.
-        DestinationScope::Project | DestinationScope::Group => {
-            let mp = dest.mount_point_id.as_deref().unwrap_or_default();
-            Ok(read_shared_wardrobe(&docs, mp, true)?)
-        }
-    }
-}
-
-/// v4 `createAtDestination` — route the prepared item to the right writer.
+/// v4 `createAtDestination(destination, planned)` — `createItem(destination,
+/// planned, { preserve: { id, createdAt, updatedAt, archivedAt, imageFileId,
+/// migratedFromClothingRecordId } })`: the planned item rides as a create body
+/// (so the destination folder is resolved — created as needed, an existing
+/// one in any casing used as stored), with no lookup (a composite keeps its
+/// planned `types`), its identity and history preserved.
 fn create_at_destination(
     main: &Connection,
     mount: &Connection,
-    dest: &ResolvedDestination,
-    item: &WardrobeItem,
+    destination: &WardrobeLocation,
+    planned: &WardrobeItem,
 ) -> Result<WardrobeItem, TransferError> {
-    let links = DocMountFileLinksRepository::new(mount);
-    let docs = DocMountDocumentsRepository::new(mount);
-    match dest.scope {
-        // General / character route through the public repo (characterId selects
-        // the tier: the destination character, or null → Quilltap General).
-        DestinationScope::General | DestinationScope::Character => {
-            let mut prepared = item.clone();
-            prepared.character_id = Some(dest.character_id.clone());
-            Ok(create_vault_wardrobe_item(main, &links, &docs, &prepared)?)
-        }
-        DestinationScope::Project | DestinationScope::Group => {
-            let mp = dest.mount_point_id.as_deref().unwrap_or_default();
-            Ok(create_project_wardrobe_item(main, &links, &docs, mp, item)?)
-        }
-    }
-}
-
-/// v4 `deleteFromSource` — remove one id from the source container (move only;
-/// also used for each travelling component under `components: 'move'`).
-fn delete_from_source(
-    main: &Connection,
-    mount: &Connection,
-    source: &ResolvedSource,
-    id: &str,
-) -> Result<bool, TransferError> {
-    let links = DocMountFileLinksRepository::new(mount);
-    let docs = DocMountDocumentsRepository::new(mount);
-    match source.scope {
-        // Project and group items both live in a mount's `Wardrobe/` folder
-        // rather than a character vault, so both delete by mount point.
-        SourceScope::Project | SourceScope::Group => {
-            let mp = source.mount_point_id.as_deref().unwrap_or_default();
-            Ok(delete_project_wardrobe_item(main, &links, &docs, mp, id)?)
-        }
-        // Character / general: v4 `repos.wardrobe.delete(id, source.characterId)`
-        // (a null characterId locates Quilltap General).
-        SourceScope::Character | SourceScope::General => Ok(delete_vault_wardrobe_item(
-            main,
-            &links,
-            &docs,
-            id,
-            source.character_id.as_deref(),
-        )?),
-    }
+    let body = WardrobeCreateBody {
+        title: planned.title.clone(),
+        description: planned.description.clone().flatten(),
+        image_prompt: planned.image_prompt.clone().flatten(),
+        types: planned.types.clone(),
+        appropriateness: planned.appropriateness.clone().flatten(),
+        is_default: Some(planned.is_default),
+        component_item_ids: Some(planned.component_item_ids.clone()),
+        replace: Some(planned.replace),
+        folder: Some(planned.folder.clone()),
+    };
+    let preserve = PreservedIdentity {
+        id: planned.id.clone(),
+        created_at: planned.created_at.clone(),
+        updated_at: planned.updated_at.clone(),
+        archived_at: Some(planned.archived_at.clone().flatten()),
+        image_file_id: Some(planned.image_file_id.clone().flatten()),
+        migrated_from_clothing_record_id: Some(
+            planned.migrated_from_clothing_record_id.clone().flatten(),
+        ),
+    };
+    Ok(create_item(
+        main,
+        mount,
+        destination,
+        &body,
+        CreateItemOptions {
+            lookup: None,
+            preserve: Some(&preserve),
+        },
+    )?)
 }
 
 /// v4 POST — move or copy one wardrobe item between tiers. `now` is the minted
@@ -778,10 +491,19 @@ pub fn transfer_wardrobe_item(
     now: &str,
     blob_webp: &dyn WebpTranscoder,
 ) -> Result<TransferOutcome, TransferError> {
-    // 1. Resolve the source item — explicitly named container first (v4
-    //    `body.source ? resolveExplicitSource : resolveSourceItem`).
+    // 1. Resolve the source item — an explicitly named folder (no probing, no
+    //    provisioning), else the character-view probe.
     let resolved = if let Some(explicit) = &req.source {
-        resolve_explicit_source(main, mount, user_id, explicit, &req.item_id)?
+        match read_location(
+            main,
+            mount,
+            user_id,
+            explicit.scope.wardrobe_scope(),
+            explicit.id.as_deref(),
+        )? {
+            Some(location) => find_in_location(mount, location, &req.item_id)?,
+            None => None,
+        }
     } else {
         resolve_source_item(
             main,
@@ -796,44 +518,32 @@ pub fn transfer_wardrobe_item(
         return Err(TransferError::NotFound);
     };
 
-    // 2. Resolve the destination.
-    let Some(destination) = resolve_destination(
+    // 2. Resolve the destination — the ONE place a store is provisioned.
+    let Some(destination) = resolve_wardrobe_location(
         main,
         mount,
-        user_id,
-        req.destination_scope,
+        req.destination_scope.wardrobe_scope(),
         req.destination_id.as_deref(),
+        user_id,
+        ResolveWardrobeLocationOptions { ensure: true },
     )?
     else {
         return Err(TransferError::BadRequest("Invalid destination".to_string()));
     };
 
-    // 3. Reject source == destination.
-    let source_id = match source.scope {
-        SourceScope::Character => source.character_id.as_deref(),
-        _ => source.mount_point_id.as_deref(),
-    };
-    let dest_id = match destination.scope {
-        DestinationScope::Character => destination.character_id.as_deref(),
-        _ => destination.mount_point_id.as_deref(),
-    };
-    if location_key(source.scope.as_str(), source_id)
-        == location_key(destination.scope.as_str(), dest_id)
-    {
+    // 3. Reject source == destination (`scope:mountPointId`).
+    if source.location.key() == destination.key() {
         return Err(TransferError::BadRequest(
             "Source and destination are the same".to_string(),
         ));
     }
 
-    let destination_character_id = match destination.scope {
-        DestinationScope::Character => destination.character_id.clone(),
-        _ => None,
-    };
+    let destination_character_id = destination.character_id.clone();
 
     // 4. The components travelling along: the transitive closure of the
-    //    outfit's components that live in the same source container.
+    //    outfit's components that live in the same source folder.
     //    All-or-nothing (v4 `f6a10055`).
-    let travelling: Vec<Value> = if req.components == ComponentMode::None {
+    let travelling: Vec<WardrobeItem> = if req.components == ComponentMode::None {
         Vec::new()
     } else {
         collect_container_components(&source.item, &source.container_items)
@@ -843,16 +553,17 @@ pub fn transfer_wardrobe_item(
     // set. Moves keep ids; copies mint fresh ones — and every
     // `componentItemIds` reference to a travelling component is rewritten to
     // that component's destination id, so the outfit still points at the very
-    // pieces that made the journey with it.
+    // pieces that made the journey with it. Every planned item keeps its
+    // folder path (`4a38222e6`): a hand-made folder the rules cannot normalise
+    // lands at the ROOT rather than failing the transfer.
     let mut id_map: HashMap<String, String> = HashMap::new();
     for component in &travelling {
-        let cid = item_id_of(component).unwrap_or_default().to_string();
         let mapped = if req.components == ComponentMode::Copy {
             uuid::Uuid::new_v4().to_string()
         } else {
-            cid.clone()
+            component.id.clone()
         };
-        id_map.insert(cid, mapped);
+        id_map.insert(component.id.clone(), mapped);
     }
     let remap = |ids: &[String]| -> Vec<String> {
         ids.iter()
@@ -863,13 +574,14 @@ pub fn transfer_wardrobe_item(
     let mut planned_components: Vec<WardrobeItem> = travelling
         .iter()
         .map(|component| {
-            let mut planned = WardrobeItem::from_read_value(component);
+            let mut planned = component.clone();
             planned.id = id_map
-                .get(&planned.id)
+                .get(&component.id)
                 .cloned()
-                .unwrap_or_else(|| planned.id.clone());
+                .unwrap_or_else(|| component.id.clone());
             planned.character_id = Some(destination_character_id.clone());
-            planned.component_item_ids = remap(&planned.component_item_ids);
+            planned.component_item_ids = remap(&component.component_item_ids);
+            planned.folder = normalize_wardrobe_folder_path_or_root(Some(&component.folder));
             if req.components == ComponentMode::Copy {
                 planned.created_at = now.to_string();
                 planned.updated_at = now.to_string();
@@ -879,24 +591,23 @@ pub fn transfer_wardrobe_item(
         .collect();
 
     // 5. Prepare the moved/copied outfit itself.
-    let mut next_item = WardrobeItem::from_read_value(&source.item);
+    let mut next_item = source.item.clone();
     if req.action == TransferAction::Copy {
         next_item.id = uuid::Uuid::new_v4().to_string();
         next_item.created_at = now.to_string();
         next_item.updated_at = now.to_string();
     }
     next_item.character_id = Some(destination_character_id.clone());
-    next_item.component_item_ids = remap(&next_item.component_item_ids);
+    next_item.component_item_ids = remap(&source.item.component_item_ids);
+    next_item.folder = normalize_wardrobe_folder_path_or_root(Some(&source.item.folder));
 
     // 6. Refuse the whole transfer before writing anything if any planned id
     //    is already taken at the destination — all-or-nothing means no
     //    half-landed outfits. (v4 renders the planned item's TITLE inside
     //    "the ID of" — the quirk is wire payload, keep it.)
-    let destination_items = read_destination_items(main, mount, &destination)?;
-    let destination_ids: std::collections::HashSet<&str> = destination_items
-        .iter()
-        .filter_map(|it| item_id_of(it))
-        .collect();
+    let destination_items = destination.read_items(mount, true)?;
+    let destination_ids: std::collections::HashSet<&str> =
+        destination_items.iter().map(|it| it.id.as_str()).collect();
     for planned in std::iter::once(&next_item).chain(planned_components.iter()) {
         if destination_ids.contains(planned.id.as_str()) {
             return Err(TransferError::BadRequest(format!(
@@ -911,12 +622,7 @@ pub fn transfer_wardrobe_item(
     //     an archived source character refuses here (the tombstone), not
     //     half-way through.
     if req.action == TransferAction::Move || req.components == ComponentMode::Move {
-        resolve_container_mount_point_id(
-            main,
-            source.scope.container_scope(),
-            source.character_id.as_deref(),
-            source.mount_point_id.as_deref(),
-        )?;
+        source.location.writable_mount_point_id(main)?;
     }
 
     // 6c. Pictures are linked at the destination before the items land, so a
@@ -924,12 +630,7 @@ pub fn transfer_wardrobe_item(
     //     rewritten to its own copied file; a move's rows are re-pointed only
     //     after the source item is gone (`commit_moved_images`), so a failure
     //     before then leaves the source whole.
-    let destination_mount_point_id = resolve_container_mount_point_id(
-        main,
-        destination.scope.container_scope(),
-        destination.character_id.as_deref(),
-        destination.mount_point_id.as_deref(),
-    )?;
+    let destination_mount_point_id = destination.writable_mount_point_id(main)?;
     let component_mode = if req.components == ComponentMode::Copy {
         CarryMode::Copy
     } else {
@@ -939,14 +640,13 @@ pub fn transfer_wardrobe_item(
         TransferAction::Copy => CarryMode::Copy,
         TransferAction::Move => CarryMode::Move,
     };
-    let source_item_id = item_id_of(&source.item).unwrap_or_default().to_string();
     let mut travellers: Vec<(String, &mut WardrobeItem, CarryMode)> = travelling
         .iter()
-        .map(|c| item_id_of(c).unwrap_or_default().to_string())
+        .map(|c| c.id.clone())
         .zip(planned_components.iter_mut())
         .map(|(original_id, planned)| (original_id, planned, component_mode))
         .collect();
-    travellers.push((source_item_id, &mut next_item, item_mode));
+    travellers.push((source.item.id.clone(), &mut next_item, item_mode));
     let mut pending_image_moves: Vec<(String, PendingImageMove)> = Vec::new();
     let mut mint_file_id = || uuid::Uuid::new_v4().to_string();
     for (original_id, planned, mode) in travellers {
@@ -991,16 +691,14 @@ pub fn transfer_wardrobe_item(
     if req.action == TransferAction::Move {
         if req.components == ComponentMode::Move {
             for component in &travelling {
-                let cid = item_id_of(component).unwrap_or_default();
-                if !delete_from_source(main, mount, &source, cid)? {
+                if !source.location.delete(main, mount, &component.id)? {
                     return Err(TransferError::Server(
                         "Failed to remove a component from source after move".to_string(),
                     ));
                 }
             }
         }
-        let iid = item_id_of(&source.item).unwrap_or_default();
-        if !delete_from_source(main, mount, &source, iid)? {
+        if !source.location.delete(main, mount, &source.item.id)? {
             return Err(TransferError::Server(
                 "Failed to remove item from source after move".to_string(),
             ));
@@ -1018,41 +716,78 @@ pub fn transfer_wardrobe_item(
     //    title slugs, so a subtle resolution bug shows up here, not in the
     //    pre-projection value `create_at_destination` returned. Anything
     //    planned-but-absent from the read-back list is reported.
-    let after_items = read_destination_items(main, mount, &destination)?;
-    let after_outfit = after_items
-        .iter()
-        .find(|it| item_id_of(it) == Some(stored.id.as_str()));
-    let read_back_ids: std::collections::HashSet<String> = after_outfit
-        .map(component_ids_of)
-        .unwrap_or_default()
-        .into_iter()
-        .collect();
+    let after_items = destination.read_items(mount, true)?;
+    let after_outfit = after_items.iter().find(|it| it.id == stored.id);
+    let read_back: Vec<String> = after_outfit
+        .map(|o| o.component_item_ids.clone())
+        .unwrap_or_default();
+    let read_back_ids: std::collections::HashSet<&str> =
+        read_back.iter().map(String::as_str).collect();
     let unresolved_component_ids: Vec<String> = next_item
         .component_item_ids
         .iter()
-        .filter(|id| !read_back_ids.contains(*id))
+        .filter(|id| !read_back_ids.contains(id.as_str()))
         .cloned()
         .collect();
-    if after_outfit.is_none() || !unresolved_component_ids.is_empty() {
-        tracing::error!(
-            user_id,
-            outfit_id = %stored.id,
-            outfit_found_at_destination = after_outfit.is_some(),
-            planned_component_ids = ?next_item.component_item_ids,
-            read_back_component_ids = ?after_outfit.map(component_ids_of).unwrap_or_default(),
-            unresolved_component_ids = ?unresolved_component_ids,
-            destination_scope = destination.scope.as_str(),
-            destination_mount_point_id = ?destination.mount_point_id,
-            "[WardrobeTransfers v1] Transferred outfit did not read back with its planned component references"
-        );
-    }
+    let read_back_failure =
+        (after_outfit.is_none() || !unresolved_component_ids.is_empty()).then(|| ReadBackFailure {
+            outfit_id: stored.id.clone(),
+            outfit_found_at_destination: after_outfit.is_some(),
+            planned_component_ids: next_item.component_item_ids.clone(),
+            read_back_component_ids: read_back.clone(),
+            destination_scope: destination.scope.as_str(),
+            destination_mount_point_id: destination.mount_point_id.clone(),
+        });
 
     Ok(TransferOutcome {
-        wardrobe_item: serde_json::to_value(&stored).unwrap_or(Value::Null),
+        wardrobe_item: crate::api::wardrobe_route_factory::item_create_value(&stored),
         action: req.action,
         components_transferred: planned_components.len(),
         unresolved_component_ids,
+        read_back_failure,
+        transferred: TransferredLine {
+            component_mode: req.components.as_str(),
+            item_id: source.item.id.clone(),
+            result_item_id: stored.id.clone(),
+            folder: stored.folder.clone(),
+            source_scope: source.location.scope.as_str(),
+            destination_scope: destination.scope.as_str(),
+            source_character_id: source.location.character_id.clone(),
+            destination_character_id: destination.character_id.clone(),
+            source_mount_point_id: source.location.mount_point_id.clone(),
+            destination_mount_point_id: destination.mount_point_id.clone(),
+        },
     })
+}
+
+/// The post-write read-back's ERROR payload (v4 `[WardrobeTransfers v1]
+/// Transferred outfit did not read back with its planned component
+/// references`), logged by the route on the CALLING thread.
+#[derive(Debug, Clone)]
+pub struct ReadBackFailure {
+    pub outfit_id: String,
+    pub outfit_found_at_destination: bool,
+    pub planned_component_ids: Vec<String>,
+    pub read_back_component_ids: Vec<String>,
+    pub destination_scope: &'static str,
+    pub destination_mount_point_id: String,
+}
+
+/// The success INFO's payload (v4 `[WardrobeTransfers v1] Wardrobe item
+/// transferred`), logged by the route on the CALLING thread.
+#[derive(Debug, Clone)]
+pub struct TransferredLine {
+    pub component_mode: &'static str,
+    pub item_id: String,
+    pub result_item_id: String,
+    /// `stored.folder ?? ''` (`4a38222e6`).
+    pub folder: String,
+    pub source_scope: &'static str,
+    pub destination_scope: &'static str,
+    pub source_character_id: Option<String>,
+    pub destination_character_id: Option<String>,
+    pub source_mount_point_id: String,
+    pub destination_mount_point_id: String,
 }
 
 /// The string form of the outcome action (for a response/log).
@@ -1065,19 +800,21 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// `9ecebf986`: the same-location test keys on `scope:mountPointId`
+    /// (`db::wardrobe_location::location_key`) — the OLD `general` /
+    /// `scope:characterId|mountPointId` keying and its two pins are retired.
     #[test]
-    fn location_key_general_is_singleton() {
-        // General ignores the id (there is one General store).
-        assert_eq!(location_key("general", None), "general");
-        assert_eq!(location_key("general", Some("anything")), "general");
-    }
-
-    #[test]
-    fn location_key_scopes_by_id() {
-        assert_eq!(location_key("character", Some("c1")), "character:c1");
-        assert_eq!(location_key("project", Some("p1")), "project:p1");
-        // A null id degrades to the empty suffix (v4 `id ?? ''`).
-        assert_eq!(location_key("project", None), "project:");
+    fn the_same_location_key_is_the_locations() {
+        use crate::db::wardrobe_location::location_key;
+        assert_eq!(location_key(WardrobeScope::General, "g-mp"), "general:g-mp");
+        assert_eq!(
+            location_key(WardrobeScope::Character, "v-mp"),
+            "character:v-mp"
+        );
+        assert_ne!(
+            location_key(WardrobeScope::Project, "mp"),
+            location_key(WardrobeScope::Group, "mp")
+        );
     }
 
     #[test]
