@@ -2,38 +2,48 @@
 //! `executeWardrobeCreateTool` + `formatWardrobeCreateResults`).
 //!
 //! Creates a leaf or composite wardrobe item and optionally equips it. Supports
-//! gifting to another chat participant (`recipient`). Composite `types` are the
-//! union of the components' slots widened by any supplied `types`. Cycles are
-//! rejected by the public create path. v4's `equip_now` branch awaits
-//! `triggerAvatarGenerationIfEnabled` for the RECIPIENT (`callerContext:
-//! 'wardrobe-create-handler'`); this sync handler cannot enqueue (the trigger is
-//! async and cannot run inside the writer closure), so it surfaces the recipient
-//! id in [`WardrobeCreateToolOutput::target_character_id`] and the executor's
-//! `run_wardrobe_create` fires the trigger after the write commits (P4.123).
+//! gifting to another chat participant (`recipient`). Since v4 `9ecebf986` the
+//! components resolve against the TARGET's one wearable pool (their vault,
+//! their groups, the project behind the roster, Quilltap General — archived
+//! parts included by id), the item is written through the keystone's
+//! `create_item` at the target's own location (`resolve_wardrobe_location`,
+//! keyed on the CALLING user — `userId` is load-bearing: a character the user
+//! does not own, or one with no vault, has no wardrobe to hang this in), and a
+//! composite's `types` are `build_composite_types` (widen, never narrow). Blank
+//! prose stores `null`; `replace` is stored for a leaf too. Cycles are the
+//! writer's to refuse.
+//!
+//! `equip_now` wears the new item at once (`wear_ops::wear_item` over the pool
+//! plus the item it predates) and — bug 193 — fires BOTH outfit-change effects
+//! for the target (v4 `notifyWardrobeChanged`: the avatar refresh AND the turn's
+//! announcement set; the avatar had fired alone). This sync handler cannot run
+//! the async effects inside the writer closure, so it surfaces the target in
+//! [`WardrobeCreateToolOutput::target_character_id`] and the executor fires
+//! them once the write commits.
 
 use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::clock;
-use crate::db::archetype_wardrobe::find_archetypes;
+use crate::db::archetype_wardrobe::with_origin;
 use crate::db::characters_read;
 use crate::db::chats_read;
-use crate::db::doc_mount_documents::DocMountDocumentsRepository;
-use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
-use crate::db::vault_wardrobe_public::create_vault_wardrobe_item;
-use crate::db::wardrobe_read::find_by_character_id;
+use crate::db::vault_wardrobe_public::WardrobeScope;
+use crate::db::wardrobe_location::{resolve_wardrobe_location, ResolveWardrobeLocationOptions};
 use crate::db::wardrobe_wear_stats::EquipSource;
-use crate::vault_overlay::WardrobeItem;
-use crate::wardrobe::{
-    describe_wardrobe_effect, union_types, Slots, WardrobeEffect, WARDROBE_SLOT_TYPES,
+use crate::services::wardrobe_item_mutations::{
+    create_item, CreateItemOptions, WardrobeCreateBody,
 };
+use crate::wardrobe::{
+    describe_wardrobe_effect, is_composite, Slots, WardrobeEffect, WARDROBE_SLOT_TYPES,
+};
+use crate::wear_ops::{wear_item, PutOnMode, WearEffect};
+use crate::wearable_pool::{build_wearable_pool, WearablePool};
 
-use super::wardrobe_shared::public_error_message;
+use super::wardrobe_tool_table::load_tool_pool;
 use crate::services::tool_image_generation::{
     format_wardrobe_tool_image_line, WardrobeToolImageResult,
 };
-use crate::wardrobe_tiers::{resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTiers};
 
 /// v4 `WardrobeCreateToolOutput` (fields conditionally present per v4's object
 /// spread; `error` only on failure).
@@ -66,8 +76,9 @@ pub struct WardrobeCreateToolOutput {
     pub error: Option<String>,
     /// The character the item was equipped on (the RECIPIENT of a gift, else
     /// the caller) — set ONLY on the equipped branch. Never serialized: it
-    /// carries v4's `targetCharacterId` to the executor's avatar-trigger site
-    /// (P4.123) without touching the tool's JSON result.
+    /// carries v4's `targetCharacterId` to the executor's outfit-change
+    /// effects (v4 `notifyWardrobeChanged` — bug 193: the avatar refresh AND
+    /// the turn's announcement set) without touching the tool's JSON result.
     #[serde(skip)]
     pub target_character_id: Option<String>,
     /// The character whose wardrobe received the item (the RECIPIENT of a
@@ -102,6 +113,9 @@ fn failure(error: impl Into<String>) -> WardrobeCreateToolOutput {
         generate_image: None,
     }
 }
+
+/// v4's `context` on every line the handler logs.
+const LOG_CONTEXT: &str = "wardrobe-create-handler";
 
 const VALIDATION_ERROR: &str = "Invalid input: title (string) is required. Either supply types (non-empty array of valid slot types) for a leaf item, or component_item_ids / component_titles for a composite item.";
 
@@ -243,39 +257,75 @@ pub fn execute(
     character_id: &str,
     args: &Value,
 ) -> WardrobeCreateToolOutput {
-    let _ = user_id;
     let Some(input) = validate(args) else {
+        tracing::warn!(
+            target: "quilltap::tools",
+            context = LOG_CONTEXT,
+            userId = user_id,
+            chatId = chat_id,
+            characterId = character_id,
+            inputJson = %args,
+            "Wardrobe create tool validation failed",
+        );
         return failure(VALIDATION_ERROR);
     };
-    match run(main, mount, chat_id, character_id, &input) {
+    match run(main, mount, user_id, chat_id, character_id, &input) {
         Ok(out) => out,
-        Err(CreateError::Message(m)) => failure(m),
-        Err(CreateError::Db(e)) => failure(e.to_string()),
+        // v4's `WardrobeCreateError` arm: a WARN with its code, the message
+        // to the model.
+        Err(CreateError::Coded { code, message }) => {
+            tracing::warn!(
+                target: "quilltap::tools",
+                context = LOG_CONTEXT,
+                userId = user_id,
+                chatId = chat_id,
+                characterId = character_id,
+                code = code,
+                // v4's `message` key: a tracing field named `message` would
+                // replace the file record's envelope text — renamed (recorded).
+                errorMessage = %message,
+                "Wardrobe create error",
+            );
+            failure(message)
+        }
+        // v4's outer catch: a thrown writer error (a composite cycle, an
+        // archived owner) or a failed read.
+        Err(CreateError::Thrown(message)) => {
+            tracing::error!(
+                target: "quilltap::tools",
+                context = LOG_CONTEXT,
+                userId = user_id,
+                chatId = chat_id,
+                characterId = character_id,
+                error = %message,
+                "Wardrobe create tool execution failed",
+            );
+            failure(message)
+        }
     }
 }
 
 enum CreateError {
-    /// A `WardrobeCreateError` / thrown-message failure (v4 → `error.message`).
-    Message(String),
-    Db(crate::db::DbError),
+    /// v4's `WardrobeCreateError(message, code)`.
+    Coded { code: &'static str, message: String },
+    /// Anything else thrown inside v4's `try` (its `error.message`).
+    Thrown(String),
 }
 
 impl From<crate::db::DbError> for CreateError {
     fn from(e: crate::db::DbError) -> Self {
-        CreateError::Db(e)
+        CreateError::Thrown(crate::db::fallback::error_text(&e))
     }
 }
 
 fn run(
     main: &Connection,
     mount: &Connection,
+    user_id: &str,
     chat_id: &str,
     character_id: &str,
     input: &CreateInput,
 ) -> Result<WardrobeCreateToolOutput, CreateError> {
-    let docs = DocMountDocumentsRepository::new(mount);
-    let links = DocMountFileLinksRepository::new(mount);
-
     // Resolve the target character (default the caller; else a chat participant).
     let mut target_character_id = character_id.to_string();
     let mut recipient_name: Option<String> = None;
@@ -286,6 +336,14 @@ fn run(
                 recipient_name = Some(name);
             }
             None => {
+                tracing::warn!(
+                    target: "quilltap::tools",
+                    context = LOG_CONTEXT,
+                    userId = user_id,
+                    chatId = chat_id,
+                    recipientName = %recipient,
+                    "Wardrobe create recipient not found in chat",
+                );
                 return Ok(failure(format!(
                     "Could not find a character named \"{recipient}\" in this chat"
                 )));
@@ -294,53 +352,13 @@ fn run(
     }
 
     // Keyed on the *target* character, not the caller: a gift is assembled from
-    // what the recipient can reach, and the group tier is per-character
-    // (`8600c83f` — one of the two real fixes riding that commit).
-    let tiers = resolve_shared_wardrobe_tiers_for_chat(
-        main,
-        mount,
-        chat_id,
-        // The gate keys on the TARGET (v4 `targetCharacterId`), a character tool
-        // call: the project roster applies (v4 `9753d0eb2`).
-        &target_character_id,
-        Default::default(),
-    );
-
-    // Resolve components against the target character's wardrobe + shared archetypes.
+    // what the recipient can reach, and the group tier is per-character.
+    let pool = load_tool_pool(main, mount, chat_id, &target_character_id);
     let components = resolve_component_items(
-        main,
-        &docs,
-        &target_character_id,
+        &pool,
         input.component_item_ids.as_deref(),
         input.component_titles.as_deref(),
-        &tiers,
     )?;
-
-    let is_composite = !components.is_empty();
-    let resolved_types: Vec<String> = if is_composite {
-        let comp_types: Vec<Vec<String>> = components.iter().map(types_of).collect();
-        let union = union_types(comp_types.iter().map(Vec::as_slice));
-        if union.is_empty() {
-            return Err(CreateError::Message(
-                "Composite components do not cover any slots — this should not happen".to_string(),
-            ));
-        }
-        // designated = union ∪ supplied types, then canonical slot order.
-        let mut designated: std::collections::HashSet<String> = union.into_iter().collect();
-        if let Some(t) = &input.types {
-            for s in t {
-                designated.insert(s.clone());
-            }
-        }
-        WARDROBE_SLOT_TYPES
-            .iter()
-            .filter(|s| designated.contains(**s))
-            .map(|s| s.to_string())
-            .collect()
-    } else {
-        input.types.clone().unwrap_or_default()
-    };
-
     let component_item_ids: Vec<String> = components
         .iter()
         .map(|c| {
@@ -351,89 +369,108 @@ fn run(
         })
         .collect();
 
-    // Mint + build the item (v4 `repos.wardrobe.create` materializes id/timestamps).
-    let now = clock::now_iso();
-    let new_item = WardrobeItem {
-        id: uuid::Uuid::new_v4().to_string(),
-        character_id: Some(Some(target_character_id.clone())),
-        title: input.title.clone(),
-        description: Some(input.description.clone().filter(|s| !s.is_empty())),
-        image_prompt: Some(input.image_prompt.clone().filter(|s| !s.is_empty())),
-        types: resolved_types.clone(),
-        component_item_ids: component_item_ids.clone(),
-        appropriateness: Some(input.appropriateness.clone().filter(|s| !s.is_empty())),
-        is_default: false,
-        replace: if is_composite {
-            input.replace.unwrap_or(false)
-        } else {
-            false
-        },
-        migrated_from_clothing_record_id: None,
-        image_file_id: None,
-        archived_at: None,
-        // P4.D279 (C1 §12, mechanical): `WardrobeItem.folder` arrived with v4
-        // `4a38222e6`; the owning lane replaces this with the body's / record's value.
-        folder: String::new(),
-        created_at: now.clone(),
-        updated_at: now,
+    // Reachable only past the schema's refine (`types: []` fails `.nonempty()`
+    // first) — ported for fidelity, unreachable from a model's input on BOTH
+    // sides. (v4 also DELETED the old `Composite components do not cover any
+    // slots — this should not happen` arm here, unreachable both sides.)
+    if component_item_ids.is_empty() && input.types.as_ref().is_none_or(|t| t.is_empty()) {
+        return Err(CreateError::Coded {
+            code: "VALIDATION_ERROR",
+            message: "A wardrobe item must cover at least one slot".to_string(),
+        });
+    }
+
+    let location = resolve_wardrobe_location(
+        main,
+        mount,
+        WardrobeScope::Character,
+        Some(&target_character_id),
+        user_id,
+        ResolveWardrobeLocationOptions::default(),
+    )?;
+    let Some(location) = location else {
+        return Err(CreateError::Coded {
+            code: "NOT_FOUND",
+            message: "That character has no wardrobe to hang this in".to_string(),
+        });
     };
 
-    let created = create_vault_wardrobe_item(main, &links, &docs, &new_item)
-        .map_err(|e| CreateError::Message(public_error_message(e, "create")))?;
+    let new_item = create_item(
+        main,
+        mount,
+        &location,
+        &WardrobeCreateBody {
+            title: input.title.clone(),
+            description: input.description.clone(),
+            image_prompt: input.image_prompt.clone(),
+            types: input.types.clone().unwrap_or_default(),
+            appropriateness: input.appropriateness.clone(),
+            is_default: Some(false),
+            component_item_ids: Some(component_item_ids.clone()),
+            replace: Some(input.replace.unwrap_or(false)),
+            folder: None,
+        },
+        CreateItemOptions {
+            lookup: Some(pool.by_id()),
+            preserve: None,
+        },
+    )
+    .map_err(|e| CreateError::Thrown(e.message()))?;
+    let composite = is_composite(&new_item.component_item_ids);
+    let resolved_types = new_item.types.clone();
 
     let mut equipped = false;
     let mut effect: Option<WardrobeEffect> = None;
     let mut current_state: Option<Value> = None;
 
     if input.equip_now {
-        // v4 `8600c83f` fix #2: the equip-now path passed NO tiers at all, so a
-        // new bundle's shared components did not resolve.
-        super::wardrobe_shared::equip_item(
+        // The pool predates the item; wear it against a lookup that knows it
+        // (v4 `withNew = { ...pool, byId: new Map([...pool.byId, [id, item]]) }`).
+        let new_value = with_origin(
+            vec![serde_json::to_value(&new_item).unwrap_or(Value::Null)],
+            &location.origin,
+        )
+        .remove(0);
+        let with_new = pool_with_item(&pool, new_value.clone());
+        let outcome = wear_item(
             main,
-            &docs,
             chat_id,
-            &target_character_id,
-            &created.id,
-            &created.types,
-            &created.component_item_ids,
-            created.replace,
-            &tiers,
+            &with_new,
+            &new_value,
+            PutOnMode::Wear,
+            None,
             EquipSource::Tool,
         )?;
         equipped = true;
-        effect = Some(if created.replace {
-            WardrobeEffect::Replaced
-        } else {
-            WardrobeEffect::Layered
+        effect = Some(match outcome.effect {
+            WearEffect::Replaced => WardrobeEffect::Replaced,
+            WearEffect::Layered => WardrobeEffect::Layered,
         });
 
         // v4 `275cd7bc` (bug 78): read through the repository so the stored bag
         // is normalized to all five slots — a chat row written before a slot
-        // existed omits its key, and the `current_state` handed to the model
-        // was short one. (v5 already normalized this by hand; the read moved to
-        // the repository with v4's, so the coercion has ONE home.)
+        // existed omits its key.
         current_state = Some(
             crate::db::chats_outfits::ChatOutfitsRepository::new(main)
                 .get_equipped_outfit_for_character(chat_id, &target_character_id)
                 .unwrap_or_else(|| Slots::fresh().to_value()),
         );
-
-        // v4 awaits `triggerAvatarGenerationIfEnabled` for `targetCharacterId`
-        // here; the executor fires it after the write (see the module note).
+        // v4 fires `notifyWardrobeChanged` for `targetCharacterId` here; the
+        // executor fires it once the write commits (see the module note).
     }
 
     let effect_str = effect.map(|e| e.as_str().to_string());
     let effect_summary =
-        effect.map(|e| describe_wardrobe_effect(e, &resolved_types, Some(created.title.as_str())));
+        effect.map(|e| describe_wardrobe_effect(e, &resolved_types, Some(new_item.title.as_str())));
 
     Ok(WardrobeCreateToolOutput {
         success: true,
-        item_id: created.id.clone(),
-        title: created.title.clone(),
+        item_id: new_item.id.clone(),
+        title: new_item.title.clone(),
         equipped,
         effect: effect_str,
         effect_summary,
-        is_composite: Some(is_composite),
+        is_composite: Some(composite),
         resolved_types: Some(resolved_types),
         resolved_component_item_ids: if component_item_ids.is_empty() {
             None
@@ -454,15 +491,80 @@ fn run(
     })
 }
 
-fn types_of(item: &Value) -> Vec<String> {
-    item.get("types")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|e| e.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
+/// v4's `withNew` — the pool's `byId` (in its order) plus one more item, for
+/// the slot math of an item the pool predates. Built through
+/// [`build_wearable_pool`]: the pool's items as ONE layer (already shadowed,
+/// so their order and values stand) and the new item over them.
+fn pool_with_item(pool: &WearablePool, item: Value) -> WearablePool {
+    build_wearable_pool(
+        &pool.character_id,
+        pool.tiers.clone(),
+        vec![item],
+        Vec::new(),
+        Vec::new(),
+        pool.by_id_ordered().cloned().collect(),
+    )
+}
+
+/// v4's INFO `Wardrobe create completed` — logged once the picture has been
+/// decided (it carries the outcome's `status`), so the executor (and the
+/// differential, composing as the executor does) call it after
+/// `maybe_queue_wardrobe_tool_image`. Only a successful create logs it.
+pub fn log_create_completed(
+    user_id: &str,
+    chat_id: &str,
+    character_id: &str,
+    out: &WardrobeCreateToolOutput,
+) {
+    if !out.success {
+        return;
+    }
+    let target = out.picture_character_id.as_deref().unwrap_or(character_id);
+    let component_count = out.resolved_component_item_ids.as_ref().map_or(0, Vec::len);
+    let composite = out.is_composite == Some(true);
+    // v4 omits an `undefined` field (`recipientName`, `effect`,
+    // `imageGeneration`), so each combination is its own callsite.
+    let image = out.image_generation.as_ref().map(|i| i.status.as_str());
+    macro_rules! completed {
+        ($($extra:tt)*) => {
+            tracing::info!(
+                target: "quilltap::tools",
+                context = LOG_CONTEXT,
+                userId = user_id,
+                chatId = chat_id,
+                characterId = character_id,
+                targetCharacterId = target,
+                $($extra)*
+                "Wardrobe create completed",
+            )
+        };
+    }
+    match (&out.recipient_name, &out.effect, image) {
+        (None, None, None) => {
+            completed!(itemId = %out.item_id, title = %out.title, isComposite = composite, componentCount = component_count, equipped = out.equipped,)
+        }
+        (None, None, Some(i)) => {
+            completed!(itemId = %out.item_id, title = %out.title, isComposite = composite, componentCount = component_count, equipped = out.equipped, imageGeneration = i,)
+        }
+        (None, Some(e), None) => {
+            completed!(itemId = %out.item_id, title = %out.title, isComposite = composite, componentCount = component_count, equipped = out.equipped, effect = %e,)
+        }
+        (None, Some(e), Some(i)) => {
+            completed!(itemId = %out.item_id, title = %out.title, isComposite = composite, componentCount = component_count, equipped = out.equipped, effect = %e, imageGeneration = i,)
+        }
+        (Some(r), None, None) => {
+            completed!(recipientName = %r, itemId = %out.item_id, title = %out.title, isComposite = composite, componentCount = component_count, equipped = out.equipped,)
+        }
+        (Some(r), None, Some(i)) => {
+            completed!(recipientName = %r, itemId = %out.item_id, title = %out.title, isComposite = composite, componentCount = component_count, equipped = out.equipped, imageGeneration = i,)
+        }
+        (Some(r), Some(e), None) => {
+            completed!(recipientName = %r, itemId = %out.item_id, title = %out.title, isComposite = composite, componentCount = component_count, equipped = out.equipped, effect = %e,)
+        }
+        (Some(r), Some(e), Some(i)) => {
+            completed!(recipientName = %r, itemId = %out.item_id, title = %out.title, isComposite = composite, componentCount = component_count, equipped = out.equipped, effect = %e, imageGeneration = i,)
+        }
+    }
 }
 
 /// v4 `resolveRecipientFromChat` — find a chat participant character by name
@@ -502,67 +604,46 @@ fn resolve_recipient_from_chat(
     Ok(None)
 }
 
-/// v4 `resolveComponentItems` — resolve component refs (ids preferred, then
-/// titles) across the character's own wardrobe + shared archetypes (own wins on
-/// collision), deduped in resolution order. Unknown refs are a NOT_FOUND failure.
-fn resolve_component_items(
-    main: &Connection,
-    docs: &DocMountDocumentsRepository,
-    character_id: &str,
+/// v4 `resolveComponentItems(pool, componentIds, componentTitles)` — resolve
+/// component references against the target's pool into a deduplicated,
+/// ordered list: ids first (`pool.get` — the shadowed `byId`, ARCHIVED parts
+/// included), then titles (`pool.findByTitle` — the character's own items win
+/// a title collision). An unknown reference is v4's `NOT_FOUND`.
+fn resolve_component_items<'p>(
+    pool: &'p WearablePool,
     component_ids: Option<&[String]>,
     component_titles: Option<&[String]>,
-    tiers: &SharedWardrobeTiers,
-) -> Result<Vec<Value>, CreateError> {
-    let ids = component_ids.unwrap_or(&[]);
-    let titles = component_titles.unwrap_or(&[]);
-    if ids.is_empty() && titles.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let own_items = find_by_character_id(main, docs, character_id, true)?;
-    let archetypes = find_archetypes(main, docs, false, tiers)?;
-
-    // Own items win: insert archetypes first, then own (overrides).
-    let mut items_by_id: std::collections::HashMap<String, Value> =
-        std::collections::HashMap::new();
-    let mut items_by_title: std::collections::HashMap<String, Value> =
-        std::collections::HashMap::new();
-    for i in archetypes.iter().chain(own_items.iter()) {
-        if let Some(id) = i.get("id").and_then(Value::as_str) {
-            items_by_id.insert(id.to_string(), i.clone());
+) -> Result<Vec<&'p Value>, CreateError> {
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut resolved: Vec<&'p Value> = Vec::new();
+    let mut add = |item: &'p Value| {
+        let id = item.get("id").and_then(Value::as_str).unwrap_or_default();
+        if seen.insert(id) {
+            resolved.push(item);
         }
-        if let Some(title) = i.get("title").and_then(Value::as_str) {
-            items_by_title.insert(title.trim().to_lowercase(), i.clone());
-        }
-    }
-
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut resolved: Vec<Value> = Vec::new();
-
-    for id in ids {
-        let Some(item) = items_by_id.get(id) else {
-            return Err(CreateError::Message(format!(
-                "Component item with ID \"{id}\" was not found in this character's wardrobe, the project, or Quilltap General"
-            )));
+    };
+    for id in component_ids.unwrap_or(&[]) {
+        let Some(item) = pool.get(id) else {
+            return Err(CreateError::Coded {
+                code: "NOT_FOUND",
+                message: format!(
+                    "Component item with ID \"{id}\" was not found in this character's wardrobe, their groups, the project, or Quilltap General"
+                ),
+            });
         };
-        let item_id = item.get("id").and_then(Value::as_str).unwrap_or_default();
-        if seen.insert(item_id.to_string()) {
-            resolved.push(item.clone());
-        }
+        add(item);
     }
-    for title in titles {
-        let key = title.trim().to_lowercase();
-        let Some(item) = items_by_title.get(&key) else {
-            return Err(CreateError::Message(format!(
-                "Component item titled \"{title}\" was not found in this character's wardrobe, the project, or Quilltap General"
-            )));
+    for title in component_titles.unwrap_or(&[]) {
+        let Some(item) = pool.find_by_title(title) else {
+            return Err(CreateError::Coded {
+                code: "NOT_FOUND",
+                message: format!(
+                    "Component item titled \"{title}\" was not found in this character's wardrobe, their groups, the project, or Quilltap General"
+                ),
+            });
         };
-        let item_id = item.get("id").and_then(Value::as_str).unwrap_or_default();
-        if seen.insert(item_id.to_string()) {
-            resolved.push(item.clone());
-        }
+        add(item);
     }
-
     Ok(resolved)
 }
 

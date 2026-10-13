@@ -26,6 +26,17 @@
  * switch ON (v4's REAL `chatSettings.updateForUser`), a usable default image
  * profile and the `background_jobs` table, reading the queued jobs back.
  *
+ * P4.D280 (v4 `4a38222e6`): the turn's ONE announcement Set now reaches ALL
+ * seven handlers, as v4's executor hands it (`WARDROBE_TOOL_TABLE` + one
+ * `WardrobeToolContext`) — so `wardrobe_create` + `equip_now` joins the Set
+ * (bug 193) instead of enqueueing an announcement at once. The fixture is
+ * built with `QT_WT_TOOLS_CORPUS=1` (the filed item, the archived General
+ * item, the vault-less participant). Every op also carries the v4 log lines
+ * it emitted (`logs`: level, message, the context fields minus `service` /
+ * `environment`, `error` folded in) — the logger's shared transports are
+ * spliced, so nothing reaches stdout; the harness compares the seven
+ * handlers' own lines whole and the keystone's tagged lines by tag (R-H).
+ *
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -87,7 +98,9 @@ async function main(): Promise<void> {
   process.env.SQLITE_MOUNT_INDEX_PATH = workMount;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  // DEBUG so every handler line reaches the capture below; the transports are
+  // spliced, so nothing reaches stdout.
+  process.env.LOG_LEVEL = 'debug';
 
   // [P4.D262] No job runner in this process: v4's `enqueueJob` lazily spawns the
   // job host, which would CLAIM the queued pictures (PENDING → PROCESSING) and
@@ -103,6 +116,24 @@ async function main(): Promise<void> {
     signalHandlersInstalled: false,
     invalidationListeners: new Set(),
   };
+
+  // [P4.D280] Capture every v4 line (child loggers share these transports).
+  const { logger } = await import('@/lib/logger');
+  const captured: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as {
+        level: string;
+        message: string;
+        context?: Record<string, unknown>;
+        error?: { message: string };
+      };
+      const { service: _s, environment: _e, ...fields } = data.context ?? {};
+      if (data.error) fields.error = data.error.message;
+      captured.push({ level: data.level, message: data.message, fields });
+    },
+  });
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
@@ -144,10 +175,14 @@ async function main(): Promise<void> {
   // absorbs the archive/wear/take_off announcements so nothing is enqueued.
   const pendingWardrobeAnnouncements = new Set<string>();
 
-  const runOp = async (op: Op): Promise<{ name: string; tool: string; output: unknown; formatted: string }> => {
+  const runOp = async (
+    op: Op,
+  ): Promise<{ name: string; tool: string; output: unknown; formatted: string; logs: unknown[] }> => {
     const characterId =
       op.characterId === 'recipient' ? spec.recipientCharacterId : spec.callerCharacterId;
-    const base = { userId: spec.userId, chatId: spec.chatId, characterId };
+    // [P4.D280] v4's executor hands EVERY wardrobe tool the turn's Set.
+    const base = { userId: spec.userId, chatId: spec.chatId, characterId, pendingWardrobeAnnouncements };
+    captured.length = 0;
     let output: unknown;
     let formatted: string;
     switch (op.tool) {
@@ -168,30 +203,21 @@ async function main(): Promise<void> {
         formatted = wu.formatWardrobeUpdateResults(output as never);
         break;
       case 'wardrobe_archive':
-        output = await wa.executeWardrobeArchiveTool(op.args, {
-          ...base,
-          pendingWardrobeAnnouncements,
-        });
+        output = await wa.executeWardrobeArchiveTool(op.args, base);
         formatted = wa.formatWardrobeArchiveResults(output as never);
         break;
       case 'wardrobe_wear':
-        output = await ww.executeWardrobeWearTool(op.args, {
-          ...base,
-          pendingWardrobeAnnouncements,
-        });
+        output = await ww.executeWardrobeWearTool(op.args, base);
         formatted = ww.formatWardrobeWearResults(output as never);
         break;
       case 'wardrobe_take_off':
-        output = await wt.executeWardrobeTakeOffTool(op.args, {
-          ...base,
-          pendingWardrobeAnnouncements,
-        });
+        output = await wt.executeWardrobeTakeOffTool(op.args, base);
         formatted = wt.formatWardrobeTakeOffResults(output as never);
         break;
       default:
         throw new Error(`unknown tool ${op.tool}`);
     }
-    return { name: op.name, tool: op.tool, output, formatted };
+    return { name: op.name, tool: op.tool, output, formatted, logs: captured.splice(0) };
   };
 
   const returns: unknown[] = [];

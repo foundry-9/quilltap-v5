@@ -48,22 +48,22 @@
 //!   calling participant; the annotation tools resolve the calling character's
 //!   name from the chat participants.
 
-use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use serde::Serialize;
 use serde_json::{json, Map, Value};
 
 use super::doc_edit::{
     execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext,
     PendingLibrarianAnnouncement,
 };
+use super::wardrobe_tool_table::{
+    finish_wardrobe_tool, run_wardrobe_tool_handler, WardrobeToolContext, WardrobeToolStage,
+    WARDROBE_TOOL_NAMES,
+};
 use super::{
     annotations, ask_carina, discard_mail, doc_edit, help, help_search, list_mail, photo,
     project_info, read_conversation, read_mail, request_full_context, rng, run_custom, run_sql,
-    search, self_inventory, send_mail, state, terminal, wardrobe_archive, wardrobe_create,
-    wardrobe_list, wardrobe_read, wardrobe_take_off, wardrobe_update, wardrobe_wear, web_search,
-    whisper,
+    search, self_inventory, send_mail, state, terminal, web_search, whisper,
 };
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
@@ -596,13 +596,8 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             "help_navigate" => self.run_help_navigate(tc, ctx).await,
             "submit_final_response" => self.run_submit_final_response(tc, ctx).await,
             "self_inventory" => self.run_self_inventory(tc, ctx).await,
-            "wardrobe_list" => self.run_wardrobe_list(tc, ctx).await,
-            "wardrobe_read" => self.run_wardrobe_read(tc, ctx).await,
-            "wardrobe_create" => self.run_wardrobe_create(tc, ctx).await,
-            "wardrobe_update" => self.run_wardrobe_update(tc, ctx).await,
-            "wardrobe_archive" => self.run_wardrobe_archive(tc, ctx).await,
-            "wardrobe_wear" => self.run_wardrobe_wear(tc, ctx).await,
-            "wardrobe_take_off" => self.run_wardrobe_take_off(tc, ctx).await,
+            // v4 `9ecebf986`: the seven wardrobe tools are ONE table entry.
+            name if WARDROBE_TOOL_NAMES.contains(&name) => self.run_wardrobe_tool(tc, ctx).await,
             // W4.1d4: search tools
             "search" => self.run_search(tc, ctx).await,
             "project_info" => self.run_project_info(tc, ctx),
@@ -1618,355 +1613,70 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         }
     }
 
-    // ── wardrobe tools (tool-executor.ts:667–826) ─────────────────────────
-    // Each dispatches inside a single `Db::write` closure so the sync handler
+    // ── wardrobe tools (tool-executor.ts:718-729, v4 `9ecebf986`) ─────────
+    // ONE arm for the seven tools (v4 `WARDROBE_TOOL_TABLE`), ONE context
+    // (`WardrobeToolContext`) carrying the turn's announcement set to every
+    // one of them. The handler runs inside a single `Db::write` closure that
     // holds BOTH the main + mount-index writer connections (the wardrobe reads
-    // span `characters`/`chats` + the vault store, and the mutations write both).
-    // The mutating handlers (create/wear/take_off/archive/update) run there too,
-    // serialized on the writer thread. `wardrobe_{archive,wear,take_off}` return a
-    // pending-announcement id list, folded into the per-turn set inside the closure
-    // (v4's `recordPendingWardrobeAnnouncement`).
+    // span `characters` / `chats` + the vault stores, and the mutations write
+    // both), serialized on the writer thread; the outfit-change effects (v4
+    // `notifyWardrobeChanged` — the avatar refresh, then the set) and the
+    // picture are async enqueues, fired once the write has committed
+    // (`finish_wardrobe_tool`).
 
-    async fn run_wardrobe_list(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+    async fn run_wardrobe_tool(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
         let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
-        self.wardrobe_write(db, move |main, mount| {
-            let out = wardrobe_list::execute(main, mount, &user_id, &chat_id, &character_id, &args);
-            let formatted = wardrobe_list::format(&out);
-            if out.success {
-                ok(
-                    "wardrobe_list",
-                    json!({
-                        "formattedText": formatted,
-                        "items": out.items,
-                        "total_count": out.total_count,
-                    }),
-                )
-            } else {
-                fail("wardrobe_list", out.error.clone().unwrap_or_default())
-            }
-        })
-        .await
-    }
-
-    async fn run_wardrobe_read(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
-        let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
-        self.wardrobe_write(db, move |main, mount| {
-            let out = wardrobe_read::execute(main, mount, &user_id, &chat_id, &character_id, &args);
-            let formatted = wardrobe_read::format(&out);
-            if out.success {
-                // v4: `{ formattedText, ...result }`.
-                ok("wardrobe_read", spread_output(&formatted, &out))
-            } else {
-                fail("wardrobe_read", out.error.clone().unwrap_or_default())
-            }
-        })
-        .await
-    }
-
-    async fn run_wardrobe_create(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
-        let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
-        // === P4.123 === v4 awaits the avatar trigger for the equip RECIPIENT
-        // inside the handler; v5 fires it here once the write has committed.
-        let trigger_ids: Arc<Mutex<Vec<String>>> = Arc::default();
-        let trigger_out = trigger_ids.clone();
-        let (trigger_db, trigger_user, trigger_chat) =
-            (db.clone(), user_id.clone(), chat_id.clone());
-        // === end P4.123 ===
-        // === P4.D262 === the handler's output rides out of the write so the
-        // picture (an async enqueue) can be queued once the garment has
-        // committed — v4 queues it inside the handler, after the avatar
-        // trigger — and the result is composed from the finished output.
-        let stash: Arc<Mutex<Option<wardrobe_create::WardrobeCreateToolOutput>>> = Arc::default();
+        let name = tc.name.clone();
+        let stash: Arc<Mutex<Option<WardrobeToolStage>>> = Arc::default();
         let stash_in = stash.clone();
-        // === end P4.D262 ===
-        let result = self
-            .wardrobe_write(db, move |main, mount| {
-                let out =
-                    wardrobe_create::execute(main, mount, &user_id, &chat_id, &character_id, &args);
-                // === P4.123 === gate: `success && equipped` (`equip_now` only).
-                if out.success {
-                    if let Some(target) = &out.target_character_id {
-                        if let Ok(mut g) = trigger_out.lock() {
-                            g.push(target.clone());
-                        }
-                    }
-                }
-                // === end P4.123 ===
-                if let Ok(mut g) = stash_in.lock() {
-                    *g = Some(out);
-                }
-                // Replaced below once the picture has been decided.
-                ok("wardrobe_create", Value::Null)
-            })
-            .await;
-        // === P4.123 ===
-        let ids = std::mem::take(&mut *trigger_ids.lock().unwrap_or_else(|e| e.into_inner()));
-        crate::services::avatar_generation::trigger_for_characters(
-            &trigger_db,
-            &trigger_user,
-            &trigger_chat,
-            &ids,
-            "wardrobe-create-handler",
-        )
-        .await;
-        // === end P4.123 ===
-        let Some(mut out) = stash.lock().unwrap_or_else(|e| e.into_inner()).take() else {
-            // The write itself failed (no mount-index, a writer error).
-            return result;
-        };
-        // === P4.D262 === v4 `b3f937076`: a new garment is drawn by default
-        // when the operator allows tool pictures — for the RECIPIENT of a gift,
-        // equipped or not.
-        if out.success {
-            if let Some(recipient) = out.picture_character_id.clone() {
-                out.image_generation =
-                    crate::services::tool_image_generation::maybe_queue_wardrobe_tool_image(
-                        &trigger_db,
-                        crate::services::tool_image_generation::QueueWardrobeToolImageArgs {
-                            user_id: trigger_user.clone(),
-                            chat_id: trigger_chat.clone(),
-                            character_id: recipient,
-                            item_id: out.item_id.clone(),
-                            requested: out.generate_image,
-                            default_when_enabled: true,
-                            caller_context: "wardrobe-create-handler",
-                        },
-                    )
-                    .await;
-            }
-        }
-        // === end P4.D262 ===
-        let formatted = wardrobe_create::format(&out);
-        if out.success {
-            // v4 selects a subset: formattedText, item_id, title, equipped,
-            // recipient_name?, current_state? (undefined ones omitted) — the
-            // picture rides the formatted text only.
-            let mut result = Map::new();
-            result.insert("formattedText".into(), json!(formatted));
-            result.insert("item_id".into(), json!(out.item_id));
-            result.insert("title".into(), json!(out.title));
-            result.insert("equipped".into(), json!(out.equipped));
-            if let Some(name) = &out.recipient_name {
-                result.insert("recipient_name".into(), json!(name));
-            }
-            if let Some(state) = &out.current_state {
-                result.insert("current_state".into(), state.clone());
-            }
-            ok("wardrobe_create", Value::Object(result))
-        } else {
-            fail("wardrobe_create", out.error.clone().unwrap_or_default())
-        }
-    }
-
-    async fn run_wardrobe_update(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
-        let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
-        // === P4.D262 === the echo + the picture claim ride out of the write;
-        // the picture is queued once the edit has committed (v4 `b3f937076`).
-        type Stashed = (
-            wardrobe_read::WardrobeReadToolOutput,
-            Option<wardrobe_update::UpdatePictureClaim>,
-        );
-        let stash: Arc<Mutex<Option<Stashed>>> = Arc::default();
-        let stash_in = stash.clone();
-        let (picture_db, picture_user, picture_chat, picture_character) = (
-            db.clone(),
+        let (handler_name, handler_user, handler_chat, handler_character) = (
+            name.clone(),
             user_id.clone(),
             chat_id.clone(),
             character_id.clone(),
         );
-        let result = self
-            .wardrobe_write(db, move |main, mount| {
-                let stashed = wardrobe_update::execute_with_picture_claim(
+        let written = self
+            .wardrobe_write(db.clone(), move |main, mount| {
+                let stage = run_wardrobe_tool_handler(
+                    &handler_name,
                     main,
                     mount,
-                    &user_id,
-                    &chat_id,
-                    &character_id,
+                    &handler_user,
+                    &handler_chat,
+                    &handler_character,
                     &args,
                 );
                 if let Ok(mut g) = stash_in.lock() {
-                    *g = Some(stashed);
+                    *g = stage;
                 }
-                ok("wardrobe_update", Value::Null)
+                // Replaced below once the effects and the picture have run.
+                ok(&handler_name, Value::Null)
             })
             .await;
-        let Some((mut out, claim)) = stash.lock().unwrap_or_else(|e| e.into_inner()).take() else {
-            return result;
+        let Some(stage) = stash.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+            // The write itself failed (no mount-index, a writer error).
+            return written;
         };
-        if let Some(claim) = claim {
-            out.image_generation =
-                crate::services::tool_image_generation::maybe_queue_wardrobe_tool_image(
-                    &picture_db,
-                    crate::services::tool_image_generation::QueueWardrobeToolImageArgs {
-                        user_id: picture_user,
-                        chat_id: picture_chat,
-                        character_id: picture_character,
-                        item_id: claim.item_id,
-                        requested: claim.requested,
-                        default_when_enabled: claim.changes_look,
-                        caller_context: "wardrobe-update-handler",
-                    },
-                )
-                .await;
+        let output = finish_wardrobe_tool(
+            &db,
+            &WardrobeToolContext {
+                user_id: &user_id,
+                chat_id: &chat_id,
+                character_id: &character_id,
+                pending_wardrobe_announcements: Some(&ctx.pending_wardrobe_announcements),
+            },
+            stage,
+        )
+        .await;
+        let run = output.run(output.format());
+        ToolResult {
+            tool_name: name,
+            success: run.success,
+            result: run.result,
+            error: run.error,
+            message: None,
+            metadata: None,
         }
-        // === end P4.D262 ===
-        let formatted = wardrobe_update::format(&out);
-        if out.success {
-            ok("wardrobe_update", spread_output(&formatted, &out))
-        } else {
-            fail("wardrobe_update", out.error.clone().unwrap_or_default())
-        }
-    }
-
-    async fn run_wardrobe_archive(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
-        let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
-        let announce = ctx.pending_wardrobe_announcements.clone();
-        // === P4.123 === the announce ids ARE v4's `notifyWardrobeChanged`
-        // trigger set; the trigger fires after the write commits.
-        let trigger_ids: Arc<Mutex<Vec<String>>> = Arc::default();
-        let trigger_out = trigger_ids.clone();
-        let (trigger_db, trigger_user, trigger_chat) =
-            (db.clone(), user_id.clone(), chat_id.clone());
-        // === end P4.123 ===
-        let result = self
-            .wardrobe_write(db, move |main, mount| {
-                let (out, ids) = wardrobe_archive::execute(
-                    main,
-                    mount,
-                    &user_id,
-                    &chat_id,
-                    &character_id,
-                    &args,
-                );
-                // === P4.123 ===
-                if let Ok(mut g) = trigger_out.lock() {
-                    g.extend(ids.iter().cloned());
-                }
-                // === end P4.123 ===
-                fold_announcements(&announce, ids);
-                let formatted = wardrobe_archive::format(&out);
-                if out.success {
-                    ok(
-                        "wardrobe_archive",
-                        json!({
-                            "formattedText": formatted,
-                            "item_id": out.item_id,
-                            "title": out.title,
-                            "action": out.action,
-                        }),
-                    )
-                } else {
-                    fail("wardrobe_archive", out.error.clone().unwrap_or_default())
-                }
-            })
-            .await;
-        // === P4.123 ===
-        let ids = std::mem::take(&mut *trigger_ids.lock().unwrap_or_else(|e| e.into_inner()));
-        crate::services::avatar_generation::trigger_for_characters(
-            &trigger_db,
-            &trigger_user,
-            &trigger_chat,
-            &ids,
-            "wardrobe-archive-handler",
-        )
-        .await;
-        // === end P4.123 ===
-        result
-    }
-
-    async fn run_wardrobe_wear(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
-        let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
-        let announce = ctx.pending_wardrobe_announcements.clone();
-        // === P4.123 === the announce ids ARE v4's `notifyWardrobeChanged`
-        // trigger set; the trigger fires after the write commits.
-        let trigger_ids: Arc<Mutex<Vec<String>>> = Arc::default();
-        let trigger_out = trigger_ids.clone();
-        let (trigger_db, trigger_user, trigger_chat) =
-            (db.clone(), user_id.clone(), chat_id.clone());
-        // === end P4.123 ===
-        let result = self
-            .wardrobe_write(db, move |main, mount| {
-                let (out, ids) =
-                    wardrobe_wear::execute(main, mount, &user_id, &chat_id, &character_id, &args);
-                // === P4.123 ===
-                if let Ok(mut g) = trigger_out.lock() {
-                    g.extend(ids.iter().cloned());
-                }
-                // === end P4.123 ===
-                fold_announcements(&announce, ids);
-                let formatted = wardrobe_wear::format(&out);
-                // v4 returns the result object even on failure; error set when !success.
-                let result = json!({
-                    "formattedText": formatted,
-                    "operations": out.operations,
-                    "current_state": out.current_state,
-                    "coverage_summary": out.coverage_summary,
-                });
-                wear_take_off_result("wardrobe_wear", out.success, result, out.error.clone())
-            })
-            .await;
-        // === P4.123 ===
-        let ids = std::mem::take(&mut *trigger_ids.lock().unwrap_or_else(|e| e.into_inner()));
-        crate::services::avatar_generation::trigger_for_characters(
-            &trigger_db,
-            &trigger_user,
-            &trigger_chat,
-            &ids,
-            "wardrobe-wear-handler",
-        )
-        .await;
-        // === end P4.123 ===
-        result
-    }
-
-    async fn run_wardrobe_take_off(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
-        let (db, args, user_id, chat_id, character_id) = self.wardrobe_snapshot(tc, ctx);
-        let announce = ctx.pending_wardrobe_announcements.clone();
-        // === P4.123 === the announce ids ARE v4's `notifyWardrobeChanged`
-        // trigger set; the trigger fires after the write commits.
-        let trigger_ids: Arc<Mutex<Vec<String>>> = Arc::default();
-        let trigger_out = trigger_ids.clone();
-        let (trigger_db, trigger_user, trigger_chat) =
-            (db.clone(), user_id.clone(), chat_id.clone());
-        // === end P4.123 ===
-        let result = self
-            .wardrobe_write(db, move |main, mount| {
-                let (out, ids) = wardrobe_take_off::execute(
-                    main,
-                    mount,
-                    &user_id,
-                    &chat_id,
-                    &character_id,
-                    &args,
-                );
-                // === P4.123 ===
-                if let Ok(mut g) = trigger_out.lock() {
-                    g.extend(ids.iter().cloned());
-                }
-                // === end P4.123 ===
-                fold_announcements(&announce, ids);
-                let formatted = wardrobe_take_off::format(&out);
-                let result = json!({
-                    "formattedText": formatted,
-                    "operations": out.operations,
-                    "current_state": out.current_state,
-                    "coverage_summary": out.coverage_summary,
-                });
-                wear_take_off_result("wardrobe_take_off", out.success, result, out.error.clone())
-            })
-            .await;
-        // === P4.123 ===
-        let ids = std::mem::take(&mut *trigger_ids.lock().unwrap_or_else(|e| e.into_inner()));
-        crate::services::avatar_generation::trigger_for_characters(
-            &trigger_db,
-            &trigger_user,
-            &trigger_chat,
-            &ids,
-            "wardrobe-take-off-handler",
-        )
-        .await;
-        // === end P4.123 ===
-        result
     }
 
     // ── generate_image (W4.9a; lib/chat/tool-executor.ts:368) ─────────────
@@ -2364,51 +2074,6 @@ fn photo_result_row(name: &str, out: photo::PhotoToolResult, pass_through: bool)
     ok(name, Value::Object(m))
 }
 
-/// v4's `{ formattedText, ...result }` — a `result` object with `formattedText`
-/// prepended, then every field of the serialized handler output (used by
-/// `wardrobe_read` / `wardrobe_update`).
-fn spread_output<T: Serialize>(formatted: &str, out: &T) -> Value {
-    let mut result = Map::new();
-    result.insert("formattedText".into(), json!(formatted));
-    if let Ok(Value::Object(obj)) = serde_json::to_value(out) {
-        for (k, v) in obj {
-            result.insert(k, v);
-        }
-    }
-    Value::Object(result)
-}
-
-/// Fold a handler's pending-announcement character ids into the per-turn set (v4
-/// `recordPendingWardrobeAnnouncement` — add to the context's Set). A poisoned lock
-/// is ignored (the set is advisory).
-fn fold_announcements(announce: &Arc<Mutex<HashSet<String>>>, ids: Vec<String>) {
-    if ids.is_empty() {
-        return;
-    }
-    if let Ok(mut set) = announce.lock() {
-        set.extend(ids);
-    }
-}
-
-/// The `wardrobe_wear` / `wardrobe_take_off` dispatch-row result: v4 returns the
-/// `result` object EVEN on failure (unlike the other wardrobe tools), with `error`
-/// set only when `!success`.
-fn wear_take_off_result(
-    name: &str,
-    success: bool,
-    result: Value,
-    error: Option<String>,
-) -> ToolResult {
-    ToolResult {
-        tool_name: name.to_string(),
-        success,
-        result,
-        error: if success { None } else { error },
-        message: None,
-        metadata: None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2515,18 +2180,6 @@ mod tests {
                 "ported tool `{name}` must be a v4 built-in"
             );
         }
-    }
-
-    #[test]
-    fn fold_announcements_dedupes_into_shared_set() {
-        let set = Arc::new(Mutex::new(HashSet::new()));
-        fold_announcements(&set, vec!["char-a".into()]);
-        fold_announcements(&set, vec![]); // empty is a no-op
-        fold_announcements(&set, vec!["char-a".into(), "char-b".into()]);
-        let guard = set.lock().unwrap();
-        assert_eq!(guard.len(), 2);
-        assert!(guard.contains("char-a"));
-        assert!(guard.contains("char-b"));
     }
 
     #[test]

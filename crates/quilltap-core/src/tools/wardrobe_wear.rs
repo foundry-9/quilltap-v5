@@ -2,11 +2,13 @@
 //! `executeWardrobeWearTool` + `formatWardrobeWearResults`).
 //!
 //! Applies an ordered array of put-on operations in sequence (each builds on the
-//! last). Per-op mode maps to the equip primitives; fails fast on the first bad
-//! op (item not found / archived / slot mismatch). Avatar generation + the pending
-//! wardrobe announcement fire ONCE after the loop when at least one op landed
-//! (the returned ids are both the announcement set the executor folds into the
-//! per-turn set AND the characters it triggers avatar generation for — P4.123).
+//! last), over the tool call's ONE wearable pool (v4 `9ecebf986`): each op
+//! resolves through `wear_ops::resolve_wearable` (not found / archived / the
+//! slot sentence) and lands through `wear_ops::wear_item` — one displacement,
+//! committed through the wear ledger's chokepoint. Fails fast on the first bad
+//! op. The outfit-change effects (v4 `notifyWardrobeChanged`) fire ONCE when at
+//! least one op landed: the returned ids are the characters whose outfit
+//! changed, fired by the executor once the write commits.
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -16,12 +18,14 @@ use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::wardrobe_wear_stats::EquipSource;
 use crate::db::DbError;
 use crate::wardrobe::{describe_wardrobe_effect, normalize_no_item_sentinel, WardrobeEffect};
+use crate::wear_ops::{
+    resolve_wearable, wear_item, PutOnMode, WearEffect, WearableRef, WearableResolution,
+};
 
 use super::wardrobe_shared::{
-    add_to_slot, build_wardrobe_coverage_summary_from_state, empty_equipped_state, equip_item,
-    load_current_wardrobe_state, replace_item, resolve_wardrobe_item_across_tiers,
+    build_wardrobe_coverage_summary_from_state, empty_equipped_state, load_current_wardrobe_state,
 };
-use crate::wardrobe_tiers::{resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTiers};
+use super::wardrobe_tool_table::load_tool_pool;
 
 /// The item acted on in an op result (`{ item_id, title } | null`).
 #[derive(Debug, Serialize)]
@@ -130,8 +134,11 @@ fn opt_enum_field(
     }
 }
 
+/// v4's `context` on every line the handler logs.
+const LOG_CONTEXT: &str = "wardrobe-wear-handler";
+
 /// Execute `wardrobe_wear` (v4 `executeWardrobeWearTool`). Returns the output plus
-/// the character ids to announce (non-empty when at least one op landed).
+/// the characters whose outfit changed (non-empty when at least one op landed).
 pub fn execute(
     main: &Connection,
     mount: &Connection,
@@ -140,63 +147,132 @@ pub fn execute(
     character_id: &str,
     args: &Value,
 ) -> (WardrobeWearToolOutput, Vec<String>) {
-    let _ = user_id;
     let Some(ops) = validate(args) else {
+        tracing::warn!(
+            target: "quilltap::tools",
+            context = LOG_CONTEXT,
+            userId = user_id,
+            chatId = chat_id,
+            characterId = character_id,
+            inputJson = %args,
+            "Wardrobe wear tool validation failed",
+        );
         return (failure(VALIDATION_ERROR), Vec::new());
     };
-    match run(main, mount, chat_id, character_id, &ops) {
+    // v4 has no outer catch here: the per-op catch takes every op failure, and
+    // only the closing state read can throw past it.
+    match run(main, mount, user_id, chat_id, character_id, &ops) {
         Ok(pair) => pair,
-        Err(e) => (failure(e.to_string()), Vec::new()),
+        Err(e) => (failure(crate::db::fallback::error_text(&e)), Vec::new()),
     }
 }
-
-/// A per-op error (v4's `WardrobeWearError` thrown inside the loop).
-struct WearError(String);
 
 fn run(
     main: &Connection,
     mount: &Connection,
+    user_id: &str,
     chat_id: &str,
     character_id: &str,
     ops: &[WearOp],
 ) -> Result<(WardrobeWearToolOutput, Vec<String>), DbError> {
-    let docs = DocMountDocumentsRepository::new(mount);
-    let tiers = resolve_shared_wardrobe_tiers_for_chat(
-        main,
-        mount,
-        chat_id,
-        character_id,
-        // A character tool call: the project roster applies (v4 `9753d0eb2`).
-        Default::default(),
-    );
+    let pool = load_tool_pool(main, mount, chat_id, character_id);
 
     let mut results: Vec<WardrobeWearOpResult> = Vec::new();
     let mut applied_count = 0usize;
     let mut failed_error: Option<String> = None;
 
     for op in ops {
-        let mode = op.mode.clone().unwrap_or_else(|| "wear".to_string());
+        let mode_str = op.mode.clone().unwrap_or_else(|| "wear".to_string());
+        // The validator admits only the three put-on modes.
+        let mode = PutOnMode::parse(&mode_str).unwrap_or(PutOnMode::Wear);
         let item_id = normalize_no_item_sentinel(op.item_id.as_deref());
         let item_title = normalize_no_item_sentinel(op.item_title.as_deref());
 
-        match apply_op(
-            main,
-            &docs,
-            chat_id,
-            character_id,
-            &mode,
-            op.slot.as_deref(),
-            item_id.as_deref(),
-            item_title.as_deref(),
-            &tiers,
-        )? {
+        // v4's per-op `try` — a refusal or a failed write is this op's error.
+        let attempt: Result<WardrobeWearOpResult, String> = (|| {
+            let item = match resolve_wearable(
+                &pool,
+                WearableRef {
+                    item_id: item_id.as_deref(),
+                    item_title: item_title.as_deref(),
+                },
+                mode,
+                op.slot.as_deref(),
+            ) {
+                WearableResolution::Ok(item) => item,
+                WearableResolution::Refused { message, .. } => return Err(message),
+            };
+            let outcome = wear_item(
+                main,
+                chat_id,
+                &pool,
+                item,
+                mode,
+                op.slot.as_deref(),
+                EquipSource::Tool,
+            )
+            .map_err(|e| crate::db::fallback::error_text(&e))?;
+            let effect = match outcome.effect {
+                WearEffect::Replaced => WardrobeEffect::Replaced,
+                WearEffect::Layered => WardrobeEffect::Layered,
+            };
+            let id = item
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let title = item
+                .get("title")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            tracing::info!(
+                target: "quilltap::tools",
+                context = LOG_CONTEXT,
+                userId = user_id,
+                chatId = chat_id,
+                characterId = character_id,
+                itemId = %id,
+                itemTitle = %title,
+                mode = %mode_str,
+                effect = effect.as_str(),
+                slotsAffectedJson = %serde_json::to_string(&outcome.slots_affected).unwrap_or_default(),
+                "Wardrobe item worn",
+            );
+            Ok(WardrobeWearOpResult {
+                mode: mode_str.clone(),
+                effect: effect.as_str().to_string(),
+                effect_summary: describe_wardrobe_effect(
+                    effect,
+                    &outcome.slots_affected,
+                    Some(title.as_str()),
+                ),
+                item: Some(OpItem { item_id: id, title }),
+                slots_affected: outcome.slots_affected,
+                error: None,
+            })
+        })();
+
+        match attempt {
             Ok(res) => {
                 results.push(res);
                 applied_count += 1;
             }
-            Err(WearError(message)) => {
+            Err(message) => {
+                tracing::warn!(
+                    target: "quilltap::tools",
+                    context = LOG_CONTEXT,
+                    userId = user_id,
+                    chatId = chat_id,
+                    characterId = character_id,
+                    mode = %mode_str,
+                    // v4's `message` key, renamed (a tracing `message` field
+                    // replaces the file record's envelope text — recorded).
+                    errorMessage = %message,
+                    "Wardrobe wear operation failed",
+                );
                 results.push(WardrobeWearOpResult {
-                    mode,
+                    mode: mode_str,
                     effect: "layered".to_string(),
                     effect_summary: String::new(),
                     item: None,
@@ -209,22 +285,24 @@ fn run(
         }
     }
 
-    // Side effects fire ONCE, only if at least one op landed.
-    let announce = if applied_count > 0 {
-        // v4's `notifyWardrobeChanged` awaits `triggerAvatarGenerationIfEnabled`
-        // for these ids; the executor's `run_wardrobe_wear` fires it after the write.
+    // v4 `finalizeWardrobeMutation`: the effects fire ONCE, only if at least
+    // one op landed (the executor fires them once the write commits).
+    let changed = if applied_count > 0 {
         vec![character_id.to_string()]
     } else {
         Vec::new()
     };
 
     let current_state = load_current_wardrobe_state(main, chat_id, character_id)?;
+    // v4 `buildWardrobeCoverageSummaryFromState(pool, slots)` — the equipped
+    // outfit resolved over the pool's tiers.
+    let docs = DocMountDocumentsRepository::new(mount);
     let coverage_summary = build_wardrobe_coverage_summary_from_state(
         main,
         &docs,
         character_id,
         &current_state,
-        &tiers,
+        &pool.tiers,
     )?;
 
     Ok((
@@ -235,159 +313,8 @@ fn run(
             coverage_summary,
             error: failed_error,
         },
-        announce,
+        changed,
     ))
-}
-
-/// Apply one op — the inner `Result` is the v4 per-op try/catch (`Err(WearError)`
-/// is a per-op failure); the outer `Result` is a DB error (propagated).
-#[allow(clippy::too_many_arguments)]
-fn apply_op(
-    main: &Connection,
-    docs: &DocMountDocumentsRepository,
-    chat_id: &str,
-    character_id: &str,
-    mode: &str,
-    slot: Option<&str>,
-    item_id: Option<&str>,
-    item_title: Option<&str>,
-    tiers: &SharedWardrobeTiers,
-) -> Result<Result<WardrobeWearOpResult, WearError>, DbError> {
-    let item =
-        resolve_wardrobe_item_across_tiers(main, docs, character_id, item_id, item_title, tiers)?;
-    let Some(item) = item else {
-        return Ok(Err(WearError(not_found_message(item_id, item_title))));
-    };
-    if matches!(item.get("archivedAt"), Some(v) if !v.is_null()) {
-        let title = item
-            .get("title")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        return Ok(Err(WearError(format!(
-            "Item \"{title}\" is archived and cannot be worn"
-        ))));
-    }
-
-    let title = item
-        .get("title")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let id = item
-        .get("id")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let types = types_of(&item);
-    let component_item_ids = string_array(&item, "componentItemIds");
-    let replace = item
-        .get("replace")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-
-    let (effect, slots_affected) = match mode {
-        "add_to_slot" => {
-            let slot = slot.unwrap_or_default();
-            if !types.iter().any(|t| t == slot) {
-                return Ok(Err(WearError(format!(
-                    "Item \"{title}\" (types: {}) cannot be added to the \"{slot}\" slot",
-                    types.join(", ")
-                ))));
-            }
-            add_to_slot(
-                main,
-                docs,
-                chat_id,
-                character_id,
-                slot,
-                &id,
-                &types,
-                &component_item_ids,
-                tiers,
-                EquipSource::Tool,
-            )?;
-            (WardrobeEffect::Layered, vec![slot.to_string()])
-        }
-        "replace" => {
-            replace_item(
-                main,
-                docs,
-                chat_id,
-                character_id,
-                &id,
-                &types,
-                &component_item_ids,
-                tiers,
-                EquipSource::Tool,
-            )?;
-            (WardrobeEffect::Replaced, types.clone())
-        }
-        _ => {
-            // mode === 'wear'
-            equip_item(
-                main,
-                docs,
-                chat_id,
-                character_id,
-                &id,
-                &types,
-                &component_item_ids,
-                replace,
-                tiers,
-                EquipSource::Tool,
-            )?;
-            let effect = if replace {
-                WardrobeEffect::Replaced
-            } else {
-                WardrobeEffect::Layered
-            };
-            (effect, types.clone())
-        }
-    };
-
-    Ok(Ok(WardrobeWearOpResult {
-        mode: mode.to_string(),
-        effect: effect.as_str().to_string(),
-        effect_summary: describe_wardrobe_effect(effect, &slots_affected, Some(title.as_str())),
-        item: Some(OpItem { item_id: id, title }),
-        slots_affected,
-        error: None,
-    }))
-}
-
-/// The item's `componentItemIds` (absent reads as empty — v4's `?? []`).
-fn string_array(item: &Value, key: &str) -> Vec<String> {
-    item.get(key)
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|e| e.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn types_of(item: &Value) -> Vec<String> {
-    item.get("types")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|e| e.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// v4 the per-op not-found message using the (normalized) op ids.
-fn not_found_message(item_id: Option<&str>, item_title: Option<&str>) -> String {
-    let mut msg = String::from("Wardrobe item not found");
-    if let Some(id) = item_id {
-        msg.push_str(&format!(" with ID \"{id}\""));
-    }
-    if let Some(t) = item_title {
-        msg.push_str(&format!(" with title \"{t}\""));
-    }
-    msg
 }
 
 /// v4 `formatWardrobeWearResults`.

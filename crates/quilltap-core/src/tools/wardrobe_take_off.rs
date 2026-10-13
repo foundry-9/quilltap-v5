@@ -3,26 +3,32 @@
 //! `formatWardrobeTakeOffResults`).
 //!
 //! Applies an ordered array of take-off operations in sequence (fails fast on the
-//! first bad op). `remove` filters a named item out of every slot it covers (or a
-//! single named slot); `clear_slot` empties one slot. Avatar generation + the
-//! pending wardrobe announcement fire ONCE after the loop when at least one op
-//! landed (the returned ids are both the announcement set the executor folds AND
-//! the characters it triggers avatar generation for — P4.123).
+//! first bad op), over the tool call's ONE wearable pool (v4 `9ecebf986`).
+//! `remove` finds the item in the pool (`find_in_pool` — archived garments CAN
+//! be taken off) and takes it off every slot it covers, or the one named
+//! (`wear_ops::take_off_item`); `clear_slot` empties one slot (ONE
+//! `apply_displacement` in `clear_slot` mode). The outfit-change effects (v4
+//! `notifyWardrobeChanged`) fire ONCE when at least one op landed: the returned
+//! ids are the characters whose outfit changed, fired by the executor once the
+//! write commits.
 
 use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
+use crate::db::wardrobe_wear_stats::EquipSource;
 use crate::db::DbError;
+use crate::services::outfit_displacement::apply_displacement;
+use crate::slot_ops::{ComputeDisplacedOptions, DisplacementMode};
 use crate::wardrobe::{describe_wardrobe_effect, normalize_no_item_sentinel, WardrobeEffect};
+use crate::wear_ops::{find_in_pool, take_off_item, wardrobe_item_not_found_message, WearableRef};
 
 use super::wardrobe_shared::{
     build_wardrobe_coverage_summary_from_state, empty_equipped_state, load_current_wardrobe_state,
-    remove_from_slot, resolve_wardrobe_item_across_tiers,
 };
+use super::wardrobe_tool_table::load_tool_pool;
 use super::wardrobe_wear::OpItem;
-use crate::wardrobe_tiers::{resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTiers};
 
 /// v4 `WardrobeTakeOffOpResult`.
 #[derive(Debug, Serialize)]
@@ -120,8 +126,11 @@ fn opt_enum_field(
     }
 }
 
+/// v4's `context` on every line the handler logs.
+const LOG_CONTEXT: &str = "wardrobe-take-off-handler";
+
 /// Execute `wardrobe_take_off` (v4 `executeWardrobeTakeOffTool`). Returns the
-/// output plus the character ids to announce (non-empty when an op landed).
+/// output plus the characters whose outfit changed (non-empty when an op landed).
 pub fn execute(
     main: &Connection,
     mount: &Connection,
@@ -130,34 +139,35 @@ pub fn execute(
     character_id: &str,
     args: &Value,
 ) -> (WardrobeTakeOffToolOutput, Vec<String>) {
-    let _ = user_id;
     let Some(ops) = validate(args) else {
+        tracing::warn!(
+            target: "quilltap::tools",
+            context = LOG_CONTEXT,
+            userId = user_id,
+            chatId = chat_id,
+            characterId = character_id,
+            inputJson = %args,
+            "Wardrobe take off tool validation failed",
+        );
         return (failure(VALIDATION_ERROR), Vec::new());
     };
-    match run(main, mount, chat_id, character_id, &ops) {
+    // v4 has no outer catch here: the per-op catch takes every op failure, and
+    // only the closing state read can throw past it.
+    match run(main, mount, user_id, chat_id, character_id, &ops) {
         Ok(pair) => pair,
-        Err(e) => (failure(e.to_string()), Vec::new()),
+        Err(e) => (failure(crate::db::fallback::error_text(&e)), Vec::new()),
     }
 }
-
-struct TakeOffError(String);
 
 fn run(
     main: &Connection,
     mount: &Connection,
+    user_id: &str,
     chat_id: &str,
     character_id: &str,
     ops: &[TakeOffOp],
 ) -> Result<(WardrobeTakeOffToolOutput, Vec<String>), DbError> {
-    let docs = DocMountDocumentsRepository::new(mount);
-    let tiers = resolve_shared_wardrobe_tiers_for_chat(
-        main,
-        mount,
-        chat_id,
-        character_id,
-        // A character tool call: the project roster applies (v4 `9753d0eb2`).
-        Default::default(),
-    );
+    let pool = load_tool_pool(main, mount, chat_id, character_id);
 
     let mut results: Vec<WardrobeTakeOffOpResult> = Vec::new();
     let mut applied_count = 0usize;
@@ -168,42 +178,129 @@ fn run(
         let item_id = normalize_no_item_sentinel(op.item_id.as_deref());
         let item_title = normalize_no_item_sentinel(op.item_title.as_deref());
 
-        let outcome = if mode == "clear_slot" {
-            // op.slot is validated present for clear_slot.
-            let slot = op.slot.clone().unwrap_or_default();
-            remove_from_slot(main, chat_id, character_id, &slot, None)?;
+        // v4's per-op `try` — a miss or a failed write is this op's error.
+        let attempt: Result<WardrobeTakeOffOpResult, String> = (|| {
+            if mode == "clear_slot" {
+                // `op.slot` is validated present for clear_slot.
+                let slot = op.slot.clone().unwrap_or_default();
+                apply_displacement(
+                    main,
+                    chat_id,
+                    character_id,
+                    &ComputeDisplacedOptions {
+                        mode: DisplacementMode::ClearSlot,
+                        item: None,
+                        slot: Some(&slot),
+                        item_id: None,
+                        items_by_id: None,
+                    },
+                    EquipSource::Ui,
+                )
+                .map_err(|e| crate::db::fallback::error_text(&e))?;
+                tracing::info!(
+                    target: "quilltap::tools",
+                    context = LOG_CONTEXT,
+                    userId = user_id,
+                    chatId = chat_id,
+                    characterId = character_id,
+                    slot = %slot,
+                    "Wardrobe slot cleared",
+                );
+                return Ok(WardrobeTakeOffOpResult {
+                    mode: mode.clone(),
+                    effect: "cleared".to_string(),
+                    effect_summary: describe_wardrobe_effect(
+                        WardrobeEffect::Cleared,
+                        std::slice::from_ref(&slot),
+                        None,
+                    ),
+                    item: None,
+                    slots_affected: vec![slot],
+                    error: None,
+                });
+            }
+
+            // mode === 'remove' — the SENTINEL-normalised values name a miss.
+            let Some(item) = find_in_pool(
+                &pool,
+                WearableRef {
+                    item_id: item_id.as_deref(),
+                    item_title: item_title.as_deref(),
+                },
+            ) else {
+                return Err(wardrobe_item_not_found_message(
+                    item_id.as_deref(),
+                    item_title.as_deref(),
+                ));
+            };
+            let id = item
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let title = item
+                .get("title")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            // Restrict to one slot if given, else every slot the item covers.
+            let slots_affected: Vec<String> = match op.slot.as_deref() {
+                Some(s) if !s.is_empty() => vec![s.to_string()],
+                _ => item
+                    .get("types")
+                    .and_then(Value::as_array)
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|e| e.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            };
+            take_off_item(main, chat_id, character_id, &id, &slots_affected)
+                .map_err(|e| crate::db::fallback::error_text(&e))?;
+            tracing::info!(
+                target: "quilltap::tools",
+                context = LOG_CONTEXT,
+                userId = user_id,
+                chatId = chat_id,
+                characterId = character_id,
+                itemId = %id,
+                itemTitle = %title,
+                slotsAffectedJson = %serde_json::to_string(&slots_affected).unwrap_or_default(),
+                "Wardrobe item taken off",
+            );
             Ok(WardrobeTakeOffOpResult {
                 mode: mode.clone(),
-                effect: "cleared".to_string(),
+                effect: "removed".to_string(),
                 effect_summary: describe_wardrobe_effect(
-                    WardrobeEffect::Cleared,
-                    std::slice::from_ref(&slot),
-                    None,
+                    WardrobeEffect::Removed,
+                    &slots_affected,
+                    Some(title.as_str()),
                 ),
-                item: None,
-                slots_affected: vec![slot],
+                item: Some(OpItem { item_id: id, title }),
+                slots_affected,
                 error: None,
             })
-        } else {
-            apply_remove(
-                main,
-                &docs,
-                chat_id,
-                character_id,
-                &mode,
-                op.slot.as_deref(),
-                item_id.as_deref(),
-                item_title.as_deref(),
-                &tiers,
-            )?
-        };
+        })();
 
-        match outcome {
+        match attempt {
             Ok(res) => {
                 results.push(res);
                 applied_count += 1;
             }
-            Err(TakeOffError(message)) => {
+            Err(message) => {
+                tracing::warn!(
+                    target: "quilltap::tools",
+                    context = LOG_CONTEXT,
+                    userId = user_id,
+                    chatId = chat_id,
+                    characterId = character_id,
+                    mode = %mode,
+                    // v4's `message` key, renamed (a tracing `message` field
+                    // replaces the file record's envelope text — recorded).
+                    errorMessage = %message,
+                    "Wardrobe take off operation failed",
+                );
                 results.push(WardrobeTakeOffOpResult {
                     mode,
                     effect: "removed".to_string(),
@@ -213,26 +310,27 @@ fn run(
                     error: Some(message.clone()),
                 });
                 failed_error = Some(message);
-                break;
+                break; // fail-fast
             }
         }
     }
 
-    let announce = if applied_count > 0 {
-        // v4's `notifyWardrobeChanged` awaits `triggerAvatarGenerationIfEnabled`
-        // for these ids; the executor's `run_wardrobe_take_off` fires it after the write.
+    // v4 `finalizeWardrobeMutation`: the effects fire ONCE, only if at least
+    // one op landed (the executor fires them once the write commits).
+    let changed = if applied_count > 0 {
         vec![character_id.to_string()]
     } else {
         Vec::new()
     };
 
     let current_state = load_current_wardrobe_state(main, chat_id, character_id)?;
+    let docs = DocMountDocumentsRepository::new(mount);
     let coverage_summary = build_wardrobe_coverage_summary_from_state(
         main,
         &docs,
         character_id,
         &current_state,
-        &tiers,
+        &pool.tiers,
     )?;
 
     Ok((
@@ -243,80 +341,8 @@ fn run(
             coverage_summary,
             error: failed_error,
         },
-        announce,
+        changed,
     ))
-}
-
-#[allow(clippy::too_many_arguments)]
-fn apply_remove(
-    main: &Connection,
-    docs: &DocMountDocumentsRepository,
-    chat_id: &str,
-    character_id: &str,
-    mode: &str,
-    slot: Option<&str>,
-    item_id: Option<&str>,
-    item_title: Option<&str>,
-    tiers: &SharedWardrobeTiers,
-) -> Result<Result<WardrobeTakeOffOpResult, TakeOffError>, DbError> {
-    let item =
-        resolve_wardrobe_item_across_tiers(main, docs, character_id, item_id, item_title, tiers)?;
-    let Some(item) = item else {
-        return Ok(Err(TakeOffError(not_found_message(item_id, item_title))));
-    };
-
-    let title = item
-        .get("title")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let id = item
-        .get("id")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let types: Vec<String> = item
-        .get("types")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|e| e.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    // Restrict to one slot if given, else every slot the item covers.
-    let slots_affected: Vec<String> = match slot {
-        Some(s) => vec![s.to_string()],
-        None => types,
-    };
-    for s in &slots_affected {
-        remove_from_slot(main, chat_id, character_id, s, Some(&id))?;
-    }
-
-    Ok(Ok(WardrobeTakeOffOpResult {
-        mode: mode.to_string(),
-        effect: "removed".to_string(),
-        effect_summary: describe_wardrobe_effect(
-            WardrobeEffect::Removed,
-            &slots_affected,
-            Some(title.as_str()),
-        ),
-        item: Some(OpItem { item_id: id, title }),
-        slots_affected,
-        error: None,
-    }))
-}
-
-fn not_found_message(item_id: Option<&str>, item_title: Option<&str>) -> String {
-    let mut msg = String::from("Wardrobe item not found");
-    if let Some(id) = item_id {
-        msg.push_str(&format!(" with ID \"{id}\""));
-    }
-    if let Some(t) = item_title {
-        msg.push_str(&format!(" with title \"{t}\""));
-    }
-    msg
 }
 
 /// v4 `formatWardrobeTakeOffResults`.

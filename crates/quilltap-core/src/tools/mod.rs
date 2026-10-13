@@ -39,6 +39,7 @@ pub mod wardrobe_list;
 pub mod wardrobe_read;
 pub mod wardrobe_shared;
 pub mod wardrobe_take_off;
+pub mod wardrobe_tool_table;
 pub mod wardrobe_update;
 pub mod wardrobe_wear;
 pub mod web_search;

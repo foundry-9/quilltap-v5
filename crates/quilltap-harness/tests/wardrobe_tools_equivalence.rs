@@ -23,7 +23,7 @@
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5=~/source/quilltap-v5
 //!   cd ~/source/quilltap-server
-//!   QT_FIXTURE_WT_MAIN=/tmp/qt-wt-main.db QT_FIXTURE_WT_MOUNT=/tmp/qt-wt-mount.db \
+//!   QT_WT_TOOLS_CORPUS=1 QT_FIXTURE_WT_MAIN=/tmp/qt-wt-main.db QT_FIXTURE_WT_MOUNT=/tmp/qt-wt-mount.db \
 //!     $N/node --import tsx $V5/harness/oracle/fixtures/build-wardrobe-tools-fixture.ts
 //!   QT_FIXTURE_WT_MAIN=/tmp/qt-wt-main.db QT_FIXTURE_WT_MOUNT=/tmp/qt-wt-mount.db \
 //!     $N/node --import tsx $V5/harness/oracle/cases/wardrobe-tools.ts > /tmp/oracle-wardrobe-tools.ndjson
@@ -42,10 +42,27 @@
 //! write commits, then the format) — and the queued `background_jobs` rows
 //! (type / status / maxAttempts / payload, compared parsed). v4's job host is
 //! held off in the oracle (no runner on either side), so every job is PENDING.
+//!
+//! P4.D280 (v4 `4a38222e6`): every op runs through the PRODUCTION table —
+//! `wardrobe_tool_table::run_wardrobe_tool_handler` (the handler, as inside the
+//! executor's write) then `finish_wardrobe_tool` (the outfit-change effects for
+//! the changed character over the ONE announcement set, the picture, the
+//! `… completed` INFO) — with the turn's set handed to all seven tools, as v4's
+//! executor hands it (the oracle passes it to all seven too). The fixture is
+//! built with `QT_WT_TOOLS_CORPUS=1` (a FILED item, an archived General item, a
+//! vault-less participant). Every op ALSO compares its log lines: the seven
+//! handlers' own lines (`context` = `wardrobe-<x>-handler`) whole — level,
+//! message, every field in v4's order, the `…Json` suffix stripped and v4's
+//! `message` key read as v5's `errorMessage` (a tracing field named `message`
+//! replaces the file record's envelope text — a recorded key rename) — and the
+//! keystone's tagged lines (`[WearablePool]`, `[ItemMutations]`,
+//! `[applyDisplacement]`, `[WardrobeLocation]`) by TAG only (R-H). Every
+//! diverged op is reported before the test fails.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 
-use quilltap_core::db::archetype_wardrobe::find_archetypes;
+use quilltap_core::db::archetype_wardrobe::read_general_wardrobe;
 use quilltap_core::db::chat_settings::{update_for_user, SettingsColVal};
 use quilltap_core::db::chats_outfits::ChatOutfitsRepository;
 use quilltap_core::db::doc_mount_documents::DocMountDocumentsRepository;
@@ -58,14 +75,11 @@ use quilltap_core::db::vault_wardrobe_public::{update_vault_wardrobe_item, Wardr
 use quilltap_core::db::wardrobe_read::find_by_character_id;
 use quilltap_core::db::wardrobe_wear_stats::{WardrobeWearIncrement, WardrobeWearStatsRepository};
 use quilltap_core::db::Writer;
-use quilltap_core::services::tool_image_generation::{
-    maybe_queue_wardrobe_tool_image, QueueWardrobeToolImageArgs,
+use quilltap_core::test_support::global_capture;
+use quilltap_core::tools::wardrobe_list;
+use quilltap_core::tools::wardrobe_tool_table::{
+    finish_wardrobe_tool, run_wardrobe_tool_handler, WardrobeToolContext, WardrobeToolOutput,
 };
-use quilltap_core::tools::{
-    wardrobe_archive, wardrobe_create, wardrobe_list, wardrobe_read, wardrobe_take_off,
-    wardrobe_update, wardrobe_wear,
-};
-use quilltap_core::wardrobe_tiers::SharedWardrobeTiers;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -252,10 +266,10 @@ fn iso_ts_len(b: &[u8]) -> Option<usize> {
 
 #[test]
 fn wardrobe_tools_match_oracle() {
-    // The list handler's INFO is capture-pinned in a sibling test over the
-    // same callsites: the global rig must own the subscriber first (the
-    // `test_support` module doc's `Interest` race).
-    quilltap_core::test_support::global_capture::install();
+    // Every op's lines are captured, and the list handler's INFO is pinned in
+    // a sibling test over the same callsites: the global rig must own the
+    // subscriber first (the `test_support` module doc's `Interest` race).
+    global_capture::install();
     let Ok(oracle_path) = std::env::var("QT_ORACLE_WT") else {
         eprintln!("SKIP: set QT_ORACLE_WT to the oracle NDJSON (see header).");
         return;
@@ -349,39 +363,55 @@ fn wardrobe_tools_match_oracle() {
         .build()
         .unwrap();
 
-    let mut announce: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // The turn's ONE announcement set, handed to all seven tools (v4's
+    // executor hands its `WardrobeToolContext` to every table entry).
+    let announce: Arc<Mutex<HashSet<String>>> = Arc::default();
+    let mut failed: Vec<String> = Vec::new();
 
     for (i, op) in spec.ops.iter().enumerate() {
         let character_id = match op.character_id.as_deref() {
             Some("recipient") => &spec.recipient_character_id,
             _ => &spec.caller_character_id,
         };
-        let (output, formatted) = run_op(
-            &op.tool,
-            &main,
-            &mount,
-            &spec.user_id,
-            &spec.chat_id,
-            character_id,
-            &op.args,
-            &mut announce,
-            now,
-            &rt,
-            &db,
-        );
+        let (output, lines) = global_capture::capture(|| {
+            run_tool(
+                &rt,
+                &db,
+                &op.tool,
+                &main,
+                &mount,
+                &spec.user_id,
+                &spec.chat_id,
+                character_id,
+                &op.args,
+                &announce,
+            )
+        });
+        let formatted = output.format_at(now);
 
         let got = normalize(&json!({
             "name": op.name,
             "tool": op.tool,
-            "output": output,
+            "output": output.to_value(),
             "formatted": formatted,
         }));
-        let want = normalize(&oracle_returns[i]);
-        assert_eq!(
-            got, want,
-            "op[{i}] {} diverged\n  rust:   {got}\n  oracle: {want}",
-            op.name
-        );
+        let mut want_row = oracle_returns[i].clone();
+        let want_logs = want_row
+            .as_object_mut()
+            .and_then(|o| o.remove("logs"))
+            .expect("the oracle predates P4.D280 — no per-op `logs`; regenerate it");
+        let want = normalize(&want_row);
+        if got != want {
+            eprintln!(
+                "op[{i}] {} diverged\n  rust:   {got}\n  oracle: {want}",
+                op.name
+            );
+            failed.push(op.name.clone());
+        }
+        if let Some(diff) = compare_logs(&lines, &want_logs) {
+            eprintln!("op[{i}] {} LOGS diverged\n{diff}", op.name);
+            failed.push(format!("{}:logs", op.name));
+        }
 
         // The reportWhenEmpty tripwire (P4.D87): a blank hair slot must vanish
         // from the per-slot STATE dump — never a "hair:" row (an "(empty)"
@@ -412,10 +442,10 @@ fn wardrobe_tools_match_oracle() {
         find_by_character_id(main_c, &docs, &spec.caller_character_id, true).expect("caller items");
     let recipient_items = find_by_character_id(main_c, &docs, &spec.recipient_character_id, true)
         .expect("recipient items");
-    let general_items =
-        find_archetypes(main_c, &docs, true, &SharedWardrobeTiers::none()).expect("general items");
+    // v4's readback is `readSharedWardrobe(generalMountPointId, true)`.
+    let general_items = read_general_wardrobe(main_c, &docs, true).expect("general items");
     let equipped = ChatOutfitsRepository::new(main_c).get_equipped_outfit(&spec.chat_id);
-    let mut ann: Vec<String> = announce.into_iter().collect();
+    let mut ann: Vec<String> = announce.lock().unwrap().iter().cloned().collect();
     ann.sort();
 
     let wear = wear_readback(main_c, &spec, &caller_items, &recipient_items);
@@ -430,10 +460,10 @@ fn wardrobe_tools_match_oracle() {
 
     let got = normalize(&readback);
     let want = normalize(&oracle_readback);
-    assert_eq!(
-        got, want,
-        "read-back state diverged\n  rust:   {got}\n  oracle: {want}"
-    );
+    if got != want {
+        eprintln!("read-back state diverged\n  rust:   {got}\n  oracle: {want}");
+        failed.push("readback".to_string());
+    }
 
     // ── [P4.D262] the picture scenario: the operator switch ON ──
     let fresh: Value = serde_json::from_str(include_str!(
@@ -491,29 +521,33 @@ fn wardrobe_tools_match_oracle() {
             .expect("plant the image profile");
     }
     let mut pictures: Vec<Value> = Vec::new();
+    let mut picture_logs: Vec<Vec<String>> = Vec::new();
     for op in &spec.picture_scenario.ops {
         let character_id = match op.character_id.as_deref() {
             Some("recipient") => &spec.recipient_character_id,
             _ => &spec.caller_character_id,
         };
-        let (output, formatted) = run_picture_op(
-            &rt,
-            &db,
-            &op.tool,
-            &main,
-            &mount,
-            &spec.user_id,
-            &spec.chat_id,
-            character_id,
-            &op.args,
-            now,
-        );
+        let (output, lines) = global_capture::capture(|| {
+            run_tool(
+                &rt,
+                &db,
+                &op.tool,
+                &main,
+                &mount,
+                &spec.user_id,
+                &spec.chat_id,
+                character_id,
+                &op.args,
+                &announce,
+            )
+        });
         pictures.push(json!({
             "name": op.name,
             "tool": op.tool,
-            "output": output,
-            "formatted": formatted,
+            "output": output.to_value(),
+            "formatted": output.format_at(now),
         }));
+        picture_logs.push(lines);
     }
     let jobs: Vec<Value> = {
         let mut st = main_c
@@ -534,14 +568,24 @@ fn wardrobe_tools_match_oracle() {
         .collect()
     };
     let (want_pictures, want_jobs) = parse_oracle_pictures(&oracle_text);
-    for (i, (got, want)) in pictures.iter().zip(&want_pictures).enumerate() {
-        let (got, want) = (normalize(got), normalize(want));
-        assert_eq!(
-            got, want,
-            "picture op[{i}] diverged\n  rust:   {got}\n  oracle: {want}"
-        );
-    }
     assert_eq!(pictures.len(), want_pictures.len(), "picture op count");
+    for (i, (got, want)) in pictures.iter().zip(&want_pictures).enumerate() {
+        let mut want = want.clone();
+        let want_logs = want
+            .as_object_mut()
+            .and_then(|o| o.remove("logs"))
+            .expect("the oracle predates P4.D280 — no per-op `logs`; regenerate it");
+        let (got, want) = (normalize(got), normalize(&want));
+        let name = got["name"].as_str().unwrap_or_default().to_string();
+        if got != want {
+            eprintln!("picture op[{i}] diverged\n  rust:   {got}\n  oracle: {want}");
+            failed.push(format!("picture:{name}"));
+        }
+        if let Some(diff) = compare_logs(&picture_logs[i], &want_logs) {
+            eprintln!("picture op[{i}] {name} LOGS diverged\n{diff}");
+            failed.push(format!("picture:{name}:logs"));
+        }
+    }
     let want_jobs: Vec<Value> = want_jobs
         .iter()
         .map(|j| {
@@ -554,10 +598,11 @@ fn wardrobe_tools_match_oracle() {
         })
         .collect();
     let (got_jobs, want_jobs) = (normalize(&json!(jobs)), normalize(&json!(want_jobs)));
-    assert_eq!(
-        got_jobs, want_jobs,
-        "queued picture jobs diverged\n  rust:   {got_jobs}\n  oracle: {want_jobs}"
-    );
+    if got_jobs != want_jobs {
+        eprintln!("queued picture jobs diverged\n  rust:   {got_jobs}\n  oracle: {want_jobs}");
+        failed.push("jobs".to_string());
+    }
+    assert!(failed.is_empty(), "wardrobe tools diverged: {failed:?}");
     // A queued picture is PENDING (no runner on either side) and tried once.
     assert!(!jobs.is_empty(), "the switch-ON scenario queued no picture");
     for job in &jobs {
@@ -644,84 +689,6 @@ fn wear_readback(
     Value::Array(rows.into_iter().map(|(_, v)| v).collect())
 }
 
-/// [P4.D262] One switch-ON op, composed exactly as the executor composes it:
-/// the handler (inside the write), then — for a successful create / update —
-/// `maybe_queue_wardrobe_tool_image` once the write has committed, then the
-/// format.
-#[allow(clippy::too_many_arguments)]
-fn run_picture_op(
-    rt: &tokio::runtime::Runtime,
-    db: &Db,
-    tool: &str,
-    main_w: &Writer,
-    mount_w: &Writer,
-    user_id: &str,
-    chat_id: &str,
-    character_id: &str,
-    args: &Value,
-    now: f64,
-) -> (Value, String) {
-    let main = main_w.connection();
-    let mount = mount_w.connection();
-    match tool {
-        "wardrobe_create" => {
-            let mut out =
-                wardrobe_create::execute(main, mount, user_id, chat_id, character_id, args);
-            if out.success {
-                if let Some(recipient) = out.picture_character_id.clone() {
-                    out.image_generation = rt.block_on(maybe_queue_wardrobe_tool_image(
-                        db,
-                        QueueWardrobeToolImageArgs {
-                            user_id: user_id.to_string(),
-                            chat_id: chat_id.to_string(),
-                            character_id: recipient,
-                            item_id: out.item_id.clone(),
-                            requested: out.generate_image,
-                            default_when_enabled: true,
-                            caller_context: "wardrobe-create-handler",
-                        },
-                    ));
-                }
-            }
-            (to_value(&out), wardrobe_create::format(&out))
-        }
-        "wardrobe_update" => {
-            let (mut out, claim) = wardrobe_update::execute_with_picture_claim(
-                main,
-                mount,
-                user_id,
-                chat_id,
-                character_id,
-                args,
-            );
-            if let Some(claim) = claim {
-                out.image_generation = rt.block_on(maybe_queue_wardrobe_tool_image(
-                    db,
-                    QueueWardrobeToolImageArgs {
-                        user_id: user_id.to_string(),
-                        chat_id: chat_id.to_string(),
-                        character_id: character_id.to_string(),
-                        item_id: claim.item_id,
-                        requested: claim.requested,
-                        default_when_enabled: claim.changes_look,
-                        caller_context: "wardrobe-update-handler",
-                    },
-                ));
-            }
-            (to_value(&out), wardrobe_update::format(&out))
-        }
-        "wardrobe_list" => {
-            let out = wardrobe_list::execute(main, mount, user_id, chat_id, character_id, args);
-            (to_value(&out), wardrobe_list::format_at(&out, now))
-        }
-        "wardrobe_read" => {
-            let out = wardrobe_read::execute(main, mount, user_id, chat_id, character_id, args);
-            (to_value(&out), wardrobe_read::format_at(&out, now))
-        }
-        other => panic!("no picture-scenario arm for {other}"),
-    }
-}
-
 /// The third oracle line: `{ pictures, jobs }`.
 fn parse_oracle_pictures(text: &str) -> (Vec<Value>, Vec<Value>) {
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -733,8 +700,14 @@ fn parse_oracle_pictures(text: &str) -> (Vec<Value>, Vec<Value>) {
     panic!("the oracle predates P4.D262 — no `pictures` line; regenerate it");
 }
 
+/// One op through the PRODUCTION table, composed as the executor composes it:
+/// the handler half (inside the write, here on the two direct writers), then
+/// the after-commit half over the turn's ONE set (the outfit-change effects,
+/// the picture, the `… completed` INFO).
 #[allow(clippy::too_many_arguments)]
-fn run_op(
+fn run_tool(
+    rt: &tokio::runtime::Runtime,
+    db: &Db,
     tool: &str,
     main_w: &Writer,
     mount_w: &Writer,
@@ -742,55 +715,183 @@ fn run_op(
     chat_id: &str,
     character_id: &str,
     args: &Value,
-    announce: &mut std::collections::HashSet<String>,
-    now: f64,
-    rt: &tokio::runtime::Runtime,
-    db: &Db,
-) -> (Value, String) {
-    let main = main_w.connection();
-    let mount = mount_w.connection();
-    match tool {
-        // The four picture-aware tools compose exactly as the executor does
-        // (the switch is OFF in the main sequence — no settings row — so only a
-        // `generate_image: true` ask reaches an outcome: `not-enabled`).
-        "wardrobe_list" | "wardrobe_read" | "wardrobe_create" | "wardrobe_update" => {
-            run_picture_op(
-                rt,
-                db,
-                tool,
-                main_w,
-                mount_w,
-                user_id,
-                chat_id,
-                character_id,
-                args,
-                now,
-            )
-        }
-        "wardrobe_archive" => {
-            let (out, ids) =
-                wardrobe_archive::execute(main, mount, user_id, chat_id, character_id, args);
-            announce.extend(ids);
-            (to_value(&out), wardrobe_archive::format(&out))
-        }
-        "wardrobe_wear" => {
-            let (out, ids) =
-                wardrobe_wear::execute(main, mount, user_id, chat_id, character_id, args);
-            announce.extend(ids);
-            (to_value(&out), wardrobe_wear::format(&out))
-        }
-        "wardrobe_take_off" => {
-            let (out, ids) =
-                wardrobe_take_off::execute(main, mount, user_id, chat_id, character_id, args);
-            announce.extend(ids);
-            (to_value(&out), wardrobe_take_off::format(&out))
-        }
-        other => panic!("unknown tool {other}"),
-    }
+    announce: &Arc<Mutex<HashSet<String>>>,
+) -> WardrobeToolOutput {
+    let stage = run_wardrobe_tool_handler(
+        tool,
+        main_w.connection(),
+        mount_w.connection(),
+        user_id,
+        chat_id,
+        character_id,
+        args,
+    )
+    .unwrap_or_else(|| panic!("the table holds no `{tool}`"));
+    rt.block_on(finish_wardrobe_tool(
+        db,
+        &WardrobeToolContext {
+            user_id,
+            chat_id,
+            character_id,
+            pending_wardrobe_announcements: Some(announce),
+        },
+        stage,
+    ))
 }
 
-fn to_value<T: serde::Serialize>(v: &T) -> Value {
-    serde_json::to_value(v).expect("serialize output")
+/// The seven handlers' `context`s — their lines compare whole.
+const HANDLER_CONTEXTS: [&str; 7] = [
+    "wardrobe-list-handler",
+    "wardrobe-read-handler",
+    "wardrobe-create-handler",
+    "wardrobe-update-handler",
+    "wardrobe-archive-handler",
+    "wardrobe-wear-handler",
+    "wardrobe-take-off-handler",
+];
+
+/// The keystone's tags — their lines compare by TAG only (R-H: the bytes are
+/// the keystone's families').
+const KEYSTONE_TAGS: [&str; 4] = [
+    "[WearablePool]",
+    "[ItemMutations]",
+    "[applyDisplacement]",
+    "[WardrobeLocation]",
+];
+
+/// A parsed log line: `(level, message, [(key, value)])` in field order.
+type LogLine = (String, String, Vec<(String, String)>);
+
+/// A captured v5 line (`LEVEL target message k=v …`) → `(level, message,
+/// [(key, value)])` in field order, the `…Json` suffix stripped and the
+/// renamed `errorMessage` read under v4's `message` key.
+fn parse_v5_line(line: &str) -> Option<LogLine> {
+    let (level, rest) = line.split_once(' ')?;
+    let (_target, rest) = rest.split_once(' ')?;
+    let bytes = rest.as_bytes();
+    // Field keys start after a space: ` <ident>=`.
+    let mut keys: Vec<(usize, usize)> = Vec::new();
+    let mut i = 1;
+    while i < bytes.len() {
+        if bytes[i - 1] == b' ' {
+            let mut j = i;
+            while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
+                j += 1;
+            }
+            if j > i && j < bytes.len() && bytes[j] == b'=' && bytes[i].is_ascii_alphabetic() {
+                keys.push((i, j));
+                i = j + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    let message_end = keys.first().map(|(k, _)| k - 1).unwrap_or(rest.len());
+    let message = rest[..message_end].to_string();
+    let mut fields = Vec::new();
+    for (n, (start, eq)) in keys.iter().enumerate() {
+        let end = keys
+            .get(n + 1)
+            .map(|(next, _)| next - 1)
+            .unwrap_or(rest.len());
+        let key = &rest[*start..*eq];
+        let key = key
+            .strip_suffix("Json")
+            .filter(|k| !k.is_empty())
+            .unwrap_or(key);
+        let key = if key == "errorMessage" {
+            "message"
+        } else {
+            key
+        };
+        fields.push((key.to_string(), rest[eq + 1..end].to_string()));
+    }
+    Some((level.to_lowercase(), message, fields))
+}
+
+/// A v4 captured line → the same shape (values as the rig renders them).
+fn v4_line(v: &Value) -> LogLine {
+    let fields = v["fields"]
+        .as_object()
+        .map(|o| {
+            o.iter()
+                .map(|(k, val)| {
+                    let rendered = match val {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    (k.clone(), rendered)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    (
+        v["level"].as_str().unwrap_or_default().to_string(),
+        v["message"].as_str().unwrap_or_default().to_string(),
+        fields,
+    )
+}
+
+fn context_of(fields: &[(String, String)]) -> Option<&str> {
+    fields
+        .iter()
+        .find(|(k, _)| k == "context")
+        .map(|(_, v)| v.as_str())
+}
+
+fn keystone_tag(message: &str) -> Option<&'static str> {
+    KEYSTONE_TAGS
+        .iter()
+        .copied()
+        .find(|t| message.starts_with(t))
+}
+
+/// Compare one op's lines: the handlers' lines whole (sorted — v5 fires the
+/// effects after the write, v4 inline), the keystone's by tag. `None` = same.
+fn compare_logs(v5: &[String], v4: &Value) -> Option<String> {
+    let v4_lines: Vec<_> = v4
+        .as_array()
+        .map(|a| a.iter().map(v4_line).collect())
+        .unwrap_or_default();
+    let v5_lines: Vec<_> = v5.iter().filter_map(|l| parse_v5_line(l)).collect();
+    let handler = |lines: &[LogLine]| -> Value {
+        let mut rows: Vec<Value> = lines
+            .iter()
+            .filter(|(_, _, f)| context_of(f).is_some_and(|c| HANDLER_CONTEXTS.contains(&c)))
+            .map(|(level, message, fields)| {
+                json!([
+                    level,
+                    message,
+                    fields
+                        .iter()
+                        .map(|(k, v)| json!([k, v]))
+                        .collect::<Vec<_>>()
+                ])
+            })
+            .collect();
+        rows.sort_by_key(|r| r.to_string());
+        Value::Array(rows)
+    };
+    let tags = |lines: &[LogLine]| -> Vec<&'static str> {
+        let mut t: Vec<&'static str> = lines
+            .iter()
+            .filter_map(|(_, m, _)| keystone_tag(m))
+            .collect();
+        t.sort_unstable();
+        t.dedup();
+        t
+    };
+    let (got, want) = (
+        normalize(&handler(&v5_lines)),
+        normalize(&handler(&v4_lines)),
+    );
+    let (got_tags, want_tags) = (tags(&v5_lines), tags(&v4_lines));
+    if got == want && got_tags == want_tags {
+        return None;
+    }
+    Some(format!(
+        "  v5 handler lines: {got}\n  v4 handler lines: {want}\n  v5 tags: {got_tags:?}\n  v4 tags: {want_tags:?}"
+    ))
 }
 
 /// Extract the `returns` array + the `readback` object from the oracle NDJSON.
@@ -825,7 +926,6 @@ fn parse_oracle(text: &str) -> (Vec<Value>, Value) {
 /// has never worn (bug 184), beside the household's `neverWornCount`.
 #[test]
 fn the_list_completed_line_is_v4s() {
-    use quilltap_core::test_support::global_capture;
     global_capture::install();
     let (Ok(fixture_main), Ok(fixture_mount)) = (
         std::env::var("QT_FIXTURE_WT_MAIN"),

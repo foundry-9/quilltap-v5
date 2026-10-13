@@ -3,25 +3,24 @@
 //! `buildWardrobeReadOutput` / `buildWardrobeReadFailure`, reused by
 //! `wardrobe_update`).
 //!
-//! Resolves ONE wardrobe item across the (non-group) tiers and returns its full
-//! detail — the Portrait Cue, default/replace flags, component list, archived
-//! status, ownership, and equipped slots.
+//! Resolves ONE wardrobe item in the tool call's wearable pool (v4 `9ecebf986`
+//! — `findInPool`: by id, archived included, then by title) and returns its
+//! full detail — the Portrait Cue, default/replace flags, component list (named
+//! from the WHOLE pool), archived status, ownership (`pool.owns`), the
+//! operator's folder (v4 `4a38222e6`), equipped slots and wear.
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::db::chats_outfits::ChatOutfitsRepository;
-use crate::db::doc_mount_documents::DocMountDocumentsRepository;
-use crate::db::wardrobe_read::find_by_ids_for_character;
-use crate::db::DbError;
 use crate::services::wardrobe_wear_history::{resolve_wearer_names, WearerKind};
 use crate::wardrobe::normalize_no_item_sentinel;
+use crate::wear_ops::{find_in_pool, wardrobe_item_not_found_message, WearableRef};
+use crate::wearable_pool::WearablePool;
 
-use super::wardrobe_shared::{
-    find_equipped_slots, is_own_wardrobe_item, resolve_wardrobe_item_across_tiers,
-};
-use crate::wardrobe_tiers::{resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTiers};
+use super::wardrobe_shared::find_equipped_slots;
+use super::wardrobe_tool_table::load_tool_pool;
 
 /// v4 `WardrobeReadToolOutput` — also the `wardrobe_update` output (a read-shaped
 /// echo). `error` is omitted on success.
@@ -44,6 +43,10 @@ pub struct WardrobeReadToolOutput {
     pub component_titles: Vec<String>,
     pub archived: bool,
     pub is_own: bool,
+    /// The operator's folder for the item (v4 `4a38222e6`: `item.folder ||
+    /// null`; `null` at the root and on every failure). Filing only — it says
+    /// nothing about when to wear it.
+    pub folder: Option<String>,
     pub is_equipped: bool,
     pub equipped_slots: Vec<String>,
     /// The item's wear history (v4 `3ee3b1342`) — absent on failure.
@@ -302,6 +305,7 @@ pub fn build_read_failure(error: impl Into<String>) -> WardrobeReadToolOutput {
         component_titles: Vec::new(),
         archived: false,
         is_own: false,
+        folder: None,
         is_equipped: false,
         equipped_slots: Vec::new(),
         wear: None,
@@ -310,33 +314,26 @@ pub fn build_read_failure(error: impl Into<String>) -> WardrobeReadToolOutput {
     }
 }
 
-/// v4 `buildWardrobeReadOutput` — the full read-shaped output for a resolved item.
-/// Shared by `wardrobe_read` and `wardrobe_update`.
+/// v4 `buildWardrobeReadOutput(repos, pool, chatId, item)` — the full
+/// read-shaped output for a resolved item, for the pool's character. Shared by
+/// `wardrobe_read` and `wardrobe_update` (which hands in the item AS WRITTEN —
+/// the pool predates the edit, so its components still name themselves
+/// through it).
 pub fn build_read_output(
     main: &Connection,
-    docs: &DocMountDocumentsRepository,
-    character_id: &str,
+    pool: &WearablePool,
     chat_id: &str,
     item: &Value,
-    tiers: &SharedWardrobeTiers,
-) -> Result<WardrobeReadToolOutput, DbError> {
+) -> WardrobeReadToolOutput {
+    let character_id = pool.character_id.as_str();
     let component_item_ids = component_ids_of(item);
     let is_composite = !component_item_ids.is_empty();
 
+    // `pool.getMany` — archived parts included, unknown ids skipped.
     let component_titles: Vec<String> = if is_composite {
-        let components =
-            find_by_ids_for_character(main, docs, character_id, &component_item_ids, tiers)?;
-        let title_by_id: std::collections::HashMap<String, String> = components
-            .iter()
-            .filter_map(|c| {
-                let id = c.get("id").and_then(Value::as_str)?;
-                let title = c.get("title").and_then(Value::as_str)?;
-                Some((id.to_string(), title.to_string()))
-            })
-            .collect();
-        component_item_ids
-            .iter()
-            .filter_map(|cid| title_by_id.get(cid).cloned())
+        pool.get_many(&component_item_ids)
+            .into_iter()
+            .map(|c| str_field(c, "title").unwrap_or_default())
             .collect()
     } else {
         Vec::new()
@@ -349,7 +346,7 @@ pub fn build_read_output(
 
     let wear = build_wardrobe_read_wear(main, character_id, &id);
 
-    Ok(WardrobeReadToolOutput {
+    WardrobeReadToolOutput {
         success: true,
         item_id: id,
         title: str_field(item, "title").unwrap_or_default(),
@@ -370,13 +367,14 @@ pub fn build_read_output(
         component_item_ids,
         component_titles,
         archived: matches!(item.get("archivedAt"), Some(v) if !v.is_null()),
-        is_own: is_own_wardrobe_item(item, character_id),
+        is_own: pool.owns(item),
+        folder: str_field(item, "folder").filter(|f| !f.is_empty()),
         is_equipped: !equipped.is_empty(),
         equipped_slots: equipped,
         wear: Some(wear),
         image_generation: None,
         error: None,
-    })
+    }
 }
 
 /// v4 `buildWardrobeReadWear(repos, characterId, itemId)` (`wardrobe-read-
@@ -452,17 +450,12 @@ pub(crate) fn validate_locate(args: &Value) -> Option<LocateInput> {
     })
 }
 
-/// v4 the not-found message: `Wardrobe item not found[ with ID "<id>"][ with title
-/// "<title>"]` — using the RAW input values (not the sentinel-normalized ones).
+/// v4's not-found message for the locate-style tools (read / update /
+/// archive): `wardrobeItemNotFoundMessage` over the RAW input values (not the
+/// sentinel-normalised ones) — JS truthiness, so an empty `item_id` adds no
+/// ` with ID ""` clause (v5 had rendered one).
 pub(crate) fn not_found_message(item_id: &Option<String>, item_title: &Option<String>) -> String {
-    let mut msg = String::from("Wardrobe item not found");
-    if let Some(id) = item_id {
-        msg.push_str(&format!(" with ID \"{id}\""));
-    }
-    if let Some(title) = item_title {
-        msg.push_str(&format!(" with title \"{title}\""));
-    }
-    msg
+    wardrobe_item_not_found_message(item_id.as_deref(), item_title.as_deref())
 }
 
 /// Execute `wardrobe_read` (v4 `executeWardrobeReadTool`).
@@ -486,21 +479,11 @@ pub fn execute(
         );
         return build_read_failure("Invalid input: item_id or item_title is required.");
     };
-    match run(main, mount, chat_id, character_id, &input) {
-        Ok(out) => out,
-        Err(e) => {
-            tracing::error!(
-                target: "quilltap::tools",
-                context = LOG_CONTEXT,
-                userId = user_id,
-                chatId = chat_id,
-                characterId = character_id,
-                error = %crate::db::fallback::error_text(&e),
-                "Wardrobe read tool execution failed",
-            );
-            build_read_failure(e.to_string())
-        }
-    }
+    // v4's catch (ERROR `Wardrobe read tool execution failed`) guards a body
+    // that cannot throw at `9ecebf986` (the pool fails soft per tier; the
+    // equipped, ledger and wearer-name reads are fallback reads) —
+    // UNREACHABLE through v4's real code, pinned NEGATIVE, not ported.
+    run(main, mount, chat_id, character_id, &input)
 }
 
 /// v4's `context` field on the handler's validation / execution lines.
@@ -512,31 +495,20 @@ fn run(
     chat_id: &str,
     character_id: &str,
     input: &LocateInput,
-) -> Result<WardrobeReadToolOutput, DbError> {
-    let docs = DocMountDocumentsRepository::new(mount);
-    let tiers = resolve_shared_wardrobe_tiers_for_chat(
-        main,
-        mount,
-        chat_id,
-        character_id,
-        // A character tool call: the project roster applies (v4 `9753d0eb2`).
-        Default::default(),
-    );
-    let item = resolve_wardrobe_item_across_tiers(
-        main,
-        &docs,
-        character_id,
-        normalize_no_item_sentinel(input.item_id.as_deref()).as_deref(),
-        normalize_no_item_sentinel(input.item_title.as_deref()).as_deref(),
-        &tiers,
-    )?;
-    let Some(item) = item else {
-        return Ok(build_read_failure(not_found_message(
-            &input.item_id,
-            &input.item_title,
-        )));
+) -> WardrobeReadToolOutput {
+    let pool = load_tool_pool(main, mount, chat_id, character_id);
+    let item_id = normalize_no_item_sentinel(input.item_id.as_deref());
+    let item_title = normalize_no_item_sentinel(input.item_title.as_deref());
+    let Some(item) = find_in_pool(
+        &pool,
+        WearableRef {
+            item_id: item_id.as_deref(),
+            item_title: item_title.as_deref(),
+        },
+    ) else {
+        return build_read_failure(not_found_message(&input.item_id, &input.item_title));
     };
-    build_read_output(main, &docs, character_id, chat_id, &item, &tiers)
+    build_read_output(main, &pool, chat_id, item)
 }
 
 /// v4 `formatWardrobeReadResults(output, nowMs = Date.now())` on the
@@ -554,7 +526,12 @@ pub fn format_at(output: &WardrobeReadToolOutput, now_ms: f64) -> String {
             output.error.as_deref().unwrap_or("Unknown error")
         );
     }
-    let mut lines: Vec<String> = vec![format!("{} ({})", output.title, output.item_id)];
+    // v4 `4a38222e6`: the folder tag rides the head line.
+    let folder_tag = match output.folder.as_deref() {
+        Some(f) if !f.is_empty() => format!(" [folder: {f}]"),
+        _ => String::new(),
+    };
+    let mut lines: Vec<String> = vec![format!("{} ({}){folder_tag}", output.title, output.item_id)];
     lines.push(format!("  types: {}", output.types.join(", ")));
     if let Some(a) = &output.appropriateness {
         lines.push(format!("  appropriateness: {a}"));
@@ -628,10 +605,12 @@ mod tests {
     use serde_json::json;
 
     /// R-B: v4's WARN on a validation failure (`{context, userId, chatId,
-    /// characterId, input}`) and its ERROR on a failed run (`{context, userId,
-    /// chatId, characterId}` + the error), on the caller's thread.
+    /// characterId, input}`), on the caller's thread. P4.D280: v4's catch is
+    /// UNREACHABLE at `9ecebf986` (the pool fails soft per tier), so an
+    /// unreadable instance answers v4's not-found sentence and logs NO ERROR —
+    /// pinned negative.
     #[test]
-    fn the_validation_and_failure_lines_are_v4s() {
+    fn the_validation_line_is_v4s_and_the_catch_is_unreachable() {
         let (main, mount) = (
             Connection::open_in_memory().unwrap(),
             Connection::open_in_memory().unwrap(),
@@ -652,19 +631,18 @@ mod tests {
                 "u1",
                 "c1",
                 "ch1",
-                &json!({ "item_id": "i1" }),
+                &json!({ "item_id": "", "item_title": "i1" }),
             )
         });
-        let lines: Vec<String> = lines
-            .into_iter()
-            .filter(|l| l.contains(" quilltap::tools "))
-            .collect();
         assert!(!out.success);
-        assert_eq!(lines.len(), 1, "{lines:#?}");
+        // JS truthiness: an empty id adds no ` with ID ""` clause.
+        assert_eq!(
+            out.error.as_deref(),
+            Some("Wardrobe item not found with title \"i1\"")
+        );
+        assert_eq!(out.folder, None);
         assert!(
-            lines[0].starts_with(
-                "ERROR quilltap::tools Wardrobe read tool execution failed context=wardrobe-read-handler userId=u1 chatId=c1 characterId=ch1 error=no such table: "
-            ),
+            !lines.iter().any(|l| l.contains(" quilltap::tools ")),
             "{lines:#?}"
         );
     }

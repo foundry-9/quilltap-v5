@@ -21,6 +21,14 @@
  * Without it the output is byte-for-byte what it always was (the committed
  * `wardrobe-tools.json` corpus keeps `avatarGenerationEnabled: false`).
  *
+ * P4.D280 (v4 `4a38222e6`): with `QT_WT_TOOLS_CORPUS=1` the builder ALSO seeds
+ * the spec's `toolsCorpusGrowth` — a caller item FILED under
+ * `Wardrobe/<folder>/` (the item's `folder`, honoured by v4's writer), an
+ * archived General item, and a third chat participant whose character has NO
+ * vault (its `characterDocumentMountPointId` nulled after the REAL create).
+ * Only the `wardrobe_tools` family's recipe sets it, so every other fixture
+ * built from this seed is unchanged.
+ *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -44,6 +52,8 @@ interface ItemSpec {
   replace?: boolean;
   componentItemIds?: string[];
   archived?: boolean;
+  /** P4.D280: the item's folder under `Wardrobe/` (`''` / absent = root). */
+  folder?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -69,6 +79,13 @@ interface Spec {
   generalItems: ItemSpec[];
   callerGroupItems: ItemSpec[];
   recipientGroupItems: ItemSpec[];
+  toolsCorpusGrowth: {
+    callerItems: ItemSpec[];
+    generalItems: ItemSpec[];
+    unvaultedCharacterId: string;
+    unvaulted: { name: string };
+    unvaultedParticipantId: string;
+  };
   seedEquipped: Record<string, string[]>;
 }
 
@@ -245,12 +262,28 @@ async function main(): Promise<void> {
         replace: item.replace ?? false,
         migratedFromClothingRecordId: null,
         archivedAt: item.archived ? TS : null,
+        ...(item.folder ? { folder: item.folder } : {}),
       } as never,
       { id: item.id, createdAt: TS, updatedAt: TS } as never,
     );
   };
   for (const item of spec.callerItems) await seedItem(item, spec.callerCharacterId);
   for (const item of spec.generalItems) await seedItem(item, null);
+  const growth = process.env.QT_WT_TOOLS_CORPUS === '1' ? spec.toolsCorpusGrowth : null;
+  if (growth) {
+    for (const item of growth.callerItems) await seedItem(item, spec.callerCharacterId);
+    for (const item of growth.generalItems) await seedItem(item, null);
+    // A character with no vault: the REAL create provisions one; the pointer is
+    // then cleared, so `resolveWardrobeLocation` finds no wardrobe for it.
+    await repos.characters.create({ name: growth.unvaulted.name, userId: spec.userId } as never, {
+      id: growth.unvaultedCharacterId,
+      createdAt: TS,
+      updatedAt: TS,
+    } as never);
+    await rawQuery('UPDATE "characters" SET "characterDocumentMountPointId" = NULL WHERE "id" = ?', [
+      growth.unvaultedCharacterId,
+    ]);
+  }
 
   // 4b. [P4.D71 / v4 8600c83f] The GROUP tier. Two groups, each with its own
   // official store and exactly one member:
@@ -350,6 +383,17 @@ async function main(): Promise<void> {
       updatedAt: TS,
     },
   ];
+  if (growth) {
+    participants.push({
+      id: growth.unvaultedParticipantId,
+      type: 'CHARACTER',
+      characterId: growth.unvaultedCharacterId,
+      controlledBy: 'llm',
+      status: 'active',
+      createdAt: TS,
+      updatedAt: TS,
+    });
+  }
   await repos.chats.create(
     {
       userId: spec.userId,

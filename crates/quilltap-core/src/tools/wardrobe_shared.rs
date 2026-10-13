@@ -85,50 +85,6 @@ pub fn resolve_project_mount_point_ids_for_chat(
     resolve_project_mount_point_ids(mount, chat.get("projectId").and_then(Value::as_str))
 }
 
-// LANE-REMOVE(P4.D280): v4 deleted resolveWardrobeItemAcrossTiers (wardrobe-handler-shared.ts) in 9ecebf986
-/// The pre-`9ecebf986` cross-tier resolve — now `wear_ops::find_in_pool` over
-/// a loaded pool: by id (archived included), then by title (own first incl.
-/// archived, then the wearable shared set). The `origin` tag is stripped so
-/// the pre-pool callers see the shape they always did. Callers move to
-/// `load_wearable_pool` + `find_in_pool`.
-pub fn resolve_wardrobe_item_across_tiers(
-    main: &Connection,
-    docs: &DocMountDocumentsRepository,
-    character_id: &str,
-    item_id: Option<&str>,
-    item_title: Option<&str>,
-    tiers: &SharedWardrobeTiers,
-) -> Result<Option<Value>, DbError> {
-    // The pre-pool resolver PROPAGATED a failed own-vault read (v4's
-    // `findByCharacterId` rethrows); the shim keeps that contract for its
-    // remaining callers by reading the own items itself.
-    let own = find_by_character_id(main, docs, character_id, true)?;
-    let pool = crate::wearable_pool::load_wearable_pool(
-        main,
-        docs.conn(),
-        character_id,
-        Some(&tiers.project_mount_point_ids),
-        crate::wearable_pool::LoadWearablePoolOptions {
-            own_items: Some(&own),
-            ..Default::default()
-        },
-    );
-    let found = item_id
-        .filter(|id| !id.is_empty())
-        .and_then(|id| pool.get(id))
-        .or_else(|| {
-            item_title
-                .filter(|t| !t.is_empty())
-                .and_then(|t| pool.find_by_title(t))
-        });
-    Ok(found.cloned().map(|mut item| {
-        if let Some(obj) = item.as_object_mut() {
-            obj.remove("origin");
-        }
-        item
-    }))
-}
-
 /// Render a [`WardrobePublicError`] to v4's thrown-error message (the handlers'
 /// outer try/catch maps a thrown mount error to a failure result). `verb` is
 /// `create`/`update`/`delete` — the only difference between the three no-mount

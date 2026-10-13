@@ -1,21 +1,24 @@
 //! `wardrobe_list` handler (v4 `lib/tools/handlers/wardrobe-list-handler.ts`
 //! `executeWardrobeListTool` + `formatWardrobeListResults`).
 //!
-//! Merges the character's own wardrobe with shared archetypes (project + Quilltap
-//! General; character items win on id collision), drops archived items, filters by
-//! type/appropriateness, and marks each item's equipped slots + composite metadata.
+//! Lists everything the character can wear — the tool call's ONE wearable pool
+//! (v4 `9ecebf986`: their own vault over their groups' stores, the chat's
+//! project stores behind the roster, and Quilltap General), archived items
+//! dropped PER TIER before shadowing (`pool.wearable()`, so an archived own
+//! copy no longer hides the shared namesake) — filters by type /
+//! appropriateness, and marks each item's equipped slots, wear, composite
+//! metadata and (v4 `4a38222e6`) the operator's `folder`. Component titles
+//! resolve against the WHOLE pool, so an archived or filtered-out part still
+//! names itself.
 
 use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::db::chats_outfits::ChatOutfitsRepository;
-use crate::db::doc_mount_documents::DocMountDocumentsRepository;
-use crate::db::wardrobe_read::find_wearable_pool_for_character;
-use crate::db::DbError;
 
 use super::wardrobe_shared::find_equipped_slots;
-use crate::wardrobe_tiers::resolve_shared_wardrobe_tiers_for_chat;
+use super::wardrobe_tool_table::load_tool_pool;
 
 /// One item in the list result (v4 `WardrobeListItemResult`). The composite fields
 /// are omitted for leaf items (v4's conditional spread).
@@ -31,6 +34,10 @@ pub struct WardrobeListItemResult {
     pub types: Vec<String>,
     pub appropriateness: Option<String>,
     pub is_own: bool,
+    /// The operator's folder for the item under its wardrobe (e.g.
+    /// `Formal/Evening`), `null` at the root (v4 `4a38222e6`: `item.folder ||
+    /// null`). Filing only — it says nothing about when to wear it.
+    pub folder: Option<String>,
     pub is_equipped: bool,
     pub equipped_slot: Option<String>,
     /// Times the whole HOUSEHOLD has worn it — other characters' wears
@@ -73,7 +80,9 @@ const VALIDATION_ERROR: &str = "Invalid input: type_filter must be a string arra
 
 /// v4 `validateWardrobeListInput` (`wardrobeListToolInputSchema.safeParse`): an
 /// object whose optional fields, if present, have the right types. Unknown keys are
-/// stripped (Zod non-strict). `None` ⇒ validation failure.
+/// stripped (Zod non-strict) — since v4 `9ecebf986` that includes
+/// `include_presets`, which the schema no longer declares, so a non-boolean
+/// `include_presets` succeeds. `None` ⇒ validation failure.
 fn validate(args: &Value) -> Option<ListInput> {
     let obj = args.as_object()?;
     let type_filter = match obj.get("type_filter") {
@@ -97,11 +106,6 @@ fn validate(args: &Value) -> Option<ListInput> {
         Some(Value::Bool(b)) => Some(*b),
         Some(_) => return None,
     };
-    // include_presets is accepted (and ignored); a wrong type still fails the parse.
-    match obj.get("include_presets") {
-        None | Some(Value::Null) | Some(Value::Bool(_)) => {}
-        Some(_) => return None,
-    }
     Some(ListInput {
         type_filter,
         appropriateness_filter,
@@ -160,26 +164,12 @@ pub fn execute(
             error: Some(VALIDATION_ERROR.to_string()),
         };
     };
-    match run(main, mount, user_id, chat_id, character_id, &input) {
-        Ok(out) => out,
-        Err(e) => {
-            tracing::error!(
-                target: "quilltap::tools",
-                context = LOG_CONTEXT,
-                userId = user_id,
-                characterId = character_id,
-                chatId = chat_id,
-                error = %crate::db::fallback::error_text(&e),
-                "Wardrobe list tool execution failed",
-            );
-            WardrobeListToolOutput {
-                success: false,
-                items: Vec::new(),
-                total_count: 0,
-                error: Some(e.to_string()),
-            }
-        }
-    }
+    // v4's outer catch (ERROR `Wardrobe list tool execution failed`) guards a
+    // body that, at `9ecebf986`, cannot throw: the pool loader fails soft per
+    // tier, and the equipped and ledger reads are fallback reads. UNREACHABLE
+    // through v4's real code — pinned NEGATIVE (an unreadable instance answers
+    // an empty list), not ported.
+    run(main, mount, user_id, chat_id, character_id, &input)
 }
 
 /// v4's `context` field on every line the handler logs.
@@ -192,20 +182,11 @@ fn run(
     chat_id: &str,
     character_id: &str,
     input: &ListInput,
-) -> Result<WardrobeListToolOutput, DbError> {
-    let docs = DocMountDocumentsRepository::new(mount);
-    // The character's own wardrobe merged under the shared archetypes (group +
-    // project + Quilltap General, v4 `8600c83f`). Character items win on id
-    // collision so a personal override masks the shared item.
-    let tiers = resolve_shared_wardrobe_tiers_for_chat(
-        main,
-        mount,
-        chat_id,
-        character_id,
-        // A character tool call: the project roster applies (v4 `9753d0eb2`).
-        Default::default(),
-    );
-    let all_items = find_wearable_pool_for_character(main, &docs, character_id, &tiers)?;
+) -> WardrobeListToolOutput {
+    // Everything the character can wear: their own vault over their groups'
+    // stores, the chat's project stores and Quilltap General.
+    let pool = load_tool_pool(main, mount, chat_id, character_id);
+    let all_items = pool.wearable();
 
     let equipped =
         ChatOutfitsRepository::new(main).get_equipped_outfit_for_character(chat_id, character_id);
@@ -239,16 +220,6 @@ fn run(
         });
     }
 
-    // Title map for composite component resolution (unfiltered set).
-    let titles_by_id: std::collections::HashMap<String, String> = all_items
-        .iter()
-        .filter_map(|it| {
-            let id = it.get("id").and_then(Value::as_str)?;
-            let title = it.get("title").and_then(Value::as_str)?;
-            Some((id.to_string(), title.to_string()))
-        })
-        .collect();
-
     // One ledger read for every listed item's wear, the caller's own share
     // kept apart from the household's (v4 `ed8b15b50`, bug 184 — over the type
     // / appropriateness-filtered items, before the `include_equipped` filter).
@@ -274,11 +245,13 @@ fn run(
             let equipped_slots = find_equipped_slots(&id, equipped.as_ref());
             let component_item_ids = component_ids_of(item);
             let is_composite = !component_item_ids.is_empty();
+            // Component titles resolve against the whole pool, so a filtered-out
+            // (or archived) part still names itself.
             let component_titles: Option<Vec<String>> = if is_composite {
                 Some(
-                    component_item_ids
-                        .iter()
-                        .filter_map(|cid| titles_by_id.get(cid).cloned())
+                    pool.get_many(&component_item_ids)
+                        .into_iter()
+                        .map(|c| str_field(c, "title").unwrap_or_default())
                         .collect(),
                 )
             } else {
@@ -292,7 +265,10 @@ fn run(
                 image_file_id: str_field(item, "imageFileId"),
                 types: types_of(item),
                 appropriateness: str_field(item, "appropriateness"),
+                // The field compare (v4 keeps it here; `wardrobe_read` asks the
+                // pool's `owns`).
                 is_own: item.get("characterId").and_then(Value::as_str) == Some(character_id),
+                folder: str_field(item, "folder").filter(|f| !f.is_empty()),
                 is_equipped: !equipped_slots.is_empty(),
                 equipped_slot: equipped_slots.first().cloned(),
                 wear_count: household.wear_count,
@@ -351,12 +327,12 @@ fn run(
     );
 
     let total_count = final_items.len();
-    Ok(WardrobeListToolOutput {
+    WardrobeListToolOutput {
         success: true,
         items: final_items,
         total_count,
         error: None,
-    })
+    }
 }
 
 /// v4 `listTimes(count)` (`:209-212`) — "once" or "12×" for the compact
@@ -447,6 +423,12 @@ pub fn format_at(output: &WardrobeListToolOutput, now_ms: f64) -> String {
             .map(|t| format!("[{t}]"))
             .collect::<Vec<_>>()
             .join(" ");
+        // v4 `4a38222e6`: the folder tag sits between the title and the
+        // equipped tag.
+        let folder_tag = match item.folder.as_deref() {
+            Some(f) if !f.is_empty() => format!(" [folder: {f}]"),
+            _ => String::new(),
+        };
         let equipped_tag = if item.is_equipped {
             format!(
                 " (EQUIPPED in {})",
@@ -498,9 +480,10 @@ pub fn format_at(output: &WardrobeListToolOutput, now_ms: f64) -> String {
             _ => String::new(),
         };
         lines.push(format!(
-            "  {} {}{}{}{}{}{}{}{}{}",
+            "  {} {}{}{}{}{}{}{}{}{}{}",
             type_tags,
             item.title,
+            folder_tag,
             equipped_tag,
             shared_tag,
             appropriateness_tag,
@@ -522,11 +505,13 @@ mod tests {
     use serde_json::json;
 
     /// R-B: v4's WARN on a validation failure (`{context, userId,
-    /// characterId, input}` — no `chatId`, v4's own key set) and its ERROR on a
-    /// failed run (`{context, userId, characterId, chatId}` + the error), on
-    /// the caller's thread; a refused input never reaches the run.
+    /// characterId, input}` — no `chatId`, v4's own key set), on the caller's
+    /// thread; a refused input never reaches the run. P4.D280: v4's catch
+    /// (`Wardrobe list tool execution failed`) is UNREACHABLE at `9ecebf986` —
+    /// the pool fails soft per tier — so an unreadable instance answers an
+    /// empty list and logs NO ERROR (pinned negative), only the completed INFO.
     #[test]
-    fn the_validation_and_failure_lines_are_v4s() {
+    fn the_validation_line_is_v4s_and_the_catch_is_unreachable() {
         let (main, mount) = (
             Connection::open_in_memory().unwrap(),
             Connection::open_in_memory().unwrap(),
@@ -546,21 +531,32 @@ mod tests {
             lines,
             vec![r#"WARN quilltap::tools Wardrobe list tool validation failed context=wardrobe-list-handler userId=u1 characterId=ch1 input={"type_filter":"top"}"#.to_string()]
         );
-        // An empty partition: the run fails, v4's catch answers.
+        // `include_presets` is no longer declared: Zod strips it, any type.
+        let (out, _) = captured_with(|| {
+            execute(
+                &main,
+                &mount,
+                "u1",
+                "c1",
+                "ch1",
+                &json!({ "include_presets": 5 }),
+            )
+        });
+        assert!(out.success, "{out:?}");
+        // An empty partition: every tier fails soft, the list is empty.
         let (out, lines) = captured_with(|| execute(&main, &mount, "u1", "c1", "ch1", &json!({})));
         let lines: Vec<String> = lines
             .into_iter()
             .filter(|l| l.contains(" quilltap::tools "))
             .collect();
-        assert!(!out.success);
+        assert!(out.success);
+        assert!(out.items.is_empty());
         assert_eq!(lines.len(), 1, "{lines:#?}");
         assert!(
-            lines[0].starts_with(
-                "ERROR quilltap::tools Wardrobe list tool execution failed context=wardrobe-list-handler userId=u1 characterId=ch1 chatId=c1 error=no such table: "
-            ),
+            lines[0].starts_with("INFO quilltap::tools Wardrobe list completed "),
             "{lines:#?}"
         );
-        assert!(!lines[0].contains("Wardrobe list completed"));
+        assert!(!lines.iter().any(|l| l.contains("execution failed")));
     }
 
     /// v4's `listTimes` (`once` / `N×`, never "twice") and the note's six steps.
