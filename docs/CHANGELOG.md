@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-13 — docs(porting): record the two memory-programme rulings — mirror v4's vector-table retirement, retire P4.D265's watermark-column ensure for the cursor table
+
+_Docs-only change._
+
+The human ruled on the two questions the drift ledger held open before the memory catch-up round. Vector tables (`af48f6cc2`): v5 mirrors v4's `retire-memory-vector-entries-v1` as a boot ensure (copy each mirror vector onto a row with no embedding, then drop `vector_entries` and `vector_indices`) and moves every reader and writer onto `memories.embedding`. Extraction watermarks (`ac6348c5f`): P4.D265's ensure that adds `chats.otherExtractionWatermarkMessageId` is retired in favor of v4's `add-memory-extraction-cursors-v1` (copy both watermark columns into `memory_extraction_cursors`, then drop them, carrying both of v4's table shapes), following the P4.D251 precedent. Both ensures are compared against v4's real migrations. Also recorded: the two data-rewrite migrations are gated once-only on v4's `migrations_state`, not run as unstamped ensures. Updated the ledger's §1, hazards and §3 rows, `phase-4.md` NEXT, and CLAUDE.md's Status.
+
 #### 2026-10-13 — docs(porting): drift check records v4 bugs 235–242 and memory refactor Phase E — thirteen commits past the baseline, no new migration
 
 _Docs-only change._

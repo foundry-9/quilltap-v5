@@ -7236,10 +7236,13 @@ SPA 0.5.846; cli 0.0.32 and tauri 0.0.9 unchanged; harness frozen 0.0.1110.
    import message ids) and the Prompts / Scenarios vault reads' code-unit
    sort (P4.D279's OPEN item); (b) the memory programme — `124c8aca3` +
    `69d38dd60` + the five memory-refactor commits (`c2795733f`, `e0ac7493a`,
-   `af48f6cc2`, `8af764514`, `ac6348c5f`): nine migrations, at least one more
-   D23 re-dump, nine boot ensures, and TWO RULINGS owed before lanes start —
-   the vector-table retirement ensure and the shared-instance watermark-column
-   ping-pong (§1's hazards 2 and 3); `4ce64fa1e` ratified. The planner
+   `af48f6cc2`, `8af764514`, `ac6348c5f`) + `93c5af6ad` (bugs 235–241) +
+   `584d28164` (Phase E — pin at or past it): nine migrations, at least one
+   more D23 re-dump, nine boot ensures; the TWO RULINGS are MADE (the human,
+   2026-10-13 — ledger §1): the vector tables MIRROR v4's copy-then-DROP as
+   a boot ensure, and P4.D265's chat-column arm RETIRES for v4's
+   cursor-table migration (the P4.D251 precedent); the two data rewrites
+   gate once-only over v4's `migrations_state`; `4ce64fa1e` ratified. The planner
    decides the grouping; the memory side retires the §1 hazards.
 3. **A follow-ups smalls round** (`/setupphase`) — the nine status headers'
    OPEN lists (led by P4.D282's behavioural turn-end-drain row + the

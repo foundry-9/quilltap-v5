@@ -918,7 +918,7 @@ records THERE. Update this summary only when a phase or round completes.
   pass ONLY on a Friday copy taken before v4 ran past `c2795733f` (the
   ledger's §1 hazards — no v5 build may open an instance v4 migrated past
   it), then the scenarios + memory-programme catch-up rounds (`/driftcheck`
-  first; two rulings owed), then the follow-ups smalls round** —
+  first; the two memory rulings MADE 2026-10-13 — ledger §1), then the follow-ups smalls round** —
   `phase-4.md`. Round record: `status-log.md`.
 - **Oracle baseline: `4a38222e6` (2026-10-12, v4 main — "Wardrobe folders —
   file items into a tier's closet (#85)", `4.10.0-dev.148`), adopted at the
