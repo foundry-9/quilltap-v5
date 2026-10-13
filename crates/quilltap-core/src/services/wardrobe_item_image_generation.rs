@@ -463,7 +463,9 @@ pub async fn generate_wardrobe_item_image(
             log_type: log_type::WARDROBE_ITEM_IMAGE,
             prompt: &built.prompt,
             primary_profile_id: &profile_id,
-            chat_id: args.chat_id,
+            // The filtered id: a payload with no `chatId` (the editor's Generate)
+            // writes `llm_logs.chatId` NULL as v4's `undefined` does, never `''`.
+            chat_id,
             character_id: home.character_id.as_deref(),
             params: ImageAttemptParams {
                 overrides: crate::image_gen::params_builder::ImageGenOverrides {

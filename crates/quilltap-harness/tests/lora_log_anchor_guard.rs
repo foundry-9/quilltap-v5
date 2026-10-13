@@ -119,8 +119,8 @@ fn the_shared_attempt_spreads_profile_id_and_rerouted_into_the_builder_context()
     );
     let lora = source("image_gen/lora_support.rs");
     assert!(
-        lora.matches("rerouted = ?log_context.rerouted,").count() >= 5,
-        "every `[Image LoRA]` line renders the `rerouted` key"
+        lora.matches("rerouted = ?log_context.rerouted,").count() == 5,
+        "every `[Image LoRA]` line renders the `rerouted` key exactly once (v4 spreads `logContext` once)"
     );
     assert!(
         source("image_gen/params_builder.rs").contains("rerouted = ?log_context.rerouted,"),

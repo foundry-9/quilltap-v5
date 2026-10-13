@@ -295,22 +295,24 @@ pub struct PhysicalDescriptionInput {
     pub usage_context: Option<String>,
     pub short_prompt: Option<String>,
     pub medium_prompt: Option<String>,
-    pub long_prompt: Option<String>,
-    pub complete_prompt: Option<String>,
-    pub full_description: Option<String>,
 }
 
 impl PhysicalDescriptionInput {
-    /// The variants the shared `scene` pick reads (never the head-and-shoulders
-    /// crop — v4's `PhysicalDescriptionInput` carries none).
+    /// The variants the shared `scene` pick reads. v4's
+    /// `CharacterAppearanceInput.physicalDescriptions[]` carries ONLY `id` /
+    /// `name` / `usageContext` / `shortPrompt` / `mediumPrompt`
+    /// (`cheap-llm-tasks/types.ts:246-252`, filled at `appearance-resolution.ts:
+    /// 293-300`), so the prompt line's `pickPhysicalDescription(d, 'scene')` can
+    /// only ever answer the medium or short prompt — a description with only a
+    /// long / complete / full text reads `(no description text)` to the model.
     pub fn variants(&self) -> PhysicalDescriptionVariants<'_> {
         PhysicalDescriptionVariants {
             head_and_shoulders_prompt: None,
             short_prompt: self.short_prompt.as_deref(),
             medium_prompt: self.medium_prompt.as_deref(),
-            long_prompt: self.long_prompt.as_deref(),
-            complete_prompt: self.complete_prompt.as_deref(),
-            full_description: self.full_description.as_deref(),
+            long_prompt: None,
+            complete_prompt: None,
+            full_description: None,
         }
     }
 }

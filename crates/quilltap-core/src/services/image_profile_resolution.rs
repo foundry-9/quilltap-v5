@@ -92,24 +92,14 @@ pub fn resolve_image_profile_for_chat(
     }
 
     // 4. The user's default image profile (`apiKeyId` only — findDefault scopes
-    //    by user already).
-    if let Ok(all) = crate::db::image_profiles::find_all(main) {
-        if let Some(def) = all.iter().find(|p| {
-            p.get("isDefault").and_then(Value::as_bool) == Some(true)
-                && p.get("userId").and_then(Value::as_str) == Some(user_id)
-        }) {
-            if def
-                .get("apiKeyId")
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-                .is_some()
-            {
-                return def.get("id").and_then(Value::as_str).map(str::to_string);
-            }
-        }
-    }
-
-    None
+    //    by user already). v4 `repos.imageProfiles.findDefault(userId)` is ONE
+    //    `{userId, isDefault: true}` row (`findOneByFilter`), so another user's
+    //    unreadable row cannot hide this user's default.
+    let def = crate::db::image_profiles::find_default_or_none(main, user_id)?;
+    def.get("apiKeyId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())?;
+    def.get("id").and_then(Value::as_str).map(str::to_string)
 }
 
 /// v4 `resolveWardrobeImageProfile(userId, repos, override)`
@@ -162,13 +152,9 @@ pub fn resolve_wardrobe_image_profile(
         }
     }
 
-    crate::db::image_profiles::find_all_or_empty(main)
-        .into_iter()
-        .find(|p| {
-            p.get("isDefault").and_then(Value::as_bool) == Some(true)
-                && p.get("userId").and_then(Value::as_str) == Some(user_id)
-        })
-        .filter(has_key)
+    // v4 `repos.imageProfiles.findDefault(userId)` — one `{userId, isDefault:
+    // true}` row (see [`crate::db::image_profiles::find_default_or_none`]).
+    crate::db::image_profiles::find_default_or_none(main, user_id).filter(has_key)
 }
 
 /// v4's `LOG_CONTEXT` (`profile-resolution.ts:14`) — the `context` field on

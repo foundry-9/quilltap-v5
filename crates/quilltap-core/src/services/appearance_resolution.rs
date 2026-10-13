@@ -369,9 +369,6 @@ pub async fn resolve_character_appearances<C: CompletionProvider>(
                         usage_context: pd.usage_context.clone(),
                         short_prompt: pd.short_prompt.clone(),
                         medium_prompt: pd.medium_prompt.clone(),
-                        long_prompt: pd.long_prompt.clone(),
-                        complete_prompt: pd.complete_prompt.clone(),
-                        full_description: pd.full_description.clone(),
                     }]
                 })
                 .unwrap_or_default(),
