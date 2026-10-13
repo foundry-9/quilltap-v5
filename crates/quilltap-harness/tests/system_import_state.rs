@@ -1150,6 +1150,30 @@ fn v5_import_warns(lines: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// [P4.D284] `characterId=<id>` → `characterId=<minted>` in each WARN line
+/// whose id is not a literal of `payload` (a character the import minted).
+fn mask_minted_character_ids(lines: &[String], payload: &Value) -> Vec<String> {
+    let literals = payload.to_string();
+    lines
+        .iter()
+        .map(|line| {
+            let Some(start) = line.find(" characterId=") else {
+                return line.clone();
+            };
+            let value_start = start + " characterId=".len();
+            let value_end = line[value_start..]
+                .find(' ')
+                .map_or(line.len(), |i| value_start + i);
+            let id = &line[value_start..value_end];
+            if literals.contains(&format!("\"{id}\"")) {
+                line.clone()
+            } else {
+                format!("{}<minted>{}", &line[..value_start], &line[value_end..])
+            }
+        })
+        .collect()
+}
+
 /// How many cases compared the nine import WARNs, and how many lines v4 fired
 /// across them — asserted after the run (non-vacuity: the two firing cases).
 static IMPORT_WARN_CASES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -1763,7 +1787,73 @@ fn system_import_execute_state_equivalence() {
     // …+ P4.D264's five `execute_wardrobe_*` arms (56 + 5 = 61).
     // …+ P4.D272's `execute_memory_tiers{,_preserve}` and
     // `execute_chat_watermark` (61 + 3 = 64).
-    assert_eq!(ran, 64, "expected 64 cases, ran {ran}");
+    // …+ P4.D284's `execute_wardrobe_folders` (64 + 1 = 65).
+    assert_eq!(ran, 65, "expected 65 cases, ran {ran}");
+    // [P4.D284] Non-vacuity: v4 (`4a38222e6`) filed the twelve-item bundle
+    // through the writer's `safeFolder` — the whole-state diff above compares
+    // v5's store with it, so the oracle must actually carry the filed paths, the
+    // subfolder rows and R-M's three refusals, or that diff asks nothing.
+    {
+        let case = cases
+            .iter()
+            .find(|c| c["name"] == "execute_wardrobe_folders")
+            .expect("the oracle is missing `execute_wardrobe_folders` — regenerate it");
+        assert_eq!(
+            case["result"]["warnings"],
+            serde_json::json!([
+                "Failed to import wardrobe item \"Numbered Gloves\": path.includes is not a function",
+                "Failed to import wardrobe item \"Truthful Cufflinks\": path.includes is not a function",
+                "Failed to import wardrobe item \"Listed Socks\": path.split is not a function",
+            ]),
+            "R-M: a non-string `folder` fails its item with v4's TypeError text"
+        );
+        // The rows the import ADDED (the fixture's own vaults carry wardrobe
+        // files and folders of their own).
+        let wardrobe_paths = |table: &str, key: &str| -> Vec<String> {
+            let rows = |state: &str| -> Vec<String> {
+                case[state]["mountIndex"][table]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|r| r[key].as_str())
+                    .filter(|p| p.starts_with("Wardrobe/"))
+                    .map(str::to_string)
+                    .collect()
+            };
+            let before = rows("preState");
+            let mut paths: Vec<String> = rows("state")
+                .into_iter()
+                .filter(|p| !before.contains(p))
+                .collect();
+            paths.sort();
+            paths
+        };
+        assert_eq!(
+            wardrobe_paths("doc_mount_file_links", "relativePath"),
+            [
+                "Wardrobe/Escaped Spats.md",
+                "Wardrobe/Formal/Evening/Evening Tailcoat.md",
+                "Wardrobe/Formal/Evening/Messy Waistcoat.md",
+                "Wardrobe/Formal/images/Spare Collar.md",
+                "Wardrobe/Hats: Summer/Summer Boater.md",
+                "Wardrobe/Null Braces.md",
+                "Wardrobe/Picture Sash.md",
+                "Wardrobe/Plain Cravat.md",
+                "Wardrobe/Zero Garters.md",
+            ],
+            "filed / normalised / sent to the root, as v4's writer files them"
+        );
+        assert_eq!(
+            wardrobe_paths("doc_mount_folders", "path"),
+            [
+                "Wardrobe/Formal",
+                "Wardrobe/Formal/Evening",
+                "Wardrobe/Formal/images",
+                "Wardrobe/Hats: Summer",
+            ],
+            "the recursive projection's subfolder rows"
+        );
+    }
     // [P4.161 Tier 2, R-E] Non-vacuity: v4 refused four file rows AFTER their
     // bytes landed (three repository ERRORs each, `skipped` counted) and
     // landed the sound copy; the store contents are the whole-state diff's.
@@ -2398,22 +2488,25 @@ fn system_import_execute_state_equivalence() {
     // `execute_chat_watermark` (51): eight `Failed to import memory` lines on
     // the tiers arm (two of them the R-A UNIQUE tails, one id-less) and six on
     // the preserve arm (44).
+    // [P4.D284] + `execute_wardrobe_folders` (52): R-M's three
+    // `Failed to import wardrobe item` lines (47).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        51,
+        52,
         "cases comparing the import WARNs"
     );
     assert_eq!(
         IMPORT_WARNS_FIRED.load(Ordering::SeqCst),
-        44,
+        47,
         "v4 import WARN lines fired"
     );
     // [P4.D264] every execute case compares `wardrobeLogs`; six lines fire
     // (the skip arm's INFO + DEBUG, the overwrite and duplicate INFOs, the
     // pictures arm's ledger INFO + picture INFO). [P4.D272] 48 → 51 cases.
+    // [P4.D284] 51 → 52 (`execute_wardrobe_folders` fires none — a silence leg).
     assert_eq!(
         WARDROBE_LOG_CASES.load(Ordering::SeqCst),
-        51,
+        52,
         "cases comparing the wardrobe carriers' import lines"
     );
     assert_eq!(
@@ -2425,9 +2518,10 @@ fn system_import_execute_state_equivalence() {
     // fires 39 times across ten memory-importing arms — three each on the
     // seven merged-payload arms and `execute_memory_refusals`, two on
     // `execute_legacy_folds`, eight each on the two tiers arms.
+    // [P4.D284] 51 → 52 (`execute_wardrobe_folders` imports no memory).
     assert_eq!(
         MEMORY_LOG_CASES.load(Ordering::SeqCst),
-        51,
+        52,
         "cases comparing the `Imported memory` lines"
     );
     assert_eq!(
@@ -2938,6 +3032,13 @@ fn run_execute_case(
             .filter_map(|w| w.as_str().map(str::to_string))
             .collect();
         let got = v5_import_warns(&repo_lines);
+        // [P4.D284] A per-item WARN's `characterId` is the NEW character's id
+        // (v4 `import-characters.ts:343`), minted on each side — masked when it
+        // is not a literal of the case's payload.
+        let (want, got) = (
+            mask_minted_character_ids(&want, &case["exportData"]),
+            mask_minted_character_ids(&got, &case["exportData"]),
+        );
         if got != want {
             failures.push(format!(
                 "[{name}] the nine import WARN lines differ\n  rust:   {got:?}\n  oracle: {want:?}"

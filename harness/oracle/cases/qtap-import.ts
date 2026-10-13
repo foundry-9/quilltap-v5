@@ -403,6 +403,95 @@ async function main(): Promise<void> {
     };
   })();
 
+  // ── P4.D284 (v4 `4a38222e6`): wardrobe folders through the NDJSON reader ──
+  //
+  // `qtap-import-wardrobe-folders.qtap` is a HAND-BUILT NDJSON bundle (one
+  // character, four `wardrobe_item` records): `folder: "Formal/Evening"` (filed
+  // at that path, both subfolder rows ensured), `"../x"` (the writer's
+  // `safeFolder` sends it to the root), `""` (the root) and R-M's `5` (a
+  // non-string — `path.includes is not a function`, the per-item warning,
+  // nothing written). The stream reader attaches each record WHOLE, so
+  // `folder` rides into `importCharacterWardrobeItems` RAW. The comparand: the
+  // `Wardrobe/` link paths and folder rows the import ADDED, plus the result's
+  // warnings. A FIFTH isolated pair, for the bug117 reason.
+  const wardrobeFolders = await (async () => {
+    const scratch5 = mkdtempSync(join(tmpdir(), 'qt-qtapimport-wfolders-'));
+    process.on('exit', () => rmSync(scratch5, { recursive: true, force: true }));
+    mkdirSync(join(scratch5, 'data'), { recursive: true });
+    const main5 = join(scratch5, 'wfolders-main.db');
+    const mount5 = join(scratch5, 'wfolders-mount.db');
+    copyFileSync(mainFixture, main5);
+    copyFileSync(mountFixture, mount5);
+    process.env.SQLITE_PATH = main5;
+    process.env.SQLITE_MOUNT_INDEX_PATH = mount5;
+    process.env.QUILLTAP_DATA_DIR = scratch5;
+
+    await initializeDatabase();
+    // v4's repositories are module singletons whose lazy `ensureCollection`
+    // already ran against the FIRST pair's connection, so on this re-initialised
+    // copy they neither re-register their JSON columns (every created character
+    // reads back raw and fails Zod) nor create a lazily-made table such as the
+    // mount index's `group_character_members` (memory note
+    // `v4-oracle-reinit-and-throwing-plants`). The earlier pairs create no
+    // character, so they never needed it. Re-arm every singleton's first-access
+    // ensure so this pair sees what a freshly booted instance sees.
+    {
+      const { getRepositories } = await import('@/lib/repositories/factory');
+      for (const repo of Object.values(getRepositories() as unknown as Record<string, unknown>)) {
+        if (repo && typeof repo === 'object' && 'collectionInitialized' in repo) {
+          (repo as { collectionInitialized: boolean }).collectionInitialized = false;
+        }
+      }
+    }
+    const midb5 = getRawMountIndexDatabase();
+    if (!midb5) throw new Error('mount-index DB handle unavailable (wardrobe-folders pair)');
+    const wardrobePaths = () => ({
+      links: (
+        midb5
+          .prepare(
+            "SELECT relativePath AS p FROM doc_mount_file_links WHERE relativePath LIKE 'Wardrobe/%'",
+          )
+          .all() as Array<{ p: string }>
+      ).map((r) => r.p),
+      folders: (
+        midb5
+          .prepare("SELECT path AS p FROM doc_mount_folders WHERE path LIKE 'Wardrobe/%'")
+          .all() as Array<{ p: string }>
+      ).map((r) => r.p),
+    });
+    const before = wardrobePaths();
+
+    const bytes = readFileSync(join(here, '..', 'fixtures', 'qtap-import-wardrobe-folders.qtap'));
+    const { peekFormat, readNdjsonLines } = await import('@/lib/import/ndjson-reader');
+    const { assembleExportFromStream } = await import('@/lib/import/quilltap-import-stream');
+    const { format, stream } = await peekFormat(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(bytes));
+          controller.close();
+        },
+      })
+    );
+    if (format !== 'ndjson') throw new Error(`expected an NDJSON bundle, got ${format}`);
+    const exportData = await assembleExportFromStream(readNdjsonLines(stream));
+    const rFolders = await executeImport(SINGLE_USER_ID, exportData as never, {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    });
+
+    const after = wardrobePaths();
+    const added = (was: string[], now: string[]) => now.filter((p) => !was.includes(p)).sort();
+    closeMountIndexSQLiteClient();
+    await closeDatabase();
+    return {
+      success: rFolders.success,
+      warnings: rFolders.warnings,
+      links: added(before.links, after.links),
+      folders: added(before.folders, after.folders),
+    };
+  })();
+
   process.stdout.write(
     JSON.stringify({
       case: 'qtap-import-tier2',
@@ -428,6 +517,7 @@ async function main(): Promise<void> {
       bug117,
       bug158,
       twoLinkBlob,
+      wardrobeFolders,
     }) + '\n'
   );
   process.exit(0);

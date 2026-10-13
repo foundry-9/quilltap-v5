@@ -207,6 +207,11 @@ fn bug158_qtap_path() -> PathBuf {
         .join("../../harness/oracle/fixtures/qtap-import-bug158.qtap")
 }
 
+fn wardrobe_folders_qtap_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../harness/oracle/fixtures/qtap-import-wardrobe-folders.qtap")
+}
+
 fn two_link_blob_qtap_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../harness/oracle/fixtures/qtap-import-two-link-blob.qtap")
@@ -1035,10 +1040,126 @@ fn qtap_import_tier2_matches_oracle() {
         drop(mount4);
     }
 
+    // ── P4.D284 (v4 `4a38222e6`): wardrobe folders through the NDJSON reader ──
+    //
+    // `qtap-import-wardrobe-folders.qtap` is a HAND-BUILT NDJSON bundle: one
+    // character and four `wardrobe_item` records whose `folder` is
+    // `"Formal/Evening"` (filed there, both subfolder rows ensured), `"../x"`
+    // (the writer's `safeFolder` sends it to the root), `""` (the root) and
+    // R-M's `5` (a non-string: `path.includes is not a function`, the per-item
+    // warning, nothing written). v5's NDJSON loader attaches each record whole,
+    // so `folder` rides RAW into the importer. The comparand: the `Wardrobe/`
+    // link paths and folder rows the import ADDED, and the warnings. A FIFTH
+    // isolated pair, for the bug117 reason.
+    {
+        let scratch5 = tempfile::Builder::new()
+            .prefix("qt-qtapimport-wfold-")
+            .tempdir()
+            .expect("tempdir");
+        let main5_path = scratch5.path().join("main.db");
+        let mount5_path = scratch5.path().join("mount.db");
+        std::fs::copy(&main_fixture, &main5_path).unwrap_or_else(|e| panic!("copy main5: {e}"));
+        std::fs::copy(&mount_fixture, &mount5_path).unwrap_or_else(|e| panic!("copy mount5: {e}"));
+        let main5 = Writer::open_writable(&main5_path, &spec.test_pepper_base64)
+            .unwrap_or_else(|e| panic!("open main5: {e}"));
+        let mount5 = Writer::open_writable(&mount5_path, &spec.test_pepper_base64)
+            .unwrap_or_else(|e| panic!("open mount5: {e}"));
+        let before = dump_wardrobe_paths(&mount5);
+
+        let bytes =
+            std::fs::read(wardrobe_folders_qtap_path()).expect("read wardrobe-folders .qtap");
+        let export =
+            quilltap_core::services::quilltap_import::ndjson::load_qtap_from_upload(&bytes)
+                .expect("load the wardrobe-folders NDJSON bundle");
+        let options = ImportOptions {
+            include_memories: false,
+            ..ImportOptions::seed_defaults()
+        };
+        let got = execute_import(
+            main5.connection(),
+            mount5.connection(),
+            SINGLE_USER_ID,
+            &export,
+            &options,
+            &NotConfiguredPixelCodec,
+        )
+        .expect("wardrobe-folders execute_import");
+
+        let want = &oracle["wardrobeFolders"];
+        assert_eq!(
+            Value::Bool(got.success),
+            want["success"],
+            "wardrobe-folders success"
+        );
+        assert_eq!(
+            serde_json::to_value(&got.warnings).unwrap(),
+            want["warnings"],
+            "wardrobe-folders warnings"
+        );
+        let after = dump_wardrobe_paths(&mount5);
+        let added = |key: usize| -> Value {
+            let mut paths: Vec<&String> = after[key]
+                .iter()
+                .filter(|p| !before[key].contains(p))
+                .collect();
+            paths.sort();
+            serde_json::json!(paths)
+        };
+        let (got_links, got_folders) = (added(0), added(1));
+        assert_eq!(got_links, want["links"], "wardrobe-folders link paths");
+        assert_eq!(got_folders, want["folders"], "wardrobe-folders folder rows");
+
+        // The floor, on v5's own dump: the filed item, the `../x` fallback at
+        // the root, and R-M's refusal.
+        assert_eq!(
+            got_links,
+            serde_json::json!([
+                "Wardrobe/Everyday Scarf.md",
+                "Wardrobe/Formal/Evening/Opera Cloak.md",
+                "Wardrobe/Stage Spats.md",
+            ]),
+            "filed / fallback / root"
+        );
+        assert_eq!(
+            got_folders,
+            serde_json::json!(["Wardrobe/Formal", "Wardrobe/Formal/Evening"]),
+            "the subfolder rows"
+        );
+        assert_eq!(
+            got.warnings,
+            ["Failed to import wardrobe item \"Numbered Gloves\": path.includes is not a function"],
+            "R-M"
+        );
+
+        drop(main5);
+        drop(mount5);
+    }
+
     eprintln!(
         "OK: qtap-import tier-2 matched oracle (9 tables, 2 DBs) + skip branch + bug-117 sha join \
-         + bug-158 strip + the two-link blob."
+         + bug-158 strip + the two-link blob + the wardrobe folders."
     );
+}
+
+/// P4.D284's comparand: every `Wardrobe/` link path and folder row in the
+/// mount index (the caller diffs before / after).
+fn dump_wardrobe_paths(mount: &Writer) -> [Vec<String>; 2] {
+    let column = |sql: &str| -> Vec<String> {
+        let mut stmt = mount
+            .connection()
+            .prepare(sql)
+            .expect("prepare wardrobe paths");
+        stmt.query_map([], |r| r.get::<_, String>(0))
+            .expect("query wardrobe paths")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect wardrobe paths")
+    };
+    [
+        column(
+            "SELECT relativePath FROM doc_mount_file_links WHERE relativePath LIKE 'Wardrobe/%'",
+        ),
+        column("SELECT path FROM doc_mount_folders WHERE path LIKE 'Wardrobe/%'"),
+    ]
 }
 
 /// P4.106 item 10's comparand, in the oracle case's shape.

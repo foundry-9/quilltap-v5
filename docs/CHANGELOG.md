@@ -122,6 +122,12 @@ The `4a38222e6` wardrobe-programme round's image lane, stage B from `KEYSTONE` (
 
 New families: `physical_description_equivalence` (140 rows), `image_attempt_tier3` (15), `generated_file_row_equivalence` (9), `vision_request_tier3` (22, one through the bug-151 scripted encoder). Grown: the wiig corpus (three chat plants, nine job scenarios; 32), the Almanack plants (two `WARDROBE_ITEM_IMAGE` rows), `wardrobe-routes.json` (`pv_refused_422`, `pv_provider_502`, `pv_rerouted_ok`). Re-pinned with the port: `lora_log_anchor_guard`, the in-crate avatar / story tests. Three mutation proofs red by name (an order inverted, the type list narrowed, the shrink skipped). Seven import-dead oracle cases re-aimed at the pin's moved modules. Lane record in `status-log.md`.
 
+#### 2026-10-12 — feat(import): a carried wardrobe record files at its `folder`, and a non-string one is refused with v4's warning (P4.D284, v4 `4a38222e6`)
+
+_Versions: core 0.0.1278._
+
+The `.qtap` importer and the restore's legacy wardrobe pass now hand each record's `folder` to the writer as given, so an imported `folder: "Formal/Evening"` lands at `Wardrobe/Formal/Evening/` and an unsafe one like `../x` goes to the top level. A `folder` that is not a string fails that one item with v4's own message (`path.includes is not a function`, or `path.split …` for a list). The legacy outfit-preset folds fill `folder: ""`. New import cases cover filed, normalised, root and refused items on both the JSON and NDJSON paths.
+
 #### 2026-10-12 — feat(backup): the backup carries `wardrobeItems: []` and the delete-service drops its wardrobe step (P4.D284, v4 `9ecebf986`)
 
 _Versions: core 0.0.1277._

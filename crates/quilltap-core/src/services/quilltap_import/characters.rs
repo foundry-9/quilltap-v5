@@ -530,6 +530,11 @@ fn import_character_wardrobe_items(
         // forced null on import; `characterId` set to the new character; the
         // rest passed through.
         let now = crate::clock::now_iso();
+        // P4.D284 (v4 `4a38222e6`): `folder` rides `...itemData` RAW into the
+        // writer, whose `safeFolder` files it (see `carried_wardrobe_folder`);
+        // R-M's non-string `folder` fails the item in the writer with v4's
+        // TypeError text, through the same per-item catch below.
+        let folder = crate::services::backup::restore::archive::carried_wardrobe_folder(item);
         let stored = WardrobeItem {
             id: item
                 .get("id")
@@ -554,9 +559,7 @@ fn import_character_wardrobe_items(
             migrated_from_clothing_record_id: Some(None),
             image_file_id: None,
             archived_at: Some(opt_string(item, "archivedAt")),
-            // P4.D279 (C1 §12, mechanical): `WardrobeItem.folder` arrived with v4
-            // `4a38222e6`; the owning lane replaces this with the body's / record's value.
-            folder: String::new(),
+            folder: folder.clone().unwrap_or_default(),
             created_at: now.clone(),
             updated_at: now,
         };
@@ -568,7 +571,22 @@ fn import_character_wardrobe_items(
         // item at its own copy. Until then the item carries no picture rather
         // than a dangling id." (`image_file_id: None` above; the field-by-field
         // build never carried `_imageFiles`.)
-        match create_vault_wardrobe_item(main, &links, &docs, &stored) {
+        let created = match folder {
+            Ok(_) => {
+                create_vault_wardrobe_item(main, &links, &docs, &stored).map_err(|e| match e {
+                    // v4's throw (`wardrobe.repository.ts:346`), not the v5
+                    // sentence this arm used to push (P4.148).
+                    WardrobePublicError::NoMount => format!(
+                        "Cannot create wardrobe item: {}",
+                        crate::db::vault_wardrobe_public::NO_MOUNT_MESSAGE
+                    ),
+                    WardrobePublicError::Cycle(msg) => msg,
+                    WardrobePublicError::Db(e) => super::item_error_text(&e),
+                })
+            }
+            Err(type_error) => Err(type_error.to_string()),
+        };
+        match created {
             Ok(_) => {
                 // v4 `:341`, after a successful create.
                 if let Some(source_id) = item.get("id").and_then(Value::as_str) {
@@ -580,17 +598,7 @@ fn import_character_wardrobe_items(
             // v4's per-item catch pushes AND warns `{wardrobeItemId,
             // characterId, error}` (`import-characters.ts:331-340`; P4.148
             // Tier 2 item 17) — one tail for both.
-            Err(e) => {
-                let text = match e {
-                    // v4's throw (`wardrobe.repository.ts:346`), not the v5
-                    // sentence this arm used to push (P4.148).
-                    WardrobePublicError::NoMount => format!(
-                        "Cannot create wardrobe item: {}",
-                        crate::db::vault_wardrobe_public::NO_MOUNT_MESSAGE
-                    ),
-                    WardrobePublicError::Cycle(msg) => msg,
-                    WardrobePublicError::Db(e) => super::item_error_text(&e),
-                };
+            Err(text) => {
                 warnings.push(format!(
                     "Failed to import wardrobe item \"{title}\": {text}"
                 ));

@@ -55,6 +55,8 @@ pub(super) fn legacy_preset_to_composite(preset: &Value) -> Value {
         "replace": true,
         "migratedFromClothingRecordId": Value::Null,
         "archivedAt": Value::Null,
+        // P4.D284 (v4 `4a38222e6`, `legacy-presets.ts:73`): the top level, explicitly.
+        "folder": "",
         "createdAt": preset.get("createdAt").cloned().unwrap_or(Value::Null),
         "updatedAt": preset.get("updatedAt").cloned().unwrap_or(Value::Null),
     })

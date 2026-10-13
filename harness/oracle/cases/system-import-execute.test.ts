@@ -1211,6 +1211,80 @@ function storeIdentityCase(name: string, steps: Array<Record<string, unknown>>) 
   };
 }
 
+/**
+ * [P4.D284] Wardrobe folders on import (v4 `4a38222e6`). The importer passes a
+ * `wardrobe_item` record's `folder` RAW into `wardrobe.create`, and the
+ * WRITER's `safeFolder` (`wardrobe-writes.ts:200-206`) files it: a
+ * structurally safe folder as given (incl. hand-made spellings the normaliser
+ * would respell — `Hats: Summer`, `Formal/images`), anything else normalised
+ * (` Formal / Evening `) or sent to the root when it cannot be (`../x`,
+ * `images/x`); a falsy one (absent / `null` / `0`) is the root. R-M: a truthy
+ * NON-string reaches `path.includes` (a number, `true`) or, for an array,
+ * `path.split` — a TypeError the per-item catch turns into v4's
+ * `Failed to import wardrobe item "<title>": <message>` warning, and nothing
+ * is written for that item. The bundle carries no vault, so the import
+ * provisions one and the filed items land at `Wardrobe/<folder>/<title>.md`
+ * with the subfolder rows the recursive projection ensures.
+ */
+function wardrobeFoldersPayload(): { manifest: unknown; data: Record<string, unknown> } {
+  const CHAR = 'fd000000-0000-4000-8000-000000000001';
+  const item = (n: number, title: string, types: string[], folder?: unknown) => ({
+    id: `fd000000-0000-4000-8000-0000000001${String(n).padStart(2, '0')}`,
+    characterId: CHAR,
+    title,
+    description: null,
+    imagePrompt: null,
+    types,
+    componentItemIds: [],
+    appropriateness: null,
+    isDefault: false,
+    replace: false,
+    migratedFromClothingRecordId: null,
+    archivedAt: null,
+    ...(folder === undefined ? {} : { folder }),
+    createdAt: '2026-03-01T00:00:00.000Z',
+    updatedAt: '2026-03-01T00:00:00.000Z',
+  });
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'characters',
+      createdAt: '2026-03-01T00:00:00.000Z',
+      appVersion: 'test',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [] },
+      counts: {},
+    },
+    data: {
+      characters: [
+        {
+          id: CHAR,
+          name: 'Fennimore Folds',
+          identity: 'A valet of very orderly closets.',
+          description: 'Pressed to a crease.',
+          personality: 'Fastidious.',
+          avatarOverrides: [],
+          tags: [],
+          wardrobeItems: [
+            item(1, 'Evening Tailcoat', ['top'], 'Formal/Evening'),
+            item(2, 'Messy Waistcoat', ['top'], ' Formal / Evening '),
+            item(3, 'Escaped Spats', ['footwear'], '../x'),
+            item(4, 'Picture Sash', ['accessories'], 'images/x'),
+            item(5, 'Summer Boater', ['accessories'], 'Hats: Summer'),
+            item(6, 'Spare Collar', ['accessories'], 'Formal/images'),
+            item(7, 'Plain Cravat', ['accessories']),
+            item(8, 'Null Braces', ['accessories'], null),
+            item(9, 'Zero Garters', ['accessories'], 0),
+            item(10, 'Numbered Gloves', ['accessories'], 5),
+            item(11, 'Truthful Cufflinks', ['accessories'], true),
+            item(12, 'Listed Socks', ['footwear'], ['Formal']),
+          ],
+        },
+      ],
+    },
+  };
+}
+
 /** The hand-built legacy-folds payload (scenario string, outfitPresets,
  *  annotationButtons, missing supportsImageUpload, the three memory arms). */
 function legacyFoldsPayload(): { manifest: unknown; data: Record<string, unknown> } {
@@ -3010,6 +3084,13 @@ async function main(): Promise<void> {
     ),
     executeCase('execute_wardrobe_no_table', () => wardrobePayload, {
       conflictStrategy: 'duplicate',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    // [P4.D284] `4a38222e6`'s folders on import — filed, normalised, sent to
+    // the root, and R-M's non-string `folder` refused per item.
+    executeCase('execute_wardrobe_folders', () => wardrobeFoldersPayload(), {
+      conflictStrategy: 'skip',
       includeMemories: false,
       includeRelatedEntities: false,
     }),

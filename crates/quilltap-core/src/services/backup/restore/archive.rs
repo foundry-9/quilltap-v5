@@ -283,6 +283,51 @@ fn upgrade_chat_equipped_outfits(chats: &mut [Value]) {
     }
 }
 
+/// P4.D284 (v4 `4a38222e6`) — a carried wardrobe record's `folder` as the
+/// writer receives it. Neither v4 carrier normalises a folder itself: the
+/// `.qtap` importer (`import-characters.ts:306-333`) and the restore's 22f-bis
+/// (`restore.ts:891-909`) hand the record's `...itemData` — `folder` included,
+/// RAW — to `wardrobe.create`, and the WRITER's `safeFolder`
+/// (`wardrobe-writes.ts:200-206`, v5's `create_in_mount`) keeps a structurally
+/// safe folder, normalises the rest, or files at the root. This answers what
+/// `safeFolder` would see:
+///
+/// - falsy (`!folder`: absent, `null`, `false`, `0`, `""`) → `""`, the root;
+/// - a string → itself, untouched (the writer tames it);
+/// - R-M: any other truthy value is not a string, and v4's
+///   `isSafeWardrobeFolderPath(path)` calls a string method on it — a number,
+///   `true` or an object throws at `path.includes`, an array (which HAS
+///   `includes`) at `path.split` — a TypeError v4's per-item catch turns into
+///   the carrier's warning. `Err` carries that message, verbatim, and nothing
+///   is written for the item. The one array shape that never reaches `split`
+///   — an element equal to `"\\"` or more than 900 elements, where
+///   `isSafeWardrobeFolderPath` answers `false` and
+///   `normalizeWardrobeFolderPathOrRoot` swallows the `split` TypeError —
+///   files at the root, with the writer's `Wardrobe write normalised an
+///   incoming folder` DEBUG emitted here (the writer never sees the array; its
+///   `folder` renders through the `…Json` file-layer convention).
+pub fn carried_wardrobe_folder(item: &Value) -> Result<String, &'static str> {
+    match item.get("folder") {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => Ok(String::new()),
+        Some(Value::Number(n)) if n.as_f64() == Some(0.0) => Ok(String::new()),
+        Some(Value::String(s)) => Ok(s.clone()),
+        Some(Value::Array(elements)) => {
+            if elements.len() > 900 || elements.iter().any(|e| e.as_str() == Some("\\")) {
+                tracing::debug!(
+                    folderJson = %serde_json::Value::Array(elements.clone()),
+                    normalised = "",
+                    context = "wardrobe",
+                    "Wardrobe write normalised an incoming folder"
+                );
+                Ok(String::new())
+            } else {
+                Err("path.split is not a function")
+            }
+        }
+        Some(_) => Err("path.includes is not a function"),
+    }
+}
+
 /// v4 `archive.ts:209-242` — `data/outfit-presets.json` folds into composite
 /// wardrobe items. New backups never write that file; only older archives carry
 /// it. The preset's own `id`/`createdAt`/`updatedAt` are preserved so any
@@ -335,6 +380,9 @@ fn fold_legacy_outfit_presets(root: &Path, wardrobe_items: &mut Vec<Value>) -> R
         m.insert("replace".into(), Value::Bool(true));
         m.insert("migratedFromClothingRecordId".into(), Value::Null);
         m.insert("archivedAt".into(), Value::Null);
+        // P4.D284 (v4 `4a38222e6`, `archive.ts:236`): the folded composite
+        // files at the top level, explicitly.
+        m.insert("folder".into(), Value::String(String::new()));
         m.insert(
             "createdAt".into(),
             preset.get("createdAt").cloned().unwrap_or(Value::Null),
@@ -415,5 +463,83 @@ pub fn count_npm_plugins_in_extracted_backup(root_path: &Path) -> usize {
     match std::fs::read_dir(&plugins) {
         Ok(entries) => entries.flatten().filter(|e| e.path().is_dir()).count(),
         Err(_) => 0,
+    }
+}
+
+#[cfg(test)]
+mod carried_wardrobe_folder_tests {
+    //! P4.D284 (v4 `4a38222e6`) — a carried record's `folder` as v4's writer
+    //! sees it. The tier-2 proof is `system_import_state`'s
+    //! `execute_wardrobe_folders` (v4's real importer + writer); these pin each
+    //! JS-truthiness arm, R-M's two TypeError texts, and the one array shape the
+    //! normaliser swallows (its DEBUG, with a silence leg on every other arm).
+    use super::carried_wardrobe_folder;
+    use serde_json::json;
+
+    const NORMALISED: &str = "Wardrobe write normalised an incoming folder";
+
+    fn folder_of(value: serde_json::Value) -> (Result<String, &'static str>, Vec<String>) {
+        let item = json!({ "title": "Coat", "folder": value });
+        crate::test_support::captured_with(|| carried_wardrobe_folder(&item))
+    }
+
+    #[test]
+    fn falsy_folders_are_the_root_and_strings_pass_raw() {
+        let (absent, lines) = crate::test_support::captured_with(|| {
+            carried_wardrobe_folder(&json!({ "title": "Coat" }))
+        });
+        assert_eq!(absent, Ok(String::new()));
+        assert!(lines.is_empty(), "{lines:#?}");
+        for falsy in [json!(null), json!(false), json!(0), json!(-0.0), json!("")] {
+            let (folder, lines) = folder_of(falsy.clone());
+            assert_eq!(folder, Ok(String::new()), "{falsy}");
+            assert!(lines.iter().all(|l| !l.contains(NORMALISED)), "{lines:#?}");
+        }
+        // The writer, not the carrier, tames a string — even an unsafe one.
+        for raw in [
+            "Formal/Evening",
+            "../x",
+            " Formal / Evening ",
+            "Hats: Summer",
+        ] {
+            assert_eq!(folder_of(json!(raw)).0, Ok(raw.to_string()));
+        }
+    }
+
+    #[test]
+    fn r_m_non_strings_fail_with_v4s_type_error() {
+        for value in [
+            json!(5),
+            json!(-1.5),
+            json!(true),
+            json!({ "path": "Formal" }),
+        ] {
+            let (folder, lines) = folder_of(value.clone());
+            assert_eq!(folder, Err("path.includes is not a function"), "{value}");
+            assert!(lines.iter().all(|l| !l.contains(NORMALISED)), "{lines:#?}");
+        }
+        for value in [json!([]), json!(["Formal"]), json!(["a", "b"])] {
+            let (folder, lines) = folder_of(value.clone());
+            assert_eq!(folder, Err("path.split is not a function"), "{value}");
+            assert!(lines.iter().all(|l| !l.contains(NORMALISED)), "{lines:#?}");
+        }
+    }
+
+    #[test]
+    fn an_array_the_normaliser_swallows_files_at_the_root_and_logs() {
+        let (folder, lines) = folder_of(json!(["Formal", "\\"]));
+        assert_eq!(folder, Ok(String::new()));
+        let hits: Vec<&String> = lines.iter().filter(|l| l.contains(NORMALISED)).collect();
+        assert_eq!(hits.len(), 1, "{lines:#?}");
+        assert!(
+            hits[0].starts_with("DEBUG ")
+                && hits[0].contains(r#"folderJson=["Formal","\\"]"#)
+                && hits[0].contains("context=wardrobe"),
+            "{hits:#?}"
+        );
+        let oversized = serde_json::Value::Array(vec![json!("x"); 901]);
+        assert_eq!(folder_of(oversized).0, Ok(String::new()));
+        let at_cap = serde_json::Value::Array(vec![json!("x"); 900]);
+        assert_eq!(folder_of(at_cap).0, Err("path.split is not a function"));
     }
 }

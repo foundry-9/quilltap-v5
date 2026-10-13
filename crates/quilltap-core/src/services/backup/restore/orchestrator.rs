@@ -2632,6 +2632,11 @@ fn restore_mount_family(
         let docs = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
         for item in &data.wardrobe_items {
             let title = s(item, "title");
+            // P4.D284 (v4 `4a38222e6`): the row's `folder` rides `...itemData`
+            // RAW into the writer's `safeFolder`; a legacy row has none (the
+            // root), and R-M's non-string one fails the item with v4's
+            // TypeError text through the catch below.
+            let folder = crate::services::backup::restore::archive::carried_wardrobe_folder(item);
             let stored = crate::vault_overlay::WardrobeItem {
                 id: id_of(item),
                 character_id: Some(os(item, "characterId")),
@@ -2652,18 +2657,20 @@ fn restore_mount_family(
                     .get("imageFileId")
                     .map(|v| v.as_str().map(str::to_string)),
                 archived_at: Some(os(item, "archivedAt")),
-                // P4.D279 (C1 §12, mechanical): `WardrobeItem.folder` arrived with v4
-                // `4a38222e6`; the owning lane replaces this with the body's / record's value.
-                folder: String::new(),
+                folder: folder.clone().unwrap_or_default(),
                 created_at: now(),
                 updated_at: now(),
             };
-            match crate::db::vault_wardrobe_public::create_vault_wardrobe_item(
-                main, &links, &docs, &stored,
-            ) {
+            let created = match folder {
+                Ok(_) => crate::db::vault_wardrobe_public::create_vault_wardrobe_item(
+                    main, &links, &docs, &stored,
+                )
+                .map_err(|e| e.warn_text()),
+                Err(type_error) => Err(type_error.to_string()),
+            };
+            match created {
                 Ok(_) => c.wardrobe_items += 1,
-                Err(e) => {
-                    let error = e.warn_text();
+                Err(error) => {
                     w.push(format!(
                         "Failed to restore wardrobe item \"{title}\": {error}"
                     ));
