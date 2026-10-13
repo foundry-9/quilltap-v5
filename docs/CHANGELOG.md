@@ -122,6 +122,12 @@ The `4a38222e6` wardrobe-programme round's image lane, stage B from `KEYSTONE` (
 
 New families: `physical_description_equivalence` (140 rows), `image_attempt_tier3` (15), `generated_file_row_equivalence` (9), `vision_request_tier3` (22, one through the bug-151 scripted encoder). Grown: the wiig corpus (three chat plants, nine job scenarios; 32), the Almanack plants (two `WARDROBE_ITEM_IMAGE` rows), `wardrobe-routes.json` (`pv_refused_422`, `pv_provider_502`, `pv_rerouted_ok`). Re-pinned with the port: `lora_log_anchor_guard`, the in-crate avatar / story tests. Three mutation proofs red by name (an order inverted, the type list narrowed, the shrink skipped). Seven import-dead oracle cases re-aimed at the pin's moved modules. Lane record in `status-log.md`.
 
+#### 2026-10-12 — feat(backup): the backup carries `wardrobeItems: []` and the delete-service drops its wardrobe step (P4.D284, v4 `9ecebf986`)
+
+_Versions: core 0.0.1277._
+
+A backup no longer reads the legacy `wardrobe_items` table: `wardrobeItems` is always empty (and `counts.wardrobeItems` 0), as v4 writes it now that items live only in document stores. The restore's replace-mode wipe no longer reads or deletes wardrobe rows either; document stores are cleared with the other store tables as before. A planted legacy row proves the backup leaves it out.
+
 #### 2026-10-12 — docs(porting): P4.D279 Tier 2 — mutation proofs, the Friday-copy depth count, the full gate + own-family sweep; LANE COMPLETE
 
 _Docs-only change._

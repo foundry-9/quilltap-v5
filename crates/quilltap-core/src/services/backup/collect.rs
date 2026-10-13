@@ -351,23 +351,6 @@ const VECTOR_INDEX_METAS: &[(&str, F)] = &[
     ("updatedAt", F::Str),
 ];
 
-const WARDROBE_ITEMS: &[(&str, F)] = &[
-    ("id", F::Str),
-    ("characterId", F::StrOpt),
-    ("title", F::Str),
-    ("description", F::StrOpt),
-    ("imagePrompt", F::StrOpt),
-    ("types", F::Json("[]")),
-    ("componentItemIds", F::Json("[]")),
-    ("appropriateness", F::StrOpt),
-    ("isDefault", F::Bool),
-    ("replace", F::Bool),
-    ("migratedFromClothingRecordId", F::StrOpt),
-    ("archivedAt", F::StrOpt),
-    ("createdAt", F::Str),
-    ("updatedAt", F::Str),
-];
-
 const TEXT_REPLACEMENT_RULES: &[(&str, F)] = &[
     ("id", F::Str),
     ("fromText", F::Str),
@@ -730,7 +713,13 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
             )?,
             chat_settings,
             folders: query_all(main, "folders", FOLDERS, "userId = ?1", &[&user_id])?,
-            wardrobe_items: query_all(main, "wardrobe_items", WARDROBE_ITEMS, "", &[])?,
+            // P4.D284 (v4 `9ecebf986`, `backup-service.ts:183-186`): "Wardrobe
+            // items live in document stores (`Wardrobe/*.md`), which the backup
+            // carries as documents; the legacy `wardrobeItems` array stays empty
+            // so old restorers still read the format." v4 no longer reads the
+            // `wardrobe_items` table at all (its repository stopped knowing it),
+            // so a leftover legacy row is NOT carried.
+            wardrobe_items: Vec::new(),
             character_plugin_data,
             conversation_annotations,
             chat_documents,
@@ -1237,6 +1226,37 @@ mod wardrobe_wear_collect_tests {
             })
             .unwrap();
         assert_eq!(exists, 0, "R-G: the backup writes no schema on the source");
+    }
+
+    /// P4.D284 (v4 `9ecebf986`, `backup-service.ts:183-186`): the backup no
+    /// longer reads the legacy `wardrobe_items` table — `wardrobeItems` is
+    /// ALWAYS `[]` (and so `counts.wardrobeItems` is `0`), even when the table
+    /// still holds a pre-cutover row v4 used to carry. The committed
+    /// `system-data-*` fixture's table is EMPTY, so `system_backup_equivalence`
+    /// cannot see this; the planted row is the tripwire.
+    #[test]
+    fn a_legacy_wardrobe_items_row_is_not_carried() {
+        let (_dir, db) = db_with(
+            "CREATE TABLE wardrobe_items (id TEXT PRIMARY KEY, characterId TEXT, \
+             title TEXT NOT NULL, description TEXT, imagePrompt TEXT, types TEXT, \
+             componentItemIds TEXT, appropriateness TEXT, isDefault INTEGER, \
+             replace INTEGER, migratedFromClothingRecordId TEXT, archivedAt TEXT, \
+             createdAt TEXT, updatedAt TEXT); \
+             INSERT INTO wardrobe_items VALUES ('3e0000f1-0000-4000-8000-0000000000f1', \
+             'char-1', 'Legacy Coat', NULL, NULL, '[\"top\"]', '[]', NULL, 0, 0, NULL, \
+             NULL, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z');",
+        );
+        let planted: i64 = db
+            .read_main(
+                |c| Ok(c.query_row("SELECT COUNT(*) FROM wardrobe_items", [], |r| r.get(0))?),
+            )
+            .unwrap();
+        assert_eq!(
+            planted, 1,
+            "the plant must be in the source, or this asks nothing"
+        );
+        let data = collect_user_data(&db, "u-1").expect("collect");
+        assert!(data.wardrobe_items.is_empty(), "{:?}", data.wardrobe_items);
     }
 }
 // === end P4.D264 ===

@@ -28,13 +28,15 @@
 //!    Note v4's try/catch wraps BOTH the byte delete and the row delete, so a
 //!    throwing byte delete makes v4 *skip* that row; v5 (no byte step) always
 //!    deletes the row, which is v4's success path.
-//! 3. **Wardrobe rows.** v4's `wardrobe.findAll()` reads the `wardrobe_items`
-//!    SQL table, but wardrobe items are vault-only (v4's `create` refuses a SQL
-//!    fallback), so the table is empty on every real instance and the loop is a
-//!    no-op. v5 ports the loop faithfully over
-//!    [`crate::db::vault_wardrobe_public::delete_vault_wardrobe_item`]; it is NOT
-//!    exercised by the corpus (flagged, like `cascade_delete`'s legacy-file
-//!    branch).
+//! 3. **No wardrobe step (P4.D284, v4 `9ecebf986`).** v4's delete-service no
+//!    longer reads or deletes wardrobe items at all — the `wardrobe.findAll()`
+//!    read, the per-item `wardrobe.delete` and the `wardrobeItems` count key are
+//!    gone (its repository stopped knowing the legacy `wardrobe_items` table).
+//!    Wardrobe items live only in document stores, which
+//!    [`clear_format3_entities`] wipes with every other store table (the
+//!    `wardrobe_wear_stats` ledger with the main tables). v5 follows: the old
+//!    SQL-mirror loop this note used to describe is removed, and a leftover
+//!    legacy `wardrobe_items` row is left where it lies, as v4 leaves it.
 //! 4. **`conversation_annotations` is wiped.** v4 used to delete the table on
 //!    no path, so a replace-mode restore collided with the survivors; v5
 //!    truncated it first and v4 has since converged (bug 10 — the table is in
@@ -49,8 +51,6 @@ use crate::db::characters::CharactersRepository;
 use crate::db::chat_settings::ChatSettingsRepository;
 use crate::db::chats::ChatsRepository;
 use crate::db::connection_profiles::ConnectionProfilesRepository;
-use crate::db::doc_mount_documents::DocMountDocumentsRepository;
-use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::embedding_profiles::EmbeddingProfilesRepository;
 use crate::db::files::FilesRepository;
 use crate::db::folders::FoldersRepository;
@@ -63,7 +63,6 @@ use crate::db::prompt_templates::PromptTemplatesRepository;
 use crate::db::roleplay_templates::RoleplayTemplatesRepository;
 use crate::db::runtime::{Db, WriterSet};
 use crate::db::tags::TagsRepository;
-use crate::db::vault_wardrobe_public::delete_vault_wardrobe_item;
 use crate::db::{api_keys, chat_settings, DbError};
 
 // ── The summary shape (v4 `DeleteSummary`, :191) ─────────────────────────────
@@ -173,18 +172,6 @@ fn ids_by_user(conn: &Connection, table: &str, user_id: &str) -> Vec<String> {
 /// carry no `userId` since the store cutover; v4's wrappers ignore the user too).
 fn ids_all(conn: &Connection, table: &str) -> Vec<String> {
     query_ids(conn, &format!("SELECT id FROM \"{table}\""), &[])
-}
-
-/// `SELECT id, characterId FROM wardrobe_items` — the (always empty in practice)
-/// SQL mirror v4's `wardrobe.findAll()` reads.
-fn wardrobe_rows(conn: &Connection) -> Vec<(String, Option<String>)> {
-    list_or_empty((|| {
-        let mut stmt = conn.prepare("SELECT id, characterId FROM wardrobe_items")?;
-        let rows = stmt.query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
-        })?;
-        rows.collect::<Result<Vec<_>, _>>()
-    })())
 }
 
 /// `SELECT id FROM memories WHERE characterId = ?1` — v4
@@ -350,7 +337,6 @@ pub fn delete_user_data_on_writer(
     let folders = FoldersRepository::new(main)
         .find_by_user_id(user_id)
         .unwrap_or_default();
-    let wardrobe_items = wardrobe_rows(main);
 
     // 2. Memories first, per character, through the deletion chokepoint
     //    (v4 `914b59e13`, :149). v4's why-comment, carried: with the whole
@@ -469,16 +455,6 @@ pub fn delete_user_data_on_writer(
         let repo = FoldersRepository::new(main);
         for folder in &folders {
             repo.delete(&folder.id)?;
-        }
-    }
-    // Wardrobe: vault-only in practice (see divergence 3). NOT corpus-exercised.
-    if let Some(mount_conn) = mount {
-        let links = DocMountFileLinksRepository::new(mount_conn);
-        let docs = DocMountDocumentsRepository::new(mount_conn);
-        for (id, character_id) in &wardrobe_items {
-            // v4 `wardrobe.delete(w.id, w.characterId ?? null)`; a `NoMount`
-            // (v4 throws) is warn-and-continue here — the wipe must not abort.
-            let _ = delete_vault_wardrobe_item(main, &links, &docs, id, character_id.as_deref());
         }
     }
 
