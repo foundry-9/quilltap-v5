@@ -54,6 +54,12 @@ _Versions: core 0.0.1277._
 
 `?action=equip` now follows v4 `4a38222e6`'s `outfit.ts`. The put-on modes (`wear`, its alias `equip`, `replace`, `add_to_slot`) and `set_all` load one wearable pool for the character (operator project tier, not roster-gated) and put items on through `resolve_wearable` / `wear_item`: an id outside the pool is a 404, an archived item a 400 `Item "<title>" is archived and cannot be worn`, an uncovered `add_to_slot` slot the new 400 `Item "<title>" (types: …) cannot be added to the "<slot>" slot` (was `Wardrobe item "<title>" does not cover the <slot> slot`). `set_all` refuses an archived item only when it is newly put on. The take-off modes go straight to `apply_displacement` with no pool. New INFO lines: `[Chats v1] Wardrobe item put on`, `Wardrobe slot changed`, `Refused to put on a wardrobe item` (with `reason`), `Refused a fitting that puts on an archived item`. The two post-change effects run through `notify_wardrobe_changed`, which adds the announcement's DEBUG / WARN lines. `wardrobe_wear_commit_tier2` grows 18 ops (an `archive` op kind, three new chats) and compares the four new lines.
 
+#### 2026-10-12 — chore(tools): regenerate the tool catalog at v4 `4a38222e6` — `wardrobe_list` drops `include_presets`, list / read describe the folder (P4.D280)
+
+_Versions: core 0.0.1277._
+
+`tools/definitions/data.rs` regenerated through `gen-tool-catalog.mjs` from the pinned `tool-definitions.ts` dump. Two definitions move: `wardrobe_list` no longer declares `include_presets` and says an item's folder is filing only; `wardrobe_read` names the folder in its description. `tool_definitions_equivalence` and `tools_inventory_equivalence` pass from the pin.
+
 #### 2026-10-12 — docs(porting): P4.D279 Tier 2 — mutation proofs, the Friday-copy depth count, the full gate + own-family sweep; LANE COMPLETE
 
 _Docs-only change._
