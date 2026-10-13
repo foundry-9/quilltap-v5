@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-12 — docs(porting): P4.D282 lane close — mutation proofs, the gate, the lane record; LANE COMPLETE
+
+_Docs-only change._
+
+The outfit-pipeline lane's record: three mutation proofs red by name (archived refusal removed, `set_all`'s already-worn pass removed, the summary pool widened to the cast), the wiring guard re-read, Tier 3 as ordered, the banked differential gaps (the announcement job's whisper, `resolve_live_clothing`), the files touched outside the ownership table, the regen list for the union, and the full gate (742 binaries / 4,913 passed / 5 sibling-or-by-design reds, zero SKIP; clippy clean on both feature sets).
+
 #### 2026-10-12 — refactor(wardrobe): delete the LANE-REMOVE shims P4.D282 was the last caller of — `dissolve_bundles`, the three `wardrobe` slot mutators, `find_archetypes_in_mounts` (P4.D282, v4 `9ecebf986`)
 
 _Versions: core 0.0.1282._
