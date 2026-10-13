@@ -5670,21 +5670,95 @@ impl CoreEngine {
             // === end P4.D265 ===
             // === P4.D279: the 4a38222e6 round's wire (C2) — each arm the agreed
             // refusal (§R.14), replaced by P4.D281 this round ===
-            Request::WardrobeFoldersList { .. } => {
-                p4d279_not_yet_available("wardrobeFoldersList", "P4.D281")
-            }
-            Request::WardrobeFolderCreate { .. } => {
-                p4d279_not_yet_available("wardrobeFolderCreate", "P4.D281")
-            }
-            Request::WardrobeFolderRename { .. } => {
-                p4d279_not_yet_available("wardrobeFolderRename", "P4.D281")
-            }
-            Request::WardrobeFolderDelete { .. } => {
-                p4d279_not_yet_available("wardrobeFolderDelete", "P4.D281")
-            }
-            Request::WardrobeItemsMove { .. } => {
-                p4d279_not_yet_available("wardrobeItemsMove", "P4.D281")
-            }
+            Request::WardrobeFoldersList {
+                scope,
+                container_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::wardrobe_route_factory::folder_action(
+                        &db,
+                        super::wardrobe_route_factory::FolderAction::List,
+                        scope,
+                        container_id.as_deref(),
+                        SINGLE_USER_ID,
+                        &serde_json::Value::Null,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::WardrobeFolderCreate {
+                scope,
+                container_id,
+                body,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::wardrobe_route_factory::folder_action(
+                        &db,
+                        super::wardrobe_route_factory::FolderAction::Create,
+                        scope,
+                        container_id.as_deref(),
+                        SINGLE_USER_ID,
+                        &body,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::WardrobeFolderRename {
+                scope,
+                container_id,
+                body,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::wardrobe_route_factory::folder_action(
+                        &db,
+                        super::wardrobe_route_factory::FolderAction::Rename,
+                        scope,
+                        container_id.as_deref(),
+                        SINGLE_USER_ID,
+                        &body,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::WardrobeFolderDelete {
+                scope,
+                container_id,
+                body,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::wardrobe_route_factory::folder_action(
+                        &db,
+                        super::wardrobe_route_factory::FolderAction::Delete,
+                        scope,
+                        container_id.as_deref(),
+                        SINGLE_USER_ID,
+                        &body,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::WardrobeItemsMove {
+                scope,
+                container_id,
+                body,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::wardrobe_route_factory::folder_action(
+                        &db,
+                        super::wardrobe_route_factory::FolderAction::MoveItems,
+                        scope,
+                        container_id.as_deref(),
+                        SINGLE_USER_ID,
+                        &body,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::WardrobeItemImageLink { .. } => {
                 p4d279_not_yet_available("wardrobeItemImageLink", "P4.D281")
             }

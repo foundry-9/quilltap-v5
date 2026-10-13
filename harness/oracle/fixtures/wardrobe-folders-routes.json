@@ -1,0 +1,2305 @@
+{
+  "$comment": "P4.D281 — the folder actions + folder on create/PUT through v4's real route factory, all four tiers, over the keystone seed (wardrobe-keystone-tier2.json, read-only). Read by harness/oracle/cases/wardrobe-folders-routes.test.ts AND crates/quilltap-web/tests/wardrobe_folders_routes_equivalence.rs.",
+  "ownerIds": {
+    "ada": "c9000000-0000-4000-8000-000000000001",
+    "bo": "c9000000-0000-4000-8000-000000000002",
+    "zed": "c9000000-0000-4000-8000-000000000003",
+    "missingChar": "00000000-0000-4000-8000-0000000000ff",
+    "bare": "b9000000-0000-4000-8000-000000000001",
+    "null": "b9000000-0000-4000-8000-000000000002",
+    "full": "b9000000-0000-4000-8000-000000000003",
+    "guild": "90000000-0000-4000-8000-000000000001",
+    "missing": "00000000-0000-4000-8000-0000000000ff"
+  },
+  "cases": [
+    {
+      "name": "folders_char",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "folders_char_foreign",
+      "tier": "character",
+      "owner": "bo",
+      "steps": [
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "folders_char_missing",
+      "tier": "character",
+      "owner": "missingChar",
+      "steps": [
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "folders_char_archived_reads",
+      "tier": "character",
+      "owner": "zed",
+      "steps": [
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "folders_general",
+      "tier": "general",
+      "steps": [
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "folders_general_unprovisioned",
+      "tier": "general",
+      "steps": [
+        {
+          "op": "folders"
+        }
+      ],
+      "plants": [
+        {
+          "sql": "DELETE FROM instance_settings WHERE key = 'generalMountPointId'",
+          "params": []
+        }
+      ]
+    },
+    {
+      "name": "folders_project_full",
+      "tier": "project",
+      "owner": "full",
+      "steps": [
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "folders_project_bare_no_wardrobe",
+      "tier": "project",
+      "owner": "bare",
+      "steps": [
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "folders_project_null_store",
+      "tier": "project",
+      "owner": "null",
+      "steps": [
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "folders_project_missing",
+      "tier": "project",
+      "owner": "missing",
+      "steps": [
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "folders_group",
+      "tier": "group",
+      "owner": "guild",
+      "steps": [
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "folders_group_missing",
+      "tier": "group",
+      "owner": "missing",
+      "steps": [
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "cf_char_new",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Coats"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "cf_char_existing_any_casing",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_char_nested_under_existing",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "formal/Summer Wear"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "cf_char_handmade_as_stored",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "hats: summer"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_char_reserved_images",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "images"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_char_reserved_nested",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Formal/Images"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_char_dotdot",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": ".."
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_char_dot",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Coats/."
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_char_nine_deep",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "a/b/c/d/e/f/g/h/i"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_char_eight_deep",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "a/b/c/d/e/f/g/h"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_char_root_slash",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_char_empty_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_char_too_long_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_char_non_string_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": 5
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_char_archived",
+      "tier": "character",
+      "owner": "zed",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Coats"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_char_foreign",
+      "tier": "character",
+      "owner": "bo",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Coats"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_general_new",
+      "tier": "general",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Coats"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "cf_general_unprovisioned",
+      "tier": "general",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Coats"
+          }
+        }
+      ],
+      "plants": [
+        {
+          "sql": "DELETE FROM instance_settings WHERE key = 'generalMountPointId'",
+          "params": []
+        }
+      ]
+    },
+    {
+      "name": "cf_project_bare_provisions_folder",
+      "tier": "project",
+      "owner": "bare",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Hats"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "cf_project_missing",
+      "tier": "project",
+      "owner": "missing",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Hats"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cf_group_new",
+      "tier": "group",
+      "owner": "guild",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Livery/Winter"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "rf_char_ok",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "Empty",
+            "name": "Vacant"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "rf_char_case_only",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "Empty",
+            "name": "empty"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "rf_char_collision",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "Empty",
+            "name": "formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "rf_char_missing",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "Nowhere",
+            "name": "Somewhere"
+          }
+        }
+      ]
+    },
+    {
+      "name": "rf_char_slash_in_name",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "Empty",
+            "name": "a/b"
+          }
+        }
+      ]
+    },
+    {
+      "name": "rf_char_backslash_in_name",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "Empty",
+            "name": "a\\b"
+          }
+        }
+      ]
+    },
+    {
+      "name": "rf_char_root",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "/",
+            "name": "Top"
+          }
+        }
+      ]
+    },
+    {
+      "name": "rf_char_dot_name",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "Empty",
+            "name": "."
+          }
+        }
+      ]
+    },
+    {
+      "name": "rf_char_filed_items_move",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "Formal",
+            "name": "Dress"
+          }
+        },
+        {
+          "op": "folders"
+        },
+        {
+          "op": "list"
+        }
+      ]
+    },
+    {
+      "name": "rf_char_handmade",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "Hats: Summer",
+            "name": "Summer Hats"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "rf_char_trimmed_path",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "/Empty/",
+            "name": "Vacant"
+          }
+        }
+      ]
+    },
+    {
+      "name": "rf_char_name_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "Empty",
+            "name": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "rf_char_archived",
+      "tier": "character",
+      "owner": "zed",
+      "steps": [
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "Empty",
+            "name": "Vacant"
+          }
+        }
+      ]
+    },
+    {
+      "name": "rf_general_missing",
+      "tier": "general",
+      "steps": [
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "Nowhere",
+            "name": "Somewhere"
+          }
+        }
+      ]
+    },
+    {
+      "name": "rf_group_after_create",
+      "tier": "group",
+      "owner": "guild",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Livery"
+          }
+        },
+        {
+          "op": "rename-folder",
+          "body": {
+            "path": "Livery",
+            "name": "Uniforms"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "df_char_ok_counts",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "delete-folder",
+          "body": {
+            "path": "Formal"
+          }
+        },
+        {
+          "op": "folders"
+        },
+        {
+          "op": "list"
+        }
+      ]
+    },
+    {
+      "name": "df_char_empty",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "delete-folder",
+          "body": {
+            "path": "Empty"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "df_char_missing",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "delete-folder",
+          "body": {
+            "path": "Nowhere"
+          }
+        }
+      ]
+    },
+    {
+      "name": "df_char_stray_note",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "delete-folder",
+          "body": {
+            "path": "Notes"
+          }
+        }
+      ]
+    },
+    {
+      "name": "df_char_same_named_subfolder",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Formal/Formal"
+          }
+        },
+        {
+          "op": "delete-folder",
+          "body": {
+            "path": "Formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "df_char_root",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "delete-folder",
+          "body": {
+            "path": "/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "df_char_archived",
+      "tier": "character",
+      "owner": "zed",
+      "steps": [
+        {
+          "op": "delete-folder",
+          "body": {
+            "path": "Empty"
+          }
+        }
+      ]
+    },
+    {
+      "name": "df_project_after_create",
+      "tier": "project",
+      "owner": "full",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Old"
+          }
+        },
+        {
+          "op": "delete-folder",
+          "body": {
+            "path": "Old"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "mi_char_ok_batch",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "rootCoat",
+            "composite"
+          ],
+          "body": {
+            "folder": "Formal"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "mi_char_borrowed",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "rootCoat",
+            "generalWatch"
+          ],
+          "body": {
+            "folder": "Formal"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "mi_char_handmade_target",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {
+            "folder": "hats: summer"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mi_char_to_root",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "filedGown"
+          ],
+          "body": {
+            "folder": ""
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "mi_char_new_folder",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {
+            "folder": "Brand New/Sub"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "mi_char_bad_path",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {
+            "folder": "images"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mi_char_dupes",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "rootCoat",
+            "rootCoat"
+          ],
+          "body": {
+            "folder": "Formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mi_char_501_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "body": {
+            "itemIds": [
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x"
+            ],
+            "folder": "Formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mi_char_500_ok_shape",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "body": {
+            "itemIds": [
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000001"
+            ],
+            "folder": "Formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mi_char_empty_ids_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "body": {
+            "itemIds": [],
+            "folder": "Formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mi_char_blank_id_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "body": {
+            "itemIds": [
+              ""
+            ],
+            "folder": "Formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mi_char_folder_missing_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {}
+        }
+      ]
+    },
+    {
+      "name": "mi_char_archived",
+      "tier": "character",
+      "owner": "zed",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "archivedCape"
+          ],
+          "body": {
+            "folder": "Old"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mi_general_ok",
+      "tier": "general",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "generalWatch"
+          ],
+          "body": {
+            "folder": "Timepieces"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "mi_project_ok",
+      "tier": "project",
+      "owner": "full",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "projectLivery",
+            "projectBoots"
+          ],
+          "body": {
+            "folder": "Staff"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "mi_group_borrowed_general",
+      "tier": "group",
+      "owner": "guild",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "groupCloak",
+            "generalBoots"
+          ],
+          "body": {
+            "folder": "Cloaks"
+          }
+        }
+      ]
+    },
+    {
+      "name": "create_char_filed",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create",
+          "body": {
+            "title": "Opera Gloves",
+            "types": [
+              "accessories"
+            ],
+            "folder": "Formal/Evening"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "create_char_handmade",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create",
+          "body": {
+            "title": "Straw Boater",
+            "types": [
+              "accessories"
+            ],
+            "folder": "hats: summer"
+          }
+        }
+      ]
+    },
+    {
+      "name": "create_char_new_folder",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create",
+          "body": {
+            "title": "Galoshes",
+            "types": [
+              "footwear"
+            ],
+            "folder": "Weather/Wet"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "create_char_root_default",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create",
+          "body": {
+            "title": "Plain Socks",
+            "types": [
+              "footwear"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "create_char_bad_folder",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create",
+          "body": {
+            "title": "Bad",
+            "types": [
+              "top"
+            ],
+            "folder": "../x"
+          }
+        }
+      ]
+    },
+    {
+      "name": "create_char_folder_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create",
+          "body": {
+            "title": "Bad",
+            "types": [
+              "top"
+            ],
+            "folder": 5
+          }
+        }
+      ]
+    },
+    {
+      "name": "create_general_filed",
+      "tier": "general",
+      "steps": [
+        {
+          "op": "create",
+          "body": {
+            "title": "Spare Cufflinks",
+            "types": [
+              "accessories"
+            ],
+            "folder": "Jewelry"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "create_project_filed",
+      "tier": "project",
+      "owner": "full",
+      "steps": [
+        {
+          "op": "create",
+          "body": {
+            "title": "Footman Gloves",
+            "types": [
+              "accessories"
+            ],
+            "folder": "Staff"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "update_char_moves",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "update",
+          "item": "rootCoat",
+          "body": {
+            "folder": "Formal"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "update_char_same_folder_case_blind",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "update",
+          "item": "filedGown",
+          "body": {
+            "folder": "formal/evening"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_char_handmade",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "update",
+          "item": "rootCoat",
+          "body": {
+            "folder": "HATS: SUMMER"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_char_to_root",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "update",
+          "item": "filedGown",
+          "body": {
+            "folder": ""
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "update_char_bad_folder",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "update",
+          "item": "rootCoat",
+          "body": {
+            "folder": "a/../b"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_group_moves",
+      "tier": "group",
+      "owner": "guild",
+      "steps": [
+        {
+          "op": "update",
+          "item": "groupCloak",
+          "body": {
+            "folder": "Outer"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    }
+  ]
+}

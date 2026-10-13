@@ -72,6 +72,12 @@ _Versions: core 0.0.1277._
 
 `tools/definitions/data.rs` regenerated through `gen-tool-catalog.mjs` from the pinned `tool-definitions.ts` dump. Two definitions move: `wardrobe_list` no longer declares `include_presets` and says an item's folder is filing only; `wardrobe_read` names the folder in its description. `tool_definitions_equivalence` and `tools_inventory_equivalence` pass from the pin.
 
+#### 2026-10-12 — feat(wardrobe): the five wardrobe folder actions on every tier (P4.D281, v4 `4a38222e6`)
+
+_Versions: core 0.0.1278, web 0.0.233._
+
+The `wardrobeFoldersList` / `wardrobeFolderCreate` / `wardrobeFolderRename` / `wardrobeFolderDelete` / `wardrobeItemsMove` dispatch arms replace their refusal bodies with the factory's folder handlers on all four tiers: `{ folders }` without provisioning, `{ folder }`, `{ movedItems, movedFolders }`, `{ items }` serialized with origin + wear; v4's Zod bodies (the 500-id cap), path-rule 400s, `Wardrobe folder not found` 404s, collision / non-empty 409s, the archived-character 409, and the `<tag> … wardrobe folder(s)` lines (the move logs the folder as requested, create-folder the resolved path — v4's asymmetry). New differential `wardrobe_folders_routes_equivalence` (86 cases over the keystone seed, v4's real route factory as oracle).
+
 #### 2026-10-12 — feat(wardrobe): ONE route factory for all four wardrobe tiers (P4.D281, v4 `9ecebf986`)
 
 _Versions: core 0.0.1277, web 0.0.232._

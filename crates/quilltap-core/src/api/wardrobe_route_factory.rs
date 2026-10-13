@@ -1427,3 +1427,69 @@ pub async fn item_delete(
         Err(e) => db_error_response(e),
     }
 }
+
+// ===========================================================================
+// The C2 dispatch verbs (`wardrobeFoldersList` / `wardrobeFolderCreate` /
+// `wardrobeFolderRename` / `wardrobeFolderDelete` / `wardrobeItemsMove` — R-D:
+// ONE scoped family carrying `WardrobeContainerScope`, the P4.D255 idiom)
+// ===========================================================================
+
+/// The tier's factory config for a wire scope.
+pub fn config_for(scope: super::types::WardrobeContainerScope) -> WardrobeRouteConfig {
+    use super::types::WardrobeContainerScope as S;
+    match scope {
+        S::Character => CHARACTER_WARDROBE,
+        S::General => GENERAL_WARDROBE,
+        S::Project => PROJECT_WARDROBE,
+        S::Group => GROUP_WARDROBE,
+    }
+}
+
+/// A container scope without its id has no v4 analog (the REST path always
+/// carries it) — the wear-history verb's 400, shared.
+pub fn container_id_issue(
+    scope: super::types::WardrobeContainerScope,
+    container_id: Option<&str>,
+) -> Option<Response> {
+    (scope != super::types::WardrobeContainerScope::General
+        && container_id.is_none_or(str::is_empty))
+    .then(|| bad_request("containerId is required for a character, project or group wardrobe"))
+}
+
+/// The five folder verbs, as the engine dispatches them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FolderAction {
+    List,
+    Create,
+    Rename,
+    Delete,
+    MoveItems,
+}
+
+/// Dispatch one folder verb for `scope` / `container_id` (`body` is the raw
+/// request body — ignored by `List`).
+pub async fn folder_action(
+    db: &Db,
+    action: FolderAction,
+    scope: super::types::WardrobeContainerScope,
+    container_id: Option<&str>,
+    user_id: &str,
+    body: &Value,
+) -> Response {
+    if let Some(r) = container_id_issue(scope, container_id) {
+        return r;
+    }
+    let cfg = config_for(scope);
+    let id = if cfg.scope == WardrobeScope::General {
+        None
+    } else {
+        container_id
+    };
+    match action {
+        FolderAction::List => folders_list(db, cfg, id, user_id),
+        FolderAction::Create => folder_create(db, cfg, id, user_id, body).await,
+        FolderAction::Rename => folder_rename(db, cfg, id, user_id, body).await,
+        FolderAction::Delete => folder_delete(db, cfg, id, user_id, body).await,
+        FolderAction::MoveItems => items_move(db, cfg, id, user_id, body).await,
+    }
+}
