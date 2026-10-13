@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-13 — docs(porting): drift check records v4 bugs 235–242 and memory refactor Phase E — thirteen commits past the baseline, no new migration
+
+_Docs-only change._
+
+`/driftcheck`. The §2 probe failed: the v4 checkout's 51 dirty paths were committed as `93c5af6ad` (local `main`), and `origin/main` moved one further to `584d28164` (`4.10.0-dev.166`, not yet pulled) — thirteen commits past the `4a38222e6` baseline. `bugfix` and `release` unmoved; the checkout is on `main` and clean. Two new rows, classified from the shipped hunks, both PORT and UNPROCESSED, neither with a migration: `93c5af6ad` (bugs 235–241 from v4's memory-refactor dogfood — the manual-create 400/502 mapping, admission's mixed-dimension fallback, the fold OTHER date, an optional `port` on the shared `quilltap.lock` that a v5 lock rewrite drops, `--instance` on three CLI tools, chats-only `.qtap` memories attaching to existing characters, and the send-failure error frame plus the Salon's composer restore; 235 is a Next.js bundling defect, a NO-PORT candidate; bug 242 filed open, and v5's stream reducer may share it) and `584d28164` (Phase E: recall rebuilt as a staged pipeline under `lib/memory/recall/`, `memory-service.ts` and `memory-injector.ts` deleted, one query embedding per turn, cross-pool dedup, every debug label removed from the model-visible recall text, access stamps only for lines that survive compression, the recall record on `debugMemoryLogs`, and new `recall-replay` fields). No convergence; dependencies stamps-only; `help/` stays at 132 files. Regen rule unchanged (pin required at `4a38222e6`); more oracle imports are dead at HEAD. The live-data hazards are unchanged (still nine migrations). The memory catch-up should now pin at or past `584d28164`.
+
 #### 2026-10-13 — docs(porting): unify the `4a38222e6` wardrobe-programme drift catch-up round — nine lanes, the baseline moves to `4a38222e6`
 
 _Versions: core 0.0.1283, host 0.0.199, web 0.0.237, SPA 0.5.846 (the union's recount; cli 0.0.32, tauri 0.0.9 and the harness 0.0.1110 unchanged)._
