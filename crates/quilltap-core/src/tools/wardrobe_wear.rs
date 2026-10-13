@@ -14,7 +14,6 @@ use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::wardrobe_wear_stats::EquipSource;
 use crate::db::DbError;
 use crate::wardrobe::{describe_wardrobe_effect, normalize_no_item_sentinel, WardrobeEffect};
@@ -22,9 +21,7 @@ use crate::wear_ops::{
     resolve_wearable, wear_item, PutOnMode, WearEffect, WearableRef, WearableResolution,
 };
 
-use super::wardrobe_shared::{
-    build_wardrobe_coverage_summary_from_state, empty_equipped_state, load_current_wardrobe_state,
-};
+use super::wardrobe_shared::{empty_equipped_state, load_current_wardrobe_state};
 use super::wardrobe_tool_table::load_tool_pool;
 
 /// The item acted on in an op result (`{ item_id, title } | null`).
@@ -294,16 +291,16 @@ fn run(
     };
 
     let current_state = load_current_wardrobe_state(main, chat_id, character_id)?;
-    // v4 `buildWardrobeCoverageSummaryFromState(pool, slots)` — the equipped
-    // outfit resolved over the pool's tiers.
-    let docs = DocMountDocumentsRepository::new(mount);
-    let coverage_summary = build_wardrobe_coverage_summary_from_state(
-        main,
-        &docs,
-        character_id,
-        &current_state,
-        &pool.tiers,
-    )?;
+    // v4 `buildWardrobeCoverageSummaryFromState(pool, slots)` =
+    // `describeOutfit(resolveEquippedOutfitForCharacter(pool, slots).outfitValues)`
+    // — pure over the pool the tool already loaded (no second read).
+    let coverage_summary = crate::wardrobe::describe_outfit(
+        &crate::services::resolve_equipped::resolve_equipped_outfit_for_character(
+            &pool,
+            &current_state,
+        )
+        .outfit_values,
+    );
 
     Ok((
         WardrobeWearToolOutput {

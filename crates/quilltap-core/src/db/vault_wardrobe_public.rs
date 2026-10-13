@@ -1146,62 +1146,6 @@ pub fn delete_vault_wardrobe_item(
     Ok(delete_in_mount(main, docs.conn(), &loc, id)?)
 }
 
-// LANE-REMOVE(P4.D281|P4.D284): v4 deleted createProjectWardrobeItem in 9ecebf986 (→ createMountWardrobeItem / a location)
-/// The pre-`9ecebf986` project-store create over
-/// `mount_wardrobe_location(mp, Project)` (v4's `createMountWardrobeItem`
-/// shape).
-pub fn create_project_wardrobe_item(
-    main: &Connection,
-    _links: &DocMountFileLinksRepository,
-    docs: &DocMountDocumentsRepository,
-    mount_point_id: &str,
-    item: &WardrobeItem,
-) -> Result<WardrobeItem, WardrobePublicError> {
-    Ok(create_in_mount(
-        main,
-        docs.conn(),
-        &mount_wardrobe_location(mount_point_id, WardrobeScope::Project),
-        item,
-    )?)
-}
-
-// LANE-REMOVE(P4.D281|P4.D284|P4.D283): v4 deleted updateProjectWardrobeItem in 9ecebf986 (→ updateMountWardrobeItem / a location)
-/// The pre-`9ecebf986` project-store update (v4's `updateMountWardrobeItem`
-/// shape — "the restore pass uses this for every tier").
-pub fn update_project_wardrobe_item(
-    main: &Connection,
-    _links: &DocMountFileLinksRepository,
-    docs: &DocMountDocumentsRepository,
-    mount_point_id: &str,
-    id: &str,
-    patch: &WardrobePatch,
-) -> Result<Option<WardrobeItem>, WardrobePublicError> {
-    Ok(update_in_mount(
-        main,
-        docs.conn(),
-        &mount_wardrobe_location(mount_point_id, WardrobeScope::Project),
-        id,
-        patch,
-    )?)
-}
-
-// LANE-REMOVE(P4.D281): v4 deleted deleteProjectWardrobeItem in 9ecebf986 (→ deleteMountWardrobeItem / a location)
-/// The pre-`9ecebf986` project-store delete.
-pub fn delete_project_wardrobe_item(
-    main: &Connection,
-    _links: &DocMountFileLinksRepository,
-    docs: &DocMountDocumentsRepository,
-    mount_point_id: &str,
-    id: &str,
-) -> Result<bool, WardrobePublicError> {
-    Ok(delete_in_mount(
-        main,
-        docs.conn(),
-        &mount_wardrobe_location(mount_point_id, WardrobeScope::Project),
-        id,
-    )?)
-}
-
 /// The owning character id of an item, or `None` for a shared archetype (`null`).
 fn item_character_id(item: &WardrobeItem) -> Option<String> {
     match &item.character_id {

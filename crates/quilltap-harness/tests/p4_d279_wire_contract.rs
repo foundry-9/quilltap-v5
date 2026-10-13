@@ -12,9 +12,10 @@
 //!   `itemIds`, `folder` land in `body`, never typed), so the handler can
 //!   answer v4's flat `Validation error` for a wrong type;
 //! - an absent `containerId` is `None` (the General tier);
-//! - the refusal half: each arm answers `Internal` `The '<action>' action is
-//!   recognized but not yet available (P4.D281).` — RETIRED by the unifier when
-//!   P4.D281's arms land (the decode half stays).
+//! - (the refusal half — each arm answering `The '<action>' action is
+//!   recognized but not yet available (P4.D281).` at `KEYSTONE` — was RETIRED
+//!   at the union: P4.D281 serves all six arms, pinned by
+//!   `wardrobe_folders_routes_equivalence` and the link-image routes rows.)
 //!
 //! Needs no oracle or fixture: a serialization contract, not a behaviour diff
 //! (P4.D281's family carries the behaviour).
@@ -22,11 +23,7 @@
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test p4_d279_wire_contract
 
-use std::sync::Arc;
-
-use quilltap_core::api::engine::{CoreConfig, CoreEngine, NoopAssembler};
-use quilltap_core::api::types::{ErrorKind, Request, Response, WardrobeContainerScope};
-use quilltap_core::api::{InstanceDirectory, QuilltapCore};
+use quilltap_core::api::types::{Request, WardrobeContainerScope};
 use serde_json::{json, Value};
 
 fn decode(body: Value) -> Request {
@@ -114,79 +111,4 @@ fn p4_d279_contract_wire_shapes() {
         .is_err(),
         "fileId is required"
     );
-}
-
-struct EmptyInstances;
-impl InstanceDirectory for EmptyInstances {
-    fn list(&self) -> Result<quilltap_core::api::types::InstancesDto, String> {
-        Ok(quilltap_core::api::types::InstancesDto {
-            instances: vec![],
-            default_instance: None,
-        })
-    }
-}
-
-/// The refusal half (§R.14) — the keystone's arms answer the agreed body,
-/// dispatched through a booted engine; P4.D281's handlers replace it. RETIRED
-/// at the union (the decode half stays).
-#[tokio::test]
-async fn every_new_arm_answers_its_agreed_refusal() {
-    let base = tempfile::tempdir().unwrap();
-    let data = base.path().join("data");
-    std::fs::create_dir_all(&data).unwrap();
-    quilltap_core::services::provisioning::provision_fresh_instance(
-        &data,
-        "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
-    )
-    .expect("provision");
-    let engine = CoreEngine::boot(
-        CoreConfig {
-            base_dir: base.path().to_path_buf(),
-            version: "test".to_string(),
-            env_pepper: Some("dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=".to_string()),
-            display_zone: quilltap_core::host_zone::TimeZone::UTC,
-        },
-        Box::new(NoopAssembler),
-        Arc::new(EmptyInstances),
-    )
-    .expect("boot");
-    let cases: Vec<(Value, &str)> = vec![
-        (
-            json!({"type":"wardrobeFoldersList","scope":"general"}),
-            "wardrobeFoldersList",
-        ),
-        (
-            json!({"type":"wardrobeFolderCreate","scope":"general","path":"A"}),
-            "wardrobeFolderCreate",
-        ),
-        (
-            json!({"type":"wardrobeFolderRename","scope":"general","path":"A","name":"B"}),
-            "wardrobeFolderRename",
-        ),
-        (
-            json!({"type":"wardrobeFolderDelete","scope":"general","path":"A"}),
-            "wardrobeFolderDelete",
-        ),
-        (
-            json!({"type":"wardrobeItemsMove","scope":"general","itemIds":["a"],"folder":""}),
-            "wardrobeItemsMove",
-        ),
-        (
-            json!({"type":"wardrobeItemImageLink","scope":"general","itemId":"i","fileId":"f"}),
-            "wardrobeItemImageLink",
-        ),
-    ];
-    for (body, action) in cases {
-        match engine.dispatch(decode(body.clone())).await {
-            Response::Error(e) => {
-                assert_eq!(e.kind, ErrorKind::Internal, "{body}");
-                assert_eq!(
-                    e.message,
-                    format!("The '{action}' action is recognized but not yet available (P4.D281)."),
-                    "{body}"
-                );
-            }
-            other => panic!("{body}: expected the agreed refusal, got {other:?}"),
-        }
-    }
 }

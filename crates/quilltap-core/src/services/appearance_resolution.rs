@@ -160,99 +160,6 @@ fn select_phys_desc(primary: Option<&PhysicalDescription>, character_name: &str)
     }
 }
 
-/// v4 `resolveEquippedOutfitForCharacter(pool, slots)`'s `leafItemsBySlot`
-/// half (`lib/wardrobe/resolve-equipped.ts`, `9ecebf986`) — the read side of
-/// the wardrobe model over the character's WEARABLE POOL (every tier the
-/// character can reach, archived included): expand each input slot's
-/// composites over `componentGraph(pool, equippedIds)`, dedupe leaves across
-/// the whole equipped set in first-seen order, then route each leaf into every
-/// output slot its own `types` declare (an atomic dress with `types=[top,
-/// bottom]` lands in both; a composite's components go where their own `types`
-/// say). No I/O: the caller loads the pool once and may reuse it.
-///
-/// HANDOFF (P4.D283 → the unifier): the whole module (`outfitValues`,
-/// `itemsById`, `describeEquippedOutfitTitleOnly`) is the outfit pipeline's
-/// surface (P4.D282); this lane needs only the leaf half for the three image
-/// prompts and lands it here, beside its consumers. Fold onto P4.D282's port
-/// when both are on main.
-pub fn resolve_equipped_outfit_for_character(
-    pool: &crate::wearable_pool::WearablePool,
-    slots: &crate::wardrobe::Slots,
-) -> crate::tools::wardrobe_shared::LeafItemsBySlot {
-    use crate::wardrobe::WARDROBE_SLOT_TYPES;
-    let mut out = crate::tools::wardrobe_shared::LeafItemsBySlot::default();
-    // v4 `allEquippedItemIds(slots)`.
-    let equipped_ids: Vec<String> = WARDROBE_SLOT_TYPES
-        .iter()
-        .flat_map(|slot| slots.slot(slot).iter().cloned())
-        .collect();
-    if equipped_ids.is_empty() {
-        return out;
-    }
-    let items_by_id = crate::wearable_pool::component_graph_lookup(pool, &equipped_ids);
-    let unresolved = equipped_ids
-        .iter()
-        .filter(|id| !items_by_id.contains_key(id.as_str()))
-        .count();
-    if unresolved > 0 {
-        tracing::debug!(
-            context = "wardrobe",
-            characterId = %pool.character_id,
-            unresolvedCount = unresolved,
-            "[resolveEquippedOutfitForCharacter] Equipped ids not in the wearable pool"
-        );
-    }
-    // First pass: expand each input slot's composites, dedupe by leaf id across
-    // the whole equipped set, and remember the order leaves were first seen.
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut ordered: Vec<Value> = Vec::new();
-    for slot in WARDROBE_SLOT_TYPES {
-        // v4 `slots[slot] ?? []` — a slot bag written before this slot existed
-        // has no key at all; `Slots::from_value` reads it as empty.
-        let expanded = crate::wardrobe::expand_composites(slots.slot(slot), &items_by_id, None);
-        if !expanded.cycles.is_empty() || expanded.truncated {
-            tracing::warn!(
-                context = "wardrobe",
-                characterId = %pool.character_id,
-                slot = slot,
-                cycles = expanded.cycles.len(),
-                truncated = expanded.truncated,
-                "[resolveEquippedOutfitForCharacter] Malformed composite graph; expansion truncated"
-            );
-        }
-        for id in expanded.leaf_ids {
-            if seen.contains(&id) {
-                continue;
-            }
-            let Some(item) = items_by_id.get(&id) else {
-                continue;
-            };
-            seen.insert(id);
-            ordered.push(item.clone());
-        }
-    }
-    // Second pass: route each leaf into every output slot its own `types`
-    // declare (an empty `types` is a no-op rather than a guess).
-    for item in &ordered {
-        for t in item
-            .get("types")
-            .and_then(Value::as_array)
-            .map(Vec::as_slice)
-            .unwrap_or_default()
-        {
-            match t.as_str() {
-                Some("top") => out.top.push(item.clone()),
-                Some("bottom") => out.bottom.push(item.clone()),
-                Some("footwear") => out.footwear.push(item.clone()),
-                Some("accessories") => out.accessories.push(item.clone()),
-                Some("hair") => out.hair.push(item.clone()),
-                _ => {}
-            }
-        }
-    }
-    out
-}
-
 /// v4 `equippedWardrobeItemsForAppearance(repos, chatId, characterId,
 /// projectMountPointIds)` (`appearance-resolution.ts:100`, `9ecebf986`) — the
 /// character's equipped slots in `chat_id`, resolved over the wearable pool
@@ -279,7 +186,9 @@ pub fn equipped_wardrobe_items_for_appearance(
         Some(project_mount_point_ids),
         crate::wearable_pool::LoadWearablePoolOptions::default(),
     );
-    let resolved = resolve_equipped_outfit_for_character(&pool, &slots);
+    let resolved =
+        crate::services::resolve_equipped::resolve_equipped_outfit_for_character(&pool, &slots)
+            .leaf_items_by_slot;
     let mut flat: Vec<WardrobeItemInput> = Vec::new();
     for slot in crate::wardrobe::WARDROBE_SLOT_TYPES {
         for item in resolved.slot(slot) {

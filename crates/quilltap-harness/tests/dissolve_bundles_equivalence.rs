@@ -28,7 +28,7 @@
 //!
 //! P4.D262 (v4 `3ee3b1342`, the wear ledger) adds the credit widenings:
 //! `slot_ops::dissolve_composites_in_slots` (every snapshot case),
-//! `tools::wardrobe_shared::worn_bundles_for` (v4 `wornBundlesFor`) and
+//! `slot_ops::worn_bundles_for` (v4 `wornBundlesFor`) and
 //! `services::outfit_selections::default_outfit_from_pool_with_credit` (v4
 //! `buildDefaultOutfitWithCredit`), `wornBundles` compared whole.
 
@@ -37,7 +37,6 @@ use std::collections::HashMap;
 use quilltap_core::db::wardrobe_wear_stats::WornBundle;
 use quilltap_core::services::outfit_selections::default_outfit_from_pool_with_credit;
 use quilltap_core::slot_ops::{self, DissolvedLeaf, WearableLookup, WearableNode};
-use quilltap_core::tools::wardrobe_shared::worn_bundles_for;
 use quilltap_core::wardrobe::{is_composite, Slots, WARDROBE_SLOT_TYPES};
 use serde::Deserialize;
 use serde_json::Value;
@@ -473,13 +472,8 @@ fn dissolve_bundles_matches_oracle() {
             } => {
                 let map = lookup_of(&universe, lookup.as_ref());
                 let node = node_of(&universe, &item_id);
-                let got = worn_bundles_for(&node, map.as_ref(), only_slot.as_deref());
+                let got = slot_ops::worn_bundles_for(&node, map.as_ref(), only_slot.as_deref());
                 assert_worn_bundles(&got, &out, &format!("worn_bundles_for '{id}'"));
-                assert_eq!(
-                    got,
-                    slot_ops::worn_bundles_for(&node, map.as_ref(), only_slot.as_deref()),
-                    "worn_bundles_for '{id}': shim ≠ slot_ops"
-                );
                 if !got.is_empty() {
                     non_empty_claims += 1;
                 }

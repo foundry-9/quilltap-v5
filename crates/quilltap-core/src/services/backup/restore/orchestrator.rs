@@ -2712,7 +2712,6 @@ fn restore_mount_family(
                     .map(str::to_string)
             })
             .collect();
-        let links = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount);
         let docs = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
         let mut fixed = 0usize;
         for fix in wardrobe_image_pointer_fixes {
@@ -2721,17 +2720,23 @@ fn restore_mount_family(
             {
                 continue;
             }
-            match crate::db::vault_wardrobe_public::update_project_wardrobe_item(
+            // v4 `updateMountWardrobeItem` = `updateInMount(mountWardrobeLocation(
+            // mountPointId), …)` (`wardrobe-writes.ts:657-663`).
+            match crate::db::vault_wardrobe_public::update_in_mount(
                 main,
-                &links,
-                &docs,
-                &fix.mount_point_id,
+                docs.conn(),
+                &crate::db::vault_wardrobe_public::mount_wardrobe_location(
+                    &fix.mount_point_id,
+                    crate::db::vault_wardrobe_public::WardrobeScope::Project,
+                ),
                 &fix.item_id,
                 &crate::db::vault_wardrobe_public::WardrobePatch {
                     image_file_id: Some(Some(fix.image_file_id.clone())),
                     ..Default::default()
                 },
-            ) {
+            )
+            .map_err(crate::db::vault_wardrobe_public::WardrobePublicError::from)
+            {
                 Ok(Some(_)) => fixed += 1,
                 Ok(None) => {}
                 Err(e) => {

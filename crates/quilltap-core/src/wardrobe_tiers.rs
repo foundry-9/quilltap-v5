@@ -28,10 +28,6 @@
 //! struct, which is the same guarantee with the "forgot a tier" hole welded
 //! shut.
 
-use rusqlite::Connection;
-
-use crate::wearable_pool::{load_wearable_pool, LoadWearablePoolOptions};
-
 /// The shared mounts in scope for one character's wardrobe (v4
 /// `WardrobeTierMounts` / the old `SharedWardrobeTiers` — v5 has only the
 /// resolved shape). `crate::wearable_pool::WardrobeTierMounts` is this type.
@@ -78,51 +74,6 @@ pub struct SharedWardrobeTierOptions {
     /// outfit dialog), so the project roster does not apply. Character tool calls
     /// never set this.
     pub operator: bool,
-}
-
-// LANE-REMOVE(P4.D282|P4.D280): v4 deleted shared-tiers.ts (resolveSharedWardrobeTiersForChat) in 9ecebf986
-/// The pre-`9ecebf986` "both tiers for a character in a chat" — now
-/// `load_wearable_pool(…, None, { chat_id, operator }).tiers`. Callers move to
-/// the pool itself (it already holds the items the tiers would be read for).
-pub fn resolve_shared_wardrobe_tiers_for_chat(
-    main: &Connection,
-    mount: &Connection,
-    chat_id: &str,
-    character_id: &str,
-    options: SharedWardrobeTierOptions,
-) -> SharedWardrobeTiers {
-    load_wearable_pool(
-        main,
-        mount,
-        character_id,
-        None,
-        LoadWearablePoolOptions {
-            operator: options.operator,
-            chat_id: Some(chat_id),
-            ..Default::default()
-        },
-    )
-    .tiers
-}
-
-// LANE-REMOVE(P4.D282|P4.D283): v4 deleted shared-tiers.ts (sharedWardrobeTiersForCharacter) in 9ecebf986
-/// The pre-`9ecebf986` "pair an already-resolved project tier with one
-/// character's group tier" — now `load_wearable_pool(…, Some(project_ids),
-/// …).tiers` (or `load_cast_pools` for a whole cast).
-pub fn shared_wardrobe_tiers_for_character(
-    main: &Connection,
-    mount: &Connection,
-    character_id: &str,
-    project_mount_point_ids: &[String],
-) -> SharedWardrobeTiers {
-    load_wearable_pool(
-        main,
-        mount,
-        character_id,
-        Some(project_mount_point_ids),
-        LoadWearablePoolOptions::default(),
-    )
-    .tiers
 }
 
 #[cfg(test)]

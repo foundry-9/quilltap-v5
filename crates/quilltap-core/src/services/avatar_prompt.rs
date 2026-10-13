@@ -108,9 +108,8 @@ pub fn build_character_avatar_prompt(
             crate::wearable_pool::LoadWearablePoolOptions::default(),
         );
         let resolved =
-            crate::services::appearance_resolution::resolve_equipped_outfit_for_character(
-                &pool, slots,
-            );
+            crate::services::resolve_equipped::resolve_equipped_outfit_for_character(&pool, slots)
+                .leaf_items_by_slot;
 
         top_is_bare = resolved.top.is_empty();
         let accessories = decorate_outfit_items_title_only(&resolved.accessories);

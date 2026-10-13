@@ -60,6 +60,7 @@
 //!     QT_FIXTURE_PRA_MAIN=/tmp/qt-pra-main.db QT_FIXTURE_PRA_MOUNT=/tmp/qt-pra-mount.db \
 //!     cargo test -p quilltap-harness --test project_roster_access_equivalence -- --nocapture
 
+use quilltap_core::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character;
 use quilltap_core::db::Writer;
 use quilltap_core::doc_edit::path_resolver::{
     resolve_doc_edit_path, PathResolutionContext, ResolveError,
@@ -72,9 +73,7 @@ use quilltap_core::tools::doc_edit::{
     execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext,
 };
 use quilltap_core::tools::wardrobe_list;
-use quilltap_core::wardrobe_tiers::{
-    resolve_shared_wardrobe_tiers_for_chat, SharedWardrobeTierOptions,
-};
+use quilltap_core::wearable_pool::resolve_project_tier_for_chat;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
@@ -666,18 +665,26 @@ fn project_roster_access_matches_oracle() {
                 })
             }
             "wardrobe_tiers" => {
-                let tiers = resolve_shared_wardrobe_tiers_for_chat(
+                // v4 at the pin: `resolveGroupMountPointIdsForCharacter(characterId ??
+                // null)` beside `resolveProjectTierForChat(repos, chatId, characterId,
+                // { operator })` — the two resolvers the pool composes (the
+                // pre-`9ecebf986` `resolveSharedWardrobeTiersForChat` is gone).
+                let chat_id = chat_id_of(op.chat.as_deref());
+                let group_mount_point_ids = resolve_group_mount_point_ids_for_character(
                     main,
                     mount,
-                    &chat_id_of(op.chat.as_deref()),
                     character_id.as_deref().unwrap_or(""),
-                    SharedWardrobeTierOptions {
-                        operator: op.operator.unwrap_or(false),
-                    },
+                );
+                let project_mount_point_ids = resolve_project_tier_for_chat(
+                    main,
+                    mount,
+                    Some(chat_id.as_str()),
+                    character_id.as_deref(),
+                    op.operator.unwrap_or(false),
                 );
                 json!({
-                    "groupMountPointIds": tiers.group_mount_point_ids,
-                    "projectMountPointIds": tiers.project_mount_point_ids,
+                    "groupMountPointIds": group_mount_point_ids,
+                    "projectMountPointIds": project_mount_point_ids,
                 })
             }
             "wardrobe_list" => {
