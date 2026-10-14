@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-13 — docs(porting): drift check records v4's memory refactor Phases F and G, the TF-IDF tuning, bugs 242–246, and v4's migration of live Friday — nineteen commits past the baseline
+
+_Docs-only change._
+
+`/driftcheck`. The §2 probe failed: v4 `main` moved six commits to `64743ee13` (`4.10.0-dev.175`, pulled); `bugfix` and `release` unmoved; the checkout is on `main` and clean. Six new rows, classified from the shipped hunks, all UNPROCESSED: `4ae0c4ca6` (Built-in TF-IDF tuning — anchor-free lexical embedding text, per-provider admission thresholds, a TF-IDF consolidation threshold, refit-when-due; it adds `tfidf_vocabularies.textShapeVersion` despite its message saying no schema change — the ninth D23 move; bug 243 is a NO-PORT candidate), `104e986c7` (Phase F — one `MEMORY_MAINTENANCE` job replaces housekeeping and consolidation, the dedup tool deleted, a job-row migration), `b045dd986` (Phase G — the maintain-only API, `?action=repair`, one Maintenance card, the CLI; bug 244's `patchSchemaOf` fixes the clobber v5's ruled `PARTIAL_DEFAULTS_CLOBBER` table pins on both sides, so those rows trip by design; bug 242's fix shows v5's stream reducer has the pre-fix shape), `48790fb73` (report labels; its spec records v4 migrating live Friday on 2026-10-13 22:24 UTC), `9ec4fa2e9` (docs plus one CLI line v5 has no home for — NO-PORT candidate), `64743ee13` (bug 245's `turn` extraction cursor and bundle key; bug 246's consolidation budget). No convergence. Dependencies stamps-only; `help/` 132 → 131 (`memory-maintenance.md` replaces two pages). Regen rule unchanged (pin required at `4a38222e6`). The live-data hazards block moves from armed to fired: live Friday and any copy taken from it now are post-migration. The memory catch-up should pin at `64743ee13` or later, where v4 declares the refactor closed.
+
 #### 2026-10-13 — docs(porting): record the two memory-programme rulings — mirror v4's vector-table retirement, retire P4.D265's watermark-column ensure for the cursor table
 
 _Docs-only change._

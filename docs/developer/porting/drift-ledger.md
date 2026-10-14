@@ -26,9 +26,12 @@ probe verifies against._
   P4.D283 ∥ P4.D284} ∥ P4.D285 ∥ P4.D286 ∥ P4.D287, 2026-10-13). CLAUDE.md's
   Status bullet for the round names `4a38222e6`. MOVED from `01a83539d` by
   this unification — the eight rows it passes retired to §6.
-- **Checked:** 2026-10-13 afternoon (`/driftcheck` — `93c5af6ad` bugs
-  235–242 + `584d28164` memory refactor Phase E appended; the checkout's
-  51-path dirt is now committed as `93c5af6ad`). Previous checks: 2026-10-13
+- **Checked:** 2026-10-13 late evening (`/driftcheck` — six rows
+  appended: `4ae0c4ca6` TF-IDF tuning + bug 243, `104e986c7` Phase F,
+  `b045dd986` Phase G + bugs 242 / 244, `48790fb73` the refactor's close +
+  **the Friday backfill record**, `9ec4fa2e9` the V4test dogfood, `64743ee13`
+  bugs 245 / 246). Previous checks: 2026-10-13 afternoon (`/driftcheck`
+  `dd70e65e8` — `93c5af6ad` bugs 235–242 + `584d28164` Phase E); 2026-10-13
   (`/unify` of the `4a38222e6` round — the eight absorbed / ratified rows
   retired, the eleven past the pin kept, their dispositions confirmed
   unchanged bar `97f0d8cb8`'s PORTED); 2026-10-13 (`/driftcheck` `732eebcd7` — the five memory-refactor
@@ -38,14 +41,67 @@ probe verifies against._
   `01a83539d` round); 2026-10-12 morning (the four wardrobe rows);
   2026-10-09 (three checks); 2026-10-08 (`/unify` of the `f5e953a3f` round +
   the evening check).
-- **v4 `main` HEAD at check: `584d28164`** ("Memory refactor Phase E:
-  recall as a pipeline; delivery (#95)", 2026-10-13 12:01,
-  `4.10.0-dev.166`) — that is **`origin/main`**; the human's LOCAL `main`
-  sits ONE behind at `93c5af6ad` (not yet pulled). **THIRTEEN commits past
-  the baseline** (`4a38222e6..origin/main`). The two NEW this check (§3
-  rows carry the full classification; NEITHER ships a migration — both
-  CHANGELOG entries say so and no `lib/database/migrations/` / DDL hunk
-  exists; dependencies stamps-only):
+- **v4 `main` HEAD at check: `64743ee13`** ("Fix bugs 245 and 246:
+  reopened turns re-extracted; consolidation token budget", 2026-10-13
+  20:36, `4.10.0-dev.175`) — local `main` = `origin/main` (pulled).
+  **NINETEEN commits past the baseline** (`4a38222e6..main`). The six NEW
+  this check (§3 rows carry the full classification; dependencies
+  stamps-only — `package.json` / `packages/quilltap/package.json` move only
+  their `version`; `help/` 132 → **131**: `memory-consolidation.md` +
+  `memory-housekeeping.md` DELETED, `memory-maintenance.md` ADDED, twelve
+  edited):
+  - `4ae0c4ca6` (Built-in TF-IDF tuning + bug 243, 14:31, `.169`; 69
+    files, +1,655 / −122) — **the NINTH D23 move** (the message's first
+    paragraph says "no schema change"; the PR-review commit inside the
+    squash adds one): migration `add-tfidf-text-shape-version-v1`
+    (`tfidf_vocabularies.textShapeVersion INTEGER DEFAULT 0`, APPENDED by
+    `addColumnIfMissing`) AND the field on `TfidfVocabularySchema` between
+    `fittedAt` and `createdAt` — so generateDDL's fresh table carries it in
+    SCHEMA order (the informs two-shape precedent). Behaviour: BUILTIN
+    embeds drop the anchor line (`lexicalEmbeddingTextFor`), per-provider
+    admission thresholds (`ADMISSION_THRESHOLDS_TFIDF` 0.80 / 0.40 / 0.20),
+    `memoryConsolidation.tfidfClusterThreshold` (0.30), the refit-when-due
+    policy (`builtin-refit-policy.ts`), `isLexicalEmbeddingProvider`, the
+    anchor probe's `lexicalProfile` note. Bug 243 is the forked job child's
+    plugin-load race — NO-PORT candidate (v5's runner is in-process over
+    static manifests).
+  - `104e986c7` (Phase F, 15:55, `.172`; 88 files, +4,235 / −3,696) — ONE
+    `MEMORY_MAINTENANCE` job (fold-near-duplicates → consolidate → demote →
+    retire → mirror) replaces `MEMORY_HOUSEKEEPING` + `MEMORY_CONSOLIDATION`;
+    `housekeeping.ts`, `consolidation-triggers.ts`, the outcome cache,
+    `scheduled-housekeeping.ts`, both handlers and the `memory-dedup` TOOL
+    DELETED; the parent-side ledger; `memoryMaintenance.phases` toggles;
+    `?action=maintain` / `maintenance-status`; the three retention knobs
+    gone; migration `drop-housekeeping-consolidation-jobs-v1` (a row DELETE
+    — no DDL).
+  - `b045dd986` (Phase G + bugs 242 / 244, 17:05; 87 files, +4,135 /
+    −2,441) — the `housekeep` / `housekeep-sweep` / `consolidate` /
+    `housekeeping-config` actions RETIRED, NEW `?action=repair` (dangling
+    links), ONE Maintenance card + dialog, the extraction limits onto the
+    Extraction Grain card, CLI `memories maintain` / `validate --repair` /
+    `db memories --tier`; **bug 244** (`patchSchemaOf` — Zod 4's
+    `.partial()` keeps defaults) — v5's ruled both-ways table
+    `PARTIAL_DEFAULTS_CLOBBER` (P4.D271 R-A) mirrored v4's clobber, so its
+    three rows TRIP BY DESIGN at a pin past this (§5.4 — measure, then
+    retire); **bug 242** (`inChain` only for `chainDepth > 0`) — v5's
+    `chat-stream.reducer.ts:296` sets `inChain` on ANY `turnStart`, the
+    pre-fix shape. NO migration (`add-memory-tiers-v1` gains a doc-path
+    comment only).
+  - `48790fb73` (the refactor's close, 17:46; 32 files, +105 / −65) — three
+    report / ledger labels (SPA + CLI) and docs; **its spec records the
+    Friday backfill: v4 ran the refactor migrations on LIVE Friday on
+    2026-10-13 22:24 UTC** (the LIVE-DATA HAZARDS block below is now FIRED).
+  - `9ec4fa2e9` (V4test dogfood, 20:17; 10 files) — docs, bugs 245 / 246
+    filed, one CLI status line ("within the cap").
+  - `64743ee13` (bugs 245 / 246, 20:36, `.175`; 38 files, +637 / −95) — a
+    `turn` pass in `memory_extraction_cursors` (free-text `pass`, NO
+    migration; `ExtractionCursorPassEnum` widens), the turn transcript's
+    "EARLIER IN THIS TURN" context, autonomous speakers bounded by the
+    previous anchor, `turnExtractionWatermarkMessageId` on the bundles
+    (`qtap-export.schema.json`, the restore / import id remaps);
+    consolidation's budget from `resolveMaxTokens` with 4,000 as a floor.
+
+  The two from the previous check (`dd70e65e8`; NEITHER ships a migration):
   - `93c5af6ad` ("Fix bugs 235–241 from the memory refactor dogfood; file
     bug 242", 11:49, `.165`; 56 files, +2,253 / −217) — the in-flight dirt
     the last check recorded, committed. PORT: 236 (manual create / edit trim
@@ -78,7 +134,7 @@ probe verifies against._
     `recall-replay` gains `fallbackPath` / `trace` / `pools` / `ring` /
     `ringSource`; the Memories API search stamps nothing.
 
-  Eleven were already in §3 before this check. Six were already
+  Eleven were already in §3 before that check. Six were already
   in §3 at round start, compressed (the rows carry the full classification):
   - `545e299bb` scenarios from anywhere (PORT-NEW + PORT, the EIGHTH D23
     move — `chats.scenarioSource` / `scenarioNotes`); `124c8aca3` memory
@@ -161,23 +217,28 @@ probe verifies against._
     touch. **Re-checked for the two new commits: still NONE** — bugs
     236–241 read `Original to v4` or name a Phase B–D commit as their
     provenance (235's names the old singleton, 242's v4's own `5a99e4b8f`);
-    no port filing returns.
+    no port filing returns. **Re-checked for the six (late evening): still
+    NONE** — bugs 243–246 all read `Original to v4` (242's `5a99e4b8f`).
+    One RULED-DIVERGENCE trip instead: bug 244 fixes the clobber v5's
+    `PARTIAL_DEFAULTS_CLOBBER` table pins on both sides (above).
 - **v4 `bugfix` tip at check:** `1a2b2164c`, UNMOVED (`1a2b2164c..bugfix`
   empty; `origin/bugfix` the same). **`release` tip:** `8fbf2afe0`
   (`release: 4.9.2`), UNMOVED; still no `release: 4.10.0` squash.
 - **Checkout at check:** branch **`main`**, tree **CLEAN** (`git status
-  --short` empty — the 51 dirty paths the last check recorded are committed
-  as `93c5af6ad`). Local `main` = `93c5af6ad`, ONE behind `origin/main`
-  (`584d28164`, fetched, not pulled). The §2 probe reads `584d28164..main`
-  — run it against `origin/main` too (`git log 584d28164..origin/main`),
-  since a pull alone moves local `main` up to the recorded HEAD.
-- **Verdict: DRIFT PENDING — 13 commits (§3): 1 NO-PORT? (`4ce64fa1e`), 11
-  PORT (`124c8aca3`, `69d38dd60`, `8050958be`, `97f0d8cb8`, the five —
-  `c2795733f`, `e0ac7493a`, `af48f6cc2`, `ac6348c5f` each WITH a schema move,
-  `8af764514` with a wire change — and the two new, `93c5af6ad` bugs
-  235–242 and `584d28164` Phase E, NEITHER with a migration), 1 PORT-NEW +
-  PORT (`545e299bb`).** Twelve are UNPROCESSED; `97f0d8cb8` is
-  PORTED(P4.D285) — baseline not yet past.
+  --short` empty). Local `main` = `origin/main` = `64743ee13`. The §2
+  probe reads `64743ee13..main`.
+- **Verdict: DRIFT PENDING — 19 commits (§3): 2 NO-PORT? (`4ce64fa1e`,
+  `9ec4fa2e9`), 16 PORT (`124c8aca3`, `69d38dd60`, `8050958be`,
+  `97f0d8cb8`, the five — `c2795733f`, `e0ac7493a`, `af48f6cc2`,
+  `ac6348c5f` each WITH a schema move, `8af764514` with a wire change —
+  `93c5af6ad`, `584d28164`, and the five new: `4ae0c4ca6` WITH the NINTH
+  D23 move, `104e986c7` with a job-row migration, `b045dd986`, `48790fb73`
+  (labels riding Phase G's new surfaces), `64743ee13`), 1 PORT-NEW + PORT
+  (`545e299bb`).** Eighteen are UNPROCESSED; `97f0d8cb8` is
+  PORTED(P4.D285) — baseline not yet past. **Pin for the memory catch-up:
+  `64743ee13` or later** — v4 declares the refactor CLOSED (`48790fb73`
+  moved its spec to `complete/`), the first HEAD where the memory programme
+  is not mid-rewrite.
 - **Where the seven land** (the five + `93c5af6ad` + `584d28164`; Phase E
   adds `memory_injector.rs`, `recall_tuning.rs`, `api/recall_replay.rs`, the
   context builder's recall block and `debugMemoryLogs`; `93c5af6ad` adds
@@ -207,8 +268,20 @@ probe verifies against._
   carriers (P4.9G, P4.D264, P4.D272), the Almanack's memory lines, the
   `search_scriptorium` / `self_inventory` tools, the anchor probe +
   `quilltap anchor-probe` (P4.D269), and the SPA `memory/` cards (P4.D276).
+  The six new add: `db/tfidf_vocabulary.rs` + `fresh_schema.json` (the
+  D23 re-dump) + the TF-IDF builtin provider and the embedding service
+  (P4 provider layer), the job types / queue / scheduler (P4.D266 /
+  P4.D271's housekeeping + consolidation jobs and triggers → one
+  maintenance job), the `memory-dedup` tool's retirement from the tool
+  table, `api/memories.rs` (four actions retired, `maintain` /
+  `maintenance-status` / `repair` new),
+  `PARTIAL_DEFAULTS_CLOBBER` (`memory_consolidation_routes_equivalence`),
+  the SPA reducer (bug 242) and `memory/` cards (P4.D276), the per-turn
+  extraction + turn transcript (P4.D270), the bundle carriers (P4.D272),
+  the CLI (`anchor-probe`'s note; the `memories` verbs v5 has not ported),
+  and `help/` (p4.9i2 — 132 → 131 files).
   **Order them as ONE memory catch-up with `124c8aca3` + `69d38dd60`** (and
-  now `93c5af6ad` + `584d28164` — Phase E rewrites the recall half the
+  now `93c5af6ad` + `584d28164` + the six — Phase E rewrites the recall half the
   earlier phases left standing, so a pin short of it ports `memory-service.ts`
   / `memory-injector.ts`, both deleted at HEAD)
   (Phase 0 + bug 227) — each later phase rewrites the previous one's
@@ -219,10 +292,16 @@ probe verifies against._
 
 ### ⚠ LIVE-DATA HAZARDS — read before any v5 build touches real data
 
-**ARMED: the human's checkout sits at `93c5af6ad` (`origin/main` at
-`584d28164` — neither adds a migration, so the count is unchanged). The
-first v4 launch from it applies ALL NINE new migrations to whatever instance it opens — and
-three of them DROP COLUMN / DROP TABLE, which cannot be undone.** Once v4 at
+**FIRED (2026-10-13 22:24 UTC): v4 ran the refactor migrations on LIVE
+FRIDAY** (`48790fb73`'s spec, "Friday backfill (E2)": ten migrations in
+2.96 s, 44,240 memories, `retire-memory-vector-entries-v1` copied 0 and
+DROPPED the mirror, 3,166 importances recomputed, 1,862 `occurredAt`
+re-zoned; then real maintenance runs — ~120 digests created, ~250 members
+superseded, **913 rows demoted** at a 2,500 cap). Live Friday — and every
+copy taken from it from now on — is POST-migration. HEAD adds two more
+migrations past the nine (`add-tfidf-text-shape-version-v1`,
+`drop-housekeeping-consolidation-jobs-v1`), eleven in all; three of them
+DROP COLUMN / DROP TABLE, which cannot be undone. Once v4 at
 or past `c2795733f` has migrated an instance, **a v5 build at the current
 baseline must NOT open it** — not live Friday, not a copy of it taken
 afterwards:
@@ -281,7 +360,10 @@ them): v5 now reads `Wardrobe/<sub>/*.md` recursively (P4.D279).
 Bug 228 adds none (v5's Create New import fails as pre-fix v4 did — do not
 rely on it).
 
-**Dogfood ONLY on a COPY taken BEFORE the human ran v4 past `c2795733f`**
+**Dogfood ONLY on a COPY taken BEFORE 2026-10-13 22:24 UTC** (when v4 past
+`c2795733f` migrated live Friday — any newer copy is post-migration; until
+the memory catch-up lands there is no Friday data v5 may open except a
+pre-migration copy already on disk)
 (the owed dogfood pass's copy qualifies if it predates that launch — check
 for `memory_extraction_cursors` / `vector_entries` in it before the first v5
 boot: a copy WITH the cursor table or WITHOUT `vector_entries` is
@@ -327,14 +409,24 @@ on the copy, the `52d6e7ecd` / `07b8f0209` notes (the
   ledger (the cross-app heal precedent), never as unstamped ensures. Every committed
   `*-main.db` pair WIDENS / NARROWS in place through v4's real migrations at
   the pin. The restore mirror-boot list grows with each ensure.
+- **The NINTH move rides the same re-dump** (`4ae0c4ca6`):
+  `tfidf_vocabularies."textShapeVersion" INTEGER DEFAULT 0` — in
+  generateDDL's dump it sits in `TfidfVocabularySchema` order (after
+  `"fittedAt"`, before `"createdAt"`); the migration
+  `add-tfidf-text-shape-version-v1` APPENDS it on an existing table — two
+  shapes, carried as the `chat_informs.permanent` ensure did (P4.D249). A
+  TENTH migration re-homes as an ensure (eleven past the baseline in all):
+  `drop-housekeeping-consolidation-jobs-v1` (`104e986c7`, a row DELETE, no
+  DDL). `64743ee13`'s `turn` cursor pass is free text — no DDL.
 - `public/schemas/qtap-export.schema.json` moves again: chat
   `episodeExtractionWatermarkMessageId` + memory `supersededAt`
-  (`c2795733f`), description text for the two chat keys (`ac6348c5f`).
+  (`c2795733f`), description text for the two chat keys (`ac6348c5f`), and chat
+  `turnExtractionWatermarkMessageId` (`64743ee13`).
 
 ### Regen, dependencies, help
 
 - **Regen rule: PIN REQUIRED at `4a38222e6`** (§5.1), UNCHANGED by the
-  2026-10-13 afternoon check. HEAD (`origin/main`) is thirteen
+  2026-10-13 late-evening check. HEAD (`64743ee13`) is nineteen
   commits past the baseline, so **a pinned worktree is mandatory for EVERY
   regen, no exceptions** — every regen, the whole sweep and every
   live-checkout guard of the `4a38222e6` unification ran from
@@ -353,14 +445,18 @@ on the copy, the `52d6e7ecd` / `07b8f0209` notes (the
   `runMemoryGate`, `reinforceMemory`, `deleteMemoryWithUnlink*`,
   `deleteMemoriesBy*WithVectors`, `needsHousekeeping`,
   `processTurnForMemory`, `batchExtractMemories`, `handleInterCharacterMemory`,
-  …). `provisioning_equivalence` REQUIRES `QT_FRESH_SCHEMA_LIVE` dumped FROM
+  …), and since the six: `lib/memory/housekeeping.ts`,
+  `consolidation-triggers.ts`, `housekeeping-outcome-cache.ts`,
+  `admission/after-insert.ts`, `lib/tools/memory-dedup.ts`,
+  `background-jobs/scheduled-housekeeping.ts` and both housekeeping /
+  consolidation handlers (Phase F). `provisioning_equivalence` REQUIRES `QT_FRESH_SCHEMA_LIVE` dumped FROM
   THE PIN. ⚠ **The dependency trap:** the root tree last moved at
   `a9c99a4a0` (inside the baseline); still build the pin's own tree
   (`npm ci --offline`, §5.1 — at `4a38222e6` `openai` 7.30.0, the pin's
   lockfile differing from HEAD's only in version stamps).
 - **Dependencies: NONE moved** past the baseline (each `package.json` hunk is
   the stamp — `.157` / `.160` / `.161` / `.163` / `.164` on the five, `.165`
-  / `.166` on `93c5af6ad` / `584d28164`; no
+  / `.166` on `93c5af6ad` / `584d28164`, `.169`–`.175` on the six; no
   lockfile hunk beyond the stamps; Phase B deletes only the npm script
   `oneoff:rebuild-vector-indices` and its `scripts/` file).
 - **Help / docs past the baseline (cumulative):** `help/` **131 → 132
@@ -373,13 +469,20 @@ on the copy, the `52d6e7ecd` / `07b8f0209` notes (the
   `memory-consolidation`, `memory-housekeeping`, `chat-message-actions`,
   `memory-recall-relevance`, `embedding-profiles`; the two new add
   `chats`, `embedding-profiles`, `system-import-export` (`93c5af6ad`) and
-  `episodic-memory`, `memory-recall-relevance` (`584d28164`) — still 132
-  files at HEAD. Docs: `API.md`, `DDL.md`
+  `episodic-memory`, `memory-recall-relevance` (`584d28164`); the six
+  take it to **131 files at HEAD** (`b045dd986`: `memory-maintenance.md`
+  NEW, `memory-consolidation.md` + `memory-housekeeping.md` DELETED; edits
+  to `characters`, `cli-memories`, `conversation-summary-regenerate`,
+  `data-retention`, `embedding-profiles`, `episodic-memory`,
+  `memory-playing-a-character`, `memory-recall-relevance`,
+  `memory-regenerate`, `settings`, `system-tools`, `the-almanack`) — the
+  same count as the pin, different files. Docs: `API.md`, `DDL.md`
   (the vector tables "retired"), `BACKGROUND_JOBS_CHILD.md`,
   `DATABASE_ABSTRACTION.md`, `DEVELOPMENT.md`, `SYSTEM_FLOWCHARTS.md`,
   `features/memory-system-refactor.md` (phases marked done),
-  `features/memory-consolidation-and-tiers.md`, `bugs.md` (1–241 fixed, 242
-  OPEN), `DEAD-CODE-REPORT.md` +
+  `features/memory-consolidation-and-tiers.md`, `bugs.md` (1–246 fixed, none open
+  past 241's era), `features/memory-system-refactor.md` → `complete/`,
+  NEW `features/builtin-tfidf-memory-tuning.md`, `CLI.md`, `DEAD-CODE-REPORT.md` +
   45 bug-file changes. Each catch-up round re-vendors what it absorbs.
 
 ### Rounds, guards, state
@@ -501,6 +604,12 @@ passes the commit.
 | `ac6348c5f` | 2026-10-13 | Memory refactor Phase D: extraction — one context, four passes (#94) | **PORT — WITH A SCHEMA MOVE (two migrations; a NEW table; two DROP COLUMNs, one of them v5's ensure's)** (classified 2026-10-13 from the hunks, §5.3; 152 files, +10,498 / −9,320 — 90 production files +5,377 / −5,412, NEW `lib/memory/extraction/` 22 files +3,578; `4.10.0-dev.164`, parent `8af764514`; v4 HEAD at this check). **Migrations** (both `'4.10.0'`, registered LAST after the vector retirement): `add-memory-extraction-cursors-v1` (`dependsOn add-memory-tiers-v1, add-episode-extraction-watermark-v1`; PRETTY "Gathering every chronicle's bookmarks into one drawer…"; `shouldRun` while the cursor table is absent or either legacy column present) — `CREATE TABLE IF NOT EXISTS "memory_extraction_cursors" ("id" TEXT PRIMARY KEY, "chatId" TEXT NOT NULL, "pass" TEXT NOT NULL, "messageId" TEXT NOT NULL, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL, UNIQUE ("chatId","pass"), FOREIGN KEY ("chatId") REFERENCES "chats"("id") ON DELETE CASCADE)`, copies non-empty `chats.otherExtractionWatermarkMessageId` → pass `other-fold` and `episodeExtractionWatermarkMessageId` → `episode-fold` (id `<chatId>:<pass>`, `ON CONFLICT("id") DO NOTHING`, one transaction per column), then `ALTER TABLE "chats" DROP COLUMN` each present column (INFO `memory_extraction_cursors table in place`, `Copied watermark column into cursors` {column, pass, rows}, `Dropped chats.<column>`; ERROR `Extraction-cursor migration failed`); `drop-inter-character-memory-jobs-v1` — `DELETE FROM "background_jobs" WHERE "type" = 'INTER_CHARACTER_MEMORY'` (INFO `Deleted retired INTER_CHARACTER_MEMORY jobs`). **generateDDL:** `ChatMetadataSchema` / `BaseSchema` drop both watermark fields; the NEW `memoryExtractionCursors` repository materialises the table in generateDDL's bare shape (no UNIQUE / FK expected — TWO v4 shapes again; confirm by re-dump); `BackgroundJobTypeEnum` loses `INTER_CHARACTER_MEMORY`. **Behaviour:** `memory-processor.ts`, both fold passes, `fold-window.ts`, both catch-ups, `extraction-route.ts`, `handlers/inter-character-memory.ts` and the extraction half of `cheap-llm-tasks/memory-tasks.ts` (−1,664) DELETED → `lib/memory/extraction/` (`buildExtractionContext` once per unit; four passes `self-turn` / `other-turn` / `other-fold` / `episode-fold`; `runTurnExtraction`, `runCarinaExtraction`, `runFoldPass`, `runFoldCatchup`, `runExtractionDryRun`, `cursor-bundle`); prompt bodies verbatim (only `batchExtractMemories`' is gone). Real changes: the cheap LLM honours the global default cheap profile; a per-pass cap `min(base, ceil(maxTokens / 8000))` incl. fold OTHER; memory `createdAt` = the source message's time on every path; the rate limit a LIVE counter (an in-memory parent ledger, host-RPC `countRecentAdmissions`; now applies to the episode pass; a restart forgets), `backfill: true` exempt (regenerate / queue-memories / ST import / dry run), a rate-limited fold slice deferred (`skippedReason 'rate-limited'`, cursor not advanced); Carina provenance `pass: 'carina'`; regenerate clears the cursors and enqueues anchored turn jobs for autonomous rooms + an immediate episode catch-up; queue-memories tries a seat profile first; the greeting kept as a null-opener turn. `MEMORY_EXTRACTION` payload gains `pass` (`turn` / `other-fold` / `episode-fold`), `cursor`, `ignoreIdle`, `backfill` (the old `foldOtherCatchup` / `foldEpisodeCatchup` / `foldOtherIgnoreIdle` read as deprecated); the dedupe key (chat, opener, anchor, pass, cursor). ~57 log lines added, ~76 removed (`[Memory] Extraction context built`, `[Memory] Pass complete`, `[ExtractionCursors] …`, `[FoldCatchup] …`; every `[FoldOtherPass]` / `[FoldEpisodePass]` / `[CarinaMemoryExtraction]` line gone). **Wire:** the dry run's two new 400 sentences, `decision` / `extractionPass` on candidates, an NDJSON `fold` event, embedding calls; `system/tools` drops the INTER_CHARACTER estimate; backup / export append the cursors at the END of the chat object under the legacy key names (absent, not null, when no cursor), restore / import strip and write them, a `replace` restore clears the table; CLI `memory-diff` prints `fold` lines. `help/` four pages; no `bugs.md` change; no dependency move. **IMPORT-DEAD at HEAD:** `processTurnForMemory`, `extractSelfMemoriesFromTurn`, `extractOtherMemoriesFromTurn`, `batchExtractMemories`, every fold-pass / catch-up / route module, `handleInterCharacterMemory`. Not absorbable alone — built on `c2795733f` and Phases A–C | `db/chats_read.rs:96,322` + `db/chats.rs` (the column read, the INSERT, the watermark UPDATE) and **`db/memory_tiers_repair.rs:105`** (P4.D265's ensure ADDS `chats.otherExtractionWatermarkMessageId` when absent — on a v4-migrated instance it RE-ADDS what v4 dropped: the ping-pong); `services/fold_other_pass.rs` + `fold_episode_pass.rs` + the idle catch-up (P4.D270 / P4.6bj's extraction wiring), `services/memory_processor.rs`, `services/carina_memory_extraction.rs`, `services/memory_extraction_job.rs` (reads only `foldOtherCatchup`), `services/queue_service.rs`, `services/scheduled_maintenance.rs`, `memory_tasks.rs` + `memory_tasks/prompt_text.rs`, `services/job_runner.rs` + `activity_kinds.rs` + `realtime/job_topics.rs` + `api/system_data.rs` (`INTER_CHARACTER_MEMORY`), `api/memories.rs` (the dry run — a standing v5 deferral, `services/turn_transcript.rs:73`), backup `uuid_remap.rs` + `qtap_export/key_order.rs` + `generators/qtap_schema.rs` (P4.D272 / P4.D264), `services/provisioning/mod.rs` + `fresh_schema.json`; fixtures in `enclave/lifecycle.rs`, `enclave/step.rs`, `almanack/phase3_ledgers.rs`. SPA: no hit. ⚠ LIVE-DATA HAZARDS: §1 (3) the re-added column → mass re-extraction + double extraction, v4's `pass:` catch-up jobs misread as turn jobs; (5) cursor loss through v5 bundles. **RULED 2026-10-13 (the human): RETIRE P4.D265's chat-column arm** (the P4.D251-supersedes-P4.D179 precedent) — port `add-memory-extraction-cursors-v1` as a boot ensure (copy both watermark columns into `memory_extraction_cursors`, then DROP both columns; carry both v4 table shapes — generateDDL's bare one and the migration's `UNIQUE` + FK — as the informs ensure did), differentially compared against v4's real migration; v5 reads only the cursors | UNPROCESSED |
 | `93c5af6ad` | 2026-10-13 | Fix bugs 235–241 from the memory refactor dogfood; file bug 242 | **PORT — NO migration** (classified 2026-10-13 afternoon from the hunks, §5.3; 56 files, +2,253 / −217; `4.10.0-dev.165`, parent `ac6348c5f`; the 51-path dirt the previous check recorded, committed). **236:** `app/api/v1/memories/route.ts` + `[id]/route.ts` trim and require `content` (400) on manual create / edit; an admission `reject` is mapped by reason (`empty` → 400, `embedding-failed` → 502) instead of a 500. **237:** `lib/memory/admission/neighbours.ts` (+147) — a dimension-mismatched index reloads once, then the rows it cannot compare are word-matched and the likeliest few re-embedded and scored, so a re-embed no longer disables duplicate detection (`admit.ts`, `rate-ledger.ts`). **238:** `extraction/passes/other-fold.ts` — an undated draft's `occurredAt` falls back to the observer's last line, not the stretch end. **239:** `lib/database/backends/sqlite/instance-lock.ts` — `LockFileContent.port?` (from `PORT`, default 3000; dropped on takeover when invalid) on the SHARED `quilltap.lock`; v5's `quilltap-host/src/lock.rs` `LockFileContent` (no `deny_unknown_fields`) reads a v4 lock with `port` fine but a v5 rewrite drops the key, so v4's CLI tools cannot find a v5 server by instance name; `packages/quilltap/lib/lock-helpers.js` (NEW) + `anchor-probe` / `recall-replay` / `memory-diff` accept `--instance` / `--data-dir` / `--passphrase` (CLI Tier R; v5's `quilltap anchor-probe` from P4.D269). **240:** `lib/import/quilltap-import/import-entities.ts` — a chats-only bundle's memories resolve characters that already exist locally (`.qtap` carriers, P4.D272). **241:** `orchestrator.service.ts` + `streaming.service.ts` — a `SubmissionLedger` (`userMessagePersisted`, `pendingToolResultsPersisted`) rides `handleStreamError`, so the error frame says whether the typed text has a row; `app/salon/[id]/hooks/useSSEStreaming.ts` (453 lines changed) restores composer / draft / attachments / tool results with a toast, buffers split SSE frames, and treats an early close as an error (v5: the Salon spine's error frame, `api/salon.rs`, and the SPA `chat-stream.reducer.ts` / composer). **235:** `lib/utils/process-singleton.ts` — module state on `globalThis` because Next.js evaluates a module once per bundle; a Node-bundling defect — **NO-PORT candidate** for that half (v5 has one process-wide cache by construction; measure, don't assume). **Bug 242 filed OPEN** (`5a99e4b8f`'s depth-0 `turnStart` on every first turn routes single-character turns through the chain's intermediate path) — no fix hunk; v5's reducer sets `inChain` on any `turnStart` (`chat-stream.reducer.ts:296`), so whether v5 shares it is a dogfood measurement. `help/chats.md`, `embedding-profiles.md`, `system-import-export.md`; `DDL.md` (the lock line); `API.md`. CONVERGENCE: none. | UNPROCESSED |
 | `584d28164` | 2026-10-13 | Memory refactor Phase E: recall as a pipeline; delivery (#95) | **PORT — NO migration; model-visible TEXT moves** (classified 2026-10-13 afternoon from the hunks, §5.3; 132 files, +23,460 / −4,300 — 18,012 lines are `__tests__/fixtures/recall-probes/probe-set.json`; `4.10.0-dev.166`, parent `93c5af6ad`; read from `origin/main`, NOT yet pulled). NEW `lib/memory/recall/` stages — `query.ts` (`buildRecallQuery`: distil, choose the text, embed ONCE; retrospective probes beside it), `gather.ts`, `score.ts`, `select.ts`, `hydrate.ts`, `assemble.ts` (617), `render.ts` (322), `deliver.ts` (198), `search.ts`, `types.ts`; moved in: `recall-tags` → `tags`, `recall-tuning` → `tuning`, `recall-history` → `history`, `memory-subject` → `subject`, `frozen-archive-cache` → `archive`, `memory-recap` → `recap`, `conversation-summary-search` → `conversations`, `recall-replay` → `replay`; `lib/memory/scoring/rank.ts` NEW. DELETED: `lib/memory/memory-service.ts` (−1,016; search → `recall/search.ts`, `generateMissingEmbeddings` / `rebuildVectorIndex` → `index-store/backfill.ts`, `markMemoriesAccessed` → `deliver`'s `stampAccessed`) and `lib/chat/context/memory-injector.ts` (−822); `context-manager.ts` −885 (the scene state to NEW `lib/chat/context/scene-state.ts`). **Behaviour:** one query embedding per turn shared by the head, the inter-character half, the recap's relevant-conversations list, the per-turn conversation list and the retrospective mini-recap; cross-pool dedup (a row in at most one of archive / head / inter-character; the recap narrative excludes what the archive rendered); **the recall lines lose every debug label** (`[m_xxxx]` ids, importance / relevance / weight numbers, `recall:` labels, targeting keywords) — the request body moves on every turn that recalls; delivery (after the body is built and Phase-2 compression ran) stamps `lastAccessedAt` and the anti-repetition ring only for lines still present; `buildContext` takes the proactive pass's query + pool as `preRecall`; `message-finalizer.service.ts` writes the recall record to the assistant message's `debugMemoryLogs` (extraction appends after it, no longer overwrites); `?action=recall-replay` + `quilltap recall-replay` gain `fallbackPath`, `trace`, `pools`, `ring`, `ringSource`; the Memories API `search` stamps nothing. Callers re-pointed: `carina.service.ts`, `voice-rewrite-core.ts`, `pre-compute.service.ts`, `context-builder.service.ts`, `search-scriptorium-handler.ts`, `relevant-conversations-refresh.ts`, `first-message-context.ts`, `memory-extraction.ts` handler. v5: `memory_injector.rs`, `recall_tuning.rs`, the recall / recap / frozen-archive services (P4.D267 / P4.D268), `api/recall_replay.rs` (P4.D267), the context builder + `debugMemoryLogs` (`chats_messages.rs`), the anchor / proactive paths, `search_scriptorium`, Carina, the voice rewrite, the CLI `recall-replay`. ⚠ IMPORT-DEAD at HEAD grows: every oracle importing `memory-service`, `memory-injector`, `recall-tags` / `recall-tuning` / `memory-recap` / `recall-replay` / `frozen-archive-cache` / `memory-subject` / `conversation-summary-search` by their old paths. `help/memory-recall-relevance.md` (two new sections), `episodic-memory.md`; `SYSTEM_FLOWCHARTS.md`, `features/memory-system-refactor.md`. CONVERGENCE: none. | UNPROCESSED |
+| `4ae0c4ca6` | 2026-10-13 | Built-in TF-IDF tuning: refit policy, text shape, admission thresholds (#96) | **PORT — WITH A SCHEMA MOVE (the NINTH D23 re-dump; one migration)** (classified 2026-10-13 late evening from the hunks, §5.3; 69 files, +1,655 / −122 — a squash of three; `4.10.0-dev.169`, parent `584d28164`). ⚠ The squash's first paragraph says "No migrations, no schema change" — FALSE for the shipped tree: the PR-review commit inside it adds migration `add-tfidf-text-shape-version-v1` (`tfidf_vocabularies.textShapeVersion INTEGER DEFAULT 0` via `addColumnIfMissing`, APPENDED; no backfill — 0 means "fitted with anchor lines, refit once") AND `textShapeVersion: z.number().int().nonnegative().default(0)` on `TfidfVocabularySchema` between `fittedAt` and `createdAt` — the repository registers that schema, so generateDDL's fresh table carries the column in SCHEMA order: two shapes (the `chat_informs.permanent` precedent, P4.D249). **Behaviour:** `lexicalEmbeddingTextFor` (`index-store/embedding-text.ts`) — BUILTIN embeds leave out the anchor line, passed by every memory writer as `lexicalText` to `generateEmbeddingForUser` (neural providers ignore it); `isLexicalEmbeddingProvider` (`lib/embedding/cosine-scale.ts`) the one predicate for the recall floor, the R1 gate, admission and consolidation; `ADMISSION_THRESHOLDS_TFIDF` (0.80 / 0.40 / 0.20) carried on the candidate's `embeddingProvider`; `memoryConsolidation.tfidfClusterThreshold` (0.30, a new settings key + card field); `builtin-refit-policy.ts` (refit only when due: no vocabulary / `textShapeVersion` < `LEXICAL_TEXT_SHAPE_VERSION` / drift of max(25, 10%) new memories; `enqueueRefitIfDue` serialised; import forces; boot + the maintenance pass check), `embedding-refit.ts` gathers by `findDistinctCharacterIds`; new repo reads `backgroundJobs.findActiveByType`, `embeddingProfiles.findInstanceDefault`, `memories.countCorpusSince`; the anchor probe's `lexicalProfile` + note (CLI prints it). **Bug 243** (`child-entry.ts` + NEW `plugin-readiness.ts`: the forked job child ran jobs before its plugin registry loaded) — NO-PORT candidate: v5's runner is in-process over static provider manifests (measure, don't assume — the help-doc embed on a BUILTIN instance at first boot is the probe). v5: `db/tfidf_vocabulary.rs` + `fresh_schema.json` (D23 — re-dump from v4's live generateDDL, never by hand) + a boot ensure for the migration shape, the TF-IDF builtin + embedding service (the provider layer), admission (still the pre-Phase-C gate in v5 — this rides the Phase C port), `services/consolidation.rs` (P4.D271), the anchor probe + `quilltap anchor-probe` (P4.D269), the embedding jobs (P4.6BL), `api/embedding_profiles.rs`. `help/embedding-profiles.md`, `memory-consolidation.md` (deleted again by `b045dd986`). CONVERGENCE: none (243 `Original to v4`). | UNPROCESSED |
+| `104e986c7` | 2026-10-13 | Memory refactor Phase F: one maintenance job, ordered phases (#97) | **PORT — job-row migration, NO DDL** (classified 2026-10-13 late evening from the hunks, §5.3; 88 files, +4,235 / −3,696 — a squash of three; `4.10.0-dev.172`, parent `4ae0c4ca6`). `BackgroundJobTypeEnum`: `MEMORY_HOUSEKEEPING` + `MEMORY_CONSOLIDATION` → ONE `MEMORY_MAINTENANCE`; migration `drop-housekeeping-consolidation-jobs-v1` DELETEs both retired types' rows (any status — a row would fail the job schema's parse). NEW `lib/memory/maintenance/` (`run.ts` 385, `fold-near-duplicates.ts` 304 — LLM-free, survivor-first, host-RPC `foldNearDuplicates` under admission's lock, stops at 40% of the job budget; `consolidate.ts`, `demote.ts` — exactly demotable − cap, lowest protection first; `ledger.ts` 282 — the parent-side `shouldEnqueue`, `setJobResult` summaries; `scheduler.ts` — one daily sweep, the startup tick cancelled on stop; `triggers.ts`, `corpus.ts`, `types.ts`); payloads carry `exemptPhases`; a PROCESSING job never absorbs a request. DELETED: `lib/memory/housekeeping.ts` (−428), `consolidation-triggers.ts` (−198), `housekeeping-outcome-cache.ts`, `admission/after-insert.ts`, `background-jobs/scheduled-housekeeping.ts` (−200), both handlers, **the `memory-dedup` TOOL** (`lib/tools/memory-dedup.ts`, −464), `system/tools` route's dedup actions (−74); `consolidation.ts` −265 (keeps the planner + model route). Settings: `memoryMaintenance.phases {foldNearDuplicates, demote, retire}` (`.prefault({})` — a stored value without it reads every phase on); the three retention knobs GONE. API: `?action=maintain`, `?action=maintenance-status`; a live `housekeep` enqueues. Activity kinds, `job-topics.ts`, `queue-service.ts` (−371/+), the CLI `memories status` ledger. v5: `services/housekeeping.rs` + `memory_merge.rs` dedup (P4.D266), `services/consolidation.rs` + its triggers (P4.D271), the job runner / queue / scheduled maintenance / activity kinds / job topics, the tool table (the dedup tool + its census), `api/memories.rs` + the `system/tools` dispatch, `db/memories.rs`, the SPA's dedup / housekeeping / consolidation cards (P4.D276). `help/memory-housekeeping.md` + `memory-consolidation.md` + `system-tools.md` + `cli-memories.md` (the first two deleted by `b045dd986`). CONVERGENCE: none. | UNPROCESSED |
+| `b045dd986` | 2026-10-13 | Memory refactor Phase G: unified maintenance card and CLI (#98) | **PORT — NO migration; bug 244 trips a RULED table; bug 242 is shared** (classified 2026-10-13 late evening from the hunks, §5.3; 87 files, +4,135 / −2,441 — a squash of six; parent `104e986c7`). `add-memory-tiers-v1` gains a doc-path COMMENT only (no shape change — v5's ensure unaffected). **API:** `housekeep` / `housekeep-sweep` / `consolidate` / `housekeeping-config` RETIRED (`maintain` covers them; naming `consolidate` brings the mirror — `withImpliedPhases`); NEW `POST ?action=repair` (`lib/memory/repair.ts` `findDanglingLinks` over `relatedMemoryIds` / `consolidatedFrom` / `supersededById` — no fallback, a failed scan is a 500; `retire.ts` `scrubDanglingMemoryLinks` per row, a digest whose members are all gone retired with reason `graph-repair`; `enqueueMissingEmbeddings` / `enqueueEmbeddingGenerateMany` one batch insert; `findIdsWithoutEmbedding`); `memoryExtractionLimits.maxPerHour` `.max(10_000)`. **Bug 244** — NEW `lib/schemas/patch-schema.ts` `patchSchemaOf` (strips `.default()` / `.prefault()`, then `.optional()`), used by every `*-config` write, `maintain`'s run overrides and `TextReplacementRulePatchSchema`: **v5's `PARTIAL_DEFAULTS_CLOBBER` (P4.D271 R-A, `memory_consolidation_routes_equivalence.rs:355-396`, `api/memory_consolidation.rs:8`) pinned v4's clobber on BOTH sides — its three rows TRIP BY DESIGN at a pin past this (the assertion text already says "a v4 fix? re-measure"); retire the table by measurement (§5.4), and audit v5's text-replacement PATCH for the same shape.** **Bug 242** — `useSSEStreaming.ts`: `inChain` only for a `turnStart` with `chainDepth > 0`; v5's `apps/web/src/app/core/chat-stream.reducer.ts:296-299` sets `inChain: true` on ANY `frame.turnStart` — the PRE-fix shape, so v5 SHARES it if its server emits the depth-0 event (`services/orchestrator.rs` / `chat_events.rs` — measure). **SPA:** ONE Maintenance card (`memory-maintenance-card.tsx` 383, `-ledger.tsx`, `memory-consolidation-particulars.tsx`) + `maintenance-dialog.tsx` / `-report.tsx` replace the housekeeping / consolidation / dedup cards and the cleanup dialog; `memory-extraction-limits-section.tsx` on the Extraction Grain card; `useMemorySettingsDocument`; old `section=` deep links open the new card. **CLI:** `memories maintain` (replaces `consolidate`), `validate --repair`, `db memories --tier hot\|cold`, `--instance` port resolution, completions. **help/:** `memory-maintenance.md` NEW (`section=memory-maintenance`), `memory-housekeeping.md` + `memory-consolidation.md` DELETED, ten edited, `help-guide/categories.ts`. v5: `api/memories.rs`, `api/memory_consolidation.rs`, the SPA `memory/` cards (P4.D276) + the stream reducer, the CLI (v5 has `db memories`? — `db_cmd.rs`; no `memories` verb family), the vendored `help/` (p4.9i2). CONVERGENCE: none (242 / 244 `Original to v4`). | UNPROCESSED |
+| `48790fb73` | 2026-10-13 | Close the memory refactor: record the Friday backfill; fix three report labels | **PORT (labels, riding Phase G's new surfaces) + ⚠ LIVE-DATA FACT** (classified 2026-10-13 late evening from the hunks; 32 files, +105 / −65; parent `b045dd986`). Code: `maintenance-report.tsx` ("Clusters found" → "Clusters worth folding", `clustersQualified`; "Protected" → "exempt"), `memory-maintenance-card.tsx`, `memory-maintenance-ledger.tsx` (a no-excess demotion reads "Within the cap", muted), the CLI `memories-maintain-command.js` — all on surfaces `b045dd986` created, so they port WITH it. Docs: the refactor spec → `features/complete/`, link fixes across `bugs/fixed/*`, `help/cli-memories.md` + `memory-maintenance.md` (one word each), ROADMAP. **The spec's "Friday backfill (E2) — done 2026-10-13" records v4 migrating LIVE FRIDAY at 22:24 UTC** — ten refactor migrations, 44,240 memories, the vector mirror dropped, 3,166 importances recomputed, 1,862 `occurredAt` re-zoned, then maintenance: ~120 digests, ~250 members superseded, 913 demoted (cap override lowered 10,000 → 2,500). The §1 LIVE-DATA HAZARDS block moved ARMED → FIRED on this. CONVERGENCE: none. | UNPROCESSED |
+| `9ec4fa2e9` | 2026-10-13 | Memory refactor V4test dogfood; file bugs 245 and 246 | **NO-PORT?** (classified 2026-10-13 late evening from the hunks; 10 files, +187 / −7; parent `48790fb73`). Docs (bugs 245 / 246 filed OPEN, the phase B–G acceptance walks), version stamps, and ONE code hunk: `packages/quilltap/lib/memories-commands.js` — `memories status` prints a no-excess demotion as "within the cap". v5's CLI has no `memories` verb family (Tier R ported `db` / `docs` / `instances` / `sync` / `anchor-probe` / `recall-replay`), so the line has no v5 home today — it rides whichever order ports `memories status`. Ratify at the round that does. | UNPROCESSED |
+| `64743ee13` | 2026-10-13 | Fix bugs 245 and 246: reopened turns re-extracted; consolidation token budget | **PORT — NO migration (a new free-text cursor `pass`); a bundle KEY added** (classified 2026-10-13 late evening from the hunks, §5.3; 38 files, +637 / −95; `4.10.0-dev.175`, parent `9ec4fa2e9`). **Bug 245:** `ExtractionCursorPassEnum` gains `'turn'` (`FoldCursorPass` excludes it); `extraction/turn.ts` + `window.ts` + `passes/other-turn.ts` — a live turn job reads past the forward-only `turn` cursor, earlier lines of the turn (opener included) become context under "EARLIER IN THIS TURN" (`turn-transcript.ts` +131, `priorSlices`), SELF only for speakers with new lines, OTHER for everyone (earlier speakers on new lines only), a bound outside the turn ignored; `memory-regenerate-chat.ts` clears it and never reads it; regenerate / `queue-memories` bound each autonomous speaker by the previous anchor (`listExtractionTurns`); `cursor-bundle.ts` + `uuid-remap.ts` + `message-id-remap.ts` carry / remap `turnExtractionWatermarkMessageId`; `qtap-export.schema.json` gains the key (re-vendor). **Bug 246:** `consolidation-tasks.ts` `profileMaxTokensFor` — the routed profile's `resolveMaxTokens` with 4,000 as a floor; an empty answer logged as empty. v5: the per-turn extraction + turn transcript (`services/carina_memory_extraction.rs`, `memory_processor.rs`, the P4.D270 passes — v5 is still pre-Phase-D, so this rides the cursor-table port ruled 2026-10-13), the backup / restore / `.qtap` carriers (P4.D264 / P4.D272), `services/consolidation.rs` (P4.D271), `docs/v4/` + the vendored export schema. CONVERGENCE: none (`Original to v4`). | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
