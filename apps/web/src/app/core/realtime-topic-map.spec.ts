@@ -1,3 +1,4 @@
+import { partialMatchKey } from '@tanstack/angular-query-experimental';
 import { describe, expect, it } from 'vitest';
 
 import { chatKeys } from '../chat/chat-keys';
@@ -95,12 +96,22 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
     expect(queryKeysForTopic('mountPoints')).toEqual([]);
   });
 
-  it('memories: the list card plus the per-chat count — scoped narrows, unscoped takes the prefix (bug 128, P4.132)', () => {
-    expect(queryKeysForTopic('memories')).toEqual([chatKeys.all, ['memories', 'chat-count']]);
+  it('memories: scoped narrows to the chat\'s count; UNSCOPED takes every memories key (R-AB, v4 topic-map.ts:106)', () => {
+    expect(queryKeysForTopic('memories')).toEqual([chatKeys.all, ['memories']]);
     expect(queryKeysForTopic('memories', 'chat-7')).toEqual([
       chatKeys.all,
       ['memories', 'chat-count', 'chat-7'],
     ]);
+  });
+
+  it('the unscoped memories prefix covers the maintenance ledger, the counts and the settings documents (P4.D300)', () => {
+    const covered = (key: readonly unknown[]) =>
+      queryKeysForTopic('memories').some((prefix) => partialMatchKey(key as unknown[], prefix as unknown[]));
+    expect(covered(['memories', 'maintenance-status'])).toBe(true);
+    expect(covered(['memories', 'character-counts'])).toBe(true);
+    expect(covered(['memories', 'maintenance-config'])).toBe(true);
+    expect(covered(['memories', 'chat-count', 'chat-9'])).toBe(true);
+    expect(covered(['characters', 'x'])).toBe(false);
   });
 
   it('an unknown topic is ignored, never thrown on', () => {
@@ -124,6 +135,8 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
     expect(REALTIME_TOPICS).toHaveLength(7);
     expect(REALTIME_TOPICS[REALTIME_TOPICS.length - 1]).toBe('memories');
     expect(ALL_REALTIME_PREFIXES).toHaveLength(8);
+    // R-AB / L-6: the sweep's memories entry is v4's `queryKeys.memories.all`.
+    expect(ALL_REALTIME_PREFIXES[ALL_REALTIME_PREFIXES.length - 1]).toEqual(['memories']);
   });
 });
 

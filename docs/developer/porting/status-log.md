@@ -184201,3 +184201,19 @@ worktree for the session — same volume, same rules).
     dialog's three-way `skippedReason` table, the housekeeping dialog's
     `capUsed` / preview shape; the grain card's (R-E / R-F / R-J) carry on.
     `npm run build` green; vitest 501 files / 9,537.
+11. **Realtime (R-AB, L-6, L-7)** — `core/realtime-topic-map.ts`'s
+    `memories` arm only (the `chats` arm untouched — P4.D302's): unscoped →
+    `[chatKeys.all, memoryKeys.all]` (v4 `queryKeys.memories.all`,
+    `topic-map.ts:102-106`), scoped unchanged; the reconnect sweep's
+    memories entry `memoryKeys.chatCounts()` → `memoryKeys.all` (v4
+    `topic-map.ts:35`). **The P4.D177 §C.4 / P4.D276 R-A narrowing of the
+    unscoped hint RETIRES on this arm** (the `chatKeys.all` list-badge
+    mapping stays). `memoryKeys.chatCounts()` lost its last reader and is
+    deleted. Re-pinned: `realtime-topic-map.spec.ts` (the arm row, the
+    sweep's last entry `['memories']`, and a NEW row proving through
+    TanStack's own `partialMatchKey` that `['memories','maintenance-status']`,
+    the counts and the settings keys are covered) and — compile-free but
+    behaviour-forced — `realtime.service.spec.ts:74-83`'s unscoped
+    expectation (it pins the same arm through the service; recorded here as
+    a touch outside the order's named file list). **Red-first on main:** 3
+    arms red (the arm row, the coverage row, the sweep row).

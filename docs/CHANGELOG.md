@@ -851,6 +851,12 @@ _No crate versions bumped._
 
 The vendored help tree brought to the round's pin, every byte from `git show 83334b9a5:`. Count unchanged at 131: two pages added (`help/memory-maintenance.md`, Phase G's single Maintenance page; `help/scenario-browser.md`, the scenario browser), two retired (`help/memory-consolidation.md`, `help/memory-housekeeping.md`), 21 re-vendored. All 131 files md5-equal to the pin with the same path set. `help_tree_equivalence` and `help_section_size_equivalence` were red at the pin before the copy (content only) and are green after, regenerated from the pin (131 docs, 779 chunks, max section 775 tokens); `help_tree_embed_guard` and `host_help_docs_boot` green before and after with their 131 literals unmoved. Comment-only history lines added to the three help tests. The host re-embeds the tree at build time; its source is unchanged, so no bump.
 
+#### 2026-10-14 — feat(spa): an unscoped memories hint refreshes every memories query (P4.D300)
+
+_Versions: SPA 0.5.857._
+
+The realtime `memories` topic, when it carries no chat id, now invalidates every `['memories', …]` query, as v4's `queryKeys.memories.all` does — so the maintenance ledger, the character counts and the memory settings refresh after a maintenance run commits. A chat-scoped hint still narrows to that chat's count. The reconnect sweep widens the same way. The unused `memoryKeys.chatCounts()` key is removed.
+
 #### 2026-10-14 — feat(spa): one Maintenance card replaces the housekeeping, consolidation and deduplication surfaces (P4.D300)
 
 _Versions: SPA 0.5.856._

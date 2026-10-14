@@ -56,9 +56,10 @@ export const ALL_REALTIME_PREFIXES: readonly QueryKeyPrefix[] = [
   characterKeys.all,
   // `memories` (below): the Salon LIST's memory badge (the same `chatKeys.all`
   // prefix the `chats` row above already sweeps — listed again, matching v4's
-  // topic-per-row shape) and the sidebar's per-chat count.
+  // topic-per-row shape) and EVERY memories key — v4's
+  // `queryKeys.memories.all` (`topic-map.ts:35`; R-AB, P4.D300 L-6).
   chatKeys.all,
-  memoryKeys.chatCounts(),
+  memoryKeys.all,
 ];
 
 /**
@@ -135,13 +136,17 @@ export function queryKeysForTopic(topic: string, id?: string): readonly QueryKey
 
     case 'memories':
       // v4 narrows to a per-chat memory count (`queryKeys.memories.chatCount
-      // (id)` when scoped, `queryKeys.memories.all` collection-wide). v5 holds
-      // the same reader now (`memoryKeys.chatCount`, the sidebar's Delete
-      // Memories (n)); the Salon LIST card's badge lives under `chatKeys.all`
-      // whether the hint carried a chat id or not (P4.D177 §C.4, a measured
-      // mapping divergence from v4's). The unscoped hint takes the per-chat
-      // count prefix — the narrowest thing that covers every chat.
-      return [chatKeys.all, id ? memoryKeys.chatCount(id) : memoryKeys.chatCounts()];
+      // (id)`) when scoped, and takes `queryKeys.memories.all` collection-wide
+      // (`topic-map.ts:102-106`). v5 holds the same reader (`memoryKeys.chatCount`,
+      // the sidebar's Delete Memories (n)); the Salon LIST card's badge lives
+      // under `chatKeys.all` whether the hint carried a chat id or not (P4.D177
+      // §C.4, a measured mapping divergence from v4's — unchanged). The UNSCOPED
+      // hint takes EVERY memories key, as v4's does (R-AB, P4.D300): the
+      // maintenance ledger (`['memories', 'maintenance-status']`), the counts
+      // and the settings documents refresh after a maintenance run commits.
+      // The P4.D177 §C.4 / P4.D276 R-A narrowing to the per-chat count prefix
+      // RETIRED here.
+      return [chatKeys.all, id ? memoryKeys.chatCount(id) : memoryKeys.all];
 
     default:
       return [];

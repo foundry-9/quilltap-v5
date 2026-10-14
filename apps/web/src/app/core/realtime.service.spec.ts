@@ -71,15 +71,16 @@ describe('RealtimeService — the hint → invalidation path', () => {
     expect(keysFrom(invalidate)).toEqual([[...chatKeys.detail('chat-7')]]);
   });
 
-  it('a memories hint reaches the Salon list and the per-chat count (bug 128, P4.D177 §C.4; P4.132)', () => {
+  it('a memories hint reaches the Salon list and the per-chat count (bug 128, P4.D177 §C.4; P4.132), and unscoped every memories key (R-AB, P4.D300)', () => {
     // Chat-scoped: the list prefix plus that chat's count; collection-wide: the
-    // list prefix plus the per-chat count prefix.
+    // list prefix plus EVERY memories key (v4 `queryKeys.memories.all`) — the
+    // maintenance ledger refreshes after a run commits.
     const { core, invalidate } = setup();
     core.frames.next(hint('memories', 'chat-7'));
     expect(keysFrom(invalidate)).toEqual([[...chatKeys.all], ['memories', 'chat-count', 'chat-7']]);
     invalidate.mockClear();
     core.frames.next(hint('memories'));
-    expect(keysFrom(invalidate)).toEqual([[...chatKeys.all], ['memories', 'chat-count']]);
+    expect(keysFrom(invalidate)).toEqual([[...chatKeys.all], ['memories']]);
   });
 
   it('ignores an unknown topic without touching the cache', () => {
