@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-14 — docs(commands): `/carryout` reads a stacking sha from the parent's lane branch, not main
+
+_Docs-only change._
+
+The base check added earlier today told a stacked lane to read the parent order's status header, but that header is updated on the parent's lane branch; `main`'s copy reads OPEN until `/unify`, so a stage-B lane would have stopped wrongly. Rule 2 now finds the stacking commit by its subject (`KEYSTONE:` / `SCORING:` / `ADMISSION:`) across all branches and confirms it against the header on the parent's lane branch.
+
 #### 2026-10-14 — docs(commands): `/carryout` verifies the lane's base branch before the first edit
 
 _Docs-only change._

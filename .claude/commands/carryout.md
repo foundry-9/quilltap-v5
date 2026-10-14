@@ -33,7 +33,12 @@ what's marked landed.
    **Verify the base BEFORE the first edit.** The order's Preamble
    "Branch" line names the lane's base: `main` at the orders' commit, or a
    stacking commit (`SCORING` / `KEYSTONE` / `ADMISSION` …) whose sha the
-   PARENT order's status header records. The session may start somewhere
+   PARENT order's status header records — ON THE PARENT'S LANE BRANCH, not
+   on `main` (main's copy of the order still reads OPEN until `/unify`).
+   Find it with `git log --all --format='%h %s' | grep -E '^[0-9a-f]+
+   <NAME>:'` (the stacking commit's subject starts with its name) and
+   confirm it against `git show <parent lane branch>:<order path>`'s status
+   header. The session may start somewhere
    else (the app can open it on `main`'s tip, a stale worktree, or another
    lane's branch) — check `git rev-parse HEAD`, `git branch --show-current`
    and `git merge-base --is-ancestor <base> HEAD`, and if the checkout is
