@@ -184106,3 +184106,12 @@ worktree for the session — same volume, same rules).
    the module is new (main's twin is the doomed housekeeping dialog) — red
    by absence; mutation-proved instead: swapping the body's key order, the
    `(queued)` / `(close)` order and the captured `everyone` turns 6 arms red.
+6. **The ledger** — NEW `screens/settings/memory/memory-maintenance-ledger.ts`
+   + the exported pure `summaryLine` (no `toLocaleString`, as v4).
+   `memoryMaintenanceStatus` with no `characterId`; loading / error
+   (`readErrorText`) / blank states; entries filtered `lastSummary ||
+   lastRun` non-empty; the name from the counts list else `slice(0, 8)`; all
+   FIVE phases with `never`; `48790fb73`'s muted "Within the cap…" at
+   `excess === 0` vs the warning, silent when effective. 11 arms. **Red:** new
+   module (by absence); mutation-proved — the pre-`48790fb73` always-warning
+   arm and a `toLocaleString` in the demote part turn 2 arms red.
