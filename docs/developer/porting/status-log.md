@@ -184073,3 +184073,17 @@ worktree for the session — same volume, same rules).
    main; against an inert shim (defaults forever, `save` a no-op) 8 of 9
    arms red (the "no `settings` → defaults" arm is green by construction).
    The `memory.api` rows are red by absence (the names do not exist on main).
+4. **The report view (L-14)** — NEW `memory/maintenance-report.ts`:
+   `PHASE_LABELS`, `SKIP_TEXT`, `REPORT_SKIP_TEXT`, `CONSOLIDATION_SKIP_TEXT`
+   (`no-llm` only), `MaintenanceReportView` (the phase list, the fold /
+   consolidation / demote / retire / mirror blocks), `MaintenanceReportsTable`.
+   The cluster renderer (`clusterView`) MOVED here from
+   `memory-consolidation-report-dialog.ts`, which now imports it until its
+   deletion (one copy, never two). `48790fb73`'s labels: **Clusters worth
+   folding** over `clustersQualified`, **Exempt** over `protected`. Every
+   composed line is computed as one string. **Red-first:** the module is new;
+   against a shim carrying the pre-`48790fb73` labels (`Clusters found` /
+   `clustersFound`, `Protected`) 2 arms red — the consolidation stats row
+   (a fixture with `clustersFound` 9 ≠ `clustersQualified` 6) and the demote
+   stats row; every other arm is red by absence. The P4.D276 cluster rows
+   moved with the renderer (6 arms).

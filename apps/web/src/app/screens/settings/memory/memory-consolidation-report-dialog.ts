@@ -10,10 +10,8 @@ import {
   output,
 } from '@angular/core';
 
-import type {
-  ConsolidationClusterReport,
-  ConsolidationReport,
-} from '../../../core/core-contract';
+import type { ConsolidationReport } from '../../../core/core-contract';
+import { clusterView } from '../../../memory/maintenance-report';
 import { Icon } from '../../../ui/icon';
 
 /** v4 `SKIPPED_TEXT` (`memory-consolidation-report-dialog.tsx:12-16`). */
@@ -23,76 +21,6 @@ const SKIPPED_TEXT: Record<NonNullable<ConsolidationReport['skippedReason']>, st
   'no-llm':
     'No model is available to do the consolidating. Name a connection profile above, or configure the cheap LLM.',
 };
-
-/** v4 `bucketLabel` (`:18-27`). */
-function bucketLabel(cluster: ConsolidationClusterReport): string {
-  switch (cluster.bucket.kind) {
-    case 'self':
-      return 'About themselves';
-    case 'other':
-      return `About ${cluster.bucket.subjectName}`;
-    default:
-      return 'About no one in particular';
-  }
-}
-
-interface MemberView {
-  id: string;
-  /** v4 `&bull; {content}` — one string. */
-  line: string;
-  standalone: boolean;
-}
-
-interface ClusterView {
-  key: string;
-  /** v4 `Cluster {i+1} &middot; {bucket} &middot; {kind}` (`:34-36`) — one string. */
-  header: string;
-  status: string;
-  error: string | null;
-  /** v4 `Notes to be folded ({n})` (`:43-45`). */
-  membersLabel: string;
-  members: MemberView[];
-  /** v4 `Proposed digest{s}` (`:62-64`). */
-  digestsLabel: string;
-  digests: { id: string; content: string; meta: string }[];
-  /** v4 `Contradictions noticed ({n})` (`:82-84`). */
-  contradictionsLabel: string;
-  contradictions: { key: string; line: string; ids: string }[];
-}
-
-/** v4 `ClusterBlock` (`:29-99`), every composed line computed as ONE string. */
-function clusterView(cluster: ConsolidationClusterReport, index: number): ClusterView {
-  const standalones = new Set(cluster.keepStandalone);
-  return {
-    key: `${cluster.bucket.kind}-${cluster.memberIds[0] ?? index}-${index}`,
-    header: `Cluster ${index + 1} · ${bucketLabel(cluster)} · ${cluster.clusterKind}`,
-    status: cluster.status,
-    error: cluster.error || null,
-    membersLabel: `Notes to be folded (${cluster.memberIds.length})`,
-    members: cluster.memberIds.map((id, i) => ({
-      id,
-      line: `• ${cluster.memberContents[i]}`,
-      standalone: standalones.has(id),
-    })),
-    digestsLabel: `Proposed digest${cluster.digests.length === 1 ? '' : 's'}`,
-    // v4 `:70-72`: the JSX `{' '}` + line breaks collapse to single spaces.
-    digests: cluster.digests.map((d) => ({
-      id: d.id,
-      content: d.content,
-      meta:
-        `${d.action === 'update' ? 'revises an existing digest' : 'new digest'} · ` +
-        `${d.kind} · importance ${(d.importance * 100).toFixed(0)}% · from ` +
-        `${d.memberIds.length} note${d.memberIds.length === 1 ? '' : 's'}`,
-    })),
-    contradictionsLabel: `Contradictions noticed (${cluster.contradictions.length})`,
-    // v4 `:88-91`: `&bull; {note || fallback}{' '}<span>(older superseded by newer)</span>`.
-    contradictions: cluster.contradictions.map((c, i) => ({
-      key: `${c.olderId}-${c.newerId}-${i}`,
-      line: `• ${c.note || 'A newer note displaces an older one.'} `,
-      ids: `(${String(c.olderId).slice(0, 8)} superseded by ${String(c.newerId).slice(0, 8)})`,
-    })),
-  };
-}
 
 /**
  * The consolidation report (v4 `components/tools/memory-consolidation-report-
