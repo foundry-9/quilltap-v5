@@ -2941,12 +2941,19 @@ impl JobHandler for MemoryHousekeepingHandler {
     fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
         Box::pin(async move {
             let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
-            let uid = job.user_id.clone();
-            let auto = db
-                .read_main(move |conn| {
-                    chat_settings::find_auto_housekeeping_settings_by_user_id(conn, &uid)
+            // P4.D288 (mechanical): the auto switch moved off the user's
+            // `chat_settings.autoHousekeepingSettings` column (dropped) onto the
+            // instance-wide `memoryMaintenance` document — same position, new
+            // storage (its JSON carries `enabled` / `perCharacterCap` /
+            // `perCharacterCapOverrides`; the two merge keys are gone with the
+            // retired merge pass, so they fall to the service default); the
+            // maintenance job that replaces this handler is P4.D297's.
+            let auto: Option<Value> = db
+                .read_main(|conn| {
+                    Ok(quilltap_core::db::instance_settings::get_memory_maintenance_settings(conn))
                 })
-                .unwrap_or(None);
+                .ok()
+                .map(|m| m.to_json());
             let auto_enabled = auto
                 .as_ref()
                 .and_then(|a| a.get("enabled"))

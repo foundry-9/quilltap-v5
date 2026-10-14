@@ -264,7 +264,7 @@ impl<'c> UsersRepository<'c> {
 /// **Scoped read** for the user-identity resolver
 /// ([`crate::services::user_identity_resolver`]): the profile `name` of a user,
 /// v4 `users.findById(userId)?.name`. Follows the scoped-read precedent
-/// [`super::chat_settings::find_auto_housekeeping_settings_by_user_id`] — it
+/// `chat_settings::find_auto_housekeeping_settings_by_user_id`, retired by P4.D288 — it
 /// marshals ONLY the one column the consumer reads, not the full `User` row (the
 /// complete `findById` read marshaling is a later users read sub-unit).
 ///

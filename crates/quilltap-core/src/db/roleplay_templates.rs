@@ -692,7 +692,7 @@ pub fn delimiters_from_value(v: &serde_json::Value) -> Vec<TemplateDelimiter> {
 /// **Scoped read** for the roleplay-template fallback chain
 /// ([`crate::services::participant_resolver`]): the `systemPrompt` of a template,
 /// v4 `roleplayTemplates.findById(id)?.systemPrompt`. Follows the scoped-read
-/// precedent [`super::chat_settings::find_auto_housekeeping_settings_by_user_id`]
+/// precedent `chat_settings::find_auto_housekeeping_settings_by_user_id`, retired by P4.D288
 /// — the resolver consumes ONLY `systemPrompt` (it returns `{ systemPrompt }`),
 /// so the full `RoleplayTemplate` read marshaling is out of scope here. `None`
 /// when no row exists (v4 `findById` → `null` → `getRoleplayTemplate` returns

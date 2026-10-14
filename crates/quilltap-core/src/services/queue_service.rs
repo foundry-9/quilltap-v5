@@ -1589,15 +1589,17 @@ pub async fn run_scheduled_housekeeping(db: &Db) -> Result<(usize, usize), DbErr
             return Err(e);
         }
     };
+    // P4.D288 (mechanical): the per-user `autoHousekeepingSettings.enabled`
+    // column is dropped; the switch is the instance-wide `memoryMaintenance`
+    // document's `enabled` — same position, new storage (the scheduled
+    // maintenance pass that replaces this is P4.D297's).
+    let enabled = db
+        .read_main(|conn| Ok(crate::db::instance_settings::get_memory_maintenance_settings(conn)))
+        .map(|m| m.enabled)
+        .unwrap_or(false);
     let mut users_processed = 0usize;
     let mut jobs_enqueued = 0usize;
     for s in &settings {
-        let enabled = s
-            .auto_housekeeping_settings
-            .as_ref()
-            .and_then(|v| v.get("enabled"))
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
         if !enabled {
             continue;
         }

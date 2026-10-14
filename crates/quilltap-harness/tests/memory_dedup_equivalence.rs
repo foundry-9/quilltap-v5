@@ -167,6 +167,7 @@ fn plant(main_path: &std::path::Path, spec: &Value) {
                     reinforced_importance: p["importance"].as_f64().unwrap(),
                     tier: p["tier"].as_str().unwrap().into(),
                     superseded_by_id: opt_str(&p["supersededById"]),
+                    superseded_at: opt_str(&p["supersededAt"]),
                     consolidated_from: strs(&p["consolidatedFrom"]),
                     consolidated_at: None,
                 },

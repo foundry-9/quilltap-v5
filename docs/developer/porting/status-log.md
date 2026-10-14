@@ -179971,3 +179971,102 @@ migrationsSkipped: 90}`, none deferred. Measured:
 - **Residue for P4.D295 (recorded, not touched):** `query_param_semantics_equivalence` reddens 3 rows
   (`chat_item_get__{empty,unknown,empty_then_known}`) — v4's chat-item GET `availableActions` gained
   `scenario-source` at the pin; the REST edge + its action-list entry are P4.D295's (the scenario REST edges).
+
+### Unit 6 — the re-dumps + provisioning + the column layer (C1-9, Δ1–Δ5, Δ7, Δ19)
+- **Probe (an observation, the 2026-10-09 ruling):** v4 `main` NINE commits past the ledger's recorded
+  `01f508d4e` at this regen batch (`a42c282b8` … `b82037d75` — release checklists 7/8/10/12/13, bug 247's
+  filing + its throw site, `bbbcd2388` wardrobe copy-to-folder, `b82037d75` bug 248 chunk embeddings) and
+  the live checkout dirty in docs / `CLAUDE.md` / `README.md` only; none reaches the pin worktree
+  (`83334b9a5`, clean). Not ported; recorded for the next `/driftcheck`.
+- **D23 #8 + #9 as ONE re-dump** from the pin (`dump-fresh-schema.ts`, `QT_SCHEMA_OUT` + `QT_SEED_OUT`; the
+  dumper's `vectorIndices(secondary:absent)` skip row dropped): `fresh_schema.json` main 85 → 83 statements
+  exactly as predicted, `chat_settings_seed.json` −2 keys; `migration_indexes.json` 63 → 62 via
+  `migrations-first.ts` + `QT_REAL_BOOT_MASTER` (the real `tsx server.ts` first boot, `/tmp/p4d288/real-boot/`),
+  the cross-check 0 findings. `provisioning/mod.rs`: the D23 register gains #8 + #9 as ONE paragraph;
+  `exec_ddl` swaps the cursor table's bare text for `MIGRATION_TABLE_DDL` (`migration_table_text`, R-C);
+  the fresh-instance test inverted (watermark gone, the scenario pair, `supersededAt`, `textShapeVersion`,
+  the cursor text, the vector tables gone); `index_table_reads_every_spelling_in_the_artifact` 63 → 62.
+- **O-2 measured** (the real first boot at 20 s): `memory_extraction_cursors` in the migration's text with
+  `sqlite_autoindex_memory_extraction_cursors_{1,2}` (pk + the UNIQUE) and NO
+  `idx_memory_extraction_cursors_createdAt` — v4's `ensureCollection` (which runs generateDDL's `CREATE
+  INDEX IF NOT EXISTS`) is lazy, so the index appears on first repository use. v5 provisions it up front
+  (the dump carries it); the provision oracle (migrations-first + every repository ensured) carries it too,
+  so (1c) is green with no row.
+- **`provisioning_equivalence` GREEN from the pin** — (1d) the committed dump equals v4's LIVE
+  generateDDL statement for statement; (1a) NEW both-ways `CURSOR_TABLE_MIGRATION_SHAPE` (the dump still
+  bare, v5 still the migration's, each row met or the arm fails); (1b) the `chat_settings / v4` asymmetry row
+  NARROWED (`memoryExtractionConcurrency` gone — the settings move drops it); (1c) / (1e) / seeds green;
+  v4's `verify-v5-provisioned.ts` opened and read the v5 instance; the `.dbkey` cross-compat both ways.
+- **The row layer.** `chats_read`: the pair after `scenarioText` (103 columns), `otherExtraction
+  WatermarkMessageId` out; `scenario_source_cell` (NULL / `''` / unparseable → absent; parsed → the schema's
+  PARSED object; refused → the ROW refused with the ZodError message via `ZodRowRefusal` +
+  `dropped_row_error_text`). ⚠ My first renumbering missed the four TURBOFISH reads
+  (`row.get::<_, Option<i64>>(N)`) — `alignment_census::marshal_row_reads_each_column_at_its_own_index`
+  and 174 downstream tests caught it (`Invalid column type Text at index: 42, name: disabledTools`); re-derived
+  every index by NAME. `db::chats::{ScenarioRef, ScenarioSource}` (C1-9) + `ChatCreate` / `ChatUpdate`;
+  `scenario_source_refusal` at create AND update (v4's `ChatMetadataSchema` validates both).
+  `set_other_extraction_watermark` DELETED; `fold_other_pass.rs`'s three reads + one writer mechanically
+  onto `find_cursor` / `set_cursor(OtherFold)` (`other_fold_cursor`; P4.D296 deletes the file).
+  `memories_read` (`supersededAt` at 25, then 26..29; census 29 → 30); `MemCreate` / `parse_create_memory` /
+  `MemUpdate` / INSERT; `update_tier_bulk`'s three-state `supersededAt` with ONE `now` (v4's truthiness:
+  `Some(Some(""))` clears, as `extra.supersededById ? now : null`); `zod_memory_issues` gains
+  `supersededAt` (`TimestampSchema.nullable().optional()`) in schema order. `tfidf_vocabulary` (O-7):
+  `text_shape_version` in `TvReadRow` (read by storage class — REAL and INTEGER both, NULL → 0) / `TvCreate`
+  / `TvUpdate` / the upsert / the INSERT; the restore's 22l reads `textShapeVersion` (absent → 0, v4's
+  `create` default); the refit job writes `0` (the bump is P4.D292's — comment names it).
+  `chat_settings`: the two structs + columns out of create / INSERT / tolerant SELECT, positional reads −2
+  (37 columns, re-derived by name); `find_auto_housekeeping_settings_by_user_id` and
+  `SchedulerUserSettings.auto_housekeeping_settings` DELETED; their two production callers MECHANICALLY onto
+  `get_memory_maintenance_settings` (host `spine.rs`'s `MemoryHousekeepingHandler` reads the document's JSON
+  — `enabled` / `perCharacterCap` / `perCharacterCapOverrides`; the merge keys fall to the service default;
+  `queue_service::run_scheduled_housekeeping` gates on the instance-wide `enabled`) — both replaced
+  wholesale by P4.D297. (`memory_gate.rs`'s caller went with unit 3's `maybe_enqueue_housekeeping`.)
+- **Guards.** `chat_update_surface_cannot_reach_scenario_text` EXTENDED: the behavioural leg sends
+  `scenarioSource` / `scenarioNotes` through `chatUpdate` beside the title (unchanged after, title landed);
+  the census leg holds every `ChatUpdate {` / `ChatCreate {` literal naming `scenario_source: Some(` /
+  `scenario_notes: Some(` to L-4's ALLOWLIST (`services/chat_scenario.rs`, `services/chat_create.rs`,
+  `api/chat_create.rs`, `services/quilltap_import/reconcile.rs`, `services/backup/restore/`).
+  `chat_settings_column_sites_guard`: `RETIRED_COLUMNS` + the two columns; its read region now ends at
+  `wardrobe_tool_images_enabled` (the old anchor was the deleted reader).
+  `other_extraction_watermark_writers_census` MEASURED RED (the order predicted green — but this same unit
+  deletes the one writer it pins): restated mechanically as ZERO writers + the writer stays gone; P4.D296
+  still retires the file.
+- **Families from the pin (sweep `--families`, `/tmp/p4d288/logs/u6-sweep.json`):** GREEN —
+  `provisioning_equivalence`, `migration_index_backfill_equivalence` (62), `chats_tier2_equivalence` (NEW
+  rows: a create carrying the pair with a stray key → stored as v4's parsed `JSON.stringify`, key order +
+  strip; an update setting the pair; a set-then-clear to SQL NULL; a schema-invalid source REFUSED on create
+  AND on update, the ZodError message recorded in the ledger on BOTH sides (`recordError`) — byte-equal; the
+  four watermark ops removed with the writer), `chat_settings_tier2_equivalence` (spec −2 keys),
+  `chat_settings_column_sites_guard`, `chat_settings_voice_mode_ensure_equivalence`,
+  `chat_settings_wardrobe_image_settings_ensure_equivalence`, `tfidf_vocabulary_tier2_equivalence` (+ a
+  create naming `textShapeVersion: 1`, an update bumping one to 2) and `_upsert_tier2` (ops 1/3/4 carry 1, op 2
+  none → 0), `photo_tools_equivalence` (closed — unit 4's red), `other_extraction_watermark_writers_census`
+  (restated). The REAL / INTEGER read is pinned by `db::tfidf_vocabulary::tests::text_shape_version_reads_
+  either_affinity_and_null_as_zero` (both storage classes read 1, measured by `typeof`; NULL → 0).
+- **RED, owned later (recorded):** `chat_scenario_routes_equivalence` (its committed `chat-scenario-main.db`
+  lacks the pair → unit 11's in-place widening; the extended guard runs on that fixture, so its proof lands
+  with unit 11), `fold_other_pass_tier3_equivalence` (its fixture builder plants the dropped column —
+  P4.D296), `memories_tier2_equivalence` (`replaceInMemories` absent at the pin — unit 11's IMPORT-DEAD
+  re-aim). Core lib after the plants were fixed: the reds left are the committed-fixture readers
+  (`brahma_console`, `help_chat`, `help_chats`, `subprompts`, `outfit_selections` — unit 11), the vector-table
+  plants (`anchor_gate_probe`, `api::memories` anchor probe — unit 8), and `memory_tiers_repair`'s seven
+  (its chat-column arm meets the dropped column — unit 7 retires the arm).
+- **Mechanical plants (recorded):** `supersededAt TEXT` added after `supersededById` in seven test `memories`
+  DDLs; the pair added after `scenarioText` (and the watermark line removed) in the `chats` column lists of
+  `enclave/{lifecycle,step}.rs`, host `host_boot.rs` / `host_cadence.rs`; the watermark out of
+  `almanack/phase3_ledgers.rs`'s plant; `textShapeVersion` in `embedding_provider.rs`'s unit-4 plant;
+  `superseded_at` in fourteen `MemCreate` / `MemUpdate` literals (consolidation's two clones carry the field);
+  the harness `memories_tier2` / `memory_dedup` / `fold_other_pass_tier3` compile-forced edits
+  (`clear_cursor(OtherFold)` where the watermark was reset).
+- **Residue for a consumer lane (recorded, not touched):** the Almanack's `auto_housekeeping` block
+  (`almanack/phase3_ledgers.rs:778-787`, `render.rs:1147-1160`) still reads `autoHousekeepingSettings`
+  keys from the chat-settings JSON, which no longer carries them — it now always renders the defaults. v4's
+  Almanack at the pin has no `autoHousekeeping` block at all (`grep` finds the key only in
+  `instance-settings/`, `settings-legacy.ts`, `settings.types.ts`); its removal is the Almanack owner's.
+- **Unit gate:** `cargo fmt --all` clean; clippy `-D warnings` clean with both feature sets; `quilltap-core
+  --lib` 3,597 / 25 (exactly the three recorded classes above — committed fixtures 13 [unit 11], vector
+  plants 5 [unit 8], `memory_tiers_repair` 7 [unit 7]); `quilltap-host --no-fail-fast` red ONLY in
+  `host_boot_p4d265_memory_tiers` (4 — its plant drops `supersededById` under the new
+  `idx_memories_supersededById` and its fresh-instance leg reads the tiers ensure's chat arm; re-pointed
+  with the chain in unit 7). `host_boot_backfilled_indexes`' INFO counts re-counted mechanically (main 47 →
+  46, 46 → 45 — the re-dump's net −1 index). Versions: core 0.0.1292, host 0.0.200.

@@ -151,6 +151,10 @@ pub async fn handle_embedding_refit(
         vocabulary_size: state.vocabulary_size as f64,
         include_bigrams: state.include_bigrams,
         fitted_at: state.fitted_at.clone(),
+        // P4.D288 (O-7): the column's plumbing only — `0`, the value the
+        // pre-column writer left; the bump to `LEXICAL_TEXT_SHAPE_VERSION` is
+        // the refit policy's (P4.D292, v4 `embedding-refit.ts:126-136`).
+        text_shape_version: 0.0,
     };
     db.write(move |writers| writers.main().tfidf_vocabulary().upsert_by_profile_id(&tv))
         .await

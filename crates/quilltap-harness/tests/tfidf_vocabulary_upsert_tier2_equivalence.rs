@@ -82,6 +82,9 @@ struct UpsertData {
     include_bigrams: bool,
     #[serde(rename = "fittedAt")]
     fitted_at: String,
+    /// P4.D288 (O-7): absent → v4's `.default(0)`.
+    #[serde(default, rename = "textShapeVersion")]
+    text_shape_version: f64,
 }
 
 /// Columns that hold a generated id (the PK; this repo has no FK-to-generated-id).
@@ -183,6 +186,7 @@ fn tfidf_vocabulary_upsert_tier2_matches_oracle() {
                 vocabulary_size: data.vocabulary_size,
                 include_bigrams: data.include_bigrams,
                 fitted_at: data.fitted_at.clone(),
+                text_shape_version: data.text_shape_version,
             })
             .expect("tfidf_vocabulary.upsert_by_profile_id");
         }

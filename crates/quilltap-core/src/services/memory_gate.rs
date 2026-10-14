@@ -802,6 +802,7 @@ async fn create_memory_direct_with_embedding(
         // `consolidatedFrom ?? []`) — the gate never names either.
         tier: "hot".to_string(),
         superseded_by_id: None,
+        superseded_at: None,
         consolidated_from: Vec::new(),
         consolidated_at: None,
     };
@@ -1515,7 +1516,7 @@ mod tests {
             occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]', kind TEXT DEFAULT 'semantic',
             sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
             lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
-            tier TEXT DEFAULT 'hot', supersededById TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
+            tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
         CREATE TABLE vector_indices (
             id TEXT PRIMARY KEY, characterId TEXT, version REAL, dimensions REAL,
             createdAt TEXT, updatedAt TEXT);
@@ -1560,6 +1561,7 @@ mod tests {
                             reinforced_importance: 0.5,
                             tier: "hot".to_string(),
                             superseded_by_id: None,
+                            superseded_at: None,
                             consolidated_from: Vec::new(),
                             consolidated_at: None,
                         },
@@ -2080,6 +2082,7 @@ mod tests {
                             reinforced_importance: 0.6,
                             tier: seed.tier.to_string(),
                             superseded_by_id: seed.superseded_by.map(str::to_string),
+                            superseded_at: None,
                             consolidated_from: Vec::new(),
                             consolidated_at: None,
                         },

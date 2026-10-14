@@ -24,6 +24,16 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — feat(core,host): P4.D288 unit 6 — the eighth and ninth D23 re-dumps, the cursor table in v4's migration shape, and the column layer
+
+_Versions: core 0.0.1292, host 0.0.200._
+
+Re-dumps `fresh_schema.json`, `chat_settings_seed.json` and `migration_indexes.json` from the `83334b9a5` pin as one move. `chat_settings` loses `autoHousekeepingSettings` and `memoryExtractionLimits`. `chats` gains `scenarioSource` and `scenarioNotes` and loses `otherExtractionWatermarkMessageId`. `memories` gains `supersededAt`. `tfidf_vocabularies` gains `textShapeVersion`. The new `memory_extraction_cursors` table arrives, the vector-mirror tables are gone, and the main partition's index family goes from 63 to 62. A fresh instance gets the cursor table in the migration's text, as a real v4 first boot does (`CURSOR_TABLE_MIGRATION_SHAPE`, pinned both ways in `provisioning_equivalence`).
+
+The row layer follows. The chat read, create and update carry the scenario pair, and a source that fails v4's schema is refused with v4's ZodError text. The memory row, create, update and the tier move carry `supersededAt`, stamped and cleared alongside `supersededById`. The TF-IDF vocabulary reads `textShapeVersion` from either a REAL or an INTEGER column. The chat-settings read drops two columns, and its two housekeeping callers now read the instance-wide `memoryMaintenance` document. The OTHER-pass watermark writer is deleted, and the fold pass reads and writes its cursor row instead.
+
+Guards: the chat-update guard now keeps the scenario pair off `chatUpdate` and holds its writers to four allowed sites. The chat-settings column guard retires the two columns. The watermark census now pins zero writers. Grown families: `chats_tier2` (the pair on create and update, a clear, and refusals on create and update with v4's message bytes) and both TF-IDF vocabulary families.
+
 #### 2026-10-14 — feat(core,web): P4.D288 unit 5 — the 83334b9a5 round's wire (C2): eight new verbs, ten retired, the maintenance-config arms filled
 
 _Versions: core 0.0.1291, web 0.0.238._

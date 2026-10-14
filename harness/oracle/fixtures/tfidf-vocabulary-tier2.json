@@ -64,7 +64,7 @@
   "ops": [
     {
       "kind": "create",
-      "comment": "New vocabulary with a fractional avgDocLength (7.25 -> float dump), integer vocabularySize, includeBigrams true, a plausible JSON-text vocabulary/idf.",
+      "comment": "New vocabulary with a fractional avgDocLength (7.25 -> float dump), integer vocabularySize, includeBigrams true, a plausible JSON-text vocabulary/idf, and (P4.D288, O-7) an explicit textShapeVersion 1 (the second create names none -> v4's .default(0)).",
       "data": {
         "profileId": "33000000-0000-4000-8000-0000000000f3",
         "userId": "aa000000-0000-4000-8000-0000000000aa",
@@ -73,7 +73,8 @@
         "avgDocLength": 7.25,
         "vocabularySize": 3,
         "includeBigrams": true,
-        "fittedAt": "2026-02-01T00:00:00.000Z"
+        "fittedAt": "2026-02-01T00:00:00.000Z",
+        "textShapeVersion": 1
       },
       "options": {
         "id": "3c000000-0000-4000-8000-000000000003",
@@ -110,11 +111,12 @@
     },
     {
       "kind": "update",
-      "comment": "Update seed row 2: flip includeBigrams false->true and replace idf with new JSON-text weights. updatedAt minted (placeholdered).",
+      "comment": "Update seed row 2: flip includeBigrams false->true, replace idf with new JSON-text weights, and (P4.D288, O-7) bump textShapeVersion 0 -> 2. updatedAt minted (placeholdered).",
       "id": "2b000000-0000-4000-8000-000000000002",
       "data": {
         "includeBigrams": true,
-        "idf": "[2.5,3.5,4.5]"
+        "idf": "[2.5,3.5,4.5]",
+        "textShapeVersion": 2
       }
     },
     {

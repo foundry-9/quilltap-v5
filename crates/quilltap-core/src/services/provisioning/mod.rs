@@ -208,6 +208,29 @@ pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 /// which the dumper's repository pass triggers, so bug 186's index rides THIS
 /// dump; its refusal and the existing-instance ensure are P4.D274's. mount-index
 /// 30 → 31. The seed is UNMOVED at this pin (`cmp`-identical).
+///
+/// `83334b9a5` (P4.D288 — D23 re-dumps #8 + #9 as ONE, v4 `545e299bb` (the
+/// scenario source) + `c2795733f` / `e0ac7493a` / `af48f6cc2` / `ac6348c5f` /
+/// `4ae0c4ca6` (the memory refactor); run FROM the pin, 2026-10-14): main 85 →
+/// 83, exactly as the keystone survey predicted. (1) `chat_settings` LOSES
+/// `autoHousekeepingSettings` / `memoryExtractionLimits` (moved to
+/// `instance_settings.memoryMaintenance` / `.memoryExtractionLimits` —
+/// `db::memory_maintenance_settings_move`); (2) `chats` GAINS `"scenarioSource"
+/// TEXT, "scenarioNotes" TEXT` after `scenarioText` (generateDDL writes a
+/// `.nullable().optional()` column as bare `TEXT`; the MIGRATION appends `TEXT
+/// DEFAULT NULL`) and LOSES `otherExtractionWatermarkMessageId` (the cursor
+/// table carries it); (3) `memories` GAINS `"supersededAt" TEXT` between
+/// `supersededById` and `consolidatedFrom`; (4) NEW `memory_extraction_cursors`
+/// in generateDDL's BARE shape + `idx_memory_extraction_cursors_createdAt` —
+/// [`exec_ddl`] provisions the table in v4's MIGRATION text instead (R-C, the
+/// ruled `CURSOR_TABLE_MIGRATION_SHAPE`: every real v4 instance, fresh ones
+/// included, carries `UNIQUE ("chatId", "pass")` + a live cascading FK); (5)
+/// `tfidf_vocabularies` GAINS `"textShapeVersion" REAL DEFAULT 0` between
+/// `fittedAt` and `createdAt` (REAL — the translator writes `INTEGER` only for an
+/// int with BOTH bounds; v4's migration appends `INTEGER DEFAULT 0`: two
+/// affinities, every reader takes both — R-R); (6) `vector_entries` /
+/// `vector_indices` and their two `createdAt` indexes DELETED (`af48f6cc2`). The
+/// seed row LOSES the two dead keys (both column and value).
 static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 
 /// The captured `chat_settings` seed row's columns (all but the minted
@@ -286,6 +309,13 @@ static CHAT_SETTINGS_SEED_JSON: &str = include_str!("chat_settings_seed.json");
 /// `idx_memories_character_tier ("characterId", "tier")` — v4 `d58548051`'s
 /// `add-memory-tiers-v1`. main 53 / mount-index 5 / llm-logs 5.
 /// [`migration_main_index`] reads it for the memory-tiers ensure.
+/// `83334b9a5` (P4.D288 — re-dumped from the pin, the REAL first boot's
+/// `sqlite_master` the cross-check, zero findings): main GAINS
+/// `idx_memories_supersededById ("supersededById") WHERE "supersededById" IS
+/// NOT NULL` (v4 `c2795733f`'s `add-memories-superseded-by-index-v1`) and LOSES
+/// `idx_vector_entries_characterId` / `idx_vector_indices_characterId` (the
+/// tables retired, `af48f6cc2`). main 52 / mount-index 5 / llm-logs 5 = 62. The
+/// cursor table's two autoindexes are `sql IS NULL` and stay out.
 static MIGRATION_INDEXES_JSON: &str = include_str!("migration_indexes.json");
 
 /// One artifact's statements per partition (`fresh_schema.json` and
@@ -489,10 +519,26 @@ fn exec_ddl(
         .filter(|sql| index_name(sql).is_none_or(|n| !migration_names.contains(n)))
         .chain(migration)
     {
-        tx.execute_batch(sql)?;
+        tx.execute_batch(migration_table_text(sql))?;
     }
     tx.commit()?;
     Ok(())
+}
+
+/// P4.D288 (R-C, `CURSOR_TABLE_MIGRATION_SHAPE`): the TABLE text a real v4
+/// first boot carries where it differs from the generateDDL dump. v4 runs its
+/// migrations before any repository's `ensureCollection`, so
+/// `memory_extraction_cursors` exists on every real instance — fresh ones
+/// included — in `add-memory-extraction-cursors-v1`'s text (`UNIQUE ("chatId",
+/// "pass")` + a cascading FK), measured on a real `tsx server.ts` first boot at
+/// the pin; the dump's bare shape exists only where the migration never runs.
+/// Every other statement passes through unchanged.
+fn migration_table_text(sql: &str) -> &str {
+    if sql.starts_with("CREATE TABLE \"memory_extraction_cursors\" (") {
+        crate::db::memory_extraction_cursors::MIGRATION_TABLE_DDL
+    } else {
+        sql
+    }
 }
 
 /// The index a `CREATE [UNIQUE] INDEX [IF NOT EXISTS] name …` statement makes
@@ -662,7 +708,8 @@ mod tests {
             .chain(&family.mount_index)
             .chain(&family.llm_logs)
             .collect();
-        assert_eq!(all.len(), 63);
+        // 63 → 62 at `83334b9a5` (P4.D288: the vector mirror's index gone).
+        assert_eq!(all.len(), 62);
         for sql in all {
             let table = index_table(sql).unwrap_or_else(|| panic!("no table in {sql}"));
             assert!(
@@ -787,15 +834,48 @@ mod tests {
                 "reinforcedImportance",
                 "tier",
                 "supersededById",
+                // P4.D288 (v4 `c2795733f`).
+                "supersededAt",
                 "consolidatedFrom",
                 "consolidatedAt",
                 "createdAt",
                 "updatedAt"
             ]
         );
+        // P4.D288 (the ruled RETIRE of P4.D265's chat-column arm): the OTHER
+        // watermark lives in `memory_extraction_cursors`; the scenario pair
+        // (v4 `545e299bb`) follows `scenarioText`.
         let chats = columns("chats");
-        let at = chats.iter().position(|c| c == "timelineMode").unwrap();
-        assert_eq!(chats[at + 1], "otherExtractionWatermarkMessageId");
+        assert!(!chats
+            .iter()
+            .any(|c| c == "otherExtractionWatermarkMessageId"));
+        let at = chats.iter().position(|c| c == "scenarioText").unwrap();
+        assert_eq!(chats[at + 1..at + 3], ["scenarioSource", "scenarioNotes"]);
+        assert!(columns("tfidf_vocabularies").contains(&"textShapeVersion".to_string()));
+        assert!(!columns("chat_settings").contains(&"autoHousekeepingSettings".to_string()));
+        // R-C: the cursor table in v4's MIGRATION text, the repository pass's
+        // index beside it.
+        let table_sql: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'memory_extraction_cursors'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            table_sql,
+            crate::db::memory_extraction_cursors::MIGRATION_TABLE_DDL
+        );
+        for gone in ["vector_entries", "vector_indices"] {
+            let n: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE name = ?1",
+                    [gone],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(n, 0, "{gone} retired");
+        }
         let index_sql = |c: &rusqlite::Connection, name: &str| -> Option<String> {
             c.query_row(
                 "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?1",

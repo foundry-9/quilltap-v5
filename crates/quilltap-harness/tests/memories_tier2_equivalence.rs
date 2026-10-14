@@ -223,6 +223,7 @@ impl CreateData {
             reinforced_importance: self.reinforced_importance,
             tier: "hot".to_string(),
             superseded_by_id: None,
+            superseded_at: None,
             consolidated_from: Vec::new(),
             consolidated_at: None,
         }

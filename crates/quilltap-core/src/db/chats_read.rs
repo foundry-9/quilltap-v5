@@ -62,13 +62,16 @@ use super::chats::ChatParticipant;
 use super::js_number_to_json;
 use super::DbError;
 
-/// All 102 columns, in `ChatMetadataBaseSchema` field order (= DDL / SELECT
+/// All 103 columns, in `ChatMetadataBaseSchema` field order (= DDL / SELECT
 /// order). The count, the order and `marshal_row`'s index table are pinned
 /// against the D23 dump by this module's `alignment_census` tests.
 /// `timelineMode` (v4 8bf3cb5f, the episodic spine) sits between
 /// `commonplaceRecallHistory` and `budgetMaxTurns` — its generateDDL/Zod-shape
-/// position; `otherExtractionWatermarkMessageId` (v4 `d58548051`, P4.D265)
-/// right after it, every read after it shifted by 1. The Concierge trio (v4 `4d370a90f`, #75 — `conciergeMode`,
+/// position. P4.D288 (v4 `545e299bb` + `ac6348c5f`): `scenarioSource` +
+/// `scenarioNotes` follow `scenarioText` (their generateDDL position — every
+/// read after it shifted by 2) and `otherExtractionWatermarkMessageId` (P4.D265,
+/// once after `timelineMode`) LEFT the list — the column is dropped by the
+/// cursor ensure, the OTHER position lives in `memory_extraction_cursors`. The Concierge trio (v4 `4d370a90f`, #75 — `conciergeMode`,
 /// `conciergeModeSetBy`, `conciergeModeReason`) sits right after
 /// `conciergeOverride`, its DDL position; every read after it shifted by 3.
 /// `conciergeOverride` itself LEFT the list at v4 `3b463d6b1` (#76 — deleted
@@ -83,7 +86,8 @@ const ALL_COLUMNS: &str = "id, userId, participants, title, contextSummary, sill
      impersonatingParticipantIds, activeTypingParticipantId, allLLMPauseTurnCount, turnQueue, \
      spokenThisCycleParticipantIds, cycleOrderParticipantIds, documentEditingMode, documentMode, \
      dividerPosition, terminalMode, \
-     activeTerminalSessionId, rightPaneVerticalSplit, projectId, scenarioText, totalPromptTokens, \
+     activeTerminalSessionId, rightPaneVerticalSplit, projectId, scenarioText, scenarioSource, \
+     scenarioNotes, totalPromptTokens, \
      totalCompletionTokens, estimatedCostUSD, priceSource, showSystemEventsOverride, \
      requestFullContextOnNextMessage, disabledTools, disabledToolGroups, forceToolsOnNextMessage, \
      allowCrossCharacterVaultReads, pendingOutfitNotifications, state, compressionCache, \
@@ -93,7 +97,7 @@ const ALL_COLUMNS: &str = "id, userId, participants, title, contextSummary, sill
      conciergeModeSetBy, conciergeModeReason, sceneState, \
      equippedOutfit, characterAvatars, avatarGenerationEnabled, chatType, \
      helpPageUrl, consoleConnectionProfileId, compiledIdentityStacks, courierCheckpoints, \
-     commonplaceSceneCache, commonplaceRecallHistory, timelineMode, otherExtractionWatermarkMessageId, \
+     commonplaceSceneCache, commonplaceRecallHistory, timelineMode, \
      budgetMaxTurns, budgetMaxTokens, \
      budgetMaxWallClockMs, budgetEstimatedSpendCapUSD, scheduleCron, scheduleFreshnessWindowMs, \
      scheduleNextRunAt, scheduleLastRunAt, runState, currentRunId, runStateMessage, runStartedAt, \
@@ -170,6 +174,62 @@ fn marshal_participants(v: Option<String>) -> Value {
         .and_then(|s| serde_json::from_str::<Vec<ChatParticipant>>(s).ok())
         .unwrap_or_default();
     serde_json::to_value(parsed).unwrap_or_else(|_| Value::Array(Vec::new()))
+}
+
+/// P4.D288 (C1-9): the `scenarioSource` cell as v4's repository read meets it,
+/// measured through v4's REAL `ChatsRepository` at the pin: NULL, `''` and
+/// text `JSON.parse` refuses read as ABSENT (the JSON-column hydration's
+/// fallback); a parsed value is held to `ScenarioSourceSchema` — accepted, the
+/// PARSED object (key order `mountPointId, path, bodySha256`, unknown keys
+/// stripped); refused (a JSON string, a non-UUID mount, a short hash), the
+/// whole ROW fails validation (`findById` → null, the lists drop it with the
+/// two lines), surfaced here as a conversion failure carrying the ZodError
+/// message so the dropping reads log v4's text.
+fn scenario_source_cell(cell: Option<String>) -> Result<Option<Value>, rusqlite::Error> {
+    let Some(raw) = cell.filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    let Ok(parsed) = serde_json::from_str::<Value>(&raw) else {
+        return Ok(None);
+    };
+    if parsed.is_null() {
+        return Ok(None);
+    }
+    match super::chats::ScenarioSource::parse(&parsed, &[Value::String("scenarioSource".into())]) {
+        Ok(source) => Ok(Some(serde_json::to_value(source).unwrap_or(Value::Null))),
+        Err(issues) => Err(rusqlite::Error::FromSqlConversionFailure(
+            34,
+            rusqlite::types::Type::Text,
+            Box::new(ZodRowRefusal(crate::api::zod_issues::zod_error_message(
+                &issues,
+            ))),
+        )),
+    }
+}
+
+/// A row v4's schema refuses, carried through rusqlite's conversion error so
+/// the dropping reads log v4's ZodError message BARE (P4.D288).
+#[derive(Debug)]
+struct ZodRowRefusal(String);
+
+impl std::fmt::Display for ZodRowRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ZodRowRefusal {}
+
+/// The `error` field of a dropped row's two lines: the ZodError's message for a
+/// [`ZodRowRefusal`], else rusqlite's sentence (the recorded class).
+fn dropped_row_error_text(e: &rusqlite::Error) -> String {
+    match e {
+        rusqlite::Error::FromSqlConversionFailure(_, _, inner) => inner
+            .downcast_ref::<ZodRowRefusal>()
+            .map(|z| z.0.clone())
+            .unwrap_or_else(|| e.to_string()),
+        _ => e.to_string(),
+    }
 }
 
 /// Marshal one `chats` row into a `ChatMetadata` JSON object.
@@ -255,110 +315,117 @@ fn marshal_row(row: &Row) -> Result<Value, rusqlite::Error> {
     );
     put_opt_string(&mut obj, "projectId", row.get(32)?);
     put_opt_string(&mut obj, "scenarioText", row.get(33)?);
-    obj.insert("totalPromptTokens".into(), number_or(row.get(34)?, 0.0));
-    obj.insert("totalCompletionTokens".into(), number_or(row.get(35)?, 0.0));
-    put_opt_number(&mut obj, "estimatedCostUSD", row.get(36)?);
-    put_opt_string(&mut obj, "priceSource", row.get(37)?);
-    put_opt_bool(&mut obj, "showSystemEventsOverride", row.get(38)?);
+    // P4.D288 (C1-9, v4 `545e299bb`): the scenario source — the PARSED object
+    // (v4's JSON column hydration then `ScenarioSourceSchema`: NULL / `''` /
+    // unparseable text → omitted; a parsed value the schema refuses refuses
+    // the ROW, as v4's validate does — measured at the pin) — then the notes.
+    let scenario_source_key = "scenarioSource";
+    if let Some(source) = scenario_source_cell(row.get(34)?)? {
+        obj.insert(scenario_source_key.into(), source);
+    }
+    put_opt_string(&mut obj, "scenarioNotes", row.get(35)?);
+    obj.insert("totalPromptTokens".into(), number_or(row.get(36)?, 0.0));
+    obj.insert("totalCompletionTokens".into(), number_or(row.get(37)?, 0.0));
+    put_opt_number(&mut obj, "estimatedCostUSD", row.get(38)?);
+    put_opt_string(&mut obj, "priceSource", row.get(39)?);
+    put_opt_bool(&mut obj, "showSystemEventsOverride", row.get(40)?);
     obj.insert(
         "requestFullContextOnNextMessage".into(),
-        Value::Bool(row.get::<_, Option<i64>>(39)?.unwrap_or(0) == 1),
+        Value::Bool(row.get::<_, Option<i64>>(41)?.unwrap_or(0) == 1),
     );
-    obj.insert("disabledTools".into(), array_or_empty(row.get(40)?));
-    obj.insert("disabledToolGroups".into(), array_or_empty(row.get(41)?));
+    obj.insert("disabledTools".into(), array_or_empty(row.get(42)?));
+    obj.insert("disabledToolGroups".into(), array_or_empty(row.get(43)?));
     obj.insert(
         "forceToolsOnNextMessage".into(),
-        Value::Bool(row.get::<_, Option<i64>>(42)?.unwrap_or(0) == 1),
+        Value::Bool(row.get::<_, Option<i64>>(44)?.unwrap_or(0) == 1),
     );
     obj.insert(
         "allowCrossCharacterVaultReads".into(),
-        Value::Bool(row.get::<_, Option<i64>>(43)?.unwrap_or(0) == 1),
+        Value::Bool(row.get::<_, Option<i64>>(45)?.unwrap_or(0) == 1),
     );
-    put_opt_json(&mut obj, "pendingOutfitNotifications", row.get(44)?);
-    obj.insert("state".into(), object_or_empty(row.get(45)?));
-    put_opt_json(&mut obj, "compressionCache", row.get(46)?);
-    put_opt_bool(&mut obj, "agentModeEnabled", row.get(47)?);
-    obj.insert("agentTurnCount".into(), number_or(row.get(48)?, 0.0));
-    put_opt_string(&mut obj, "storyBackgroundImageId", row.get(49)?);
-    put_opt_string(&mut obj, "lastBackgroundGeneratedAt", row.get(50)?);
-    put_opt_string(&mut obj, "imageProfileId", row.get(51)?);
-    put_opt_bool(&mut obj, "alertCharactersOfLanternImages", row.get(52)?);
-    put_opt_bool(&mut obj, "isDangerousChat", row.get(53)?);
-    put_opt_number(&mut obj, "dangerScore", row.get(54)?);
-    obj.insert("dangerCategories".into(), array_or_empty(row.get(55)?));
-    put_opt_string(&mut obj, "dangerClassifiedAt", row.get(56)?);
-    put_opt_number(&mut obj, "dangerClassifiedAtMessageCount", row.get(57)?);
+    put_opt_json(&mut obj, "pendingOutfitNotifications", row.get(46)?);
+    obj.insert("state".into(), object_or_empty(row.get(47)?));
+    put_opt_json(&mut obj, "compressionCache", row.get(48)?);
+    put_opt_bool(&mut obj, "agentModeEnabled", row.get(49)?);
+    obj.insert("agentTurnCount".into(), number_or(row.get(50)?, 0.0));
+    put_opt_string(&mut obj, "storyBackgroundImageId", row.get(51)?);
+    put_opt_string(&mut obj, "lastBackgroundGeneratedAt", row.get(52)?);
+    put_opt_string(&mut obj, "imageProfileId", row.get(53)?);
+    put_opt_bool(&mut obj, "alertCharactersOfLanternImages", row.get(54)?);
+    put_opt_bool(&mut obj, "isDangerousChat", row.get(55)?);
+    put_opt_number(&mut obj, "dangerScore", row.get(56)?);
+    obj.insert("dangerCategories".into(), array_or_empty(row.get(57)?));
+    put_opt_string(&mut obj, "dangerClassifiedAt", row.get(58)?);
+    put_opt_number(&mut obj, "dangerClassifiedAtMessageCount", row.get(59)?);
     // The Concierge state + provenance (v4 `4d370a90f`, #75): nullable
     // enums, NO DDL default on a fresh instance (v4's migration defaults
     // `conciergeMode` to `'moderated'` on a migrated one) — NULL → omitted,
     // which `get_concierge_state` reads as Moderated.
-    put_opt_string(&mut obj, "conciergeMode", row.get(58)?);
-    put_opt_string(&mut obj, "conciergeModeSetBy", row.get(59)?);
-    put_opt_string(&mut obj, "conciergeModeReason", row.get(60)?);
-    put_opt_json(&mut obj, "sceneState", row.get(61)?);
-    put_opt_json(&mut obj, "equippedOutfit", row.get(62)?);
-    put_opt_json(&mut obj, "characterAvatars", row.get(63)?);
-    put_opt_bool(&mut obj, "avatarGenerationEnabled", row.get(64)?);
+    put_opt_string(&mut obj, "conciergeMode", row.get(60)?);
+    put_opt_string(&mut obj, "conciergeModeSetBy", row.get(61)?);
+    put_opt_string(&mut obj, "conciergeModeReason", row.get(62)?);
+    put_opt_json(&mut obj, "sceneState", row.get(63)?);
+    put_opt_json(&mut obj, "equippedOutfit", row.get(64)?);
+    put_opt_json(&mut obj, "characterAvatars", row.get(65)?);
+    put_opt_bool(&mut obj, "avatarGenerationEnabled", row.get(66)?);
     obj.insert(
         "chatType".into(),
         Value::String(
-            row.get::<_, Option<String>>(65)?
+            row.get::<_, Option<String>>(67)?
                 .unwrap_or_else(|| "salon".into()),
         ),
     );
-    put_opt_string(&mut obj, "helpPageUrl", row.get(66)?);
-    put_opt_string(&mut obj, "consoleConnectionProfileId", row.get(67)?);
-    put_opt_json(&mut obj, "compiledIdentityStacks", row.get(68)?);
-    put_opt_json(&mut obj, "courierCheckpoints", row.get(69)?);
-    put_opt_json(&mut obj, "commonplaceSceneCache", row.get(70)?);
-    put_opt_json(&mut obj, "commonplaceRecallHistory", row.get(71)?);
+    put_opt_string(&mut obj, "helpPageUrl", row.get(68)?);
+    put_opt_string(&mut obj, "consoleConnectionProfileId", row.get(69)?);
+    put_opt_json(&mut obj, "compiledIdentityStacks", row.get(70)?);
+    put_opt_json(&mut obj, "courierCheckpoints", row.get(71)?);
+    put_opt_json(&mut obj, "commonplaceSceneCache", row.get(72)?);
+    put_opt_json(&mut obj, "commonplaceRecallHistory", row.get(73)?);
     // Episodic spine (v4 8bf3cb5f): 'realtime' | 'narrative'; NULL reads as
     // realtime and is omitted (v4's undefined dropped by JSON.stringify).
-    put_opt_string(&mut obj, "timelineMode", row.get(72)?);
-    // P4.D265 (v4 `d58548051`): the fold-grain OTHER pass's watermark — a
-    // message id, nullable-optional (`z.string().nullable().optional()`), right
-    // after `timelineMode`. NULL → omitted. Written ONLY through
-    // `ChatsRepository::set_other_extraction_watermark`.
-    put_opt_string(&mut obj, "otherExtractionWatermarkMessageId", row.get(73)?);
-    put_opt_number(&mut obj, "budgetMaxTurns", row.get(74)?);
-    put_opt_number(&mut obj, "budgetMaxTokens", row.get(75)?);
-    put_opt_number(&mut obj, "budgetMaxWallClockMs", row.get(76)?);
-    put_opt_number(&mut obj, "budgetEstimatedSpendCapUSD", row.get(77)?);
-    put_opt_string(&mut obj, "scheduleCron", row.get(78)?);
-    put_opt_number(&mut obj, "scheduleFreshnessWindowMs", row.get(79)?);
-    put_opt_string(&mut obj, "scheduleNextRunAt", row.get(80)?);
-    put_opt_string(&mut obj, "scheduleLastRunAt", row.get(81)?);
-    put_opt_string(&mut obj, "runState", row.get(82)?);
-    put_opt_string(&mut obj, "currentRunId", row.get(83)?);
-    put_opt_string(&mut obj, "runStateMessage", row.get(84)?);
-    put_opt_string(&mut obj, "runStartedAt", row.get(85)?);
-    put_opt_string(&mut obj, "runEndedAt", row.get(86)?);
-    put_opt_string(&mut obj, "runPausedAt", row.get(87)?);
-    put_opt_number(&mut obj, "runPausedAccumMs", row.get(88)?);
-    put_opt_number(&mut obj, "runTurnsConsumed", row.get(89)?);
-    put_opt_number(&mut obj, "runTokensConsumed", row.get(90)?);
+    put_opt_string(&mut obj, "timelineMode", row.get(74)?);
+    put_opt_number(&mut obj, "budgetMaxTurns", row.get(75)?);
+    put_opt_number(&mut obj, "budgetMaxTokens", row.get(76)?);
+    put_opt_number(&mut obj, "budgetMaxWallClockMs", row.get(77)?);
+    put_opt_number(&mut obj, "budgetEstimatedSpendCapUSD", row.get(78)?);
+    put_opt_string(&mut obj, "scheduleCron", row.get(79)?);
+    put_opt_number(&mut obj, "scheduleFreshnessWindowMs", row.get(80)?);
+    put_opt_string(&mut obj, "scheduleNextRunAt", row.get(81)?);
+    put_opt_string(&mut obj, "scheduleLastRunAt", row.get(82)?);
+    put_opt_string(&mut obj, "runState", row.get(83)?);
+    put_opt_string(&mut obj, "currentRunId", row.get(84)?);
+    put_opt_string(&mut obj, "runStateMessage", row.get(85)?);
+    put_opt_string(&mut obj, "runStartedAt", row.get(86)?);
+    put_opt_string(&mut obj, "runEndedAt", row.get(87)?);
+    put_opt_string(&mut obj, "runPausedAt", row.get(88)?);
+    put_opt_number(&mut obj, "runPausedAccumMs", row.get(89)?);
+    put_opt_number(&mut obj, "runTurnsConsumed", row.get(90)?);
+    put_opt_number(&mut obj, "runTokensConsumed", row.get(91)?);
     obj.insert(
         "runMilestonesAnnounced".into(),
-        number_or(row.get(91)?, 0.0),
-    );
-    obj.insert(
-        "runDestructiveToolsAllowed".into(),
         number_or(row.get(92)?, 0.0),
     );
     obj.insert(
-        "budgetExcludeCacheHits".into(),
-        number_or(row.get(93)?, 1.0),
+        "runDestructiveToolsAllowed".into(),
+        number_or(row.get(93)?, 0.0),
     );
-    put_opt_string(&mut obj, "runVisibility", row.get(94)?);
-    put_opt_bool(&mut obj, "coreWhisperEnabled", row.get(95)?);
-    put_opt_number(&mut obj, "coreWhisperInterval", row.get(96)?);
-    put_opt_bool(&mut obj, "showThinking", row.get(97)?);
-    obj.insert("createdAt".into(), Value::String(row.get::<_, String>(98)?));
-    obj.insert("updatedAt".into(), Value::String(row.get::<_, String>(99)?));
-    put_opt_string(&mut obj, "answerConfirmationOverride", row.get(100)?);
+    obj.insert(
+        "budgetExcludeCacheHits".into(),
+        number_or(row.get(94)?, 1.0),
+    );
+    put_opt_string(&mut obj, "runVisibility", row.get(95)?);
+    put_opt_bool(&mut obj, "coreWhisperEnabled", row.get(96)?);
+    put_opt_number(&mut obj, "coreWhisperInterval", row.get(97)?);
+    put_opt_bool(&mut obj, "showThinking", row.get(98)?);
+    obj.insert("createdAt".into(), Value::String(row.get::<_, String>(99)?));
+    obj.insert(
+        "updatedAt".into(),
+        Value::String(row.get::<_, String>(100)?),
+    );
+    put_opt_string(&mut obj, "answerConfirmationOverride", row.get(101)?);
     // "Nothing to add" turn-skipping toggle (nullable boolean; NULL → omitted,
     // v4's `undefined` dropped by `JSON.stringify`). v4 b90cd1f5.
-    put_opt_bool(&mut obj, "turnSkippingEnabled", row.get(101)?);
+    put_opt_bool(&mut obj, "turnSkippingEnabled", row.get(102)?);
 
     Ok(Value::Object(obj))
 }
@@ -445,7 +512,7 @@ fn run_dropping_invalid_rows(
                 e @ (rusqlite::Error::InvalidColumnType(..)
                 | rusqlite::Error::FromSqlConversionFailure(..)),
             ) => {
-                let error = e.to_string();
+                let error = dropped_row_error_text(&e);
                 tracing::error!(
                     target: "quilltap::db",
                     collection = "chats",

@@ -74,12 +74,13 @@
         "avgDocLength": 8.75,
         "vocabularySize": 4,
         "includeBigrams": false,
-        "fittedAt": "2026-02-01T00:00:00.000Z"
+        "fittedAt": "2026-02-01T00:00:00.000Z",
+        "textShapeVersion": 1
       }
     },
     {
       "kind": "upsert",
-      "comment": "Op 2: upsert a NEW profileId (P3) -> CREATE. id + createdAt + updatedAt all minted. Integer-valued avgDocLength (15 -> JSON integer dump), includeBigrams true.",
+      "comment": "Op 2: upsert a NEW profileId (P3) -> CREATE with NO textShapeVersion (P4.D288 O-7: v4's .default(0); ops 1/3/4 carry 1, the refit writer's shape). id + createdAt + updatedAt all minted. Integer-valued avgDocLength (15 -> JSON integer dump), includeBigrams true.",
       "data": {
         "profileId": "33000000-0000-4000-8000-0000000000f3",
         "userId": "aa000000-0000-4000-8000-0000000000aa",
@@ -102,7 +103,8 @@
         "avgDocLength": 3.5,
         "vocabularySize": 3,
         "includeBigrams": false,
-        "fittedAt": "2026-02-03T00:00:00.000Z"
+        "fittedAt": "2026-02-03T00:00:00.000Z",
+        "textShapeVersion": 1
       }
     },
     {
@@ -116,7 +118,8 @@
         "avgDocLength": 12,
         "vocabularySize": 1,
         "includeBigrams": true,
-        "fittedAt": "2026-02-04T00:00:00.000Z"
+        "fittedAt": "2026-02-04T00:00:00.000Z",
+        "textShapeVersion": 1
       }
     }
   ]

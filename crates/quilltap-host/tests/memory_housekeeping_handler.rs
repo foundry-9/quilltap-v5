@@ -451,6 +451,7 @@ async fn dedup_labels_repository_and_logs_its_info_lines() {
                     reinforced_importance: importance,
                     tier: "hot".into(),
                     superseded_by_id: None,
+                    superseded_at: None,
                     consolidated_from: vec![],
                     consolidated_at: None,
                 },

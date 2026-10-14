@@ -87,19 +87,6 @@
         "onMessageDelete": "ASK_EVERY_TIME",
         "onSwipeRegenerate": "DELETE_MEMORIES"
       },
-      "autoHousekeepingSettings": {
-        "enabled": false,
-        "perCharacterCap": 2000,
-        "perCharacterCapOverrides": {},
-        "autoMergeSimilarThreshold": 0.9,
-        "mergeSimilar": false
-      },
-      "memoryExtractionLimits": {
-        "enabled": false,
-        "maxPerHour": 20,
-        "softStartFraction": 0.7,
-        "softFloor": 0.7
-      },
       "autonomousRoomSettings": {
         "dailyTokenBudget": null,
         "defaultFreshnessWindowMs": 43200000,
@@ -194,19 +181,6 @@
         "memoryCascadePreferences": {
           "onMessageDelete": "KEEP_MEMORIES",
           "onSwipeRegenerate": "REGENERATE_MEMORIES"
-        },
-        "autoHousekeepingSettings": {
-          "enabled": true,
-          "perCharacterCap": 5000,
-          "perCharacterCapOverrides": {},
-          "autoMergeSimilarThreshold": 0.85,
-          "mergeSimilar": true
-        },
-        "memoryExtractionLimits": {
-          "enabled": true,
-          "maxPerHour": 50,
-          "softStartFraction": 0.5,
-          "softFloor": 0.6
         },
         "autonomousRoomSettings": {
           "dailyTokenBudget": 100000,
@@ -420,19 +394,6 @@
         "memoryCascadePreferences": {
           "onMessageDelete": "KEEP_MEMORIES",
           "onSwipeRegenerate": "REGENERATE_MEMORIES"
-        },
-        "autoHousekeepingSettings": {
-          "enabled": true,
-          "perCharacterCap": 5000,
-          "perCharacterCapOverrides": {},
-          "autoMergeSimilarThreshold": 0.85,
-          "mergeSimilar": true
-        },
-        "memoryExtractionLimits": {
-          "enabled": true,
-          "maxPerHour": 50,
-          "softStartFraction": 0.5,
-          "softFloor": 0.6
         },
         "autonomousRoomSettings": {
           "dailyTokenBudget": 100000,

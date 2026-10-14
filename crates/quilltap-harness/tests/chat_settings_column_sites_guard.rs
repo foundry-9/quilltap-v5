@@ -58,7 +58,14 @@ const ADOPTED_TEXT_COLUMNS: &[&str] = &["impersonationVoiceMode"];
 const ADOPTED_JSON_COLUMNS: &[&str] = &["wardrobeImageSettings"];
 
 /// Columns v4 RETIRED whose name must no longer reach any census region.
-const RETIRED_COLUMNS: &[&str] = &["impersonationVoiceRewrite"];
+/// P4.D288 (v4 `move-memory-maintenance-to-instance-settings-v1`, the NINTH
+/// D23 dump): `autoHousekeepingSettings` / `memoryExtractionLimits` DROPPED —
+/// the knobs live in `instance_settings` now.
+const RETIRED_COLUMNS: &[&str] = &[
+    "impersonationVoiceRewrite",
+    "autoHousekeepingSettings",
+    "memoryExtractionLimits",
+];
 
 fn source() -> String {
     let path =
@@ -106,7 +113,9 @@ fn every_adopted_column_reaches_all_six_sites() {
         &src,
         "tolerant SELECT + read",
         "let cols = crate::db::tolerant_select_list(",
-        "\npub fn find_auto_housekeeping_settings_by_user_id",
+        // P4.D288: the region used to end at the retired
+        // `find_auto_housekeeping_settings_by_user_id`; the next function now.
+        "\npub fn wardrobe_tool_images_enabled",
     );
 
     let mut missing: Vec<String> = Vec::new();

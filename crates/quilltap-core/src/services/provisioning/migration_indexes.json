@@ -1,8 +1,8 @@
 {
   "source": {
     "dumper": "harness/oracle/provision/dump-migration-indexes.ts",
-    "v4Commit": "01a83539dd1c2db31b056d6427b31a04f91563a7",
-    "v4Version": "4.10.0-dev.143",
+    "v4Commit": "83334b9a5befca33cd00cbe2a5f3cba43fe1cbe6",
+    "v4Version": "4.10.0-dev.176",
     "note": "Generated - never hand-edit (D23). Re-dump from a pinned v4 worktree."
   },
   "main": [
@@ -45,6 +45,7 @@
     "CREATE INDEX \"idx_memories_occurredAt\" ON \"memories\" (\"occurredAt\" DESC)",
     "CREATE INDEX \"idx_memories_projectId\" ON \"memories\" (\"projectId\")",
     "CREATE INDEX \"idx_memories_reinforcedImportance\" ON \"memories\" (\"reinforcedImportance\" DESC)",
+    "CREATE INDEX \"idx_memories_supersededById\" ON \"memories\" (\"supersededById\") WHERE \"supersededById\" IS NOT NULL",
     "CREATE INDEX \"idx_plugin_configs_pluginName\" ON \"plugin_configs\" (\"pluginName\")",
     "CREATE INDEX \"idx_provider_models_modelType\" ON \"provider_models\" (\"modelType\")",
     "CREATE INDEX \"idx_provider_models_provider\" ON \"provider_models\" (\"provider\")",
@@ -55,8 +56,6 @@
     "CREATE INDEX \"idx_tfidf_vocabularies_profileId\" ON \"tfidf_vocabularies\" (\"profileId\")",
     "CREATE INDEX \"idx_users_email\" ON \"users\" (\"email\")",
     "CREATE INDEX \"idx_users_username\" ON \"users\" (\"username\")",
-    "CREATE INDEX \"idx_vector_entries_characterId\" ON \"vector_entries\" (\"characterId\")",
-    "CREATE INDEX \"idx_vector_indices_characterId\" ON \"vector_indices\" (\"characterId\")",
     "CREATE UNIQUE INDEX \"idx_wardrobe_wear_stats_item_wearer\"\n    ON \"wardrobe_wear_stats\" (\"itemId\", COALESCE(\"wearerCharacterId\", ''))",
     "CREATE INDEX \"idx_wardrobe_wear_stats_wearer\"\n    ON \"wardrobe_wear_stats\" (\"wearerCharacterId\")"
   ],

@@ -354,12 +354,14 @@ async fn one_boot_gives_a_pre_round_instance_a_fresh_instances_sqlite_master() {
         missing.join("\n")
     );
     assert_master_equals_fresh(&booted, &fresh, &[]);
-    // The INFO leg: main makes 47 (the three boot ensures already made
+    // The INFO leg: main makes 46 — 47 until P4.D288's re-dump took the two
+    // vector-mirror indexes out and put `idx_memories_supersededById` in (the
+    // three boot ensures already made
     // `idx_files_generationKey`, `idx_folders_userId_projectId_path` and
     // `idx_help_doc_chunks_docId`), the mount index 4 + the converted
     // `mp_path`, the LLM logs 5.
     booted.assert_line(
-        "INFO quilltap::boot Backfilled migration-created indexes partition=main created=47 skipped=0",
+        "INFO quilltap::boot Backfilled migration-created indexes partition=main created=46 skipped=0",
     );
     booted.assert_line(
         "INFO quilltap::boot Backfilled migration-created indexes partition=mountIndex created=5 skipped=0",
@@ -372,7 +374,7 @@ async fn one_boot_gives_a_pre_round_instance_a_fresh_instances_sqlite_master() {
 /// §S.2 of the `94fbb1ae3` boot-hardness round — the UNION of P4.159 and
 /// P4.160: a pre-round instance whose mount index is GARBAGE boots DEGRADED
 /// (P4.159) and the backfill still runs on the partitions it HAS — main makes
-/// its 47 and the LLM logs their 5 — while the degraded mount index (no writer)
+/// its 46 (47 before P4.D288's re-dump) and the LLM logs their 5 — while the degraded mount index (no writer)
 /// is skipped with no line and no error.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_degraded_mount_index_skips_its_statements_and_the_others_still_backfill() {
@@ -390,7 +392,7 @@ async fn a_degraded_mount_index_skips_its_statements_and_the_others_still_backfi
         booted.lines.join("\n")
     );
     booted.assert_line(
-        "INFO quilltap::boot Backfilled migration-created indexes partition=main created=47 skipped=0",
+        "INFO quilltap::boot Backfilled migration-created indexes partition=main created=46 skipped=0",
     );
     booted.assert_line(
         "INFO quilltap::boot Backfilled migration-created indexes partition=llmLogs created=5 skipped=0",
@@ -813,7 +815,7 @@ async fn a_chat_documents_duplicate_skips_that_one_index_and_the_boot_succeeds()
          index=idx_chat_documents_unique table=chat_documents duplicates=2",
     );
     booted.assert_line(
-        "INFO quilltap::boot Backfilled migration-created indexes partition=main created=46 skipped=1",
+        "INFO quilltap::boot Backfilled migration-created indexes partition=main created=45 skipped=1",
     );
     assert_eq!(
         index_sql(&booted.data, MAIN, "idx_chat_documents_unique"),

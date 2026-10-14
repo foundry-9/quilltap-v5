@@ -141,12 +141,13 @@ async function main(): Promise<void> {
   // the primary table): trigger each explicitly with a benign read.
   //   chats            → chat_messages
   //   connections      → api_keys (hosted inside ConnectionProfilesRepository)
-  //   vectorIndices    → vector_indices + vector_entries (custom repo)
+  // (P4.D288: v4 `af48f6cc2` deleted the `vectorIndices` repo with its two
+  // tables — its trigger row and the `vectorIndices(secondary:absent)` skip
+  // went with it.)
   // docMountBlobs also has no base count/findAll (hand-written repo).
   const secondary: [string, (r: any) => Promise<unknown>][] = [
     ['chats', (r) => r.getMessageCount('00000000-0000-0000-0000-000000000000')],
     ['connections', (r) => r.getApiKeysByUserId('00000000-0000-0000-0000-000000000000')],
-    ['vectorIndices', (r) => r.findMetaByCharacterId('00000000-0000-0000-0000-000000000000')],
     ['docMountBlobs', (r) => r.findByFileId('00000000-0000-0000-0000-000000000000')],
   ];
   for (const [key, trigger] of secondary) {

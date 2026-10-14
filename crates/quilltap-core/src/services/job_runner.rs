@@ -1150,7 +1150,7 @@ mod tests {
             occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]', kind TEXT DEFAULT 'semantic', \
         sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL, \
         lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL, \
-        tier TEXT DEFAULT 'hot', supersededById TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);";
+        tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);";
 
     /// A `MEMORY_HOUSEKEEPING` handler wrapping the REAL ported
     /// `services::housekeeping::run_housekeeping`. Decodes `characterId` from the

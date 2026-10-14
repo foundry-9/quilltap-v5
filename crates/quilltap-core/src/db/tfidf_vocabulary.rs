@@ -72,6 +72,21 @@ pub struct TvReadRow {
     pub vocabulary_size: f64,
     pub include_bigrams: bool,
     pub fitted_at: String,
+    /// P4.D288 (O-7, R-R): the text shape the vocabulary was fitted on —
+    /// `REAL DEFAULT 0` in the dump, `INTEGER` in v4's migration; read
+    /// type-tolerantly, NULL → 0 (v4's `.default(0)`).
+    pub text_shape_version: f64,
+}
+
+/// P4.D288 (O-7): a `textShapeVersion` cell of either affinity as a number —
+/// REAL and INTEGER both read as the same value; NULL (and anything not a
+/// number) reads 0, the anchored shape.
+fn text_shape_version_cell(cell: rusqlite::types::ValueRef<'_>) -> f64 {
+    match cell {
+        rusqlite::types::ValueRef::Integer(i) => i as f64,
+        rusqlite::types::ValueRef::Real(r) => r,
+        _ => 0.0,
+    }
 }
 
 /// Read the fitted vocabulary for `profile_id` (v4 `findByProfileId`), or `None`
@@ -82,7 +97,8 @@ pub fn find_by_profile_id(
     profile_id: &str,
 ) -> Result<Option<TvReadRow>, DbError> {
     conn.query_row(
-        "SELECT vocabulary, idf, avgDocLength, vocabularySize, includeBigrams, fittedAt \
+        "SELECT vocabulary, idf, avgDocLength, vocabularySize, includeBigrams, fittedAt, \
+                textShapeVersion \
          FROM tfidf_vocabularies WHERE profileId = ?1",
         params![profile_id],
         |row| {
@@ -93,6 +109,7 @@ pub fn find_by_profile_id(
                 vocabulary_size: row.get(3)?,
                 include_bigrams: row.get::<_, i64>(4)? != 0,
                 fitted_at: row.get(5)?,
+                text_shape_version: text_shape_version_cell(row.get_ref(6)?),
             })
         },
     )
@@ -121,6 +138,10 @@ pub struct TvCreate {
     pub vocabulary_size: f64,
     pub include_bigrams: bool,
     pub fitted_at: String,
+    /// P4.D288 (O-7): `z.number().int().nonnegative().default(0)` — v4's
+    /// `create` validates, so a create always writes a number (0 when the
+    /// caller names none); writers write an integer-valued number.
+    pub text_shape_version: f64,
 }
 
 /// Pinned id + createdAt (v4's `CreateOptions`). NOTE: this repo's `create`
@@ -146,6 +167,8 @@ pub struct TvUpdate {
     pub vocabulary_size: Option<f64>,
     pub include_bigrams: Option<bool>,
     pub fitted_at: Option<String>,
+    /// P4.D288 (O-7): `textShapeVersion` when provided.
+    pub text_shape_version: Option<f64>,
 }
 
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
@@ -168,8 +191,8 @@ impl<'c> TfidfVocabularyRepository<'c> {
         self.conn.execute(
             "INSERT INTO tfidf_vocabularies \
                (id, profileId, userId, vocabulary, idf, avgDocLength, vocabularySize, \
-                includeBigrams, fittedAt, createdAt, updatedAt) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                includeBigrams, fittedAt, textShapeVersion, createdAt, updatedAt) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 opts.id,
                 data.profile_id,
@@ -180,6 +203,7 @@ impl<'c> TfidfVocabularyRepository<'c> {
                 data.vocabulary_size,
                 i64::from(data.include_bigrams),
                 data.fitted_at,
+                data.text_shape_version,
                 opts.created_at,
                 now,
             ],
@@ -234,6 +258,10 @@ impl<'c> TfidfVocabularyRepository<'c> {
             assignments.push(format!("fittedAt = ?{}", values.len() + 1));
             values.push(Box::new(fitted_at.clone()));
         }
+        if let Some(text_shape_version) = patch.text_shape_version {
+            assignments.push(format!("textShapeVersion = ?{}", values.len() + 1));
+            values.push(Box::new(text_shape_version));
+        }
         assignments.push(format!("updatedAt = ?{}", values.len() + 1));
         values.push(Box::new(now));
 
@@ -277,6 +305,7 @@ impl<'c> TfidfVocabularyRepository<'c> {
                     vocabulary_size: Some(data.vocabulary_size),
                     include_bigrams: Some(data.include_bigrams),
                     fitted_at: Some(data.fitted_at.clone()),
+                    text_shape_version: Some(data.text_shape_version),
                 },
             )?;
             Ok(existing_id)
@@ -338,5 +367,44 @@ impl<'c> TfidfVocabularyRepository<'c> {
                 other => Err(other),
             })?;
         Ok(found.is_some())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// P4.D288 (O-7, R-R): the dump's `REAL DEFAULT 0` column and v4's
+    /// migration's `INTEGER` column both read `1` for a stored 1; NULL reads 0.
+    #[test]
+    fn text_shape_version_reads_either_affinity_and_null_as_zero() {
+        for decl in ["REAL DEFAULT 0", "INTEGER"] {
+            let c = Connection::open_in_memory().unwrap();
+            c.execute_batch(&format!(
+                "CREATE TABLE tfidf_vocabularies (id TEXT, profileId TEXT, vocabulary TEXT, \
+                 idf TEXT, avgDocLength REAL, vocabularySize REAL, includeBigrams INTEGER, \
+                 fittedAt TEXT, textShapeVersion {decl});
+                 INSERT INTO tfidf_vocabularies VALUES \
+                   ('a', 'p1', '[]', '[]', 1.5, 2, 1, 't', 1), \
+                   ('b', 'p2', '[]', '[]', 1.5, 2, 1, 't', NULL);"
+            ))
+            .unwrap();
+            let typeof_: String = c
+                .query_row(
+                    "SELECT typeof(textShapeVersion) FROM tfidf_vocabularies WHERE id = 'a'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(
+                typeof_,
+                if decl == "INTEGER" { "integer" } else { "real" },
+                "{decl}: the storage class the test means to exercise"
+            );
+            let one = find_by_profile_id(&c, "p1").unwrap().unwrap();
+            assert_eq!(one.text_shape_version, 1.0, "{decl}");
+            let null = find_by_profile_id(&c, "p2").unwrap().unwrap();
+            assert_eq!(null.text_shape_version, 0.0, "{decl}: NULL reads 0");
+        }
     }
 }

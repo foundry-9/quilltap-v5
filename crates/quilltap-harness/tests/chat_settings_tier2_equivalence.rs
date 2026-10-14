@@ -35,12 +35,11 @@
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::chat_settings::{
-    AgentModeSettings, AnswerConfirmationSettings, AutoHousekeepingSettings, AutoLockSettings,
-    AutonomousRoomSettings, ChatSettingsCreate, ChatSettingsUpdate, CheapLlmSettings,
-    ContextCompressionSettings, CoreWhisperSettings, CreateOptions, ImpersonationVoiceMode,
-    LlmLoggingSettings, MemoryCascadePreferences, MemoryExtractionLimits, SmartTypographySettings,
-    StoryBackgroundsSettings, ThemePreference, ThinkingDisplaySettings, TimestampConfig,
-    TokenDisplaySettings, WardrobeImageSettings,
+    AgentModeSettings, AnswerConfirmationSettings, AutoLockSettings, AutonomousRoomSettings,
+    ChatSettingsCreate, ChatSettingsUpdate, CheapLlmSettings, ContextCompressionSettings,
+    CoreWhisperSettings, CreateOptions, ImpersonationVoiceMode, LlmLoggingSettings,
+    MemoryCascadePreferences, SmartTypographySettings, StoryBackgroundsSettings, ThemePreference,
+    ThinkingDisplaySettings, TimestampConfig, TokenDisplaySettings, WardrobeImageSettings,
 };
 use quilltap_core::db::Writer;
 use serde::Deserialize;
@@ -105,8 +104,6 @@ struct CreateData {
     sidebar_width: i64,
     default_timestamp_config: TimestampConfig,
     memory_cascade_preferences: MemoryCascadePreferences,
-    auto_housekeeping_settings: AutoHousekeepingSettings,
-    memory_extraction_limits: MemoryExtractionLimits,
     autonomous_room_settings: AutonomousRoomSettings,
     token_display_settings: TokenDisplaySettings,
     context_compression_settings: ContextCompressionSettings,
@@ -267,8 +264,6 @@ fn chat_settings_tier2_matches_oracle() {
                             sidebar_width: data.sidebar_width,
                             default_timestamp_config: data.default_timestamp_config,
                             memory_cascade_preferences: data.memory_cascade_preferences,
-                            auto_housekeeping_settings: data.auto_housekeeping_settings,
-                            memory_extraction_limits: data.memory_extraction_limits,
                             autonomous_room_settings: data.autonomous_room_settings,
                             token_display_settings: data.token_display_settings,
                             context_compression_settings: data.context_compression_settings,

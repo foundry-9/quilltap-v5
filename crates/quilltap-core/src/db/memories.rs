@@ -101,6 +101,9 @@ pub struct MemCreate {
     pub tier: String,
     /// The digest that replaced this row when it went cold (`None` → NULL).
     pub superseded_by_id: Option<String>,
+    /// P4.D288 (v4 `memory.types.ts:145`, bug 225): when `superseded_by_id`
+    /// was set — cold retention ages by it (`None` → NULL).
+    pub superseded_at: Option<String>,
     /// Digest rows only: the member ids folded into it (compact JSON text).
     pub consolidated_from: Vec<String>,
     /// Last time the consolidator considered the row (`None` → NULL).
@@ -253,6 +256,7 @@ pub fn parse_create_memory(item: &Value, claimed_id: Option<&str>) -> Result<Mem
         reinforced_importance: num("reinforcedImportance", 0.5),
         tier: str_of("tier").unwrap_or_else(|| "hot".into()),
         superseded_by_id: str_of("supersededById"),
+        superseded_at: str_of("supersededAt"),
         consolidated_from: arr("consolidatedFrom"),
         consolidated_at: str_of("consolidatedAt"),
     })
@@ -311,6 +315,8 @@ pub struct MemUpdate {
     /// `consolidatedFrom` a JSON string[] column like `relatedMemoryIds`.
     pub tier: Option<String>,
     pub superseded_by_id: Option<Option<String>>,
+    /// P4.D288 (bug 225): the nullable `supersededAt` (`Some(None)` → NULL).
+    pub superseded_at: Option<Option<String>>,
     pub consolidated_from: Option<Vec<String>>,
     pub consolidated_at: Option<Option<String>>,
     pub updated_at: Option<String>,
@@ -359,9 +365,10 @@ impl<'c> MemoriesRepository<'c> {
                 occurredAt, narrativeTime, entities, kind, \
                 sourceMessageId, lastAccessedAt, reinforcementCount, lastReinforcedAt, \
                 relatedMemoryIds, reinforcedImportance, \
-                tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) \
+                tier, supersededById, supersededAt, consolidatedFrom, consolidatedAt, \
+                createdAt, updatedAt) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-                     ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29)",
+                     ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30)",
             params![
                 opts.id,
                 data.character_id,
@@ -388,6 +395,7 @@ impl<'c> MemoriesRepository<'c> {
                 data.reinforced_importance,
                 data.tier,
                 data.superseded_by_id,
+                data.superseded_at,
                 consolidated_from_json,
                 data.consolidated_at,
                 opts.created_at,
@@ -504,6 +512,9 @@ impl<'c> MemoriesRepository<'c> {
         }
         if let Some(v) = &patch.superseded_by_id {
             set_col!("supersededById", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.superseded_at {
+            set_col!("supersededAt", Box::new(v.clone()));
         }
         if let Some(v) = &patch.consolidated_from {
             set_col!("consolidatedFrom", Box::new(json_array(v)?));
@@ -814,7 +825,8 @@ impl<'c> MemoriesRepository<'c> {
     /// (`memories.repository.ts:874-905`): move `ids` of `character_id` to
     /// `tier`, `extra` riding on the same write. Empty → `Ok(0)` with no line.
     /// Per `chunk_array(ids, SQLITE_VARIABLE_CHUNK_SIZE)` one `UPDATE memories
-    /// SET tier = ?[, supersededById = ?][, consolidatedAt = ?], updatedAt = ?
+    /// SET tier = ?[, supersededById = ?][, supersededAt = ?][, consolidatedAt = ?],
+    /// updatedAt = ?
     /// WHERE characterId = ? AND id IN (…)` (ONE `updatedAt` for the call — v4's
     /// base `updateMany` re-stamps it per chunk, a sub-millisecond difference
     /// the differentials normalize); a stray id of another character is never
@@ -838,12 +850,24 @@ impl<'c> MemoriesRepository<'c> {
         }
         super::fallback::tier_move_or_zero(character_id, tier, ids.len(), || {
             let now = now_iso();
+            // P4.D288 (v4 `:1158-1165`, bug 225): `supersededAt` moves with
+            // `supersededById` and only with it — stamped `now` when a digest
+            // supersedes the rows (v4's truthiness: an empty id clears), NULL
+            // when the link is cut, untouched when the move says nothing.
+            let superseded_at: Option<Option<&str>> = extra
+                .superseded_by_id
+                .as_ref()
+                .map(|v| v.as_deref().filter(|d| !d.is_empty()).map(|_| now.as_str()));
             let mut changed = 0i64;
             for chunk in chunk_array(ids, SQLITE_VARIABLE_CHUNK_SIZE) {
                 let mut sets = vec!["tier = ?"];
                 let mut p: Vec<&dyn ToSql> = vec![&tier];
                 if let Some(v) = &extra.superseded_by_id {
                     sets.push("supersededById = ?");
+                    p.push(v);
+                }
+                if let Some(v) = &superseded_at {
+                    sets.push("supersededAt = ?");
                     p.push(v);
                 }
                 if let Some(v) = &extra.consolidated_at {
@@ -1391,7 +1415,7 @@ mod tests {
             occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]', kind TEXT DEFAULT 'semantic',
         sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
         lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
-        tier TEXT DEFAULT 'hot', supersededById TEXT, consolidatedFrom TEXT DEFAULT '[]',
+        tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]',
         consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);";
 
     /// Build a fresh encrypted DB, create the memories table, and seed the given
@@ -1429,6 +1453,7 @@ mod tests {
                     reinforced_importance: 0.5,
                     tier: "hot".to_string(),
                     superseded_by_id: None,
+                    superseded_at: None,
                     consolidated_from: Vec::new(),
                     consolidated_at: None,
                 },

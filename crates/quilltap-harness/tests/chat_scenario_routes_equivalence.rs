@@ -1112,7 +1112,17 @@ fn chat_update_surface_cannot_reach_scenario_text() {
         &db,
         "f0000000-0000-4000-8000-00000000000f",
         CHAT,
-        &json!({ "scenarioText": "hijacked", "title": "A New Title" }),
+        // P4.D288 (L-4): the scenario pair rides the same closed surface.
+        &json!({
+            "scenarioText": "hijacked",
+            "scenarioSource": {
+                "mountPointId": "a2880000-0000-4000-8000-0000000000f1",
+                "path": "Scenarios/hijack.md",
+                "bodySha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+            },
+            "scenarioNotes": "hijacked notes",
+            "title": "A New Title"
+        }),
         None, // conciergeState (P4.D141)
         None,
         None,
@@ -1130,6 +1140,15 @@ fn chat_update_surface_cannot_reach_scenario_text() {
          surface on purpose (helpers.ts:512-519); scenario changes must go \
          through ?action=scenario so the recompile and the announcement happen"
     );
+    for key in ["scenarioSource", "scenarioNotes"] {
+        assert_eq!(
+            after.get(key),
+            before.get(key),
+            "chatUpdate reached {key} — the scenario pair is written only by the \
+             scenario verb, chat create, the .qtap import reconcile and the restore \
+             (P4.D288 L-4)"
+        );
+    }
     // …and the sibling key in the same bag DID land, so the assertion above is
     // not passing because the whole update was ignored.
     assert_eq!(
@@ -1141,6 +1160,19 @@ fn chat_update_surface_cannot_reach_scenario_text() {
     // The census: exactly one construction site for the setter.
     let core_src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-core/src");
     let mut sites: Vec<String> = Vec::new();
+    // P4.D288 (L-4): the scenario pair's writers — `ChatUpdate` / `ChatCreate`
+    // literals naming `scenario_source: Some(` / `scenario_notes: Some(` —
+    // must sit inside the four-site ALLOWLIST (the scenario verb, chat create,
+    // the `.qtap` import reconcile, the restore), named up front so the
+    // siblings' later writes (P4.D293 / P4.D294 / P4.D295) are admitted.
+    const PAIR_ALLOWLIST: &[&str] = &[
+        "services/chat_scenario.rs",
+        "services/chat_create.rs",
+        "api/chat_create.rs",
+        "services/quilltap_import/reconcile.rs",
+        "services/backup/restore/",
+    ];
+    let mut pair_outside: Vec<String> = Vec::new();
     let mut stack = vec![core_src];
     while let Some(dir) = stack.pop() {
         for entry in std::fs::read_dir(&dir).unwrap().flatten() {
@@ -1167,6 +1199,27 @@ fn chat_update_surface_cannot_reach_scenario_text() {
                         path.file_name().unwrap().to_string_lossy()
                     ));
                 }
+                let pair_writes = ["ChatUpdate {", "ChatCreate {"]
+                    .iter()
+                    .flat_map(|lit| text.split(lit).skip(1))
+                    .filter(|tail| {
+                        tail.split("..Default::default()")
+                            .next()
+                            .is_some_and(|body| {
+                                body.contains("scenario_source: Some(")
+                                    || body.contains("scenario_notes: Some(")
+                            })
+                    })
+                    .count();
+                let rel = path
+                    .to_string_lossy()
+                    .split("quilltap-core/src/")
+                    .nth(1)
+                    .unwrap_or_default()
+                    .to_string();
+                if pair_writes > 0 && !PAIR_ALLOWLIST.iter().any(|a| rel.starts_with(a)) {
+                    pair_outside.push(format!("{rel}:{pair_writes}"));
+                }
             }
         }
     }
@@ -1177,5 +1230,9 @@ fn chat_update_surface_cannot_reach_scenario_text() {
         "`ChatUpdate.scenario_text` gained a writer outside the scenario verb — \
          every write to that column must recompile the identity stacks and post \
          the Host's revision notice (v4 helpers.ts:512-519)"
+    );
+    assert!(
+        pair_outside.is_empty(),
+        "the scenario pair gained a writer outside the P4.D288 L-4 allowlist: {pair_outside:?}"
     );
 }

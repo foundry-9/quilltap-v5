@@ -69,7 +69,9 @@ use super::DbError;
 use crate::chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE};
 use crate::embedding_blob::blob_to_float32;
 
-/// All `memories` columns in schema order (indices 0..=28 in [`marshal_row`]).
+/// All `memories` columns in schema order (indices 0..=29 in [`marshal_row`];
+/// P4.D288 — v4 `c2795733f`'s `supersededAt` at 25, between `supersededById`
+/// and `consolidatedFrom`, its generateDDL / Zod-shape position).
 /// The four episodic columns (v4 8bf3cb5f) sit between `witnessedContext` and
 /// `sourceMessageId`, and the four tier columns (v4 `d58548051`, P4.D265)
 /// between `reinforcedImportance` and `createdAt` — their generateDDL/Zod-shape
@@ -80,7 +82,7 @@ const COLS: &str = "id, characterId, aboutCharacterId, chatId, projectId, conten
      keywords, tags, importance, embedding, source, witnessedContext, \
      occurredAt, narrativeTime, entities, kind, sourceMessageId, \
      lastAccessedAt, reinforcementCount, lastReinforcedAt, relatedMemoryIds, reinforcedImportance, \
-     tier, supersededById, consolidatedFrom, consolidatedAt, \
+     tier, supersededById, supersededAt, consolidatedFrom, consolidatedAt, \
      createdAt, updatedAt";
 
 /// v4's `HOT_TIER_SQL` (`memories.repository.ts:33`, `d58548051`): a NULL
@@ -272,10 +274,13 @@ fn marshal_row(row: &Row, keep_nulls: bool) -> Result<Value, rusqlite::Error> {
     // nullable-optional.
     defaulted_str(&mut m, "tier", 23, "hot")?;
     put_nullable_str(&mut m, "supersededById", row.get(24)?, keep_nulls);
-    arr(&mut m, "consolidatedFrom", 25)?;
-    put_nullable_str(&mut m, "consolidatedAt", row.get(26)?, keep_nulls);
-    req_str(&mut m, "createdAt", 27)?;
-    req_str(&mut m, "updatedAt", 28)?;
+    // P4.D288 (v4 `c2795733f`): when a superseded row was superseded —
+    // `TimestampSchema.nullable().optional()`.
+    put_nullable_str(&mut m, "supersededAt", row.get(25)?, keep_nulls);
+    arr(&mut m, "consolidatedFrom", 26)?;
+    put_nullable_str(&mut m, "consolidatedAt", row.get(27)?, keep_nulls);
+    req_str(&mut m, "createdAt", 28)?;
+    req_str(&mut m, "updatedAt", 29)?;
     Ok(Value::Object(m))
 }
 
@@ -1577,12 +1582,13 @@ mod alignment_census {
     }
 
     /// `COLS` is EXACTLY the D23 dump's `memories` column list, in its order
-    /// (29 columns at `01a83539d`) — the marshaled key order is v4's parsed
-    /// Memory order because the two coincide.
+    /// (29 columns at `01a83539d`; 30 at `83334b9a5` — P4.D288's
+    /// `supersededAt`) — the marshaled key order is v4's parsed Memory order
+    /// because the two coincide.
     #[test]
     fn cols_is_the_d23_dump_memories_column_list_in_order() {
         assert_eq!(selected_columns(), schema_columns());
-        assert_eq!(selected_columns().len(), 29);
+        assert_eq!(selected_columns().len(), 30);
     }
 
     /// …and every index `marshal_row` reads marshals the column at that

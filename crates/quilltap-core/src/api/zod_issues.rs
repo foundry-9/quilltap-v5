@@ -1158,6 +1158,8 @@ pub fn zod_memory_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> 
     // (`parse_create_memory`) turns them into `'hot'` / `[]` first.
     enum_issues(row, "tier", &MEMORY_TIER, false, &mut issues);
     zod_uuid_issues(row, "supersededById", true, &mut issues);
+    // P4.D288 (v4 `memory.types.ts:145`, bug 225): `TimestampSchema.nullable().optional()`.
+    nullable_timestamp_issues(row, "supersededAt", &mut issues);
     default_string_array_issues(row, "consolidatedFrom", true, &mut issues);
     nullable_timestamp_issues(row, "consolidatedAt", &mut issues);
     zod_timestamp_issues(row, "createdAt", &mut issues);
@@ -1963,6 +1965,55 @@ pub fn zod_memory_extraction_cursor_issues(row: &serde_json::Map<String, Value>)
     required_bounded_string_issues(row, "messageId", Some(1), None, &mut issues);
     zod_timestamp_issues(row, "createdAt", &mut issues);
     zod_timestamp_issues(row, "updatedAt", &mut issues);
+    issues
+}
+
+/// v4 `ScenarioSourceSchema` (`lib/schemas/chat.types.ts:795-801`, `545e299bb`)
+/// over `value` at `prefix` (`["scenarioSource"]` on a chat row, `[]` for the
+/// carriers' `readScenarioSource`): a non-object is ONE `invalid_type` `expected
+/// object`; then `mountPointId` (`UUIDSchema`), `path` (`z.string().min(1)
+/// .max(500)`) and `bodySha256` (`z.string().length(64)`) in schema order —
+/// Zod's string lengths through `jsstr`'s `zod_len_*` (zod ≥ 4.5's code-point
+/// rule). Unknown keys are not issues (stripped).
+pub fn zod_scenario_source_issues(value: &Value, prefix: &[Value]) -> Vec<ZodIssue> {
+    let Some(obj) = value.as_object() else {
+        return vec![ZodIssue::invalid_type(
+            "object",
+            prefix.to_vec(),
+            Some(value),
+        )];
+    };
+    let mut issues = Vec::new();
+    let at = |k: &str| child_path(prefix, key(k));
+    match obj.get("mountPointId") {
+        Some(Value::String(v)) => {
+            if !zod_uuid_ok(v) {
+                issues.push(ZodIssue::invalid_uuid(at("mountPointId")));
+            }
+        }
+        got => issues.push(ZodIssue::invalid_type("string", at("mountPointId"), got)),
+    }
+    match obj.get("path") {
+        Some(Value::String(v)) => {
+            if !crate::jsstr::zod_len_min_ok(v, 1) {
+                issues.push(ZodIssue::too_small_string(json!(1), at("path")));
+            } else if !crate::jsstr::zod_len_max_ok(v, 500) {
+                issues.push(ZodIssue::too_big_string(json!(500), at("path")));
+            }
+        }
+        got => issues.push(ZodIssue::invalid_type("string", at("path"), got)),
+    }
+    match obj.get("bodySha256") {
+        // The `FileEntrySchema.sha256` pattern (P4.161, measured).
+        Some(Value::String(h)) if !crate::jsstr::zod_len_min_ok(h, 64) => {
+            issues.push(ZodIssue::too_small_string_exact(64, at("bodySha256")))
+        }
+        Some(Value::String(h)) if !crate::jsstr::zod_len_max_ok(h, 64) => {
+            issues.push(ZodIssue::too_big_string_exact(64, at("bodySha256")))
+        }
+        Some(Value::String(_)) => {}
+        got => issues.push(ZodIssue::invalid_type("string", at("bodySha256"), got)),
+    }
     issues
 }
 

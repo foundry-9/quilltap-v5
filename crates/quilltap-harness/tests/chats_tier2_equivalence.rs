@@ -27,7 +27,7 @@
 //!   QT_FIXTURE_CHATS=/tmp/qt-chats-fixture.db \
 //!     cargo test -p quilltap-harness --test chats_tier2_equivalence
 
-use quilltap_core::db::chats::{ChatCreate, ChatUpdate, CreateOptions};
+use quilltap_core::db::chats::{ChatCreate, ChatUpdate, CreateOptions, ScenarioSource};
 use quilltap_core::db::Writer;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -51,6 +51,9 @@ enum Op {
         /// repo-write parse); a silent success is loud on both sides.
         #[serde(default, rename = "expectError")]
         expect_error: bool,
+        /// P4.D288: the refusal's message joins the ledger (the ZodError bytes).
+        #[serde(default, rename = "recordError")]
+        record_error: bool,
     },
     #[serde(rename = "update")]
     Update {
@@ -58,6 +61,8 @@ enum Op {
         data: PatchData,
         #[serde(default, rename = "expectError")]
         expect_error: bool,
+        #[serde(default, rename = "recordError")]
+        record_error: bool,
     },
     #[serde(rename = "delete")]
     Delete { id: String },
@@ -88,14 +93,6 @@ enum Op {
         telemetry: Value,
         #[serde(default)]
         verdict: Option<Value>,
-    },
-    /// P4.D265 (v4 `d58548051`): the OTHER-pass watermark's ONE writer, vs
-    /// v4's `chats.update(id, {otherExtractionWatermarkMessageId})`.
-    #[serde(rename = "setOtherExtractionWatermark")]
-    SetOtherExtractionWatermark {
-        id: String,
-        #[serde(default, rename = "messageId")]
-        message_id: Option<String>,
     },
 }
 
@@ -148,6 +145,11 @@ struct PatchData {
     /// `Some(Some(cfg))` re-parses; `Some(None)` (explicit null) clears.
     #[serde(default, deserialize_with = "de_double_opt_value")]
     timestamp_config: Option<Option<Value>>,
+    /// P4.D288 (C1-9): the scenario pair — `null` clears to SQL NULL.
+    #[serde(default, deserialize_with = "de_double_opt_value")]
+    scenario_source: Option<Option<Value>>,
+    #[serde(default, deserialize_with = "de_double_opt_value")]
+    scenario_notes: Option<Option<Value>>,
 }
 
 fn de_double_opt_bool<'de, D: serde::Deserializer<'de>>(
@@ -208,6 +210,14 @@ impl PatchData {
             last_background_generated_at: None,
             turn_skipping_enabled: self.turn_skipping_enabled,
             timestamp_config: self.timestamp_config.clone(),
+            scenario_source: self.scenario_source.as_ref().map(|v| {
+                v.as_ref()
+                    .map(|v| serde_json::from_value::<ScenarioSource>(v.clone()).expect("source"))
+            }),
+            scenario_notes: self
+                .scenario_notes
+                .as_ref()
+                .map(|v| v.as_ref().map(|v| v.as_str().expect("notes").to_string())),
             updated_at: self.updated_at.clone(),
             // The U4.3 autonomous run-state / schedule / budget setters are
             // exercised by the enclave-lifecycle differential, not this corpus.
@@ -270,6 +280,7 @@ fn chats_tier2_matches_oracle() {
                     options,
                     data,
                     expect_error,
+                    record_error,
                 } => {
                     let r = repo.create(
                         data,
@@ -285,6 +296,12 @@ fn chats_tier2_matches_oracle() {
                             "create op {} expected to error but succeeded",
                             options.id
                         );
+                        if *record_error {
+                            ledger.push(json!({
+                                "op": "refused", "kind": "create", "id": options.id,
+                                "message": r.err().unwrap().to_string(),
+                            }));
+                        }
                     } else {
                         r.expect("create");
                     }
@@ -293,10 +310,17 @@ fn chats_tier2_matches_oracle() {
                     id,
                     data,
                     expect_error,
+                    record_error,
                 } => {
                     let r = repo.update(id, &data.to_chat_update());
                     if *expect_error {
                         assert!(r.is_err(), "update op {id} expected to error but succeeded");
+                        if *record_error {
+                            ledger.push(json!({
+                                "op": "refused", "kind": "update", "id": id,
+                                "message": r.err().unwrap().to_string(),
+                            }));
+                        }
                     } else {
                         r.expect("update");
                     }
@@ -384,16 +408,6 @@ fn chats_tier2_matches_oracle() {
                     ledger.push(
                         json!({ "op": "setDangerClassification", "id": id, "updated": updated }),
                     );
-                }
-                Op::SetOtherExtractionWatermark { id, message_id } => {
-                    let updated = repo
-                        .set_other_extraction_watermark(id, message_id.as_deref())
-                        .expect("setOtherExtractionWatermark");
-                    ledger.push(json!({
-                        "op": "setOtherExtractionWatermark",
-                        "id": id,
-                        "updated": updated,
-                    }));
                 }
             }
         }

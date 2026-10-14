@@ -42,10 +42,7 @@ interface Op {
     | 'getRefusalLedger'
     | 'resetRefusalLedger'
     | 'setConciergeMode'
-    | 'setDangerClassification'
-    | 'setOtherExtractionWatermark';
-  /** P4.D265 (v4 `d58548051`): the OTHER-pass watermark's message id (`null` resets). */
-  messageId?: string | null;
+    | 'setDangerClassification';
   /** P4.D226 (v4 `4d370a90f`): `setConciergeMode`'s columns + compare-and-set state. */
   columns?: Record<string, unknown>;
   expected?: string;
@@ -61,6 +58,8 @@ interface Op {
   /** P4.9E3B: the op must THROW (a bad timestampConfig fails the repo-write
    * Zod parse); a silent success is loud. */
   expectError?: boolean;
+  /** P4.D288: record the refusal's message in the ledger (the ZodError bytes). */
+  recordError?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -102,8 +101,16 @@ async function main(): Promise<void> {
       try {
         if (op.kind === 'create') await repo.create(op.data as never, op.options);
         else if (op.kind === 'update') await repo.update(op.id as string, op.data as never);
-      } catch {
+      } catch (err) {
         threw = true;
+        if (op.recordError) {
+          ledger.push({
+            op: 'refused',
+            kind: op.kind,
+            id: op.kind === 'create' ? op.options?.id : op.id,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
       if (!threw) throw new Error(`op expected to throw but succeeded: ${JSON.stringify(op)}`);
       continue;
@@ -139,13 +146,6 @@ async function main(): Promise<void> {
         (op.verdict ?? undefined) as never,
       );
       ledger.push({ op: 'setDangerClassification', id: op.id, updated: !!updated });
-    } else if (op.kind === 'setOtherExtractionWatermark') {
-      // P4.D265 (v4 `d58548051`): the fold-OTHER pass's and the
-      // regenerate-chat reset's write — `chats.update(id, {watermark})`.
-      const updated = await repo.update(op.id as string, {
-        otherExtractionWatermarkMessageId: op.messageId ?? null,
-      } as never);
-      ledger.push({ op: 'setOtherExtractionWatermark', id: op.id, updated: !!updated });
     } else {
       // syncVaults defaults to true; the fixture has no provisioned vaults, so
       // the summary sweep is a no-op (and is deferred in the Rust port).

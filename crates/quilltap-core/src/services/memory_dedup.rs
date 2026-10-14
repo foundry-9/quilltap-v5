@@ -692,7 +692,7 @@ mod tests {
             occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]', kind TEXT DEFAULT 'semantic',
             sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
             lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
-            tier TEXT DEFAULT 'hot', supersededById TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
+            tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
         CREATE TABLE vector_indices (
             id TEXT PRIMARY KEY, characterId TEXT, version REAL, dimensions REAL,
             createdAt TEXT, updatedAt TEXT);
@@ -783,6 +783,7 @@ mod tests {
                             reinforced_importance: r.importance,
                             tier: "hot".into(),
                             superseded_by_id: None,
+                            superseded_at: None,
                             consolidated_from: vec![],
                             consolidated_at: None,
                         },

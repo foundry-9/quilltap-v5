@@ -32,7 +32,6 @@
 //!     The `{}` case agrees trivially.
 //!   - **~15 nested typed-struct JSON-object columns** (`cheapLLMSettings`,
 //!     `themePreference`, `defaultTimestampConfig`, `memoryCascadePreferences`,
-//!     `autoHousekeepingSettings`, `memoryExtractionLimits`,
 //!     `autonomousRoomSettings`, `tokenDisplaySettings`,
 //!     `contextCompressionSettings`, `llmLoggingSettings`, `agentModeSettings`,
 //!     `coreWhisper`, `thinkingDisplay`, `answerConfirmationSettings`,
@@ -224,33 +223,6 @@ pub struct TimestampConfig {
 pub struct MemoryCascadePreferences {
     pub on_message_delete: String,
     pub on_swipe_regenerate: String,
-}
-
-/// `AutoHousekeepingSettingsSchema` (settings.types.ts L131). `perCharacterCap`
-/// is `z.number().int().positive()` — nested integer, prints as `2000`.
-/// `perCharacterCapOverrides` is a record → constrained to `{}` (multi-key
-/// open-JSON key-order seam). `autoMergeSimilarThreshold` is a fractional
-/// `z.number()` (e.g. `0.9`) — kept as `f64`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AutoHousekeepingSettings {
-    pub enabled: bool,
-    pub per_character_cap: i64,
-    /// Record → constrained `{}` in the corpus (multi-key key-order seam).
-    pub per_character_cap_overrides: serde_json::Value,
-    pub auto_merge_similar_threshold: f64,
-    pub merge_similar: bool,
-}
-
-/// `MemoryExtractionLimitsSchema` (settings.types.ts L190). `maxPerHour` is a
-/// nested integer (`20`); `softStartFraction`/`softFloor` are fractional `f64`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MemoryExtractionLimits {
-    pub enabled: bool,
-    pub max_per_hour: i64,
-    pub soft_start_fraction: f64,
-    pub soft_floor: f64,
 }
 
 /// `AutonomousRoomSettingsSchema` (settings.types.ts L225). `dailyTokenBudget`
@@ -835,8 +807,6 @@ pub struct ChatSettingsCreate {
     pub sidebar_width: i64,
     pub default_timestamp_config: TimestampConfig,
     pub memory_cascade_preferences: MemoryCascadePreferences,
-    pub auto_housekeeping_settings: AutoHousekeepingSettings,
-    pub memory_extraction_limits: MemoryExtractionLimits,
     pub autonomous_room_settings: AutonomousRoomSettings,
     pub token_display_settings: TokenDisplaySettings,
     pub context_compression_settings: ContextCompressionSettings,
@@ -1049,10 +1019,6 @@ impl<'c> ChatSettingsRepository<'c> {
             to_json("defaultTimestampConfig", &data.default_timestamp_config)?;
         let memory_cascade_preferences =
             to_json("memoryCascadePreferences", &data.memory_cascade_preferences)?;
-        let auto_housekeeping_settings =
-            to_json("autoHousekeepingSettings", &data.auto_housekeeping_settings)?;
-        let memory_extraction_limits =
-            to_json("memoryExtractionLimits", &data.memory_extraction_limits)?;
         let autonomous_room_settings =
             to_json("autonomousRoomSettings", &data.autonomous_room_settings)?;
         let token_display_settings = to_json("tokenDisplaySettings", &data.token_display_settings)?;
@@ -1115,8 +1081,6 @@ impl<'c> ChatSettingsRepository<'c> {
                 ("sidebarWidth", &data.sidebar_width),
                 ("defaultTimestampConfig", &default_timestamp_config),
                 ("memoryCascadePreferences", &memory_cascade_preferences),
-                ("autoHousekeepingSettings", &auto_housekeeping_settings),
-                ("memoryExtractionLimits", &memory_extraction_limits),
                 ("autonomousRoomSettings", &autonomous_room_settings),
                 ("tokenDisplaySettings", &token_display_settings),
                 ("contextCompressionSettings", &context_compression_settings),
@@ -1343,7 +1307,8 @@ impl<'c> ChatSettingsRepository<'c> {
 ///     `updatedAt` are required strings.
 ///
 /// This is the chat-settings read sub-unit the memory-gate watermark scoped
-/// reader ([`find_auto_housekeeping_settings_by_user_id`]) deferred; the
+/// reader (`find_auto_housekeeping_settings_by_user_id`, retired by P4.D288)
+/// deferred; the
 /// `help_settings` tool ([`crate::tools::help`]) is its first consumer, and the
 /// read-differential drives v4's REAL `findByUserId` for a full-object diff.
 pub fn find_by_user_id(
@@ -1405,8 +1370,6 @@ pub fn find_by_user_id(
             "sidebarWidth",
             "defaultTimestampConfig",
             "memoryCascadePreferences",
-            "autoHousekeepingSettings",
-            "memoryExtractionLimits",
             "autonomousRoomSettings",
             "tokenDisplaySettings",
             "contextCompressionSettings",
@@ -1493,32 +1456,24 @@ pub fn find_by_user_id(
                     parse_json(r.get::<_, Option<String>>(11)?),
                 );
                 obj.insert(
-                    "autoHousekeepingSettings".into(),
+                    "autonomousRoomSettings".into(),
                     parse_json(r.get::<_, Option<String>>(12)?),
                 );
                 obj.insert(
-                    "memoryExtractionLimits".into(),
+                    "tokenDisplaySettings".into(),
                     parse_json(r.get::<_, Option<String>>(13)?),
                 );
                 obj.insert(
-                    "autonomousRoomSettings".into(),
+                    "contextCompressionSettings".into(),
                     parse_json(r.get::<_, Option<String>>(14)?),
                 );
                 obj.insert(
-                    "tokenDisplaySettings".into(),
+                    "llmLoggingSettings".into(),
                     parse_json(r.get::<_, Option<String>>(15)?),
                 );
                 obj.insert(
-                    "contextCompressionSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(16)?),
-                );
-                obj.insert(
-                    "llmLoggingSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(17)?),
-                );
-                obj.insert(
                     "autoDetectRng".into(),
-                    Value::Bool(r.get::<_, i64>(18)? == 1),
+                    Value::Bool(r.get::<_, i64>(16)? == 1),
                 );
                 // NULL here means the COLUMN IS ABSENT (the tolerant list above
                 // substitutes NULL for a column the table lacks), not a stored
@@ -1532,15 +1487,15 @@ pub fn find_by_user_id(
                 // such an instance must still OPEN.
                 obj.insert(
                     "customTools".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(19)?.is_none_or(|v| v == 1)),
+                    Value::Bool(r.get::<_, Option<i64>>(17)?.is_none_or(|v| v == 1)),
                 );
                 obj.insert(
                     "compositionModeDefault".into(),
-                    Value::Bool(r.get::<_, i64>(20)? == 1),
+                    Value::Bool(r.get::<_, i64>(18)? == 1),
                 );
                 obj.insert(
                     "composerSpellcheck".into(),
-                    Value::Bool(r.get::<_, i64>(21)? == 1),
+                    Value::Bool(r.get::<_, i64>(19)? == 1),
                 );
                 // P4.D73, same shape as `customTools` above: v5 adopts the
                 // three 4.8.2 columns without porting v4's migration runner,
@@ -1551,11 +1506,11 @@ pub fn find_by_user_id(
                 // must surface as `true` and the row must still READ.
                 obj.insert(
                     "composerEmoji".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(22)?.is_none_or(|v| v == 1)),
+                    Value::Bool(r.get::<_, Option<i64>>(20)?.is_none_or(|v| v == 1)),
                 );
                 obj.insert(
                     "composerUnicode".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(23)?.is_none_or(|v| v == 1)),
+                    Value::Bool(r.get::<_, Option<i64>>(21)?.is_none_or(|v| v == 1)),
                 );
                 // P4.D251 (v4 `07b8f0209`): the voice MODE, a TEXT enum where
                 // its P4.D179 predecessor was a boolean. v4 reads `SELECT *`
@@ -1569,33 +1524,33 @@ pub fn find_by_user_id(
                 obj.insert(
                     "impersonationVoiceMode".into(),
                     Value::String(
-                        r.get::<_, Option<String>>(24)?
+                        r.get::<_, Option<String>>(22)?
                             .unwrap_or_else(|| "off".to_string()),
                     ),
                 );
                 obj.insert(
                     "textReplacementsEnabled".into(),
-                    Value::Bool(r.get::<_, i64>(25)? == 1),
+                    Value::Bool(r.get::<_, i64>(23)? == 1),
                 );
                 obj.insert(
                     "autoScrollOnResponseComplete".into(),
-                    Value::Bool(r.get::<_, i64>(26)? == 1),
+                    Value::Bool(r.get::<_, i64>(24)? == 1),
                 );
                 obj.insert(
                     "agentModeSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(27)?),
+                    parse_json(r.get::<_, Option<String>>(25)?),
                 );
                 obj.insert(
                     "coreWhisper".into(),
-                    parse_json(r.get::<_, Option<String>>(28)?),
+                    parse_json(r.get::<_, Option<String>>(26)?),
                 );
                 obj.insert(
                     "thinkingDisplay".into(),
-                    parse_json(r.get::<_, Option<String>>(29)?),
+                    parse_json(r.get::<_, Option<String>>(27)?),
                 );
                 obj.insert(
                     "answerConfirmationSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(30)?),
+                    parse_json(r.get::<_, Option<String>>(28)?),
                 );
                 // The JSON-column twin of the two booleans above: an absent
                 // column (or a NULL cell) is `undefined` to v4, and
@@ -1604,19 +1559,19 @@ pub fn find_by_user_id(
                 obj.insert(
                     "smartTypographySettings".into(),
                     parse_json_or_default(
-                        r.get::<_, Option<String>>(31)?,
+                        r.get::<_, Option<String>>(29)?,
                         super::chat_settings_composer_repair::SMART_TYPOGRAPHY_DEFAULT_JSON,
                     ),
                 );
                 obj.insert(
                     "storyBackgroundsSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(32)?),
+                    parse_json(r.get::<_, Option<String>>(30)?),
                 );
                 // P4.D255: `wardrobeImageSettings` (index 33 — every later
                 // positional read shifted by one). A NULL cell is v4's
                 // `undefined`: the key is OMITTED; a stored object is parsed
                 // with the schema's defaults (judged below with the voice mode).
-                if let Some(v) = read_wardrobe_image_settings_cell(r.get::<_, Option<String>>(33)?)
+                if let Some(v) = read_wardrobe_image_settings_cell(r.get::<_, Option<String>>(31)?)
                 {
                     obj.insert("wardrobeImageSettings".into(), v);
                 }
@@ -1633,15 +1588,15 @@ pub fn find_by_user_id(
                 // strips them).
                 obj.insert(
                     "conciergeSettings".into(),
-                    read_concierge_settings_cell(r.get::<_, Option<String>>(34)?),
+                    read_concierge_settings_cell(r.get::<_, Option<String>>(32)?),
                 );
                 obj.insert(
                     "autoLockSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(35)?),
+                    parse_json(r.get::<_, Option<String>>(33)?),
                 );
-                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(36)?);
-                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(37)?));
-                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(38)?));
+                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(34)?);
+                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(35)?));
+                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(36)?));
                 Ok(Value::Object(obj))
             },
         )
@@ -1728,74 +1683,37 @@ pub fn wardrobe_tool_images_enabled(main: &Connection, user_id: &str) -> bool {
     .unwrap_or(false)
 }
 
-/// Scoped read for the memory gate's watermark check: the
-/// `autoHousekeepingSettings` JSON of the user's settings row (v4
-/// `chatSettings.findByUserId(userId)?.autoHousekeepingSettings`). `None` when
-/// the user has no row or the cell is NULL — both collapse to the consumer's
-/// "auto-housekeeping not configured" early return. The full `findByUserId`
-/// read marshaling (~33 columns) is a later chat-settings read sub-unit; this
-/// parses the one consumed column raw (a v4-written row's JSON already carries
-/// the Zod-materialized defaults — parse-before-insert — and the consumer
-/// `??`-defaults every key it reads, so the shapes agree).
-pub fn find_auto_housekeeping_settings_by_user_id(
-    conn: &rusqlite::Connection,
-    user_id: &str,
-) -> Result<Option<serde_json::Value>, DbError> {
-    let cell: Option<Option<String>> = conn
-        .query_row(
-            "SELECT autoHousekeepingSettings FROM chat_settings WHERE userId = ?1 LIMIT 1",
-            rusqlite::params![user_id],
-            |row| row.get(0),
-        )
-        .map(Some)
-        .or_else(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => Ok(None),
-            other => Err(other),
-        })?;
-    // A v4-written cell always parses; a malformed one degrades to "not
-    // configured" (the lenient precedent of the other JSON-cell readers).
-    Ok(cell
-        .flatten()
-        .and_then(|text| serde_json::from_str(&text).ok()))
-}
-
 /// One user's scheduler-relevant chat-settings slice — the JSON-object columns the
 /// daily maintenance sweeps consult, without the full net-read marshaling.
 #[derive(Debug, Clone)]
 pub struct SchedulerUserSettings {
     pub user_id: String,
-    /// `autoHousekeepingSettings` (v4 JSON object) — the housekeeping enqueuer reads
-    /// `.enabled`. `None` when the cell is NULL / malformed.
-    pub auto_housekeeping_settings: Option<serde_json::Value>,
     /// `llmLoggingSettings` (v4 JSON object) — the LLM-log cleanup enqueuer reads
     /// `.enabled` + `.retentionDays`. `None` when the cell is NULL / malformed.
     pub llm_logging_settings: Option<serde_json::Value>,
 }
 
 /// Every user's scheduler slice (v4's `repos.chatSettings.findAll()` reduced to
-/// the two JSON-object columns the daily housekeeping / LLM-log-cleanup enqueuers
-/// consult). One row per `chat_settings` row (v4 iterates every row — orphan rows
+/// the JSON-object column the daily LLM-log-cleanup enqueuer consults; the
+/// `autoHousekeepingSettings` half went with the column — P4.D288, v4
+/// `move-memory-maintenance-to-instance-settings-v1`). One row per `chat_settings` row (v4 iterates every row — orphan rows
 /// included, matching v4 exactly). Insertion order is by rowid (v4's `findAll`
 /// order); the enqueuers dedupe downstream so order does not affect the outcome.
 pub fn find_all_scheduler_settings(
     conn: &rusqlite::Connection,
 ) -> Result<Vec<SchedulerUserSettings>, DbError> {
-    let mut stmt = conn.prepare(
-        "SELECT userId, autoHousekeepingSettings, llmLoggingSettings FROM chat_settings",
-    )?;
+    let mut stmt = conn.prepare("SELECT userId, llmLoggingSettings FROM chat_settings")?;
     let rows = stmt
         .query_map([], |row| {
             let user_id: String = row.get(0)?;
-            let ahk: Option<String> = row.get(1)?;
-            let llm: Option<String> = row.get(2)?;
-            Ok((user_id, ahk, llm))
+            let llm: Option<String> = row.get(1)?;
+            Ok((user_id, llm))
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(rows
         .into_iter()
-        .map(|(user_id, ahk, llm)| SchedulerUserSettings {
+        .map(|(user_id, llm)| SchedulerUserSettings {
             user_id,
-            auto_housekeeping_settings: ahk.and_then(|t| serde_json::from_str(&t).ok()),
             llm_logging_settings: llm.and_then(|t| serde_json::from_str(&t).ok()),
         })
         .collect())
@@ -2063,7 +1981,6 @@ mod tests {
                 imageDescriptionProfileId TEXT, uncensoredImageDescriptionProfileId TEXT, \
                 defaultRoleplayTemplateId TEXT, themePreference TEXT, sidebarWidth REAL, \
                 defaultTimestampConfig TEXT, memoryCascadePreferences TEXT, \
-                autoHousekeepingSettings TEXT, memoryExtractionLimits TEXT, \
                 autonomousRoomSettings TEXT, tokenDisplaySettings TEXT, \
                 contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
                 autoDetectRng INTEGER, customTools INTEGER, compositionModeDefault INTEGER, \
@@ -2168,7 +2085,6 @@ mod tests {
                 imageDescriptionProfileId TEXT, uncensoredImageDescriptionProfileId TEXT, \
                 defaultRoleplayTemplateId TEXT, themePreference TEXT, sidebarWidth REAL, \
                 defaultTimestampConfig TEXT, memoryCascadePreferences TEXT, \
-                autoHousekeepingSettings TEXT, memoryExtractionLimits TEXT, \
                 autonomousRoomSettings TEXT, tokenDisplaySettings TEXT, \
                 contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
                 autoDetectRng INTEGER, compositionModeDefault INTEGER, \
@@ -2224,7 +2140,6 @@ mod tests {
                 imageDescriptionProfileId TEXT, uncensoredImageDescriptionProfileId TEXT, \
                 defaultRoleplayTemplateId TEXT, themePreference TEXT, sidebarWidth REAL, \
                 defaultTimestampConfig TEXT, memoryCascadePreferences TEXT, \
-                autoHousekeepingSettings TEXT, memoryExtractionLimits TEXT, \
                 autonomousRoomSettings TEXT, tokenDisplaySettings TEXT, \
                 contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
                 autoDetectRng INTEGER, customTools INTEGER, compositionModeDefault INTEGER, \
@@ -2384,7 +2299,6 @@ mod tests {
                 imageDescriptionProfileId TEXT, \
                 defaultRoleplayTemplateId TEXT, themePreference TEXT, sidebarWidth REAL, \
                 defaultTimestampConfig TEXT, memoryCascadePreferences TEXT, \
-                autoHousekeepingSettings TEXT, memoryExtractionLimits TEXT, \
                 autonomousRoomSettings TEXT, tokenDisplaySettings TEXT, \
                 contextCompressionSettings TEXT, llmLoggingSettings TEXT, \
                 autoDetectRng INTEGER, customTools INTEGER, compositionModeDefault INTEGER, \

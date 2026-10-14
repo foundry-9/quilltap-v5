@@ -1189,7 +1189,7 @@ mod dogfood_divergence_tests {
                     id TEXT PRIMARY KEY, userId TEXT NOT NULL, participants TEXT,
                     chatType TEXT, isPaused INTEGER, documentEditingMode INTEGER,
                     equippedOutfit TEXT, pendingOutfitNotifications TEXT,
-                    timelineMode TEXT, otherExtractionWatermarkMessageId TEXT, state TEXT);
+                    timelineMode TEXT, state TEXT);
                  CREATE TABLE chat_documents (chatId TEXT, isActive INTEGER);
                  CREATE TABLE characters (
                     id TEXT PRIMARY KEY, userId TEXT NOT NULL,

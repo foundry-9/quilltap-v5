@@ -242,6 +242,93 @@ fn default_active() -> String {
     "active".to_string()
 }
 
+// === P4.D288 (C1-9) — the scenario source types (v4 `545e299bb`,
+// `lib/schemas/chat.types.ts:795-806`) ===
+
+/// v4 `ScenarioRefSchema` — a scenario named by where it lives (`{mountPointId,
+/// path}`), the scenario browser's and the create precedence's pointer.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScenarioRef {
+    pub mount_point_id: String,
+    pub path: String,
+}
+
+/// v4 `ScenarioSourceSchema` — where a chat's scenario text came from and the
+/// SHA-256 of the body it was read from (`{mountPointId, path, bodySha256}`,
+/// that key order — the stored `JSON.stringify` and the wire). Stored in
+/// `chats.scenarioSource` as JSON text; unknown keys are stripped (serde
+/// ignores them, as Zod's object parse drops them). [`ScenarioSource::issues`]
+/// is the schema's check — `mountPointId` a Zod UUID, `path` 1..=500,
+/// `bodySha256` exactly 64 — so a create refuses what v4's `ChatMetadataSchema`
+/// refuses, with its ZodError bytes.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScenarioSource {
+    pub mount_point_id: String,
+    pub path: String,
+    pub body_sha256: String,
+}
+
+impl ScenarioSource {
+    /// Zod's issues for this source at `path_prefix` (`["scenarioSource"]` on
+    /// a chat row); empty when the schema accepts it.
+    pub fn issues(&self, path_prefix: &[Value]) -> Vec<crate::api::zod_issues::ZodIssue> {
+        crate::api::zod_issues::zod_scenario_source_issues(
+            &serde_json::to_value(self).unwrap_or(Value::Null),
+            path_prefix,
+        )
+    }
+
+    /// v4's stored text (`JSON.stringify` of the parsed object).
+    pub fn to_json_text(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    /// v4 `ScenarioSourceSchema.safeParse(value)`: the parsed source, or Zod's
+    /// issues at `path_prefix`.
+    pub fn parse(
+        value: &Value,
+        path_prefix: &[Value],
+    ) -> Result<Self, Vec<crate::api::zod_issues::ZodIssue>> {
+        let issues = crate::api::zod_issues::zod_scenario_source_issues(value, path_prefix);
+        if !issues.is_empty() {
+            return Err(issues);
+        }
+        let s = |k: &str| {
+            value
+                .get(k)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
+        Ok(Self {
+            mount_point_id: s("mountPointId"),
+            path: s("path"),
+            body_sha256: s("bodySha256"),
+        })
+    }
+}
+
+/// v4's create-time refusal of a schema-invalid `scenarioSource`: the
+/// `ChatMetadataSchema` ZodError's message (the issues at `["scenarioSource",
+/// …]`), logged as v4's base `validate` logs it (`Data validation failed
+/// {collection, error}`), then handed back.
+fn scenario_source_refusal(source: Option<&ScenarioSource>) -> Result<(), DbError> {
+    let Some(source) = source else {
+        return Ok(());
+    };
+    let issues = source.issues(&[Value::String("scenarioSource".into())]);
+    if issues.is_empty() {
+        return Ok(());
+    }
+    let zod = crate::api::zod_issues::zod_error_message(&issues);
+    super::fallback::log_data_validation_failed("chats", &zod);
+    Err(DbError::Internal(zod))
+}
+
+// === end P4.D288 ===
+
 /// Create fields — the post-default `Omit<ChatMetadata,'id'|'createdAt'|
 /// 'updatedAt'>` shape. `userId` / `title` / `participants` are required (the
 /// schema `.refine()` needs ≥1 participant); everything else carries its Zod
@@ -316,6 +403,16 @@ pub struct ChatCreate {
     pub project_id: Option<String>,
     #[serde(default)]
     pub scenario_text: Option<String>,
+    /// P4.D288 (C1-9, v4 `545e299bb`): where the scenario text came from.
+    /// Writable only by `services::chat_scenario`, `chat_create`, the `.qtap`
+    /// import reconcile and the restore (the extended
+    /// `chat_update_surface_cannot_reach_scenario_text` guard); a
+    /// schema-invalid source REFUSES the create with v4's ZodError bytes.
+    #[serde(default)]
+    pub scenario_source: Option<ScenarioSource>,
+    /// P4.D288 (C1-9): the scene notes carried beside the source.
+    #[serde(default)]
+    pub scenario_notes: Option<String>,
     #[serde(default)]
     pub total_prompt_tokens: f64,
     #[serde(default)]
@@ -408,13 +505,6 @@ pub struct ChatCreate {
     /// `'realtime'` | `'narrative'`; `None` (NULL) reads as realtime.
     #[serde(default)]
     pub timeline_mode: Option<String>,
-    /// P4.D265 (v4 `d58548051`): the fold-grain OTHER pass's watermark (a
-    /// message id). A create may carry one (the carriers' restore / import);
-    /// every LATER write goes through
-    /// [`ChatsRepository::set_other_extraction_watermark`] — `ChatUpdate` has no
-    /// field for it.
-    #[serde(default)]
-    pub other_extraction_watermark_message_id: Option<String>,
     #[serde(default)]
     pub budget_max_turns: Option<f64>,
     #[serde(default)]
@@ -534,6 +624,12 @@ pub struct ChatUpdate {
     /// it, and `chat_update_surface_cannot_reach_scenario_text` fails if the
     /// dispatch update surface ever grows the key.
     pub scenario_text: Option<Option<String>>,
+    /// P4.D288 (C1-9): the scenario source — the same writer rule as
+    /// `scenario_text` (`services::chat_scenario`, `chat_create`, the import
+    /// reconcile, the restore); `Some(None)` writes NULL.
+    pub scenario_source: Option<Option<ScenarioSource>>,
+    /// P4.D288 (C1-9): the scene notes — the same writer rule.
+    pub scenario_notes: Option<Option<String>>,
     pub is_paused: Option<bool>,
     pub is_manually_renamed: Option<bool>,
     pub message_count: Option<f64>,
@@ -807,6 +903,13 @@ impl<'c> ChatsRepository<'c> {
     /// pre-serialized to text; numbers bind `f64`; booleans bind 0/1; unset
     /// nullables bind SQL NULL.
     pub fn create(&self, data: &ChatCreate, opts: &CreateOptions) -> Result<(), DbError> {
+        // P4.D288 (C1-9): v4's `ChatMetadataSchema` refuses a schema-invalid
+        // `scenarioSource` before anything is written.
+        scenario_source_refusal(data.scenario_source.as_ref())?;
+        let scenario_source_json = data
+            .scenario_source
+            .as_ref()
+            .map(ScenarioSource::to_json_text);
         let participants_json = json_text(&data.participants)?;
         let tags_json = json_text(&data.tags)?;
         let summary_anchor_json = json_text(&data.summary_anchor_message_ids)?;
@@ -883,7 +986,7 @@ impl<'c> ChatsRepository<'c> {
                runPausedAccumMs, runTurnsConsumed, runTokensConsumed, runMilestonesAnnounced, \
                runDestructiveToolsAllowed, budgetExcludeCacheHits, runVisibility, coreWhisperEnabled, \
                coreWhisperInterval, showThinking, createdAt, updatedAt, answerConfirmationOverride, \
-               turnSkippingEnabled, otherExtractionWatermarkMessageId) \
+               turnSkippingEnabled, scenarioSource, scenarioNotes) \
              VALUES (\
                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, \
                ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?98, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
@@ -892,7 +995,7 @@ impl<'c> ChatsRepository<'c> {
                ?61, ?62, ?63, ?64, \
                ?65, ?66, ?67, ?68, ?69, ?70, ?71, ?72, ?73, ?74, ?75, ?76, ?77, ?78, ?79, ?80, \
                ?81, ?82, ?83, ?84, ?85, ?86, ?87, ?88, ?89, ?90, ?91, ?92, ?93, ?94, ?95, ?96, \
-               ?97, ?102)",
+               ?97, ?102, ?103)",
             params![
                 opts.id,
                 data.user_id,
@@ -995,8 +1098,11 @@ impl<'c> ChatsRepository<'c> {
                 data.concierge_mode,
                 data.concierge_mode_set_by,
                 data.concierge_mode_reason,
-                // ?102 — P4.D265, appended (never renumber the list above).
-                data.other_extraction_watermark_message_id,
+                // ?102 / ?103 — P4.D288 (v4 `545e299bb`), appended (never
+                // renumber the list above). `?102` was P4.D265's OTHER
+                // watermark, retired with the column (`ac6348c5f`).
+                scenario_source_json,
+                data.scenario_notes,
             ],
         )?;
         Ok(())
@@ -1074,6 +1180,17 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = &patch.scenario_text {
             set_col!("scenarioText", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.scenario_source {
+            // v4's whole-entity `_update` refuses a schema-invalid source too.
+            scenario_source_refusal(v.as_ref())?;
+            set_col!(
+                "scenarioSource",
+                Box::new(v.as_ref().map(ScenarioSource::to_json_text))
+            );
+        }
+        if let Some(v) = &patch.scenario_notes {
+            set_col!("scenarioNotes", Box::new(v.clone()));
         }
         if let Some(v) = patch.is_paused {
             set_col!("isPaused", Box::new(v));
@@ -1704,51 +1821,11 @@ impl<'c> ChatsRepository<'c> {
         written
     }
 
-    // ========================================================================
-    // THE OTHER-PASS WATERMARK (v4 `d58548051`, P4.D265)
-    // ========================================================================
-    //
-    // `otherExtractionWatermarkMessageId` is the fold-grain OTHER pass's
-    // high-water mark. v4 lists it in `patchOnlyFields()`
-    // (`chats.repository.ts:560-564`, beside the Concierge trio) so a stale
-    // whole-row `update` cannot rewind it. That hook is NO-PORT: v5's column-
-    // scoped `ChatUpdate` sets only the columns it names, so the hazard cannot
-    // arise — the RULE is kept instead: `ChatUpdate` has no field for the
-    // column, and the method below is its ONE writer
-    // (`other_extraction_watermark_writers_census` pins it). Callers: the
-    // fold-OTHER pass (`fold-other-pass.ts:444`, P4.D270) and the
-    // regenerate-chat reset to `null` (`memory-regenerate-chat.ts:144`, no v5
-    // handler yet — §R.4(p)).
-
-    /// v4 `chats.update(chatId, {otherExtractionWatermarkMessageId})` as its
-    /// two callers use it: `UPDATE chats SET "otherExtractionWatermarkMessageId"
-    /// = ?1 WHERE id = ?2` — `updatedAt` UNTOUCHED (v4's `ChatsRepository.update`
-    /// preserves it unless named, `:292-301`). `message_id: None` writes NULL.
-    /// `Ok(true)` when a row matched, `Ok(false)` for a missing chat (v4's base
-    /// `_update` WARN `Entity not found for update` is not ported — P4.149
-    /// R-A). A failed write is the base `_update`'s RETHROW: ERROR `Error
-    /// updating entity {collection, id}` (`db::fallback::log_update_failure`),
-    /// then the `Err` propagates. A chat row v4's `ChatMetadataSchema` would
-    /// refuse is still written here (v4's whole-entity `_update` would throw
-    /// `Data validation failed`) — a recorded candidate divergence, P4.D265
-    /// Tier 3 item 23.
-    pub fn set_other_extraction_watermark(
-        &self,
-        chat_id: &str,
-        message_id: Option<&str>,
-    ) -> Result<bool, DbError> {
-        self.conn
-            .execute(
-                "UPDATE chats SET \"otherExtractionWatermarkMessageId\" = ?1 WHERE id = ?2",
-                params![message_id, chat_id],
-            )
-            .map(|n| n > 0)
-            .map_err(|e| {
-                let e = DbError::from(e);
-                super::fallback::log_update_failure("chats", chat_id, &e);
-                e
-            })
-    }
+    // P4.D288 (v4 `ac6348c5f`, the human's 2026-10-13 RETIRE ruling): the
+    // OTHER-pass watermark COLUMN and its one writer
+    // (`set_other_extraction_watermark`) are gone — the pass's position lives
+    // in `memory_extraction_cursors` (`db::memory_extraction_cursors`), copied
+    // there and dropped by `db::memory_extraction_cursors_repair`.
 
     /// v4 `setDangerClassification(chatId, telemetry, verdict?)` — record the
     /// chat-level danger classifier's TELEMETRY (the five danger columns, a

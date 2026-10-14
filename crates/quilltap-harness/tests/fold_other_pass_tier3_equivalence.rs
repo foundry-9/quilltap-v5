@@ -869,9 +869,13 @@ async fn dry_run_writes_nothing<C: CompletionProvider + Sync>(
     let chat_id = op.chat_id.clone().unwrap();
     let cid = chat_id.clone();
     db.write(move |w| {
+        // P4.D288: the watermark lives in `memory_extraction_cursors` now.
         w.main()
-            .chats()
-            .set_other_extraction_watermark(&cid, None)
+            .memory_extraction_cursors()
+            .clear_cursor(
+                &cid,
+                quilltap_core::db::memory_extraction_cursors::ExtractionCursorPass::OtherFold,
+            )
             .map(|_| ())
     })
     .await

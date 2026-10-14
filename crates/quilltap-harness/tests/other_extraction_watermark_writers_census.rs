@@ -17,6 +17,14 @@
 //! does. Standing on the shared source-census lexer (`source_census`), which
 //! keeps string literals — the SQL IS a literal.
 //!
+//! **P4.D288 (v4 `add-memory-extraction-cursors-v1`, `83334b9a5`):** the
+//! column is DROPPED — the OTHER pass's position lives in
+//! `memory_extraction_cursors` (pass `other-fold`) and
+//! `set_other_extraction_watermark` is deleted, so the ONE writer became
+//! ZERO. The census stands (mechanically restated) until P4.D296 retires it
+//! (the order's §R.13(i)): no production SQL `UPDATE`s the column, and
+//! `ChatUpdate` has no field for it.
+//!
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test other_extraction_watermark_writers_census
 
@@ -67,21 +75,13 @@ fn only_set_other_extraction_watermark_updates_the_column() {
             }
         }
     }
-    assert_eq!(
-        writers.len(),
-        1,
-        "the OTHER-pass watermark must have ONE writer (v4 `patchOnlyFields`); found:\n{}",
+    // P4.D288: the column is retired — ZERO writers (the cursor table holds
+    // the position).
+    assert!(
+        writers.is_empty(),
+        "the retired OTHER-pass watermark column gained a writer (P4.D288 moved it \
+         into memory_extraction_cursors); found:\n{}",
         writers.join("\n")
-    );
-    assert!(
-        writers[0].starts_with("quilltap-core/src/db/chats.rs:"),
-        "the writer must be ChatsRepository::set_other_extraction_watermark: {}",
-        writers[0]
-    );
-    assert!(
-        writers[0].contains("WHERE id = ?2"),
-        "the writer moved: {}",
-        writers[0]
     );
 }
 
@@ -102,6 +102,6 @@ fn chat_update_has_no_watermark_field() {
         body.contains("pub title: Option<String>"),
         "ChatUpdate shape moved"
     );
-    // …and the writer exists where the census looks for it.
-    assert!(src.contains("pub fn set_other_extraction_watermark("));
+    // P4.D288: …and the retired writer stays gone.
+    assert!(!src.contains("pub fn set_other_extraction_watermark("));
 }

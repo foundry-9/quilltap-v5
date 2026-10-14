@@ -1845,6 +1845,9 @@ fn restore_on_writer(
                 vocabulary_size: n(v, "vocabularySize", 0.0),
                 include_bigrams: b(v, "includeBigrams", false),
                 fitted_at: s(v, "fittedAt"),
+                // P4.D288 (O-7): v4 spreads the archived row into `create`,
+                // whose `.default(0)` fills an archive from before the column.
+                text_shape_version: n(v, "textShapeVersion", 0.0),
             };
             warn_row!(
                 w,

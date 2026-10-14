@@ -1056,6 +1056,7 @@ fn clone_mem_create(d: &crate::db::memories::MemCreate) -> crate::db::memories::
         reinforced_importance: d.reinforced_importance,
         tier: d.tier.clone(),
         superseded_by_id: d.superseded_by_id.clone(),
+        superseded_at: d.superseded_at.clone(),
         consolidated_from: d.consolidated_from.clone(),
         consolidated_at: d.consolidated_at.clone(),
     }
@@ -1086,6 +1087,7 @@ fn clone_mem_update(p: &MemUpdate) -> MemUpdate {
         embedding: p.embedding.clone(),
         tier: p.tier.clone(),
         superseded_by_id: p.superseded_by_id.clone(),
+        superseded_at: p.superseded_at.clone(),
         consolidated_from: p.consolidated_from.clone(),
         consolidated_at: p.consolidated_at.clone(),
         updated_at: p.updated_at.clone(),

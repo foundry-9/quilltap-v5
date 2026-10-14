@@ -82,6 +82,9 @@ struct CreateData {
     include_bigrams: bool,
     #[serde(rename = "fittedAt")]
     fitted_at: String,
+    /// P4.D288 (O-7): absent → v4's `.default(0)`.
+    #[serde(default, rename = "textShapeVersion")]
+    text_shape_version: f64,
 }
 
 /// Create options carry ONLY id + createdAt — v4's override ignores
@@ -112,6 +115,8 @@ struct UpdateData {
     include_bigrams: Option<bool>,
     #[serde(default, rename = "fittedAt")]
     fitted_at: Option<String>,
+    #[serde(default, rename = "textShapeVersion")]
+    text_shape_version: Option<f64>,
 }
 
 /// The minted (nondeterministic) column — placeholdered on both sides.
@@ -201,6 +206,7 @@ fn tfidf_vocabulary_tier2_matches_oracle() {
                             vocabulary_size: data.vocabulary_size,
                             include_bigrams: data.include_bigrams,
                             fitted_at: data.fitted_at.clone(),
+                            text_shape_version: data.text_shape_version,
                         },
                         &CreateOptions {
                             id: options.id.clone(),
@@ -222,6 +228,7 @@ fn tfidf_vocabulary_tier2_matches_oracle() {
                                 vocabulary_size: data.vocabulary_size,
                                 include_bigrams: data.include_bigrams,
                                 fitted_at: data.fitted_at.clone(),
+                                text_shape_version: data.text_shape_version,
                             },
                         )
                         .expect("tfidf_vocabulary.update");

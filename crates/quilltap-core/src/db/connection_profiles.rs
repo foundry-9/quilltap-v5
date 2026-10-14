@@ -557,7 +557,7 @@ impl<'c> ConnectionProfilesRepository<'c> {
 /// that already ships the `create`/`update`/`delete` write half; the participant
 /// resolver is the first consumer of a full profile row, so the read marshaling
 /// lands here alongside it (scoped read precedent:
-/// [`super::chat_settings::find_auto_housekeeping_settings_by_user_id`]).
+/// `chat_settings::find_auto_housekeeping_settings_by_user_id`, retired by P4.D288).
 ///
 /// Net read shape (matching [`super::chats_read`]/[`super::characters_read`]):
 ///   * nullable-optional columns (`apiKeyId`, `baseUrl`, `modelClass`,

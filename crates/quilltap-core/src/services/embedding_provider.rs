@@ -1093,11 +1093,13 @@ mod tests {
             c.execute_batch(
                 "CREATE TABLE tfidf_vocabularies (id TEXT PRIMARY KEY, profileId TEXT, \
                  userId TEXT, vocabulary TEXT, idf TEXT, avgDocLength REAL, vocabularySize REAL, \
-                 includeBigrams INTEGER, fittedAt TEXT, createdAt TEXT, updatedAt TEXT)",
+                 includeBigrams INTEGER, fittedAt TEXT, textShapeVersion REAL DEFAULT 0, \
+                 createdAt TEXT, updatedAt TEXT)",
             )?;
             c.execute(
                 "INSERT INTO tfidf_vocabularies VALUES ('v1', 'ep-b', 'u1', ?1, ?2, ?3, ?4, 1, \
-                 '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
+                 '2020-01-01T00:00:00.000Z', 0, '2020-01-01T00:00:00.000Z', \
+                 '2020-01-01T00:00:00.000Z')",
                 rusqlite::params![vocab, idf, avg, size],
             )?;
             Ok(())

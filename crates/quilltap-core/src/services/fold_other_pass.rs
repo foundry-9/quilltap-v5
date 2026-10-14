@@ -27,10 +27,11 @@
 //! Mode (`memoryExtractionMode.otherPass`): runs in `fold` and `hybrid`,
 //! never in `turn`.
 //!
-//! **Watermark:** `chats.otherExtractionWatermarkMessageId` is advanced to the
+//! **Watermark:** the `other-fold` extraction cursor (P4.D288 — before it the
+//! `chats.otherExtractionWatermarkMessageId` column) is advanced to the
 //! last message covered after every pass that was not lost to a timeout,
 //! through the ONE column writer
-//! (`ChatsRepository::set_other_extraction_watermark`). Messages at or before
+//! (`MemoryExtractionCursorsRepository::set_cursor`). Messages at or before
 //! it are never re-read, which is also what keeps a fold that re-walks old
 //! turns (a summary rebuild) from re-paying for them. The daily maintenance
 //! sweep uses the same watermark to catch up short or idle chats that never
@@ -157,6 +158,22 @@ pub struct FoldOtherPassResult {
     pub usage: UsageTotals,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extracted_candidates: Option<Vec<ExtractedCandidate>>,
+}
+
+/// P4.D288 (mechanical, recorded — P4.D296 deletes this file): the OTHER
+/// watermark's storage moved from `chats.otherExtractionWatermarkMessageId` to
+/// the `other-fold` row of `memory_extraction_cursors` (v4 `ac6348c5f`); the
+/// three reads keep their positions over the new storage. A failed read
+/// answers "no cursor", as the column read did on a missing value.
+fn other_fold_cursor(db: &Db, chat_id: &str) -> Option<String> {
+    db.read_main(|c| {
+        crate::db::memory_extraction_cursors::MemoryExtractionCursorsRepository::new(c).find_cursor(
+            chat_id,
+            crate::db::memory_extraction_cursors::ExtractionCursorPass::OtherFold,
+        )
+    })
+    .ok()
+    .flatten()
 }
 
 fn empty_result(skipped_reason: Option<&'static str>) -> FoldOtherPassResult {
@@ -304,7 +321,8 @@ async fn run_pass_body<C: CompletionProvider, E: EmbeddingProvider>(
     // Drop what the watermark already covers. The fold may re-walk early turns
     // (a summary rebuild); the watermark is what stops us paying twice.
     let mut window: Vec<&Value> = input.window_messages.iter().collect();
-    let watermark = str_field(&chat, "otherExtractionWatermarkMessageId").filter(|w| !w.is_empty());
+    let watermark_cell = other_fold_cursor(db, chat_id);
+    let watermark = watermark_cell.as_deref().filter(|w| !w.is_empty());
     if let (Some(watermark), false) = (watermark, window.is_empty()) {
         let all = chat_message_events(db, chat_id)?;
         if let Some(watermark_idx) = all
@@ -720,9 +738,16 @@ async fn advance_watermark(
     let (cid, mid) = (chat_id.to_string(), message_id.to_string());
     let outcome = db
         .write(move |w| {
-            w.main()
-                .chats()
-                .set_other_extraction_watermark(&cid, Some(&mid))
+            // P4.D288 (mechanical, recorded): the watermark's storage moved to
+            // the `other-fold` cursor row (v4 `ac6348c5f`).
+            crate::db::memory_extraction_cursors::MemoryExtractionCursorsRepository::new(
+                w.main().connection(),
+            )
+            .set_cursor(
+                &cid,
+                crate::db::memory_extraction_cursors::ExtractionCursorPass::OtherFold,
+                &mid,
+            )
         })
         .await;
     match outcome {
@@ -1002,7 +1027,7 @@ pub fn find_fold_other_catchup_candidates(
         else {
             continue;
         };
-        if str_field(chat, "otherExtractionWatermarkMessageId") == Some(last_id) {
+        if other_fold_cursor(db, chat_id).as_deref() == Some(last_id) {
             continue;
         }
         let Some(profile_id) = pick_connection_profile_id(chat) else {
@@ -1081,7 +1106,8 @@ pub async fn run_fold_other_catchup<C: CompletionProvider, E: EmbeddingProvider>
     }
 
     let messages = chat_message_events(db, chat_id)?;
-    let watermark = str_field(&chat, "otherExtractionWatermarkMessageId");
+    let watermark_cell = other_fold_cursor(db, chat_id);
+    let watermark = watermark_cell.as_deref();
     let window = messages_past_watermark(&messages, watermark);
     if window.is_empty() {
         return Ok(empty_result(Some("behind-watermark")));

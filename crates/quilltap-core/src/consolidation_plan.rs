@@ -855,6 +855,7 @@ pub fn plan_consolidation_writes(input: PlanInput<'_>) -> ConsolidationWritePlan
                         reinforced_importance,
                         tier: "hot".to_string(),
                         superseded_by_id: None,
+                        superseded_at: None,
                         consolidated_from,
                         consolidated_at: Some(now_iso.to_string()),
                     },

@@ -71,6 +71,7 @@
 
 use std::path::{Path, PathBuf};
 
+use quilltap_core::db::memory_extraction_cursors::MIGRATION_TABLE_DDL;
 use quilltap_core::db::Writer;
 use quilltap_core::services::provisioning::{provision_fresh_instance, SINGLE_USER_ID};
 use rusqlite::types::ValueRef;
@@ -337,7 +338,7 @@ fn provisioning_matches_v4_fresh_instance() {
         ("mountIndex", mi.connection()),
         ("llmLogs", ll.connection()),
     ] {
-        let got: Vec<String> = dump_schema(conn)
+        let mut got: Vec<String> = dump_schema(conn)
             .into_iter()
             .filter(|sql| sql.starts_with("CREATE TABLE"))
             .collect();
@@ -348,6 +349,32 @@ fn provisioning_matches_v4_fresh_instance() {
             .map(|v| v.as_str().unwrap().to_string())
             .filter(|sql| sql.starts_with("CREATE TABLE"))
             .collect();
+        // P4.D288 (R-C) `CURSOR_TABLE_MIGRATION_SHAPE`, both ways: v5
+        // provisions the cursor table in v4's MIGRATION text where the dump
+        // carries generateDDL's bare one. Each row must be MET — the dump
+        // still bare, v5 still the migration's — then the arm compares the
+        // rest of the surface exactly.
+        for (rp, table, _why) in CURSOR_TABLE_MIGRATION_SHAPE {
+            if *rp != part {
+                continue;
+            }
+            let dump_prefix = format!("CREATE TABLE \"{table}\" (");
+            let bare = expected
+                .iter()
+                .find(|s| s.starts_with(&dump_prefix))
+                .unwrap_or_else(|| panic!("(1a) {table}: the dump no longer carries it"));
+            let at = got
+                .iter()
+                .position(|s| s == MIGRATION_TABLE_DDL)
+                .unwrap_or_else(|| {
+                    panic!("(1a) {table}: v5 no longer provisions the migration text (retire the row?)")
+                });
+            assert_ne!(
+                bare, MIGRATION_TABLE_DDL,
+                "(1a) {table}: the dump converged on the migration text — retire the row"
+            );
+            got[at] = bare.clone();
+        }
         assert_eq!(got, expected, "table DDL mismatch in partition {part}");
     }
 
@@ -821,9 +848,11 @@ const TABLE_COLUMN_ASYMMETRY: &[(&str, &str, &str, &[&str], &str)] = &[
         "main",
         "chat_settings",
         "v4",
+        // P4.D288: `memoryExtractionConcurrency` LEFT the row — v4's
+        // `move-memory-maintenance-to-instance-settings-v1` drops it (with the
+        // two housekeeping columns) on every boot that meets it.
         &[
             "dangerousContentSettings",
-            "memoryExtractionConcurrency",
             "uncensoredImageDescriptionProfileId",
         ],
         "migration columns v4 dropped from its schema but never from the table",
@@ -847,6 +876,17 @@ const TABLE_COLUMN_ASYMMETRY: &[(&str, &str, &str, &[&str], &str)] = &[
         "legacy auth columns sqlite-initial-schema-v1 still makes",
     ),
 ];
+
+/// P4.D288 (R-C, O-2 — measured on a real `tsx server.ts` first boot at the
+/// `83334b9a5` pin, `/tmp/p4d288/real-boot/`): tables v5 provisions in v4's
+/// MIGRATION text instead of the generateDDL dump's — every real v4 instance,
+/// fresh ones included, carries the migration's `UNIQUE ("chatId", "pass")` and
+/// its live cascading FK. `(partition, table, why)`; both ways in (1a).
+const CURSOR_TABLE_MIGRATION_SHAPE: &[(&str, &str, &str)] = &[(
+    "main",
+    "memory_extraction_cursors",
+    "v4 `add-memory-extraction-cursors-v1` creates the table before ensureCollection runs",
+)];
 
 /// Index names v4's real first boot carries that a v5 instance does not, with
 /// the reason. Both-ways.
