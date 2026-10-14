@@ -135,7 +135,7 @@ quilltap db logs --tail 20                  # Recent LLM logs
 
 quilltap db message <id>                    # Full content of one message
 quilltap db log <id> [--field request|response|both]
-quilltap db memories --character Friday [--about Amy] [--source AUTO]
+quilltap db memories --character Friday [--about Amy] [--source AUTO] [--tier hot|cold]
 quilltap db characters status               # Per-character vault readiness (--id, --diverged, --blocked)
 ```
 
@@ -330,7 +330,7 @@ A character vault's **keystone files** — `properties.json`, the five required 
 
 ## Memories
 
-`quilltap memories` exposes the same Commonplace Book that each character carries — searchable, sortable, graphable, but never writable. All verbs open the main encrypted DB read-only.
+`quilltap memories` exposes the same Commonplace Book that each character carries — searchable, sortable, graphable. All verbs open the main encrypted DB read-only; the two that change anything (`maintain`, `validate --repair --write`) ask the running server to do the work.
 
 ```bash
 quilltap memories ls                                                   # All holders, default sort: reinforcedImportance DESC
@@ -339,16 +339,22 @@ quilltap memories find "concrete examples"                             # Substri
 quilltap memories grep -i --max 3 --context 1 "concrete examples"      # Pattern search inside content, with snippets
 quilltap memories show <id|prefix> [--depth N] [--no-related]          # Full record + related-memory neighbourhood
 quilltap memories tree <id|prefix> [--depth N] [--max-nodes N]         # ASCII walk of the bidirectional related-memory graph
-quilltap memories status [--character <name|id>]                       # Per-holder rollup + dangling-edge check
-quilltap memories validate [--character <name|id>] [--list]            # Dangling-edge health check; exit 1 if any remain
+quilltap memories status [--character <name|id>] [--port <n>]          # Per-holder rollup, maintenance ledger + dangling-edge check
+quilltap memories validate [--character <name|id>] [--list]            # Graph health check; exit 1 if any dangling link remains
+quilltap memories validate --repair [--write]                          # Rehearse (or, with --write, apply) the server's graph repair
 quilltap memories grep --semantic --character Ariadne "the argument"   # Embedding search (server required, one holder)
-quilltap memories consolidate --character Ariadne --dry-run            # Rehearse consolidation, print proposed digests (server required)
-quilltap memories consolidate --character Ariadne [--max N]            # Queue a real consolidation job (server required)
+quilltap memories maintain --character Ariadne --dry-run               # Rehearse every maintenance phase (server required)
+quilltap memories maintain --character Ariadne --phases consolidate    # Queue a consolidation-only maintenance job
+quilltap memories maintain --character all [--phases demote,retire]    # Queue maintenance for every character
 ```
 
-Shared filter flags apply to `ls`, `find`, `grep`, and `status` where they make sense: `--character`, `--about` (with `self` / `none` shortcuts), `--source` (AUTO / MANUAL / CONSOLIDATED), `--tier` (hot / cold; both by default, cold rows are starred in the `src` column), `--chat` (with `none` for manual entries), `--project`, `--since`, `--until`, `--min-importance`, `--min-reinforced`, `--has-embedding` / `--no-embedding`. Sort flags (`--sort reinforced|importance|created|accessed|reinforcement-count|links`, plus `-r` to reverse) apply to `ls`, `find`, and `grep`. Names accept fuzzy substrings; ambiguous names print candidates and exit 2. `--json` is supported by every verb. `validate` is `status`'s terse twin — read-only, exit 1 if any dangling related-memory edge remains, `--list` to print the offending source IDs and their dangling targets. `grep --semantic` defaults to `--top 20`, `--threshold 0.5`, `--port 3000`, and scopes to **one holder at a time**: `--character all` is rejected. The legacy `quilltap db memories --character <name>` verb remains undisturbed.
+Shared filter flags apply to `ls`, `find`, `grep`, and `status` where they make sense: `--character`, `--about` (with `self` / `none` shortcuts), `--source` (AUTO / MANUAL / CONSOLIDATED), `--tier` (hot / cold; both by default, cold rows are starred in the `src` column), `--chat` (with `none` for manual entries), `--project`, `--since`, `--until`, `--min-importance`, `--min-reinforced`, `--has-embedding` / `--no-embedding`. Sort flags (`--sort reinforced|importance|created|accessed|reinforcement-count|links`, plus `-r` to reverse) apply to `ls`, `find`, and `grep`. Names accept fuzzy substrings; ambiguous names print candidates and exit 2. `--json` is supported by every verb. `validate` is `status`'s terse twin — read-only; it counts dangling `relatedMemoryIds` edges, dangling `consolidatedFrom` members (digests naming notes that are gone), dangling `supersededById` pointers, and rows with no embedding. It exits 1 if any dangling link remains (a missing embedding only warns), and `--list` prints the offending IDs. `grep --semantic` defaults to `--top 20`, `--threshold 0.5`, and scopes to **one holder at a time**: `--character all` is rejected. The legacy `quilltap db memories --character <name>` verb remains, now with `--tier hot|cold` (rows with no tier count as hot).
 
-`consolidate` folds clusters of near-duplicate hot memories into denser digests and sends the originals to the cold tier. It resolves `--character <name|id>` locally (required; `all` is rejected) and then asks the running server (`--port`, default 3000) — the model and embedding provider live there, not in the CLI. With `--dry-run` the server rehearses a bounded run (default 10 clusters, at most 40; `--max N` sets the bound, `--threshold 0..1` overrides the cluster similarity for this run), writes nothing, and the CLI prints each cluster as its member notes followed by the proposed digest(s), standalones, contradictions, and run stats. Without `--dry-run` it queues a background `MEMORY_CONSOLIDATION` job (`--max N` overrides `maxClustersPerRun`; a real run uses the stored settings, so `--threshold` is honoured only by dry runs) and prints the job id; manual runs ignore the master `enabled` switch. `--json` prints the raw API payload.
+Verbs that call the server (`grep --semantic`, `status`'s ledger, `maintain`, `validate --repair`) take `--port`; without it they use the port recorded in the `--instance` / `--data-dir` instance's lock, else 3000.
+
+`maintain` runs the memory maintenance job by hand: `fold-near-duplicates`, `consolidate`, `demote`, `retire`, `mirror`, always in that order. `--character <name|id|all>` is required (`all` is every character you own); `--phases a,b,…` picks a subset (checked by the server, which answers an unknown name with a 400; naming `consolidate` brings `mirror` along, since the Commonplace mirror follows consolidation). The CLI resolves the character locally and asks the running server — the model, the embeddings and the only database writer live there. With `--dry-run` the server rehearses the run and writes nothing: the CLI prints each phase's status (ran / skipped, and why), then the fold groups, the consolidation clusters (member notes, proposed digests, standalones, contradictions, run stats), the demotion arithmetic (cap, hot total, demotable, protected, excess, demoted), the retire count and the mirror subjects. A dry run over `all` gives one table row per character and may not include `consolidate` (each would call the model). Without `--dry-run` the server queues one `MEMORY_MAINTENANCE` job per character and the CLI prints the job ids; manual runs ignore the master `enabled` switches. `--max N` caps clusters consolidated (`maxClustersPerRun`, 1–1000; a dry run defaults to 10, at most 40), `--threshold 0..1` overrides the cluster similarity (neural embedding profiles), `--cap N` overrides the hot-row cap for demotion (100–100000). `--json` prints the raw API payload. There is no `consolidate` verb any more: use `maintain --phases consolidate`.
+
+`validate --repair` asks the running server to repair what `validate` finds. Without `--write` it is a dry run that prints what would be repaired and changes nothing; with `--write` the server scrubs dangling `relatedMemoryIds`, `consolidatedFrom` and `supersededById` links and queues embedding jobs for rows with none (up to 2000 per run; it needs a default embedding profile). As with `db characters archive`, the write runs inside the server, which holds the instance lock, so the server must be up. `status` also shows the character's maintenance ledger — when each phase last ran and whether the last demotion was effective — when it can reach the running server, and the last three maintenance job rows either way.
 
 ## Memory Extraction Dry-Run
 
@@ -359,7 +365,9 @@ quilltap memory-diff <chatId> --instance Friday          # Report to the current
 quilltap memory-diff <chatId> --out /tmp/diff --concurrency 8
 ```
 
-Needs a running server (`--port`, default 3000) to reach the extraction pipeline. `--out <dir>` sets the report destination (default: cwd); `--concurrency N` bounds parallel turns (default 4, max 32).
+Needs a running server to reach the extraction pipeline: pass `--port`, or name the server's instance with `--instance`/`--data-dir` and the port is read from its lock file (see [Finding the server](#finding-the-server)); otherwise 3000. `--out <dir>` sets the report destination (default: cwd); `--concurrency N` bounds parallel turns (default 4, max 32).
+
+The dry run is the live pipeline with nothing written: every turn, then both fold passes (`other-fold`, `episode-fold`) over the history a regenerate would rebuild, autonomous rooms included. Each re-extracted candidate records `extractionPass` and `decision` — what admission would do with it (`insert`, `reinforce`, `absorb`, …). Admission embeds each candidate to decide, so a dry run makes embedding calls.
 
 ## Recall Replay
 
@@ -375,7 +383,7 @@ quilltap recall-replay <chatId> --turn 42 --signals-from t42.json --as-of \
   --tuning '{"boostGateAbs":0.45,"boostGateMargin":0.15,"boostGateRamp":0.1}'
 ```
 
-Flags: `--turn <n>` (default: last), `--char <characterId>` (default: first LLM-controlled participant), `--limit <n>` (default: the larger of 25 and the new path's head size + 10), `--memory-budget <tokens>` (positive integer; the new path's selected rows then follow the budget-sized dynamic head, which scales with the model's memory budget, while the old path keeps the historical fixed 5-entry head; each path header prints its head size), `--port <n>` (default 3000), `--json`.
+Flags: `--turn <n>` (default: last), `--char <characterId>` (default: first LLM-controlled participant), `--limit <n>` (default: the larger of 25 and the new path's head size + 10), `--memory-budget <tokens>` (positive integer; the new path's selected rows then follow the budget-sized dynamic head, which scales with the model's memory budget, while the old path keeps the historical fixed 5-entry head; each path header prints its head size), `--instance <name>` / `--data-dir <path>` (find the server's port, see [Finding the server](#finding-the-server)), `--port <n>` (default: from the instance lock, else 3000), `--json`.
 
 Tuning and comparable runs:
 
@@ -385,9 +393,17 @@ Tuning and comparable runs:
 
 The server memoises the replay's embeddings by text until it restarts, so repeat runs embed identical vectors.
 
+After the two tables the replay prints:
+
+- **TEXT FALLBACK** — what the new path returns with no usable vector (the text strategy over the same question).
+- **STAGE TRACE** — one line per recall stage: `query` (distilled or pinned, embedding calls), `gather` / `hydrate` / `score` / `select` for the head search (pool size, floor, window mode, expansion, the cut), and `assemble` per pool (what the archive held and its budget cut, how many pool rows the archive removed from the head, what the inter-character section took and skipped as already delivered).
+- **Ring** — the anti-repetition ring the replay ranked under: the one in force at that turn, rebuilt from the `[Recall:ring]` lines each reply's `debugMemoryLogs` carries, or the chat's current ring for a chat older than those records.
+
+`--json` adds `fallbackPath`, `trace`, `pools`, `ring` and `ringSource` to the result.
+
 ## Anchor Probe
 
-`quilltap anchor-probe <characterId>` measures whether the episodic anchor line embedded with each memory suppresses Memory Gate reinforcement. It re-embeds the character's most recent memories with and without the anchor line, compares each against older rows, and reports how many would cross the reinforce (0.85) and near-duplicate (0.90) thresholds each way, plus a per-row table (rows that cross 0.85 only without anchors are highlighted). Read-only, but it costs embedding calls (roughly up to 7 per sampled row).
+`quilltap anchor-probe <characterId>` measures whether the episodic anchor line embedded with each memory suppresses reinforcement at admission. It re-embeds the character's most recent memories with and without the anchor line, compares each against older rows, asks admission's own decider (the same subject, kind, source and date-guard rules a new memory meets) what it would do each way, and reports how many rows would fold into an older one and how many would be absorbed as near-duplicates, plus a per-row table (rows that would fold only without anchors are highlighted). Read-only, but it costs embedding calls (roughly up to 7 per sampled row).
 
 ```bash
 quilltap anchor-probe <characterId>             # Sample the 50 most recent memories
@@ -395,7 +411,11 @@ quilltap anchor-probe <characterId> --limit 20  # Smaller, cheaper sample
 quilltap anchor-probe <characterId> --json      # Raw JSON for scripting
 ```
 
-Flags: `--limit <n>` (1–200, default 50), `--port <n>` (default 3000), `--json`.
+Flags: `--limit <n>` (1–200, default 50), `--instance <name>` / `--data-dir <path>` (find the server's port, see [Finding the server](#finding-the-server)), `--port <n>` (default: from the instance lock, else 3000), `--json`.
+
+### Finding the server
+
+`memory-diff`, `recall-replay` and `anchor-probe` call a running server over HTTP. The server records the port it listens on in its instance lock (`<dataDir>/data/quilltap.lock`, field `port`; shown by `quilltap db --lock-status`). Resolution order: an explicit `--port` wins; otherwise, if `--instance` or `--data-dir` is given and that lock is live and records a port, that port is used (a dim note says so); otherwise 3000. Giving both `--instance` and `--data-dir` is an error. `--passphrase` is accepted by all three for uniformity; `recall-replay` and `anchor-probe` ignore it. Locks written before this field existed carry no port, so restart the server once to record it.
 
 ## Maintenance & Cleanup
 

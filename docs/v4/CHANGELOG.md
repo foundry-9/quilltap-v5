@@ -4,9 +4,376 @@
 
 ### 4.10-dev
 
+#### Release checklist 4: API endpoint standard
+
+- Audited every route changed since 4.9.2. All routes outside `/api/v1/` are the three allowed exceptions; the six new routes (avatar rolls, subprompts, Scenario Builder, wardrobe item images) follow the action-dispatch pattern. No handler reads `?action=` by hand.
+- The 24 raw `NextResponse.json` calls added since 4.9.2 now use `successResponse`, in the chat actions (`impersonation-voice-preview`, `inform`, `rebuild-summary`, `story-background`), the chat GET handlers, connection profiles, memories, plugins and the scenario item route factory. Responses are unchanged.
+- Fixed the `successResponse` mock in `memories-manual-create.test.ts`, which ignored the status argument.
+
+#### Bugs 245 and 246: reopened turns re-extracted; consolidation token budget
+
+- Bug 245: per-turn extraction keeps a `turn` cursor in `memory_extraction_cursors` (the last assistant message a committed turn job covered; only moves forward). A live turn job reads past it: earlier lines of the turn, the opener with them, go to `priorSlices` and render as context under "EARLIER IN THIS TURN", capped at 8 messages. SELF runs only for speakers with new lines; OTHER runs for every speaker, earlier speakers on the new lines only, new speakers on the whole turn (`withPriorAsMaterial`). A bound outside the turn is ignored. Regenerate and queue-memories read turns whole and bound each autonomous speaker by the previous anchor (`listExtractionTurns`), which also stops a rebuild re-reading the room's history per speaker. Bundles carry the cursor as `turnExtractionWatermarkMessageId` (export schema, restore remap, import remint). No migration.
+- Bug 246: consolidation's cluster call takes the routed profile's output budget (`resolveMaxTokens`) with 4,000 as a floor instead of a fixed 4,000; an empty answer is logged as empty, not as unparseable JSON.
+
+#### Memory refactor V4test dogfood; bugs 245 and 246 filed
+
+- Ran the phase B–G acceptance walks on V4test and recorded the results in `docs/developer/features/complete/memory-system-refactor.md`.
+- Filed bug 245 (open): a turn reopened by Skip, nudge or continue is extracted again from its first line, reinforcing earlier speakers' new memories from their own source. Suspected for autonomous rooms.
+- Filed bug 246 (open): consolidation's fixed 4,000-token output budget lets a reasoning model use it all thinking; the empty answer is skipped as unparseable.
+- CLI: `quilltap memories status` reports a demotion with no excess as "within the cap; automatic demotion looks again in an hour" instead of "0 of 0 over the cap ⚠ ineffective".
+
+#### Memory refactor closed: Friday backfill recorded; three report labels fixed
+
+- The Friday backfill (E2) ran on 2026-10-13 and its figures are recorded in the spec, which moved to `docs/developer/features/complete/memory-system-refactor.md`. ROADMAP item checked.
+- Maintenance report, Consolidate: "Clusters found" (every cluster, singletons included) is replaced by "Clusters worth folding" (`clustersQualified`: selected plus deferred).
+- Maintenance report, Demote, and the card's per-character overrides: the count of MANUAL rows and digests is labelled "exempt" instead of "protected", which collided with the protection score that orders demotion. The CLI's `maintain --dry-run` line and the help pages say the same.
+- Maintenance ledger: a demotion that found no excess now reads "Within the cap at the last demotion; automatic demotion looks again in an hour" in muted text, instead of the warning that the demotion moved too little of the excess.
+
+#### PR 98 review: 7 findings on Phase G
+
+- Maintenance card: a typed per-character cap is now saved on blur. The input wrote each keystroke into the form state, so the blur compared the value with itself and never posted (carried over from the old Housekeeping card).
+- Graph repair: a digest whose members are all gone is retired through `retireMemories` (`reason: 'graph-repair'`) instead of being left with an empty `consolidatedFrom`. Related links are removed per row, so a repair scoped to one character writes only that character's rows and invalidates exactly the holders it changed. The report gains `digestsRetired`.
+- `findDanglingLinks` no longer falls back to an empty result; a failed scan is a 500, not "nothing to repair".
+- Embedding backfill (`repair`, `backfill-embeddings`): `findIdsWithoutEmbedding` selects only `id` and `characterId`; new `enqueueEmbeddingGenerateMany` reads the active `EMBEDDING_GENERATE` jobs once and inserts the batch in one call. Rows that already have a job are no longer counted as queued.
+- CLI: `memories validate` without `--character` scans every holder in `memories`, including ones whose character row is gone, matching the server's unscoped repair. `memories maintain` no longer copies the server's phase list, cap bounds or cluster bounds; the server's 400 reports a bad value. `memories status` prints the ledger's phases as reported.
+
+#### Memory refactor Phase G: surfaces, docs, retirement of the old specs
+
+Final structural phase of `docs/developer/features/complete/memory-system-refactor.md`. No migration.
+
+- API: `?action=housekeep` (GET and POST), `housekeep-sweep`, `consolidate` and `housekeeping-config` are removed; use `maintain` (naming `consolidate` now implies `mirror`) and `maintenance-config`. New `POST ?action=repair` (`{ characterId?, dryRun? }`): finds links in `relatedMemoryIds`, `consolidatedFrom` and `supersededById` that name missing rows, and rows without embeddings; a live run scrubs the links (`scrubDanglingMemoryLinks`, through the retirement's removal deltas) and queues up to 2,000 embedding jobs. `MemoriesRepository.findDanglingLinks`; `enqueueMissingEmbeddings` is shared with `backfill-embeddings`. `extraction-limits-config` and `recall-config` validate through the façade's schemas; `maxPerHour` keeps its 10,000 bound in `MemoryExtractionLimitsSchema`.
+- Settings tab: the Housekeeping, Consolidation and Near-Duplicate Folding cards are replaced by one Maintenance card: the master switch, per-phase switches (fold, consolidate, demote, retire), archive retention, the cap and per-character overrides, consolidation particulars, "Run maintenance…" and the ledger (`?action=maintenance-status`, refreshed by the `memories` realtime topic). `section=memory-housekeeping`, `memory-consolidation` and `memory-deduplication` deep links open it. The Extraction Grain card gains the extraction rate limits. New `useMemorySettingsDocument` hook.
+- `MaintenanceDialog`: pick a character (or every character from the card), pick phases, optional cap for the run; dry run shows a per-phase report (consolidation clusters included), or a per-character table for a user-wide run; real runs are queued. The character page's Memories tab opens it from a **Maintenance** button, replacing the Memory Cleanup dialog.
+- CLI (quilltap 4.10.0-dev.173): `memories maintain --character <name|id|all> [--phases …] [--dry-run] [--max N] [--threshold] [--cap N]` replaces `memories consolidate`. `memories validate` also checks `consolidatedFrom`, `supersededById` and missing embeddings; `--repair` asks the server (dry run unless `--write`). `db memories --tier hot|cold`. Memory verbs that call the server resolve the port from `--instance`.
+- Help: `memory-housekeeping.md` and `memory-consolidation.md` (and the dedup section of `system-tools.md`) merged into `help/memory-maintenance.md`; links and the help category updated.
+- Docs: CLAUDE.md gains a chokepoint line for `resolveMemorySettings` / `patchSchemaOf`, `MemoryClock`, `salience` / `protection`, `assembleRecall` / `deliverRecall`, `runMaintenance` and `scrubDanglingMemoryLinks`. `memory-consolidation-and-tiers.md`, `memory-recall-and-housekeeping-fixes.md`, `commonplace-relevance-fix.md` and `episodic-recall-overhaul.md` moved to `features/complete/` with a pointer to the refactor spec. `memory_management.md` §9 rewritten for the new layout. API.md, DDL.md updated. The Friday backfill (E2) is still to be run on the live instance.
+
+#### Bug 244: a one-field settings write reset every other field
+
+- Zod 4's `.partial()` keeps each field's `.default()`, so `consolidation-config`, `extraction-mode-config`, the maintenance phase toggles, `maintain`'s `settings.consolidation` and the text-replacement PATCH turned a one-field body into a full object of defaults and wrote it over the stored values. Switching consolidation on cleared its connection profile, thresholds and archive retention. New `patchSchemaOf` (`lib/schemas/patch-schema.ts`) strips defaults before making keys optional; every partial write schema uses it.
+
+#### Bug 242: single-character turns skipped the end-of-turn work
+
+- The Salon's stream reader treated the depth-0 `turnStart` that precedes every first turn as entering a chain, so a single-character reply finished through the chain's intermediate path: no transcript refetch, no queue notification, no "empty response" toast. Only a `turnStart` with `chainDepth > 0` now enters a chain. Test: `useSSEStreaming-single-turn-done.test.tsx`.
+
+#### PR 97 review: 8 findings on Phase F
+
+- Exemption is per phase, not per job: a maintenance payload carries `exemptPhases` (a manual request's phases, or all of them when it names none). Merging a manual request into a waiting scheduled job no longer lets the scheduled phases skip `memoryMaintenance.enabled` / `memoryConsolidation.enabled`.
+- The per-phase toggles (`memoryMaintenance.phases`) govern every phase a scheduled or watermark request asks for, named or not. Before, a watermark run named its phases and so skipped the toggles.
+- A PROCESSING maintenance job no longer absorbs a new request. A new PENDING job is made; the handler re-enqueues itself two minutes later while another run for the character is in progress. A watermark therefore no longer starts a six-hour consolidation throttle for a run that never happens.
+- A demotion that found no excess counts as ineffective, so a character between 90% and 100% of its cap backs off for an hour, as before Phase F.
+- The near-duplicate fold takes admission's lock one group at a time and retires each group inside it; under a job's time budget it stops starting groups after 40% of the budget (`groupsDeferred`), and consolidation gets what is left.
+- `enqueueMemoryMaintenanceMany`: a user-wide run and the daily sweep read each owner's pending jobs once, not twice per character.
+- A live `POST ?action=housekeep` enqueues a `MEMORY_MAINTENANCE` job (`{ queued: true, jobId }`) instead of demoting in the server process beside a running job. The Memory Cleanup dialog's toast says so.
+- `stopMemoryMaintenanceScheduler` also cancels the startup tick if it has not fired.
+- `QUILLTAP_TEST_MAINTENANCE_FAIL_AFTER_PLAN` is honoured only when `NODE_ENV !== 'production'`; in production it is ignored with a warning.
+
+#### Memory refactor Phase F: one maintenance job
+
+Structural Phase F of `docs/developer/features/complete/memory-system-refactor.md`. One migration.
+
+- New job type `MEMORY_MAINTENANCE` replaces `MEMORY_HOUSEKEEPING` and `MEMORY_CONSOLIDATION` (both enums and handlers deleted; migration `drop-housekeeping-consolidation-jobs-v1` deletes their queued and historical rows). One job per character, deduped by `characterId` alone; a waiting job widens to the phases a later request asks for and adopts its overrides.
+- New `lib/memory/maintenance/`: `runMaintenance(request, ctx)` reads the corpus once (`loadCorpus` / `MaintenanceCorpus`, pages of 250) and runs the phases in fixed order — `fold-near-duplicates` → `consolidate` → `demote` → `retire` → `mirror` — each planning against the corpus as the earlier ones left it. Automatic runs (scheduled, watermark) obey `memoryMaintenance.enabled` and `memoryConsolidation.enabled`; manual runs do not.
+- `fold-near-duplicates` (new, LLM-free) folds hot AUTO rows at or above admission's near-duplicate cosine for the default profile (0.90 neural, 0.80 Built-in TF-IDF), same subject, same kind, same occasion (admission's 7-day date guard) into the highest-protection row of each set (at most 2,000 newest rows compared per bucket per run) through `foldInto` / `applyFold`, then `retireMemories(…, 'near-duplicate-fold')`. Survivor-first grouping, not transitive. Writes run in the parent under admission's per-character lock (host-RPC `foldNearDuplicates` from the child). Replaces `lib/tools/memory-dedup.ts` (deleted with its O(n²) scan, survivor score and 0.80 default).
+- `consolidate`: the phase passes only the run's own overrides, so the Built-in profile's `tfidfClusterThreshold` applies unless a run names a threshold. `consolidation.ts` keeps the planner and model route (`consolidate(input, opts)`); the loader moved to `maintenance/consolidate.ts` and the announce code (archive invalidation, realtime, mirror) moved to the maintenance run. `runConsolidation` removed. Self-bucket canon now includes `Commonplace/Self.md`, as the extractor's does.
+- `demote`: demotes exactly `demotable − cap` hot AUTO rows, lowest `protection` first. The retention-by-age pass and its `maxAgeMonths` / `maxInactiveMonths` / `minImportance` knobs are gone (API and the character-page Memory Cleanup dialog).
+- `retire`: cold, superseded AUTO rows past `coldRetentionDays` by `supersededAt`, planned from the corpus. `MemoriesRepository.findExpiredColdIds` removed.
+- All effects after commit: in the job child the run announces nothing; the dispatcher's commit hooks invalidate the frozen archive, publish `memories` and `mountPoints`, write the `Commonplace/` mirror from committed rows, and record the run's summary in the parent ledger. The child hands the summary back through a new `result` field on the `job-result` message (`setJobResult`). In-process runs announce after their writes.
+- New parent-side ledger (`maintenance/ledger.ts`): last run per phase, last summary, last demotion's effectiveness, watermark debounce; seeded once per process from recent `MEMORY_MAINTENANCE` rows. `shouldEnqueue(characterId, reason)` replaces `maybeEnqueueHousekeeping`'s two throttles, the child-side `housekeeping-outcome-cache.ts`, and `consolidation-triggers.ts`'s debounce and throttle (same values: cap watermark at 90%, 15-minute demotion throttle, 1-hour backoff after an ineffective demotion, consolidation watermark with a 6-hour throttle). The watermark check (`maybeEnqueueMaintenance`) runs in the parent after admission inserts and from the dispatcher commit hook; the child-side `admission/after-insert.ts` is deleted.
+- One scheduler, `maintenance/scheduler.ts` (`scheduleMemoryMaintenance`): daily tick, 5-minute startup grace, startup skip after a scheduled run in the last 20 hours; one job per live character holding memories. Replaces `scheduled-housekeeping.ts` and `runScheduledConsolidation`; the 30-minute consolidation-then-housekeeping delay is now phase order.
+- Settings: `memoryMaintenance.phases` (`foldNearDuplicates`, `demote`, `retire`; default on) gates the job's own phases for scheduled and watermark requests; `?action=maintenance-config` accepts a partial `phases`.
+- API: new `POST /api/v1/memories?action=maintain` (`{ characterId?, phases?, dryRun?, settings? }`; dry runs in-process, user-wide only for LLM-free phases; otherwise enqueues per character) and `GET ?action=maintenance-status` (the ledger). `housekeep`, `housekeep-sweep` and `consolidate` now run through `runMaintenance` / `MEMORY_MAINTENANCE` with their old response shapes. `system/tools?action=memory-dedup` and `memory-dedup-preview` removed; the settings card (now "Near-Duplicate Folding") calls `maintain` with `phases: ['fold-near-duplicates']` and has no threshold slider.
+- CLI: `quilltap memories status` shows the maintenance ledger from the running server (`--port`) and the last three `MEMORY_MAINTENANCE` job rows. `quilltap memories consolidate` enqueues a maintenance job. `quilltap` CLI 4.10.0-dev.170.
+- Help: `memory-housekeeping.md`, `memory-consolidation.md`, `system-tools.md`, `settings.md`, `memory-recall-relevance.md`, `cli-memories.md`. API.md, BACKGROUND_JOBS_CHILD.md and DDL.md (`memoryMaintenance.phases`) updated.
+- Tests: `run-maintenance.test.ts` (phase order and skipping, cap on demotable rows only, demote order equals protection ascending, demoted rows re-enter consolidation, retire by `supersededAt`, mirror only after commit, dry run equals live), `ledger-and-triggers.test.ts` (throttles, backoff, seeding, watermark, scheduler, handler and its fail-after-plan flag `QUILLTAP_TEST_MAINTENANCE_FAIL_AFTER_PLAN`), the enqueue dedupe suite, near-duplicate folding in `policy-protection.test.ts`, the dispatcher's ledger-after-commit case, and the consolidation suite ported to `runMaintenance`. Housekeeping, consolidation-trigger and consolidation-handler suites deleted with their modules.
+
+#### Built-in TF-IDF profile: memory tuning; fix bug 243
+
+Spec: `docs/developer/features/builtin-tfidf-memory-tuning.md`. One migration (`add-tfidf-text-shape-version-v1`: `tfidf_vocabularies.textShapeVersion INTEGER DEFAULT 0`). No plugin change.
+
+- BUILTIN embeds leave out a memory's anchor line. Memory writers pass `lexicalText: lexicalEmbeddingTextFor(memory)` (`summary\n\ncontent`, `lib/memory/index-store/embedding-text.ts`) to `generateEmbeddingForUser`; `generateBuiltinEmbedding` embeds it instead of the text, every other provider ignores it, and non-memory text (help sections, queries) is embedded as given. The refit fits on the same text. Under TF-IDF the anchor's dates and place names dominated short memories: identical text with different anchors scored ~0.4–0.5, unrelated facts sharing a place ~0.4. `embeddingTextFor` is unchanged and still the only builder (its base is `lexicalEmbeddingTextFor`); neural profiles embed exactly what they did.
+- Admission thresholds per provider: `ADMISSION_THRESHOLDS_TFIDF` (near-duplicate 0.80, reinforce 0.40, related 0.20) beside the neural `ADMISSION_THRESHOLDS`, picked by `admissionThresholdsForProvider`. `AdmitPreparedRequest.embeddingProvider` carries the candidate's provider to the parent; missing reads as neural. The anchor probe uses the same picker and flags a lexical profile (`lexicalProfile`, `note`; the CLI prints the note), where its two sides are the same text. One predicate for the cosine scale, `isLexicalEmbeddingProvider` (`lib/embedding/cosine-scale.ts`), used by the recall floor, the R1 boost gate, admission and consolidation. `AdmissionThresholds` is now an interface; `MemorySettings` gains `admissionTfidf`.
+- Consolidation: new `memoryConsolidation.tfidfClusterThreshold` (default 0.30), used instead of `clusterThreshold` (0.72) when the default embedding profile is BUILTIN (`resolveClusterThreshold`). A per-run threshold still wins. The report's `settings.clusterThreshold` is the one used. Consolidation card gains "Cluster threshold (Built-in)".
+- TF-IDF refit only when due (`lib/embedding/builtin-refit-policy.ts`): no vocabulary, a vocabulary whose `textShapeVersion` is below `LEXICAL_TEXT_SHAPE_VERSION` (1; existing rows read 0, so a one-time re-embed without anchors; the refit stamps the version), or memories created since the fit ≥ max(25, 10% of all memories). `scheduleRefit` evaluates this when its debounce fires (manual create/edit/delete no longer always refit and re-embed everything); import passes `{ force: true }`. `checkBuiltinRefit` runs at boot (instrumentation phase 3.8) and in the scheduled maintenance pass (step 10, `builtinRefit` in the summary). Both go through one serialised check-then-enqueue (`enqueueRefitIfDue`), which skips when a refit or full reindex is pending or running (`backgroundJobs.findActiveByType`, by status) — a forced import refit is held only by a pending one — and when there are no memories to fit. Counts are two queries (`memories.countCorpusSince`); the instance default profile is `embeddingProfiles.findInstanceDefault`. The refit gathers memories by `findDistinctCharacterIds`, the corpus the policy counts (was the user's readable characters).
+- Recall floor for TF-IDF unchanged (0.10); offline, relevant memories score 0.22–0.26 once anchors are out.
+- 243: the job child ran jobs before its plugin registry had loaded, so the first jobs after a fork failed with "Provider '…' not found in registry"; on BUILTIN instances the boot-time help-doc embeds were skipped section by section. `runJob` now awaits `whenPluginsReady()` (`lib/background-jobs/child/plugin-readiness.ts`), capped at 60 s; once the cap fires, later jobs do not wait again.
+- Help: `help/embedding-profiles.md` (the Built-in profile's separate measures), `help/memory-consolidation.md` (Built-in cluster threshold).
+- Tests: `builtin-lexical-text.test.ts`, `builtin-refit-policy.test.ts`, `provider-thresholds.test.ts`, `consolidation-provider-threshold.test.ts`, `child-plugin-readiness.test.ts`; `admission-admit.test.ts` (TF-IDF vs neural scale), `embedding-memory-anchor-text.test.ts` (refit corpus without anchors), `import-memory-embeddings.test.ts` (forced refit).
+- `quilltap` CLI 4.10.0-dev.169: `anchor-probe` prints the probe's note on a Built-in profile.
+
+#### Memory refactor Phase E: recall as a pipeline; delivery
+
+Structural Phase E of `docs/developer/features/complete/memory-system-refactor.md`. No migrations.
+
+- Recall: new stages under `lib/memory/recall/` — `buildRecallQuery` (distil, choose the text, embed once; retrospective probes embedded beside it) → `gather` (vector top-K + probes + anchors, or the text strategy) → `hydrate` (rows and filters) → `score` (floor, salience, window, `rankForRecall`) → `select` (related expansion, R6, cut) → `assembleRecall` → `render` → `deliverRecall`. `searchRecall` runs the search stages; `searchMemories` is the one-shot form. `rankForRecall`, `rankByBlend` and `reserveBackgroundSlots` moved to `lib/memory/scoring/rank.ts`.
+- `lib/memory/memory-service.ts` deleted: search moved to `recall/`; `generateMissingEmbeddings` and `rebuildVectorIndex` to `index-store/backfill.ts`; `markMemoriesAccessed` became `stampAccessed` in `recall/deliver.ts`. `lib/chat/context/memory-injector.ts` deleted: memory formatters to `recall/render.ts`, pool sizing to `recall/assemble.ts`, `formatCurrentSceneState` and `formatSummaryForContext` to `lib/chat/context/scene-state.ts`.
+- Moved under `lib/memory/recall/`: `recall-tags.ts` → `tags.ts`, `recall-tuning.ts` → `tuning.ts`, `recall-history.ts` → `history.ts`, `memory-subject.ts` → `subject.ts`, `frozen-archive-cache.ts` → `archive.ts`, `conversation-summary-search.ts` → `conversations.ts`, `memory-recap.ts` → `recap.ts`, `recall-replay.ts` → `replay.ts`.
+- `buildContext`'s recall block is `assembleRecall(plan)` before compression and `deliverRecall(bundle, …)` after the request body is built. The proactive pass hands its query and pool to `buildContext` as `preRecall` (replaces `preSearchedMemories`, `preSearchedQueryEmbedding`, `recallSignals`).
+- Behaviour changes:
+  - One embedding per turn. The head, the inter-character relevance half, the recap's relevant-conversations list, the per-turn conversation list and the retrospective mini-recap all use the turn's query vector. The inter-character relevance half filters the turn's one search by `aboutCharacterId` (five per character), reading its ranked rows past the head's cut, instead of running a search per present character. The recap's list uses the turn's query when the turn has one. The retrospective mini-recap still searches `paraphrase — entities` (its own embedding when the turn names anyone, on retrospective turns only).
+  - Cross-pool dedup: a row appears in at most one of archive / head / inter-character. The recap narrative is built without the rows the archive rendered (it reads that many more per tier). The head and the inter-character section do not skip the recap's rows: the narrative is a lossy summary, not the memory's words (review of PR 95).
+  - When the proactive pass found nothing (or its search failed), the turn runs the fallback distil-and-search, as before.
+  - Debug labels left the model's text: no `[m_xxxx]` id tags, no `importance` / `relevance` / `weight` numbers, no `recall:` multiplier labels, no targeting tags in the keywords (`past`, `scope: narrow`, `history`, …). Lines carry age, subject prefix, words, digest provenance and human keywords. The numbers remain in `debugMemories`.
+  - Delivery: rows are stamped `lastAccessedAt` and the head is added to the anti-repetition ring only for lines still present in the request body after Phase-2 memory compression (the whole rendered line verbatim; or, only in a section compression rewrote, 60% of the line's significant words in one compressed line). The ring is written whether or not the Commonplace whisper posted. Rows the recap only summarised are not stamped (as before). Carina, the voice rehearsals, the greeting and the search tool stamp what they deliver; the Memories API search stamps nothing.
+  - Each reply's `debugMemoryLogs` now opens with the turn's recall record: the stage trace, delivered counts per pool, and a `[Recall:ring]` line. Memory extraction appends its lines after the record instead of overwriting the field.
+- Recall replay (`?action=recall-replay`, `quilltap recall-replay`): runs on the stages, adds `fallbackPath` (the text strategy), `trace` (query, search stages, assemble), `pools`, `ring` and `ringSource`. The ring is rebuilt as of the turn from earlier replies' `[Recall:ring]` lines, else the chat's current ring. The CLI prints the fallback table and the stage trace.
+- Tests: probe fixture (`__tests__/fixtures/recall-probes/`, captured from the pre-Phase-E search under `cap14`; `probe-fixture.test.ts` reproduces every row), stage tables (`recall-stages.test.ts`), `assemble-deliver.test.ts` (one embedding per turn, cross-pool dedup, delivery after compression), `build-recall-query.test.ts`, renderer goldens without debug labels (`render.test.ts`), a continue-turn delivery test, and grep-tests for the access stamp and the retired modules. Search suites ported to `searchMemories`.
+- `quilltap` CLI 4.10.0-dev.166.
+
+#### Fix bugs 235–241: memory refactor dogfood on V4test
+
+Found dogfooding the memory refactor (Phases A–D) on `V4test`. No migrations.
+
+- 235: Process-wide state lives on `globalThis` through new `processSingleton` (`lib/utils/process-singleton.ts`). Next.js evaluates a module once per bundle, so the parent held one memory-vector cache for the instrumentation bundle (refreshed by the job dispatcher's post-commit `memoryIndex.reload`) and another per route bundle (searched by chat recall and the memories API); after a reindex, recall kept stale vectors and fell back to text search. Converted: the vector store manager, the frozen-archive cache, admission's per-character locks and idempotency ledger, the rate ledger, the housekeeping outcome cache, the refit debounce timers and the interactive-embedding counter.
+- 236: `POST /api/v1/memories` and `PUT /api/v1/memories/[id]` trim `content` and `summary` and reject blank text with 400. Create maps an admission refusal by reason: `empty` 400, `embedding-failed` 502 (was 500 "Failed to generate embedding" for both).
+- 237: Admission sees rows whose stored vectors are another length. `gatherNeighbours` reloads a mismatched cache once; if rows still differ, it word-matches them against the candidate's text and scores the top `ADMISSION_TOP_K` by re-embedding their stored text with the candidate's profile (`NeighbourProbe`). Before, every candidate inserted during a re-embed.
+- 238: The fold OTHER pass dates an undated draft at the observer's last line in the stretch (its `createdAt` and source message), not the stretch end.
+- 239: The instance lock records the server's HTTP `port`. `anchor-probe`, `recall-replay` and `memory-diff` accept `-i/--instance`, `-d/--data-dir` and `--passphrase` anywhere and take their port from `--port`, else the instance's live lock, else 3000 (`resolveServerPort` in `packages/quilltap/lib/lock-helpers.js`). `quilltap db --lock-status` shows the port.
+- 240: Importing a chats-only export with memories attaches them to the instance's existing characters (raw read, once per character; archived characters skipped). Before, every memory was skipped as naming a non-existent character.
+- 241: A Salon send that fails before the user message is saved restores the composer text, draft, attachments and staged tool results, and shows an 8-second error toast. The error frame carries `userMessagePersisted` / `pendingToolResultsPersisted` (orchestrator `SubmissionLedger`); the stream reader buffers split frames (`splitSseBuffer`) and treats a stream that ends without `done` / `chainComplete` as an error.
+- Help: `help/embedding-profiles.md` (duplicates still caught mid-re-embed), `help/system-import-export.md` (chats-only exports' memories), `help/chats.md` (a failed send returns the message). API.md, DDL.md (lock `port`) and the CLI README updated.
+- Filed bug 242 (open): a single-character turn's `done` runs the Salon's chain-intermediate callback because every first turn now sends a depth-0 `turnStart`, so the end-of-turn refetch, queue notification and empty-response toast are skipped.
+- Tests: `vector-store-process-singleton.test.ts`, `admission-neighbours.test.ts` (unindexed rows), `memories-manual-create.test.ts`, `other-fold-pass.test.ts`, `import-memories-local-characters.test.ts`, `server-port-resolution.test.js`, `instance-lock.test.ts`, `useSSEStreaming-send-failure.test.tsx`, `streaming.service.test.ts`.
+
+#### PR 94 review: 9 findings on Phase D
+
+- A fold slice whose calls the rate limit would all skip is deferred, not read: the cursor stays before it and the next fold or catch-up reads it (`runPass({ deferOnRateLimit })`, `skippedReason: 'rate-limited'`, no follow-up job). Before, the cursor moved past it and the stretch was never read.
+- Rebuilds of history are exempt from the rate limit and do not count towards it: regenerate (turn jobs and catch-ups), queue-memories, SillyTavern import and the dry run carry `backfill: true` (job payload, extraction context, `admitCandidate`). Before, a long regenerate hit the hourly cap after a few turns and lost every later turn.
+- `listExtractionTurns` keeps the greeting turn (character lines before the first user message) as a null-opener turn, as the live trigger extracts it; regenerate, queue-memories, the dry run and the SillyTavern import no longer drop it.
+- The dry run decides as a regenerate would: past the rows its chat wipe would retire (`previewChatWipe`, the wipe's own read-only plan, now `planRetirement` inside `retireMemories`), and against the inserts it would already have made (a parent-side `DryRunBook`), so a later near-duplicate reports `reinforce` into the earlier candidate. `gatherNeighbours` takes an `exclude` set.
+- The episode pass records and links only an episode it inserted; a reinforce or absorb into an existing row (possibly a fragment) no longer links the window's fragments to that row.
+- A fold that throws mid-run keeps what earlier slices did (cursor, usage, slices left as deferred), so its catch-up job books the tokens and hands the rest to a successor.
+- Cursor reads (`findCursor`, `findByChatId`, `findAllByChat`) throw instead of answering "no cursor", so a failed read cannot make a pass re-read covered history or the sweep enqueue a job for every idle chat.
+- Backup and multi-chat export read the cursor table once (`loadBundleCursors`), not once per chat.
+- One helper each for the valid-timestamp rule (`firstValidIso`) and the chat's message rows (`loadChatMessageEvents`, in `turn-transcript.ts`).
+- The fold OTHER cap stays budget-clamped (owner's call).
+
+#### Memory refactor Phase D: extraction — one context, four passes, cursors
+
+Structural Phase D of `docs/developer/features/complete/memory-system-refactor.md`. Two migrations.
+
+- Extraction: new `lib/memory/extraction/` replaces `memory-processor.ts`, `fold-other-pass.ts`, `fold-episode-pass.ts`, `fold-window.ts`, `fold-catchup.ts`, `fold-episode-catchup.ts`, `extraction-route.ts` and the extraction half of `cheap-llm-tasks/memory-tasks.ts` (deleted). Every unit of work (a turn, a Carina answer, a fold, a catch-up job, a dry run) calls `buildExtractionContext` once — chat, cast (hydrated once), project, Concierge-resolved cheap LLM and uncensored fallback, memory calendar, settings, rate limiter, cursors — and runs passes through `runPass` (rate limit → call → parse → cap → floor → admit). Four passes: `self-turn`, `other-turn`, `other-fold`, `episode-fold`. Prompt bodies moved unchanged to `extraction/prompts/{shared,self,other,episode}.ts`; parsers to `extraction/parse.ts`; the search-keyword distiller to `lib/memory/recall/query.ts` and the recap summariser to `lib/memory/recall/recap-summary.ts`.
+- Cursors: new table `memory_extraction_cursors` (`chatId`, `pass`, `messageId`; one row per chat and fold pass) replaces `chats.otherExtractionWatermarkMessageId` and `chats.episodeExtractionWatermarkMessageId`. Migration `add-memory-extraction-cursors-v1` copies both columns into cursors and drops them. A pass advances its cursor only past slices it read. Exports and backups still carry the two field names on the chat; import and restore write them to the table (`extraction/cursor-bundle.ts`). Regenerate clears a chat's cursors.
+- `INTER_CHARACTER_MEMORY` job type and its empty handler removed; migration `drop-inter-character-memory-jobs-v1` deletes any queued rows. `batchExtractMemories` removed. `MemoryChatSettings` lost the unread `conciergePolicy` / `isDangerousChat`.
+- `MEMORY_EXTRACTION` payload gains `pass` (`turn` / `other-fold` / `episode-fold`), `cursor` and `ignoreIdle`; queued rows with the old `foldOtherCatchup` / `foldEpisodeCatchup` / `foldOtherIgnoreIdle` flags still run. One maintenance sweep module (`maintenance/fold-catchup.ts`) enqueues both catch-ups and skips a chat whose catch-up for that pass is already queued (now for the OTHER pass too).
+- Dry run (`?action=extract-memories-dry-run`, `quilltap memory-diff`): the live pipeline with `dryRun: true`. Same connection profile as live (a seat's, else the cheap profile), autonomous chats included, both fold passes over the history a regenerate would rebuild, in-memory cursors. Admission embeds each candidate and decides without writing; each candidate reports `decision` and `extractionPass`. New NDJSON `fold` event. A dry run now makes embedding calls.
+- Behaviour changes:
+  - Extraction's cheap LLM honours the global default cheap profile (`buildCheapLLMConfig`), as the context summary already did.
+  - Caps are one rule per pass: `min(base, ceil(maxTokens / 8000))`. The fold OTHER cap (`foldCandidatesPerSubject`) is now clamped by the output budget like the turn cap, and the extra slot for a dated event is kept at fold grain instead of cut. The SELF parser caps at the pass cap.
+  - A memory's `createdAt` is its source message's time on every extraction path. The fold OTHER pass used now; the episode pass used the event date; the turn passes used the turn's latest assistant message for every slice.
+  - The rate limit is a live counter: a baseline from the parent's in-memory ledger of AUTO inserts in the last hour (new host-RPC `countRecentAdmissions`), plus each insert as it lands in the unit of work. It no longer counts rows by `createdAt`. A restart forgets the ledger. It now applies to the episode pass. A rate-limited character is still a subject of other characters' OTHER calls.
+  - Carina memories carry `pass: 'carina'` in their provenance.
+  - The context summary's fold OTHER pass now gets the project description as background.
+  - Regenerate enqueues anchored turn jobs for autonomous rooms (it used to enqueue one null-opener job) and an episode catch-up at once (it used to wait for the next fold or sweep).
+  - Queue-memories (`?action=queue-memories`) uses a seat's connection profile first, handles greeting-only chats, and no longer requires a configured cheap profile.
+- CLI: `memory-diff` prints fold-pass progress lines.
+- Tests: `run-pass-invariants.test.ts` (dry run equals live, live rate counter, fold event slot), `admission-dry-run.test.ts`, `add-memory-extraction-cursors-v1.integration.test.ts`, the cursor slicing test over a 150-message chat, the context-per-unit-of-work, Carina project and episode-fallback tests; processor, fold-pass, catch-up and prompt suites ported to the new module.
+
+#### PR 93 review: 10 findings on Phase C
+
+- A retried job no longer counts its admissions twice. Each admission from the job child carries a key (job id, content hash, occurrence in the attempt); the parent remembers the outcome per key for 24 hours (up to 5,000 keys) and answers a repeat without writing. A parent restart between attempts forgets the keys.
+- Admissions for one character are serialised in the parent (a per-character lock around search, decide and write), so two concurrent jobs no longer both insert the same memory.
+- When the row an admission folds into is retired before the write lands, admission decides again against the current index, and inserts if the target vanishes a second time. The candidate is never dropped, and the Memories API no longer reports this race as an embedding failure.
+- `applyFold` refuses to run in the job child, where buffered writes read back as missing rows.
+- A fold re-embeds the survivor whenever its content or anchor line changed, including at the footnote cap (the cap now limits only footnotes).
+- After a parent-side admission the job child's vector cache is patched with the written vectors and tiers (new IPC message `memory-index-patch`), not dropped.
+- The anchor gate probe uses the same `ADMISSION_THRESHOLDS` as admission, and counts a cold near-duplicate that would be promoted and absorbed as a near-duplicate (`isNearDuplicateDecision`).
+- The episode pass writes its fragment links through `linkBothWays` (`lib/memory/admission/links.ts`); a grep-test limits `addRelatedMemoryIds` to admission.
+- The entity bound is `MEMORY_ENTITY_CAP` in `lib/memory/candidate.ts` (used by the schema, the API, the episode pass and `FOLD_CAPS`); the probe uses `admissionReinforced` instead of a copy.
+- Removed the unused `dryRun` and `embeddingProfileId` admission options and the dry-run outcome flag.
+
+#### Memory refactor Phase C: admission in the parent; one combine
+
+Structural Phase C of `docs/developer/features/complete/memory-system-refactor.md`. No migrations.
+
+- Admission: new `lib/memory/admission/` replaces `lib/memory/memory-gate.ts` and the create half of `memory-service.ts`. `admitCandidate(candidate, resolved, opts)` is the one way a memory is created or reinforced: the calling process runs the name-presence and episodic-anchor safety nets and embeds (one retry; a failed embed rejects and writes nothing); `admitPrepared` searches both tiers, decides and writes in the parent. From the job child it is one host-RPC call (`admitMemory`), so every candidate reads and writes the real rows: two near-identical candidates in one job now make one row with count 2 (bug 209, structurally).
+- `decideAdmission` is pure and table-tested. Actions: `insert`, `insert-linked`, `reinforce`, `absorb`, `promote-and-reinforce`, `reject`. New rules: a neighbour at or above 0.85 about a different subject or of a different kind is linked, never folded into; a MANUAL candidate never folds into an AUTO row (it is inserted and linked); the date guard checks every close neighbour, not only the closest. Superseded cold members are replaced by their digest when neighbours are gathered (`gatherNeighbours`).
+- `foldInto` / `applyFold` are the one combine, used by admission's reinforce and the dedup tool: footnotes capped at 8, counts as a delta (`incrementReinforcement(by)`), links unioned minus the group, earliest `occurredAt`, filled `narrativeTime`, entities unioned to 12, re-embed only when the embedded text changed and the row is under the footnote cap. `lib/memory/memory-merge.ts` deleted.
+- Removed: `createMemoryWithGate`, `createMemoryWithEmbedding`, `createMemoryDirect`, `CreateMemoryOptions`, `MemoryGateOutcome`, `runMemoryGate`, `reinforceMemory`, `absorbNearDuplicate`, `countReinforcement`, `patchMemory`, `linkRelatedMemories`, `promoteMatchedMemory`, `reembedMemory`, the exported threshold constants (read `ADMISSION_THRESHOLDS`), and `skipGate` / `skipEmbedding` / `promoteOnMatch` on `MemoryServiceOptions`. `toCreateMemoryOptions` is now `toAdmissionRow`.
+- Manual create (`POST /api/v1/memories`): goes through `admitCandidate`. A hand-written memory folded into a MANUAL row or a digest raises that row's importance when higher; it no longer re-files an AUTO row as MANUAL (it is inserted and linked instead). The response's `action` is the action kind (`insert`, `reinforce`, …).
+- Anchor gate probe (`?action=anchor-gate-probe`, `quilltap anchor-probe`): reads thresholds from `resolveMemorySettings` and reports `decideAdmission`'s decision per row (`anchoredAction`, `anchorFreeAction`); the band counts are rows that would fold / be absorbed.
+- The consolidation watermark is checked by admission in the parent (extraction batches no longer carry `memories.create`); the housekeeping watermark still runs where the housekeeping outcome cache lives.
+- Extraction debug lines come from the admission trace (`describeAdmission`): action, target, count, and each neighbour's cosine and verdict.
+- Help: `help/characters.md` (hand-written memories), `help/episodic-memory.md` (date guard over every match; subject and kind kept apart). CLI README and API.md updated.
+- Tests: `admission-decide.test.ts`, `admission-neighbours.test.ts`, `admission-fold.test.ts`, `admission-admit.test.ts`, `admission-host-rpc.test.ts` (child → host-RPC → parent), grep-tests for the insert and reinforcement chokepoints. Gate, merge and manual-promote tests removed or ported; the overlay test is renamed `child-proxy-memory-overlay.test.ts`.
+
+#### Memory refactor Phase B: the index gets an owner; one deletion
+
+Structural Phase B of `docs/developer/features/complete/memory-system-refactor.md`. One migration. No open bugs were in the catalogue.
+
+- Index: `memories.embedding` and `memories.tier` are the only stored copy of a memory's vector and tier. New `lib/memory/index-store/` owns them: `memoryIndex` (`search`, `shape`, `entries`, `upsert`, `indexInserted`, `setTier`, `remove`, `reload`, `reloadAll`) and `embeddingTextFor`, the one embedded text (replaces `buildMemoryEmbeddingText`). Every embedding and tier write goes through it: the gate, re-embeds, edits, consolidation, housekeeping demotion, `EMBEDDING_GENERATE`, the missing-embeddings backfill.
+- `lib/embedding/vector-store.ts` is now a cache only: it loads `id, embedding, tier` from `memories` in one query and writes nothing. Only `index-store/` imports it. First loads are memoised (concurrent first use no longer builds two stores). Mixed vector lengths are held; search scores entries matching the query's length and recall falls back to text only when none match.
+- Migration `retire-memory-vector-entries-v1`: copies any vector `vector_entries` held that its memory row lacked, then drops `vector_entries` and `vector_indices`. `VectorIndicesRepository`, `lib/schemas/vector-indices.types.ts` and `scripts/rebuild-vector-indices.ts` removed. `normalize-vector-storage-v1` no longer recreates the table once both are gone.
+- Deletion: new `retireMemories(ids, { reason, keep? })` (`lib/memory/retire.ts`) is the only delete. It scrubs `relatedMemoryIds`, surviving digests' `consolidatedFrom` and surviving members' `supersededById`, retires a digest with its last member (not during retention), evicts vectors, and in the parent invalidates the frozen archive, publishes `memories` and refreshes the Commonplace mirror. `retireChatMemories(chatId)` is the chat wipe (`keep: 'manual'`). Removed: `deleteMemoryWithUnlink`, `deleteMemoriesWithUnlinkBatch(Report)`, `deleteMemoryWithVector`, the three `deleteMemoriesBy*WithVectors`. Every caller (item delete, chat wipe, regenerate, message and swipe cascades, re-attribution, character delete and archive, restore, retention, dedup) now calls it.
+- A digest is alive while some listed member exists and still names it (`supersededById`); `keep: 'manual'` and the last-member cascade share that one rule. The cascade hands its digest scan to the link scrub instead of repeating it.
+- Repository: `MemoriesRepository.bulkDelete` renamed `bulkDeleteUnsafe`; `delete` throws; `deleteForCharacter`, `deleteBySourceMessageId`, `deleteByChatId`, `findColdIdsByCharacterId` removed; `findIndexRowsByCharacterId` added.
+- Edits: `editMemory` (`lib/memory/memory-edit.ts`) moved to `updateMemory` (`lib/memory/admission/`); it embeds the edited text and writes text and vector in one row update. `updateMemoryWithEmbedding` and `MemoryReembedError` removed.
+- Job host: the pre-commit owner lookup for memory-id-keyed writes reads `memories` only; it no longer joins the dropped `vector_entries` table, which made it fail silently on every migrated instance. A failed lookup now logs a warning.
+- Job host/child: post-commit cache invalidation lists only `memories` writes that change a vector, tier or row (`vector-store-invalidation.ts`) and reloads through `memoryIndex.reload`.
+- Backup: no `vector-entries.json` or `vector-index-metas.json`. Restore of an older archive uses its `vector-entries.json` only to fill a memory row that arrived without an embedding (`legacyVectorsAdopted` in the summary); the vector-index counts are gone from the manifest, preview and restore summary.
+- Startup: the dimension reconcile and text-embedding repair no longer touch the mirror; `vectorEntriesDeleted`, `vectorIndexMetaFixed` and `vectorEntriesRepaired` removed from their results. A full reindex no longer clears anything up front: each re-embed's commit drops that character's cache.
+- API: `PUT ?action=embeddings` reloads the index from the rows and reports `failed` as memories with no embedding; `POST ?action=embeddings` no longer takes `batchSize`.
+- Help: `help/memory-consolidation.md` (deleting a digest's last note retires the digest; retention never does), `help/embedding-profiles.md`.
+- Tests: `__tests__/unit/lib/memory/memory-index-and-retire.test.ts` (index round trip, tier on reload, memoised load, the three scrubs, digest cascade, `keep: 'manual'`, grep-tests for both chokepoints), migration test, dispatcher reload by touched characters.
+
+#### PR 91 review: 9 findings on Phase A
+
+- A candidate that fails validation no longer throws. `candidateFromDraft` returns null for a draft with no usable text (whitespace-only content and summary); `writeCandidate` skips that draft and the rest of the turn's extraction continues. A blank `content` falls back to the summary.
+- An empty or malformed source timestamp no longer produces a NaN anchor: new `anchorTimeMsFrom` takes the first parseable of the source message time, the turn time, then now. Used by the per-turn writer and the fold episode pass.
+- Manual memory create (`POST /api/v1/memories`) caps `entities` at 12 in the request schema and returns 400, not 500, when the candidate schema refuses the input.
+- The housekeeping dialog no longer sends a fixed cap of 2000. It omits `maxMemories` until the user types one, so the server applies the character's configured cap; the preview response now includes `capUsed`, which the dialog displays.
+- The housekeep, preview and job paths read only the `memoryMaintenance` setting (`resolveMemoryMaintenance`) instead of all five memory settings.
+- The neighbour scrub on delete is instance-wide again: `removeRelatedMemoryIdsForCharacter(characterId, ids)` is replaced by `removeRelatedMemoryIdsEverywhere(ids)`, which scrubs every requested id (including ids whose rows are already gone) from every row, still as one SQL removal delta. The job child's scrub set is job-wide.
+- The episode catch-up sweep skips a chat that already has an episode catch-up job queued or running, whatever its anchor, so a `continue-episode:` chain and a new sweep job never read the same slices.
+- The episode catch-up sweep reads no transcripts: it tests the backlog against `summaryAnchorMessageIds` (`isEpisodeBacklogBehindByAnchors`); the job keeps the exact transcript check. Both catch-up sweeps share one `chats.findAll()`.
+- `FOLD_EPISODE_PROMPT` no longer asks for `participants`, which the parser stopped reading.
+
+#### Memory refactor Phase A: scoring, clock, settings, candidate
+
+Structural Phase A of `docs/developer/features/complete/memory-system-refactor.md`. One migration.
+
+- Scoring: new `lib/memory/scoring/` holds the three numbers. `relevance` (cosine and the recall blend), `salience` (reinforced importance with a 30-day half-life, no floor) and `protection` (the housekeeping score, unchanged). `calculateEffectiveWeight`, `rankMemoriesByWeight`, `lib/memory/memory-weighting.ts` and `lib/memory/reinforced-importance.ts` removed. Search results, the memory tools and debug info report `salience` instead of `effectiveWeight` / `rawWeight`.
+- Every `minImportance` filter reads reinforced importance through `filterImportance`. Prompt paths use `RECALL_MIN_IMPORTANCE` (0.3); the memory search tool and API search default to `TOOL_MIN_IMPORTANCE` (0). UI importance bands come from `importanceBand`.
+- Time: new `lib/memory/time/` (`calendar`, `calendar-refresh`, `anchors`, `rules`, `clock`, `age-label`). One `DAY_REFERENCE_TABLE` drives both the extraction-side `when` resolver and the search-side day windows. Windows are closed (`to` is the next boundary minus 1 ms). A "today" phrase is stamped at local midnight. Day counts go out to fourteen days. `lib/memory/day-references.ts` removed.
+- Settings: `lib/memory/settings.ts` (`resolveMemorySettings`) is the one read of every memory setting; `lib/memory/settings-defaults.ts` holds the defaults (from the Zod schemas) and the gate's admission thresholds. New instance setting `memoryMaintenance` `{enabled, perCharacterCap, perCharacterCapOverrides}`, caps 100–100,000, replaces `chat_settings.autoHousekeepingSettings`. `mergeSimilar` / `autoMergeSimilarThreshold` removed.
+- Migration `move-memory-maintenance-settings-v1`: copies housekeeping settings into `memoryMaintenance`, deletes the `memoryExtractionConcurrency` instance key, drops `chat_settings.autoHousekeepingSettings`, `memoryExtractionLimits` and `memoryExtractionConcurrency`. Restore of an older backup derives `memoryMaintenance` the same way.
+- API: `?action=maintenance-config` (old `housekeeping-config` still answers). `?action=extraction-concurrency` removed. Housekeep results drop `merged` / `mergedIds` / `wouldMerge`; `maxMemories` is validated to 100–100,000 and defaults to the character's configured cap.
+- Candidate: new `lib/memory/candidate.ts` with `MemoryCandidateSchema`, the one shape every producer builds (per-turn passes, fold OTHER, fold episode, manual API, consolidation). Targeting tags ride on the candidate and are written into keywords only by `toCreateMemoryOptions`. The parser's `coerceImportance` is the only importance default, so a model's 0 stays 0. The cheap-LLM `MemoryCandidate` type is renamed `MemoryDraft`.
+- Almanack reports `instanceSettings.memoryMaintenance` instead of the chat-settings housekeeping block.
+
+#### Fix bugs 230–234: the remaining open memory bugs
+
+Targeted fixes ahead of the memory refactor phases that were to close them. No migrations.
+
+- 230: The memory dry run (`?action=extract-memories-dry-run`) passes the chat's `projectId`, project description and context summary to the extractor, as the per-turn and Carina handlers do.
+- 231: Related links and reinforcement footnotes are written as deltas against the live row: new `MemoriesRepository.addRelatedMemoryIds`, `removeRelatedMemoryIds` and `appendReinforcementFootnotes` (read and write in one SQLite transaction). The gate, the fold episode pass's fragment links and the memory editor use them, so two jobs touching one memory both keep their links and footnotes. The job child's overlay applies the same deltas. Footnote helpers moved to `lib/memory/reinforcement-footnotes.ts`; `appendCappedFootnotes` now skips a footnote the content already has.
+- 232: The fold episode pass has an idle catch-up. The daily maintenance sweep enqueues a `foldEpisodeCatchup` MEMORY_EXTRACTION job for each chat idle over two hours whose episode watermark is behind its fold boundary (last `summaryAnchorMessageIds` entry); each job reads up to 4 slices and enqueues its successor (`continue-episode:<watermark>`). Shared catch-up rules moved to `lib/memory/fold-catchup.ts`.
+- 233: Search and replace writes each memory through `editMemory`, which re-embeds the new text in the same write; a memory whose text cannot be embedded is left unchanged and listed in `errors`. `MemoriesRepository.replaceInMemories` removed.
+- 234: The delete chokepoints scrub `relatedMemoryIds` with one SQL removal delta per holder (`removeRelatedMemoryIdsForCharacter`) instead of reading neighbours and writing whole lists; the instance-wide neighbour scan and `DeleteBatchOptions.currentLinks` are gone.
+
+#### Document Commonplace cleanup on character deletion
+
+- Deleting a character (not archiving) removes its `Commonplace/` digest files along with its digests. Confirmed as intended; documented in `help/memory-consolidation.md` and bug 208.
+
+#### PR 90 review: 16 findings on the bug 203–226 fixes
+
+- Migration `rezone-legacy-memory-occurred-at-v1` re-stamps legacy UTC-midnight `occurredAt` values at local midnight of the same date in the instance timezone (decision 10's no-backfill reversed). No `createdAt` cutoff.
+- Every embedding-text builder and extraction prompt resolves the instance timezone first and carries it on `ExtractionClock.timeZone` to the `when` resolver, so the CLOCK block and the resolver use one calendar.
+- A reinforcement-only job batch no longer unloads the character's vector store.
+- Deleting memories from a digest in a background job composes: the `consolidatedFrom` scrub is a SQL removal delta (`removeConsolidatedMembers`), read through the child overlay, scoped to the deleted rows' characters. New partial index `idx_memories_supersededById` (migration `add-memories-superseded-by-index-v1`).
+- Deleting a digest (card, sweep or job) re-mirrors `Commonplace/<Subject>.md`; a subject with no digests left has its file removed. In a job, after commit.
+- Fold OTHER and episode passes read from their own watermark through the fold window, so a slice lost to a timeout is read by the next fold. Each run reads at most 4 slices; an OTHER catch-up with more continues in a follow-up job.
+- The episode pass no longer links sibling episodes from the same run as fragments.
+- A fold hands both passes the transcript it already loaded.
+- A manual memory the gate folds into an existing row promotes it to MANUAL with the higher importance (`promoteOnMatch`).
+- Dedup merge treats the survivor patch as the commit point; a missed count update no longer keeps the merged-away rows.
+- Editing a memory's text embeds first; if embedding fails the edit returns 502 and the row is unchanged.
+- `editMemory` mirrors through `mirrorCommonplaceForSubjects`; its private copy is gone.
+- New memories are written with their embedding in the insert (`createMemoryDirectWithEmbedding` is the one persist tail).
+- The user-wide housekeeping sweep reads the job queue once.
+- Filed bugs 232 (episode pass has no idle catch-up), 233 (search and replace never re-embeds memories), 234 (related-links scrub lost update).
+
+#### File bugs 230 and 231; list carried-forward memory work
+
+- Bug 230 (open): the memory dry run omits `projectId`, project description and context summary.
+- Bug 231 (open): two overlapping extraction jobs can overwrite each other's related links and footnotes (cross-job half of bug 209).
+- Memory refactor spec §2.1 lists what the 203–226 targeted fixes left for each phase.
+
+#### Fix bugs 203–226: memory system defects from the refactor audit
+
+Targeted fixes on the current code, ahead of the memory refactor phases. Three migrations: `add-episode-extraction-watermark-v1`, `add-memory-superseded-at-v1`, `recompute-reinforced-importance-v1`.
+
+- 203: `PUT /memories/[id]` goes through new `editMemory` (`lib/memory/memory-edit.ts`): changed text is re-embedded, `reinforcedImportance` recomputed, related links validated and written on both sides, the frozen archive invalidated, `memories` published, and a digest's Commonplace mirror refreshed.
+- 204: Background re-embeds and the BUILTIN vocabulary refit embed through `buildMemoryEmbeddingText`, so the anchor line is kept.
+- 205: `rebuildVectorIndex` (and the other two re-add paths in `memory-service.ts`) keep each row's tier; cold rows no longer pass hot-only recall.
+- 206: The fold OTHER pass reads wide windows in 60-message slices and advances its watermark only past slices it read. Shared rules in `lib/memory/fold-window.ts`.
+- 207: The fold episode pass has its own watermark, `chats.episodeExtractionWatermarkMessageId` (patch-only, backfilled from the last summary anchor, exported, remapped on restore/import). Hard rebuilds no longer re-extract the whole history; regenerate clears it.
+- 208: The Commonplace vault mirror is written by the parent after the job's batch commits, from committed rows (`lib/memory/commonplace-mirror.ts`). The `writeCommonplaceDigestsToVault` host-RPC method is removed.
+- 209: The job child's repository proxy keeps a per-job memory overlay, so the gate sees memories, links and footnotes written earlier in the same job. No more duplicate inserts, lost links or lost footnotes within one job.
+- 210: The housekeeping cap counts demotable rows only (hot AUTO, non-digest). Over the cap, exactly the excess is demoted, lowest protection first; protected AUTO rows can now be demoted, last. `character-memory-counts` and the Housekeeping card report `hotTotal` / `demotable` / `protected`.
+- 211: Consolidation takes cold AUTO rows with no successor (demoted by housekeeping) as candidates, so they can be digested and later expire.
+- 212: Memory event time uses one calendar per instance (Salon timezone, then `QUILLTAP_TIMEZONE`, then system) on write, read and in the classifier's date-only ranges (`lib/memory/memory-calendar.ts`). "Last night" written now falls inside "last night" asked. Existing rows are not backfilled.
+- 213: Every extraction pass sets `isDangerousChat` on its uncensored fallback from `shouldUseUncensoredRoute(chat)`; the fold episode pass now gets the fallback (`lib/memory/extraction-route.ts`).
+- 214: The text-search fallback honours `excludeMemoryIds`, `occurredWithin`, recall multipliers, `extraProbes`, `entityAnchors` and `weightClockMs`.
+- 215: Every recap importance band filters on `reinforcedImportance`, with limits in SQL.
+- 216: `reinforcedImportance = min(1, importance + log2(count) × 0.05)`, so count 1 equals importance. Migration recomputes every row.
+- 217: Vector-store invalidation after a job commit is keyed by the characters each write touched, including `bulkDelete` and memory-id-keyed writes (`lib/background-jobs/host/vector-store-invalidation.ts`).
+- 218: `POST /memories` always stores `source: MANUAL` / `witnessedContext: manual`, drops `skipGate`, resolves `projectId` (explicit or from the chat), accepts `kind` / `occurredAt` / `entities`, and returns 200 with the gate `action` when it reinforced an existing row (201 only on insert).
+- 219: `GET /memories/[id]` no longer updates `lastAccessedAt`.
+- 220: `createMemoryDirect` embeds first (one retry) and writes row and embedding together; on failure nothing is written.
+- 221: Housekeeping jobs dedupe per character regardless of reason; user-wide sweeps enqueue one job per character.
+- 222: Carina memory extraction passes the chat's `projectId`, project description and context summary.
+- 223: A real `?action=consolidate` run uses the requested `clusterThreshold` (new payload field).
+- 224: The inter-character memory section skips memories already shown in the archive or dynamic head.
+- 225: New `memories.supersededAt`; cold retention ages by it, not `updatedAt`. Deleting memories scrubs them from surviving digests' `consolidatedFrom` and releases a deleted digest's members.
+- 226: The dedup merge adds reinforcement counts as an atomic delta (`incrementReinforcement(…, by)`) instead of writing an absolute total.
+
+#### Fix bug 228: importing a chat with "Create New" dropped every message
+
+- The `duplicate` conflict strategy created the copy under a new chat id but inserted each message under its original id; `chat_messages.id` is global, so every insert failed with `UNIQUE constraint failed: chat_messages.id` and the copy had no messages. The default (non-`preserveIds`) path failed the same way when one bundle was imported twice.
+- A chat created under a fresh id now gets fresh message ids (`remintChatMessageIds`, `lib/import/quilltap-import/message-id-remap.ts`), one per message even when a bundle chat repeats an id. `swipeGroupId` (`swipe-<messageId>` only), `otherExtractionWatermarkMessageId` and `courierCheckpoints[*].lastResolvedMessageId` (object or JSON string) are rewritten through the same map. If any `summaryAnchorMessageIds` entry does not resolve, the summary is cleared with its anchors and `lastSummaryTurn`, as `?action=rebuild-summary` does. `preserveIds` imports keep source ids.
+- New `idMaps.messages`, keyed by source chat and filled only after each message insert succeeds; `remapImportedMessageId` resolves inform `recordMessageId` / `consumedByMessageId`, annotation and memory `sourceMessageId`, and file `linkedTo` message ids (only through a chat named in the same array).
+- The duplicate and fresh-id paths of `importChats` are one path; duplicate only adds the "(imported)" title.
+- The `duplicate` path also recorded a random id in `idMaps.chats` that was never the copy's id, so informs, annotations, chat documents and memories for a duplicated chat pointed at a chat that did not exist. It now records the created chat's id.
+- Debug log per chat on message import; per-message warn on failure.
+- Test: `__tests__/unit/lib/import/quilltap-import/duplicate-chat-message-ids.test.ts`. Help: `help/system-import-export.md`.
+
+#### Fix bug 227: mail marked announced before its turn succeeded
+
+- Mail is no longer marked alerted during context building. `buildContext` returns `mailAlertsOwed`;
+  `markMailAlertsDelivered` (`lib/post-office/mailbox.ts`) flips the letters from the finalizer, the
+  preserved-partial path, a tool-only save, or a turn-skip. A provider failure that saves nothing leaves
+  them unalerted and they are announced again on the next attempt.
+- A swipe skips the mail check. It used to post a mail whisper into the re-roll and mark the letter.
+- The trailing sections (Core whisper, recall, mail, progressions, inform, turn note) are built once, in
+  one ordered list, and both the new-message and no-message branches use it (follow-up to bug 199).
+- Help: `help/post-office.md` states that the mail check covers turns with no new message and that a
+  failed turn re-announces its letters.
+
+#### Memory refactor, Phase 0: bugs filed, three fixed, one closed
+
+- Filed bugs 199–226 from the memory refactor audit, one file each, with index rows. 203–226 stay open
+  and name the refactor phase that closes them.
+- Bug 199: continue, chained and autonomous turns (no new user message) now send recalled memories,
+  new Suparṇā mail and the Core whisper to the model. Before, they were posted (recall stamped
+  accessed, letters marked alerted) but left out of the trailing-only message.
+- Bug 200: the delete chokepoint (`deleteMemoryWithUnlink` / `deleteMemoriesWithUnlinkBatch`) now
+  removes the deleted rows' vectors, so the item delete, restore and every cascade stop leaving orphan
+  vectors; per-caller removal in the cascades, housekeeping and dedup is gone. The gate ignores vector
+  hits with no row and searches past them (up to 4 × K), so orphans no longer hide a live
+  near-duplicate. Character archive already dropped the whole index, so that half did not reproduce.
+- Bug 201: the chat wipe (`DELETE /memories?chatId=`, Re-extract, Regenerate) deletes only hot AUTO
+  rows, plus digests with no surviving member. MANUAL rows, cold rows and live digests are kept, and
+  the response reports `sparedCount`. A digest counts as having a member only if that member is not
+  being wiped and still points at it. The dedup tool folds only hot AUTO rows and reports the rest as
+  `sparedCount` ("Kept aside" in the preview). A shared predicate lives in
+  `lib/memory/policy-protection.ts`.
+- Bug 202 closed as not a defect: R5 of the recall retuning keeps entity-anchor hits under the cosine
+  floor. Corrected the comments in `searchMemoriesSemantic` that claimed the opposite.
+#### Scenarios from anywhere (spec `features/complete/scenarios-from-anywhere.md`)
+
+- One scenario location: `lib/scenarios/location.ts` (`resolveScenarioLocation`, `lookupScenarioRef`, `classifyScenarioMount`) addresses a character vault, a project's or group's official store, or Quilltap General. Deleted `general-scenarios.ts`, `project-scenarios.ts`, `group-scenarios.ts` and `resolveStoreScenarioTier`; the group Knowledge-folder helper moved to `group-knowledge.ts`. All six scenario routes, the group-union route, the startup heals and the project/group create hooks go through the location.
+- Scenario route factory now covers General too and builds the collection list/create bodies.
+- New raw finders: `characters.findByDocumentMountPointIdRaw`, `findByOfficialMountPointIdRaw` on store-backed repositories (projects, groups). `addScenario` / `updateScenario` accept `description`.
+- `GET /api/v1/scenarios?action=everywhere` lists every scenario in the instance by owner with a 240-char excerpt (one document query); `?action=read&mountPointId=&path=` reads one by ref.
+- `scenarioRef: { mountPointId, path }` accepted on chat create and `?action=scenario`; resolved first; a ref to anything but the four kinds of owner, or a path outside `Scenarios/`, is a 400.
+- `resolveScenarioSelection` returns `{ scenarioText, scenarioSource, scenarioNotes }`; both callers write all three. Migration `add-chat-scenario-source-v1` adds `chats.scenarioSource` (JSON) and `chats.scenarioNotes`. Export schema updated; import remaps the source's mount in reconcile (dropped to null when the store did not come across); new-account restore remaps it with the store.
+- `GET /api/v1/chats/[id]?action=scenario-source` reports owner, existence and whether the file's body hash changed; `queryKeys.chats.scenarioSource` rides the `chats` realtime topic.
+- `?action=scenario` no-op check compares text, source and notes; a provenance-only change is written without a recompile or Host announcement.
+- New `ScenarioBrowserDialog` ("Browse all scenarios…" in both pickers): owners by section, search across shelves, Markdown preview, keyboard navigation. A pick inside the chat's hierarchy snaps to its native kind; anything else is a `store` selection shown under "Elsewhere".
+- In-chat Scenario control: provenance line, "Reload from source" when the file changed, "the shelf copy is gone" when it was removed, a notes box under presets; current selection comes from the source when there is one, body matching otherwise.
+- New Chat keeps one `scenarioSelection` (plus `scenarioTouched`) instead of five pointer fields, so the form shows what it submits. Seed order is character default > project default > general default, matching the server; a hand pick is not re-seeded. Fixes the form showing the project default while submitting the character's.
+- Scenario label on the New Chat form now points at the select (`htmlFor` was `new-chat-scenario`, which matched nothing).
+- Scenario item routes heal `Scenarios/` (and a group's `Knowledge/`) on PUT/rename/DELETE; GET stays a read probe. Startup heals report `provisioned` / `healed` / `failed` separately and count a folder failure as failed.
+- A character scenario ref lookup reads the character row once instead of three times.
+- `?action=scenario` takes `reload`; an ordinary save that resolves to the chat's own revised source file keeps the stored scene (verified by hash) with the new notes. Only "Reload from source" (`reload: true`) takes the revised copy.
+- Character scenario location is read-only (`StoreScenarioLocation` carries writes for General/project/group). Removed the unused character write methods, `resolveBody`, `resolveScenarioRef`, and the test-only `listScenariosInFolder` / `readScenarioByPath` / `resolveScenarioBody`.
+- Help: new `help/scenario-browser.md`; updated `general-scenarios.md`, `project-scenarios.md`, `groups.md`, `chats.md`.
+- Review fixes: the in-chat control no longer selects a source whose file is gone (saving it replaced the scene with the notes alone); leaving Custom for a preset clears the box instead of appending the old scene as notes; the character location's `update` keeps `defaultScenarioId` on a retitle and refuses a retitle onto an existing file. The scenario-by-ref query is one hook, `useScenarioRefBody`; `components/scenario/types.ts` reuses `ScenarioRef` from `chat.types`.
+
 #### Spec: memory system refactor
 
-- `docs/developer/features/memory-system-refactor.md`: a design for rebuilding the Commonplace Book
+- `docs/developer/features/complete/memory-system-refactor.md`: a design for rebuilding the Commonplace Book
   end to end on six abstractions it never had — one candidate shape, one extraction context, a pure
   admission decision applied in the parent over host-RPC, three named scores (relevance, salience,
   protection) with one function each, one clock for event time on both the write and read side, a
@@ -51,6 +418,9 @@
   id-less files first; delete-folder pre-checks non-item files and same-name subfolders (409, nothing moved);
   `GET ?action=folders` no longer provisions stores; projection ensures only missing folders; folder moves no
   longer re-read the wardrobe for casing; the delete confirmation mentions archived pieces.
+- Fixed bug 229: any click inside the Move-to-folder picker closed the whole wardrobe dialog in a chat, so
+  nothing could be moved with a mouse. The picker's state moved into `useWardrobeItemActions`, whose
+  `overlayOpen` now counts it.
 
 #### Specs: scenarios from anywhere; wardrobe folders
 

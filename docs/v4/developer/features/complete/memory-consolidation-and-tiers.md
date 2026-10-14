@@ -1,5 +1,7 @@
 # Memory Consolidation and Tiers — Let the Commonplace Book Forget Gracefully
 
+> **Superseded 2026-10-13** by the [memory system refactor](./memory-system-refactor.md) (Phase G moved this spec to `complete/`): its open items (E2 Friday backfill, E3 measurement) are carried by the refactor, whose Phase G closes with the Friday backfill run from the Maintenance card's dry run. The text below is kept as written; its file and function names predate the refactor's layout.
+
 **Status:** Implemented 2026-10-08 (workstreams A–D, E4 chores). E2 Friday backfill and E3 measurement not yet run — see §9.
 **Owner:** Charlie
 **Drafted:** 2026-10-08
@@ -215,6 +217,7 @@ precedent: `memoryRecall`, `memoryExtractionLimits`):
   enabled: boolean            // default false; Friday rollout turns it on
   connectionProfileId: string | null  // null → cheap LLM; recommend a capable model
   clusterThreshold: number    // cosine, default 0.72
+  tfidfClusterThreshold: number // cosine when the default profile is BUILTIN, default 0.30 (builtin-tfidf-memory-tuning.md §5)
   minClusterSize: number      // default 3 (2 when any member is > matureAfterDays old)
   maxClusterSize: number      // default 30
   matureAfterDays: number     // default 7 — don't consolidate rows younger than this
@@ -492,14 +495,18 @@ Built as specified, with these decisions and deviations:
   6 hours. When the daily sweep enqueues any consolidation, housekeeping is scheduled 30 minutes
   later. Job runs get a 7-minute time budget (the dispatcher's stuck-job sweep is 10). Dry-run *jobs*
   only log their report; the API dry run calls `runConsolidation` in-process.
-- **C6.** From the job child, the vault mirror is written via host-RPC at the end of the handler,
-  slightly before the parent commits the batch (same as `writeConversationSummaryToVaults`). The
-  no-subject bucket gets no mirror file. Combined canon is capped at 2,500 tokens; only the digest is
+- **C6.** ~~From the job child, the vault mirror is written via host-RPC at the end of the
+  handler, slightly before the parent commits the batch.~~ Amended 2026-10-12 (bug 208): the mirror
+  is written only from committed rows — by the dispatcher's post-commit hook for job runs
+  (`lib/memory/commonplace-mirror.ts`), and after the writes land for in-process runs — so a failed
+  batch never leaves phantom canon in the vault. The no-subject bucket gets no mirror file. Combined canon is capped at 2,500 tokens; only the digest is
   trimmed.
 - **D.** Inter-character recall prepends 2 digests per character (not 3). Provenance is the count
   only (`(from N notes)`), so the frozen archive stays byte-stable.
 - **A1.** The fold-grain pass reuses the per-turn OTHER task type and writer. Catch-up windows are
-  the newest 60 messages past the watermark; chats active in the last 30 days only. The chat memory
+  every message past the watermark, read in consecutive 60-message slices with the watermark
+  advanced per slice (bug 206; originally only the newest 60 were read and the rest were skipped);
+  chats active in the last 30 days only. The chat memory
   regenerate resets the watermark and enqueues one catch-up (idle check skipped).
 
 Not done yet: **E2** (Friday backfill — dry-run review of ~20 digests, then real runs with a capable

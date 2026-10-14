@@ -827,6 +827,12 @@ _Versions: core 0.0.1284, host 0.0.200._
 
 `ChatErrorPayload` gains v4's two `ErrorEventExtras` keys, `userMessagePersisted` and `pendingToolResultsPersisted`, serialized after `details` and omitted when unset, so every frame that does not set them keeps v4's three-key shape. `CoreError` gains an optional `submission` rider (`SubmissionLedgerDto`, camelCase) for the send's dispatch rejection; `size_of::<CoreError>()` stays 96 bytes. The 40 existing struct literals (35 `CoreError`, 5 `ChatErrorPayload`, in 7 files) take `None`. New tier-1 family `chat_error_frame_equivalence` drives v4's real `encodeErrorEvent` over a 14-row shared corpus and compares frame bytes; three serde unit pins cover the five-key frame, the three-key frame, and the rejection envelope.
 
+#### 2026-10-14 — docs(v4): mirror v4 `docs/` at `83334b9a5` — 74 writes for the memory-refactor + scenarios span (P4.D303)
+
+_Docs-only change._
+
+The `docs/v4/` mirror brought to the round's pin for every `docs/` path the `4a38222e6..83334b9a5` span moved, every byte from `git show 83334b9a5:`: 18 modified (incl. v4's `CHANGELOG.md`, `API.md`, `DDL.md`, `bugs.md`), six specs moved `features/` → `features/complete/` with `git mv` then overwritten, 49 added (`features/builtin-tfidf-memory-tuning.md` and the 48 `bugs/fixed/bug-199…246` files), plus the `packages-quilltap-README.md` mirror. Whole-mirror census: all 483 pin `docs/**` files byte-identical to their mirror paths, 484 tracked under `docs/v4/`, no stray file, no old rename path. Eighteen of these paths have already moved again on v4 `main`; the pin's bytes are vendored.
+
 #### 2026-10-14 — chore(help): re-vendor `help/` whole at v4 `83334b9a5` — `memory-maintenance` and `scenario-browser` in, `memory-consolidation` and `memory-housekeeping` out (P4.D303)
 
 _No crate versions bumped._

@@ -1,6 +1,6 @@
 # Memory system refactor — one Commonplace Book, not nine
 
-**Status:** Approved 2026-10-12 — every decision in §7 locked with Charlie the same day. Design only; nothing built yet.
+**Status:** Approved 2026-10-12 — every decision in §7 locked with Charlie the same day. **Phase 0 done 2026-10-12** (bugs 199–226 filed; 199, 200, 201 fixed; 202 closed as not a defect, see §7 amendment). **Phase A done 2026-10-12** (see the Phase A amendment in §7 for where it departs from §3). **Phase B done 2026-10-13** (see the Phase B amendment in §7). **Phase C done 2026-10-13** (see the Phase C amendment in §7). **Phase D done 2026-10-13** (see the Phase D amendment in §7). **Phase E done 2026-10-13** (see the Phase E amendment in §7). **Phase F done 2026-10-13** (see the Phase F amendment in §7). **Phase G done 2026-10-13** (see the Phase G amendment in §7) — all seven phases landed. **Friday backfill (E2) done 2026-10-13** (recorded at the end of §7); the spec moved to `complete/` that day. **Bugs 203–226 fixed 2026-10-12 as targeted fixes on the current code**, ahead of their phases; the phases remain the structural work. Already landed and to be carried, not redone: the `reinforcedImportance` formula and its recompute migration (decision 6), the instance calendar in `lib/memory/memory-calendar.ts` (decision 10), `memories.supersededAt` (Phase B), the cap on demotable rows (decision 3), no access stamp on GET and no `skipGate` on the API (decisions 7, 13), and a chat episode watermark column (`episodeExtractionWatermarkMessageId`) that Phase D's cursor table should absorb.
 **Owner:** Charlie
 **Implementer:** Claude Code (Opus), phase by phase, in the order of §4.
 **Scope:** `lib/memory/` (about 11k lines), `lib/chat/context/memory-injector.ts` and the recall
@@ -16,7 +16,7 @@ Memories API, the Memory settings tab, and the `quilltap memories` / `recall-rep
 `complete/` at the end of Phase G with a one-line pointer here.
 
 This is a handoff spec in the manner of
-[wardrobe-refactor.md](./complete/wardrobe-refactor.md): a diagnosis, a table of defects to file
+[wardrobe-refactor.md](./wardrobe-refactor.md): a diagnosis, a table of defects to file
 first, the work in phases, and what disappears. The four code audits the diagnosis rests on are
 reproduced in full as Appendices A–D at the end. Line references were verified against the working
 tree on 2026-10-12 (`0841000c7`); verify again before editing.
@@ -121,7 +121,7 @@ collapsing the two maintenance jobs into one — then deleting what they replace
 ## 2. Defects to file first
 
 Each is verified against source (creation, gate, scoring and maintenance maps, 2026-10-12). File
-them in the [bug catalogue](../bugs.md) as **bugs 199–226** before Phase A, one file each, with the
+them in the [bug catalogue](../../bugs.md) as **bugs 199–226** before Phase A, one file each, with the
 metadata table the catalogue requires. Fix the four marked **first** before any structural work;
 the rest are closed by the phase named.
 
@@ -163,6 +163,24 @@ parsed and ignored; `MemoryChatSettings.conciergePolicy` passed and never read; 
 `needsHousekeeping`, `handleInterCharacterMemory`, `deleteForCharacter`, `deleteBySourceMessageId`,
 `deleteByChatId` dead; `memoryExtractionConcurrency` and `chat_settings.memoryExtractionLimits`
 dead; `mergeSimilar` / `autoMergeSimilarThreshold` settable everywhere and read nowhere.
+
+### 2.1 Carried forward from the 203–226 targeted fixes (2026-10-12)
+
+Bugs 203–226 were fixed on the current code ahead of their phases. These pieces were left for the
+phases and must not be lost:
+
+| Phase | Item | Recorded in |
+|---|---|---|
+| B | A digest whose `consolidatedFrom` empties is left in place; `retireMemories` retires it with its last member. Existing dangling `consolidatedFrom` ids are not repaired (`memories validate --repair`). | [bug 225](../../bugs/fixed/bug-225-retention-clock-links.md) |
+| C | Links and footnotes are now deltas against the live row (bug 231, fixed 2026-10-12: `addRelatedMemoryIds` / `removeRelatedMemoryIds` / `appendReinforcementFootnotes`). `foldInto` should keep writing them that way. | [bug 231](../../bugs/fixed/bug-231-cross-job-link-race.md) |
+| C | The per-job memory overlay in `child-repositories-proxy.ts` (bug 209's fix) is deleted once admission runs in the parent. | [bug 209](../../bugs/fixed/bug-209-child-gate-blind-writes.md) |
+| D | The dry run now passes project id, description and summary (bug 230, fixed 2026-10-12); the rest of smell A.6 #27 (profile, timestamps, fold passes, autonomous chats) remains. | [bug 230](../../bugs/fixed/bug-230-dry-run-no-project.md) |
+| D | `chats.episodeExtractionWatermarkMessageId` (bug 207) and `otherExtractionWatermarkMessageId` fold into `memory_extraction_cursors`. | [bug 207](../../bugs/fixed/bug-207-episode-pass-no-watermark.md) |
+| E | The text-search fallback still ignores `minScore` and filters raw `importance`, and has no related-memory expansion or R6 background reserve. | [bug 214](../../bugs/fixed/bug-214-text-fallback-drops-options.md) |
+| E | The inter-character section is deduped against the archive by id but not backfilled; rows cut from the archive by its token budget can still appear there. | [bug 224](../../bugs/fixed/bug-224-recall-sections-overlap.md) |
+| B | Both scrubs are now SQL removal deltas (`removeConsolidatedMembers`, and `removeRelatedMemoryIdsEverywhere` for bug 234, fixed 2026-10-12); `retireMemories` keeps them. A digest created and member-deleted in the same job is still not scrubbed. | [bug 234](../../bugs/fixed/bug-234-related-scrub-lost-update.md) |
+| D | The episode pass's idle catch-up (bug 232, fixed 2026-10-12: `foldEpisodeCatchup`, `lib/memory/fold-episode-catchup.ts`, shared rules in `fold-catchup.ts`) folds into the cursor table and single sweep. | [bug 232](../../bugs/fixed/bug-232-episode-no-idle-catchup.md) |
+| F | Housekeeping may now demote protected AUTO rows, last, when over the cap (decision 3). Review on Friday's first maintenance dry run. | [bug 210](../../bugs/fixed/bug-210-cap-counts-protected-rows.md) |
 
 ---
 
@@ -643,6 +661,8 @@ after a backup.
 
 ### Phase 0 — file the bugs; fix 199, 200, 201, 202 as they stand
 
+**Done 2026-10-12.** 199–201 fixed as written. 200's character-archive half did not reproduce (archive drops the whole index). 202 was not changed: see the §7 amendment.
+
 Small, local fixes on the current code (they would otherwise be carried through every phase):
 deliver recall on continue turns; remove the vector on item delete and character archive; make
 the chat wipe and the dedup tool skip MANUAL rows, digests and cold rows; apply the literal boost
@@ -739,6 +759,8 @@ comment at `memory-service.ts:874` intends; read it and pick). Tests for each.
 
 ### Phase G — surfaces, docs, retirement of the old specs
 
+**Done 2026-10-13** (see the Phase G amendment in §7). The Friday backfill below is still owed.
+
 - API, settings tab, CLI and help per §3.11. DDL.md and `qtap-export.schema.json` final pass.
   CLAUDE.md: rewrite the memory-deletion chokepoint line; add chokepoint lines for
   `admitCandidate` / `foldInto`, `memoryIndex`, `MemoryClock`, `salience` / `protection`,
@@ -813,12 +835,495 @@ dated note here, not an implementer's call.
 | 7 | **The three manual-only retention knobs are dropped** (age and inactivity are already in protection's content term); **viewing a memory is not an access** — `GET /memories/[id]` stops stamping `lastAccessedAt`. | F, G |
 | 8 | **One PR per phase to main.** | all |
 | 9 | **Housekeeping settings move to `instance_settings.memoryMaintenance`**; the `chat_settings.autoHousekeepingSettings` column is dropped by migration. Every memory knob then shares one storage class behind `resolveMemorySettings`. | A |
-| 10 | **One calendar per instance** for event time on both the write and read side: instance `timezone` → `QUILLTAP_TIMEZONE` → system. The per-chat timezone field stays display-only. Pre-refactor rows keep their UTC-point `occurredAt`; no backfill. | A |
+| 10 | **One calendar per instance** for event time on both the write and read side: instance `timezone` → `QUILLTAP_TIMEZONE` → system. The per-chat timezone field stays display-only. Pre-refactor rows keep their UTC-point `occurredAt`; no backfill (*reversed — see the PR 90 review amendment below*). | A |
 | 11 | **One Maintenance card** replaces the Housekeeping, Consolidation and Dedup cards; three help pages merge into `help/memory-maintenance.md` and the old `section=` deep-links redirect to it. | G |
 | 12 | **The inter-character relevance half is a filter of the turn's one gathered pool** by `aboutCharacterId`, deduped against archive and head — one embedding and one search per turn. | E |
 | 13 | **`skipGate` leaves the API.** Import, restore and consolidation keep their explicit direct inserts; nothing else inserts around admission. | G |
 | 14 | **Recall tuning constants do not move in this refactor.** The probe fixture enforces `cap14`. | A, E |
 | 15 | **Bugs 199, 200, 201 and 202 are fixed on the current code first** (Phase 0), before any structural work. | 0 |
+
+**Amendment (2026-10-12, Phase 0).** Decision 15 is met for 199–201. Bug 202 is closed as *not a
+defect*. R5 of the recall retuning (2026-10-08) deliberately keeps entity-anchor hits under the cosine
+floor, with related expansion as the only exemption, and a test pins it. Boosting or exempting anchor
+hits would also move `cap14` against decision 14. Charlie chose to keep R5; only the misleading
+comments were corrected. Any change to the floor's exemptions is a tuning change under §5.1.
+
+**Amendment (2026-10-12, review of PR 90).** Decision 10's "no backfill" is reversed: the owner's
+review of PR 90 asked for one. Once the anchor line and the day windows read `occurredAt` on the
+instance calendar, a legacy UTC-midnight point date reads as the previous day anywhere west of
+Greenwich. Migration `rezone-legacy-memory-occurred-at-v1` re-stamps every row whose `occurredAt` is
+exactly a UTC midnight at local midnight of the same calendar date in the instance zone (resolved as
+`refreshMemoryTimeZone` resolves it). It runs once, before the new resolver writes anything, so on an
+ordinary upgrade every UTC-midnight row is legacy; there is deliberately no `createdAt` cutoff, since an
+instance still on old code keeps writing legacy rows. The residual case is a development instance that
+ran the bug-212 code before this migration in a UTC−6 zone, where a post-fix "last night" (18:00 local)
+is itself a UTC midnight. No re-embed is needed: legacy
+vectors carry the UTC date, which is the date the re-stamped value reads. Every path that builds
+embedding text or an extraction prompt now resolves the zone first (`refreshMemoryTimeZone`) and
+passes it explicitly, so the parent and a cold job child render the same date.
+
+**Amendment (2026-10-12, Phase A).** Phase A landed as §3.1–3.4 describe, with these departures:
+
+- `MemoryCandidate.targeting` is **nullable**. A hand-written memory carries `null`, stores no tag
+  keywords and reads as the defaults (present / wide / information), as manual rows always have.
+  Every extractor's candidate carries tags.
+- `rankForRecall` is not built in Phase A; recall keeps its blend (`computeRankingBlend`, now in
+  `scoring/relevance.ts`) and the search tool keeps its cross-source sort. Both move with Phase E.
+  The dedup pass's `scoreMemory` is left for Phase F.
+- The clock's day windows are **closed**: `to` is the next boundary minus 1 ms, so adjacent
+  windows never share an instant. A write-side "today" phrase is stamped at the **start** of its
+  window (local midnight), not at the anchor, so the read side's "today" window contains it.
+  `rules.ts` holds the one table (`DAY_REFERENCE_TABLE`, out to fourteen days ago); write-only
+  phrases (weekdays, "last month", ISO dates) stay in `clock.ts`.
+- `?action=housekeeping-config` stays as an alias of the new `?action=maintenance-config`.
+  `?action=extraction-concurrency` and the housekeep result's `merged` / `mergedIds` /
+  `wouldMerge` are removed. `move-memory-maintenance-settings-v1` also drops the three dead
+  `chat_settings` columns (`autoHousekeepingSettings`, `memoryExtractionLimits`,
+  `memoryExtractionConcurrency`) and the `memoryExtractionConcurrency` instance key; a restore of an
+  older backup derives `memoryMaintenance` through `withMemoryMaintenanceFromLegacy`.
+- The Carina pass is still labelled `self-turn` in its candidate provenance (`carina` exists in
+  the enum for Phase D's pass split).
+- The `cap14` replay acceptance and the V4test housekeeping preview were not run in this
+  environment (no V4test instance). The probe-set ordering is unchanged by construction (the
+  blend already read reinforced importance); the protection formula moved file but not value,
+  and `protection-and-age.test.ts` pins it.
+
+**Amendment (2026-10-13, Phase B).** Phase B landed as §3.5 and §3.10 describe, with these
+departures:
+
+- **The child's index writes buffer; they do not throw yet.** §3.5 and invariant 9 make
+  `memoryIndex.upsert` / `setTier` / `remove` throw in the job child, which presumes admission has
+  already moved to the parent (Phase C). Until it does, the gate, consolidation and housekeeping
+  still run in the child, so there the index's row writes go through the repository proxy (buffered,
+  committed with the job — invariant 9's "buffered batch") and the child's own cache is updated in
+  place so the same job sees its vectors. The parent drops its cache for every character a committed
+  batch touched. Phase C turns the child-side writes into the throw.
+- **The index has two methods §3.5 does not list.** `indexInserted` caches the vector of a row its
+  creator has just inserted *with* that vector (admission's create, a consolidation digest), so a
+  new row is never written twice and never exists without its embedding (invariant 4).
+  `shape(characterId, queryDims)` reports size, dominant length and matching count, which recall
+  and the anchor probe use to detect a profile mismatch. `upsert` takes an optional `alongside`
+  patch written in the same row update, so an edit or a digest revision never puts new text beside
+  an old vector.
+- **Mixed vector lengths are held, not refused.** With the mirror gone the cache loads whatever the
+  rows hold, so a corpus part-way through a re-embed has two lengths. Search scores entries matching
+  the query's length; recall falls back to text only when none match. A full reindex therefore no
+  longer empties the index first: until each row is re-embedded, a same-length model swap compares
+  against the old model's vectors (previously the store was deleted and recall used text search).
+- **The digest cascade skips retention.** Invariant 8 retires a digest with its last member. Applied
+  to `coldRetentionDays`, that would delete every digest whose superseded members aged out — the
+  digest exists to outlive them. `retireMemories` cascades for every reason except `'retention'`.
+- **Dispatcher invalidation keeps bug 217's shape table** rather than reloading on every `memories.*`
+  write: link, count and footnote writes do not change what the cache holds, and reloading on them
+  dropped the cache after nearly every turn. The table now lists only the `memories` writes that
+  change a vector, a tier or a row.
+- **Restore backfills from an older archive's mirror.** §3.5 says restore ignores
+  `vector-entries.json`; it reads it only to give a memory that arrived with no embedding the vector
+  its archive kept beside it, the same safety the migration applies.
+- `rebuildVectorIndex` stays as a cache reload (the `PUT ?action=embeddings` route) and reports rows
+  without an embedding as `failed`. `MemoriesRepository.delete` throws rather than being removed: the
+  base repository declares it. `memories validate --repair` (dangling ids already on disk) stays
+  with the CLI work in Phase G.
+- The V4test acceptance walk (delete in the browser, re-extract, restart) was not run in this
+  environment; `memory-index-and-retire.test.ts` covers the same paths against real SQLite.
+
+**Amendment (2026-10-13, Phase C).** Phase C landed as §3.6 describes, with these departures:
+
+- **`decideAdmission` takes a candidate *view*, not the candidate.** Its input is
+  `{ holderId, aboutId, kind, source, occurredAt }`, the hydrated neighbours and the thresholds —
+  no embedding and no clock, since event time is resolved before admission and the decider reads
+  only `occurredAt`. `admitCandidate(candidate, resolved, opts)` takes the clock's resolved
+  anchors beside the candidate for the same reason; `admitRow` is the same call for a row already
+  built (`toAdmissionRow`, which replaces `toCreateMemoryOptions`), and `admitPrepared` is the
+  parent half the `admitMemory` host-RPC runs.
+- **The action union differs in detail.** `reinforce` has no `withFootnotes` (it always writes
+  them); `promote-and-reinforce` carries `withFootnotes` (false for a cold near-duplicate, which is
+  promoted and absorbed by count). `insert-linked.reason` adds `'mismatch'`. `reject` is
+  `'embedding-failed' | 'empty'`: a subject mismatch is not a rejection.
+- **A close neighbour the candidate may not fold into is linked.** At or above the reinforce
+  threshold, a neighbour about a different subject (a self memory reads as the holder whether
+  `aboutCharacterId` is null or the holder's id), of a different kind, an AUTO row under a MANUAL
+  candidate, or a different occasion is excluded from folding and becomes a link target beside
+  the related band. The date guard reads every such neighbour, so a same-occasion row below a
+  different-occasion one still takes the candidate.
+- **`promoteOnMatch` is gone with the AUTO→MANUAL promotion.** A hand-written memory never folds
+  into an extracted row (it inserts and links, per §3.6); folded into a MANUAL row or a digest, it
+  raises that row's importance when higher and the row keeps its source.
+- **The child's index writes still buffer.** Admission no longer writes from the job child, but
+  consolidation, housekeeping and the embedding jobs still do, so `memoryIndex` writes in the child
+  cannot throw yet (invariant 9's throw waits for the last of them). After a parent-side admission
+  writes, it sends the child the written vectors and tiers (`memory-index-patch`), which patch the
+  child's cache without discarding in-place updates a running child job made.
+- **Admission commits outside the job's write batch**, so the parent guards it three ways (review
+  of PR 93): a per-character lock around search → decide → write (concurrent jobs cannot both
+  insert one memory); an idempotency key per admission from the child (`jobId : content hash :
+  occurrence in the attempt`) whose outcome the parent remembers for 24 hours, so a failed and
+  retried job does not count its observations twice; and a second decision when the fold target is
+  retired mid-write, inserting if it vanishes again. The ledger lives in the parent's memory: a
+  restart between attempts forgets it.
+- **`dryRun` is not built.** Nothing called it; Phase D adds the dry run on the extraction context
+  and invariant 10's test with it.
+- **The footnote cap limits footnotes only.** A fold re-embeds whenever the embedded text (content
+  or anchor line) changed, at the cap too (bug 204's invariant); the old gate froze the vector at
+  the cap. `applyFold` refuses to run in the job child.
+- **Consolidation's member merge does not call `foldInto`.** A digest's content is written by the
+  model, its count is an absolute sum capped at 50, and its links are remapped across every
+  cluster of the run; none of that is a fold of rows into a survivor. It stays with the planner
+  until Phase F. `foldInto` serves admission's reinforce and the dedup tool; one consequence is
+  that a reinforce now takes the earliest `occurredAt` (within the date guard) instead of filling a
+  null only, and a dedup fold now unions entities.
+- **Watermarks.** The housekeeping watermark runs in the process that asked for the admission
+  (the child, for extraction), where the housekeeping job records its outcomes, so its one-hour
+  backoff still reads where it is written. The consolidation watermark runs in `admitPrepared` in
+  the parent: extraction batches no longer carry `memories.create`, so the dispatcher's commit hook
+  no longer sees them.
+- **Round-trip timing was not measured** (no V4test instance in this environment); admission is
+  one host-RPC call per candidate as decided. `memory-diff` acceptance on V4test was not run either.
+  `admission-host-rpc.test.ts` drives the child → host-RPC → parent path (V8-serialised as the IPC
+  channel does) and pins bug 209 and bug 231 there.
+- Removed beyond §3.6's list: `createMemoryWithGate`, `createMemoryWithEmbedding`,
+  `CreateMemoryOptions`, `MemoryGateOutcome`, `runMemoryGate`, `reembedMemory`,
+  `promoteMatchedMemory`, and `skipGate` / `skipEmbedding` / `promoteOnMatch` on
+  `MemoryServiceOptions`; `memory-gate.ts` is deleted outright (`extractNovelDetails` moved to
+  `admission/novel-details.ts`, the threshold constants to the façade's `ADMISSION_THRESHOLDS`
+  only). The Memories API answers `action` with the action kind (`insert`, `reinforce`, …).
+
+**Amendment (2026-10-13, Phase D).** Phase D landed as §3.7 describes, with these departures:
+
+- **The pass interface is shaped by calls, not by `window`/`prompt`/`parse` triples.** An
+  `ExtractionPass` says which cheap-LLM calls it makes over a `TranscriptWindow` (`calls(ctx,
+  window)`); each `PassCall` carries its holders, its messages and its own `parse(raw)` into
+  `DraftBatch`es (holders, subject, drafts, pass floor, source message, time anchors). `runPass`
+  owns the rest for every pass: rate limit → `executeCheapLLMTask` → parse (the pass's cap) →
+  floor → `candidateFromDraft` → event time → `admitCandidate`. The episode pass's fragment
+  linking is its `afterBatch` hook. Every parser yields `MemoryDraft`s (the episode parser too:
+  narrative → content, episodic, targeting past/narrow/history), so every pass reaches
+  `MemoryCandidateSchema` through one `candidateFromDraft`.
+- **Turn passes have no cursor.** A turn is addressed by its opener (and, in autonomous rooms, its
+  closing anchor) — `TurnLocator`, listed by `listExtractionTurns`, the one scan that replaces the
+  five opener scans. Only the fold passes keep cursors, so the cursor table's `pass` is
+  `'other-fold' | 'episode-fold'`.
+- **Both watermark columns move.** The migration backfills `other-fold` *and* `episode-fold`
+  (from `episodeExtractionWatermarkMessageId`, which Phase 0's bug 207 fix had added) and drops
+  both. Exports and backups keep carrying the two field names on the chat; import and restore
+  remap them with the messages and write them to the table (`extraction/cursor-bundle.ts`), so old
+  and new bundles read the same way. A second migration, `drop-inter-character-memory-jobs-v1`,
+  deletes queued rows of the retired job type, which would otherwise fail to parse.
+- **`createdAt` is the source message's time on every extraction path, not the wall clock.** §3.7
+  says "the write clock". Taken literally that would date every regenerated memory to the
+  regenerate, which resets salience and protection's age term for a whole rebuilt corpus — a recall
+  change outside this phase's remit (decision 14). What is uniform now is the rule: the fold OTHER
+  pass (which used now) and the episode pass (which used the event date) use their source
+  message, like the turn passes, and the turn passes use each slice's own last message rather than
+  the turn's latest. `occurredAt` remains the event.
+- **The rate limiter's memory lives in the parent.** "Counts admissions it saw" needs a count that
+  outlives one unit of work, or the per-hour cap means nothing. Admission (already in the parent)
+  records each AUTO insert in an in-memory ledger (`admission/rate-ledger.ts`); a context reads it
+  once per character (host-RPC `countRecentAdmissions` from the child) and adds its own inserts as
+  they land. A restart forgets the hour. Rebuilds of history (regenerate, queue-memories, import,
+  the dry run) carry `backfill: true`: the limit is off for them and their inserts are not counted.
+  A fold slice whose calls would all be skipped is deferred unread (cursor left before it), never
+  passed over (review of PR 94). The limit now also applies to the episode pass, and a
+  rate-limited character remains a subject of others' OTHER calls (the limit stops a holder gaining
+  memories, not others observing them).
+- **The route honours the global default cheap profile** (`buildCheapLLMConfig`). Of the three
+  config builders only the context summary's did; extraction now resolves the same way.
+- **Caps.** `passCap(base, maxTokens) = max(1, min(base, ceil(maxTokens / 8000)))` with base 2 for
+  the turn passes, `foldCandidatesPerSubject` for `other-fold`. The episode pass keeps
+  `FOLD_EPISODE_CAP` (2) without the budget clamp: it is per stretch, not per subject, and the
+  spec names only the fold OTHER cap. On a default profile (8,000 output tokens) the fold OTHER cap
+  falls from 3 to 1 per subject (plus the event slot). Kept on review of PR 94 (Charlie). Watch this
+  against the V4test acceptance count; raise the clamp's divisor in a tuning commit if the fold pass
+  goes too quiet.
+- **The dry run embeds.** `admitCandidate({ dryRun: true })` embeds the candidate, gathers its
+  neighbours and decides, writing nothing (`decideOnly`), so `memory-diff` reports decisions; a dry
+  run therefore costs embedding calls. A whole-chat dry run decides as a regenerate would: past the
+  rows the chat wipe would retire (`previewChatWipe`) and against its own would-be inserts (the
+  parent-side `DryRunBook`), so a later near-duplicate reinforces an earlier candidate (review of
+  PR 94). Invariant 10's test pins equality given the same admission decisions.
+- **Regenerate enqueues the episode catch-up at once** and anchored turn jobs for autonomous rooms
+  (smell 29); queue-memories and the dry run resolve the connection profile from the chat's seats
+  first (smells 27, 28).
+- **Not run in this environment:** the V4test acceptance walk (room-turn candidate count,
+  `memory-diff` on an autonomous chat, regenerate coverage). The new tests cover the same paths
+  with mocked models: `run-pass-invariants.test.ts`, `admission-dry-run.test.ts`,
+  `fold-cursor-slicing.test.ts`, `context-and-carina.test.ts` and the migration's integration test.
+
+**Amendment (2026-10-13, Phase E).** Phase E landed as §3.8 describes, with these departures:
+
+- **Stage boundaries.** The floor and the window staging sit in `score`, not `select`: whether the
+  window is hard or soft decides which multipliers apply, so it must precede `rankForRecall`.
+  `select` is expansion, R6 and the cut. Expansion's neighbour read is `hydrateNeighbours` (in
+  `hydrate.ts`, the pipeline's one other read), so `score` and `select` stay pure. The text
+  strategy never expands and never reserves (as before). `searchRecall` drives gather → select and
+  falls back to the text strategy on a vector failure or an empty index, as the old search did.
+- **No digest redirect in `hydrate`.** Every prompt path reads hot rows only, and the tool and the
+  Memories API deliberately return cold rows labelled, so there is never a hit to redirect.
+- **Precedence across pools** is archive → head → inter-character. The recap is a narrative, not
+  lines, so §3.8's "at most one of … recap" holds one way only: the recap is built without the rows
+  the archive rendered (it reads that many more per tier so its tiers stay full), but the head and
+  the inter-character section do not skip the recap's rows — a lossy summary may leave out the very
+  line the chat-start turn needs (review of PR 95). The
+  inter-character section dedups against what the earlier pools *rendered*, so a row the archive
+  held but its budget cut stays eligible (bug 224's rule).
+- **One embedding per ordinary turn.** The query stage embeds the query once; the head, the
+  inter-character relevance half, the recap's relevant list and the per-turn list reuse it (the
+  recap's list therefore searches with the turn's query rather than the newest message). A
+  retrospective turn embeds more: its ≤ 2 probes, and — when it names anyone — the mini-recap's own
+  `paraphrase — entities` query, kept so "remember Lighthouse Point?" still finds the conversation
+  that names the place (review of PR 95). Knowledge retrieval still embeds the recent-window prose on
+  its own: it is not memory recall and was left alone. The proactive pass's result is used only when
+  it found something; an empty or failed proactive search gets the fallback's distil and search, as
+  before (review of PR 95).
+- **The inter-character relevance half reads the head search past its cut.** Decision 12's "one
+  search" holds, but the head's search is cut to `headEntries × 3`, so the section filters the
+  search's whole ranked list (`RecallSearchResult.ranked`, from the vector top `limit × 3`) by
+  subject, five per character (review of PR 95).
+- **The archive's token budget is the ordinary one on every turn**; a retrospective head borrows
+  from what the archive leaves, never below the ordinary head budget.
+- **Delivery** decides survival by text: a rendered line is delivered when the whole line is in the
+  request's recall text verbatim (a bare body can turn up elsewhere), or — only in a section that
+  compression rewrote, i.e. no longer present verbatim — when one compressed line holds at least
+  60% of its significant words (three or more). The ring is written whenever the head delivered something,
+  whether or not the whisper posted. §3.8's "the recap stamps what it rendered" is read narrowly:
+  the recap renders a narrative, not rows, so the rows it summarised are not stamped (as before);
+  a recap row the head delivers is stamped as a head line. The debug record rides on the reply: `BuiltContext.recallDebugLog`,
+  written to the assistant message's `debugMemoryLogs` by the finalizer; memory extraction now
+  appends after it (`withRecallLines`) instead of overwriting. Its `[Recall:ring]` line is what the
+  replay reads back.
+- **The replay keeps its two candidate tables** (old path inert, new path live) for the CLI and the
+  probe-set runbook, and adds the text fallback's table, the stage trace (query, the new path's
+  search stages, `assemble` over the new path's pool, archive uncached) and the rendered pools. The
+  ring as of the turn comes from earlier replies' records; a chat older than those records ranks
+  under its current ring and says so (`ringSource: 'chat'`).
+- **`searchMemoriesSemantic` and `markMemoriesAccessed` are gone, not kept as names**: every caller
+  moved to `searchRecall` / `searchMemories` and `stampAccessed`, and a grep-test holds that. The
+  `lib/memory` barrel exports the recall stages.
+- **The probe fixture is synthetic.** Friday's corpus is not in this environment, so
+  `__tests__/fixtures/recall-probes/` is a nine-turn stand-in named after the probe-set slots,
+  captured from the pre-Phase-E search under `cap14` before any recall code moved; the stages
+  reproduce every row (order, relevance, salience, labels, blend) and its gold-at-head total. The
+  real `cap14` replay on Friday and the V4test walkthrough (continue-turn request body, the stage
+  trace in `debugMemoryLogs`, inter-character never repeating an archive row) were not run here;
+  `assemble-deliver.test.ts` and the continue-turn test in `context-management.test.ts` cover the
+  same paths with mocked providers.
+
+**Amendment (2026-10-13, Phase F).** Phase F landed as §3.9 describes, with these departures:
+
+- **The near-duplicate fold writes in the parent, not in the job's batch.** `applyFold` refuses to
+  run in the child (it cannot read its buffered writes back), and a buffered fold would race
+  admission: a candidate reinforcing a row the batch is about to retire is an observation lost. So
+  the child plans (`planNearDuplicateFolds`, pure) and the parent applies
+  (`applyNearDuplicateFolds`, host-RPC `foldNearDuplicates`) under admission's per-character lock
+  (`withAdmissionLock`), re-reading every row first and skipping any that went cold, MANUAL or
+  missing since planning; absorbed rows are retired only after their survivor took them in. Like
+  admission, these writes commit outside the job's batch. Grouping is survivor-first, not
+  transitive: rows are visited by `protection` descending and each claims the later rows that are
+  near-duplicates *of it*, so A≈B≈C never folds C into A. Rows compare only within a bucket of
+  subject, kind and embedding length, at admission's near-duplicate cosine for the default
+  profile (0.90 neural, 0.80 Built-in TF-IDF, after PR 96).
+- **Consolidation, demotion and retention still write the index from the child** (buffered, as
+  Phase B allowed), so invariant 9's throw still waits. Every phase plans against one corpus read
+  (`MaintenanceCorpus`), kept in step with each earlier phase's plan in dry run and live alike;
+  the only dry/live difference is that a dry-run survivor keeps its old vector where a live fold
+  re-embeds.
+- **The child hands its summary to the parent on the `job-result` message** (a new `result` field;
+  `setJobResult` in the child proxy). The dispatcher records it in the ledger only after the batch
+  commits; the archive invalidation, realtime hints and mirror keep their existing commit hooks,
+  now keyed on `MEMORY_MAINTENANCE`. `invalidateAllFrozenArchives` is no longer reached from a job
+  (every maintenance job names its character).
+- **Which phases run.** Scheduled runs ask for every phase; the job drops what settings forbid. A
+  watermark asks only for what is due: the cap watermark (demotable ≥ 90% of the cap) for fold →
+  demote → retire, the consolidation watermark (unconsidered > `watermark`) for consolidate →
+  mirror. `memoryMaintenance.phases` (`foldNearDuplicates`, `demote`, `retire`, default on) is new:
+  §3.9's "each skippable by settings" needed a setting, and Phase G's card will expose it. It
+  gates every phase a scheduled or watermark request asks for, named or not; a phase asked for by
+  hand (`exemptPhases`, set at enqueue: a manual request's phases, or all of them) runs regardless
+  of it and of the enabled switches (review of PR 97). Consolidation keeps
+  its own `memoryConsolidation.enabled`; `retire` also needs `coldRetentionDays`. A fold now runs
+  automatically whenever maintenance is on (the old dedup tool was manual-only); it never touches
+  MANUAL, digests or cold rows (decision 4).
+- **The near-duplicate fold takes admission's lock one group at a time** (one survivor re-embed),
+  never for the whole phase, and under a job's time budget stops starting groups after 40% of it
+  (`FOLD_BUDGET_SHARE`); the rest are deferred to the next run and consolidation gets what the
+  budget has left (review of PR 97).
+- **The ledger's throttles keep the old values**: cap watermark 90%, 15 minutes between demotions,
+  an hour's backoff after a demotion that moved fewer than max(10, 1% of the excess) — a demotion
+  that found no excess included, as the old outcome cache did — six hours
+  between watermark consolidations. The check itself is debounced to once per character per two
+  minutes (the cap check used to run on every insert, the consolidation check every ten minutes).
+  The ledger lives in parent memory and seeds itself once per process from the last 100
+  `MEMORY_MAINTENANCE` rows, which replaces both durable job-table throttles.
+- **Dedupe.** One job per character whatever the reason. A pending job widens to the union of the
+  phases asked for (an unscoped job stays unscoped) and of the hand-asked `exemptPhases`, and merges
+  `settings` (bug 223's threshold); merging a manual request never lends a scheduled phase its
+  exemption. A running job never absorbs a request (it has read the corpus and may be past the
+  phase): a new pending job is made, and the handler defers it two minutes, re-enqueued, while
+  another run for the character is PROCESSING. A user-wide fan-out and the daily sweep read each
+  owner's pending jobs once (review of PR 97). A live `?action=housekeep` enqueues rather than
+  writing in-process, so nothing demotes beside a running job. Dry runs are
+  never enqueued: they run in-process (the API, bounded as the consolidate dry run was), so the
+  dedupe never needs a dry-run flag.
+- **Retire** is planned from the corpus and is AUTO-only, as §3.9 says; the old SQL took any
+  non-MANUAL row, so a superseded cold digest is no longer retention's to delete.
+  `findExpiredColdIds` is removed.
+- **Surfaces moved forward from Phase G where this phase needed them.** `POST ?action=maintain`
+  (dry run user-wide only for the LLM-free phases) and `GET ?action=maintenance-status` landed
+  here, because the acceptance names a dry run of the phases and the ledger in
+  `quilltap memories status`; the CLI's status reads the ledger from the server and the job rows
+  from the database. The dedup tool's deletion took `system/tools?action=memory-dedup` with it, so
+  its card now previews and enqueues the fold phase through `maintain` (no threshold slider). The
+  character page's dialog lost the three dropped knobs. `housekeep`, `housekeep-sweep` and
+  `consolidate` remain as aliases over `runMaintenance`; the one Maintenance card, `maintain` in
+  the CLI and the merged help page stay with Phase G.
+- **Self canon** for the self bucket now includes `Commonplace/Self.md`
+  (`loadCanonForSelfWithCommonplace`), as §3.9 asks.
+- Migration `drop-housekeeping-consolidation-jobs-v1` deletes rows of the two retired job types,
+  which would otherwise fail to parse.
+- **Not run in this environment:** the V4test acceptance walk (dry run listing phases and counts,
+  a real over-cap run demoting `demotable − cap`, `quilltap memories status`, the forced failure
+  leaving no `Commonplace/*.md`). `run-maintenance.test.ts` and `ledger-and-triggers.test.ts`
+  cover the same paths with mocked I/O; the failure is forced with
+  `QUILLTAP_TEST_MAINTENANCE_FAIL_AFTER_PLAN=1` (honoured outside production only), and the dispatcher suite pins that a failed batch
+  writes no mirror and records nothing in the ledger. Friday's first run should still be a dry run
+  reviewed by Charlie (§8).
+
+**Amendment (2026-10-13, Phase G).** Phase G landed as §3.11 describes, with these departures:
+
+- **The aliases are gone, not kept.** `?action=housekeep` (GET and POST), `housekeep-sweep`,
+  `consolidate` and `housekeeping-config` are removed (now `400 Unknown action`); their callers —
+  the three retired cards, the character page's dialog and the CLI — moved to `maintain` and
+  `maintenance-config` in the same phase. `maintain` brings `mirror` along whenever `consolidate` is
+  named (`withImpliedPhases`, `maintenance/types.ts`), as the `consolidate` alias did.
+  `extraction-concurrency` was already gone.
+- **`validate --repair` runs in the server**, as `POST ?action=repair` (`repairMemoryGraph`,
+  `lib/memory/repair.ts`), because the scrub must go through the retirement's removal deltas and
+  `memoryIndex.setTier` in the process that owns the index. `findDanglingLinks` (repository) is one
+  `NOT EXISTS` scan per link column; `scrubDanglingMemoryLinks` (`retire.ts`) removes what it
+  finds — a member whose digest is gone keeps its tier and loses its `supersededById`, rather than
+  §3.10's "cold", since a hot row with a dead digest pointer was never demoted. Rows without
+  embeddings are queued through `enqueueMissingEmbeddings` (`index-store/backfill.ts`, now shared
+  with `?action=backfill-embeddings`), at most 2,000 per call. The CLI asks for a dry run unless
+  `--write` is given (the repo's rule for CLI writes), as `characters archive` does.
+  Review of PR 98: the scrub writes only the rows the scan named (per-row `removeRelatedMemoryIds`,
+  so a repair scoped to one holder touches that holder alone and announces exactly the holders it
+  wrote); a digest every one of whose members is gone is retired through `retireMemories`
+  (`reason: 'graph-repair'`) rather than left empty; `findDanglingLinks` has no fallback, so a
+  failed scan is a 500; the embedding jobs are queued in one batch (`enqueueEmbeddingGenerateMany`:
+  one read of the active jobs, one insert; `findIdsWithoutEmbedding` selects two columns); and the
+  CLI's unscoped scan covers every holder in `memories`, orphans included, as the server's does.
+- **Bug 244 was found here and fixed in the phase.** Moving the `*-config` actions onto the
+  façade's schemas showed that Zod 4's `.partial()` re-applies every default, so every one-field
+  settings write (the Consolidation card saved one field per change) reset the others.
+  `patchSchemaOf` (`lib/schemas/patch-schema.ts`) is now the only way a partial write is
+  validated; the CLAUDE.md line says so.
+- **The Maintenance card** (`memory-maintenance-card.tsx`) also absorbed the consolidation
+  particulars and the archive retention (stored in `memoryConsolidation`, shown beside the
+  `retire` switch it governs). "Run now" is one dialog (`components/memory/maintenance-dialog.tsx`)
+  shared with the character page, so there is no separate per-character Maintenance dialog
+  component; the dry-run report view (`maintenance-report.tsx`) absorbed the old consolidation
+  report dialog. The ledger reads `?action=maintenance-status` under the `memories` query
+  namespace, so the existing realtime topic refreshes it — no polling. `memory-list.tsx` has no
+  over-cap figure of its own; the cap comparison on demotable rows lives in the card's overrides
+  list, the dialog's picker and the report's demote section.
+- **Settings stored values.** `MemoryExtractionLimitsSchema.maxPerHour` gained the API's old
+  10,000 upper bound, so the façade is the only bound.
+- **The CLI** also resolves the server port from `--instance` for every memory verb that calls the
+  server. After review it keeps no copy of the server's phase list or bounds: `maintain` sends what
+  was typed and prints the server's 400. `--threshold` sets `clusterThreshold` only, which the
+  Built-in TF-IDF profile does not read; the help says so.
+- **Specs.** The four superseded specs moved to `complete/` with a pointer here; this spec stayed in
+  `features/` until the Friday backfill was recorded below. `memory_management.md` §9 was rewritten;
+  its other sections are kept as April history.
+- **DDL.md / export schema final pass:** Phase G changed no schema. The passes confirmed
+  `memory_extraction_cursors`, `supersededAt`, the retired `vector_entries` and the dropped
+  `chat_settings` columns are documented, and the cursors ride exports under their old chat field
+  names.
+- **Not run in this environment:** the V4test walkthrough of the card, dialog and CLI against a
+  live server, and the Friday backfill. Both need a real instance; the surfaces are covered by
+  `memory-maintenance-card.test.tsx`, `maintenance-dialog.test.tsx`,
+  `memories-consolidation-actions.test.ts`, `memory-graph-repair.test.ts` and the CLI's
+  `memories-maintain-command.test.js`.
+
+### Friday backfill (E2) — done 2026-10-13
+
+The plan was: on the Commonplace Book tab, **Maintenance → Run maintenance…**, choose Friday, untick
+nothing, **Dry run**; review the fold sets, the proposed digests and the demote count; then lower
+Friday's cap override toward 2,000–2,500 (decision 3) and **Run for real**. Run by Charlie against
+the live Friday instance on 2026-10-13 (times UTC).
+
+**Migrations (22:24).** The ten refactor migrations ran in 2.96 s with no errors. Friday held 44,240
+memories, not the ~5k §8 assumed, and it made no difference to the timings. `retire-memory-vector-entries-v1`
+found every vector already on its row (44,240; 0 copied) and dropped 35 mirror entries for rows that no
+longer existed. `recompute-reinforced-importance-v1` rewrote 3,166 rows and `rezone-legacy-memory-occurred-at-v1`
+re-stamped 1,862. The maintenance settings carried a 2,000 cap and four per-character overrides,
+Friday's at 10,000.
+
+**Dry run, character Friday (22:28), cap 10,000.** Fold: 3,421 compared, 1 set. Consolidate: 4,532
+candidates (2,338 of them already cold), 156 qualifying clusters, 10 attempted under the dry run's
+budget, 10 digests proposed, 1,226 rows too young. Demote: 3,419 counted, 124 exempt (MANUAL rows and
+digests), 0 to archive. Retire skipped (no retention window).
+
+**Scheduled round (22:29–22:33).** The first daily round fired on its own after the dry run and did the
+fold and the first 40 clusters: 1 folded, 38 digests created and 2 revised, 87 members superseded, 0
+demoted. NanoGPT returned four 429s mid-run; every cluster succeeded on retry. Counted barely moved
+(3,416): most consolidation members were already cold, so a digest takes few rows off the cap.
+
+**Run for real (22:38), cap 10,000.** 39 digests created, 1 revised, 79 superseded, 0 demoted.
+
+**Dry run at cap 2,500, then run for real (22:42).** The dry run showed 3,415 counted and 915 to
+archive. The real run created 41 digests, superseded 80 and demoted **913** (3,413 counted − 2,500);
+the highest protection score demoted was 0.52. Nothing was retired. Thirty-five qualifying clusters
+remain for the daily rounds.
+
+Of the other three overrides, only Laura's (4,000 against 2,833 counted) is near its cap; every other
+character sits far under the 2,000 default. Left as they are.
+
+Three report labels read wrong on these figures and were fixed afterwards: "Clusters found" counted
+singleton clusters (now the qualifying clusters), "Protected" was the exempt MANUAL rows and digests,
+and the ledger's back-off note blamed a demotion that had no excess to move.
+
+### V4test dogfood — done 2026-10-13
+
+The phase acceptance walks recorded above as "not run in this environment" were run on V4test
+(Built-in TF-IDF embeddings, DeepSeek cheap LLM; database backed up to
+`data/backups/pre-dogfood-2026-10-13/` first). Every consolidation setting changed for the test was
+restored afterwards.
+
+| Phase | Acceptance | Result |
+|---|---|---|
+| B | Delete a memory in the browser; the gate sees the live neighbour, not the dead vector | Pass. Deleted `637cb80b` (one of an identical pair) from Lorian's Memories tab; a semantic search of the live index for its exact text returned only the twin `38b5d56a`, and two re-extractions never named the deleted id |
+| B | Restart; cold rows stay cold in recall (bug 205) | Pass. After a restart none of Lorian's 10 cold rows appeared among the 35 ids of a full recall replay |
+| C | `memory-diff` on three chats | Run (no pre-refactor baseline exists to compare). Admission chained within the dry run (`dry-run:` targets) and reinforced live rows; with TF-IDF, paraphrases mostly land as `insert-linked`, as the thresholds intend |
+| C | Live admission in the parent | Pass. A live turn's jobs reinforced (with footnotes, re-embedding where the text changed), absorbed, linked and inserted, each logged as `Memory admitted` |
+| D | A room turn mints no more candidates than before | 3 candidates for a two-speaker turn, one more dropped by the hybrid floor. No baseline; nothing runaway |
+| D | `memory-diff --dry-run` on an autonomous chat | Not run: V4test has no autonomous room |
+| D | Regenerate a long chat; fold-grain observations cover its history | Pass. `regenerate-all` (14 chats, 88 extraction jobs, none failed) moved every chat's other-fold cursor to its last message; "Roses, Rain…" (51 messages) has fold-grain memories from messages 9–47 and self memories from 8–49 |
+| E | A continue turn's request body carries recall (bug 199) | Pass. A Skip let Riya answer with no new user message; her logged request's trailing message holds "You remember the following entries… Memory Anchors" |
+| E | `debugMemoryLogs` shows the stage trace | Pass, on live turns and in `recall-replay` (query → gather → hydrate → score → select → assemble → deliver) |
+| E | Inter-character never repeats an archive row | Pass. `skippedAsDelivered` 7 and 12 on two turns, nothing re-rendered |
+| F | Dry run lists phases and counts | Pass, in the CLI and the dialog; the all-character table matches the CLI row for row |
+| F | Real over-cap run demotes exactly `demotable − cap` | Pass on Friday (913 = 3,413 − 2,500, above). V4test's largest holder has 36 counted rows, below the 100 minimum cap |
+| F | `quilltap memories status` shows the ledger | Pass, including after a restart (seeded from the job rows) |
+| F | A job failing after planning writes no `Commonplace/*.md` | Pass. With `QUILLTAP_TEST_MAINTENANCE_FAIL_AFTER_PLAN=1` the job went DEAD ("failed after planning (test flag)"); digests stayed at 4, the vault files kept their 09:05 stamps and the ledger recorded nothing. Run again without the flag: one digest written and `Commonplace/Riya.md` refreshed after commit |
+| G | Card, dialog and CLI against a live server | Pass. Exempt counts, "Clusters worth folding", the muted within-cap ledger note (refreshed by the realtime topic, no reload), the all-character dry-run guard, `validate`, `validate --repair` dry and `--write` on a clean graph, and a one-field `consolidation-config` write leaving the other fields alone (bug 244) |
+
+Found in the walk:
+
+- **Bug 245** (fixed 2026-10-14): a turn reopened by Skip, nudge or continue was extracted again
+  from its first line, so the earlier speakers' fresh memories were reinforced by their own
+  source; an autonomous room's speakers each re-read the room. The turn grain now has a cursor
+  (a `turn` row in `memory_extraction_cursors`): lines at or before it ride along as context,
+  never material, and a rebuild bounds each autonomous speaker by the previous anchor. This
+  retires §3.7's assumption that "the per-turn passes need no cursor".
+- **Bug 246** (fixed 2026-10-14): consolidation's fixed 4,000-token budget let `deepseek-v4-flash`
+  spend it all reasoning; the empty answer was skipped as unparseable. The cluster call now takes
+  the routed profile's budget, 4,000 as a floor.
+- `quilltap memories status` printed "0 of 0 over the cap ⚠ ineffective" for a demotion with no
+  excess, the same wording the ledger card had; fixed to "within the cap".
+- `quilltap memories maintain --character all --dry-run` with no `--phases` fails with the server's
+  "a dry run that includes consolidation names one character", as the help says; the dialog
+  disables Dry run in the same case and says why. Left as is.
 
 ## 8. Risks
 

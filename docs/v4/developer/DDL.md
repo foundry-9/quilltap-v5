@@ -18,7 +18,7 @@ All three databases live in `<data-dir>/data/`. Alongside them:
 ├── quilltap.dbkey            # Encryption key file — one per instance, all three DBs
 ├── quilltap-llm-logs.db
 ├── quilltap-mount-index.db
-├── quilltap.lock             # Instance lock (prevents dual-instance corruption)
+├── quilltap.lock             # Instance lock (prevents dual-instance corruption); JSON incl. pid, heartbeat and the server's HTTP `port`
 └── backups/                  # Physical backups
 ```
 
@@ -140,7 +140,7 @@ The **Brahma Console** can also query these databases from inside a running inst
 
 ### Embedding BLOB format (all `embedding` columns)
 
-Every `embedding BLOB` column in every database (`memories`, `vector_entries`,
+Every `embedding BLOB` column in every database (`memories`,
 `conversation_chunks`, `help_docs`, `help_doc_chunks` in the main DB;
 `doc_mount_chunks` in the
 mount index) holds a **self-describing quantized vector** since
@@ -634,6 +634,8 @@ CREATE TABLE "chats" (
   "helpPageUrl" TEXT DEFAULT NULL,
   "consoleConnectionProfileId" TEXT DEFAULT NULL,   -- Brahma Console (chatType='brahma') active model; NULL on other chats
   "scenarioText" TEXT DEFAULT NULL,
+  "scenarioSource" TEXT DEFAULT NULL,                -- JSON { mountPointId, path, bodySha256 }: the scenario file the preset under scenarioText was read from, and its body hash at pick time. NULL = custom scene or pre-source chat. Written only beside scenarioText by resolveScenarioSelection's two callers. Added by add-chat-scenario-source-v1
+  "scenarioNotes" TEXT DEFAULT NULL,                 -- free-text notes layered beneath the preset in scenarioText. Added by add-chat-scenario-source-v1
   "documentMode" TEXT DEFAULT 'normal',
   "dividerPosition" INTEGER DEFAULT 45,
   "terminalMode" TEXT DEFAULT 'normal',
@@ -644,7 +646,6 @@ CREATE TABLE "chats" (
   "courierCheckpoints" TEXT DEFAULT NULL,
   "commonplaceSceneCache" TEXT DEFAULT NULL,
   "commonplaceRecallHistory" TEXT DEFAULT NULL,
-  "otherExtractionWatermarkMessageId" TEXT DEFAULT NULL,  -- added in 4.10 (add-memory-tiers-v1): message id the other-subject (fold) extraction pass has covered up to; NULL = never. Message-id reference, remapped on restore
   "timelineMode" TEXT DEFAULT NULL,  -- added in 4.9 (add-episodic-memory-fields-v1): 'realtime' (NULL reads as realtime) | 'narrative' — which clock the chat's story runs on (episodic recall)
   -- 4.6 Private Character Rooms: budget caps, schedule, run lifecycle, and visibility
   -- (populated only when chatType = 'autonomous'; NULL on other chats)
@@ -711,6 +712,43 @@ once** — each open document surfaces as its own tab in the tabbed workspace
 (`chats.documentMode` is the coarse "any document open" flag). Inactive rows are
 retained as quick-reopen history. (Before 4.8 only one row per chat could be
 active.)
+
+### memory_extraction_cursors
+
+```sql
+CREATE TABLE "memory_extraction_cursors" (
+  "id" TEXT PRIMARY KEY,          -- "<chatId>:<pass>"
+  "chatId" TEXT NOT NULL,
+  "pass" TEXT NOT NULL,           -- 'other-fold' | 'episode-fold' | 'turn'
+  "messageId" TEXT NOT NULL,      -- the last message the pass has read
+  "createdAt" TEXT NOT NULL,
+  "updatedAt" TEXT NOT NULL,
+  UNIQUE ("chatId", "pass"),
+  FOREIGN KEY ("chatId") REFERENCES "chats"("id") ON DELETE CASCADE
+);
+```
+
+Added in 4.10 (`add-memory-extraction-cursors-v1`, memory refactor Phase D):
+where each fold-grain extraction pass has read a chat to. Replaces the dropped
+`chats.otherExtractionWatermarkMessageId` (→ `other-fold`) and
+`chats.episodeExtractionWatermarkMessageId` (→ `episode-fold`), which the
+migration copied in. A pass advances its cursor only past a slice of at most 60
+eligible messages it actually read (bugs 206, 207); no row means the pass has
+never read the chat. Written only through `MemoryExtractionCursorsRepository`
+(`setCursor` is an upsert; `clearCursor`, `clearForChat`), read and advanced by
+the passes through `lib/memory/extraction/cursors.ts`. A regenerate clears the
+chat's rows. Exports and backups carry them on the chat object under the two
+legacy field names; import and restore remap the message ids and write them
+back (`lib/memory/extraction/cursor-bundle.ts`). No `userId` column: replace-mode
+restore truncates the table.
+
+The `turn` row (4.10, bug 245; no migration — `pass` is free text) is the
+per-turn grain's: the last assistant message a committed turn extraction
+covered. It only moves forward. A live turn job reads past it, so a turn
+reopened by a skip, nudge or continue — or an autonomous room's next speaker —
+is not extracted again from its first line; a regenerate clears it with the
+rest and does not read it. It travels in bundles as
+`turnExtractionWatermarkMessageId`.
 
 ### chat_informs
 
@@ -992,9 +1030,6 @@ CREATE TABLE "chat_settings" (
   "sidebarWidth" INTEGER DEFAULT 256,
   "defaultTimestampConfig" TEXT DEFAULT '{}',
   "memoryCascadePreferences" TEXT DEFAULT '{}',
-  "autoHousekeepingSettings" TEXT DEFAULT '{"enabled":false,"perCharacterCap":2000,"perCharacterCapOverrides":{},"autoMergeSimilarThreshold":0.9,"mergeSimilar":false}',
-  "memoryExtractionLimits" TEXT DEFAULT '{"enabled":false,"maxPerHour":20,"softStartFraction":0.7,"softFloor":0.7}', -- DEPRECATED in 4.4: superseded by instance_settings['memoryExtractionLimits']; column retained for backwards compat
-  "memoryExtractionConcurrency" INTEGER DEFAULT 1, -- DEPRECATED at introduction in 4.4: superseded by instance_settings['memoryExtractionConcurrency']; column retained for backwards compat
   "tokenDisplaySettings" TEXT DEFAULT '{}',
   "contextCompressionSettings" TEXT DEFAULT '{}',
   "llmLoggingSettings" TEXT DEFAULT '{}',
@@ -1026,6 +1061,8 @@ CREATE TABLE "chat_settings" (
 CREATE INDEX "idx_chat_settings_createdAt" ON "chat_settings" ("createdAt" DESC);
 CREATE INDEX "idx_chat_settings_userId" ON "chat_settings" ("userId" ASC);
 ```
+
+Dropped in 4.10 by `move-memory-maintenance-settings-v1`: `autoHousekeepingSettings` (moved to the `memoryMaintenance` instance setting), `memoryExtractionLimits` (already moved to the instance setting of that name in 4.4; the column was a dead copy) and `memoryExtractionConcurrency` (no longer read since extraction moved to the job child). Every memory knob now lives in `instance_settings`, read through `resolveMemorySettings()`.
 
 ### text_replacement_rules
 
@@ -1348,12 +1385,13 @@ CREATE TABLE "memories" (
   "relatedMemoryIds" TEXT DEFAULT '[]',
   "reinforcedImportance" REAL DEFAULT 0.5,
   "witnessedContext" TEXT DEFAULT NULL,  -- added in 4.6 (add-autonomous-rooms-fields-v1): 'user_present' | 'autonomous_room' | 'manual'. NULL on legacy rows.
-  "occurredAt" TEXT DEFAULT NULL,        -- added in 4.9 (add-episodic-memory-fields-v1): ISO wall-clock EVENT time (vs createdAt, the write clock). Backfilled from the source message's createdAt, else the memory's own createdAt.
+  "occurredAt" TEXT DEFAULT NULL,        -- added in 4.9 (add-episodic-memory-fields-v1): ISO wall-clock EVENT time (vs createdAt, the write clock). Backfilled from the source message's createdAt, else the memory's own createdAt. Resolved dates are local window starts on the instance memory calendar; legacy UTC-midnight values were re-stamped at local midnight of the same date in 4.10 (rezone-legacy-memory-occurred-at-v1).
   "narrativeTime" TEXT DEFAULT NULL,     -- added in 4.9: free-text in-story time for fictional-timeline chats ("the third night at sea")
   "entities" TEXT DEFAULT '[]',          -- added in 4.9: JSON string[] of the episode's proper nouns (places, people, named things)
   "kind" TEXT DEFAULT 'semantic',        -- added in 4.9: 'semantic' (standing fact) | 'episodic' (specific dated occurrence)
   "tier" TEXT DEFAULT 'hot',             -- added in 4.10 (add-memory-tiers-v1): 'hot' | 'cold'. Cold = consolidated member or cap-pressure demotion; hidden from ordinary recall, still read by the gate, search tool, UI and CLI
   "supersededById" TEXT DEFAULT NULL,    -- added in 4.10: id of the CONSOLIDATED digest that replaced this cold row
+  "supersededAt" TEXT DEFAULT NULL,      -- added in 4.10 (add-memory-superseded-at-v1): when the row went cold under its digest; set/cleared with supersededById. Cold retention ages by it, not updatedAt (bug 225). Backfilled from updatedAt for rows already superseded
   "consolidatedFrom" TEXT DEFAULT '[]',  -- added in 4.10: on a digest, JSON string[] of the member memory ids it folds
   "consolidatedAt" TEXT DEFAULT NULL     -- added in 4.10: last time the consolidator considered this row
 );
@@ -1365,6 +1403,7 @@ CREATE INDEX "idx_memories_occurredAt" ON "memories" ("occurredAt" DESC);  -- ad
 CREATE INDEX "idx_memories_projectId" ON "memories" ("projectId");
 CREATE INDEX "idx_memories_reinforcedImportance" ON "memories" ("reinforcedImportance" DESC);
 CREATE INDEX "idx_memories_character_tier" ON "memories" ("characterId", "tier");  -- added in 4.10 (add-memory-tiers-v1)
+CREATE INDEX "idx_memories_supersededById" ON "memories" ("supersededById") WHERE "supersededById" IS NOT NULL;  -- added in 4.10 (add-memories-superseded-by-index-v1): the delete chokepoint's "members of a deleted digest" lookup
 ```
 
 `aboutCharacterId` semantics: the character the memory is *about*. Three buckets are valid:
@@ -1373,9 +1412,9 @@ CREATE INDEX "idx_memories_character_tier" ON "memories" ("characterId", "tier")
 - `aboutCharacterId !== characterId` — inter-character memory (the holder remembers something about another character — including a user-controlled persona, in which case `characters.controlledBy === 'user'` for the about-target).
 - `aboutCharacterId IS NULL` — legacy / ambiguous. New auto-extracted memories should not produce nulls; the `align-about-character-id-v1` migration (v4.4.0) backfilled existing nulls per the name-presence rule.
 
-`createMemoryWithGate` (the chokepoint for AUTO writes) applies a name-presence safety net before insert: when `aboutCharacterId` differs from the holder, the about-character's `name + aliases` (plus `user` / `the user` for `controlledBy: 'user'` characters) must appear in `summary + content`; otherwise `aboutCharacterId` is collapsed to the holder. Manual memories bypass the safety net.
+Admission (`admitCandidate`, `lib/memory/admission/`, the chokepoint for AUTO writes) applies a name-presence safety net before insert: when `aboutCharacterId` differs from the holder, the about-character's `name + aliases` (plus `user` / `the user` for `controlledBy: 'user'` characters) must appear in `summary + content`; otherwise `aboutCharacterId` is collapsed to the holder. Manual memories bypass the safety net.
 
-Tiers (4.10+): `tier` is `'hot'` (default; eligible for recall) or `'cold'`. A `source = 'CONSOLIDATED'` row is a digest; its `consolidatedFrom` lists the member ids, and each member is `tier = 'cold'` with `supersededById` pointing back at the digest. A cold row with no `supersededById` was demoted by cap pressure. Export bundles and backups carry all four columns; rows from before tiers read as hot / null / `[]`, and restore/import remap `supersededById` and `consolidatedFrom` with the memory ids (as `relatedMemoryIds`).
+Tiers (4.10+): `tier` is `'hot'` (default; eligible for recall) or `'cold'`. A `source = 'CONSOLIDATED'` row is a digest; its `consolidatedFrom` lists the member ids, and each member is `tier = 'cold'` with `supersededById` pointing back at the digest. A cold row with no `supersededById` was demoted by cap pressure. `supersededAt` records when a member went cold under its digest (stamped and cleared by `updateTierBulk` alongside `supersededById`); `coldRetentionDays` ages superseded rows by it rather than by `updatedAt`, which every link rewrite resets. Deleting a memory through the chokepoint (`retireMemories`, `lib/memory/retire.ts`) scrubs it from every row's `relatedMemoryIds` and surviving digests' `consolidatedFrom`, and cuts `supersededById` (and `supersededAt`) on the surviving members of a deleted digest, which become cap-demoted cold rows; a digest whose `consolidatedFrom` the deletion empties is retired with its last member (except by retention). `embedding` and `tier` are the memory index (4.10, Phase B): written only through `memoryIndex` (`lib/memory/index-store/`), and the in-process search cache loads `id, embedding, tier` from here. Export bundles and backups carry all five columns; rows from before tiers read as hot / null / `[]`, and restore/import remap `supersededById` and `consolidatedFrom` with the memory ids (as `relatedMemoryIds`).
 
 ### prompt_templates
 
@@ -1622,6 +1661,7 @@ CREATE TABLE "tfidf_vocabularies" (
   "fittedAt" TEXT NOT NULL,
   "createdAt" TEXT NOT NULL,
   "updatedAt" TEXT NOT NULL,
+  "textShapeVersion" INTEGER DEFAULT 0,  -- text shape fitted on (LEXICAL_TEXT_SHAPE_VERSION); 0 = anchored, refit once
   FOREIGN KEY ("profileId") REFERENCES "embedding_profiles"("id") ON DELETE CASCADE
 );
 
@@ -1630,35 +1670,15 @@ CREATE INDEX "idx_tfidf_vocabularies_profileId" ON "tfidf_vocabularies" ("profil
 CREATE INDEX "idx_tfidf_vocabularies_userId" ON "tfidf_vocabularies" ("userId");
 ```
 
-### vector_indices
+### vector_indices / vector_entries (retired)
 
-```sql
-CREATE TABLE "vector_indices" (
-  "id" TEXT PRIMARY KEY,
-  "characterId" TEXT NOT NULL,
-  "version" INTEGER NOT NULL,
-  "dimensions" INTEGER NOT NULL,
-  "createdAt" TEXT NOT NULL,
-  "updatedAt" TEXT NOT NULL
-);
-
-CREATE INDEX "idx_vector_indices_characterId" ON "vector_indices" ("characterId");
-CREATE INDEX "idx_vector_indices_createdAt" ON "vector_indices" ("createdAt" DESC);
-```
-
-### vector_entries
-
-```sql
-CREATE TABLE "vector_entries" (
-  "id" TEXT PRIMARY KEY,
-  "characterId" TEXT NOT NULL,
-  "embedding" BLOB NOT NULL,
-  "createdAt" TEXT NOT NULL
-);
-
-CREATE INDEX "idx_vector_entries_characterId" ON "vector_entries" ("characterId");
-CREATE INDEX "idx_vector_entries_createdAt" ON "vector_entries" ("createdAt" DESC);
-```
+Dropped in 4.10 by `retire-memory-vector-entries-v1` (memory refactor Phase B). They mirrored
+`memories.embedding` per character; the mirror had no foreign key, so a delete or tier move it
+missed left the index wrong (bugs 200, 205). The migration copies any vector the mirror held that
+its memory row lacked, then drops both tables. A memory's vector and tier now live only on its row
+(`memories.embedding`, `memories.tier`), and the in-process index loads them from there. Backups no
+longer write `vector-entries.json` / `vector-index-metas.json`; a restore of an older archive uses
+`vector-entries.json` only to backfill a memory row that arrived without an embedding.
 
 ### instance_settings
 
@@ -1673,15 +1693,15 @@ Known keys (others may be present from migrations / startup hooks):
 - `highest_app_version` — startup version guard (string).
 - `wardrobe_folder_migrated_v1`, `wardrobe_json_refreshed_v1` — one-shot startup migration flags ("true").
 - `maxConcurrentJobs` (4.7+) — integer 1–32, default 4. Global cap on how many background jobs of any type the dispatcher runs at once. Read fresh each claim cycle by `lib/background-jobs/host/job-dispatcher.ts` (`getMaxConcurrentJobs`), so a change applies within ~2 s without a restart; updated by `POST /api/v1/system/tools?action=job-concurrency` (surfaced as the "Simultaneous Labours" slider in the Tasks Queue card). Accessors in `lib/instance-settings/index.ts`.
-- `memoryExtractionConcurrency` (4.4+) — integer 1–32. **DEPRECATED in 4.7**: the dispatcher unified to the global `maxConcurrentJobs` cap above; this key is no longer read at runtime (the `/api/v1/memories?action=extraction-concurrency` route still persists it for the `memory-diff` CLI). Was a per-instance MEMORY_EXTRACTION concurrency cap.
-- `memoryExtractionLimits` (4.4+) — JSON: `{enabled, maxPerHour, softStartFraction, softFloor}`. Per-instance memory extraction rate limits. Read by `lib/background-jobs/handlers/memory-extraction.ts` and the dry-run extraction route; updated by `POST /api/v1/memories?action=extraction-limits-config`. Migrated from `chat_settings.memoryExtractionLimits` for SINGLE_USER_ID by `migrate-extraction-knobs-to-instance-settings-v1`.
-- `memoryRecall` (4.7+) — JSON: `{scopePolicy: 'down-weight' | 'exclude', expandRelated: boolean, perTurnConversationSummaries: boolean}`. Per-instance Commonplace Book recall relevance settings. `scopePolicy` controls what happens to a `scope: narrow` memory whose `projectId` differs from the current chat's project (cross-project leakage): `down-weight` (default) applies a strong recall penalty, `exclude` filters it out entirely. `expandRelated` (default `false`, added in Phase 2) is the opt-in related-memory one-hop expansion toggle: when on, recall pulls each top hit's strongly-linked related memories in as extra candidates (capped at 3 per hit, 10 total), scores them against the same query embedding, and re-ranks the union. `perTurnConversationSummaries` (default `false`, added in 4.9) makes every turn's consolidated Commonplace Book whisper carry a freshly-searched relevant-past-conversations list from the character's vault `Conversation Summaries/` folder, reusing the vector the turn's memory search already embedded (no extra embedding call); off, that list refreshes only at chat start / character join, on each summary fold, and on retrospective turns. Read on the per-turn recall path (`lib/chat/context-manager.ts`, `lib/services/chat-message/pre-compute.service.ts`) via `getMemoryRecallSettings`; updated by `POST /api/v1/memories?action=recall-config`. No column on `chat_settings` (it is column-per-field; this knob lives instance-wide instead, like `memoryExtractionLimits`). Schema: `MemoryRecallSettingsSchema` in `lib/schemas/settings.types.ts`.
+- `memoryMaintenance` (4.10+) — JSON: `{enabled: boolean, perCharacterCap: number, perCharacterCapOverrides: Record<characterId, number>, phases: {foldNearDuplicates: boolean, demote: boolean, retire: boolean}}` (caps 100–100,000; defaults off, 2000, `{}`, every phase on). Memory maintenance: whether the watermark and the daily sweep run `MEMORY_MAINTENANCE` jobs, the per-character cap on demotable memories and its per-character overrides, and which of the job's own phases a scheduled or watermark request may run (a phase asked for by hand runs regardless; consolidation has its own switch in `memoryConsolidation`). A value stored before `phases` existed reads with every phase on. Read through `resolveMemorySettings()` (`lib/memory/settings.ts`), whose `maintenance.capFor(characterId)` is the one cap resolver; updated by `POST /api/v1/memories?action=maintenance-config` (the Commonplace Book tab's Maintenance card). Moved here from `chat_settings.autoHousekeepingSettings` (for SINGLE_USER_ID) by `move-memory-maintenance-settings-v1`, which dropped the retired `mergeSimilar` / `autoMergeSimilarThreshold` on the way; a restore of an older backup derives it the same way. Schema: `MemoryMaintenanceSettingsSchema` in `lib/schemas/settings.types.ts`.
+- `memoryExtractionLimits` (4.4+) — JSON: `{enabled, maxPerHour, softStartFraction, softFloor}` (`maxPerHour` 1–10,000). Per-instance memory extraction rate limits, edited on the Extraction Grain card. Read by `lib/background-jobs/handlers/memory-extraction.ts` and the dry-run extraction route; updated by `POST /api/v1/memories?action=extraction-limits-config`. Migrated from `chat_settings.memoryExtractionLimits` for SINGLE_USER_ID by `migrate-extraction-knobs-to-instance-settings-v1`.
+- `memoryRecall` (4.7+) — JSON: `{scopePolicy: 'down-weight' | 'exclude', expandRelated: boolean, perTurnConversationSummaries: boolean}`. Per-instance Commonplace Book recall relevance settings. `scopePolicy` controls what happens to a `scope: narrow` memory whose `projectId` differs from the current chat's project (cross-project leakage): `down-weight` (default) applies a strong recall penalty, `exclude` filters it out entirely. `expandRelated` (default `false`, added in Phase 2) is the opt-in related-memory one-hop expansion toggle: when on, recall pulls each top hit's strongly-linked related memories in as extra candidates (capped at 3 per hit, 10 total), scores them against the same query embedding, and re-ranks the union. `perTurnConversationSummaries` (default `false`, added in 4.9) makes every turn's consolidated Commonplace Book whisper carry a freshly-searched relevant-past-conversations list from the character's vault `Conversation Summaries/` folder, reusing the vector the turn's memory search already embedded (no extra embedding call); off, that list refreshes only at chat start / character join, on each summary fold, and on retrospective turns. Read on the per-turn recall path (`lib/chat/context-manager.ts`, `lib/services/chat-message/pre-compute.service.ts`) via `getMemoryRecallSettings`; updated by `POST /api/v1/memories?action=recall-config`. No column on `chat_settings` (every memory knob lives instance-wide, behind `resolveMemorySettings`). Schema: `MemoryRecallSettingsSchema` in `lib/schemas/settings.types.ts`.
 - `dataRetention` (4.8+) — JSON: `{staleChatDays: number}` (1–3650, default 30). Per-instance stale-chat retention window: how many days a chat must sit with no *played* message (participant character or human user; feature whispers don't count) before the daily maintenance sweep collapses its regenerable data — superseded generated images, `chats.compressionCache`/`compiledIdentityStacks`, and the discardable `chat_messages` columns (`rawResponse`, `reasoningContent`, `reasoningSegments`, `renderedHtml`, `debugMemoryLogs`). Conversation-chunk embeddings are deliberately **not** touched (4.10+): they are ~1 KB each and are what lets semantic search reach old conversations. Resolved by `resolveStaleChatDays()` (`lib/background-jobs/maintenance/retention-constants.ts`); accessors in `lib/instance-settings`; updated by `PUT /api/v1/settings/data-retention` (Settings → Chat → Data Retention). Schema: `DataRetentionSettingsSchema` in `lib/schemas/settings.types.ts`.
 - `taboo` (4.8+) — JSON: `{phrases: string[]}` (each 1–200 chars after trim, at most 500 entries, default `[]`). Per-instance list of phrases characters must never say. Normalized on write (trim, drop empties, case-insensitive dedupe, **user order preserved** — the rendering sits in the cacheable system-prompt prefix, so order is deliberately not sorted). Read once per turn by `buildContext()` (`lib/chat/context-manager.ts`) via `getTabooSettings` and rendered by `renderTabooSection` (`lib/chat/context/system-prompt-builder.ts`) between the universal math-formatting note and the per-turn tool instructions; an empty list renders no section at all. Updated by `PUT /api/v1/settings/taboo` (Settings → Chat → Taboo). Accessors in `lib/instance-settings`. Schema: `TabooSettingsSchema` in `lib/schemas/settings.types.ts`.
 - `lastMaintenanceSweepAt` (4.7+) — ISO 8601 timestamp of the last completed scheduled-maintenance pass. Written/read by `lib/background-jobs/scheduled-maintenance.ts` to skip the startup tick when a sweep ran within the last 20 h (dev-restart friendliness). Internal; not exported.
 - `lanternBackgroundsMountPointId` (4.3+) — UUID of the global "Lantern Backgrounds" database-backed mount point in `quilltap-mount-index.db`. Read by `lib/file-storage/lantern-store-bridge.ts`; written by `provision-lantern-backgrounds-mount-v1`. Used to land story-background job output and generic `generate_image` tool output when no project context is available.
 - `userUploadsMountPointId` (4.4+) — UUID of the global "Quilltap Uploads" database-backed mount point in `quilltap-mount-index.db`. Read by `lib/file-storage/user-uploads-bridge.ts`; written by `provision-user-uploads-mount-v1`. Used for every project-less file write: chat attachments, paste/drag-drop images, the Files-tab uploader, capabilities-report exports, and backup-restore replay of project-less files. Replaces the legacy `<filesDir>/_general/` namespace as the catch-all destination.
-- `generalMountPointId` (4.4+) — UUID of the global "Quilltap General" database-backed mount point in `quilltap-mount-index.db`. Read by `lib/mount-index/general-scenarios.ts` / `lib/mount-index/general-state.ts`; written by `provision-general-mount-v1`. Houses the instance-wide `Scenarios/` folder offered alongside project- and character-specific scenarios in every non-help New Chat dialog (managed via `/api/v1/scenarios` and the `/scenarios` page), **and** a root **`state.json`** — the **general tier** of the four-tier state cascade (chat → project → group → general). The `state.json` document is seeded idempotently at startup by `ensureGeneralStateFile()` (instrumentation PHASE 3.4b, right after `ensureGeneralScenariosFolder()`): a `{}` file is created when absent and never healed if the user has edited it (mirrors `ensureCharacterMetadataFile`). Read/written via `readGeneralState()` / `writeGeneralState()` (both `{}`-graceful and warn-on-corrupt), exposed at `GET/PUT/DELETE /api/v1/settings/general-state` and edited from Settings → Chat → General State. No migration and no `instance_settings` row of its own — the state lives as a mount document, not a column.
+- `generalMountPointId` (4.4+) — UUID of the global "Quilltap General" database-backed mount point in `quilltap-mount-index.db`. Read by `lib/scenarios/location.ts` (General's scenario location) / `lib/mount-index/general-state.ts`; written by `provision-general-mount-v1`. Houses the instance-wide `Scenarios/` folder offered alongside project- and character-specific scenarios in every non-help New Chat dialog (managed via `/api/v1/scenarios` and the `/scenarios` page), **and** a root **`state.json`** — the **general tier** of the four-tier state cascade (chat → project → group → general). The `state.json` document is seeded idempotently at startup by `ensureGeneralStateFile()` (instrumentation PHASE 3.4b, right after General's scenarios-folder heal, `resolveScenarioLocation('general', …, { ensure: true })`): a `{}` file is created when absent and never healed if the user has edited it (mirrors `ensureCharacterMetadataFile`). Read/written via `readGeneralState()` / `writeGeneralState()` (both `{}`-graceful and warn-on-corrupt), exposed at `GET/PUT/DELETE /api/v1/settings/general-state` and edited from Settings → Chat → General State. No migration and no `instance_settings` row of its own — the state lives as a mount document, not a column.
 
 **Portability (4.8+).** The `instance-settings` `.qtap` export type dumps this
 whole table minus `NON_PORTABLE_INSTANCE_SETTING_KEYS`

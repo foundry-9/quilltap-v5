@@ -38,6 +38,7 @@ API reference for Quilltap v4.3 and later.
 > **Freshness note (v4.10-dev):** Additions since v4.9:
 >
 > - **Impersonated-line voice rewrite** — `POST /api/v1/chats/[id]?action=impersonation-voice-preview` restates a line typed while impersonating a character in that character's own voice, for operator review before it posts. Gated by the `impersonationVoiceMode` field on chat settings (`'off'` / `'ask'` / `'always'`, default `'off'`); under `'ask'` the client calls this only when the operator presses Restate.
+> - **Scenarios from anywhere** — `GET /api/v1/scenarios?action=everywhere` lists every scenario in the instance by owner (no bodies); `GET /api/v1/scenarios?action=read&mountPointId=&path=` reads one by ref; `GET /api/v1/chats/[id]?action=scenario-source` reports where a chat's scene came from. `scenarioRef: { mountPointId, path }` is accepted on `POST /api/v1/chats` and `POST /api/v1/chats/[id]?action=scenario`, and chats carry `scenarioSource` / `scenarioNotes`. See [Scenarios](#scenarios).
 
 ## Table of Contents
 
@@ -2502,13 +2503,15 @@ Fold another conversation's characters and summary into **this** chat (the inver
 
 #### `POST /api/v1/chats/[id]?action=scenario`
 
-Change (or clear) the chat's scenario mid-conversation. Fields mirror the create payload one-for-one and resolve through the same precedence chain (`lib/chat/scenario-selection.ts`): character `scenarioId` > `projectScenarioPath` > `groupScenarioPath` > `generalScenarioPath`, with free-text `scenario` layered beneath whatever resolves.
+Change (or clear) the chat's scenario mid-conversation. Fields mirror the create payload one-for-one and resolve through the same precedence chain (`lib/chat/scenario-selection.ts`): `scenarioRef` > character `scenarioId` > `projectScenarioPath` > `groupScenarioPath` > `generalScenarioPath`, with free-text `scenario` layered beneath whatever resolves. Every kind is turned into a `{ mountPointId, path }` ref and read through the scenario location (`lib/scenarios/location.ts`).
 
 **Request Body** (every field optional; an empty body clears the scenario):
 
 ```json
 {
   "scenario": "free-text notes",
+  "scenarioRef": { "mountPointId": "store-uuid", "path": "Scenarios/reading-room.md" },
+  "reload": true,
   "scenarioId": "character-scenario-uuid",
   "projectScenarioPath": "Scenarios/bridge.md",
   "groupScenarioPath": "Scenarios/parlour.md",
@@ -2522,9 +2525,18 @@ Change (or clear) the chat's scenario mid-conversation. Fields mirror the create
 **Notes**:
 
 - `projectScenarioPath` resolves against the chat's own `projectId` (not a client-supplied one). A `scenarioId` is resolved against whichever active participant character owns it; a character whose vault is unavailable is skipped rather than failing the request.
-- Every tier fails soft — an unresolvable pointer logs a warning and falls through to the next tier.
-- On an actual change: rewrites `chat.scenarioText`, calls `compileAllIdentityStacks` (the scene is baked into `{{scenario}}` in each precompiled stack), and posts a Host announcement with `systemKind: "scenario-change"`, worded as a revision. A blank result retires the scene with a matching notice. A stack-recompile failure is logged and non-fatal — the read-through fallback covers it.
-- Resolving to the text already stored is a no-op: no write, no recompile, no announcement, and `changed: false`.
+- `scenarioRef` names a scenario anywhere: a character vault, a project's or group's official store, or Quilltap General. A ref whose path leaves `Scenarios/` or whose mount is none of those four kinds is a **400**; one whose file has gone missing fails soft like the other kinds. "Reload from source" in the Salon is this action with `{ scenarioRef: <the chat's source>, scenario: <its notes>, reload: true }`.
+- **An ordinary save keeps the scene the chat has.** When the request resolves to the chat's own source file and that file has been revised since it was picked, the chat's stored preset body is kept (recovered from `scenarioText` minus the old notes and verified against `scenarioSource.bodySha256`), with the request's notes beneath it. Only `reload: true` takes the revised copy. If the stored body no longer matches its hash, the file's current text is used.
+- Every legacy kind fails soft — an unresolvable pointer logs a warning and falls through to the next tier.
+- The chat stores the recipe: `scenarioText` (what the prompt reads), `scenarioSource` (`{ mountPointId, path, bodySha256 }` — the file and the SHA-256 of its body as resolved; null for a custom scene) and `scenarioNotes` (the free text). All three are written together, here and at chat creation only.
+- On an actual change: rewrites `chat.scenarioText` (with its source and notes), calls `compileAllIdentityStacks` (the scene is baked into `{{scenario}}` in each precompiled stack), and posts a Host announcement with `systemKind: "scenario-change"`, worded as a revision. A blank result retires the scene with a matching notice. A stack-recompile failure is logged and non-fatal — the read-through fallback covers it.
+- Resolving to the recipe already stored (text, source and notes) is a no-op: no write, no recompile, no announcement, and `changed: false`. A change of source or notes that leaves the text identical is written but neither recompiles nor announces.
+
+#### `GET /api/v1/chats/[id]?action=scenario-source`
+
+Where the chat's scene came from. Query key `queryKeys.chats.scenarioSource(chatId)`, refreshed by the `chats` realtime topic.
+
+**Response**: `{ source, owner, scenarioName, scenarioId, exists, changed, notes }` — `source` is the stored `scenarioSource` (null for a custom scene or a chat from before sources were recorded); `owner` is `{ scope, id, name }` of the store's owner; `exists` is false when the file (or its owner) is gone; `changed` is true when the file's current body no longer hashes to `source.bodySha256`; `scenarioId` is the path-derived id when the source is a character scenario.
 - The chat-start `systemKind: "scenario"` message is **not** removed or rewritten.
 - `updateChatSchema` (`PUT /api/v1/chats/[id]`) deliberately does **not** expose `scenarioText`; a bare field update would skip the recompile and the announcement.
 
@@ -2933,28 +2945,25 @@ Execute an RNG operation (dice, coin flip, spin the bottle) and add result as a 
 
 #### `POST /api/v1/chats/[id]?action=queue-memories`
 
-Queue memory extraction jobs for message pairs.
+Queue one `MEMORY_EXTRACTION` turn job for every turn of the chat (`listExtractionTurns`: one per
+user message; one per closing character line in an autonomous room; one for a greeting-only chat).
+No request body. Runs on a seat's connection profile, else the configured cheap profile; 400 when
+neither exists or the chat has no turns. Does not wipe existing memories first.
 
-**Request Body**:
+**Response**: `{ "success": true, "jobCount": 12, "chatId": "…", "turnCount": 12 }`
 
-```json
-{
-  "characterId": "char-uuid",
-  "characterName": "Alice",
-  "messagePairs": [
-    {
-      "userMessageId": "msg-uuid-1",
-      "assistantMessageId": "msg-uuid-2",
-      "userContent": "...",
-      "assistantContent": "..."
-    }
-  ]
-}
-```
+#### `POST /api/v1/chats/[id]?action=extract-memories-dry-run`
+
+Run the chat through the extraction pipeline without writing anything (wrapped by
+`quilltap memory-diff`). Same pipeline as live (`runExtractionDryRun`): every turn through the turn
+passes, then both fold passes over the history a regenerate would rebuild; admission embeds each
+candidate and decides without writing. `?concurrency=N` (default 4, max 32) sets turn parallelism.
+Streams NDJSON: `start`, `candidate` (each with `decision`, `extractionPass`, and `turnIndex` or
+`foldPass`), `turn`, `turn-error`, `fold`, `ping` (heartbeat), `done`, `fatal`.
 
 #### `POST /api/v1/chats/[id]?action=recall-replay`
 
-Episodic-recall tuning harness (wrapped by `quilltap recall-replay`). Reconstructs the per-turn recall distillation for a turn and runs the memory search twice — episodic signals inert (pre-overhaul path) vs. live (retrospective flip, time window, entity anchors, multi-probe) — returning both candidate tables with cosine, ranking blend, multipliers fired, final score, and head selection per row. Read-only. The distillation clock is anchored to the replayed turn's own timestamp.
+Episodic-recall tuning harness (wrapped by `quilltap recall-replay`). Rebuilds the turn's recall query (`buildRecallQuery`, embedded once) and runs the search stages twice — episodic signals inert (pre-overhaul path) vs. live (retrospective flip, time window, entity anchors, multi-probe) — returning both candidate tables with cosine, ranking blend, multipliers fired, final score, and head selection per row; then the text strategy over the same question (`fallbackPath`) and the turn's `assembleRecall` over the live pool, reported as the stage `trace` and the rendered `pools` (`archive` / `head` / `interCharacter` / `recap` ids). The anti-repetition ring is the one in force at the turn, rebuilt from the `[Recall:ring]` lines of earlier replies' `debugMemoryLogs` (`ring`, `ringSource: 'debug-log'`), falling back to the chat's current ring (`'chat'`). Read-only: nothing is stamped or persisted. The distillation clock is anchored to the replayed turn's own timestamp.
 
 **Request Body** (all optional):
 
@@ -2974,7 +2983,7 @@ Episodic-recall tuning harness (wrapped by `quilltap recall-replay`). Reconstruc
 
 Harness knobs (recall multiplier retuning, R7):
 
-- `tuning` — retuning constants for the **new path only**; the old path stays the reference. Validated by `RecallTuningInputSchema` (`lib/memory/recall-tuning.ts`), and unknown keys are a 400. Keys: `boostGateAbs` / `boostGateMargin` / `boostGateRamp` (R1 relevance gate; 0 or null turns a term off), `boostCap` (R2), `freshBypassesGate` / `windowBypassesGate` (apply that event-time boost outside the R1 gate), `multipliers` (any `RECALL_MULTIPLIERS` key, fresh-event values included), `specificAnchors` with `anchorMinHits` and `anchorOrder` (`rarest` | `distiller`) (R4), `backgroundReserve` (R6, 0–0.5 of the head). Omitted → today's constants, byte-identical ranking.
+- `tuning` — retuning constants for the **new path only**; the old path stays the reference. Validated by `RecallTuningInputSchema` (`lib/memory/recall/tuning.ts`), and unknown keys are a 400. Keys: `boostGateAbs` / `boostGateMargin` / `boostGateRamp` (R1 relevance gate; 0 or null turns a term off), `boostCap` (R2), `freshBypassesGate` / `windowBypassesGate` (apply that event-time boost outside the R1 gate), `multipliers` (any `RECALL_MULTIPLIERS` key, fresh-event values included), `specificAnchors` with `anchorMinHits` and `anchorOrder` (`rarest` | `distiller`) (R4), `backgroundReserve` (R6, 0–0.5 of the head). Omitted → today's constants, byte-identical ranking.
 - `signals` — a previous replay's `signals`, reused instead of a fresh cheap-LLM distillation (which is not deterministic). Validated by `RecallReplaySignalsSchema`.
 - `asOf` — search only memories created before the turn's opening message, and decay weights against the turn's clock: the corpus as it stood then. Applies to both paths.
 
@@ -4176,28 +4185,60 @@ and `consolidatedAt`.
 
 #### `POST /api/v1/memories`
 
-Create a memory.
-
-**Query Parameters**:
-- `characterId` (required) - Character to create memory for
+Create a memory by hand. The row always goes through the memory gate, is always stored with
+`source: "MANUAL"` and `witnessedContext: "manual"`; a client-sent `source` or `skipGate` is ignored.
 
 **Request Body**:
 
 ```json
 {
+  "characterId": "char-uuid",
   "content": "Alice likes tea",
   "summary": "Preference for tea",
-  "importance": 0.8
+  "keywords": ["tea"],
+  "importance": 0.8,
+  "aboutCharacterId": "char-uuid",
+  "chatId": "chat-uuid",
+  "projectId": "project-uuid",
+  "kind": "episodic",
+  "occurredAt": "2026-10-01T18:00:00Z",
+  "entities": ["The Copper Kettle"]
 }
 ```
 
+`characterId`, `content` and `summary` are required and are trimmed; blank text is a `400`
+before admission runs. `projectId`, when omitted, is taken from `chatId`'s chat if it belongs to
+a project. An unknown `projectId` or `chatId` returns `404`.
+
+**Response**: `201 Created` with `{ memory, action }` when a row was inserted (`action` is
+`insert` or `insert-linked`); `200 OK` with `{ memory, action }` carrying the *existing* row
+when admission folded the write into it (`reinforce`, `absorb` or `promote-and-reinforce`).
+The write goes through `admitCandidate` (`lib/memory/admission`) like every extracted memory,
+with one rule of its own: a hand-written memory never folds into an extracted (`AUTO`) row — it
+is inserted and linked to it instead. Folded into a `MANUAL` row or a digest, it raises that
+row's `importance` to the requested one when higher (`reinforcedImportance` recomputed); the
+row keeps its source. When admission writes nothing the response says why: `400` when the text
+was blank, `502` when the embedding could not be generated (the edit route answers the same
+way). While a re-embed is part way through, rows whose stored vectors cannot be compared with the
+new one are still checked for duplicates: admission finds likely matches among them by word and
+scores those few by re-embedding their text.
+
 #### `GET /api/v1/memories/[id]`
 
-Get a specific memory.
+Get a specific memory. Reading a memory does not stamp `lastAccessedAt` — only delivery to a
+model counts as an access.
 
 #### `PUT /api/v1/memories/[id]`
 
-Update a memory.
+Update a memory. `content` and `summary` are trimmed; a blank value is a `400`. Goes through
+`updateMemory` (`lib/memory/admission/update-memory.ts`): a change to `content` or
+`summary` re-embeds the row and updates its vector; an `importance` change recomputes
+`reinforcedImportance`; `relatedMemoryIds` must name existing memories of the same character
+(otherwise `400`) and is written on both sides of each link; the character's frozen archive is
+invalidated and `memories` is published; editing a hot consolidation digest rewrites its
+`Commonplace/` mirror file (through `mirrorCommonplaceForSubjects`). The new embedding is generated
+*before* the row is written and lands in the same update; if it cannot be generated the edit is
+refused with `502` and an explanatory `error`, and the row is unchanged.
 
 **Request Body**:
 
@@ -4242,34 +4283,71 @@ Search memories (uses embeddings if available, falls back to keyword).
 }
 ```
 
-#### `GET /api/v1/memories?action=housekeep`
+#### `POST /api/v1/memories?action=maintain`
 
-Preview housekeeping actions (dry run).
+Memory maintenance (memory refactor §3.9): one `MEMORY_MAINTENANCE` run per character, its phases
+always in this order — `fold-near-duplicates` → `consolidate` → `demote` → `retire` → `mirror`.
+The phases a manual request asks for (every phase when it names none) run whatever the
+`memoryMaintenance.enabled` / `memoryConsolidation.enabled` switches and the per-phase toggles say;
+the job records them as `exemptPhases`. Phases a scheduled or watermark request asked for obey
+them, even after a manual request has been merged into the same waiting job. `retire` always needs
+`coldRetentionDays`.
 
-**Query Parameters**:
-- `characterId` (required) - Character to preview housekeeping for
-- `maxMemories` - Maximum memories to keep (default: 1000)
-- `maxAgeMonths` - Maximum age in months (default: 6)
-- `minImportance` - Minimum importance threshold (default: 0.3)
-- `mergeSimilar` - Whether to merge similar memories (default: false)
+**Request Body**: `{ characterId?, phases?, dryRun?, settings? }`. `phases` is a non-empty list of
+the five names; naming `consolidate` brings `mirror` with it (`withImpliedPhases`). `settings` is `{ consolidation?: Partial<MemoryConsolidationSettings>,
+maxClustersPerRun?, cap? }` (`cap` an integer 100–100,000; otherwise the character's own).
 
-#### `POST /api/v1/memories?action=housekeep`
+- `dryRun: true` runs **in-process**, writes nothing, and is bounded like the consolidate dry run
+  (`maxClustersPerRun` default 10, at most 40; 120 s budget). With `characterId`: `{ success,
+  dryRun: true, report }`, a `MaintenanceReport` — `phases[]` (`{ phase, status: 'ran' | 'skipped',
+  skippedBecause?, durationMs }`), `fold` (`eligible`, `deferred` (rows past the 2,000-per-bucket comparison bound), `groups[]` of `{ survivorId, absorbedIds,
+  minCosine }`, `folded`), `consolidation` (a `ConsolidationReport`), `demote` (`cap`, `hotTotal`,
+  `demotable`, `protected`, `excess`, `demoted`, `demotedIds`), `retire` (`retentionDays`,
+  `retired`, `retiredIds`), `mirror` (`subjects`, `filesWritten`, `deferredToCommit`). Without
+  `characterId` a dry run is allowed only for phases that never call a model (no `consolidate`) and
+  returns `{ success, dryRun: true, reports: MaintenanceReport[] }`, one per live character.
+- otherwise one job is enqueued for the character — or one per character the user owns — each
+  deduped per character: a waiting job widens to the phases asked for; a running one never absorbs
+  the request (a new job waits, and starts once the running one has finished). **Response**: `{ success,
+  dryRun: false, jobId, jobIds }`.
 
-Run housekeeping (deduplication, summarization) on memories.
+`404` for an unknown character; `400` for a malformed body or a user-wide dry run that would
+consolidate. `settings.consolidation` is a patch: only the knobs sent override the stored ones (bug
+244). `clusterThreshold` there applies dry or real (a real run carries it in the job payload, bug
+223), whichever embedding provider is the default.
 
-**Query Parameters**:
-- `characterId` (required) - Character to housekeep memories for
+The Phase F aliases `?action=housekeep` (GET and POST), `housekeep-sweep`, `consolidate` and
+`housekeeping-config` were removed in Phase G; each is now `400 Unknown action`. Their equivalents:
+`maintain` with `phases: ['demote', 'retire']` (with or without `characterId`), `maintain` with
+`phases: ['consolidate']`, and `maintenance-config`.
 
-**Request Body**:
+#### `POST /api/v1/memories?action=repair`
 
-```json
-{
-  "maxMemories": 1000,
-  "maxAgeMonths": 6,
-  "minImportance": 0.3,
-  "mergeSimilar": true
-}
-```
+The memory graph repair behind `quilltap memories validate --repair` (`repairMemoryGraph`,
+`lib/memory/repair.ts`). Finds links that name a row which no longer exists — in
+`relatedMemoryIds`, digests' `consolidatedFrom`, and members' `supersededById` — and rows with no
+embedding. A live run scrubs the links with the retirement's own removal deltas
+(`scrubDanglingMemoryLinks`; a member whose digest is gone keeps its tier; a digest every one of
+whose members is gone is retired through `retireMemories`, invariant 8) and queues up to 2,000
+`EMBEDDING_GENERATE` jobs under the default embedding profile, in one batch (a row that already has
+a pending job is skipped and not counted). With `characterId`, only that holder's rows are written.
+A scan that fails is a `500`, never an empty report.
+
+**Request Body**: `{ characterId?, dryRun? }` (omitted `characterId`: every memory in the instance;
+`dryRun` defaults to false).
+
+**Response**: `200 OK` — `{ success, report: { dryRun, characterId, found: { related: { links, rows },
+consolidatedFrom: { links, digests }, supersededBy, missingEmbeddings }, repaired?: {
+relatedRowsTouched, digestsTouched, digestsRetired, membersCut, charactersAffected, embeddingJobsQueued,
+embeddingSkippedReason? } } }`. `404` for an unknown character, `400` for a malformed body.
+
+#### `GET /api/v1/memories?action=maintenance-status`
+
+The parent's maintenance ledger. **Query Parameters**: `characterId` (optional; omitted, every
+character the ledger knows). **Response**: `{ success, ledger: [{ characterId, lastRun: { [phase]:
+{ at, reason } }, lastSummary, lastDemotion: { at, demoted, excess, effective } | null }] }`. The
+ledger lives in server memory and is seeded once per process from recent `MEMORY_MAINTENANCE` job
+rows.
 
 #### `POST /api/v1/memories?action=embeddings`
 
@@ -4289,52 +4367,55 @@ Embedding coverage for one character.
 
 #### `PUT /api/v1/memories?action=embeddings`
 
-Rebuild the vector index for one character. `PUT` without `?action=embeddings` is a `400`.
+Rebuild the vector index for one character. Since 4.10 the index *is* the memory rows
+(`memories.embedding` + `memories.tier`), so this drops the in-process cache and reloads it from
+them; each vector arrives with its row's tier, so cold rows stay out of hot-only recall. `PUT`
+without `?action=embeddings` is a `400`.
 
 **Request Body**: `{ "characterId": "char-uuid" }`
+
+**Response**: `200 OK` — `{ message, indexed, failed }`: `indexed` vectors now in the index, and
+`failed` memories with no embedding (fill them with `POST ?action=embeddings`).
 
 #### `POST /api/v1/memories?action=anchor-gate-probe`
 
 Measurement-only developer tool (wrapped by `quilltap anchor-probe`). Re-embeds a character's most
 recent memories with and without the episodic anchor line, scores each against older rows both
-ways, and reports how many would reach the Memory Gate's reinforce (0.85) and near-duplicate (0.90)
-thresholds. Writes nothing; costs roughly up to 7 embedding calls per sampled row.
+ways, and asks admission's decider (`decideAdmission`, with the same `ADMISSION_THRESHOLDS`
+admission uses) what it would do each way. `reinforce` counts rows that would fold into an older
+one (reinforce, absorb or promote); `nearDuplicate` counts rows whose fold target is a
+near-duplicate (absorbed, or a cold row promoted and absorbed). Writes nothing; costs
+roughly up to 7 embedding calls per sampled row.
 
 **Request Body**: `{ "characterId": "char-uuid", "limit": 50 }` (`limit` 1–200, default 50)
 
 **Response**: `200 OK` — `{ success, data: { characterId, sampled, anchoredRows, thresholds,
 anchored: { reinforce, nearDuplicate }, anchorFree: { reinforce, nearDuplicate },
-crossedOnlyWithoutAnchors, embeddingsGenerated, rows[] } }`
+crossedOnlyWithoutAnchors, embeddingsGenerated, rows[] } }`. Each row carries `anchoredBest` /
+`anchorFreeBest` (best cosine) and `anchoredAction` / `anchorFreeAction` (admission's action kind);
+`crossedOnlyWithoutAnchors` counts rows that fold only anchor-free.
 
-#### `POST /api/v1/memories?action=housekeep-sweep`
+#### `GET` / `POST /api/v1/memories?action=maintenance-config`
 
-Enqueue a manual instance-wide housekeeping sweep (`MEMORY_HOUSEKEEPING`, `reason: 'manual'`)
-rather than running it inline. Takes no body.
+Read and write the **instance-wide** memory maintenance settings (the `memoryMaintenance` instance
+setting). `POST` merges the fields you send over the stored ones; both return `{ success, settings }`.
 
-**Response**: `200 OK` — `{ "success": true, "jobId": "job-uuid" }`
-
-#### `GET` / `POST /api/v1/memories?action=housekeeping-config`
-
-Read and write the per-user automatic-housekeeping settings stored on chat settings. `POST` merges
-the fields you send over the stored ones; both return `{ success, settings }`.
-
-**Settings**: `enabled`, `perCharacterCap` (default 2000), `perCharacterCapOverrides`,
-`autoMergeSimilarThreshold` (default 0.90), `mergeSimilar`.
+**Settings**: `enabled` (default false), `perCharacterCap` (default 2000),
+`perCharacterCapOverrides` (`{ [characterId]: cap }`), `phases` (`{ foldNearDuplicates, demote,
+retire }`, each default true; a partial object merges over the stored toggles). Every cap is an
+integer 100–100,000 (`MemoryMaintenanceCapSchema`). The retired `mergeSimilar` /
+`autoMergeSimilarThreshold` are gone.
 
 #### `GET` / `POST /api/v1/memories?action=extraction-limits-config`
 
 Read and write the **instance-wide** memory-extraction rate limits. `POST` merges over the stored
-values; both return `{ success, settings }`.
+values; both return `{ success, settings }`. Shown on the Extraction Grain card since Phase G.
 
-**Settings**: `enabled`, `maxPerHour`, `softStartFraction`, `softFloor`.
+**Settings**: `enabled` (false), `maxPerHour` (integer 1–10,000, 20), `softStartFraction` (0–1, 0.7),
+`softFloor` (0–1, 0.7).
 
-#### `GET` / `POST /api/v1/memories?action=extraction-concurrency`
-
-Read and write the **instance-wide** memory-extraction concurrency. A write also pushes the value
-into the job processor's runtime cache, so it takes effect on the next claim tick rather than at
-the next cache refresh.
-
-**Request Body** (POST): `{ "concurrency": 3 }` · **Response**: `{ success, concurrency }`.
+Every `*-config` write validates through the façade's own schema as a patch (`patchSchemaOf`): an
+omitted field keeps its stored value (bug 244).
 
 #### `GET` / `POST /api/v1/memories?action=recall-config`
 
@@ -4345,33 +4426,14 @@ return `{ success, settings }`.
 Memory → Recall Relevance switch that re-runs the past-conversation search every turn, reusing the
 vector the turn's memory search already embedded).
 
-#### `POST /api/v1/memories?action=consolidate`
-
-Fold clusters of one character's hot memories into digest rows and send the originals cold (see
-`docs/developer/features/memory-consolidation-and-tiers.md`). Manual runs ignore the
-`memoryConsolidation.enabled` master switch.
-
-**Request Body**: `{ characterId, dryRun?, maxClustersPerRun?, clusterThreshold? }`. `characterId`
-is a UUID; `clusterThreshold` is 0–1 and applies to dry runs only (a real run uses the stored
-settings).
-
-- `dryRun: true` runs **in-process** (dry-run jobs only log, so the report is returned directly),
-  writes nothing, and is bounded: `maxClustersPerRun` defaults to 10 and is capped at 40, with a
-  120 s time budget. **Response**: `200 OK` — `{ success, dryRun: true, report }`, where `report` is a
-  `ConsolidationReport` (`clusters[]` with `bucket`, `memberIds`, `memberContents`, `digests`,
-  `keepStandalone`, `contradictions`, `status`; plus `stats`, `settings`, `skippedReason`).
-- otherwise a `MEMORY_CONSOLIDATION` job is enqueued (deduped per character while in flight).
-  **Response**: `200 OK` — `{ success, dryRun: false, jobId }`.
-
-`404` for an unknown character; `400` for a malformed body.
-
 #### `GET` / `POST /api/v1/memories?action=consolidation-config`
 
 Read and write the **instance-wide** consolidation settings (`instance_settings['memoryConsolidation']`).
 `POST` merges a partial patch over the stored values; both return `{ success, settings }`.
 
 **Settings**: `enabled` (default false), `connectionProfileId` (null → cheap LLM), `clusterThreshold`
-(0–1, 0.72), `minClusterSize` (3), `maxClusterSize` (30), `matureAfterDays` (7), `maxClustersPerRun`
+(0–1, 0.72; neural default profiles), `tfidfClusterThreshold` (0–1, 0.30; used instead when the default
+embedding profile is BUILTIN), `minClusterSize` (3), `maxClusterSize` (30), `matureAfterDays` (7), `maxClustersPerRun`
 (40), `watermark` (150), `coldRetentionDays` (null → never delete cold rows).
 
 #### `GET` / `POST /api/v1/memories?action=extraction-mode-config`
@@ -4395,14 +4457,18 @@ sets the batch size.
 
 #### `GET /api/v1/memories?action=character-memory-counts`
 
-Every character owned by this user with its memory count, sorted count-descending so the busiest
-surface first. Returns `{ success, characters: [{ id, name, memoryCount }] }`.
+Every character owned by this user with its memory counts as the maintenance cap sees them,
+sorted by `demotable` descending so the characters nearest their cap surface first. Returns
+`{ success, characters: [{ id, name, memoryCount, hotTotal, demotable, protected, cold }] }`.
+`demotable` is hot AUTO rows — the only number the cap is measured against; `protected` is hot
+MANUAL rows and consolidation digests, which never count against it; `memoryCount` is the total
+across both tiers.
 
 #### `POST /api/v1/memories?action=regenerate-all`
 
 Wipe and re-extract every memory. Pressing it again is an explicit "kill the previous sweep and
-start over": all PENDING/PROCESSING `MEMORY_REGENERATE_ALL`, `MEMORY_REGENERATE_CHAT`,
-`MEMORY_EXTRACTION` and `INTER_CHARACTER_MEMORY` jobs are deleted before the fresh fan-out is
+start over": all PENDING/PROCESSING `MEMORY_REGENERATE_ALL`, `MEMORY_REGENERATE_CHAT` and
+`MEMORY_EXTRACTION` jobs are deleted before the fresh fan-out is
 enqueued. The standard and dangerous-compatible cheap profiles are resolved up front and travel in
 the job payload, so the fan-out is self-contained.
 
@@ -5463,9 +5529,10 @@ Create a backup and stage it for download. Returns a temporary backup ID.
 ```
 
 `compact` defaults to `false`. When true the archive omits every embedding-derived payload — memory
-embeddings are nulled and `conversation-chunks.json`, `vector-entries.json`,
-`vector-index-metas.json`, `tfidf-vocabularies.json`, `embedding-status.json` and
-`doc-mount-chunks.json` are not written at all — and the manifest records `compact: true`. Restore
+embeddings are nulled and `conversation-chunks.json`, `tfidf-vocabularies.json`,
+`embedding-status.json` and `doc-mount-chunks.json` are not written at all (no backup has written
+`vector-entries.json` / `vector-index-metas.json` since 4.10: a memory's vector rides on its row;
+a restore reads an older archive's `vector-entries.json` only to backfill a memory without one) — and the manifest records `compact: true`. Restore
 keys off that flag to enqueue a full `EMBEDDING_REINDEX_ALL`. A malformed body is treated as absent
 rather than rejected.
 
@@ -6816,12 +6883,14 @@ Delete one group wardrobe item. Cleans up equipped references across chats first
 
 ### Scenarios
 
-Scenarios are Markdown files (with frontmatter: `name`, `description`, `isDefault`, `archived`, body) kept in a `Scenarios/` folder. They exist at three tiers — **general** (instance-wide "Quilltap General" store), **project**, and **group** — that share an identical endpoint shape. Each collection endpoint ensures the backing store and its `Scenarios/` folder exist first, so callers don't wait for the next startup heal pass. Frontmatter is parsed and default-conflict resolution is applied on read.
+Every scenario is addressed through one chokepoint, `resolveScenarioLocation` / `lookupScenarioRef` (`lib/scenarios/location.ts`): a location is one owner's `Scenarios/` folder — a character vault, a project's or group's official store, or Quilltap General — and a `{ mountPointId, path }` ref names any scenario in any of them.
+
+Scenarios are Markdown files (with frontmatter: `name`, `description`, `isDefault`, `archived`, body) kept in a `Scenarios/` folder. They exist at three file-backed tiers — **general** (instance-wide "Quilltap General" store), **project**, and **group** — that share an identical endpoint shape. Each collection endpoint ensures the backing store and its `Scenarios/` folder exist first, so callers don't wait for the next startup heal pass. Frontmatter is parsed and default-conflict resolution is applied on read.
 
 **Archived scenarios.** A file carrying `archived: true` is excluded from every list response unless the request passes **`?includeArchived=true`**; absence of the key means active, and the serializer never writes `archived: false`. The parameter is honoured by all three tiers' collection GETs, by the participant-aggregate route below, and by the item-level `PUT`/`POST ?action=rename`/`DELETE` on the freshly-listed scenarios they return (so a manager with "Show archived" ticked gets back a list that still contains the row it just changed). Two rules hold regardless of the parameter:
 
 - An archived scenario **never wins default-conflict resolution** — its `isDefault` comes back `false` even when it is being listed, and `rawIsDefault` still reflects what the file claims.
-- `resolveScenarioBody()` ignores the flag entirely, so a chat that already resolved an archived scenario keeps working.
+- A location's `read` ignores the flag entirely, so a chat that already resolved an archived scenario keeps working.
 
 `archived` is also accepted on the create and update bodies. On `PUT` it is **optional and preserving**: the endpoint rewrites the whole file from the request body, so omitting `archived` keeps the file's current state rather than silently un-archiving it.
 
@@ -6830,6 +6899,8 @@ For the single-scenario endpoints, `[scenarioPath]` is the URL-encoded filename 
 **General tier**
 
 - `GET /api/v1/scenarios` — list general scenarios. Tolerates the pre-migration race (returns an empty list with `mountPointId: null`).
+- `GET /api/v1/scenarios?action=everywhere[&includeArchived=true]` — every scenario in the instance, for the scenario browser. Response `{ sources: [{ scope, id, name, mountPointId, scenarios: [{ path, scenarioId?, filename, name, description?, isDefault, archived, excerpt, updatedAt }], warnings }] }`, sources ordered General, projects, groups, characters (each A–Z). Bodies are **not** included — `excerpt` is the first 240 characters, whitespace-collapsed. Owners with an empty folder are listed; owners without a store are skipped and never provisioned; archived characters are omitted. One document query serves every owner. `scenarioId` (character rows only) is the id `scenarioId` picks carry.
+- `GET /api/v1/scenarios?action=read&mountPointId=<uuid>&path=<Scenarios/x.md>` — one scenario with its body, by ref: `{ scenario, owner: { scope, id, name, mountPointId } }`. 400 for a ref that names no scenario owner (or a path outside `Scenarios/`), 404 for a missing file.
 - `POST /api/v1/scenarios` — create a general scenario. Body: `{ filename, name?, description?, isDefault?, archived?, body }`. Rejects writes during the pre-migration window.
 - `GET /api/v1/scenarios/[scenarioPath]` — read one.
 - `PUT /api/v1/scenarios/[scenarioPath]` — update content + frontmatter.
