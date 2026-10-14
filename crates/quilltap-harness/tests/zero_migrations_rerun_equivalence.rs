@@ -1,0 +1,290 @@
+//! P4.D288 unit 13 — the ZERO-re-run proof (R-E's stamp rule, §R.13(a)):
+//! after v5's whole span chain (`db::p4d288_span::run_span_ensures`, the twelve
+//! ensures in `seed_built_ins` order), v4's REAL `MigrationRunner` at the
+//! `83334b9a5` pin, narrowed to the twelve ids, re-runs NOTHING and changes
+//! nothing — and every row v5 stamps is byte-equal to the row v4's runner
+//! writes for the same migration on the same instance.
+//!
+//! Four base modes, each pinned both ways — v4's runner records no `+RAN` and
+//! changes no table, index or ledger row after v5's chain:
+//! - `planted` — a PLANTED pre-round instance the oracle builds (never a
+//!   real-instance file: the other watermark column, the vector mirror, the
+//!   dead settings columns + key, retired job rows, legacy UTC-midnight dates,
+//!   stale reinforced importance); every v5 stamp byte-equal to the row v4's
+//!   runner writes running the twelve on the same base;
+//! - `fresh` — a fresh v5-provisioned instance (its first boot's chain);
+//! - `fresh-used` — the same in use: chats whose summary anchors v4's episode
+//!   migration would backfill (one already holding its `episode-fold` cursor),
+//!   plus the candidate filter's edge shapes (`[ ]`, unparseable, `[]`, a last
+//!   element `""`);
+//! - `v4-migrated` — the planted instance already migrated by v4's runner
+//!   (every ensure a no-op, no duplicate or changed stamp).
+//!
+//! **`STAMP_RULE_RED_FIRST`** (a named both-ways row, §R.13(a)'s red-first set
+//! BY ID, kept as a permanent pin): each base but `v4-migrated` has an
+//! `-unstamped` twin — the instance after v5's chain with the span's ledger
+//! rows DELETED. v4 re-runs on it EXACTLY the ids v5 stamped, in v4's order
+//! (measured: the episode watermark, the two data rewrites, the cursor
+//! migration — on all three), so every stamp is necessary and no unstamped
+//! ensure needs one. On `fresh` / `fresh-used` the row v4 writes on the twin is
+//! also byte-compared with v5's stamp — there v5 stamped the settled chain
+//! WITHOUT running it (`memory_extraction_cursors_repair::stamp_settled_chain`),
+//! so the twin's row IS v4's row for the same migration on the same instance.
+//! Before that arm the `fresh` mode re-ran the episode watermark + the cursor
+//! migration (P4.D288 unit 7's `FRESH_INSTANCE_UNLEDGERED`; on `fresh-used`
+//! that inserts `episode-fold` cursors at the last summary anchor).
+//!
+//! Regenerate + run (three steps around this file, Node 24, from the round's
+//! pin, `TZ=UTC QUILLTAP_TIMEZONE=UTC`):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   D=/tmp/qt-zero-rerun ; rm -rf $D /tmp/oracle-zero-rerun-*.ndjson
+//!   cd <the pinned v4 worktree>
+//!   TZ=UTC QUILLTAP_TIMEZONE=UTC QT_ZERO_RERUN_PHASE=build QT_FIXTURE_ZERO_RERUN_DIR=$D \
+//!     $N/npx tsx $V5W/harness/oracle/cases/zero-rerun.ts > /tmp/oracle-zero-rerun-build.ndjson
+//!   cd $V5W && QT_ZERO_RERUN_WRITE=1 QT_FIXTURE_ZERO_RERUN_DIR=$D \
+//!     cargo test -p quilltap-harness --test zero_migrations_rerun_equivalence -- write_after_v5
+//!   cd <the pinned v4 worktree>
+//!   TZ=UTC QUILLTAP_TIMEZONE=UTC QT_ZERO_RERUN_PHASE=v4 QT_FIXTURE_ZERO_RERUN_DIR=$D \
+//!     $N/npx tsx $V5W/harness/oracle/cases/zero-rerun.ts > /tmp/oracle-zero-rerun-v4.ndjson
+//!   cd $V5W && QT_ORACLE_ZERO_RERUN_DIR=/tmp QT_FIXTURE_ZERO_RERUN_DIR=$D \
+//!     cargo test -p quilltap-harness --test zero_migrations_rerun_equivalence -- --nocapture
+
+use std::path::{Path, PathBuf};
+
+use quilltap_core::db::Writer;
+use serde_json::Value;
+
+const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+/// v4's twelve span ids in registration order (`P4D288_SPAN_MIGRATIONS`).
+const SPAN: [&str; 12] = [
+    "add-memory-superseded-at-v1",
+    "add-chat-scenario-source-v1",
+    "add-episode-extraction-watermark-v1",
+    "recompute-reinforced-importance-v1",
+    "rezone-legacy-memory-occurred-at-v1",
+    "add-memories-superseded-by-index-v1",
+    "move-memory-maintenance-settings-v1",
+    "retire-memory-vector-entries-v1",
+    "add-memory-extraction-cursors-v1",
+    "drop-inter-character-memory-jobs-v1",
+    "add-tfidf-text-shape-version-v1",
+    "drop-housekeeping-consolidation-jobs-v1",
+];
+
+/// The base modes; each has an `-unstamped` twin except `v4-migrated` (whose
+/// rows are v4's own).
+const BASES: [&str; 4] = ["planted", "fresh", "fresh-used", "v4-migrated"];
+
+fn dir() -> Option<PathBuf> {
+    std::env::var("QT_FIXTURE_ZERO_RERUN_DIR")
+        .ok()
+        .map(PathBuf::from)
+}
+
+/// Run v5's span chain on `path` (a caller-thread writer).
+fn run_chain(path: &Path) {
+    let w = Writer::open_writable(path, PEPPER).expect("open");
+    quilltap_core::db::p4d288_span::run_span_ensures(w.connection(), "UTC")
+        .expect("the span chain");
+}
+
+/// A fresh v5-provisioned main partition at `out` (its first boot not yet run).
+fn provision_to(out: &Path) {
+    let scratch = tempfile::tempdir().unwrap();
+    quilltap_core::services::provisioning::provision_fresh_instance(scratch.path(), PEPPER)
+        .expect("provision");
+    std::fs::copy(scratch.path().join("quilltap.db"), out).expect("copy fresh");
+}
+
+/// The write step: v5's chain over each base → `<mode>.after-v5.db`, and each
+/// stamped base's `-unstamped` twin (the span's ledger rows DELETED after the
+/// chain).
+#[test]
+fn write_after_v5() {
+    if std::env::var("QT_ZERO_RERUN_WRITE").is_err() {
+        eprintln!("SKIP: the write step runs only under QT_ZERO_RERUN_WRITE=1 (see header).");
+        return;
+    }
+    let dir = dir().expect("QT_FIXTURE_ZERO_RERUN_DIR");
+    for mode in BASES {
+        let out = dir.join(format!("{mode}.after-v5.db"));
+        let _ = std::fs::remove_file(&out);
+        match mode {
+            "planted" | "v4-migrated" => {
+                std::fs::copy(dir.join(format!("{mode}.db")), &out).expect("copy base");
+            }
+            "fresh" => provision_to(&out),
+            "fresh-used" => {
+                // A v5-provisioned instance in use: chats whose summary anchors
+                // v4's episode migration would backfill (one already holding its
+                // `episode-fold` cursor), plus the filter's edge shapes.
+                provision_to(&out);
+                let w = Writer::open_writable(&out, PEPPER).unwrap();
+                w.connection()
+                    .execute_batch(
+                        "INSERT INTO chats (id, userId, title, summaryAnchorMessageIds, createdAt, updatedAt) VALUES \
+                           ('u-c1', 'u1', 't', '[\"a1\",\"a2\"]', 't', 't'), \
+                           ('u-c2', 'u1', 't', '[ ]', 't', 't'), \
+                           ('u-c3', 'u1', 't', 'not json', 't', 't'), \
+                           ('u-c4', 'u1', 't', '[\"b1\"]', 't', 't'), \
+                           ('u-c5', 'u1', 't', '[]', 't', 't'), \
+                           ('u-c6', 'u1', 't', '[\"x\", \"\"]', 't', 't'); \
+                         INSERT INTO memory_extraction_cursors (id, chatId, pass, messageId, createdAt, updatedAt) \
+                           VALUES ('u-c4:episode-fold', 'u-c4', 'episode-fold', 'b0', 't', 't');",
+                    )
+                    .expect("plant fresh-used");
+            }
+            _ => unreachable!(),
+        }
+        run_chain(&out);
+        if mode == "v4-migrated" {
+            continue;
+        }
+        let twin = dir.join(format!("{mode}-unstamped.after-v5.db"));
+        let _ = std::fs::remove_file(&twin);
+        std::fs::copy(&out, &twin).expect("copy twin");
+        let w = Writer::open_writable(&twin, PEPPER).expect("open twin");
+        for id in SPAN {
+            w.connection()
+                .execute("DELETE FROM migrations_state WHERE id = ?1", [id])
+                .expect("unstamp");
+        }
+    }
+}
+
+fn read_lines(path: &Path) -> Vec<Value> {
+    std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect()
+}
+
+fn ledger_by_id(ledger: &Value) -> Vec<(String, Value)> {
+    ledger
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| (r["id"].as_str().unwrap().to_string(), r.clone()))
+        .collect()
+}
+
+/// The span rows of a ledger dump, keyed by id.
+fn span_rows(ledger: &Value) -> Vec<(String, Value)> {
+    ledger_by_id(ledger)
+        .into_iter()
+        .filter(|(id, _)| SPAN.contains(&id.as_str()))
+        .collect()
+}
+
+#[test]
+fn no_migration_reruns_after_the_v5_chain() {
+    let Ok(oracle_dir) = std::env::var("QT_ORACLE_ZERO_RERUN_DIR") else {
+        eprintln!("SKIP: set QT_ORACLE_ZERO_RERUN_DIR (+ QT_FIXTURE_ZERO_RERUN_DIR) — see header.");
+        return;
+    };
+    let oracle_dir = PathBuf::from(oracle_dir);
+    let build = read_lines(&oracle_dir.join("oracle-zero-rerun-build.ndjson"));
+    let v4 = read_lines(&oracle_dir.join("oracle-zero-rerun-v4.ndjson"));
+    let v4_ledger = ledger_by_id(&build[0]["ledger"]);
+    assert_eq!(
+        build[0]["ran"].as_array().unwrap().len(),
+        12,
+        "v4 ran the twelve on the planted base"
+    );
+    let row_of = |mode: &str| -> &Value {
+        v4.iter()
+            .find(|r| r["mode"] == mode)
+            .unwrap_or_else(|| panic!("no v4 row for mode {mode}"))
+    };
+    let ran_of = |row: &Value| -> Vec<String> {
+        row["ran"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect()
+    };
+    let mut failures = Vec::new();
+    for mode in BASES {
+        let row = row_of(mode);
+        // (1) After v5's chain v4's runner runs NOTHING and changes nothing.
+        let ran = ran_of(row);
+        if !ran.is_empty() {
+            failures.push(format!("{mode}: v4 re-ran {ran:?} after v5's chain"));
+        }
+        for key in ["master", "tables", "ledger"] {
+            if row["before"][key] != row["after"][key] {
+                failures.push(format!(
+                    "{mode}: v4's runner changed {key}\n  before {}\n  after  {}",
+                    row["before"][key], row["after"][key]
+                ));
+            }
+        }
+        let v5_rows = span_rows(&row["before"]["ledger"]);
+        match mode {
+            "planted" => {
+                for (id, v5_row) in &v5_rows {
+                    match v4_ledger.iter().find(|(i, _)| i == id) {
+                        None => {
+                            failures.push(format!("planted: v5 stamped {id}, which v4 never ran"))
+                        }
+                        Some((_, v4_row)) if v4_row != v5_row => {
+                            failures.push(format!("planted: {id}\n  v5 {v5_row}\n  v4 {v4_row}"))
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            "v4-migrated" => {
+                if span_rows(&row["before"]["ledger"]) != span_rows(&build[0]["ledger"]) {
+                    failures.push(format!(
+                        "v4-migrated: v5 moved the ledger (a duplicate or changed stamp)\n  v5 {:?}\n  v4 {:?}",
+                        v5_rows, v4_ledger
+                    ));
+                }
+                continue;
+            }
+            _ => {}
+        }
+        // (2) `STAMP_RULE_RED_FIRST` (both ways): on the `-unstamped` twin v4
+        // re-runs EXACTLY the ids v5 stamped (in v4's order) — every stamp is
+        // necessary, no unstamped ensure needs one — and the row v4 writes for
+        // each is byte-equal to v5's stamp.
+        let twin = row_of(&format!("{mode}-unstamped"));
+        let mut want: Vec<String> = v5_rows.iter().map(|(id, _)| id.clone()).collect();
+        want.sort_by_key(|id| SPAN.iter().position(|s| s == id));
+        let twin_ran = ran_of(twin);
+        if twin_ran != want {
+            failures.push(format!(
+                "STAMP_RULE_RED_FIRST {mode}: v4 re-ran {twin_ran:?}, v5 stamped {want:?}"
+            ));
+        }
+        // The bytes: on `planted` v5 DID the work, so v4's re-run on the twin
+        // finds none and writes zero counts — that mode's bytes are pinned above
+        // against v4's run on the pre-chain base. On the two v5-native modes v5
+        // stamped WITHOUT running (the settled chain) or ran over nothing, so
+        // v4's row on the twin IS the row for the same migration on the same
+        // instance.
+        if mode == "planted" {
+            continue;
+        }
+        let v4_rows = span_rows(&twin["after"]["ledger"]);
+        for (id, v5_row) in &v5_rows {
+            match v4_rows.iter().find(|(i, _)| i == id) {
+                Some((_, v4_row))
+                    if serde_json::to_string(v4_row).unwrap()
+                        == serde_json::to_string(v5_row).unwrap() => {}
+                other => failures.push(format!(
+                    "{mode}: v5's stamp for {id} is not v4's row\n  v5 {v5_row}\n  v4 {other:?}"
+                )),
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+    eprintln!(
+        "OK: zero migrations re-run after v5's chain ({} modes); every stamp necessary and v4's bytes.",
+        BASES.len()
+    );
+}

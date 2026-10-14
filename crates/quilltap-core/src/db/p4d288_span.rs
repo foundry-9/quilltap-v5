@@ -62,6 +62,19 @@ pub fn run_span_ensures(main: &Connection, host_fallback: &str) -> Result<(), Db
             "Backfilled the episode watermarks from summary anchors"
         );
     }
+    // Slots 3 + 9 on an instance where the chain is already SETTLED without
+    // v4's ledger (a v5-provisioned one): O-3's gate runs nothing, so the two
+    // rows v4's chain would write here are STAMPED (unit 13 — R-E's stamp rule).
+    if let Some(settled) = super::memory_extraction_cursors_repair::stamp_settled_chain(main)? {
+        tracing::info!(
+            target: "quilltap::boot",
+            episodeMigrationId = super::memory_episode_watermark_repair::MIGRATION_ID,
+            cursorsMigrationId = super::memory_extraction_cursors_repair::MIGRATION_ID,
+            episodeBackfilled = settled.episode_backfilled,
+            cursorsCarried = settled.cursors_carried,
+            "Recorded the settled extraction-cursor chain"
+        );
+    }
     // Slots 4 / 5 — the two STAMPED data rewrites (R-E).
     if let LedgeredHealOutcome::Ran { rewritten, total } =
         super::memory_rewrite_heals::recompute_reinforced_importance(main, &now)?

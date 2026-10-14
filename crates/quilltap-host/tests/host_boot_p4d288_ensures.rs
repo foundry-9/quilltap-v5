@@ -11,8 +11,9 @@
 //!     v4's migration lines; the episode and cursor ensures STAMP their ledger
 //!     rows (R-D) and no other ensure writes one.
 //! (b) The SECOND boot is silent (every ensure a no-op).
-//! (c) A fresh `setup` instance runs only the two ledgered rewrites (0 rows,
-//!     STAMPED) on its first boot, then boots silent.
+//! (c) A fresh `setup` instance's first boot RECORDS the settled cursor chain
+//!     (v4's two rows, nothing run — unit 13) and runs the two ledgered
+//!     rewrites (0 rows, STAMPED); the second boot is silent.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -116,6 +117,21 @@ fn ours(lines: &[String]) -> Vec<String> {
         .filter(|l| {
             IDS.iter()
                 .any(|id| l.contains(&format!("migrationId={id}")))
+        })
+        .cloned()
+        .collect()
+}
+
+/// [`ours`] plus the settled-chain stamp's line (it names both ids in its own
+/// two fields, not `migrationId`).
+fn settled_or_ours(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|l| {
+            l.contains("Recorded the settled extraction-cursor chain")
+                || IDS
+                    .iter()
+                    .any(|id| l.contains(&format!("migrationId={id}")))
         })
         .cloned()
         .collect()
@@ -230,11 +246,13 @@ async fn a_pre_round_instance_runs_every_ensure_once_in_v4s_order() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn a_fresh_instance_runs_only_the_two_ledgered_rewrites_once() {
-    // A fresh `setup` instance carries no v4 ledger, so — as on v4's first boot,
-    // where both `shouldRun`s hold — the two data rewrites run once over zero
-    // rows and STAMP (R-E: "a 0-row instance STAMPS"); every structure-gated
-    // ensure is a no-op. The second boot is silent.
+async fn a_fresh_instance_stamps_the_settled_chain_and_runs_the_two_rewrites_once() {
+    // A fresh `setup` instance carries no v4 ledger. v4's first boot would run
+    // the episode watermark + the cursor migration (both `shouldRun`s hold) and
+    // the two data rewrites. v5 RECORDS the already-settled chain (O-3's gate
+    // runs nothing; unit 13's `stamp_settled_chain` writes v4's two rows) and
+    // RUNS the two rewrites over zero rows, which STAMP (R-E). The second boot
+    // is silent.
     let _serial = SERIAL.lock().await;
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().join("data");
@@ -242,8 +260,9 @@ async fn a_fresh_instance_runs_only_the_two_ledgered_rewrites_once() {
     provision_fresh_instance(&data, PEPPER).expect("provision");
     let lines = boot(dir.path());
     assert_eq!(
-        ours(&lines),
+        settled_or_ours(&lines),
         [
+            "INFO quilltap::boot Recorded the settled extraction-cursor chain episodeMigrationId=add-episode-extraction-watermark-v1 cursorsMigrationId=add-memory-extraction-cursors-v1 episodeBackfilled=0 cursorsCarried=0",
             "INFO quilltap::boot Recomputed reinforced importance migrationId=recompute-reinforced-importance-v1 rewritten=0 total=0",
             "INFO quilltap::boot Re-stamped legacy UTC-midnight memory dates migrationId=rezone-legacy-memory-occurred-at-v1 timeZone=UTC rewritten=0 candidates=0",
         ],
@@ -252,10 +271,12 @@ async fn a_fresh_instance_runs_only_the_two_ledgered_rewrites_once() {
     assert_eq!(
         ledger_ids(&data),
         [
+            "add-episode-extraction-watermark-v1",
+            "add-memory-extraction-cursors-v1",
             "recompute-reinforced-importance-v1",
-            "rezone-legacy-memory-occurred-at-v1"
+            "rezone-legacy-memory-occurred-at-v1",
         ]
     );
     let lines = boot(dir.path());
-    assert!(ours(&lines).is_empty(), "{lines:#?}");
+    assert!(settled_or_ours(&lines).is_empty(), "{lines:#?}");
 }

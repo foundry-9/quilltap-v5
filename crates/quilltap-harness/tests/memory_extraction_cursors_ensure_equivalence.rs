@@ -14,7 +14,11 @@
 //! O-3 gate (the cursor table present) does nothing. A fresh v5 instance carries no v4
 //! ledger at all (P4.153's `ORACLE_ONLY_TABLES` row), so every v4 migration whose
 //! `shouldRun` holds re-runs there; this row records the chain's share. Pinned both
-//! ways: v4's report as measured, v5 running nothing.
+//! ways: v4's report as measured, v5's two ENSURES running nothing. At BOOT the
+//! hazard is closed by P4.D288 unit 13: the span chain's
+//! `memory_extraction_cursors_repair::stamp_settled_chain` records v4's two rows
+//! on exactly this state, and `zero_migrations_rerun_equivalence` pins that v4
+//! then re-runs nothing (`fresh` / `fresh-used`) and that the rows are v4's bytes.
 //!
 //! The comparands are EFFECTS (`p4d288_ensure_support`): `sqlite_master`, each table's
 //! `PRAGMA table_info` and every row through `quote()`, the ledger rows; and the ids

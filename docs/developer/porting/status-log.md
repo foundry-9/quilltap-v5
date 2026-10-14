@@ -180499,3 +180499,46 @@ migrationsSkipped: 90}`, none deferred. Measured:
   sweep driver (its reinforcement rows on the new formula).
 - **Recipes:** in the family's header (`QT_P4D288_ENSURE_FAMILY={recompute-importance,rezone-occurred-at}`,
   `TZ=UTC QUILLTAP_TIMEZONE=UTC`, one invocation per family, `QT_FIXTURE_P4D288_ENSURES_DIR=/tmp/qt-p4d288-ensures`).
+
+### Unit 13 — the zero-re-run proof (R-E's stamp rule, §R.13(a)) + the settled-chain stamp
+
+- **NEW `zero_migrations_rerun_equivalence` + `cases/zero-rerun.ts`** (three steps: the oracle's `build` phase
+  writes a PLANTED pre-round instance — `fresh_schema.json` + the migration index family with the round's moves
+  undone, the vector mirror, the dead settings columns + key, retired job rows, legacy UTC-midnight dates, stale
+  reinforced importance — and a copy v4's narrowed runner migrates (`v4-migrated.db`, its ledger emitted); the Rust
+  write step runs `run_span_ensures` over each base; the oracle's `v4` phase runs v4's runner over a COPY of each
+  and dumps `sqlite_master` + the touched tables through `quote()` + the ledger before / after).
+- **Measured, first run (the red set by id):** `planted` 0 re-runs; `v4-migrated` 0; **`fresh` (a v5-provisioned
+  instance) — v4 re-ran `add-episode-extraction-watermark-v1` + `add-memory-extraction-cursors-v1`** (unit 7's
+  `FRESH_INSTANCE_UNLEDGERED`, flagged then "for the human / unit 13"); with v5's span rows deleted after the chain
+  (`planted-unstamped`), v4 re-ran EXACTLY the four stamped ids (episode, recompute, rezone, cursors).
+- **The fix — NEW `memory_extraction_cursors_repair::stamp_settled_chain(main) -> Option<SettledChainStamp>`:**
+  O-3's gate (the episode ensure runs only with the cursor table ABSENT) STANDS; on the one state it leaves alone
+  with no ledger — `chats` + the cursor table present, neither legacy watermark column, neither id recorded, i.e. a
+  v5-native instance — v5 now STAMPS the two rows v4's chain would write there, computed read-only (episode:
+  `itemsAffected` 1 + B, `(B chats backfilled)`, B = the chats whose anchors v4's `lastSummaryAnchor` accepts;
+  cursors: X, `(X carried over from 1 watermark column(s))`, X = those without an `<chatId>:episode-fold` cursor —
+  v4's `ON CONFLICT DO NOTHING` counts inserts only), ONE savepoint, nothing run. Wired in `run_span_ensures` after
+  slot 3 with v5's INFO `Recorded the settled extraction-cursor chain {episodeMigrationId, cursorsMigrationId,
+  episodeBackfilled, cursorsCarried}`. **Why stamp rather than run:** running v4's chain there would insert
+  `episode-fold` cursors at each chat's last summary anchor — skipping pending episodes — on an instance whose
+  cursors are already native; the stamp keeps both apps off it.
+- **After the fix — the pinned modes:** `planted`, `fresh`, `fresh-used` (a v5-provisioned instance with six chats —
+  two backfillable, one already holding its `episode-fold` cursor, `[ ]`, unparseable, `[]`, a last element `""`),
+  `v4-migrated`: v4 re-runs NOTHING and changes NOTHING (master, touched tables, ledger). `planted`'s stamps
+  byte-equal v4's rows from the build run; on `v4-migrated` no duplicate or changed stamp. **Named both-ways row
+  `STAMP_RULE_RED_FIRST`:** each base but `v4-migrated` has an `-unstamped` twin; v4 re-runs on it exactly the ids
+  v5 stamped in v4's order (all three: the four ids — every stamp necessary, no unstamped ensure needs one), and on
+  `fresh` / `fresh-used` v4's row on the twin byte-equals v5's stamp (there v5 recorded without running).
+  Measured on `fresh-used-unstamped`: v4 changed `tables` too (the cursors it inserts) — the hazard the stamp
+  closes. **Mutation-proven:** dropping the `1 +` (the column) from the episode stamp reddened `fresh` and
+  `fresh-used`.
+- **Boot:** a fresh `setup` instance's first boot now records FOUR ledger rows (the settled pair + the two
+  rewrites) and logs three lines; `host_boot_p4d288_ensures` (c) re-pointed; the second boot silent. The
+  cursors family's `FRESH_INSTANCE_UNLEDGERED` doc now says the hazard is closed at boot (the row itself still
+  states the two ENSURES alone). **Out of scope, still OPEN (pre-existing, recorded at unit 7):** the general class
+  — a fresh v5 instance opened by v4 re-runs every OTHER v4 migration (outside this span) whose `shouldRun` holds.
+- **Recipe:** in the family's header (build phase → `write_after_v5` under `QT_ZERO_RERUN_WRITE=1` → v4 phase →
+  the compare; `QT_FIXTURE_ZERO_RERUN_DIR=/tmp/qt-zero-rerun`, `QT_ORACLE_ZERO_RERUN_DIR=/tmp`, `TZ=UTC
+  QUILLTAP_TIMEZONE=UTC`, from the pinned worktree). The case's base build needs no network; the two phases each
+  run as ONE invocation.

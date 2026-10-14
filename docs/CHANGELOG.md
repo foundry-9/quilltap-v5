@@ -24,6 +24,21 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — feat(core): P4.D288 unit 13 — zero v4 re-runs after v5's span chain; the settled cursor chain stamped
+
+_Versions: core 0.0.1298._
+
+R-E's stamp rule, proven.
+
+**The new family.** `zero_migrations_rerun_equivalence` runs v5's whole span chain, then v4's real migration runner at the pin, narrowed to the twelve:
+- On a planted pre-round instance, a fresh v5 instance, a fresh v5 instance in use, and an instance v4 already migrated, v4 re-runs nothing and changes nothing.
+- Every v5 stamp equals the row v4 writes.
+- Each stamped instance has an `-unstamped` twin, with the span's ledger rows deleted. On each twin v4 re-runs exactly the ids v5 stamped: the episode watermark, the two data rewrites and the cursor migration. The row is pinned as `STAMP_RULE_RED_FIRST`.
+
+**The fix it drove.** The measurement found v4 re-running the episode watermark and the cursor migration on a fresh v5 instance (unit 7's `FRESH_INSTANCE_UNLEDGERED`). On an instance in use, that inserts `episode-fold` cursors at each chat's last summary anchor, which skips pending episodes. New `stamp_settled_chain` handles that one state: the cursor table present, no legacy watermark column, and neither id recorded. It records the two rows v4's chain would write there, computed read-only, and runs nothing; O-3's gate stands. The span chain calls it after slot 3 and logs `Recorded the settled extraction-cursor chain`.
+
+**Effect on boot.** A fresh instance's first boot now records four ledger rows and logs three lines. Mutation-proven: dropping the column's `1 +` from the episode stamp reddens both v5-native modes.
+
 #### 2026-10-14 — feat(core,host): P4.D288 unit 12 — the two data-rewrite boot ensures (slots 4 / 5) and the span as one chain
 
 _Versions: core 0.0.1297, host 0.0.204._
