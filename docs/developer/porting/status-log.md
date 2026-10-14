@@ -180447,3 +180447,55 @@ migrationsSkipped: 90}`, none deferred. Measured:
 - **Recipe** (in the migrator's header): `cd <pin>; TZ=UTC QUILLTAP_TIMEZONE=UTC $N/node --import tsx
   $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts --runner --p4d288-span [--report-only]
   $F/<one *-main.db per invocation>`.
+
+### Unit 12 — C1-4 + the two DATA-rewrite ensures (slots 4 / 5, R-E) + the span as ONE chain
+
+- **No rebase needed:** `SCORING` (`7e18b9cf7`) is already an ancestor of the lane branch (measured,
+  `git merge-base --is-ancestor`); `main` carries nothing past it.
+- **C1-4:** `increment_reinforcement` (`db/memories.rs`) now calls `memory_scoring::reinforced_importance` directly;
+  P4.D289's `memory_gate::calculate_reinforced_importance` shim measured forwarding to the same formula (its
+  remaining callers — `memory_merge`, `consolidation_plan` — therefore already compute bug 216's `log2(count)`).
+  `append_reinforcement_footnotes` was already over `append_capped_footnotes` (unit 9).
+- **NEW `db/memory_rewrite_heals.rs`:** `recompute_reinforced_importance(conn, now)` and
+  `rezone_legacy_memory_occurred_at(conn, host_fallback, now)` → `LedgeredHealOutcome`, with
+  `RECOMPUTE_MIGRATION_ID` / `REZONE_MIGRATION_ID` and `instance_memory_time_zone(conn, host_fallback)` (O-8:
+  the FIRST valid `chat_settings.timezone` in rowid order, only when the column exists, then the host rung, then
+  `UTC` — `memory_time_zone`). Ledger-gated after `ensure_migrations_tables` (EITHER app's row skips), every
+  candidate read up front, 500-row batches each in its own savepoint, v4's exact stamp (`stamp_completed`: the
+  `itemsAffected` = rewritten, v4's two message templates; a 0-row instance STAMPS). The rezone: V8's whole
+  `Date.parse` (`js_date_parse_ms`), `ms % DAY_MS` with JS's sign rule, `js_iso_string(ms)[..10]`, P4.D289's
+  `zoned_day_bounds_iso` (its two-pass `zoned_time_to_utc_ms` — the DST-gap midnights answer v4's algorithm), a
+  STRING compare before writing; `updatedAt` untouched.
+  - **Departure from the C1 spelling — `LedgeredHealOutcome::NotNeeded`:** the order spells `{ AlreadyCompleted |
+    Ran { rewritten, total } }`, but v4's runner records NOTHING when `shouldRun` is false
+    (`migrations/index.ts:164-167` — no `memories` table / a column absent), a third state neither arm describes
+    honestly. Unreachable on a provisioned instance; pinned by both families' `no-table` mode.
+  - **Lines:** v4's migration-internal lines (the INFO before / after, the per-batch DEBUG, the failure ERROR) are
+    NO-PORT — the slot-3 precedent (`memory_episode_watermark_repair`); a failure is FATAL to boot through `?`.
+- **NEW `db/p4d288_span.rs` — `run_span_ensures(main, host_fallback)`:** the host's P4.D288 fence lifted into core
+  verbatim (same `quilltap::boot` INFO per ensure, same order) with slots 4 / 5 wired:
+  `Recomputed reinforced importance {migrationId, rewritten, total}` and `Re-stamped legacy UTC-midnight memory
+  dates {migrationId, timeZone, rewritten, candidates}` (O-8: the boot INFO carries the zone used), each logged
+  whenever its heal RAN (a stamp is a write). The host calls it from `seed_built_ins(db, &self.tz)` — `tz` is
+  `HostConfig::tz`, the host's calendar NAME (`zone_name(system_display_zone())`, `QUILLTAP_TIMEZONE` / `TZ`
+  reconciled by `quilltap-web`'s `main.rs` before boot) — the SAME rung P4.D289 LR-3 threads as `server_tz` to the
+  rest of the memory calendar, so the rezone and the readers agree. **O-8 measured:** `system_display_zone()` is
+  `TimeZone::try_system()` — the system zone, no display override (the display VALUE and the calendar NAME have
+  ONE read). Residue (recorded, the `host_zone` module doc's): under a POSIX `TZ` rule the NAME is `UTC` where
+  Node's `Intl` reads `/etc/localtime`; the tauri / CLI hosts do not reconcile `QUILLTAP_TIMEZONE` into `TZ`.
+- **The vintage mirror-boot** (`restore_vintage_state.rs`) now calls the SAME chain instead of a hand-copied list
+  (which lacked slots 4–6 / 10 / 12).
+- **Families:** NEW `memory_rewrite_heals_ensure_equivalence` over v4's REAL migrations through the narrowed
+  runner (the ledger row byte-compared): recompute 4 modes (counts NULL / 0 / 1 / 2 / 1e6, NULL importance, NULL
+  stored, the 1e-9 band in and out, exact; ledgered; zero rows — STAMPS; no table), rezone 7 modes (the UTC
+  fallback; the first VALID zone past a NULL and an invalid one; `America/Santiago` and `America/Havana` DST-gap
+  midnights; `Asia/Tokyo`; ledgered; no table — over `…T00:00:00Z` vs `.000Z`, an offset suffix, a noon, a
+  pre-1970 midnight, an unparseable candidate, a NULL) — GREEN. **Mutation-proven:** `EPSILON` 1e-9 → 1e-8
+  reddened recompute alone; dropping the string-compare skip reddened rezone alone.
+  `host_boot_p4d288_ensures` grown: the pre-round instance logs 11 lines (slots 4 / 5 at `rewritten=1` each, the
+  host zone pinned to UTC) and stamps the two rewrites with the chain; **(c) re-pointed** — a fresh `setup`
+  instance's first boot RUNS the two rewrites over zero rows and STAMPS them (v4's first boot does the same: both
+  `shouldRun`s hold), the second boot is silent. `memories_tier2_equivalence` re-run from the pin through the
+  sweep driver (its reinforcement rows on the new formula).
+- **Recipes:** in the family's header (`QT_P4D288_ENSURE_FAMILY={recompute-importance,rezone-occurred-at}`,
+  `TZ=UTC QUILLTAP_TIMEZONE=UTC`, one invocation per family, `QT_FIXTURE_P4D288_ENSURES_DIR=/tmp/qt-p4d288-ensures`).

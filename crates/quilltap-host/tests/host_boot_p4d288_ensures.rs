@@ -11,7 +11,8 @@
 //!     v4's migration lines; the episode and cursor ensures STAMP their ledger
 //!     rows (R-D) and no other ensure writes one.
 //! (b) The SECOND boot is silent (every ensure a no-op).
-//! (c) A fresh `setup` instance boots silent.
+//! (c) A fresh `setup` instance runs only the two ledgered rewrites (0 rows,
+//!     STAMPED) on its first boot, then boots silent.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -29,10 +30,12 @@ const SINGLE_USER: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// v5's lines, in the host's (v4's registration) order.
-const EXPECTED: [&str; 9] = [
+const EXPECTED: [&str; 11] = [
     "INFO quilltap::boot Fitted the memory supersession clock migrationId=add-memory-superseded-at-v1 columnAdded=true backfilledRows=1",
     "INFO quilltap::boot Added the chat scenario source columns migrationId=add-chat-scenario-source-v1 columnsAdded=2",
     "INFO quilltap::boot Backfilled the episode watermarks from summary anchors migrationId=add-episode-extraction-watermark-v1 columnAdded=true candidates=1 backfilled=1",
+    "INFO quilltap::boot Recomputed reinforced importance migrationId=recompute-reinforced-importance-v1 rewritten=1 total=1",
+    "INFO quilltap::boot Re-stamped legacy UTC-midnight memory dates migrationId=rezone-legacy-memory-occurred-at-v1 timeZone=UTC rewritten=1 candidates=1",
     "INFO quilltap::boot Created idx_memories_supersededById migrationId=add-memories-superseded-by-index-v1",
     "INFO quilltap::boot Moved the memory maintenance settings migrationId=move-memory-maintenance-settings-v1 copied=true droppedColumns=3 droppedInstanceKey=true",
     "INFO quilltap::boot Moved the fold-pass watermarks into extraction cursors migrationId=add-memory-extraction-cursors-v1 tableCreated=true backfilled=2 droppedColumns=2",
@@ -42,10 +45,12 @@ const EXPECTED: [&str; 9] = [
 ];
 
 /// The span's migration ids — the needle that finds ANY of v5's lines.
-const IDS: [&str; 9] = [
+const IDS: [&str; 11] = [
     "add-memory-superseded-at-v1",
     "add-chat-scenario-source-v1",
     "add-episode-extraction-watermark-v1",
+    "recompute-reinforced-importance-v1",
+    "rezone-legacy-memory-occurred-at-v1",
     "add-memories-superseded-by-index-v1",
     "move-memory-maintenance-settings-v1",
     "add-memory-extraction-cursors-v1",
@@ -84,6 +89,9 @@ fn config(base: &Path) -> HostConfig {
     config.stuck_check_ms = 3_600_000;
     config.terminal = false;
     config.seed_sample_content = false;
+    // The rezone's host rung (O-8) is the host's calendar zone: pinned, so the
+    // expected `timeZone=UTC` holds on any machine.
+    config.set_display_zone(quilltap_core::host_zone::TimeZone::UTC);
     config
 }
 
@@ -156,8 +164,10 @@ fn derive_pre_round(data: &Path) {
                WHERE userId = '{SINGLE_USER}'; \
              INSERT INTO instance_settings (key, value) VALUES ('memoryExtractionConcurrency', '3'); \
              ALTER TABLE tfidf_vocabularies DROP COLUMN textShapeVersion; \
-             INSERT INTO memories (id, characterId, content, summary, supersededById, createdAt, updatedAt) \
-               VALUES ('m1', 'c1', 'x', 'y', 'd1', '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z'); \
+             INSERT INTO memories (id, characterId, content, summary, supersededById, importance, reinforcementCount, \
+               reinforcedImportance, occurredAt, createdAt, updatedAt) \
+               VALUES ('m1', 'c1', 'x', 'y', 'd1', 0.5, 2, 0.5, '2026-07-14T00:00:00Z', \
+               '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z'); \
              INSERT INTO chats (id, userId, title, otherExtractionWatermarkMessageId, summaryAnchorMessageIds, createdAt, updatedAt) \
                VALUES ('chat1', 'u1', 't', 'm9', '[\"a1\",\"a2\"]', 't', 't'); \
              INSERT INTO background_jobs (id, userId, type, status, payload, scheduledAt, createdAt, updatedAt) VALUES \
@@ -188,9 +198,11 @@ async fn a_pre_round_instance_runs_every_ensure_once_in_v4s_order() {
         ledger_ids(&data),
         [
             "add-episode-extraction-watermark-v1",
-            "add-memory-extraction-cursors-v1"
+            "add-memory-extraction-cursors-v1",
+            "recompute-reinforced-importance-v1",
+            "rezone-legacy-memory-occurred-at-v1",
         ],
-        "only the chain is STAMPED (R-D)"
+        "only the chain (R-D) and the two data rewrites (R-E) are STAMPED"
     );
     {
         let w = Writer::open_writable(&data.join(MAIN), PEPPER).unwrap();
@@ -218,13 +230,32 @@ async fn a_pre_round_instance_runs_every_ensure_once_in_v4s_order() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn a_fresh_instance_boots_silent() {
+async fn a_fresh_instance_runs_only_the_two_ledgered_rewrites_once() {
+    // A fresh `setup` instance carries no v4 ledger, so — as on v4's first boot,
+    // where both `shouldRun`s hold — the two data rewrites run once over zero
+    // rows and STAMP (R-E: "a 0-row instance STAMPS"); every structure-gated
+    // ensure is a no-op. The second boot is silent.
     let _serial = SERIAL.lock().await;
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().join("data");
     std::fs::create_dir_all(&data).unwrap();
     provision_fresh_instance(&data, PEPPER).expect("provision");
     let lines = boot(dir.path());
+    assert_eq!(
+        ours(&lines),
+        [
+            "INFO quilltap::boot Recomputed reinforced importance migrationId=recompute-reinforced-importance-v1 rewritten=0 total=0",
+            "INFO quilltap::boot Re-stamped legacy UTC-midnight memory dates migrationId=rezone-legacy-memory-occurred-at-v1 timeZone=UTC rewritten=0 candidates=0",
+        ],
+        "{lines:#?}"
+    );
+    assert_eq!(
+        ledger_ids(&data),
+        [
+            "recompute-reinforced-importance-v1",
+            "rezone-legacy-memory-occurred-at-v1"
+        ]
+    );
+    let lines = boot(dir.path());
     assert!(ours(&lines).is_empty(), "{lines:#?}");
-    assert!(ledger_ids(&data).is_empty());
 }

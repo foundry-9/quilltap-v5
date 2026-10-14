@@ -750,7 +750,7 @@ impl<'c> MemoriesRepository<'c> {
                 return Ok(None);
             };
             let reinforcement_count = count.unwrap_or(1.0) + by as f64;
-            let reinforced_importance = crate::memory_gate::calculate_reinforced_importance(
+            let reinforced_importance = crate::memory_scoring::reinforced_importance(
                 importance.unwrap_or(0.5),
                 reinforcement_count,
             );

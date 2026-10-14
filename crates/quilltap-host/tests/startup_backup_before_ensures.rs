@@ -28,7 +28,7 @@
 const STARTUP_BACKUP_BEFORE_ENSURES: &[(&str, &str, &str, &str, &str)] = &[(
     "startup backup vs the boot ensures",
     "run_startup_backups_at_boot(db, data_dir, &self.display_zone);",
-    "let ensure_failures = seed_built_ins(db)?;",
+    "let ensure_failures = seed_built_ins(db, &self.tz)?;",
     "const migrationResult = await migrationRunner.runMigrations();",
     "// PHASE 1.1: Auto-repair TEXT embeddings",
 )];

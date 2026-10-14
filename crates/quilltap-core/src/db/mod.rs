@@ -121,8 +121,10 @@ pub mod memories_superseded_by_index;
 pub mod memory_episode_watermark_repair;
 pub mod memory_extraction_cursors_repair;
 pub mod memory_maintenance_settings_move;
+pub mod memory_rewrite_heals; // slots 4 / 5 (R-E)
 pub mod memory_superseded_at_repair;
 pub mod memory_vector_mirror_retire;
+pub mod p4d288_span; // the twelve as ONE chain
 pub mod retired_job_rows_purge;
 pub(crate) mod schema_probe;
 pub mod tfidf_text_shape_repair;

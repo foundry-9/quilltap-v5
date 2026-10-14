@@ -24,6 +24,30 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — feat(core,host): P4.D288 unit 12 — the two data-rewrite boot ensures (slots 4 / 5) and the span as one chain
+
+_Versions: core 0.0.1297, host 0.0.204._
+
+The last two of the twelve boot ensures land: v4's `recompute-reinforced-importance-v1` (bug 216) and `rezone-legacy-memory-occurred-at-v1` (bug 212), ported as new `db::memory_rewrite_heals`.
+
+**The heals.**
+- Both are gated on v4's ledger: a row from either app skips them.
+- Both rewrite in batches of 500 and stamp v4's exact row, even on a 0-row instance.
+- The recompute applies the one formula, `memory_scoring::reinforced_importance`.
+- The rezone re-stamps an exact UTC midnight at local midnight of the same date. Its zone is the instance timezone, then the host's calendar zone, then UTC.
+- When v4's `shouldRun` is false, the result is `NotNeeded` and nothing is written. This third outcome departs from the order's two-arm spelling.
+
+**One chain.**
+- New `db::p4d288_span::run_span_ensures` holds the twelve ensures in v4's registration order, with one boot INFO each.
+- The host calls it from `seed_built_ins` with its calendar zone; the restore test's vintage mirror-boot calls the same chain.
+- `increment_reinforcement` calls the scoring formula directly.
+
+**Families.**
+- New `memory_rewrite_heals_ensure_equivalence` runs against v4's real migrations through the narrowed runner, with the stamp byte-compared: 4 recompute modes and 7 rezone modes, covering DST gaps, an offset suffix, pre-1970 dates and unparseable values.
+- Mutation-proven: widening `EPSILON` reddens recompute, and dropping the string-compare skip reddens rezone.
+- `host_boot_p4d288_ensures` grows by two lines.
+- `memories_tier2` is re-run from the pin on the new formula.
+
 #### 2026-10-14 — test(harness): P4.D288 unit 11 — the import re-aims and the 45 committed fixture pairs widened (O-5)
 
 _No crate versions bumped._

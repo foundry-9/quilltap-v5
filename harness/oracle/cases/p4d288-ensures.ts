@@ -16,6 +16,13 @@
  *   vector-retire       retire-memory-vector-entries-v1
  *   retired-jobs        drop-inter-character-memory-jobs-v1 → drop-housekeeping-consolidation-jobs-v1
  *   tfidf-text-shape    add-tfidf-text-shape-version-v1
+ *   recompute-importance recompute-reinforced-importance-v1   (runner — STAMPED, R-E)
+ *   rezone-occurred-at  rezone-legacy-memory-occurred-at-v1    (runner — STAMPED, R-E)
+ *
+ * The two DATA rewrites (unit 12) run through the narrowed runner so the
+ * stamp's `(id, itemsAffected, message)` is compared, and their recipe pins
+ * the zone: `TZ=UTC QUILLTAP_TIMEZONE=UTC` (the rezone's host fallback; the
+ * Rust side passes `UTC`).
  *
  * The baseline tables are v4's generateDDL at the pin — the committed
  * `fresh_schema.json`, which `provisioning_equivalence` (1d) holds equal to
@@ -67,6 +74,8 @@ const M = {
   dropInter: { file: 'migrations/scripts/drop-inter-character-memory-jobs-v1.ts', exportName: 'dropInterCharacterMemoryJobsMigration' },
   dropHk: { file: 'migrations/scripts/drop-housekeeping-consolidation-jobs-v1.ts', exportName: 'dropHousekeepingConsolidationJobsMigration' },
   tfidf: { file: 'migrations/scripts/add-tfidf-text-shape-version-v1.ts', exportName: 'addTfidfTextShapeVersionMigration' },
+  recompute: { file: 'migrations/scripts/recompute-reinforced-importance-v1.ts', exportName: 'recomputeReinforcedImportanceMigration' },
+  rezone: { file: 'migrations/scripts/rezone-legacy-memory-occurred-at-v1.ts', exportName: 'rezoneLegacyMemoryOccurredAtMigration' },
 } satisfies Record<string, V4MigrationRef>;
 
 const CURSOR_TABLE = `CREATE TABLE IF NOT EXISTS "memory_extraction_cursors" (
@@ -448,6 +457,103 @@ async function main(): Promise<void> {
         'current': (db) => db.exec(ddl('tfidf_vocabularies')),
         'no-table': (db) => db.exec('CREATE TABLE "unrelated" ("id" TEXT PRIMARY KEY NOT NULL)'),
       },
+    },
+    'recompute-importance': {
+      tables: ['memories'],
+      migrations: [M.recompute],
+      runner: true,
+      modes: {
+        'counts': (db) => {
+          db.exec(memoriesNow);
+          // (importance, reinforcementCount, stored reinforcedImportance)
+          const rows: Array<[string, number | null, number | null, number | null]> = [
+            ['r-null-count', 0.5, null, 0.55],
+            ['r-zero', 0.5, 0, 0.5],
+            ['r-one', 0.4, 1, 0.45],
+            ['r-two', 0.4, 2, 0.4],
+            ['r-million', 0.3, 1e6, 0.3],
+            ['r-null-stored', 0.6, 3, null],
+            ['r-null-importance', null, 4, 0.5],
+            ['r-in-band', 0.5, 2, 0.5 + 0.05 + 4e-10],
+            ['r-out-of-band', 0.5, 2, 0.5 + 0.05 + 4e-9],
+            ['r-exact', 0.5, 2, 0.55],
+          ];
+          for (const [id, importance, count, stored] of rows) {
+            memory(db, id, { importance, reinforcementCount: count, reinforcedImportance: stored });
+          }
+        },
+        'ledgered': (db) => {
+          db.exec(memoriesNow);
+          memory(db, 'r-one', { importance: 0.4, reinforcementCount: 1, reinforcedImportance: 0.45 });
+          ledger(db, ['recompute-reinforced-importance-v1']);
+        },
+        'zero-rows': (db) => db.exec(memoriesNow),
+        'no-table': (db) => db.exec('CREATE TABLE "unrelated" ("id" TEXT PRIMARY KEY NOT NULL)'),
+      },
+    },
+    'rezone-occurred-at': {
+      tables: ['memories', 'chat_settings'],
+      migrations: [M.rezone],
+      runner: true,
+      modes: (() => {
+        const dates = (db: any) => {
+          const rows: Array<[string, string]> = [
+            ['z-no-millis', '2026-07-14T00:00:00Z'],
+            ['z-millis', '2026-07-14T00:00:00.000Z'],
+            ['z-offset', '2026-07-14T00:00:00+02:00'],
+            ['z-noon', '2026-07-14T12:00:00.000Z'],
+            ['z-pre-1970', '1960-03-01T00:00:00.000Z'],
+            ['z-santiago-gap', '2022-09-11T00:00:00.000Z'],
+            ['z-havana-gap', '2026-03-08T00:00:00.000Z'],
+            ['z-garbage', 'T00:00:00 never'],
+          ];
+          for (const [id, occurredAt] of rows) memory(db, id, { occurredAt });
+          memory(db, 'z-null');
+        };
+        const settings = (db: any, zones: Array<string | null>) => {
+          db.exec(ddl('chat_settings'));
+          zones.forEach((tz, i) =>
+            db
+              .prepare(
+                `INSERT INTO chat_settings (id, userId, avatarDisplayMode, avatarDisplayStyle, createdAt, updatedAt, timezone)
+                 VALUES (?, ?, 'ALWAYS', 'CIRCULAR', ?, ?, ?)`,
+              )
+              .run(`s${i}`, `u${i}`, T0, T0, tz),
+          );
+        };
+        return {
+          'utc-fallback': (db: any) => {
+            db.exec(memoriesNow);
+            dates(db);
+          },
+          'chicago-after-an-invalid-zone': (db: any) => {
+            db.exec(memoriesNow);
+            settings(db, [null, 'Not/AZone', 'America/Chicago', 'Europe/Paris']);
+            dates(db);
+          },
+          'santiago-dst-gap': (db: any) => {
+            db.exec(memoriesNow);
+            settings(db, ['America/Santiago']);
+            dates(db);
+          },
+          'havana-dst-gap': (db: any) => {
+            db.exec(memoriesNow);
+            settings(db, ['America/Havana']);
+            dates(db);
+          },
+          'tokyo-east': (db: any) => {
+            db.exec(memoriesNow);
+            settings(db, ['Asia/Tokyo']);
+            dates(db);
+          },
+          'ledgered': (db: any) => {
+            db.exec(memoriesNow);
+            dates(db);
+            ledger(db, ['rezone-legacy-memory-occurred-at-v1']);
+          },
+          'no-table': (db: any) => db.exec('CREATE TABLE "unrelated" ("id" TEXT PRIMARY KEY NOT NULL)'),
+        };
+      })(),
     },
   };
 

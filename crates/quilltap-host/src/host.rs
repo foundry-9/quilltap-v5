@@ -584,7 +584,7 @@ impl EngineAssembler for HostAssembler {
         // stores, never duplicating. Run on a fresh OS thread so `write_blocking`
         // is legal whether `assemble` was reached from the sync boot path or an
         // async `Unlock` dispatch (`blocking_recv` panics on a tokio worker).
-        let ensure_failures = seed_built_ins(db)?;
+        let ensure_failures = seed_built_ins(db, &self.tz)?;
 
         // The gated sample-content seed (P4.4u4): on a first boot (zero-characters
         // gate) import Lorian + Riya + 42 memories + Lorian's avatar, matching a
@@ -1267,12 +1267,13 @@ fn reconcile_embedding_dimensions_at_boot(db: &Db) {
 /// Answers this boot's structural ensure failures by collection (P4.D248): the
 /// built-in mounts' lazy-home sub-steps and the absent-table creation, which
 /// the PHASE 3.1 pass reports in v4's ensure form without re-running them.
-fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
+fn seed_built_ins(db: &Db, tz: &str) -> Result<EnsureFailures, String> {
     use quilltap_core::db::DbError;
     use quilltap_core::services::mount_index::general_state;
     use quilltap_core::services::{builtin_mounts, builtin_templates};
 
     let db = db.clone();
+    let tz = tz.to_string();
     // P4.D274: whether the mount index booted DEGRADED (the boot reconcile's
     // skip arm below), read before the writer closure, which must be 'static.
     let mount_index_degraded = db
@@ -2118,145 +2119,14 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
             }
             // === end P4.D265 ===
             // === P4.D288 (C1-2): the span's ensures, in v4's registration order ===
-            // `migrations/scripts/index.ts:1317-1340` at the `83334b9a5` pin,
-            // after `add-memory-tiers-v1` and BEFORE the P4.160 index-family
-            // backfill below (which would otherwise make
-            // `idx_memories_supersededById` ahead of slot 6). Each is FATAL on
-            // failure (v4's migrations are not `resumable`), logs v5's ONE
-            // INFO when it did anything, and is silent on a no-op boot. Slots 4
-            // and 5 (the two STAMPED data rewrites) land with unit 12.
-            // Slot 1 — `add-memory-superseded-at-v1`.
-            let superseded_at =
-                quilltap_core::db::memory_superseded_at_repair::ensure_memory_superseded_at(main)?;
-            if !superseded_at.is_noop() {
-                tracing::info!(
-                    target: "quilltap::boot",
-                    migrationId = quilltap_core::db::memory_superseded_at_repair::MIGRATION_ID,
-                    columnAdded = superseded_at.column_added,
-                    backfilledRows = superseded_at.backfilled_rows,
-                    "Fitted the memory supersession clock"
-                );
-            }
-            // Slot 2 — `add-chat-scenario-source-v1`.
-            let scenario_columns =
-                quilltap_core::db::chats_scenario_source_repair::ensure_chats_scenario_source(main)?;
-            if !scenario_columns.is_empty() {
-                tracing::info!(
-                    target: "quilltap::boot",
-                    migrationId = quilltap_core::db::chats_scenario_source_repair::MIGRATION_ID,
-                    columnsAdded = scenario_columns.len(),
-                    "Added the chat scenario source columns"
-                );
-            }
-            // Slot 3 — `add-episode-extraction-watermark-v1` (O-3's gate; STAMPED).
-            if let Some(episode) =
-                quilltap_core::db::memory_episode_watermark_repair::ensure_memory_episode_watermark(
-                    main,
-                )?
-            {
-                tracing::info!(
-                    target: "quilltap::boot",
-                    migrationId = quilltap_core::db::memory_episode_watermark_repair::MIGRATION_ID,
-                    columnAdded = episode.column_added,
-                    candidates = episode.candidates,
-                    backfilled = episode.backfilled,
-                    "Backfilled the episode watermarks from summary anchors"
-                );
-            }
-            // Slots 4 / 5 — the two STAMPED data rewrites (unit 12).
-            // Slot 6 — `add-memories-superseded-by-index-v1`.
-            if quilltap_core::db::memories_superseded_by_index::ensure_memories_superseded_by_index(
-                main,
-            )? {
-                tracing::info!(
-                    target: "quilltap::boot",
-                    migrationId = quilltap_core::db::memories_superseded_by_index::MIGRATION_ID,
-                    "Created idx_memories_supersededById"
-                );
-            }
-            // Slot 7 — `move-memory-maintenance-settings-v1` (atomic).
-            let moved = quilltap_core::db::memory_maintenance_settings_move::
-                ensure_memory_maintenance_settings_move(main)?;
-            if moved.ran {
-                tracing::info!(
-                    target: "quilltap::boot",
-                    migrationId = quilltap_core::db::memory_maintenance_settings_move::MIGRATION_ID,
-                    copied = moved.copied,
-                    droppedColumns = moved.dropped_columns.len(),
-                    droppedInstanceKey = moved.dropped_instance_key,
-                    "Moved the memory maintenance settings"
-                );
-            }
-            // Slot 8 — `retire-memory-vector-entries-v1` (O-1: wired once no
-            // compiled path reads or writes the mirror; per-page savepoints).
-            if let Some(retired) =
-                quilltap_core::db::memory_vector_mirror_retire::retire_memory_vector_mirror(main)?
-            {
-                tracing::info!(
-                    target: "quilltap::boot",
-                    migrationId = quilltap_core::db::memory_vector_mirror_retire::MIGRATION_ID,
-                    mirrorRows = retired.mirror_rows,
-                    copied = retired.copied,
-                    alreadyOnRow = retired.already_on_row,
-                    orphaned = retired.orphaned,
-                    unusable = retired.unusable,
-                    tablesDropped = retired.tables_dropped,
-                    "Retired the memory vector mirror"
-                );
-            }
-            // Slot 9 — `add-memory-extraction-cursors-v1` (R-C text, R-D order, L-8; STAMPED).
-            if let Some(cursors) =
-                quilltap_core::db::memory_extraction_cursors_repair::ensure_memory_extraction_cursors(
-                    main,
-                )?
-            {
-                tracing::info!(
-                    target: "quilltap::boot",
-                    migrationId = quilltap_core::db::memory_extraction_cursors_repair::MIGRATION_ID,
-                    tableCreated = cursors.table_created,
-                    backfilled = cursors.backfilled,
-                    droppedColumns = cursors.dropped_columns.len(),
-                    "Moved the fold-pass watermarks into extraction cursors"
-                );
-            }
-            // v4's repository first touch: the cursor table's `createdAt` index.
-            quilltap_core::db::memory_extraction_cursors_repair::ensure_cursor_created_at_index(
-                main,
-            )?;
-            // Slot 10 — `drop-inter-character-memory-jobs-v1`.
-            let inter = quilltap_core::db::retired_job_rows_purge::purge_inter_character_memory_jobs(
-                main,
-            )?;
-            if inter > 0 {
-                tracing::info!(
-                    target: "quilltap::boot",
-                    migrationId =
-                        quilltap_core::db::retired_job_rows_purge::INTER_CHARACTER_MIGRATION_ID,
-                    deleted = inter,
-                    "Deleted retired INTER_CHARACTER_MEMORY jobs"
-                );
-            }
-            // Slot 11 — `add-tfidf-text-shape-version-v1`.
-            if quilltap_core::db::tfidf_text_shape_repair::ensure_tfidf_text_shape_version(main)? {
-                tracing::info!(
-                    target: "quilltap::boot",
-                    migrationId = quilltap_core::db::tfidf_text_shape_repair::MIGRATION_ID,
-                    "Added tfidf_vocabularies.textShapeVersion"
-                );
-            }
-            // Slot 12 — `drop-housekeeping-consolidation-jobs-v1`.
-            let hk = quilltap_core::db::retired_job_rows_purge::purge_housekeeping_consolidation_jobs(
-                main,
-            )?;
-            if hk > 0 {
-                tracing::info!(
-                    target: "quilltap::boot",
-                    migrationId = quilltap_core::db::retired_job_rows_purge::
-                        HOUSEKEEPING_CONSOLIDATION_MIGRATION_ID,
-                    deleted = hk,
-                    "Deleted retired housekeeping and consolidation jobs"
-                );
-            }
+            // `migrations/scripts/index.ts:881-903` at the `83334b9a5` pin, as
+            // ONE chain (`db::p4d288_span` — the vintage mirror-boot runs the
+            // same one), after `add-memory-tiers-v1` and BEFORE the P4.160
+            // index-family backfill below (which would otherwise make
+            // `idx_memories_supersededById` ahead of slot 6). FATAL on failure
+            // (v4's migrations are not `resumable`); each ensure logs v5's ONE
+            // INFO when it did anything. `tz` is the rezone's host rung (O-8).
+            quilltap_core::db::p4d288_span::run_span_ensures(main, &tz)?;
             // === end P4.D288 ===
             // === P4.160 (P4.153's OPEN item) ===
             // v4's MIGRATION-created index family on an instance provisioned
