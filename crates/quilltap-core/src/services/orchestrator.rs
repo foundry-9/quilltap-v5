@@ -437,6 +437,32 @@ pub struct ProcessClock {
     pub random01: DrawSource,
 }
 
+// === P4.D301: the submission ledger ===
+/// What of the operator's submission has reached the database during one send
+/// request (v4 `orchestrator.service.ts:188-198`, bug 241). Flipped by
+/// [`process_message_with_ledger`] right after each write succeeds and read by
+/// the transport's error shells (`quilltap-host`'s `run_send`), so the error
+/// frame — and, in v5, the dispatch rejection — can tell the Salon whether the
+/// typed text has a row to fall back on or exists only in the client. Chained
+/// turns run in continue mode and never flip it.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct SubmissionLedger {
+    pub user_message_persisted: bool,
+    pub pending_tool_results_persisted: bool,
+}
+
+impl SubmissionLedger {
+    /// The wire form ([`crate::api::types::SubmissionLedgerDto`]) — kept beside the
+    /// type so `api/types.rs` needs no services import.
+    pub fn to_dto(self) -> crate::api::types::SubmissionLedgerDto {
+        crate::api::types::SubmissionLedgerDto {
+            user_message_persisted: self.user_message_persisted,
+            pending_tool_results_persisted: self.pending_tool_results_persisted,
+        }
+    }
+}
+// === end P4.D301 ===
+
 /// Everything a `process_message` call needs beyond the injected providers /
 /// sinks / seams. The heavy pre-resolved buildContext inputs (roleplay template,
 /// user character, participant characters) are computed inside from the DB reads;
@@ -983,7 +1009,12 @@ where
 /// reproducing every unported-subsystem gate and routing the subsystem body
 /// through an [`OrchestratorSeams`] method. Returns the [`ProcessMessageResult`]
 /// the chain driver reads.
-#[allow(clippy::too_many_lines, clippy::type_complexity)]
+///
+/// A forwarder over [`process_message_with_ledger`] with a fresh, discarded
+/// [`SubmissionLedger`] (P4.D301): every caller that does not answer a send's
+/// failure — the turn chain, the enclave step, the harness — keeps this
+/// signature.
+#[allow(clippy::type_complexity)]
 pub async fn process_message<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST, CARQ, PROS, PF>(
     deps: &mut OrchestratorDeps<
         '_,
@@ -1002,6 +1033,71 @@ pub async fn process_message<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COS
         PF,
     >,
     input: &ProcessMessageInput,
+) -> Result<ProcessMessageResult, DbError>
+where
+    EMB: EmbeddingProvider + Sync,
+    CMP: CompletionProvider + Sync,
+    STR: StreamingCompletionProvider,
+    SNK: EventSink + Sync,
+    BCS: BuildContextSeams,
+    ORC: OrchestratorSeams,
+    RTR: DangerousContentRouter,
+    CONF: AnswerConfirmationRunner,
+    ACOMP: AsyncCompressionTrigger,
+    COST: CostTracker,
+    CARQ: RunCarinaQuery,
+    PROS: PostProsperoCarinaError,
+    PF: PricingFetch + Send + Sync,
+{
+    process_message_with_ledger(
+        deps,
+        input,
+        &std::cell::Cell::new(SubmissionLedger::default()),
+    )
+    .await
+}
+
+// === P4.D301: the submission ledger ===
+/// [`process_message`] with the per-request [`SubmissionLedger`] (v4 threads
+/// its `ledger` argument through `processMessage`, `:215` / `:239`). A `Cell`
+/// so the flips survive every `?` early return — the function returns `Err`
+/// AFTER a flip when a later step fails, and that is exactly the case the
+/// caller needs the ledger for.
+// === end P4.D301 ===
+#[allow(clippy::too_many_lines, clippy::type_complexity)]
+pub async fn process_message_with_ledger<
+    EMB,
+    CMP,
+    STR,
+    SNK,
+    BCS,
+    ORC,
+    RTR,
+    CONF,
+    ACOMP,
+    COST,
+    CARQ,
+    PROS,
+    PF,
+>(
+    deps: &mut OrchestratorDeps<
+        '_,
+        EMB,
+        CMP,
+        STR,
+        SNK,
+        BCS,
+        ORC,
+        RTR,
+        CONF,
+        ACOMP,
+        COST,
+        CARQ,
+        PROS,
+        PF,
+    >,
+    input: &ProcessMessageInput,
+    ledger: &std::cell::Cell<SubmissionLedger>,
 ) -> Result<ProcessMessageResult, DbError>
 where
     EMB: EmbeddingProvider + Sync,
@@ -1137,6 +1233,20 @@ where
         )
         .await?
         {
+            // === P4.D301: the submission ledger ===
+            // The fairness pause returns only after it has saved the user's
+            // message (v4 `:376-381` — flipped here, at the caller, as v4 does:
+            // a failure inside the pause after its write leaves the ledger
+            // unflipped, v4's own semantics).
+            ledger.set(SubmissionLedger {
+                user_message_persisted: true,
+                ..ledger.get()
+            });
+            tracing::debug!(
+                chatId = %chat_id,
+                "[Orchestrator] User message persisted (fair-rotation pause)",
+            );
+            // === end P4.D301 ===
             return Ok(pause_result);
         }
     }
@@ -1734,6 +1844,18 @@ where
                 .await?;
             existing_messages.push(msg_value);
         }
+        // === P4.D301: the submission ledger ===
+        // v4 `:750-756` — once, after the loop, inside the non-empty guard.
+        ledger.set(SubmissionLedger {
+            pending_tool_results_persisted: true,
+            ..ledger.get()
+        });
+        tracing::debug!(
+            chatId = %chat_id,
+            count = input.options.pending_tool_results.len(),
+            "[Orchestrator] Pending tool results persisted",
+        );
+        // === end P4.D301 ===
     }
 
     // --- RNG auto-detect on the user message (orchestrator.service.ts:587–625) ---
@@ -1824,6 +1946,18 @@ where
             .map_err(|e| DbError::Internal(format!("user message marshal: {e}")))?;
         db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
             .await?;
+        // === P4.D301: the submission ledger ===
+        // v4 `:826-828` — right after the row lands, BEFORE the file links.
+        ledger.set(SubmissionLedger {
+            user_message_persisted: true,
+            ..ledger.get()
+        });
+        tracing::debug!(
+            chatId = %chat_id,
+            userMessageId = %id,
+            "[Orchestrator] User message persisted",
+        );
+        // === end P4.D301 ===
 
         // Link file attachments (corpus keeps this empty).
         for fid in &file_processing.attached_file_ids {

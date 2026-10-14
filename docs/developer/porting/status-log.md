@@ -183150,3 +183150,73 @@ Branch `claude/p4.d301-chat-stream-submission-ledger-821101312`, stage A from
   v4's own bytes both before and after. Three serde pins in the fence (v4
   `streaming.service.test.ts:404` / `:424` + the `Response::Error` envelope's
   `data.submission`, round-trip and absence).
+- **Unit 2 — the ledger (orchestrator.rs) + the shells (spine.rs) + the
+  end-to-end proof.** R-L2 as ruled: `SubmissionLedger` (`Debug, Default,
+  Clone, Copy, PartialEq`) + `to_dto()` beside it (path
+  `crate::api::types::SubmissionLedgerDto` — `api/mod.rs`'s re-export list is
+  untouched, so no shared-file edit); the body under
+  `process_message_with_ledger(…, ledger: &Cell<SubmissionLedger>)`,
+  `process_message` a forwarder with an unchanged signature (the turn chain,
+  `enclave/step.rs:741` and the harness keep calling it). The three flips per
+  R-L3 with v4's DEBUGs (`chatId` / `count` / `userMessageId`, default target,
+  caller thread). `run_send`: the `Cell` per request; both shells log
+  `userMessagePersisted` / `pendingToolResultsPersisted` after `chat_id` on
+  P4.18's ERROR text (`STREAMING_ERROR_LINE_TEXT` — recorded: v4's one line
+  reads `Streaming error`, v5 keeps its two; no oracle compares it), then the
+  new private `emit_send_error_frame` (the `[Orchestrator] Emitting error
+  frame` DEBUG `{chatId, errorType, userMessagePersisted,
+  pendingToolResultsPersisted}`, then the five-key frame); the initial shell
+  rejects with `submission: Some(…)`, the chain shell keeps `Ok(dto)`.
+  `errorType` stays `"Error"` (v4 `error.name`) — recorded, unchanged by the
+  span. NEW `crates/quilltap-web/tests/chat_send_submission_ledger.rs`
+  (process-wide capture, `on_lock_lost` set), six rows: (1) no key →
+  `{false,false}`, nothing written, no flip DEBUG, the 500's
+  `data.submission`, the five-key frame bytes; (2) a stream failing on its
+  first read → `{true,false}`, the USER row, the flip DEBUG naming THAT row's
+  id; (3) two staged chips → `{true,true}`, both TOOL rows with each chip's
+  `createdAt` verbatim, `count=2` once, before the user-row flip; (4) a
+  continue-mode failure → `{false,false}`, no flip (R-L2's chained-turn
+  equivalence); (5) Tier 2 item 15 — the fair-rotation pause: the corpus has
+  no room the human drives two seats of, so `c89ee722`'s two LLM seats are
+  turned user-controlled in the temp copy (the next speaker is then the only
+  other seat — no random draw), and a plain send pins the pause DEBUG, the
+  saved USER row, no reply, no user-row-site DEBUG (the ledger value itself is
+  unobservable on a pause: it returns `Ok` and the chain's guard stops — v4
+  the same); (6) R-L1's silence leg — the Brahma Console (`chatType` set to
+  `brahma` in the copy, the same spine as its driver) fails three-key
+  (`error, errorType, details`, `fatal_error`), no `submission`, no ledger
+  line. **Red-first** (commit 1's `orchestrator.rs` + `spine.rs` put back,
+  the test file unchanged): rows 1–4 RED, row 5 RED, row 6 GREEN by design
+  (the silence leg) — **5 RED / 1 GREEN**. Measured on the way: the details /
+  message for a provider stream failure read `primary stream failed: <text>`
+  (v5's primary-stream wrapping — pre-existing, outside the span; v4's
+  `details` is the bare `error.message`), and a fresh single-character send
+  writes the Commonplace recap whisper row before the model call.
+  **Tier 2 item 14 — RECORDED UNREACHABLE through v5's test rig:**
+  `execute_turn_chain` turns every chained `process_message` `Err` into the
+  safety-stop PAUSE (`[TurnOrchestrator] Chain error, stopping`, `chain_
+  complete{paused: true}`, `Ok(())`); its only escaping `?`s are the pause
+  write and the turn-state reads — DB faults no canned provider can cause.
+  The chain shell's frame + ERROR fields are the initial shell's code path
+  (`emit_send_error_frame`), so unit-pinned through rows 1–4.
+- **HANDOFF: to P4.D291 (item 7, S14) — the tier-3 orchestrator flag rows**
+  (land in P4.D291's regen at the pin; if P4.D291 closes without them, the
+  unifier lands them at §S.5): (a) `harness/oracle/fixtures/orchestrator-
+  tier3.json` — ONE new call beside `mid_stream_error` (`:2592-2601`):
+  `{"name": "mid_stream_error_staged_tools", "kind": "single", "chatId":
+  "6bcba106-5fa1-4b0e-869c-4fab3470f450", "content": "Trigger an error with
+  rolls.", "continueMode": false, "streamLabel": "mid_stream_error",
+  "cheapLLMSettings": false, "summaryCheck": false, "expectThrow": true,
+  "pendingToolResults": [<two user-initiated rng results, each with its own
+  createdAt>]}` (the case already threads `call.pendingToolResults` into
+  `processMessage`, `orchestrator-tier3.test.ts:865`). The existing
+  `mid_stream_error` IS the "throws on stream AFTER the user save" call
+  (expected flags `{true,false}`); the new one expects `{true,true}`; the
+  requires-gate calls fail before any save (`{false,false}`). (b)
+  `crates/quilltap-harness/tests/orchestrator_tier3_equivalence.rs` — beside
+  `want_error_details` (`:1416-1430`) collect `want_error_flags: HashMap<
+  String, Vec<(Option<bool>, Option<bool>)>>` from each error frame's
+  `userMessagePersisted` / `pendingToolResultsPersisted`; at each failing
+  call drive `process_message_with_ledger(&mut deps, &input, &ledger)` in
+  place of `process_message` and assert `(Some(l.user_message_persisted),
+  Some(l.pending_tool_results_persisted)) == want_error_flags[call][0]`.

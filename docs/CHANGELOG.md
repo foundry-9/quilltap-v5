@@ -791,6 +791,12 @@ Ports the server half of v4 `93c5af6ad` (bug 239). `LockFileContent` gains an op
 
 `HostConfig.listening_port` (default `None`, so the Tauri shell records none) is threaded through `HostAssembler` into `pre_open`'s claim; `quilltap-web` sets it from `--port` (`--port 0` records none). New tier-2 family `instance_lock_port_equivalence` against v4's real `instance-lock.ts` (33 rows: fresh writes under seven `PORT` shapes, claims of nine planted port shapes × valid/invalid `PORT`, a foreign-host claim, re-entrant + heartbeat over malformed ports and unknown keys): 63 failures on unported main, 0 after.
 
+#### 2026-10-14 — feat(chat): bug 241's per-request submission ledger through process_message and the send's two error shells (P4.D301)
+
+_Versions: core 0.0.1285, host 0.0.201._
+
+New `SubmissionLedger` in `services/orchestrator.rs`; `process_message`'s body moves under `process_message_with_ledger(deps, input, &Cell<SubmissionLedger>)` and `process_message` forwards with a fresh ledger (signature unchanged). The ledger flips right after the fair-rotation pause returns, after the staged TOOL rows land, and right after the user row lands (before its file links), each with v4's DEBUG line. `run_send` creates one ledger per request: the initial-turn failure logs the two flags on its ERROR line, logs v4's `[Orchestrator] Emitting error frame` DEBUG, sends the five-key error frame, and rejects with `CoreError.submission`; the chain-failure shell does the same with the same ledger and still returns `Ok`. Brahma, help, swipe and scenario-builder frames stay three-key. New end-to-end test `quilltap-web/tests/chat_send_submission_ledger.rs` (six rows: no key `{false,false}`, stream failure `{true,false}`, staged tools `{true,true}`, continue mode, the fair-rotation pause DEBUG, Brahma's three-key frame).
+
 #### 2026-10-14 — feat(chat): bug 241's wire riders — the error frame's two persistence flags and CoreError.submission (P4.D301)
 
 _Versions: core 0.0.1284, host 0.0.200._

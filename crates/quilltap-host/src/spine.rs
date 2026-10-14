@@ -1616,43 +1616,45 @@ where
             provider_supports_web_search,
         };
 
-        let initial = match orchestrator::process_message(&mut deps, &input).await {
-            Ok(r) => r,
-            Err(e) => {
-                // v4 handleStreamError: the transport-shell error frame. The
-                // frame reaches only a live SSE client; the server was otherwise
-                // silent about a failed send — emit a server-side event beside it
-                // so the console/log surface records it too (P4.18).
-                tracing::error!(
-                    target: "quilltap::chat",
-                    chat_id = %chat_id,
-                    error = %e,
-                    "Chat send failed while streaming the initial turn",
-                );
-                let _ = self.events.send(Event::chat_error(
-                    &chat_id,
-                    ChatErrorPayload {
-                        error: "Failed to generate response".to_string(),
-                        error_type: "Error".to_string(),
-                        details: e.to_string(),
-                        user_message_persisted: None,
-                        pending_tool_results_persisted: None,
-                    },
-                ));
-                return Err(CoreError {
-                    kind: ErrorKind::Internal,
-                    message: e.to_string(),
-                    pepper_state: None,
-                    code: None,
-                    associations: None,
-                    character_id: None,
-                    entity: None,
-                    details: None,
-                    already_saved: None,
-                    submission: None,
-                });
-            }
-        };
+        // === P4.D301: the submission ledger ===
+        // v4 `handleSendMessage` `:210`: one ledger per send request, read by
+        // BOTH error shells below (v4's one catch).
+        let ledger = std::cell::Cell::new(orchestrator::SubmissionLedger::default());
+        // === end P4.D301 ===
+        let initial =
+            match orchestrator::process_message_with_ledger(&mut deps, &input, &ledger).await {
+                Ok(r) => r,
+                Err(e) => {
+                    // v4 handleStreamError: the transport-shell error frame. The
+                    // frame reaches only a live SSE client; the server was otherwise
+                    // silent about a failed send — emit a server-side event beside it
+                    // so the console/log surface records it too (P4.18).
+                    let submission = ledger.get();
+                    tracing::error!(
+                        target: "quilltap::chat",
+                        chat_id = %chat_id,
+                        userMessagePersisted = submission.user_message_persisted,
+                        pendingToolResultsPersisted = submission.pending_tool_results_persisted,
+                        error = %e,
+                        "Chat send failed while streaming the initial turn",
+                    );
+                    emit_send_error_frame(&self.events, &chat_id, &e.to_string(), submission);
+                    return Err(CoreError {
+                        kind: ErrorKind::Internal,
+                        message: e.to_string(),
+                        pepper_state: None,
+                        code: None,
+                        associations: None,
+                        character_id: None,
+                        entity: None,
+                        details: None,
+                        already_saved: None,
+                        // P4.D301: the flags ride the rejection too — the frame
+                        // races this reply on the global Event channel.
+                        submission: Some(submission.to_dto()),
+                    });
+                }
+            };
 
         let dto = ChatSendResultDto {
             message_id: initial.message_id.clone(),
@@ -1729,22 +1731,18 @@ where
             // response stream closes after the frame). Log it server-side too
             // (P4.18) — the initial turn's success would otherwise hide a
             // silently-broken chain.
+            let submission = ledger.get();
             tracing::error!(
                 target: "quilltap::chat",
                 chat_id = %chat_id,
+                userMessagePersisted = submission.user_message_persisted,
+                pendingToolResultsPersisted = submission.pending_tool_results_persisted,
                 error = %e,
                 "Turn chain failed after the initial turn",
             );
-            let _ = self.events.send(Event::chat_error(
-                &chat_id,
-                ChatErrorPayload {
-                    error: "Failed to generate response".to_string(),
-                    error_type: "Error".to_string(),
-                    details: e.to_string(),
-                    user_message_persisted: None,
-                    pending_tool_results_persisted: None,
-                },
-            ));
+            // P4.D301: the same ledger — chained turns are continue-mode and
+            // never flip it, so it still says what the INITIAL turn saved.
+            emit_send_error_frame(&self.events, &chat_id, &e.to_string(), submission);
         }
 
         // === P4.6BM ===
@@ -2442,6 +2440,40 @@ where
         })
     }
 }
+
+// === P4.D301: the submission ledger ===
+/// v4 `handleStreamError`'s tail (`orchestrator.service.ts:2208-2221`) for the
+/// Salon send's two shells: the `[Orchestrator] Emitting error frame` DEBUG,
+/// then the FIVE-key frame carrying the ledger (v4's one `encodeErrorEvent`
+/// caller passing extras). Every other `chat_error` emitter (brahma, help,
+/// scenario builder, swipe) keeps the three-key frame. `errorType` stays v5's
+/// fixed `"Error"` (v4 sends `error.name`; recorded, unchanged by bug 241).
+fn emit_send_error_frame(
+    events: &tokio::sync::broadcast::Sender<Event>,
+    chat_id: &str,
+    details: &str,
+    submission: orchestrator::SubmissionLedger,
+) {
+    let error_type = "Error";
+    tracing::debug!(
+        chatId = %chat_id,
+        errorType = error_type,
+        userMessagePersisted = submission.user_message_persisted,
+        pendingToolResultsPersisted = submission.pending_tool_results_persisted,
+        "[Orchestrator] Emitting error frame",
+    );
+    let _ = events.send(Event::chat_error(
+        chat_id,
+        ChatErrorPayload {
+            error: "Failed to generate response".to_string(),
+            error_type: error_type.to_string(),
+            details: details.to_string(),
+            user_message_persisted: Some(submission.user_message_persisted),
+            pending_tool_results_persisted: Some(submission.pending_tool_results_persisted),
+        },
+    ));
+}
+// === end P4.D301 ===
 
 /// The local UTC offset (minutes) for `tz_name` at `now_ms`, in **JS
 /// `getTimezoneOffset()` convention: positive = west of UTC** (Chicago in
