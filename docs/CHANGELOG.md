@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-14 — docs(porting): order the `83334b9a5` memory-refactor + scenarios drift catch-up round — sixteen lanes, P4.D288–P4.D303
+
+_Docs-only change._
+
+`/setupphase`. One round absorbs all twenty drift-ledger rows past the `4a38222e6` baseline, pinned at v4 `83334b9a5` (`4.10.0-dev.176`, behaviour-identical to `64743ee13`): scenarios from anywhere, memory Phase 0 and bugs 199–246, refactor Phases A–G, the TF-IDF tuning, the API-standard audit. Twelve v4 migrations become boot ensures (the two human rulings applied: mirror the vector-table retirement, retire P4.D265's chat-column ensure for the cursor table); one `fresh_schema.json` re-dump carries the eighth and ninth D23 moves plus the memory schema. Sixteen lanes with three stacking points: P4.D289 (pure scoring / calendar / candidate / admission decide, ends `SCORING`) → P4.D288 (schema keystone, ends `KEYSTONE`) → stage B P4.D290 (admission, ends `ADMISSION`), P4.D291 (recall + delivery), P4.D292 (embeddings + TF-IDF refit), P4.D293 (backup / restore), P4.D294 (`.qtap`), P4.D295 (scenarios server) → stage C P4.D296 (extraction), P4.D297 (maintenance), P4.D298 (memories API); P4.D299 (lock port + CLI), P4.D300 (memory SPA), P4.D301 (bugs 241 / 242), P4.D302 (scenarios SPA), P4.D303 (help / docs / NO-PORT) cut from `main`. Each order is its lane head plus the binding round block (§R rules, §S unifier wires, C1 / C2 / C3 contracts, ownership). Ten planning surveys committed under `work-orders/surveys/2026-10-13-setupphase-*.md`. The ledger marks the twenty rows `ORDERED(…)` and records v4's two commits past the pin (`7417e9a1b`, `01f508d4e`, UNPROCESSED). `phase-4.md` gains the ORDERED section.
+
 #### 2026-10-14 — docs(porting): drift ledger records v4 `83334b9a5` (API-standard audit, identical responses) and the checkout's in-flight dead-code dirt
 
 _Docs-only change._

@@ -7151,6 +7151,97 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `83334b9a5` memory-refactor + scenarios drift catch-up round ({P4.D289 → P4.D288} → {P4.D290 → {P4.D296 ∥ P4.D297 ∥ P4.D298}} ∥ P4.D291 ∥ P4.D292 ∥ P4.D293 ∥ P4.D294 ∥ P4.D295, with P4.D299 ∥ P4.D300 ∥ P4.D301 ∥ P4.D302 ∥ P4.D303) — ORDERED 2026-10-14
+
+**Baseline `4a38222e6`. The round is PINNED at v4 `83334b9a5`** ("Release
+checklist 4: API standard audit; use successResponse in new handlers",
+`4.10.0-dev.176`, 2026-10-13 21:18) — v4 `main` HEAD at planning,
+behaviour-identical to `64743ee13` (the surveys' pin; its hunks are
+identical-output `successResponse` swaps). The §2 probe FAILED mid-planning
+(v4 one commit further + the human's in-flight dead-code dirt); the ledger
+was brought current first (`bf29d12b5`, the §4 procedure by hand for one
+commit). **The standing ruling (human, 2026-10-09): the work follows the
+PIN.** The two 2026-10-13 rulings stand (MIRROR the vector-table retirement;
+RETIRE P4.D265's chat-column ensure for the cursor table).
+
+**Scope — ALL TWENTY ledger §3 rows past the baseline, as ONE round** (the
+`4a38222e6` unification's NEXT item 2; R-A: the scenarios D23 move shares the
+memory programme's re-dump, widening and carriers): `545e299bb`,
+`124c8aca3`, `69d38dd60`, `8050958be`, `97f0d8cb8` (PORTED — the baseline
+passes it), `4ce64fa1e`, `c2795733f`, `e0ac7493a`, `af48f6cc2`,
+`8af764514`, `ac6348c5f`, `93c5af6ad`, `584d28164`, `4ae0c4ca6`,
+`104e986c7`, `b045dd986`, `48790fb73`, `9ec4fa2e9`, `64743ee13`,
+`83334b9a5`. Twelve v4 migrations re-homed as boot ensures (three
+DESTRUCTIVE, two data rewrites ledgered + stamped); ONE `fresh_schema.json`
+re-dump carrying the EIGHTH (scenarios), NINTH (TF-IDF) and memory moves;
+`migration_indexes.json` 63 → 62; every committed `*-main.db` pair widened /
+narrowed through v4's real migrations. **Retires the ledger's LIVE-DATA
+HAZARDS block** (§S.6) — post-migration Friday copies become openable again.
+
+Sixteen lanes split by FILE OWNERSHIP, three stacking points (`SCORING` →
+`KEYSTONE` → `ADMISSION`):
+
+- **Stage A, from `main` at the orders' commit:**
+  - **P4.D289 — the pure leaf family** (`work-orders/p4.d289-memory-pure-leaves-scoring-calendar-candidate-admission-decide-embedding-text.md`):
+    scoring, the ONE memory calendar, the candidate, the footnotes, the pure
+    admission decide / fold / thresholds, the embedding text — ends in
+    `SCORING`.
+  - **P4.D288 — the schema KEYSTONE** (`…/p4.d288-memory-scenarios-keystone-d23-twelve-ensures-retire-path-index-store-cursors-wire.md`):
+    the re-dump, the twelve ensures, the repositories, the index store over
+    rows, the ONE retire path, the cursor repository, the settings
+    document, the job types, the embedding-call seam, every wire variant,
+    the IMPORT-DEAD re-aims, the fixture widening — rebases onto `SCORING`,
+    ends in `KEYSTONE`.
+  - **P4.D299** host lock `port` (bug 239) + CLI (`…/p4.d299-instance-lock-port-bug-239-cli-flags-help-completions.md`).
+  - **P4.D300** memory SPA (`…/p4.d300-memory-spa-maintenance-card-dialog-extraction-limits-create-reply.md`, e2e 4338).
+  - **P4.D301** chat stream bugs 241 / 242, both halves (`…/p4.d301-chat-stream-bug-241-submission-ledger-composer-restore-bug-242.md`, e2e 4339).
+  - **P4.D302** scenarios SPA (`…/p4.d302-scenarios-spa-browser-new-chat-selection-in-chat-control.md`, e2e 4340).
+  - **P4.D303** `help/` 131 whole + 73 `docs/v4/` paths + the NO-PORT record (`…/p4.d303-vendor-help-131-docs-v4-noport-memory-scenarios-round.md`).
+- **Stage B, from `KEYSTONE`, all six at once:**
+  - **P4.D290** admission (stateful) + the one combine + the anchor probe — ends in `ADMISSION` (`…/p4.d290-memory-admission-stateful-lock-ledger-one-combine-anchor-probe.md`);
+  - **P4.D291** recall pipeline + delivery + context + the mail deferral + replay (`…/p4.d291-memory-recall-pipeline-delivery-context-mail-deferral-replay.md`);
+  - **P4.D292** embeddings + the TF-IDF refit policy + the embedding jobs (`…/p4.d292-memory-embeddings-tfidf-refit-policy-embedding-jobs.md`);
+  - **P4.D293** backup + restore carriers (`…/p4.d293-memory-scenarios-carriers-backup-restore-cursors-legacy-vectors.md`);
+  - **P4.D294** `.qtap` export + import carriers, bugs 228 / 240 (`…/p4.d294-memory-scenarios-carriers-qtap-export-import-bug-228-240.md`);
+  - **P4.D295** scenarios server (`…/p4.d295-scenarios-from-anywhere-server-location-recipe-source-browser-read.md`).
+- **Stage C, from `ADMISSION`** (each may pre-start from `KEYSTONE` on
+  admission-free work, §R.14):
+  - **P4.D296** extraction (`…/p4.d296-memory-extraction-one-context-four-passes-cursors-turn-grain-fold.md`);
+  - **P4.D297** maintenance + repair + bugs 244 / 246 (`…/p4.d297-memory-maintenance-one-job-phases-ledger-repair-bugs-244-246.md`);
+  - **P4.D298** the memories API + settings routes (`…/p4.d298-memories-api-manual-create-item-routes-chat-wipe-counts-settings.md`).
+
+The ten planning surveys under `work-orders/surveys/2026-10-13-setupphase-*.md`
+are the long form each lane reads whole. The round-level rulings (§R.11 R-A
+… R-AL — the one round, the three stacking points, the cursor table's
+first-boot shape, the literal episode-watermark port, the ledgered + stamped
+data rewrites, the removed bare delete, retired verbs DELETED, 502 as
+Internal + details, v4's manual-create order, the maintenance stash and
+child-shaped ledger, the host-installed runner, the lenient lock `port`, the
+CLI `memories` family OUT, v4's refit scheduling, the two `textShapeVersion`
+shapes, `probe-set.json` from the pin, the token estimate, compression
+ported, regenerate handlers Tier 2, dry run Tier 3, the startup heals
+deferred, ref-path decoding, `EXCERPT_LONE_SURROGATE`, the widened SPA hint,
+bug 241's transport halves NO-PORT, `STARTUP_BACKUP_BEFORE_ENSURES`, the
+NO-PORT ratifications) are the planner's; the human may overrule any before
+lane start. Pick order (§S.1): P4.D289 → P4.D288 → P4.D290 → P4.D292 →
+P4.D291 → P4.D296 → P4.D297 → P4.D298 → P4.D293 → P4.D294 → P4.D295 →
+P4.D299 → P4.D301 → P4.D303 → P4.D300 → P4.D302. **The oracle baseline MOVES
+to `83334b9a5` at the unification.**
+
+**Before lane start, for the human:** P4.D290 asks for ONE new dependency,
+`sha1 = "0.10"` (v4's `admission_content_key` is SHA-1 over the prepared
+row — an overrule is a STOP item for that lane). v4 `main` moved two
+commits past the pin during planning (`7417e9a1b` dead-code sweep,
+`01f508d4e` debug-line prune — ledger §3, UNPROCESSED; the pin stands).
+
+**Left out of the round, deliberately:** the owed dogfood pass (it needs a
+Friday copy taken BEFORE 2026-10-13 22:24 UTC for the CURRENT baseline —
+after this round any post-migration copy serves, so the pass is better run
+AFTER it, with this round's 💸 rows); the follow-ups smalls round (the
+`4a38222e6` and `01a83539d` headers' OPEN lists, the P4.D273 human ruling,
+dogfood #156 / #157) — next after this; v4's in-flight release-checklist
+dirt and anything past `83334b9a5` (`/driftcheck`).
+
 ## The `4a38222e6` wardrobe-programme drift catch-up round (P4.D279 → {P4.D280 ∥ P4.D281 ∥ P4.D282 ∥ P4.D283 ∥ P4.D284} ∥ P4.D285 ∥ P4.D286 ∥ P4.D287) — UNIFIED 2026-10-13 (ordered 2026-10-12)
 
 **UNIFIED on main (2026-10-13) — ALL NINE LANES LANDED; the oracle baseline
@@ -7226,7 +7317,9 @@ SPA 0.5.846; cli 0.0.32 and tauri 0.0.9 unchanged; harness frozen 0.0.1110.
    190's archived part, bug 194's cleanup from the editor AND a row, Duplicate
    filing beside the original, bug 198's Reset to worn, bug 191's refusals,
    Escape with a row's kebab open).
-2. **The catch-up rounds** (`/driftcheck` FIRST, once v4 commits the
+2. ✅ **ORDERED 2026-10-14 as ONE round — the `83334b9a5` memory-refactor +
+   scenarios drift catch-up (P4.D288–P4.D303; the ORDERED section above).**
+   Was: **The catch-up rounds** (`/driftcheck` FIRST, once v4 commits the
    in-flight memory dirt the ledger's §1 records; the rows and their full
    classification are the ledger's §3): (a) `545e299bb` scenarios from
    anywhere — the EIGHTH D23 re-dump (`chats.scenarioSource` /
