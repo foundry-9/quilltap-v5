@@ -827,6 +827,12 @@ _Versions: core 0.0.1284, host 0.0.200._
 
 `ChatErrorPayload` gains v4's two `ErrorEventExtras` keys, `userMessagePersisted` and `pendingToolResultsPersisted`, serialized after `details` and omitted when unset, so every frame that does not set them keeps v4's three-key shape. `CoreError` gains an optional `submission` rider (`SubmissionLedgerDto`, camelCase) for the send's dispatch rejection; `size_of::<CoreError>()` stays 96 bytes. The 40 existing struct literals (35 `CoreError`, 5 `ChatErrorPayload`, in 7 files) take `None`. New tier-1 family `chat_error_frame_equivalence` drives v4's real `encodeErrorEvent` over a 14-row shared corpus and compares frame bytes; three serde unit pins cover the five-key frame, the three-key frame, and the rejection envelope.
 
+#### 2026-10-14 — test(help): rewrap the P4.D303 count line in `help_tree_embed_guard`'s doc block so clippy does not read it as a list item
+
+_No crate versions bumped._
+
+A line of the comment added by the `help/` re-vendor began with `+`, which rustdoc parses as an unindented list item; `cargo clippy -D warnings` (`doc_lazy_continuation`) failed on it in both feature sets. Reworded with "and"; comment-only.
+
 #### 2026-10-14 — docs(v4): mirror v4 `docs/` at `83334b9a5` — 74 writes for the memory-refactor + scenarios span (P4.D303)
 
 _Docs-only change._

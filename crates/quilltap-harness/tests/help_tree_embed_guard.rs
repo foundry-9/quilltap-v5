@@ -91,7 +91,7 @@ use quilltap_host::help_content::EMBEDDED_HELP;
 /// before the move.
 ///
 /// **131 at v4 `83334b9a5` (131 − 2 + 2, P4.D303):** `memory-maintenance.md`
-/// + `scenario-browser.md` added, `memory-consolidation.md` +
+/// and `scenario-browser.md` added, `memory-consolidation.md` and
 /// `memory-housekeeping.md` retired; the 21 re-vendored pages move no count.
 /// Measured GREEN before and after.
 const VENDORED_FILE_COUNT: usize = 131;
