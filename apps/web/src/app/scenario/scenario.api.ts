@@ -13,8 +13,18 @@
  * endpoints were added for the in-chat picker.
  */
 
-import type { CoreClient } from '../core/core-client';
-import type { ScenarioDto, ScenarioListDto } from '../core/core-contract';
+import { inject } from '@angular/core';
+import { injectQuery } from '@tanstack/angular-query-experimental';
+
+import { CoreClient } from '../core/core-client';
+import type {
+  EverywhereSource,
+  ScenarioDto,
+  ScenarioListDto,
+  ScenarioReadByRefResult,
+  ScenarioRef,
+  ScenarioSourceInfo,
+} from '../core/core-contract';
 import type {
   CharacterScenario,
   GeneralScenarioOption,
@@ -40,6 +50,14 @@ export const scenarioKeys = {
     ['scenarios', 'group', characterIdsKey, { includeArchived }] as const,
   character: (characterId: string, includeArchived = false) =>
     ['scenarios', 'character', characterId, { includeArchived }] as const,
+  /**
+   * The instance-wide catalogue the scenario browser lists (v4
+   * `queryKeys.scenarios.everywhere`, `545e299bb`). Under {@link all}, so every
+   * scenario manager's `['scenarios']` sweep reaches it.
+   */
+  everywhere: (includeArchived = false) => ['scenarios', 'everywhere', { includeArchived }] as const,
+  /** One scenario's body, read by ref (v4 `queryKeys.scenarios.ref`). */
+  ref: (mountPointId: string, path: string) => ['scenarios', 'ref', mountPointId, path] as const,
 };
 
 /** The group-union envelope's per-group entry (v4 `GroupScenarioGroup`). */
@@ -139,4 +157,65 @@ export async function fetchCharacterScenarios(
     includeArchived,
   });
   return (data['scenarios'] as CharacterScenario[] | undefined) ?? [];
+}
+
+/**
+ * v4 `GET /api/v1/scenarios?action=everywhere` — every owner's shelf in the
+ * instance (no bodies; an excerpt each), for the scenario browser.
+ */
+export async function fetchScenariosEverywhere(
+  core: CoreClient,
+  includeArchived = false,
+): Promise<{ sources: EverywhereSource[] }> {
+  const data = await core.dispatchData({ type: 'scenarioEverywhere', includeArchived });
+  return data as unknown as { sources: EverywhereSource[] };
+}
+
+/**
+ * v4 `GET /api/v1/scenarios?action=read&mountPointId=&path=` — one scenario by
+ * ref. The path rides exactly as the catalogue returned it: a dispatch body is
+ * not a URL, and the server decodes (P4.D302 R-Z).
+ */
+export async function readScenarioByRef(
+  core: CoreClient,
+  ref: ScenarioRef,
+): Promise<ScenarioReadByRefResult> {
+  const data = await core.dispatchData({
+    type: 'scenarioReadByRef',
+    mountPointId: ref.mountPointId,
+    path: ref.path,
+  });
+  return data as unknown as ScenarioReadByRefResult;
+}
+
+/** v4 `GET /api/v1/chats/[id]?action=scenario-source` — where the chat's scene came from. */
+export async function fetchScenarioSource(
+  core: CoreClient,
+  chatId: string,
+): Promise<ScenarioSourceInfo> {
+  const data = await core.dispatchData({ type: 'chatGetScenarioSource', chatId });
+  return data as unknown as ScenarioSourceInfo;
+}
+
+/**
+ * One scenario's body by ref, cached per ref (v4 `useScenarioRefBody`,
+ * `ScenarioBrowserDialog.tsx:126-140`) — the ONE reader behind the browser's
+ * preview and both pickers' preview of a `store` selection. A `null` ref reads
+ * nothing. `retry: false` is v4's: a refused or vanished ref answers at once
+ * rather than after the app's default retry.
+ */
+export function injectScenarioRefBody(
+  ref: () => ScenarioRef | null,
+  enabled: () => boolean = () => true,
+) {
+  const core = inject(CoreClient);
+  return injectQuery(() => {
+    const r = ref();
+    return {
+      queryKey: scenarioKeys.ref(r?.mountPointId ?? '', r?.path ?? ''),
+      queryFn: (): Promise<ScenarioReadByRefResult> => readScenarioByRef(core, r!),
+      enabled: r !== null && enabled(),
+      retry: false,
+    };
+  });
 }

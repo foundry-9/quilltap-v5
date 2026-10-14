@@ -53,4 +53,15 @@ export const chatKeys = {
    * publishes `chats` explicitly. See `realtime-topic-map.ts`.
    */
   informs: (chatId: string) => ['chat', chatId, 'informs'] as const,
+  /**
+   * Where the chat's scene was taken from (v4 `queryKeys.chats.scenarioSource`,
+   * `545e299bb`) — what the in-chat scenario control reads from
+   * `chatGetScenarioSource` for its provenance line and Reload.
+   *
+   * v4 spends a topic-map ROW on it (`lib/realtime/topic-map.ts:77-79`); v5
+   * spends nothing — like {@link informs} it sits under {@link detail}'s
+   * prefix, so the `chats` topic already reaches it (P4.D302 L-D: an
+   * ASSERTION in the spec, no `realtime-topic-map.ts` hunk).
+   */
+  scenarioSource: (chatId: string) => ['chat', chatId, 'scenario-source'] as const,
 };

@@ -417,7 +417,9 @@ describe('ChatScenarioControl (v4 components/chat/ChatScenarioControl.tsx @ 44a8
     expect(fixture.componentInstance.refetched).toBe(0);
   });
 
-  it('hides the dropdown entirely when no tier has anything to offer', async () => {
+  // v4 `545e299bb` deleted `hasAnyScenarioOptions`: the dropdown ALWAYS renders
+  // (so "Browse all scenarios…" is reachable from an empty instance).
+  it('is rendered even when no tier has anything to offer', async () => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [Host],
@@ -438,7 +440,10 @@ describe('ChatScenarioControl (v4 components/chat/ChatScenarioControl.tsx @ 44a8
     const fixture = TestBed.createComponent(Host);
     fixture.detectChanges();
     await settle(fixture);
-    expect(selectEl(fixture)).toBeNull();
+    expect(selectEl(fixture)).not.toBeNull();
+    expect([...selectEl(fixture)!.querySelectorAll('option')].map((o) => o.value)).toContain(
+      '__custom__',
+    );
     // The free-text box still stands — Custom is always available.
     expect(textarea(fixture)).not.toBeNull();
   });

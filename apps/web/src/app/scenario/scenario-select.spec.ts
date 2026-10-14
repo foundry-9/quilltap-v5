@@ -2,7 +2,7 @@ import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 
-import { hasAnyScenarioOptions, ScenarioSelect } from './scenario-select';
+import { ScenarioSelect } from './scenario-select';
 import type {
   CharacterScenario,
   GeneralScenarioOption,
@@ -61,7 +61,9 @@ function groupScenario(over: Partial<GroupScenarioOption> = {}): GroupScenarioOp
       [disabled]="disabled()"
       [selectClass]="selectClass()"
       ariaLabel="Scenario"
+      [offerBrowse]="offerBrowse()"
       (selectionChange)="seen.push($event)"
+      (browse)="browsed = browsed + 1"
     />
   `,
 })
@@ -74,7 +76,9 @@ class Host {
   readonly characterDefaultScenarioId = signal<string | null>(null);
   readonly disabled = signal(false);
   readonly selectClass = signal('qt-select mb-2');
+  readonly offerBrowse = signal(false);
   readonly seen: ScenarioSelection[] = [];
+  browsed = 0;
 }
 
 function mount(): ComponentFixture<Host> {
@@ -97,28 +101,6 @@ function optionTexts(fixture: ComponentFixture<Host>): string[] {
  * sidebar's in-chat picker render.
  */
 describe('ScenarioSelect (v4 components/scenario/ScenarioSelect.tsx @ 44a8137e)', () => {
-  describe('hasAnyScenarioOptions', () => {
-    it('is false only when every tier is empty or absent', () => {
-      expect(hasAnyScenarioOptions({})).toBe(false);
-      expect(
-        hasAnyScenarioOptions({
-          projectScenarios: [],
-          generalScenarios: [],
-          groupScenarios: [],
-          characterScenarios: null,
-        }),
-      ).toBe(false);
-      expect(hasAnyScenarioOptions({ projectScenarios: [projectScenario()] })).toBe(true);
-      expect(hasAnyScenarioOptions({ generalScenarios: [generalScenario()] })).toBe(true);
-      expect(hasAnyScenarioOptions({ groupScenarios: [groupScenario()] })).toBe(true);
-      expect(
-        hasAnyScenarioOptions({
-          characterScenarios: [{ id: 'c1', title: 'A', content: 'x' }],
-        }),
-      ).toBe(true);
-    });
-  });
-
   it('renders only the standing Custom... entry when no tier has options', () => {
     const fixture = mount();
     expect(optionTexts(fixture)).toEqual(['Custom...']);
@@ -334,5 +316,144 @@ describe('ScenarioSelect (v4 components/scenario/ScenarioSelect.tsx @ 44a8137e)'
     const fixture = mount();
     const host = fixture.nativeElement.querySelector('qt-scenario-select') as HTMLElement;
     expect(host.classList.contains('block')).toBe(true);
+  });
+});
+
+const STORE: ScenarioSelection = {
+  kind: 'store',
+  mountPointId: 'mp-9',
+  path: 'Scenarios/the-attic.md',
+  label: 'Farhouse › The Attic',
+};
+
+/**
+ * v4 `components/scenario/__tests__/scenario-selection.test.tsx` at the pin
+ * `83334b9a5` (NEW at `545e299bb`) — the five "ScenarioSelect" cases,
+ * transcribed, plus the two Angular-port rows the order names (L-B's
+ * snap-back; the `afterRenderEffect` re-asserting a store selection).
+ *
+ * v4 offers "Browse all scenarios…" only when the surface passes `onBrowse`;
+ * an Angular `output()` cannot be tested for a subscriber, so the entry rides
+ * the `offerBrowse` input (P4.D302 L-A) and the browse is the `browse` output.
+ */
+describe('ScenarioSelect — the browse action and the Elsewhere optgroup (v4 545e299bb)', () => {
+  function mountBrowsing(): ComponentFixture<Host> {
+    const fixture = mount();
+    fixture.componentInstance.offerBrowse.set(true);
+    fixture.componentInstance.generalScenarios.set([
+      generalScenario({ path: 'Scenarios/moor.md', filename: 'moor.md', name: 'The Moor', body: 'Fog.' }),
+    ]);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function choose(fixture: ComponentFixture<Host>, value: string): void {
+    const el = select(fixture);
+    el.value = value;
+    el.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+  }
+
+  it('calls onBrowse, not onChange, for the browse entry', () => {
+    const fixture = mountBrowsing();
+    choose(fixture, '__browse__');
+    expect(fixture.componentInstance.browsed).toBe(1);
+    expect(fixture.componentInstance.seen).toEqual([]);
+  });
+
+  it('reports an ordinary pick through onChange', () => {
+    const fixture = mountBrowsing();
+    choose(fixture, 'general:Scenarios/moor.md');
+    expect(fixture.componentInstance.seen).toEqual([{ kind: 'general', path: 'Scenarios/moor.md' }]);
+    expect(fixture.componentInstance.browsed).toBe(0);
+  });
+
+  it('omits the browse entry when the surface offers no browser', () => {
+    const fixture = mountBrowsing();
+    fixture.componentInstance.offerBrowse.set(false);
+    fixture.detectChanges();
+    const values = [...select(fixture).querySelectorAll('option')].map((o) => o.value);
+    expect(values).not.toContain('__browse__');
+    expect(values[0]).toBe('__custom__');
+  });
+
+  it('renders the Elsewhere optgroup holding exactly the store selection', () => {
+    const fixture = mountBrowsing();
+    fixture.componentInstance.selection.set(STORE);
+    fixture.detectChanges();
+    const elsewhere = select(fixture).querySelector('optgroup[label="Elsewhere"]');
+    expect(elsewhere).not.toBeNull();
+    const options = elsewhere!.querySelectorAll('option');
+    expect(options).toHaveLength(1);
+    expect(options[0].textContent!.trim()).toBe('Farhouse › The Attic');
+    expect(select(fixture).value).toBe('store:mp-9:Scenarios/the-attic.md');
+  });
+
+  it('has no Elsewhere optgroup for a native selection', () => {
+    const fixture = mountBrowsing();
+    fixture.componentInstance.selection.set({ kind: 'general', path: 'Scenarios/moor.md' });
+    fixture.detectChanges();
+    expect(select(fixture).querySelector('optgroup[label="Elsewhere"]')).toBeNull();
+  });
+
+  it('places Custom..., then Browse all scenarios…, then Elsewhere, then the tiers', () => {
+    const fixture = mountBrowsing();
+    fixture.componentInstance.selection.set(STORE);
+    fixture.detectChanges();
+    expect(optionTexts(fixture)).toEqual([
+      'Custom...',
+      'Browse all scenarios…',
+      'Farhouse › The Attic',
+      'The Moor',
+    ]);
+  });
+
+  /**
+   * L-B — v4's controlled `<select>` snaps back on React's next render. v5's
+   * `afterRenderEffect` re-assigns the value only when a TRACKED signal moves,
+   * and choosing Browse moves none, so the handler restores it explicitly
+   * (else the DOM would keep showing "Browse all scenarios…").
+   */
+  it('snaps the select back to the held selection after the browse entry is chosen', () => {
+    const fixture = mountBrowsing();
+    fixture.componentInstance.selection.set({ kind: 'general', path: 'Scenarios/moor.md' });
+    fixture.detectChanges();
+    choose(fixture, '__browse__');
+    expect(select(fixture).value).toBe('general:Scenarios/moor.md');
+
+    fixture.componentInstance.selection.set({ kind: 'custom' });
+    fixture.detectChanges();
+    choose(fixture, '__browse__');
+    expect(select(fixture).value).toBe('__custom__');
+  });
+
+  it('passes the held selection as `current`, so a re-picked store keeps its label', () => {
+    const fixture = mountBrowsing();
+    fixture.componentInstance.selection.set(STORE);
+    fixture.detectChanges();
+    choose(fixture, 'store:mp-9:Scenarios/the-attic.md');
+    expect(fixture.componentInstance.seen).toEqual([STORE]);
+  });
+
+  it('re-asserts a store selection after a tier refetch moves the rows', () => {
+    const fixture = mountBrowsing();
+    fixture.componentInstance.selection.set(STORE);
+    fixture.detectChanges();
+    fixture.componentInstance.generalScenarios.set([
+      generalScenario({ path: 'Scenarios/heath.md', name: 'The Heath' }),
+      generalScenario({ path: 'Scenarios/moor.md', name: 'The Moor' }),
+    ]);
+    fixture.detectChanges();
+    expect(select(fixture).value).toBe('store:mp-9:Scenarios/the-attic.md');
+  });
+
+  it('renders the Custom... and Browse entries even when no tier has anything to offer', () => {
+    const fixture = mount();
+    fixture.componentInstance.offerBrowse.set(true);
+    fixture.detectChanges();
+    expect([...select(fixture).querySelectorAll('option')].map((o) => o.value)).toEqual([
+      '__custom__',
+      '__browse__',
+    ]);
   });
 });

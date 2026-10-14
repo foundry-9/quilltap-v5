@@ -23,7 +23,7 @@ import {
 } from '../../chat/concierge-state-presentation';
 import { Icon, type IconName } from '../../ui/icon';
 import { ImageProfilePicker } from '../../images/image-profile-picker';
-import { ScenarioSelect, hasAnyScenarioOptions } from '../../scenario/scenario-select';
+import { ScenarioSelect } from '../../scenario/scenario-select';
 import { HOST_AVATAR } from '../../scenario-builder/host-avatar';
 import {
   ScenarioBuilderDialog,
@@ -265,19 +265,17 @@ interface PlayAsOption {
               Ask the Host to set the scene
             </button>
           </div>
-          @if (showScenarioDropdown()) {
-            <qt-scenario-select
-              selectId="new-chat-scenario-select"
-              [selection]="scenarioSelection()"
-              (selectionChange)="onScenarioSelect($event)"
-              [projectScenarios]="projectScenarios()"
-              [generalScenarios]="generalScenarios()"
-              [groupScenarios]="groupScenarios()"
-              [characterScenarios]="characterScenarios()"
-              [characterDefaultScenarioId]="singleLlm()?.character?.defaultScenarioId ?? null"
-              [disabled]="creating()"
-            />
-          }
+          <qt-scenario-select
+            selectId="new-chat-scenario-select"
+            [selection]="scenarioSelection()"
+            (selectionChange)="onScenarioSelect($event)"
+            [projectScenarios]="projectScenarios()"
+            [generalScenarios]="generalScenarios()"
+            [groupScenarios]="groupScenarios()"
+            [characterScenarios]="characterScenarios()"
+            [characterDefaultScenarioId]="singleLlm()?.character?.defaultScenarioId ?? null"
+            [disabled]="creating()"
+          />
 
           <label class="mb-2 flex items-center gap-2 text-xs qt-text-muted">
             <input
@@ -557,15 +555,6 @@ export class NewChatForm {
       (s) => showArchived || s.archived !== true || s.id === selectedId,
     );
   });
-
-  protected readonly showScenarioDropdown = computed(() =>
-    hasAnyScenarioOptions({
-      projectScenarios: this.projectScenarios(),
-      generalScenarios: this.generalScenarios(),
-      groupScenarios: this.groupScenarios(),
-      characterScenarios: this.characterScenarios(),
-    }),
-  );
 
   private readonly selectedProjectScenario = computed<ScenarioOption | undefined>(() =>
     this.form().projectScenarioPath

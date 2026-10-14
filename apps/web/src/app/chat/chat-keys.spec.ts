@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { queryKeysForTopic } from '../core/realtime-topic-map';
 import { chatKeys } from './chat-keys';
 
 /**
@@ -26,6 +27,7 @@ describe('chatKeys (the swept chat query-key spellings)', () => {
       ['chat', 'chat-1', 'cost', 3],
       chatKeys.gallery('chat-1'),
       chatKeys.informs('chat-1'),
+      chatKeys.scenarioSource('chat-1'),
     ]) {
       expect(sub.slice(0, detail.length)).toEqual([...detail]);
     }
@@ -75,6 +77,28 @@ describe('chatKeys (the swept chat query-key spellings)', () => {
 
     it('is a per-chat key, not reachable from the bare collection prefix', () => {
       expect(chatKeys.informs('chat-1')[0]).not.toBe(chatKeys.all[0]);
+    });
+  });
+
+  describe('scenarioSource (P4.D302 — v4 `queryKeys.chats.scenarioSource`, `545e299bb`)', () => {
+    it("is v4's shape with v5's singular row word", () => {
+      // v4 `lib/query/keys.ts:76-79` spells it `['chats', id, 'scenario-source']`.
+      expect(chatKeys.scenarioSource('chat-1')).toEqual(['chat', 'chat-1', 'scenario-source']);
+    });
+
+    it("sits under the prefix the 'chats' realtime topic invalidates (v4's topic-map row)", () => {
+      // v4 `lib/realtime/topic-map.ts:77-79` adds a row for it; v5's `chats` arm
+      // returns `chatKeys.detail(id)`, which already reaches it — measured here
+      // against the REAL topic map rather than restated.
+      const key = chatKeys.scenarioSource('chat-1');
+      const prefixes = queryKeysForTopic('chats', 'chat-1');
+      expect(
+        prefixes.some((prefix) => prefix.every((part, i) => key[i] === part)),
+      ).toBe(true);
+    });
+
+    it('is a per-chat key, not reachable from the bare collection prefix', () => {
+      expect(chatKeys.scenarioSource('chat-1')[0]).not.toBe(chatKeys.all[0]);
     });
   });
 });

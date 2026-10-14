@@ -184439,3 +184439,43 @@ stays symlinked (§R.3's cure not needed for this lane).
   seed / browser rows exercise modules NEW in this lane (no main counterpart).
 - Gate: `npm run lint` / `npm run build` / `npm test` green — 500 files /
   10,113 tests.
+
+### Unit 2 — the browser keys + fetchers, `injectScenarioRefBody`, `ScenarioSelect`'s browse action
+
+- `scenario/scenario.api.ts` (L-D / L-G): `scenarioKeys.everywhere(includeArchived)`
+  = `['scenarios', 'everywhere', { includeArchived }]`, `scenarioKeys.ref(mp,
+  path)` = `['scenarios', 'ref', mp, path]` (v4's bytes, under `all`);
+  `fetchScenariosEverywhere`, `readScenarioByRef` (path sent exactly as given —
+  R-Z), `fetchScenarioSource`; ONE `injectScenarioRefBody(ref, enabled?)`
+  (`retry: false`, enabled only with a ref). `chat/chat-keys.ts`:
+  `chatKeys.scenarioSource(id)` = `['chat', id, 'scenario-source']`;
+  `chat-keys.spec.ts` asserts the shape, that `queryKeysForTopic('chats', id)`'s
+  prefix covers it (imported, not edited — `realtime-topic-map.ts` gets NO
+  hunk), and that the bare collection prefix does not.
+- **Tier 2 item 13, measured:** v5's scenario MANAGERS (`screens/scenarios/**`)
+  hold their lists outside TanStack and invalidate nothing; the only
+  `scenarioKeys.all` invalidator in the SPA is the Host's save dialog
+  (`scenario-builder/save-scenario-dialog.ts:400`). A real-`QueryClient` row
+  proves its sweep reaches both new keys; the browser refetches on every open
+  regardless (`staleTime: 0`). No manager write path needed a row of its own.
+- `scenario/scenario-select.ts` (L-A / L-B): `hasAnyScenarioOptions` DELETED
+  with its spec row; both surfaces render the select ALWAYS (their `@if`
+  gates gone; `chat-scenario-control.spec.ts`'s "hides the dropdown" row
+  re-pinned to v4's "is rendered even when no tier has anything to offer");
+  `offerBrowse` input + `browse` output; "Browse all scenarios…" after
+  Custom...; the "Elsewhere" optgroup holding only a current `store`
+  selection; `onChange` passes `this.selection()` as `current`; the browse
+  pick restores `select.value = currentValue()` BEFORE emitting `browse` and
+  emits no `selectionChange`. The surfaces bind `offerBrowse` in units 3–5.
+- Specs: v4's 5 `ScenarioSelect` cases + the order row + the snap-back + the
+  store label kept through `current` + the `afterRenderEffect` re-assert after
+  a tier refetch + the empty-tiers row; NEW `scenario.api.spec.ts` (keys,
+  fetchers, the ref body: null / enabled / `retry: false` against a default
+  client's retry).
+- **Red-first** (main's `scenario-select.ts` + a scratch shim adding the two
+  members only; main's callers): **7 red** of the 10 new select rows (the
+  three green on main — an ordinary pick, no browse entry without the flag, no
+  Elsewhere for a native pick — are v4-preserved behaviour). The keys / api
+  rows exercise names NEW in this lane. **Mutation proof (Tier 2 item 12):**
+  dropping the explicit snap-back reddens exactly the snap-back row (1 red).
+- Gate: lint / build / `npm test` green — 501 files / 10,136 tests.

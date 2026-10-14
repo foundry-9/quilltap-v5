@@ -947,6 +947,12 @@ _Versions: SPA 0.5.847._
 
 The Commonplace Book card and editor now label importance through v4's `importanceBand` (`e0ac7493a`): High at 0.7 or above, Medium from 0.3, Low below 0.3 (was 0.4). `memory-format.ts` carries `IMPORTANCE_HIGH`, `IMPORTANCE_LOW` and `importanceBand`; the format and card specs are re-pinned at 0.3 / 0.29 / 0.69 / 0.7.
 
+#### 2026-10-14 — feat(spa): scenario browser keys and fetchers, and the dropdown's browse action (P4.D302 unit 2)
+
+_Versions: SPA 0.5.848._
+
+Adds `scenarioKeys.everywhere` / `scenarioKeys.ref` and `chatKeys.scenarioSource` (v4 `545e299bb`'s keys; the `chats` realtime topic already reaches the last through its `['chat', id]` prefix), the `scenarioEverywhere` / `scenarioReadByRef` / `chatGetScenarioSource` fetchers, and one `injectScenarioRefBody` query (`retry: false`). `ScenarioSelect` drops `hasAnyScenarioOptions` and always renders on both surfaces; it gains an `offerBrowse` input and a `browse` output for "Browse all scenarios…" (an action that snaps the select back to the held selection), an "Elsewhere" optgroup for a store pick, and passes the held selection as `current` when parsing a pick.
+
 #### 2026-10-14 — feat(spa): scenario store selection, seed and browser helpers, recorded against v4 (P4.D302 unit 1)
 
 _Versions: SPA 0.5.847._

@@ -18,7 +18,7 @@ import {
   fetchProjectScenarios,
   scenarioKeys,
 } from '../../scenario/scenario.api';
-import { ScenarioSelect, hasAnyScenarioOptions } from '../../scenario/scenario-select';
+import { ScenarioSelect } from '../../scenario/scenario-select';
 import { HOST_AVATAR } from '../../scenario-builder/host-avatar';
 import { injectImagesHidden } from '../hidden-image/images-hidden';
 import {
@@ -84,20 +84,18 @@ interface ScenarioDraft {
   template: `
     <div class="qt-label">
       <span class="block mb-1">Scenario</span>
-      @if (showDropdown()) {
-        <qt-scenario-select
-          selectId="chat-scenario-select"
-          [selection]="selection()"
-          (selectionChange)="setSelection($event)"
-          [projectScenarios]="projectScenarios()"
-          [generalScenarios]="generalScenarios()"
-          [groupScenarios]="groupScenarios()"
-          [characterScenarios]="offeredCharacterScenarios()"
-          [disabled]="saving()"
-          selectClass="qt-select text-sm mb-2"
-          ariaLabel="Scenario"
-        />
-      }
+      <qt-scenario-select
+        selectId="chat-scenario-select"
+        [selection]="selection()"
+        (selectionChange)="setSelection($event)"
+        [projectScenarios]="projectScenarios()"
+        [generalScenarios]="generalScenarios()"
+        [groupScenarios]="groupScenarios()"
+        [characterScenarios]="offeredCharacterScenarios()"
+        [disabled]="saving()"
+        selectClass="qt-select text-sm mb-2"
+        ariaLabel="Scenario"
+      />
       <label class="flex items-center gap-2 mb-2 qt-text-secondary text-xs font-normal">
         <input
           type="checkbox"
@@ -261,15 +259,6 @@ export class ChatScenarioControl {
    */
   protected readonly offeredCharacterScenarios = computed<CharacterScenario[] | null>(() =>
     this.singleLlmCharacterId() ? this.characterScenarios() : null,
-  );
-
-  protected readonly showDropdown = computed(() =>
-    hasAnyScenarioOptions({
-      projectScenarios: this.projectScenarios(),
-      generalScenarios: this.generalScenarios(),
-      groupScenarios: this.groupScenarios(),
-      characterScenarios: this.characterScenarios(),
-    }),
   );
 
   /**

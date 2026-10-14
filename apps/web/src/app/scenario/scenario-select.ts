@@ -12,6 +12,7 @@ import {
 
 import {
   ARCHIVED_OPTION_SUFFIX,
+  BROWSE_SCENARIO_VALUE,
   CUSTOM_SCENARIO_VALUE,
   GENERAL_SCENARIO_PREFIX,
   GROUP_SCENARIO_PREFIX,
@@ -33,28 +34,15 @@ interface GroupOptgroup {
 }
 
 /**
- * True when at least one tier has something to offer (v4
- * `hasAnyScenarioOptions`). Both surfaces gate the whole dropdown on it.
- */
-export function hasAnyScenarioOptions(props: {
-  projectScenarios?: readonly ProjectScenarioOption[];
-  generalScenarios?: readonly GeneralScenarioOption[];
-  groupScenarios?: readonly GroupScenarioOption[];
-  characterScenarios?: readonly CharacterScenario[] | null;
-}): boolean {
-  return (
-    (props.projectScenarios?.length ?? 0) > 0 ||
-    (props.generalScenarios?.length ?? 0) > 0 ||
-    (props.groupScenarios?.length ?? 0) > 0 ||
-    (props.characterScenarios?.length ?? 0) > 0
-  );
-}
-
-/**
  * The scenario dropdown, shared by the New Chat dialog and the Salon sidebar's
  * in-chat picker (v4 `components/scenario/ScenarioSelect.tsx`, NEW at
  * `44a8137e`). Renders the four tiers as optgroups — project, general, group,
- * character — above a standing "Custom…" entry.
+ * character — beneath a standing "Custom…" entry and, when the surface offers
+ * the browser (`offerBrowse`), a "Browse all scenarios…" entry that opens the
+ * scenario browser instead of selecting anything (v4 `545e299bb`). A pick from
+ * outside the hierarchy shows in an "Elsewhere" optgroup holding exactly that
+ * one pick. The dropdown ALWAYS renders — v4 deleted `hasAnyScenarioOptions`
+ * with the browser, so Browse is reachable from an empty instance.
  *
  * The component is presentational: it takes already-fetched options and a
  * selection, and reports a new selection. What the surrounding surface does
@@ -102,6 +90,14 @@ export function hasAnyScenarioOptions(props: {
       [attr.aria-label]="ariaLabel()"
     >
       <option [value]="CUSTOM_SCENARIO_VALUE">Custom...</option>
+      @if (offerBrowse()) {
+        <option [value]="BROWSE_SCENARIO_VALUE">Browse all scenarios…</option>
+      }
+      @if (storeSelection(); as store) {
+        <optgroup label="Elsewhere">
+          <option [value]="currentValue()">{{ store.label }}</option>
+        </optgroup>
+      }
       @if (projectScenarios().length > 0) {
         <optgroup label="Project Scenarios">
           @for (s of projectScenarios(); track s.path) {
@@ -163,8 +159,17 @@ export class ScenarioSelect {
   readonly selectClass = input('qt-select mb-2');
   /** v4 `aria-label`. */
   readonly ariaLabel = input<string | undefined>(undefined);
+  /**
+   * Offer "Browse all scenarios…" (v4: present only when the surface passes
+   * `onBrowse`). An Angular `output()` cannot be tested for a subscriber, so
+   * the entry rides this flag (P4.D302 L-A); both surfaces set it.
+   */
+  readonly offerBrowse = input(false, { transform: booleanAttribute });
+  /** v4 `onBrowse` — emitted INSTEAD of {@link selectionChange} for the browse entry. */
+  readonly browse = output<void>();
 
   protected readonly CUSTOM_SCENARIO_VALUE = CUSTOM_SCENARIO_VALUE;
+  protected readonly BROWSE_SCENARIO_VALUE = BROWSE_SCENARIO_VALUE;
   protected readonly PROJECT_SCENARIO_PREFIX = PROJECT_SCENARIO_PREFIX;
   protected readonly GENERAL_SCENARIO_PREFIX = GENERAL_SCENARIO_PREFIX;
   protected readonly GROUP_SCENARIO_PREFIX = GROUP_SCENARIO_PREFIX;
@@ -173,6 +178,11 @@ export class ScenarioSelect {
 
   protected readonly currentValue = computed(() => scenarioSelectionToValue(this.selection()));
   protected readonly characterScenarioList = computed(() => this.characterScenarios() ?? []);
+  /** The one pick the "Elsewhere" optgroup holds, when the selection is from elsewhere. */
+  protected readonly storeSelection = computed(() => {
+    const selection = this.selection();
+    return selection.kind === 'store' ? selection : null;
+  });
 
   /** v4's `groupScenariosByGroup` Map — insertion order, first sighting wins the name. */
   protected readonly groupOptgroups = computed<GroupOptgroup[]>(() => {
@@ -219,7 +229,17 @@ export class ScenarioSelect {
   }
 
   protected onChange(event: Event): void {
-    const value = (event.target as HTMLSelectElement).value;
-    this.selectionChange.emit(scenarioValueToSelection(value));
+    const select = event.target as HTMLSelectElement;
+    const value = select.value;
+    // The browse entry is an action, not a selection. v4's controlled value
+    // snaps back on React's next render; here no tracked signal moves, so the
+    // `afterRenderEffect` above would never re-run — restore it explicitly,
+    // BEFORE the browser opens (P4.D302 L-B).
+    if (value === BROWSE_SCENARIO_VALUE) {
+      select.value = this.currentValue();
+      this.browse.emit();
+      return;
+    }
+    this.selectionChange.emit(scenarioValueToSelection(value, this.selection()));
   }
 }
