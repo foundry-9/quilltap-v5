@@ -947,6 +947,12 @@ _Versions: SPA 0.5.847._
 
 The Commonplace Book card and editor now label importance through v4's `importanceBand` (`e0ac7493a`): High at 0.7 or above, Medium from 0.3, Low below 0.3 (was 0.4). `memory-format.ts` carries `IMPORTANCE_HIGH`, `IMPORTANCE_LOW` and `importanceBand`; the format and card specs are re-pinned at 0.3 / 0.29 / 0.69 / 0.7.
 
+#### 2026-10-14 — feat(spa): the scenario browser, "Every scene on every shelf" (P4.D302 unit 3)
+
+_Versions: SPA 0.5.849._
+
+New `ScenarioBrowserDialog`, ported from v4 `545e299bb`: every scenario in the instance grouped by owner (General, projects, groups, characters) with collapsible sections, counts and an "in this chat" badge; search across every shelf; Show archived (a separate cache entry); a Markdown preview of the highlighted scene read by ref (the excerpt while it loads or if the read fails); arrow keys, Enter, click and double-click; Use / Cancel. The catalogue refetches on every open (`staleTime: 0`). The dialog moves itself to `document.body`, and Escape closes only the browser. Also fixes a latent order-dependent test failure: the chat gallery viewer spec now stubs `navigator.clipboard` as writable.
+
 #### 2026-10-14 — feat(spa): scenario browser keys and fetchers, and the dropdown's browse action (P4.D302 unit 2)
 
 _Versions: SPA 0.5.848._

@@ -184479,3 +184479,52 @@ stays symlinked (§R.3's cure not needed for this lane).
   rows exercise names NEW in this lane. **Mutation proof (Tier 2 item 12):**
   dropping the explicit snap-back reddens exactly the snap-back row (1 red).
 - Gate: lint / build / `npm test` green — 501 files / 10,136 tests.
+
+### Unit 3 — the scenario browser, "Every scene on every shelf"
+
+- NEW `scenario/scenario-browser-dialog.ts` (v4 `ScenarioBrowserDialog.tsx:151-399`)
+  over `qt-modal` (`title="Every scene on every shelf"`, `maxWidth="4xl"`), every
+  string verbatim: the search (`type="search"`, `Search every shelf…`,
+  `aria-label="Search scenarios"`, focused after the first render), `Show
+  archived`, `The shelves could not be reached: <message>`, `Dusting the
+  shelves…`, `<nav aria-label="Scenario owners">` with `Every shelf` + the four
+  sections (a section with no owners not rendered; `▸` / `▾` + `aria-expanded`),
+  owner rows with the count, `title="Nothing filed here yet."` + greyed when
+  empty, the `in this chat` badge; results `role="listbox" aria-label="Scenarios"`
+  (search spans every shelf whatever owner is selected), rows `role="option"`
+  with `default` / `archived` badges and the owner name when showing all; both
+  empty texts; the preview header `Owner › Name`, the excerpt while the body
+  loads, then the body through `renderGenerationPreviewMarkdown` (L-F,
+  imported); arrows (clamped, `scrollIntoView({ block: 'nearest' })`), Enter,
+  click, double-click; `Cancel` / `Use this scenario`.
+- L-E: the host moves itself to `document.body` after the first render (the
+  `scenario-builder-dialog.ts` portal); Escape is caught on `window` in the
+  CAPTURE phase and stopped there, so it closes the browser ONLY (the Salon
+  sidebar's document-level Escape never sees it); the backdrop is `qt-modal`'s
+  `closeOnBackdrop` default. L-G: the everywhere query `staleTime: 0`; the
+  preview through `injectScenarioRefBody` (`retry: false`). v4 finds the row to
+  scroll by `[data-row="${CSS.escape(key)}"]`; v5 matches `dataset.row`
+  directly — the same lookup without the escaping (jsdom has no `CSS.escape`).
+- L-H(2): `moveHighlight` reads the LISTED highlight's index before setting the
+  new one. Under signals the new highlight is computed FROM that index, so no
+  read-after-set inversion of the rule exists to mutate; the spec row pins the
+  observable half (a highlight the search hid counts as none, so ArrowDown
+  lands on the filtered list's first row).
+- NEW `scenario-browser-dialog.spec.ts` — 28 rows (frame, autofocus, portal,
+  loading → list, the error line, Cancel / ✕, the nav sections + collapse +
+  counts + empty title + `in this chat`, every-shelf vs selected owner vs
+  search-everywhere, both empty texts, Show archived as a SEPARATE cache entry,
+  the remount refetch against the app's 5 s default, click / Use disabled /
+  filtered highlight, excerpt-then-body and excerpt-on-failure, store vs native
+  picks, double-click, the arrows clamped + Enter, scroll-into-view, Escape
+  containment). All rows exercise a module NEW in this lane. **Mutation proofs
+  (Tier 2 item 12):** dropping `staleTime: 0` reddens exactly the remount row;
+  dropping the Escape `stopPropagation` reddens exactly the containment row.
+- **Gate-forced test fix outside the scenario area (recorded):** adding the new
+  spec files moved vitest's worker allocation, and `courier-bubble.spec.ts`
+  went 8/8 red ("Cannot assign to read only property 'clipboard'") because
+  `images/chat-gallery-image-view-modal.spec.ts:297` stubs `navigator.clipboard`
+  without `writable: true` — the latent order-dependence the memory note
+  `spa-component-harness-gotchas` names. One-line test fix (`writable: true`);
+  no production file, no other lane's region.
+- Gate: lint / build / `npm test` green — 502 files / 10,164 tests.

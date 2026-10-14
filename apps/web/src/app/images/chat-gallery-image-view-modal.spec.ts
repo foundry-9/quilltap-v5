@@ -299,6 +299,12 @@ describe('ChatGalleryImageViewModal', () => {
       // P4.D301 OUT-OF-MANDATE: `writable` — without it a later spec in the same
       // vitest worker that `Object.assign`s the clipboard (courier-bubble) throws.
       writable: true,
+      // `writable` too: without it a later spec file in the same vitest worker
+      // that ASSIGNS `navigator.clipboard` (`courier-bubble.spec.ts`) fails
+      // 8/8 with "Cannot assign to read only property" (memory
+      // `spa-component-harness-gotchas`; surfaced by P4.D302's new spec files
+      // moving the worker allocation).
+      writable: true,
       value: { write: vi.fn(async () => Promise.reject(new Error('denied'))) },
     });
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
