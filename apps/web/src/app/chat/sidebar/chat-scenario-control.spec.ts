@@ -69,6 +69,18 @@ function stubClient(): Partial<CoreClient> {
           return { groupScenarios: [] };
         case 'characterScenarioList':
           return { scenarios: CHARACTER_SCENARIOS };
+        case 'chatGetScenarioSource':
+          // v4's no-source body (P4.D302): every pre-545e299bb case keeps its
+          // meaning — the body match decides, no provenance line.
+          return {
+            source: null,
+            owner: null,
+            scenarioName: null,
+            scenarioId: null,
+            exists: false,
+            changed: false,
+            notes: null,
+          };
         case 'chatSetScenario':
           if (saveAnswer instanceof Error) throw saveAnswer;
           return saveAnswer;
@@ -183,12 +195,15 @@ describe('ChatScenarioControl (v4 components/chat/ChatScenarioControl.tsx @ 44a8
     expect(sent).toEqual([]);
   });
 
-  it('fetches the three keyed tiers once opened', async () => {
+  // P4.D302: the recorded source (`chatGetScenarioSource`, v4 `545e299bb`) is
+  // read with the tiers, under the same `enabled` gate.
+  it('fetches the three keyed tiers and the recorded source once opened', async () => {
     const fixture = await render();
     await settle(fixture);
     const types = sent.map((r) => r.type).sort();
     expect(types).toEqual([
       'characterScenarioList',
+      'chatGetScenarioSource',
       'groupScenariosUnion',
       'projectScenarioList',
       'scenarioList',
@@ -290,8 +305,11 @@ describe('ChatScenarioControl (v4 components/chat/ChatScenarioControl.tsx @ 44a8
     await settle(fixture);
 
     expect(selectEl(fixture)!.value).toBe('project:Scenarios/inn.md');
-    expect(textarea(fixture)).toBeNull();
-    expect((fixture.nativeElement as HTMLElement).textContent).toContain('A low-ceilinged room.');
+    // P4.D302 (v4 `545e299bb`): a preset shows the Notes box, not the Custom one.
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[aria-label="Custom scenario text"]')).toBeNull();
+    expect((el.querySelector('[aria-label="Notes beneath the scene"]') as HTMLTextAreaElement).value).toBe('');
+    expect(el.textContent).toContain('A low-ceilinged room.');
   });
 
   it('matches a general and a character preset too, trimming both sides', async () => {
@@ -333,7 +351,9 @@ describe('ChatScenarioControl (v4 components/chat/ChatScenarioControl.tsx @ 44a8
     expect(textarea(fixture)!.value).toBe('A scene nobody wrote down.');
   });
 
-  it('posts the tier fields for a preset and NO free text', async () => {
+  // P4.D302 (v4 `545e299bb` `:381-382`): `scenario` rides EVERY save — under a
+  // preset it is the notes beneath it, here the untouched (empty) Notes box.
+  it('posts the tier fields for a preset WITH the notes box as `scenario`', async () => {
     const fixture = await render();
     await settle(fixture);
     const el = selectEl(fixture)!;
@@ -349,6 +369,7 @@ describe('ChatScenarioControl (v4 components/chat/ChatScenarioControl.tsx @ 44a8
       type: 'chatSetScenario',
       chatId: 'chat-1',
       projectScenarioPath: 'Scenarios/inn.md',
+      scenario: '',
     });
     expect(fixture.componentInstance.refetched).toBe(1);
   });

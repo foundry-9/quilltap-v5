@@ -125,6 +125,18 @@ async function render(prepare?: (host: Host) => void, holdSave = false): Promise
         };
       case 'characterScenarioList':
         return { scenarios: [] };
+      case 'chatGetScenarioSource':
+        // v4's no-source body (P4.D302): every pre-545e299bb case keeps its
+        // meaning — the body match decides, no provenance line.
+        return {
+          source: null,
+          owner: null,
+          scenarioName: null,
+          scenarioId: null,
+          exists: false,
+          changed: false,
+          notes: null,
+        };
       case 'chatSetScenario':
         if (holdSave) await new Promise<void>((r) => (hold.release = r));
         return { scenarioText: 'x', changed: true, message: 'Scenario updated' };
@@ -176,6 +188,11 @@ function selectValue(r: Rendered): string {
 
 function textarea(r: Rendered): HTMLTextAreaElement | null {
   return r.fixture.nativeElement.querySelector('textarea');
+}
+
+/** The Custom box only — since P4.D302 a preset shows a Notes box instead. */
+function customBox(r: Rendered): HTMLTextAreaElement | null {
+  return r.fixture.nativeElement.querySelector('[aria-label="Custom scenario text"]');
 }
 
 async function saveWith(
@@ -249,7 +266,7 @@ describe('ChatScenarioControl — selecting a scene the Host just filed', () => 
   it('selects a general preset the cache now carries', async () => {
     const r = await saveWith({ kind: 'general', path: 'Scenarios/road.md' });
     expect(selectValue(r)).toBe('general:Scenarios/road.md');
-    expect(textarea(r)).toBeNull();
+    expect(customBox(r)).toBeNull();
   });
 
   it('leaves the picker alone when the general cache lacks the path', async () => {
@@ -302,7 +319,7 @@ describe('ChatScenarioControl — selecting a scene the Host just filed', () => 
     };
     const lone = await saveWith(target);
     // Selected in the draft (the option itself arrives with the refetched list).
-    expect(textarea(lone)).toBeNull();
+    expect(customBox(lone)).toBeNull();
     const several = await saveWith(target, (host) => {
       host.llmCharacterIds.set(['char-1', 'char-2']);
       host.singleLlmCharacterId.set(null);

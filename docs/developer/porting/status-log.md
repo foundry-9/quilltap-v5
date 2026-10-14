@@ -184528,3 +184528,61 @@ stays symlinked (§R.3's cure not needed for this lane).
   `spa-component-harness-gotchas` names. One-line test fix (`writable: true`);
   no production file, no other lane's region.
 - Gate: lint / build / `npm test` green — 502 files / 10,164 tests.
+
+### Unit 4 — the in-chat control: the recorded source as the authority
+
+- `chat/sidebar/chat-scenario-control.ts` (v4 `ChatScenarioControl.tsx:181-511`):
+  the `chatGetScenarioSource` query under `chatKeys.scenarioSource(chatId)`
+  (enabled with the section; no options of its own — v4 sets none, the app
+  defaults stand, L-G recorded); `currentAsSelection` with the source as the
+  authority (general → general; project only for `owner.id === projectId`;
+  group when `groupIds` holds it; character only for the lone LLM character
+  AND an answered `scenarioId`; else `store` labelled `Owner ›
+  scenarioName ?? path-derived`), `customText` = the stored notes; a GONE
+  source falls through to the existing body match; the select always rendered
+  with `offerBrowse`; the browser mounted under `@if (browserOpen())` with
+  `hierarchy { projectId, groupIds, characterId: singleLlmCharacterId }`
+  (`groupIds` = the distinct `groupId`s of the flattened option list — L-M,
+  identical to v4's envelope ids because the union route skips empty groups);
+  `pick` → `setSelection`; the provenance line (`From: <em>owner</em> ›
+  <em>scenarioName ?? path</em>`, ` — the shelf copy is gone`, ` — the shelf
+  copy has been revised ` + **Reload from source**,
+  `qt-button-secondary qt-button-sm ml-1`, disabled while saving) placed after
+  the select and before Show archived and the Host button; under a preset the
+  preview (a `store` body read by ref through `injectScenarioRefBody`, enabled
+  with the section) + `Notes beneath the scene` + the 3-row box
+  `aria-label="Notes beneath the scene"`, placeholder `Anything to add beneath
+  the preset (optional)…`; Custom's 6-row box unchanged.
+- L-H(1): `setSelection` reads the CURRENT selection + text into locals before
+  the draft moves (Custom → preset CLEARS the box). L-H(3): `postScenario`
+  toasts, drops the draft, AWAITS `invalidateQueries(chatKeys.scenarioSource)`,
+  THEN emits `chatUpdated`. L-L: Save sends `{ ...payload, scenario:
+  customText }` ALWAYS and never `reload`; Reload sends exactly `{ scenarioRef:
+  { mountPointId, path }, scenario: notes ?? '', reload: true }` (byte-pinned).
+  L-K: a refusal toasts `coreErrorMessage(error, 'Failed to update scenario')`
+  — `Invalid scenarioRef: That store does not hold scenarios` arrives
+  byte-for-byte; no SPA constant holds either refusal spelling.
+- NEW `chat-scenario-control.source.spec.ts`: v4's 21 cases
+  (`__tests__/unit/components/chat/chat-scenario-control.test.tsx` at the pin)
+  case for case + 5 lane rows (L-K verbatim; L-H(3) ordering; the store
+  preview; general / group / character sources snapping native and a
+  path-only store label; the provenance line's position).
+- **Red-first** (the unported control on the branch): **9 of v4's 21 red**
+  (the source seeding ×2, provenance ×4, the preset-notes save ×2, the
+  always-rendered Browse) — the 12 green are v4-preserved behaviour (body
+  match, archived toggle, custom save, errors, the `enabled` gate); **4 of
+  the 5 lane rows red** (L-K already held). **Mutation proofs:** inverting
+  `textForSelection` reddens exactly "does not carry a custom scene beneath a
+  preset picked over it"; dropping the `exists` gate reddens exactly "keeps
+  the scene it has when the shelf copy is gone"; emitting `chatUpdated` before
+  the awaited invalidation reddens exactly the L-H(3) row.
+- **Pre-existing rows whose meaning moved (re-pinned, recorded):** both
+  existing stubs now answer `chatGetScenarioSource` with v4's no-source body.
+  `chat-scenario-control.spec.ts`: "fetches the three keyed tiers" now also
+  lists `chatGetScenarioSource`; "opens on the PRESET…" asserts the Notes box
+  (empty) where it asserted no textarea; "posts the tier fields for a preset
+  and NO free text" now posts `scenario: ''`. `.host.spec.ts`: "selects a
+  general preset…" and "selects a character scenario only for the lone LLM
+  character" assert no CUSTOM box (a preset now shows the Notes box). Every
+  other case kept its meaning.
+- Gate: lint / build / `npm test` green — 503 files / 10,190 tests.
