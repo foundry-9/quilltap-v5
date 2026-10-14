@@ -47,7 +47,7 @@ const LEGACY_CHAT_MESSAGES_AND_MEMORIES_DDL: &str =
      description TEXT, totalTokens TEXT, provider TEXT, modelName TEXT, estimatedCostUSD TEXT, \
      createdAt TEXT, isSilentMessage TEXT, confirmed TEXT, confirmationChecked TEXT, \
      confirmationRevised TEXT, confirmationNotes TEXT, confirmationOriginalContent TEXT);\
-     CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, chatId TEXT);";
+     CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, characterId TEXT, chatId TEXT, createdAt TEXT, updatedAt TEXT);";
 
 /// The full `chats` column set, loose types (the enclave self-tests' shape) —
 /// **minus** the two `78b381a96` columns, which

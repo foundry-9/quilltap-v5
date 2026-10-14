@@ -180070,3 +180070,92 @@ migrationsSkipped: 90}`, none deferred. Measured:
   `idx_memories_supersededById` and its fresh-instance leg reads the tiers ensure's chat arm; re-pointed
   with the chain in unit 7). `host_boot_backfilled_indexes`' INFO counts re-counted mechanically (main 47 →
   46, 46 → 45 — the re-dump's net −1 index). Versions: core 0.0.1292, host 0.0.200.
+
+### Unit 7 — C1-2, the ten STRUCTURAL ensures
+- NEW modules in `db/` (one each, `MIGRATION_ID` + v4's exact statements, structure-gated, FATAL — the
+  caller `?`s): `memory_superseded_at_repair` (slot 1), `chats_scenario_source_repair` (2),
+  `memory_episode_watermark_repair` (3 — O-3's gate: ledger lacks the id AND `chats` exists AND the column
+  absent AND the cursor table absent; STAMPED), `memories_superseded_by_index` (6 — v4's statement + its
+  existence re-check), `memory_maintenance_settings_move` (7 — ATOMIC in one savepoint where v4 runs bare;
+  the single user's row wins even when NULL, else latest `updatedAt`; `ON CONFLICT DO NOTHING`),
+  `memory_vector_mirror_retire` (8 — rowid pages of 500, a savepoint per page, the DROPs after; NOT wired
+  until the end of unit 8, O-1), `memory_extraction_cursors_repair` (9 — R-C text with `IF NOT EXISTS`,
+  R-D order, L-8 ONE savepoint around create + copies + drops + stamp; STAMPED; also
+  `ensure_cursor_created_at_index`, the repository's first-touch index on every boot, the
+  `wardrobe_wear_stats_repair` shape), `retired_job_rows_purge::{purge_inter_character_memory_jobs (10),
+  purge_housekeeping_consolidation_jobs (12)}`, `tfidf_text_shape_repair` (11 — `INTEGER DEFAULT 0`, R-R).
+  Shared: NEW `db/schema_probe.rs` (`table_exists` / `column_exists` / `column_names` / `index_exists` /
+  `add_column_if_missing` / `in_savepoint`) and `migrations_ledger::{ledger_has, stamp_completed}` (the
+  wardrobe stamp shape; v4's message bytes, `itemsAffected`). Module headers name each migration's
+  introducing v4 commit, MEASURED by `git log -S` at the pin (my first drafts had five wrong — corrected
+  before the first build).
+- **The stamp rule (R-D / R-E):** only the episode watermark and the cursor move stamp in this unit (both
+  measured: v4's runner writes `Episode watermark in place (N chats backfilled)` / `Extraction cursors in
+  place (N carried over from M watermark column(s))`, byte-equal to v5's in the chain family). The other
+  eight stay UNSTAMPED and structure-gated pending unit 13's measurement.
+- `memory_tiers_repair.rs` step 4 RETIRED (the human's 2026-10-13 ruling): `CHAT_WATERMARK_COLUMN`, the decl,
+  `needs_chat_watermark`, `chat_column_added`, step (4) and its outcome count deleted; doc rewritten (the
+  ping-pong with the cursor drop); its unit tests re-pointed (the baseline `memories` also strips
+  `supersededAt`; `items_affected` 6 → 5; `only_chats_lacking_the_watermark_gains_only_the_chat_column` →
+  `chats_lacking_the_watermark_is_left_alone`). `test_support::ensure_memory_tiers_columns`' doc follows; the
+  host's `chatColumnAdded` field left the tiers INFO.
+- **Host wiring** (`host.rs`, a `// === P4.D288 (C1-2) ===` fence after the tiers block, BEFORE P4.160's
+  backfill, v4's `index.ts:1317-1340` order): slots 1, 2, 3, 6, 7, 9 (+ the cursor `createdAt` index), 10,
+  11, 12 — 4 / 5 left for unit 12, 8 for the end of unit 8 — each with v5's ONE INFO `target:
+  "quilltap::boot"` + `migrationId` + its outcome when not a no-op.
+- **R-AD:** NEW host test `startup_backup_before_ensures` — the both-ways `STARTUP_BACKUP_BEFORE_ENSURES`
+  table: v5's `run_startup_backups_at_boot` precedes `seed_built_ins` in `assemble`; v4's
+  `migrationRunner.runMigrations()` precedes PHASE 1.1 (`repairTextEmbeddings` → `getDatabaseAsync`, the
+  backend's first `connect()`, where v4's startup backup runs — `backend.ts:561`; measured — the version
+  guard and the daily optimize use the migration connection). Both legs green with `QT_V4_ROOT` at the pin.
+- **Mirror-boot region** (`restore_vintage_state.rs`, `// === P4.D288: mirror-boot ensures ===`): slots 1,
+  2, 3, 7, 9 (+ the cursor index) and 11 by hand on the vintage main partition; the vector retire joins at
+  unit 8.
+- **Families — ONE oracle driver** `harness/oracle/cases/p4d288-ensures.ts` (one family per invocation,
+  `QT_P4D288_ENSURE_FAMILY`; ENCRYPTED base files from the committed dump minus the round's lines, or the
+  real migrations' text — the vector mirror from `sqlite-initial-schema-v1`, the cursor table in its
+  migration text), v4's REAL migrations (the chain through v4's REAL `MigrationRunner` narrowed to the two —
+  ledger consulted and stamped), and ONE Rust support module `tests/p4d288_ensure_support/` (the same
+  inspection: `sqlite_master` bar the ledger tables, `table_info` + every row through `quote()`, the ledger
+  rows; the cursor stamps `<ts>` after asserting ONE `now` per row on BOTH sides). ALL GREEN from the pin:
+  `memory_superseded_at_ensure_equivalence` (5 modes), `chats_scenario_source_ensure_equivalence` (4),
+  `memory_extraction_cursors_ensure_equivalence` (6 — pre-round, already-migrated, half-migrated, mid-chain,
+  no-chats, + 1 ruled), `memories_superseded_by_index_ensure_equivalence` (4 + the stored text byte-equal to
+  `migration_indexes.json`'s), `memory_maintenance_settings_move_ensure_equivalence` (8 — the stored bytes:
+  the clamp, V8's own-key order `{"2","10","c1"}`, no `phases`), `memory_vector_mirror_retire_ensure_
+  equivalence` (4 — 510 + 10 mirror rows across two pages, the quantized TEXT conversion byte-equal),
+  `retired_job_rows_purge_ensure_equivalence` (3), `tfidf_text_shape_ensure_equivalence` (3). Mutation-proven:
+  a one-letter change to the episode stamp message and `float32_to_blob` → `_raw` in the retire each
+  reddened its family.
+- **NEW ruled row `FRESH_INSTANCE_UNLEDGERED`** (in `memory_extraction_cursors_ensure_equivalence`, both
+  ways): a v5-provisioned instance carries the cursor table and NO `migrations_state` (P4.153's
+  `ORACLE_ONLY_TABLES` row), so v4's runner re-runs BOTH chain migrations on it — re-adding the episode
+  column, inserting `episode-fold` cursors at the last summary anchor, dropping the column — while v5's O-3
+  gate does nothing. Measured (v4: `+RAN … (1 chats backfilled)`, `+RAN … (1 carried over from 1 …)`).
+  ⚠ For the human / unit 13: the general class (a fresh v5 instance opened by v4 re-runs every v4 migration
+  whose `shouldRun` holds) predates this round; this row records the chain's share.
+- **`memory_tiers_ensure_equivalence` RE-POINTED to the chain:** every non-parity arm runs v4's tiers
+  migration then the two chain migrations (`chainReport`) against v5's tiers ensure + the chain; the
+  chain's RAN ids compared; `tiersAddedChatColumn` accounts v5's outcome one item fewer; baselines from the
+  P4.D288 dump. NEW named `RETIRED_CHAT_STEP` (both ways) in the parity arms: v4's helper (tiers alone)
+  APPENDS the chat column — `table_info` and SQL differ by exactly that column, pinned; the rest equal.
+  Green, 8 arms.
+- **Host:** `host_boot_p4d265_memory_tiers` re-pointed (its pre-round derivation also drops `supersededAt` +
+  `idx_memories_supersededById` — the plant used to fail `error in index … after drop column`; the line
+  without `chatColumnAdded`; (d)'s v4 plant carries v4's `supersededAt` + index text, and its watermark column
+  is asserted MOVED) — 4 / 4 green. NEW `host_boot_p4d288_ensures`: a pre-round instance (every surface
+  planted) logs the NINE lines in v4's order with their outcomes and none of v4's migration lines, stamps
+  only the chain's two ids, carries `chat1:episode-fold = a2` / `chat1:other-fold = m9`; the second boot and
+  a fresh instance are silent — 2 / 2 green.
+- **Host plants fixed (recorded):** `host_boot.rs`' minimal `memories (id, chatId)` gained `characterId`,
+  `createdAt`, `updatedAt` — the superseded-at backfill reads `updatedAt` (v4's statement fails the same way
+  on such a table), and without `characterId` SQLite's double-quoted-string fallback let the tiers ensure
+  build `idx_memories_character_tier` over a CONSTANT, which the cursor move's `DROP COLUMN` (a whole-schema
+  re-parse) then rejects. `host_boot_backfilled_indexes`' main counts again −1 (46 → 45, 45 → 44 skipped=1):
+  slot 6 now makes `idx_memories_supersededById` ahead of the backfill, which finds it present (the
+  designed handoff, measured byte-equal by the index family).
+- **Unit gate:** fmt clean; clippy `-D warnings` clean with both feature sets; the eight ensure families +
+  the re-pointed tiers family GREEN from the pin; `restore_vintage_state` 9 / 9; `quilltap-host
+  --no-fail-fast` ALL GREEN; `quilltap-core --lib` 3,605 / 18 — the two recorded classes only (committed
+  fixtures [unit 11], vector plants [unit 8]; the tiers repair's 7 now green). Versions: core 0.0.1293,
+  host 0.0.201.

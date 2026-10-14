@@ -5,8 +5,9 @@
 //!
 //! v4 adds four `memories` columns (`tier`, `supersededById`,
 //! `consolidatedFrom`, `consolidatedAt`), the `(characterId, tier)` index and
-//! `chats.otherExtractionWatermarkMessageId` through its migration runner, and
-//! heals any row whose `tier` / `consolidatedFrom` is NULL. v5's migration
+//! `chats.otherExtractionWatermarkMessageId` (step 4 — RETIRED in v5 by
+//! P4.D288, below) through its migration runner, and heals any row whose
+//! `tier` / `consolidatedFrom` is NULL. v5's migration
 //! runner is a locked deferral, so — the P4.d7 / P4.D249 / P4.D251 sibling
 //! column ensures' shape — the migration is re-homed as a boot ensure over the
 //! main partition, wired in the host's `seed_built_ins` AFTER the P4.D255
@@ -25,8 +26,19 @@
 //!      ([`crate::services::provisioning::migration_main_index`], `IF NOT
 //!      EXISTS` spliced after `INDEX `, the P4.160 splice) — never spelled
 //!      here (D23);
-//!   3. whenever `memories.tier` exists, the heal UPDATE, byte for byte;
-//!   4. the chat column when absent, `TEXT DEFAULT NULL`.
+//!   3. whenever `memories.tier` exists, the heal UPDATE, byte for byte.
+//!
+//! **Step 4 RETIRED (P4.D288, the human's 2026-10-13 ruling).** v4's migration
+//! at the `83334b9a5` pin STILL adds `chats.otherExtractionWatermarkMessageId`
+//! (only a comment moved), but its successor `add-memory-extraction-cursors-v1`
+//! copies that column into `memory_extraction_cursors` and DROPS it — a v5 boot
+//! that kept re-adding it would ping-pong with the cursor ensure on every
+//! instance it had already migrated. v4 never re-runs the tiers migration on
+//! such an instance (its ledger row is written), so the column stays gone there;
+//! the chain this ensure belongs to (`memory_extraction_cursors_repair`) is the
+//! one home of the OTHER pass's position. The `memory_tiers_ensure_equivalence`
+//! family compares the CHAIN (tiers → episode watermark → cursors), not this
+//! one step.
 //!
 //! Every step is table-gated (`sqliteTableExists`). **No transaction wraps
 //! the steps** — v4's has none, so a mid-run failure leaves the earlier ALTERs
@@ -101,10 +113,6 @@ pub const MEMORY_COLUMNS: [(&str, &str); 4] = [
     ("consolidatedAt", "TEXT DEFAULT NULL"),
 ];
 
-/// v4's `CHAT_WATERMARK_COLUMN` (`:44`) and its DDL (`:147`).
-pub const CHAT_WATERMARK_COLUMN: &str = "otherExtractionWatermarkMessageId";
-const CHAT_WATERMARK_DECL: &str = "TEXT DEFAULT NULL";
-
 /// v4's heal (`:132-135`), the bytes copied — line breaks and indentation
 /// included.
 const HEAL_SQL: &str = "UPDATE memories
@@ -122,8 +130,6 @@ pub struct MemoryTiersEnsureOutcome {
     pub index_created: bool,
     /// Rows the heal UPDATE changed (v4's `healed.changes`).
     pub healed_rows: usize,
-    /// `chats.otherExtractionWatermarkMessageId` was added.
-    pub chat_column_added: bool,
 }
 
 impl MemoryTiersEnsureOutcome {
@@ -132,12 +138,10 @@ impl MemoryTiersEnsureOutcome {
         self == &Self::default()
     }
 
-    /// v4's `itemsAffected` (columns + index + healed rows + chat column).
+    /// v4's `itemsAffected` less the retired chat column (columns + index +
+    /// healed rows).
     pub fn items_affected(&self) -> usize {
-        self.columns_added.len()
-            + usize::from(self.index_created)
-            + self.healed_rows
-            + usize::from(self.chat_column_added)
+        self.columns_added.len() + usize::from(self.index_created) + self.healed_rows
     }
 }
 
@@ -145,7 +149,6 @@ impl MemoryTiersEnsureOutcome {
 struct WorkNeeded {
     memory_columns: Vec<&'static str>,
     needs_index: bool,
-    needs_chat_watermark: bool,
     null_tier_rows: i64,
 }
 
@@ -154,7 +157,6 @@ fn assess_work(main: &Connection) -> Result<WorkNeeded, DbError> {
     let mut work = WorkNeeded {
         memory_columns: Vec::new(),
         needs_index: false,
-        needs_chat_watermark: false,
         null_tier_rows: 0,
     };
     if table_exists(main, "memories")? {
@@ -173,11 +175,6 @@ fn assess_work(main: &Connection) -> Result<WorkNeeded, DbError> {
             )?;
         }
     }
-    if table_exists(main, "chats")? {
-        work.needs_chat_watermark = !column_names(main, "chats")?
-            .iter()
-            .any(|c| c == CHAT_WATERMARK_COLUMN);
-    }
     Ok(work)
 }
 
@@ -187,10 +184,7 @@ fn assess_work(main: &Connection) -> Result<WorkNeeded, DbError> {
 /// provision) answers the all-false outcome after four read-only probes.
 pub fn ensure_memory_tiers(main: &Connection) -> Result<MemoryTiersEnsureOutcome, DbError> {
     let work = assess_work(main)?;
-    let should_run = !work.memory_columns.is_empty()
-        || work.needs_index
-        || work.needs_chat_watermark
-        || work.null_tier_rows > 0;
+    let should_run = !work.memory_columns.is_empty() || work.needs_index || work.null_tier_rows > 0;
     let mut outcome = MemoryTiersEnsureOutcome::default();
     if !should_run {
         return Ok(outcome);
@@ -223,13 +217,6 @@ pub fn ensure_memory_tiers(main: &Connection) -> Result<MemoryTiersEnsureOutcome
         && column_names(main, "memories")?.iter().any(|c| c == "tier")
     {
         outcome.healed_rows = main.execute(HEAL_SQL, [])?;
-    }
-
-    // (4) The chat watermark column.
-    if work.needs_chat_watermark
-        && add_column_if_missing(main, "chats", CHAT_WATERMARK_COLUMN, CHAT_WATERMARK_DECL)?
-    {
-        outcome.chat_column_added = true;
     }
 
     Ok(outcome)
@@ -283,13 +270,15 @@ mod tests {
     use crate::test_support::captured_with;
 
     /// The pre-round (`f5e953a3f` generateDDL) `memories` — `fresh_schema.json`'s
-    /// statement minus exactly the four moved lines.
+    /// statement minus exactly the four moved lines (and P4.D288's
+    /// `supersededAt`, which a pre-tiers instance cannot carry either).
     fn baseline_memories_ddl() -> String {
         let current = fresh_statement("CREATE TABLE \"memories\"");
         let mut out = current.clone();
         for line in [
             "  \"tier\" TEXT DEFAULT 'hot',\n",
             "  \"supersededById\" TEXT,\n",
+            "  \"supersededAt\" TEXT,\n",
             "  \"consolidatedFrom\" TEXT DEFAULT '[]',\n",
             "  \"consolidatedAt\" TEXT,\n",
         ] {
@@ -299,12 +288,12 @@ mod tests {
         out
     }
 
-    /// The pre-round `chats` — minus the one moved line.
+    /// A `chats` WITHOUT the OTHER watermark — since P4.D288's re-dump the
+    /// fresh statement itself (the cursor table holds the position).
     fn baseline_chats_ddl() -> String {
         let current = fresh_statement("CREATE TABLE \"chats\"");
-        let line = "  \"otherExtractionWatermarkMessageId\" TEXT,\n";
-        assert_eq!(current.matches(line).count(), 1);
-        current.replacen(line, "", 1)
+        assert!(!current.contains("otherExtractionWatermarkMessageId"));
+        current
     }
 
     fn fresh_statement(prefix: &str) -> String {
@@ -384,13 +373,12 @@ mod tests {
                 ],
                 index_created: true,
                 healed_rows: 0,
-                chat_column_added: true,
             }
         );
         assert_eq!(
             outcome.items_affected(),
-            6,
-            "v4's real first boot: 6 changes"
+            5,
+            "v4's real first boot: 6 changes, less the retired chat column"
         );
         let mem = columns(&conn, "memories");
         // APPENDED, in the migration's text (not generateDDL's slot).
@@ -407,15 +395,10 @@ mod tests {
                 ("consolidatedAt".into(), "TEXT".into(), Some("NULL".into())),
             ]
         );
-        let chats = columns(&conn, "chats");
-        assert_eq!(
-            chats.last().unwrap(),
-            &(
-                CHAT_WATERMARK_COLUMN.to_string(),
-                "TEXT".to_string(),
-                Some("NULL".to_string())
-            )
-        );
+        // Step 4 RETIRED (P4.D288): `chats` is untouched.
+        assert!(!columns(&conn, "chats")
+            .iter()
+            .any(|(name, _, _)| name == "otherExtractionWatermarkMessageId"));
         assert_eq!(
             tiers(&conn),
             vec![
@@ -489,20 +472,19 @@ mod tests {
         assert_eq!(master(&conn), before);
     }
 
+    /// P4.D288 — step 4 RETIRED: a `chats` without the OTHER watermark (every
+    /// instance the cursor ensure has migrated) is NOT given it back, so the two
+    /// ensures cannot ping-pong.
     #[test]
-    fn only_chats_lacking_the_watermark_gains_only_the_chat_column() {
+    fn chats_lacking_the_watermark_is_left_alone() {
         let conn = pre_round();
         ensure_memory_tiers(&conn).unwrap();
-        // Rebuild `chats` without the column.
-        conn.execute_batch("DROP TABLE chats").unwrap();
-        conn.execute_batch(&baseline_chats_ddl()).unwrap();
-        assert_eq!(
-            ensure_memory_tiers(&conn).unwrap(),
-            MemoryTiersEnsureOutcome {
-                chat_column_added: true,
-                ..Default::default()
-            }
-        );
+        let before = master(&conn);
+        assert!(ensure_memory_tiers(&conn).unwrap().is_noop());
+        assert_eq!(master(&conn), before);
+        assert!(!columns(&conn, "chats")
+            .iter()
+            .any(|(name, _, _)| name == "otherExtractionWatermarkMessageId"));
     }
 
     #[test]

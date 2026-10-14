@@ -115,6 +115,18 @@ pub mod llm_logs;
 pub mod memories;
 pub mod memories_read;
 pub mod memory_extraction_cursors; // P4.D288 (C1-1)
+                                   // === P4.D288 (C1-2): the ten structural ensures + their shared probes ===
+pub mod chats_scenario_source_repair;
+pub mod memories_superseded_by_index;
+pub mod memory_episode_watermark_repair;
+pub mod memory_extraction_cursors_repair;
+pub mod memory_maintenance_settings_move;
+pub mod memory_superseded_at_repair;
+pub mod memory_vector_mirror_retire;
+pub mod retired_job_rows_purge;
+pub(crate) mod schema_probe;
+pub mod tfidf_text_shape_repair;
+// === end P4.D288 ===
 pub mod memory_tiers_repair;
 pub mod migration_index_family_repair;
 pub mod migrations_ledger;

@@ -192,8 +192,9 @@ pub fn ensure_wear_ledger_on(conn: &rusqlite::Connection) {
 
 /// C1 §2 (P4.D265): heal a fixture's main partition with v4's
 /// `add-memory-tiers-v1` (`d58548051`) — the four `memories` tier columns, the
-/// `(characterId, tier)` index, the NULL-tier heal and
-/// `chats.otherExtractionWatermarkMessageId` — through the REAL boot ensure
+/// `(characterId, tier)` index and the NULL-tier heal (v4's fourth step,
+/// `chats.otherExtractionWatermarkMessageId`, is RETIRED in v5 by P4.D288 —
+/// the cursor table holds the position) — through the REAL boot ensure
 /// (`db::memory_tiers_repair::ensure_memory_tiers`), so the healed copy is
 /// exactly what a booted pre-round instance carries. The Rust twin of the
 /// oracle helper `harness/oracle/fixtures/apply-memory-tiers-migration.ts`

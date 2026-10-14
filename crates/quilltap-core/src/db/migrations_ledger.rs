@@ -36,6 +36,50 @@ pub(crate) fn ensure_migrations_tables(conn: &Connection) -> Result<(), DbError>
 /// `ensureSQLiteMigrationsTable` (and from the four copies this replaced).
 const LEDGER_DDL: &str = "CREATE TABLE IF NOT EXISTS \"migrations_state\" (\n        \"id\" TEXT PRIMARY KEY,\n        \"completedAt\" TEXT NOT NULL,\n        \"quilltapVersion\" TEXT NOT NULL,\n        \"itemsAffected\" INTEGER NOT NULL DEFAULT 0,\n        \"message\" TEXT\n      );\n      CREATE TABLE IF NOT EXISTS \"migrations_metadata\" (\n        \"key\" TEXT PRIMARY KEY,\n        \"value\" TEXT NOT NULL\n      );";
 
+// === P4.D288 (C1-2): the ledger handshake the stamped ensures share ===
+
+/// True when either app recorded migration `id` (v4's runner consults its
+/// ledger BEFORE `shouldRun`). `false` when the ledger table is absent.
+pub(crate) fn ledger_has(conn: &Connection, id: &str) -> Result<bool, DbError> {
+    if !super::schema_probe::table_exists(conn, "migrations_state")? {
+        return Ok(false);
+    }
+    let mut stmt = conn.prepare("SELECT 1 FROM \"migrations_state\" WHERE \"id\" = ?1")?;
+    Ok(stmt.exists([id])?)
+}
+
+/// v4 `recordCompletedMigration` (`migrations/state.ts:217-238`) for ONE
+/// migration v5 ran: the `migrations_state` row (`id`, `completedAt` — the
+/// run's timestamp, `quilltapVersion`, `itemsAffected`, v4's `message`
+/// bytes) and the two `migrations_metadata` keys — the
+/// `wardrobe_wear_stats_repair` stamp shape. Creates the two ledger tables
+/// first ([`ensure_migrations_tables`]).
+pub(crate) fn stamp_completed(
+    conn: &Connection,
+    id: &str,
+    now: &str,
+    items_affected: i64,
+    message: &str,
+) -> Result<(), DbError> {
+    ensure_migrations_tables(conn)?;
+    conn.execute(
+        "INSERT INTO \"migrations_state\" (id, completedAt, quilltapVersion, itemsAffected, message)\n         VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![id, now, env!("CARGO_PKG_VERSION"), items_affected, message],
+    )?;
+    for (k, v) in [
+        ("lastChecked", now),
+        ("quilltapVersion", env!("CARGO_PKG_VERSION")),
+    ] {
+        conn.execute(
+            "INSERT INTO migrations_metadata (key, value) VALUES (?1, ?2)\n             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            rusqlite::params![k, v],
+        )?;
+    }
+    Ok(())
+}
+
+// === end P4.D288 ===
+
 #[cfg(test)]
 mod tests {
     use super::*;

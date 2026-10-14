@@ -14,11 +14,23 @@
 //!     columns in generateDDL's slots, the ensure a silent no-op.
 //! (d) A v4-migrated plant (the appended columns + the index + v4's own ledger
 //!     row): a silent no-op, the ledger untouched.
+//!
+//! **P4.D288:** the ensure's chat-column step is RETIRED (the cursor move drops
+//! that column), so (a) leaves `chats` without it and the line carries no
+//! `chatColumnAdded`; the pre-round derivation also takes away the round's
+//! `supersededAt` and `idx_memories_supersededById` (a pre-P4.D265 instance
+//! carries neither — the P4.D288 ensures give them back, appended, on the same
+//! boot), and (d)'s v4 plant carries v4's own text for both. (d)'s planted
+//! watermark column is MOVED by the P4.D288 cursor ensure on that boot (the
+//! half-migrated arm) — asserted gone, not part of the tier surface.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use quilltap_core::db::memory_tiers_repair::{CHAT_WATERMARK_COLUMN, INDEX_NAME, MIGRATION_ID};
+use quilltap_core::db::memory_tiers_repair::{INDEX_NAME, MIGRATION_ID};
+
+/// The retired step's column (P4.D288).
+const CHAT_WATERMARK_COLUMN: &str = "otherExtractionWatermarkMessageId";
 use quilltap_core::db::Writer;
 use quilltap_core::services::provisioning::provision_fresh_instance;
 use quilltap_core::test_support::CaptureLayer;
@@ -124,11 +136,12 @@ fn derive_pre_round(data: &Path) {
         data,
         &format!(
             "DROP INDEX \"{INDEX_NAME}\"; \
+             DROP INDEX \"idx_memories_supersededById\"; \
              ALTER TABLE memories DROP COLUMN tier; \
              ALTER TABLE memories DROP COLUMN supersededById; \
+             ALTER TABLE memories DROP COLUMN supersededAt; \
              ALTER TABLE memories DROP COLUMN consolidatedFrom; \
              ALTER TABLE memories DROP COLUMN consolidatedAt; \
-             ALTER TABLE chats DROP COLUMN \"{CHAT_WATERMARK_COLUMN}\"; \
              INSERT INTO memories (id, characterId, content, summary, createdAt, updatedAt) \
                VALUES ('m1', 'c1', 'x', 'y', 't', 't'); \
              INSERT INTO chats (id, userId, title, createdAt, updatedAt) \
@@ -158,7 +171,7 @@ async fn a_pre_round_instance_is_fitted_once_unstamped_and_in_the_migrations_tex
     let lines = boot(dir.path());
     let mem = columns(&data, "memories");
     assert_eq!(
-        mem[mem.len() - 4..],
+        mem[mem.len() - 5..],
         [
             ("tier".into(), "TEXT".into(), Some("'hot'".into())),
             ("supersededById".into(), "TEXT".into(), Some("NULL".into())),
@@ -168,22 +181,22 @@ async fn a_pre_round_instance_is_fitted_once_unstamped_and_in_the_migrations_tex
                 Some("'[]'".into())
             ),
             ("consolidatedAt".into(), "TEXT".into(), Some("NULL".into())),
+            // P4.D288's slot-1 ensure, appended after the tiers step.
+            ("supersededAt".into(), "TEXT".into(), Some("NULL".into())),
         ],
-        "APPENDED in the migration's text"
+        "APPENDED in the migrations' text"
     );
-    assert_eq!(
-        columns(&data, "chats").last().unwrap(),
-        &(
-            CHAT_WATERMARK_COLUMN.to_string(),
-            "TEXT".to_string(),
-            Some("NULL".to_string())
-        )
+    assert!(
+        !columns(&data, "chats")
+            .iter()
+            .any(|c| c.0 == CHAT_WATERMARK_COLUMN),
+        "P4.D288: the chat-column step is retired"
     );
     assert!(master(&data).iter().any(|(n, _)| n == INDEX_NAME));
     let fitted: Vec<&String> = lines.iter().filter(|l| l.contains(FITTED)).collect();
     assert_eq!(
         fitted,
-        ["INFO quilltap::boot Fitted the memory tiers migrationId=add-memory-tiers-v1 columnsAdded=4 indexCreated=true healedRows=0 chatColumnAdded=true"],
+        ["INFO quilltap::boot Fitted the memory tiers migrationId=add-memory-tiers-v1 columnsAdded=4 indexCreated=true healedRows=0"],
         "{lines:#?}"
     );
     for v4 in V4_LINES {
@@ -235,7 +248,7 @@ async fn a_planted_null_tier_is_healed_on_the_next_boot() {
     let lines = boot(dir.path());
     assert!(
         lines.iter().any(|l| l
-            == "INFO quilltap::boot Fitted the memory tiers migrationId=add-memory-tiers-v1 columnsAdded=0 indexCreated=false healedRows=1 chatColumnAdded=false"),
+            == "INFO quilltap::boot Fitted the memory tiers migrationId=add-memory-tiers-v1 columnsAdded=0 indexCreated=false healedRows=1"),
         "{lines:#?}"
     );
     let w = Writer::open_writable(&data.join(MAIN), PEPPER).unwrap();
@@ -290,6 +303,8 @@ async fn a_v4_migrated_instance_is_a_silent_no_op() {
              ALTER TABLE \"memories\" ADD COLUMN \"consolidatedFrom\" TEXT DEFAULT '[]'; \
              ALTER TABLE \"memories\" ADD COLUMN \"consolidatedAt\" TEXT DEFAULT NULL; \
              CREATE INDEX IF NOT EXISTS \"{INDEX_NAME}\" ON \"memories\" (\"characterId\", \"tier\"); \
+             ALTER TABLE \"memories\" ADD COLUMN \"supersededAt\" TEXT DEFAULT NULL; \
+             CREATE INDEX IF NOT EXISTS \"idx_memories_supersededById\" ON \"memories\" (\"supersededById\") WHERE \"supersededById\" IS NOT NULL; \
              ALTER TABLE \"chats\" ADD COLUMN \"{CHAT_WATERMARK_COLUMN}\" TEXT DEFAULT NULL; \
              CREATE TABLE IF NOT EXISTS \"migrations_state\" (\"id\" TEXT PRIMARY KEY, \
                \"completedAt\" TEXT NOT NULL, \"quilltapVersion\" TEXT NOT NULL, \
@@ -301,15 +316,18 @@ async fn a_v4_migrated_instance_is_a_silent_no_op() {
     // that append their own `chats` columns, which is not this ensure's doing.
     let surface = |data: &Path| {
         let index = master(data).into_iter().find(|(n, _)| n == INDEX_NAME);
-        let watermark: Vec<_> = columns(data, "chats")
-            .into_iter()
-            .filter(|c| c.0 == CHAT_WATERMARK_COLUMN)
-            .collect();
-        (columns(data, "memories"), index, watermark)
+        (columns(data, "memories"), index)
     };
     let before = surface(&data);
     let lines = boot(dir.path());
     assert!(!lines.iter().any(|l| l.contains(FITTED)), "{lines:#?}");
     assert_eq!(surface(&data), before);
     assert_eq!(ledger_rows(&data), 1, "v4's row untouched");
+    // P4.D288: the planted watermark column was MOVED by the cursor ensure.
+    assert!(
+        !columns(&data, "chats")
+            .iter()
+            .any(|c| c.0 == CHAT_WATERMARK_COLUMN),
+        "the cursor ensure moved the planted watermark column"
+    );
 }

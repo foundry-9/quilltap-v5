@@ -2097,9 +2097,10 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
             quilltap_core::db::chat_settings_wardrobe_image_settings_repair::ensure_chat_settings_wardrobe_image_settings(main)?;
             // === end P4.D255 ===
             // === P4.D265 (v4 d58548051, migration add-memory-tiers-v1) ===
-            // The four `memories` tier columns, `idx_memories_character_tier`,
-            // the NULL-tier heal and `chats.otherExtractionWatermarkMessageId`
-            // — v4 registers the migration LAST, after the wardrobe ones above,
+            // The four `memories` tier columns, `idx_memories_character_tier`
+            // and the NULL-tier heal (its `chats.otherExtractionWatermarkMessageId`
+            // step RETIRED by P4.D288 — the cursor ensure below drops that
+            // column) — v4 registers the migration after the wardrobe ones above,
             // and it must run BEFORE the index-family backfill below, which
             // would otherwise try `("characterId", "tier")` on a table without
             // `tier`. FATAL on failure (R-J): v4's migration is not
@@ -2114,11 +2115,137 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
                     columnsAdded = tiers.columns_added.len(),
                     indexCreated = tiers.index_created,
                     healedRows = tiers.healed_rows,
-                    chatColumnAdded = tiers.chat_column_added,
                     "Fitted the memory tiers"
                 );
             }
             // === end P4.D265 ===
+            // === P4.D288 (C1-2): the span's ensures, in v4's registration order ===
+            // `migrations/scripts/index.ts:1317-1340` at the `83334b9a5` pin,
+            // after `add-memory-tiers-v1` and BEFORE the P4.160 index-family
+            // backfill below (which would otherwise make
+            // `idx_memories_supersededById` ahead of slot 6). Each is FATAL on
+            // failure (v4's migrations are not `resumable`), logs v5's ONE
+            // INFO when it did anything, and is silent on a no-op boot. Slots 4
+            // and 5 (the two STAMPED data rewrites) land with unit 12; slot 8
+            // (the vector-mirror retire) is wired at the END of unit 8 (O-1),
+            // when no compiled path still reads or writes the mirror.
+            // Slot 1 — `add-memory-superseded-at-v1`.
+            let superseded_at =
+                quilltap_core::db::memory_superseded_at_repair::ensure_memory_superseded_at(main)?;
+            if !superseded_at.is_noop() {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::memory_superseded_at_repair::MIGRATION_ID,
+                    columnAdded = superseded_at.column_added,
+                    backfilledRows = superseded_at.backfilled_rows,
+                    "Fitted the memory supersession clock"
+                );
+            }
+            // Slot 2 — `add-chat-scenario-source-v1`.
+            let scenario_columns =
+                quilltap_core::db::chats_scenario_source_repair::ensure_chats_scenario_source(main)?;
+            if !scenario_columns.is_empty() {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::chats_scenario_source_repair::MIGRATION_ID,
+                    columnsAdded = scenario_columns.len(),
+                    "Added the chat scenario source columns"
+                );
+            }
+            // Slot 3 — `add-episode-extraction-watermark-v1` (O-3's gate; STAMPED).
+            if let Some(episode) =
+                quilltap_core::db::memory_episode_watermark_repair::ensure_memory_episode_watermark(
+                    main,
+                )?
+            {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::memory_episode_watermark_repair::MIGRATION_ID,
+                    columnAdded = episode.column_added,
+                    candidates = episode.candidates,
+                    backfilled = episode.backfilled,
+                    "Backfilled the episode watermarks from summary anchors"
+                );
+            }
+            // Slots 4 / 5 — the two STAMPED data rewrites (unit 12).
+            // Slot 6 — `add-memories-superseded-by-index-v1`.
+            if quilltap_core::db::memories_superseded_by_index::ensure_memories_superseded_by_index(
+                main,
+            )? {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::memories_superseded_by_index::MIGRATION_ID,
+                    "Created idx_memories_supersededById"
+                );
+            }
+            // Slot 7 — `move-memory-maintenance-settings-v1` (atomic).
+            let moved = quilltap_core::db::memory_maintenance_settings_move::
+                ensure_memory_maintenance_settings_move(main)?;
+            if moved.ran {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::memory_maintenance_settings_move::MIGRATION_ID,
+                    copied = moved.copied,
+                    droppedColumns = moved.dropped_columns.len(),
+                    droppedInstanceKey = moved.dropped_instance_key,
+                    "Moved the memory maintenance settings"
+                );
+            }
+            // Slot 8 — `retire-memory-vector-entries-v1` (wired at the end of unit 8).
+            // Slot 9 — `add-memory-extraction-cursors-v1` (R-C text, R-D order, L-8; STAMPED).
+            if let Some(cursors) =
+                quilltap_core::db::memory_extraction_cursors_repair::ensure_memory_extraction_cursors(
+                    main,
+                )?
+            {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::memory_extraction_cursors_repair::MIGRATION_ID,
+                    tableCreated = cursors.table_created,
+                    backfilled = cursors.backfilled,
+                    droppedColumns = cursors.dropped_columns.len(),
+                    "Moved the fold-pass watermarks into extraction cursors"
+                );
+            }
+            // v4's repository first touch: the cursor table's `createdAt` index.
+            quilltap_core::db::memory_extraction_cursors_repair::ensure_cursor_created_at_index(
+                main,
+            )?;
+            // Slot 10 — `drop-inter-character-memory-jobs-v1`.
+            let inter = quilltap_core::db::retired_job_rows_purge::purge_inter_character_memory_jobs(
+                main,
+            )?;
+            if inter > 0 {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId =
+                        quilltap_core::db::retired_job_rows_purge::INTER_CHARACTER_MIGRATION_ID,
+                    deleted = inter,
+                    "Deleted retired INTER_CHARACTER_MEMORY jobs"
+                );
+            }
+            // Slot 11 — `add-tfidf-text-shape-version-v1`.
+            if quilltap_core::db::tfidf_text_shape_repair::ensure_tfidf_text_shape_version(main)? {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::tfidf_text_shape_repair::MIGRATION_ID,
+                    "Added tfidf_vocabularies.textShapeVersion"
+                );
+            }
+            // Slot 12 — `drop-housekeeping-consolidation-jobs-v1`.
+            let hk = quilltap_core::db::retired_job_rows_purge::purge_housekeeping_consolidation_jobs(
+                main,
+            )?;
+            if hk > 0 {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::retired_job_rows_purge::
+                        HOUSEKEEPING_CONSOLIDATION_MIGRATION_ID,
+                    deleted = hk,
+                    "Deleted retired housekeeping and consolidation jobs"
+                );
+            }
+            // === end P4.D288 ===
             // === P4.160 (P4.153's OPEN item) ===
             // v4's MIGRATION-created index family on an instance provisioned
             // before P4.153 (the 56 absent names + the PLAIN `mp_path`),

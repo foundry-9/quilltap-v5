@@ -15,6 +15,19 @@
 //! memory's `(id, tier, consolidatedFrom)` and every chat's watermark; v4's
 //! `itemsAffected` (from its report) against v5's outcome count.
 //!
+//! **P4.D288 — re-pointed to the CHAIN.** v5's tiers ensure no longer adds
+//! `chats.otherExtractionWatermarkMessageId` (step 4 RETIRED — the cursor move
+//! drops it), so every non-parity arm runs the chain on BOTH sides: v4's
+//! tiers migration then `add-episode-extraction-watermark-v1` →
+//! `add-memory-extraction-cursors-v1`, against v5's tiers ensure then
+//! `memory_episode_watermark_repair` → `memory_extraction_cursors_repair`; the
+//! chain's RAN ids are compared, and v5's tiers outcome counts one item fewer
+//! where v4's tiers step added the chat column (`tiersAddedChatColumn`).
+//! **`RETIRED_CHAT_STEP`** (named, both ways): the parity arms keep v4's helper
+//! ALONE (tiers only), so its copy carries the chat column APPENDED — `chats`'
+//! `table_info` and SQL differ from v5's by exactly that column; every other
+//! comparand is equal.
+//!
 //! Regenerate + run (the case builds the base files):
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -79,6 +92,10 @@ fn has_col(conn: &Connection, table: &str, col: &str) -> bool {
         .unwrap()
         .iter()
         .any(|c| c["name"] == col)
+}
+
+fn has_col_value(info: &Value, col: &str) -> bool {
+    info.as_array().unwrap().iter().any(|c| c["name"] == col)
 }
 
 fn state(conn: &Connection) -> Value {
@@ -182,25 +199,92 @@ fn memory_tiers_ensure_matches_v4s_migration() {
         std::fs::copy(std::path::Path::new(&dir).join(format!("{mode}.db")), &work)
             .unwrap_or_else(|e| panic!("copy {mode}: {e}"));
         let conn = open(&work, encrypted);
-        let affected = if mode.starts_with("parity") {
+        let parity = mode.starts_with("parity");
+        let affected = if parity {
             let before = state(&conn);
             quilltap_core::test_support::ensure_memory_tiers_columns(&conn);
             assert_ne!(state(&conn), before, "{mode}: the helper changed nothing");
             None
         } else {
-            Some(ensure_memory_tiers(&conn).unwrap_or_else(|e| panic!("{mode}: {e}")))
+            let outcome = ensure_memory_tiers(&conn).unwrap_or_else(|e| panic!("{mode}: {e}"));
+            // The chain (P4.D288), in v4's registration order.
+            let mut chain_ran: Vec<&str> = Vec::new();
+            if quilltap_core::db::memory_episode_watermark_repair::ensure_memory_episode_watermark(
+                &conn,
+            )
+            .unwrap_or_else(|e| panic!("{mode}: episode: {e}"))
+            .is_some()
+            {
+                chain_ran.push("add-episode-extraction-watermark-v1");
+            }
+            if quilltap_core::db::memory_extraction_cursors_repair::ensure_memory_extraction_cursors(
+                &conn,
+            )
+            .unwrap_or_else(|e| panic!("{mode}: cursors: {e}"))
+            .is_some()
+            {
+                chain_ran.push("add-memory-extraction-cursors-v1");
+            }
+            let v4_chain: Vec<&str> = row["chainReport"]
+                .as_array()
+                .expect("chainReport")
+                .iter()
+                .filter_map(Value::as_str)
+                .filter_map(|l| l.strip_prefix("+RAN "))
+                .map(|l| l.split(' ').next().unwrap())
+                .collect();
+            assert_eq!(chain_ran, v4_chain, "mode {mode}: the chain's runs");
+            Some(outcome)
         };
         let got = state(&conn);
         drop(conn);
-        for key in [
-            "memoriesInfo",
-            "chatsInfo",
-            "memoriesSql",
-            "chatsSql",
-            "indexSql",
-            "memoryRows",
-            "chatRows",
-        ] {
+        let compared: &[&str] = if parity {
+            // RETIRED_CHAT_STEP: v4's helper (tiers alone) APPENDED the chat
+            // column; v5's did not — pinned both ways, the rest compared.
+            let col = "otherExtractionWatermarkMessageId";
+            let v4_info = row["chatsInfo"].as_array().unwrap();
+            assert!(
+                v4_info.last().is_some_and(|c| c["name"] == col),
+                "mode {mode}: v4's helper no longer appends {col} (retire RETIRED_CHAT_STEP)"
+            );
+            assert!(
+                !has_col_value(&got["chatsInfo"], col),
+                "mode {mode}: v5's helper adds {col} again"
+            );
+            assert_eq!(
+                serde_json::to_string(&got["chatsInfo"]).unwrap(),
+                serde_json::to_string(&Value::Array(v4_info[..v4_info.len() - 1].to_vec()))
+                    .unwrap(),
+                "mode {mode}: chatsInfo beyond RETIRED_CHAT_STEP"
+            );
+            let v5_sql = got["chatsSql"].as_str().unwrap();
+            assert_eq!(
+                row["chatsSql"].as_str().unwrap(),
+                format!(
+                    "{}, \"{col}\" TEXT DEFAULT NULL)",
+                    &v5_sql[..v5_sql.len() - 1]
+                ),
+                "mode {mode}: chatsSql beyond RETIRED_CHAT_STEP"
+            );
+            &[
+                "memoriesInfo",
+                "memoriesSql",
+                "indexSql",
+                "memoryRows",
+                "chatRows",
+            ]
+        } else {
+            &[
+                "memoriesInfo",
+                "chatsInfo",
+                "memoriesSql",
+                "chatsSql",
+                "indexSql",
+                "memoryRows",
+                "chatRows",
+            ]
+        };
+        for key in compared {
             assert_eq!(
                 serde_json::to_string(&got[key]).unwrap(),
                 serde_json::to_string(&row[key]).unwrap(),
@@ -208,8 +292,9 @@ fn memory_tiers_ensure_matches_v4s_migration() {
             );
         }
         if let Some(outcome) = affected {
+            let retired = usize::from(row["tiersAddedChatColumn"].as_bool() == Some(true));
             assert_eq!(
-                outcome.items_affected(),
+                outcome.items_affected() + retired,
                 items_affected(&row["report"]),
                 "mode {mode}: v5's outcome {outcome:?} vs v4's report {}",
                 row["report"]

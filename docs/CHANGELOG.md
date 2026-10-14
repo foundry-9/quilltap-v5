@@ -24,6 +24,24 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — feat(core,host): P4.D288 unit 7 — the round's structural boot ensures (C1-2)
+
+_Versions: core 0.0.1293, host 0.0.201._
+
+Re-homes ten of v4's twelve `83334b9a5`-span migrations as boot ensures, wired in v4's registration order after the memory-tiers ensure and before the index-family backfill. Each new ensure is FATAL on failure and logs one boot INFO line when it does anything:
+- the `memories.supersededAt` column and its backfill;
+- the `chats` scenario pair;
+- the episode watermark, backfilled from each chat's last summary anchor — only when neither the column nor the cursor table exists;
+- `idx_memories_supersededById`;
+- the memory-maintenance settings move into `instance_settings`, in one savepoint, dropping the three dead `chat_settings` columns and the dead instance key;
+- the extraction-cursor move: the cursor table in v4's migration text, both legacy watermark columns copied to cursors and dropped, in one savepoint;
+- the two retired job-type purges;
+- `tfidf_vocabularies.textShapeVersion`.
+
+The episode watermark and the cursor move stamp v4's `migrations_state` rows with v4's message bytes. The vector-mirror retire is written but stays unwired until the index store moves onto memory rows. The memory-tiers ensure no longer adds `chats.otherExtractionWatermarkMessageId`. A new host test pins the startup backup running before the ensures, with v4's order (migrations first) as the recorded other side. The vintage-restore harness runs the new ensures before restoring.
+
+Eight new differential families run on one oracle driver against v4's real migrations, and all are green. Two are mutation-proven. A new named row, `FRESH_INSTANCE_UNLEDGERED`, pins that v4 re-runs the chain on a fresh v5 instance, which carries no v4 ledger. `memory_tiers_ensure_equivalence` is re-pointed to the chain.
+
 #### 2026-10-14 — feat(core,host): P4.D288 unit 6 — the eighth and ninth D23 re-dumps, the cursor table in v4's migration shape, and the column layer
 
 _Versions: core 0.0.1292, host 0.0.200._

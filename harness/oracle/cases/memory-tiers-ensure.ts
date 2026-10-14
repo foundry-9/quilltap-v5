@@ -28,6 +28,20 @@
  *       REAL `MigrationRunner`, ledger on) — and the encrypted copy must still
  *       open under the pepper afterwards (`opensAfter`).
  *
+ * **P4.D288 — re-pointed to the CHAIN.** v4's migration at the `83334b9a5` pin
+ * still adds `chats.otherExtractionWatermarkMessageId`, but its successors in
+ * the registry — `add-episode-extraction-watermark-v1` →
+ * `add-memory-extraction-cursors-v1` — move the column into
+ * `memory_extraction_cursors` and DROP it, and v5's ensure no longer adds it
+ * (step 4 RETIRED). So every non-parity arm runs v4's tiers migration, then the
+ * two chain migrations (`chainReport`), and records whether the tiers step
+ * added the chat column (`tiersAddedChatColumn` — v5's outcome counts one fewer
+ * item then). The baselines now start from the P4.D288 dump: `memories` minus
+ * the four tier lines AND `supersededAt`, `chats` minus the scenario pair (it
+ * no longer carries the watermark line at all). The parity arms keep v4's
+ * helper alone (tiers only) — its chat column is the recorded
+ * `RETIRED_CHAT_STEP` row on the Rust side.
+ *
  * Each base file is written under `QT_FIXTURE_MEMORY_TIERS_ENSURE_DIR` as
  * `<mode>.db`; v4 migrates a COPY. The Rust side runs v5's ensure on its own
  * copy of the same file. Comparands (EFFECTS only — v4's migration lines are
@@ -61,10 +75,15 @@ const MIGRATION = {
 const MEMORY_LINES = [
   `  "tier" TEXT DEFAULT 'hot',\n`,
   `  "supersededById" TEXT,\n`,
+  `  "supersededAt" TEXT,\n`,
   `  "consolidatedFrom" TEXT DEFAULT '[]',\n`,
   `  "consolidatedAt" TEXT,\n`,
 ];
-const CHAT_LINE = `  "otherExtractionWatermarkMessageId" TEXT,\n`;
+const CHAT_LINES = [`  "scenarioSource" TEXT,\n`, `  "scenarioNotes" TEXT,\n`];
+const CHAIN = [
+  { file: 'migrations/scripts/add-episode-extraction-watermark-v1.ts', exportName: 'addEpisodeExtractionWatermarkMigration' },
+  { file: 'migrations/scripts/add-memory-extraction-cursors-v1.ts', exportName: 'addMemoryExtractionCursorsMigration' },
+];
 const INDEX_SQL = `CREATE INDEX "idx_memories_character_tier" ON "memories" ("characterId", "tier")`;
 const LEDGER_DDL = `CREATE TABLE IF NOT EXISTS "migrations_state" (
         "id" TEXT PRIMARY KEY,
@@ -113,7 +132,7 @@ async function main(): Promise<void> {
   const chatsNow = await ddlOf('chats');
   await closeDatabase();
   const memoriesBase = strip(memoriesNow, MEMORY_LINES);
-  const chatsBase = strip(chatsNow, [CHAT_LINE]);
+  const chatsBase = strip(chatsNow, CHAT_LINES);
 
   const Database = createRequire(process.cwd() + '/')('better-sqlite3');
   const fresh = (path: string) => {
@@ -240,6 +259,8 @@ async function main(): Promise<void> {
     // 2. v4 on a COPY.
     const { dir, work } = copy(out);
     let report: string[] | string;
+    let chainReport: string[] = [];
+    let tiersAddedChatColumn = false;
     let opensAfter: boolean | null = null;
     if (mode.startsWith('parity')) {
       report = await applyMemoryTiersMigration(work, encrypted ? { pepperBase64: PEPPER } : {});
@@ -250,12 +271,34 @@ async function main(): Promise<void> {
         db.close();
       }
     } else {
+      const chatColumn = () => {
+        const db = new Database(work, { readonly: true });
+        if (encrypted) db.pragma(keyPragma);
+        const has = !!db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chats'`).get() &&
+          (db.prepare('PRAGMA table_info("chats")').all() as Array<{ name: string }>).some(
+            (c) => c.name === 'otherExtractionWatermarkMessageId',
+          );
+        db.close();
+        return has;
+      };
+      const before = chatColumn();
       report = await runV4Migrations({ dbPath: work, pepperBase64: PEPPER, migrations: [MIGRATION] });
+      tiersAddedChatColumn = !before && chatColumn();
+      chainReport = await runV4Migrations({ dbPath: work, pepperBase64: PEPPER, migrations: CHAIN });
     }
     const state = inspect(work, encrypted);
     rmSync(dir, { recursive: true, force: true });
     process.stdout.write(
-      JSON.stringify({ case: 'memory-tiers-ensure', mode, encrypted, report, opensAfter, ...state }) + '\n',
+      JSON.stringify({
+        case: 'memory-tiers-ensure',
+        mode,
+        encrypted,
+        report,
+        chainReport,
+        tiersAddedChatColumn,
+        opensAfter,
+        ...state,
+      }) + '\n',
     );
   }
   process.exit(0);

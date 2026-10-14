@@ -144,6 +144,31 @@ fn open(instance: &Path) -> Db {
             .map(|_| ())
     })
     .expect("boot-align the vintage main partition (P4.D265)");
+    // === P4.D288: mirror-boot ensures ===
+    // The `83334b9a5` round's ensures in the host's order: every one whose
+    // column / table a restore INSERT binds (`memories.supersededAt`, the
+    // `chats` scenario pair, `memory_extraction_cursors`,
+    // `tfidf_vocabularies.textShapeVersion`) and every column-DROP ensure (the
+    // settings move's, the cursor move's — the episode watermark runs first so
+    // the cursor move meets v4's chain). The vector-mirror retire (a table
+    // DROP) joins at the end of unit 8 with its host slot.
+    db.write_blocking(|writers| {
+        let main = writers.main().connection();
+        quilltap_core::db::memory_superseded_at_repair::ensure_memory_superseded_at(main)?;
+        quilltap_core::db::chats_scenario_source_repair::ensure_chats_scenario_source(main)?;
+        quilltap_core::db::memory_episode_watermark_repair::ensure_memory_episode_watermark(main)?;
+        quilltap_core::db::memory_maintenance_settings_move::ensure_memory_maintenance_settings_move(
+            main,
+        )?;
+        quilltap_core::db::memory_extraction_cursors_repair::ensure_memory_extraction_cursors(
+            main,
+        )?;
+        quilltap_core::db::memory_extraction_cursors_repair::ensure_cursor_created_at_index(main)?;
+        quilltap_core::db::tfidf_text_shape_repair::ensure_tfidf_text_shape_version(main)
+            .map(|_| ())
+    })
+    .expect("boot-align the vintage main partition (P4.D288)");
+    // === end P4.D288 ===
     db
 }
 
