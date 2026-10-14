@@ -24,6 +24,14 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — SCORING: P4.D289 — the memory programme's pure leaf family (scoring, the memory calendar, the candidate, footnotes, pure admission, embedding text)
+
+_Versions: core 0.0.1284._
+
+Ports the pure half of v4's memory refactor (pin `83334b9a5`) as the round's first stacking point. New modules in `quilltap-core`: `memory_scoring` (bug 216's reinforced-importance formula `min(1, i + log2(max(1, n)) × 0.05)`, salience replacing the floored effective weight, protection plus the MANUAL/CONSOLIDATED wrapper, the ranking blend, the recall/tool floors and the .3/.7 importance bands, and a V8-faithful short-array sort for NaN-keyed comparators); `embedding_scale` (the one lexical-scale predicate); `memory_time` (bug 212's memory calendar with v4's two-pass `zonedTimeToUtcMs`, the nine-rule day-reference table read both ways, `resolve_event_time`, `resolve_reference_window`, `normalise_time_range`, `resolve_episodic_anchors`, `format_memory_age`); `services::memory_time_zone` (the instance-zone read with v4's five-minute cache and its `[MemoryCalendar]` DEBUG); `memory_candidate` (the Zod `MemoryCandidate`); `reinforcement_footnotes` (capped, skip-present `[+]` footnotes); `admission` (thresholds incl. TF-IDF, `decide_admission`, the one combine `fold_into`, novel details, the outcome predicates, `describe_admission`); `memory_embedding_text` (the per-provider embedding text and the zoned anchor line). Adds NaN-propagating `jsnum::math_max`/`math_min`; makes `chat_timestamp::date_utc_ms` crate-visible; fixes `episodic::js_date_parse_ms` to refuse hour 24 with non-zero minutes/seconds/ms as V8 does.
+
+The old modules (`memory_weighting`, `day_references`, the pure halves of `memory_gate` and `episodic`) become LANE-REMOVE shims for the consumer lanes; the crate-root reinforced-importance formula forwards to the new one. New harness families: `memory_scoring`, `memory_time` (two TZ legs, with the ruled `MEMORY_ZONE_VALIDITY` and `ZONELESS_PARSE_AS_UTC` tables), `memory_time_zone_refresh_tier2` (`MEMORY_ZONE_ROW_UNVALIDATED`), `memory_candidate`, `reinforcement_footnotes`, `admission_decide`, `admission_fold_plan`, `memory_embedding_text`; seven tier-1 families re-aimed at the pin; a new `no_memory_lane_remove_markers_left` census (red by design until unification) with the wardrobe census scoped by sha.
+
 #### 2026-10-14 — docs(porting): record the human's approval of the `83334b9a5` round's planning rulings and P4.D290's `sha1` dependency
 
 _Docs-only change._

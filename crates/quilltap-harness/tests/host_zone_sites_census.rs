@@ -293,6 +293,14 @@ const UTC_ALLOWED: &[(&str, usize, &str)] = &[
         "untouched precedent (Mandate 5): `local_date_stamp`'s fallback",
     ),
     (
+        "memory_time/calendar.rs",
+        1,
+        "`zoned_parts`' misuse fallback for an unresolvable zone NAME — v4's \
+         `Intl.DateTimeFormat` throws a RangeError there; every caller resolves \
+         the memory-calendar zone through `memory_time_zone` first, so it is \
+         unreachable, never a display default (P4.D289 LR-3)",
+    ),
+    (
         "tools/wardrobe_read.rs",
         1,
         "`wear_date` — v4's `wearDate` pins `timeZone: 'UTC'` ON PURPOSE \
@@ -326,6 +334,14 @@ const UTC_ARITHMETIC_ALLOWED: &[(&str, usize, &str)] = &[
         2,
         "the retention window's whole-day maths, not a rendered date",
     ),
+    (
+        "memory_time/calendar.rs",
+        3,
+        "the memory calendar's zoned split of an already-offset local instant \
+         (`zoned_parts`), v4's `toISOString` (`js_iso_string`) and its `Date.UTC` \
+         round-trip validity check (`zoned_day_bounds_iso`) — calendar math, not a \
+         rendered date (P4.D289)",
+    ),
 ];
 
 /// `(path, production `TimeZone::get(` uses, why the NAME it resolves is a
@@ -355,6 +371,14 @@ const NAME_ZONE_ALLOWED: &[(&str, usize, &str)] = &[
         1,
         "`llm_log_retention_cutoff_iso` — the retention cutoff's local-midnight \
          calendar (the LLM-log cleanup's `tz` NAME, P4.140 Tier 3 residue)",
+    ),
+    (
+        "memory_time/calendar.rs",
+        1,
+        "`resolve_zone` — the memory calendar's ONE zone resolver (the instance \
+         `chat_settings.timezone` → the host fallback NAME, v4 `isValidTimeZone` / \
+         `getMemoryTimeZone`, bug 212): calendar math, never a display surface \
+         (P4.D289 LR-6)",
     ),
     (
         "enclave/cron.rs",

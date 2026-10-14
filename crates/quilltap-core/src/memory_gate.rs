@@ -4,71 +4,69 @@
 //! (`DATE_GUARD_DAYS` / `occasionsAreDistinct`). The stateful gate itself
 //! (embedding search + the INSERT/REINFORCE/SKIP decision) lives in
 //! [`crate::services::memory_gate`].
-
-use crate::jsstr::{js_trim, utf16_len, JS_WS_CLASS};
-use regex::Regex;
-use std::collections::HashSet;
+//!
+//! **LANE-REMOVE shims (work order P4.D289, §R.10(o)).** v4 `8af764514`
+//! DELETED `memory-gate.ts` for `lib/memory/admission/*` (ported as
+//! [`crate::admission`] and [`crate::reinforcement_footnotes`]), and
+//! `e0ac7493a` moved the formula into `lib/memory/scoring/` (ported as
+//! [`crate::memory_scoring::reinforced_importance`]). The callers of this
+//! module live in other lanes' files (the keystone's repository P4.D288,
+//! admission P4.D290, maintenance P4.D297), so it stays until they re-point.
+//! The items whose successor has IDENTICAL semantics FORWARD to it — and so
+//! does the formula, deliberately (LR-1 / C1-4: ONE formula from `SCORING`
+//! on). The 2-argument `append_capped_footnotes`, whose semantics MOVED (v4
+//! added the skip-present and the cap argument), keeps its old body
+//! verbatim, so no caller's behaviour moves before its owner re-points it.
 
 /// When candidate and best-match `occurredAt` differ by more than this many
 /// days, SKIP_NEAR_DUPLICATE / REINFORCE downgrade to INSERT_RELATED so
 /// distinct occasions of the same activity both persist as rows (v4
-/// `DATE_GUARD_DAYS`).
+/// `DATE_GUARD_DAYS`; now `AdmissionThresholds.date_guard_days`).
+// LANE-REMOVE(P4.D288|P4.D290|P4.D297): v4 deleted memory-gate.ts's DATE_GUARD_DAYS in 8af764514
 pub const DATE_GUARD_DAYS: i64 = 7;
 
 /// True when both timestamps parse and sit more than [`DATE_GUARD_DAYS`] apart
-/// (v4 `occasionsAreDistinct`). A missing / unparseable stamp on either side is
-/// never "distinct" — the guard only fires on evidence.
+/// — forwards to [`crate::admission::occasions_are_distinct`] with the guard
+/// as its third argument.
+// LANE-REMOVE(P4.D288|P4.D290|P4.D297): v4 deleted memory-gate.ts's 2-argument occasionsAreDistinct in 8af764514
 pub fn occasions_are_distinct(
     candidate_occurred_at: Option<&str>,
     existing_occurred_at: Option<&str>,
 ) -> bool {
-    // v4's `!candidateOccurredAt || !existingOccurredAt` — JS-falsy, so an
-    // empty string bails out too.
-    let (Some(a), Some(b)) = (
-        candidate_occurred_at.filter(|s| !s.is_empty()),
-        existing_occurred_at.filter(|s| !s.is_empty()),
-    ) else {
-        return false;
-    };
-    let (Some(a), Some(b)) = (
-        crate::episodic::event_time_ms(Some(a)),
-        crate::episodic::event_time_ms(Some(b)),
-    ) else {
-        return false;
-    };
-    (a - b).abs() > (DATE_GUARD_DAYS * 86_400_000) as f64
+    crate::admission::occasions_are_distinct(
+        candidate_occurred_at,
+        existing_occurred_at,
+        DATE_GUARD_DAYS as f64,
+    )
 }
 
-/// Reinforced importance: `importance + log2(count + 1) * 0.05`, capped at 1.0.
-/// `reinforcement_count` is an integer count; `log2(count + 1)` grows the floor
-/// each time a memory is re-observed, saturating at the 1.0 ceiling.
+/// Reinforced importance — FORWARDS to v4's ONE formula,
+/// [`crate::memory_scoring::reinforced_importance`] (bug 216:
+/// `min(1, i + log2(max(1, n)) × 0.05)`; was `log2(n + 1)` here). The one
+/// deliberate behaviour forward of P4.D289's shims (LR-1 / C1-4): every
+/// caller still on this path computes v4's new value from `SCORING` on, so
+/// the old scale's live-data hazard closes toward v4.
+// LANE-REMOVE(P4.D288|P4.D290|P4.D297): v4 deleted reinforced-importance.ts's calculateReinforcedImportance in e0ac7493a
 pub fn calculate_reinforced_importance(base_importance: f64, reinforcement_count: f64) -> f64 {
-    1.0_f64.min(base_importance + (reinforcement_count + 1.0).log2() * 0.05)
+    crate::memory_scoring::reinforced_importance(base_importance, reinforcement_count)
 }
 
-/// Most `[+]` footnote lines a memory may carry (v4 `MAX_REINFORCEMENT_FOOTNOTES`,
-/// `3f7320138` F3). Past this, reinforcement still bumps count/importance and
-/// unions entities, but appends no more prose and skips the re-embed — an
-/// unbounded tail drifts the row's vector toward a bag of proper nouns.
-pub const MAX_REINFORCEMENT_FOOTNOTES: usize = 8;
+/// Most `[+]` footnote lines a memory may carry.
+// LANE-REMOVE(P4.D288|P4.D290|P4.D297): v4 deleted memory-gate.ts's MAX_REINFORCEMENT_FOOTNOTES in 8af764514
+pub use crate::reinforcement_footnotes::MAX_REINFORCEMENT_FOOTNOTES;
 
-/// Number of `[+]` footnote lines already appended to a memory's content (v4
-/// `countReinforcementFootnotes`): the lines of `content.split('\n')` that
-/// start with `[+] ` (a `[+]x` line with no space is prose, and a `\r\n`
-/// content's lines keep their `\r` at the END, so they still count).
-pub fn count_reinforcement_footnotes(content: &str) -> usize {
-    content
-        .split('\n')
-        .filter(|line| line.starts_with("[+] "))
-        .count()
-}
+/// Number of `[+]` footnote lines already appended to a memory's content.
+// LANE-REMOVE(P4.D288|P4.D290|P4.D297): v4 deleted memory-gate.ts's countReinforcementFootnotes in 8af764514
+pub use crate::reinforcement_footnotes::count_reinforcement_footnotes;
 
 /// Append novel details to `content` as `[+]` footnotes, stopping at
 /// [`MAX_REINFORCEMENT_FOOTNOTES`] (v4 `appendCappedFootnotes`). Returns the new
 /// content and the details actually appended (a prefix of `details`, possibly
 /// empty — then the content comes back unchanged).
+// LANE-REMOVE(P4.D288|P4.D290|P4.D297): v4 deleted memory-gate.ts's appendCappedFootnotes (no skip-present, no cap) in 8af764514
 pub fn append_capped_footnotes(content: &str, details: &[String]) -> (String, Vec<String>) {
-    let room = MAX_REINFORCEMENT_FOOTNOTES.saturating_sub(count_reinforcement_footnotes(content));
+    let room = crate::reinforcement_footnotes::MAX_REINFORCEMENT_FOOTNOTES
+        .saturating_sub(crate::reinforcement_footnotes::count_reinforcement_footnotes(content));
     let appended: Vec<String> = details.iter().take(room).cloned().collect();
     if appended.is_empty() {
         return (content.to_string(), appended);
@@ -81,239 +79,10 @@ pub fn append_capped_footnotes(content: &str, details: &[String]) -> (String, Ve
     (format!("{content}\n{footnotes}"), appended)
 }
 
-/// Stop words filtered out of the proper-noun and acronym detail candidates.
-/// Verbatim from v4's `STOP_WORDS` set, same order (order is irrelevant for a
-/// set but kept for an easy diff against the source).
-const STOP_WORDS: &[&str] = &[
-    "the",
-    "a",
-    "an",
-    "and",
-    "or",
-    "but",
-    "in",
-    "on",
-    "at",
-    "to",
-    "for",
-    "of",
-    "with",
-    "by",
-    "from",
-    "as",
-    "is",
-    "was",
-    "are",
-    "were",
-    "be",
-    "been",
-    "being",
-    "have",
-    "has",
-    "had",
-    "do",
-    "does",
-    "did",
-    "will",
-    "would",
-    "could",
-    "should",
-    "may",
-    "might",
-    "shall",
-    "can",
-    "this",
-    "that",
-    "these",
-    "those",
-    "it",
-    "its",
-    "i",
-    "he",
-    "she",
-    "we",
-    "they",
-    "me",
-    "him",
-    "her",
-    "us",
-    "them",
-    "my",
-    "his",
-    "our",
-    "their",
-    "your",
-    "not",
-    "no",
-    "if",
-    "then",
-    "so",
-    "up",
-    "out",
-    "just",
-    "also",
-    "very",
-    "about",
-    "into",
-    "over",
-    "after",
-    "before",
-    "between",
-    "through",
-    "during",
-    "without",
-    "again",
-    "further",
-    "once",
-    "here",
-    "there",
-    "when",
-    "where",
-    "why",
-    "how",
-    "all",
-    "each",
-    "every",
-    "both",
-    "few",
-    "more",
-    "most",
-    "other",
-    "some",
-    "such",
-    "only",
-    "own",
-    "same",
-    "than",
-    "too",
-    "now",
-    "new",
-    "old",
-    "first",
-    "last",
-    "long",
-    "great",
-    "little",
-    "right",
-    "big",
-    "high",
-    "small",
-    "large",
-    "next",
-    "early",
-    "young",
-    "important",
-    "public",
-    "bad",
-    "good",
-    "said",
-    "told",
-    "asked",
-    "went",
-    "came",
-    "made",
-    "got",
-    "see",
-    "know",
-    "think",
-    "want",
-    "say",
-    "tell",
-];
-
-/// Extract novel, deterministic details from `candidate_content` that are not
-/// already present (case-insensitively, as substrings) in `existing_content`:
-/// proper nouns (non-sentence-initial Capitalised words), dates, currency,
-/// numbers-with-units, CamelCase terms, and acronyms. Returns them in discovery
-/// order, deduped case-insensitively. Mirrors v4's `extractNovelDetails`.
-///
-/// Regex-engine fidelity vs the JS source: `\d` and `\b` are JS-ASCII (reproduced
-/// as `[0-9]` and `(?-u:\b)`), `\s` is the JS whitespace set (reproduced via a
-/// literal class), and the case-insensitive date/number patterns use `(?i)`.
-pub fn extract_novel_details(candidate_content: &str, existing_content: &str) -> Vec<String> {
-    let stop: HashSet<&str> = STOP_WORDS.iter().copied().collect();
-    let existing_lower = existing_content.to_lowercase();
-    let mut novel: Vec<String> = Vec::new();
-    let mut seen: HashSet<String> = HashSet::new();
-
-    let mut add_if_novel = |detail: &str| {
-        let normalized = js_trim(detail).to_string();
-        let lower = normalized.to_lowercase();
-        if utf16_len(&normalized) > 1 && !seen.contains(&lower) && !existing_lower.contains(&lower)
-        {
-            seen.insert(lower);
-            novel.push(normalized);
-        }
-    };
-
-    // ASCII word boundary / digit class, and the JS `\s` class, as fragments.
-    let b = r"(?-u:\b)";
-    let d = "[0-9]";
-    let ws = JS_WS_CLASS;
-    let months =
-        "January|February|March|April|May|June|July|August|September|October|November|December";
-
-    // 1. Proper nouns: Capitalised, non-sentence-initial, non-stop-word words.
-    let sentence_split = Regex::new(r"[.!?]+").unwrap();
-    let word_split = Regex::new(&format!("{ws}+")).unwrap();
-    let trailing_punct = Regex::new(r#"[,;:'")\]}>]+$"#).unwrap();
-    let leading_punct = Regex::new(r#"^['"(\[{<]+"#).unwrap();
-    let proper_noun = Regex::new("^[A-Z][a-z]+").unwrap();
-    for sentence in sentence_split.split(candidate_content) {
-        let trimmed = js_trim(sentence);
-        let words: Vec<&str> = word_split.split(trimmed).collect();
-        for word in words.iter().skip(1) {
-            let stripped = trailing_punct.replace(word, "");
-            let clean = leading_punct.replace(&stripped, "").into_owned();
-            if utf16_len(&clean) > 1
-                && proper_noun.is_match(&clean)
-                && !stop.contains(clean.to_lowercase().as_str())
-            {
-                add_if_novel(&clean);
-            }
-        }
-    }
-
-    // 2. Dates (four formats), currency, numbers-with-units.
-    let date_patterns = [
-        format!("{b}{d}{{4}}-{d}{{2}}-{d}{{2}}{b}"),
-        format!("{b}{d}{{1,2}}/{d}{{1,2}}/{d}{{2,4}}{b}"),
-        format!("(?i){b}(?:{months}){ws}+{d}{{1,2}}(?:,?{ws}+{d}{{4}})?{b}"),
-        format!("(?i){b}{d}{{1,2}}{ws}+(?:{months})(?:{ws}+{d}{{4}})?{b}"),
-    ];
-    for pat in &date_patterns {
-        let re = Regex::new(pat).unwrap();
-        for m in re.find_iter(candidate_content) {
-            add_if_novel(m.as_str());
-        }
-    }
-
-    let currency = Regex::new(&format!(r"\$[0-9,]+(?:\.{d}{{2}})?{b}")).unwrap();
-    for m in currency.find_iter(candidate_content) {
-        add_if_novel(m.as_str());
-    }
-
-    let units = "years?|months?|days?|hours?|minutes?|miles?|km|lbs?|kg|ft|cm|percent|%|times?";
-    let numbers = Regex::new(&format!(r"(?i){b}{d}+(?:\.{d}+)?(?:{ws}*(?:{units})){b}")).unwrap();
-    for m in numbers.find_iter(candidate_content) {
-        add_if_novel(m.as_str());
-    }
-
-    // 3. Technical terms: CamelCase words and acronyms (2+ uppercase letters).
-    let camel = Regex::new(&format!("{b}[A-Z][a-z]+(?:[A-Z][a-z]+)+{b}")).unwrap();
-    for m in camel.find_iter(candidate_content) {
-        add_if_novel(m.as_str());
-    }
-
-    let acronym = Regex::new(&format!("{b}[A-Z]{{2,}}{b}")).unwrap();
-    for m in acronym.find_iter(candidate_content) {
-        if !stop.contains(m.as_str().to_lowercase().as_str()) {
-            add_if_novel(m.as_str());
-        }
-    }
-
-    novel
-}
+/// Extract novel, deterministic details — forwards to
+/// [`crate::admission::extract_novel_details`] (v4 moved it byte-identical).
+// LANE-REMOVE(P4.D288|P4.D290|P4.D297): v4 deleted memory-gate.ts's extractNovelDetails in 8af764514
+pub use crate::admission::extract_novel_details;
 
 #[cfg(test)]
 mod tests {

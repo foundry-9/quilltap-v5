@@ -1,38 +1,36 @@
 /**
- * Oracle case: memory weighting / protection score.
+ * Oracle case: memory salience / protection / age — the Phase-1 weighting
+ * corpus re-aimed at v4's scoring module (P4.D289, pin `83334b9a5`).
  *
- * Drives the REAL functions from the v4 server's
- * lib/memory/memory-weighting.ts — `calculateEffectiveWeight` and
- * `calculateProtectionScore` — over a fixed, deterministic input corpus, and
- * prints the results as newline-delimited JSON on stdout. The Rust
- * differential test feeds the SAME corpus through the Rust port and asserts
- * byte-equal numeric results (tier-1 exact equivalence).
+ * v4 `e0ac7493a` DELETED `lib/memory/memory-weighting.ts` (the floored
+ * `calculateEffectiveWeight` has no successor — orderings moved to
+ * `salience`). This case keeps the same 17-id corpus and drives the REAL
+ * successors: `salience` and `protection` / `calculateProtectionScore` from
+ * `lib/memory/scoring/*` and `formatMemoryAge` from
+ * `lib/memory/time/age-label`, imported by FILE path (the `scoring/index.ts`
+ * barrel pulls `rank.ts` → `recall/*`).
  *
  * IMPORTANT — this imports the actual app code, it does not reimplement it.
- * Run it from inside the server checkout so `@/` path aliases resolve:
+ * Run it from inside a v4 checkout (or the round's pinned worktree) so `@/`
+ * aliases resolve:
  *
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   cd ~/source/quilltap-server
- *   QT_ORACLE=~/source/quilltap-v5/harness/oracle \
- *     npx tsx "$QT_ORACLE/cases/memory-weighting.ts" > /tmp/oracle-weighting.ndjson
- *
- * (The server's tsconfig provides the `@/*` → repo-root mapping. memory-
- * weighting.ts imports `@/lib/logger`, but neither target function calls it,
- * so the logger only needs to *load*, not be configured. If the env-validation
- * chain in @/lib/env complains, set the minimal vars it requires — the harness
- * never relies on logger output.)
+ *   TZ=UTC $N/npx tsx "$V5W/harness/oracle/cases/memory-weighting.ts" > /tmp/oracle-weighting.ndjson
  *
  * The corpus is fixed in code (no randomness, no Date.now()): every case pins
  * an explicit `now` and explicit memory fields, so the oracle is reproducible
- * and the Rust side can hardcode the identical corpus.
+ * and the Rust side hardcodes the identical corpus
+ * (`quilltap-harness/src/lib.rs` `corpus()`).
  */
 
+import { salience } from '@/lib/memory/scoring/salience';
 import {
-  calculateEffectiveWeight,
   calculateProtectionScore,
-  formatRelativeAge,
-  DEFAULT_WEIGHTING_CONFIG,
+  protection,
   DEFAULT_PROTECTION_CONFIG,
-} from '@/lib/memory/memory-weighting';
+} from '@/lib/memory/scoring/protection';
+import { formatMemoryAge } from '@/lib/memory/time/age-label';
 
 // Fixed reference clock for all cases (UTC). Mirror this exact value in Rust.
 const NOW = new Date('2026-06-27T12:00:00.000Z');
@@ -105,17 +103,16 @@ const CORPUS = [
 ];
 
 for (const { id, m } of CORPUS) {
-  const w = calculateEffectiveWeight(m, DEFAULT_WEIGHTING_CONFIG, NOW);
+  const sal = salience(m, { nowMs: NOW.getTime() });
   const p = calculateProtectionScore(m, DEFAULT_PROTECTION_CONFIG, NOW);
+  const w = protection(m, { nowMs: NOW.getTime() });
   const row = {
     id,
-    weight: {
-      effectiveWeight: w.effectiveWeight,
-      rawWeight: w.rawWeight,
-      minWeight: w.minWeight,
-      timeDecayFactor: w.timeDecayFactor,
-      daysOld: w.daysOld,
-      baseImportance: w.baseImportance,
+    salience: {
+      salience: sal.salience,
+      base: sal.base,
+      decay: sal.decay,
+      daysSince: sal.daysSince,
     },
     protection: {
       score: p.score,
@@ -126,9 +123,12 @@ for (const { id, m } of CORPUS) {
       episodicBonus: p.episodicBonus,
       daysSinceRefTime: p.daysSinceRefTime,
     },
+    // The NEW wrapper (no corpus row carries a source, so every row takes
+    // the AUTO arm: protected iff score >= PROTECTION_THRESHOLD).
+    protectionWrapper: { protected: w.protected, protectedBySource: w.protectedBySource, score: w.score },
     // Episodic spine: the human-facing age label (event clock — occurredAt
     // when present/parsable, else the write/reinforce clock).
-    age: formatRelativeAge(m, NOW),
+    age: formatMemoryAge(m, NOW),
   };
   process.stdout.write(JSON.stringify(row) + '\n');
 }

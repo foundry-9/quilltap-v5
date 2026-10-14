@@ -1,28 +1,70 @@
-//! Tier-1 differential: the episodic-spine pure helpers vs v4's REAL
-//! `lib/memory/episodic.ts` (P4.d12 unit 4, v4 baseline `8bf3cb5f`).
+//! Tier-1 differential: the episodic-spine pure helpers vs v4's REAL code at
+//! the pin (`83334b9a5`) — P4.d12 unit 4, re-aimed by P4.D289.
 //!
 //! The corpus here mirrors `harness/oracle/cases/episodic.ts` case-for-case
-//! (same ids, same inputs); the oracle drives v4's real module and this test
-//! drives `quilltap_core::episodic`, comparing exactly — strings byte-equal,
-//! `eventReferenceTimeMs` numerically exact (integer milliseconds), `null`s
-//! exact.
+//! (same ids, same inputs). v4 moved three of the four helpers in the span,
+//! and this test follows each to its v5 successor, the zone passed
+//! explicitly as `UTC`:
+//! - `buildMemoryAnchorLine(view, tz)` (zoned, bug 212) →
+//!   `quilltap_core::memory_embedding_text::memory_anchor_line`;
+//! - `buildMemoryEmbeddingText` (deleted, Phase B) → `embeddingTextFor` →
+//!   `memory_embedding_text::embedding_text_for`;
+//! - `resolveWhenPhrase` (moved to `lib/memory/time/clock.ts`, the write side
+//!   stamping the window START) → `memory_time::resolve_when_phrase`;
+//! - `eventReferenceTimeMs` (unchanged) → `episodic::event_reference_time_ms`.
 //!
-//! Generate the oracle (Node 24, from the v4 checkout — **TZ=UTC is
-//! mandatory**: the absolute-ISO branch parses zone-less datetimes in the
-//! process zone; the Rust port implements UTC semantics):
+//! Strings byte-equal, `eventReferenceTimeMs` numerically exact, `null`s
+//! exact — except the rows pinned both ways in [`JS_DATE_PARSE_ISO_SUBSET`].
+//!
+//! Generate the oracle (Node 24, from the v4 checkout or the round's pin —
+//! **TZ=UTC is mandatory**: the absolute-ISO branch parses zone-less
+//! datetimes in the process zone; the Rust port implements UTC semantics),
+//! then run:
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
-//!   TZ=UTC npx tsx <worktree>/harness/oracle/cases/episodic.ts > /tmp/oracle-episodic.ndjson
-//! Run:
+//!   TZ=UTC $N/npx tsx "$V5W/harness/oracle/cases/episodic.ts" > /tmp/oracle-episodic.ndjson
+//!   cd "$V5W"
 //!   QT_ORACLE_EPISODIC=/tmp/oracle-episodic.ndjson \
-//!     cargo test -p quilltap-harness --test episodic_equivalence
+//!     cargo test -p quilltap-harness --test episodic_equivalence -- --nocapture
 
 use std::collections::HashMap;
 
-use quilltap_core::episodic::{
-    build_memory_anchor_line, build_memory_embedding_text, event_reference_time_ms,
-    resolve_when_phrase, EpisodicAnchorView,
+use quilltap_core::episodic::{event_reference_time_ms, EpisodicAnchorView};
+use quilltap_core::memory_embedding_text::{
+    embedding_text_for, memory_anchor_line, AnchorEntities, EmbeddingTextSource,
 };
+use quilltap_core::memory_time::resolve_when_phrase;
 use serde_json::{json, Value};
+
+/// The memory-calendar zone every zoned helper runs on here.
+const TZ: &str = "UTC";
+
+/// A FINDING, MEASURED AND PINNED, NOT RULED — `JS_DATE_PARSE_ISO_SUBSET`
+/// (the same table the `memory_embedding_text` family pins):
+/// `(kind, id, v4's result, v5's result)`. `crate::episodic::js_date_parse_ms`
+/// ports V8's ISO date-time grammar only; V8's LEGACY fallback parses
+/// `2026-7-4` (finite in v4, so the zoned stamp `2026-07-04`), where v5 falls
+/// to `slice(0, 10)` and the date regex drops it. At the baseline v4 sliced
+/// unconditionally, so this row only surfaced when bug 212 zoned the stamp.
+/// Both ways: a parser fix (or a v4 change) trips it.
+const JS_DATE_PARSE_ISO_SUBSET: &[(&str, &str, &str, &str)] =
+    &[("anchorLine", "anchor-when-short", "(when: 2026-07-04)", "")];
+
+fn source<'a>(
+    summary: &'a str,
+    content: &'a str,
+    v: Option<&'a EpisodicAnchorView>,
+) -> EmbeddingTextSource<'a> {
+    EmbeddingTextSource {
+        summary,
+        content,
+        occurred_at: v.and_then(|v| v.occurred_at.as_deref()),
+        narrative_time: v.and_then(|v| v.narrative_time.as_deref()),
+        entities: v.map_or(AnchorEntities::None, |v| {
+            AnchorEntities::Strings(&v.entities)
+        }),
+    }
+}
 
 /// The fixed write/reinforce clock for the eventReferenceTimeMs cases.
 const WRITE_CLOCK_MS: f64 = 1_783_000_000_000.0;
@@ -260,7 +302,16 @@ fn episodic_matches_oracle() {
         match oracle.get(&key) {
             None => mismatches.push(format!("{kind}/{id}: MISSING from oracle")),
             Some(want) => {
-                if *want != got {
+                if let Some(&(_, _, v4, v5)) = JS_DATE_PARSE_ISO_SUBSET
+                    .iter()
+                    .find(|(k, i, _, _)| *k == kind && *i == id)
+                {
+                    if *want != json!(v4) || got != json!(v5) {
+                        mismatches.push(format!(
+                            "{kind}/{id}: JS_DATE_PARSE_ISO_SUBSET moved — oracle={want} port={got}"
+                        ));
+                    }
+                } else if *want != got {
                     mismatches.push(format!("{kind}/{id}: oracle={want} port={got}"));
                 }
             }
@@ -269,21 +320,28 @@ fn episodic_matches_oracle() {
     };
 
     for (id, v) in anchor_cases() {
-        check("anchorLine", id, json!(build_memory_anchor_line(&v)));
+        check(
+            "anchorLine",
+            id,
+            json!(memory_anchor_line(&source("", "", Some(&v)), TZ)),
+        );
     }
     for c in embed_cases() {
         check(
             "embeddingText",
             c.id,
-            json!(build_memory_embedding_text(
-                c.summary,
-                c.content,
-                c.anchors.as_ref()
+            json!(embedding_text_for(
+                &source(c.summary, c.content, c.anchors.as_ref()),
+                TZ
             )),
         );
     }
     for (id, phrase, anchor) in when_cases() {
-        check("whenPhrase", id, json!(resolve_when_phrase(phrase, anchor)));
+        check(
+            "whenPhrase",
+            id,
+            json!(resolve_when_phrase(phrase, anchor, TZ)),
+        );
     }
     for (id, occurred_at) in ref_cases() {
         let ms = event_reference_time_ms(occurred_at, WRITE_CLOCK_MS);

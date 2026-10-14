@@ -1,6 +1,21 @@
 //! Episodic-spine helpers (the episodic recall overhaul, v4 `8bf3cb5f`,
 //! `lib/memory/episodic.ts`).
 //!
+//! **Partly LANE-REMOVE shims (work order P4.D289, §R.10(o)).** In the
+//! `83334b9a5` span v4 moved the WRITE half out of this module:
+//! `resolveWhenPhrase` to `lib/memory/time/clock.ts` (`e0ac7493a` — the ONE
+//! rule table, stamping the window START on the memory calendar; ported as
+//! [`crate::memory_time::resolve_when_phrase`]), `buildMemoryEmbeddingText`
+//! to `index-store/embedding-text.ts` (`af48f6cc2`; ported as
+//! [`crate::memory_embedding_text::embedding_text_for`]), and the anchor
+//! line onto the memory calendar (`c2795733f`, bug 212; ported as
+//! [`crate::memory_embedding_text::memory_anchor_line`]). Their callers live
+//! in other lanes' files (admission P4.D290, recall P4.D291, embeddings
+//! P4.D292, extraction P4.D296, maintenance P4.D297), so the three old
+//! functions keep their pre-refactor bodies VERBATIM (UTC, the pre stamps)
+//! until their owners re-point (LR-1). `EpisodicAnchorView`, the event
+//! clocks and `js_date_parse_ms` stay here as v4 keeps them (LR-12).
+//!
 //! Small, pure utilities shared by the write path (memory-service, memory-gate,
 //! extraction) and the read path (injector, tools):
 //!
@@ -72,6 +87,7 @@ fn js_slice10(s: &str) -> String {
 /// carries no anchors, so callers can append unconditionally. The date is
 /// rendered as the ISO calendar date (time-of-day adds noise, not signal, to
 /// the embedding); `narrativeTime` rides along verbatim when present.
+// LANE-REMOVE(P4.D290|P4.D291|P4.D292|P4.D296|P4.D297): v4 deleted the UTC-slice buildMemoryAnchorLine in c2795733f
 pub fn build_memory_anchor_line(view: &EpisodicAnchorView) -> String {
     let mut parts: Vec<String> = Vec::new();
     if let Some(occurred_at) = view.occurred_at.as_deref().map(js_trim) {
@@ -111,6 +127,7 @@ pub fn build_memory_anchor_line(view: &EpisodicAnchorView) -> String {
 /// New writes only carry the anchor; legacy rows re-embed without one until the
 /// optional batched re-embed runs. Mixed old/new embedded-text rows are an
 /// accepted, indefinite state (v4's cross-cutting list).
+// LANE-REMOVE(P4.D290|P4.D291|P4.D292|P4.D296|P4.D297): v4 deleted buildMemoryEmbeddingText in af48f6cc2
 pub fn build_memory_embedding_text(
     summary: &str,
     content: &str,
@@ -228,6 +245,7 @@ ws_re!(season_re, r"^lastWS+(spring|summer|fall|autumn|winter)$");
 /// degrade, never block, so an unresolvable phrase simply leaves `occurredAt`
 /// to the fallback stamping rule. (v4 `resolveWhenPhrase`; see the module doc
 /// for the full phrase inventory.)
+// LANE-REMOVE(P4.D290|P4.D291|P4.D292|P4.D296|P4.D297): v4 deleted episodic.ts's resolveWhenPhrase in e0ac7493a
 pub fn resolve_when_phrase(phrase: Option<&str>, anchor_iso: &str) -> Option<String> {
     let raw = js_trim(phrase?);
     if raw.is_empty() {
@@ -467,6 +485,13 @@ pub(crate) fn js_date_parse_ms(s: &str) -> Option<i64> {
         if !(0..=24).contains(&hour) || !(0..=59).contains(&minute) || !(0..=59).contains(&second) {
             return None;
         }
+        // V8 accepts hour 24 only as the end of the day: `T24:00Z` and
+        // `T24:00:00.000Z` parse, `T24:01Z` / `T24:00:01Z` / `T24:00:00.001Z`
+        // are NaN (measured on Node 24.13.1 by the P4.D289 `memory_time`
+        // family — `resolveEventTime`'s ISO arm reaches it).
+        if hour == 24 && (minute != 0 || second != 0 || millis != 0) {
+            return None;
+        }
         // Zone designator.
         match bytes.get(i) {
             Some(b'Z') | Some(b'z') => {
@@ -541,5 +566,24 @@ mod tests {
         // 1970-01-01 was a Thursday (4); 2026-07-14 is a Tuesday (2).
         assert_eq!(utc_day_of_week(0), 4);
         assert_eq!(utc_day_of_week(js_date_parse_ms("2026-07-14").unwrap()), 2);
+    }
+}
+
+#[cfg(test)]
+mod hour_24_tests {
+    use super::js_date_parse_ms;
+
+    /// V8's `Date.parse` takes hour 24 only as the day's end (P4.D289).
+    #[test]
+    fn hour_24_parses_only_at_the_end_of_the_day() {
+        assert_eq!(
+            js_date_parse_ms("2026-07-14T24:00Z"),
+            js_date_parse_ms("2026-07-15T00:00:00.000Z")
+        );
+        assert!(js_date_parse_ms("2026-07-14T24:00:00.000Z").is_some());
+        assert_eq!(js_date_parse_ms("2026-07-14T24:01Z"), None);
+        assert_eq!(js_date_parse_ms("2026-07-14T24:00:01Z"), None);
+        assert_eq!(js_date_parse_ms("2026-07-14T24:00:00.001Z"), None);
+        assert_eq!(js_date_parse_ms("2026-07-14t24:30z"), None);
     }
 }

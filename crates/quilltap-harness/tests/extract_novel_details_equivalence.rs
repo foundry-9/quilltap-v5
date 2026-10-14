@@ -5,15 +5,21 @@
 //! acronyms, case-insensitive dedup, existing-content suppression, punctuation
 //! stripping, the length>1 filter, and JS `\s` (U+00A0) splitting/matching.
 //!
-//! Generate the oracle output:
+//! Re-aimed at P4.D289 (pin `83334b9a5`): v4 `8af764514` moved the function,
+//! byte-identical, to `lib/memory/admission/novel-details.ts`; v5 moved its
+//! port verbatim to `crate::admission::novel_details` (the crate-root
+//! `memory_gate::extract_novel_details` is the forwarding shim). Red-first:
+//! the re-aimed oracle against the UNCHANGED test was value-GREEN (15 / 15).
+//!
+//! Generate the oracle output, then run:
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
-//!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/extract-novel-details.ts \
-//!     > /tmp/oracle-extract-novel-details.ndjson
-//! Run:
+//!   TZ=UTC $N/npx tsx "$V5W/harness/oracle/cases/extract-novel-details.ts" > /tmp/oracle-extract-novel-details.ndjson
+//!   cd "$V5W"
 //!   QT_ORACLE_EXTRACT_NOVEL_DETAILS=/tmp/oracle-extract-novel-details.ndjson \
-//!     cargo test -p quilltap-harness --test extract_novel_details_equivalence
+//!     cargo test -p quilltap-harness --test extract_novel_details_equivalence -- --nocapture
 
-use quilltap_core::memory_gate::extract_novel_details;
+use quilltap_core::admission::extract_novel_details;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -45,6 +51,7 @@ fn extract_novel_details_matches_oracle() {
         count += 1;
     }
 
-    assert!(count > 0, "oracle file looks empty: {count}");
+    // Corpus drift guard: the case's exact row count.
+    assert_eq!(count, 15, "oracle row count");
     eprintln!("OK: extract-novel-details matched oracle ({count} rows).");
 }

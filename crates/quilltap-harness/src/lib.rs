@@ -1,8 +1,6 @@
 //! Differential harness library: shared corpus + equivalence helpers.
 //! The actual assertions live in tests/ (run via `cargo test -p quilltap-harness`).
 
-use quilltap_core::memory_weighting::MemoryInputs;
-
 /// Fixed reference clock — MUST equal NOW in harness/oracle/cases/memory-weighting.ts
 /// (2026-06-27T12:00:00.000Z). Expressed as epoch millis.
 /// (Verified: `new Date("2026-06-27T12:00:00.000Z").getTime()` === this.)
@@ -47,25 +45,70 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
+/// One memory of the Phase-1 weighting corpus, as the v4 row carries it
+/// (strings, not pre-parsed millis), so each consumer reads it with v4's own
+/// parsing: `quilltap_core::memory_scoring::{SalienceInput, ProtectionInput}`
+/// and `memory_time::format_memory_age`. P4.D289 re-pointed this off the
+/// deleted weighting module's `MemoryInputs`.
+#[derive(Clone, Copy, Debug)]
+pub struct CorpusMemory {
+    pub importance: f64,
+    pub reinforced_importance: Option<f64>,
+    pub created_at: &'static str,
+    pub last_reinforced_at: Option<&'static str>,
+    pub last_accessed_at: Option<&'static str>,
+    pub reinforcement_count: Option<f64>,
+    /// `relatedMemoryIds.length`.
+    pub graph_degree: usize,
+    pub kind: Option<&'static str>,
+    pub occurred_at: Option<&'static str>,
+}
+
+impl CorpusMemory {
+    pub fn salience_input(&self) -> quilltap_core::memory_scoring::SalienceInput {
+        quilltap_core::memory_scoring::SalienceInput::from_iso(
+            self.importance,
+            self.reinforced_importance,
+            self.created_at,
+            self.last_reinforced_at,
+        )
+    }
+
+    pub fn protection_input(&self) -> quilltap_core::memory_scoring::ProtectionInput<'static> {
+        use quilltap_core::memory_scoring::{date_ms, truthy_date_ms, ProtectionInput};
+        ProtectionInput {
+            importance: self.importance,
+            reinforced_importance: self.reinforced_importance,
+            created_at_ms: date_ms(self.created_at),
+            last_reinforced_at_ms: truthy_date_ms(self.last_reinforced_at),
+            last_accessed_at_ms: truthy_date_ms(self.last_accessed_at),
+            reinforcement_count: self.reinforcement_count,
+            graph_degree: self.graph_degree,
+            kind: self.kind,
+            source: None,
+        }
+    }
+}
+
 /// Build the corpus — MUST mirror CORPUS in the TS oracle case exactly
 /// (same ids, same fields, same timestamps).
-pub fn corpus() -> Vec<(&'static str, MemoryInputs)> {
+pub fn corpus() -> Vec<(&'static str, CorpusMemory)> {
     let m = |importance: f64,
              reinforced: Option<f64>,
-             created: &str,
-             last_reinforced: Option<&str>,
-             last_accessed: Option<&str>,
+             created: &'static str,
+             last_reinforced: Option<&'static str>,
+             last_accessed: Option<&'static str>,
              reinforcement_count: Option<u64>,
-             graph_degree: usize| MemoryInputs {
+             graph_degree: usize| CorpusMemory {
         importance,
         reinforced_importance: reinforced,
-        created_at_ms: iso_to_ms(created),
-        last_reinforced_at_ms: last_reinforced.map(iso_to_ms),
-        last_accessed_at_ms: last_accessed.map(iso_to_ms),
-        reinforcement_count,
+        created_at: created,
+        last_reinforced_at: last_reinforced,
+        last_accessed_at: last_accessed,
+        reinforcement_count: reinforcement_count.map(|n| n as f64),
         graph_degree,
-        kind_episodic: false,
-        occurred_at_ms: None,
+        kind: None,
+        occurred_at: None,
     };
 
     vec![
@@ -152,15 +195,15 @@ pub fn corpus() -> Vec<(&'static str, MemoryInputs)> {
         // ── Episodic spine (v4 8bf3cb5f) — mirrors the TS corpus additions ──
         (
             "episodic-old-low",
-            MemoryInputs {
-                kind_episodic: true,
+            CorpusMemory {
+                kind: Some("episodic"),
                 ..m(0.2, None, "2025-09-01T00:00:00.000Z", None, None, None, 0)
             },
         ),
         (
             "episodic-clamp",
-            MemoryInputs {
-                kind_episodic: true,
+            CorpusMemory {
+                kind: Some("episodic"),
                 ..m(
                     1.0,
                     None,
@@ -174,21 +217,24 @@ pub fn corpus() -> Vec<(&'static str, MemoryInputs)> {
         ),
         (
             "semantic-explicit",
-            m(0.5, None, "2026-06-01T00:00:00.000Z", None, None, None, 0),
+            CorpusMemory {
+                kind: Some("semantic"),
+                ..m(0.5, None, "2026-06-01T00:00:00.000Z", None, None, None, 0)
+            },
         ),
         (
             "event-clock-age",
-            MemoryInputs {
-                kind_episodic: true,
-                occurred_at_ms: Some(iso_to_ms("2026-05-20T00:00:00.000Z")),
+            CorpusMemory {
+                kind: Some("episodic"),
+                occurred_at: Some("2026-05-20T00:00:00.000Z"),
                 ..m(0.5, None, "2026-06-25T00:00:00.000Z", None, None, None, 0)
             },
         ),
         (
             "event-clock-age-reinforced",
-            MemoryInputs {
-                kind_episodic: true,
-                occurred_at_ms: Some(iso_to_ms("2025-11-02T00:00:00.000Z")),
+            CorpusMemory {
+                kind: Some("episodic"),
+                occurred_at: Some("2025-11-02T00:00:00.000Z"),
                 ..m(
                     0.5,
                     None,
@@ -201,14 +247,20 @@ pub fn corpus() -> Vec<(&'static str, MemoryInputs)> {
             },
         ),
         // occurredAt 'not-a-date' / '' → unparsable/falsy → the write clock
-        // (`event_time_ms` yields None on both, matching v4's NaN fallback).
+        // (v4 `eventReferenceTimeMs`'s truthiness + finiteness fallback).
         (
             "event-clock-unparsable",
-            m(0.5, None, "2026-06-25T00:00:00.000Z", None, None, None, 0),
+            CorpusMemory {
+                occurred_at: Some("not-a-date"),
+                ..m(0.5, None, "2026-06-25T00:00:00.000Z", None, None, None, 0)
+            },
         ),
         (
             "event-clock-empty",
-            m(0.5, None, "2026-06-25T00:00:00.000Z", None, None, None, 0),
+            CorpusMemory {
+                occurred_at: Some(""),
+                ..m(0.5, None, "2026-06-25T00:00:00.000Z", None, None, None, 0)
+            },
         ),
     ]
 }

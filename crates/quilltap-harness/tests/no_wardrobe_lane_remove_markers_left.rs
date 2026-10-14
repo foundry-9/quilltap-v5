@@ -21,12 +21,50 @@
 //! and the test goes green. A wrapper that still has a caller then is a
 //! finding against the caller's lane — never a reason to drop the marker.
 //!
+//! **Scoped by sha (P4.D289 LR-2, the `83334b9a5` round).** The next round's
+//! memory lanes write markers of their own, counted by
+//! `no_memory_lane_remove_markers_left`. This census counts only markers
+//! naming the wardrobe round's commits (`7a8d6dacc` / `9ecebf986` /
+//! `4a38222e6`); a marker naming neither set fails both censuses' format
+//! tests, so it cannot hide.
+//!
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test no_wardrobe_lane_remove_markers_left
 
 use std::path::{Path, PathBuf};
 
 const MARKER: &str = "LANE-REMOVE(";
+
+/// The wardrobe round's v4 commits — this census's scope.
+const WARDROBE_SHAS: [&str; 3] = ["7a8d6dacc", "9ecebf986", "4a38222e6"];
+
+/// The `83334b9a5` memory round's twenty commits — the OTHER census's scope.
+const MEMORY_ROUND_SHAS: [&str; 20] = [
+    "545e299bb",
+    "124c8aca3",
+    "69d38dd60",
+    "8050958be",
+    "97f0d8cb8",
+    "4ce64fa1e",
+    "c2795733f",
+    "e0ac7493a",
+    "af48f6cc2",
+    "8af764514",
+    "ac6348c5f",
+    "93c5af6ad",
+    "584d28164",
+    "4ae0c4ca6",
+    "104e986c7",
+    "b045dd986",
+    "48790fb73",
+    "9ec4fa2e9",
+    "64743ee13",
+    "83334b9a5",
+];
+
+fn names_wardrobe_sha(text: &str) -> bool {
+    WARDROBE_SHAS.iter().any(|sha| text.contains(sha))
+}
 
 fn core_src() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../quilltap-core/src")
@@ -71,7 +109,10 @@ fn markers() -> Vec<(String, usize, String)> {
 /// RED BY DESIGN until the unifier's §S.5 commit.
 #[test]
 fn no_wardrobe_lane_remove_markers_left() {
-    let found = markers();
+    let found: Vec<_> = markers()
+        .into_iter()
+        .filter(|(_, _, text)| names_wardrobe_sha(text))
+        .collect();
     if found.is_empty() {
         return;
     }
@@ -88,18 +129,24 @@ fn no_wardrobe_lane_remove_markers_left() {
 }
 
 /// The marker's FORMAT is itself pinned, so a wrapper cannot hide from the
-/// census by misspelling its mark: every marker names at least one lane and
-/// the deleting v4 commit.
+/// census by misspelling its mark: every wardrobe marker names at least one
+/// lane and a wardrobe-round commit. A marker naming no wardrobe commit must
+/// name one of the memory round's (the other census's scope); naming neither
+/// fails here.
 #[test]
 fn every_lane_remove_marker_names_a_lane_and_the_v4_commit() {
     for (file, line, text) in markers() {
+        if !names_wardrobe_sha(&text) {
+            assert!(
+                MEMORY_ROUND_SHAS.iter().any(|sha| text.contains(sha)),
+                "{file}:{line}: a LANE-REMOVE marker names neither the wardrobe round's commits \
+                 nor the memory round's — it would hide from both censuses: {text}"
+            );
+            continue;
+        }
         assert!(
             text.contains("LANE-REMOVE(P4.D28"),
             "{file}:{line}: a marker must name its owning lane(s) `P4.D28x`: {text}"
-        );
-        assert!(
-            text.contains("9ecebf986"),
-            "{file}:{line}: a marker must name the deleting v4 commit `9ecebf986`: {text}"
         );
     }
 }

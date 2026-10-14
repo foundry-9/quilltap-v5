@@ -2,20 +2,24 @@
  * Oracle case #24 (Wave 5 / B15): extractNovelDetails.
  *
  * Drives the REAL detail extractor:
- *   extractNovelDetails (lib/memory/memory-gate.ts)
+ *   extractNovelDetails (lib/memory/admission/novel-details.ts)
  * which scans for proper nouns, dates (4 formats), currency, numbers-with-units,
  * CamelCase, and acronyms, deduping case-insensitively and suppressing details
  * already present in existing content. The corpus distinguishes the regex
  * fidelity choices (ASCII \d/\b, JS \s including U+00A0, sentence-initial skip,
  * stop-word filtering, punctuation stripping, length>1, cross-category order).
  *
- * Run from inside the server checkout:
+ * Re-aimed at P4.D289 (pin `83334b9a5`): v4 `8af764514` (memory refactor
+ * Phase C) MOVED the function, byte-identical, from `lib/memory/memory-gate.ts`
+ * (deleted) to `lib/memory/admission/novel-details.ts`.
+ *
+ * Run from inside a v4 checkout (or the round's pin):
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   cd ~/source/quilltap-server
- *   npx tsx ~/source/quilltap-v5/harness/oracle/cases/extract-novel-details.ts \
- *     > /tmp/oracle-extract-novel-details.ndjson
+ *   TZ=UTC $N/npx tsx "$V5W/harness/oracle/cases/extract-novel-details.ts" > /tmp/oracle-extract-novel-details.ndjson
  */
 
-import { extractNovelDetails } from '@/lib/memory/memory-gate';
+import { extractNovelDetails } from '@/lib/memory/admission/novel-details';
 
 const rows: unknown[] = [];
 

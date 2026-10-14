@@ -1,19 +1,21 @@
 //! Tier-1 differential test #19 (Wave 3 / B10): pure memory name-resolution
-//! leaves — calculateReinforcedImportance (float within 1e-12),
+//! leaves — reinforcedImportance (float within 1e-12; P4.D289 re-aimed it at
+//! `lib/memory/scoring/reinforced-importance.ts`, bug 216's
+//! `log2(max(1, count))`),
 //! formatNameWithPronouns, namesForAboutCharacter, namesForHolder (exact
 //! string/array equality).
 //!
-//! Generate the oracle output:
+//! Generate the oracle output, then run:
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
-//!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/memory-name-helpers.ts \
-//!     > /tmp/oracle-memory-name-helpers.ndjson
-//! Run:
+//!   TZ=UTC $N/npx tsx "$V5W/harness/oracle/cases/memory-name-helpers.ts" > /tmp/oracle-memory-name-helpers.ndjson
+//!   cd "$V5W"
 //!   QT_ORACLE_MEMORY_NAME_HELPERS=/tmp/oracle-memory-name-helpers.ndjson \
-//!     cargo test -p quilltap-harness --test memory_name_helpers_equivalence
+//!     cargo test -p quilltap-harness --test memory_name_helpers_equivalence -- --nocapture
 
 use quilltap_core::about_character::{names_for_about_character, names_for_holder};
 use quilltap_core::memory_format::{format_name_with_pronouns, Pronouns};
-use quilltap_core::memory_gate::calculate_reinforced_importance;
+use quilltap_core::memory_scoring::reinforced_importance;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -85,7 +87,7 @@ fn memory_name_helpers_match_oracle() {
                 count: c,
                 out,
             } => {
-                let got = calculate_reinforced_importance(base, c);
+                let got = reinforced_importance(base, c);
                 assert!(
                     (got - out).abs() < 1e-12,
                     "reinforced '{id}': rust={got} oracle={out}"

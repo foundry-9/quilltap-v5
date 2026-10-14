@@ -1,5 +1,15 @@
 //! Port of lib/memory/memory-weighting.ts — the pure scoring functions.
 //!
+//! **LANE-REMOVE shims (work order P4.D289, §R.10(o)).** v4 `e0ac7493a`
+//! DELETED this module for `lib/memory/scoring/*` — ported as
+//! [`crate::memory_scoring`] (salience, protection, the blend, the floors)
+//! and [`crate::memory_time::format_memory_age`]. Its callers live in other
+//! lanes' files (recall P4.D291, the optimizer P4.D292, housekeeping
+//! P4.D297), so it stays until they re-point: the items whose successor has
+//! IDENTICAL semantics FORWARD to it; the floored effective weight, which v4
+//! deleted with no successor, keeps its old body verbatim so no caller's
+//! behaviour moves before its owner re-points it (LR-1).
+//!
 //! Tier-1 differential target: deterministic, side-effect-free, exactly
 //! checkable against the TS oracle. Every constant and the order of operations
 //! mirror the source so results are byte-equal. The subtle bits that a port
@@ -14,6 +24,7 @@
 /// Milliseconds per day (matches the TS `86400000`).
 const MS_PER_DAY: f64 = 86_400_000.0;
 
+// LANE-REMOVE(P4.D291|P4.D292|P4.D297): v4 deleted MemoryWeightingConfig in e0ac7493a
 #[derive(Clone, Copy)]
 pub struct WeightingConfig {
     pub half_life_days: f64,
@@ -21,48 +32,19 @@ pub struct WeightingConfig {
     pub min_weight_threshold: f64,
 }
 
+// LANE-REMOVE(P4.D291|P4.D292|P4.D297): v4 deleted DEFAULT_WEIGHTING_CONFIG in e0ac7493a
 pub const DEFAULT_WEIGHTING_CONFIG: WeightingConfig = WeightingConfig {
     half_life_days: 30.0,
     importance_floor: 0.70,
     min_weight_threshold: 0.05,
 };
 
-#[derive(Clone, Copy)]
-pub struct ProtectionConfig {
-    pub content_half_life_days: f64,
-    pub content_floor: f64,
-    pub max_reinforcement_bonus: f64,
-    pub reinforcement_coeff: f64,
-    pub max_graph_degree_bonus: f64,
-    pub graph_degree_coeff: f64,
-    pub recent_access_bonus: f64,
-    pub recent_access_window_days: f64,
-    pub max_content_contribution: f64,
-    /// Additive bonus for `kind: 'episodic'` rows. Default: 0.10. Episodic
-    /// memories carry the exact statistical profile housekeeping deletes first
-    /// (low importance, low reinforcement, low graph degree) yet are the
-    /// hardest to regenerate — a one-off visit never recurs to be
-    /// re-extracted. The vault Timeline is the durable backstop, but the
-    /// memory ROW is what per-turn retrieval actually hits, so it should be
-    /// the last to go. (v4 8bf3cb5f.)
-    pub episodic_bonus: f64,
-}
-
-pub const DEFAULT_PROTECTION_CONFIG: ProtectionConfig = ProtectionConfig {
-    content_half_life_days: 30.0,
-    content_floor: 0.10,
-    max_reinforcement_bonus: 0.25,
-    reinforcement_coeff: 0.08,
-    max_graph_degree_bonus: 0.10,
-    graph_degree_coeff: 0.025,
-    recent_access_bonus: 0.10,
-    recent_access_window_days: 90.0,
-    max_content_contribution: 0.40,
-    episodic_bonus: 0.10,
-};
+// LANE-REMOVE(P4.D291|P4.D292|P4.D297): v4 deleted ProtectionConfig / DEFAULT_PROTECTION_CONFIG / ProtectionScore in e0ac7493a
+pub use crate::memory_scoring::{ProtectionConfig, ProtectionScore, DEFAULT_PROTECTION_CONFIG};
 
 /// The subset of a Memory the scoring functions read. Times are epoch millis
 /// (the harness converts ISO strings → millis the same way `new Date(x)` does).
+// LANE-REMOVE(P4.D291|P4.D292|P4.D297): v4 deleted the memory-weighting input view in e0ac7493a
 #[derive(Clone, Copy, Default)]
 pub struct MemoryInputs {
     pub importance: f64,
@@ -80,6 +62,7 @@ pub struct MemoryInputs {
     pub occurred_at_ms: Option<f64>,
 }
 
+// LANE-REMOVE(P4.D291|P4.D292|P4.D297): v4 deleted EffectiveWeightResult in e0ac7493a
 pub struct EffectiveWeight {
     pub effective_weight: f64,
     pub raw_weight: f64,
@@ -89,6 +72,7 @@ pub struct EffectiveWeight {
     pub base_importance: f64,
 }
 
+// LANE-REMOVE(P4.D291|P4.D292|P4.D297): v4 deleted calculateEffectiveWeight in e0ac7493a
 pub fn calculate_effective_weight(
     m: &MemoryInputs,
     cfg: &WeightingConfig,
@@ -112,117 +96,47 @@ pub fn calculate_effective_weight(
     }
 }
 
-pub struct ProtectionScore {
-    pub score: f64,
-    pub content_component: f64,
-    pub reinforcement_bonus: f64,
-    pub graph_degree_bonus: f64,
-    pub recent_access_bonus: f64,
-    pub episodic_bonus: f64,
-    pub days_since_ref_time: f64,
-}
-
+// LANE-REMOVE(P4.D291|P4.D292|P4.D297): v4 deleted calculateProtectionScore's memory-weighting home in e0ac7493a
 pub fn calculate_protection_score(
     m: &MemoryInputs,
     cfg: &ProtectionConfig,
     now_ms: f64,
 ) -> ProtectionScore {
-    let base_importance = m.reinforced_importance.unwrap_or(m.importance);
-    let reinforced = m.last_reinforced_at_ms.unwrap_or(0.0);
-    let reference = m.created_at_ms.max(reinforced);
-    let days_since_ref_time = ((now_ms - reference) / MS_PER_DAY).max(0.0);
-
-    let decay = 0.5_f64.powf(days_since_ref_time / cfg.content_half_life_days);
-    let content_component = cfg
-        .max_content_contribution
-        .min(base_importance * decay.max(cfg.content_floor));
-
-    let reinforcement_count = m.reinforcement_count.unwrap_or(1);
-    let reinforcement_bonus = cfg
-        .max_reinforcement_bonus
-        .min(((reinforcement_count as f64) + 1.0).log2() * cfg.reinforcement_coeff);
-
-    let graph_degree_bonus = cfg
-        .max_graph_degree_bonus
-        .min((m.graph_degree as f64) * cfg.graph_degree_coeff);
-
-    let mut recent_access_bonus = 0.0;
-    if let Some(accessed) = m.last_accessed_at_ms {
-        let days_since_access = (now_ms - accessed) / MS_PER_DAY;
-        if days_since_access < cfg.recent_access_window_days {
-            recent_access_bonus = cfg.recent_access_bonus;
-        }
-    }
-
-    // Episodic protection bump: one-off dated occurrences are the first thing
-    // the retention rules would otherwise delete and the hardest to regenerate.
-    let episodic_bonus = if m.kind_episodic {
-        cfg.episodic_bonus
-    } else {
-        0.0
-    };
-
-    let score = 1.0_f64.min(
-        content_component
-            + reinforcement_bonus
-            + graph_degree_bonus
-            + recent_access_bonus
-            + episodic_bonus,
-    );
-
-    ProtectionScore {
-        score,
-        content_component,
-        reinforcement_bonus,
-        graph_degree_bonus,
-        recent_access_bonus,
-        episodic_bonus,
-        days_since_ref_time,
-    }
+    crate::memory_scoring::calculate_protection_score(
+        &crate::memory_scoring::ProtectionInput {
+            importance: m.importance,
+            reinforced_importance: m.reinforced_importance,
+            created_at_ms: m.created_at_ms,
+            last_reinforced_at_ms: m.last_reinforced_at_ms,
+            last_accessed_at_ms: m.last_accessed_at_ms,
+            reinforcement_count: m.reinforcement_count.map(|n| n as f64),
+            graph_degree: m.graph_degree,
+            kind: m.kind_episodic.then_some("episodic"),
+            source: None,
+        },
+        cfg,
+        now_ms,
+    )
 }
 
 // ---------------------------------------------------------------------------
 // Retrieval ranking blend + relevance floors (ports of the same TS file).
 // ---------------------------------------------------------------------------
 
-pub const RANKING_RELEVANCE_WEIGHT: f64 = 0.75;
-pub const RANKING_PRIORITY_WEIGHT: f64 = 0.25;
+// LANE-REMOVE(P4.D291|P4.D292|P4.D297): v4 deleted the memory-weighting blend + floors in e0ac7493a
+pub use crate::memory_scoring::{
+    compute_ranking_blend, default_min_cosine_for_provider, DEFAULT_MIN_COSINE_NEURAL,
+    DEFAULT_MIN_COSINE_TFIDF, RANKING_PRIORITY_WEIGHT, RANKING_RELEVANCE_WEIGHT,
+};
 
-/// Blend cosine relevance (primary) with decaying priority (`rawWeight`, no
-/// floor). Mirrors `computeRankingBlend`.
-pub fn compute_ranking_blend(cosine: f64, raw_weight: f64) -> f64 {
-    RANKING_RELEVANCE_WEIGHT * cosine + RANKING_PRIORITY_WEIGHT * raw_weight
-}
-
-pub const DEFAULT_MIN_COSINE_NEURAL: f64 = 0.30;
-pub const DEFAULT_MIN_COSINE_TFIDF: f64 = 0.10;
-
-/// Provider-aware relevance floor. `BUILTIN` is the local TF-IDF provider;
-/// everything else (incl. None) is treated as neural. Mirrors
-/// `defaultMinCosineForProvider`.
-pub fn default_min_cosine_for_provider(provider: Option<&str>) -> f64 {
-    if provider == Some("BUILTIN") {
-        DEFAULT_MIN_COSINE_TFIDF
-    } else {
-        DEFAULT_MIN_COSINE_NEURAL
-    }
-}
-
-/// Human-readable relative age. Port of `formatRelativeAge`. Reference time is
-/// max(createdAt, lastReinforcedAt). The day ladder itself is
-/// [`crate::format_time::format_relative_days`] — v4 `3ee3b1342` moved it to
-/// `lib/format-time.ts` and made this label delegate "so the two readings
-/// cannot drift" (the wardrobe tools' "last worn" reads the same ladder);
-/// the delegation is byte-identical (the Phase-1 pin does not move).
-///
-/// Episodic spine (v4 8bf3cb5f): the label reads off the EVENT clock —
-/// `occurredAt` when present, else the write/reinforce clock — so "last week"
-/// means when it happened, not when it was written down. Decay (above)
-/// deliberately stays on the write clock; only the human-facing age label
-/// follows the event.
+/// Human-readable relative age (v4's deleted `formatRelativeAge`) — the
+/// event clock when `occurredAt` parsed, else the write clock
+/// `max(createdAt, lastReinforcedAt)`, on the shared day ladder; the same
+/// reading as [`crate::memory_time::format_memory_age`], over this module's
+/// pre-parsed event time.
+// LANE-REMOVE(P4.D291|P4.D292|P4.D297): v4 deleted formatRelativeAge in e0ac7493a
 pub fn format_relative_age(m: &MemoryInputs, now_ms: f64) -> String {
-    let reinforced = m.last_reinforced_at_ms.unwrap_or(0.0);
-    let write_reference = m.created_at_ms.max(reinforced);
-    let reference = m.occurred_at_ms.unwrap_or(write_reference);
-    crate::format_time::format_relative_days(reference, now_ms)
+    let write_reference =
+        crate::memory_scoring::reference_time_ms(m.created_at_ms, m.last_reinforced_at_ms);
+    crate::format_time::format_relative_days(m.occurred_at_ms.unwrap_or(write_reference), now_ms)
 }

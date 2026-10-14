@@ -1,36 +1,40 @@
 /**
- * Oracle case: the episodic-spine pure helpers (P4.d12 unit 4).
+ * Oracle case: the episodic-spine pure helpers (P4.d12 unit 4), re-aimed at
+ * the pin (`83334b9a5`) by P4.D289.
  *
- * Drives the REAL functions from the v4 server's lib/memory/episodic.ts —
- * `buildMemoryAnchorLine`, `buildMemoryEmbeddingText`, `resolveWhenPhrase`,
- * `eventReferenceTimeMs` — over a fixed, deterministic input corpus, and
- * prints the results as newline-delimited JSON on stdout. The Rust
- * differential test feeds the SAME corpus through the Rust port
- * (`quilltap_core::episodic`) and asserts byte-equal strings / exact numbers
- * (tier-1 exact equivalence).
+ * Drives v4's REAL functions, each from where the pin keeps it:
+ *   buildMemoryAnchorLine(view, timeZone)  — lib/memory/episodic.ts (now zoned:
+ *     the date is the memory-calendar date, bug 212)
+ *   embeddingTextFor(row, timeZone)        — lib/memory/index-store/embedding-text.ts
+ *     (v4 deleted `buildMemoryEmbeddingText` for it, Phase B)
+ *   resolveWhenPhrase(phrase, anchor, tz)  — lib/memory/time/clock.ts (v4 moved
+ *     it there with the ONE rule table; the write side now stamps the window
+ *     START on the memory calendar)
+ *   eventReferenceTimeMs                   — lib/memory/episodic.ts (unchanged)
+ * over a fixed corpus, with the zone passed EXPLICITLY as `UTC`, emitting
+ * NDJSON. The Rust differential feeds the same corpus through
+ * `quilltap_core::{memory_embedding_text, memory_time, episodic}`.
  *
- * IMPORTANT — this imports the actual app code, it does not reimplement it.
- * Run it from inside the server checkout so `@/` path aliases resolve, and
- * **pin TZ=UTC**: `resolveWhenPhrase`'s absolute-ISO branch calls
+ * Run it under `TZ=UTC`: `resolveWhenPhrase`'s absolute-ISO branch calls
  * `Date.parse(raw)`, and a zone-less datetime (`2026-07-14t09:30:00`) parses
- * in the process's LOCAL zone. Production `occurredAt` inputs are always
- * zone-carrying repo-minted ISO strings, so the port implements UTC
- * semantics and the oracle must be generated under the same clock:
+ * in the process's LOCAL zone (the `ZONELESS_PARSE_AS_UTC` ruled divergence —
+ * the `memory_time` family's Chicago leg pins it):
  *
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   cd ~/source/quilltap-server
- *   TZ=UTC npx tsx <worktree>/harness/oracle/cases/episodic.ts > /tmp/oracle-episodic.ndjson
+ *   TZ=UTC $N/npx tsx "$V5W/harness/oracle/cases/episodic.ts" > /tmp/oracle-episodic.ndjson
  *
  * The corpus is fixed in code (no randomness, no Date.now()): every case pins
  * explicit inputs, so the oracle is reproducible and the Rust side hardcodes
  * the identical corpus.
  */
 
-import {
-  buildMemoryAnchorLine,
-  buildMemoryEmbeddingText,
-  resolveWhenPhrase,
-  eventReferenceTimeMs,
-} from '@/lib/memory/episodic';
+import { buildMemoryAnchorLine, eventReferenceTimeMs } from '@/lib/memory/episodic';
+import { embeddingTextFor } from '@/lib/memory/index-store/embedding-text';
+import { resolveWhenPhrase } from '@/lib/memory/time/clock';
+
+/** Every zoned helper here runs on the UTC memory calendar. */
+const TZ = 'UTC';
 
 // ---------------------------------------------------------------------------
 // buildMemoryAnchorLine — the (when · story time · place) line.
@@ -72,7 +76,7 @@ const ANCHOR_CASES: { id: string; view: Record<string, unknown> }[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// buildMemoryEmbeddingText — the canonical embedded text.
+// embeddingTextFor — the canonical embedded text (was buildMemoryEmbeddingText).
 // ---------------------------------------------------------------------------
 
 const EMBED_CASES: {
@@ -209,7 +213,7 @@ function main(): void {
   const lines: string[] = [];
   for (const c of ANCHOR_CASES) {
     lines.push(
-      JSON.stringify({ kind: 'anchorLine', id: c.id, result: buildMemoryAnchorLine(c.view as never) }),
+      JSON.stringify({ kind: 'anchorLine', id: c.id, result: buildMemoryAnchorLine(c.view as never, TZ) }),
     );
   }
   for (const c of EMBED_CASES) {
@@ -217,7 +221,7 @@ function main(): void {
       JSON.stringify({
         kind: 'embeddingText',
         id: c.id,
-        result: buildMemoryEmbeddingText(c.summary, c.content, c.anchors as never),
+        result: embeddingTextFor({ summary: c.summary, content: c.content, ...(c.anchors ?? {}) } as never, TZ),
       }),
     );
   }
@@ -226,7 +230,7 @@ function main(): void {
       JSON.stringify({
         kind: 'whenPhrase',
         id: c.id,
-        result: resolveWhenPhrase(c.phrase, c.anchor),
+        result: resolveWhenPhrase(c.phrase as string, c.anchor, TZ),
       }),
     );
   }

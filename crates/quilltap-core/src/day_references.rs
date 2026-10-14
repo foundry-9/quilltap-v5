@@ -1,6 +1,14 @@
 //! Port of lib/memory/day-references.ts (v4 `505dcb1f`) — deterministic
 //! day-reference resolution.
 //!
+//! **A LANE-REMOVE shim (work order P4.D289, §R.10(o)).** v4 `e0ac7493a`
+//! DELETED this module for the ONE rule table in `lib/memory/time/*`
+//! ([`crate::memory_time::resolve_day_reference`] — every window closing 1 ms
+//! early, ASCII-only case folding). Its one caller is the recall lane's
+//! distill (P4.D291), which re-points; until then this keeps its pre-refactor
+//! body VERBATIM (`to = day0`, Unicode `(?i)`) so no caller's behaviour moves
+//! before its owner re-points it (LR-1).
+//!
 //! The per-turn distillation (`extractMemorySearchKeywords`) asks a cheap LLM to
 //! decide whether a turn is retrospective and to resolve any referenced period
 //! into an absolute `timeRange`. Small models reliably fumble the *same-day*
@@ -36,6 +44,7 @@ use crate::clock::iso_from_unix_ms;
 use crate::recall_tags::TimeWindow;
 
 /// v4 `DayReferenceResolution`.
+// LANE-REMOVE(P4.D291): v4 deleted day-references.ts's DayReferenceResolution in e0ac7493a
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DayReferenceResolution {
     /// Absolute UTC window covering the referenced local calendar period. ISO
@@ -304,6 +313,7 @@ fn days_ago_token(p: &str) -> Option<&str> {
 /// zone (see the module header). An unresolvable name falls back to UTC, i.e. a
 /// server whose zone cannot be named behaves like a UTC server; v4 cannot reach
 /// that arm (the process zone always resolves).
+// LANE-REMOVE(P4.D291): v4 deleted resolveDayReference (server-local) in e0ac7493a
 pub fn resolve_day_reference(text: &str, now_ms: f64, tz: &str) -> Option<DayReferenceResolution> {
     // v4 `if (!text || !Number.isFinite(now.getTime())) return null`.
     if text.is_empty() || !now_ms.is_finite() {

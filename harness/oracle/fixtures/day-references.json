@@ -1,5 +1,5 @@
 {
-  "_comment": "Corpus for the day-reference resolver tier-1 differential (P4.d26, v4 505dcb1f `lib/memory/day-references.ts`). Every `now` is an ABSOLUTE instant, deliberately: the oracle runs the SAME corpus twice, once under TZ=UTC and once under TZ=America/Chicago, so the local-vs-UTC calendar crux the drift fixes is what the two legs differ on. 2026-07-29T02:44:00.000Z is 21:44 CDT on 2026-07-28 — the diagnosed chat's wall clock, where the UTC day contains none of the mission. `now: null` is v4's Invalid Date arm.",
+  "_comment": "Corpus for the day-reference resolver tier-1 differential (P4.d26, v4 505dcb1f `lib/memory/day-references.ts`; re-aimed by P4.D289 onto the pin 83334b9a5 `lib/memory/time/clock.ts` resolveDayReference, which takes the memory-calendar zone explicitly). Every `now` is an ABSOLUTE instant, deliberately: the oracle walks the SAME corpus once per zone of its explicit list (UTC, America/Chicago, Pacific/Chatham), so the local-vs-UTC calendar crux is what the zone blocks differ on. The eleven..fourteen rows pin the widened number words; the two casefold rows pin LR-9 (v4's scan carries no `u` flag: U+017F and U+212A do not fold to ASCII). 2026-07-29T02:44:00.000Z is 21:44 CDT on 2026-07-28 — the diagnosed chat's wall clock, where the UTC day contains none of the mission. `now: null` is v4's Invalid Date arm.",
   "_regen": "See the header of crates/quilltap-harness/tests/day_references_equivalence.rs.",
   "cases": [
     { "id": "mission-today", "text": "No, no. I mean the mission today. I want to hear about it.", "now": "2026-07-29T02:44:00.000Z" },
@@ -47,6 +47,15 @@
     { "id": "dst-spring-transition-day-today", "text": "the mission today", "now": "2026-03-08T18:00:00.000Z" },
     { "id": "dst-fall-yesterday", "text": "about yesterday", "now": "2026-11-02T18:00:00.000Z" },
     { "id": "dst-fall-last-night", "text": "you were quiet last night", "now": "2026-11-01T12:00:00.000Z" },
-    { "id": "dst-fall-this-week", "text": "busy this week", "now": "2026-11-05T18:00:00.000Z" }
+    { "id": "dst-fall-this-week", "text": "busy this week", "now": "2026-11-05T18:00:00.000Z" },
+    { "id": "word-eleven-days-ago", "text": "we met eleven days ago", "now": "2026-07-29T02:44:00.000Z" },
+    { "id": "word-twelve-days-ago", "text": "we met twelve days ago", "now": "2026-07-29T02:44:00.000Z" },
+    { "id": "word-thirteen-days-ago", "text": "we met thirteen days ago", "now": "2026-07-29T02:44:00.000Z" },
+    { "id": "word-fourteen-title-case", "text": "Fourteen Days Ago, it was", "now": "2026-07-29T02:44:00.000Z" },
+    { "id": "word-fifteen-days-ago-unknown", "text": "we met fifteen days ago", "now": "2026-07-29T02:44:00.000Z" },
+    { "id": "casefold-long-s-yesterday", "text": "yeſterday was long", "now": "2026-07-29T02:44:00.000Z" },
+    { "id": "case-insensitive-ascii-capital-k", "text": "last weeK we met", "now": "2026-07-29T02:44:00.000Z" },
+    { "id": "casefold-kelvin-last-week", "text": "last weeK we met", "now": "2026-07-29T02:44:00.000Z" },
+    { "id": "casefold-kelvin-before-word-char", "text": "last weeKs plans", "now": "2026-07-29T02:44:00.000Z" }
   ]
 }

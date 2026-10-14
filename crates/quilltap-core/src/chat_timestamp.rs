@@ -249,7 +249,14 @@ fn get_date_parts_in_timezone(
 /// and every other field simply *rolls over* rather than erroring — a month of
 /// `13` lands in the next year, a day of `32` in the next month. Both fall out
 /// of arithmetic, so nothing here validates.
-fn date_utc_ms(year: i64, month0: i64, day: i64, hours: i64, minutes: i64, seconds: i64) -> i64 {
+pub(crate) fn date_utc_ms(
+    year: i64,
+    month0: i64,
+    day: i64,
+    hours: i64,
+    minutes: i64,
+    seconds: i64,
+) -> i64 {
     // Date.UTC's legacy two-digit-year window.
     let year = if (0..=99).contains(&year) {
         year + 1900

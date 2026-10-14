@@ -179555,3 +179555,110 @@ frozen 0.0.1110.
 3. **A follow-ups smalls round** — the OPEN list above, with the
    `01a83539d` round's (led by the human ruling owed on P4.D273's
    carried-file metadata source).
+
+---
+
+## P4.D289 — the memory programme's PURE leaf family (`SCORING`) — lane record (Tier 1)
+
+Work order: `work-orders/p4.d289-memory-pure-leaves-scoring-calendar-candidate-admission-decide-embedding-text.md`.
+Branch `claude/p4-d289-memory-pure-leaves-82110131` (stage A, from `main` `821101312`). Pin `83334b9a5`
+(`/tmp/qt-v4-pin-p4d289-83334b9a5`, `4.10.0-dev.176`, openai `7.30.0`, the three symlink classes).
+Units 4 / 5+7 / 6 / 8 ran as four sub-agents in the one worktree; units 1–3 and 9 by the lead.
+
+### §R.2 probe (an observation)
+2026-10-13 22:56 CDT: branch `main`, tree CLEAN; **v4 moved: `a42c282b8` ("Release checklist 7: qt-* theme
+classes") observed 2026-10-13 22:56 CDT** — `83334b9a5..main` = `7417e9a1b`, `01f508d4e`, `a42c282b8`
+(all past the pin, out of scope); `bugfix` unmoved. Pin usable.
+
+### Red-first (§R.7)
+- All SEVEN tier-1 families IMPORT-DEAD at the pin unchanged (six on the deleted module, `episodic` on the
+  missing `buildMemoryEmbeddingText` export).
+- Re-aimed cases vs UNCHANGED main Rust: `memory_weighting` RED 17/17 (the floored weight has no successor);
+  `ranking_blend` value-GREEN (22 rows); `memory_name_helpers` RED 4 of 8 reinforced rows (`one`,
+  `power-of-two`, `exact-16`, `hundred` — the survey's `saturates-cap` / `cap-at-7` are capped at 1.0 under
+  BOTH formulas, measured); `extract_novel_details` value-GREEN 15/15; `memory_merge_plan` RED 32 of 34 plan
+  rows (every red on the patch — the absolute count + recomputed importance (bug 226), content on 4 rows, the
+  whole-array link rewrite on 3, `lastReinforcedAt` on 4; footnotes agreed everywhere); `day_references` RED
+  84 of 165 (81 = 27 cases × 3 zones, `to` 1 ms earlier; 3 = the Kelvin-before-word-char row v4 refuses);
+  `episodic` RED 9 of 94 (the write stamps: today / tonight / this-morning / earlier-today / mixed-case →
+  local midnight, last night → 18:00 the day before, last week → Monday, `2026-02-31` → null; plus
+  `anchor-when-short`, below).
+- The eight NEW families had no v5 surface on main (compile-red by construction).
+- LANE-REMOVE markers before: 0 (the wardrobe census green).
+- LR-1's formula-forward exposure, measured: `cargo test -p quilltap-core --lib` = 3,454 passed / 0 failed
+  with the forward in place (no sibling unit test pins an old-formula value).
+
+### What landed (all in `SCORING`)
+- `memory_scoring/` (+ `js_sort`), `embedding_scale.rs`, `memory_time/{calendar,rules,clock,anchors,age_label}`,
+  `services/memory_time_zone.rs`, `memory_candidate.rs`, `reinforcement_footnotes.rs`, `admission/{types,
+  thresholds,decide,fold,novel_details,outcome,describe}`, `memory_embedding_text.rs` — C1-A whole; the final
+  spellings are in the order's status header.
+- Recorded touches of unowned pure files: `chat_timestamp.rs` `date_utc_ms` → `pub(crate)` (visibility only,
+  LR-7); `jsnum.rs` + `math_max` / `math_min` (append, LR-8); `episodic.rs` `js_date_parse_ms` — **a v4
+  fidelity FIX**: V8 accepts hour 24 only as `T24:00[:00[.000]]`; `T24:01Z` / `T24:00:01Z` / `T24:00:00.001Z`
+  are NaN in v4 and parsed in v5 (found by the `memory_time` family; a unit test pins it).
+- LR-8 departure, deliberate: every non-total numeric sort goes through `memory_scoring::js_sort::
+  js_array_sort_by` — V8's own short-array algorithm (CountAndMakeRun + BinaryInsertionSort, n < 64) —
+  rather than `stable_sort_by_unchecked` alone, which avoids the panic but permutes a NaN-keyed array
+  differently from V8 (measured: the `memory_scoring` `nan-key` row). Arrays of 64+ fall back to the
+  unchecked merge sort (identical for every total comparator; a NaN-keyed 64+ array is a recorded residual).
+- Shims (§R.10(o)), 21 markers: `memory_weighting.rs` 9 (`P4.D291|P4.D292|P4.D297`, `e0ac7493a` — protection,
+  the blend + floors forward; the floored weight family keeps its old body; `format_relative_age` reads
+  `memory_scoring::reference_time_ms` + the shared ladder); `day_references.rs` 2 (`P4.D291`, whole old body);
+  `memory_gate.rs` 7 (`P4.D288|P4.D290|P4.D297`; occasions (→ 3-arg), footnote count / cap, novel details
+  forward; the 2-arg `append_capped_footnotes` keeps its old body; the FORMULA FORWARDS — C1-4); `episodic.rs`
+  3 (`P4.D290|P4.D291|P4.D292|P4.D296|P4.D297`: the UTC anchor line `c2795733f`, `build_memory_embedding_text`
+  `af48f6cc2`, `resolve_when_phrase` `e0ac7493a` — old bodies). No harness file calls a shim.
+- Censuses: NEW `no_memory_lane_remove_markers_left` (RED by design: 21 markers) + its format test (green);
+  `no_wardrobe_lane_remove_markers_left` narrowed by sha (LR-2, a planned edit of an unowned harness file —
+  BLOCK ISSUE raised in the order) and GREEN; `host_zone_sites_census` gained three rows for
+  `memory_time/calendar.rs` (1 `TimeZone::get(` — the ONE resolver; 3 `civil_from_days(` — the zoned split,
+  `toISOString`, the `Date.UTC` round trip; 1 `TimeZone::UTC` — `zoned_parts`' unreachable misuse fallback).
+- The harness `corpus()` re-pointed off `MemoryInputs` onto a string-carrying `CorpusMemory`.
+
+### Families (all green from the pin, zero SKIP)
+NEW: `memory_scoring` (118), `memory_time` (25,072 rows over two TZ legs), `memory_time_zone_refresh_tier2`
+(7 scenarios), `memory_candidate` (140), `reinforcement_footnotes` (36), `admission_decide` (140),
+`admission_fold_plan` (51), `memory_embedding_text` (256). RE-AIMED: `memory_weighting` (17),
+`ranking_blend` (22), `memory_name_helpers` (19), `extract_novel_details` (15), `memory_merge_plan` (53;
+the retired rows and why are in its header — the `links-excluded` row left out as P4.D297's), `day_references`
+(165 = 3 explicit zones × 55; corpus grown 46 → 55), `episodic` (94). Every family is `ok` in
+`recipe_sweep.py --list`; `--self-test` exit 0; no `--collisions` hit.
+
+### Ruled divergences (both-ways tables)
+- `MEMORY_ZONE_VALIDITY` (LR-6) — 3 rows: `Etc/Unknown`, `Factory`, `posixrules` (jiff on the HOST's system
+  zoneinfo `+VERSION` 2026d accepts; ICU 78.2 / tz 2025c refuses). Every link, case-fold and offset form in a
+  65-string corpus agrees (the ECMA-402 `±HH`, `±HHMM`, `±HH:MM` ≤ 23:59, U+2212 sign, ported as fixed zones).
+- `MEMORY_CALENDAR_TZDB_VINTAGE` (LR-7) — EMPTY for the corpus zones (measured; no table needed).
+- `ZONELESS_PARSE_AS_UTC` (LR-10) — 7 rows (event ×3, when ×2, normalise ×1, anchors ×1) differing only on
+  the Chicago leg; `zoneless-from-same-order` the negative control.
+- `MEMORY_ZONE_ROW_UNVALIDATED` (LR-5) — 1 row (v4 drops a schema-refused row; v5's one-column read takes it).
+
+### FINDINGS for the human (pinned both ways, NOT ruled)
+- **`JS_DATE_PARSE_ISO_SUBSET`** — `episodic::js_date_parse_ms` ports V8's ISO grammar only; V8's LEGACY
+  `Date.parse` fallback (`July 14, 2026`, `2026/07/14`, `2026-7-14`, `Tue Jul 14 2026`, `2026-07-14 12:00`,
+  full-width digits) and the expanded-year form (`+010000-…`) are finite in v4 and `None` in v5. Pinned:
+  27 rows in `memory_embedding_text`, 1 in `episodic` (`anchor-when-short`, which surfaced only because bug
+  212 zoned the stamp). The gap predates the round and reaches EVERY caller of the helper (incl.
+  `memory_scoring::date_ms`, `occasions_are_distinct`, `earliest`); the `memory_time` family keeps those
+  shapes out of its corpus. Ruling owed: port V8's legacy parser, or rule the divergence.
+- **`PROTOTYPE_KEY_MONTH_THROWS`** — v4's `resolveEventTime` throws `RangeError: Invalid time value` on the
+  phrases `constructor 5` / `5 constructor` (its month table is a plain object, so `MONTH_NAMES['constructor']`
+  is `Object`); v5's closed table answers "no event time". Pinned both ways in `memory_time`; a candidate v4
+  filing (a model-emitted `when` can crash v4's extraction write).
+- v4 measured against its own doc: `calendar-refresh.ts` says a failed read "leaves the previous value in
+  force", but v4's repository fallback answers `[]`, so the cached zone is CLEARED (v5 ports the behaviour).
+- `format_time::format_relative_days` drops a NaN reference to "today" where v4 renders `NaN year ago`
+  (reachable only with an unparseable `createdAt` AND no parseable `occurredAt`); `format_time.rs` is not
+  this lane's, so the age corpus avoids the row. HANDOFF candidate (route `f64::max` through `jsnum::math_max`).
+- A JSON / `serde_json::Value` cannot carry NaN / ±Infinity: `parse_memory_candidate` cannot see Zod's
+  non-finite `received` key (3 rows compare code / expected / path only; no wire site reaches it).
+
+### Notes
+- `admission::types` adds a crate-private `serialize_js_number` (a seventh copy of that pattern) and
+  `decide.rs` / `fold.rs` each carry a small JS-truthiness helper — consolidation candidates, not defects.
+- 💸 for the dogfood pass (proved only with the consumer lanes on the union): a Salon timezone east of UTC
+  (`Asia/Kolkata`) — an extraction turn at 23:30 local writing "today" stamps LOCAL midnight and the embedded
+  anchor line reads the local date; the first boot's `rezone-legacy-memory-occurred-at-v1` on a PRE-round copy;
+  a legacy-link Salon timezone (`US/Central`) honoured; a reinforced memory's `reinforcedImportance` on v4's
+  `log2(max(1, n))` scale in the Memories card.

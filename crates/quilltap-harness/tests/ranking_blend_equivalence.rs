@@ -2,19 +2,24 @@
 //! string-valued relative-age label. Proves the harness pattern scales to a
 //! second numeric function and to STRING equivalence (exact match, no epsilon).
 //!
-//! Generate the oracle output:
+//! P4.D289 re-aimed it at v4's scoring + time modules (`computeRankingBlend`
+//! and `defaultMinCosineForProvider` from `lib/memory/scoring/relevance.ts`,
+//! `formatMemoryAge` from `lib/memory/time/age-label.ts` — values unchanged
+//! from the deleted weighting module), plus the ONE scale predicate's `''` /
+//! lower-case rows.
+//!
+//! Generate the oracle output, then run:
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
-//!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/ranking-blend.ts \
-//!     > /tmp/oracle-ranking.ndjson
-//! Run:
+//!   TZ=UTC $N/npx tsx "$V5W/harness/oracle/cases/ranking-blend.ts" > /tmp/oracle-ranking.ndjson
+//!   cd "$V5W"
 //!   QT_ORACLE_RANKING=/tmp/oracle-ranking.ndjson \
-//!     cargo test -p quilltap-harness --test ranking_blend_equivalence
+//!     cargo test -p quilltap-harness --test ranking_blend_equivalence -- --nocapture
 
 use std::collections::HashMap;
 
-use quilltap_core::memory_weighting::{
-    compute_ranking_blend, default_min_cosine_for_provider, format_relative_age, MemoryInputs,
-};
+use quilltap_core::memory_scoring::{compute_ranking_blend, default_min_cosine_for_provider};
+use quilltap_core::memory_time::format_memory_age;
 use quilltap_harness::NOW_MS;
 use serde::Deserialize;
 
@@ -32,13 +37,10 @@ enum OracleRow {
     Age { id: String, value: String },
 }
 
-fn age_mem(days_ago: f64) -> MemoryInputs {
-    // Mirror the TS: createdAt = NOW - daysAgo*day.
-    MemoryInputs {
-        importance: 0.5,
-        created_at_ms: NOW_MS - days_ago * MS_PER_DAY,
-        ..Default::default()
-    }
+/// Mirror the TS: createdAt = NOW - daysAgo*day (no reinforcement, no
+/// occurredAt — the write clock alone).
+fn age_of(days_ago: f64) -> String {
+    format_memory_age(NOW_MS - days_ago * MS_PER_DAY, None, None, NOW_MS)
 }
 
 #[test]
@@ -95,6 +97,8 @@ fn ranking_blend_matches_oracle() {
         ("ollama", Some("OLLAMA")),
         ("null", None),
         ("unknown", Some("WAT")),
+        ("empty", Some("")),
+        ("builtin-lower", Some("builtin")),
     ] {
         let got = default_min_cosine_for_provider(prov);
         let want = *cosine
@@ -119,13 +123,18 @@ fn ranking_blend_matches_oracle() {
         ("multi-year", 800.0),
         ("future-clamped", -5.0),
     ] {
-        let got = format_relative_age(&age_mem(days_ago), NOW_MS);
+        let got = age_of(days_ago);
         let want = age
             .get(id)
             .unwrap_or_else(|| panic!("oracle missing age '{id}'"));
         assert_eq!(&got, want, "age '{id}': rust={got:?} oracle={want:?}");
     }
 
+    assert_eq!(
+        (blend.len(), cosine.len(), age.len()),
+        (5, 7, 10),
+        "oracle row counts drifted from the corpus"
+    );
     eprintln!(
         "OK: ranking-blend case matched oracle ({} blend, {} cosine, {} age).",
         blend.len(),

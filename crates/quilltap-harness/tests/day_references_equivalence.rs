@@ -1,40 +1,43 @@
-//! Tier-1 differential: the deterministic day-reference resolver
-//! (`quilltap_core::day_references` vs v4 `lib/memory/day-references.ts`,
-//! v4 `505dcb1f` — P4.d26).
+//! Tier-1 differential: the read-side day-reference resolver at the pin
+//! (`83334b9a5`) — `quilltap_core::memory_time::resolve_day_reference` vs v4
+//! `lib/memory/time/clock.ts`'s `resolveDayReference(text, now, timeZone)`
+//! (P4.D289 re-aim; first ported as P4.d26 against `505dcb1f`'s
+//! `lib/memory/day-references.ts`, deleted by v4 `e0ac7493a` — bug 212).
 //!
-//! Drives v5's `resolve_day_reference` over the committed corpus
+//! Drives v5's resolver over the committed corpus
 //! (`harness/oracle/fixtures/day-references.json`) and compares, field for
 //! field, against the NDJSON v4's REAL `resolveDayReference` emitted from the
-//! SAME corpus: the window bytes (`from`/`to` as `toISOString()` renders them),
-//! `pastPointing`, and the normalized `matched` phrase.
+//! SAME corpus: the window bytes (`from`/`to` as `toISOString()` renders them —
+//! every `to` one millisecond before the next boundary), `pastPointing`, and
+//! the normalized `matched` phrase.
 //!
-//! **TWO ZONE LEGS, and they are the point.** The module resolves calendar
-//! boundaries in the SERVER-LOCAL zone, and the live bug it fixes is exactly a
-//! UTC-vs-local difference — under `TZ=UTC` local *is* UTC, so a single-zone
-//! differential cannot tell the fix from the bug. The oracle therefore runs the
-//! whole corpus twice (`TZ=UTC` and `TZ=America/Chicago`, the diagnosed
-//! incident's zone, which carries both DST transitions), each row recording its
-//! zone; v5 takes the zone as an explicit IANA parameter (core never reads the
-//! process zone) and is fed the row's own. The assertions below REQUIRE both
-//! legs, require the non-UTC leg to be DST-carrying, and require the two legs
-//! to actually disagree somewhere — so a regenerate that silently loses a leg
-//! fails instead of passing on half the evidence.
+//! **ZONES ARE EXPLICIT, and two of them are the point.** At the pin the
+//! resolver takes the memory-calendar zone as an ARGUMENT, so the case walks
+//! the corpus once per zone of an explicit list (`UTC`, `America/Chicago`,
+//! `Pacific/Chatham` — one block each, in order), passing it on both sides; the
+//! process zone plays no part (the P4.d26 version ran two `TZ` legs because
+//! v4 then read the process zone). The local-vs-UTC crux is still the guard:
+//! the assertions below REQUIRE the UTC and DST-carrying Chicago blocks and
+//! require the zone blocks to actually disagree somewhere — so a regenerate
+//! that silently loses a zone fails instead of passing on half the evidence.
 //!
-//! Generate the oracle output (both legs, one go — the second APPENDS):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
-//!   cd ~/source/quilltap-server           # or a detached worktree pinned at
-//!                                         # the baseline when v4 is dirty
-//!   TZ=UTC $N/node --import tsx $W/harness/oracle/cases/day-references.ts \
-//!     > /tmp/oracle-day-references.ndjson
-//!   TZ=America/Chicago $N/node --import tsx $W/harness/oracle/cases/day-references.ts \
-//!     >> /tmp/oracle-day-references.ndjson
-//! Run:
+//! Red-first (P4.D289, recorded in the lane record): the re-aimed case against
+//! the UNCHANGED P4.d26 test reddened 84 of 165 rows — 81 (27 cases × 3 zones)
+//! where only `to` moved 1 ms earlier, and `casefold-kelvin-before-word-char`
+//! × 3 (the old Unicode `(?i)` folded KELVIN SIGN to `k`; v4's scan has no
+//! `u` flag — LR-9).
+//!
+//! Run from inside a v4 checkout (or the round's pin):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   cd ~/source/quilltap-server
+//!   TZ=UTC $N/npx tsx "$V5W/harness/oracle/cases/day-references.ts" > /tmp/oracle-day-references.ndjson
+//!   cd "$V5W"
 //!   QT_ORACLE_DAY_REFERENCES=/tmp/oracle-day-references.ndjson \
 //!     cargo test -p quilltap-harness --test day_references_equivalence -- --nocapture
 
 use std::collections::BTreeSet;
 
-use quilltap_core::day_references::resolve_day_reference;
+use quilltap_core::memory_time::resolve_day_reference;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -58,14 +61,14 @@ struct OracleRow {
     resolution: Value,
 }
 
-/// Zones the oracle legs MUST cover: UTC (where local == UTC) and a
+/// Zones the oracle's explicit list MUST cover: UTC (where local == UTC) and a
 /// DST-carrying non-UTC zone (where they differ, twice a year by an hour).
 const REQUIRED_ZONES: [&str; 2] = ["UTC", "America/Chicago"];
 
 #[test]
 fn day_references_matches_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_DAY_REFERENCES") else {
-        eprintln!("QT_ORACLE_DAY_REFERENCES not set — skipping day-references differential");
+        eprintln!("SKIP: set QT_ORACLE_DAY_REFERENCES to the oracle NDJSON (see test header).");
         return;
     };
     let oracle_raw = std::fs::read_to_string(&oracle_path).expect("read oracle NDJSON");
@@ -89,23 +92,23 @@ fn day_references_matches_oracle() {
     for required in REQUIRED_ZONES {
         assert!(
             zones.contains(required),
-            "oracle is missing the {required} leg — regenerate BOTH legs (see the header); \
+            "oracle is missing the {required} zone block — regenerate (see the header); \
              a UTC-only run cannot distinguish local-calendar math from UTC math"
         );
     }
     assert_eq!(
         oracle_rows.len(),
         spec.cases.len() * zones.len(),
-        "oracle row count != corpus cases x zone legs — a truncated or stale NDJSON"
+        "oracle row count != corpus cases x zones — a truncated or stale NDJSON"
     );
 
     let mut resolved = 0usize;
     let mut null_resolutions = 0usize;
-    // id -> the resolution each zone leg produced (for the divergence check).
+    // id -> the resolution each zone produced (for the divergence check).
     let mut by_case: std::collections::BTreeMap<String, Vec<Value>> = Default::default();
 
     for (i, oracle) in oracle_rows.iter().enumerate() {
-        // The oracle walks the corpus in order, once per leg.
+        // The oracle walks the corpus in order, once per zone.
         let case = &spec.cases[i % spec.cases.len()];
         assert_eq!(case.id, oracle.id, "case order mismatch at row {i}");
         let label = format!("{} @ {}", case.id, oracle.tz);
@@ -138,7 +141,7 @@ fn day_references_matches_oracle() {
             .push(oracle.resolution.clone());
     }
 
-    // The zone legs must actually disagree somewhere; if they agreed everywhere,
+    // The zone blocks must actually disagree somewhere; if they agreed everywhere,
     // the corpus would be blind to the very bias the drift fixes (every `now` an
     // instant whose UTC and local days happen to coincide).
     let cases = spec.cases.len();
@@ -148,13 +151,13 @@ fn day_references_matches_oracle() {
         .count();
     assert!(
         differing_legs >= 10,
-        "only {differing_legs} corpus cases differ between the zone legs — the \
+        "only {differing_legs} corpus cases differ between the zones — the \
          local-vs-UTC crux is under-covered"
     );
     assert!(resolved > 0 && null_resolutions > 0, "corpus lost an arm");
 
     println!(
-        "day_references_equivalence: {} rows green ({} zone legs x {cases} cases; \
+        "day_references_equivalence: {} rows green ({} zones x {cases} cases; \
          {resolved} resolved, {null_resolutions} null, {differing_legs} zone-sensitive)",
         oracle_rows.len(),
         zones.len()

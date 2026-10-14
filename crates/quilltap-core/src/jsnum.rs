@@ -270,3 +270,79 @@ mod math_round_tests {
         assert_eq!(math_round(f64::INFINITY), f64::INFINITY);
     }
 }
+
+// === P4.D289: NaN-propagating Math.max / Math.min (append-only) ===
+
+/// JS `Math.max(a, b)`: NaN PROPAGATES (Rust's `f64::max` drops a NaN
+/// operand), and `+0` beats `-0` (`Math.max(-0, 0)` is `+0`). The memory
+/// scoring and admission ports route every two-argument `Math.max` through
+/// here so an unparseable timestamp or a NaN count reads exactly as v4 reads
+/// it (work order P4.D289 LR-8).
+pub fn math_max(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        return f64::NAN;
+    }
+    if a == 0.0 && b == 0.0 {
+        return if a.is_sign_negative() && b.is_sign_negative() {
+            -0.0
+        } else {
+            0.0
+        };
+    }
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+
+/// JS `Math.min(a, b)`: NaN PROPAGATES, and `-0` beats `+0`.
+pub fn math_min(a: f64, b: f64) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        return f64::NAN;
+    }
+    if a == 0.0 && b == 0.0 {
+        return if a.is_sign_negative() || b.is_sign_negative() {
+            -0.0
+        } else {
+            0.0
+        };
+    }
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+
+#[cfg(test)]
+mod math_max_min_tests {
+    use super::{math_max, math_min};
+
+    #[test]
+    fn nan_propagates_where_f64_max_drops_it() {
+        assert!(math_max(f64::NAN, 1.0).is_nan());
+        assert!(math_max(1.0, f64::NAN).is_nan());
+        assert_eq!(f64::NAN.max(1.0), 1.0, "the Rust behaviour this replaces");
+        assert!(math_min(f64::NAN, 1.0).is_nan());
+        assert!(math_min(1.0, f64::NAN).is_nan());
+    }
+
+    #[test]
+    fn signed_zero_follows_js() {
+        assert!(math_max(-0.0, 0.0).is_sign_positive());
+        assert!(math_max(0.0, -0.0).is_sign_positive());
+        assert!(math_max(-0.0, -0.0).is_sign_negative());
+        assert!(math_min(-0.0, 0.0).is_sign_negative());
+        assert!(math_min(0.0, -0.0).is_sign_negative());
+        assert!(math_min(0.0, 0.0).is_sign_positive());
+    }
+
+    #[test]
+    fn ordinary_values() {
+        assert_eq!(math_max(1.0, 2.0), 2.0);
+        assert_eq!(math_min(1.0, 2.0), 1.0);
+        assert_eq!(math_max(f64::NEG_INFINITY, -1.0), -1.0);
+        assert_eq!(math_min(f64::INFINITY, 3.0), 3.0);
+    }
+}

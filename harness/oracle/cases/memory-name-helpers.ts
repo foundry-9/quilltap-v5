@@ -2,18 +2,24 @@
  * Oracle case #19 (Wave 3 / B10): pure memory name-resolution leaves.
  *
  * Drives the REAL pure helpers:
- *   calculateReinforcedImportance  (lib/memory/memory-gate.ts)
+ *   reinforcedImportance           (lib/memory/scoring/reinforced-importance.ts)
  *   formatNameWithPronouns         (lib/memory/format-utils.ts)
  *   namesForAboutCharacter, namesForHolder (lib/memory/about-character-resolution.ts)
  * No impurity; no injection.
  *
- * Run from inside the server checkout:
+ * P4.D289 re-aimed the reinforced rows at the pin (`83334b9a5`): v4
+ * `e0ac7493a` moved the formula into `lib/memory/scoring/` and `c2795733f`
+ * (bug 216) changed it to `log2(max(1, count))`, so six of the eight rows
+ * move value (`zero-count` / `zero-base` do not). The name-helper rows are
+ * untouched.
+ *
+ * Run from inside a v4 checkout (or the round's pin):
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   cd ~/source/quilltap-server
- *   npx tsx ~/source/quilltap-v5/harness/oracle/cases/memory-name-helpers.ts \
- *     > /tmp/oracle-memory-name-helpers.ndjson
+ *   TZ=UTC $N/npx tsx "$V5W/harness/oracle/cases/memory-name-helpers.ts" > /tmp/oracle-memory-name-helpers.ndjson
  */
 
-import { calculateReinforcedImportance } from '@/lib/memory/memory-gate';
+import { reinforcedImportance } from '@/lib/memory/scoring/reinforced-importance';
 import { formatNameWithPronouns } from '@/lib/memory/format-utils';
 import { namesForAboutCharacter, namesForHolder } from '@/lib/memory/about-character-resolution';
 import type { Pronouns } from '@/lib/schemas/character.types';
@@ -21,7 +27,7 @@ import type { Character } from '@/lib/schemas/types';
 
 const rows: unknown[] = [];
 
-// ---- calculateReinforcedImportance ---------------------------------------
+// ---- reinforcedImportance ------------------------------------------------
 const reinforced: Array<[string, number, number]> = [
   ['zero-count', 0.5, 0],
   ['one', 0.5, 1],
@@ -33,7 +39,7 @@ const reinforced: Array<[string, number, number]> = [
   ['hundred', 0.5, 100],
 ];
 for (const [id, base, count] of reinforced) {
-  rows.push({ kind: 'reinforced', id, base, count, out: calculateReinforcedImportance(base, count) });
+  rows.push({ kind: 'reinforced', id, base, count, out: reinforcedImportance(base, count) });
 }
 
 // ---- formatNameWithPronouns ----------------------------------------------
