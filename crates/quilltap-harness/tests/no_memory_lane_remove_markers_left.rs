@@ -170,3 +170,104 @@ fn every_memory_lane_remove_marker_names_its_owners_and_a_round_commit() {
         );
     }
 }
+
+/// The scoring chokepoint (v4 `__tests__/unit/lib/memory/scoring/
+/// scoring-chokepoint.test.ts`, S12 — work order P4.D289 Tier 2 item 13).
+///
+/// v4's why, carried: every worth-ordering in the memory system goes through
+/// `salience` or `protection` (memory refactor §3.4, §5 invariant 5). The
+/// floored `effectiveWeight` that once leaked into ranking at four call
+/// sites is gone; this keeps it gone — no source outside the scoring module
+/// names it, nor the deleted module that computed it. Scans every crate's
+/// `src/` (the Rust spellings) and `apps/web/src` (v4's TypeScript
+/// spellings); `crates/quilltap-core/src/memory_scoring/` is the allowed
+/// home, and the harness crate — v5's test tree, as v4 skips `__tests__` —
+/// is out of scope (its corpus still names the re-aimed
+/// `memory-weighting.ts` oracle case). RED BY DESIGN with the marker census — `memory_weighting.rs` (the
+/// shim) and its callers carry the names until P4.D291 / P4.D292 / P4.D297
+/// re-point and the unifier deletes the shim (§S.4 / §S.5).
+#[test]
+fn no_source_outside_the_scoring_module_names_the_floored_weight() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let allowed = Path::new("crates/quilltap-core/src/memory_scoring");
+    let forbidden: Vec<regex::Regex> = [
+        r"\beffective_weight\b",
+        r"\bcalculate_effective_weight\b",
+        r"\brank_memories_by_weight\b",
+        r"\bmemory_weighting\b",
+        r"\beffectiveWeight\b",
+        r"\bcalculateEffectiveWeight\b",
+        r"\brankMemoriesByWeight\b",
+        r"memory-weighting",
+    ]
+    .iter()
+    .map(|p| regex::Regex::new(p).unwrap())
+    .collect();
+
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(root.join("crates")).expect("read crates/") {
+        let krate = entry.expect("crate dir").path();
+        if krate.file_name().is_some_and(|n| n == "quilltap-harness") {
+            continue;
+        }
+        let src = krate.join("src");
+        if src.is_dir() {
+            walk_ext(&src, &["rs"], &mut files);
+        }
+    }
+    walk_ext(
+        &root.join("apps/web/src"),
+        &["ts", "tsx", "js", "mjs"],
+        &mut files,
+    );
+    assert!(
+        files.len() > 100,
+        "the scan found only {} files",
+        files.len()
+    );
+
+    let mut offenders = Vec::new();
+    for file in files {
+        let rel = file.strip_prefix(&root).unwrap_or(&file).to_path_buf();
+        if rel.starts_with(allowed) {
+            continue;
+        }
+        let text = std::fs::read_to_string(&file).expect("read source");
+        for pattern in &forbidden {
+            if pattern.is_match(&text) {
+                offenders.push(format!("  {}: {}", rel.display(), pattern.as_str()));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "{} scoring-chokepoint offender(s) — the floored weight or its deleted module is still \
+         named outside crates/quilltap-core/src/memory_scoring/:\n{}",
+        offenders.len(),
+        offenders.join("\n")
+    );
+}
+
+/// Every file under `dir` with one of `exts`, skipping `node_modules` and
+/// dot-directories.
+fn walk_ext(dir: &Path, exts: &[&str], out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name == "node_modules" || name.starts_with('.') {
+            continue;
+        }
+        if path.is_dir() {
+            walk_ext(&path, exts, out);
+        } else if path
+            .extension()
+            .is_some_and(|e| exts.iter().any(|x| e == *x))
+        {
+            out.push(path);
+        }
+    }
+}

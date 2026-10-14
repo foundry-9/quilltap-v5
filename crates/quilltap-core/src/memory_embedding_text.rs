@@ -291,3 +291,155 @@ mod tests {
         assert_eq!(LEXICAL_TEXT_SHAPE_VERSION, 1);
     }
 }
+
+#[cfg(test)]
+mod jest_twins {
+    //! Case-for-case ports of two v4 suites at the pin `83334b9a5`:
+    //!
+    //! - `__tests__/unit/lib/memory/memory-anchor-zone.test.ts` — "every path
+    //!   that builds a memory's embedded text resolves the memory-calendar
+    //!   zone first, so the anchor line's `when:` date is the instance's
+    //!   calendar date even on a cold timezone cache". v4 drives the job
+    //!   handler and `reembedRow` through mocked repositories (env zone `UTC`,
+    //!   instance zone `Asia/Tokyo`) and asserts on the text handed to the
+    //!   embedder. In v5 the zone is a REQUIRED argument of
+    //!   [`embedding_text_for`], so the twin pins the text those paths must
+    //!   produce for the resolved instance zone — and that the env fallback's
+    //!   zone would have read the day before. The handler / admission wiring
+    //!   itself is not expressible here (it is module mocking).
+    //! - The `lexicalEmbeddingTextFor` describe of
+    //!   `__tests__/unit/lib/embedding/builtin-lexical-text.test.ts`. Its
+    //!   `generateEmbedding text shape by provider` describe mocks the
+    //!   provider registry and repositories and is not twinned here.
+
+    use super::*;
+    use crate::tfidf::vectorizer::TfIdfVectorizer;
+
+    // -- memory-anchor-zone.test.ts --
+
+    /// Local midnight of 2026-07-14 in Tokyo, stored as UTC (the day before).
+    fn tokyo_memory() -> EmbeddingTextSource<'static> {
+        EmbeddingTextSource {
+            summary: "Lighthouse picnic",
+            content: "We ate sandwiches at the lighthouse.",
+            occurred_at: Some("2026-07-13T15:00:00.000Z"),
+            narrative_time: None,
+            entities: AnchorEntities::Strings(&[]),
+        }
+    }
+
+    /// `it('EMBEDDING_GENERATE (job child) embeds the instance-zone date')`.
+    #[test]
+    fn embedding_generate_job_child_embeds_the_instance_zone_date() {
+        let text = embedding_text_for(&tokyo_memory(), "Asia/Tokyo");
+        assert!(text.contains("when: 2026-07-14"), "{text}");
+        // The env/system fallback (`QUILLTAP_TIMEZONE=UTC`) would read the day before.
+        assert!(embedding_text_for(&tokyo_memory(), "UTC").contains("when: 2026-07-13"));
+    }
+
+    /// `it('reembedRow (admission\'s re-embed after a fold) embeds the
+    /// instance-zone date')`.
+    #[test]
+    fn reembed_row_admissions_re_embed_after_a_fold_embeds_the_instance_zone_date() {
+        let text = embedding_text_for(&tokyo_memory(), "Asia/Tokyo");
+        assert!(text.contains("when: 2026-07-14"), "{text}");
+        assert!(!text.contains("when: 2026-07-13"), "{text}");
+    }
+
+    // -- builtin-lexical-text.test.ts: describe('lexicalEmbeddingTextFor') --
+
+    const ANCHOR_FREE: &str =
+        "Lorian fears deep water\n\nLorian nearly drowned as a boy in the millpond.";
+
+    fn lorian<'a>(entities: &'a [String], occurred_at: &'static str) -> EmbeddingTextSource<'a> {
+        EmbeddingTextSource {
+            summary: "Lorian fears deep water",
+            content: "Lorian nearly drowned as a boy in the millpond.",
+            occurred_at: Some(occurred_at),
+            narrative_time: Some("second evening"),
+            entities: AnchorEntities::Strings(entities),
+        }
+    }
+
+    fn lorian_entities() -> Vec<String> {
+        vec!["Lighthouse Point".to_string(), "Bram".to_string()]
+    }
+
+    /// `it('is the canonical text without its anchor line')`.
+    #[test]
+    fn is_the_canonical_text_without_its_anchor_line() {
+        let ents = lorian_entities();
+        let memory = lorian(&ents, "2026-07-14T12:00:00.000Z");
+        let text = embedding_text_for(&memory, "UTC");
+        assert!(text.contains("(when: 2026-07-14"), "{text}");
+        assert_eq!(lexical_embedding_text_for(&memory), ANCHOR_FREE);
+        assert!(text.starts_with(&lexical_embedding_text_for(&memory)));
+    }
+
+    /// `it('keeps content that happens to end in an anchor-like line')`.
+    #[test]
+    fn keeps_content_that_happens_to_end_in_an_anchor_like_line() {
+        let garden = EmbeddingTextSource {
+            summary: "Garden",
+            content: "We sat outside.\n(place: the garden)",
+            ..Default::default()
+        };
+        assert_eq!(
+            lexical_embedding_text_for(&garden),
+            "Garden\n\nWe sat outside.\n(place: the garden)"
+        );
+    }
+
+    /// v4's `TfIdfVectorizer.cosineSimilarity(a, b)` (a test-side copy: the
+    /// static is not part of v5's vectorizer).
+    fn cosine_similarity(a: &[f64], b: &[f64]) -> f64 {
+        assert_eq!(a.len(), b.len(), "Vectors must have the same length");
+        let (mut dot, mut norm_a, mut norm_b) = (0.0, 0.0, 0.0);
+        for i in 0..a.len() {
+            dot += a[i] * b[i];
+            norm_a += a[i] * a[i];
+            norm_b += b[i] * b[i];
+        }
+        let magnitude = norm_a.sqrt() * norm_b.sqrt();
+        if magnitude == 0.0 {
+            return 0.0;
+        }
+        dot / magnitude
+    }
+
+    /// `it('makes one fact told on two days identical to a lexical embedder')`.
+    #[test]
+    fn makes_one_fact_told_on_two_days_identical_to_a_lexical_embedder() {
+        let ents = lorian_entities();
+        let memory = lorian(&ents, "2026-07-14T12:00:00.000Z");
+        let other_ents = vec!["Harbor Inn".to_string()];
+        let other = lorian(&other_ents, "2026-08-02T12:00:00.000Z");
+        let mut v = TfIdfVectorizer::new(true);
+        v.fit_corpus(
+            &[
+                embedding_text_for(&memory, "UTC"),
+                embedding_text_for(&other, "UTC"),
+                "Mara drinks Earl Grey\n\nMara orders Earl Grey with lemon.".to_string(),
+                "Bram keeps the lighthouse\n\nBram has kept the lighthouse for thirty years."
+                    .to_string(),
+            ],
+            "2026-03-01T00:00:00.000Z".to_string(),
+        )
+        .expect("fit");
+        let cos = |a: &str, b: &str| {
+            cosine_similarity(&v.transform(a).expect("a"), &v.transform(b).expect("b"))
+        };
+        assert!(
+            cos(
+                &embedding_text_for(&memory, "UTC"),
+                &embedding_text_for(&other, "UTC")
+            ) < 0.8
+        );
+        let lexical = cos(
+            &lexical_embedding_text_for(&memory),
+            &lexical_embedding_text_for(&other),
+        );
+        // `toBeCloseTo(1, 5)`.
+        assert!((lexical - 1.0).abs() < 5e-6, "{lexical}");
+    }
+}

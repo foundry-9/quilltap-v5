@@ -179662,3 +179662,56 @@ the retired rows and why are in its header — the `links-excluded` row left out
   anchor line reads the local date; the first boot's `rezone-legacy-memory-occurred-at-v1` on a PRE-round copy;
   a legacy-link Salon timezone (`US/Central`) honoured; a reinforced memory's `reinforcedImportance` on v4's
   `log2(max(1, n))` scale in the Memories card.
+
+### Tier 2 (after `SCORING` `7e18b9cf7`; no C1-A change)
+- **Item 12 — the jest twins** (three sub-agents, test code only — 3,211 insertions, 0 deletions in core):
+  141 `#[test]`s in `jest_twins` modules, all green, no failing case (no findings). Ported: scoring-formulas
+  15/15, protection-and-age 22/22, ranking-blend 6 (7 skipped — `renderHead` / recall tags / the recall-history
+  ring, P4.D291's modules), memory-anchor-zone 2 (reduced to the pure property; the job/`reembedRow` wiring is
+  the embeddings lane's), builtin-lexical-text 3 (2 skipped — provider-routing mocks), rule-table 10/10,
+  calendar 11/11, day-references 18/18, anchors 5/5, calendar-refresh 3/3, memory-candidate 7 full + 2 pure
+  halves (4 skipped — `runPass` extraction mocks; the NaN importance row — JSON cannot carry NaN),
+  admission-decide 20/20, gate-date-guard's `occasionsAreDistinct` half (6 assertions — the order said 7),
+  admission-fold's 9 `foldInto`, provider-thresholds 3 (the 3 `resolveClusterThreshold` cases are
+  consolidation's).
+- **Item 13 — the scoring chokepoint census** (v4 `scoring-chokepoint.test.ts`): the second `#[test]` in
+  `no_memory_lane_remove_markers_left` scans every crate's `src/` (bar the harness — v5's test tree, as v4
+  skips `__tests__`) and `apps/web/src` for `effective_weight` / `calculate_effective_weight` /
+  `rank_memories_by_weight` / `memory_weighting` and v4's camelCase / `memory-weighting` spellings, allowing
+  `memory_scoring/`. RED BY DESIGN: 44 offender lines over 19 files (the shim, its callers in P4.D291 /
+  P4.D292 / P4.D297 files, `lib.rs`'s `mod` line, prose in `format_time.rs` / `episodic.rs` and
+  `apps/web/src/app/shared/format-date.ts`'s comment). §S.4 lists it; green at §S.5.
+- **Item 11 — mutation proofs** (each inverted, the named family RED, the file restored):
+  `max(1, …)` guard → `memory_scoring` (formula `i=0 n=-1`: NaN vs 0); the second-pass comparison →
+  `memory_time` (zoned Chicago `2026-03-08T06:30Z` day start); the window-START stamp → `memory_time` (the
+  zoneless-reference anchors row); the skip-present → `reinforcement_footnotes`; the manual-over-auto
+  exclusion → `admission_decide` (`reason-manual-over-auto-is-mismatch`); the first-eligible target →
+  `admission_decide`; the `reembed` anchor arm → `admission_fold_plan`; the lexical predicate's exact match
+  → `memory_scoring` (`lexical 'builtin'`; v4's `!!provider` guard is unobservable — the set holds no empty
+  string). The 1 ms close and the ASCII case fold were proven by the unit-4 agent (both redden
+  `memory_time`), and the zoned date by the unit-8 agent (86 rows).
+- **Item 14 — the ruled tables**: all four are in their families, both ways (§ above); measured and frozen.
+
+### Lane close (§R.12)
+- Gate on the final tree: `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D
+  warnings` clean on BOTH feature sets (after a test-only fix: two jest-twin `assert!`s on constants →
+  `const { assert!(..) }`); `cargo test --workspace --no-fail-fast` with the frozen env block (every oracle
+  regenerated from the pin under `/tmp/p4d289/gate/`): 757 test binaries, 5,129 passed / 3 failed / 3
+  ignored — the three reds EXPECTED: `no_memory_lane_remove_markers_left` ×2 (the marker census, 21 markers,
+  and the scoring-chokepoint census — both by design until §S.5) and `qtap_schema_embed_guard` (§R.13(g),
+  P4.D294's — v4 moved the export schema in the span). No sibling-owned family reddened; all fifteen P4.D289
+  families `ok` by name; `recipe_sweep.py --self-test` exit 0; every family `ok` in `--list`, no
+  `--collisions` hit.
+- Scoped `SCORING` gate (§R.14) at `7e18b9cf7`: `cargo test -p quilltap-core -p quilltap-host -p
+  quilltap-web` green; the fifteen families green with zero SKIP; `zod_issues_home_guard`,
+  `host_zone_sites_census`, `fallback_home_guard`, `spelling_guard`, the wardrobe census green; the memory
+  census red by design.
+- Versions at close: core 0.0.1285 (two core commits: `SCORING` 0.0.1284, Tier 2 0.0.1285); harness frozen
+  0.0.1110; host 0.0.199, web 0.0.237, cli, tauri, SPA unchanged.
+- Fixtures: no committed `*-main.db` touched; ONE committed corpus grown — `harness/oracle/fixtures/
+  day-references.json` (46 → 55 cases; its only consumer is `day_references`). The refresh family builds its
+  scratch DBs fresh at the pin each run (nothing committed).
+- No `HANDOFF:` blocks a sibling. Candidate follow-ups (not handoffs this round needs): `format_time::
+  format_relative_days` NaN reference (route its `f64::max` through `jsnum::math_max` — reachable only with an
+  unparseable `createdAt` and no parseable `occurredAt`); the two FINDINGS above for the human.
+- The pin worktree `/tmp/qt-v4-pin-p4d289-83334b9a5` removed; the lane's `target/` deleted; nothing pushed.

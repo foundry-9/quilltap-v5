@@ -488,3 +488,280 @@ pub fn normalise_time_range(
         to: to_iso,
     })
 }
+
+#[cfg(test)]
+mod jest_twins {
+    //! Case-for-case port of v4
+    //! `lib/memory/time/__tests__/day-references.test.ts` (pin `83334b9a5`).
+    //!
+    //! v4's suite cannot pin `TZ` and computes every expectation through the
+    //! local-time `Date` API in whatever zone the runner sits in; v5's zone is
+    //! a parameter, so these run on `America/Chicago` (the diagnosed chat's
+    //! zone, west of Greenwich so the local-vs-UTC case is never a no-op) and
+    //! v4's `localMidnight(n)` / `localHour(n, h)` helpers become absolute
+    //! literals for that zone (CDT, UTC−5, all of July 2026).
+
+    use super::*;
+
+    const CHI: &str = "America/Chicago";
+
+    /// 2026-07-28 21:44 local (CDT) — the wall-clock moment from the
+    /// diagnosed chat (v4 `new Date(2026, 6, 28, 21, 44)`).
+    const NOW: f64 = 1_785_293_040_000.0;
+    const NOW_ISO: &str = "2026-07-29T02:44:00.000Z";
+
+    /// v4 `localMidnight(offset)` on `America/Chicago`, for every offset the
+    /// suite uses.
+    fn local_midnight(offset: i64) -> &'static str {
+        match offset {
+            0 => "2026-07-28T05:00:00.000Z",
+            -1 => "2026-07-27T05:00:00.000Z",
+            -2 => "2026-07-26T05:00:00.000Z",
+            -3 => "2026-07-25T05:00:00.000Z",
+            -8 => "2026-07-20T05:00:00.000Z",
+            -13 => "2026-07-15T05:00:00.000Z",
+            -14 => "2026-07-14T05:00:00.000Z",
+            other => panic!("no literal for localMidnight({other})"),
+        }
+    }
+
+    fn parse(iso: &str) -> f64 {
+        js_date_parse_ms(iso).unwrap_or_else(|| panic!("Date.parse({iso})")) as f64
+    }
+
+    /// v4 `before(iso)`: the last instant before `iso`.
+    fn before(iso: &str) -> String {
+        js_iso_string(parse(iso) - 1.0).unwrap()
+    }
+
+    fn resolve(text: &str) -> Option<DayReferenceResolution> {
+        resolve_day_reference(text, NOW, CHI)
+    }
+
+    /// `it('resolves a late-evening "today" to the local day')`
+    #[test]
+    fn resolves_a_late_evening_today_to_the_local_day() {
+        let r = resolve("No, no. I mean the mission today. I want to hear about it.")
+            .expect("not null");
+        assert_eq!(r.matched, "today");
+        assert!(r.past_pointing);
+        assert_eq!(r.time_range.from, local_midnight(0));
+        assert_eq!(r.time_range.to, NOW_ISO);
+    }
+
+    /// `it('uses local calendar math, not UTC')` — Chicago sits west of
+    /// Greenwich (v4's `NOW.getTimezoneOffset() > 0` arm always runs here).
+    #[test]
+    fn uses_local_calendar_math_not_utc() {
+        let r = resolve("the mission today").unwrap();
+        let utc_midnight_of_now = format!("{}T00:00:00.000Z", &NOW_ISO[..10]);
+        assert_ne!(r.time_range.from, utc_midnight_of_now);
+        assert_eq!(r.time_range.from, local_midnight(0));
+    }
+
+    /// `it('covers an event that happened earlier the same local day')`
+    #[test]
+    fn covers_an_event_that_happened_earlier_the_same_local_day() {
+        let r = resolve("the mission today").unwrap();
+        let midday_event = parse("2026-07-28T17:00:00.000Z"); // 12:00 CDT on the 28th
+        let last_night_event = parse("2026-07-28T04:59:00.000Z"); // 23:59 CDT on the 27th
+        assert!(parse(&r.time_range.from) <= midday_event);
+        assert!(parse(&r.time_range.to) >= midday_event);
+        assert!(parse(&r.time_range.from) > last_night_event);
+    }
+
+    /// `it.each(cases)('resolves "$matched" from "$text"')` — all eleven rows.
+    #[test]
+    fn resolves_matched_from_text() {
+        let now = NOW_ISO.to_string();
+        let cases: Vec<(&str, &str, String, String)> = vec![
+            (
+                "earlier today we talked",
+                "earlier today",
+                local_midnight(0).into(),
+                now.clone(),
+            ),
+            (
+                "how did it go this morning?",
+                "this morning",
+                local_midnight(0).into(),
+                now.clone(),
+            ),
+            (
+                "you seemed rattled this afternoon",
+                "this afternoon",
+                local_midnight(0).into(),
+                now.clone(),
+            ),
+            (
+                "that thing this evening",
+                "this evening",
+                local_midnight(0).into(),
+                now.clone(),
+            ),
+            (
+                "what a mess tonight",
+                "tonight",
+                local_midnight(0).into(),
+                now.clone(),
+            ),
+            (
+                "about yesterday",
+                "yesterday",
+                local_midnight(-1).into(),
+                before(local_midnight(0)),
+            ),
+            (
+                "the day before yesterday",
+                "day before yesterday",
+                local_midnight(-2).into(),
+                before(local_midnight(-1)),
+            ),
+            (
+                "we met 3 days ago",
+                "3 days ago",
+                local_midnight(-3).into(),
+                before(local_midnight(-2)),
+            ),
+            (
+                "we met three days ago",
+                "three days ago",
+                local_midnight(-3).into(),
+                before(local_midnight(-2)),
+            ),
+            (
+                "that was 1 day ago",
+                "1 day ago",
+                local_midnight(-1).into(),
+                before(local_midnight(0)),
+            ),
+            (
+                "fourteen days ago exactly",
+                "fourteen days ago",
+                local_midnight(-14).into(),
+                before(local_midnight(-13)),
+            ),
+        ];
+        assert_eq!(cases.len(), 11);
+        for (text, matched, from, to) in cases {
+            let r = resolve(text).unwrap_or_else(|| panic!("{text:?}: null"));
+            assert_eq!(r.matched, matched, "{text:?}");
+            assert!(r.past_pointing, "{text:?}");
+            assert_eq!(r.time_range, TimeWindow { from, to }, "{text:?}");
+        }
+    }
+
+    /// `it('spans "last night" from 18:00 the previous local evening to 06:00
+    /// this morning')`
+    #[test]
+    fn spans_last_night_from_18_00_the_previous_local_evening_to_06_00_this_morning() {
+        let r = resolve("you were quiet last night").unwrap();
+        // localHour(-1, 18) / before(localHour(0, 6)) on CDT.
+        assert_eq!(r.time_range.from, "2026-07-27T23:00:00.000Z");
+        assert_eq!(r.time_range.to, before("2026-07-28T11:00:00.000Z"));
+        assert!(r.past_pointing);
+    }
+
+    /// `it('resolves "this week" from the most recent local Monday to now')`
+    #[test]
+    fn resolves_this_week_from_the_most_recent_local_monday_to_now() {
+        // NOW is a Tuesday, so the week anchor is yesterday.
+        assert_eq!(zoned_parts(NOW, CHI).weekday, 2);
+        let r = resolve("busy this week").unwrap();
+        assert_eq!(r.time_range.from, local_midnight(-1));
+        assert_eq!(r.time_range.to, NOW_ISO);
+    }
+
+    /// `it('resolves "last week" to the previous Monday–Sunday local week')`
+    #[test]
+    fn resolves_last_week_to_the_previous_monday_sunday_local_week() {
+        let r = resolve("what you said last week").unwrap();
+        assert_eq!(r.time_range.from, local_midnight(-8));
+        assert_eq!(r.time_range.to, before(local_midnight(-1)));
+    }
+
+    /// `it('leaves an out-of-range "N days ago" to the LLM')`
+    #[test]
+    fn leaves_an_out_of_range_n_days_ago_to_the_llm() {
+        assert_eq!(resolve("that was 97 days ago"), None);
+        assert_eq!(resolve("that was 15 days ago"), None);
+    }
+
+    /// `it('marks "tomorrow" as future-pointing')`
+    #[test]
+    fn marks_tomorrow_as_future_pointing() {
+        let r = resolve("let's do it tomorrow").unwrap();
+        assert_eq!(r.matched, "tomorrow");
+        assert!(!r.past_pointing);
+    }
+
+    /// `it('marks "next week" as future-pointing')`
+    #[test]
+    fn marks_next_week_as_future_pointing() {
+        let r = resolve("we can start next week").unwrap();
+        assert_eq!(r.matched, "next week");
+        assert!(!r.past_pointing);
+    }
+
+    /// `it('lets a later future reference suppress an earlier past one')`
+    #[test]
+    fn lets_a_later_future_reference_suppress_an_earlier_past_one() {
+        let r = resolve("we said yesterday that we would start tomorrow").unwrap();
+        assert_eq!(r.matched, "tomorrow");
+        assert!(!r.past_pointing);
+    }
+
+    /// `it('lets the latest match in the text win')`
+    #[test]
+    fn lets_the_latest_match_in_the_text_win() {
+        let r = resolve("we covered that yesterday \u{2014} but today, the mission").unwrap();
+        assert_eq!(r.matched, "today");
+        assert_eq!(r.time_range.from, local_midnight(0));
+    }
+
+    /// `it('does not let an inner phrase beat its own container')`
+    #[test]
+    fn does_not_let_an_inner_phrase_beat_its_own_container() {
+        let r = resolve("the day before yesterday").unwrap();
+        assert_eq!(r.matched, "day before yesterday");
+    }
+
+    /// `it('is case-insensitive')`
+    #[test]
+    fn is_case_insensitive() {
+        assert_eq!(resolve("YESTERDAY was long").unwrap().matched, "yesterday");
+        assert_eq!(resolve("Today is better").unwrap().matched, "today");
+    }
+
+    /// `it('respects word boundaries')`
+    #[test]
+    fn respects_word_boundaries() {
+        assert_eq!(resolve("we drove through Yesterdayville"), None);
+        assert_eq!(resolve("the Todayer gazette"), None);
+    }
+
+    /// `it('returns null when no reference is present')`
+    #[test]
+    fn returns_null_when_no_reference_is_present() {
+        assert_eq!(resolve("how are the soil samples looking"), None);
+        assert_eq!(resolve(""), None);
+    }
+
+    /// `it('returns null on an invalid clock')` — `new Date(NaN).getTime()`
+    /// is NaN.
+    #[test]
+    fn returns_null_on_an_invalid_clock() {
+        assert_eq!(
+            resolve_day_reference("the mission today", f64::NAN, CHI),
+            None
+        );
+    }
+
+    /// `it('is stateless across calls (no leaked regex lastIndex)')`
+    #[test]
+    fn is_stateless_across_calls_no_leaked_regex_last_index() {
+        let first = resolve("the mission today");
+        let second = resolve("the mission today");
+        assert_eq!(second, first);
+    }
+}

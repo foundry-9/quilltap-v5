@@ -290,3 +290,232 @@ pub fn zoned_day_bounds_iso(date: &str, tz: &str) -> Option<TimeWindow> {
         to: js_iso_string(next - 1.0)?,
     })
 }
+
+#[cfg(test)]
+mod jest_twins {
+    //! Case-for-case port of v4 `lib/memory/time/__tests__/calendar.test.ts`
+    //! (pin `83334b9a5`, bug 212). The zone is explicit in the Rust API: v4's
+    //! defaulted `timeZone = getMemoryTimeZone()` resolvers take it as an
+    //! argument, and v4's cached-instance / `QUILLTAP_TIMEZONE` / system rungs
+    //! are [`memory_time_zone`]'s `instance_tz` and `host_fallback` (the host
+    //! hands core its env-or-system calendar NAME — work order P4.D289 LR-3).
+
+    use super::*;
+    use crate::episodic::js_date_parse_ms;
+    use crate::memory_time::clock::{resolve_day_reference, resolve_when_phrase};
+
+    const TZ: &str = "America/Chicago";
+
+    /// The read side's phrases that point at the past (the shared rule table).
+    const SHARED_PHRASES: [&str; 13] = [
+        "today",
+        "earlier today",
+        "this morning",
+        "this afternoon",
+        "this evening",
+        "tonight",
+        "last night",
+        "yesterday",
+        "day before yesterday",
+        "two days ago",
+        "3 days ago",
+        "this week",
+        "last week",
+    ];
+
+    /// Anchors spread across the day, a week boundary and a DST change (Nov 1, 2026).
+    const ANCHORS: [&str; 5] = [
+        "2026-10-12T19:00:00.000Z", // 14:00 CDT Monday — the bug's example
+        "2026-10-12T07:30:00.000Z", // 02:30 CDT Monday — after midnight, before 06:00
+        "2026-10-13T04:30:00.000Z", // 23:30 CDT Monday — UTC already Tuesday
+        "2026-10-18T16:00:00.000Z", // 11:00 CDT Sunday — end of the local week
+        "2026-11-02T15:00:00.000Z", // 09:00 CST Monday — the day after DST ends
+    ];
+
+    fn parse(iso: &str) -> f64 {
+        js_date_parse_ms(iso).unwrap_or_else(|| panic!("Date.parse({iso})")) as f64
+    }
+
+    fn window(from: &str, to: &str) -> TimeWindow {
+        TimeWindow {
+            from: from.to_string(),
+            to: to.to_string(),
+        }
+    }
+
+    /// `it(`"${phrase}" at ${anchor}`)` under `describe('memory calendar —
+    /// write lands inside read (bug 212)')` — all 65 generated cases.
+    #[test]
+    fn write_lands_inside_read_phrase_at_anchor() {
+        let mut rows = 0;
+        for anchor in ANCHORS {
+            for phrase in SHARED_PHRASES {
+                let written = resolve_when_phrase(Some(phrase), anchor, TZ)
+                    .unwrap_or_else(|| panic!("{phrase:?} at {anchor}: written is null"));
+                let read =
+                    resolve_day_reference(&format!("Do you remember {phrase}?"), parse(anchor), TZ)
+                        .unwrap_or_else(|| panic!("{phrase:?} at {anchor}: read is null"));
+                assert!(read.past_pointing, "{phrase:?} at {anchor}");
+                let t = parse(&written);
+                assert!(t >= parse(&read.time_range.from), "{phrase:?} at {anchor}");
+                assert!(t <= parse(&read.time_range.to), "{phrase:?} at {anchor}");
+                rows += 1;
+            }
+        }
+        assert_eq!(rows, 65);
+    }
+
+    /// `it('reproduces the bug report: "last night" at 14:00 CDT')`
+    #[test]
+    fn reproduces_the_bug_report_last_night_at_14_00_cdt() {
+        let anchor = "2026-10-12T19:00:00.000Z";
+        // 18:00 CDT on October 11 — not the old 2026-10-11T00:00Z (19:00 on the 10th).
+        assert_eq!(
+            resolve_when_phrase(Some("last night"), anchor, TZ).as_deref(),
+            Some("2026-10-11T23:00:00.000Z")
+        );
+        assert_eq!(
+            resolve_day_reference("last night", parse(anchor), TZ)
+                .unwrap()
+                .time_range,
+            window("2026-10-11T23:00:00.000Z", "2026-10-12T10:59:59.999Z")
+        );
+        // "yesterday" is local midnight, not UTC midnight.
+        assert_eq!(
+            resolve_when_phrase(Some("yesterday"), anchor, TZ).as_deref(),
+            Some("2026-10-11T05:00:00.000Z")
+        );
+    }
+
+    /// `it('stamps ISO dates and named dates at local midnight')`
+    #[test]
+    fn stamps_iso_dates_and_named_dates_at_local_midnight() {
+        let anchor = "2026-10-12T19:00:00.000Z";
+        assert_eq!(
+            resolve_when_phrase(Some("2026-07-14"), anchor, TZ).as_deref(),
+            Some("2026-07-14T05:00:00.000Z")
+        );
+        assert_eq!(
+            resolve_when_phrase(Some("July 14"), anchor, TZ).as_deref(),
+            Some("2026-07-14T05:00:00.000Z")
+        );
+        // A full datetime is kept as given.
+        assert_eq!(
+            resolve_when_phrase(Some("2026-07-14T09:30:00Z"), anchor, TZ).as_deref(),
+            Some("2026-07-14T09:30:00.000Z")
+        );
+    }
+
+    /// `it('resolves "last <weekday>" on the local weekday')`
+    #[test]
+    fn resolves_last_weekday_on_the_local_weekday() {
+        // 23:30 CDT Monday Oct 12 is already Tuesday in UTC; last Monday is Oct 5 local.
+        assert_eq!(
+            resolve_when_phrase(Some("last Monday"), "2026-10-13T04:30:00.000Z", TZ).as_deref(),
+            Some("2026-10-05T05:00:00.000Z")
+        );
+    }
+
+    /// `it('widens a date to its local day')`
+    #[test]
+    fn widens_a_date_to_its_local_day() {
+        assert_eq!(
+            zoned_day_bounds_iso("2026-10-11", TZ),
+            Some(window(
+                "2026-10-11T05:00:00.000Z",
+                "2026-10-12T04:59:59.999Z"
+            ))
+        );
+    }
+
+    /// `it('handles a 25-hour day (DST ends Nov 1, 2026)')`
+    #[test]
+    fn handles_a_25_hour_day_dst_ends_nov_1_2026() {
+        assert_eq!(
+            zoned_day_bounds_iso("2026-11-01", TZ),
+            Some(window(
+                "2026-11-01T05:00:00.000Z",
+                "2026-11-02T05:59:59.999Z"
+            ))
+        );
+    }
+
+    /// `it('rejects impossible dates')`
+    #[test]
+    fn rejects_impossible_dates() {
+        assert_eq!(zoned_day_bounds_iso("2026-02-30", TZ), None);
+        assert_eq!(zoned_day_bounds_iso("yesterday", TZ), None);
+    }
+
+    /// `it('round-trips local wall time')` — v4's defaulted `offsetDays = 0`
+    /// is explicit here.
+    #[test]
+    fn round_trips_local_wall_time() {
+        assert_eq!(
+            js_iso_string(zoned_time_to_utc_ms(2026, 9, 11, 18, TZ)).as_deref(),
+            Some("2026-10-11T23:00:00.000Z")
+        );
+        assert_eq!(
+            js_iso_string(start_of_zoned_day_ms(
+                parse("2026-10-12T03:00:00.000Z"),
+                TZ,
+                0
+            ))
+            .as_deref(),
+            Some("2026-10-11T05:00:00.000Z")
+        );
+    }
+
+    /// The system zone v4's `systemTimeZone()` would report, as the host hands
+    /// it to core when `QUILLTAP_TIMEZONE` is unset or invalid. Any valid name
+    /// stands in for it: core sees only the NAME.
+    const SYSTEM: &str = "America/Denver";
+
+    /// `it('prefers the instance timezone, then QUILLTAP_TIMEZONE, then the
+    /// system zone')` — v4's env and system rungs are both the host fallback
+    /// (the host chooses between them before core is called); the cached
+    /// instance zone set by `setCachedInstanceTimeZone` is `instance_tz`.
+    #[test]
+    fn prefers_the_instance_timezone_then_quilltap_timezone_then_the_system_zone() {
+        // QUILLTAP_TIMEZONE unset → the host fallback is the system zone.
+        assert_eq!(memory_time_zone(None, SYSTEM), SYSTEM);
+        // QUILLTAP_TIMEZONE = 'Asia/Tokyo' → the host fallback is Tokyo.
+        assert_eq!(memory_time_zone(None, "Asia/Tokyo"), "Asia/Tokyo");
+        // setCachedInstanceTimeZone('America/Chicago')
+        assert_eq!(
+            memory_time_zone(Some("America/Chicago"), "Asia/Tokyo"),
+            "America/Chicago"
+        );
+    }
+
+    /// `it('ignores an invalid zone at any level')` — v4: an invalid
+    /// `QUILLTAP_TIMEZONE` and an invalid cached instance zone fall to the
+    /// system zone. In v5 the host drops an invalid env value and hands the
+    /// system name; core's own guard on that last rung is v4
+    /// `systemTimeZone()`'s `'UTC'` last resort.
+    #[test]
+    fn ignores_an_invalid_zone_at_any_level() {
+        assert_eq!(memory_time_zone(Some("Also/Bogus"), SYSTEM), SYSTEM);
+        assert_eq!(memory_time_zone(Some("Also/Bogus"), "Not/AZone"), "UTC");
+    }
+
+    /// `it('drives the default calendar of both resolvers')` — v5's resolvers
+    /// have no default zone; the zone they are handed is the one
+    /// [`memory_time_zone`] resolves from the instance's `America/Chicago`.
+    #[test]
+    fn drives_the_default_calendar_of_both_resolvers() {
+        let tz = memory_time_zone(Some("America/Chicago"), SYSTEM);
+        let anchor = "2026-10-12T19:00:00.000Z";
+        assert_eq!(
+            resolve_when_phrase(Some("last night"), anchor, &tz).as_deref(),
+            Some("2026-10-11T23:00:00.000Z")
+        );
+        assert_eq!(
+            resolve_day_reference("last night", parse(anchor), &tz)
+                .unwrap()
+                .time_range
+                .from,
+            "2026-10-11T23:00:00.000Z"
+        );
+    }
+}

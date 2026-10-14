@@ -24,6 +24,12 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — test(memory): P4.D289 Tier 2 — v4's jest suites as Rust unit tests, the scoring-chokepoint census, mutation proofs
+
+_Versions: core 0.0.1285._
+
+Ports v4's jest suites for the pure memory modules case for case as `jest_twins` unit-test modules (141 tests: scoring formulas, protection and age, the ranking blend, the anchor zone and lexical text, the rule table, the calendar incl. the 25-hour day, day references, anchors, the calendar refresh, the candidate, admission decide, the date guard, the fold, provider thresholds); test code only, no C1-A change. Adds v4's scoring-chokepoint census as a second test in `no_memory_lane_remove_markers_left` (red by design until the consumer lanes re-point and the shims go). Records a mutation proof per family in the lane record.
+
 #### 2026-10-14 — docs(porting): P4.D289 records its `SCORING` sha (`7e18b9cf7`) in the order header
 
 _Docs-only change._

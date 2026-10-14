@@ -323,3 +323,299 @@ mod tests {
         assert_eq!(&m[1], "THREE");
     }
 }
+
+#[cfg(test)]
+mod jest_twins {
+    //! Case-for-case port of v4 `lib/memory/time/__tests__/rule-table.test.ts`
+    //! (pin `83334b9a5`). v4's clock objects (`{ timeZone, nowMs }`) become
+    //! the explicit `(time_zone, now_ms)` arguments of the Rust API; v4's
+    //! `clockFor` env rung (`QUILLTAP_TIMEZONE`) is the host fallback the
+    //! caller hands [`memory_time_zone`].
+
+    use super::*;
+    use crate::episodic::js_date_parse_ms;
+    use crate::memory_time::calendar::memory_time_zone;
+    use crate::memory_time::clock::{
+        clock_for, normalise_time_range, resolve_event_time, resolve_reference_window, EventTime,
+        MemoryClock,
+    };
+    use crate::memory_time::TimeWindow;
+
+    const TZ: &str = "America/Chicago";
+
+    /// One phrase per past rule (and every alternative of the "today" rule).
+    const PAST_PHRASES: [&str; 15] = [
+        "day before yesterday",
+        "last night",
+        "earlier today",
+        "this morning",
+        "this afternoon",
+        "this evening",
+        "tonight",
+        "today",
+        "yesterday",
+        "1 day ago",
+        "3 days ago",
+        "eleven days ago",
+        "fourteen days ago",
+        "this week",
+        "last week",
+    ];
+
+    const ANCHORS: [&str; 4] = [
+        "2026-10-12T19:00:00.000Z", // Monday 14:00 CDT
+        "2026-11-02T05:30:00.000Z", // Sunday 23:30 CST, just after the DST change
+        "2026-03-09T04:00:00.000Z", // Sunday 23:00 CDT, the night DST began
+        "2026-07-21T15:00:00.000Z", // Tuesday 10:00 CDT
+    ];
+
+    fn parse(iso: &str) -> f64 {
+        js_date_parse_ms(iso).unwrap_or_else(|| panic!("Date.parse({iso})")) as f64
+    }
+
+    fn window(from: &str, to: &str) -> TimeWindow {
+        TimeWindow {
+            from: from.to_string(),
+            to: to.to_string(),
+        }
+    }
+
+    /// `it('names every past phrase above')` — each phrase found by v4's
+    /// `new RegExp(`^(?:${r.pattern})$`, 'i')` over the table's public
+    /// `pattern` strings (every phrase is ASCII, so Unicode vs ASCII folding
+    /// cannot differ here).
+    #[test]
+    fn names_every_past_phrase_above() {
+        let anchored: Vec<(&str, Regex)> = DAY_REFERENCE_TABLE
+            .iter()
+            .map(|r| {
+                (
+                    r.name,
+                    Regex::new(&format!("(?i)^(?:{})$", r.pattern)).unwrap(),
+                )
+            })
+            .collect();
+        let covered: std::collections::BTreeSet<Option<&str>> = PAST_PHRASES
+            .iter()
+            .map(|p| {
+                anchored
+                    .iter()
+                    .find(|(_, re)| re.is_match(p))
+                    .map(|(n, _)| *n)
+            })
+            .collect();
+        assert!(!covered.contains(&None), "{covered:?}");
+        let covered: Vec<&str> = covered.into_iter().flatten().collect();
+        let mut past_rules: Vec<&str> = DAY_REFERENCE_TABLE
+            .iter()
+            .filter(|r| r.name != "tomorrow" && r.name != "next week")
+            .map(|r| r.name)
+            .collect();
+        past_rules.sort();
+        assert_eq!(covered, past_rules);
+    }
+
+    /// `it.each(ANCHORS × PAST_PHRASES)('at %s, "%s" written is the start of
+    /// "%s" read')` — all 60 rows.
+    #[test]
+    fn at_anchor_phrase_written_is_the_start_of_phrase_read() {
+        let mut rows = 0;
+        for anchor in ANCHORS {
+            for phrase in PAST_PHRASES {
+                let now_ms = parse(anchor);
+                let written = resolve_event_time(Some(phrase), now_ms, TZ);
+                let read = resolve_reference_window(
+                    &format!("we talked about it {phrase}, remember"),
+                    TZ,
+                    now_ms,
+                )
+                .unwrap_or_else(|| panic!("at {anchor}, {phrase:?}: read is null"));
+                assert!(read.past_pointing, "at {anchor}, {phrase:?}");
+                assert_eq!(
+                    written.occurred_at.as_deref(),
+                    Some(read.time_range.from.as_str()),
+                    "at {anchor}, {phrase:?}"
+                );
+                assert_eq!(
+                    written.window.as_ref(),
+                    Some(&read.time_range),
+                    "at {anchor}, {phrase:?}"
+                );
+                let t = parse(written.occurred_at.as_deref().unwrap());
+                assert!(t >= parse(&read.time_range.from), "at {anchor}, {phrase:?}");
+                assert!(t <= parse(&read.time_range.to), "at {anchor}, {phrase:?}");
+                rows += 1;
+            }
+        }
+        assert_eq!(rows, 60);
+    }
+
+    /// `it('future references read as a window but never as an event time')`
+    #[test]
+    fn future_references_read_as_a_window_but_never_as_an_event_time() {
+        let now_ms = parse(ANCHORS[0]);
+        for phrase in ["tomorrow", "next week"] {
+            let read = resolve_reference_window(&format!("see you {phrase}"), TZ, now_ms)
+                .unwrap_or_else(|| panic!("{phrase}: read is null"));
+            assert!(!read.past_pointing, "{phrase}");
+            assert_eq!(
+                resolve_event_time(Some(phrase), now_ms, TZ),
+                EventTime {
+                    occurred_at: None,
+                    window: None
+                },
+                "{phrase}"
+            );
+        }
+    }
+
+    /// `it('closes each window one millisecond before the next boundary, so
+    /// midnight belongs to one day')`
+    #[test]
+    fn closes_each_window_one_millisecond_before_the_next_boundary_so_midnight_belongs_to_one_day()
+    {
+        let now_ms = parse(ANCHORS[0]);
+        let yesterday = resolve_reference_window("yesterday", TZ, now_ms)
+            .unwrap()
+            .time_range;
+        let two_days_ago = resolve_reference_window("2 days ago", TZ, now_ms)
+            .unwrap()
+            .time_range;
+        // A memory written as "yesterday" (its local midnight) is not in "2 days ago".
+        let stamped = parse(
+            resolve_event_time(Some("yesterday"), now_ms, TZ)
+                .occurred_at
+                .as_deref()
+                .unwrap(),
+        );
+        assert!(stamped > parse(&two_days_ago.to));
+        assert_eq!(parse(&yesterday.from) - parse(&two_days_ago.to), 1.0);
+    }
+
+    /// `describe('write-only rules')` → `it.each([...])('%s → %s')` — all ten
+    /// rows, at Monday 14:00 CDT.
+    #[test]
+    fn write_only_rules_phrase_to_expected() {
+        let now_ms = parse("2026-10-12T19:00:00.000Z");
+        let rows: [(&str, &str); 10] = [
+            ("2026-07-14", "2026-07-14T05:00:00.000Z"),
+            ("2026-07-14T09:30:00.000Z", "2026-07-14T09:30:00.000Z"),
+            ("October 1", "2026-10-01T05:00:00.000Z"),
+            ("December 25", "2025-12-25T06:00:00.000Z"),
+            ("two weeks ago", "2026-09-28T05:00:00.000Z"),
+            ("a couple of days ago", "2026-10-10T05:00:00.000Z"),
+            ("about 3 months back", "2026-07-14T05:00:00.000Z"),
+            ("last Friday", "2026-10-09T05:00:00.000Z"),
+            ("the other day", "2026-10-10T05:00:00.000Z"),
+            ("20 days ago", "2026-09-22T05:00:00.000Z"),
+        ];
+        for (phrase, expected) in rows {
+            assert_eq!(
+                resolve_event_time(Some(phrase), now_ms, TZ)
+                    .occurred_at
+                    .as_deref(),
+                Some(expected),
+                "{phrase}"
+            );
+        }
+    }
+
+    /// `it('the anchor-moment phrases keep the anchor')` — v4's expectation is
+    /// `new Date(nowMs).toISOString()`, the anchor literal itself.
+    #[test]
+    fn the_anchor_moment_phrases_keep_the_anchor() {
+        let now_ms = parse("2026-10-12T19:00:00.000Z");
+        assert_eq!(
+            resolve_event_time(Some("just now"), now_ms, TZ)
+                .occurred_at
+                .as_deref(),
+            Some("2026-10-12T19:00:00.000Z")
+        );
+    }
+
+    /// `it('unknown phrases resolve to nothing')`
+    #[test]
+    fn unknown_phrases_resolve_to_nothing() {
+        let now_ms = parse("2026-10-12T19:00:00.000Z");
+        let nothing = EventTime {
+            occurred_at: None,
+            window: None,
+        };
+        assert_eq!(
+            resolve_event_time(Some("the third night at sea"), now_ms, TZ),
+            nothing
+        );
+        assert_eq!(resolve_event_time(Some(""), now_ms, TZ), nothing);
+        assert_eq!(resolve_event_time(Some("yesterday"), f64::NAN, TZ), nothing);
+    }
+
+    /// `it('widens date-only bounds to the local day and passes datetimes
+    /// through')`
+    #[test]
+    fn widens_date_only_bounds_to_the_local_day_and_passes_datetimes_through() {
+        assert_eq!(
+            normalise_time_range(Some("2026-10-11"), Some("2026-10-11"), TZ),
+            Some(window(
+                "2026-10-11T05:00:00.000Z",
+                "2026-10-12T04:59:59.999Z"
+            ))
+        );
+        assert_eq!(
+            normalise_time_range(Some("2026-10-11T00:00:00.000Z"), Some("2026-10-12"), TZ),
+            Some(window(
+                "2026-10-11T00:00:00.000Z",
+                "2026-10-13T04:59:59.999Z"
+            ))
+        );
+    }
+
+    /// `it('refuses unusable or inverted ranges')` — v4's `null` range is the
+    /// Rust `(None, None)`.
+    #[test]
+    fn refuses_unusable_or_inverted_ranges() {
+        assert_eq!(
+            normalise_time_range(Some("2026-10-12"), Some("2026-10-11"), TZ),
+            None
+        );
+        assert_eq!(
+            normalise_time_range(Some("last week"), Some("2026-10-11"), TZ),
+            None
+        );
+        assert_eq!(
+            normalise_time_range(Some("2026-02-30"), Some("2026-03-01"), TZ),
+            None
+        );
+        assert_eq!(normalise_time_range(None, None, TZ), None);
+    }
+
+    /// `it('takes the instance zone, then QUILLTAP_TIMEZONE, and the chat
+    /// timeline mode only')` — v4's `clockFor` resolves
+    /// `getMemoryTimeZone(instance.timeZone ?? null)` itself; v5's
+    /// [`clock_for`] takes the zone the caller resolved through
+    /// [`memory_time_zone`], with `QUILLTAP_TIMEZONE = 'Europe/Paris'` as the
+    /// host fallback (the cache is reset in v4's case, so no cached rung).
+    #[test]
+    fn takes_the_instance_zone_then_quilltap_timezone_and_the_chat_timeline_mode_only() {
+        let env = "Europe/Paris";
+        assert_eq!(
+            clock_for(Some("narrative"), &memory_time_zone(Some(TZ), env), 5.0),
+            MemoryClock {
+                time_zone: TZ.to_string(),
+                now_ms: 5.0,
+                timeline_mode: "narrative".to_string()
+            }
+        );
+        assert_eq!(
+            clock_for(None, &memory_time_zone(None, env), 5.0),
+            MemoryClock {
+                time_zone: "Europe/Paris".to_string(),
+                now_ms: 5.0,
+                timeline_mode: "realtime".to_string()
+            }
+        );
+        assert_eq!(
+            clock_for(None, &memory_time_zone(Some("Not/AZone"), env), 5.0).time_zone,
+            "Europe/Paris"
+        );
+    }
+}

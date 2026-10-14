@@ -107,3 +107,75 @@ mod tests {
         assert_ne!(ADMISSION_THRESHOLDS, ADMISSION_THRESHOLDS_TFIDF);
     }
 }
+
+#[cfg(test)]
+mod jest_twins {
+    //! Case-for-case port of v4
+    //! `__tests__/unit/lib/memory/provider-thresholds.test.ts` (pin
+    //! `83334b9a5`) — the `admissionThresholdsForProvider` describe. The three
+    //! `resolveClusterThreshold` cases are consolidation's (not this module's)
+    //! and are listed in the P4.D289 Tier-2 report. v4's `toBe` is identity;
+    //! here it is value equality (see [`AdmissionThresholds`]: the two sets
+    //! differ on every cosine threshold, so the two agree).
+
+    use super::*;
+    use crate::admission::decide::{decide_admission, AdmissionCandidateView};
+    use crate::admission::types::{AdmissionActionKind, AdmissionNeighbour};
+    use serde_json::json;
+
+    /// "picks the TF-IDF set for BUILTIN and the neural set otherwise"
+    #[test]
+    fn picks_the_tf_idf_set_for_builtin_and_the_neural_set_otherwise() {
+        assert_eq!(
+            *admission_thresholds_for_provider(Some("BUILTIN")),
+            ADMISSION_THRESHOLDS_TFIDF
+        );
+        assert_eq!(
+            *admission_thresholds_for_provider(Some("OPENAI")),
+            ADMISSION_THRESHOLDS
+        );
+        assert_eq!(
+            *admission_thresholds_for_provider(None),
+            ADMISSION_THRESHOLDS
+        );
+    }
+
+    /// "keeps the bands ordered and shares the date guard and footnote cap"
+    #[test]
+    fn keeps_the_bands_ordered_and_shares_the_date_guard_and_footnote_cap() {
+        let t = ADMISSION_THRESHOLDS_TFIDF;
+        assert!(t.related < t.reinforce);
+        assert!(t.reinforce < t.near_duplicate);
+        assert_eq!(t.date_guard_days, ADMISSION_THRESHOLDS.date_guard_days);
+        assert_eq!(t.footnote_cap, ADMISSION_THRESHOLDS.footnote_cap);
+    }
+
+    /// "a TF-IDF restatement (0.45) reinforces, a different fact (0.08) is
+    /// ignored, same topic (0.29) links"
+    #[test]
+    fn a_tf_idf_restatement_0_45_reinforces_a_different_fact_0_08_is_ignored_same_topic_0_29_links()
+    {
+        let candidate = AdmissionCandidateView {
+            holder_id: "c-1",
+            about_id: None,
+            kind: Some("semantic"),
+            source: Some("AUTO"),
+            occurred_at: None,
+        };
+        let decide = |cosine: f64| {
+            let neighbour = AdmissionNeighbour {
+                memory: json!({ "id": "m", "characterId": "c-1", "kind": "semantic", "source": "AUTO", "tier": "hot" }),
+                cosine,
+                via: None,
+                dangling_digest: false,
+            };
+            decide_admission(&candidate, &[neighbour], &ADMISSION_THRESHOLDS_TFIDF)
+                .action
+                .kind()
+        };
+        assert_eq!(decide(0.45), AdmissionActionKind::Reinforce);
+        assert_eq!(decide(0.85), AdmissionActionKind::Absorb);
+        assert_eq!(decide(0.29), AdmissionActionKind::InsertLinked);
+        assert_eq!(decide(0.08), AdmissionActionKind::Insert);
+    }
+}

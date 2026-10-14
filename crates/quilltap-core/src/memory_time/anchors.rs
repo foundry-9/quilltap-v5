@@ -76,3 +76,121 @@ pub fn resolve_episodic_anchors(input: &EpisodicAnchorInput<'_>) -> EpisodicAnch
         narrative_time: narrative_time.map(str::to_string),
     }
 }
+
+#[cfg(test)]
+mod jest_twins {
+    //! Case-for-case port of v4 `lib/memory/time/__tests__/anchors.test.ts`
+    //! (pin `83334b9a5`). v4's cases pass no `timeZone`, so `when` resolves on
+    //! `getMemoryTimeZone()` — with no cached instance zone and no
+    //! `QUILLTAP_TIMEZONE`, the runner's system zone, `UTC` under v4's jest
+    //! config. v5's zone is required, so these pass `"UTC"` explicitly.
+
+    use super::*;
+
+    const ANCHOR: &str = "2026-07-20T09:05:00.000Z"; // a Monday
+    const WINDOW_START: &str = "2026-07-19T18:00:00.000Z";
+    const TZ: &str = "UTC";
+
+    fn input<'a>(
+        when: Option<&'a str>,
+        reference_iso: Option<&'a str>,
+        fallback_iso: Option<&'a str>,
+        timeline_mode: &'a str,
+    ) -> EpisodicAnchorInput<'a> {
+        EpisodicAnchorInput {
+            when,
+            reference_iso,
+            fallback_iso,
+            timeline_mode,
+            narrative_time: None,
+            time_zone: TZ,
+        }
+    }
+
+    /// `it('falls back to fallbackIso when no phrase is given')`
+    #[test]
+    fn falls_back_to_fallback_iso_when_no_phrase_is_given() {
+        assert_eq!(
+            resolve_episodic_anchors(&input(None, Some(ANCHOR), Some(ANCHOR), "realtime")),
+            EpisodicAnchors {
+                occurred_at: Some(ANCHOR.to_string()),
+                narrative_time: None
+            }
+        );
+    }
+
+    /// `it('resolves the phrase against referenceIso and keeps the fallback
+    /// otherwise')`
+    #[test]
+    fn resolves_the_phrase_against_reference_iso_and_keeps_the_fallback_otherwise() {
+        let resolved = resolve_episodic_anchors(&input(
+            Some("last Tuesday"),
+            Some(ANCHOR),
+            Some(WINDOW_START),
+            "realtime",
+        ));
+        let occurred = resolved.occurred_at.expect("not null");
+        assert_eq!(&occurred[..10], "2026-07-14");
+        assert_eq!(resolved.narrative_time, None);
+
+        assert_eq!(
+            resolve_episodic_anchors(&input(
+                Some("when the moons align"),
+                Some(ANCHOR),
+                Some(WINDOW_START),
+                "realtime",
+            )),
+            EpisodicAnchors {
+                occurred_at: Some(WINDOW_START.to_string()),
+                narrative_time: None
+            }
+        );
+    }
+
+    /// `it('never resolves without a reference (turn-extractor shape with no
+    /// anchor)')`
+    #[test]
+    fn never_resolves_without_a_reference_turn_extractor_shape_with_no_anchor() {
+        assert_eq!(
+            resolve_episodic_anchors(&input(Some("yesterday"), None, None, "realtime")),
+            EpisodicAnchors {
+                occurred_at: None,
+                narrative_time: None
+            }
+        );
+    }
+
+    /// `it('preserves the raw phrase as narrativeTime on fictional timelines')`
+    #[test]
+    fn preserves_the_raw_phrase_as_narrative_time_on_fictional_timelines() {
+        assert_eq!(
+            resolve_episodic_anchors(&input(
+                Some("the third night of the siege"),
+                Some(ANCHOR),
+                Some(ANCHOR),
+                "narrative",
+            )),
+            EpisodicAnchors {
+                occurred_at: Some(ANCHOR.to_string()),
+                narrative_time: Some("the third night of the siege".to_string())
+            }
+        );
+    }
+
+    /// `it('lets an explicit narrativeTime outrank the phrase, and survive
+    /// realtime mode')`
+    #[test]
+    fn lets_an_explicit_narrative_time_outrank_the_phrase_and_survive_realtime_mode() {
+        for mode in ["narrative", "realtime"] {
+            let got = resolve_episodic_anchors(&EpisodicAnchorInput {
+                narrative_time: Some("Midwinter Eve"),
+                ..input(Some("yesterday"), Some(ANCHOR), Some(ANCHOR), mode)
+            });
+            assert_eq!(
+                got.narrative_time.as_deref(),
+                Some("Midwinter Eve"),
+                "{mode}"
+            );
+        }
+    }
+}

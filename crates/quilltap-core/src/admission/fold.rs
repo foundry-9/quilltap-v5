@@ -399,3 +399,246 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod jest_twins {
+    //! Case-for-case port of the `foldInto` half of v4
+    //! `__tests__/unit/lib/memory/admission-fold.test.ts` (pin `83334b9a5`).
+    //! The `applyFold` half (the repository writes) is P4.D290's. A source v4
+    //! passes as a whole `Memory` row goes through [`FoldSource::from_value`];
+    //! one it passes as a literal (`{ content, … }`) is built field by field.
+
+    use super::*;
+    use crate::reinforcement_footnotes::MAX_REINFORCEMENT_FOOTNOTES;
+    use serde_json::json;
+
+    const CAPS: FoldCaps = FoldCaps {
+        footnote_cap: MAX_REINFORCEMENT_FOOTNOTES,
+        entity_cap: 12,
+    };
+
+    /// v4's `footnotes(n)`.
+    fn footnotes(n: usize) -> String {
+        (0..n)
+            .map(|i| format!("[+] Detail{i}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// v4's `makeMemory(overrides)`.
+    fn make_memory(overrides: Value) -> Value {
+        let mut m = json!({
+            "id": "keep",
+            "characterId": "char-1",
+            "content": "Friday keeps the ledger.",
+            "summary": "Friday keeps the ledger.",
+            "keywords": [],
+            "tags": [],
+            "importance": 0.6,
+            "source": "AUTO",
+            "reinforcementCount": 1,
+            "lastReinforcedAt": null,
+            "relatedMemoryIds": [],
+            "reinforcedImportance": 0.6,
+            "entities": [],
+            "occurredAt": null,
+            "narrativeTime": null,
+            "tier": "hot",
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "updatedAt": "2026-01-01T00:00:00.000Z",
+        });
+        if let (Value::Object(base), Value::Object(over)) = (&mut m, overrides) {
+            base.extend(over);
+        }
+        m
+    }
+
+    /// A literal source `{ content }`.
+    fn src(content: &str) -> FoldSource {
+        FoldSource {
+            content: content.into(),
+            ..Default::default()
+        }
+    }
+
+    fn strs(words: &[&str]) -> Vec<String> {
+        words.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// "folds details, counts, links and the earliest occurredAt into the survivor"
+    #[test]
+    fn folds_details_counts_links_and_the_earliest_occurred_at_into_the_survivor() {
+        let survivor = make_memory(json!({
+            "reinforcementCount": 2,
+            "relatedMemoryIds": ["n1", "loser"],
+            "occurredAt": "2026-03-10T00:00:00.000Z",
+        }));
+        let loser = make_memory(json!({
+            "id": "loser",
+            "content": "Friday keeps the ledger for Marguerite.",
+            "reinforcementCount": 3,
+            "relatedMemoryIds": ["keep", "n1", "n2"],
+            "occurredAt": "2026-03-08T00:00:00.000Z",
+        }));
+
+        let plan = fold_into(&survivor, &[FoldSource::from_value(&loser)], &CAPS);
+
+        assert_eq!(plan.footnotes, strs(&["Marguerite"]));
+        assert_eq!(plan.content, "Friday keeps the ledger.\n[+] Marguerite");
+        // Bug 226: counts ride as a delta, never an absolute total.
+        assert_eq!(plan.reinforcement_delta, 3.0);
+        let keys = plan.patch.keys();
+        assert!(!keys.contains(&"reinforcementCount"));
+        assert!(!keys.contains(&"reinforcedImportance"));
+        assert!(!keys.contains(&"content"));
+        // Union minus the group and what the survivor already names.
+        assert_eq!(plan.add_links, strs(&["n2"]));
+        assert_eq!(
+            plan.patch.occurred_at.as_deref(),
+            Some("2026-03-08T00:00:00.000Z")
+        );
+        assert!(plan.reembed);
+    }
+
+    /// "judges details against the growing content, so two sources add one footnote"
+    #[test]
+    fn judges_details_against_the_growing_content_so_two_sources_add_one_footnote() {
+        let plan = fold_into(
+            &make_memory(json!({})),
+            &[
+                src("Seen with Marguerite."),
+                src("Again with Marguerite and Valparaiso."),
+            ],
+            &CAPS,
+        );
+        assert_eq!(plan.footnotes, strs(&["Marguerite", "Valparaiso"]));
+        assert_eq!(plan.reinforcement_delta, 2.0);
+    }
+
+    /// "appends up to the footnote cap and no further"
+    #[test]
+    fn appends_up_to_the_footnote_cap_and_no_further() {
+        let survivor = make_memory(json!({
+            "content": format!("Body\n{}", footnotes(MAX_REINFORCEMENT_FOOTNOTES - 2)),
+        }));
+        let plan = fold_into(&survivor, &[src("Body with Alpha, Beta and Gamma.")], &CAPS);
+        assert_eq!(plan.footnotes.len(), 2);
+        assert_eq!(
+            count_reinforcement_footnotes(&plan.content),
+            MAX_REINFORCEMENT_FOOTNOTES
+        );
+        assert!(!plan.at_cap);
+        assert!(plan.reembed);
+    }
+
+    /// "past the cap: counts and unions entities, appends nothing, and
+    /// re-embeds the changed anchor line (review #5)"
+    #[test]
+    fn past_the_cap_counts_and_unions_entities_appends_nothing_and_re_embeds_the_changed_anchor_line_review_5(
+    ) {
+        let survivor = make_memory(json!({
+            "content": format!("Friday keeps the ledger.\n{}", footnotes(MAX_REINFORCEMENT_FOOTNOTES)),
+            "entities": ["Friday"],
+        }));
+        let plan = fold_into(
+            &survivor,
+            &[FoldSource {
+                entities: Some(strs(&["Marguerite"])),
+                ..src("Friday keeps the ledger with Marguerite in Valparaiso.")
+            }],
+            &CAPS,
+        );
+        assert!(plan.at_cap);
+        assert_eq!(plan.footnotes, Vec::<String>::new());
+        assert_eq!(plan.patch.entities, Some(strs(&["Friday", "Marguerite"])));
+        assert_eq!(plan.reinforcement_delta, 1.0);
+        // The entities are on the anchor line, so the stored vector must follow (bug 204).
+        assert!(plan.reembed);
+    }
+
+    /// "past the cap with nothing new to the anchor line: no re-embed"
+    #[test]
+    fn past_the_cap_with_nothing_new_to_the_anchor_line_no_re_embed() {
+        let survivor = make_memory(json!({
+            "content": format!("Body\n{}", footnotes(MAX_REINFORCEMENT_FOOTNOTES)),
+        }));
+        let plan = fold_into(&survivor, &[src("Body with Marguerite.")], &CAPS);
+        assert!(plan.at_cap);
+        assert!(!plan.reembed);
+    }
+
+    /// "unions entities case-insensitively, survivor first, up to the cap"
+    #[test]
+    fn unions_entities_case_insensitively_survivor_first_up_to_the_cap() {
+        let survivor = make_memory(json!({ "entities": ["Friday", "Lighthouse"] }));
+        let mut entities = strs(&["friday"]);
+        entities.extend((0..20).map(|i| format!("Place{i}")));
+        let plan = fold_into(
+            &survivor,
+            &[FoldSource {
+                entities: Some(entities),
+                ..src("x")
+            }],
+            &CAPS,
+        );
+        let got = plan.patch.entities.expect("entities grew");
+        assert_eq!(got[..3].to_vec(), strs(&["Friday", "Lighthouse", "Place0"]));
+        assert_eq!(got.len(), 12);
+    }
+
+    /// "fills a missing narrativeTime and never overwrites one"
+    #[test]
+    fn fills_a_missing_narrative_time_and_never_overwrites_one() {
+        let with_time = |t: &str| FoldSource {
+            narrative_time: Some(t.into()),
+            ..src("x")
+        };
+        assert_eq!(
+            fold_into(
+                &make_memory(json!({})),
+                &[with_time("the third bell")],
+                &CAPS
+            )
+            .patch
+            .narrative_time
+            .as_deref(),
+            Some("the third bell")
+        );
+        let patch = fold_into(
+            &make_memory(json!({ "narrativeTime": "dawn" })),
+            &[with_time("dusk")],
+            &CAPS,
+        )
+        .patch;
+        assert!(!patch.keys().contains(&"narrativeTime"));
+        assert_eq!(patch.narrative_time, None);
+    }
+
+    /// "takes the latest observation time and counts an unreinforced row from its creation"
+    #[test]
+    fn takes_the_latest_observation_time_and_counts_an_unreinforced_row_from_its_creation() {
+        let survivor = make_memory(json!({ "lastReinforcedAt": "2026-02-01T00:00:00.000Z" }));
+        let source = make_memory(json!({ "id": "l", "createdAt": "2026-05-01T00:00:00.000Z" }));
+        let plan = fold_into(&survivor, &[FoldSource::from_value(&source)], &CAPS);
+        assert_eq!(
+            plan.reinforced_at.as_deref(),
+            Some("2026-05-01T00:00:00.000Z")
+        );
+    }
+
+    /// "changes nothing but the count for an identical source"
+    #[test]
+    fn changes_nothing_but_the_count_for_an_identical_source() {
+        let plan = fold_into(
+            &make_memory(json!({ "content": "Same words." })),
+            &[src("Same words.")],
+            &CAPS,
+        );
+        assert_eq!(plan.footnotes, Vec::<String>::new());
+        assert!(plan.patch.is_empty());
+        assert_eq!(serde_json::to_string(&plan.patch).unwrap(), "{}");
+        assert_eq!(plan.add_links, Vec::<String>::new());
+        assert!(!plan.reembed);
+        assert_eq!(plan.reinforcement_delta, 1.0);
+    }
+}

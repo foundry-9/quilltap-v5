@@ -312,3 +312,530 @@ mod tests {
         assert_eq!(subject_of("h", Some("bob")), "bob");
     }
 }
+
+#[cfg(test)]
+mod jest_twins {
+    //! Case-for-case port of v4 `lib/memory/__tests__/admission-decide.test.ts`
+    //! (pin `83334b9a5`), plus the `occasionsAreDistinct` half of
+    //! `lib/memory/__tests__/gate-date-guard.test.ts` (its retro-signature half
+    //! is recall's). v4's `Memory` objects are the row JSON the decider reads.
+
+    use super::*;
+    use crate::admission::ADMISSION_THRESHOLDS;
+    use serde_json::json;
+
+    const HOLDER: &str = "char-holder";
+    const BOB: &str = "char-bob";
+
+    /// v4's `mem(id, overrides)`.
+    fn mem(id: &str, overrides: Value) -> Value {
+        let mut m = json!({
+            "id": id,
+            "characterId": HOLDER,
+            "content": format!("content {id}"),
+            "summary": format!("summary {id}"),
+            "keywords": [],
+            "tags": [],
+            "importance": 0.5,
+            "aboutCharacterId": null,
+            "source": "AUTO",
+            "kind": "semantic",
+            "reinforcementCount": 1,
+            "relatedMemoryIds": [],
+            "reinforcedImportance": 0.5,
+            "tier": "hot",
+            "supersededById": null,
+            "consolidatedFrom": [],
+            "entities": [],
+            "occurredAt": null,
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "updatedAt": "2026-01-01T00:00:00.000Z",
+        });
+        if let (Value::Object(base), Value::Object(over)) = (&mut m, overrides) {
+            base.extend(over);
+        }
+        m
+    }
+
+    /// v4's `n(memory, cosine)`.
+    fn n(memory: Value, cosine: f64) -> AdmissionNeighbour {
+        AdmissionNeighbour {
+            memory,
+            cosine,
+            via: None,
+            dangling_digest: false,
+        }
+    }
+
+    const AUTO_SELF: AdmissionCandidateView<'static> = AdmissionCandidateView {
+        holder_id: HOLDER,
+        about_id: None,
+        kind: Some("semantic"),
+        source: Some("AUTO"),
+        occurred_at: None,
+    };
+
+    fn decide(
+        neighbours: &[AdmissionNeighbour],
+        candidate: AdmissionCandidateView<'_>,
+    ) -> AdmissionAction {
+        decide_admission(&candidate, neighbours, &ADMISSION_THRESHOLDS).action
+    }
+
+    fn insert_linked(ids: &[&str], reason: LinkReason) -> AdmissionAction {
+        AdmissionAction::InsertLinked {
+            link_to: ids.iter().map(|s| s.to_string()).collect(),
+            reason,
+        }
+    }
+
+    fn reinforce(into: &str) -> AdmissionAction {
+        AdmissionAction::Reinforce { into: into.into() }
+    }
+
+    fn absorb(into: &str) -> AdmissionAction {
+        AdmissionAction::Absorb {
+            into: into.into(),
+            redirected_from: None,
+        }
+    }
+
+    fn none() -> Value {
+        json!({})
+    }
+
+    // --- describe('decideAdmission — threshold bands') ---
+
+    /// `it.each(cases)('%s', …)` — the band table, row for row.
+    #[test]
+    fn decide_admission_threshold_bands() {
+        let cases: Vec<(&str, Vec<AdmissionNeighbour>, AdmissionAction)> = vec![
+            ("no neighbours → insert", vec![], AdmissionAction::Insert),
+            (
+                "all below related → insert",
+                vec![n(mem("a", none()), 0.69)],
+                AdmissionAction::Insert,
+            ),
+            (
+                "related band → insert-linked",
+                vec![n(mem("a", none()), 0.70)],
+                insert_linked(&["a"], LinkReason::Band),
+            ),
+            (
+                "just under reinforce → insert-linked",
+                vec![n(mem("a", none()), 0.8499)],
+                insert_linked(&["a"], LinkReason::Band),
+            ),
+            (
+                "reinforce band → reinforce",
+                vec![n(mem("a", none()), 0.85)],
+                reinforce("a"),
+            ),
+            (
+                "just under near-duplicate → reinforce",
+                vec![n(mem("a", none()), 0.8999)],
+                reinforce("a"),
+            ),
+            (
+                "near-duplicate → absorb",
+                vec![n(mem("a", none()), 0.90)],
+                absorb("a"),
+            ),
+            (
+                "several band rows all link, best first",
+                vec![
+                    n(mem("b", none()), 0.72),
+                    n(mem("a", none()), 0.81),
+                    n(mem("c", none()), 0.5),
+                ],
+                insert_linked(&["a", "b"], LinkReason::Band),
+            ),
+            (
+                "closest eligible wins",
+                vec![n(mem("a", none()), 0.87), n(mem("b", none()), 0.93)],
+                absorb("b"),
+            ),
+        ];
+        assert_eq!(cases.len(), 9);
+        for (label, neighbours, expected) in cases {
+            assert_eq!(decide(&neighbours, AUTO_SELF), expected, "{label}");
+        }
+    }
+
+    // --- describe('decideAdmission — subject, kind and source') ---
+
+    /// "a close neighbour about someone else is linked, never folded into"
+    #[test]
+    fn a_close_neighbour_about_someone_else_is_linked_never_folded_into() {
+        assert_eq!(
+            decide(
+                &[n(mem("a", json!({ "aboutCharacterId": BOB })), 0.95)],
+                AUTO_SELF
+            ),
+            insert_linked(&["a"], LinkReason::Mismatch)
+        );
+    }
+
+    /// "reads a self memory the same whether aboutCharacterId is null or the holder"
+    #[test]
+    fn reads_a_self_memory_the_same_whether_about_character_id_is_null_or_the_holder() {
+        assert_eq!(
+            decide(
+                &[n(mem("a", json!({ "aboutCharacterId": HOLDER })), 0.87)],
+                AUTO_SELF
+            ),
+            reinforce("a")
+        );
+        assert_eq!(
+            decide(
+                &[n(mem("a", none()), 0.87)],
+                AdmissionCandidateView {
+                    about_id: Some(HOLDER),
+                    ..AUTO_SELF
+                }
+            ),
+            reinforce("a")
+        );
+    }
+
+    /// "folds a candidate about Bob into a row about Bob"
+    #[test]
+    fn folds_a_candidate_about_bob_into_a_row_about_bob() {
+        assert_eq!(
+            decide(
+                &[n(mem("a", json!({ "aboutCharacterId": BOB })), 0.87)],
+                AdmissionCandidateView {
+                    about_id: Some(BOB),
+                    ..AUTO_SELF
+                }
+            ),
+            reinforce("a")
+        );
+    }
+
+    /// "a different kind is linked, not folded into"
+    #[test]
+    fn a_different_kind_is_linked_not_folded_into() {
+        assert_eq!(
+            decide(
+                &[n(mem("a", json!({ "kind": "episodic" })), 0.95)],
+                AUTO_SELF
+            ),
+            insert_linked(&["a"], LinkReason::Mismatch)
+        );
+    }
+
+    /// "a MANUAL candidate never disappears into an AUTO row"
+    #[test]
+    fn a_manual_candidate_never_disappears_into_an_auto_row() {
+        assert_eq!(
+            decide(
+                &[n(mem("a", none()), 0.97)],
+                AdmissionCandidateView {
+                    source: Some("MANUAL"),
+                    ..AUTO_SELF
+                }
+            ),
+            insert_linked(&["a"], LinkReason::Mismatch)
+        );
+    }
+
+    /// "a MANUAL candidate may fold into a MANUAL row or a digest"
+    #[test]
+    fn a_manual_candidate_may_fold_into_a_manual_row_or_a_digest() {
+        let manual = AdmissionCandidateView {
+            source: Some("MANUAL"),
+            ..AUTO_SELF
+        };
+        assert_eq!(
+            decide(&[n(mem("a", json!({ "source": "MANUAL" })), 0.87)], manual),
+            reinforce("a")
+        );
+        assert_eq!(
+            decide(
+                &[n(mem("d", json!({ "source": "CONSOLIDATED" })), 0.95)],
+                manual
+            ),
+            absorb("d")
+        );
+    }
+
+    /// "an AUTO candidate folds into a MANUAL row"
+    #[test]
+    fn an_auto_candidate_folds_into_a_manual_row() {
+        assert_eq!(
+            decide(
+                &[n(mem("a", json!({ "source": "MANUAL" })), 0.95)],
+                AUTO_SELF
+            ),
+            absorb("a")
+        );
+    }
+
+    /// "skips an ineligible closest neighbour for an eligible second"
+    #[test]
+    fn skips_an_ineligible_closest_neighbour_for_an_eligible_second() {
+        let action = decide(
+            &[
+                n(mem("bob", json!({ "aboutCharacterId": BOB })), 0.97),
+                n(mem("self", none()), 0.88),
+            ],
+            AUTO_SELF,
+        );
+        assert_eq!(action, reinforce("self"));
+    }
+
+    // --- describe('decideAdmission — date guard over every close neighbour') ---
+
+    const SPRING: &str = "2026-03-10T00:00:00.000Z";
+    const SUMMER: &str = "2026-07-14T00:00:00.000Z";
+    const SUMMER_RETOLD: &str = "2026-07-16T00:00:00.000Z";
+
+    fn in_summer() -> AdmissionCandidateView<'static> {
+        AdmissionCandidateView {
+            occurred_at: Some(SUMMER),
+            ..AUTO_SELF
+        }
+    }
+
+    /// "a different occasion at rank 1 is linked"
+    #[test]
+    fn a_different_occasion_at_rank_1_is_linked() {
+        assert_eq!(
+            decide(
+                &[n(mem("a", json!({ "occurredAt": SPRING })), 0.96)],
+                in_summer()
+            ),
+            insert_linked(&["a"], LinkReason::DateGuard)
+        );
+    }
+
+    /// "looks past a different occasion to a same-occasion row below it"
+    #[test]
+    fn looks_past_a_different_occasion_to_a_same_occasion_row_below_it() {
+        let action = decide(
+            &[
+                n(mem("spring", json!({ "occurredAt": SPRING })), 0.96),
+                n(mem("summer", json!({ "occurredAt": SUMMER_RETOLD })), 0.88),
+            ],
+            in_summer(),
+        );
+        assert_eq!(action, reinforce("summer"));
+    }
+
+    /// "links every distinct occasion and band row when none qualifies"
+    #[test]
+    fn links_every_distinct_occasion_and_band_row_when_none_qualifies() {
+        let action = decide(
+            &[
+                n(mem("spring", json!({ "occurredAt": SPRING })), 0.96),
+                n(
+                    mem(
+                        "autumn",
+                        json!({ "occurredAt": "2025-10-01T00:00:00.000Z" }),
+                    ),
+                    0.91,
+                ),
+                n(mem("band", none()), 0.75),
+            ],
+            in_summer(),
+        );
+        assert_eq!(
+            action,
+            insert_linked(&["spring", "autumn", "band"], LinkReason::DateGuard)
+        );
+    }
+
+    /// "never fires without an event time on both sides"
+    #[test]
+    fn never_fires_without_an_event_time_on_both_sides() {
+        assert_eq!(
+            decide(
+                &[n(mem("a", json!({ "occurredAt": SPRING })), 0.96)],
+                AUTO_SELF
+            ),
+            absorb("a")
+        );
+    }
+
+    // --- describe('decideAdmission — digests and the cold tier') ---
+
+    /// "a digest reached through a superseded member absorbs by count only"
+    #[test]
+    fn a_digest_reached_through_a_superseded_member_absorbs_by_count_only() {
+        let digest = mem("digest", json!({ "source": "CONSOLIDATED" }));
+        let via = |cosine: f64| AdmissionNeighbour {
+            via: Some("member".into()),
+            ..n(digest.clone(), cosine)
+        };
+        let expected = AdmissionAction::Absorb {
+            into: "digest".into(),
+            redirected_from: Some("member".into()),
+        };
+        assert_eq!(decide(&[via(0.87)], AUTO_SELF), expected);
+        assert_eq!(decide(&[via(0.95)], AUTO_SELF), expected);
+    }
+
+    /// "a digest matched directly in the reinforce band is reinforced"
+    #[test]
+    fn a_digest_matched_directly_in_the_reinforce_band_is_reinforced() {
+        assert_eq!(
+            decide(
+                &[n(mem("digest", json!({ "source": "CONSOLIDATED" })), 0.87)],
+                AUTO_SELF
+            ),
+            reinforce("digest")
+        );
+    }
+
+    /// "a cold row nothing supersedes is promoted, then reinforced"
+    #[test]
+    fn a_cold_row_nothing_supersedes_is_promoted_then_reinforced() {
+        assert_eq!(
+            decide(
+                &[n(mem("cold", json!({ "tier": "cold" })), 0.87)],
+                AUTO_SELF
+            ),
+            AdmissionAction::PromoteAndReinforce {
+                into: "cold".into(),
+                with_footnotes: true,
+            }
+        );
+    }
+
+    /// "a cold near-duplicate is promoted, then absorbed"
+    #[test]
+    fn a_cold_near_duplicate_is_promoted_then_absorbed() {
+        assert_eq!(
+            decide(
+                &[n(mem("cold", json!({ "tier": "cold" })), 0.95)],
+                AUTO_SELF
+            ),
+            AdmissionAction::PromoteAndReinforce {
+                into: "cold".into(),
+                with_footnotes: false,
+            }
+        );
+    }
+
+    /// "a cold row whose digest is gone is promoted"
+    #[test]
+    fn a_cold_row_whose_digest_is_gone_is_promoted() {
+        let cold = mem("cold", json!({ "tier": "cold", "supersededById": "gone" }));
+        let action = decide(
+            &[AdmissionNeighbour {
+                dangling_digest: true,
+                ..n(cold, 0.95)
+            }],
+            AUTO_SELF,
+        );
+        // `toMatchObject({ kind: 'promote-and-reinforce', into: 'cold' })`.
+        assert!(
+            matches!(&action, AdmissionAction::PromoteAndReinforce { into, .. } if into == "cold"),
+            "{action:?}"
+        );
+    }
+
+    /// "a cold row in the band is linked, not promoted"
+    #[test]
+    fn a_cold_row_in_the_band_is_linked_not_promoted() {
+        assert_eq!(
+            decide(
+                &[n(mem("cold", json!({ "tier": "cold" })), 0.75)],
+                AUTO_SELF
+            ),
+            insert_linked(&["cold"], LinkReason::Band)
+        );
+    }
+
+    // --- describe('decideAdmission — the trace') ---
+
+    /// "records a verdict for every neighbour, best first"
+    #[test]
+    fn records_a_verdict_for_every_neighbour_best_first() {
+        let AdmissionDecision { assessments, .. } = decide_admission(
+            &AUTO_SELF,
+            &[
+                n(mem("low", none()), 0.4),
+                n(mem("bob", json!({ "aboutCharacterId": BOB })), 0.96),
+                n(mem("band", none()), 0.75),
+                n(mem("ok", none()), 0.88),
+            ],
+            &ADMISSION_THRESHOLDS,
+        );
+        let row =
+            |id: &str, cosine: f64, verdict: Verdict, excluded_by: Option<NeighbourExclusion>| {
+                NeighbourAssessment {
+                    id: id.into(),
+                    cosine,
+                    via: None,
+                    verdict,
+                    excluded_by,
+                }
+            };
+        assert_eq!(
+            assessments,
+            vec![
+                row(
+                    "bob",
+                    0.96,
+                    Verdict::Excluded,
+                    Some(NeighbourExclusion::Subject)
+                ),
+                row("ok", 0.88, Verdict::Eligible, None),
+                row("band", 0.75, Verdict::Band, None),
+                row("low", 0.4, Verdict::Below, None),
+            ]
+        );
+        // `toEqual` over the literals: no `via` / `excludedBy` key where v4 has none.
+        assert_eq!(
+            serde_json::to_string(&assessments).unwrap(),
+            r#"[{"id":"bob","cosine":0.96,"verdict":"excluded","excludedBy":"subject"},{"id":"ok","cosine":0.88,"verdict":"eligible"},{"id":"band","cosine":0.75,"verdict":"band"},{"id":"low","cosine":0.4,"verdict":"below"}]"#
+        );
+    }
+
+    // --- gate-date-guard.test.ts: describe('occasionsAreDistinct') ---
+
+    /// v4's local wrapper: `distinct(a, b, ADMISSION_THRESHOLDS.dateGuardDays)`.
+    fn distinct(a: Option<&str>, b: Option<&str>) -> bool {
+        occasions_are_distinct(a, b, ADMISSION_THRESHOLDS.date_guard_days)
+    }
+
+    /// "is true when occurredAt differ by more than the guard window"
+    #[test]
+    fn is_true_when_occurred_at_differ_by_more_than_the_guard_window() {
+        assert!(distinct(
+            Some("2026-03-10T00:00:00.000Z"),
+            Some("2026-07-14T00:00:00.000Z")
+        ));
+    }
+
+    /// "is false within the guard window (same occasion retold days later)"
+    #[test]
+    fn is_false_within_the_guard_window_same_occasion_retold_days_later() {
+        assert!(!distinct(
+            Some("2026-07-14T00:00:00.000Z"),
+            Some("2026-07-16T00:00:00.000Z")
+        ));
+    }
+
+    /// "treats exactly ${DATE_GUARD_DAYS} days as the same occasion (strictly-greater guard)"
+    #[test]
+    fn treats_exactly_date_guard_days_days_as_the_same_occasion_strictly_greater_guard() {
+        let a = "2026-07-07T00:00:00.000Z";
+        let b = format!(
+            "2026-07-{}T00:00:00.000Z",
+            7 + ADMISSION_THRESHOLDS.date_guard_days as i64
+        );
+        assert_eq!(b, "2026-07-14T00:00:00.000Z");
+        assert!(!distinct(Some(a), Some(&b)));
+    }
+
+    /// "never fires when either side lacks an event time"
+    #[test]
+    fn never_fires_when_either_side_lacks_an_event_time() {
+        assert!(!distinct(None, Some("2026-07-14T00:00:00.000Z")));
+        assert!(!distinct(Some("2026-07-14T00:00:00.000Z"), None));
+        assert!(!distinct(Some("garbage"), Some("2026-07-14T00:00:00.000Z")));
+    }
+}

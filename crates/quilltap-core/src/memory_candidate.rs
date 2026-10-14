@@ -910,3 +910,380 @@ mod tests {
         assert!(candidate_from_draft(&draft, subject, prov).is_none());
     }
 }
+
+#[cfg(test)]
+mod jest_twins {
+    //! Case-for-case port of v4 `__tests__/unit/lib/memory/memory-candidate.test.ts`
+    //! (pin `83334b9a5`). The cases that drive `runPass` through the mocked
+    //! extraction context (the producers' async half — the admission mock,
+    //! the cheap-LLM mock, the turn window) are not expressible against this
+    //! pure module and are listed in the P4.D289 Tier-2 report; a case whose
+    //! first half is pure keeps that half here.
+
+    use super::*;
+    use crate::consolidation_plan::normalize_digest_keywords;
+    use crate::recall_tags::{parse_targeting_tags, ContextTag, ScopeTag, TemporalTag};
+
+    const HOLDER: &str = "char-holder";
+    const OTHER: &str = "char-other";
+
+    fn turn_ms() -> f64 {
+        crate::episodic::js_date_parse_ms("2026-10-12T19:00:00.000Z").expect("parses") as f64
+    }
+
+    /// v4's `provenance(pass, source)` helper, as the struct.
+    fn provenance(pass: CandidatePass, source: MemorySource) -> CandidateProvenance {
+        CandidateProvenance {
+            source,
+            witnessed_context: Some(if source == MemorySource::Manual {
+                WitnessedContext::Manual
+            } else {
+                WitnessedContext::UserPresent
+            }),
+            chat_id: Some("chat-1".into()),
+            project_id: None,
+            source_message_id: Some("msg-1".into()),
+            anchor_time_ms: turn_ms(),
+            pass,
+        }
+    }
+
+    /// v4's `provenance(pass, source)` helper, as the JSON a schema parse reads.
+    fn provenance_json(pass: &str, source: &str) -> Value {
+        json!({
+            "source": source,
+            "witnessedContext": if source == "MANUAL" { "manual" } else { "user_present" },
+            "chatId": "chat-1",
+            "projectId": null,
+            "sourceMessageId": "msg-1",
+            "anchorTimeMs": turn_ms() as i64,
+            "pass": pass,
+        })
+    }
+
+    fn subject(holder: &str, about: Option<&str>) -> CandidateSubject {
+        CandidateSubject {
+            holder_id: holder.into(),
+            about_id: about.map(str::to_string),
+        }
+    }
+
+    fn strs(words: &[&str]) -> Vec<String> {
+        words.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn values(words: &[String]) -> Vec<Value> {
+        words.iter().map(|s| Value::String(s.clone())).collect()
+    }
+
+    /// v4's `roundTrip(candidate)` helper.
+    fn round_trip(candidate: &MemoryCandidate) -> AdmissionRow {
+        // Parsing a parsed candidate changes nothing.
+        let reparsed = parse_memory_candidate(&serde_json::to_value(candidate).unwrap())
+            .expect("a parsed candidate re-parses");
+        assert_eq!(&reparsed, candidate);
+        let row = to_admission_row(candidate, &ResolvedCandidateTime::default());
+        assert_eq!(row.character_id, candidate.subject.holder_id);
+        assert_eq!(row.about_character_id, candidate.subject.about_id);
+        assert_eq!(
+            row.source.as_deref(),
+            Some(candidate.provenance.source.as_str())
+        );
+        assert_eq!(row.importance, Some(candidate.importance));
+        // The row's keywords: the free words, then the tags — read back unchanged.
+        let keywords = row.keywords.clone().unwrap_or_default();
+        assert_eq!(
+            parse_targeting_tags(&keywords),
+            candidate.targeting.unwrap_or(DEFAULT_TARGETING)
+        );
+        assert_eq!(
+            split_targeting_keywords(&values(&keywords)).free,
+            candidate.keywords
+        );
+        row
+    }
+
+    // --- describe('targeting') ---
+
+    /// "normalises against the closed vocabularies, with fallbacks"
+    #[test]
+    fn normalises_against_the_closed_vocabularies_with_fallbacks() {
+        assert_eq!(
+            normalise_targeting(
+                Some(&json!({ "temporal": "PAST", "scope": " narrow ", "context": "gossip" })),
+                &PartialTargetingTags::default()
+            ),
+            TargetingTags {
+                temporal: TemporalTag::Past,
+                scope: ScopeTag::Narrow,
+                context: ContextTag::Information,
+            }
+        );
+        assert_eq!(
+            normalise_targeting(
+                Some(&Value::Null),
+                &PartialTargetingTags {
+                    temporal: Some(TemporalTag::Past),
+                    ..Default::default()
+                }
+            ),
+            TargetingTags {
+                temporal: TemporalTag::Past,
+                ..DEFAULT_TARGETING
+            }
+        );
+    }
+
+    /// "materialises and splits symmetrically"
+    #[test]
+    fn materialises_and_splits_symmetrically() {
+        let t = TargetingTags {
+            temporal: TemporalTag::Moment,
+            scope: ScopeTag::Narrow,
+            context: ContextTag::Banter,
+        };
+        assert_eq!(
+            targeting_keywords(&t),
+            strs(&["moment", "scope: narrow", "banter"])
+        );
+        let mut kws = strs(&["Harbour"]);
+        kws.extend(targeting_keywords(&t));
+        assert_eq!(
+            split_targeting_keywords(&values(&kws)),
+            SplitTargetingKeywords {
+                free: strs(&["Harbour"]),
+                targeting: PartialTargetingTags {
+                    temporal: Some(t.temporal),
+                    scope: Some(t.scope),
+                    context: Some(t.context),
+                },
+            }
+        );
+    }
+
+    // --- describe('importance: the parser default is the only default') ---
+
+    /// `it.each(...)('%p → %p')` — every row but `[Number.NaN, 0.5]`: no JSON
+    /// value carries a NaN (`serde_json::Number` refuses one, and
+    /// `json!(f64::NAN)` is `null`), so that row is not expressible against
+    /// `coerce_importance(Option<&Value>)` (listed in the report).
+    #[test]
+    fn importance_the_parser_default_is_the_only_default() {
+        let cases: [(Option<Value>, f64); 6] = [
+            (Some(json!(0)), 0.0),
+            (Some(json!(0.73)), 0.73),
+            (Some(json!(5)), 1.0),
+            (Some(json!(-1)), 0.0),
+            (None, 0.5),
+            (Some(json!("0.9")), 0.5),
+        ];
+        for (raw, expected) in cases {
+            assert_eq!(
+                coerce_importance(raw.as_ref()),
+                expected,
+                "{raw:?} → {expected}"
+            );
+        }
+    }
+
+    // --- describe('producers') ---
+
+    /// "per-turn SELF/OTHER: the draft becomes the admitted row, a model 0
+    /// stays 0" — the pure half only (the closing `roundTrip(candidateFromDraft
+    /// (...))`); the `runPass(otherTurnPass(), …)` half drives the mocked
+    /// extraction context and is not expressible here.
+    #[test]
+    fn per_turn_self_other_the_draft_becomes_the_admitted_row_a_model_0_stays_0() {
+        let draft = MemoryDraftView {
+            content: Some("Amy is afraid of the dark.".into()),
+            summary: Some("Amy fears the dark".into()),
+            keywords: Some(vec![json!("dark")]),
+            importance: Some(json!(0)),
+            targeting: Some(
+                json!({ "temporal": "present", "scope": "wide", "context": "relationships" }),
+            ),
+            kind: Some("semantic".into()),
+            ..Default::default()
+        };
+        let candidate = candidate_from_draft(
+            &draft,
+            subject(HOLDER, Some(OTHER)),
+            provenance(CandidatePass::OtherTurn, MemorySource::Auto),
+        )
+        .expect("a candidate");
+        assert_eq!(candidate.importance, 0.0);
+        round_trip(&candidate);
+    }
+
+    /// "fold episode: past / narrow / history, about nobody in particular"
+    #[test]
+    fn fold_episode_past_narrow_history_about_nobody_in_particular() {
+        let candidate = parse_memory_candidate(&json!({
+            "content": "They went down to the cellar and found the crates.",
+            "summary": "the cellar expedition",
+            "keywords": ["cellar", "crates"],
+            "targeting": { "temporal": "past", "scope": "narrow", "context": "history" },
+            "importance": 0.7,
+            "kind": "episodic",
+            "when": "last night",
+            "entities": ["Cellar", "Crates"],
+            "subject": { "holderId": HOLDER, "aboutId": null },
+            "provenance": provenance_json("episode-fold", "AUTO"),
+        }))
+        .expect("parses");
+        let row = round_trip(&candidate);
+        assert_eq!(
+            row.keywords,
+            Some(strs(&[
+                "cellar",
+                "crates",
+                "past",
+                "scope: narrow",
+                "history"
+            ]))
+        );
+        assert_eq!(row.kind.as_deref(), Some("episodic"));
+    }
+
+    /// "manual: no targeting tags are written, and the row reads as the defaults"
+    #[test]
+    fn manual_no_targeting_tags_are_written_and_the_row_reads_as_the_defaults() {
+        let candidate = parse_memory_candidate(&json!({
+            "content": "Holly prefers tea.",
+            "summary": "prefers tea",
+            "keywords": ["tea"],
+            "targeting": null,
+            "importance": 0.6,
+            "kind": "semantic",
+            "when": null,
+            "subject": { "holderId": HOLDER, "aboutId": null },
+            "provenance": provenance_json("manual", "MANUAL"),
+        }))
+        .expect("parses");
+        let row = round_trip(&candidate);
+        assert_eq!(row.keywords, Some(strs(&["tea"])));
+        assert_eq!(row.witnessed_context.as_deref(), Some("manual"));
+    }
+
+    /// "consolidation: a digest's keywords normalise through the same targeting rules"
+    #[test]
+    fn consolidation_a_digests_keywords_normalise_through_the_same_targeting_rules() {
+        let keywords = normalize_digest_keywords(
+            &strs(&["Harbour", "harbour", "SCOPE: narrow", "banter"]),
+            &[
+                strs(&["present", "scope: wide", "history"]),
+                strs(&["past", "scope: wide", "history"]),
+            ],
+            "semantic",
+        );
+        assert_eq!(
+            keywords,
+            strs(&["harbour", "present", "scope: narrow", "banter"])
+        );
+        let SplitTargetingKeywords { free, targeting } =
+            split_targeting_keywords(&values(&keywords));
+        // v4 hands `normaliseTargeting` the split's `Partial<TargetingTags>`
+        // object: the axes it found, as strings.
+        let mut partial = Map::new();
+        if let Some(t) = targeting.temporal {
+            partial.insert("temporal".into(), json!(t.as_str()));
+        }
+        if let Some(s) = targeting.scope {
+            partial.insert("scope".into(), json!(s.as_str()));
+        }
+        if let Some(c) = targeting.context {
+            partial.insert("context".into(), json!(c.as_str()));
+        }
+        let normalised = normalise_targeting(
+            Some(&Value::Object(partial)),
+            &PartialTargetingTags::default(),
+        );
+        let candidate = parse_memory_candidate(&json!({
+            "content": "A digest.",
+            "summary": "digest",
+            "keywords": free,
+            "targeting": targeting_value(&normalised),
+            "importance": 0.8,
+            "kind": "semantic",
+            "when": null,
+            "subject": { "holderId": HOLDER, "aboutId": OTHER },
+            "provenance": provenance_json("consolidation", "AUTO"),
+        }))
+        .expect("parses");
+        round_trip(&candidate);
+    }
+
+    /// "a blank draft is not a candidate, and skips alone rather than aborting
+    /// the turn" — the pure half only (the two `candidateFromDraft`
+    /// expectations); the `runPass(selfTurnPass(), …)` half is not expressible
+    /// here.
+    #[test]
+    fn a_blank_draft_is_not_a_candidate_and_skips_alone_rather_than_aborting_the_turn() {
+        let blank = MemoryDraftView {
+            content: Some("   ".into()),
+            ..Default::default()
+        };
+        assert!(candidate_from_draft(
+            &blank,
+            subject(HOLDER, None),
+            provenance(CandidatePass::SelfTurn, MemorySource::Auto)
+        )
+        .is_none());
+        // Blank content with a usable summary falls back to the summary.
+        let fallback = MemoryDraftView {
+            content: Some("  ".into()),
+            summary: Some("kept".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            candidate_from_draft(
+                &fallback,
+                subject(HOLDER, None),
+                provenance(CandidatePass::SelfTurn, MemorySource::Auto)
+            )
+            .map(|c| c.content)
+            .as_deref(),
+            Some("kept")
+        );
+    }
+
+    /// "an empty or malformed source timestamp falls through to the next anchor"
+    #[test]
+    fn an_empty_or_malformed_source_timestamp_falls_through_to_the_next_anchor() {
+        // v4's default fallback is `Date.now()`; the first case never reaches it.
+        assert_eq!(
+            anchor_time_ms_from(
+                &[
+                    Some(""),
+                    Some("not a date"),
+                    Some("2026-10-12T19:00:00.000Z")
+                ],
+                0.0
+            ),
+            turn_ms()
+        );
+        assert_eq!(anchor_time_ms_from(&[None, None, Some("")], 42.0), 42.0);
+    }
+
+    /// "refuses a candidate with no text or an out-of-range importance"
+    #[test]
+    fn refuses_a_candidate_with_no_text_or_an_out_of_range_importance() {
+        let base = json!({
+            "content": "x",
+            "summary": "x",
+            "targeting": null,
+            "importance": 0.5,
+            "kind": "semantic",
+            "when": null,
+            "subject": { "holderId": HOLDER, "aboutId": null },
+            "provenance": provenance_json("manual", "MANUAL"),
+        });
+        let mut no_text = base.clone();
+        no_text["content"] = json!("");
+        assert!(parse_memory_candidate(&no_text).is_err());
+        let mut too_important = base.clone();
+        too_important["importance"] = json!(1.2);
+        assert!(parse_memory_candidate(&too_important).is_err());
+        assert!(parse_memory_candidate(&base).is_ok());
+    }
+}
