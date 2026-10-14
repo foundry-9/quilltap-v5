@@ -24,6 +24,12 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — feat(core): P4.D288 unit 1 — the memory extraction cursor repository (C1-1)
+
+_Versions: core 0.0.1287._
+
+New `db::memory_extraction_cursors`: one row per chat and extraction pass (`other-fold`, `episode-fold`, `turn`), the port of v4's cursor repository at the `83334b9a5` pin. `MIGRATION_TABLE_DDL` is v4's migration text byte for byte (the shape every real v4 instance carries: `UNIQUE ("chatId","pass")` and a cascading foreign key), measured on a real v4 first boot. The six verbs keep v4's fallback/rethrow split, including the base-repository behavior that a failed read answers empty outside the strict scope and throws only inside it; rows the cursor schema refuses (an unknown pass, a non-UUID chat id) are dropped with v4's validation lines. `set_cursor_raw` / `find_cursor_raw` carry a pass string the enum does not know (R-X). Log homes in a new P4.D288 region of `db/fallback.rs`; the row schema in `api/zod_issues.rs`. New tier-2 family `memory_extraction_cursors_tier2` (94 ops over both table shapes, 68 captured lines, all equal to v4's) and the round's shared seed `memory-keystone-tier2.json`.
+
 #### 2026-10-14 — fix(core): port V8's whole Date.parse (ES5 ISO + the legacy fallback) behind js_date_parse_ms
 
 _Versions: core 0.0.1286._

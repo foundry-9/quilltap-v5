@@ -157,6 +157,18 @@ const HOME_MESSAGES: &[&str] = &[
     "Error bulk-updating memory access times",
     "Error reinforcing memory",
     // === end ===
+    // === P4.D288 — the `83334b9a5` round's keystone repositories: the
+    // extraction cursor repository's own lines + v4's base `deleteMany`
+    // RETHROW line (append-only) ===
+    "Error deleting entities",
+    "Entities deleted",
+    "Error finding extraction cursors for chat",
+    "Error finding extraction cursor",
+    "Error listing extraction cursors",
+    "Error setting extraction cursor",
+    "Error clearing extraction cursor",
+    "Error clearing extraction cursors for chat",
+    // === end P4.D288 ===
 ];
 
 const HOME: &str = "db/fallback.rs";

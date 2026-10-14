@@ -2800,3 +2800,195 @@ pub fn find_all_logged_strict<T>(
 }
 
 // === end P4.D274 ===
+
+// === P4.D288 — the `83334b9a5` round's keystone repositories (append-only) ===
+//
+// The memory extraction cursor repository (`memory-extraction-cursors.
+// repository.ts`, C1-1) over v4's base repository: the base `findByFilter` /
+// `_findById` / `_findAll` FALLBACKS answer first (their lines are the homes
+// above), so each method's own RETHROW line below is reached only inside the
+// strict scope; the base `deleteMany` is a RETHROW whose line precedes each
+// clear's FALLBACK line. Every line carries `collection` first (v4's
+// `safeQuery` `enrichedContext`) and `strictFailures: true` inside the scope.
+
+/// v4 `_findAll` for a repository whose own methods are reached from inside
+/// the strict scope (the cursor bundle's `findAllByChat` in the backup and the
+/// `.qtap` export): `read()`'s `Err` logs `Error finding all entities` and
+/// answers `Ok([])`; inside the scope the line gains `strictFailures=true` and
+/// the `Err` propagates to the method's own `safeQuery`. A SIBLING of
+/// [`find_all_or_empty`], as [`find_by_filter_strict_aware`] is of its twin.
+pub fn find_all_strict_aware<T>(
+    collection: &'static str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    read().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        log_find_all_failure(collection, &error, strict);
+        if strict {
+            Err(error)
+        } else {
+            Ok(Vec::new())
+        }
+    })
+}
+
+/// v4 `BaseRepository.validate`'s ERROR `Data validation failed {collection,
+/// error}` (`base.repository.ts:131-141`) — the Zod error's message — before
+/// it throws into `_findById`'s own fallback.
+pub fn log_data_validation_failed(collection: &str, zod: &str) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = collection,
+        error = %zod,
+        "Data validation failed"
+    );
+}
+
+/// v4 `validateSafe` over a stored row its schema refuses (`findByFilter` /
+/// `_findAll`): `validate`'s ERROR, then WARN `Safe validation failed
+/// {collection, error}`, and the row is DROPPED by the caller.
+pub fn log_safe_validation_drop(collection: &str, zod: &str) {
+    log_data_validation_failed(collection, zod);
+    tracing::warn!(
+        target: "quilltap::db",
+        collection = collection,
+        error = %zod,
+        "Safe validation failed"
+    );
+}
+
+/// v4 base `deleteMany`'s RETHROW line: ERROR `Error deleting entities
+/// {collection, error, strictFailures?}` (`base.repository.ts:509-522` — the
+/// context is `{}`, so no filter field). Logs only.
+pub fn log_delete_many_failure(collection: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = collection,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error deleting entities"
+    );
+}
+
+/// v4 base `deleteMany`'s success line: INFO `Entities deleted {collection,
+/// count}` — logged for every call, a zero count included.
+pub fn log_entities_deleted(collection: &str, count: usize) {
+    tracing::info!(
+        target: "quilltap::db",
+        collection = collection,
+        count = count,
+        "Entities deleted"
+    );
+}
+
+/// The cursor repository's collection (`collection` on every line below).
+const CURSOR_COLLECTION: &str = "memory_extraction_cursors";
+
+/// v4 `findByChatId`'s RETHROW line (`memory-extraction-cursors.repository.ts:
+/// 56-65`): `Error finding extraction cursors for chat {collection, chatId,
+/// error, strictFailures?}`. Logs only.
+pub fn log_cursor_read_failure_for_chat(chat_id: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = CURSOR_COLLECTION,
+        chatId = %chat_id,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error finding extraction cursors for chat"
+    );
+}
+
+/// v4 `findCursor`'s RETHROW line (`:68-75`): `Error finding extraction cursor
+/// {collection, chatId, pass, error, strictFailures?}`. Logs only.
+pub fn log_cursor_read_failure(chat_id: &str, pass: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = CURSOR_COLLECTION,
+        chatId = %chat_id,
+        pass = %pass,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error finding extraction cursor"
+    );
+}
+
+/// v4 `findAllByChat`'s RETHROW line (`:77-91`, context `{}`): `Error listing
+/// extraction cursors {collection, error, strictFailures?}`. Logs only.
+pub fn log_cursor_list_failure(error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = CURSOR_COLLECTION,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error listing extraction cursors"
+    );
+}
+
+/// v4 `setCursor`'s RETHROW line (`:102-120`): `Error setting extraction
+/// cursor {collection, chatId, pass, error, strictFailures?}`. Logs only.
+pub fn log_cursor_set_failure(chat_id: &str, pass: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = CURSOR_COLLECTION,
+        chatId = %chat_id,
+        pass = %pass,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error setting extraction cursor"
+    );
+}
+
+/// v4 `clearCursor` as its callers see it (`:123-135`, FALLBACK `false`):
+/// `clear()`'s `Err` (the base line already logged) logs `Error clearing
+/// extraction cursor {collection, chatId, pass, error}` and answers
+/// `Ok(false)`; inside the strict scope the line gains `strictFailures=true`
+/// and the `Err` propagates.
+pub fn cursor_cleared_or_false(
+    chat_id: &str,
+    pass: &str,
+    clear: impl FnOnce() -> Result<bool, DbError>,
+) -> Result<bool, DbError> {
+    clear().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        tracing::error!(
+            target: "quilltap::db",
+            collection = CURSOR_COLLECTION,
+            chatId = %chat_id,
+            pass = %pass,
+            error = %error_text(&error),
+            strictFailures = strict.then_some(true),
+            "Error clearing extraction cursor"
+        );
+        if strict {
+            Err(error)
+        } else {
+            Ok(false)
+        }
+    })
+}
+
+/// v4 `clearForChat` as its callers see it (`:137-150`, FALLBACK `0`): `Error
+/// clearing extraction cursors for chat {collection, chatId, error}`.
+pub fn cursors_cleared_for_chat_or_zero(
+    chat_id: &str,
+    clear: impl FnOnce() -> Result<usize, DbError>,
+) -> Result<usize, DbError> {
+    clear().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        tracing::error!(
+            target: "quilltap::db",
+            collection = CURSOR_COLLECTION,
+            chatId = %chat_id,
+            error = %error_text(&error),
+            strictFailures = strict.then_some(true),
+            "Error clearing extraction cursors for chat"
+        );
+        if strict {
+            Err(error)
+        } else {
+            Ok(0)
+        }
+    })
+}
+
+// === end P4.D288 ===

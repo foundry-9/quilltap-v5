@@ -1944,6 +1944,30 @@ pub fn key(k: &str) -> Value {
     Value::String(k.to_string())
 }
 
+// === P4.D288 — the `83334b9a5` round's keystone row schemas (append-only) ===
+
+/// v4 `ExtractionCursorPassEnum` (`lib/schemas/memory-extraction-cursor.types.
+/// ts:22`), in the enum's order — the VALUES an `invalid_value` issue echoes.
+const EXTRACTION_CURSOR_PASS: [&str; 3] = ["other-fold", "episode-fold", "turn"];
+
+/// v4 `MemoryExtractionCursorSchema` (`memory-extraction-cursor.types.ts:
+/// 33-43`) over one stored row, in schema key order: `id` `z.string().min(1)`;
+/// `chatId` `UUIDSchema`; `pass` the enum; `messageId` `z.string().min(1)`;
+/// the two stamps. The base repository's `validate` / `validateSafe` render
+/// these through [`zod_error_message`] (P4.D288 unit 1).
+pub fn zod_memory_extraction_cursor_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    required_bounded_string_issues(row, "id", Some(1), None, &mut issues);
+    zod_uuid_issues(row, "chatId", false, &mut issues);
+    enum_issues(row, "pass", &EXTRACTION_CURSOR_PASS, false, &mut issues);
+    required_bounded_string_issues(row, "messageId", Some(1), None, &mut issues);
+    zod_timestamp_issues(row, "createdAt", &mut issues);
+    zod_timestamp_issues(row, "updatedAt", &mut issues);
+    issues
+}
+
+// === end P4.D288 ===
+
 #[cfg(test)]
 mod tests {
     /// P4.124: v4 `GroupSchema` — each shape the order named, both edges (the

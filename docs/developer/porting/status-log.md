@@ -179753,3 +179753,87 @@ the retired rows and why are in its header — the `links-excluded` row left out
   ignored — the same three expected reds (the memory census ×2, `qtap_schema_embed_guard`); no other test in
   the workspace moved with `js_date_parse_ms`. All sixteen families `ok` by name; `recipe_sweep.py
   --self-test` exit 0. Versions: core 0.0.1286.
+
+## P4.D288 — the memory-refactor + scenarios round's schema KEYSTONE — lane record
+
+Work order: `work-orders/p4.d288-memory-scenarios-keystone-d23-twelve-ensures-retire-path-index-store-cursors-wire.md`.
+Branch `claude/p4-memory-scenarios-keystone-fd710c` (worktree `.claude/worktrees/p4-memory-scenarios-keystone-fd710c`).
+**The branch was cut ON TOP of P4.D289's lane tip `53a0e5071`** (`SCORING` `7e18b9cf7` + its Tier 2 +
+the V8 `Date.parse` follow-up), not from `main` — so §R.14's "rebase onto `SCORING`" is already satisfied
+for every unit (no rebase was run; every P4.D288 commit sits above `SCORING`). Pin `83334b9a5`
+(`/tmp/qt-v4-pin-p4d288-83334b9a5`, `4.10.0-dev.176`) with its OWN `npm ci --offline` root tree (v4's live
+tree had moved `@quilltap/plugin-utils` 2.6.3 → 2.7.1; under the pin `openai` 7.30.0, `plugin-utils` 2.6.3);
+`packages/quilltap/node_modules` copied (Turbopack refuses a symlinked tree) and the 15
+`plugins/dist/*/node_modules` symlinked (their lockfiles unmoved in the span). Outputs under `/tmp/p4d288/`.
+
+### §R.2 probe (an observation)
+2026-10-14 08:13 CDT: branch `main`, tree CLEAN; **v4 moved:** `83334b9a5..main` = ten commits —
+`7417e9a1b`, `01f508d4e`, `a42c282b8`, `a8b2d2861`, `49f8906c3`, `75d094e63`, `8489d08b9`, `052659624`,
+`809e5104d`, `bbbcd2388` — observed 2026-10-14 08:13 CDT, all past the pin, out of scope (for
+`/driftcheck`); `log 1a2b2164c..bugfix` empty. Pin usable (HEAD `83334b9a5befca33…`, `package.json`
+`4.10.0-dev.176`).
+
+### Unit 0 — the real v4 first boot at the pin (R-C / O-2 evidence)
+`tsx server.ts` on an empty data dir (port 39288, `TZ=UTC QUILLTAP_TIMEZONE=UTC`), healthy on the third
+poll, 20 s settle, SIGTERM; `sqlite_master` + `table_info` + `migrations_state` dumped to
+`/tmp/p4d288/real-boot/master-20s.json`. `Migrations completed successfully {migrationsRun: 136,
+migrationsSkipped: 90}`, none deferred. Measured:
+- `memory_extraction_cursors` in the MIGRATION text (newlines + indentation as written, `"id" TEXT PRIMARY
+  KEY` without `NOT NULL`, `UNIQUE ("chatId", "pass")`, `FOREIGN KEY … ON DELETE CASCADE`), with TWO
+  autoindexes (`_1` the TEXT primary key, `_2` the UNIQUE — both `sql IS NULL`) and **no**
+  `idx_memory_extraction_cursors_createdAt` — the cursor repository was never touched in 20 s; v4's
+  `ensureCollection` adds that index lazily (generateDDL's `CREATE INDEX IF NOT EXISTS`) on the
+  repository's first use, and the cursor tier-2 oracle's base (migration, then the repository pass) and the
+  migrations-first build both carry it. The steady state of a real instance is migration table + index.
+- `chats.scenarioSource` / `scenarioNotes` and `memories.supersededAt` appended `TEXT DEFAULT NULL`;
+  `tfidf_vocabularies.textShapeVersion` appended `INTEGER DEFAULT '0'`; no vector tables; the
+  `chat_settings` dead columns gone and **no `chat_settings.timezone` column** on a real v4 instance.
+- `migrations_state` rows for TEN of the twelve (the two job-row DELETEs' `shouldRun` is false on an
+  empty instance — unrecorded); the twelve's bytes recorded for unit 13 (e.g. `recompute-reinforced-
+  importance-v1` `itemsAffected 0` `Recomputed reinforced importance on 0 of 0 memories`,
+  `rezone-legacy-memory-occurred-at-v1` `Re-stamped 0 legacy memory date(s) at local midnight in UTC`).
+
+### Red-first (§R.7) — on the branch base (main + P4.D289's lane), every family from the pin
+`recipe_sweep.py --run-all` over 24 owned families (`/tmp/p4d288/redfirst-main.{log,json}`):
+- **RED (16):** `provisioning_equivalence` (1d — the committed dump vs v4's live generateDDL);
+  `migration_index_backfill_equivalence` (6 problems: `idx_memories_supersededById` and the cursor
+  `createdAt` index missing, four vector indexes extra); `memory_tiers_ensure_equivalence` (regen: v4's
+  pin-built `chats` no longer carries the OTHER watermark line the case expects); `vector_indices_tier2`
+  (IMPORT-DEAD builder); `vector_store_tiers` (`builder.save is not a function`); `memories_tier2`
+  (`repo.replaceInMemories is not a function`); `memory_settings_schemas` (19 rows); `chat_settings_tier2`
+  (read #0); `instance_settings_json_warns` (7 cases — `tfidfClusterThreshold`); `chats_tier2` (create: no
+  column `otherExtractionWatermarkMessageId`); `memory_delete_tier2` + `memory_cascade_tier2` (IMPORT-DEAD);
+  `archive_reencrypt_tier2` + `character_archive_tier2` (jest: `@/lib/memory/memory-gate` unmappable);
+  `write_apply_equivalence` (`invalidations-dedup-across-batch`, as predicted); `background_jobs_tier2`
+  (regen ZodError on the job enum); `activity_tables` (4 arms); `realtime_topics` (5 cases).
+- **GREEN (8):** `restore_vintage_state` 9/9, `chat_settings_column_sites_guard`, `tfidf_vocabulary_tier2`,
+  `tfidf_vocabulary_upsert_tier2`, `embedding_blob_binding_guard` 4/4,
+  `other_extraction_watermark_writers_census` 2/2.
+- The NEW families had no v5 surface (compile-red by construction).
+
+### Unit 1 — C1-1, the cursor repository (`db/memory_extraction_cursors.rs`)
+- Landed: `TABLE`, `MIGRATION_TABLE_DDL` (byte-equal to the real boot's `sqlite_master.sql`, pinned by the
+  family), `CREATED_AT_INDEX_DDL`, `ExtractionCursorPass` (`ALL`, `as_str`, `parse`, `bundle_field`,
+  `is_fold`), `extraction_cursor_id`, `ExtractionCursorMap` (`get` / `set` / `is_empty` / `to_json`), the
+  repository's six verbs + R-X's `set_cursor_raw` / `find_cursor_raw`, `Writers::memory_extraction_cursors()`.
+- **Measured against v4's real repository, not its header:** the header says "Reads throw on failure";
+  through v4's base repository that holds only inside `withStrictRepositoryFailures` — each read wraps a
+  FALLBACK base read, so outside the scope a failed read logs the base line (`Error finding entities by
+  filter` / `Error finding entity by ID` / `Error finding all entities`) and answers empty. Ported as
+  measured (C1's `Result` signatures stand: `Err` only inside the strict scope). The clears' base
+  `deleteMany` logs INFO `Entities deleted {collection, count}` (every call) and, on failure, the RETHROW
+  `Error deleting entities` before the clear's own FALLBACK line — both ported (new homes; no other v5
+  repository emits them). A row v4's Zod refuses (unknown pass, non-UUID `chatId`) is dropped by
+  `findByChatId` / `findAllByChat` with `Data validation failed` + `Safe validation failed` and answered
+  `null` by `findCursor` with `Data validation failed` + `Error finding entity by ID`. `findByChatId`'s MAP
+  ORDER follows the query plan (the UNIQUE index on the migration shape, rowid on the bare one — measured);
+  v5's struct carries none, and the family compares maps as maps.
+- Homes (`db/fallback.rs` P4.D288 region, `HOME_MESSAGES` grown by eight): `find_all_strict_aware`,
+  `log_data_validation_failed`, `log_safe_validation_drop`, `log_delete_many_failure`,
+  `log_entities_deleted`, the four method lines, `cursor_cleared_or_false`,
+  `cursors_cleared_for_chat_or_zero`. Row schema `zod_memory_extraction_cursor_issues` in a P4.D288 region
+  of `api/zod_issues.rs`.
+- NEW family `memory_extraction_cursors_tier2` (oracle `cases/memory-extraction-cursors-tier2.ts`, v4's
+  REAL repository over a migration-shape base built by v4's REAL migration + the repository pass, and a
+  bare base): **94 ops, 68 captured lines (incl. silence legs), all equal on the first run.** Seed
+  `harness/oracle/fixtures/memory-keystone-tier2.json` (NEW; the round's one keystone seed).

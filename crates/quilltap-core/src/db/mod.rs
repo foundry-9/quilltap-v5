@@ -114,6 +114,7 @@ pub mod like_escape;
 pub mod llm_logs;
 pub mod memories;
 pub mod memories_read;
+pub mod memory_extraction_cursors; // P4.D288 (C1-1)
 pub mod memory_tiers_repair;
 pub mod migration_index_family_repair;
 pub mod migrations_ledger;
@@ -366,6 +367,16 @@ impl Writer {
         chat_informs::ChatInformsRepository::new(&self.conn)
     }
     // === end P4.D205 ===
+
+    // === P4.D288 (C1-1) ===
+    /// The memory extraction cursor repository over this writer's connection
+    /// (one row per chat and extraction pass).
+    pub fn memory_extraction_cursors(
+        &self,
+    ) -> memory_extraction_cursors::MemoryExtractionCursorsRepository<'_> {
+        memory_extraction_cursors::MemoryExtractionCursorsRepository::new(&self.conn)
+    }
+    // === end P4.D288 ===
 
     /// The chat-settings repository over this writer's connection.
     pub fn chat_settings(&self) -> chat_settings::ChatSettingsRepository<'_> {
