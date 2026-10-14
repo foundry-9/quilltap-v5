@@ -56,6 +56,12 @@ _Docs-only change._
 
 The P4.D288 work order's status header now names `149cb8fc1` as the commit P4.D290 through P4.D295 branch from.
 
+#### 2026-10-14 — docs(porting): P4.D290 records its `ADMISSION` sha (`e43551bf5`) and the C1-B spellings in the order header
+
+_Docs-only change._
+
+The stacking point P4.D296 / P4.D297 / P4.D298 branch from, with every C1-B signature as landed and the one departure.
+
 #### 2026-10-14 — ADMISSION: P4.D290 — admission's stateful half over SCORING + KEYSTONE (one entry point, the lock, the idempotency ledger, the one combine's writes, the hand edit)
 
 _Versions: core 0.0.1299._
