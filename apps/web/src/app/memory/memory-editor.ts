@@ -23,8 +23,9 @@ import { ToastService } from '../ui/toast.service';
  * The create / edit memory modal (v4 `components/memory/memory-editor.tsx`):
  * Summary (required), Full Content (required), comma-separated Keywords, and an
  * importance range slider (0–1 step 0.1, labeled Low/Med/High + %). On save it
- * always sends `source:'MANUAL'` and does NOT send/edit `tags` or
- * `aboutCharacterId` (v4 fidelity). Create POSTs; edit PUTs (no re-embed).
+ * sends no `source` (dropped in v4 `c2795733f`) and does NOT send/edit `tags` or
+ * `aboutCharacterId` (v4 fidelity). Create POSTs — admission may reinforce an
+ * existing note instead, and the toast says so; edit PUTs.
  *
  * Content is edited through the shared `qt-markdown-field` (v4's
  * `MarkdownLexicalEditor`, "Designed for forms") — byte-faithful to the v4
@@ -174,17 +175,28 @@ export class MemoryEditor implements OnInit {
       summary: this.summary(),
       keywords: keywordsFromString(this.keywords()),
       importance: this.importance(),
-      source: 'MANUAL' as const,
     };
     try {
       const m = this.memory();
+      // A new memory that admission folded into an existing one comes back with
+      // admission's action rather than an insert (v4 `:86-91`: 200 vs 201; v5's
+      // dispatch has no status, so the reply's `action` carries it — L-5). An
+      // absent action is a pre-round server, which only ever inserted.
+      let merged = false;
       if (m) {
         await updateMemory(this.core, m.id, bag);
       } else {
-        await createMemory(this.core, bag);
+        const { action } = await createMemory(this.core, bag);
+        const kind: string | undefined = action;
+        merged = kind !== undefined && kind !== 'insert' && kind !== 'insert-linked';
       }
-      // v4 `:86` — the sentence depends on which verb ran.
-      this.toasts.showSuccess(m ? 'Memory updated' : 'Memory created');
+      this.toasts.showSuccess(
+        m
+          ? 'Memory updated'
+          : merged
+            ? 'Already on file — the existing memory has been reinforced instead'
+            : 'Memory created',
+      );
       this.saved.emit();
       this.close.emit();
     } catch (err) {

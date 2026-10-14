@@ -5914,8 +5914,10 @@ export interface MemorySearchHit extends MemoryDto {
 }
 
 /**
- * The create/edit payload the editor sends (v4 `memory-editor` always sends
- * `source:'MANUAL'`; it does NOT send/edit `tags` or `aboutCharacterId`).
+ * The create/edit payload the editor sends (v4 `memory-editor.tsx:60-66` at
+ * `83334b9a5`; it does NOT send/edit `tags` or `aboutCharacterId`). `source`
+ * left the bag in v4 `c2795733f` (C3 §1: "MemoryWriteBag: DROP `source`") —
+ * a manual create is MANUAL server-side, and an edit never re-sources.
  */
 export interface MemoryWriteBag {
   characterId: string;
@@ -5923,7 +5925,6 @@ export interface MemoryWriteBag {
   summary: string;
   keywords: string[];
   importance: number;
-  source: 'MANUAL';
 }
 
 // --- Memory list / read / write --------------------------------------------
@@ -6045,11 +6046,22 @@ export interface HousekeepingConfig {
   mergeSimilar: boolean;
 }
 
-/** One row of the character memory-count roster (memoryCount desc). */
+/**
+ * One row of the character memory-count roster, sorted `demotable` desc, then
+ * `memoryCount` desc (v4 `route.ts:1022-1052` at `83334b9a5`). `memoryCount`
+ * is hot + cold; the four widened counts are C3 §1's (optional — a pre-round
+ * server answers only `memoryCount`).
+ */
 export interface CharacterMemoryCount {
   id: string;
   name: string;
   memoryCount: number;
+  hotTotal?: number;
+  /** Hot AUTO rows — the only number the cap is measured against (v4 bug 210). */
+  demotable?: number;
+  /** Hot MANUAL rows and digests — never demoted, never counted against the cap. */
+  protected?: number;
+  cold?: number;
 }
 
 export interface MemoryHousekeepPreviewRequest {
@@ -6141,7 +6153,7 @@ export interface MemoryExtractionLimitsGetRequest {
 }
 export interface MemoryExtractionLimitsSetRequest {
   type: 'memoryExtractionLimitsSet';
-  config: Record<string, unknown>;
+  config: Partial<MemoryExtractionLimitsConfig>;
 }
 export interface MemoryRecallConfigGetRequest {
   type: 'memoryRecallConfigGet';
@@ -6340,6 +6352,200 @@ export interface MemoryConsolidateRequest {
 }
 // === end ===
 
+// === P4.D300: the 83334b9a5 memory family (C3 §1) ===
+// v4 `b045dd986` (Phase G) + `48790fb73` at the pin `83334b9a5`, transcribed
+// from `lib/memory/maintenance/types.ts`, `ledger.ts:250-256`,
+// `consolidation.ts:101-192`, `repair.ts:25-45`, `settings.types.ts` and
+// `app/api/v1/memories/route.ts`. Declaration order follows v4's TypeScript;
+// the WIRE key order is the server's emit order.
+
+/** The maintenance phases, in the order a run takes them. */
+export const MAINTENANCE_PHASES = ['fold-near-duplicates', 'consolidate', 'demote', 'retire', 'mirror'] as const;
+export type MaintenancePhase = (typeof MAINTENANCE_PHASES)[number];
+/** What set a run going: the daily round, a character nearing the cap, or a hand on the lever. */
+export type MaintenanceReason = 'scheduled' | 'watermark' | 'manual';
+export type PhaseStatus = 'ran' | 'skipped';
+export type PhaseSkipReason =
+  | 'not-requested'
+  | 'maintenance-disabled'
+  | 'consolidation-disabled'
+  | 'phase-disabled'
+  | 'no-retention-window'
+  | 'nothing-touched';
+export interface PhaseOutcome {
+  phase: MaintenancePhase;
+  status: PhaseStatus;
+  skippedBecause?: PhaseSkipReason;
+  durationMs: number;
+}
+export interface NearDuplicateGroup {
+  survivorId: string;
+  absorbedIds: string[];
+  minCosine: number;
+}
+export interface FoldPhaseReport {
+  groupsDeferred: number;
+  eligible: number;
+  deferred: number;
+  groups: NearDuplicateGroup[];
+  folded: number;
+  groupsFailed: number;
+}
+export interface DemotePhaseReport {
+  cap: number;
+  hotTotal: number;
+  demotable: number;
+  protected: number;
+  excess: number;
+  demoted: number;
+  demotedIds: string[];
+  highestScoreDemoted: number | null;
+}
+export interface RetirePhaseReport {
+  retentionDays: number;
+  retired: number;
+  retiredIds: string[];
+}
+export interface MirrorPhaseReport {
+  subjects: string[];
+  filesWritten: number;
+  deferredToCommit: boolean;
+}
+/** One character's maintenance report (a dry run's, or a run's). */
+export interface MaintenanceReport {
+  characterId: string;
+  characterName: string | null;
+  reason: MaintenanceReason;
+  dryRun: boolean;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  skippedReason?: 'character-not-found' | 'archived';
+  phases: PhaseOutcome[];
+  fold?: FoldPhaseReport;
+  consolidation?: ConsolidationReport;
+  demote?: DemotePhaseReport;
+  retire?: RetirePhaseReport;
+  mirror?: MirrorPhaseReport;
+}
+/** The ledger's compact record of a run. */
+export interface MaintenanceSummary {
+  characterId: string;
+  reason: MaintenanceReason;
+  dryRun: boolean;
+  finishedAt: string;
+  durationMs: number;
+  skippedReason?: 'character-not-found' | 'archived';
+  phases: PhaseOutcome[];
+  fold?: { eligible: number; groups: number; folded: number; groupsFailed: number; groupsDeferred: number };
+  consolidation?: {
+    digestsCreated: number;
+    digestsUpdated: number;
+    membersSuperseded: number;
+    clustersFailed: number;
+    clustersDeferred: number;
+    skippedReason?: string;
+  };
+  demote?: Omit<DemotePhaseReport, 'demotedIds'>;
+  retire?: { retentionDays: number; retired: number };
+  mirror?: { subjects: number; filesWritten: number; deferredToCommit: boolean };
+}
+/** One character's ledger entry (v4 `ledger.ts:250-256`; `effective` computed at read). */
+export interface MaintenanceLedgerStatus {
+  characterId: string;
+  lastRun: Partial<Record<MaintenancePhase, { at: string; reason: MaintenanceReason }>>;
+  lastSummary: MaintenanceSummary | null;
+  lastDemotion: { at: string; demoted: number; excess: number; effective: boolean } | null;
+}
+export interface MemoryMaintenancePhaseToggles {
+  foldNearDuplicates: boolean;
+  demote: boolean;
+  retire: boolean;
+}
+/** v4 `memoryMaintenance` instance setting. */
+export interface MemoryMaintenanceConfig {
+  enabled: boolean;
+  perCharacterCap: number;
+  perCharacterCapOverrides: Record<string, number>;
+  phases: MemoryMaintenancePhaseToggles;
+}
+/** v4 `memoryExtractionLimits` instance setting. */
+export interface MemoryExtractionLimitsConfig {
+  enabled: boolean;
+  maxPerHour: number;
+  softStartFraction: number;
+  softFloor: number;
+}
+// MemoryConsolidationConfig (P4.D276) GAINS, between clusterThreshold and minClusterSize: tfidfClusterThreshold: number;  // 0..1, default 0.30
+/** The bounds every per-character cap is validated against (v4 `MEMORY_CAP_BOUNDS`). */
+export const MEMORY_CAP_BOUNDS = { min: 100, max: 100_000 } as const;
+/** v4 `maintainSchema` (`route.ts:129-141`). */
+export interface MemoryMaintainOptions {
+  characterId?: string;
+  phases?: MaintenancePhase[];
+  dryRun?: boolean;
+  settings?: {
+    consolidation?: Partial<MemoryConsolidationConfig>;
+    maxClustersPerRun?: number;
+    cap?: number;
+  };
+}
+export type MemoryMaintainReply =
+  | { success: true; dryRun: true; report: MaintenanceReport }
+  | { success: true; dryRun: true; reports: MaintenanceReport[] }
+  | { success: true; dryRun: false; jobId: string | null; jobIds: string[] };
+/** v4 `repair.ts:25-45` — CLI-only in v4; the SPA adds NO caller (L-13). */
+export interface MemoryGraphRepairReport {
+  dryRun: boolean;
+  characterId: string | null;
+  found: {
+    related: { links: number; rows: number };
+    consolidatedFrom: { links: number; digests: number };
+    supersededBy: number;
+    missingEmbeddings: number;
+  };
+  repaired?: {
+    relatedRowsTouched: number;
+    digestsTouched: number;
+    digestsRetired: number;
+    membersCut: number;
+    charactersAffected: number;
+    embeddingJobsQueued: number;
+    embeddingSkippedReason?: 'no-embedding-profile';
+  };
+}
+// ConsolidationStats: ADD `demotedCandidates: number` after `candidates`; DROP `mirrorFilesWritten`.
+// ConsolidationReport.skippedReason: narrow to `'no-llm'`.
+/** What admission did with a manual create (v4 `lib/memory/admission/outcome.ts`). */
+export type AdmissionActionKind = 'insert' | 'insert-linked' | 'reinforce' | 'absorb' | 'promote-and-reinforce';
+/** v4 POST `/api/v1/memories` → `{ memory, action }` (201 iff `insert` / `insert-linked`). */
+export interface MemoryCreateReply {
+  memory: MemoryDto;
+  action: AdmissionActionKind;
+}
+// MemoryWriteBag: DROP `source`.
+
+/** v4 POST `?action=maintain` → {@link MemoryMaintainReply}. */
+export interface MemoryMaintainRequest {
+  type: 'memoryMaintain';
+  options: MemoryMaintainOptions;
+}
+/** v4 GET `?action=maintenance-status[&characterId=]` → `{ success, ledger }`. */
+export interface MemoryMaintenanceStatusRequest {
+  type: 'memoryMaintenanceStatus';
+  characterId?: string;
+}
+/** v4 GET `?action=maintenance-config` → `{ success, settings }`. */
+export interface MemoryMaintenanceConfigGetRequest {
+  type: 'memoryMaintenanceConfigGet';
+}
+/** v4 POST `?action=maintenance-config` — a patch merged over the stored value → `{ success, settings }`. */
+export interface MemoryMaintenanceConfigSetRequest {
+  type: 'memoryMaintenanceConfigSet';
+  config: Partial<MemoryMaintenanceConfig>;
+}
+// === end P4.D300 ===
+
 /**
  * The memory-surface request variants (P4.6t). Folded into {@link CoreRequest}
  * via {@link MemoryRequest}. Variant `type` names + param names are BINDING at
@@ -6383,6 +6589,12 @@ export type MemoryRequest =
   | MemoryExtractionModeConfigSetRequest
   | MemoryConsolidateRequest
   // === end ===
+  // === P4.D300: the 83334b9a5 memory verbs (C3 §1) ===
+  | MemoryMaintainRequest
+  | MemoryMaintenanceStatusRequest
+  | MemoryMaintenanceConfigGetRequest
+  | MemoryMaintenanceConfigSetRequest
+  // === end P4.D300 ===
   // === P4.6x (lane C): the Document Mode client surface ===
   // The chat-scoped document family (lane B's oracle) + the one lane-A variant
   // the SPA consumes (`mountFilesList`). Lane C is the SINGLE AUTHOR of this

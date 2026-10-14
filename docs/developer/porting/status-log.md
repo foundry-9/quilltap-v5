@@ -184040,3 +184040,22 @@ worktree for the session — same volume, same rules).
    main's `>= 0.4` band under the new names, never committed): 5 arms red —
    `memory-format.spec.ts` ×4 (the boundary row, the 0.3–0.4 strip, the band
    row, the colours) + `memory-card.spec.ts` ×1 (Medium at 0.3, Low at 0.29).
+2. **C3 §1 + the editor** (`c2795733f` — the editor's `source` drop AND
+   the 200-vs-201 toast; `8af764514` only rewords v4's comment). The fence
+   `// === P4.D300: the 83334b9a5 memory family (C3 §1) ===` in
+   `core-contract.ts` carries C3 §1 verbatim (the vocabulary, report /
+   summary / ledger types, the two config types, `MEMORY_CAP_BOUNDS`,
+   `MemoryMaintainOptions` / `Reply`, `MemoryGraphRepairReport` — type only,
+   L-13 —, `AdmissionActionKind`, `MemoryCreateReply`) + the four request
+   interfaces, joined to `MemoryRequest` in a fenced union block. In place:
+   `MemoryWriteBag` loses `source`; `CharacterMemoryCount` widens (optional
+   `hotTotal` / `demotable` / `protected` / `cold`); `MemoryExtractionLimitsSetRequest.config`
+   → `Partial<MemoryExtractionLimitsConfig>`. `createMemory` returns
+   `MemoryCreateReply` (its `action` may be absent at run time against a
+   pre-round server — the editor tests it). Editor (L-5): `merged = !editing
+   && action ∉ {undefined, insert, insert-linked}`. **Red-first on main:** 5
+   arms red (`memory-editor.spec.ts` — the create bag's key list, the digest
+   edit's key list, `reinforce` / `absorb` / `promote-and-reinforce`); the
+   `insert` / `insert-linked` / absent / edit arms are green on main by
+   construction (main always toasted `Memory created` / `updated`) and pin
+   that the new branch does not over-fire.

@@ -9,6 +9,7 @@
 
 import type { CoreClient } from '../core/core-client';
 import type {
+  AdmissionActionKind,
   BackfillProgress,
   CharacterMemoryCount,
   ConsolidationReport,
@@ -16,6 +17,7 @@ import type {
   HousekeepingPreview,
   HousekeepingResult,
   MemoryConsolidationConfig,
+  MemoryCreateReply,
   MemoryDto,
   MemoryExtractionModeConfig,
   MemoryHousekeepOptions,
@@ -75,10 +77,22 @@ export async function fetchMemory(core: CoreClient, memoryId: string): Promise<M
   return (data['memory'] as MemoryDto | undefined) ?? null;
 }
 
-/** POST a new manual memory (v4 `POST /api/v1/memories`). */
-export async function createMemory(core: CoreClient, memory: MemoryWriteBag): Promise<MemoryDto> {
+/**
+ * POST a new manual memory (v4 `POST /api/v1/memories` → `{ memory, action }`
+ * at `83334b9a5`; C2's `MemoryCreate` reply). The 201-vs-200 split v4's editor
+ * reads rides `action` here — the dispatch edge carries no status. A pre-round
+ * server answers `{ memory }` alone, so at run time `action` may be absent;
+ * callers test it (L-5).
+ */
+export async function createMemory(
+  core: CoreClient,
+  memory: MemoryWriteBag,
+): Promise<MemoryCreateReply> {
   const data = await core.dispatchData({ type: 'memoryCreate', memory });
-  return (data['memory'] as MemoryDto) ?? (data as unknown as MemoryDto);
+  return {
+    memory: (data['memory'] as MemoryDto) ?? (data as unknown as MemoryDto),
+    action: data['action'] as AdmissionActionKind,
+  };
 }
 
 /** PUT an edited memory (v4 `PUT /api/v1/memories/:id` — no re-embed). */
