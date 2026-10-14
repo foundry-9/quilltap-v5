@@ -155,4 +155,48 @@ describe('CharacterPickerPanel', () => {
       expect(state.selectedCharacters()[1].selectedSubpromptIds).toBeUndefined();
     });
   });
+
+  /**
+   * P4.D302 (v4 `NewChatModal.tsx:236-242`, `545e299bb`): a cast change clears
+   * ONLY a `character` selection, to Custom, and leaves `scenarioTouched` as it
+   * was (v4 spreads `prev`). v5 used to null `scenarioId` alone.
+   */
+  describe('a cast change and the scenario selection', () => {
+    function rosterButton(fixture: ComponentFixture<CharacterPickerPanel>, name: string): HTMLElement {
+      const found = [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')].find((b) =>
+        (b.textContent ?? '').includes(name),
+      );
+      if (!found) throw new Error(`no roster button for ${name}`);
+      return found as HTMLElement;
+    }
+
+    it("clears a character's own scenario to Custom, touched as it was", () => {
+      const state = makeState();
+      state.patchForm({
+        scenarioSelection: { kind: 'character', scenarioId: 'sc-1' },
+        scenarioTouched: true,
+      });
+      const fixture = render(state);
+      rosterButton(fixture, 'Alice').click();
+      fixture.detectChanges();
+      expect(state.form().scenarioSelection).toEqual({ kind: 'custom' });
+      expect(state.form().scenarioTouched).toBe(true);
+    });
+
+    it('leaves every other selection — and its touched flag — alone', () => {
+      const state = makeState();
+      const store = {
+        kind: 'store',
+        mountPointId: 'mp-9',
+        path: 'Scenarios/x.md',
+        label: 'Bob › X',
+      } as const;
+      state.patchForm({ scenarioSelection: store, scenarioTouched: false });
+      const fixture = render(state);
+      rosterButton(fixture, 'Alice').click();
+      fixture.detectChanges();
+      expect(state.form().scenarioSelection).toEqual(store);
+      expect(state.form().scenarioTouched).toBe(false);
+    });
+  });
 });

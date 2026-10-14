@@ -15,8 +15,9 @@ import { USER_CONTROLLED_PROFILE, type NewChatSelectedCharacter } from './new-ch
  * a searchable roster on the left, the selected cast with per-character
  * connection-profile + system-prompt selects on the right. The profile select's
  * special "Play As (User)" option ({@link USER_CONTROLLED_PROFILE}) flips a cast
- * entry to the human in place. Selecting/removing a character resets the chosen
- * character scenario (`scenarioId`) but leaves path selections alone.
+ * entry to the human in place. Selecting/removing a character resets a chosen
+ * CHARACTER scenario to Custom and leaves every other selection — and
+ * `scenarioTouched` — alone (v4 `NewChatModal.tsx:236-242`, `545e299bb`).
  */
 @Component({
   selector: 'qt-new-chat-picker',
@@ -212,7 +213,7 @@ export class CharacterPickerPanel {
   }
 
   protected toggle(character: CharacterListItem): void {
-    this.core().patchForm({ scenarioId: null });
+    this.core().onCharactersChanged();
     if (this.isSelected(character.id)) {
       this.core().setSelectedCharacters((prev) =>
         prev.filter((sc) => sc.character.id !== character.id),
@@ -224,7 +225,7 @@ export class CharacterPickerPanel {
   }
 
   protected remove(characterId: string): void {
-    this.core().patchForm({ scenarioId: null });
+    this.core().onCharactersChanged();
     this.core().setSelectedCharacters((prev) =>
       prev.filter((sc) => sc.character.id !== characterId),
     );

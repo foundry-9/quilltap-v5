@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  Injector,
+  input,
+  OnInit,
+} from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
 import { WORKSPACE_HANDLE, WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
@@ -119,6 +127,8 @@ export class NewChatPage implements OnInit {
   private readonly router = inject(Router);
   private readonly greenRoom = inject(GreenRoomStore);
   private readonly toasts = inject(ToastService);
+  /** Hosts the state's scenario seed `effect` (built in `ngOnInit`, outside an injection context). */
+  private readonly injector = inject(Injector);
   /** Workspace-tab seams (P4.d16 tier 2); null ⇒ routed mode. */
   private readonly handle = inject(WORKSPACE_HANDLE, { optional: true });
   private readonly tabId = inject(WORKSPACE_TAB_ID, { optional: true });
@@ -161,6 +171,7 @@ export class NewChatPage implements OnInit {
       },
       this.greenRoom,
       this.toasts,
+      this.injector,
     );
     void this.state.load();
   }

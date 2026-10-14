@@ -947,6 +947,12 @@ _Versions: SPA 0.5.847._
 
 The Commonplace Book card and editor now label importance through v4's `importanceBand` (`e0ac7493a`): High at 0.7 or above, Medium from 0.3, Low below 0.3 (was 0.4). `memory-format.ts` carries `IMPORTANCE_HIGH`, `IMPORTANCE_LOW` and `importanceBand`; the format and card specs are re-pinned at 0.3 / 0.29 / 0.69 / 0.7.
 
+#### 2026-10-14 — fix(spa): New Chat holds one scenario selection, so it shows what it creates (P4.D302 unit 5)
+
+_Versions: SPA 0.5.851._
+
+Ports v4 `545e299bb`'s New Chat change. The form's five mutually exclusive scenario pointers become one `scenarioSelection` plus `scenarioTouched`. One seed effect picks the character default, then the project default, then the general default, and stops once the user picks by hand. Submit sends exactly that selection's pointer. This fixes the `?characterId=` entrance into a project with a default scenario, which showed the project's scene but created the chat with the character's. The dropdown always renders with Browse all scenarios; a browser or Elsewhere pick previews its body by ref; the notes hint and editor label follow the selection; a cast change clears only a character pick.
+
 #### 2026-10-14 — feat(spa): the in-chat scenario control reads the chat's recorded source (P4.D302 unit 4)
 
 _Versions: SPA 0.5.850._

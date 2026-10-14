@@ -23,7 +23,10 @@ import {
 } from '../../chat/concierge-state-presentation';
 import { Icon, type IconName } from '../../ui/icon';
 import { ImageProfilePicker } from '../../images/image-profile-picker';
+import { ScenarioBrowserDialog } from '../../scenario/scenario-browser-dialog';
+import type { ScenarioHierarchy } from '../../scenario/scenario-browser.logic';
 import { ScenarioSelect } from '../../scenario/scenario-select';
+import { injectScenarioRefBody } from '../../scenario/scenario.api';
 import { HOST_AVATAR } from '../../scenario-builder/host-avatar';
 import {
   ScenarioBuilderDialog,
@@ -31,14 +34,9 @@ import {
   type ScenarioBuilderCastMember,
 } from '../../scenario-builder/scenario-builder-dialog';
 import type { ScenarioSelection } from '../../scenario/scenario.types';
-import { applyPlayAs, scenarioSelectionPatch } from './new-chat.logic';
+import { applyPlayAs } from './new-chat.logic';
 import { NewChatState } from './new-chat.state';
-import {
-  type CharacterScenarioOption,
-  type GroupScenarioOption,
-  type NewChatSelectedCharacter,
-  type ScenarioOption,
-} from './new-chat.types';
+import { type CharacterScenarioOption, type NewChatSelectedCharacter } from './new-chat.types';
 import { OutfitSelector, type OutfitSelectorCharacter } from './outfit-selector';
 import { TimestampConfigCard } from './timestamp-config-card';
 
@@ -49,8 +47,9 @@ interface PlayAsOption {
 
 /**
  * The New-Chat form body (v4 `components/new-chat/NewChatForm.tsx`): the Play-As
- * select, the image-profile picker, the four-source scenario dropdown +
- * read-only preview + free-text notes (layered), the outfit selector, the
+ * select, the image-profile picker, the scenario dropdown (the four tiers,
+ * "Browse all scenarios…" and the "Elsewhere" pick — ONE selection, v4
+ * `545e299bb`) + read-only preview + free-text notes (layered), the outfit selector, the
  * avatar toggle, the Reality-Injection timestamp card, and the project row.
  * Autonomous mode is a loud disabled-with-title deferral.
  *
@@ -96,6 +95,7 @@ interface PlayAsOption {
     ImageProfilePicker,
     MarkdownField,
     OutfitSelector,
+    ScenarioBrowserDialog,
     ScenarioBuilderDialog,
     ScenarioSelect,
     TimestampConfigCard,
@@ -252,7 +252,7 @@ interface PlayAsOption {
 
         <div>
           <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <label for="new-chat-scenario" class="block text-sm qt-text-primary"
+            <label for="new-chat-scenario-select" class="block text-sm qt-text-primary"
               >Starting Scenario (Optional)</label
             >
             <button
@@ -275,7 +275,16 @@ interface PlayAsOption {
             [characterScenarios]="characterScenarios()"
             [characterDefaultScenarioId]="singleLlm()?.character?.defaultScenarioId ?? null"
             [disabled]="creating()"
+            offerBrowse
+            (browse)="browserOpen.set(true)"
           />
+          @if (browserOpen()) {
+            <qt-scenario-browser-dialog
+              [hierarchy]="scenarioHierarchy()"
+              (closed)="browserOpen.set(false)"
+              (pick)="onScenarioSelect($event)"
+            />
+          }
 
           <label class="mb-2 flex items-center gap-2 text-xs qt-text-muted">
             <input
@@ -303,12 +312,17 @@ interface PlayAsOption {
             </p>
           }
 
-          @if (presetContent(); as preview) {
+          <!-- v4 :786-803 — the body block renders only with content, but the
+               hint and the editor label key on the SELECTION: a store pick
+               whose body is still loading is already a preset. -->
+          @if (selectedPreset()?.content; as preview) {
             <div
               class="rounded-lg border qt-border-default qt-bg-muted/40 px-3 py-2 text-sm qt-text-secondary whitespace-pre-wrap"
             >
               {{ preview }}
             </div>
+          }
+          @if (selectedPreset()) {
             <p class="mb-1 mt-2 text-xs qt-text-muted">
               Your notes here are added beneath the scenario above.
             </p>
@@ -316,7 +330,7 @@ interface PlayAsOption {
 
           <qt-markdown-field
             minHeight="6rem"
-            [ariaLabel]="presetContent() ? 'Additional scenario notes' : 'Starting scenario'"
+            [ariaLabel]="selectedPreset() ? 'Additional scenario notes' : 'Starting scenario'"
             [value]="form().scenario"
             [recordKey]="scenarioEditorKey()"
             [disabled]="creating()"
@@ -550,64 +564,77 @@ export class NewChatForm {
   protected readonly characterScenarios = computed<CharacterScenarioOption[]>(() => {
     if (!this.singleLlm()) return [];
     const showArchived = this.showArchivedScenarios();
-    const selectedId = this.form().scenarioId;
+    const selectedId = this.selectedCharacterScenarioId();
     return this.allCharacterScenarios().filter(
       (s) => showArchived || s.archived !== true || s.id === selectedId,
     );
   });
 
-  private readonly selectedProjectScenario = computed<ScenarioOption | undefined>(() =>
-    this.form().projectScenarioPath
-      ? this.projectScenarios().find((s) => s.path === this.form().projectScenarioPath)
-      : undefined,
-  );
-  private readonly selectedGeneralScenario = computed<ScenarioOption | undefined>(() =>
-    this.form().generalScenarioPath
-      ? this.generalScenarios().find((s) => s.path === this.form().generalScenarioPath)
-      : undefined,
-  );
-  private readonly selectedGroupScenario = computed<GroupScenarioOption | undefined>(() =>
-    this.form().groupScenarioPath
-      ? this.groupScenarios().find(
-          (s) =>
-            s.path === this.form().groupScenarioPath &&
-            s.groupId === this.form().groupScenarioGroupId,
-        )
-      : undefined,
-  );
   /**
-   * Looked up against the UNFILTERED list (v4 `:191-194`): a scenario the form
-   * already points at keeps previewing even after it has been archived.
+   * The ONE selection (v4 `545e299bb`): the dropdown, the preview and the
+   * override note all read it, and the submit sends exactly it — the form can
+   * no longer SHOW the project default while SUBMITTING the character's.
    */
-  private readonly selectedCharacterScenario = computed<CharacterScenarioOption | undefined>(() =>
-    this.form().scenarioId
-      ? this.allCharacterScenarios().find((s) => s.id === this.form().scenarioId)
-      : undefined,
+  protected readonly scenarioSelection = computed<ScenarioSelection>(
+    () => this.form().scenarioSelection,
   );
-
-  protected readonly presetContent = computed<string | null>(() => {
-    if (this.selectedProjectScenario()) return this.selectedProjectScenario()!.body;
-    if (this.selectedGeneralScenario()) return this.selectedGeneralScenario()!.body;
-    if (this.selectedGroupScenario()) return this.selectedGroupScenario()!.body;
-    if (this.selectedCharacterScenario()) return this.selectedCharacterScenario()!.content;
-    return null;
+  private readonly selectedCharacterScenarioId = computed<string | null>(() => {
+    const selection = this.scenarioSelection();
+    return selection.kind === 'character' ? selection.scenarioId : null;
   });
 
   /**
-   * The selection the dropdown shows, in v4's exact precedence order (v4
-   * `44a8137e`'s `scenarioSelection` — the same chain its `dropdownValue`
-   * expressed as tokens before the extraction).
+   * The body behind the one selection, previewed under the dropdown (v4
+   * `:215-233`). Looked up against the UNFILTERED character list: a scenario
+   * the form already points at keeps previewing even after it's archived.
    */
-  protected readonly scenarioSelection = computed<ScenarioSelection>(() => {
-    const project = this.selectedProjectScenario();
-    if (project) return { kind: 'project', path: project.path };
-    const general = this.selectedGeneralScenario();
-    if (general) return { kind: 'general', path: general.path };
-    const group = this.selectedGroupScenario();
-    if (group) return { kind: 'group', groupId: group.groupId, path: group.path };
-    const character = this.selectedCharacterScenario();
-    if (character) return { kind: 'character', scenarioId: character.id };
-    return { kind: 'custom' };
+  private readonly selectedPresetBody = computed<string | null>(() => {
+    const selection = this.scenarioSelection();
+    switch (selection.kind) {
+      case 'project':
+        return this.projectScenarios().find((s) => s.path === selection.path)?.body ?? null;
+      case 'general':
+        return this.generalScenarios().find((s) => s.path === selection.path)?.body ?? null;
+      case 'group':
+        return (
+          this.groupScenarios().find(
+            (s) => s.path === selection.path && s.groupId === selection.groupId,
+          )?.body ?? null
+        );
+      case 'character':
+        return (
+          this.allCharacterScenarios().find((s) => s.id === selection.scenarioId)?.content ?? null
+        );
+      case 'store':
+      case 'custom':
+      default:
+        return null;
+    }
+  });
+
+  /** A pick from elsewhere carries no body in the option lists; read it by ref (v4 `:235-237`). */
+  private readonly storePreview = injectScenarioRefBody(() => {
+    const selection = this.scenarioSelection();
+    return selection.kind === 'store'
+      ? { mountPointId: selection.mountPointId, path: selection.path }
+      : null;
+  });
+
+  /**
+   * v4 `selectedPreset`: `null` under Custom, else the kind and its body (`''`
+   * while a store body is still on its way). The body block renders only with
+   * content; the notes hint and the editor's label key on the selection alone.
+   */
+  protected readonly selectedPreset = computed<{ kind: string; content: string } | null>(() => {
+    const selection = this.scenarioSelection();
+    if (selection.kind === 'custom') return null;
+    return {
+      kind: selection.kind,
+      content:
+        selection.kind === 'store'
+          ? (this.storePreview.data()?.scenario.body ?? '')
+          : (this.selectedPresetBody() ?? ''),
+    };
   });
 
   private readonly characterDefaultScenario = computed<CharacterScenarioOption | undefined>(() => {
@@ -616,11 +643,26 @@ export class NewChatForm {
     return this.characterScenarios().find((s) => s.id === id);
   });
 
+  /**
+   * The override note — ONLY while the selection is the project's and the
+   * character default is listed (v4 `:256`).
+   */
   protected readonly overrideNote = computed<{ title: string } | null>(() =>
-    this.selectedProjectScenario() && this.characterDefaultScenario()
+    this.scenarioSelection().kind === 'project' && this.characterDefaultScenario()
       ? { title: this.characterDefaultScenario()!.title }
       : null,
   );
+
+  // --- The scenario browser (v4 `545e299bb`) ---------------------------------
+
+  /** v4 `browserOpen` — mounting the browser IS opening it. */
+  protected readonly browserOpen = signal(false);
+  /** The owners this form's picker already offers (v4 `scenarioHierarchy`, `:263-271`). */
+  protected readonly scenarioHierarchy = computed<ScenarioHierarchy>(() => ({
+    projectId: this.selectedProjectId() ?? this.project()?.id ?? null,
+    groupIds: [...new Set(this.groupScenarios().map((s) => s.groupId))],
+    characterId: this.singleLlm()?.character.id ?? null,
+  }));
 
   protected readonly outfitCharacters = computed<OutfitSelectorCharacter[]>(() => {
     const list: OutfitSelectorCharacter[] = this.llmSelected().map((sc) => ({
@@ -721,17 +763,14 @@ export class NewChatForm {
 
   /**
    * "Use this scene" (v4 `handleUseBuiltScene`): the scene becomes the custom
-   * text, EVERY preset pointer is cleared — all five, the group's id with its
-   * path — and the editor is re-keyed.
+   * text, the selection becomes Custom — a hand pick, so `scenarioTouched` —
+   * and the editor is re-keyed.
    */
   protected handleUseBuiltScene(scene: string): void {
     this.core().patchForm({
       scenario: scene,
-      scenarioId: null,
-      projectScenarioPath: null,
-      generalScenarioPath: null,
-      groupScenarioPath: null,
-      groupScenarioGroupId: null,
+      scenarioSelection: { kind: 'custom' },
+      scenarioTouched: true,
     });
     this.scenarioEditorKey.update((k) => k + 1);
   }
@@ -787,24 +826,29 @@ export class NewChatForm {
       selection = { kind: 'character', scenarioId: target.scenarioId };
     }
     if (!selection) return;
+    // v4's order (P4.D302 L-H(4)): select it (touched), THEN clear the custom
+    // text it replaces, THEN re-key the editor.
     this.onScenarioSelect(selection);
     this.core().patchForm({ scenario: '' });
     this.scenarioEditorKey.update((k) => k + 1);
   }
 
+  /**
+   * Every hand pick — the dropdown, the browser, a saved built scene — sets the
+   * one selection and `scenarioTouched`, so a later reload never re-seeds over
+   * it (v4 `handleScenarioSelectionChange`, `:258-260`).
+   */
   protected onScenarioSelect(selection: ScenarioSelection): void {
-    this.core().patchForm(scenarioSelectionPatch(selection));
+    this.core().patchForm({ scenarioSelection: selection, scenarioTouched: true });
   }
 
+  /** "Click to switch" to the character default (v4 `:345-353`). */
   protected switchToCharacterDefault(): void {
     const def = this.characterDefaultScenario();
     if (!def) return;
     this.core().patchForm({
-      scenarioId: def.id,
-      projectScenarioPath: null,
-      generalScenarioPath: null,
-      groupScenarioPath: null,
-      groupScenarioGroupId: null,
+      scenarioSelection: { kind: 'character', scenarioId: def.id },
+      scenarioTouched: true,
       scenario: '',
     });
   }

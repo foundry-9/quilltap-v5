@@ -10,10 +10,7 @@
 import { buildAutonomousCreatePatch } from '../../autonomous/autonomous.logic';
 import type { CharacterListItem, ChatCreateRequest, ConciergeState } from '../../core/core-contract';
 import { resolveDefaultSystemPrompt } from '../../shared/default-system-prompt';
-import {
-  scenarioValueToSelection,
-  type ScenarioSelection,
-} from '../../scenario/scenario.types';
+import { scenarioSelectionToPayload } from '../../scenario/scenario.types';
 import {
   USER_CONTROLLED_PROFILE,
   type NewChatFormState,
@@ -133,55 +130,22 @@ export function applyProfileChange(
   );
 }
 
-/** The five scenario-source fields the dropdown owns (mutually exclusive). */
-type ScenarioSourcePatch = Pick<
-  NewChatFormState,
-  | 'scenarioId'
-  | 'projectScenarioPath'
-  | 'generalScenarioPath'
-  | 'groupScenarioPath'
-  | 'groupScenarioGroupId'
->;
-
 /**
- * A scenario SELECTION → source-field patch (v4 `44a8137e`'s refactored
- * `NewChatForm.handleScenarioSelectionChange`). Each choice nulls the other
- * three sources; it never touches free-text `scenario` (the layering
- * invariant).
+ * The cast changed (v4 `NewChatModal.tsx:236-242`, `545e299bb`): a character's
+ * own scenario leaves with the cast that offered it, so ONLY a `character`
+ * selection falls back to Custom. Anything else — and `scenarioTouched`, as v4
+ * spreads `prev` — stands; the state is returned untouched when nothing moves.
  */
-export function scenarioSelectionPatch(selection: ScenarioSelection): ScenarioSourcePatch {
-  return {
-    scenarioId: selection.kind === 'character' ? selection.scenarioId : null,
-    projectScenarioPath: selection.kind === 'project' ? selection.path : null,
-    generalScenarioPath: selection.kind === 'general' ? selection.path : null,
-    groupScenarioPath: selection.kind === 'group' ? selection.path : null,
-    groupScenarioGroupId: selection.kind === 'group' ? selection.groupId : null,
-  };
-}
-
-/**
- * The dropdown token → source-field patch (v4's PRE-`44a8137e`
- * `handleScenarioSelectChange`, now the composition of the shared parser with
- * {@link scenarioSelectionPatch} — which is exactly what v4's refactor made it).
- *
- * ⚠ That composition is the one place v4's refactor genuinely CHANGED
- * behavior. The old inline handler let a malformed group token (`group:` with
- * no second colon) fall out of the group branch into the character arm and
- * stored the whole token as a `scenarioId`; the shared
- * `scenarioValueToSelection` returns `{ kind: 'custom' }` from inside that
- * branch, so the same token now clears every source. Unreachable from the
- * rendered dropdown either way — pinned by spec because it is the one arm that
- * moved.
- */
-export function scenarioSelectPatch(value: string): ScenarioSourcePatch {
-  return scenarioSelectionPatch(scenarioValueToSelection(value));
+export function clearCharacterScenarioSelection(prev: NewChatFormState): NewChatFormState {
+  return prev.scenarioSelection.kind === 'character'
+    ? { ...prev, scenarioSelection: { kind: 'custom' } }
+    : prev;
 }
 
 /**
  * The submit payload (v4 `useNewChat.handleCreateChat`, non-autonomous). Sends
- * booleans only-when-true, optionals truly absent, and the mutually-exclusive
- * scenario source per the precedence chain (`scenarioId` > project > group >
- * general). `timestampConfig` is dropped when its mode is `NONE`.
+ * booleans only-when-true, optionals truly absent, and the ONE scenario
+ * pointer the form holds. `timestampConfig` is dropped when its mode is `NONE`.
  */
 export function buildCreateRequest(
   selectedCharacters: NewChatSelectedCharacter[],
@@ -234,17 +198,10 @@ export function buildCreateRequest(
   // Free-text notes ride independently of any preset (the server layers them).
   if (form.scenario) body.scenario = form.scenario;
 
-  // Preset (mutually exclusive): scenarioId > project > group > general.
-  if (form.scenarioId) {
-    body.scenarioId = form.scenarioId;
-  } else if (form.projectScenarioPath) {
-    body.projectScenarioPath = form.projectScenarioPath;
-  } else if (form.groupScenarioPath) {
-    body.groupScenarioPath = form.groupScenarioPath;
-    body.groupScenarioGroupId = form.groupScenarioGroupId ?? undefined;
-  } else if (form.generalScenarioPath) {
-    body.generalScenarioPath = form.generalScenarioPath;
-  }
+  // The one preset pointer the dropdown shows — exactly one field (or none,
+  // for Custom), so what is sent is what was seen (v4 `545e299bb`,
+  // `useNewChat.ts:846`).
+  Object.assign(body, scenarioSelectionToPayload(form.scenarioSelection));
 
   if (form.timestampConfig && form.timestampConfig['mode'] !== 'NONE') {
     body.timestampConfig = form.timestampConfig;

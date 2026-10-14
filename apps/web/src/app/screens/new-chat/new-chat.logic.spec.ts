@@ -5,9 +5,8 @@ import {
   applyPlayAs,
   applyProfileChange,
   buildCreateRequest,
+  clearCharacterScenarioSelection,
   generateTitle,
-  scenarioSelectionPatch,
-  scenarioSelectPatch,
   seedSelectedCharacter,
   sortRoster,
 } from './new-chat.logic';
@@ -139,95 +138,40 @@ describe('applyProfileChange (the picker per-character select)', () => {
   });
 });
 
-describe('scenarioSelectPatch (v4 handleScenarioSelectChange)', () => {
-  it('a project token sets projectScenarioPath and nulls the rest', () => {
-    expect(scenarioSelectPatch('project:Scenarios/a.md')).toEqual({
-      scenarioId: null,
-      projectScenarioPath: 'Scenarios/a.md',
-      generalScenarioPath: null,
-      groupScenarioPath: null,
-      groupScenarioGroupId: null,
-    });
-  });
-  it('a group token splits groupId:path', () => {
-    expect(scenarioSelectPatch('group:grp-1:Scenarios/b.md')).toEqual({
-      scenarioId: null,
-      projectScenarioPath: null,
-      generalScenarioPath: null,
-      groupScenarioPath: 'Scenarios/b.md',
-      groupScenarioGroupId: 'grp-1',
-    });
-  });
-  it('a general token sets generalScenarioPath', () => {
-    expect(scenarioSelectPatch('general:Scenarios/c.md').generalScenarioPath).toBe(
-      'Scenarios/c.md',
-    );
-  });
-  it('a bare UUID is a character scenario', () => {
-    expect(scenarioSelectPatch('uuid-123').scenarioId).toBe('uuid-123');
-  });
-  it('custom / empty clears every source', () => {
-    expect(scenarioSelectPatch('__custom__')).toEqual({
-      scenarioId: null,
-      projectScenarioPath: null,
-      generalScenarioPath: null,
-      groupScenarioPath: null,
-      groupScenarioGroupId: null,
-    });
-  });
-  /**
-   * The ONE arm v4's `44a8137e` refactor genuinely moved. Before the
-   * extraction, `handleScenarioSelectChange` let a malformed group token fall
-   * out of the group branch into the character arm and stored the whole token
-   * as a `scenarioId`; the shared `scenarioValueToSelection` returns
-   * `{ kind: 'custom' }` from inside that branch, so it now clears every
-   * source. Unreachable from the rendered dropdown either way — pinned because
-   * it moved.
-   */
-  it('a MALFORMED group token now clears every source (v4 44a8137e)', () => {
-    expect(scenarioSelectPatch('group:no-colon-after-this')).toEqual({
-      scenarioId: null,
-      projectScenarioPath: null,
-      generalScenarioPath: null,
-      groupScenarioPath: null,
-      groupScenarioGroupId: null,
-    });
-  });
-  it('does NOT touch free-text scenario notes (the layering invariant)', () => {
-    // The patch owns only the source fields; applied over typed notes, they survive.
-    const next = {
-      ...form({ scenario: 'typed notes' }),
-      ...scenarioSelectPatch('general:Scenarios/c.md'),
-    };
-    expect(next.generalScenarioPath).toBe('Scenarios/c.md');
-    expect(next.scenario).toBe('typed notes');
+/**
+ * v4 `545e299bb` DELETED the five-pointer patches (`scenarioSelectPatch` /
+ * `scenarioSelectionPatch`, P4.D302): the form holds ONE `scenarioSelection`,
+ * so a pick is a plain `{ scenarioSelection, scenarioTouched: true }` write
+ * (pinned in the form specs) and the token parsing is `scenario.types`'s own
+ * (pinned there and in the recorded oracle). What remains here is the cast
+ * change's rule (v4 `NewChatModal.tsx:236-242`).
+ */
+describe('clearCharacterScenarioSelection (v4 NewChatModal onCharactersChanged, 545e299bb)', () => {
+  it('a character selection leaves with the cast that offered it — to Custom, touched as it was', () => {
+    for (const touched of [false, true]) {
+      const prev = form({
+        scenarioSelection: { kind: 'character', scenarioId: 'sc-1' },
+        scenarioTouched: touched,
+        scenario: 'notes',
+      });
+      expect(clearCharacterScenarioSelection(prev)).toEqual({
+        ...prev,
+        scenarioSelection: { kind: 'custom' },
+      });
+    }
   });
 
-});
-
-describe('scenarioSelectionPatch (v4 44a8137e handleScenarioSelectionChange)', () => {
-  it('maps each tier to its own source field, nulling the rest', () => {
-    expect(scenarioSelectionPatch({ kind: 'character', scenarioId: 'uuid-1' })).toEqual({
-      scenarioId: 'uuid-1',
-      projectScenarioPath: null,
-      generalScenarioPath: null,
-      groupScenarioPath: null,
-      groupScenarioGroupId: null,
-    });
-    expect(scenarioSelectionPatch({ kind: 'group', groupId: 'g1', path: 'c.md' })).toEqual({
-      scenarioId: null,
-      projectScenarioPath: null,
-      generalScenarioPath: null,
-      groupScenarioPath: 'c.md',
-      groupScenarioGroupId: 'g1',
-    });
-    expect(scenarioSelectionPatch({ kind: 'custom' })).toEqual({
-      scenarioId: null,
-      projectScenarioPath: null,
-      generalScenarioPath: null,
-      groupScenarioPath: null,
-      groupScenarioGroupId: null,
-    });
+  it('every other selection stands, and the state object is returned untouched', () => {
+    for (const selection of [
+      { kind: 'custom' },
+      { kind: 'project', path: 'p.md' },
+      { kind: 'general', path: 'g.md' },
+      { kind: 'group', groupId: 'g1', path: 'c.md' },
+      { kind: 'store', mountPointId: 'mp', path: 'Scenarios/x.md', label: 'X › x' },
+    ] as const) {
+      const prev = form({ scenarioSelection: selection, scenarioTouched: true });
+      expect(clearCharacterScenarioSelection(prev)).toBe(prev);
+    }
   });
 });
 
@@ -314,31 +258,45 @@ describe('buildCreateRequest (v4 handleCreateChat payload)', () => {
     });
   });
 
-  it('honors the scenario precedence chain scenarioId > project > group > general', () => {
+  // P4.D302 (v4 `545e299bb` `useNewChat.ts:846`): the precedence chain over
+  // five fields is gone — the ONE selection's payload is sent, exactly one
+  // pointer or none. (This row pinned `scenarioId > project > group > general`
+  // over the five fields before.)
+  it('sends exactly the selection’s one pointer — or none for Custom', () => {
     const cast = [llm(char('a', 'Alice'))];
-    const both = buildCreateRequest(
-      cast,
-      form({ scenarioId: 'sc-1', projectScenarioPath: 'p.md', generalScenarioPath: 'g.md' }),
+    const pointers = ['scenarioRef', 'scenarioId', 'projectScenarioPath', 'generalScenarioPath', 'groupScenarioPath', 'groupScenarioGroupId'];
+    const sent = (selection: NewChatFormState['scenarioSelection']) => {
+      const body = buildCreateRequest(cast, form({ scenarioSelection: selection }), null, undefined) as unknown as Record<string, unknown>;
+      return Object.fromEntries(pointers.filter((k) => k in body).map((k) => [k, body[k]]));
+    };
+    expect(sent({ kind: 'custom' })).toEqual({});
+    expect(sent({ kind: 'character', scenarioId: 'sc-1' })).toEqual({ scenarioId: 'sc-1' });
+    expect(sent({ kind: 'project', path: 'p.md' })).toEqual({ projectScenarioPath: 'p.md' });
+    expect(sent({ kind: 'general', path: 'g.md' })).toEqual({ generalScenarioPath: 'g.md' });
+    expect(sent({ kind: 'group', groupId: 'grp', path: 'b.md' })).toEqual({
+      groupScenarioPath: 'b.md',
+      groupScenarioGroupId: 'grp',
+    });
+    expect(sent({ kind: 'store', mountPointId: 'mp-9', path: 'Scenarios/x.md', label: 'Bob › X' })).toEqual({
+      scenarioRef: { mountPointId: 'mp-9', path: 'Scenarios/x.md' },
+    });
+  });
+
+  it('places the pointer after the notes, where v4’s `Object.assign` puts it', () => {
+    const body = buildCreateRequest(
+      [llm(char('a', 'Alice'))],
+      form({ scenario: 'notes', scenarioSelection: { kind: 'general', path: 'g.md' } }),
       null,
       undefined,
     );
-    expect(both.scenarioId).toBe('sc-1');
-    expect(both.projectScenarioPath).toBeUndefined();
-    const grp = buildCreateRequest(
-      cast,
-      form({ groupScenarioPath: 'b.md', groupScenarioGroupId: 'grp', generalScenarioPath: 'g.md' }),
-      null,
-      undefined,
-    );
-    expect(grp.groupScenarioPath).toBe('b.md');
-    expect(grp.groupScenarioGroupId).toBe('grp');
-    expect(grp.generalScenarioPath).toBeUndefined();
+    const keys = Object.keys(body);
+    expect(keys.indexOf('generalScenarioPath')).toBe(keys.indexOf('scenario') + 1);
   });
 
   it('sends free-text scenario independently of a preset', () => {
     const body = buildCreateRequest(
       [llm(char('a', 'Alice'))],
-      form({ scenario: 'notes', generalScenarioPath: 'g.md' }),
+      form({ scenario: 'notes', scenarioSelection: { kind: 'general', path: 'g.md' } }),
       null,
       undefined,
     );

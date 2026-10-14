@@ -184586,3 +184586,74 @@ stays symlinked (§R.3's cure not needed for this lane).
   character" assert no CUSTOM box (a preset now shows the Notes box). Every
   other case kept its meaning.
 - Gate: lint / build / `npm test` green — 503 files / 10,190 tests.
+
+### Unit 5 — New Chat's ONE scenario selection
+
+- `new-chat.types.ts`: `scenarioSelection: { kind: 'custom' }` +
+  `scenarioTouched: false` replace the five pointer fields (and in
+  `INITIAL_FORM_STATE`). `new-chat.logic.ts`: `scenarioSelectionPatch` /
+  `scenarioSelectPatch` DELETED (with their two spec describes); submit is
+  `Object.assign(body, scenarioSelectionToPayload(form.scenarioSelection))`
+  after `scenario` (still only when non-empty) — v4's key order, pinned; NEW
+  pure `clearCharacterScenarioSelection` (v4 `NewChatModal.tsx:236-242`).
+- `new-chat.state.ts` (L-I): the seed is ONE `effect` whose only tracked reads
+  are v4's dependency array — `characterDefaultScenarioId` (exactly one LLM
+  seat; UNGUARDED for archived — the `d25dacc1` quirk persists),
+  `projectDefaultScenarioPath` / `generalDefaultScenarioPath` (`isDefault &&
+  !archived`), three `computed`s — writing through `form.update` UNTRACKED
+  with v4's same-token guard. Every pointer seed in `load()`,
+  `seedFromCharacter` and `syncSingleLlmDefaults` DELETED (the rest of those
+  seeds stays). **Angular-port note:** the page builds the state in
+  `ngOnInit`, outside an injection context, so the constructor gains an
+  optional `injector` that hosts the effect (`new-chat-page.ts` passes its
+  own); a state built without one (bare specs of unrelated arms) runs no seed —
+  the form then renders whatever selection it is handed, as v4's
+  `NewChatForm` tests do. **The continuation arm** (`continuationFromChatId ?
+  null : …`) is a seed input on `NewChatOptions` that nothing in production
+  sets — UNREACHABLE in v5 (no continuation source), its v4 row kept as a spec
+  row (Tier 3 item 14, recorded). `onCharactersChanged()` clears only a
+  `character` selection, touched as it was; `character-picker-panel.ts`'s two
+  `patchForm({ scenarioId: null })` sites call it (header comment updated).
+- `new-chat-form.ts` (L-J): one `scenarioSelection` read by the select, the
+  preview and the override note (`kind === 'project'` + the character default
+  listed); `selectedPresetBody` per kind + a `store` body by ref
+  (`injectScenarioRefBody`); the preset block only with content, while the
+  notes hint and the `Additional scenario notes` label key on the SELECTION
+  ("What the recorded description got wrong" item 3 — a store body still
+  loading is already a preset); the select ALWAYS rendered with `offerBrowse`;
+  the browser with `hierarchy { selectedProjectId ?? project?.id ?? null,
+  distinct group ids, the lone LLM character }`; `for` →
+  `new-chat-scenario-select`; every hand pick (select, browser, Use this
+  scene, a saved built scene, click-to-switch) sets `scenarioTouched`;
+  `handleBuiltSceneSaved` selects (touched) THEN clears `scenario` THEN bumps
+  the editor key (L-H(4)).
+- NEW `new-chat.scenario-selection.spec.ts`: v4's 5 "create request — scenario"
+  cases (`useNewChat.request-body.test.tsx` at the pin) against
+  `NewChatState` + the red-first ANCHOR (the `?characterId=` entrance into a
+  project with a default, rendered) + 4 seed rows (the same-token guard, a
+  moving default, the continuation arm, two LLM seats). `new-chat-form.spec.ts`:
+  v4's 5 NEW "the scenario selection drives the display" cases + 4 lane rows
+  (hint / label on the selection while a store body loads, touched on a
+  dropdown pick, the label's `for`, the browser hierarchy).
+  `character-picker-panel.spec.ts`: the cast-change row both ways.
+- **Red-first** (structural reads against the unported five-pointer New Chat):
+  **6/6 red** — all five v4 rows and the anchor, which failed exactly as the
+  order predicted (the select showed `project:Scenarios/atrium.md` while the
+  create body carried the character's `scenarioId`). **Mutation proofs:**
+  dropping the touched pin from `seedScenarioSelection` reddens exactly "never
+  re-seeds a selection the user picked by hand"; dropping the same-token guard
+  reddens exactly the guard row (re-aimed once: a refetch that leaves every
+  default unchanged never re-runs the effect — its inputs are `computed`
+  VALUES, v4's dependency array — so the row moves the GENERAL default under a
+  winning project default).
+- **Pre-existing rows re-pointed (recorded):** `new-chat-form.host.spec.ts` —
+  the Use-this-scene row (`FIVE_POINTERS` → one held group selection; asserts
+  Custom + touched) and the six "selecting a scene the Host just filed" rows
+  (each now reads `scenarioSelection`); `new-chat-form.spec.ts` — the layering
+  row and four archived / group rows seed `scenarioSelection`, and the two
+  option-list rows gain `Browse all scenarios…`; `new-chat.state.spec.ts` — the
+  three archived-seeding rows run through the seed effect (`seededLoad`) and
+  read `scenarioSelection`; `new-chat.logic.spec.ts` — the precedence row
+  becomes "sends exactly the selection's one pointer" over all six kinds (+ the
+  key-order row), the free-text row seeds a selection.
+- Gate: lint / build / `npm test` green — 504 files / 10,206 tests.

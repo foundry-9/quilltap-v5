@@ -40,6 +40,7 @@ export {
 import type {
   CharacterScenario,
   ProjectScenarioOption,
+  ScenarioSelection,
 } from '../../scenario/scenario.types';
 
 /** The special connection-profile option that flips a cast entry to the user (v4 `USER_CONTROLLED_PROFILE`). */
@@ -123,13 +124,22 @@ export interface NewChatFormState {
    * false, so an explicit choice is never quietly overwritten.
    */
   roleplayTemplateTouched: boolean;
-  /** Free-text scenario notes (layered beneath any resolved preset). */
+  /** Free-text notes — layered beneath the preset, or the whole scene under Custom. */
   scenario: string;
-  scenarioId: string | null;
-  projectScenarioPath: string | null;
-  generalScenarioPath: string | null;
-  groupScenarioPath: string | null;
-  groupScenarioGroupId: string | null;
+  /**
+   * The one preset pointer — what the dropdown shows and exactly what is
+   * submitted (`scenarioSelectionToPayload`), so display and submit cannot
+   * disagree (v4 `545e299bb`; the five mutually-exclusive pointer fields it
+   * replaces let the form SHOW the project default while SUBMITTING the
+   * character's). Seeded character default > project default > general
+   * default by `NewChatState`'s seed effect.
+   */
+  scenarioSelection: ScenarioSelection;
+  /**
+   * Set once the user picks a scenario by hand. Reference-data reloads (a new
+   * cast, a different project) re-seed the default only while this is false.
+   */
+  scenarioTouched: boolean;
   timestampConfig: TimestampConfig | null;
   avatarGenerationEnabled: boolean;
   outfitSelections: ChatCreateOutfitSelectionInput[];
@@ -144,11 +154,8 @@ export const INITIAL_FORM_STATE: NewChatFormState = {
   roleplayTemplateId: null,
   roleplayTemplateTouched: false,
   scenario: '',
-  scenarioId: null,
-  projectScenarioPath: null,
-  generalScenarioPath: null,
-  groupScenarioPath: null,
-  groupScenarioGroupId: null,
+  scenarioSelection: { kind: 'custom' },
+  scenarioTouched: false,
   timestampConfig: null,
   avatarGenerationEnabled: false,
   outfitSelections: [],

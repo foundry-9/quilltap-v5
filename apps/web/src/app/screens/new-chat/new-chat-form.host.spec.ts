@@ -151,13 +151,14 @@ function scenarioRecordKey(fixture: ComponentFixture<NewChatForm>): unknown {
   return field.recordKey();
 }
 
-const FIVE_POINTERS = {
+/**
+ * A held preset (P4.D302: the ONE selection replaced v4's five pointer fields at
+ * `545e299bb`; this row used to set all five).
+ */
+const HELD_PRESET = {
   scenario: 'old notes',
-  scenarioId: 'preset-1',
-  projectScenarioPath: 'project/x.md',
-  generalScenarioPath: 'general/y.md',
-  groupScenarioPath: 'group/z.md',
-  groupScenarioGroupId: 'group-1',
+  scenarioSelection: { kind: 'group', groupId: 'group-1', path: 'group/z.md' },
+  scenarioTouched: false,
 } satisfies Partial<NewChatFormState>;
 
 describe('NewChatForm — Ask the Host to set the scene (v4)', () => {
@@ -178,9 +179,9 @@ describe('NewChatForm — Ask the Host to set the scene (v4)', () => {
     expect(hostButton(fixture).disabled).toBe(false);
   });
 
-  it("fills state.scenario from the builder's scene and clears every preset pointer, and remounts the editor", async () => {
+  it("fills state.scenario from the builder's scene, selects Custom (touched), and remounts the editor", async () => {
     const state = makeState();
-    state.patchForm(FIVE_POINTERS);
+    state.patchForm(HELD_PRESET);
     const fixture = await render(state);
     const keyBefore = scenarioRecordKey(fixture);
     const builder = await openBuilder(fixture);
@@ -188,11 +189,8 @@ describe('NewChatForm — Ask the Host to set the scene (v4)', () => {
     await settle(fixture);
     const form = state.form();
     expect(form.scenario).toBe('A scene from the Host.');
-    expect(form.scenarioId).toBeNull();
-    expect(form.projectScenarioPath).toBeNull();
-    expect(form.generalScenarioPath).toBeNull();
-    expect(form.groupScenarioPath).toBeNull();
-    expect(form.groupScenarioGroupId).toBeNull();
+    expect(form.scenarioSelection).toEqual({ kind: 'custom' });
+    expect(form.scenarioTouched).toBe(true);
     expect(scenarioRecordKey(fixture)).not.toBe(keyBefore);
   });
 });
@@ -226,8 +224,12 @@ describe('NewChatForm — selecting a scene the Host just filed (v4)', () => {
       { general: [], project: null, group: [GROUP_OPTION] },
     );
     expect(refetch).toHaveBeenCalledTimes(1);
-    expect(state.form().groupScenarioPath).toBe(GROUP_OPTION.path);
-    expect(state.form().groupScenarioGroupId).toBe('group-1');
+    expect(state.form().scenarioSelection).toEqual({
+      kind: 'group',
+      groupId: 'group-1',
+      path: GROUP_OPTION.path,
+    });
+    expect(state.form().scenarioTouched).toBe(true);
     expect(state.form().scenario).toBe('');
     expect(scenarioRecordKey(fixture)).not.toBe(keyBefore);
   });
@@ -238,7 +240,8 @@ describe('NewChatForm — selecting a scene the Host just filed (v4)', () => {
       { general: [], project: null, group: null },
     );
     expect(state.form().scenario).toBe('old notes');
-    expect(state.form().groupScenarioPath).toBeNull();
+    expect(state.form().scenarioSelection).toEqual({ kind: 'custom' });
+    expect(state.form().scenarioTouched).toBe(false);
     expect(scenarioRecordKey(fixture)).toBe(keyBefore);
   });
 
@@ -247,7 +250,7 @@ describe('NewChatForm — selecting a scene the Host just filed (v4)', () => {
       { kind: 'general', path: GENERAL_SCENARIO.path },
       { general: [GENERAL_SCENARIO], project: null, group: null },
     );
-    expect(state.form().generalScenarioPath).toBe(GENERAL_SCENARIO.path);
+    expect(state.form().scenarioSelection).toEqual({ kind: 'general', path: GENERAL_SCENARIO.path });
     expect(state.form().scenario).toBe('');
   });
 
@@ -258,7 +261,7 @@ describe('NewChatForm — selecting a scene the Host just filed (v4)', () => {
       { kind: 'group', groupId: 'group-2', path: GROUP_OPTION.path },
       { general: [], project: null, group: [GROUP_OPTION] },
     );
-    expect(state.form().groupScenarioPath).toBeNull();
+    expect(state.form().scenarioSelection).toEqual({ kind: 'custom' });
     expect(state.form().scenario).toBe('old notes');
   });
 
@@ -269,14 +272,14 @@ describe('NewChatForm — selecting a scene the Host just filed (v4)', () => {
       { general: [], project: [project], group: null },
       (state) => state.selectedProjectId.set('proj-1'),
     );
-    expect(mine.state.form().projectScenarioPath).toBe(project.path);
+    expect(mine.state.form().scenarioSelection).toEqual({ kind: 'project', path: project.path });
     TestBed.resetTestingModule();
     const other = await saveWith(
       { kind: 'project', projectId: 'proj-2', path: project.path },
       { general: [], project: [project], group: null },
       (state) => state.selectedProjectId.set('proj-1'),
     );
-    expect(other.state.form().projectScenarioPath).toBeNull();
+    expect(other.state.form().scenarioSelection).toEqual({ kind: 'custom' });
     // v4 awaits the re-read BEFORE any arm is checked, so it runs regardless.
     expect(other.refetch).toHaveBeenCalledTimes(1);
   });
@@ -303,7 +306,7 @@ describe('NewChatForm — selecting a scene the Host just filed (v4)', () => {
       { id: 'old', title: 'Old', content: 'Old scene.' },
       { id: 'scn-new', title: 'Rain', content: 'Rain on the cobbles.' },
     ]);
-    expect(state.form().scenarioId).toBe('scn-new');
+    expect(state.form().scenarioSelection).toEqual({ kind: 'character', scenarioId: 'scn-new' });
     expect(state.form().scenario).toBe('');
   });
 
@@ -323,7 +326,7 @@ describe('NewChatForm — selecting a scene the Host just filed (v4)', () => {
           { character: char('char-2', 'Bob'), connectionProfileId: 'p1', controlledBy: 'llm' },
         ]),
     );
-    expect(state.form().scenarioId).toBeNull();
+    expect(state.form().scenarioSelection).toEqual({ kind: 'custom' });
     expect(state.selectedCharacters()[0].character.scenarios).toEqual([]);
     expect(state.form().scenario).toBe('old notes');
   });

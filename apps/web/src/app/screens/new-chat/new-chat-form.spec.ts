@@ -112,7 +112,7 @@ describe('NewChatForm scenario layering', () => {
   it('shows the preset preview, append hint, and relabeled editor when a preset is selected', async () => {
     const state = makeState();
     state.generalScenarios.set([GENERAL]);
-    state.patchForm({ generalScenarioPath: GENERAL.path });
+    state.patchForm({ scenarioSelection: { kind: 'general', path: GENERAL.path } });
     const fixture = await render(state);
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('A foggy moor at dawn.');
@@ -422,21 +422,21 @@ describe('NewChatForm — archived scenarios and the group tier', () => {
     const state = makeState();
     withCharacter(state, [DUEL, WAKE]);
     const fixture = await render(state);
-    expect(optionTexts(fixture)).toEqual(['Custom...', 'A Duel']);
+    expect(optionTexts(fixture)).toEqual(['Custom...', 'Browse all scenarios…', 'A Duel']);
 
     state.showArchivedScenarios.set(true);
     fixture.detectChanges();
-    expect(optionTexts(fixture)).toEqual(['Custom...', 'A Duel', 'A Wake (archived)']);
+    expect(optionTexts(fixture)).toEqual(['Custom...', 'Browse all scenarios…', 'A Duel', 'A Wake (archived)']);
   });
 
   it('keeps the CURRENT selection visible even when archived and hidden', async () => {
     const state = makeState();
     withCharacter(state, [DUEL, WAKE]);
-    state.patchForm({ scenarioId: WAKE.id });
+    state.patchForm({ scenarioSelection: { kind: 'character', scenarioId: WAKE.id } });
     const fixture = await render(state);
     // The archived row stays — suffixed — because blanking the select out from
     // under a pick made a moment ago is worse than showing it (v4 `:160-170`).
-    expect(optionTexts(fixture)).toEqual(['Custom...', 'A Duel', 'A Wake (archived)']);
+    expect(optionTexts(fixture)).toEqual(['Custom...', 'Browse all scenarios…', 'A Duel', 'A Wake (archived)']);
     const select = (fixture.nativeElement as HTMLElement).querySelector(
       '#new-chat-scenario-select',
     ) as HTMLSelectElement;
@@ -446,7 +446,7 @@ describe('NewChatForm — archived scenarios and the group tier', () => {
   it('previews an archived selection against the UNFILTERED list', async () => {
     const state = makeState();
     withCharacter(state, [DUEL, WAKE]);
-    state.patchForm({ scenarioId: WAKE.id });
+    state.patchForm({ scenarioSelection: { kind: 'character', scenarioId: WAKE.id } });
     const fixture = await render(state);
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Rain on the glass.');
   });
@@ -489,7 +489,7 @@ describe('NewChatForm — archived scenarios and the group tier', () => {
         body: 'A cellar.',
       },
     ]);
-    state.patchForm({ groupScenarioPath: 'Scenarios/den.md', groupScenarioGroupId: 'g1' });
+    state.patchForm({ scenarioSelection: { kind: 'group', groupId: 'g1', path: 'Scenarios/den.md' } });
     const fixture = await render(state);
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('A cellar.');
     const select = (fixture.nativeElement as HTMLElement).querySelector(
@@ -508,5 +508,214 @@ describe('NewChatForm — archived scenarios and the group tier', () => {
     box.dispatchEvent(new Event('change'));
     await settle(fixture);
     expect(state.showArchivedScenarios()).toBe(true);
+  });
+});
+
+/**
+ * v4 `components/new-chat/__tests__/NewChatForm.test.tsx` at the pin
+ * `83334b9a5` — "NewChatForm — the scenario selection drives the display" (the
+ * 5 NEW cases of `545e299bb`), transcribed case for case, plus the P4.D302
+ * rows the order names: every hand pick sets `scenarioTouched` (L-J), the
+ * notes hint + editor label key on the SELECTION (a store body still loading),
+ * and the browser's hierarchy.
+ */
+describe('NewChatForm — the scenario selection drives the display (v4 545e299bb)', () => {
+  const PROJECT_DEFAULT: ScenarioOption = {
+    path: 'Scenarios/atrium.md',
+    filename: 'atrium.md',
+    name: 'The Atrium',
+    isDefault: true,
+    body: 'Glass overhead.',
+  };
+  const STUDY = { id: 'sc-study', title: 'Her Study', content: 'Books to the ceiling.' };
+  const alice = char('a', 'Alice', { scenarios: [STUDY], defaultScenarioId: STUDY.id });
+  const llmSeat = (c: CharacterListItem): NewChatSelectedCharacter => ({
+    character: c,
+    connectionProfileId: 'p1',
+    selectedSystemPromptId: null,
+    controlledBy: 'llm',
+  });
+
+  /** A core that answers the browser's catalogue and a ref read. */
+  function scenarioCore(sent: Record<string, unknown>[]): CoreClient {
+    return {
+      dispatchData: async (req: Record<string, unknown>) => {
+        sent.push(req);
+        if (req['type'] === 'scenarioEverywhere') return { sources: [] };
+        if (req['type'] === 'scenarioReadByRef') {
+          return { scenario: { body: 'A borrowed scene.' }, owner: {} };
+        }
+        return { profiles: [] };
+      },
+      dispatchExpect: async () => ({ type: 'chatSettings', data: {} }),
+    } as unknown as CoreClient;
+  }
+
+  async function renderWith(state: NewChatState, core: CoreClient): Promise<ComponentFixture<NewChatForm>> {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [NewChatForm],
+      providers: [
+        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
+        provideRouter([]),
+        { provide: CoreClient, useValue: core },
+      ],
+    });
+    await TestBed.compileComponents();
+    const fixture = TestBed.createComponent(NewChatForm);
+    fixture.componentRef.setInput('state', state);
+    fixture.detectChanges();
+    await settle(fixture);
+    return fixture;
+  }
+
+  const scenarioSelect = (f: ComponentFixture<NewChatForm>) =>
+    (f.nativeElement as HTMLElement).querySelector('#new-chat-scenario-select') as HTMLSelectElement;
+  const text = (f: ComponentFixture<NewChatForm>) => (f.nativeElement as HTMLElement).textContent ?? '';
+
+  it("shows the character's default, not the project's, when the selection names the character (regression)", async () => {
+    // The old form displayed the project default while submitting the
+    // character's. With one selection the two cannot disagree: the select,
+    // the preview and the override note all read `scenarioSelection`.
+    const state = makeState();
+    state.selectedCharacters.set([llmSeat(alice)]);
+    state.projectScenarios.set([PROJECT_DEFAULT]);
+    state.patchForm({ scenarioSelection: { kind: 'character', scenarioId: STUDY.id } });
+    const f = await renderWith(state, scenarioCore([]));
+
+    expect(scenarioSelect(f).value).toBe(STUDY.id);
+    expect(text(f)).toContain('Books to the ceiling.');
+    expect(text(f)).not.toContain('Glass overhead.');
+    expect(text(f)).not.toMatch(/Using the project default/);
+  });
+
+  it('offers the character default as a switch when the project default is held', async () => {
+    const state = makeState();
+    state.selectedCharacters.set([llmSeat(alice)]);
+    state.projectScenarios.set([PROJECT_DEFAULT]);
+    state.patchForm({ scenarioSelection: { kind: 'project', path: PROJECT_DEFAULT.path }, scenario: 'notes' });
+    const f = await renderWith(state, scenarioCore([]));
+
+    expect(scenarioSelect(f).value).toBe(`project:${PROJECT_DEFAULT.path}`);
+    expect(text(f)).toContain('Glass overhead.');
+    const switchButton = [...(f.nativeElement as HTMLElement).querySelectorAll('button')].find(
+      (b) => b.textContent!.trim() === STUDY.title,
+    )!;
+    switchButton.click();
+    await settle(f);
+
+    expect(state.form().scenarioSelection).toEqual({ kind: 'character', scenarioId: STUDY.id });
+    expect(state.form().scenarioTouched).toBe(true);
+    expect(state.form().scenario).toBe('');
+  });
+
+  it('always renders the dropdown, with Browse, even when no tier has anything to offer', async () => {
+    const f = await renderWith(makeState(), scenarioCore([]));
+    const values = [...scenarioSelect(f).querySelectorAll('option')].map((o) => o.value);
+    expect(values).toEqual(['__custom__', '__browse__']);
+  });
+
+  it('treats "Browse all scenarios…" as an action, never a selection', async () => {
+    const state = makeState();
+    state.generalScenarios.set([GENERAL]);
+    const sent: Record<string, unknown>[] = [];
+    const f = await renderWith(state, scenarioCore(sent));
+    const before = state.form();
+
+    const select = scenarioSelect(f);
+    select.value = '__browse__';
+    select.dispatchEvent(new Event('change'));
+    await settle(f);
+
+    expect(state.form()).toBe(before);
+    expect(scenarioSelect(f).value).toBe('__custom__');
+    // The browser opened and asked for the catalogue.
+    expect(document.body.querySelector('qt-scenario-browser-dialog')).not.toBeNull();
+    expect(sent.some((r) => r['type'] === 'scenarioEverywhere')).toBe(true);
+    document.body.querySelectorAll('qt-scenario-browser-dialog').forEach((n) => n.remove());
+  });
+
+  it('shows a store pick under "Elsewhere" with its body read by ref, and the notes hint', async () => {
+    const state = makeState();
+    state.patchForm({
+      scenarioSelection: {
+        kind: 'store',
+        mountPointId: 'mp-9',
+        path: 'Scenarios/borrowed.md',
+        label: 'Bob › Borrowed',
+      },
+    });
+    const sent: Record<string, unknown>[] = [];
+    const f = await renderWith(state, scenarioCore(sent));
+
+    const elsewhere = scenarioSelect(f).querySelector('optgroup[label="Elsewhere"]');
+    expect(elsewhere).not.toBeNull();
+    expect(elsewhere!.textContent!.trim()).toBe('Bob › Borrowed');
+    expect(scenarioSelect(f).value).toBe('store:mp-9:Scenarios/borrowed.md');
+
+    expect(text(f)).toContain('A borrowed scene.');
+    expect(text(f)).toMatch(/added beneath the scenario above/i);
+    expect(labelOf(f, 'Additional scenario notes')).not.toBeNull();
+
+    // v4 asserts the GET URL; v5's equivalent is the dispatch body — the path
+    // exactly as the selection holds it, never encoded (R-Z).
+    expect(sent.filter((r) => r['type'] === 'scenarioReadByRef')).toEqual([
+      { type: 'scenarioReadByRef', mountPointId: 'mp-9', path: 'Scenarios/borrowed.md' },
+    ]);
+  });
+
+  // --- P4.D302 rows beyond v4's file ------------------------------------------
+
+  it('keys the notes hint and the editor label on the SELECTION, even while a store body loads', async () => {
+    const state = makeState();
+    state.patchForm({
+      scenarioSelection: { kind: 'store', mountPointId: 'mp-9', path: 'Scenarios/slow.md', label: 'Bob › Slow' },
+    });
+    const core = {
+      dispatchData: (req: Record<string, unknown>) =>
+        req['type'] === 'scenarioReadByRef' ? new Promise(() => undefined) : Promise.resolve({ profiles: [] }),
+      dispatchExpect: async () => ({ type: 'chatSettings', data: {} }),
+    } as unknown as CoreClient;
+    const f = await renderWith(state, core);
+    // No body yet, so no preview block…
+    expect((f.nativeElement as HTMLElement).querySelector('.whitespace-pre-wrap')).toBeNull();
+    // …but it IS a preset already.
+    expect(text(f)).toMatch(/added beneath the scenario above/i);
+    expect(labelOf(f, 'Additional scenario notes')).not.toBeNull();
+  });
+
+  it('sets scenarioTouched on a dropdown pick (L-J)', async () => {
+    const state = makeState();
+    state.generalScenarios.set([GENERAL]);
+    const f = await renderWith(state, scenarioCore([]));
+    const select = scenarioSelect(f);
+    select.value = `general:${GENERAL.path}`;
+    select.dispatchEvent(new Event('change'));
+    await settle(f);
+    expect(state.form().scenarioSelection).toEqual({ kind: 'general', path: GENERAL.path });
+    expect(state.form().scenarioTouched).toBe(true);
+  });
+
+  it('labels the dropdown `new-chat-scenario-select` from "Starting Scenario (Optional)"', async () => {
+    const f = await renderWith(makeState(), scenarioCore([]));
+    const label = [...(f.nativeElement as HTMLElement).querySelectorAll('label')].find((l) =>
+      l.textContent!.includes('Starting Scenario (Optional)'),
+    )!;
+    expect(label.getAttribute('for')).toBe('new-chat-scenario-select');
+    expect(scenarioSelect(f)).not.toBeNull();
+  });
+
+  it('hands the browser the hierarchy: the project, the cast’s groups, the lone LLM character', async () => {
+    const state = makeState();
+    state.selectedProjectId.set('proj-1');
+    state.selectedCharacters.set([llmSeat(alice)]);
+    state.groupScenarios.set([
+      { ...GENERAL, groupId: 'g-1', groupName: 'One' },
+      { ...GENERAL, path: 'Scenarios/b.md', groupId: 'g-1', groupName: 'One' },
+      { ...GENERAL, path: 'Scenarios/c.md', groupId: 'g-2', groupName: 'Two' },
+    ]);
+    const f = await renderWith(state, scenarioCore([]));
+    const hierarchy = (f.componentInstance as unknown as { scenarioHierarchy: () => unknown }).scenarioHierarchy();
+    expect(hierarchy).toEqual({ projectId: 'proj-1', groupIds: ['g-1', 'g-2'], characterId: 'a' });
   });
 });

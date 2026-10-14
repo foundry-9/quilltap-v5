@@ -1,8 +1,10 @@
+import { Injector } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 
 import type { CoreClient } from '../../core/core-client';
 import type { CharacterListItem } from '../../core/core-contract';
-import { NewChatState } from './new-chat.state';
+import { NewChatState, type NewChatOptions } from './new-chat.state';
 import type { NewChatSelectedCharacter } from './new-chat.types';
 
 function char(id: string, name: string, over: Partial<CharacterListItem> = {}): CharacterListItem {
@@ -437,6 +439,23 @@ function scen(path: string, over: Record<string, unknown> = {}): Record<string, 
   return { path, name: path, description: null, isDefault: false, archived: false, ...over };
 }
 
+/**
+ * A state with the scenario seed effect live (P4.D302 L-I): built with an
+ * injector, flushed by `TestBed.tick()`. Since `545e299bb` the seed is that
+ * effect, not `load()` / `seedFromCharacter`, and it writes the ONE
+ * `scenarioSelection` (these rows read the five pointer fields before).
+ */
+async function seededLoad(core: CoreClient, options: NewChatOptions): Promise<NewChatState> {
+  TestBed.resetTestingModule();
+  const state = new NewChatState(core, options, null, null, TestBed.inject(Injector));
+  await state.load();
+  for (let i = 0; i < 3; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    TestBed.tick();
+  }
+  return state;
+}
+
 describe('NewChatState archived-scenario seeding (v4 d25dacc1 §B7)', () => {
   it('the project and general default seeds SKIP an archived default', async () => {
     const { core } = recordingCore({
@@ -444,10 +463,8 @@ describe('NewChatState archived-scenario seeding (v4 d25dacc1 §B7)', () => {
       project: [scen('p-arch.md', { isDefault: true, archived: true })],
       character: char('c1', 'Aria'),
     });
-    const state = new NewChatState(core, { initialCharacterId: 'c1', projectId: 'pr1' });
-    await state.load();
-    expect(state.form().projectScenarioPath).toBeNull();
-    expect(state.form().generalScenarioPath).toBeNull();
+    const state = await seededLoad(core, { initialCharacterId: 'c1', projectId: 'pr1' });
+    expect(state.form().scenarioSelection).toEqual({ kind: 'custom' });
   });
 
   it('an ACTIVE default still seeds — the guard is the flag, not the seeding', async () => {
@@ -455,9 +472,8 @@ describe('NewChatState archived-scenario seeding (v4 d25dacc1 §B7)', () => {
       general: [scen('g-live.md', { isDefault: true })],
       character: char('c1', 'Aria'),
     });
-    const state = new NewChatState(core, { initialCharacterId: 'c1' });
-    await state.load();
-    expect(state.form().generalScenarioPath).toBe('g-live.md');
+    const state = await seededLoad(core, { initialCharacterId: 'c1' });
+    expect(state.form().scenarioSelection).toEqual({ kind: 'general', path: 'g-live.md' });
   });
 
   it('the CHARACTER default seed is deliberately UNGUARDED — an archived default auto-selects (v4-faithful; a guard here is a divergence, not a fix)', async () => {
@@ -476,9 +492,8 @@ describe('NewChatState archived-scenario seeding (v4 d25dacc1 §B7)', () => {
       ],
     });
     const { core } = recordingCore({ character: aria });
-    const state = new NewChatState(core, { initialCharacterId: 'c1' });
-    await state.load();
-    expect(state.form().scenarioId).toBe('sc-arch');
+    const state = await seededLoad(core, { initialCharacterId: 'c1' });
+    expect(state.form().scenarioSelection).toEqual({ kind: 'character', scenarioId: 'sc-arch' });
   });
 
   it('flipping Show archived threads the flag onto all three list verbs and fires the union exactly ONCE', async () => {

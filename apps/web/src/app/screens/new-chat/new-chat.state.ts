@@ -23,7 +23,15 @@
  * seam (the decision is recorded in the status log).
  */
 
-import { computed, signal, type Signal, type WritableSignal } from '@angular/core';
+import {
+  computed,
+  effect,
+  signal,
+  untracked,
+  type Injector,
+  type Signal,
+  type WritableSignal,
+} from '@angular/core';
 
 import type { CoreClient } from '../../core/core-client';
 import type {
@@ -45,7 +53,9 @@ import type { ConciergeState } from '../../chat/concierge-state';
 import { resolveDefaultSystemPromptId } from '../../shared/default-system-prompt';
 import type { ToastService } from '../../ui/toast.service';
 import type { GreenRoomController } from './green-room.types';
-import { buildCreateRequest } from './new-chat.logic';
+import { scenarioSelectionToValue } from '../../scenario/scenario.types';
+import { buildCreateRequest, clearCharacterScenarioSelection } from './new-chat.logic';
+import { seedScenarioSelection } from './scenario-seed';
 import {
   INITIAL_FORM_STATE,
   type GroupScenarioOption,
@@ -62,6 +72,14 @@ export interface NewChatOptions {
   projectId?: string;
   /** Start the form in autonomous-room mode (v4 `?autonomous=1`). */
   initialAutonomous?: boolean;
+  /**
+   * v4's continuation source (`continuationFromChatId`), consulted ONLY by the
+   * scenario seed, which skips the character's default for a continuation (the
+   * point is a new scene). v5's New Chat has no continuation source — nothing
+   * in production sets this, so the arm is unreachable (P4.D302 L-I, Tier 3
+   * item 14, recorded); it is a seed input so v4's row stands as a spec row.
+   */
+  continuationFromChatId?: string | null;
 }
 
 /**
@@ -194,11 +212,51 @@ export class NewChatState {
    */
   private conciergeSeeded = false;
 
+  // --- The scenario seed (v4 `useNewChat.ts:660-688`, `545e299bb`) ---------
+
+  /** The single LLM character — exactly one LLM seat (v4 `singleLlmCharacter`). */
+  private readonly singleLlmCharacter = computed<CharacterListItem | null>(() => {
+    const llm = this.llmSelected();
+    return llm.length === 1 ? llm[0].character : null;
+  });
+
+  /**
+   * The character default the seed offers. Deliberately UNGUARDED for archived
+   * (v4 `:672` — the `d25dacc1` quirk persists at the pin): a character whose
+   * default scenario has since been archived still auto-selects it, and the
+   * form's keep-the-selection-visible exception holds it in the list.
+   */
+  readonly characterDefaultScenarioId = computed<string | null>(() =>
+    this.options.continuationFromChatId
+      ? null
+      : (this.singleLlmCharacter()?.defaultScenarioId ?? null),
+  );
+  /**
+   * `!s.archived` is belt-and-braces (v4): the server already refuses to let an
+   * archived file win default resolution, but with "Show archived" ticked an
+   * archived row carrying a stale `isDefault: true` would otherwise be a
+   * candidate here.
+   */
+  readonly projectDefaultScenarioPath = computed<string | null>(
+    () => this.projectScenarios().find((s) => s.isDefault && !s.archived)?.path ?? null,
+  );
+  readonly generalDefaultScenarioPath = computed<string | null>(
+    () => this.generalScenarios().find((s) => s.isDefault && !s.archived)?.path ?? null,
+  );
+
+  /**
+   * @param injector Hosts the scenario seed `effect` (P4.D302 L-I). The page
+   *   builds this state in `ngOnInit`, outside an injection context, so it
+   *   passes its own injector; a state built without one (a bare spec of an
+   *   unrelated arm) runs no seed — the form then shows whatever selection it
+   *   is handed, exactly as v4's `NewChatForm` tests render a fixed state.
+   */
   constructor(
     private readonly core: CoreClient,
     private readonly options: NewChatOptions,
     private readonly greenRoom: GreenRoomController | null = null,
     private readonly toasts: Pick<ToastService, 'showSuccess' | 'showError'> | null = null,
+    injector?: Injector,
   ) {
     this.selectedProjectId = signal<string | null>(options.projectId ?? null);
     if (options.initialAutonomous) {
@@ -206,6 +264,34 @@ export class NewChatState {
         ...prev,
         autonomous: { ...prev.autonomous, enabled: true },
       }));
+    }
+    if (injector) {
+      // The scenario default, re-seeded whenever the cast or the tiers change —
+      // until the user picks one by hand (`scenarioTouched`). Character default
+      // > project default > general default, the order the server has always
+      // applied. The ONLY tracked reads are v4's dependency array (the three
+      // defaults); the form is read and written untracked, and a re-seed that
+      // lands on the same `<option>` token keeps the previous object (v4's
+      // same-token guard).
+      effect(
+        () => {
+          const defaults = {
+            characterDefaultScenarioId: this.characterDefaultScenarioId(),
+            projectDefaultPath: this.projectDefaultScenarioPath(),
+            generalDefaultPath: this.generalDefaultScenarioPath(),
+          };
+          untracked(() =>
+            this.form.update((prev) => {
+              const next = seedScenarioSelection(prev, defaults);
+              return next === prev.scenarioSelection ||
+                scenarioSelectionToValue(next) === scenarioSelectionToValue(prev.scenarioSelection)
+                ? prev
+                : { ...prev, scenarioSelection: next };
+            }),
+          );
+        },
+        { injector },
+      );
     }
   }
 
@@ -385,38 +471,19 @@ export class NewChatState {
             : null,
       }));
 
-      // `!s.archived` is belt-and-braces (v4 `:470-473`): the server already
-      // refuses to let an archived file win default resolution, but with "Show
-      // archived" ticked an archived row carrying a stale `isDefault: true`
-      // would otherwise be a candidate for auto-selection here. The CHARACTER
-      // default seed is deliberately NOT guarded — see `seedFromCharacter`.
-      const projectDefaultPath =
-        loadedProjectScenarios.find((s) => s.isDefault && !s.archived)?.path ?? null;
-      const generalDefaultPath =
-        loadedGeneral.find((s) => s.isDefault && !s.archived)?.path ?? null;
-      const seededGeneralPath = projectDefaultPath ? null : generalDefaultPath;
-
+      // The scenario default is seeded by the effect in the constructor, once
+      // the cast and the tiers have both landed (v4 `545e299bb` deleted the
+      // pointer seeds that stood here — `useNewChat.ts:483-597`).
       if (initialCharacterId && seededChar && !this.seeded) {
         this.seeded = true;
-        this.seedFromCharacter(
-          seededChar,
-          seededPartnerId,
-          loadedProject,
-          all,
-          projectDefaultPath,
-          seededGeneralPath,
-        );
+        this.seedFromCharacter(seededChar, seededPartnerId, loadedProject, all);
       } else if (loadedProject) {
         this.form.update((prev) => ({
           ...prev,
-          projectScenarioPath: projectDefaultPath,
-          generalScenarioPath: seededGeneralPath,
           imageProfileId: loadedProject.defaultImageProfileId || prev.imageProfileId,
           avatarGenerationEnabled:
             loadedProject.defaultAvatarGenerationEnabled ?? prev.avatarGenerationEnabled,
         }));
-      } else if (generalDefaultPath) {
-        this.form.update((prev) => ({ ...prev, generalScenarioPath: generalDefaultPath }));
       }
 
       // The participant-union tier, now rendered as its own optgroup (v4
@@ -433,21 +500,17 @@ export class NewChatState {
 
   /**
    * Seed the cast + form from a `?characterId=` character (v4's seed branch).
-   *
-   * ⚠ **v4-faithful quirk, reproduced not fixed** (`d25dacc1` §B7): the
-   * character's own `defaultScenarioId` is seeded UNGUARDED. v4 added
-   * `&& !s.archived` to the PROJECT and GENERAL default lookups only, so a
-   * character whose default scenario has since been archived still auto-selects
-   * it — and it still renders, because the form's keep-the-selection-visible
-   * exception holds it in the list (suffixed "(archived)").
+   * The scenario default is NOT seeded here (v4 `545e299bb`): the seed effect
+   * picks it up from the cast this sets — character default first, which is
+   * the fix for the form SHOWING the project default while SUBMITTING the
+   * character's. (The `d25dacc1` archived quirk now lives on
+   * {@link characterDefaultScenarioId}.)
    */
   private seedFromCharacter(
     char: CharacterListItem,
     seededPartnerId: string | null,
     loadedProject: NewChatProject | null,
     allCharacters: CharacterListItem[],
-    projectDefaultPath: string | null,
-    seededGeneralPath: string | null,
   ): void {
     const connectionProfileId = char.defaultConnectionProfileId || this.profiles()[0]?.id || '';
     // v4 `baa85e19b` (bug 154): the hand-rolled ternary that used to stand here
@@ -479,9 +542,6 @@ export class NewChatState {
     this.form.update((prev) => ({
       ...prev,
       timestampConfig: char.defaultTimestampConfig ?? null,
-      scenarioId: char.defaultScenarioId ?? null,
-      projectScenarioPath: projectDefaultPath,
-      generalScenarioPath: seededGeneralPath,
       imageProfileId: loadedProject?.defaultImageProfileId || char.defaultImageProfileId || '',
       avatarGenerationEnabled: loadedProject?.defaultAvatarGenerationEnabled ?? false,
     }));
@@ -618,7 +678,6 @@ export class NewChatState {
       this.form.update((prev) => ({
         ...prev,
         timestampConfig: char.defaultTimestampConfig ?? prev.timestampConfig,
-        scenarioId: char.defaultScenarioId ?? prev.scenarioId,
         imageProfileId:
           this.project()?.defaultImageProfileId ||
           char.defaultImageProfileId ||
@@ -647,6 +706,15 @@ export class NewChatState {
 
   patchForm(patch: Partial<NewChatFormState>): void {
     this.form.update((prev) => ({ ...prev, ...patch }));
+  }
+
+  /**
+   * The cast changed (v4 `NewChatModal`'s `onCharactersChanged`): a character's
+   * own scenario leaves with the cast that offered it — ONLY a `character`
+   * selection falls back to Custom, and `scenarioTouched` stands.
+   */
+  onCharactersChanged(): void {
+    this.form.update(clearCharacterScenarioSelection);
   }
 
   // -------------------------------------------------------------------------
