@@ -277,7 +277,9 @@ const CENSUS: &[(&str, &str, Variant)] = &[
     ("services/message_reattribute.rs", "message_reattribute", F),
     ("services/message_reattribute.rs", "message_reattribute", F),
     ("services/off_scene.rs", "scan_off_scene_newcomers_inner", F),
-    ("services/orchestrator.rs", "process_message", F),
+    // P4.D301: the body moved under `process_message_with_ledger` (the
+    // forwarder `process_message` reads nothing itself).
+    ("services/orchestrator.rs", "process_message_with_ledger", F),
     (
         "services/participant_resolver.rs",
         "resolve_responding_participant",

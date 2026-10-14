@@ -183334,3 +183334,69 @@ Branch `claude/p4.d301-chat-stream-submission-ledger-821101312`, stage A from
   reconcile` 2 passed, `salon-attachment-only-send-flow` 1 passed,
   `salon-chain-pause-toast-flow` 2 passed / 3 skipped (its standing parks),
   `salon-regenerate-stream-flow` 3 passed.
+- **Lane close.** The full gate on the final tree (before the census fix,
+  then the census re-run by name): `cargo fmt --all --check` clean; `cargo
+  clippy --workspace --all-targets -- -D warnings` clean AND with
+  `--features quilltap-core/native-transport` clean (after `npm run build`);
+  `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`,
+  `QT_ORACLE_CHAT_ERROR_FRAME` set, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the
+  pin): **744 binaries / 4,960 passed / 3 failed / 3 ignored, zero `SKIP:`**.
+  The three reds, each named: (1) `get_messages_caller_census` — THIS lane's
+  (the read moved into `process_message_with_ledger`), fixed (row re-keyed)
+  and green by name; (2) `qtap_schema_embed_guard` — RED BY DESIGN at the
+  pin (§R.3, P4.D294's size / embed move); (3) `cli_differential` — 14 Tier
+  R rows (`anchor-probe` ×8, `recall-replay` ×2, `completion` ×3, `db
+  help`), all P4.D299 / P4.D290 / P4.D291 territory that the pin reddens
+  (§R.13(l), §R.10(v) — "green only on the union"); none touches this
+  lane's surface. `chat_send_smoke` + `chat_send_submission_ledger` green;
+  `chat_error_frame_equivalence` from the pin through the sweep driver
+  (announced, alone): **14 / 14**, NDJSON 14 rows; `recipe_sweep.py
+  --self-test` exit 0. SPA: `npm run lint` 0, `npm run build` 0, `npm test`
+  **500 files / 9,525 passed** (after the one-key clipboard fix; 499 / 9,517
+  + `courier-bubble` 8 red before it, green alone). Playwright by file (unit
+  5).
+- **R-AC NO-PORT evidence (for P4.D303's ratification and §S.6).** (a) The
+  split-frame buffer (`splitSseBuffer`, the decoder-tail flush): v5's HTTP
+  client reads events through ONE browser `EventSource`
+  (`apps/web/src/app/core/core-transport.ts:70-160` — `new EventSource(…
+  /api/events)` `:139`, whole events at `es.onmessage` `:150`, parsed by
+  `parseScopedEvent` `:220-231`), which reassembles SSE frames by spec; the
+  Tauri shell delivers whole serialized `Event`s over IPC
+  (`crates/quilltap-tauri/src/events_pump.rs:57`/`:64`, `app.emit`). A
+  split frame cannot reach the reducer on either transport. (b) The
+  early-close error (`StreamClosedEarlyError` / `STREAM_CLOSED_EARLY_
+  MESSAGE`): v5's turn terminal is the `dispatch(chatSend)` reply, not the
+  event stream's EOF (`salon-conversation.ts` `runTurn`'s `dispatchExpect`
+  + catch); a dropped dispatch lands in the catch as `Connection lost.
+  Please try again.` — and now gets v4's read-fallback restore (Salon spec
+  cases "v4 7" / "v4 8"), the part of (b) that ports.
+- **Recorded divergences / deferrals (Tier 3, loud):** `STREAMING_ERROR_
+  LINE_TEXT` (v4 `Streaming error`; v5 keeps P4.18's two texts + gains the
+  two fields); `errorType` stays `"Error"` (v4 `error.name`); v5's
+  provider-stream `details` read `primary stream failed: <text>`
+  (pre-existing wrap; v4 the bare message) — so the beat-2 toast reads
+  `Failed to generate response: primary stream failed: …`; R-L5 (no
+  optimistic TOOL bubble); R-L10 (the whitespace-only intermediate
+  bubble); the engine-arm refusals carry no rider (R-L1 — the read-fallback
+  answers them); no composer mounted → nothing restored; the
+  `settleTranscriptAfterTurn` stale-signal FINDING (unit 4). Tier 2 item 14
+  unreachable (unit 2); item 16 NOT landed — the e2e mock LLM
+  (`e2e/support/mock-llm.ts`) streams prose replies only, so a tool-only
+  single-character reply rides the 💸 row.
+- **💸 for the dogfood pass:** the order's list stands — on a post-migration
+  Friday copy: a no-key single-character send (ONE toast with the note; the
+  text + a file + a staged roll chip back; the draft survives a reload; no
+  orphan USER row); a dead-endpoint send (row lands, ONE toast, no note,
+  nothing restored); a restated In-Their-Own-Words send that fails (the
+  restated text returns); a tool-only single-character reply showing a live
+  bubble before the refetch (bug 242's one v5 symptom); the help-chat and
+  Brahma error frames still three-key in the server log. Plus: watch for the
+  bubble/row hand-off gap the stale-signal finding predicts.
+- **Fixtures:** NONE of the committed `*-main.db` pairs changed. New:
+  `harness/oracle/fixtures/chat-error-frame.json` (this lane's corpus);
+  re-authored `apps/web/src/app/core/__fixtures__/frame-trace.ts` (every
+  importer re-measured: `chat-stream.reducer.spec.ts`,
+  `chat/message-list.spec.ts`, `chat/streaming-message.spec.ts`). No other
+  oracle invalidated.
+- **Versions at close:** core 0.0.1285, host 0.0.201, SPA 0.5.849; web, cli,
+  tauri, harness (frozen 0.0.1110) unchanged.

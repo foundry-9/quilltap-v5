@@ -791,6 +791,12 @@ Ports the server half of v4 `93c5af6ad` (bug 239). `LockFileContent` gains an op
 
 `HostConfig.listening_port` (default `None`, so the Tauri shell records none) is threaded through `HostAssembler` into `pre_open`'s claim; `quilltap-web` sets it from `--port` (`--port 0` records none). New tier-2 family `instance_lock_port_equivalence` against v4's real `instance-lock.ts` (33 rows: fresh writes under seven `PORT` shapes, claims of nine planted port shapes × valid/invalid `PORT`, a foreign-host claim, re-entrant + heartbeat over malformed ports and unknown keys): 63 failures on unported main, 0 after.
 
+#### 2026-10-14 — test(harness): the get_messages caller census follows process_message's body into process_message_with_ledger (P4.D301)
+
+_No crate versions bumped._
+
+The census keys call sites by enclosing function; the `getMessages` read now sits in `process_message_with_ledger`, so its row moves there (`process_message` is a forwarder). Also closes the P4.D301 lane record.
+
 #### 2026-10-14 — test(e2e): the bug-241 send-failure restore beat, gated behind P4D288_SERVER_LANDED (P4.D301)
 
 _Versions: SPA 0.5.849._
