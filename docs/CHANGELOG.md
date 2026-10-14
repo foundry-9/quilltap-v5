@@ -851,6 +851,12 @@ _No crate versions bumped._
 
 The vendored help tree brought to the round's pin, every byte from `git show 83334b9a5:`. Count unchanged at 131: two pages added (`help/memory-maintenance.md`, Phase G's single Maintenance page; `help/scenario-browser.md`, the scenario browser), two retired (`help/memory-consolidation.md`, `help/memory-housekeeping.md`), 21 re-vendored. All 131 files md5-equal to the pin with the same path set. `help_tree_equivalence` and `help_section_size_equivalence` were red at the pin before the copy (content only) and are green after, regenerated from the pin (131 docs, 779 chunks, max section 775 tokens); `help_tree_embed_guard` and `host_help_docs_boot` green before and after with their 131 literals unmoved. Comment-only history lines added to the three help tests. The host re-embeds the tree at build time; its source is unchanged, so no bump.
 
+#### 2026-10-14 — feat(spa): the memory Maintenance card (P4.D300)
+
+_Versions: SPA 0.5.854._
+
+New `memory-maintenance-card.ts` ports v4's Maintenance card (`b045dd986`, `48790fb73`): the automatic-maintenance switch and its fold / demote / retire phases (disabled while maintenance is off), the separate Consolidate switch and archive retention on the consolidation settings, the per-character cap with per-character overrides showing counted and exempt notes, the Consolidation particulars, "Run maintenance…" opening the dialog, and the ledger. Not yet mounted on the Memory tab.
+
 #### 2026-10-14 — feat(spa): the Consolidation particulars and the memory settings defaults (P4.D300)
 
 _Versions: SPA 0.5.853._

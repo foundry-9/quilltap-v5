@@ -184131,3 +184131,20 @@ worktree for the session — same volume, same rules).
    fixture gain the key so they compile until their deletion. **Red:**
    against a mutant carrying main's shape (no Built-in field, the draft kept
    on a refusal, no snap-back) 4 of 6 arms red.
+8. **The Maintenance card** — NEW `memory-maintenance-card.ts` over two
+   settings documents (maintenance + consolidation): the five switches in
+   v4's order (Enable / Fold / Consolidate / Demote / Retire) with v4's
+   disable rules (the three phases by `busy || !m.enabled`, Consolidate and
+   Enable by `busy` alone), the whole-`phases` patch, Archive retention on
+   the consolidation document, the cap (draft cleared first, the
+   `toLocaleString` sentence), the overrides (`N counted · M exempt`, the
+   destructive class against the effective cap, the whole-map patch, blank
+   removes / absent no-op, the `slice(0, 8)` refusal keeping the draft), the
+   particulars, **Run maintenance…** (the picker variant), the ledger, ONE
+   error line. Every switch snaps back on a failed save (L-3). The counts
+   read failing leaves the overrides absent and no error. **v4's four jest
+   cases transcribed** (`memory-maintenance-card.test.tsx:97`, `:112`,
+   `:123`, `:134`, v4's fixtures verbatim) + 14 own rows. **Red:** new module
+   (by absence); mutation-proved — a one-key `phases` patch, Consolidate
+   disabled by `!m.enabled`, no snap-back, "protected" for "exempt", an
+   override draft dropped on a refusal: 5 arms red.
