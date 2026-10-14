@@ -791,6 +791,12 @@ Ports the server half of v4 `93c5af6ad` (bug 239). `LockFileContent` gains an op
 
 `HostConfig.listening_port` (default `None`, so the Tauri shell records none) is threaded through `HostAssembler` into `pre_open`'s claim; `quilltap-web` sets it from `--port` (`--port 0` records none). New tier-2 family `instance_lock_port_equivalence` against v4's real `instance-lock.ts` (33 rows: fresh writes under seven `PORT` shapes, claims of nine planted port shapes × valid/invalid `PORT`, a foreign-host claim, re-entrant + heartbeat over malformed ports and unknown keys): 63 failures on unported main, 0 after.
 
+#### 2026-10-14 — feat(chat): bug 241's wire riders — the error frame's two persistence flags and CoreError.submission (P4.D301)
+
+_Versions: core 0.0.1284, host 0.0.200._
+
+`ChatErrorPayload` gains v4's two `ErrorEventExtras` keys, `userMessagePersisted` and `pendingToolResultsPersisted`, serialized after `details` and omitted when unset, so every frame that does not set them keeps v4's three-key shape. `CoreError` gains an optional `submission` rider (`SubmissionLedgerDto`, camelCase) for the send's dispatch rejection; `size_of::<CoreError>()` stays 96 bytes. The 40 existing struct literals (35 `CoreError`, 5 `ChatErrorPayload`, in 7 files) take `None`. New tier-1 family `chat_error_frame_equivalence` drives v4's real `encodeErrorEvent` over a 14-row shared corpus and compares frame bytes; three serde unit pins cover the five-key frame, the three-key frame, and the rejection envelope.
+
 #### 2026-10-14 — docs(porting): record the human's approval of the `83334b9a5` round's planning rulings and P4.D290's `sha1` dependency
 
 _Docs-only change._

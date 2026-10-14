@@ -186,6 +186,8 @@ mod tests {
                     error: "e".into(),
                     error_type: "t".into(),
                     details: "d".into(),
+                    user_message_persisted: None,
+                    pending_tool_results_persisted: None,
                 },
             ),
             Event::creation_progress("p1", CreationProgressFrame::Done { ts: 1 }),

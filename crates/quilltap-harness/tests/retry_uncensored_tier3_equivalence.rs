@@ -310,6 +310,7 @@ impl SwipeGenerateDriver for RecordingSwipeDriver {
                     entity: None,
                     details: None,
                     already_saved: None,
+                    submission: None,
                 });
             }
             Ok(

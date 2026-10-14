@@ -285,6 +285,7 @@ fn run_threw() -> quilltap_core::api::types::CoreError {
         entity: None,
         details: None,
         already_saved: None,
+        submission: None,
     }
 }
 

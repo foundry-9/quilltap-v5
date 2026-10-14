@@ -56,6 +56,7 @@ impl ScenarioBuilderDriver for FailAfterFrame {
                 entity: None,
                 details: None,
                 already_saved: None,
+                submission: None,
             })
         })
     }
@@ -214,6 +215,7 @@ impl ScenarioBuilderDriver for FailBeforeFrame {
                 entity: None,
                 details: None,
                 already_saved: None,
+                submission: None,
             })
         })
     }

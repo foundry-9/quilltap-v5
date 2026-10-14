@@ -256,6 +256,7 @@ impl SwipeGenerateDriver for TestSwipeDriver<'_> {
                     entity: None,
                     details: None,
                     already_saved: None,
+                    submission: None,
                 },
                 RegenError::Db(_) | RegenError::Generation(_) => CoreError {
                     kind: ErrorKind::Internal,
@@ -267,6 +268,7 @@ impl SwipeGenerateDriver for TestSwipeDriver<'_> {
                     entity: None,
                     details: None,
                     already_saved: None,
+                    submission: None,
                 },
             })
         })

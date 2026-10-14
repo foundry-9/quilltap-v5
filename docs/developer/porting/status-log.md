@@ -183106,3 +183106,47 @@ Tier R: `QT_V4_CHECKOUT=$PIN QT_V4_ROOT=$PIN QT_NODE=$HOME/.nvm/versions/node/v2
 - Hand-edit a running server's lock `port` to `"abc"` → it survives the next
   heartbeat and the file still reads `"abc"`.
 - `quilltap completion bash` → `anchor-probe --<TAB>` offers `--instance`.
+
+## P4.D301 — the chat-stream fixes: bug 241's submission ledger + composer restore, bug 242's `inChain` (lane record, appended as it lands)
+
+Branch `claude/p4.d301-chat-stream-submission-ledger-821101312`, stage A from
+`main` `821101312`. Pin `/tmp/qt-v4-pin-p4d301-83334b9a5` (`83334b9a5befca33…`,
+`package.json` `4.10.0-dev.176`).
+
+- **§R.2 freshness probe at lane start (2026-10-14 13:05 CDT) — an OBSERVATION.**
+  v4 on `main`, tree CLEAN. **v4 moved:** `main` is SIXTEEN commits past the
+  pin (`7417e9a1b`, `01f508d4e`, `a42c282b8`, `a8b2d2861`, `49f8906c3`,
+  `75d094e63`, `8489d08b9`, `052659624`, `809e5104d`, `bbbcd2388`,
+  `b82037d75`, `3f64d3a6c`, `2432b9057` **`release: 4.10.0`**, `f573a7576`,
+  `37246654d` `dev: started 4.11.0 development`, `1e1712a12`) observed at
+  13:05 CDT; `bugfix` moved one (`489b228b6` `bugfix: started 4.10.0 bug
+  branch`). Out of scope by the pin rule. **The live `node_modules` moved**
+  (`@quilltap/plugin-utils` 2.6.3 → 2.7.1, lockfile `^2.6.2` → `^2.7.1`), so
+  the pin's root `node_modules` is its OWN tree (`npm ci --offline`, §R.3's
+  cure): `openai` 7.30.0, `@quilltap/plugin-utils` 2.6.3 under the pin.
+- **Unit 1 — the wire riders (types.rs fence) + the tier-1 family.**
+  `SubmissionLedgerDto`, `CoreError.submission`, `ChatErrorPayload`'s two
+  flags (C2's renames, v4 key order). **`size_of::<CoreError>()` 96 → 96**
+  (`Response` 96 → 96), measured — no `result_large_err`. Compile-forced
+  `None`s at **40 sites** (35 `CoreError` + 5 `ChatErrorPayload`), exactly the
+  order's census: `api/types.rs` 8 (the `Response::error*` constructors),
+  `realtime/types.rs` 1 (a test frame), `quilltap-host/src/spine.rs` 25 (21
+  `CoreError` + 4 `ChatErrorPayload` — the swipe, send, brahma, help and
+  scenario-builder shells, `map_create_error`, `run_create`, the driver impls;
+  none in the `MemoryHousekeepingHandler` region), `quilltap-harness/tests/
+  retry_uncensored_tier3_equivalence.rs` 1, `salon_swipe_generate_
+  equivalence.rs` 2, `quilltap-web/tests/scenario_builder_midstream_failure
+  .rs` 2, `scenario_builder_routes_equivalence.rs` 1. NEW
+  `harness/oracle/cases/encode-error-event.ts` + corpus
+  `harness/oracle/fixtures/chat-error-frame.json` (14 rows) +
+  `crates/quilltap-harness/tests/chat_error_frame_equivalence.rs`
+  (`QT_ORACLE_CHAT_ERROR_FRAME`). **Red-first on unported `main`** (the payload
+  built with main's three fields): **9 of 14 RED** (every row carrying a
+  `true`/`false` flag), **5 GREEN = convergence** (`no-extras`,
+  `undefined-extras`, `empty-extras`, `both-explicit-undefined`,
+  `details-escapes-no-extras` — v4's three-key frame IS main's frame, escapes
+  included). After: **14 / 14**. The identities test (omitted ≡ `undefined` ≡
+  `{}`; explicit-undefined flag is no key; extras after `details`) green on
+  v4's own bytes both before and after. Three serde pins in the fence (v4
+  `streaming.service.test.ts:404` / `:424` + the `Response::Error` envelope's
+  `data.submission`, round-trip and absence).

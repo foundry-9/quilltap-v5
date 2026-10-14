@@ -1,0 +1,19 @@
+{
+  "$note": "P4.D301 tier-1 corpus for v4's encodeErrorEvent (lib/services/chat-message/streaming.service.ts, bug 241). Read by BOTH harness/oracle/cases/encode-error-event.ts and crates/quilltap-harness/tests/chat_error_frame_equivalence.rs. `extras` is \"__ABSENT__\" (the argument omitted), \"__UNDEFINED__\" (an explicit undefined argument), or an object whose two keys may each be true, false, \"__UNDEFINED__\" (present with the value undefined) or missing. v5 has no undefined: on the Rust side every sentinel and every missing key is None.",
+  "cases": [
+    { "name": "no-extras", "error": "Failed to generate response", "errorType": "Error", "details": "No API key configured for this connection profile.", "extras": "__ABSENT__" },
+    { "name": "undefined-extras", "error": "Failed to generate response", "errorType": "Error", "details": "No API key configured for this connection profile.", "extras": "__UNDEFINED__" },
+    { "name": "empty-extras", "error": "Failed to generate response", "errorType": "Error", "details": "boom", "extras": {} },
+    { "name": "both-false", "error": "Failed to generate response", "errorType": "Error", "details": "No API key configured for this connection profile.", "extras": { "userMessagePersisted": false, "pendingToolResultsPersisted": false } },
+    { "name": "user-true-tools-false", "error": "Failed to generate response", "errorType": "Error", "details": "stream exploded", "extras": { "userMessagePersisted": true, "pendingToolResultsPersisted": false } },
+    { "name": "user-false-tools-true", "error": "Failed to generate response", "errorType": "Error", "details": "stream exploded", "extras": { "userMessagePersisted": false, "pendingToolResultsPersisted": true } },
+    { "name": "both-true", "error": "Failed to generate response", "errorType": "Error", "details": "stream exploded", "extras": { "userMessagePersisted": true, "pendingToolResultsPersisted": true } },
+    { "name": "user-only", "error": "Failed to generate response", "errorType": "Error", "details": "x", "extras": { "userMessagePersisted": true } },
+    { "name": "tools-only", "error": "Failed to generate response", "errorType": "Error", "details": "x", "extras": { "pendingToolResultsPersisted": false } },
+    { "name": "user-explicit-undefined", "error": "Failed to generate response", "errorType": "Error", "details": "x", "extras": { "userMessagePersisted": "__UNDEFINED__", "pendingToolResultsPersisted": true } },
+    { "name": "both-explicit-undefined", "error": "Failed to generate response", "errorType": "Error", "details": "x", "extras": { "userMessagePersisted": "__UNDEFINED__", "pendingToolResultsPersisted": "__UNDEFINED__" } },
+    { "name": "details-escapes", "error": "Failed to generate response", "errorType": "Error", "details": "He said \"no\"\nthen\ttabbed \\ back\u0001   sep 𝔔uilltap 🎩 é", "extras": { "userMessagePersisted": true, "pendingToolResultsPersisted": false } },
+    { "name": "details-escapes-no-extras", "error": "Failed to generate response", "errorType": "validation", "details": "Validation error: Expected \"string\" at messages.0.content </script>", "extras": "__ABSENT__" },
+    { "name": "empty-strings", "error": "", "errorType": "", "details": "", "extras": { "userMessagePersisted": false, "pendingToolResultsPersisted": false } }
+  ]
+}

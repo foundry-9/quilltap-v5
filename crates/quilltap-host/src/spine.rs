@@ -1427,6 +1427,7 @@ where
                 entity: None,
                 details: None,
                 already_saved: None,
+                submission: None,
             },
             // P4.D207: a generation failure (a provider error, or the stall
             // watchdog abandoning a silent stream) answers v4's
@@ -1442,6 +1443,7 @@ where
                 entity: None,
                 details: None,
                 already_saved: None,
+                submission: None,
             },
         })
     }
@@ -1633,6 +1635,8 @@ where
                         error: "Failed to generate response".to_string(),
                         error_type: "Error".to_string(),
                         details: e.to_string(),
+                        user_message_persisted: None,
+                        pending_tool_results_persisted: None,
                     },
                 ));
                 return Err(CoreError {
@@ -1645,6 +1649,7 @@ where
                     entity: None,
                     details: None,
                     already_saved: None,
+                    submission: None,
                 });
             }
         };
@@ -1736,6 +1741,8 @@ where
                     error: "Failed to generate response".to_string(),
                     error_type: "Error".to_string(),
                     details: e.to_string(),
+                    user_message_persisted: None,
+                    pending_tool_results_persisted: None,
                 },
             ));
         }
@@ -1820,6 +1827,8 @@ where
                         error: e.message.clone(),
                         error_type: "fatal_error".to_string(),
                         details: String::new(),
+                        user_message_persisted: None,
+                        pending_tool_results_persisted: None,
                     },
                 ));
                 Err(CoreError {
@@ -1832,6 +1841,7 @@ where
                     entity: None,
                     details: None,
                     already_saved: None,
+                    submission: None,
                 })
             }
         }
@@ -1980,6 +1990,8 @@ where
                         error: e.message.clone(),
                         error_type: "fatal_error".to_string(),
                         details: String::new(),
+                        user_message_persisted: None,
+                        pending_tool_results_persisted: None,
                     },
                 ));
                 Err(CoreError {
@@ -1992,6 +2004,7 @@ where
                     entity: None,
                     details: None,
                     already_saved: None,
+                    submission: None,
                 })
             }
         }
@@ -2173,6 +2186,7 @@ pub fn map_create_error(e: HandleCreateError) -> CoreError {
         entity: None,
         details,
         already_saved: None,
+        submission: None,
     }
 }
 
@@ -2246,6 +2260,7 @@ where
                 entity: None,
                 details: None,
                 already_saved: None,
+                submission: None,
             })?;
 
         // Open the OWN writable partitions (module note). `busy_timeout` guards
@@ -2264,6 +2279,7 @@ where
                         entity: None,
                         details: None,
                         already_saved: None,
+                        submission: None,
                     }
                 })?;
             w.connection().busy_timeout(busy).map_err(|e| CoreError {
@@ -2276,6 +2292,7 @@ where
                 entity: None,
                 details: None,
                 already_saved: None,
+                submission: None,
             })?;
             Ok(w)
         };
@@ -2403,6 +2420,7 @@ where
                         entity: None,
                         details: None,
                         already_saved: None,
+                        submission: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -2418,6 +2436,7 @@ where
                     entity: None,
                     details: None,
                     already_saved: None,
+                    submission: None,
                 })
             })
         })
@@ -2486,6 +2505,7 @@ where
                         entity: None,
                         details: None,
                         already_saved: None,
+                        submission: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -2501,6 +2521,7 @@ where
                     entity: None,
                     details: None,
                     already_saved: None,
+                    submission: None,
                 })
             })
         })
@@ -2540,6 +2561,7 @@ where
                         entity: None,
                         details: None,
                         already_saved: None,
+                        submission: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -2555,6 +2577,7 @@ where
                     entity: None,
                     details: None,
                     already_saved: None,
+                    submission: None,
                 })
             })
         })
@@ -2594,6 +2617,7 @@ where
                         entity: None,
                         details: None,
                         already_saved: None,
+                        submission: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -2609,6 +2633,7 @@ where
                     entity: None,
                     details: None,
                     already_saved: None,
+                    submission: None,
                 })
             })
         })
@@ -2675,6 +2700,7 @@ where
                         entity: None,
                         details: None,
                         already_saved: None,
+                        submission: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -2690,6 +2716,7 @@ where
                     entity: None,
                     details: None,
                     already_saved: None,
+                    submission: None,
                 })
             })
         })
@@ -2731,6 +2758,7 @@ where
                         entity: None,
                         details: None,
                         already_saved: None,
+                        submission: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -2746,6 +2774,7 @@ where
                     entity: None,
                     details: None,
                     already_saved: None,
+                    submission: None,
                 })
             })
         })

@@ -4840,6 +4840,7 @@ impl Response {
             entity: None,
             details: None,
             already_saved: None,
+            submission: None,
         })
     }
 
@@ -4869,6 +4870,7 @@ impl Response {
             character_id: None,
             details: None,
             already_saved: None,
+            submission: None,
             entity: Some(Box::new(UnavailableEntity {
                 label: label.to_string(),
                 id: id.to_string(),
@@ -4895,6 +4897,7 @@ impl Response {
             entity: None,
             details: Some(Box::new(details)),
             already_saved: None,
+            submission: None,
         })
     }
 
@@ -4922,6 +4925,7 @@ impl Response {
             entity: None,
             details: Some(Box::new(details)),
             already_saved: None,
+            submission: None,
         })
     }
 
@@ -4940,6 +4944,7 @@ impl Response {
             entity: None,
             details: None,
             already_saved: None,
+            submission: None,
         })
     }
 
@@ -4962,6 +4967,7 @@ impl Response {
             entity: None,
             details: None,
             already_saved: None,
+            submission: None,
         })
     }
 
@@ -4985,6 +4991,7 @@ impl Response {
             entity: None,
             details: None,
             already_saved: None,
+            submission: None,
         })
     }
 
@@ -5002,6 +5009,7 @@ impl Response {
             entity: None,
             details: None,
             already_saved: None,
+            submission: None,
         })
     }
 }
@@ -5227,7 +5235,103 @@ pub struct CoreError {
     /// `78b381a96` round caught the riders there, unreachable by any client.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub already_saved: Option<Box<AlreadySavedRiders>>,
+    // === P4.D301: the submission ledger (owned) ===
+    /// v4 bug 241 (`93c5af6ad`): what of the operator's submission reached the
+    /// database before a send failed. Present ONLY on the Salon send's
+    /// initial-turn failure (`quilltap-host`'s `run_send`), absent everywhere
+    /// else. v4 says this on the stream's error frame alone; v5's error frame
+    /// rides the global Event channel and races the dispatch reply, so the same
+    /// two flags ride the rejection too — the SPA reads this first (race-free)
+    /// and the frame's two keys second. Unboxed: two `bool`s in an `Option` fit
+    /// the struct's existing padding (`size_of::<CoreError>()` 96 → 96,
+    /// measured).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub submission: Option<SubmissionLedgerDto>,
+    // === end P4.D301 ===
 }
+
+// === P4.D301: the submission ledger (owned) ===
+/// The wire form of `services::orchestrator::SubmissionLedger` (v4's
+/// `SubmissionLedger` / the error frame's `ErrorEventExtras`): whether the
+/// user's message row, and the staged tool results' TOOL rows, were saved
+/// before the failure. Serialises camelCase in v4's key order.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmissionLedgerDto {
+    pub user_message_persisted: bool,
+    pub pending_tool_results_persisted: bool,
+}
+
+#[cfg(test)]
+mod p4d301_submission_ledger_wire {
+    use super::{ChatErrorPayload, CoreError, ErrorKind, Response, SubmissionLedgerDto};
+
+    fn frame(user: Option<bool>, tools: Option<bool>) -> ChatErrorPayload {
+        ChatErrorPayload {
+            error: "Failed to generate response".into(),
+            error_type: "Error".into(),
+            details: "boom".into(),
+            user_message_persisted: user,
+            pending_tool_results_persisted: tools,
+        }
+    }
+
+    /// v4 `streaming.service.test.ts:404` — "carries the persistence flags when
+    /// given (bug 241)": five keys, the two extras AFTER `details`. Bytes, never
+    /// `Value ==` (blind to key order).
+    #[test]
+    fn the_error_frame_carries_the_two_flags_after_details() {
+        assert_eq!(
+            serde_json::to_string(&frame(Some(false), Some(true))).unwrap(),
+            r#"{"error":"Failed to generate response","errorType":"Error","details":"boom","userMessagePersisted":false,"pendingToolResultsPersisted":true}"#
+        );
+    }
+
+    /// v4 `streaming.service.test.ts:424` — "stays a three-field frame when no
+    /// extras are passed".
+    #[test]
+    fn the_error_frame_stays_three_keys_without_the_flags() {
+        assert_eq!(
+            serde_json::to_string(&frame(None, None)).unwrap(),
+            r#"{"error":"Failed to generate response","errorType":"Error","details":"boom"}"#
+        );
+    }
+
+    /// The dispatch envelope: `Response::Error`'s `data.submission`, camelCase,
+    /// and NO key at all when `None` (every other rejection).
+    #[test]
+    fn the_rejection_carries_submission_camelcase_and_omits_it_when_none() {
+        let mut err = CoreError {
+            kind: ErrorKind::Internal,
+            message: "No API key configured for this connection profile.".into(),
+            pepper_state: None,
+            code: None,
+            associations: None,
+            character_id: None,
+            entity: None,
+            details: None,
+            already_saved: None,
+            submission: Some(SubmissionLedgerDto {
+                user_message_persisted: false,
+                pending_tool_results_persisted: false,
+            }),
+        };
+        assert_eq!(
+            serde_json::to_string(&Response::Error(err.clone())).unwrap(),
+            r#"{"type":"error","data":{"kind":"internal","message":"No API key configured for this connection profile.","submission":{"userMessagePersisted":false,"pendingToolResultsPersisted":false}}}"#
+        );
+        let back: Response =
+            serde_json::from_str(&serde_json::to_string(&Response::Error(err.clone())).unwrap())
+                .unwrap();
+        assert_eq!(back, Response::Error(err.clone()), "the rider round-trips");
+        err.submission = None;
+        assert_eq!(
+            serde_json::to_string(&Response::Error(err)).unwrap(),
+            r#"{"type":"error","data":{"kind":"internal","message":"No API key configured for this connection profile."}}"#
+        );
+    }
+}
+// === end P4.D301 ===
 
 /// The two riders v4's `ALREADY_SAVED` 409 carries beside `error`/`code`
 /// (`SaveImageToAlbumError.existingRelativePath` / `.existingCreatedAt`). Each
@@ -5638,6 +5742,23 @@ pub struct ChatErrorPayload {
     #[serde(rename = "errorType")]
     pub error_type: String,
     pub details: String,
+    // === P4.D301: the submission ledger (owned) ===
+    /// v4 `ErrorEventExtras` (bug 241), spread AFTER `details`: whether the
+    /// user's message row was saved before the failure. Only the Salon send's
+    /// two shells set it (v4's one `handleStreamError` caller passing extras);
+    /// every other `chat_error` leaves it `None` — no key, v4's three-key frame.
+    #[serde(
+        rename = "userMessagePersisted",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub user_message_persisted: Option<bool>,
+    /// Whether the staged tool results were saved as TOOL rows before the failure.
+    #[serde(
+        rename = "pendingToolResultsPersisted",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub pending_tool_results_persisted: Option<bool>,
+    // === end P4.D301 ===
 }
 
 impl Event {
