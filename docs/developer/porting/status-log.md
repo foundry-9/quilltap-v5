@@ -179715,3 +179715,41 @@ the retired rows and why are in its header — the `links-excluded` row left out
   format_relative_days` NaN reference (route its `f64::max` through `jsnum::math_max` — reachable only with an
   unparseable `createdAt` and no parseable `occurredAt`); the two FINDINGS above for the human.
 - The pin worktree `/tmp/qt-v4-pin-p4d289-83334b9a5` removed; the lane's `target/` deleted; nothing pushed.
+
+### Follow-up (2026-10-14, after LANE COMPLETE) — the human's rulings on the two findings
+- **`JS_DATE_PARSE_ISO_SUBSET` → "port V8's parser": DONE.** `crates/quilltap-core/src/v8_date_parse.rs`
+  ports V8 13.6.233.17's `Date.parse` whole — fetched from `v8/v8@13.6.233.17` (`src/date/dateparser.h`,
+  `dateparser-inl.h`, `dateparser.cc`; `ParseDateTimeString` / `MakeDay` / `MakeTime` / `TryTimeClip` in
+  `src/date/date.{h,cc}`; `src/strings/char-predicates*`), the exact engine in Node 24.13.1
+  (`process.versions.v8` = `13.6.233.17-node.40`). Statement for statement, quirks kept: UTF-16 units, NUL
+  ends the input, any unit `>= 'A'` that is not whitespace is a word character (full-width digits, surrogate
+  halves), `| 0x20` lower-casing, the day composer deciding field order AFTER padding (`July 14` → 2001),
+  the legacy two-digit-year window, the zone total in wrapping u32 arithmetic against the 32-bit Smi max
+  (Node builds without pointer compression — measured: `GMT+596523:` parses, `+596524:` is NaN).
+  `episodic::js_date_parse_ms` delegates (one body). Offset-less strings still read as UTC (the ruled
+  `ZONELESS_PARSE_AS_UTC`); V8's `kMaxTimeBeforeUTCInMs` range check is kept.
+  - NEW family `js_date_parse` (case `js-date-parse.ts`, `TZ=UTC`, guarded): 158 hand-picked rows + 20,000
+    SEEDED fuzz rows (mulberry32 `0x5eed2899`), 3,284 finite — ALL agree on the first run. Mutation proofs:
+    inspecting the day composer's index BEFORE padding → 827 rows red; dropping the 2000s two-digit window →
+    1,031 rows red.
+  - The finding tables RETIRED by measurement: regenerated from a fresh pin (its own `npm ci --offline` —
+    v4's live tree had moved `@quilltap/plugin-utils` 2.6.3 → 2.7.1), both tripped the right way (v5 now
+    produces v4's line: `anchor-when-short` → `(when: 2026-07-04)`, `year-10000` etc.), then deleted;
+    `memory_embedding_text` (255 rows) and `episodic` (94) green with NO exception table.
+- **`PROTOTYPE_KEY_MONTH_THROWS` → "file the v4 bug": FILED as v4 bug 247** (`quilltap-server` `052659624`,
+  corrected by `809e5104d`, local, not pushed): `docs/developer/bugs/bug-247-month-name-prototype-key.md` +
+  its Status row + the index header. Reproduced at v4 HEAD `8489d08b9`: `constructor` is the ONLY
+  all-lowercase `Object.prototype` key, five phrase shapes throw (`constructor 5`, `5 constructor`, `on
+  constructor 5`, `constructor 5th`, `constructor 5, 2026`); the throw is `formatToParts` in `zonedParts`
+  (the NaN month makes the first-pass guess NaN — `clock.ts:167` → `calendar.ts:152/134/120`), and
+  `extraction/run.ts:308` calls `resolveEpisodicAnchors` outside `admitDraft`'s per-candidate `try`, so it
+  fails the whole job (retried, up to three attempts by default — `queue-service.ts:522`). The v5 table stays
+  (a ruled pin until v4 fixes it) and now cites bug 247.
+- **v4 moved:** `8489d08b9` ("Release checklist 13") observed 2026-10-14 (v4 HEAD at the filing); plus the
+  two bug-247 commits above. The drift ledger is `/driftcheck`'s.
+- Gate on the final tree: fmt clean; clippy (both feature sets) clean after one `nonminimal_bool` fix in
+  `make_day`; `cargo test --workspace --no-fail-fast` with the frozen env block (all sixteen families
+  regenerated from the fresh pin under `/tmp/p4d289b/gate/`): 758 binaries, 5,132 passed / 3 failed / 3
+  ignored — the same three expected reds (the memory census ×2, `qtap_schema_embed_guard`); no other test in
+  the workspace moved with `js_date_parse_ms`. All sixteen families `ok` by name; `recipe_sweep.py
+  --self-test` exit 0. Versions: core 0.0.1286.

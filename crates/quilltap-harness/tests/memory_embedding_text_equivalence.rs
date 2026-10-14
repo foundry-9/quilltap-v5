@@ -40,129 +40,11 @@ use serde_json::Value;
 const SOURCE_ROWS: usize = 51;
 const ZONES: usize = 5;
 
-/// A FINDING, MEASURED AND PINNED, NOT RULED — `JS_DATE_PARSE_ISO_SUBSET` (P4.D289 unit 8,
-/// 2026-10-13, Node 24.13.1 under `TZ=UTC`): `(source id, zone, v4's anchor
-/// line, v5's anchor line)` for every row whose `occurredAt` is outside
-/// `crate::episodic::js_date_parse_ms`'s reach. That helper (owned outside
-/// this unit; the brief binds the anchor line to it) ports V8's ISO
-/// date-time grammar only: the expanded-year form (`+010000-…`) and V8's
-/// LEGACY fallback (`July 14, 2026`, `2026/07/14`, `2026-07-14 12:00`,
-/// `2026-7-14`, `Tue Jul 14 2026`, and full-width digits read as `07-14`
-/// of the default year 2001) are finite in v4 and `None` in v5, so v5
-/// falls to `slice(0, 10)`. Everything else in the anchor line agrees.
-/// Pinned BOTH ways — v4's line and v5's line — so a `js_date_parse_ms`
-/// fix (or a v4 change) trips the table and the entry must go; every entry
-/// must be seen. The gap predates this round (`js_date_parse_ms`'s doc
-/// names its ISO-subset scope) and reaches every caller of the helper; the
-/// lane record raises it for the human (port V8's legacy parser, or rule
-/// the divergence). The same table name pins it in the `episodic` family.
-const JS_DATE_PARSE_ISO_SUBSET: &[(&str, &str, &str, &str)] = &[
-    ("year-10000", "America/Chicago", "(when: 9999-12-31)", ""),
-    ("legacy-month-name", "UTC", "(when: 2026-07-14)", ""),
-    (
-        "legacy-month-name",
-        "America/Chicago",
-        "(when: 2026-07-13)",
-        "",
-    ),
-    (
-        "legacy-month-name",
-        "Asia/Kolkata",
-        "(when: 2026-07-14)",
-        "",
-    ),
-    (
-        "legacy-month-name",
-        "Pacific/Chatham",
-        "(when: 2026-07-14)",
-        "",
-    ),
-    ("legacy-month-name", "Asia/Tokyo", "(when: 2026-07-14)", ""),
-    ("legacy-slashes", "UTC", "(when: 2026-07-14)", ""),
-    (
-        "legacy-slashes",
-        "America/Chicago",
-        "(when: 2026-07-13)",
-        "",
-    ),
-    ("legacy-slashes", "Asia/Kolkata", "(when: 2026-07-14)", ""),
-    (
-        "legacy-slashes",
-        "Pacific/Chatham",
-        "(when: 2026-07-14)",
-        "",
-    ),
-    ("legacy-slashes", "Asia/Tokyo", "(when: 2026-07-14)", ""),
-    (
-        "legacy-space-time",
-        "Pacific/Chatham",
-        "(when: 2026-07-15)",
-        "(when: 2026-07-14)",
-    ),
-    ("legacy-unpadded", "UTC", "(when: 2026-07-14)", ""),
-    (
-        "legacy-unpadded",
-        "America/Chicago",
-        "(when: 2026-07-13)",
-        "",
-    ),
-    ("legacy-unpadded", "Asia/Kolkata", "(when: 2026-07-14)", ""),
-    (
-        "legacy-unpadded",
-        "Pacific/Chatham",
-        "(when: 2026-07-14)",
-        "",
-    ),
-    ("legacy-unpadded", "Asia/Tokyo", "(when: 2026-07-14)", ""),
-    ("legacy-to-date-string", "UTC", "(when: 2026-07-14)", ""),
-    (
-        "legacy-to-date-string",
-        "America/Chicago",
-        "(when: 2026-07-13)",
-        "",
-    ),
-    (
-        "legacy-to-date-string",
-        "Asia/Kolkata",
-        "(when: 2026-07-14)",
-        "",
-    ),
-    (
-        "legacy-to-date-string",
-        "Pacific/Chatham",
-        "(when: 2026-07-14)",
-        "",
-    ),
-    (
-        "legacy-to-date-string",
-        "Asia/Tokyo",
-        "(when: 2026-07-14)",
-        "",
-    ),
-    ("legacy-fullwidth", "UTC", "(when: 2001-07-14)", ""),
-    (
-        "legacy-fullwidth",
-        "America/Chicago",
-        "(when: 2001-07-13)",
-        "",
-    ),
-    ("legacy-fullwidth", "Asia/Kolkata", "(when: 2001-07-14)", ""),
-    (
-        "legacy-fullwidth",
-        "Pacific/Chatham",
-        "(when: 2001-07-14)",
-        "",
-    ),
-    ("legacy-fullwidth", "Asia/Tokyo", "(when: 2001-07-14)", ""),
-];
-
-fn joined(lexical: &str, line: &str) -> String {
-    if line.is_empty() {
-        lexical.to_string()
-    } else {
-        format!("{lexical}\n{line}")
-    }
-}
+// The legacy-`Date.parse` rows (`July 14, 2026`, `2026/07/14`, `2026-7-14`,
+// `Tue Jul 14 2026`, `2026-07-14 12:00`, full-width digits, `+010000-…`) were
+// pinned here as the P4.D289 finding `JS_DATE_PARSE_ISO_SUBSET` until v5
+// ported V8's whole parser (`quilltap_core::v8_date_parse`, the human's ruling
+// 2026-10-14); they now compare like every other row.
 
 /// Compare the three renderings; every mismatch is collected (not panicked
 /// on) so one run names every red row.
@@ -201,7 +83,6 @@ fn memory_embedding_text_matches_oracle() {
     let mut strings_arm = 0usize;
     let mut ids: BTreeMap<String, usize> = BTreeMap::new();
     let mut bad: Vec<String> = Vec::new();
-    let mut pending_seen = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
         let kind = row["kind"].as_str().unwrap().to_string();
@@ -223,36 +104,7 @@ fn memory_embedding_text_matches_oracle() {
                     entities: entities_json
                         .map_or(AnchorEntities::None, |v| AnchorEntities::Json(v.as_slice())),
                 };
-                if let Some(&(_, _, v4_line, v5_line)) = JS_DATE_PARSE_ISO_SUBSET
-                    .iter()
-                    .find(|(i, z, _, _)| *i == id && *z == tz)
-                {
-                    pending_seen += 1;
-                    let lexical = row["lexical"].as_str().unwrap();
-                    assert_eq!(lexical_embedding_text_for(&base), lexical, "{ctx}: lexical");
-                    assert_eq!(
-                        row["anchorLine"].as_str().unwrap(),
-                        v4_line,
-                        "{ctx}: v4 side moved"
-                    );
-                    assert_eq!(
-                        row["embedding"].as_str().unwrap(),
-                        joined(lexical, v4_line),
-                        "{ctx}"
-                    );
-                    assert_eq!(
-                        memory_anchor_line(&base, tz),
-                        v5_line,
-                        "{ctx}: v5 side moved"
-                    );
-                    assert_eq!(
-                        embedding_text_for(&base, tz),
-                        joined(lexical, v5_line),
-                        "{ctx}"
-                    );
-                } else {
-                    check(&base, tz, &row, &ctx, &mut bad);
-                }
+                check(&base, tz, &row, &ctx, &mut bad);
 
                 // The typed rows' arm must agree wherever it can carry the array.
                 if let Some(v) = entities_json {
@@ -283,12 +135,6 @@ fn memory_embedding_text_matches_oracle() {
         "{} mismatches:\n{}",
         bad.len(),
         bad.join("\n")
-    );
-
-    assert_eq!(
-        pending_seen,
-        JS_DATE_PARSE_ISO_SUBSET.len(),
-        "every JS_DATE_PARSE_ISO_SUBSET entry must match a corpus row"
     );
 
     // v4's own jest expectations, restated against the port.
@@ -327,7 +173,7 @@ fn memory_embedding_text_matches_oracle() {
         "oracle row counts drifted from the corpus"
     );
     eprintln!(
-        "OK: memory-embedding-text matched oracle ({} text rows, {strings_arm} also through the Strings arm, {pending_seen} pinned both ways in JS_DATE_PARSE_ISO_SUBSET).",
+        "OK: memory-embedding-text matched oracle ({} text rows, {strings_arm} also through the Strings arm).",
         SOURCE_ROWS * ZONES
     );
 }

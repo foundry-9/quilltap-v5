@@ -24,6 +24,12 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — fix(core): port V8's whole Date.parse (ES5 ISO + the legacy fallback) behind js_date_parse_ms
+
+_Versions: core 0.0.1286._
+
+`episodic::js_date_parse_ms` parsed only the ISO subset, so every string V8's legacy parser reads (`July 14, 2026`, `2026/07/14`, `2026-7-4`, `Tue Jul 14 2026`, `2026-07-14 12:00`, full-width digits, the `+010000-…` expanded year) was `None` in v5 and a finite date in v4. New `v8_date_parse` ports V8 13.6.233.17's parser statement for statement (the tokenizer, the three composers, the keyword table, `MakeDay`/`MakeTime`/`TimeClip`) and `js_date_parse_ms` delegates to it; a string with no offset still reads as UTC (the ruled `ZONELESS_PARSE_AS_UTC`). New tier-1 family `js_date_parse` compares it with Node's own `Date.parse` on 158 hand-picked and 20,000 seeded-fuzz strings; the `JS_DATE_PARSE_ISO_SUBSET` finding tables in `memory_embedding_text` and `episodic` are retired (all 28 rows now agree with v4). `PROTOTYPE_KEY_MONTH_THROWS` now cites v4 bug 247, filed upstream.
+
 #### 2026-10-14 — test(memory): P4.D289 Tier 2 — v4's jest suites as Rust unit tests, the scoring-chokepoint census, mutation proofs
 
 _Versions: core 0.0.1285._

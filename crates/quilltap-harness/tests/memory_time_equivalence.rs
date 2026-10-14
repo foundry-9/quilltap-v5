@@ -309,9 +309,11 @@ const ZONELESS_PARSE_AS_UTC: &[(&str, &str)] = &[
 /// `zonedTimeToUtcMs` as the month, `Date.UTC` answers NaN and `formatToParts`
 /// throws `RangeError: Invalid time value`. A panic is no port of an
 /// exception its one caller does not catch deliberately, and v5's closed
-/// month table cannot reach it — recorded for the human's ruling (the lane
-/// record), pinned both ways: each phrase must still throw in v4 on every
-/// zone / anchor, and v5 must answer nothing.
+/// month table cannot reach it. Filed upstream as **v4 bug 247**
+/// (`docs/developer/bugs/bug-247-month-name-prototype-key.md`, 2026-10-14 —
+/// the human's ruling: file it), so this table RETIRES when v4's fix lands.
+/// Pinned both ways: each phrase must still throw in v4 on every zone /
+/// anchor, and v5 must answer nothing.
 const PROTOTYPE_KEY_MONTH_THROWS: &[&str] = &["constructor 5", "5 constructor"];
 
 fn ms_of(v: &Value) -> f64 {

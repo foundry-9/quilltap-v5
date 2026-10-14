@@ -14,7 +14,9 @@
 //! - `eventReferenceTimeMs` (unchanged) → `episodic::event_reference_time_ms`.
 //!
 //! Strings byte-equal, `eventReferenceTimeMs` numerically exact, `null`s
-//! exact — except the rows pinned both ways in [`JS_DATE_PARSE_ISO_SUBSET`].
+//! exact. (`anchor-when-short`'s `2026-7-4` reads through V8's LEGACY
+//! `Date.parse`, which v5 ports whole — `quilltap_core::v8_date_parse`; it was
+//! the pinned finding `JS_DATE_PARSE_ISO_SUBSET` until then.)
 //!
 //! Generate the oracle (Node 24, from the v4 checkout or the round's pin —
 //! **TZ=UTC is mandatory**: the absolute-ISO branch parses zone-less
@@ -38,17 +40,6 @@ use serde_json::{json, Value};
 
 /// The memory-calendar zone every zoned helper runs on here.
 const TZ: &str = "UTC";
-
-/// A FINDING, MEASURED AND PINNED, NOT RULED — `JS_DATE_PARSE_ISO_SUBSET`
-/// (the same table the `memory_embedding_text` family pins):
-/// `(kind, id, v4's result, v5's result)`. `crate::episodic::js_date_parse_ms`
-/// ports V8's ISO date-time grammar only; V8's LEGACY fallback parses
-/// `2026-7-4` (finite in v4, so the zoned stamp `2026-07-04`), where v5 falls
-/// to `slice(0, 10)` and the date regex drops it. At the baseline v4 sliced
-/// unconditionally, so this row only surfaced when bug 212 zoned the stamp.
-/// Both ways: a parser fix (or a v4 change) trips it.
-const JS_DATE_PARSE_ISO_SUBSET: &[(&str, &str, &str, &str)] =
-    &[("anchorLine", "anchor-when-short", "(when: 2026-07-04)", "")];
 
 fn source<'a>(
     summary: &'a str,
@@ -302,16 +293,7 @@ fn episodic_matches_oracle() {
         match oracle.get(&key) {
             None => mismatches.push(format!("{kind}/{id}: MISSING from oracle")),
             Some(want) => {
-                if let Some(&(_, _, v4, v5)) = JS_DATE_PARSE_ISO_SUBSET
-                    .iter()
-                    .find(|(k, i, _, _)| *k == kind && *i == id)
-                {
-                    if *want != json!(v4) || got != json!(v5) {
-                        mismatches.push(format!(
-                            "{kind}/{id}: JS_DATE_PARSE_ISO_SUBSET moved — oracle={want} port={got}"
-                        ));
-                    }
-                } else if *want != got {
+                if *want != got {
                     mismatches.push(format!("{kind}/{id}: oracle={want} port={got}"));
                 }
             }

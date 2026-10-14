@@ -35,10 +35,10 @@
 //!
 //! ## JS-fidelity notes
 //!
-//!  - `Date.parse` is reproduced as the **ISO subset** ([`js_date_parse_ms`]):
-//!    every production input (repo-minted timestamps, resolveWhenPhrase's own
-//!    outputs) is ISO. V8's legacy formats (`"July 14, 2026"` etc.) are NOT
-//!    parsed here — v4 never feeds them to these functions. V8's ISO quirks ARE
+//!  - `Date.parse` is V8's own parser ([`js_date_parse_ms`] →
+//!    [`crate::v8_date_parse`]): the ES5 ISO grammar AND the legacy fallback
+//!    (`"July 14, 2026"`, `2026/07/14`, …) — the ISO-subset port it replaced
+//!    was P4.D289's `JS_DATE_PARSE_ISO_SUBSET` finding. V8's ISO quirks are
 //!    reproduced: month must be 01–12 but a day of 01–31 **rolls** past the
 //!    month end (`2026-02-31` → Mar 3 — and the date-only when-phrase branch
 //!    then returns the RAW `2026-02-31T00:00:00.000Z`, v4's exact behavior);
@@ -407,126 +407,13 @@ pub(crate) fn utc_day_of_week(ms: i64) -> i64 {
     (days + 4).rem_euclid(7)
 }
 
-/// `Date.parse` over the ISO-8601 subset (see the module doc's fidelity notes):
-/// `YYYY[-MM[-DD]][Tt HH:mm[:ss[.f+]]][Zz | ±HH:MM | ±HHMM]`.
-///
-/// V8-faithful validation, confirmed empirically (2026-07-21, Node 24):
-/// month ∈ 01–12 and day ∈ 01–31 are hard bounds (`00`/`13`/`32` → NaN) but an
-/// in-bounds day ROLLS past the month end; hour ∈ 00–24, minute/second ≤ 59;
-/// fraction digits truncate to milliseconds (`.5` → 500 ms, `.123456` → 123 ms);
-/// lowercase `t`/`z` accepted; a bare `HH` after `T` is invalid. Date-only
-/// forms are UTC; zone-less datetimes are treated as UTC here (JS: local —
-/// the oracle pins `TZ=UTC`).
+/// JS `Date.parse` — V8's own parser, ES5 ISO pass AND legacy fallback,
+/// ported whole in [`crate::v8_date_parse`] (the human's ruling on P4.D289's
+/// `JS_DATE_PARSE_ISO_SUBSET` finding, 2026-10-14). A string with no UTC
+/// offset reads as UTC (JS: the process's local zone — the ruled
+/// `ZONELESS_PARSE_AS_UTC`; every oracle pins `TZ=UTC`).
 pub(crate) fn js_date_parse_ms(s: &str) -> Option<i64> {
-    let bytes = s.as_bytes();
-    if !s.is_ascii() {
-        return None;
-    }
-
-    fn digits(b: &[u8], n: usize) -> Option<i64> {
-        if b.len() < n || !b[..n].iter().all(|c| c.is_ascii_digit()) {
-            return None;
-        }
-        std::str::from_utf8(&b[..n]).unwrap().parse().ok()
-    }
-
-    // Date part.
-    let year = digits(bytes, 4)?;
-    let mut i = 4;
-    let mut month = 1i64;
-    let mut day = 1i64;
-    if bytes.get(i) == Some(&b'-') {
-        month = digits(&bytes[i + 1..], 2)?;
-        i += 3;
-        if bytes.get(i) == Some(&b'-') {
-            day = digits(&bytes[i + 1..], 2)?;
-            i += 3;
-        }
-    }
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
-        return None;
-    }
-
-    // Time part.
-    let mut hour = 0i64;
-    let mut minute = 0i64;
-    let mut second = 0i64;
-    let mut millis = 0i64;
-    let mut offset_min: Option<i64> = None; // None → no zone designator
-    let mut has_time = false;
-    if matches!(bytes.get(i), Some(b'T') | Some(b't')) {
-        has_time = true;
-        i += 1;
-        hour = digits(&bytes[i..], 2)?;
-        i += 2;
-        if bytes.get(i) != Some(&b':') {
-            return None;
-        }
-        minute = digits(&bytes[i + 1..], 2)?;
-        i += 3;
-        if bytes.get(i) == Some(&b':') {
-            second = digits(&bytes[i + 1..], 2)?;
-            i += 3;
-            if bytes.get(i) == Some(&b'.') {
-                i += 1;
-                let start = i;
-                while bytes.get(i).map(|c| c.is_ascii_digit()).unwrap_or(false) {
-                    i += 1;
-                }
-                if i == start {
-                    return None;
-                }
-                let frac = &s[start..i];
-                let first3: String = frac.chars().take(3).collect();
-                let padded = format!("{first3:0<3}");
-                millis = padded.parse().ok()?;
-            }
-        }
-        if !(0..=24).contains(&hour) || !(0..=59).contains(&minute) || !(0..=59).contains(&second) {
-            return None;
-        }
-        // V8 accepts hour 24 only as the end of the day: `T24:00Z` and
-        // `T24:00:00.000Z` parse, `T24:01Z` / `T24:00:01Z` / `T24:00:00.001Z`
-        // are NaN (measured on Node 24.13.1 by the P4.D289 `memory_time`
-        // family — `resolveEventTime`'s ISO arm reaches it).
-        if hour == 24 && (minute != 0 || second != 0 || millis != 0) {
-            return None;
-        }
-        // Zone designator.
-        match bytes.get(i) {
-            Some(b'Z') | Some(b'z') => {
-                offset_min = Some(0);
-                i += 1;
-            }
-            Some(sign @ (b'+' | b'-')) => {
-                let sgn = if *sign == b'+' { 1 } else { -1 };
-                let oh = digits(&bytes[i + 1..], 2)?;
-                let mut j = i + 3;
-                if bytes.get(j) == Some(&b':') {
-                    j += 1;
-                }
-                let om = digits(&bytes[j..], 2)?;
-                j += 2;
-                if om > 59 {
-                    return None;
-                }
-                offset_min = Some(sgn * (oh * 60 + om));
-                i = j;
-            }
-            _ => {}
-        }
-    }
-    if i != bytes.len() {
-        return None;
-    }
-
-    let days = days_from_civil(year, month, day);
-    let mut ms = (days * 86_400 + hour * 3_600 + minute * 60 + second) * 1000 + millis;
-    if has_time {
-        // Zone-less → UTC here (JS: local; the oracle pins TZ=UTC).
-        ms -= offset_min.unwrap_or(0) * 60_000;
-    }
-    Some(ms)
+    crate::v8_date_parse::date_parse_ms(s)
 }
 
 #[cfg(test)]
