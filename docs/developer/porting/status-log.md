@@ -184087,3 +184087,22 @@ worktree for the session — same volume, same rules).
    (a fixture with `clustersFound` 9 ≠ `clustersQualified` 6) and the demote
    stats row; every other arm is red by absence. The P4.D276 cluster rows
    moved with the renderer (6 arms).
+5. **The Maintenance dialog (L-4)** — NEW `memory/maintenance-dialog.ts`:
+   the picker variant (counts read, `Choose a character…` / `Every
+   character` / `{name} ({n} counted)` in reply order — L-12) and the fixed
+   variant (`characterId` hides the picker and disables the counts query);
+   `dryRunBlocked`, the cap-for-this-run only with demote, the two toasts,
+   the `maintenanceStatus` invalidation, `(queued)` THEN `(close)`; v4's hand
+   markup portalled to `document.body`, no `role` / Escape / backdrop
+   (RECORDED, Tier 3 item 24); every control disabled while running. Every
+   value `run()` reads is captured before the first `.set()`
+   (`react-closure-reads-in-signal-ports`). **v4's three jest cases
+   transcribed** (`maintenance-dialog.test.tsx:52`, `:67`, `:77`) + 15 own
+   rows (key order by `JSON.stringify`, the cap dropped when demote is
+   unticked, `capInvalid` at 99 / 100,001 / `abc`, the three result-clearing
+   edits, disabled-while-running, the fixed variant never reading the
+   counts, the picker's option list, `1 character` / `0 characters` with
+   `jobIds` absent, both failure fallbacks + the server sentence). **Red:**
+   the module is new (main's twin is the doomed housekeeping dialog) — red
+   by absence; mutation-proved instead: swapping the body's key order, the
+   `(queued)` / `(close)` order and the captured `everyone` turns 6 arms red.
