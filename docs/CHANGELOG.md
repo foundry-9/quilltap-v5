@@ -24,6 +24,22 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — docs(porting): P4.D288 Tier 2 close — Friday-copy measurements, censuses, the lane record
+
+_Docs-only change._
+
+Records the rest of the lane's Tier 2. All Friday measurements ran on copies; neither copy is kept.
+
+**Before v4's migration.** v5's span chain ran over a copy of v4's own pre-migration safety backup:
+- It recomputed 3,166 memories and re-zoned 1,862 in America/Chicago, exactly v4's counts.
+- Its four stamped ledger rows are byte-identical to the rows v4 wrote on live Friday.
+
+**After v4's migration.** On a copy taken afterwards, every ensure was a no-op: no boot lines, an unchanged schema, and no new stamps.
+
+**The rest of the record.**
+- The six branch censuses are green.
+- Also recorded: the named tables, the step-22j handoff to P4.D293, the `delete_all` report contract, the versions at close, and which families read each widened fixture pair.
+
 #### 2026-10-14 — test(harness): P4.D288 Tier 2 — the twelve mutation proofs, two ensure corpora grown
 
 _No crate versions bumped._
