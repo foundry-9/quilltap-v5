@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-14 — docs(commands): `/carryout` verifies the lane's base branch before the first edit
+
+_Docs-only change._
+
+`/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
+
 #### 2026-10-14 — docs(porting): record the human's approval of the `83334b9a5` round's planning rulings and P4.D290's `sha1` dependency
 
 _Docs-only change._

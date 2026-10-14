@@ -30,6 +30,23 @@ what's marked landed.
    (`.claude/worktrees/…`, branch `claude/<order-slug>-…`) or a branch off
    main. Unification back into main is a separate step (`/unify`) — do not
    merge, rebase onto main mid-lane, or push to main. Don't use `git stash`.
+   **Verify the base BEFORE the first edit.** The order's Preamble
+   "Branch" line names the lane's base: `main` at the orders' commit, or a
+   stacking commit (`SCORING` / `KEYSTONE` / `ADMISSION` …) whose sha the
+   PARENT order's status header records. The session may start somewhere
+   else (the app can open it on `main`'s tip, a stale worktree, or another
+   lane's branch) — check `git rev-parse HEAD`, `git branch --show-current`
+   and `git merge-base --is-ancestor <base> HEAD`, and if the checkout is
+   not a clean branch sitting on that base, move it before working:
+   `git worktree add <spaceless .claude/worktrees/ path> -b
+   claude/<order-slug>-<hash> <base sha>` (or, in a worktree the app made
+   for this session with no commits of its own yet, `git switch -c
+   claude/<order-slug>-<hash> <base sha>`). Say in the lane record where
+   the session started and where it moved. If the base is a stacking
+   commit the parent order has NOT yet recorded, STOP and report — never
+   substitute `main` or a guessed sha. (A stage-C lane that pre-starts from
+   `KEYSTONE` and later rebases onto `ADMISSION` follows its order's
+   stacking rule; that rebase is the one sanctioned exception.)
 3. **Stay inside your Ownership section.** `docs/CHANGELOG.md` and
    `docs/developer/porting/status-log.md` are append-only (they union-merge
    at unification). If you believe you must touch a file another lane owns,
