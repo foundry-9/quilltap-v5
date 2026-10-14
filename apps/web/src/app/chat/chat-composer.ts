@@ -88,6 +88,16 @@ export interface ComposerSend {
 }
 
 /**
+ * What `clearAfterSend` hands back (P4.D301, bug 241): the tray it emptied, so
+ * a send that dies before its row lands can put the files back. The text is the
+ * Salon's own (it holds what it SENT, which on In Their Own Words is the
+ * restated line, not the composer's).
+ */
+export interface ComposerSendSnapshot {
+  files: UploadedChatFile[];
+}
+
+/**
  * One rolled-but-unsent tool result as the composer renders it (v4
  * `types.ts:340-360` `PendingToolResult` — the salon-side record, which adds the
  * `id` and `createdAt` the raw roll has no need of).
@@ -1023,12 +1033,57 @@ export class ChatComposer implements OnInit {
    * where the operator left it. v4 reaches the same place through `sendMessage`,
    * which owns `setInput('')` / `setAttachedFiles([])` / `clearDraft()`.
    */
-  clearAfterSend(): void {
+  clearAfterSend(): ComposerSendSnapshot {
+    // P4.D301 (bug 241): the tray as it stood BEFORE the clear — the uploaded
+    // files `ComposerSend` does not carry (`url` included), so a send that fails
+    // before its row lands can put them back.
+    const files = this.attachedFiles();
     this.editorView()?.setMarkdown('');
     this.sourceText.set('');
     this.text.set('');
     this.attachedFiles.set([]);
     this.clearDraft();
+    return { files };
+  }
+
+  /**
+   * Whether the operator has typed nothing since the send (P4.D301 — v4
+   * `restoreUnpersistedSubmission`'s `composerNow.trim()` gate). Either
+   * surface counts: the editor's markdown, or the raw-source textarea when
+   * that view is open.
+   */
+  isBlank(): boolean {
+    const editor = this.editorView()?.getMarkdown() ?? '';
+    return !editor.trim() && !this.sourceText().trim();
+  }
+
+  /**
+   * Hand a failed send's words back (P4.D301, bug 241 — the composer's half of
+   * v4 `restoreUnpersistedSubmission`): the text into the editor, the source
+   * textarea and the send gate, with the draft saved AT ONCE (v4 calls
+   * `persistDraft(input)` directly — a reload a breath later must find it), and
+   * the files into the tray. A blank text or an empty file list puts nothing
+   * back for its half, as v4's two `if`s. The Salon decides WHETHER to call
+   * this; it returns whether anything went back.
+   */
+  restoreAfterFailedSend(snapshot: { text: string; files: UploadedChatFile[] }): boolean {
+    let restored = false;
+    if (snapshot.text.trim()) {
+      this.editorView()?.setMarkdown(snapshot.text);
+      this.sourceText.set(snapshot.text);
+      this.text.set(snapshot.text);
+      if (this.draftTimer) {
+        clearTimeout(this.draftTimer);
+        this.draftTimer = null;
+      }
+      this.persistDraft(snapshot.text);
+      restored = true;
+    }
+    if (snapshot.files.length > 0) {
+      this.attachedFiles.set([...snapshot.files]);
+      restored = true;
+    }
+    return restored;
   }
 
   // --- attach ---------------------------------------------------------------

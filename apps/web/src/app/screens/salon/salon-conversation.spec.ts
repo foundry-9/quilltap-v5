@@ -46,6 +46,9 @@ import {
   type ChatStreamState,
 } from '../../core/chat-stream.reducer';
 import { ChatComposer, type ToolExecutionStatus } from '../../chat/chat-composer';
+import { CoreDispatchError } from '../../core/core-contract';
+import { RichEditor } from '../../editor/rich-editor';
+import { SEND_FAILURE_TOAST_MS, SUBMISSION_RESTORED_NOTE } from '../../core/send-failure';
 import { SalonConversation } from './salon-conversation';
 import { IMAGES_HIDDEN } from '../../chat/hidden-image/images-hidden';
 import { QuickHideService } from '../../quick-hide/quick-hide.service';
@@ -4631,5 +4634,309 @@ describe('SalonConversation — the "Try uncensored" handlers', () => {
       messageId: 'm-1',
       stream: true,
     });
+  });
+});
+
+/**
+ * P4.D301 — bug 241's restore-on-failure (v4 `93c5af6ad`,
+ * `useSSEStreaming.ts:845-910` + the catch `:1178-1226`). A send that dies before
+ * its row lands hands the SENT text (and its draft), the attachments and the
+ * staged roll chips back to an EMPTY composer, and the failure raises ONE
+ * 8-second toast ending `Your message is back in the composer.`. The flags come
+ * from the rejection's `submission` first, the error frame's two keys second,
+ * and the post-failure read last (a temp bubble still standing has no row; a
+ * chip with no TOOL row carrying its `createdAt` has none either — R-L5).
+ *
+ * v4's seven portable `useSSEStreaming-send-failure.test.tsx` cases are
+ * transcribed one for one (the four split-frame / early-close cases are the
+ * NO-PORT transport half, R-AC); `sendFailureToastText`'s three asserts live in
+ * `core/send-failure.spec.ts`.
+ */
+describe('SalonConversation — a failed send hands the submission back (P4.D301, bug 241)', () => {
+  type Host = {
+    send(p: { content: string; fileIds: string[]; attachments?: MessageAttachment[] }): void;
+    continueTurn(): void;
+    onPendingToolResult(r: Record<string, unknown>): void;
+    pendingToolResults(): { tool: string; createdAt: string }[];
+    displayMessages(): MessageDto[];
+    postComposedMessage(content: string, fileIds: string[], attachments: MessageAttachment[]): void;
+  };
+
+  const TEXT = 'Shall we take the air, Friday?';
+  const DETAILS = 'No API key configured for this connection profile';
+  const FILE = { id: 'f-1', filename: 'pic.png', filepath: 'chat/pic.png', mimeType: 'image/png', url: '/api/v1/files/f-1' };
+  const DRAFT_KEY = 'quilltap-draft-chat-1';
+
+  interface Script {
+    /** The `chatSend` outcome. */
+    outcome: 'reject' | 'resolve';
+    /** The rejection (default: the requires-key refusal with no rider). */
+    error?: Error;
+    /** A frame pushed on the event stream BEFORE the reply settles. */
+    frame?: ScopedEvent;
+    /** What the post-turn read carries beyond the fixture's rows. */
+    readAdds?: (sent: { content: string; createdAt: string[]; participantId: string | null }) => MessageDto[];
+    /** Words typed into the composer while the send is out. */
+    typeMeanwhile?: string;
+  }
+
+  function failingClient(
+    script: Script,
+    events$: Subject<ScopedEvent>,
+    hooks: { typeInto?: (text: string) => void; temp?: () => MessageDto | undefined },
+  ): Partial<CoreClient> {
+    let extra: MessageDto[] = [];
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      if (req.type === 'chatGet') {
+        return { type: 'chat', data: { chat: { ...chatDetail(), messages: [...chatDetail().messages, ...extra] } } };
+      }
+      if (req.type === 'chatSettings') {
+        return { type: 'chatSettings', data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' } };
+      }
+      if (req.type === 'chatSend') {
+        const r = req as unknown as {
+          content?: string;
+          pendingToolResults?: { createdAt: string }[];
+        };
+        const temp = hooks.temp?.();
+        extra =
+          script.readAdds?.({
+            content: r.content ?? '',
+            createdAt: (r.pendingToolResults ?? []).map((t) => t.createdAt),
+            participantId: temp?.participantId ?? null,
+          }) ?? [];
+        if (script.typeMeanwhile) hooks.typeInto?.(script.typeMeanwhile);
+        if (script.frame) events$.next(script.frame);
+        if (script.outcome === 'resolve') {
+          return {
+            type: 'chatSend',
+            data: { messageId: 'm-x', hasContent: false, isMultiCharacter: false, isPaused: false, userParticipantId: 'pu' },
+          } as unknown as CoreResponse;
+        }
+        throw script.error ?? new CoreDispatchError({ kind: 'internal', message: DETAILS });
+      }
+      return { type: 'ack', data: {} };
+    });
+    return {
+      events$: events$.asObservable(),
+      connection: signal<ConnectionState>('idle'),
+      resyncCounter: signal(0),
+      dispatch,
+      dispatchData: vi.fn(async () => ({
+        backgroundUrl: null,
+        fileId: null,
+        filename: null,
+        sha256: null,
+        linkSummary: null,
+      })) as unknown as CoreClient['dispatchData'],
+      dispatchExpect: (async (req: CoreRequest, expected: string) => {
+        const resp = await dispatch(req);
+        if (resp.type !== expected) throw new Error(`unexpected ${resp.type}`);
+        return resp;
+      }) as CoreClient['dispatchExpect'],
+    };
+  }
+
+  function rider(user: boolean, tools: boolean): CoreDispatchError {
+    return new CoreDispatchError({
+      kind: 'internal',
+      message: DETAILS,
+      submission: { userMessagePersisted: user, pendingToolResultsPersisted: tools },
+    } as never);
+  }
+
+  function errorFrame(extras: Record<string, unknown>): ScopedEvent {
+    return { chatId: 'chat-1', error: 'Failed to generate response', errorType: 'Error', details: DETAILS, ...extras } as ScopedEvent;
+  }
+
+  const userRow = (s: { content: string; participantId: string | null }) =>
+    message({ id: 'srv-u', role: 'USER', content: s.content, participantId: s.participantId, createdAt: new Date().toISOString() });
+
+  async function settle(fixture: ComponentFixture<SalonConversation>): Promise<void> {
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  /** Mount, stage a chip, put TEXT + one file in the composer, send it. */
+  async function sendFailing(
+    script: Script,
+    opts: { chip?: boolean; continueMode?: boolean; door?: 'itow' } = {},
+  ) {
+    localStorage.clear();
+    const events$ = new Subject<ScopedEvent>();
+    let fixtureRef: ComponentFixture<SalonConversation> | null = null;
+    const editor = () => fixtureRef!.debugElement.query(By.directive(RichEditor)).componentInstance as RichEditor;
+    const client = failingClient(script, events$, {
+      typeInto: (t) => editor().setMarkdown(t),
+      temp: () => provisionalBubble(fixtureRef!.componentInstance as unknown as Host),
+    });
+    const fixture = await render(client);
+    fixtureRef = fixture;
+    const showError = vi.spyOn(TestBed.inject(ToastService), 'showError');
+    const inst = fixture.componentInstance as unknown as Host;
+    const composer = fixture.debugElement.query(By.directive(ChatComposer)).componentInstance as ChatComposer;
+    if (opts.chip !== false) {
+      inst.onPendingToolResult({
+        tool: 'rng',
+        displayName: 'Random Number Generator',
+        icon: '🎲',
+        summary: 'd20: 17',
+        formattedResult: '🎲 Rolled 1d20: **17**',
+        requestPrompt: 'Roll a d20',
+        arguments: { type: 20, rolls: 1 },
+        success: true,
+      });
+    }
+    const chips = [...inst.pendingToolResults()];
+    composer.addAttachedFile(FILE);
+    editor().setMarkdown(opts.door === 'itow' ? 'my words before the restating' : TEXT);
+    await settle(fixture);
+    if (opts.continueMode) {
+      inst.continueTurn();
+    } else if (opts.door === 'itow') {
+      // In Their Own Words posts the RESTATED line through the one door.
+      inst.postComposedMessage('Restated by the voice, as sent.', [FILE.id], [FILE]);
+    } else {
+      inst.send({ content: TEXT, fileIds: [FILE.id], attachments: [FILE] });
+    }
+    await settle(fixture);
+    await settle(fixture);
+    fixture.detectChanges();
+    return { fixture, inst, composer, editor, showError, chips };
+  }
+
+  function expectRestored(h: Awaited<ReturnType<typeof sendFailing>>, text = TEXT) {
+    expect(h.editor().getMarkdown()).toBe(text);
+    expect(localStorage.getItem(DRAFT_KEY)).toBe(text);
+    expect(h.fixture.nativeElement.querySelector('.qt-chat-attachment-chip')).not.toBeNull();
+    expect(h.inst.pendingToolResults().map((c) => c.createdAt)).toEqual(h.chips.map((c) => c.createdAt));
+  }
+
+  function expectNotRestored(h: Awaited<ReturnType<typeof sendFailing>>) {
+    expect(h.editor().getMarkdown()).not.toBe(TEXT);
+    expect(localStorage.getItem(DRAFT_KEY)).not.toBe(TEXT);
+    expect(h.fixture.nativeElement.querySelector('.qt-chat-attachment-chip')).toBeNull();
+    expect(h.inst.pendingToolResults()).toEqual([]);
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+    TestBed.resetTestingModule();
+  });
+
+  it('(v4 1) a rider saying nothing was saved: ONE 8 s toast with the details + the note, everything back', async () => {
+    const h = await sendFailing({ outcome: 'reject', error: rider(false, false) });
+    expect(h.showError).toHaveBeenCalledTimes(1);
+    const [message, duration] = h.showError.mock.calls[0];
+    expect(message).toBe(`Failed to generate response: ${DETAILS}. ${SUBMISSION_RESTORED_NOTE}`);
+    expect(duration).toBe(SEND_FAILURE_TOAST_MS);
+    expectRestored(h);
+  });
+
+  it('(v4 3) the server says the message was saved: one toast, no note, nothing restored', async () => {
+    const h = await sendFailing({ outcome: 'reject', error: rider(true, true), readAdds: (s) => [userRow(s)] });
+    expect(h.showError).toHaveBeenCalledTimes(1);
+    expect(h.showError.mock.calls[0][0]).toBe(`Failed to generate response: ${DETAILS}`);
+    expect(h.showError.mock.calls[0][0]).not.toContain(SUBMISSION_RESTORED_NOTE);
+    expectNotRestored(h);
+  });
+
+  it('(v4 4) a refusal with no rider and the temp bubble still standing after the read: restored', async () => {
+    const h = await sendFailing({ outcome: 'reject', error: new CoreDispatchError({ kind: 'notFound', message: 'Chat not found' } as never) });
+    expect(h.showError).toHaveBeenCalledTimes(1);
+    expect(h.showError.mock.calls[0][0]).toBe(`Chat not found. ${SUBMISSION_RESTORED_NOTE}`);
+    expectRestored(h);
+  });
+
+  it('(v4 5) words typed into the composer since are never clobbered — chips included', async () => {
+    const h = await sendFailing({ outcome: 'reject', error: rider(false, false), typeMeanwhile: 'Something new entirely.' });
+    expect(h.showError).toHaveBeenCalledTimes(1);
+    expect(h.showError.mock.calls[0][0]).not.toContain(SUBMISSION_RESTORED_NOTE);
+    expect(h.editor().getMarkdown()).toBe('Something new entirely.');
+    expect(h.fixture.nativeElement.querySelector('.qt-chat-attachment-chip')).toBeNull();
+    expect(h.inst.pendingToolResults()).toEqual([]);
+  });
+
+  it('(v4 7) a dropped connection whose read shows no row: restored, "Connection lost"', async () => {
+    const h = await sendFailing({ outcome: 'reject', error: new Error('Unknown error') });
+    expect(h.showError).toHaveBeenCalledTimes(1);
+    expect(h.showError.mock.calls[0][0]).toBe(`Connection lost. Please try again. ${SUBMISSION_RESTORED_NOTE}`);
+    expect(h.showError.mock.calls[0][1]).toBe(SEND_FAILURE_TOAST_MS);
+    expectRestored(h);
+  });
+
+  it('(v4 8) the same whose read reconciled the bubble (and the chip) to saved rows: not restored', async () => {
+    const h = await sendFailing({
+      outcome: 'reject',
+      error: new Error('Unknown error'),
+      readAdds: (s) => [
+        ...s.createdAt.map((at, i) => message({ id: `srv-t${i}`, role: 'TOOL', content: '{}', createdAt: at })),
+        userRow(s),
+      ],
+    });
+    expect(h.showError).toHaveBeenCalledTimes(1);
+    expect(h.showError.mock.calls[0][0]).toBe('Connection lost. Please try again.');
+    expectNotRestored(h);
+  });
+
+  it('raises exactly ONE toast when the error frame lands before the rejection (the measured double toast)', async () => {
+    const h = await sendFailing({
+      outcome: 'reject',
+      error: rider(false, false),
+      frame: errorFrame({ userMessagePersisted: false, pendingToolResultsPersisted: false }),
+    });
+    expect(h.showError).toHaveBeenCalledTimes(1);
+    expect(h.showError.mock.calls[0][0]).toBe(`Failed to generate response: ${DETAILS}. ${SUBMISSION_RESTORED_NOTE}`);
+  });
+
+  it("honours the frame's flags when the rejection carries no rider", async () => {
+    // The read shows no row (the fallback would restore), but the frame says saved.
+    const h = await sendFailing({
+      outcome: 'reject',
+      error: new Error('Unknown error'),
+      frame: errorFrame({ userMessagePersisted: true, pendingToolResultsPersisted: true }),
+    });
+    expect(h.showError).toHaveBeenCalledTimes(1);
+    expect(h.showError.mock.calls[0][0]).toBe(`Failed to generate response: ${DETAILS}`);
+    expectNotRestored(h);
+  });
+
+  it('R-L5: the user row landed but no TOOL row carries the chip — only the chip comes back', async () => {
+    const h = await sendFailing({ outcome: 'reject', error: new Error('Unknown error'), readAdds: (s) => [userRow(s)] });
+    expect(h.showError).toHaveBeenCalledTimes(1);
+    expect(h.showError.mock.calls[0][0]).toBe(`Connection lost. Please try again. ${SUBMISSION_RESTORED_NOTE}`);
+    expect(h.inst.pendingToolResults().map((c) => c.createdAt)).toEqual(h.chips.map((c) => c.createdAt));
+    expect(h.editor().getMarkdown()).toBe('');
+    expect(h.fixture.nativeElement.querySelector('.qt-chat-attachment-chip')).toBeNull();
+  });
+
+  it('a continue-mode failure restores nothing (nothing was typed) and toasts once', async () => {
+    const h = await sendFailing({ outcome: 'reject', error: rider(false, false) }, { chip: false, continueMode: true });
+    expect(h.showError).toHaveBeenCalledTimes(1);
+    expect(h.showError.mock.calls[0][0]).not.toContain(SUBMISSION_RESTORED_NOTE);
+    // The composer still holds what was in it before (a continue never clears it).
+    expect(h.editor().getMarkdown()).toBe(TEXT);
+  });
+
+  it('an In-Their-Own-Words door failure restores the SENT (restated) text', async () => {
+    const h = await sendFailing({ outcome: 'reject', error: rider(false, false) }, { door: 'itow' });
+    expect(h.showError).toHaveBeenCalledTimes(1);
+    expect(h.editor().getMarkdown()).toBe('Restated by the voice, as sent.');
+    expect(localStorage.getItem(DRAFT_KEY)).toBe('Restated by the voice, as sent.');
+  });
+
+  it('a dispatch that resolved while the frame recorded an error toasts it once, with no note and no restore', async () => {
+    const h = await sendFailing({
+      outcome: 'resolve',
+      frame: errorFrame({ userMessagePersisted: true, pendingToolResultsPersisted: false }),
+      readAdds: (s) => [userRow(s)],
+    });
+    expect(h.showError).toHaveBeenCalledTimes(1);
+    expect(h.showError.mock.calls[0][0]).toBe(`Failed to generate response: ${DETAILS}`);
+    expect(h.showError.mock.calls[0][1]).toBe(SEND_FAILURE_TOAST_MS);
+    expect(h.editor().getMarkdown()).toBe('');
   });
 });

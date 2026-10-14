@@ -791,6 +791,12 @@ Ports the server half of v4 `93c5af6ad` (bug 239). `LockFileContent` gains an op
 
 `HostConfig.listening_port` (default `None`, so the Tauri shell records none) is threaded through `HostAssembler` into `pre_open`'s claim; `quilltap-web` sets it from `--port` (`--port 0` records none). New tier-2 family `instance_lock_port_equivalence` against v4's real `instance-lock.ts` (33 rows: fresh writes under seven `PORT` shapes, claims of nine planted port shapes × valid/invalid `PORT`, a foreign-host claim, re-entrant + heartbeat over malformed ports and unknown keys): 63 failures on unported main, 0 after.
 
+#### 2026-10-14 — fix(salon): bug 241 — a send that fails before it is saved puts the words back in the composer, under one 8-second toast (P4.D301)
+
+_Versions: SPA 0.5.848._
+
+After a failed send, the Salon reads the chat, then decides per flag what was not saved: the rejection's `submission` first, the error frame's two keys second, and otherwise the transcript (a temp bubble still standing has no row; a staged roll chip has none when no TOOL row carries its `createdAt`). If the composer is still empty it puts back the text that was sent (on In Their Own Words, the restated line), writes the draft at once, restores the attached files and the staged rolls. The failure raises one 8-second toast, ending `Your message is back in the composer.` when anything came back; the text is `Failed to generate response: <details>` when the rejection carries the flags, so it no longer depends on whether the frame or the reply arrives first. The stream-transition toast and the catch's toast are gone (an initial-turn failure used to raise two). The decision reads the chat from the query cache, because the `chatQuery.data()` signal still holds the pre-read chat right after `invalidateQueries` resolves. `ChatComposer.clearAfterSend()` now returns the tray it emptied; new `isBlank()` and `restoreAfterFailedSend()`. New `core/send-failure.ts` ports v4's `sendFailureToastText`, `SUBMISSION_RESTORED_NOTE` and `SEND_FAILURE_TOAST_MS`. Test fixes: the impersonation-voice rig answered `chatSend` with `ack` (so every send there failed), and one gallery spec defined `navigator.clipboard` without `writable: true`, which broke `courier-bubble.spec.ts` when the worker order shifted.
+
 #### 2026-10-14 — fix(salon): bug 242 — a depth-0 turnStart no longer puts the turn in a chain; the stream reducer records the error frame's persistence flags (P4.D301)
 
 _Versions: SPA 0.5.847._

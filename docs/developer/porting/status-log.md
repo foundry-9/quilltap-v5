@@ -183261,3 +183261,62 @@ Branch `claude/p4.d301-chat-stream-submission-ledger-821101312`, stage A from
   `content.trim().length > 0` for every intermediate done
   (`chat-stream.reducer.ts:400`) — so a whitespace-only intermediate reply
   shows a bubble in v4's send path and none in v5. No span hunk moved it.
+- **Unit 4 — the Salon restore + ONE toast + the composer pair (SPA
+  0.5.848).** NEW `core/send-failure.ts` (+ spec: v4's three asserts
+  verbatim, plus the `!`/`…`/`?` marks and a trailing space); `ChatComposer`:
+  `clearAfterSend(): ComposerSendSnapshot` (`{files}` — the tray BEFORE the
+  clear), `isBlank()` (editor markdown OR the source textarea, trimmed),
+  `restoreAfterFailedSend({text, files}): boolean` (text into the editor, the
+  source text and the `text` gate with the draft written AT ONCE through
+  `persistDraft` after clearing the debounce timer; files replace the tray;
+  each half only when non-empty, v4's two `if`s). Salon:
+  `postComposedMessage` keeps the snapshot (`?? { files: [] }` — the
+  impersonation spies' void returns still work) and hands it to `runTurn`;
+  `runTurn` keeps the temp bubble's id, records the rejection and the frame's
+  error (read into a local BEFORE the catch overwrites `state.error`), and
+  after `settleTranscriptAfterTurn` / before `clearProvisionalMessages` calls
+  the new private `reportSendOutcome` → `restoreUnpersistedSubmission`
+  (R-L5–R-L8 as ruled). The catch's toast and `reportStreamTransitions`'
+  `after.error` toast are GONE. **A measured trap, fixed in-region:** the
+  turn tail's read is NOT yet in `chatQuery.data()` when
+  `invalidateQueries` resolves — TanStack's Angular adapter feeds that
+  signal through `notifyManager.batchCalls`, whose default scheduler is
+  `setTimeout(0)` (`@tanstack/query-core` 5.101.2 `notifyManager.js:3`;
+  `angular-query-experimental` `create-base-query.mjs:48-65`); instrumented
+  in this lane's spec, the signal held 4 rows where the cache held 6. So the
+  restore's fallback reads `queryClient.getQueryData(chatKeys.detail(id))`
+  and folds it through `reconcileTranscript` against what is shown
+  (`transcriptAfterTurnRead`); a failed read (`getQueryState().status ===
+  'error'`) leaves what is shown, v4's failed-`fetchChat` behaviour.
+  **FINDING (pre-existing, outside the carve — for the unifier / a
+  follow-up):** the same lag means `settleTranscriptAfterTurn` →
+  `seedTranscriptFromChat` re-applies the PRE-read chat at the turn tail, so
+  `runTurn`'s comment "Apply here too … the sweep at the end of this turn
+  already sees them" rests on a false premise: the sweep runs against the
+  old rows and the new ones arrive a macrotask later through the seeding
+  effect. Visible effect at most a one-frame gap between the bubble's sweep
+  and its row's arrival; not fixed here (`settleTranscriptAfterTurn` /
+  `seedTranscriptFromChat` are not this lane's functions).
+  NEW cases in `salon-conversation.spec.ts` (12) transcribing v4's seven
+  portable send-failure cases (v4 1, 3, 4, 5, 7, 8; v4 9 is
+  `send-failure.spec.ts`) + the one-toast race, a frame-only flag honoured,
+  R-L5's chip-only fallback, a continue-mode failure, an In-Their-Own-Words
+  door restoring the SENT text, a resolved dispatch with a recorded frame
+  error. **Red-first (the unported Salon over the new composer/reducer): 9
+  RED / 3 GREEN** — the GREEN three are the "nothing restored" rows (v4 5,
+  v4 8, continue-mode: main restores nothing); the one-toast case red on
+  **2 calls** (the measured double toast); with the signal-based fallback (my
+  first draft) v4 8 and R-L5 stayed RED until the cache read. Composer
+  cases (5) **5 / 5 RED** on main's composer. **Two out-of-carve test
+  corrections, recorded:** (a) `salon-impersonation-voice.spec.ts`'s rig
+  (`:176`) answered `chatSend` with `{type:'ack'}`, which
+  `dispatchExpect(…,'chatSend')` rejects — every send in that file "failed",
+  so the restore now handed "a dialog Send carries the stashed … rolls"'s
+  chip back; the rig answers a real `chatSend` reply (the `:270-334` range
+  the order names stays green, untouched); (b)
+  `images/chat-gallery-image-view-modal.spec.ts:297` defined
+  `navigator.clipboard` without `writable: true` — the new spec file moved
+  worker assignment and `courier-bubble.spec.ts` went 8/8 red in the full
+  suite (green alone; the recorded P4.D286 class), fixed with the one key.
+  R-L5's recorded divergence: v5 still pushes no optimistic TOOL bubble
+  (v4 does), outside the span. No composer mounted → nothing restored.

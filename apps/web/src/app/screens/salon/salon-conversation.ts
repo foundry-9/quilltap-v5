@@ -147,6 +147,13 @@ import {
   type ChatStreamState,
 } from '../../core/chat-stream.reducer';
 import { CoreClient } from '../../core/core-client';
+import {
+  SEND_FAILURE_TOAST_MS,
+  STREAM_FAILURE_ERROR,
+  sendFailureToastText,
+} from '../../core/send-failure';
+import type { UploadedChatFile } from '../../chat/chat-files.api';
+import { CoreDispatchError } from '../../core/core-contract';
 import type {
   ChatDetail,
   ChatSettingsDto,
@@ -3580,8 +3587,12 @@ export class SalonConversation {
     }
     const pending = [...(pendingOverride ?? this.pendingToolResults())];
     this.pendingToolResults.set([]);
-    this.composer()?.clearAfterSend();
-    void this.runTurn({ content, fileIds, attachments, pending });
+    // P4.D301 (bug 241): keep the tray the clear empties — the uploaded files
+    // `ComposerSend` does not carry — so a send that dies before its row lands
+    // can put them back. A composer that hands back nothing (or none mounted)
+    // reads as an empty tray.
+    const snapshot = this.composer()?.clearAfterSend() ?? { files: [] };
+    void this.runTurn({ content, fileIds, attachments, pending, sentFiles: snapshot.files });
   }
 
   /**
@@ -3608,6 +3619,8 @@ export class SalonConversation {
     nudge?: boolean;
     /** Rolled-but-unsent tool results riding this send (v4 `pendingToolResults`). */
     pending?: PendingToolResultChip[];
+    /** P4.D301: the composer tray `clearAfterSend` emptied for this send. */
+    sentFiles?: UploadedChatFile[];
   }): Promise<void> {
     const chatId = this.chatId();
     if (!chatId) return;
@@ -3666,11 +3679,14 @@ export class SalonConversation {
 
     const hasAttachments = (opts.fileIds?.length ?? 0) > 0;
     const pending = opts.pending ?? [];
+    // P4.D301: the optimistic bubble's id, for the read-fallback restore.
+    let tempUserId: string | null = null;
     if (opts.content || hasAttachments || pending.length > 0) {
       // v4 `useSSEStreaming.ts:728-751` — the bubble is pushed into the SAME
       // array the read reconciles into, so it is retired by the fold rather
       // than by a separate clear.
       const bubble = this.makeTempUserMessage(opts.content ?? '', opts.attachments ?? []);
+      tempUserId = bubble.id;
       this.transcriptMessages.update((prev) => [...prev, bubble]);
       // A user send always chases the bottom and re-enables auto-scroll (v4).
       this.messageList()?.scrollOnUserMessage();
@@ -3679,6 +3695,10 @@ export class SalonConversation {
     let state: ChatStreamState = { ...initialChatStreamState(), waitingForResponse: true };
     this.stream.set(state);
 
+    // P4.D301: the dispatch rejection (if any) and the error the FRAME recorded
+    // before it — both read after the reconcile, where the one toast goes.
+    let sendFailure: unknown = null;
+    let frameError: string | null = null;
     const sub = this.core.events$
       .pipe(filter((frame) => frame.chatId === chatId))
       .subscribe((frame) => {
@@ -3724,10 +3744,18 @@ export class SalonConversation {
     } catch (err) {
       // v4 `useSSEStreaming` (:841-845): an unknown/TypeError failure reads as a
       // lost connection; anything else keeps the server's own sentence.
+      //
+      // P4.D301 (bug 241): NO toast here any more. v4 toasts once, AFTER its
+      // post-error `fetchChat()` and the restore it decides — so the toast moves
+      // to the reconcile below. (Measured 2026-09-06, the A1 walk: an
+      // initial-turn failure used to raise TWO error toasts here, this one and
+      // the frame's via `reportStreamTransitions`.) The frame's error is read
+      // into `frameError` BEFORE this state is overwritten.
+      frameError = state.error;
+      sendFailure = err;
       const raw = err instanceof Error ? err.message : String(err);
       const display =
         raw === 'Unknown error' || raw === 'TypeError' ? 'Connection lost. Please try again.' : raw;
-      this.toasts.showError(display || 'Failed to send message');
       state = { ...state, error: display || 'Failed to send message' };
       this.stream.set(state);
     } finally {
@@ -3757,6 +3785,18 @@ export class SalonConversation {
     // it inside the try / in the catch), or the sweep below would take the
     // operator's only copy of a line the server may well have persisted.
     this.settleTranscriptAfterTurn();
+    // P4.D301 (bug 241): after the read, before the provisional sweep — v4's
+    // catch runs `fetchChat()`, then `restoreUnpersistedSubmission`, then ONE
+    // toast, and its `finally` sweeps. A dispatch that RESOLVED is read for a
+    // frame error that escaped the chain (the initial turn saved its rows).
+    this.reportSendOutcome({
+      failure: sendFailure,
+      frameError: sendFailure ? frameError : state.error,
+      frameSubmission: state.errorSubmission,
+      opts,
+      pending,
+      tempUserId,
+    });
     // v4 calls `announceChainPause(event)` immediately after `fetchChat()` at
     // BOTH chain-complete sites (`:956` send, `:1132` continue-mode); v5's one
     // reconcile point stands in for both. v4 defaults the reason at the
@@ -3876,6 +3916,137 @@ export class SalonConversation {
   );
 
   /**
+   * The turn's ONE failure toast, and the restore it may announce (P4.D301 —
+   * v4 bug 241, `useSSEStreaming.ts:1178-1226`). Runs after the reconcile read
+   * and before the provisional sweep.
+   *
+   * The text: a rejection carrying `submission` came from the send shell, which
+   * put `Failed to generate response` + this same message on the frame — so the
+   * toast composes v4's reader text `${error}: ${details}` from those two values
+   * and reads the same whichever of the frame and the reply arrived first. Else
+   * the frame's own recorded error; else v4's mapping of the bare message.
+   */
+  private reportSendOutcome(args: {
+    failure: unknown;
+    frameError: string | null;
+    frameSubmission: ChatStreamState['errorSubmission'];
+    opts: { content?: string; continueMode?: boolean; sentFiles?: UploadedChatFile[] };
+    pending: PendingToolResultChip[];
+    tempUserId: string | null;
+  }): void {
+    const { failure, frameError } = args;
+    if (!failure) {
+      // The dispatch resolved, but the frame recorded an error — a chain
+      // failure after the initial turn saved its rows. One toast, no restore.
+      if (frameError) this.toasts.showError(frameError, SEND_FAILURE_TOAST_MS);
+      return;
+    }
+    const rider = failure instanceof CoreDispatchError ? failure.submission : undefined;
+    let base: string;
+    if (rider) {
+      base = `${STREAM_FAILURE_ERROR}: ${(failure as Error).message}`;
+    } else if (frameError) {
+      base = frameError;
+    } else {
+      const raw = failure instanceof Error ? failure.message : String(failure);
+      base = raw === 'Unknown error' || raw === 'TypeError' ? 'Connection lost. Please try again.' : raw;
+    }
+    const restored = args.opts.continueMode
+      ? false
+      : this.restoreUnpersistedSubmission({
+          rider,
+          frameSubmission: args.frameSubmission,
+          text: args.opts.content ?? '',
+          files: args.opts.sentFiles ?? [],
+          pending: args.pending,
+          tempUserId: args.tempUserId,
+        });
+    this.toasts.showError(
+      sendFailureToastText(base || 'Failed to send message', restored),
+      SEND_FAILURE_TOAST_MS,
+    );
+  }
+
+  /**
+   * Hand back whatever of a failed send has no row behind it (P4.D301 — v4
+   * `restoreUnpersistedSubmission`, `useSSEStreaming.ts:845-910`). Returns
+   * whether anything went back.
+   *
+   * Per flag, the first source that says: the rejection's `submission`
+   * (race-free), the error frame's key, then the transcript as it stands after
+   * the read — reconciliation retires a temp bubble the moment the read carries
+   * its row, so one still standing has none; v5 pushes no optimistic TOOL
+   * bubble, so a chip is missing when no TOOL row carries its `createdAt`,
+   * which the server writes verbatim (R-L5). A composer the operator has typed
+   * into since is left alone, chips included — a restore never clobbers new
+   * words. The text is what was SENT (on In Their Own Words, the restated line).
+   */
+  /**
+   * The transcript as the turn's own read leaves it, for the restore decision.
+   *
+   * ⚠ Read from the QUERY CACHE, not `chatQuery.data()`: TanStack's Angular
+   * adapter feeds that signal through `notifyManager.batchCalls`, whose default
+   * scheduler is a `setTimeout(0)` — so right after `await invalidateQueries`
+   * the signal still holds the PRE-read chat (measured in this lane's spec: the
+   * signal had 4 rows where the cache had 6). The cache is written when the
+   * fetch resolves. The fresh rows are folded through the same reconcile the
+   * display uses, so "the temp bubble still stands" means exactly what it means
+   * on screen once the signal catches up. A read that FAILED leaves what is
+   * shown (v4: a failed `fetchChat()` retires nothing).
+   */
+  private transcriptAfterTurnRead(): MessageDto[] {
+    const current = this.transcriptMessages();
+    const chatId = this.chatId();
+    if (!chatId) return current;
+    const key = chatKeys.detail(chatId);
+    if (this.queryClient.getQueryState(key)?.status === 'error') return current;
+    const fresh = this.queryClient.getQueryData<ChatDetail>(key);
+    if (!fresh) return current;
+    return reconcileTranscript(fresh.messages ?? [], current, this.transcriptSwipeStates()).messages;
+  }
+
+  private restoreUnpersistedSubmission(args: {
+    rider: { userMessagePersisted: boolean; pendingToolResultsPersisted: boolean } | undefined;
+    frameSubmission: ChatStreamState['errorSubmission'];
+    text: string;
+    files: UploadedChatFile[];
+    pending: PendingToolResultChip[];
+    tempUserId: string | null;
+  }): boolean {
+    const { rider, frameSubmission, pending } = args;
+    // Read the transcript into a local BEFORE anything is set.
+    const transcript = this.transcriptAfterTurnRead();
+    const userSaid = rider?.userMessagePersisted ?? frameSubmission?.userMessagePersisted;
+    const toolsSaid = rider?.pendingToolResultsPersisted ?? frameSubmission?.pendingToolResultsPersisted;
+    const userRowMissing =
+      userSaid !== undefined
+        ? !userSaid
+        : args.tempUserId !== null && transcript.some((m) => m.id === args.tempUserId);
+    const toolRowsMissing =
+      pending.length > 0 &&
+      (toolsSaid !== undefined
+        ? !toolsSaid
+        : pending.some(
+            (chip) => !transcript.some((m) => m.role === 'TOOL' && m.createdAt === chip.createdAt),
+          ));
+    if (!userRowMissing && !toolRowsMissing) return false;
+
+    // No composer mounted → nothing to restore into (recorded).
+    const composer = this.composer();
+    if (!composer || !composer.isBlank()) return false;
+
+    let restored = false;
+    if (userRowMissing) {
+      restored = composer.restoreAfterFailedSend({ text: args.text, files: args.files }) || restored;
+    }
+    if (toolRowsMissing) {
+      this.pendingToolResults.set([...pending]);
+      restored = true;
+    }
+    return restored;
+  }
+
+  /**
    * v4 raises these from inside its SSE reader; v5's reader is the pure
    * reducer, so the reporting rides its state transitions instead.
    *
@@ -3950,9 +4121,9 @@ export class SalonConversation {
           'The AI returned an empty response. Use the Resend button to try again.',
       );
     }
-    if (after.error && after.error !== before.error) {
-      this.toasts.showError(after.error);
-    }
+    // P4.D301 (bug 241): a recorded stream error is no longer toasted here —
+    // `runTurn` raises the turn's ONE error toast after its reconcile read
+    // (`reportSendOutcome`), as v4 does after its `fetchChat()`.
     // Every generate_image call already seen, and those of them already settled.
     // v4 raises the notice from its two SSE callbacks (`trackToolsDetected` /
     // `trackToolResult`); riding transitions, a call is "newly detected" when its

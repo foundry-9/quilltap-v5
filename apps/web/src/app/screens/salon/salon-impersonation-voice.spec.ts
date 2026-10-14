@@ -175,7 +175,13 @@ async function rig(
     }
     if (req.type === 'chatSend') {
       sends.push(req as unknown as Record<string, unknown>);
-      return { type: 'ack', data: {} };
+      // P4.D301: a real `chatSend` reply. This rig answered `ack`, which
+      // `dispatchExpect(…, 'chatSend')` REJECTS — every send here "failed", and
+      // since bug 241's restore a failed send hands its rolls back.
+      return {
+        type: 'chatSend',
+        data: { messageId: 'm-r', hasContent: true, isMultiCharacter: false, isPaused: false, userParticipantId: null },
+      } as unknown as CoreResponse;
     }
     return { type: 'ack', data: {} };
   });

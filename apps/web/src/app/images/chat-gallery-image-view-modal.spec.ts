@@ -296,6 +296,9 @@ describe('ChatGalleryImageViewModal', () => {
     });
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
+      // P4.D301 OUT-OF-MANDATE: `writable` — without it a later spec in the same
+      // vitest worker that `Object.assign`s the clipboard (courier-bubble) throws.
+      writable: true,
       value: { write: vi.fn(async () => Promise.reject(new Error('denied'))) },
     });
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});

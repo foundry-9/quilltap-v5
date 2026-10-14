@@ -900,3 +900,113 @@ describe('ChatComposer — a mid-turn send is refused aloud (bug 136)', () => {
     expect(toasts().slice(before)).toEqual([]);
   });
 });
+
+/**
+ * P4.D301 (bug 241, R-L9): the composer's half of the failed-send restore. The
+ * Salon owns the DECISION (v4 `restoreUnpersistedSubmission`); the composer
+ * owns its state, so it hands back the tray it emptied at `clearAfterSend` and
+ * puts text + files back on `restoreAfterFailedSend`, writing the draft AT
+ * ONCE (v4 calls `persistDraft(input)` directly, not through the 800 ms
+ * debounce). Read structurally so the red-first run against the old API fails
+ * on the missing methods rather than not compiling.
+ */
+describe('ChatComposer — the failed-send snapshot / restore pair (P4.D301, bug 241)', () => {
+  const KEY = 'quilltap-draft-chat-1';
+  type RestoreApi = {
+    clearAfterSend(): { files: { id: string; filename: string; url: string }[] } | void;
+    isBlank(): boolean;
+    restoreAfterFailedSend(s: {
+      text: string;
+      files: { id: string; filename: string; filepath: string; mimeType: string; url: string }[];
+    }): boolean;
+    onToggleSource(): void;
+  };
+  const FILE = UPLOADED.file;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+    TestBed.resetTestingModule();
+  });
+
+  function sendButton(fixture: ComponentFixture<ChatComposer>): HTMLButtonElement {
+    return fixture.nativeElement.querySelector('button.qt-chat-composer-send') as HTMLButtonElement;
+  }
+
+  it('clearAfterSend hands back the tray it emptied', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(UPLOADED)));
+    const fixture = render();
+    await settle(fixture);
+    pickFile(fixture);
+    await settle(fixture);
+    richEditor(fixture).setMarkdown('a line');
+    await settle(fixture);
+    const api = fixture.componentInstance as unknown as RestoreApi;
+    const snap = api.clearAfterSend();
+    expect(snap).toEqual({ files: [FILE] });
+    // …and a second clear (nothing left) hands back an empty tray.
+    expect(api.clearAfterSend()).toEqual({ files: [] });
+  });
+
+  it('restoreAfterFailedSend puts the text and the files back and saves the draft at once', async () => {
+    const fixture = render();
+    await settle(fixture);
+    const api = fixture.componentInstance as unknown as RestoreApi;
+    expect(sendButton(fixture).disabled).toBe(true);
+    expect(api.restoreAfterFailedSend({ text: 'my lost words', files: [FILE] })).toBe(true);
+    // The draft is written immediately — no 800 ms wait.
+    expect(localStorage.getItem(KEY)).toBe('my lost words');
+    fixture.detectChanges();
+    expect(richEditor(fixture).getMarkdown()).toBe('my lost words');
+    expect(fixture.nativeElement.querySelector('.qt-chat-attachment-chip')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('pic.png');
+    // The send gate opened (the `text` signal is set, not just the editor).
+    expect(sendButton(fixture).disabled).toBe(false);
+    expect(api.isBlank()).toBe(false);
+  });
+
+  it('in raw-source view the textarea shows the restored text', async () => {
+    const fixture = render();
+    await settle(fixture);
+    const api = fixture.componentInstance as unknown as RestoreApi;
+    api.onToggleSource();
+    fixture.detectChanges();
+    api.restoreAfterFailedSend({ text: 'back in **source**', files: [] });
+    fixture.detectChanges();
+    const area = fixture.nativeElement.querySelector('textarea.qt-source-mode-textarea') as HTMLTextAreaElement;
+    expect(area.value).toBe('back in **source**');
+  });
+
+  it('isBlank is false on new words in either surface', async () => {
+    const fixture = render();
+    await settle(fixture);
+    const api = fixture.componentInstance as unknown as RestoreApi;
+    expect(api.isBlank()).toBe(true);
+    richEditor(fixture).setMarkdown('   ');
+    await settle(fixture);
+    expect(api.isBlank()).toBe(true);
+    richEditor(fixture).setMarkdown('new words');
+    await settle(fixture);
+    expect(api.isBlank()).toBe(false);
+    richEditor(fixture).setMarkdown('');
+    await settle(fixture);
+    api.onToggleSource();
+    fixture.detectChanges();
+    const area = fixture.nativeElement.querySelector('textarea.qt-source-mode-textarea') as HTMLTextAreaElement;
+    area.value = 'typed in the source view';
+    area.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(api.isBlank()).toBe(false);
+  });
+
+  it('empty text and no files put nothing back', async () => {
+    localStorage.setItem(KEY, 'an older draft');
+    const fixture = render();
+    await settle(fixture);
+    const api = fixture.componentInstance as unknown as RestoreApi;
+    richEditor(fixture).setMarkdown('');
+    await settle(fixture);
+    expect(api.restoreAfterFailedSend({ text: '   ', files: [] })).toBe(false);
+    expect(richEditor(fixture).getMarkdown()).toBe('');
+  });
+});
