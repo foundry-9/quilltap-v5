@@ -827,6 +827,12 @@ _Versions: core 0.0.1284, host 0.0.200._
 
 `ChatErrorPayload` gains v4's two `ErrorEventExtras` keys, `userMessagePersisted` and `pendingToolResultsPersisted`, serialized after `details` and omitted when unset, so every frame that does not set them keeps v4's three-key shape. `CoreError` gains an optional `submission` rider (`SubmissionLedgerDto`, camelCase) for the send's dispatch rejection; `size_of::<CoreError>()` stays 96 bytes. The 40 existing struct literals (35 `CoreError`, 5 `ChatErrorPayload`, in 7 files) take `None`. New tier-1 family `chat_error_frame_equivalence` drives v4's real `encodeErrorEvent` over a 14-row shared corpus and compares frame bytes; three serde unit pins cover the five-key frame, the three-key frame, and the rejection envelope.
 
+#### 2026-10-14 — docs(porting): P4.D303 lane record — help/ and docs/v4/ at `83334b9a5`, the NO-PORT ratifications, the write_apply measurement
+
+_Docs-only change._
+
+The lane record for P4.D303 appended to `status-log.md` and the order marked LANE COMPLETE. It carries the red-first measurements (both help families red at the pin before the copy, green after), the md5 tables for the 25 `help/` and 74 `docs/v4/` writes, and the whole-mirror census. It records the NO-PORT evidence for the unifier: `4ce64fa1e` (a renumbering merge; v5 already uses 229), `9ec4fa2e9` (one `memories status` line with no v5 home, carried forward), `83334b9a5` (identical-output `successResponse` swaps), bug 235 (`processSingleton`; one Rust binary), bug 243 (the forked child's registry race; in-process jobs), the job child's memory-index cache plumbing, and the maintenance fail-after-plan test flag. `write_apply_equivalence` was measured from the pin: 21 of 22 scenarios green, `invalidations-dedup-across-batch` red because v4 no longer keys `vectorIndices.saveMeta`. That residue is handed to the unifier. The lane-start probe saw v4 `main` 15 commits past `01f508d4e`, including `release: 4.10.0`; this is recorded for `/driftcheck`.
+
 #### 2026-10-14 — test(help): rewrap the P4.D303 count line in `help_tree_embed_guard`'s doc block so clippy does not read it as a list item
 
 _No crate versions bumped._
