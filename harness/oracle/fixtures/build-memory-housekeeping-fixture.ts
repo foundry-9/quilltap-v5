@@ -5,10 +5,11 @@
  * Seeds, through v4's REAL repositories, a per-character memory corpus carrying
  * the fields the sweep reads (importance / reinforcedImportance / source /
  * pinned createdAt / lastAccessedAt / lastReinforcedAt / reinforcementCount /
- * relatedMemoryIds) plus the per-character vector stores (metadata rows +
- * entries only for seeds with a vector). Vector-table timestamps are pinned to
- * the sentinel afterwards (saveMeta/addEntry mint), exactly like the cascade
- * fixture.
+ * relatedMemoryIds), each seed's vector (if any) on the row's own `embedding`.
+ * P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin): the per-character
+ * `vector_indices` / `vector_entries` stores (and their sentinel-pinned
+ * timestamps) are gone with the mirror; `seedMetaCharacterIds` and `dimensions`
+ * stay in the committed spec, read by nothing.
  *
  * ⏳ CORPUS FRESHNESS: housekeeping decisions depend on wall-clock age, so the
  * "recent" seed dates (2026-06-xx) age. The banked outcomes hold until roughly
@@ -93,23 +94,13 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, closeDatabase, rawQuery } = await import(
-    '@/lib/database/manager'
-  );
+  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { MemoriesRepository } = await import(
     '@/lib/database/repositories/memories.repository'
-  );
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
   );
 
   await initializeDatabase();
   const memories = new MemoriesRepository();
-  const vectors = new VectorIndicesRepository();
-
-  for (const characterId of spec.seedMetaCharacterIds) {
-    await vectors.saveMeta(characterId, spec.dimensions);
-  }
 
   let seededEntries = 0;
   for (const seed of spec.seedMemories) {
@@ -124,7 +115,7 @@ async function main(): Promise<void> {
         keywords: [],
         tags: [],
         importance: seed.importance,
-        embedding: null,
+        embedding: seed.vector ? new Float32Array(seed.vector) : null,
         source: seed.source,
         witnessedContext: null,
         // Episodic spine: the merge pass's date guard reads `occurredAt`.
@@ -145,23 +136,8 @@ async function main(): Promise<void> {
       } as never,
       { id: seed.id, createdAt: seed.createdAt, updatedAt: seed.updatedAt ?? spec.seedTimestamp }
     );
-    if (seed.vector) {
-      await vectors.addEntry({
-        id: seed.id,
-        characterId: seed.characterId,
-        embedding: new Float32Array(seed.vector),
-      });
-      seededEntries++;
-    }
+    if (seed.vector) seededEntries++;
   }
-
-  // Pin the seed-minted vector timestamps to the sentinel (see the cascade
-  // builder for the rationale).
-  await rawQuery('UPDATE vector_indices SET createdAt = ?, updatedAt = ?', [
-    spec.seedTimestamp,
-    spec.seedTimestamp,
-  ]);
-  await rawQuery('UPDATE vector_entries SET createdAt = ?', [spec.seedTimestamp]);
 
   await closeDatabase();
 
@@ -183,7 +159,7 @@ async function main(): Promise<void> {
   process.stderr.write(`fixture migrations: ${migrated.join('; ')}\n`);
   process.stderr.write(
     `built memory-housekeeping fixture: ${out} (${spec.seedMemories.length} memories, ` +
-      `${spec.seedMetaCharacterIds.length} metas, ${seededEntries} entries)\n`
+      `${seededEntries} with a vector)\n`
   );
   process.exit(0);
 }

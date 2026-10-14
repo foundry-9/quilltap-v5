@@ -53,7 +53,36 @@ export interface RunV4MigrationsOptions {
    * predates the migration (and so predates the columns, as v4 there does).
    */
   allowMissing?: boolean;
+  /**
+   * P4.D288 (O-5): run the modules through v4's REAL `MigrationRunner`,
+   * NARROWED to exactly this list (registration order as given), instead of
+   * calling `shouldRun()` / `run()` directly — so `migrations_state` is
+   * consulted first and STAMPED for every migration that runs, exactly as a
+   * real v4 boot records it. Ignored under `reportOnly`.
+   */
+  runner?: boolean;
 }
+
+/**
+ * P4.D288 — the twelve migrations of the `83334b9a5` span, in v4's
+ * registration order (`migrations/scripts/index.ts:1319-1340`): the two DATA
+ * rewrites (slots 4 and 5) included. The keystone widening runs them through
+ * the narrowed runner (`runner: true`) under `TZ=UTC QUILLTAP_TIMEZONE=UTC`.
+ */
+export const P4D288_SPAN_MIGRATIONS: V4MigrationRef[] = [
+  { file: 'migrations/scripts/add-memory-superseded-at-v1.ts', exportName: 'addMemorySupersededAtMigration' },
+  { file: 'migrations/scripts/add-chat-scenario-source-v1.ts', exportName: 'addChatScenarioSourceMigration' },
+  { file: 'migrations/scripts/add-episode-extraction-watermark-v1.ts', exportName: 'addEpisodeExtractionWatermarkMigration' },
+  { file: 'migrations/scripts/recompute-reinforced-importance-v1.ts', exportName: 'recomputeReinforcedImportanceMigration' },
+  { file: 'migrations/scripts/rezone-legacy-memory-occurred-at-v1.ts', exportName: 'rezoneLegacyMemoryOccurredAtMigration' },
+  { file: 'migrations/scripts/add-memories-superseded-by-index-v1.ts', exportName: 'addMemoriesSupersededByIndexMigration' },
+  { file: 'migrations/scripts/move-memory-maintenance-settings-v1.ts', exportName: 'moveMemoryMaintenanceSettingsMigration' },
+  { file: 'migrations/scripts/retire-memory-vector-entries-v1.ts', exportName: 'retireMemoryVectorEntriesMigration' },
+  { file: 'migrations/scripts/add-memory-extraction-cursors-v1.ts', exportName: 'addMemoryExtractionCursorsMigration' },
+  { file: 'migrations/scripts/drop-inter-character-memory-jobs-v1.ts', exportName: 'dropInterCharacterMemoryJobsMigration' },
+  { file: 'migrations/scripts/add-tfidf-text-shape-version-v1.ts', exportName: 'addTfidfTextShapeVersionMigration' },
+  { file: 'migrations/scripts/drop-housekeeping-consolidation-jobs-v1.ts', exportName: 'dropHousekeepingConsolidationJobsMigration' },
+];
 
 const ENV_KEYS = ['SQLITE_PATH', 'ENCRYPTION_MASTER_PEPPER', 'QUILLTAP_DATA_DIR'] as const;
 
@@ -91,7 +120,29 @@ export async function runV4Migrations(opts: RunV4MigrationsOptions): Promise<str
   const utils = await import(pathToFileURL(utilsPath).href);
   utils.closeSQLite();
   try {
-    for (const ref of opts.migrations) {
+    if (opts.runner && !opts.reportOnly) {
+      const migrations: Array<{ id: string }> = [];
+      for (const ref of opts.migrations) {
+        const file = join(v4Root, ref.file);
+        if (!existsSync(file)) throw new Error(`migration module not found at this pin: ${ref.file}`);
+        const migration = (await import(pathToFileURL(file).href))[ref.exportName];
+        if (!migration) throw new Error(`${ref.file} exports no migration named ${ref.exportName}`);
+        migrations.push(migration);
+      }
+      const { MigrationRunner } = await import(pathToFileURL(join(v4Root, 'migrations/index.ts')).href);
+      const runner = new MigrationRunner();
+      (runner as unknown as { migrations: unknown[] }).migrations = migrations;
+      const result = await runner.runMigrations();
+      if (!result.success) throw new Error(`the runner failed: ${JSON.stringify(result)}`);
+      const ran = new Map<string, { message?: string }>(
+        (result.results as Array<{ id: string; message?: string }>).map((r) => [r.id, r]),
+      );
+      for (const m of migrations) {
+        const r = ran.get(m.id);
+        report.push(r ? `+RAN ${m.id} (${r.message})` : `${m.id} not needed (or already recorded)`);
+      }
+    }
+    for (const ref of opts.runner && !opts.reportOnly ? [] : opts.migrations) {
       const file = join(v4Root, ref.file);
       if (!existsSync(file)) {
         if (opts.allowMissing) {

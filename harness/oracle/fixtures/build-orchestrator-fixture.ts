@@ -611,12 +611,12 @@ async function main(): Promise<void> {
   // Force the tables the Rust port reads/writes but owns no DDL for into
   // existence (empty). v4 creates them lazily on first repository access.
   //   - background_jobs: the summary-check title-update / memory-extraction rows;
-  //   - memories / vector_indices / vector_entries: buildContext's memory search
-  //     reads `memories` (empty → no results) and the gate reads the vector store.
+  //   - memories: buildContext's memory search reads `memories` (empty → no
+  //     results). P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin): the
+  //     `vector_indices` / `vector_entries` mirror is gone — the gate's index
+  //     loads `memories.embedding`, so nothing else needs materializing.
   await repos.backgroundJobs.findByUserId(spec.userId, 'PENDING');
   await repos.memories.findAll();
-  await repos.vectorIndices.findMetaByCharacterId(spec.characters[0].id);
-  await repos.vectorIndices.findEntriesByCharacterId(spec.characters[0].id);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

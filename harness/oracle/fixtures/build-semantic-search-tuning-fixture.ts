@@ -5,10 +5,13 @@
  * `01a83539d` pin (the recall retuning's R1 gate / R4 anchors / R6 reserve,
  * hot-only search, the harness knobs).
  *
- * Built AT THE PIN through v4's REAL repositories and REAL
- * `CharacterVectorStore` (every id and timestamp pinned in the spec,
- * `semantic-search-tuning.json`), so the pair carries the memory-tier columns
- * natively. Three searched characters:
+ * Built AT THE PIN through v4's REAL repositories (every id and timestamp
+ * pinned in the spec, `semantic-search-tuning.json`), so the pair carries the
+ * memory-tier columns natively. P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin):
+ * the `vector_entries` mirror the REAL `CharacterVectorStore` once wrote is
+ * gone — the store loads `memories.embedding` — so the "DELETED vector entry"
+ * / "un-indexed" rows below are now ordinary indexed rows (their spec
+ * `unindexed` flag is read by nothing). Three searched characters:
  *   - RANKIN — the ranking / R1 / R4 / R5 corpus: a strong plain row, a
  *     low-cosine row carrying every boost, a related-memory seed and its
  *     sub-floor neighbour, a sub-floor entity hit, entity-only rows whose
@@ -100,16 +103,16 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
-  const { getCharacterVectorStore } = await import('@/lib/embedding/vector-store');
 
   await initializeDatabase();
 
   const repos = getRepositories();
 
-  // No user / character rows: the search reads only `memories` and the
-  // vector tables (and a character create would scaffold a vault).
-  // Memories, each with its embedding COLUMN (the anchor union re-scores an
-  // un-indexed row from it) — then the vector entries through the REAL store.
+  // No user / character rows: the search reads only `memories` (and a
+  // character create would scaffold a vault). Memories, each with its embedding
+  // COLUMN — since P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin) that column IS
+  // the index: the `vector_entries` mirror is gone and the store loads its
+  // entries from the rows, so there is no separate store write.
   for (const m of spec.memories) {
     await repos.memories.create(
       {
@@ -139,17 +142,6 @@ async function main(): Promise<void> {
       { id: m.id, createdAt: m.createdAt, updatedAt: m.createdAt },
     );
   }
-  let indexed = 0;
-  for (const c of spec.characters) {
-    const rows = spec.memories.filter((m) => m.characterId === c.id && !m.unindexed);
-    if (rows.length === 0) continue;
-    const store = await getCharacterVectorStore(c.id);
-    for (const m of rows) {
-      await store.addVector(m.id, new Float32Array(m.embedding), { memoryId: m.id, characterId: c.id });
-      indexed++;
-    }
-    await store.save();
-  }
 
   // Cold rows through v4's REAL tier writer (the store stamps tiers at load).
   let cold = 0;
@@ -159,11 +151,19 @@ async function main(): Promise<void> {
     cold += await repos.memories.updateTierBulk(c.id, ids, 'cold');
   }
 
-  // Materialize the tables both differential sides touch.
+  // Every seed carries an embedding, so every row is indexed (P4.D288: a
+  // spec row's `unindexed` flag — the deleted-entry arm — can no longer be
+  // expressed and is read by nothing).
   const mainDb = getRawDatabase();
   if (!mainDb) throw new Error('main DB handle unavailable');
-  const n = (mainDb.prepare('SELECT COUNT(*) AS n FROM "vector_entries"').get() as { n: number }).n;
-  if (n !== indexed) throw new Error(`vector_entries ${n} != indexed ${indexed}`);
+  const indexed = (
+    mainDb.prepare('SELECT COUNT(*) AS n FROM "memories" WHERE "embedding" IS NOT NULL').get() as {
+      n: number;
+    }
+  ).n;
+  if (indexed !== spec.memories.length) {
+    throw new Error(`memories with an embedding ${indexed} != seeded ${spec.memories.length}`);
+  }
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

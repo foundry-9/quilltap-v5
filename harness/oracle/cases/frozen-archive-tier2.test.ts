@@ -130,7 +130,7 @@ async function main(): Promise<void> {
     await initializeDatabase();
     for (const sql of spec.plantSql) await rawQuery(sql);
 
-    const cache = await import('@/lib/memory/frozen-archive-cache');
+    const cache = await import('@/lib/memory/recall/archive');
     const { invalidateFrozenArchivesForCompletedJob } = await import(
       '@/lib/background-jobs/host/job-dispatcher'
     );

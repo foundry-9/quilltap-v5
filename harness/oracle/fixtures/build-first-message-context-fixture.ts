@@ -7,8 +7,9 @@
  * pinned ids — `description` is a vault-managed field, so the overlay hydrates it
  * back on read), a real project (`repos.projects.create` — provisions its store),
  * and the speaker's memories (`repos.memories.create`, pinned ids + seed timestamp)
- * with per-character vector entries (`saveMeta` + `addEntry`) for the semantic-search
- * candidates. Both the oracle and the Rust port then READ this fixture and run the
+ * with their vectors on `memories.embedding` for the semantic-search candidates
+ * (P4.D288 — v4 `af48f6cc2`, the `83334b9a5` pin: the per-character
+ * `saveMeta` + `addEntry` vector entries are gone with the mirror). Both the oracle and the Rust port then READ this fixture and run the
  * same case corpus.
  *
  * Run (Node 24, from the v4 checkout):
@@ -86,9 +87,6 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
-  );
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
     DocMountPointSchema,
@@ -172,8 +170,8 @@ async function main(): Promise<void> {
     { id: spec.project.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
   );
 
-  // Memories + per-character vector entries.
-  const vectors = new VectorIndicesRepository();
+  // Memories, each vector on the row's own `embedding` (P4.D288 — v4
+  // `af48f6cc2`, the `83334b9a5` pin: the `vector_entries` mirror is gone).
   let seededMemories = 0;
   let seededVectors = 0;
   for (const m of spec.seedMemories) {
@@ -188,7 +186,7 @@ async function main(): Promise<void> {
         keywords: [],
         tags: [],
         importance: m.importance,
-        embedding: null,
+        embedding: m.vector ? new Float32Array(m.vector) : null,
         source: 'AUTO',
         witnessedContext: null,
         sourceMessageId: null,
@@ -201,15 +199,7 @@ async function main(): Promise<void> {
       { id: m.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
     seededMemories++;
-    if (m.vector) {
-      await vectors.saveMeta(m.characterId, m.vector.length);
-      await vectors.addEntry({
-        id: m.id,
-        characterId: m.characterId,
-        embedding: new Float32Array(m.vector),
-      });
-      seededVectors++;
-    }
+    if (m.vector) seededVectors++;
   }
 
   // [40319484] `gcOrphanedFileRow` runs inside every content-addressed rewrite

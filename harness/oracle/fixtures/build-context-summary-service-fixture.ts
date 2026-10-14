@@ -20,10 +20,12 @@
  *     sides). The other four `generate` chats' characters are NOT provisioned, so
  *     their mirror/refresh no-op identically on both sides.
  *
- * P4.36 adds what the fold-time EPISODE pass needs to be comparable: the three
- * collections v4 would create on demand at the first `createMemoryWithGate`
- * (`memories`, `vector_indices`, `vector_entries` — the Rust port creates no tables
- * on the fly, the same reason `background_jobs` was already materialized here), and
+ * P4.36 adds what the fold-time EPISODE pass needs to be comparable: the
+ * collection v4 would create on demand at the first `createMemoryWithGate`
+ * (`memories` — the Rust port creates no tables on the fly, the same reason
+ * `background_jobs` was already materialized here; P4.D288, v4 `af48f6cc2` at the
+ * `83334b9a5` pin, retired the `vector_indices` / `vector_entries` pair the gate
+ * also needed — a memory's vector now lives on `memories.embedding`), and
  * ONE seeded per-turn fragment memory inside `fold_regular`'s folded window so the
  * pass's `relatedMemoryIds` linking is exercised rather than trivially empty.
  *
@@ -163,9 +165,6 @@ async function main(): Promise<void> {
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const { ChatsRepository } = await import('@/lib/database/repositories/chats.repository');
   const { BackgroundJobSchema, MemorySchema } = await import('@/lib/schemas/types');
-  const { VectorIndexMetaSchema, VectorEntryRowSchema } = await import(
-    '@/lib/schemas/vector-indices.types'
-  );
   const {
     DocMountPointSchema,
     DocMountFileSchema,
@@ -184,13 +183,12 @@ async function main(): Promise<void> {
   // does not create tables on the fly).
   await ensureCollection('background_jobs', BackgroundJobSchema);
   // P4.36: same reason, for the fold-time episode pass's writes. v4 would create
-  // `memories` (and the gate's `vector_indices`) on demand at the first
-  // `createMemoryWithGate`; the Rust port does not, so seeding them is what makes
-  // the two sides comparable rather than a table-exists-vs-not difference standing
-  // in for the write diff.
+  // `memories` on demand at the first `createMemoryWithGate`; the Rust port does
+  // not, so seeding it is what makes the two sides comparable rather than a
+  // table-exists-vs-not difference standing in for the write diff. P4.D288 (v4
+  // `af48f6cc2`, the `83334b9a5` pin): the gate's `vector_indices` /
+  // `vector_entries` mirror is gone — its index loads `memories.embedding`.
   await ensureCollection('memories', MemorySchema);
-  await ensureCollection('vector_indices', VectorIndexMetaSchema);
-  await ensureCollection('vector_entries', VectorEntryRowSchema);
 
   // MOUNT-INDEX db: materialize every store table the provision/write path touches,
   // via v4's own generated DDL (idempotent).
@@ -344,10 +342,10 @@ async function main(): Promise<void> {
   // P4.36: a per-turn FRAGMENT memory sitting inside `fold_regular`'s folded
   // window, so the episode pass's LINK half (`relatedMemoryIds`, written on both
   // the episode and the fragment) is exercised instead of trivially empty. Written
-  // through v4's REAL repo with a pinned id. It gets NO `vector_entries` row, so
-  // the gate's near-duplicate search never sees it — only
-  // `findByCharacterAndSourceMessageIds` does — and every gate decision in the
-  // corpus stays what it would have been without it.
+  // through v4's REAL repo with a pinned id. It gets NO embedding (P4.D288: the
+  // vector lives on `memories.embedding`), so the gate's near-duplicate search
+  // never sees it — only `findByCharacterAndSourceMessageIds` does — and every
+  // gate decision in the corpus stays what it would have been without it.
   await repos.memories.create(
     {
       characterId: VAULT_CHARACTER_ID,

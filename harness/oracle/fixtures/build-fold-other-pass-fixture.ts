@@ -11,12 +11,16 @@
  *     fold-grain call reads, incl. the Commonplace digest);
  *   - the chats + every message through `repos.chats.addMessage` with PINNED
  *     ids + createdAt; then each chat's `lastMessageAt` / `messageCount` /
- *     watermark / `contextSummary` / `timelineMode` set by a direct UPDATE so
- *     the idle catch-up's windows are exact against the corpus's FIXED `now`;
+ *     `contextSummary` / `timelineMode` set by a direct UPDATE so the idle
+ *     catch-up's windows are exact against the corpus's FIXED `now`, and its
+ *     OTHER watermark seeded as a `memory_extraction_cursors` `other-fold` row
+ *     (P4.D288 — v4 `ac6348c5f`: the `chats` column is gone);
  *   - the rate-limit ballast (FUTURE-dated memories — always "in the last
  *     hour") for the rate-limited and throttled observers;
- *   - the lazily-created tables the ops write (`memories` + the V2 vector
- *     tables, `background_jobs`, `instance_settings`), created empty;
+ *   - the lazily-created tables the ops write (`memories`, `background_jobs`,
+ *     `instance_settings`), created empty (P4.D288 — v4 `af48f6cc2`, the
+ *     `83334b9a5` pin: the V2 vector tables are gone; a memory's vector lives
+ *     on `memories.embedding`);
  *   - the gate-write-failure trigger plant (created LAST, so no seed trips it).
  *
  * Run from the v4 server checkout under Node 24:
@@ -276,13 +280,12 @@ async function main(): Promise<void> {
     mainDb
       .prepare(
         'UPDATE "chats" SET "lastMessageAt" = ?, "messageCount" = ?, ' +
-          '"otherExtractionWatermarkMessageId" = ?, "contextSummary" = ?, ' +
+          '"contextSummary" = ?, ' +
           '"timelineMode" = COALESCE(?, "timelineMode"), "updatedAt" = ? WHERE "id" = ?'
       )
       .run(
         chat.lastMessageAt,
         chat.messageCount,
-        chat.otherExtractionWatermarkMessageId ?? null,
         chat.contextSummary ?? null,
         chat.timelineMode ?? null,
         spec.seedTimestamp,
@@ -290,7 +293,44 @@ async function main(): Promise<void> {
       );
   }
 
-  // `memories` + the V2 vector tables + the rate-limit ballast (FUTURE-dated:
+  // P4.D288 (v4 `ac6348c5f`, the `83334b9a5` pin): memory refactor Phase D moved
+  // `chats.otherExtractionWatermarkMessageId` into `memory_extraction_cursors`
+  // (pass `other-fold`) and dropped the column, so the watermark is seeded as a
+  // cursor row. The table is created from v4's
+  // `add-memory-extraction-cursors-v1` DDL, copied verbatim (the shape a
+  // migrated instance carries), and each row is the migration's own backfill
+  // INSERT with the corpus's seed timestamp. (Created once `chats` exists — the
+  // FOREIGN KEY names it.)
+  mainDb.exec(
+    `CREATE TABLE IF NOT EXISTS "memory_extraction_cursors" (
+          "id" TEXT PRIMARY KEY,
+          "chatId" TEXT NOT NULL,
+          "pass" TEXT NOT NULL,
+          "messageId" TEXT NOT NULL,
+          "createdAt" TEXT NOT NULL,
+          "updatedAt" TEXT NOT NULL,
+          UNIQUE ("chatId", "pass"),
+          FOREIGN KEY ("chatId") REFERENCES "chats"("id") ON DELETE CASCADE
+        )`
+  );
+  const insertCursor = mainDb.prepare(
+    `INSERT INTO "memory_extraction_cursors" ("id", "chatId", "pass", "messageId", "createdAt", "updatedAt")
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT("id") DO NOTHING`
+  );
+  for (const chat of spec.chats) {
+    if (!chat.otherExtractionWatermarkMessageId) continue;
+    insertCursor.run(
+      `${chat.id}:other-fold`,
+      chat.id,
+      'other-fold',
+      chat.otherExtractionWatermarkMessageId,
+      spec.seedTimestamp,
+      spec.seedTimestamp
+    );
+  }
+
+  // `memories` + the rate-limit ballast (FUTURE-dated:
   // `countCreatedSince(now - 1h)` counts them whatever the wall clock).
   let ballastN = 0;
   for (const b of spec.ballast) {
@@ -323,17 +363,6 @@ async function main(): Promise<void> {
           updatedAt: spec.futureTimestamp,
         }
       );
-    }
-  }
-  const { VectorIndexMetaSchema, VectorEntryRowSchema } = await import(
-    '@/lib/schemas/vector-indices.types'
-  );
-  for (const [name, schema] of [
-    ['vector_indices', VectorIndexMetaSchema],
-    ['vector_entries', VectorEntryRowSchema],
-  ] as Array<[string, unknown]>) {
-    for (const sql of generateDDL(name, schema as never)) {
-      mainDb.exec(sql);
     }
   }
   // `background_jobs` via a real enqueue that is then deleted (v4's exact DDL,

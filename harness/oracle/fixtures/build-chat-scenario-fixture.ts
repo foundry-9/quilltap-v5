@@ -302,9 +302,24 @@ async function main(): Promise<void> {
   // 3. Stores. Project / group official stores are provisioned by `create`;
   //    the General singleton is a bare mount point plus its `instance_settings`
   //    pointer, exactly as `build-groups-projects-fixture` does it.
-  const { ensureGroupScenariosFolder } = await import('@/lib/mount-index/group-scenarios');
-  const { ensureProjectScenariosFolder } = await import('@/lib/mount-index/project-scenarios');
-  const { ensureGeneralScenariosFolder } = await import('@/lib/mount-index/general-scenarios');
+  //    P4.D288 (the `83334b9a5` pin): v4 retired the per-scope
+  //    `@/lib/mount-index/{general,group,project}-scenarios` helpers for ONE
+  //    `resolveScenarioLocation(scope, id, …, { ensure: true })`, which heals the
+  //    `Scenarios/` folder exactly as the old `ensure*ScenariosFolder` did; the
+  //    files are still written verbatim through `writeDatabaseDocument`.
+  const { resolveScenarioLocation } = await import('@/lib/scenarios/location');
+  const ensureScenarios = async (
+    scope: 'general' | 'project' | 'group',
+    id: string | null,
+    expectedMp: string,
+  ) => {
+    const location = await resolveScenarioLocation(scope, id, repos, spec.userId, { ensure: true });
+    if (!location) throw new Error(`${scope} scenario location not resolved (${id ?? 'general'})`);
+    if (location.mountPointId !== expectedMp) {
+      throw new Error(`${scope} scenario store drift: got ${location.mountPointId}, expected ${expectedMp}`);
+    }
+    return location;
+  };
   const { buildScenarioFileContent } = await import('@/lib/mount-index/scenarios-common');
   const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
 
@@ -314,7 +329,7 @@ async function main(): Promise<void> {
   );
   const projMp = proj.officialMountPointId as string;
   if (!projMp) throw new Error('project official store not provisioned');
-  await ensureProjectScenariosFolder(projMp);
+  await ensureScenarios('project', PROJ, projMp);
   await writeDatabaseDocument(
     projMp,
     'Scenarios/tavern.md',
@@ -343,7 +358,7 @@ async function main(): Promise<void> {
   );
   const grpMp = grp.officialMountPointId as string;
   if (!grpMp) throw new Error('group official store not provisioned');
-  await ensureGroupScenariosFolder(grpMp);
+  await ensureScenarios('group', GRP, grpMp);
   await writeDatabaseDocument(
     grpMp,
     'Scenarios/quay.md',
@@ -376,10 +391,7 @@ async function main(): Promise<void> {
   maindb
     .prepare('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)')
     .run('generalMountPointId', GENERAL_MP);
-  const ensuredGeneral = await ensureGeneralScenariosFolder();
-  if (!ensuredGeneral.mountPointId) {
-    throw new Error('general mount not resolved after seeding the pointer');
-  }
+  await ensureScenarios('general', null, GENERAL_MP);
   await writeDatabaseDocument(
     GENERAL_MP,
     'Scenarios/welcome.md',

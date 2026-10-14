@@ -45,8 +45,10 @@
  *   - FOUR conversation chunks (embedded / un-embedded / oversize / embedded).
  *   - THREE memories across two characters, two of them carrying an 8-dim
  *     embedding so `mismatched-dim` has rows to SKIP as well as rows to take.
- *   - A vector-index meta row + one entry for Aria plus an ORPHAN entry, so
- *     full-scope `deleteStore` is a visible change.
+ *   - (Retired, P4.D288 — v4 `af48f6cc2`, the `83334b9a5` pin: a vector-index
+ *     meta row + one entry for Aria plus an ORPHAN entry; the `vector_indices` /
+ *     `vector_entries` mirror is gone and a memory's vector lives on
+ *     `memories.embedding`.)
  *   - ONE help doc that is NOT on disk, so the reindex's `syncHelpDocs` prune is
  *     visible; the rest of `help_docs` comes from the committed help tree the
  *     handler syncs (`fixtures/help-sync/help/`, shared with the P4.1b family).
@@ -68,8 +70,8 @@
  *     quantized header. The two take different branches of `EMBEDDING_DIM_SQL`,
  *     so — like v4's own test — the corpus carries both. Applied to memories
  *     (one per format), conversation chunks (stale / live / ORPHAN), the one
- *     help doc whose id is pinned, two extra vector-index entries, and mount
- *     chunks.
+ *     help doc whose id is pinned, and mount chunks (the two extra
+ *     vector-index entries retired with the mirror, P4.D288).
  *   - TWO explicit document mount points, one ENABLED and one DISABLED, with
  *     pinned ids (the per-character vault mounts exist but their ids are minted),
  *     and five chunks across them: conforming, NULL, non-conforming, FAILED, and
@@ -77,8 +79,8 @@
  *   - FAILED `embedding_status` rows for the 8-dimension profile covering all
  *     four entity types, so both the reindex's `mismatched-dim` skips and the
  *     reconcile's NOT_FAILED exclusions are observable.
- *   - Aria's index meta dim comes from the spec (4, not the corpus width), so the
- *     reconcile's meta snap is a visible change.
+ *   - (Retired, P4.D288: Aria's index meta dim from the spec — the meta row is
+ *     gone with the mirror.)
  *
  * Run from the v4 server checkout under Node 24:
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<the v5 worktree>
@@ -201,7 +203,8 @@ interface MountChunkSeed extends LegacyBlob {
   content: string;
   embedded: boolean;
 }
-/** P4.d27 — an extra vector-index entry, written at a legacy width. */
+/** P4.d27 — an extra vector-index entry, written at a legacy width. Read by
+ *  nothing since P4.D288 (the `vector_entries` mirror is gone). */
 interface VectorEntrySeed extends LegacyBlob {
   id: string;
 }
@@ -285,9 +288,6 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
-  );
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
     DocMountFileSchema,
@@ -519,29 +519,15 @@ async function main(): Promise<void> {
     legacyRewrites.push({ db: 'main', table: 'memories', seed: m });
   }
 
-  // Aria's vector index: a meta row with a DELIBERATELY wrong dim plus one real
-  // entry and one ORPHAN entry, so full-scope `deleteStore` is a visible change
-  // and partial scope's leave-it-alone is equally visible. P4.d27 adds two
-  // entries at a LEGACY width (one per on-disk format) that the boot dimension
-  // reconcile DELETEs outright, and pins the meta dim from the spec so the
-  // reconcile's meta snap is a visible change too.
-  const vectors = new VectorIndicesRepository();
-  const ariaId = spec.characters[0].id;
-  await vectors.saveMeta(ariaId, spec.seedVectorIndexDimensions);
-  await vectors.addEntry({
-    id: spec.seedVectorEntryMemoryId,
-    characterId: ariaId,
-    embedding: embedding(),
-  });
-  await vectors.addEntry({
-    id: spec.orphanVectorEntryId,
-    characterId: ariaId,
-    embedding: embedding(),
-  });
-  for (const e of spec.extraVectorEntries) {
-    await vectors.addEntry({ id: e.id, characterId: ariaId, embedding: embedding() });
-    legacyRewrites.push({ db: 'main', table: 'vector_entries', seed: e });
-  }
+  // P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin): Aria's `vector_indices` /
+  // `vector_entries` index is gone with the mirror — a memory's vector is its own
+  // `memories.embedding`. The real entry duplicated `seedVectorEntryMemoryId`'s
+  // already-embedded row (that row still carries the vector); the ORPHAN entry,
+  // the two legacy-width extra entries and the deliberately-wrong meta dim had
+  // no memory row and nowhere to live, so they are dropped (the memories'
+  // own `legacyDim` rows still exercise both legacy formats).
+  // `seedVectorIndexDimensions`, `orphanVectorEntryId` and `extraVectorEntries`
+  // stay in the committed spec, read by nothing.
 
   // P4.d27 — two explicit document mount points (one enabled, one disabled) and
   // their chunks. Vault mounts exist already (one per character), but their ids

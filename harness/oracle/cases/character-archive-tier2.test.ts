@@ -66,8 +66,8 @@ const MAIN_TABLES = [
   'memories',
   'files',
   'embedding_status',
-  'vector_indices',
-  'vector_entries',
+  // (P4.D288: `vector_indices` / `vector_entries` retired with v4 `af48f6cc2` —
+  // the vectors live on `memories.embedding`.)
   // §3 review (archive-round-2): the re-embed half of rehydrate and the
   // import's one-EMBEDDING_GENERATE-per-restored-memory both write here —
   // without this table a port that never enqueued a job would pass.
@@ -217,7 +217,9 @@ async function runCase(
   jest.doMock('@/lib/file-storage/manager', () =>
     jest.requireActual('@/lib/file-storage/manager'),
   );
-  jest.doMock('@/lib/memory/memory-gate', () => jest.requireActual('@/lib/memory/memory-gate'));
+  // P4.D288 (v4 `af48f6cc2`): the memory-gate deleters are gone — the ONE
+  // retire path (`lib/memory/retire.ts`) deletes the archived memories.
+  jest.doMock('@/lib/memory/retire', () => jest.requireActual('@/lib/memory/retire'));
   // ⚠ A STALE ORACLE MOCK, found by consequence (P4.20 / P4.36 class).
   // jest.setup stubs `getDefaultEmbeddingProfile` to resolve `null`, so the
   // import's `enqueueImportedMemoryEmbeddings` took its no-default-profile

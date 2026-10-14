@@ -380,8 +380,6 @@ async function main(): Promise<void> {
   const { EmbeddingProfileSchema } = await import('@/lib/schemas/profile.types');
   await ensureCollection('embedding_profiles', EmbeddingProfileSchema);
   await repos.backgroundJobs.findByUserId(spec.userId, 'PENDING');
-  await repos.vectorIndices.findMetaByCharacterId(spec.characters[0].id);
-  await repos.vectorIndices.findEntriesByCharacterId(spec.characters[0].id);
   await repos.groupCharacterMembers.findByCharacterId(spec.characters[0].id);
 
   closeMountIndexSQLiteClient();

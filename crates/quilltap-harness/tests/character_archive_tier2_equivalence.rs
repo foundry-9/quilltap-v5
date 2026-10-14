@@ -102,14 +102,14 @@ const MISSING_CHARACTER: &str = "00000000-0000-4000-8000-00000000dead";
 /// constant.
 const CORRUPT_DIGEST: &str = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
 
-const MAIN_TABLES: [&str; 9] = [
+const MAIN_TABLES: [&str; 7] = [
     "characters",
     "chats",
     "memories",
     "files",
     "embedding_status",
-    "vector_indices",
-    "vector_entries",
+    // (P4.D288: `vector_indices` / `vector_entries` retired with v4 `af48f6cc2`
+    // — the vectors live on `memories.embedding`.)
     // §3 review (archive-round-2): the re-embed half of rehydrate and the
     // import's one-EMBEDDING_GENERATE-per-restored-memory both write here —
     // without this table a port that never enqueued a job would pass.

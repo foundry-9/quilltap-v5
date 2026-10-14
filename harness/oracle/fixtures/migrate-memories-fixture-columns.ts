@@ -372,6 +372,20 @@
  *   test peppers opens it) and is healed on its scratch copy by
  *   `restore_vintage_state`'s mirror boot — never rewritten. No `.meta.json`
  *   moved (they hold minted ids, not digests) and no digest pin names a pair.
+ *
+ * The P4.D288 widening (v4 `83334b9a5`, O-5 — the twelve span migrations in
+ * registration order, BOTH data rewrites included, through v4's REAL
+ * `MigrationRunner` narrowed to them so `migrations_state` is STAMPED for every
+ * one that runs, as a real v4 boot records it): `--runner` switches the module
+ * arm onto the narrowed runner, `--p4d288-span` names the twelve
+ * (`lib/v4-migrations.ts` `P4D288_SPAN_MIGRATIONS`). Deterministic in UTC:
+ *   cd /tmp/qt-v4-pin-p4d288-83334b9a5
+ *   TZ=UTC QUILLTAP_TIMEZONE=UTC $N/node --import tsx \
+ *     $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+ *     --runner --p4d288-span [--report-only] $F/<one *-main.db per invocation>
+ *   (the per-pair report, the logically-unchanged pairs restored and the
+ *   families that read each pair are in the P4.D288 lane record in
+ *   `status-log.md`).
  */
 
 import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -380,7 +394,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { runV4Migrations, type V4MigrationRef } from '../lib/v4-migrations';
+import { P4D288_SPAN_MIGRATIONS, runV4Migrations, type V4MigrationRef } from '../lib/v4-migrations';
 
 // Resolve better-sqlite3 (v4 aliases it to better-sqlite3-multiple-ciphers — the
 // sqleet/ChaCha20 binding) from the v4 checkout: run this script with cwd there.
@@ -619,6 +633,7 @@ async function runModules(
   paths: string[],
   modules: V4MigrationRef[],
   reportOnly: boolean,
+  runner: boolean,
 ): Promise<void> {
   for (const path of paths) {
     const pepper = pepperFor(path);
@@ -636,6 +651,7 @@ async function runModules(
         pepperBase64: pepper.base64,
         migrations: modules,
         reportOnly,
+        runner,
       });
       process.stderr.write(`${path}: ${report.join('; ')}\n`);
     } finally {
@@ -647,11 +663,16 @@ async function runModules(
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const reportOnly = argv.includes('--report-only');
+  const runner = argv.includes('--runner');
   const modules: V4MigrationRef[] = [];
   const paths: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--report-only') continue;
+    if (a === '--report-only' || a === '--runner') continue;
+    if (a === '--p4d288-span') {
+      modules.push(...P4D288_SPAN_MIGRATIONS);
+      continue;
+    }
     if (a === '--module') {
       const spec = argv[++i];
       const hash = spec?.indexOf('#') ?? -1;
@@ -665,11 +686,11 @@ async function main(): Promise<void> {
   }
   if (paths.length === 0) {
     throw new Error(
-      'usage: migrate-memories-fixture-columns.ts [--report-only] [--module <file>#<export> …] <fixture.db> [<fixture.db> …]',
+      'usage: migrate-memories-fixture-columns.ts [--report-only] [--runner] [--p4d288-span] [--module <file>#<export> …] <fixture.db> [<fixture.db> …]',
     );
   }
   if (modules.length > 0) {
-    await runModules(paths, modules, reportOnly);
+    await runModules(paths, modules, reportOnly, runner);
     return;
   }
 

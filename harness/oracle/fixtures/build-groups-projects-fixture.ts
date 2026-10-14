@@ -346,13 +346,29 @@ async function main(): Promise<void> {
   if (delta.id !== DELTA) throw new Error(`Delta id drift: got ${delta.id}, expected ${DELTA}`);
 
   // Gamma scenarios (into its official store).
-  const { ensureGroupScenariosFolder, setGroupScenarioDefault } = await import(
-    '@/lib/mount-index/group-scenarios'
-  );
+  // P4.D288 (the `83334b9a5` pin): v4 retired the per-scope
+  // `@/lib/mount-index/{general,group,project}-scenarios` helpers for ONE
+  // `resolveScenarioLocation(scope, id, …, { ensure: true })` (which heals the
+  // `Scenarios/` folder exactly as the old `ensure*ScenariosFolder` did) and the
+  // location's `setDefault`. The scenario files themselves are still written
+  // verbatim through `writeDatabaseDocument`, so the seed bytes are unchanged.
+  const { resolveScenarioLocation } = await import('@/lib/scenarios/location');
+  const ensureScenarios = async (
+    scope: 'general' | 'project' | 'group',
+    id: string | null,
+    expectedMp: string,
+  ) => {
+    const location = await resolveScenarioLocation(scope, id, repos, spec.userId, { ensure: true });
+    if (!location) throw new Error(`${scope} scenario location not resolved (${id ?? 'general'})`);
+    if (location.mountPointId !== expectedMp) {
+      throw new Error(`${scope} scenario store drift: got ${location.mountPointId}, expected ${expectedMp}`);
+    }
+    return location;
+  };
   const { buildScenarioFileContent } = await import('@/lib/mount-index/scenarios-common');
   const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
   const gammaMp = gamma.officialMountPointId as string;
-  await ensureGroupScenariosFolder(gammaMp);
+  const gammaScenarios = await ensureScenarios('group', GAMMA, gammaMp);
   await writeDatabaseDocument(
     gammaMp,
     'Scenarios/prologue.md',
@@ -363,7 +379,7 @@ async function main(): Promise<void> {
     'Scenarios/interlude.md',
     buildScenarioFileContent({ name: 'Interlude', body: 'A quiet pause.' }),
   );
-  await setGroupScenarioDefault(gammaMp, 'Scenarios/prologue.md');
+  await gammaScenarios.setDefault('Scenarios/prologue.md');
 
   // Beacon — member Aria, one non-default scenario. Its name sorts BEFORE Gamma,
   // so the participant-union's groupName sort is observable.
@@ -374,7 +390,7 @@ async function main(): Promise<void> {
   if (beacon.id !== BEACON) throw new Error(`Beacon id drift: got ${beacon.id}, expected ${BEACON}`);
   await repos.groupCharacterMembers.addMember(BEACON, ARIA);
   const beaconMp = beacon.officialMountPointId as string;
-  await ensureGroupScenariosFolder(beaconMp);
+  await ensureScenarios('group', BEACON, beaconMp);
   await writeDatabaseDocument(
     beaconMp,
     'Scenarios/beacon-intro.md',
@@ -391,8 +407,8 @@ async function main(): Promise<void> {
   await repos.groupCharacterMembers.addMember(ZEPHYR, ARIA);
 
   // General (instance-wide) "Quilltap General" mount + its Scenarios/. Persist the
-  // pointer in the MAIN db's instance_settings (the general-scenarios helpers read
-  // it via getGeneralMountPointId).
+  // pointer in the MAIN db's instance_settings (the general scenario location
+  // reads it via getGeneralMountPointId).
   await repos.docMountPoints.create(
     {
       name: 'Quilltap General',
@@ -421,12 +437,10 @@ async function main(): Promise<void> {
   mainDb
     .prepare('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)')
     .run('generalMountPointId', GENERAL_MP);
-  // Two scenarios that BOTH set isDefault (no setGeneralScenarioDefault, so both
-  // stay raw-default on disk) → the default-conflict warning: alphabetically-first
+  // Two scenarios that BOTH set isDefault (no `setDefault`, so both stay
+  // raw-default on disk) → the default-conflict warning: alphabetically-first
   // 'aurora' wins, 'dusk' is demoted-in-response.
-  const { ensureGeneralScenariosFolder } = await import('@/lib/mount-index/general-scenarios');
-  const ensuredGeneral = await ensureGeneralScenariosFolder();
-  if (!ensuredGeneral.mountPointId) throw new Error('general mount not resolved after seeding pointer');
+  await ensureScenarios('general', null, GENERAL_MP);
   await writeDatabaseDocument(
     GENERAL_MP,
     'Scenarios/aurora.md',
@@ -542,10 +556,7 @@ async function main(): Promise<void> {
   await writeAesthetic(iotaMp, 'aurora', 'Cool starlit palette.');
 
   // Iota scenarios (two, one default).
-  const { ensureProjectScenariosFolder, setProjectScenarioDefault } = await import(
-    '@/lib/mount-index/project-scenarios'
-  );
-  await ensureProjectScenariosFolder(iotaMp);
+  const iotaScenarios = await ensureScenarios('project', IOTA, iotaMp);
   await writeDatabaseDocument(
     iotaMp,
     'Scenarios/opening.md',
@@ -556,7 +567,7 @@ async function main(): Promise<void> {
     'Scenarios/climax.md',
     buildScenarioFileContent({ name: 'Climax', body: 'The turning point.' }),
   );
-  await setProjectScenarioDefault(iotaMp, 'Scenarios/opening.md');
+  await iotaScenarios.setDefault('Scenarios/opening.md');
 
   // Iota wardrobe (two items, one composite referencing the other).
   const { ensureSharedWardrobeFolder } = await import('@/lib/mount-index/shared-wardrobe');

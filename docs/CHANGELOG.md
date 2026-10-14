@@ -24,6 +24,25 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — test(harness): P4.D288 unit 11 — the import re-aims and the 45 committed fixture pairs widened (O-5)
+
+_No crate versions bumped._
+
+The committed fixture pairs and the oracle builders follow v4's `83334b9a5` memory refactor.
+
+The widening:
+- `migrate-memories-fixture-columns.ts` gains `--runner` (v4's real migration runner narrowed to the named migrations, so the ledger is stamped as a real v4 boot stamps it) and `--p4d288-span` (the twelve span migrations in v4's order).
+- 45 of the 50 committed `*-main.db` pairs are widened in place from the pin under `TZ=UTC`. The other five were already current.
+- Each pair's schema moved exactly as predicted: the cursor table, the ledger tables, `supersededAt` and its index, the `chats` scenario pair, the settings move's column drops, `textShapeVersion`, and the vector mirror dropped.
+
+A host-boot measurement over copies of two widened pairs shows identical boots whether the planted ledger rows are kept, deleted, or their tables dropped.
+
+The re-aims:
+- 34 builders and the renamed `recall/*` and `retire` import paths are re-aimed. Vectors now live on `memories.embedding`, and retired job types are mapped or skipped.
+- Every builder and every renamed module loads from the pin. The exception is `build-restore-archives-dedupe`, whose own file-count check was already failing before this unit.
+
+The workspace suite over the widened pairs: 5,158 passed. The four failures are the three binaries that are red by design for sibling lanes.
+
 #### 2026-10-14 — feat(core): P4.D288 unit 10 — the carriers' pure helpers (C1-11)
 
 _Versions: core 0.0.1296._

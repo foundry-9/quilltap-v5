@@ -44,8 +44,8 @@ import {
   type ContextTag,
   type ScopePolicy,
   type RecallContext,
-} from '@/lib/memory/recall-tags';
-import { RecallTuningInputSchema, resolveRecallTuning } from '@/lib/memory/recall-tuning';
+} from '@/lib/memory/recall/tags';
+import { RecallTuningInputSchema, resolveRecallTuning } from '@/lib/memory/recall/tuning';
 
 // Each row is tagged by `kind` so the Rust side dispatches to the right fn.
 // `mult` rows carry the RecallMultiplier shape ({ multiplier, fired, exclude? });

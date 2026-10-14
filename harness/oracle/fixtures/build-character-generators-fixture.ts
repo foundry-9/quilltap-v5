@@ -27,10 +27,11 @@
  *     P4.157 R-B), 2 scenarios (1 default), 2 wardrobe items, a
  *     physical description, and TEN memories: eight about herself with
  *     `reinforcementCount >= 2` (one of them created a year earlier for the
- *     date-window arms; one with NO vector entry so the semantic-search arm
+ *     date-window arms; one with NO embedding so the semantic-search arm
  *     can exclude something), one about herself with count 1 (filtered out),
  *     one ABOUT Nix (excluded — the self-reference rule), the rest with a
- *     4-dim vector in the index,
+ *     4-dim vector on `memories.embedding` (P4.D288 — v4 `af48f6cc2`: the
+ *     `vector_entries` mirror is gone),
  *   - Nix — a bare character with no memories (the "not enough" arm).
  *
  * Regenerate (Node 24, from the v4 checkout) + re-copy the committed .db files:
@@ -194,9 +195,6 @@ async function main(): Promise<void> {
   const { MemorySchema } = await import('@/lib/schemas/memory.types');
   const { FileEntrySchema } = await import('@/lib/schemas/types');
   const { BackgroundJobSchema } = await import('@/lib/schemas/job.types');
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
-  );
   const { storeMountFile } = await import('@/lib/mount-index/store-file');
   const { buildMountBlobStorageKey } = await import('@/lib/file-storage/project-store-bridge');
   const { sha256OfBuffer } = await import('@/lib/utils/sha256');
@@ -407,8 +405,11 @@ async function main(): Promise<void> {
     if (Object.keys(patch).length > 0) await repos.characters.update(c.id, patch as never);
   }
 
-  // 6. Memories + their vector index entries (the carina builder's idiom).
-  const vectors = new VectorIndicesRepository();
+  // 6. Memories, each vector on the row's own `embedding`. P4.D288 (v4
+  //    `af48f6cc2`, the `83334b9a5` pin): the `vector_entries` mirror is gone.
+  //    A `vector: null` memory has NO embedding — the one shape that makes the
+  //    optimizer's semantic-search arm discriminate from "every about-self
+  //    memory" (a 500-hit search over a nine-entry index matches them all).
   for (const m of spec.memories) {
     await repos.memories.create(
       {
@@ -422,7 +423,7 @@ async function main(): Promise<void> {
         keywords: [],
         tags: [],
         importance: m.importance,
-        embedding: null,
+        embedding: m.vector ? new Float32Array(m.vector) : null,
         source: 'AUTO',
         witnessedContext: null,
         sourceMessageId: null,
@@ -434,17 +435,6 @@ async function main(): Promise<void> {
       } as never,
       { id: m.id, createdAt: m.createdAt, updatedAt: m.createdAt } as never,
     );
-    // A `vector: null` memory has NO index entry — the one shape that makes
-    // the optimizer's semantic-search arm discriminate from "every about-self
-    // memory" (a 500-hit search over a nine-entry index matches them all).
-    if (m.vector) {
-      await vectors.saveMeta(m.characterId, m.vector.length);
-      await vectors.addEntry({
-        id: m.id,
-        characterId: m.characterId,
-        embedding: new Float32Array(m.vector),
-      });
-    }
   }
 
   // Force the empty tables the read paths touch into existence — through the
@@ -455,8 +445,6 @@ async function main(): Promise<void> {
   await repos.chats.getMessages('00000000-0000-4000-8000-000000000000');
   await repos.embeddingStatus.findByUserId(spec.userId);
   await repos.backgroundJobs.findByUserId(spec.userId, 'PENDING');
-  await repos.vectorIndices.findMetaByCharacterId(spec.characters[1].id);
-  await repos.vectorIndices.findEntriesByCharacterId(spec.characters[1].id);
   await repos.groupCharacterMembers.findByCharacterId(spec.characters[0].id);
 
   closeMountIndexSQLiteClient();

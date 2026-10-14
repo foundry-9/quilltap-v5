@@ -383,7 +383,7 @@ async function main(): Promise<void> {
   // P4.D268: the archive cache is process-global and every op shares one chat,
   // so it is RESET before every op (both sides) — an op's archive must never
   // depend on its predecessors.
-  const { resetFrozenArchiveCacheForTests } = await import('@/lib/memory/frozen-archive-cache');
+  const { resetFrozenArchiveCacheForTests } = await import('@/lib/memory/recall/archive');
   // P4.D50: buildContext reads `instance_settings['taboo']` itself; the op seed
   // goes through v4's real setter (normalization included).
   const { setTabooSettings } = await import('@/lib/instance-settings');

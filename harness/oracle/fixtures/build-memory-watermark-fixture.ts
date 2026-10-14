@@ -75,18 +75,13 @@ async function main(): Promise<void> {
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
-  );
 
   await initializeDatabase();
   const repos = getRepositories();
 
-  // Materialize the vector tables (v4 ensureCollections them lazily on first
-  // repository use; the Rust store expects them to exist). A read suffices.
-  await new VectorIndicesRepository().findMetaByCharacterId(
-    '00000000-0000-4000-8000-000000000000'
-  );
+  // P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin): the `vector_indices` /
+  // `vector_entries` mirror is gone (a memory's vector is `memories.embedding`),
+  // so there are no vector tables to materialize here any more.
 
   for (const cs of spec.chatSettings) {
     await repos.chatSettings.create(
@@ -125,11 +120,18 @@ async function main(): Promise<void> {
     );
   }
 
+  // P4.D288 (v4 `104e986c7`, the `83334b9a5` pin): memory refactor Phase F
+  // folded MEMORY_HOUSEKEEPING / MEMORY_CONSOLIDATION into MEMORY_MAINTENANCE
+  // (the watermark trigger now enqueues it; v4's
+  // `drop-housekeeping-consolidation-jobs-v1` deletes the retired rows) and the
+  // job schema refuses the retired types, so the spec's throttle / dedupe seed
+  // jobs are seeded as MEMORY_MAINTENANCE.
+  const RETIRED_JOB_TYPES = new Set(['MEMORY_HOUSEKEEPING', 'MEMORY_CONSOLIDATION']);
   for (const job of spec.seedJobs) {
     await repos.backgroundJobs.create(
       {
         userId: job.userId,
-        type: job.type,
+        type: RETIRED_JOB_TYPES.has(job.type) ? 'MEMORY_MAINTENANCE' : job.type,
         status: job.status,
         payload: job.payload,
         priority: 0,

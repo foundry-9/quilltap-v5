@@ -180386,3 +180386,64 @@ migrationsSkipped: 90}`, none deferred. Measured:
   `/tmp/oracle-cursor-bundle-<shape>.ndjson`, run with `QT_ORACLE_CURSOR_BUNDLE_DIR=/tmp`;
   `QT_ORACLE_SCENARIO_SOURCE_REMAP`). Gotcha: v4's repository factory caches each collection's "initialized" flag —
   one shape per PROCESS.
+
+### Unit 11 — the IMPORT-DEAD re-aims + the widening of the committed pairs (§R.3 / §R.10(p), O-5)
+
+- **The widening.** `migrate-memories-fixture-columns.ts` gained `--runner` (the module arm through v4's REAL
+  `MigrationRunner` narrowed to the named migrations, so `migrations_state` is STAMPED as a real v4 boot records it)
+  and `--p4d288-span` (the twelve, `lib/v4-migrations.ts` `P4D288_SPAN_MIGRATIONS`, in registration order).
+  `--report-only` over all 50 committed `crates/quilltap-web/tests/fixtures/*-main.db` from the pin, one invocation
+  per pair under `TZ=UTC QUILLTAP_TIMEZONE=UTC`: **45 WOULD RUN** (3 to 11 of the twelve each), **5 already current**
+  (`llm-log-cleanup`, `profile`, `store-delete`, `wardrobe-instructions`, `workbench` — untouched, `git status`
+  clean). The 45 applied one per invocation, every exit 0, no `.db-journal` residue; no `-mount` / `-llmlogs`
+  partition, no sidecar and the `migration-vintage/` trio untouched.
+- **Per-pair `sqlite_master` diff (before/after dumps, schema + a per-table row digest):** the predicted moves only —
+  `memory_extraction_cursors` + its two autoindexes, `migrations_state` / `migrations_metadata` (+ autoindexes) on
+  every pair that lacked them, `idx_memories_supersededById` where `memories` exists, `vector_entries` /
+  `vector_indices` + their indexes DROPPED where the mirror existed (slot 8), and in-place `CREATE TABLE` text moves
+  on `chats` (the scenario pair; the dropped OTHER watermark), `memories` (`supersededAt`), `chat_settings` (the three
+  dead columns dropped) and `tfidf_vocabularies` (`textShapeVersion`). Data moves: `chats` / `memories` /
+  `chat_settings` / `instance_settings` / `tfidf_vocabularies` rows on the pairs that carry them (new columns, the
+  supersededAt backfill, the settings move, the recompute where a stored value was off). No logically-unchanged pair
+  among the 45, so nothing to `git restore`.
+- **O-5's host-boot measurement (a throwaway `quilltap-host` test, not committed):** COPIES of the widened
+  `memories` and `chat-scenario` pairs booted through the real `Host::start` three ways — ledger as-is, its rows
+  deleted, both ledger tables dropped. Normalized (temp paths, timings, sizes), the boot lines and the schema moves
+  are IDENTICAL across the three modes (only the dropped-tables mode re-creates the two ledger tables); no span
+  ensure logs in any mode (every one structure-gated or ledgered), and v5's own unrelated heals stamp the same rows
+  (`add-wardrobe-wear-stats-table-v1`, `seed-wardrobe-wear-stats-v1`, `recompute-chat-last-message-at-v1`,
+  `retire-prefill-on-thinking-profiles-v1` where it applies) in every mode. **A planted ledger wakes nothing.**
+  (Rig gotcha: a dropped `Host`'s job pump outlives its deleted temp dir and keeps logging `Error claiming next job …
+  readonly database` into a SHARED global capture — filter it, it is not a mode effect.)
+- **The re-aims (33 builders by an agent + `build-memory-gate-fixture.ts` by hand):** vectors on
+  `memories.embedding` (the mirror tables gone); orphan vectors dropped; retired job types mapped to
+  `MEMORY_MAINTENANCE` (almanack, memory-watermark) or skipped (system-data's `INTER_CHARACTER_MEMORY`); the
+  fold-other-pass watermark planted as a cursor row; the scenario builders through `resolveScenarioLocation(…,
+  {ensure: true})` + `setDefault`. `apply-memory-tiers-migration.ts` gained `chain` (default true: the episode
+  watermark + the cursor migration after the tiers) and `memory-tiers-ensure.ts` passes `chain: false`.
+  **Intent loss, recorded:** episodic-recall's RESCUE arm and semantic-search-tuning's `unindexed` arm cannot be
+  expressed (an embedding on the row IS indexed now); context-tier3's `e5` is now indexed; embedding-generate's
+  "existing vector" memory now carries an embedding on its row. **No `memory-keystone-tier2.json` seed** (the
+  order's item): no sibling reads it — every tier-2 family seeds through v4's `create` in-case — recorded as a
+  deviation.
+- **Load proofs (from the pin):** every re-aimed builder run once into `/tmp/p4d288/loads/<builder>/` — 34 print
+  their `built … fixture` line (memory-gate: 34 seed memories, 25 seed vectors); the three jest-shaped restore
+  builders run under jest. **`build-restore-archives-dedupe` fails its OWN `files === 2` check** (4 at the pin, 6 on
+  the committed fixture) — PRE-EXISTING, not this unit's re-aim; left for the human. The path renames
+  (`@/lib/memory/recall/{archive,conversations,history,query,recap,tags,tuning}`, `@/lib/memory/retire`) each
+  imported once from the pin: all LOAD.
+- **Re-aimed case paths:** `context-feeders-leaves`, `vault-conv-search`, `recent-conversations-block` →
+  `recall/conversations`; the frozen-archive tests → `recall/archive`; `memory-recap` → `recall/recap`;
+  `recall-history` / `-tags` / `-tuning`; `memory-search-extraction` → `recall/query`; the `archive-reencrypt` /
+  `character-archive` cases' `doMock` → `@/lib/memory/retire`, the vector tables out of their `MAIN_TABLES` (and out
+  of `character_archive_tier2_equivalence.rs`'s list, `[&str; 7]`).
+- **The families over the widened pairs:** `cargo test --workspace --no-fail-fast` (`QT_V4_CHECKOUT` /
+  `QT_V4_ROOT` = the pin, `CARGO_INCREMENTAL=0`): 779 binaries / **5,158 passed / 4 failed / 3 ignored**, zero
+  SKIP — every committed-fixture `scenarioSource` red of units 9–10 GREEN; the four reds are the three RED-BY-DESIGN
+  binaries (`cli_differential` → P4.D299; `qtap_schema_embed_guard` → P4.D294;
+  `no_memory_lane_remove_markers_left` — the 24 markers + `no_source_outside_the_scoring_module_names_the_floored_
+  weight`'s offenders, P4.D289's consumers'). The pair → reader-family list (50 rows) is
+  `/tmp/p4d288/logs/pair-readers.txt`, carried into the lane's final report.
+- **Recipe** (in the migrator's header): `cd <pin>; TZ=UTC QUILLTAP_TIMEZONE=UTC $N/node --import tsx
+  $W/harness/oracle/fixtures/migrate-memories-fixture-columns.ts --runner --p4d288-span [--report-only]
+  $F/<one *-main.db per invocation>`.

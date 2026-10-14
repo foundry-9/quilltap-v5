@@ -544,8 +544,8 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/mount-index/tiered-mount-pool', () =>
     jest.requireActual('@/lib/mount-index/tiered-mount-pool'),
   );
-  jest.doMock('@/lib/memory/memory-recap', () =>
-    jest.requireActual('@/lib/memory/memory-recap'),
+  jest.doMock('@/lib/memory/recall/recap', () =>
+    jest.requireActual('@/lib/memory/recall/recap'),
   );
   jest.doMock('@/lib/memory/cheap-llm-tasks', () =>
     jest.requireActual('@/lib/memory/cheap-llm-tasks'),

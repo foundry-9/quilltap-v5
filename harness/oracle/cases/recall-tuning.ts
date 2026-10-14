@@ -28,7 +28,7 @@ import {
   resolveRecallTuning,
   selectSpecificAnchors,
   type RecallTuningInput,
-} from '@/lib/memory/recall-tuning';
+} from '@/lib/memory/recall/tuning';
 
 const out: unknown[] = [];
 

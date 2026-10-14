@@ -263,7 +263,11 @@ async function main(): Promise<void> {
     let tiersAddedChatColumn = false;
     let opensAfter: boolean | null = null;
     if (mode.startsWith('parity')) {
-      report = await applyMemoryTiersMigration(work, encrypted ? { pepperBase64: PEPPER } : {});
+      // The tiers step ALONE — this case compares the chain itself below.
+      report = await applyMemoryTiersMigration(
+        work,
+        encrypted ? { pepperBase64: PEPPER, chain: false } : { chain: false },
+      );
       if (encrypted) {
         const db = new Database(work, { readonly: true });
         db.pragma(keyPragma);

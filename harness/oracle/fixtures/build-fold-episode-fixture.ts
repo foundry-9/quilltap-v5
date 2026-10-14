@@ -8,8 +8,9 @@
  * mount-index DB), the chats whose participant rosters decide which characters
  * form the episode memory, and the per-turn FRAGMENT memories (pinned ids +
  * `sourceMessageId`s inside the folded window) the pass links the consolidated
- * episode to. No vector entries are seeded: the pass's gate writes must land as
- * plain INSERTs, and an empty per-character store is exactly that. P4.144 adds
+ * episode to. No vectors are seeded (the vector lives on `memories.embedding`
+ * since P4.D288 — v4 `af48f6cc2`, the `83334b9a5` pin): the pass's gate writes
+ * must land as plain INSERTs, and an empty per-character index is exactly that. P4.144 adds
  * the corpus's `plants` — two `memories` triggers (BEFORE INSERT / BEFORE
  * UPDATE) that fail one character's episode write in the log-line runs; they
  * exist ONLY in this /tmp pair.
@@ -173,27 +174,11 @@ async function main(): Promise<void> {
     'CREATE UNIQUE INDEX IF NOT EXISTS "idx_doc_mount_blobs_fileId" ON "doc_mount_blobs" ("fileId")'
   );
 
-  // The vector tables the gate touches. v4's repos create their table lazily on
-  // first use, so a fixture that seeds no vectors would leave `vector_indices`
-  // absent — the oracle's own gate run would then create it while the Rust side
-  // (which never emits DDL at runtime) would fail the open. Emit the DDL here so
-  // BOTH sides start from the same empty tables.
+  // P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin): the `vector_indices` /
+  // `vector_entries` tables this step once emitted DDL for are gone with the
+  // mirror — the gate's index loads `memories.embedding`.
   const maindb = (await import('@/lib/database/backends/sqlite/client')).getRawDatabase?.();
-  // NOTE the v2 (BLOB-backed) schemas — `VectorIndexSchema` / `VectorEntrySchema`
-  // are the legacy shapes and would emit a `vector_entries` without
-  // `characterId`, which the real `addEntry` then fails on.
-  const { VectorIndexMetaSchema, VectorEntryRowSchema } = await import(
-    '@/lib/schemas/vector-indices.types'
-  );
   if (!maindb) throw new Error('main DB handle unavailable');
-  for (const [name, schema] of [
-    ['vector_indices', VectorIndexMetaSchema],
-    ['vector_entries', VectorEntryRowSchema],
-  ] as Array<[string, unknown]>) {
-    for (const sql of generateDDL(name, schema as never)) {
-      maindb.exec(sql);
-    }
-  }
 
   for (const c of spec.characters) {
     await repos.characters.create(
@@ -233,10 +218,6 @@ async function main(): Promise<void> {
     );
   }
 
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
-  );
-  const vectors = new VectorIndicesRepository();
   for (const seed of spec.seedMemories) {
     await repos.memories.create(
       {
@@ -265,17 +246,10 @@ async function main(): Promise<void> {
       } as never,
       { id: seed.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
-    // Bug 26: an embedded seed also needs a vector entry, or the gate's store
-    // search (which reads `vector_entries`, not `memories.embedding`) can't find
-    // it. The meta row fixes the character's index width.
-    if (seed.embedding) {
-      await vectors.saveMeta(seed.characterId, seed.embedding.length);
-      await vectors.addEntry({
-        id: seed.id,
-        characterId: seed.characterId,
-        embedding: seed.embedding,
-      });
-    }
+    // Bug 26: an embedded seed once also needed a `vector_entries` row for the
+    // gate's store search to find it. P4.D288 (v4 `af48f6cc2`, the `83334b9a5`
+    // pin): the mirror is gone — the index loads `memories.embedding`, which the
+    // create above already writes.
   }
 
   // P4.144: the log-line runs' trigger plants, created AFTER every seed write

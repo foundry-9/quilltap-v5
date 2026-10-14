@@ -7,7 +7,8 @@
  * `repos.characters.create`, pinned id), its `Knowledge/*.md` files (via the real
  * `linkDocumentContent`) plus the `doc_mount_chunks` rows with embeddings
  * directly (linkDocumentContent doesn't chunk/embed), the gate-band seed memory +
- * its per-character vector index (`saveMeta` + `addEntry`), and a bare chat row
+ * its vector on `memories.embedding` (P4.D288 — v4 `af48f6cc2`, the `83334b9a5`
+ * pin: the `saveMeta` + `addEntry` vector index is gone), and a bare chat row
  * (via `repos.chats.create`) so the internal `getMessages` reads have a table.
  *
  * Both the jest oracle and the Rust test then copy BOTH fixture files. buildContext
@@ -81,11 +82,12 @@ interface SeedMemory {
   narrativeTime?: string | null;
   kind?: string;
   entities?: string[];
-  /** Per-character vector-index entry (null → not indexed). */
+  /** The vector, written on `memories.embedding` (null → not indexed). */
   vector: number[] | null;
   /**
    * The memory row's own `embedding` column (the entity-anchor rescue path
-   * reads it when the memory is NOT in the vector index).
+   * reads it when the memory is NOT in the vector index). P4.D288: with the
+   * `vector_entries` mirror gone this is the same column `vector` writes.
    */
   embeddingColumn?: number[] | null;
 }
@@ -195,9 +197,6 @@ async function main(): Promise<void> {
     '@/lib/database/repositories/doc-mount-chunks.repository'
   );
   const { sha256OfString } = await import('@/lib/utils/sha256');
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
-  );
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
     DocMountFileSchema,
@@ -420,8 +419,10 @@ async function main(): Promise<void> {
     }
   }
 
-  // Seed memories + per-character vector index entries.
-  const vectors = new VectorIndicesRepository();
+  // Seed memories, each vector on the row's own `embedding`. P4.D288 (v4
+  // `af48f6cc2`, the `83334b9a5` pin): the `vector_entries` mirror is gone, so a
+  // seed's `vector` and its `embeddingColumn` land in the SAME column (no seed
+  // carries both).
   let memoryCount = 0;
   for (const m of spec.seedMemories) {
     await repos.memories.create(
@@ -435,7 +436,7 @@ async function main(): Promise<void> {
         keywords: m.keywords ?? [],
         tags: [],
         importance: m.importance,
-        embedding: m.embeddingColumn ?? null,
+        embedding: m.vector ? new Float32Array(m.vector) : (m.embeddingColumn ?? null),
         source: 'AUTO',
         witnessedContext: null,
         sourceMessageId: null,
@@ -453,14 +454,6 @@ async function main(): Promise<void> {
       { id: m.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
     memoryCount++;
-    if (m.vector) {
-      await vectors.saveMeta(m.characterId, m.vector.length);
-      await vectors.addEntry({
-        id: m.id,
-        characterId: m.characterId,
-        embedding: new Float32Array(m.vector),
-      });
-    }
   }
 
   // P4.D103 (v4 `8f868109`): the standing-instructions substrate. One instructed

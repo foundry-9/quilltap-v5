@@ -18,7 +18,8 @@
  *   - A chat scoped to Char A (participant A) with projectId=P + userId=U (for the
  *     conversation-search scope + project chatCount + request_full_context write),
  *     and a minimal second chat, via the REAL repos.chats.create.
- *   - Char A memories + per-character vector index (memory search).
+ *   - Char A memories, vectors on `memories.embedding` (memory search; P4.D288 —
+ *     v4 `af48f6cc2`: the per-character vector index is gone).
  *   - conversation_chunks for the chat (conversation search).
  *   - help_docs with embeddings (help search).
  *
@@ -435,8 +436,8 @@ async function main(): Promise<void> {
     { id: spec.chatMinimalId, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp } as never,
   );
 
-  // 8. Char A memories + per-character vector index.
-  const vectors = repos.vectorIndices;
+  // 8. Char A memories, each vector on the row's own `embedding` (P4.D288 — v4
+  //    `af48f6cc2`, the `83334b9a5` pin: the per-character vector index is gone).
   for (const m of spec.memories) {
     await repos.memories.create(
       {
@@ -449,7 +450,7 @@ async function main(): Promise<void> {
         keywords: [],
         tags: [],
         importance: m.importance,
-        embedding: null,
+        embedding: new Float32Array(m.vector),
         source: m.source,
         witnessedContext: null,
         sourceMessageId: null,
@@ -465,12 +466,6 @@ async function main(): Promise<void> {
       } as never,
       { id: m.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp },
     );
-    await vectors.saveMeta(spec.charAId, m.vector.length);
-    await vectors.addEntry({
-      id: m.id,
-      characterId: spec.charAId,
-      embedding: new Float32Array(m.vector),
-    });
   }
 
   // 9. conversation_chunks for chat A.

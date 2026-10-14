@@ -253,12 +253,12 @@ async function main(): Promise<void> {
         }),
       };
     });
-    jest.doMock('@/lib/memory/memory-recap', () => {
-      const actual = jest.requireActual('@/lib/memory/memory-recap');
+    jest.doMock('@/lib/memory/recall/recap', () => {
+      const actual = jest.requireActual('@/lib/memory/recall/recap');
       return { __esModule: true, ...actual, generateMemoryRecap: async () => ({ content: '' }) };
     });
-    jest.doMock('@/lib/memory/frozen-archive-cache', () => {
-      const actual = jest.requireActual('@/lib/memory/frozen-archive-cache');
+    jest.doMock('@/lib/memory/recall/archive', () => {
+      const actual = jest.requireActual('@/lib/memory/recall/archive');
       return { __esModule: true, ...actual, getOrComputeFrozenArchive: async () => [] };
     });
     jest.doMock('@/lib/instance-settings', () => {

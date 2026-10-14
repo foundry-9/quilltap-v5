@@ -353,8 +353,6 @@ async function main(): Promise<void> {
   await repos.files.findByUserId(USER_ID);
   await repos.tags.findByIds([]);
   await repos.conversationChunks.findByChatId(CHAT_ID);
-  await repos.vectorIndices.findMetaByCharacterId(CHARS.aria.id);
-  await repos.vectorIndices.findEntriesByCharacterId(CHARS.aria.id);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

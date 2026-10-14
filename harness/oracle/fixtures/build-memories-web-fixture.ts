@@ -574,8 +574,10 @@ async function main(): Promise<void> {
   }
 
   // 8. Fit the BUILTIN vocabulary over the CURRENT (embedded) MNEMO corpus, then
-  // embed every current MNEMO memory through v4's REAL builtin path (both column +
-  // vector store). The `no-embedding` rows are seeded AFTER, so they stay bare.
+  // embed every current MNEMO memory through v4's REAL builtin path (the
+  // `memories.embedding` column — the index since P4.D288, v4 `af48f6cc2`: the
+  // vector store mirror is gone). The `no-embedding` rows are seeded AFTER, so
+  // they stay bare.
   const embedTargetMemories = await repos.memories.findByCharacterId(MNEMO);
   const corpus = embedTargetMemories.map((m) => `${m.summary}\n\n${m.content}`);
   const plugin = await import('@/plugins/dist/qtap-plugin-builtin-embeddings');
@@ -595,7 +597,9 @@ async function main(): Promise<void> {
     fittedAt: state.fittedAt,
   } as never);
 
-  const { generateMissingEmbeddings } = await import('@/lib/memory/memory-service');
+  // P4.D288 (v4 `83334b9a5`): `memory-service.ts` is retired; the backfill moved
+  // to `@/lib/memory/index-store` (`generateMissingEmbeddings`, same signature).
+  const { generateMissingEmbeddings } = await import('@/lib/memory/index-store');
   const embResult = await generateMissingEmbeddings(MNEMO, {
     userId: spec.userId,
     embeddingProfileId: EP_BUILTIN,

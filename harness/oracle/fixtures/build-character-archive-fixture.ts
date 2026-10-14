@@ -9,8 +9,10 @@
  *   - `character-archive-main.db`  — the user, three characters, two chats, the
  *                                    memories (Sable's three plus Tor's one
  *                                    ABOUT Sable, which the prune must NOT
- *                                    touch), and the vector index Sable's
- *                                    archive deletes.
+ *                                    touch), each with its vector on
+ *                                    `memories.embedding` (P4.D288 — v4
+ *                                    `af48f6cc2`: the vector index Sable's
+ *                                    archive once deleted is gone).
  *   - `character-archive-mount.db` — Sable's vault: the ten managed documents +
  *                                    `Wardrobe/` from the real scaffold (the
  *                                    keep-set), plus the prune material.
@@ -348,6 +350,11 @@ async function main(): Promise<void> {
   // 5. The memories. Sable's three cross-link each other; Tor's points at
   //    Sable's first, so the gate's unlink scrub has something to prove.
   const sableIds = spec.memories.filter((m) => m.owner === 'sable').map((m) => m.id);
+  // The vectors (formerly step 6) — every Sable memory plus Tor's (the last seed)
+  // carry one. P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin): the
+  // `vector_indices` / `vector_entries` mirror is gone, so the vector lives on
+  // the row's own `embedding` (deleted with the row by the prune).
+  const vectorIds = new Set([...sableIds, spec.memories[spec.memories.length - 1].id]);
   for (const m of spec.memories) {
     const isSable = m.owner === 'sable';
     await repos.memories.create(
@@ -361,7 +368,7 @@ async function main(): Promise<void> {
         keywords: [],
         tags: [],
         importance: 0.6,
-        embedding: null,
+        embedding: vectorIds.has(m.id) ? new Float32Array([0.1, 0.2, 0.3, 0.4]) : null,
         source: 'AUTO',
         witnessedContext: null,
         sourceMessageId: null,
@@ -374,17 +381,6 @@ async function main(): Promise<void> {
       { id: m.id, createdAt: TS, updatedAt: TS },
     );
     await repos.embeddingStatus.markAsEmbedded('MEMORY', m.id, EMBEDDING_PROFILE, spec.userId);
-  }
-
-  // 6. Sable's vector index — the prune's `deleteStore` target. Tor's stays.
-  for (const [character, ids] of [
-    [spec.sable, sableIds],
-    [spec.tor, [spec.memories[spec.memories.length - 1].id]],
-  ] as Array<[string, string[]]>) {
-    await repos.vectorIndices.saveMeta(character, 4);
-    await repos.vectorIndices.addEntries(
-      ids.map((id) => ({ id, characterId: character, embedding: [0.1, 0.2, 0.3, 0.4] })) as never,
-    );
   }
 
   // 7. Re-pin every live-clock timestamp so the two sides' pre-state is
@@ -406,7 +402,6 @@ async function main(): Promise<void> {
     [TS, TS, TS],
   );
   await rawQuery('UPDATE "characters" SET "updatedAt" = ?', [TS]);
-  await rawQuery('UPDATE "vector_indices" SET "createdAt" = ?, "updatedAt" = ?', [TS, TS]);
 
   // 8. The sidecar both differential sides read for the minted ids.
   writeFileSync(

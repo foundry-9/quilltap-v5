@@ -100,12 +100,8 @@ async function main(): Promise<void> {
   await ensureCollection('chats', ChatMetadataSchema);
   await ensureCollection('files', FileEntrySchema);
   await ensureCollection('character_plugin_data', CharacterPluginDataSchema);
-  // vector_indices + vector_entries — created by the repo's hand-written DDL,
-  // triggered with a read.
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
-  );
-  await new VectorIndicesRepository().getAllCharacterIds();
+  // P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin): the `vector_indices` /
+  // `vector_entries` mirror is gone — a memory's vector is `memories.embedding`.
 
   // MOUNT-INDEX db: materialize every store table the create/provision/write path
   // touches, via v4's own generated DDL.

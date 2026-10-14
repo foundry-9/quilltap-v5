@@ -30,7 +30,7 @@ import {
   parseRetroSignatures,
   appendRetroSignature,
   type RecallHistory,
-} from '@/lib/memory/recall-history';
+} from '@/lib/memory/recall/history';
 
 // Row kinds — Rust dispatches on `kind`. Each carries the input `raw` verbatim.
 type Row =

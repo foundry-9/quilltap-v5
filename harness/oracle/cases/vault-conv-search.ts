@@ -106,7 +106,7 @@ async function main(): Promise<void> {
   await initializePlugins();
 
   const { searchVaultConversationSummaries } = await import(
-    '@/lib/memory/conversation-summary-search'
+    '@/lib/memory/recall/conversations'
   );
 
   // The exclude case pins the top no-window match's id at runtime (stable —

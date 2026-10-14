@@ -20,9 +20,10 @@
  *       · OUTSIDE    — episodic, out of window (`past` tag),
  *       · ABOUTPIP   — aboutCharacterId = Pip's character (participant boost),
  *       · PLAIN      — semantic, no occurredAt (createdAt window fallback),
- *       · RESCUE     — contains the verbatim place name, embedding COLUMN set
- *         but its vector-index entry DELETED post-embed (the entity-anchor
- *         searchByContent union is the only way it enters the pool),
+ *       · RESCUE     — contains the verbatim place name (its vector-index
+ *         entry was once DELETED post-embed so the entity-anchor searchByContent
+ *         union was the only way in; P4.D288 — v4 `af48f6cc2`, the `83334b9a5`
+ *         pin — retired that: the index IS `memories.embedding` now),
  *   - PIPC (user-controlled) — the "user" participant's character,
  *   - one chat with 5 partitionable turns (USER + ASSISTANT, dated createdAt —
  *     the replay clock reads the turn's own date), participants
@@ -59,7 +60,8 @@ interface SeedMemory {
   entities?: string[];
   aboutCharacterId?: string | null;
   chatId?: string | null;
-  /** True → delete the vector-index entry after embedding (the rescue row). */
+  /** Read by nothing since P4.D288 (was: delete the vector-index entry after
+   *  embedding — the rescue row; the `vector_entries` mirror is gone). */
   unindexed?: boolean;
 }
 interface SeedSummary {
@@ -365,9 +367,8 @@ async function main(): Promise<void> {
     );
   for (const m of spec.memories) await seedMemory(m);
 
-  // 6. Fit the BUILTIN vocabulary over the corpus, embed every memory (column +
-  // vector store) through v4's REAL path, then DELETE the rescue rows' index
-  // entries (column embedding kept — the searchByContent union re-scores it).
+  // 6. Fit the BUILTIN vocabulary over the corpus, embed every memory (the
+  // `memories.embedding` column — the index since P4.D288) through v4's REAL path.
   const all = await repos.memories.findByCharacterId(spec.elowenId);
   const corpus = all.map((m) => `${m.summary}\n\n${m.content}`);
   const plugin = await import('@/plugins/dist/qtap-plugin-builtin-embeddings');
@@ -387,21 +388,21 @@ async function main(): Promise<void> {
     fittedAt: state.fittedAt,
   } as never);
 
-  const { generateMissingEmbeddings } = await import('@/lib/memory/memory-service');
+  // P4.D288 (v4 `83334b9a5`): `memory-service.ts` is retired; the backfill moved
+  // to `@/lib/memory/index-store` (`generateMissingEmbeddings`, same signature).
+  const { generateMissingEmbeddings } = await import('@/lib/memory/index-store');
   const embResult = await generateMissingEmbeddings(spec.elowenId, {
     userId: spec.userId,
     embeddingProfileId: spec.embeddingProfileId,
     batchSize: 100,
   });
 
-  let unindexed = 0;
-  for (const m of spec.memories) {
-    if (!m.unindexed) continue;
-    // The per-embedding rows live in `vector_entries` (keyed by the memory id);
-    // `vector_indices` is the per-character metadata row and stays.
-    mainDb.prepare('DELETE FROM "vector_entries" WHERE "id" = ?').run(m.id);
-    unindexed++;
-  }
+  // P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin): the rescue rows' de-index
+  // step is retired. The `vector_entries` mirror is gone — the index IS
+  // `memories.embedding` — so "column set but absent from the index" is no
+  // longer a state the store can hold; a rescue row now enters the pool through
+  // the vector search like any embedded row. (`unindexed` stays in the spec,
+  // read by nothing.)
 
   // 7. Dated vault conversation summaries (unit 4's substrate) + one chunk per
   // summary embedded with the SAME fitted vectorizer.
@@ -471,7 +472,7 @@ async function main(): Promise<void> {
   await closeDatabase();
   process.stderr.write(
     `built episodic-recall fixture: main=${mainOut} mount=${mountOut} ` +
-      `(${all.length} memories [${embResult.processed} embedded, ${unindexed} de-indexed], ` +
+      `(${all.length} memories [${embResult.processed} embedded], ` +
       `${links.length} dated summaries chunked, vocab ${state.vocabularySize})\n`,
   );
   process.exit(0);

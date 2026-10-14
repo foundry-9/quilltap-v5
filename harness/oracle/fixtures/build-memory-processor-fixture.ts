@@ -7,8 +7,10 @@
  * mount-index DB), one `Others/<subject>.md` canon file in Aria's vault (via
  * the real `linkDocumentContent` — NOT `writeDatabaseDocument`, whose
  * `QUILLTAP_JOB_CHILD=1` skip-switch breaks `initializeDatabase`; see the
- * document-store oracle notes), the gate-band seed memories + their
- * per-character vector index entries (as in the memory-gate fixture), and the
+ * document-store oracle notes), the gate-band seed memories + their vectors on
+ * `memories.embedding` (as in the memory-gate fixture; P4.D288 — v4
+ * `af48f6cc2`, the `83334b9a5` pin: the per-character vector index entries
+ * are gone with the mirror), and the
  * FUTURE-dated rate-limit ballast rows (a 2099 `createdAt` is always "created
  * in the last hour" regardless of wall clock, so `countCreatedSince` is
  * deterministic).
@@ -95,9 +97,6 @@ async function main(): Promise<void> {
     '@/lib/database/repositories/doc-mount-file-links.repository'
   );
   const { sha256OfString } = await import('@/lib/utils/sha256');
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
-  );
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -192,9 +191,10 @@ async function main(): Promise<void> {
     }
   }
 
-  // Seed memories: gate-band rows (pinned seed timestamp + vector entry) and
-  // future-dated rate-limit ballast (no vector).
-  const vectors = new VectorIndicesRepository();
+  // Seed memories: gate-band rows (pinned seed timestamp + vector on the row's
+  // own `embedding` — P4.D288, v4 `af48f6cc2` at the `83334b9a5` pin: the
+  // `vector_entries` mirror is gone) and future-dated rate-limit ballast (no
+  // vector).
   let seededMemories = 0;
   let seededVectors = 0;
   for (const seed of spec.seedMemories) {
@@ -210,7 +210,7 @@ async function main(): Promise<void> {
         keywords: [],
         tags: [],
         importance: 0.5,
-        embedding: null,
+        embedding: seed.vector ? new Float32Array(seed.vector) : null,
         source: 'AUTO',
         witnessedContext: null,
         sourceMessageId: null,
@@ -223,16 +223,7 @@ async function main(): Promise<void> {
       { id: seed.id, createdAt: ts, updatedAt: ts }
     );
     seededMemories++;
-
-    if (seed.vector) {
-      await vectors.saveMeta(seed.characterId, seed.vector.length);
-      await vectors.addEntry({
-        id: seed.id,
-        characterId: seed.characterId,
-        embedding: new Float32Array(seed.vector),
-      });
-      seededVectors++;
-    }
+    if (seed.vector) seededVectors++;
   }
 
   closeMountIndexSQLiteClient();

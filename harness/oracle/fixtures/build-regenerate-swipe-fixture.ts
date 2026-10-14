@@ -22,7 +22,8 @@
  *       D not_assistant (a USER message — the error path);
  *   - four `memories` (sourceMessageId = the A/C targets) on a throwaway "ghost"
  *     characterId (NOT the responder Bertie — so buildContext's memory search stays
- *     empty and the completion prompt is memory-free/robust) + their vectors, so
+ *     empty and the completion prompt is memory-free/robust) + their vectors on
+ *     `memories.embedding` (P4.D288 — v4 `af48f6cc2`: no vector store), so
  *     the DELETE cascade has something to remove and KEEP has something to preserve.
  *
  * Run (Node 24, from the v4 checkout):
@@ -131,7 +132,7 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient, getRawMountIndexDatabase } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
@@ -264,10 +265,10 @@ async function main(): Promise<void> {
     );
   }
 
-  // Memories + their vectors (ghost character store).
-  for (const characterId of spec.seedMetaCharacterIds) {
-    await repos.vectorIndices.saveMeta(characterId, spec.dimensions);
-  }
+  // Memories + their vectors (ghost character), each vector on the row's own
+  // `embedding` (P4.D288 — v4 `af48f6cc2`, the `83334b9a5` pin: the
+  // `vector_indices` / `vector_entries` store is gone; `seedMetaCharacterIds`
+  // and `dimensions` stay in the committed spec, read by nothing).
   for (const seed of spec.seedMemories) {
     await repos.memories.create(
       {
@@ -280,7 +281,7 @@ async function main(): Promise<void> {
         keywords: [],
         tags: [],
         importance: 0.5,
-        embedding: null,
+        embedding: seed.vector ? new Float32Array(seed.vector) : null,
         source: 'AUTO',
         witnessedContext: null,
         sourceMessageId: seed.sourceMessageId,
@@ -292,13 +293,6 @@ async function main(): Promise<void> {
       } as never,
       { id: seed.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
-    if (seed.vector) {
-      await repos.vectorIndices.addEntry({
-        id: seed.id,
-        characterId: seed.characterId,
-        embedding: new Float32Array(seed.vector),
-      });
-    }
   }
 
   // P4.106 item 3: the inform plant through v4's REAL repository (ids + stamps
@@ -327,13 +321,6 @@ async function main(): Promise<void> {
       );
     }
   }
-
-  // Pin the seed-minted vector timestamps to the sentinel.
-  await rawQuery('UPDATE vector_indices SET createdAt = ?, updatedAt = ?', [
-    spec.seedTimestamp,
-    spec.seedTimestamp,
-  ]);
-  await rawQuery('UPDATE vector_entries SET createdAt = ?', [spec.seedTimestamp]);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

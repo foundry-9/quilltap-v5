@@ -112,7 +112,9 @@ async function runCase(
   jest.doMock('@/lib/file-storage/manager', () =>
     jest.requireActual('@/lib/file-storage/manager'),
   );
-  jest.doMock('@/lib/memory/memory-gate', () => jest.requireActual('@/lib/memory/memory-gate'));
+  // P4.D288 (v4 `af48f6cc2`): the memory-gate deleters are gone — the ONE
+  // retire path (`lib/memory/retire.ts`) deletes the archived memories.
+  jest.doMock('@/lib/memory/retire', () => jest.requireActual('@/lib/memory/retire'));
 
   const work = mkdtempSync(join(scratch, 'reenc-'));
   const mainWork = join(work, 'main.db');

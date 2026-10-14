@@ -10,7 +10,8 @@
  *   - the answerer + asker characters (via v4's REAL `repos.characters.create` —
  *     pinned ids, full vault provisioning in the mount-index DB), including a
  *     name-collision pair of two "Bob"s (the older one NOT `canBeCarina`);
- *   - `Sage`'s one seed memory + its vector index entry (the memory-recall case);
+ *   - `Sage`'s one seed memory + its vector on `memories.embedding` (P4.D288 —
+ *     v4 `af48f6cc2`, the `83334b9a5` pin) (the memory-recall case);
  *   - the chat with three CHARACTER participants (Alice, a user-controlled
  *     "Operator" persona, and a plain-LLM "Bystander");
  *   - one baked prior Carina exchange for `Echo` (via v4's REAL
@@ -131,9 +132,6 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
-  );
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
     DocMountFileSchema,
@@ -233,8 +231,8 @@ async function main(): Promise<void> {
     );
   }
 
-  // Sage's seed memories + their vector index entries.
-  const vectors = new VectorIndicesRepository();
+  // Sage's seed memories, each vector on the row's own `embedding` (P4.D288 —
+  // v4 `af48f6cc2`, the `83334b9a5` pin: the `vector_entries` mirror is gone).
   for (const m of spec.seedMemories) {
     await repos.memories.create(
       {
@@ -247,7 +245,7 @@ async function main(): Promise<void> {
         keywords: [],
         tags: [],
         importance: m.importance,
-        embedding: null,
+        embedding: new Float32Array(m.vector),
         source: 'AUTO',
         witnessedContext: null,
         sourceMessageId: null,
@@ -259,12 +257,6 @@ async function main(): Promise<void> {
       } as never,
       { id: m.id, createdAt: m.createdAt, updatedAt: m.createdAt }
     );
-    await vectors.saveMeta(m.characterId, m.vector.length);
-    await vectors.addEntry({
-      id: m.id,
-      characterId: m.characterId,
-      embedding: new Float32Array(m.vector),
-    });
   }
 
   // The chat with participants, pinned id + timestamps.

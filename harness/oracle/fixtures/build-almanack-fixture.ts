@@ -23,7 +23,7 @@
  *     uploads, a generated image, a not-ok row), text-replacement rules (one
  *     disabled), plugin configs (incl. `qtap-plugin-mcp` with two servers),
  *     conversation chunks (one unembedded), tfidf, embedding_status (incl.
- *     PERMANENTLY_FAILED), vector index, terminal_sessions ×3, help_docs,
+ *     PERMANENTLY_FAILED), terminal_sessions ×3, help_docs,
  *     migrations_state ×2, background_jobs in every status, instance settings
  *     (well-known mount pointers — lantern DANGLING for the unresolved arm).
  *   - `almanack-mount.db`           — the mount-index sibling: 3 character
@@ -137,7 +137,6 @@ const TFIDF_VOCAB_1 = 'b9000000-0000-4000-8000-000000000001';
 const EMB_STATUS_1 = 'ba000000-0000-4000-8000-000000000001';
 const EMB_STATUS_2 = 'ba000000-0000-4000-8000-000000000002';
 const EMB_STATUS_3 = 'ba000000-0000-4000-8000-000000000003';
-const VECTOR_ENTRY_1 = 'bb000000-0000-4000-8000-000000000001';
 const STORE_FIELD = 'bd000000-0000-4000-8000-000000000001';
 const UPLOADS_MOUNT = 'be000000-0000-4000-8000-000000000001';
 const GENERAL_MOUNT = 'be000000-0000-4000-8000-000000000002';
@@ -1071,7 +1070,10 @@ async function main(): Promise<void> {
   );
 
   // 16. Conversation chunks (one embedded, one not), tfidf, embedding_status
-  //     (EMBEDDED / PENDING / PERMANENTLY_FAILED), a vector index + entry.
+  //     (EMBEDDED / PENDING / PERMANENTLY_FAILED). P4.D288 (v4 `af48f6cc2`, the
+  //     `83334b9a5` pin): the `vector_indices` / `vector_entries` mirror is gone
+  //     (a memory's vector is `memories.embedding`), so the orphan vector index +
+  //     entry this step once seeded for LORIAN is dropped.
   await repos.conversationChunks.create(
     {
       chatId: CHAT_1,
@@ -1150,12 +1152,6 @@ async function main(): Promise<void> {
     } as never,
     { id: EMB_STATUS_3, createdAt: TS, updatedAt: TS } as never,
   );
-  await repos.vectorIndices.saveMeta(LORIAN, 4);
-  await repos.vectorIndices.addEntry({
-    id: VECTOR_ENTRY_1,
-    characterId: LORIAN,
-    embedding: new Float32Array([0.1, -0.25, 0.5, 0.75]),
-  } as never);
 
   // 17. Terminal sessions — one live, one clean exit, one non-zero exit;
   //     two distinct shells.
@@ -1219,12 +1215,19 @@ async function main(): Promise<void> {
     setSetting.run(key, value);
   }
 
-  // 19. background_jobs — one row in every status.
+  // 19. background_jobs — one row in every status. P4.D288 (v4 `104e986c7`,
+  //     the `83334b9a5` pin): v4's memory refactor Phase F folded the
+  //     MEMORY_HOUSEKEEPING / MEMORY_CONSOLIDATION job types into
+  //     MEMORY_MAINTENANCE (its `drop-housekeeping-consolidation-jobs-v1`
+  //     migration deletes the retired rows) and the job schema refuses them, so a
+  //     retired type in the committed spec is seeded as MEMORY_MAINTENANCE —
+  //     keeping the spec's one COMPLETED row.
+  const RETIRED_JOB_TYPES = new Set(['MEMORY_HOUSEKEEPING', 'MEMORY_CONSOLIDATION']);
   for (const job of spec.jobs) {
     await repos.backgroundJobs.create(
       {
         userId: spec.userId,
-        type: job.type,
+        type: RETIRED_JOB_TYPES.has(job.type) ? 'MEMORY_MAINTENANCE' : job.type,
         status: job.status,
         payload: job.payload,
         priority: job.priority,

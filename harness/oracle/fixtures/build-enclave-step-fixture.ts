@@ -311,8 +311,6 @@ async function main(): Promise<void> {
   // Materialize the tables the run touches but nothing seeds.
   await repos.users.findById(spec.user1); // users (the identity resolver's read)
   await repos.memories.findAll();
-  await repos.vectorIndices.findMetaByCharacterId(spec.characters[0].id);
-  await repos.vectorIndices.findEntriesByCharacterId(spec.characters[0].id);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

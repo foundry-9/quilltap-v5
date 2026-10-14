@@ -106,9 +106,6 @@ async function main(): Promise<void> {
   );
   const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
   const { getRepositories } = await import('@/lib/repositories/factory');
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
-  );
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
     DocMountFileSchema,
@@ -235,11 +232,11 @@ async function main(): Promise<void> {
 
   // Materialize the LAZILY-created main tables the handlers write to — v4
   // creates them on first write, but the Rust side expects them present.
-  // `memories` + the V2 vector tables via a real seed row (an ORTHOGONAL
-  // vector, e1, so the extraction candidates' e0 embeddings never land in its
-  // reinforce band); `background_jobs` via a real enqueue that is then deleted
-  // (v4's exact DDL, zero rows).
-  const vectors = new VectorIndicesRepository();
+  // `memories` via a real seed row carrying an ORTHOGONAL vector, e1, so the
+  // extraction candidates' e0 embeddings never land in its reinforce band
+  // (P4.D288 — v4 `af48f6cc2`, the `83334b9a5` pin: the V2 vector tables are
+  // gone; the vector lives on the row's own `embedding`); `background_jobs` via a
+  // real enqueue that is then deleted (v4's exact DDL, zero rows).
   await repos.memories.create(
     {
       characterId: spec.characters[0].id,
@@ -251,7 +248,7 @@ async function main(): Promise<void> {
       keywords: [],
       tags: [],
       importance: 0.4,
-      embedding: null,
+      embedding: new Float32Array([0, 1, 0, 0, 0, 0, 0, 0]),
       source: 'AUTO',
       witnessedContext: null,
       sourceMessageId: null,
@@ -267,12 +264,6 @@ async function main(): Promise<void> {
       updatedAt: spec.seedTimestamp,
     }
   );
-  await vectors.saveMeta(spec.characters[0].id, 8);
-  await vectors.addEntry({
-    id: 'f0000000-0000-4000-8000-00000000f001',
-    characterId: spec.characters[0].id,
-    embedding: new Float32Array([0, 1, 0, 0, 0, 0, 0, 0]),
-  });
   const { enqueueJob } = await import('@/lib/background-jobs/queue-service');
   const throwawayJobId = await enqueueJob(spec.userId, 'LLM_LOG_CLEANUP' as never, {} as never);
   const mainDb = getRawDatabase();

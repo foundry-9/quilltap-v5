@@ -266,7 +266,6 @@ async function main(): Promise<void> {
   await repos.chats.getMessages('00000000-0000-4000-8000-000000000000');
   await repos.embeddingStatus.findByUserId(spec.users[0].id);
   await repos.backgroundJobs.findByUserId(spec.users[0].id, 'PENDING');
-  await repos.vectorIndices.findMetaByCharacterId(spec.characters[0].id);
   await repos.groupCharacterMembers.findByCharacterId(spec.characters[0].id);
   await repos.memories.findByCharacterId(spec.characters[0].id);
   await repos.files.findByUserId(spec.users[0].id);

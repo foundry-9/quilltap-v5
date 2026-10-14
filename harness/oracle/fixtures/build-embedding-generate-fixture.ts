@@ -6,10 +6,11 @@
  * Bakes the SEED both differential sides start from, across BOTH databases,
  * via v4's REAL repo `create` calls (pinned ids + timestamps):
  *   - one character (full vault provisioning — the MEMORY branch's
- *     vector-index writes need a characterId with a real home);
- *   - three memories without embeddings (happy / existing-vector-entry /
- *     permanent-failure), plus a seed `vector_indices` meta row and one
- *     ORTHOGONAL `vector_entries` row for the existing-entry case;
+ *     vector writes need a characterId with a real home);
+ *   - three memories (happy / existing-vector / permanent-failure), only the
+ *     existing-vector case carrying an ORTHOGONAL seed `embedding` (P4.D288 —
+ *     v4 `af48f6cc2`, the `83334b9a5` pin: the `vector_indices` meta row and
+ *     `vector_entries` rows, incl. the orphan entry, are gone with the mirror);
  *   - three conversation chunks (happy / whitespace-only / transient-failure);
  *   - one help doc without an embedding;
  *   - two doc mount chunks in the mount-index DB (happy / oversize — the
@@ -91,6 +92,7 @@ interface Spec {
   chatId: string;
   memories: MemorySeed[];
   seedVectorEntryForMemoryId: string;
+  /** Read by nothing since P4.D288 (the orphan `vector_entries` row is gone). */
   orphanVectorEntryId: string;
   conversationChunks: ChunkSeed[];
   helpDocs: HelpDocSeed[];
@@ -134,9 +136,6 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
-  );
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
     DocMountFileSchema,
@@ -246,7 +245,14 @@ async function main(): Promise<void> {
         keywords: [],
         tags: [],
         importance: 0.4,
-        embedding: null,
+        // The existing-entry case's ORTHOGONAL seed vector (e1) — its job's
+        // embed (e0) must REPLACE it. P4.D288 (v4 `af48f6cc2`, the `83334b9a5`
+        // pin): the `vector_entries` mirror is gone, so the seed vector lives
+        // on the row's own `embedding`.
+        embedding:
+          m.id === spec.seedVectorEntryForMemoryId
+            ? new Float32Array([0, 1, 0, 0, 0, 0, 0, 0])
+            : null,
         source: 'AUTO',
         witnessedContext: null,
         sourceMessageId: null,
@@ -260,27 +266,12 @@ async function main(): Promise<void> {
     );
   }
 
-  // The vector seed: a meta row for the character plus one ORTHOGONAL entry
-  // (e1) for the existing-entry case — its job's embed (e0) must land on the
-  // updateEntryEmbedding path, not addEntry. The seed meta DELIBERATELY
-  // carries the WRONG dimensions (4, not the embed vector's 8) so the
-  // handler's `saveMeta(characterId, result.dimensions)` is a VISIBLE value
-  // change in the diff — with the right value seeded, a port that skipped
-  // saveMeta entirely would pass invisibly (updatedAt is normalized).
-  const vectors = new VectorIndicesRepository();
-  await vectors.saveMeta(spec.character.id, 4);
-  await vectors.addEntry({
-    id: spec.seedVectorEntryForMemoryId,
-    characterId: spec.character.id,
-    embedding: new Float32Array([0, 1, 0, 0, 0, 0, 0, 0]),
-  });
-  // An ORPHAN vector entry (no memory row) — only rebuild-index's deleteStore
-  // removes it, so a port that skips the delete keeps it and diverges loudly.
-  await vectors.addEntry({
-    id: spec.orphanVectorEntryId,
-    characterId: spec.character.id,
-    embedding: new Float32Array([0, 0, 1, 0, 0, 0, 0, 0]),
-  });
+  // P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin): the `vector_indices` meta
+  // row (seeded with DELIBERATELY wrong dimensions so the handler's `saveMeta`
+  // was visible) and the ORPHAN `vector_entries` row (no memory row — only
+  // rebuild-index's deleteStore removed it) are gone with the mirror; a vector
+  // with no memory row has nowhere to live. `orphanVectorEntryId` stays in the
+  // committed spec, read by nothing.
 
   for (const c of spec.conversationChunks) {
     await repos.conversationChunks.create(

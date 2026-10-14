@@ -65,7 +65,7 @@ async function main(): Promise<void> {
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { ChatsRepository } = await import('@/lib/database/repositories/chats.repository');
-  const { buildRecentConversationsBlock } = await import('@/lib/memory/memory-recap');
+  const { buildRecentConversationsBlock } = await import('@/lib/memory/recall/recap');
 
   await initializeDatabase();
 

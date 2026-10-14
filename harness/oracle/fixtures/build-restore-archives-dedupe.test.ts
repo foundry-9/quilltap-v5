@@ -198,7 +198,6 @@ async function seedFreshInstance(): Promise<void> {
   const zero = '00000000-0000-0000-0000-000000000000';
   await anyRepos.chats?.getMessageCount(zero);
   await anyRepos.connections?.getApiKeysByUserId(zero);
-  await anyRepos.vectorIndices?.findMetaByCharacterId(zero);
   await anyRepos.docMountBlobs?.findByFileId(zero);
 
   const { getOrCreateSingleUser } = await import('@/lib/auth/single-user');

@@ -159,7 +159,6 @@ const CHAT_DOCUMENT_1 = 'b7000000-0000-4000-8000-000000000001';
 const CONV_CHUNK_1 = 'b8000000-0000-4000-8000-000000000001';
 const TFIDF_VOCAB_1 = 'b9000000-0000-4000-8000-000000000001';
 const EMBEDDING_STATUS_1 = 'ba000000-0000-4000-8000-000000000001';
-const VECTOR_ENTRY_1 = 'bb000000-0000-4000-8000-000000000001';
 const MOUNT_BLOB_1 = 'bc000000-0000-4000-8000-000000000001';
 
 async function main(): Promise<void> {
@@ -772,14 +771,10 @@ async function main(): Promise<void> {
     } as never,
     { id: EMBEDDING_STATUS_1, createdAt: TS, updatedAt: TS } as never,
   );
-  // A per-character vector index + one entry (the meta row's id is minted by the
-  // repo and baked into the committed fixture, so it stays deterministic).
-  await repos.vectorIndices.saveMeta(LORIAN, 4);
-  await repos.vectorIndices.addEntry({
-    id: VECTOR_ENTRY_1,
-    characterId: LORIAN,
-    embedding: new Float32Array([0.1, -0.25, 0.5, 0.75]),
-  } as never);
+  // P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin): the `vector_indices` /
+  // `vector_entries` mirror is gone (a memory's vector is `memories.embedding`),
+  // so the orphan per-character vector index + entry once seeded here for
+  // LORIAN is dropped.
 
   // 14c. One doc-mount blob attached to the stored file, so the backup's
   //      `mount-blobs/<id>` byte-staging leg has something to stage.
@@ -986,7 +981,15 @@ async function main(): Promise<void> {
   }
 
   // 15. background_jobs — one row in every status (the tasks-queue + jobs corpus).
+  //     P4.D288 (v4 `ac6348c5f`, the `83334b9a5` pin): memory refactor Phase D
+  //     retired the INTER_CHARACTER_MEMORY job type with no successor (its
+  //     `drop-inter-character-memory-jobs-v1` migration deletes the rows) and
+  //     the job schema refuses it, so a retired-type spec row is SKIPPED, as a
+  //     migrated instance holds it (its FAILED status is still carried by the
+  //     CONTEXT_SUMMARY row).
+  const RETIRED_JOB_TYPES = new Set(['INTER_CHARACTER_MEMORY']);
   for (const job of spec.jobs) {
+    if (RETIRED_JOB_TYPES.has(job.type)) continue;
     await repos.backgroundJobs.create(
       {
         userId: spec.userId,

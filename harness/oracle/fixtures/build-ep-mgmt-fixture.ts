@@ -11,9 +11,10 @@
  *     a small-dim Reapply Target with trunc=4), one api_key, two tags;
  *   - embedding_status rows for the default profile (embeddingStats + the
  *     matrix invalidate);
- *   - 8-dim vectors in every main embedding table (memories / vector_entries /
- *     conversation_chunks / help_docs) and mount `doc_mount_chunks` (reapply
- *     slices 8->4); 4-dim near-duplicate + distinct memories for dedup grouping.
+ *   - 8-dim vectors in every main embedding table (memories /
+ *     conversation_chunks / help_docs — P4.D288, v4 `af48f6cc2`: `vector_entries`
+ *     is gone, a memory's vector lives on `memories.embedding`) and mount
+ *     `doc_mount_chunks` (reapply slices 8->4); 4-dim near-duplicate + distinct memories for dedup grouping.
  *
  * Run from the v4 checkout under Node 24:
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -124,9 +125,6 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
-  );
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
     DocMountFileSchema,
@@ -403,12 +401,10 @@ async function main(): Promise<void> {
     );
   }
 
-  // Vector entries (8-dim) via the VectorIndicesRepository (it owns the table).
-  const vectors = new VectorIndicesRepository();
-  for (const e of spec.vectorEntries) {
-    await vectors.saveMeta(e.characterId, e.embedding.length);
-    await vectors.addEntry({ id: e.id, characterId: e.characterId, embedding: vec(e.embedding) });
-  }
+  // P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin): the `vector_entries` mirror is
+  // gone — a memory's vector is its own `memories.embedding`. The spec's one
+  // `vectorEntries` seed mirrored a reapply memory's id + the same 8-dim vector
+  // that row already carries, so it is dropped (the spec key is read by nothing).
 
   // Mount point + chunks (8-dim).
   await repos.docMountPoints.create(

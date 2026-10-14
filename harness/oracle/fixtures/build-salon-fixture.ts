@@ -522,8 +522,6 @@ async function main(): Promise<void> {
 
   // Force the empty tables the read/mutation paths touch into existence.
   await repos.backgroundJobs.findByUserId(spec.userId, 'PENDING');
-  await repos.vectorIndices.findMetaByCharacterId(spec.characters[0].id);
-  await repos.vectorIndices.findEntriesByCharacterId(spec.characters[0].id);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

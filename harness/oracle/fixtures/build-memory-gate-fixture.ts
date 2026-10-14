@@ -3,9 +3,8 @@
  *
  * Bakes the SEED state both differential sides start from: for every scenario
  * with pre-existing memories it seeds one `memories` row per seed (pinned id +
- * `seedTimestamp`) and the matching per-character vector index (`saveMeta` +
- * `addEntry`, embedding = the seed's unit vector as a Float32Array), through v4's
- * REAL `MemoriesRepository` / `VectorIndicesRepository`. Both the jest oracle and
+ * `seedTimestamp`), its vector on the row's own `embedding` (the seed's unit
+ * vector as a Float32Array), through v4's REAL `MemoriesRepository`. Both the jest oracle and
  * the Rust test then copy THIS fixture and run only the gate — which mints new
  * ids/timestamps — so the seed rows are byte-identical on both sides and only the
  * gate's own effect differs.
@@ -15,9 +14,9 @@
  * digest; `idx_memories_character_tier` is migration-only and absent here
  * (harmless — no read depends on it).
  *
- * Seed `memories.embedding` is left NULL (the gate reads the `vector_entries`
- * store, never `memories.embedding`, for its search); the vector lives in
- * `vector_entries`. Characters with no seed (`insert_empty`,
+ * P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin): the `vector_entries` mirror is
+ * gone — the index loads `memories.embedding`, so a seed's vector is written on
+ * its row (a seed without one has no vector). Characters with no seed (`insert_empty`,
  * `skip_embedding_failed`) get nothing — their index is created (or not) by the
  * gate.
  *
@@ -37,7 +36,7 @@ interface SeedMemory {
   id: string;
   content: string;
   summary: string;
-  /** Absent → no `vector_entries` row (a digest the store never indexed). */
+  /** Absent → no embedding on the row (a digest the index never held). */
   vector?: number[];
   // P4.D266 (the `d58548051` cold tier + the `3f7320138` cap): optional row
   // overrides. Absent → the literals every pre-round scenario was seeded with,
@@ -95,13 +94,9 @@ async function main(): Promise<void> {
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { MemoriesRepository } = await import('@/lib/database/repositories/memories.repository');
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
-  );
 
   await initializeDatabase();
   const memories = new MemoriesRepository();
-  const vectors = new VectorIndicesRepository();
 
   let seededMemories = 0;
   let seededVectors = 0;
@@ -118,7 +113,7 @@ async function main(): Promise<void> {
           keywords: [],
           tags: [],
           importance: seed.importance ?? 0.5,
-          embedding: null,
+          embedding: seed.vector ? new Float32Array(seed.vector) : null,
           source: seed.source ?? 'AUTO',
           witnessedContext: null,
           occurredAt: seed.occurredAt ?? null,
@@ -144,16 +139,7 @@ async function main(): Promise<void> {
       );
       seededMemories++;
 
-      // Seed the per-character vector index: metadata + one entry per seed
-      // that carries a vector.
-      if (!seed.vector) continue;
-      await vectors.saveMeta(scenario.characterId, seed.vector.length);
-      await vectors.addEntry({
-        id: seed.id,
-        characterId: scenario.characterId,
-        embedding: new Float32Array(seed.vector),
-      });
-      seededVectors++;
+      if (seed.vector) seededVectors++;
     }
   }
 

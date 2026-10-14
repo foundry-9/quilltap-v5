@@ -26,7 +26,7 @@ import {
   type CorePacket,
 } from '@/lib/services/aurora-notifications/core-whisper';
 import { buildSuparnaMailLLMContext } from '@/lib/services/suparna-notifications/writer';
-import { renderRelevantConversationsBlock } from '@/lib/memory/conversation-summary-search';
+import { renderRelevantConversationsBlock } from '@/lib/memory/recall/conversations';
 import { capClothingSummary } from '@/lib/memory/cheap-llm-tasks/image-scene-tasks';
 // P4.D233 (v4 `acadcc7cd`, bug 172) — REQUIRES a pin at or after `acadcc7cd`.
 import { operatorSpeaksWithoutSeat } from '@/lib/schemas/chat.types';

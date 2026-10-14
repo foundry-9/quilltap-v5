@@ -9,7 +9,7 @@
  * `*-main.db` pair was WIDENED in place by P4.D265 (§R.3), and the migration is
  * idempotent, so applying it to a widened copy is harmless.
  *
- *   applyMemoryTiersMigration(dbPath, { pepperBase64?, ledger? })
+ *   applyMemoryTiersMigration(dbPath, { pepperBase64?, ledger?, chain? })
  *
  * - `pepperBase64` — the file's test pepper (an ENCRYPTED copy, keyed exactly
  *   as `lib/v4-migrations.ts` keys it: `PRAGMA key = "x'<hex>'"`); omit it for
@@ -20,6 +20,16 @@
  *   boot does. `ledger: false` calls the migration's `shouldRun()` / `run()`
  *   directly — no ledger row — for a family whose comparand would otherwise
  *   see the v4-only `migrations_state` table.
+ * - `chain` (default `true`, P4.D288 at the `83334b9a5` pin) — follow the
+ *   tiers step with v4's two migrations that consume what it adds, in v4's
+ *   registration order: `add-episode-extraction-watermark-v1` (`c2795733f`)
+ *   and `add-memory-extraction-cursors-v1` (`ac6348c5f`, which copies both
+ *   chat watermark columns into `memory_extraction_cursors` and DROPS them).
+ *   At the pin `add-memory-tiers-v1` still ADDS
+ *   `chats.otherExtractionWatermarkMessageId`, so without the chain every
+ *   caller would re-add a column a real v4 instance no longer carries.
+ *   `chain: false` runs the tiers step alone (`memory-tiers-ensure.ts`,
+ *   which compares the chain itself).
  *
  * Mechanics that bite (shared with `lib/v4-migrations.ts`): v4's migration
  * connection is a module singleton reading `SQLITE_PATH` /
@@ -47,7 +57,14 @@ import { join } from 'node:path';
 export interface ApplyMemoryTiersOptions {
   pepperBase64?: string;
   ledger?: boolean;
+  chain?: boolean;
 }
+
+/** P4.D288: the two migrations the chain runs after the tiers step. */
+const CHAIN: Array<{ file: string; exportName: string }> = [
+  { file: 'migrations/scripts/add-episode-extraction-watermark-v1.ts', exportName: 'addEpisodeExtractionWatermarkMigration' },
+  { file: 'migrations/scripts/add-memory-extraction-cursors-v1.ts', exportName: 'addMemoryExtractionCursorsMigration' },
+];
 
 const ENV_KEYS = ['SQLITE_PATH', 'ENCRYPTION_MASTER_PEPPER', 'QUILLTAP_DATA_DIR'] as const;
 
@@ -88,26 +105,41 @@ export async function applyMemoryTiersMigration(
   const { addMemoryTiersMigration } = await import(
     join(v4Root, 'migrations/scripts/add-memory-tiers-v1.ts')
   );
-  let report: string;
+  type Migration = {
+    id: string;
+    shouldRun: () => Promise<boolean>;
+    run: () => Promise<{ success: boolean; id: string; message?: string; error?: string }>;
+  };
+  const migrations: Migration[] = [addMemoryTiersMigration];
+  if (opts.chain !== false) {
+    for (const m of CHAIN) migrations.push((await import(join(v4Root, m.file)))[m.exportName]);
+  }
+  const reports: string[] = [];
   utils.closeSQLite();
   try {
     if (opts.ledger === false) {
-      if (!(await addMemoryTiersMigration.shouldRun())) {
-        report = `${addMemoryTiersMigration.id} not needed`;
-      } else {
-        const result = await addMemoryTiersMigration.run();
-        if (!result?.success) throw new Error(`add-memory-tiers-v1 failed: ${result?.error}`);
-        report = `+RAN ${result.id} (${result.message})`;
+      for (const m of migrations) {
+        if (!(await m.shouldRun())) {
+          reports.push(`${m.id} not needed`);
+          continue;
+        }
+        const result = await m.run();
+        if (!result?.success) throw new Error(`${m.id} failed: ${result?.error}`);
+        reports.push(`+RAN ${result.id} (${result.message})`);
       }
     } else {
       const { MigrationRunner } = await import(join(v4Root, 'migrations/index.ts'));
       const runner = new MigrationRunner();
-      (runner as unknown as { migrations: unknown[] }).migrations = [addMemoryTiersMigration];
+      (runner as unknown as { migrations: unknown[] }).migrations = migrations;
       const result = await runner.runMigrations();
       if (!result.success) throw new Error(`the runner failed: ${JSON.stringify(result)}`);
-      report = result.migrationsRun
-        ? `+RAN ${result.results[0].id} (${result.results[0].message})`
-        : `${addMemoryTiersMigration.id} skipped (ledger or not needed)`;
+      const ran = new Map<string, { id: string; message?: string }>(
+        (result.results as Array<{ id: string; message?: string }>).map((r) => [r.id, r]),
+      );
+      for (const m of migrations) {
+        const r = ran.get(m.id);
+        reports.push(r ? `+RAN ${r.id} (${r.message})` : `${m.id} skipped (ledger or not needed)`);
+      }
     }
   } finally {
     utils.closeSQLite();
@@ -132,5 +164,5 @@ export async function applyMemoryTiersMigration(
   }
   const journal = dbPath + '-journal';
   if (existsSync(journal) && statSync(journal).size === 0) rmSync(journal);
-  return report;
+  return reports.join('; ');
 }

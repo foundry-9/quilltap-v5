@@ -106,7 +106,7 @@ jest.mock('@/lib/memory/cheap-llm-tasks/core-execution', () => ({
   executeCheapLLMTask: jest.fn(),
 }));
 
-import { extractMemorySearchKeywords } from '@/lib/memory/cheap-llm-tasks/memory-tasks';
+import { extractMemorySearchKeywords } from '@/lib/memory/recall/query';
 import { executeCheapLLMTask } from '@/lib/memory/cheap-llm-tasks/core-execution';
 
 interface CaseSpec {
