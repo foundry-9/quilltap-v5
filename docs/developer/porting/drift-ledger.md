@@ -26,7 +26,10 @@ probe verifies against._
   P4.D283 ∥ P4.D284} ∥ P4.D285 ∥ P4.D286 ∥ P4.D287, 2026-10-13). CLAUDE.md's
   Status bullet for the round names `4a38222e6`. MOVED from `01a83539d` by
   this unification — the eight rows it passes retired to §6.
-- **Checked:** 2026-10-13 late evening (`/driftcheck` — six rows
+- **Checked:** 2026-10-14 early (`/setupphase`'s §2 probe FAILED mid-planning;
+  §4 procedure run by hand for ONE commit: `83334b9a5` the API-standard
+  audit — NO-PORT?, identical-output `successResponse` swaps — and the
+  checkout's new dirt recorded). Before that: 2026-10-13 late evening (`/driftcheck` — six rows
   appended: `4ae0c4ca6` TF-IDF tuning + bug 243, `104e986c7` Phase F,
   `b045dd986` Phase G + bugs 242 / 244, `48790fb73` the refactor's close +
   **the Friday backfill record**, `9ec4fa2e9` the V4test dogfood, `64743ee13`
@@ -41,10 +44,20 @@ probe verifies against._
   `01a83539d` round); 2026-10-12 morning (the four wardrobe rows);
   2026-10-09 (three checks); 2026-10-08 (`/unify` of the `f5e953a3f` round +
   the evening check).
-- **v4 `main` HEAD at check: `64743ee13`** ("Fix bugs 245 and 246:
-  reopened turns re-extracted; consolidation token budget", 2026-10-13
-  20:36, `4.10.0-dev.175`) — local `main` = `origin/main` (pulled).
-  **NINETEEN commits past the baseline** (`4a38222e6..main`). The six NEW
+- **v4 `main` HEAD at check: `83334b9a5`** ("Release checklist 4: API
+  standard audit; use successResponse in new handlers", 2026-10-13 21:18,
+  `4.10.0-dev.176`) — local `main` = `origin/main`. **TWENTY commits past
+  the baseline** (`4a38222e6..main`). `83334b9a5` (15 files, +41 / −35):
+  24 `NextResponse.json(x[, {status}])` → `successResponse(x[, status])`
+  (`lib/api/responses.ts:63-68` IS `NextResponse.json(data, { status })`,
+  default 200 — byte-identical responses; every non-swap hunk line is the
+  import widening, measured) in the chat actions / GET handlers, connection
+  profiles, memories (`maintain` / `maintenance-status` / `repair` /
+  config handlers + manual create), plugins and the scenario item route
+  factory; a jest mock fix; CHANGELOG / README / stamps. **NO-PORT?** — its
+  only effect on v5 is pin line numbers (one-for-one, no line count move in
+  `memories/route.ts`). Before it, at `64743ee13`: **NINETEEN commits past
+  the baseline** (`4a38222e6..64743ee13`). The six NEW
   this check (§3 rows carry the full classification; dependencies
   stamps-only — `package.json` / `packages/quilltap/package.json` move only
   their `version`; `help/` 132 → **131**: `memory-consolidation.md` +
@@ -224,17 +237,27 @@ probe verifies against._
 - **v4 `bugfix` tip at check:** `1a2b2164c`, UNMOVED (`1a2b2164c..bugfix`
   empty; `origin/bugfix` the same). **`release` tip:** `8fbf2afe0`
   (`release: 4.9.2`), UNMOVED; still no `release: 4.10.0` squash.
-- **Checkout at check:** branch **`main`**, tree **CLEAN** (`git status
-  --short` empty). Local `main` = `origin/main` = `64743ee13`. The §2
-  probe reads `64743ee13..main`.
-- **Verdict: DRIFT PENDING — 19 commits (§3): 2 NO-PORT? (`4ce64fa1e`,
-  `9ec4fa2e9`), 16 PORT (`124c8aca3`, `69d38dd60`, `8050958be`,
+- **Checkout at check:** branch **`main`**, tree **DIRTY** — 11 modified
+  (+9 / −87, deletions almost only) + 2 STAGED DELETIONS (`lib/memory/
+  index.ts`, `lib/memory/recall/index.ts` — barrel files): `lib/memory/
+  extraction/prompts/shared.ts`, `lib/memory/time/calendar.ts`,
+  `lib/schemas/memory-extraction-cursor.types.ts`, `lib/mount-index/sync/
+  {manifest,types}.ts`, `lib/progressions/engine.ts`,
+  `lib/services/dangerous-content/refusal.ts`, `lib/database/repositories/
+  vault-overlay/wardrobe-writes.ts` + three tests — the human's in-flight
+  release-checklist dead-code removal (the next `Release checklist` commit,
+  presumably). Read by NOTHING: every regen runs from a pin (§5.1). Local
+  `main` = `origin/main` = `83334b9a5`. The §2 probe reads
+  `83334b9a5..main` and EXPECTS this dirt (a commit of it is the next
+  `/driftcheck`'s row).
+- **Verdict: DRIFT PENDING — 20 commits (§3): 3 NO-PORT? (`4ce64fa1e`,
+  `9ec4fa2e9`, `83334b9a5`), 16 PORT (`124c8aca3`, `69d38dd60`, `8050958be`,
   `97f0d8cb8`, the five — `c2795733f`, `e0ac7493a`, `af48f6cc2`,
   `ac6348c5f` each WITH a schema move, `8af764514` with a wire change —
   `93c5af6ad`, `584d28164`, and the five new: `4ae0c4ca6` WITH the NINTH
   D23 move, `104e986c7` with a job-row migration, `b045dd986`, `48790fb73`
   (labels riding Phase G's new surfaces), `64743ee13`), 1 PORT-NEW + PORT
-  (`545e299bb`).** Eighteen are UNPROCESSED; `97f0d8cb8` is
+  (`545e299bb`).** Nineteen are UNPROCESSED; `97f0d8cb8` is
   PORTED(P4.D285) — baseline not yet past. **Pin for the memory catch-up:
   `64743ee13` or later** — v4 declares the refactor CLOSED (`48790fb73`
   moved its spec to `complete/`), the first HEAD where the memory programme
@@ -610,6 +633,7 @@ passes the commit.
 | `48790fb73` | 2026-10-13 | Close the memory refactor: record the Friday backfill; fix three report labels | **PORT (labels, riding Phase G's new surfaces) + ⚠ LIVE-DATA FACT** (classified 2026-10-13 late evening from the hunks; 32 files, +105 / −65; parent `b045dd986`). Code: `maintenance-report.tsx` ("Clusters found" → "Clusters worth folding", `clustersQualified`; "Protected" → "exempt"), `memory-maintenance-card.tsx`, `memory-maintenance-ledger.tsx` (a no-excess demotion reads "Within the cap", muted), the CLI `memories-maintain-command.js` — all on surfaces `b045dd986` created, so they port WITH it. Docs: the refactor spec → `features/complete/`, link fixes across `bugs/fixed/*`, `help/cli-memories.md` + `memory-maintenance.md` (one word each), ROADMAP. **The spec's "Friday backfill (E2) — done 2026-10-13" records v4 migrating LIVE FRIDAY at 22:24 UTC** — ten refactor migrations, 44,240 memories, the vector mirror dropped, 3,166 importances recomputed, 1,862 `occurredAt` re-zoned, then maintenance: ~120 digests, ~250 members superseded, 913 demoted (cap override lowered 10,000 → 2,500). The §1 LIVE-DATA HAZARDS block moved ARMED → FIRED on this. CONVERGENCE: none. | UNPROCESSED |
 | `9ec4fa2e9` | 2026-10-13 | Memory refactor V4test dogfood; file bugs 245 and 246 | **NO-PORT?** (classified 2026-10-13 late evening from the hunks; 10 files, +187 / −7; parent `48790fb73`). Docs (bugs 245 / 246 filed OPEN, the phase B–G acceptance walks), version stamps, and ONE code hunk: `packages/quilltap/lib/memories-commands.js` — `memories status` prints a no-excess demotion as "within the cap". v5's CLI has no `memories` verb family (Tier R ported `db` / `docs` / `instances` / `sync` / `anchor-probe` / `recall-replay`), so the line has no v5 home today — it rides whichever order ports `memories status`. Ratify at the round that does. | UNPROCESSED |
 | `64743ee13` | 2026-10-13 | Fix bugs 245 and 246: reopened turns re-extracted; consolidation token budget | **PORT — NO migration (a new free-text cursor `pass`); a bundle KEY added** (classified 2026-10-13 late evening from the hunks, §5.3; 38 files, +637 / −95; `4.10.0-dev.175`, parent `9ec4fa2e9`). **Bug 245:** `ExtractionCursorPassEnum` gains `'turn'` (`FoldCursorPass` excludes it); `extraction/turn.ts` + `window.ts` + `passes/other-turn.ts` — a live turn job reads past the forward-only `turn` cursor, earlier lines of the turn (opener included) become context under "EARLIER IN THIS TURN" (`turn-transcript.ts` +131, `priorSlices`), SELF only for speakers with new lines, OTHER for everyone (earlier speakers on new lines only), a bound outside the turn ignored; `memory-regenerate-chat.ts` clears it and never reads it; regenerate / `queue-memories` bound each autonomous speaker by the previous anchor (`listExtractionTurns`); `cursor-bundle.ts` + `uuid-remap.ts` + `message-id-remap.ts` carry / remap `turnExtractionWatermarkMessageId`; `qtap-export.schema.json` gains the key (re-vendor). **Bug 246:** `consolidation-tasks.ts` `profileMaxTokensFor` — the routed profile's `resolveMaxTokens` with 4,000 as a floor; an empty answer logged as empty. v5: the per-turn extraction + turn transcript (`services/carina_memory_extraction.rs`, `memory_processor.rs`, the P4.D270 passes — v5 is still pre-Phase-D, so this rides the cursor-table port ruled 2026-10-13), the backup / restore / `.qtap` carriers (P4.D264 / P4.D272), `services/consolidation.rs` (P4.D271), `docs/v4/` + the vendored export schema. CONVERGENCE: none (`Original to v4`). | UNPROCESSED |
+| `83334b9a5` | 2026-10-13 | Release checklist 4: API standard audit; use successResponse in new handlers | **NO-PORT?** (classified 2026-10-14 from the hunks, §5.3; 15 files, +41 / −35; `4.10.0-dev.176`, parent `64743ee13`). Every `app/` / `lib/` hunk line is a `NextResponse.json(x)` / `NextResponse.json(x, { status })` → `successResponse(x[, status])` swap or the import widening that brings `successResponse` in — measured by `git show 83334b9a5 -- app lib \| grep -E '^[-+]' \| grep -v 'NextResponse.json\|successResponse'` returning ONLY the five import lines; `successResponse` (`lib/api/responses.ts:63-68`) IS `NextResponse.json(data, { status })` with `status = 200`, so every response is byte-identical (status, body, headers). Sites: `chats/[id]/actions/{impersonation-voice-preview,inform,rebuild-summary,story-background}.ts`, `chats/[id]/handlers/get.ts`, `connection-profiles/[id]/route.ts`, `memories/route.ts` (manual create's 201/200, `maintain` both arms, `maintenance-status`, `repair`, the maintenance / consolidation config reads + writes), `plugins/[name]/route.ts`, `lib/mount-index/scenario-item-route-factory.ts`. Plus `memories-manual-create.test.ts`'s mock now honouring `status` (tests-only), CHANGELOG, README badge, version stamps (no lockfile hunk beyond the root `version` lines). No dependency, schema, help or `docs/` (beyond CHANGELOG) move. | v5 effect: NONE in behaviour; pin line numbers in the touched files shift by zero lines (one-for-one swaps). Rides the memory + scenarios round's pin. | **UNPROCESSED** |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

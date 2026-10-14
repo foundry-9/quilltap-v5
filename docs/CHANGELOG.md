@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-14 — docs(porting): drift ledger records v4 `83334b9a5` (API-standard audit, identical responses) and the checkout's in-flight dead-code dirt
+
+_Docs-only change._
+
+`/setupphase`'s §2 probe failed mid-planning: v4 `main` moved one commit to `83334b9a5` (`4.10.0-dev.176`) and the checkout went dirty. The §4 procedure, run by hand for the one commit: every `app/` / `lib/` hunk swaps `NextResponse.json` for `successResponse` (which is `NextResponse.json(data, { status })`) or widens an import — byte-identical responses, classified NO-PORT?, UNPROCESSED. The dirt (11 modified files, deletions almost only, plus the staged deletion of the `lib/memory/index.ts` and `lib/memory/recall/index.ts` barrels) is the human's release-checklist dead-code pass; nothing reads it, since every regen runs from a pin. `bugfix` and `release` unmoved. Twenty commits past the baseline.
+
 #### 2026-10-13 — docs(porting): drift check records v4's memory refactor Phases F and G, the TF-IDF tuning, bugs 242–246, and v4's migration of live Friday — nineteen commits past the baseline
 
 _Docs-only change._
