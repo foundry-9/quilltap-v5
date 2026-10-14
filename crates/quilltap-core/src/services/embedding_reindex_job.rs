@@ -291,18 +291,8 @@ pub async fn handle_embedding_reindex_all(
         .read_main(|conn| Ok(memories_read::find_distinct_character_ids(conn)))
         .unwrap_or_default();
 
-    if scope == "all" {
-        for character_id in &character_ids {
-            let cid = character_id.clone();
-            db.write(move |ws| {
-                crate::db::vector_indices::VectorIndicesRepository::new(ws.main().connection())
-                    .delete_by_character_id(&cid)
-                    .map(|_| ())
-            })
-            .await
-            .map_err(|e| format!("{e}"))?;
-        }
-    }
+    // P4.D288 (C1-3, mechanical): the `all` scope's per-character mirror purge
+    // is gone with the mirror (v4's `all` reindex clears nothing — P4.D292).
 
     let failed_memory_ids = failed_ids_for(db, partial, "MEMORY", &payload.profile_id);
     for character_id in &character_ids {

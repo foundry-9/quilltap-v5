@@ -487,10 +487,8 @@ async fn embedding_remainder_matches_oracle() {
                             "db-unavailable" => SkippedReason::DbUnavailable,
                             other => panic!("unknown skippedReason {other:?}"),
                         }),
-                        vector_entries_deleted: v["vectorEntriesDeleted"].as_u64().unwrap()
-                            as usize,
-                        vector_index_meta_fixed: v["vectorIndexMetaFixed"].as_u64().unwrap()
-                            as usize,
+                        // P4.D288 (C1-3): the two mirror fields left the result
+                        // (v4 at the pin carries neither) — the family is P4.D292's.
                         mismatched: MismatchedCounts {
                             memories: m["memories"].as_u64().unwrap() as usize,
                             conversation_chunks: m["conversationChunks"].as_u64().unwrap() as usize,
@@ -749,9 +747,7 @@ async fn embedding_remainder_matches_oracle() {
         // fires somewhere in the sequence.
         let any = |f: fn(&DimensionReconcileResult) -> bool| oracle_dim.iter().any(|(_, r)| f(r));
         assert!(
-            any(|r| r.vector_entries_deleted > 0)
-                && any(|r| r.vector_index_meta_fixed > 0)
-                && any(|r| r.mismatched.memories > 0)
+            any(|r| r.mismatched.memories > 0)
                 && any(|r| r.mismatched.conversation_chunks > 0)
                 && any(|r| r.mismatched.help_docs > 0)
                 && any(|r| r.reindex_enqueued)

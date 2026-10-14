@@ -322,6 +322,42 @@ pub struct MemUpdate {
     pub updated_at: Option<String>,
 }
 
+// === P4.D288 (C1-3) ===
+impl MemUpdate {
+    /// True when the patch names any field — v4's `alongside && Object.keys(
+    /// alongside).length > 0` (`memory-index.ts`'s `withFields` count).
+    pub fn names_any_field(&self) -> bool {
+        self.content.is_some()
+            || self.summary.is_some()
+            || self.keywords.is_some()
+            || self.tags.is_some()
+            || self.related_memory_ids.is_some()
+            || self.importance.is_some()
+            || self.source.is_some()
+            || self.reinforcement_count.is_some()
+            || self.reinforced_importance.is_some()
+            || self.about_character_id.is_some()
+            || self.chat_id.is_some()
+            || self.project_id.is_some()
+            || self.witnessed_context.is_some()
+            || self.occurred_at.is_some()
+            || self.narrative_time.is_some()
+            || self.entities.is_some()
+            || self.kind.is_some()
+            || self.source_message_id.is_some()
+            || self.last_accessed_at.is_some()
+            || self.last_reinforced_at.is_some()
+            || self.embedding.is_some()
+            || self.tier.is_some()
+            || self.superseded_by_id.is_some()
+            || self.superseded_at.is_some()
+            || self.consolidated_from.is_some()
+            || self.consolidated_at.is_some()
+            || self.updated_at.is_some()
+    }
+}
+// === end P4.D288 ===
+
 /// Repository over a borrowed MAIN-db connection (held by the [`super::Writer`]).
 pub struct MemoriesRepository<'c> {
     conn: &'c Connection,

@@ -1763,44 +1763,14 @@ fn restore_on_writer(
         );
     }
 
-    // ── 22j. Vector index metas + entries (main partition) ───────────────────
-    {
-        let repo = crate::db::vector_indices::VectorIndicesRepository::new(main);
-        for meta in &data.vector_index_metas {
-            let character_id = s(meta, "characterId");
-            warn_row!(
-                w,
-                c.vector_index_metas,
-                format!("Failed to restore vector index meta for character {character_id}"),
-                repo.save_meta(&character_id, n(meta, "dimensions", 0.0)),
-                "Failed to restore vector index meta",
-                characterId = character_id,
-            );
-        }
-        if !data.vector_entries.is_empty() {
-            let entries: Vec<crate::db::vector_indices::VectorEntryInput> = data
-                .vector_entries
-                .iter()
-                .map(|e| crate::db::vector_indices::VectorEntryInput {
-                    id: id_of(e),
-                    character_id: s(e, "characterId"),
-                    embedding: embedding(e, "embedding"),
-                })
-                .collect();
-            match repo.add_entries(&entries) {
-                Ok(()) => c.vector_entries = entries.len(),
-                Err(e) => {
-                    let error = e.warn_text();
-                    w.push(format!("Failed to restore vector entries: {error}"));
-                    tracing::warn!(
-                        target: "quilltap::restore",
-                        error = %error,
-                        "Failed to restore vector entries batch"
-                    );
-                }
-            }
-        }
-    }
+    // ── 22j. Vector index metas + entries — RETIRED (P4.D288, C1-3) ─────────
+    // The vector mirror died with v4 `af48f6cc2`: a memory's row is the only
+    // copy of its vector, so the archive's `vectorIndices` / `vectorEntries`
+    // land nowhere and both counts answer 0 (`c.vector_index_metas` /
+    // `c.vector_entries` stay at their default). HANDOFF: P4.D293 — v4
+    // `restore.ts:335-375` ADOPTS an older archive's legacy vectors onto their
+    // memory rows (`legacyVectorsAdopted`); that carrier is P4.D293's to port.
+    let _ = (&data.vector_index_metas, &data.vector_entries);
 
     // ── 22k. Conversation chunks ─────────────────────────────────────────────
     {
@@ -2143,8 +2113,6 @@ fn restore_on_writer(
             .target_dimensions
             .map_or_else(|| "null".to_string(), |d| d.to_string()),
         skippedReason = reconcile.skipped_reason.map_or("null", |r| r.as_str()),
-        vectorEntriesDeleted = reconcile.vector_entries_deleted,
-        vectorIndexMetaFixed = reconcile.vector_index_meta_fixed,
         reindexEnqueued = reconcile.reindex_enqueued,
         mismatchedJson = mismatched.as_str(),
         "Post-restore embedding reconcile complete"
@@ -2163,8 +2131,6 @@ fn restore_on_writer(
     let embedding_reconcile = crate::services::backup::restore::EmbeddingReconcileSummary {
         target_dimensions: reconcile.target_dimensions,
         skipped_reason: reconcile.skipped_reason.map(|r| r.as_str()),
-        vector_entries_deleted: reconcile.vector_entries_deleted,
-        vector_index_meta_fixed: reconcile.vector_index_meta_fixed,
         reindex_enqueued: reconcile.reindex_enqueued,
     };
 

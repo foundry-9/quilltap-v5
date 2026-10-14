@@ -99,15 +99,11 @@ const REGISTRY_ALLOWED: &[(&str, &str, usize, &str)] = &[
 
 /// `(module, minimum `float32_to_blob` references, which table it owns)`.
 ///
-/// The first five are exactly the tables v4's `manager.ts` registers; the sixth
+/// The first four are exactly the tables v4's `manager.ts` registers at the
+/// `83334b9a5` pin (`vector_entries` left with the mirror — P4.D288); the fifth
 /// is v5's own (mount-index document chunks), which v4 reaches by another door.
 const ENCODE_CENSUS: &[(&str, usize, &str)] = &[
     ("crates/quilltap-core/src/db/memories.rs", 1, "memories"),
-    (
-        "crates/quilltap-core/src/db/vector_indices.rs",
-        1,
-        "vector_entries",
-    ),
     (
         "crates/quilltap-core/src/db/conversation_chunks.rs",
         1,

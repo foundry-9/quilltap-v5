@@ -70,9 +70,7 @@ use crate::db::{
     embedding_status::EmbeddingStatusRepository,
     files::{CreateOptions as FileCreateOptions, FileCreate, FileEntry, FilesRepository},
     memories::MemoriesRepository,
-    memories_read, vault_character_update,
-    vector_indices::VectorIndicesRepository,
-    DbError,
+    memories_read, vault_character_update, DbError,
 };
 use crate::services::file_storage::{PixelCodec, StorageBackend};
 use crate::services::mount_index::converters::DocumentTextExtractor;
@@ -1269,12 +1267,10 @@ async fn delete_own_memories(db: &Db, character_id: &str) -> bool {
 }
 
 async fn delete_vector_store(db: &Db, character_id: &str) -> bool {
-    let cid = character_id.to_string();
-    let outcome = db
-        .write(move |ws| {
-            VectorIndicesRepository::new(ws.main().connection()).delete_by_character_id(&cid)
-        })
-        .await;
+    // P4.D288 (C1-3, mechanical): there is no stored vector store to delete —
+    // the memory rows ARE the index — so the step always succeeds.
+    let _ = (db, character_id);
+    let outcome: Result<(), DbError> = Ok(());
     match outcome {
         Ok(_) => true,
         Err(e) => {

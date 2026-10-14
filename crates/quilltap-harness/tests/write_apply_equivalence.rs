@@ -26,6 +26,20 @@
 //!     cargo test -p quilltap-harness --test write_apply_equivalence
 
 use std::collections::{HashMap, HashSet};
+
+/// P4.D288 — `DELETED_DIGEST_BUCKET_LOOKUP` (a named both-ways row): at the
+/// `83334b9a5` pin, v4's `applyWritesUnsafe` reads, BEFORE the commit, the
+/// subject buckets of every digest the batch deletes
+/// (`lookupDeletedDigestBuckets` → `memories.findDigestSubjectsByIds`), so the
+/// Commonplace mirror can be refreshed after it (`mirrorDeletedDigestsAfterCommit`).
+/// Those commit-hook halves are the maintenance job's — P4.D297's to port over
+/// `services::commonplace_mirror` (L-3). Until then v5 dispatches no such read:
+/// `(scenario, v4's extra dispatched method)` — asserted PRESENT in v4's trace
+/// (first) and ABSENT from v5's, then dropped before the compare.
+const DELETED_DIGEST_BUCKET_LOOKUP: &[(&str, &str)] = &[(
+    "vector-store-write-shapes",
+    "memories.findDigestSubjectsByIds",
+)];
 use std::path::{Path, PathBuf};
 
 use quilltap_core::services::dangerous_content::refusal_ledger::LastRefusal;
@@ -378,6 +392,23 @@ fn write_apply_matches_oracle() {
             .map(render_v4_ledger_log)
             .collect();
         assert_eq!(ledger_logs, want_logs, "ledger log lines for `{}`", sc.name);
+        if let Some((_, method)) = DELETED_DIGEST_BUCKET_LOOKUP
+            .iter()
+            .find(|(name, _)| *name == sc.name)
+        {
+            let dispatched = want["dispatched"].as_array_mut().unwrap();
+            assert_eq!(
+                dispatched.first().map(|d| d["method"].clone()),
+                Some(json!(method)),
+                "DELETED_DIGEST_BUCKET_LOOKUP: v4 moved for `{}` (retire or re-rule the row)",
+                sc.name
+            );
+            assert!(
+                !host.dispatched.iter().any(|d| d["method"] == *method),
+                "DELETED_DIGEST_BUCKET_LOOKUP: v5 now dispatches {method} (retire the row)"
+            );
+            dispatched.remove(0);
+        }
         let want = &want;
 
         assert_eq!(

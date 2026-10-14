@@ -1,16 +1,20 @@
-//! P4.D265 tier-2 differential: v4's REAL `CharacterVectorStore` tier stamping
-//! (`lib/embedding/vector-store.ts`, `d58548051`) against
+//! P4.D288 (C1-3) tier-2 differential, REWRITTEN over ROWS: v4's REAL
+//! `CharacterVectorStore` at the `83334b9a5` pin (`lib/embedding/vector-store.ts`
+//! after `af48f6cc2` — loading `id, embedding, tier` from `memories`) against
 //! `db::vector_store::CharacterVectorStore` over the SAME per-run fixture (v4's
-//! own code built it — memories with cold rows, a cold memory with no vector,
-//! five unit vectors).
+//! own `create` stored each embedding — the quantized blob — plus raw rows: an
+//! undecodable TEXT cell, an EMPTY blob, a JSON-array TEXT cell; a 3-d majority
+//! with a 2-d minority; a second character whose two lengths TIE).
 //!
-//! Replays the oracle's op list: `load` (+ its `Loaded vector index` DEBUG —
-//! `cold` is the cold-id SET's size), `search(q, k, isHotVector)` as
-//! `search_filtered(q, k, |_, cold| !cold)` and the unfiltered `search`
-//! (ids exact, scores within 1e-12), `setTier` as `set_tier` (+ its
-//! `Re-stamped vector tiers` DEBUG, an absent id, a no-op re-stamp). Lines are
-//! compared from the message on (the target is v5's module path; v4's ride the
-//! root logger).
+//! Replays the oracle's op list: each `load` (+ `Read memory index rows`, the
+//! undecodable-skip WARN, `Loaded vector index from memory rows` with the
+//! dominant `dimensions`; `size`, `dimensions()`, `count_with_dimensions(2|3)`),
+//! `search(q, k, isHotVector)` as `search_filtered(q, k, |_, cold| !cold)` and
+//! the unfiltered `search` (ids and cold tags exact, scores within 1e-12; a 2-d
+//! query scoring only the 2-d entries; a 4-d query → the dimension-mismatch
+//! WARN and `[]`), `setTier` as `set_tier` (+ its `Re-stamped vector tiers`
+//! DEBUG). Lines are compared from the message on (the target is v5's; v4's
+//! ride the root logger).
 //!
 //! Regenerate + run (the case builds its own fixture):
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -68,17 +72,6 @@ fn got_lines(lines: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-fn unit(v: [f32; 3]) -> Vec<f32> {
-    // v4's `unit()` runs in doubles, then stores Float32 — the query is the
-    // same Float32 rounding of the same doubles.
-    let norm = v
-        .iter()
-        .map(|x| (*x as f64) * (*x as f64))
-        .sum::<f64>()
-        .sqrt();
-    v.iter().map(|x| ((*x as f64) / norm) as f32).collect()
-}
-
 #[test]
 fn vector_store_tiers_match_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_VECTOR_STORE_TIERS") else {
@@ -102,39 +95,66 @@ fn vector_store_tiers_match_oracle() {
     let work = scratch.path().join("work.db");
     std::fs::copy(&fixture, &work).unwrap_or_else(|e| panic!("copy fixture: {e}"));
     let writer = Writer::open_writable(&work, PEPPER).unwrap_or_else(|e| panic!("open: {e}"));
-    let character_id = oracle["characterId"].as_str().unwrap();
-    let q = unit([1.0, 0.0, 0.0]);
 
     let ops = oracle["ops"].as_array().unwrap();
-    assert_eq!(ops[0]["op"], "load");
-    let (store, lines) = quilltap_core::test_support::captured_with(|| {
-        CharacterVectorStore::load(writer.connection(), character_id).expect("load")
-    });
-    let mut store = store;
-    assert_eq!(got_lines(lines), want_lines(&ops[0]), "load: the lines");
-    assert_eq!(
-        store.size() as u64,
-        ops[0]["size"].as_u64().unwrap(),
-        "load: size"
-    );
-
-    let mut compared = 0usize;
-    for (i, op) in ops.iter().enumerate().skip(1) {
+    let mut store: Option<CharacterVectorStore> = None;
+    let (mut loads, mut searches, mut set_tiers) = (0usize, 0usize, 0usize);
+    for (i, op) in ops.iter().enumerate() {
         match op["op"].as_str().unwrap() {
+            "load" => {
+                let cid = op["characterId"].as_str().unwrap();
+                let (loaded, lines) = quilltap_core::test_support::captured_with(|| {
+                    CharacterVectorStore::load(writer.connection(), cid)
+                });
+                assert_eq!(got_lines(lines), want_lines(op), "op {i}: load lines");
+                assert_eq!(
+                    loaded.size() as u64,
+                    op["size"].as_u64().unwrap(),
+                    "op {i}: size"
+                );
+                assert_eq!(
+                    loaded.dimensions().map(|d| d as u64),
+                    op["dimensions"].as_u64(),
+                    "op {i}: the dominant length"
+                );
+                assert_eq!(
+                    loaded.count_with_dimensions(2) as u64,
+                    op["count2"].as_u64().unwrap()
+                );
+                assert_eq!(
+                    loaded.count_with_dimensions(3) as u64,
+                    op["count3"].as_u64().unwrap()
+                );
+                store = Some(loaded);
+                loads += 1;
+            }
             "search" => {
+                let s = store.as_ref().expect("a load first");
+                let q: Vec<f32> = op["q"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|x| x.as_f64().unwrap() as f32)
+                    .collect();
                 let k = op["k"].as_u64().unwrap() as usize;
                 let (hits, lines) = quilltap_core::test_support::captured_with(|| {
                     if op["hotOnly"].as_bool().unwrap() {
-                        store.search_filtered(&q, k, |_, cold| !cold)
+                        s.search_filtered(&q, k, |_, cold| !cold)
                     } else {
-                        store.search(&q, k)
+                        s.search(&q, k)
                     }
                 });
                 assert_eq!(got_lines(lines), want_lines(op), "op {i}: lines");
                 let want = op["hits"].as_array().unwrap();
-                let got_ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
-                let want_ids: Vec<&str> = want.iter().map(|h| h["id"].as_str().unwrap()).collect();
-                assert_eq!(got_ids, want_ids, "op {i} ({}): the ids", op["label"]);
+                let got: Vec<(&str, bool)> = hits
+                    .iter()
+                    .map(|h| (h.id.as_str(), h.tier == Tier::Cold))
+                    .collect();
+                let want_pairs: Vec<(&str, bool)> = want
+                    .iter()
+                    .map(|h| (h["id"].as_str().unwrap(), h["cold"].as_bool().unwrap()))
+                    .collect();
+                assert_eq!(got, want_pairs, "op {i} ({}): ids + cold tags", op["label"]);
                 for (g, w) in hits.iter().zip(want) {
                     let ws = w["score"].as_f64().unwrap();
                     assert!(
@@ -143,9 +163,10 @@ fn vector_store_tiers_match_oracle() {
                         g.score
                     );
                 }
-                compared += 1;
+                searches += 1;
             }
             "setTier" => {
+                let s = store.as_mut().expect("a load first");
                 let ids: Vec<String> = op["ids"]
                     .as_array()
                     .unwrap()
@@ -157,13 +178,16 @@ fn vector_store_tiers_match_oracle() {
                     _ => Tier::Cold,
                 };
                 let (_changed, lines) =
-                    quilltap_core::test_support::captured_with(|| store.set_tier(&ids, tier));
+                    quilltap_core::test_support::captured_with(|| s.set_tier(&ids, tier));
                 assert_eq!(got_lines(lines), want_lines(op), "op {i}: setTier lines");
-                compared += 1;
+                set_tiers += 1;
             }
             other => panic!("unknown op {other}"),
         }
     }
-    assert!(compared >= 8, "the op list shrank ({compared})");
-    eprintln!("OK: vector store tiers matched oracle ({} ops).", ops.len());
+    assert_eq!((loads, searches, set_tiers), (2, 7, 3), "the op list moved");
+    eprintln!(
+        "OK: vector store over rows matched oracle ({} ops).",
+        ops.len()
+    );
 }

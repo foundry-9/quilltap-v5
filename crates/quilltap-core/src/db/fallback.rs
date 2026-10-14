@@ -195,12 +195,8 @@ pub fn find_one_by_filter_or_none<T>(
     read: impl FnOnce() -> Result<Option<T>, DbError>,
 ) -> Option<T> {
     read().unwrap_or_else(|error| {
-        tracing::error!(
-            target: "quilltap::db",
-            collection = collection,
-            error = %error_text(&error),
-            "Error finding entity by filter"
-        );
+        // P4.D288: the line's ONE home, shared with the strict-aware sibling.
+        log_find_one_by_filter_failure(collection, &error, false);
         None
     })
 }
@@ -2987,6 +2983,155 @@ pub fn cursors_cleared_for_chat_or_zero(
             Err(error)
         } else {
             Ok(0)
+        }
+    })
+}
+
+// --- C1-3: the index-store reads ---
+
+/// v4 `findIndexRowsByCharacterId`'s `safeQuery` (`memories.repository.ts:
+/// 1085-1088`): ERROR `Error reading memory index rows {collection,
+/// characterId, error}`, FALLBACK `[]` (strict-aware).
+pub fn index_rows_or_empty<T>(
+    character_id: &str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error reading memory index rows"
+        );
+    })
+}
+
+/// v4 `countCorpusSince`'s `safeQuery` (`memories.repository.ts:989-991`):
+/// ERROR `Error counting the memory corpus {collection, since, error}` (`since`
+/// `null` when absent), FALLBACK `(0, 0)` (strict-aware).
+pub fn corpus_count_or_zero(
+    since: Option<&str>,
+    read: impl FnOnce() -> Result<(i64, i64), DbError>,
+) -> Result<(i64, i64), DbError> {
+    memories_fallback((0, 0), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            since = %since.unwrap_or("null"),
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error counting the memory corpus"
+        );
+    })
+}
+
+/// v4 `BaseRepository.count` (`base.repository.ts:456-466`) as its callers see
+/// it: ERROR `Error counting entities {collection, error}`, FALLBACK `0`;
+/// inside the strict scope the line gains `strictFailures=true` and the `Err`
+/// propagates to the caller's own `safeQuery`.
+pub fn count_strict_aware(
+    collection: &'static str,
+    read: impl FnOnce() -> Result<i64, DbError>,
+) -> Result<i64, DbError> {
+    read().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        tracing::error!(
+            target: "quilltap::db",
+            collection = collection,
+            error = %error_text(&error),
+            strictFailures = strict.then_some(true),
+            "Error counting entities"
+        );
+        if strict {
+            Err(error)
+        } else {
+            Ok(0)
+        }
+    })
+}
+
+/// v4 `backgroundJobs.findActiveByType`'s outer `safeQuery`
+/// (`background-jobs.repository.ts:103-116`) — reached only inside the strict
+/// scope (the inner `findByFilter` is the FALLBACK,
+/// [`find_by_filter_strict_aware`]): ERROR `Error finding active background jobs
+/// by type {collection, type, error, strictFailures}`, then the `Err`.
+pub fn active_jobs_by_type_or_empty<T>(
+    job_type: &str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    read().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "background_jobs",
+            r#type = %job_type,
+            error = %error_text(&error),
+            strictFailures = strict.then_some(true),
+            "Error finding active background jobs by type"
+        );
+        if strict {
+            Err(error)
+        } else {
+            Ok(Vec::new())
+        }
+    })
+}
+
+/// v4 `BaseRepository.findOneByFilter` for a repository whose own method is
+/// reached from inside the strict scope: ERROR `Error finding entity by filter
+/// {collection, error}`, FALLBACK `None`; inside the scope the line gains
+/// `strictFailures=true` and the `Err` propagates.
+pub fn find_one_by_filter_strict_aware<T>(
+    collection: &'static str,
+    read: impl FnOnce() -> Result<Option<T>, DbError>,
+) -> Result<Option<T>, DbError> {
+    read().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        log_find_one_by_filter_failure(collection, &error, strict);
+        if strict {
+            Err(error)
+        } else {
+            Ok(None)
+        }
+    })
+}
+
+/// v4 `BaseRepository.findOneByFilter`'s fallback line (`base.repository.ts:
+/// 300-314`): ERROR `Error finding entity by filter {collection, error}`,
+/// `strictFailures=true` inside the scope — the ONE home both
+/// [`find_one_by_filter_or_none`] and [`find_one_by_filter_strict_aware`] call.
+fn log_find_one_by_filter_failure(collection: &str, error: &DbError, strict: bool) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = collection,
+        error = %error_text(error),
+        strictFailures = strict.then_some(true),
+        "Error finding entity by filter"
+    );
+}
+
+/// v4 `embeddingProfiles.findInstanceDefault`'s outer `safeQuery`
+/// (`embedding-profiles.repository.ts:75-82`) — reached only inside the strict
+/// scope: ERROR `Error finding the instance default embedding profile
+/// {collection, error, strictFailures}`, then the `Err`.
+pub fn instance_default_profile_or_none<T>(
+    read: impl FnOnce() -> Result<Option<T>, DbError>,
+) -> Result<Option<T>, DbError> {
+    read().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "embedding_profiles",
+            error = %error_text(&error),
+            strictFailures = strict.then_some(true),
+            "Error finding the instance default embedding profile"
+        );
+        if strict {
+            Err(error)
+        } else {
+            Ok(None)
         }
     })
 }

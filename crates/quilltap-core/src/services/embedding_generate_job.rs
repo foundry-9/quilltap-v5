@@ -373,29 +373,10 @@ async fn memory_try<E: EmbeddingProvider>(
     .await
     .map_err(db_str)?;
 
-    // v4 :167–178 — write directly to the vector_indices tables instead of
-    // loading the full in-memory store (v4's comment: loading a 12k-vector
-    // store to insert one row would cost hundreds of MB of heap).
-    let (vec, cid, mid) = (
-        result.embedding.clone(),
-        character_id.to_string(),
-        payload.entity_id.clone(),
-    );
-    db.write(move |ws| {
-        let repo = crate::db::vector_indices::VectorIndicesRepository::new(ws.main().connection());
-        if repo.entry_exists(&mid)? {
-            repo.update_entry_embedding(&mid, Some(&vec))?;
-        } else {
-            repo.add_entry(&crate::db::vector_indices::VectorEntryInput {
-                id: mid.clone(),
-                character_id: cid.clone(),
-                embedding: Some(vec.clone()),
-            })?;
-        }
-        repo.save_meta(&cid, dims)
-    })
-    .await
-    .map_err(db_str)?;
+    // P4.D288 (C1-3, mechanical): the vector-mirror write is gone with the
+    // mirror — the row update above is the index write (P4.D292 routes this
+    // branch through `services::memory_index`).
+    let _ = dims;
 
     // v4 :182 `unloadStore(characterId)` — no-op in v5 (no cached store
     // manager; see the module doc).

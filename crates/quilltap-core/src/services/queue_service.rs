@@ -401,6 +401,117 @@ pub async fn enqueue_embedding_generate(
     Ok((id, true))
 }
 
+// === P4.D288 (C1-3): the batch embedding enqueue ===
+
+/// v4 `enqueueEmbeddingGenerateMany(userId, payloads)` (`queue-service.ts:
+/// 1132-1180`): ONE read of the active `EMBEDDING_GENERATE` jobs
+/// ([`BackgroundJobsRepository::find_active_by_type`](crate::db::background_jobs::BackgroundJobsRepository::find_active_by_type)),
+/// every payload whose `entityId` already has a job — or repeats one earlier in
+/// the batch — skipped, then ONE batch insert (each at its entity type's
+/// priority, `maxAttempts` 3, `scheduledAt` the shared `now`). Nothing fresh →
+/// DEBUG `Embedding batch: every entity already has a job {requested}` and
+/// `[]`; else INFO `Embedding generate batch enqueued {requested, queued,
+/// alreadyQueued}` and — only when something queued — the `jobs` realtime
+/// publish + the processor wake. Answers the created ids (its length is the
+/// number actually queued). The two lines' bytes are P4.D292's pin (§R.5).
+pub async fn enqueue_embedding_generate_many(
+    db: &Db,
+    user_id: &str,
+    payloads: &[Value],
+) -> Result<Vec<String>, DbError> {
+    if payloads.is_empty() {
+        return Ok(Vec::new());
+    }
+    let active = db.read_main(|conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn)
+            .find_active_by_type("EMBEDDING_GENERATE")
+    })?;
+    let busy: std::collections::HashSet<String> = active
+        .iter()
+        .filter_map(|job| {
+            serde_json::from_str::<Value>(&job.payload)
+                .ok()?
+                .get("entityId")?
+                .as_str()
+                .map(str::to_string)
+        })
+        .collect();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let fresh: Vec<&Value> = payloads
+        .iter()
+        .filter(|p| {
+            // v4 `p.entityId` — a non-string id is neither busy nor seen-able
+            // as a string; it is kept (and its `undefined` dedupes against
+            // itself, as `Set.has(undefined)` does).
+            let key = p
+                .get("entityId")
+                .map(|v| {
+                    v.as_str()
+                        .map_or_else(|| format!("\u{0}{v}"), str::to_string)
+                })
+                .unwrap_or_else(|| "\u{0}undefined".to_string());
+            if busy.contains(&key) || seen.contains(&key) {
+                return false;
+            }
+            seen.insert(key);
+            true
+        })
+        .collect();
+    if fresh.is_empty() {
+        tracing::debug!(
+            requested = payloads.len(),
+            "Embedding batch: every entity already has a job"
+        );
+        return Ok(Vec::new());
+    }
+    let now = now_iso();
+    let jobs: Vec<BjCreate> = fresh
+        .iter()
+        .map(|payload| BjCreate {
+            user_id: user_id.to_string(),
+            job_type: "EMBEDDING_GENERATE".to_string(),
+            status: Some("PENDING".to_string()),
+            payload: (*payload).clone(),
+            priority: embedding_entity_priority(
+                payload
+                    .get("entityType")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            ),
+            attempts: 0.0,
+            max_attempts: 3.0,
+            last_error: None,
+            scheduled_at: now.clone(),
+            started_at: None,
+            completed_at: None,
+        })
+        .collect();
+    let ids: Vec<String> = (0..jobs.len())
+        .map(|_| uuid::Uuid::new_v4().to_string())
+        .collect();
+    let job_ids = db
+        .write(move |writers| {
+            writers
+                .main()
+                .background_jobs()
+                .create_batch(&jobs, &ids, &now)
+        })
+        .await?;
+    tracing::info!(
+        requested = payloads.len(),
+        queued = job_ids.len(),
+        alreadyQueued = payloads.len() - fresh.len(),
+        "Embedding generate batch enqueued"
+    );
+    if !job_ids.is_empty() {
+        publish_realtime(RealtimeTopic::Jobs, None);
+        ensure_processor_running();
+    }
+    Ok(job_ids)
+}
+
+// === end P4.D288 ===
+
 /// v4 `enqueueJob` variant carrying an explicit `priority` (v4's
 /// `options.priority`). Mints and persists a PENDING background job. The
 /// zero-priority [`enqueue_job`] above is the common case; the danger /

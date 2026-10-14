@@ -39,7 +39,6 @@ use serde_json::Value;
 
 use crate::db::memories::{CountSource, TierExtra};
 use crate::db::runtime::Db;
-use crate::db::vector_store::CharacterVectorStore;
 use crate::db::{memories_read, DbError};
 use crate::jsnum::to_fixed;
 use crate::memory_weighting::{
@@ -539,26 +538,9 @@ pub async fn run_housekeeping(
             })
             .await?;
 
-        // Vector-store cleanup — non-fatal (v4's try/catch → WARN).
-        let (cid, ids) = (character_id.to_string(), expired_ids.clone());
-        let cleaned = db
-            .write(move |writers| {
-                let main = writers.main();
-                let mut store = CharacterVectorStore::load(main.connection(), &cid)?;
-                for id in &ids {
-                    store.remove_vector(id);
-                }
-                store.flush(&main.vector_indices())?;
-                Ok(())
-            })
-            .await;
-        if let Err(e) = cleaned {
-            tracing::warn!(
-                characterId = character_id,
-                error = format!("Error: {e}"),
-                "[Housekeeping] Failed to clean up vector store"
-            );
-        }
+        // P4.D288 (C1-3, mechanical): the vector-mirror cleanup is gone with the
+        // mirror — the rows deleted above were the only copy of their vectors
+        // (the retire path replaces this delete in unit 9).
         result.deleted = deleted_count;
         result.deleted_ids = expired_ids.clone();
         vector_store_dirty = true;
@@ -628,7 +610,7 @@ pub async fn needs_housekeeping(
 mod tests {
     use super::*;
     use crate::db::memories::{CreateOptions, MemCreate};
-    use crate::db::vector_indices::VectorEntryInput;
+    use crate::db::vector_store::CharacterVectorStore;
     use crate::db::Writer;
     use tempfile::{tempdir, TempDir};
 
@@ -646,11 +628,6 @@ mod tests {
             sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
             lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
             tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
-        CREATE TABLE vector_indices (
-            id TEXT PRIMARY KEY, characterId TEXT, version REAL, dimensions REAL,
-            createdAt TEXT, updatedAt TEXT);
-        CREATE TABLE vector_entries (
-            id TEXT PRIMARY KEY, characterId TEXT, embedding BLOB, createdAt TEXT);
         CREATE TABLE instance_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     ";
 
@@ -705,7 +682,8 @@ mod tests {
                             keywords: vec![],
                             tags: vec![],
                             importance: s.importance,
-                            embedding: None,
+                            // P4.D288: the row IS the index.
+                            embedding: s.vector.clone(),
                             source: s.source.to_string(),
                             witnessed_context: None,
                             occurred_at: None,
@@ -731,16 +709,6 @@ mod tests {
                         },
                     )
                     .unwrap();
-                if let Some(vec) = &s.vector {
-                    let vi = w.vector_indices();
-                    vi.save_meta(character, vec.len() as f64).unwrap();
-                    vi.add_entry(&VectorEntryInput {
-                        id: s.id.clone(),
-                        character_id: character.to_string(),
-                        embedding: Some(vec.clone()),
-                    })
-                    .unwrap();
-                }
             }
         }
         let db = Db::open_main(&path, PEPPER).unwrap();
@@ -809,9 +777,15 @@ mod tests {
             1,
             "nothing deleted"
         );
-        assert_eq!(count(&db, "SELECT COUNT(*) FROM vector_entries"), 1);
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) FROM memories WHERE embedding IS NOT NULL"
+            ),
+            1
+        );
         let hot = db
-            .read_main(|c| Ok(CharacterVectorStore::load(c, CHAR)?.is_hot("stale")))
+            .read_main(|c| Ok(CharacterVectorStore::load(c, CHAR).is_hot("stale")))
             .unwrap();
         assert!(!hot, "R-B: a fresh load answers the demoted row cold");
         let start = only_line(&lines, "[Housekeeping] Starting sweep");
@@ -1052,46 +1026,18 @@ mod tests {
             assert_eq!(d.summary, None);
         }
         assert_eq!(count(&db, "SELECT COUNT(*) FROM memories"), 3);
-        assert_eq!(count(&db, "SELECT COUNT(*) FROM vector_entries"), 3);
+        assert_eq!(
+            count(
+                &db,
+                "SELECT COUNT(*) FROM memories WHERE embedding IS NOT NULL"
+            ),
+            3
+        );
     }
 
-    /// The vector-store cleanup after a retention delete is non-fatal: a store
-    /// that cannot load warns v4's `[Housekeeping] Failed to clean up vector
-    /// store` and the sweep still answers.
-    #[tokio::test]
-    async fn a_failed_vector_cleanup_warns() {
-        const CHAR: &str = "hk-cleanup-warn";
-        let mut s = seed("auto-old");
-        s.tier = "cold";
-        s.superseded_by = Some("dg");
-        let (_d, db) = make_db(CHAR, &[s]);
-        set_retention(&db, 90).await;
-        db.write(|w| {
-            w.main()
-                .connection()
-                .execute_batch("DROP TABLE vector_entries")?;
-            Ok(())
-        })
-        .await
-        .unwrap();
-        let (r, lines) = crate::test_support::global_capture::capture_async(run_housekeeping(
-            &db,
-            CHAR,
-            &HousekeepingOptions::default(),
-        ))
-        .await;
-        let r = r.unwrap();
-        assert_eq!(r.deleted, 1);
-        let line = only_line(&lines, "[Housekeeping] Failed to clean up vector store");
-        assert!(line.starts_with("WARN "), "{line:?}");
-        assert!(line.contains(&format!(" characterId={CHAR}")), "{line:?}");
-        assert!(line.contains(" error=Error: "), "{line:?}");
-    }
+    // P4.D288 (C1-3): `a_failed_vector_cleanup_warns` RETIRED with its subject —
+    // the vector-mirror cleanup after a retention delete is gone with the mirror.
 
-    /// R-J: v4 computes the cutoff in f64 and `toISOString()` throws `RangeError:
-    /// Invalid time value` outside JS's ±8.64e15 ms range — an `Err`, never a
-    /// panic. (100,000,000 days still lands INSIDE the range at the current
-    /// clock — year -271,8xx — so the out-of-range row uses 200,000,000.)
     #[tokio::test]
     async fn an_out_of_range_retention_cutoff_is_invalid_time_value() {
         const CHAR: &str = "hk-retention-range";

@@ -2008,21 +2008,17 @@ mod tests {
         }
     }
 
-    /// v5's only `Err` (a vector-index load failure) → v4's ERROR line and 500
-    /// `Anchor gate probe failed` (P4.D269 R-G: v4's own load never rejects —
-    /// the harness pins that both ways as `PROBE_STORE_LOAD_FAILURE`).
+    /// The catch arm: v4's ERROR line and 500 `Anchor gate probe failed`.
+    /// P4.D288 (C1-3): the index load became INFALLIBLE (v4's two fallbacks),
+    /// so the store-load failure this test once planted (`DROP TABLE
+    /// vector_entries`) no longer reaches the arm — v5 now answers 200 there,
+    /// as v4 does (the harness's `PROBE_STORE_LOAD_FAILURE` row closes —
+    /// P4.D290's to retire). The arm stays reachable through a read-pool
+    /// failure; it is pinned directly.
     #[tokio::test]
     async fn anchor_probe_store_failure_logs_v4s_error_and_answers_500() {
-        let (dir, db) = provisioned_with_character();
-        {
-            let w = crate::db::Writer::open_writable(&dir.path().join("data/quilltap.db"), PEPPER)
-                .unwrap();
-            w.connection()
-                .execute_batch("DROP TABLE \"vector_entries\"")
-                .unwrap();
-        }
         let (guard, logs) = capture_guard();
-        let resp = memory_anchor_gate_probe(&db, &OneDim, "u", CHAR_A, None).await;
+        let resp = anchor_gate_probe_failed(CHAR_A, "no such table: vector_entries");
         drop(guard);
         assert!(
             matches!(&resp, Response::Error(e) if e.kind == ErrorKind::Internal && e.message == "Anchor gate probe failed"),

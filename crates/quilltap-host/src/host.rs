@@ -1226,8 +1226,6 @@ fn reconcile_embedding_dimensions_at_boot(db: &Db) {
                 tracing::info!(
                     target: "quilltap::boot",
                     target_dimensions = target,
-                    vector_entries_deleted = dim_reconcile.vector_entries_deleted,
-                    vector_index_meta_fixed = dim_reconcile.vector_index_meta_fixed,
                     mismatched_memories = dim_reconcile.mismatched.memories,
                     mismatched_conversation_chunks = dim_reconcile.mismatched.conversation_chunks,
                     mismatched_help_docs = dim_reconcile.mismatched.help_docs,
@@ -2126,9 +2124,7 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
             // `idx_memories_supersededById` ahead of slot 6). Each is FATAL on
             // failure (v4's migrations are not `resumable`), logs v5's ONE
             // INFO when it did anything, and is silent on a no-op boot. Slots 4
-            // and 5 (the two STAMPED data rewrites) land with unit 12; slot 8
-            // (the vector-mirror retire) is wired at the END of unit 8 (O-1),
-            // when no compiled path still reads or writes the mirror.
+            // and 5 (the two STAMPED data rewrites) land with unit 12.
             // Slot 1 — `add-memory-superseded-at-v1`.
             let superseded_at =
                 quilltap_core::db::memory_superseded_at_repair::ensure_memory_superseded_at(main)?;
@@ -2191,7 +2187,23 @@ fn seed_built_ins(db: &Db) -> Result<EnsureFailures, String> {
                     "Moved the memory maintenance settings"
                 );
             }
-            // Slot 8 — `retire-memory-vector-entries-v1` (wired at the end of unit 8).
+            // Slot 8 — `retire-memory-vector-entries-v1` (O-1: wired once no
+            // compiled path reads or writes the mirror; per-page savepoints).
+            if let Some(retired) =
+                quilltap_core::db::memory_vector_mirror_retire::retire_memory_vector_mirror(main)?
+            {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::memory_vector_mirror_retire::MIGRATION_ID,
+                    mirrorRows = retired.mirror_rows,
+                    copied = retired.copied,
+                    alreadyOnRow = retired.already_on_row,
+                    orphaned = retired.orphaned,
+                    unusable = retired.unusable,
+                    tablesDropped = retired.tables_dropped,
+                    "Retired the memory vector mirror"
+                );
+            }
             // Slot 9 — `add-memory-extraction-cursors-v1` (R-C text, R-D order, L-8; STAMPED).
             if let Some(cursors) =
                 quilltap_core::db::memory_extraction_cursors_repair::ensure_memory_extraction_cursors(

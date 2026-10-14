@@ -42,7 +42,6 @@ use serde_json::{json, Value};
 
 use crate::db::memories::CountSource;
 use crate::db::runtime::Db;
-use crate::db::vector_store::CharacterVectorStore;
 use crate::db::{characters_read, js_number_to_json, memories_read, DbError};
 use crate::embedding_vector::cosine_similarity;
 use crate::jsstr::{utf16_len, utf16_truncate};
@@ -450,28 +449,9 @@ async fn deduplicate_character_memories<P: EmbeddingProvider>(
             "[MemoryDedup] Bulk deleted memories"
         );
 
-        // Vector-store cleanup — best-effort (v4's try/catch → WARN).
-        let cid = character_id.to_string();
-        let removes = remove_ids.clone();
-        let cleaned = db
-            .write(move |writers| {
-                let main = writers.main();
-                let mut store = CharacterVectorStore::load(main.connection(), &cid)?;
-                for id in &removes {
-                    store.remove_vector(id);
-                }
-                store.flush(&main.vector_indices())?;
-                Ok(())
-            })
-            .await;
-        if let Err(e) = cleaned {
-            tracing::warn!(
-                context = CHAR_CONTEXT,
-                characterId = character_id,
-                error = format!("Error: {e}"),
-                "[MemoryDedup] Failed to clean up vector store"
-            );
-        }
+        // P4.D288 (C1-3, mechanical): the vector-mirror cleanup is gone with the
+        // mirror — the rows deleted above were the only copy of their vectors
+        // (the retire path replaces this delete in unit 9).
 
         crate::services::frozen_archive::invalidate_frozen_archive(character_id);
     }

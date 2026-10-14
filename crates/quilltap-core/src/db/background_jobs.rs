@@ -820,6 +820,32 @@ impl<'c> BackgroundJobsRepository<'c> {
         Ok(rows)
     }
 
+    // === P4.D288 (C1-3) ===
+
+    /// v4 `findActiveByType(type)` (`background-jobs.repository.ts:103-116`):
+    /// the PENDING or PROCESSING jobs of `job_type`, by `createdAt` ASC — "by
+    /// status rather than by recency, so a pending job in backoff is never
+    /// crowded out of a window by newer finished ones". The inner
+    /// `findByFilter` is the FALLBACK (`[]`, `Error finding entities by
+    /// filter`); the outer line is reached only inside the strict scope.
+    pub fn find_active_by_type(&self, job_type: &str) -> Result<Vec<BackgroundJob>, DbError> {
+        super::fallback::active_jobs_by_type_or_empty(job_type, || {
+            super::fallback::find_by_filter_strict_aware("background_jobs", || {
+                let mut stmt = self.conn.prepare(&format!(
+                    "SELECT {SELECT_ALL_COLS} FROM background_jobs \
+                     WHERE type = ?1 AND status IN ('PENDING', 'PROCESSING') \
+                     ORDER BY createdAt ASC"
+                ))?;
+                let rows = stmt
+                    .query_map(params![job_type], BackgroundJob::from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+        })
+    }
+
+    // === end P4.D288 ===
+
     /// PENDING|PROCESSING jobs for an entity (v4 `findPendingForEntity`), via
     /// `json_extract("payload", '$.entityId')`.
     pub fn find_pending_for_entity(&self, entity_id: &str) -> Result<Vec<BackgroundJob>, DbError> {

@@ -637,18 +637,62 @@ fn cleanup_staging_dirs(host: &mut dyn ApplyHost, writes: &[ChildWritePayload], 
 // Cache invalidation
 // ============================================================================
 
-/// Repo methods whose success invalidates a character's vector store (v4's
-/// `WRITES_INVALIDATING_VECTOR_STORE`).
-const WRITES_INVALIDATING_VECTOR_STORE: &[&str] = &[
-    "vectorIndices.deleteStore",
-    "vectorIndices.addEntry",
-    "vectorIndices.updateEntryEmbedding",
-    "vectorIndices.saveMeta",
-    "memories.updateForCharacter",
-    "memories.delete",
-    "memories.create",
-    "memories.upsert",
+/// How a write method names the character whose index cache it touches (v4
+/// `CharacterKeyShape`, `vector-store-invalidation.ts:21-28`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CharacterKeyShape {
+    /// `method(characterId, ...)`.
+    CharacterArg,
+    /// `method({ characterId, ... }, ...)`.
+    CharacterField,
+    /// `method(memoryId, ...)` — v4 resolves the owner BEFORE the commit
+    /// (`memoryIdsNeedingOwnerLookup` → `lookupMemoryOwners`, a raw read of
+    /// `memories`). v5's applier has no pre-commit seam (its production host is
+    /// dormant — no forked job child), so the id resolves to nothing here —
+    /// `MEMORY_UPDATE_OWNER_LOOKUP`, recorded (P4.D288 status log): not a
+    /// differential row, because the write-apply oracle's raw database is a
+    /// mock, so v4's lookup resolves nothing there either (measured — the
+    /// `vector-store-write-shapes` scenario keys equal). v5 keeps no index cache
+    /// (L-2), so the table governs only what the applier REPORTS.
+    MemoryIdArg,
+}
+
+/// v4 `VECTOR_STORE_WRITE_SHAPES` (`vector-store-invalidation.ts:30-46`, bug
+/// 217; P4.D288 L-9): every repository write that can change what a
+/// character's memory-index cache holds — a vector added or changed, a row
+/// removed, a tier moved. "Link, count and footnote writes … are deliberately
+/// absent: the cache holds only id, vector and tier." The `vectorIndices.*`
+/// rows and `memories.delete` are GONE with the mirror and the bare delete.
+const VECTOR_STORE_WRITE_SHAPES: &[(&str, CharacterKeyShape)] = &[
+    ("memories.create", CharacterKeyShape::CharacterField),
+    ("memories.upsert", CharacterKeyShape::CharacterField),
+    (
+        "memories.updateForCharacter",
+        CharacterKeyShape::CharacterArg,
+    ),
+    ("memories.bulkDeleteUnsafe", CharacterKeyShape::CharacterArg),
+    ("memories.updateTierBulk", CharacterKeyShape::CharacterArg),
+    ("memories.update", CharacterKeyShape::MemoryIdArg),
 ];
+
+/// v4 `vectorStoreKeysForWrites`' per-write key (with an EMPTY owner map — see
+/// [`CharacterKeyShape::MemoryIdArg`]).
+fn vector_store_key(w: &ChildWritePayload) -> Option<String> {
+    let shape = VECTOR_STORE_WRITE_SHAPES
+        .iter()
+        .find(|(m, _)| *m == w.method)?
+        .1;
+    match (shape, w.args.first()) {
+        (CharacterKeyShape::CharacterArg, Some(Value::String(s))) if !s.is_empty() => {
+            Some(s.clone())
+        }
+        (CharacterKeyShape::CharacterField, Some(Value::Object(o))) => match o.get("characterId") {
+            Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
 
 /// Repo methods whose success invalidates a mount point's chunk cache (v4's
 /// `WRITES_INVALIDATING_MOUNT_CACHE`).
@@ -657,19 +701,6 @@ const WRITES_INVALIDATING_MOUNT_CACHE: &[&str] = &[
     "docMountChunks.delete",
     "docMountChunks.deleteByMountPointId",
 ];
-
-/// v4's `extractCharacterId`: the character id is either the string `args[0]`
-/// (non-empty) or `args[0].characterId`. Returns `None` otherwise.
-fn extract_character_id(w: &ChildWritePayload) -> Option<String> {
-    match w.args.first() {
-        Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
-        Some(Value::Object(o)) => match o.get("characterId") {
-            Some(Value::String(s)) => Some(s.clone()),
-            _ => None,
-        },
-        _ => None,
-    }
-}
 
 /// v4's `extractMountPointId`: the mount-point id is either the string `args[0]`
 /// (non-empty) or `args[0].mountPointId`. Returns `None` otherwise.
@@ -695,12 +726,8 @@ fn collect_invalidations(writes: &[ChildWritePayload]) -> (Vec<String>, Vec<Stri
     let mut mount_seen: HashSet<String> = HashSet::new();
 
     for w in writes {
-        if let Some(char_id) = extract_character_id(w) {
-            // `id &&` (v4): an empty-string id is falsy, never a key.
-            if !char_id.is_empty()
-                && WRITES_INVALIDATING_VECTOR_STORE.contains(&w.method.as_str())
-                && vector_seen.insert(char_id.clone())
-            {
+        if let Some(char_id) = vector_store_key(w) {
+            if vector_seen.insert(char_id.clone()) {
                 vector_keys.push(char_id);
             }
         }
@@ -1070,10 +1097,19 @@ mod tests {
             method: method.to_string(),
             args: vec![json!({ id_field: id })],
         };
+        // P4.D288 (L-9): v4's `VECTOR_STORE_WRITE_SHAPES` — each method keyed by
+        // its own argument shape.
+        let arg = |method: &str, first: &str| ChildWritePayload {
+            method: method.to_string(),
+            args: vec![json!(first)],
+        };
         let writes = vec![
             mk("memories.create", "characterId", "charX"),
-            mk("memories.delete", "characterId", "charX"), // dup char -> collapsed
-            mk("vectorIndices.saveMeta", "characterId", "charY"),
+            arg("memories.updateForCharacter", "charX"), // dup char -> collapsed
+            arg("memories.updateTierBulk", "charY"),
+            mk("memories.updateTierBulk", "characterId", "charV"), // wrong shape -> no key
+            arg("memories.update", "mem-1"), // memory id: no pre-commit owner seam
+            arg("memories.incrementReinforcement", "charW"), // deliberately absent
             mk("docMountChunks.upsert", "mountPointId", "MP"),
             mk("chats.update", "characterId", "charZ"), // not an invalidating method
         ];

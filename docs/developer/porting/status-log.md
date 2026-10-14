@@ -180159,3 +180159,101 @@ migrationsSkipped: 90}`, none deferred. Measured:
   --no-fail-fast` ALL GREEN; `quilltap-core --lib` 3,605 / 18 — the two recorded classes only (committed
   fixtures [unit 11], vector plants [unit 8]; the tiers repair's 7 now green). Versions: core 0.0.1293,
   host 0.0.201.
+
+### Unit 8 — C1-3, the index store over rows; the mirror DIES
+- `db/vector_store.rs` REWRITTEN as v4's pin `vector-store.ts`: `CharacterVectorStore::load(conn,
+  character_id) -> Self` (INFALLIBLE — the row read's FALLBACK, then v4's catch `Error loading vector index
+  from memory rows` leaving the store empty; DEBUG `Loaded vector index from memory rows {context,
+  characterId, entries, cold, dimensions}`), `VectorEntry { id, embedding, tier }`, `Tier::of_cell`, the
+  per-length counts in the `Map`'s insertion order (a length at zero DELETED, so a re-entering length goes
+  last), `dimensions()` the DOMINANT length (the first to the strictly greatest count), `count_with_
+  dimensions`, `tier_of`, `add_vector(id, emb, tier)` (in memory; a replace keeps its position) /
+  `remove_vector` / `clear` / `entries()` / `all_entries()`, `search` / `search_filtered` with the empty
+  store → `[]`, NO entry of the query's length → WARN `Query vector dimension mismatch — search embedding
+  profile likely differs from index {context, characterId, storedDimensions, queryDimensions}` and `[]`, the
+  per-entry length skip, the LINEAR path (< 1000 entries or `limit*4 >= size`) and the HEAP path transcribed
+  operation for operation (its tie order differs from the linear one), each hit carrying its `tier`;
+  `set_tier` unchanged in shape. `flush`, the dirty sets, `update_vector` and the repository import DELETED.
+- `memories_read::{IndexRow, decode_stored_embedding, find_index_rows_by_character_id}` (v4's decode —
+  header-aware BLOB, a JSON-array TEXT, else `None`; an undecodable or EMPTY embedding skipped and counted,
+  WARN `Skipped memory embeddings that could not be decoded`, DEBUG `Read memory index rows`; FALLBACK `[]`
+  `Error reading memory index rows`), `count_corpus_since` (two base `count` FALLBACKs, then `Error counting
+  the memory corpus`), `BackgroundJobsRepository::find_active_by_type` (PENDING|PROCESSING by `createdAt`
+  ASC; the inner `findByFilter` FALLBACK, the outer `Error finding active background jobs by type` only in
+  the strict scope), `embedding_profiles::find_instance_default` (the ONE default whoever owns it; inner
+  `findOneByFilter` FALLBACK, outer line strict-only). Five new homes in the `db/fallback.rs` P4.D288 region
+  (+ `count_strict_aware`, `find_one_by_filter_strict_aware`, and ONE `log_find_one_by_filter_failure` now
+  shared with the pre-existing `find_one_by_filter_or_none` — the guard counts each literal once);
+  `HOME_MESSAGES` + 5.
+- NEW `services/memory_index.rs` — the ONE writer of `.embedding` / `.tier` (L-2, no process cache):
+  `search(conn, character_id, &[f32], IndexSearchOptions { hot_only, exclude, limit })`, `shape`, `entries`,
+  `upsert(conn, character_id, Vec<MemoryIndexUpsert { id, embedding, tier, alongside: MemUpdate }>)` (each
+  entry's `alongside` + embedding in ONE `update_for_character`; `Upsert found no row; vector not cached`;
+  `Upserted memory vectors {module, characterId, count, withFields, cached}`), `index_inserted` (log only),
+  `set_tier` (`update_tier_bulk`, then v4's loaded-cache `Re-stamped vector tiers` — counted from the rows
+  carrying a decodable embedding, read BEFORE the write — then `Moved memories between tiers through the
+  index`), `indexed_among` + `remove(character_id, requested, removed)` (the loaded answer read BEFORE a
+  retire's delete), `EnqueueMissingEmbeddingsResult` + `enqueue_missing_embeddings(db, user_id,
+  character_id, limit)`; `MemUpdate::names_any_field` (v4's `withFields`). `queue_service::
+  enqueue_embedding_generate_many(db, user_id, &[Value])` (one active-jobs read, busy + in-batch dedupe, ONE
+  batch insert at the entity priorities, the DEBUG / INFO, the publish + wake only when something queued).
+- `db/vector_indices.rs` + its `db/mod.rs` lines DELETED. **Every production mirror caller migrated,
+  mechanically (each a recorded compile-forced edit):** `memory_gate.rs` (search load infallible; the insert
+  path's mirror add dropped — the row write is the index write; the re-embed's mirror update dropped),
+  `memory_service.rs` (the delete's mirror cleanup dropped; `remove_vectors_grouped` → `indexed_among`
+  BEFORE the delete; the search hit carries the store's tier; `generate_missing_embeddings` → `memory_index::
+  upsert`; `rebuild_vector_index` → reload + `count_without_embedding` — the backfill pair's home and DEBUG are
+  P4.D292's), `consolidation.rs` (no staging; a revised digest's mirror-ONLY vector now rides its row update
+  through `memory_index::upsert` with `alongside`; tier moves through `memory_index::set_tier`),
+  `housekeeping.rs` / `memory_dedup.rs` (mirror cleanup dropped — unit 9 moves both onto the retire path),
+  `anchor_gate_probe.rs` + `generators/optimizer.rs` (`load` only), `cascade_delete.rs` (the mirror purge
+  dropped — O-1's half-completed character delete retires in unit 9), `character_archive/service.rs`
+  (`delete_vector_store` a no-op success), `embedding_generate_job.rs` (the mirror write dropped),
+  `embedding_reindex_job.rs` (the `all` scope's purge dropped), restore step 22j RETIRED with `HANDOFF:
+  P4.D293` (v4 `restore.ts:335-375` adopts legacy vectors — `legacyVectorsAdopted`).
+- **The reconcile NARROWING:** `DimensionReconcileResult` lost `vector_entries_deleted` /
+  `vector_index_meta_fixed` with both arms and their INFO fields (`host.rs`, the reconcile's own INFO), the
+  restore's `EmbeddingReconcileSummary` and its DEBUG — v4 at the pin carries neither field anywhere. Unit
+  tests: the first test → `a_leftover_mirror_is_left_alone` (entries and meta untouched — measured);
+  `truncation_wins…` asserts both entries stay. `embedding_remainder_equivalence` (P4.D292's) loses the two
+  fields mechanically.
+- **L-9** `write_apply.rs`: `WRITES_INVALIDATING_VECTOR_STORE` → v4's `VECTOR_STORE_WRITE_SHAPES`
+  (`characterField` create / upsert, `characterArg` updateForCharacter / bulkDeleteUnsafe / updateTierBulk,
+  `memoryIdArg` update — no pre-commit seam, `MEMORY_UPDATE_OWNER_LOOKUP` recorded: not a differential row,
+  the oracle's raw DB is a mock so v4 resolves nothing there either, measured). `write_apply_equivalence`:
+  NEW scenario `vector-store-write-shapes` (every shape, a wrong-shaped arg, a link verb) — keys EQUAL;
+  NEW named both-ways `DELETED_DIGEST_BUCKET_LOOKUP` (v4 dispatches `memories.findDigestSubjectsByIds`
+  before the commit for a batch with `bulkDeleteUnsafe` — the Commonplace mirror's commit-hook half, P4.D297's
+  per L-3); green, 23 scenarios. The core unit test re-pointed at the shapes.
+- **Slot 8 wired** (`retire_memory_vector_mirror`, its INFO with the six counts) + the mirror-boot region.
+- **Families:** `vector_indices_tier2_equivalence` RETIRED with `cases/vector-indices.ts`,
+  `fixtures/build-vector-indices-fixture.ts`, `fixtures/vector-indices-tier2.json` (the banked path: the
+  mirror died with v4 `af48f6cc2`; its rows are now the retire ensure's family).
+  `vector_store_tiers_equivalence` REWRITTEN over rows (12 ops — a quantized fixture through v4's `create`,
+  an undecodable TEXT + an EMPTY blob skipped (WARN 2), a JSON-array TEXT decoded, a 3-d majority with a 2-d
+  minority, a second character whose lengths TIE → the first wins, the cold filter before top-K, the cold
+  tags, a 2-d query scoring only 2-d entries, a 4-d query → the WARN) GREEN. NEW `memory_index_tier2` (34
+  ops: shape; search under all four option combinations; upsert with `alongside` in ONE update + a vanished
+  row + another character's row (both repository WARNs); `set_tier` per `supersededById` state (set → stamped,
+  `null` → cleared, absent → untouched, empty → no line); `remove` (+ empty); the three reads; both
+  `enqueue_missing_embeddings` outcomes with the batch DEDUPED against a planted active job, then all
+  queued, then `(all)`; `index_inserted` (+ empty); the FALLBACK arms of the three reads and the row read
+  via a dropped column (standing classes: v4's backend `Raw query failed` dropped, the quoted-identifier
+  hint through `common::normalize_v4_sqlite`); the end state of `memories` (quantized embedding bytes) and
+  `background_jobs` byte-equal after masking) GREEN with `MEMORY_INDEX_ALWAYS_LOADED` met 5× (v5's per-read
+  load lines present / v4's absent, both ways). Writer-thread lines: the family runs the index's sync
+  writes on a caller-thread `Writer` (the capture buffer is thread-local).
+- Core tests re-planted on rows (`memory_gate`, `memory_service`, `housekeeping` — its
+  `a_failed_vector_cleanup_warns` RETIRED with the cleanup; `embedding_dimension_reconcile`); the anchor
+  probe's 500 test re-pointed at the catch arm (the store load can no longer fail — **the harness's
+  `PROBE_STORE_LOAD_FAILURE` row CLOSES: v5 now answers 200 there as v4 does — P4.D290's to retire**);
+  `embedding_blob_binding_guard`'s `vector_indices.rs` row out.
+- **Unit-5 residue fixed here:** `tri_state_edges_share_the_decoder`'s `system_data_routes.rs` count 15 → 13
+  (the two dedup arms left in unit 5; the web run after unit 7 caught it).
+- **Gate (unit 8):** `cargo fmt --all` clean; clippy `-D warnings` clean with both feature sets; `cargo test -p
+  quilltap-core --lib` 3,606 / 14 red — every red the recorded committed-fixture / unported-builder class
+  (`brahma_console` ×6, `help_chat(s)` ×4, `subprompts` ×2, `outfit_selections` ×1 — unit 11's widening),
+  the `anchor_gate_probe` plant re-pointed and green 7/7 by name after; `cargo test -p quilltap-host
+  --no-fail-fast` all 30 binaries green; the new / rewritten harness families green by name
+  (`memory_index_tier2`, `vector_store_tiers`, `write_apply` 23 scenarios). Versions: core 0.0.1294, host
+  0.0.202, web 0.0.239.

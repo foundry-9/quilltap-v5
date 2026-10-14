@@ -405,7 +405,7 @@ pub async fn run_anchor_gate_probe<P: EmbeddingProvider + Sync>(
     };
     let store = {
         let cid = input.character_id.clone();
-        db.read_main(move |c| CharacterVectorStore::load(c, &cid))?
+        db.read_main(move |c| Ok(CharacterVectorStore::load(c, &cid)))?
     };
     let store_dimensions = store.dimensions();
 
@@ -602,12 +602,14 @@ mod tests {
                 )
                 .unwrap();
             }
+            // P4.D288 (C1-3): the store's dimension is its rows' dominant
+            // length — the planted rows carry a raw Float32 LE vector of it
+            // (the `vector_indices` meta row is gone with the mirror).
             if let Some(dims) = meta_dims {
+                let blob = crate::embedding_blob::float32_to_blob_raw(&vec![0.5f32; dims as usize]);
                 c.execute(
-                    "INSERT INTO \"vector_indices\" (\"id\", \"characterId\", \"version\", \
-                     \"dimensions\", \"createdAt\", \"updatedAt\") VALUES (?1, ?1, 1, ?2, \
-                     '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
-                    rusqlite::params![CHAR, dims],
+                    "UPDATE \"memories\" SET \"embedding\" = ?1 WHERE \"characterId\" = ?2",
+                    rusqlite::params![blob, CHAR],
                 )
                 .unwrap();
             }

@@ -24,6 +24,16 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — feat(core,host): P4.D288 unit 8 — the memory index over rows; the vector mirror retired (C1-3)
+
+_Versions: core 0.0.1294, host 0.0.202, web 0.0.239._
+
+The per-character vector index now loads from `memories.embedding` and `memories.tier`, matching v4's memory-refactor Phase B. Loading never fails: a failed read leaves the index empty. The index reports the dominant vector length, skips entries whose length differs from the query's, logs v4's mismatch warning when no entry matches, and ports v4's heap search path for large stores. The new `services::memory_index` is the one writer of a memory's vector and tier (upsert with fields in the same update, tier moves with `supersededAt`, the eviction count, the background embedding backfill). Alongside it: a batched embedding-job enqueue that dedupes against active jobs, and three new repository reads (active jobs by type, the instance default embedding profile, the memory corpus count).
+
+The `vector_entries` / `vector_indices` repository is deleted, and every caller of the mirror moves onto the memory rows. The embedding-dimension reconcile drops its two mirror arms and fields, restore step 22j is retired (adopting legacy vectors is the backup lane's), and the write applier's cache-invalidation table becomes v4's per-method shape table. The boot now runs the vector-mirror retire, which copies any vector held only by the mirror onto its row and then drops both tables.
+
+Families: a new `memory_index_tier2` (34 ops, including the read fallbacks and both backfill outcomes); `vector_store_tiers_equivalence` rewritten over rows; `write_apply_equivalence` gains a scenario covering every shape; the mirror's own family is retired.
+
 #### 2026-10-14 — feat(core,host): P4.D288 unit 7 — the round's structural boot ensures (C1-2)
 
 _Versions: core 0.0.1293, host 0.0.201._

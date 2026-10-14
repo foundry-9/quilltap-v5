@@ -127,20 +127,9 @@ pub async fn delete_memory_with_vector(
         return Ok(false);
     }
 
-    // Remove from the vector store — non-fatal (v4 logs a warn and still returns
-    // true, so a store failure must not turn a completed delete into an error).
-    let char_id = character_id.to_string();
-    let id = memory_id.to_string();
-    let _ = db
-        .write(move |writers| {
-            let main = writers.main();
-            let mut store = CharacterVectorStore::load(main.connection(), &char_id)?;
-            store.remove_vector(&id);
-            store.flush(&main.vector_indices())?;
-            Ok(())
-        })
-        .await;
-
+    // P4.D288 (C1-3, mechanical): the vector-mirror cleanup is gone with the
+    // mirror — the row delete above removed the only copy of the vector.
+    let _ = character_id;
     Ok(true)
 }
 
@@ -247,28 +236,19 @@ fn group_by_character(memories: &[Value]) -> Vec<(String, Vec<String>)> {
     groups
 }
 
-/// Remove each character group's vectors, counting only ids the store actually
-/// held (v4's `hasVector` check before `removeVector`). Each character's cleanup
-/// is non-fatal (v4's per-character try/catch: a failed store must not abort the
-/// cascade — the chokepoint delete still runs).
+/// Count each character group's indexed vectors — the ids the index holds
+/// (v4's `hasVector` check before `removeVector`). P4.D288 (C1-3, mechanical):
+/// the mirror is gone, so nothing is written; the count is the LOADED index's
+/// ([`crate::services::memory_index::indexed_among`], read before the delete
+/// that follows). Each character's read is non-fatal (v4's per-character
+/// try/catch: the chokepoint delete still runs).
 async fn remove_vectors_grouped(db: &Db, groups: Vec<(String, Vec<String>)>) -> i64 {
     let mut total = 0i64;
     for (character_id, memory_ids) in groups {
-        let removed = db
-            .write(move |writers| {
-                let main = writers.main();
-                let mut store = CharacterVectorStore::load(main.connection(), &character_id)?;
-                let mut n = 0i64;
-                for id in &memory_ids {
-                    if store.has_vector(id) && store.remove_vector(id) {
-                        n += 1;
-                    }
-                }
-                store.flush(&main.vector_indices())?;
-                Ok(n)
-            })
-            .await;
-        total += removed.unwrap_or(0);
+        let removed = db.read_main(move |conn| {
+            crate::services::memory_index::indexed_among(conn, &character_id, &memory_ids)
+        });
+        total += removed.map_or(0, |n| n as i64);
     }
     total
 }
@@ -713,7 +693,7 @@ async fn try_semantic<P: EmbeddingProvider>(
     let query_embedding = embed.embedding.clone();
     let store = {
         let cid = character_id.to_string();
-        db.read_main(move |conn| CharacterVectorStore::load(conn, &cid))?
+        db.read_main(move |conn| Ok(CharacterVectorStore::load(conn, &cid)))?
     };
     // The store's known dimension: the length of any stored entry (all entries
     // share it; v4 resolves it from the index metadata / first entry the same
@@ -860,7 +840,11 @@ async fn try_semantic<P: EmbeddingProvider>(
             .into_iter()
             .map(|id| {
                 let score = by_id[&id];
-                crate::db::vector_store::VectorSearchResult { id, score }
+                // P4.D288: a hit carries its tier — the store's.
+                let tier = store
+                    .tier_of(&id)
+                    .unwrap_or(crate::db::vector_store::Tier::Hot);
+                crate::db::vector_store::VectorSearchResult { id, score, tier }
             })
             .collect();
     }
@@ -1744,9 +1728,6 @@ pub async fn generate_missing_embeddings<P: EmbeddingProvider>(
     let memories = db.read_main(move |c| memories_read::find_by_character_id(c, &cid))?;
     let missing: Vec<&Value> = memories.iter().filter(|m| embedding_missing(m)).collect();
 
-    let cid = character_id.to_string();
-    let mut store = db.read_main(move |c| CharacterVectorStore::load(c, &cid))?;
-
     let mut result = GenerateMissingEmbeddingsResult::default();
     for memory in missing {
         let id = memory
@@ -1783,31 +1764,29 @@ pub async fn generate_missing_embeddings<P: EmbeddingProvider>(
                 id.clone(),
                 embedded.embedding.clone(),
             );
+            // P4.D288 (C1-3, mechanical): row and index in one call — the ONE
+            // writer of `memories.embedding` (v4 `memoryIndex.upsert`).
             db.write(move |ws| {
-                let patch = crate::db::memories::MemUpdate {
-                    embedding: Some(Some(vec.clone())),
-                    ..Default::default()
-                };
-                ws.main()
-                    .memories()
-                    .update_for_character(&cid, &mid, &patch)
+                crate::services::memory_index::upsert(
+                    ws.main().connection(),
+                    &cid,
+                    vec![crate::services::memory_index::MemoryIndexUpsert {
+                        id: mid,
+                        embedding: vec,
+                        ..Default::default()
+                    }],
+                )
             })
             .await
             .map_err(|e| format!("{e}"))?;
-            store
-                .add_vector(&id, embedded.embedding)
-                .map_err(|e| format!("{e}"))?;
             Ok(())
         }
         .await;
 
         match step {
             Ok(()) => {
+                // P4.D288: no store to save — each upsert wrote its row.
                 result.processed += 1;
-                // v4: save periodically every `batchSize` successes.
-                if batch_size > 0 && result.processed % batch_size == 0 {
-                    store = flush_store(db, store).await?;
-                }
             }
             Err(e) => {
                 tracing::warn!(
@@ -1822,82 +1801,34 @@ pub async fn generate_missing_embeddings<P: EmbeddingProvider>(
         }
     }
 
-    // v4's final save.
-    flush_store(db, store).await?;
+    let _ = batch_size;
     Ok(result)
 }
 
-/// v4 `rebuildVectorIndex(characterId, { userId })` — delete the character's
-/// vector index outright, then re-add every memory that HAS an embedding and
-/// persist. A per-memory add failure counts and the loop continues.
+/// v4 `rebuildVectorIndex(characterId)` — P4.D288 (C1-3, mechanical): "the
+/// rows are the index (`memories.embedding` + `memories.tier`); the in-process
+/// store is only a cache of them". Rebuilding reads the rows again — `indexed`
+/// is how many vectors the loaded index holds, `failed` how many of the
+/// character's rows have none (those need `generate-embeddings`). Nothing is
+/// written. (The pin's `[Memory] Rebuilt vector index from memory rows` DEBUG
+/// and the backfill pair's new home are P4.D292's —
+/// `services/memory_index_backfill.rs`.)
 pub async fn rebuild_vector_index(
     db: &Db,
     character_id: &str,
 ) -> Result<RebuildVectorIndexResult, DbError> {
-    // v4 `manager.deleteStore(characterId)` → `repo.deleteByCharacterId`.
     let cid = character_id.to_string();
-    db.write(move |ws| {
-        crate::db::vector_indices::VectorIndicesRepository::new(ws.main().connection())
-            .delete_by_character_id(&cid)
-            .map(|_| ())
+    db.read_main(move |c| {
+        let indexed = CharacterVectorStore::load(c, &cid).size();
+        let failed = memories_read::count_without_embedding(c, Some(&cid))? as usize;
+        Ok(RebuildVectorIndexResult { indexed, failed })
     })
-    .await?;
-
-    // v4 `manager.getStore` — a fresh (now empty) store.
-    let cid = character_id.to_string();
-    let mut store = db.read_main(move |c| CharacterVectorStore::load(c, &cid))?;
-
-    let cid = character_id.to_string();
-    let memories = db.read_main(move |c| memories_read::find_by_character_id(c, &cid))?;
-
-    let mut result = RebuildVectorIndexResult::default();
-    for memory in &memories {
-        let Some(vec) = embedding_vec_of(memory).filter(|v| !v.is_empty()) else {
-            continue;
-        };
-        let id = memory
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        match store.add_vector(&id, vec) {
-            Ok(()) => result.indexed += 1,
-            Err(e) => {
-                tracing::warn!(
-                    target: "quilltap::memories",
-                    memory_id = %id,
-                    character_id,
-                    error = %e,
-                    "[Memory] Failed to index memory",
-                );
-                result.failed += 1;
-            }
-        }
-    }
-
-    flush_store(db, store).await?;
-    Ok(result)
-}
-
-/// Run `store.flush` through the writer, handing the store back (the loop keeps
-/// mutating it between flushes).
-async fn flush_store(
-    db: &Db,
-    mut store: CharacterVectorStore,
-) -> Result<CharacterVectorStore, DbError> {
-    db.write(move |ws| {
-        let repo = crate::db::vector_indices::VectorIndicesRepository::new(ws.main().connection());
-        store.flush(&repo)?;
-        Ok(store)
-    })
-    .await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::memories::{CreateOptions, MemCreate};
-    use crate::db::vector_indices::VectorEntryInput;
     use crate::db::Writer;
     use tempfile::{tempdir, TempDir};
 
@@ -1914,11 +1845,6 @@ mod tests {
             sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
             lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
             tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
-        CREATE TABLE vector_indices (
-            id TEXT PRIMARY KEY, characterId TEXT, version REAL, dimensions REAL,
-            createdAt TEXT, updatedAt TEXT);
-        CREATE TABLE vector_entries (
-            id TEXT PRIMARY KEY, characterId TEXT, embedding BLOB, createdAt TEXT);
     ";
 
     struct Seed {
@@ -1949,7 +1875,8 @@ mod tests {
                             keywords: vec![],
                             tags: vec![],
                             importance: 0.5,
-                            embedding: None,
+                            // P4.D288: the row IS the index.
+                            embedding: s.vector.clone(),
                             source: "AUTO".to_string(),
                             witnessed_context: None,
                             occurred_at: None,
@@ -1975,25 +1902,7 @@ mod tests {
                         },
                     )
                     .unwrap();
-                if let Some(vec) = &s.vector {
-                    let vi = w.vector_indices();
-                    vi.save_meta(s.character_id, vec.len() as f64).unwrap();
-                    vi.add_entry(&VectorEntryInput {
-                        id: s.id.to_string(),
-                        character_id: s.character_id.to_string(),
-                        embedding: Some(vec.clone()),
-                    })
-                    .unwrap();
-                }
             }
-            // Pin the seed-minted vector timestamps to the sentinel so the tests
-            // can tell a flush-time bump from the seeding itself.
-            w.connection()
-                .execute(
-                    "UPDATE vector_indices SET createdAt = ?1, updatedAt = ?1",
-                    [SENTINEL],
-                )
-                .unwrap();
         }
         let db = Db::open_main(&path, PEPPER).unwrap();
         (dir, db)
@@ -2025,13 +1934,12 @@ mod tests {
             .await
             .unwrap());
         assert_eq!(count(&db, "memories", ""), 1);
-        assert_eq!(count(&db, "vector_entries", ""), 1);
+        assert_eq!(count(&db, "memories", "WHERE embedding IS NOT NULL"), 1);
 
         assert!(delete_memory_with_vector(&db, "char-a", "m1")
             .await
             .unwrap());
         assert_eq!(count(&db, "memories", ""), 0);
-        assert_eq!(count(&db, "vector_entries", ""), 0);
     }
 
     /// A source-message cascade spans characters: rows deleted through the
@@ -2086,28 +1994,7 @@ mod tests {
             .unwrap();
         assert_eq!(related, "[]");
 
-        // char-a's store was swept (metadata bumped); char-b's held nothing
-        // matching, so its save was a no-op and the sentinel survives.
-        let meta_b: String = db
-            .read_main(|c| {
-                Ok(c.query_row(
-                    "SELECT updatedAt FROM vector_indices WHERE characterId = 'char-b'",
-                    [],
-                    |r| r.get(0),
-                )?)
-            })
-            .unwrap();
-        assert_eq!(meta_b, SENTINEL);
-        let meta_a: String = db
-            .read_main(|c| {
-                Ok(c.query_row(
-                    "SELECT updatedAt FROM vector_indices WHERE characterId = 'char-a'",
-                    [],
-                    |r| r.get(0),
-                )?)
-            })
-            .unwrap();
-        assert_ne!(meta_a, SENTINEL);
+        // P4.D288: no mirror metadata to sweep — the rows were the index.
     }
 
     /// The chat wipe reports the character count and the empty branches of all
@@ -2149,6 +2036,5 @@ mod tests {
         assert_eq!(r.vectors_removed, 2);
         assert_eq!(r.character_count, 2);
         assert_eq!(count(&db, "memories", ""), 0);
-        assert_eq!(count(&db, "vector_entries", ""), 0);
     }
 }

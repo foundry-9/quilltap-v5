@@ -20,7 +20,6 @@ use serde_json::Value;
 
 use crate::db::chats::ChatsRepository;
 use crate::db::files::FilesRepository;
-use crate::db::vector_indices::VectorIndicesRepository;
 use crate::db::wardrobe_wear_stats::WardrobeWearStatsRepository;
 use crate::db::{characters_read, chats_read, memories_read, DbError};
 use crate::photos::character_gallery_service::remove_from_character_gallery;
@@ -372,8 +371,8 @@ pub fn execute_cascade_delete(
             .delete_many_with_unlink(&ids, crate::db::memories::CountSource::Repository)?;
     }
 
-    // Vector index (embeddings).
-    VectorIndicesRepository::new(main).delete_by_character_id(character_id)?;
+    // P4.D288 (C1-3, mechanical): the vector mirror is gone — the memory rows
+    // deleted above carried the only copy of their vectors.
 
     // Plugin data.
     main.execute(

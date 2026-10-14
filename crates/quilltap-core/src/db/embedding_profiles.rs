@@ -139,6 +139,32 @@ pub fn find_default(
     .map_err(Into::into)
 }
 
+// === P4.D288 (C1-3) ===
+
+/// v4 `findInstanceDefault()` (`embedding-profiles.repository.ts:75-82`): the
+/// ONE profile marked default, whoever owns it (one embedding standard per
+/// instance), or `None`. The inner `findOneByFilter({isDefault: true})` is the
+/// FALLBACK (`None`, `Error finding entity by filter`); the outer line is
+/// reached only inside the strict scope. `findOneByFilter` takes the first row
+/// in table order (`LIMIT 1`, no `ORDER BY`).
+pub fn find_instance_default(conn: &Connection) -> Result<Option<EmbeddingProfileRow>, DbError> {
+    super::fallback::instance_default_profile_or_none(|| {
+        super::fallback::find_one_by_filter_strict_aware("embedding_profiles", || {
+            conn.query_row(
+                &format!(
+                    "SELECT {EP_ROW_COLUMNS} FROM embedding_profiles WHERE isDefault = 1 LIMIT 1"
+                ),
+                [],
+                marshal_profile_row,
+            )
+            .optional()
+            .map_err(Into::into)
+        })
+    })
+}
+
+// === end P4.D288 ===
+
 /// The profile id the cold-chunk re-embed and the conversation-render
 /// reconcile pick: the **marked default, and only that** (v4 `d553f72a`
 /// dropped the `|| embeddingProfiles[0]` fallback at all five of its sites).

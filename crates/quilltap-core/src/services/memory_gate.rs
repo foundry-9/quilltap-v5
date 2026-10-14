@@ -446,7 +446,7 @@ async fn run_memory_gate_inner<P: EmbeddingProvider>(
     let results = {
         let embedding = &embedding;
         db.read_main(move |conn| {
-            let store = CharacterVectorStore::load(conn, character_id)?;
+            let store = CharacterVectorStore::load(conn, character_id);
             Ok(store.search(embedding, GATE_TOP_K))
         })?
     };
@@ -827,11 +827,8 @@ async fn create_memory_direct_with_embedding(
             };
             main.memories()
                 .update_for_character(&character_id, &id_for_write, &patch)?;
-
-            // Add to the vector store + persist.
-            let mut store = CharacterVectorStore::load(main.connection(), &character_id)?;
-            store.add_vector(&id_for_write, emb)?;
-            store.flush(&main.vector_indices())?;
+            // P4.D288 (C1-3, mechanical): the row write above IS the index
+            // write — the vector mirror is gone.
         }
         Ok(())
     })
@@ -1037,24 +1034,10 @@ pub(crate) async fn reembed_memory<P: EmbeddingProvider>(
             Ok(())
         })
         .await;
-    let id_w = memory_id.clone();
-    let written = match row_written {
-        Err(e) => Err(e),
-        Ok(()) => {
-            db.write(move |writers| {
-                let main = writers.main();
-                let mut store = CharacterVectorStore::load(main.connection(), &character_id)?;
-                if store.has_vector(&id_w) {
-                    store.update_vector(&id_w, embedding)?;
-                } else {
-                    store.add_vector(&id_w, embedding)?;
-                }
-                store.flush(&main.vector_indices())?;
-                Ok(())
-            })
-            .await
-        }
-    };
+    // P4.D288 (C1-3, mechanical): the row's embedding is the only copy — the
+    // vector-mirror write that followed it is gone with the mirror.
+    let _ = (character_id, embedding);
+    let written = row_written;
     match written {
         Ok(()) => {
             tracing::debug!(memoryId = memory_id, "[MemoryGate] Re-embedded memory");
@@ -1495,7 +1478,6 @@ fn str_array_field(memory: &Value, key: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::vector_indices::VectorEntryInput;
     use crate::db::Writer;
     use crate::model::embedding::CannedEmbeddingProvider;
     use tempfile::{tempdir, TempDir};
@@ -1517,11 +1499,6 @@ mod tests {
             sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
             lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
             tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
-        CREATE TABLE vector_indices (
-            id TEXT PRIMARY KEY, characterId TEXT, version REAL, dimensions REAL,
-            createdAt TEXT, updatedAt TEXT);
-        CREATE TABLE vector_entries (
-            id TEXT PRIMARY KEY, characterId TEXT, embedding BLOB, createdAt TEXT);
     ";
 
     /// Build a fresh encrypted DB with the three tables, optionally seeding one
@@ -1546,7 +1523,7 @@ mod tests {
                             keywords: vec![],
                             tags: vec![],
                             importance: 0.5,
-                            embedding: None,
+                            embedding: Some(vec.clone()),
                             source: "AUTO".to_string(),
                             witnessed_context: None,
                             occurred_at: None,
@@ -1572,14 +1549,7 @@ mod tests {
                         },
                     )
                     .unwrap();
-                let vi = w.vector_indices();
-                vi.save_meta(CHAR, vec.len() as f64).unwrap();
-                vi.add_entry(&VectorEntryInput {
-                    id: "mem-seed".to_string(),
-                    character_id: CHAR.to_string(),
-                    embedding: Some(vec),
-                })
-                .unwrap();
+                // P4.D288: the row IS the index — no mirror to seed.
             }
         }
         let db = Db::open_main(&path, PEPPER).unwrap();
@@ -1623,8 +1593,8 @@ mod tests {
         assert_eq!(outcome.action, GateAction::Insert);
         assert!(outcome.memory_id.is_some());
         assert_eq!(count(&db, "memories"), 1);
-        assert_eq!(count(&db, "vector_entries"), 1);
-        assert_eq!(count(&db, "vector_indices"), 1);
+        // P4.D288: the vector lands on the row — the only copy.
+        assert_eq!(count(&db, "memories WHERE embedding IS NOT NULL"), 1);
     }
 
     /// A best match in the merge band → REINFORCE: no new row, the existing memory's
@@ -1692,7 +1662,7 @@ mod tests {
     fn vector_bytes(db: &Db) -> Vec<u8> {
         db.read_main(|c| {
             Ok(c.query_row(
-                "SELECT embedding FROM vector_entries WHERE id = 'mem-seed'",
+                "SELECT embedding FROM memories WHERE id = 'mem-seed'",
                 [],
                 |r| r.get(0),
             )?)
@@ -1772,7 +1742,7 @@ mod tests {
             "R-H: the shape does not grow"
         );
         assert_eq!(count(&db, "memories"), 1);
-        assert_eq!(count(&db, "vector_entries"), 1);
+        assert_eq!(count(&db, "memories WHERE embedding IS NOT NULL"), 1);
         assert_eq!(cell::<f64>(&db, "reinforcementCount"), 2.0);
         assert_eq!(
             cell::<f64>(&db, "reinforcedImportance"),
@@ -1780,7 +1750,7 @@ mod tests {
         );
         assert!(cell::<Option<String>>(&db, "lastReinforcedAt").is_some());
         assert_eq!(cell::<String>(&db, "content"), "Mara trusts the crew.");
-        assert_eq!(cell::<Option<Vec<u8>>>(&db, "embedding"), None);
+        // P4.D288: the row carries the vector (the only copy) — untouched.
         assert_eq!(vector_bytes(&db), before_vector, "the vector is untouched");
         let line = only_line(
             &lines,
@@ -2053,7 +2023,6 @@ mod tests {
         {
             let w = Writer::open_writable(&path, PEPPER).unwrap();
             w.connection().execute_batch(DDL).unwrap();
-            w.vector_indices().save_meta(CHAR, 2.0).unwrap();
             for seed in seeds {
                 w.memories()
                     .create(
@@ -2067,7 +2036,9 @@ mod tests {
                             keywords: vec![],
                             tags: vec![],
                             importance: 0.6,
-                            embedding: None,
+                            embedding: seed
+                                .score
+                                .map(|score| vec![score, (1.0 - score * score).sqrt()]),
                             source: seed.source.to_string(),
                             witnessed_context: None,
                             occurred_at: None,
@@ -2093,15 +2064,6 @@ mod tests {
                         },
                     )
                     .unwrap();
-                if let Some(score) = seed.score {
-                    w.vector_indices()
-                        .add_entry(&VectorEntryInput {
-                            id: seed.id.to_string(),
-                            character_id: CHAR.to_string(),
-                            embedding: Some(vec![score, (1.0 - score * score).sqrt()]),
-                        })
-                        .unwrap();
-                }
             }
         }
         let db = Db::open_main(&path, PEPPER).unwrap();
@@ -2240,7 +2202,7 @@ mod tests {
     async fn a_demoted_cold_row_is_promoted_and_reinforced() {
         let (_d, db) = make_tier_db(&[tier_seed("cold", "cold", None, Some(0.87))]);
         let before = db
-            .read_main(|c| Ok(CharacterVectorStore::load(c, CHAR)?.is_hot("cold")))
+            .read_main(|c| Ok(CharacterVectorStore::load(c, CHAR).is_hot("cold")))
             .unwrap();
         assert!(!before, "the store loads it cold first");
         let (d, lines) =
@@ -2253,7 +2215,7 @@ mod tests {
         assert_eq!(existing["supersededById"], Value::Null);
         assert_eq!(tier_of(&db, "cold"), ("hot".into(), None));
         let after = db
-            .read_main(|c| Ok(CharacterVectorStore::load(c, CHAR)?.is_hot("cold")))
+            .read_main(|c| Ok(CharacterVectorStore::load(c, CHAR).is_hot("cold")))
             .unwrap();
         assert!(after, "R-B: a fresh load answers the promoted row hot");
         let line = only_line(

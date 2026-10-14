@@ -168,6 +168,12 @@ const HOME_MESSAGES: &[&str] = &[
     "Error setting extraction cursor",
     "Error clearing extraction cursor",
     "Error clearing extraction cursors for chat",
+    // C1-3: the index-store reads' lines + v4's base `count` fallback.
+    "Error reading memory index rows",
+    "Error counting the memory corpus",
+    "Error counting entities",
+    "Error finding active background jobs by type",
+    "Error finding the instance default embedding profile",
     // === end P4.D288 ===
 ];
 

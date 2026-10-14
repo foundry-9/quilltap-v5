@@ -7,11 +7,9 @@
 //! embedding profile produces. This pass runs on every boot and makes the stored
 //! corpus conform to it, across every embedding-bearing store:
 //!
-//!   - `memories`            (main — re-embedded via reindex)
-//!   - `vector_entries`      (main — non-conforming rows DELETED here; they are
-//!                            derived data, already invisible to vector search,
-//!                            and the memory re-embed recreates them)
-//!   - `vector_indices`      (main — meta `dimensions` snapped to target)
+//!   - `memories`            (main — re-embedded via reindex; P4.D288: the
+//!                            `vector_entries` / `vector_indices` mirror arms are
+//!                            GONE with the mirror, v4 `af48f6cc2`)
 //!   - `conversation_chunks` (main — re-embedded via reindex; stale chats are
 //!                            treated like any other chat since v4 `f7f3d7bf0`,
 //!                            "keep conversation embeddings warm" — their
@@ -131,10 +129,6 @@ pub struct DimensionReconcileResult {
     pub target_dimensions: Option<usize>,
     /// Why the pass was skipped, if it was.
     pub skipped_reason: Option<SkippedReason>,
-    /// Non-conforming `vector_entries` rows deleted.
-    pub vector_entries_deleted: usize,
-    /// `vector_indices` meta rows whose dimensions were snapped to target.
-    pub vector_index_meta_fixed: usize,
     pub mismatched: MismatchedCounts,
     /// Whether a `mismatched-dim` reindex was enqueued.
     pub reindex_enqueued: bool,
@@ -314,26 +308,6 @@ fn run_reconcile(
         ..Default::default()
     };
 
-    // ---- vector_entries: delete non-conforming rows outright. They are pure
-    // derived data (the memory row keeps the source text), every search path
-    // already skips them by length, and the memory re-embed recreates them.
-    // NOTE: no FAILED exclusion and no user scoping — v4 deletes unconditionally.
-    if table_exists(main, "vector_entries") {
-        result.vector_entries_deleted = main.execute(
-            &format!("DELETE FROM \"vector_entries\" WHERE {}", nonconforming()),
-            params![target_dim as i64],
-        )?;
-    }
-
-    // ---- vector_indices: snap meta dimensions to the standard so freshly
-    // re-embedded vectors are accepted and search validates against the truth.
-    if table_exists(main, "vector_indices") {
-        result.vector_index_meta_fixed = main.execute(
-            "UPDATE \"vector_indices\" SET dimensions = ? WHERE dimensions != ?",
-            params![target_dim as i64, target_dim as i64],
-        )?;
-    }
-
     // v4 drops its cached in-memory stores here when either changed. v5 has no
     // store cache — a documented no-op (see the module doc).
 
@@ -372,9 +346,9 @@ fn run_reconcile(
         result.reindex_enqueued = enqueue_mismatched_reindex(main, &profile.user_id, &profile.id)?;
     }
 
-    let touched_anything = result.mismatched.total() > 0
-        || result.vector_entries_deleted > 0
-        || result.vector_index_meta_fixed > 0;
+    // P4.D288 (C1-3): the two mirror arms are gone — only the recoverable
+    // rows count (the INFO's v4 field set is P4.D292's).
+    let touched_anything = result.mismatched.total() > 0;
 
     // v4's two-arm log shape: a full INFO line when anything was touched, a DEBUG
     // line otherwise. (The healthy outcome must still say something at debug —
@@ -384,8 +358,6 @@ fn run_reconcile(
             target: "quilltap::boot",
             profile_id = %profile.id,
             target_dimensions = target_dim,
-            vector_entries_deleted = result.vector_entries_deleted,
-            vector_index_meta_fixed = result.vector_index_meta_fixed,
             memories = result.mismatched.memories,
             conversation_chunks = result.mismatched.conversation_chunks,
             help_docs = result.mismatched.help_docs,
@@ -681,10 +653,12 @@ mod tests {
             .unwrap()
     }
 
-    /// v4's first test: non-conforming entries in BOTH on-disk formats are
-    /// deleted, and the index meta is snapped.
+    /// P4.D288 (C1-3) — the NARROWING, measured: v4's first test (non-
+    /// conforming `vector_entries` deleted, the `vector_indices` meta snapped)
+    /// is gone with the mirror. A leftover mirror (an instance the boot's
+    /// vector-mirror retire has not met yet) is now left EXACTLY as it was.
     #[test]
-    fn deletes_nonconforming_entries_raw_and_quantized_and_snaps_meta() {
+    fn a_leftover_mirror_is_left_alone() {
         let conn = main_conn();
         default_profile(&conn, "OPENAI");
         entry(&conn, "e-raw-258", raw_blob(OLD_DIM));
@@ -700,23 +674,19 @@ mod tests {
 
         assert_eq!(r.skipped_reason, None);
         assert_eq!(r.target_dimensions, Some(TARGET_DIM));
-        assert_eq!(r.vector_entries_deleted, 2);
-        assert_eq!(r.vector_index_meta_fixed, 1);
 
         let remaining: Vec<String> = conn
-            .prepare("SELECT id FROM vector_entries")
+            .prepare("SELECT id FROM vector_entries ORDER BY id")
             .unwrap()
             .query_map([], |r| r.get(0))
             .unwrap()
             .collect::<Result<_, _>>()
             .unwrap();
-        assert_eq!(remaining, vec!["e-good"]);
-        // REAL affinity, like the real schema — the UPDATE binds an integer and
-        // SQLite stores 1024.0, exactly as v4's JS number does.
+        assert_eq!(remaining, vec!["e-good", "e-quant-258", "e-raw-258"]);
         let meta: f64 = conn
             .query_row("SELECT dimensions FROM vector_indices", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(meta, TARGET_DIM as f64);
+        assert_eq!(meta, OLD_DIM as f64, "the meta is no longer snapped");
     }
 
     /// v4's second test: NULL and non-conforming memories count, FAILED and
@@ -915,7 +885,6 @@ mod tests {
 
         let r = reconcile_embedding_dimensions(&conn, None);
 
-        assert_eq!(r.vector_entries_deleted, 0);
         assert_eq!(r.mismatched, MismatchedCounts::default());
         assert!(!r.reindex_enqueued);
         assert!(enqueued_jobs(&conn).is_empty());
@@ -971,7 +940,11 @@ mod tests {
         let r = reconcile_embedding_dimensions(&conn, None);
 
         assert_eq!(r.target_dimensions, Some(256));
-        assert_eq!(r.vector_entries_deleted, 1, "the 1024-d entry goes");
+        // P4.D288: the mirror is no longer the reconcile's — both entries stay.
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM vector_entries", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 2);
     }
 
     /// P4.D77 (v4 `24633026`) — **the reconcile keeps counting `help_docs`
@@ -1022,8 +995,8 @@ mod tests {
             enqueued_jobs(&conn).is_empty(),
             "nothing is owed: the reconcile counts documents, and this document is fine"
         );
-        // And the chunk row is untouched — the reconcile deletes vector_entries,
-        // never help-doc rows of either kind.
+        // And the chunk row is untouched — the reconcile deletes no help-doc
+        // rows of either kind.
         let left: i64 = conn
             .query_row("SELECT COUNT(*) FROM help_doc_chunks", [], |r| r.get(0))
             .unwrap();

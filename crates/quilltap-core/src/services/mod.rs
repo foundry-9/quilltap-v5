@@ -138,6 +138,7 @@ pub mod memory_consolidation_job;
 pub mod memory_dedup;
 pub mod memory_extraction_job;
 pub mod memory_gate;
+pub mod memory_index; // P4.D288 (C1-3)
 pub mod memory_processor;
 pub mod memory_recap;
 pub mod memory_service;

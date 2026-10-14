@@ -141,6 +141,21 @@
       ]
     },
     {
+      "name": "vector-store-write-shapes",
+      "comment": "P4.D288 L-9: v4 VECTOR_STORE_WRITE_SHAPES at the 83334b9a5 pin, each method keyed by its own argument shape; memories.update names a memory id (owner resolved pre-commit by v4; v5's applier has no pre-commit seam); a link verb and a wrong-shaped arg add nothing",
+      "jobType": "EMBEDDING_GENERATE",
+      "writes": [
+        { "method": "memories.upsert", "args": [{ "characterId": "charA" }] },
+        { "method": "memories.updateForCharacter", "args": ["charB", "m1", { "content": "x" }] },
+        { "method": "memories.bulkDeleteUnsafe", "args": ["charC", ["m2"]] },
+        { "method": "memories.updateTierBulk", "args": ["charD", ["m3"], "cold"] },
+        { "method": "memories.updateTierBulk", "args": [{ "characterId": "charE" }] },
+        { "method": "memories.update", "args": ["mem-owned", { "content": "y" }] },
+        { "method": "memories.incrementReinforcement", "args": ["charF", "m4", "2026-01-01T00:00:00.000Z"] },
+        { "method": "memories.create", "args": [{ "characterId": "charA" }] }
+      ]
+    },
+    {
       "name": "ledger-hook-once-per-chat-last-named-provider",
       "jobType": "STORY_BACKGROUND_GENERATION",
       "writes": [

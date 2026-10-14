@@ -1644,7 +1644,7 @@ async fn semantic_candidates<EMB: EmbeddingProvider>(
         .map_err(|e| e.message)?;
     let cid = character_id.to_string();
     let store = db
-        .read_main(move |c| CharacterVectorStore::load(c, &cid))
+        .read_main(move |c| Ok(CharacterVectorStore::load(c, &cid)))
         .map_err(|e| e.to_string())?;
     // Hot vectors only, filtered BEFORE the top-500 (v4 `vectorStore.search(…,
     // 500, isHotVector)`, `d58548051`): archived shards were folded into digests.

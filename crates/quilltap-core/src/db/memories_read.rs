@@ -1318,6 +1318,120 @@ pub fn find_distinct_chat_ids(conn: &Connection) -> Result<Vec<String>, DbError>
     Ok(out)
 }
 
+// === P4.D288 (C1-3): the index-store reads ===
+
+/// One row of a character's vector index (v4 `findIndexRowsByCharacterId`'s
+/// `{ id, embedding, tier }`): the decoded vector and the row's tier (`cold`
+/// iff the cell says `'cold'`; NULL / anything else reads hot).
+#[derive(Debug, Clone, PartialEq)]
+pub struct IndexRow {
+    pub id: String,
+    pub embedding: Vec<f32>,
+    pub tier: super::vector_store::Tier,
+}
+
+/// v4 `decodeStoredEmbedding` (`memories.repository.ts:69-83`) for a raw
+/// cell: a BLOB through the header-aware [`blob_to_float32`]; TEXT through
+/// `JSON.parse` — an array becomes the vector (`Float32Array.from`: a
+/// non-number element is `NaN`), anything else (and unparseable text) is
+/// `None`; any other storage class is `None`.
+pub fn decode_stored_embedding(cell: rusqlite::types::ValueRef<'_>) -> Option<Vec<f32>> {
+    match cell {
+        rusqlite::types::ValueRef::Blob(b) => Some(blob_to_float32(b)),
+        rusqlite::types::ValueRef::Text(t) => {
+            let parsed: Value = serde_json::from_str(&String::from_utf8_lossy(t)).ok()?;
+            let arr = parsed.as_array()?;
+            Some(
+                arr.iter()
+                    .map(|v| v.as_f64().map_or(f32::NAN, |f| f as f32))
+                    .collect(),
+            )
+        }
+        _ => None,
+    }
+}
+
+/// v4 `findIndexRowsByCharacterId(characterId)` (`memories.repository.ts:
+/// 1060-1093`): `SELECT id, embedding, tier FROM memories WHERE characterId = ?
+/// AND embedding IS NOT NULL`, each embedding decoded; an undecodable or EMPTY
+/// one is skipped and counted — WARN `Skipped memory embeddings that could not
+/// be decoded {characterId, undecodable}` when any were — then DEBUG `Read
+/// memory index rows {characterId, rows}`. FALLBACK `[]` with ERROR `Error
+/// reading memory index rows {collection, characterId, error}`
+/// ([`super::fallback::index_rows_or_empty`] — strict-aware).
+pub fn find_index_rows_by_character_id(
+    conn: &Connection,
+    character_id: &str,
+) -> Result<Vec<IndexRow>, DbError> {
+    super::fallback::index_rows_or_empty(character_id, || {
+        let mut stmt = conn.prepare(
+            "SELECT id, embedding, tier FROM memories WHERE characterId = ? AND embedding IS NOT NULL",
+        )?;
+        let raw = stmt
+            .query_map([character_id], |r| {
+                let tier = match r.get_ref(2)? {
+                    rusqlite::types::ValueRef::Text(t) if t == b"cold" => {
+                        super::vector_store::Tier::Cold
+                    }
+                    _ => super::vector_store::Tier::Hot,
+                };
+                Ok((
+                    r.get::<_, String>(0)?,
+                    decode_stored_embedding(r.get_ref(1)?),
+                    tier,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut out = Vec::with_capacity(raw.len());
+        let mut undecodable = 0usize;
+        for (id, embedding, tier) in raw {
+            match embedding {
+                Some(embedding) if !embedding.is_empty() => out.push(IndexRow {
+                    id,
+                    embedding,
+                    tier,
+                }),
+                _ => undecodable += 1,
+            }
+        }
+        if undecodable > 0 {
+            tracing::warn!(
+                target: "quilltap::db",
+                characterId = %character_id,
+                undecodable = undecodable,
+                "Skipped memory embeddings that could not be decoded"
+            );
+        }
+        tracing::debug!(
+            target: "quilltap::db",
+            characterId = %character_id,
+            rows = out.len(),
+            "Read memory index rows"
+        );
+        Ok(out)
+    })
+}
+
+/// v4 `countCorpusSince(since)` (`memories.repository.ts:980-993`): `{ total,
+/// createdSince }` — every memory row, and those with `createdAt >= since`
+/// (0 when `since` is `None`), each through the base `count` (a FALLBACK `0`,
+/// `Error counting entities`); FALLBACK `{0, 0}` with ERROR `Error counting the
+/// memory corpus {collection, since, error}` (strict-aware).
+pub fn count_corpus_since(conn: &Connection, since: Option<&str>) -> Result<(i64, i64), DbError> {
+    super::fallback::corpus_count_or_zero(since, || {
+        let total = super::fallback::count_strict_aware("memories", || query_count(conn, "", &[]))?;
+        let created_since = match since {
+            Some(s) => super::fallback::count_strict_aware("memories", || {
+                query_count(conn, "WHERE createdAt >= ?1", &[&s])
+            })?,
+            None => 0,
+        };
+        Ok((total, created_since))
+    })
+}
+
+// === end P4.D288 ===
+
 #[cfg(test)]
 mod tests {
     use super::*;

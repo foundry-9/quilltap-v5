@@ -88,7 +88,7 @@ use crate::db::instance_settings::{
 };
 use crate::db::memories::{CreateOptions, MemUpdate, TierExtra};
 use crate::db::runtime::Db;
-use crate::db::vector_store::{CharacterVectorStore, Tier};
+use crate::db::vector_store::Tier;
 use crate::db::{characters_read, chats_read, memories_read, DbError};
 use crate::episodic::{build_memory_embedding_text, js_date_parse_ms, EpisodicAnchorView};
 use crate::model::completion::CompletionProvider;
@@ -918,36 +918,8 @@ async fn execute_plan(
 
     db.write(move |writers| {
         let main = writers.main();
-        let mut store = match CharacterVectorStore::load(main.connection(), &character_id) {
-            Ok(s) => Some(s),
-            Err(e) => {
-                tracing::warn!(
-                    module = MODULE,
-                    characterId = %character_id,
-                    error = %crate::db::fallback::error_text(&e),
-                    "Vector store unavailable during consolidation; digests are written without vectors"
-                );
-                None
-            }
-        };
-        let stage = |store: &mut Option<CharacterVectorStore>, id: &str, embedding: &[f32]| {
-            let Some(s) = store.as_mut() else { return };
-            let staged = if s.has_vector(id) {
-                s.update_vector(id, embedding.to_vec()).map(|_| ())
-            } else {
-                s.add_vector(id, embedding.to_vec())
-            };
-            if let Err(e) = staged {
-                tracing::warn!(
-                    module = MODULE,
-                    characterId = %character_id,
-                    memoryId = %id,
-                    error = %crate::db::fallback::error_text(&e),
-                    "Failed to stage digest vector"
-                );
-            }
-        };
-
+        // P4.D288 (C1-3, mechanical): no vector mirror to stage into — the
+        // rows are the index (`services::memory_index`).
         for c in &creates {
             main.memories().create(
                 &c.data,
@@ -962,8 +934,8 @@ async fn execute_plan(
                     embedding: Some(Some(e.clone())),
                     ..Default::default()
                 };
-                main.memories().update_for_character(&character_id, &c.id, &patch)?;
-                stage(&mut store, &c.id, e);
+                main.memories()
+                    .update_for_character(&character_id, &c.id, &patch)?;
             }
             tracing::debug!(
                 module = MODULE,
@@ -975,9 +947,26 @@ async fn execute_plan(
         }
 
         for (id, patch, embedding, members) in &updates {
-            main.memories().update_for_character(&character_id, id, patch)?;
-            if let Some(e) = embedding {
-                stage(&mut store, id, e);
+            // P4.D288 (C1-3, mechanical): a revised digest's vector was written
+            // to the mirror ONLY — it now rides the same row update through the
+            // index (v4 `memoryIndex.upsert` with `alongside`).
+            match embedding {
+                Some(e) => {
+                    crate::services::memory_index::upsert(
+                        main.connection(),
+                        &character_id,
+                        vec![crate::services::memory_index::MemoryIndexUpsert {
+                            id: id.clone(),
+                            embedding: e.clone(),
+                            tier: None,
+                            alongside: clone_mem_update(patch),
+                        }],
+                    )?;
+                }
+                None => {
+                    main.memories()
+                        .update_for_character(&character_id, id, patch)?;
+                }
             }
             tracing::debug!(
                 module = MODULE,
@@ -989,22 +978,22 @@ async fn execute_plan(
         }
 
         for (target, ids) in &moves {
-            main.memories().update_tier_bulk(
+            // P4.D288 (C1-3, mechanical): the ONE writer of `.tier`.
+            crate::services::memory_index::set_tier(
+                main.connection(),
                 &character_id,
                 ids,
-                "cold",
+                Tier::Cold,
                 TierExtra {
                     superseded_by_id: Some(Some(target.clone())),
                     consolidated_at: Some(Some(now_iso.clone())),
                 },
             )?;
-            if let Some(s) = store.as_mut() {
-                s.set_tier(ids, Tier::Cold);
-            }
         }
 
         if !considered.is_empty() {
-            main.memories().mark_considered(&character_id, &considered, &now_iso)?;
+            main.memories()
+                .mark_considered(&character_id, &considered, &now_iso)?;
         }
 
         for (id, links) in &rewrites {
@@ -1012,18 +1001,8 @@ async fn execute_plan(
                 related_memory_ids: Some(links.clone()),
                 ..Default::default()
             };
-            main.memories().update_for_character(&character_id, id, &patch)?;
-        }
-
-        if let Some(s) = store.as_mut() {
-            if let Err(e) = s.flush(&main.vector_indices()) {
-                tracing::warn!(
-                    module = MODULE,
-                    characterId = %character_id,
-                    error = %crate::db::fallback::error_text(&e),
-                    "Failed to save vector store after consolidation"
-                );
-            }
+            main.memories()
+                .update_for_character(&character_id, id, &patch)?;
         }
         Ok(())
     })

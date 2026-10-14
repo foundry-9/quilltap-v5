@@ -107,8 +107,6 @@ pub struct RestoreSummary {
 pub struct EmbeddingReconcileSummary {
     pub target_dimensions: Option<usize>,
     pub skipped_reason: Option<&'static str>,
-    pub vector_entries_deleted: usize,
-    pub vector_index_meta_fixed: usize,
     pub reindex_enqueued: bool,
 }
 

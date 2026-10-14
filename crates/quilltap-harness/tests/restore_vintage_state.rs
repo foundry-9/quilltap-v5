@@ -150,8 +150,8 @@ fn open(instance: &Path) -> Db {
     // `chats` scenario pair, `memory_extraction_cursors`,
     // `tfidf_vocabularies.textShapeVersion`) and every column-DROP ensure (the
     // settings move's, the cursor move's — the episode watermark runs first so
-    // the cursor move meets v4's chain). The vector-mirror retire (a table
-    // DROP) joins at the end of unit 8 with its host slot.
+    // the cursor move meets v4's chain), and the vector-mirror retire (slot 8,
+    // its table DROPs).
     db.write_blocking(|writers| {
         let main = writers.main().connection();
         quilltap_core::db::memory_superseded_at_repair::ensure_memory_superseded_at(main)?;
@@ -160,6 +160,7 @@ fn open(instance: &Path) -> Db {
         quilltap_core::db::memory_maintenance_settings_move::ensure_memory_maintenance_settings_move(
             main,
         )?;
+        quilltap_core::db::memory_vector_mirror_retire::retire_memory_vector_mirror(main)?;
         quilltap_core::db::memory_extraction_cursors_repair::ensure_memory_extraction_cursors(
             main,
         )?;

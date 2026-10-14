@@ -545,7 +545,8 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     // dispatches a UNIT variant, which this `{`-anchored grep does not count.
     ("scenario_builder_routes.rs", 2),
     ("subprompts_routes.rs", 3),
-    ("system_data_routes.rs", 15),
+    // P4.D288 unit 5: 15 → 13 — the two `memory-dedup` arms left with the retired verbs.
+    ("system_data_routes.rs", 13),
     ("text_replacements_routes.rs", 6),
     ("tools_routes.rs", 1),
     ("ui_search_routes.rs", 1),

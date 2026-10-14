@@ -160,7 +160,7 @@ pub mod vault_character_write;
 pub mod vault_read_overlay;
 pub mod vault_wardrobe_public;
 pub mod vault_wardrobe_write;
-pub mod vector_indices;
+// P4.D288 (C1-3): `vector_indices` DELETED — the mirror died with v4 `af48f6cc2`.
 pub mod vector_store;
 pub mod wardrobe_location;
 pub mod wardrobe_read;
@@ -583,12 +583,6 @@ impl Writer {
     /// `group_character_members`, the first sibling-DB repo).
     pub fn llm_logs(&self) -> llm_logs::LLMLogsRepository<'_> {
         llm_logs::LLMLogsRepository::new(&self.conn)
-    }
-
-    /// The vector-indices repository over this writer's connection (MAIN db; a
-    /// standalone two-table repo — `vector_indices` + `vector_entries`).
-    pub fn vector_indices(&self) -> vector_indices::VectorIndicesRepository<'_> {
-        vector_indices::VectorIndicesRepository::new(&self.conn)
     }
 
     /// The plugin-config repository over this writer's connection.
