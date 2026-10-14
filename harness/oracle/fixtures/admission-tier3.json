@@ -1,0 +1,1591 @@
+{
+ "_safety": "testPepperBase64 is the same THROWAWAY key the other fixtures use — never a real pepper.",
+ "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+ "userId": "00000000-0000-4000-8000-0000000000ee",
+ "seedTimestamp": "2026-06-01T12:00:00.000Z",
+ "chatSettingsId": "5e000000-0000-4000-8000-000000000001",
+ "characters": [
+  {
+   "id": "c0000000-0000-4000-8000-000000000015",
+   "name": "Wren",
+   "aliases": [],
+   "controlledBy": "llm"
+  },
+  {
+   "id": "c0000000-0000-4000-8000-000000000016",
+   "name": "Juniper",
+   "aliases": [
+    "June"
+   ],
+   "controlledBy": "llm"
+  }
+ ],
+ "seeds": [
+  {
+   "id": "a0000000-0000-4000-8000-000000000001",
+   "characterId": "c0000000-0000-4000-8000-000000000004",
+   "content": "The counting house smells of ink.",
+   "summary": "Ink in the counting house",
+   "vector": [
+    0.75,
+    0.661438,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000002",
+   "characterId": "c0000000-0000-4000-8000-000000000004",
+   "content": "A ledger lies open on the desk.",
+   "summary": "An open ledger",
+   "vector": [
+    0.72,
+    0.693974,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000003",
+   "characterId": "c0000000-0000-4000-8000-000000000005",
+   "content": "Friday dined at the Blue Lantern.",
+   "summary": "Dinner at the Blue Lantern",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ],
+   "kind": "episodic",
+   "occurredAt": "2026-01-03T19:00:00.000Z",
+   "entities": [
+    "Blue Lantern"
+   ]
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000004",
+   "characterId": "c0000000-0000-4000-8000-000000000006",
+   "content": "Friday prefers green tea.",
+   "summary": "Green tea preference",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ],
+   "kind": "episodic",
+   "occurredAt": "2026-05-30T08:00:00.000Z"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000005",
+   "characterId": "c0000000-0000-4000-8000-000000000007",
+   "content": "Wren keeps the lighthouse lamp trimmed.",
+   "summary": "Wren trims the lamp",
+   "vector": [
+    0.87,
+    0.493052,
+    0.0,
+    0.0
+   ],
+   "importance": 0.5,
+   "reinforcementCount": 2,
+   "reinforcedImportance": 0.55
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000006",
+   "characterId": "c0000000-0000-4000-8000-000000000008",
+   "content": "Wren fears the deep water.",
+   "summary": "Wren fears deep water",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000007",
+   "characterId": "c0000000-0000-4000-8000-000000000009",
+   "content": "Ash collects sea glass.",
+   "summary": "Ash collects sea glass",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ],
+   "source": "AUTO"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000008",
+   "characterId": "c0000000-0000-4000-8000-00000000000a",
+   "content": "Ash sings in the choir.",
+   "summary": "Ash sings",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ],
+   "source": "MANUAL",
+   "importance": 0.3,
+   "reinforcedImportance": 0.3
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000009",
+   "characterId": "c0000000-0000-4000-8000-00000000000b",
+   "content": "Ash plays the cello.",
+   "summary": "Ash plays cello",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ],
+   "source": "MANUAL",
+   "importance": 0.9,
+   "reinforcedImportance": 0.9
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000000a",
+   "characterId": "c0000000-0000-4000-8000-00000000000c",
+   "content": "Ash and Wren are old friends who sail together.",
+   "summary": "Ash and Wren sail",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ],
+   "source": "CONSOLIDATED",
+   "importance": 0.6,
+   "reinforcedImportance": 0.6
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000000b",
+   "characterId": "c0000000-0000-4000-8000-00000000000d",
+   "content": "Wren mends nets on Sundays.",
+   "summary": "Wren mends nets",
+   "vector": [
+    0.87,
+    0.493052,
+    0.0,
+    0.0
+   ],
+   "tier": "cold"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000000c",
+   "characterId": "c0000000-0000-4000-8000-00000000000e",
+   "content": "Wren hums sea shanties.",
+   "summary": "Wren hums shanties",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ],
+   "tier": "cold"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000000d",
+   "characterId": "c0000000-0000-4000-8000-00000000000f",
+   "content": "Wren's harbour life, in short.",
+   "summary": "Wren's harbour life",
+   "vector": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "source": "CONSOLIDATED",
+   "importance": 0.6,
+   "reinforcedImportance": 0.6,
+   "consolidatedFrom": []
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000000e",
+   "characterId": "c0000000-0000-4000-8000-00000000000f",
+   "content": "Wren rows to the harbour at dawn.",
+   "summary": "Wren rows at dawn",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ],
+   "tier": "cold",
+   "supersededById": "a0000000-0000-4000-8000-00000000000d"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000000f",
+   "characterId": "c0000000-0000-4000-8000-000000000010",
+   "content": "Chain member one.",
+   "summary": "Chain one",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ],
+   "tier": "cold",
+   "supersededById": "a0000000-0000-4000-8000-000000000010"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000010",
+   "characterId": "c0000000-0000-4000-8000-000000000010",
+   "content": "Chain member two.",
+   "summary": "Chain two",
+   "vector": [
+    0.0,
+    0.0,
+    1.0,
+    0.0
+   ],
+   "tier": "cold",
+   "supersededById": "a0000000-0000-4000-8000-000000000011"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000011",
+   "characterId": "c0000000-0000-4000-8000-000000000010",
+   "content": "Chain member three.",
+   "summary": "Chain three",
+   "vector": [
+    0.0,
+    0.0,
+    1.0,
+    0.0
+   ],
+   "tier": "cold",
+   "supersededById": "a0000000-0000-4000-8000-000000000012"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000012",
+   "characterId": "c0000000-0000-4000-8000-000000000010",
+   "content": "Chain member four.",
+   "summary": "Chain four",
+   "vector": [
+    0.0,
+    0.0,
+    1.0,
+    0.0
+   ],
+   "tier": "cold",
+   "supersededById": "a0000000-0000-4000-8000-000000000013"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000013",
+   "characterId": "c0000000-0000-4000-8000-000000000010",
+   "content": "Chain digest five.",
+   "summary": "Chain five",
+   "vector": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "source": "CONSOLIDATED"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000014",
+   "characterId": "c0000000-0000-4000-8000-000000000011",
+   "content": "Dangling member.",
+   "summary": "Dangling",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ],
+   "tier": "cold",
+   "supersededById": "dd000000-0000-4000-8000-000000000001"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000016",
+   "characterId": "c0000000-0000-4000-8000-000000000028",
+   "content": "Dangling chain head.",
+   "summary": "Chain head",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ],
+   "tier": "cold",
+   "supersededById": "a0000000-0000-4000-8000-000000000015"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000015",
+   "characterId": "c0000000-0000-4000-8000-000000000028",
+   "content": "Dangling chain middle.",
+   "summary": "Chain middle",
+   "vector": [
+    0.0,
+    0.0,
+    1.0,
+    0.0
+   ],
+   "tier": "cold",
+   "supersededById": "dd000000-0000-4000-8000-000000000002"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000017",
+   "characterId": "c0000000-0000-4000-8000-000000000012",
+   "content": "Wren keeps the ledger in the lighthouse vault.",
+   "summary": "Wren's vault ledger",
+   "vector": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "reembedVector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000018",
+   "characterId": "c0000000-0000-4000-8000-000000000012",
+   "content": "Wren keeps the lighthouse logbook dry.",
+   "summary": "Wren's dry logbook",
+   "vector": [
+    0.0,
+    1.0,
+    0.0
+   ],
+   "reembedFail": true
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000019",
+   "characterId": "c0000000-0000-4000-8000-000000000012",
+   "content": "Unrelated: the cat sleeps by the stove.",
+   "summary": "Cat by the stove",
+   "vector": [
+    0.0,
+    0.0,
+    1.0
+   ]
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000001a",
+   "characterId": "c0000000-0000-4000-8000-000000000013",
+   "content": "The pantry holds jars of plum jam.",
+   "summary": "Plum jam in the pantry",
+   "vector": [
+    0.5,
+    0.866025,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000001b",
+   "characterId": "c0000000-0000-4000-8000-000000000014",
+   "content": "The cellar holds barrels of cider.",
+   "summary": "Cider in the cellar",
+   "vector": [
+    0.5,
+    0.866025,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000001c",
+   "characterId": "c0000000-0000-4000-8000-00000000001d",
+   "content": "Fenn carves oars from ash wood.",
+   "summary": "Fenn carves oars",
+   "vector": [
+    0.99,
+    0.141067,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000001d",
+   "characterId": "c0000000-0000-4000-8000-000000000022",
+   "content": "Hale keeps bees on the cliff.",
+   "summary": "Hale keeps bees",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ],
+   "tier": "cold",
+   "vanishOnPromote": true
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000001e",
+   "characterId": "c0000000-0000-4000-8000-000000000023",
+   "content": "Ivo grows rye.",
+   "summary": "Ivo grows rye",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ],
+   "tier": "cold",
+   "vanishOnPromote": true
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000001f",
+   "characterId": "c0000000-0000-4000-8000-000000000023",
+   "content": "Ivo grows rye by the mill.",
+   "summary": "Ivo's rye",
+   "vector": [
+    0.94,
+    0.341174,
+    0.0,
+    0.0
+   ],
+   "tier": "cold",
+   "vanishOnPromote": true
+  },
+  {
+   "id": "orphan-row-0001",
+   "characterId": "c0000000-0000-4000-8000-000000000025",
+   "content": "Kit's lantern story.",
+   "summary": "Kit's lantern",
+   "vector": [
+    0.99,
+    0.141067,
+    0.0,
+    0.0
+   ],
+   "raw": true
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000020",
+   "characterId": "c0000000-0000-4000-8000-000000000025",
+   "content": "Kit trims the lantern wick.",
+   "summary": "Kit trims the wick",
+   "vector": [
+    0.95,
+    0.31225,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000021",
+   "characterId": "c0000000-0000-4000-8000-000000000029",
+   "content": "Lena bakes rye bread.",
+   "summary": "Lena bakes rye",
+   "vector": [
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000022",
+   "characterId": "c0000000-0000-4000-8000-000000000029",
+   "content": "Lena keeps hens.",
+   "summary": "Lena keeps hens",
+   "vector": [
+    0.0,
+    0.0,
+    1.0,
+    0.0
+   ],
+   "importance": 0.4,
+   "reinforcementCount": 3,
+   "reinforcedImportance": 0.45
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000023",
+   "characterId": "c0000000-0000-4000-8000-000000000029",
+   "content": "Lena reads at night.",
+   "summary": "Lena reads",
+   "vector": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "importance": 0.6,
+   "reinforcedImportance": 0.6
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000024",
+   "characterId": "c0000000-0000-4000-8000-000000000029",
+   "content": "Lena walks the dunes.",
+   "summary": "Lena walks",
+   "vector": [
+    0.3,
+    0.953939,
+    0.0,
+    0.0
+   ],
+   "relatedMemoryIds": []
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000025",
+   "characterId": "c0000000-0000-4000-8000-00000000002a",
+   "content": "Someone else's memory.",
+   "summary": "Not Lena's",
+   "vector": [
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000026",
+   "characterId": "c0000000-0000-4000-8000-000000000015",
+   "content": "Juniper and Wren tend the herb beds together.",
+   "summary": "Juniper and the herb beds",
+   "vector": [
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "source": "CONSOLIDATED",
+   "aboutCharacterId": "c0000000-0000-4000-8000-000000000016",
+   "importance": 0.6,
+   "reinforcedImportance": 0.6
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000027",
+   "characterId": "c0000000-0000-4000-8000-000000000015",
+   "content": "Juniper lends Wren her almanac.",
+   "summary": "Juniper's almanac",
+   "vector": [
+    0.0,
+    0.0,
+    1.0,
+    0.0
+   ],
+   "source": "CONSOLIDATED",
+   "aboutCharacterId": "c0000000-0000-4000-8000-000000000016",
+   "importance": 0.6,
+   "reinforcedImportance": 0.6
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000028",
+   "characterId": "c0000000-0000-4000-8000-000000000015",
+   "content": "An old digest about the orchard.",
+   "summary": "The orchard, cold",
+   "vector": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "source": "CONSOLIDATED",
+   "aboutCharacterId": "c0000000-0000-4000-8000-000000000016",
+   "tier": "cold"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000029",
+   "characterId": "c0000000-0000-4000-8000-000000000015",
+   "content": "Wren mends her boots.",
+   "summary": "Wren's boots",
+   "vector": [
+    0.2,
+    0.979796,
+    0.0,
+    0.0
+   ],
+   "aboutCharacterId": "c0000000-0000-4000-8000-000000000016"
+  }
+ ],
+ "legs": [
+  {
+   "name": "utc",
+   "timezone": null,
+   "steps": [
+    {
+     "op": "admit",
+     "name": "reject_empty_content",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000001",
+      "content": "   \n ",
+      "summary": "Blank content",
+      "source": "AUTO",
+      "importance": 0.5
+     }
+    },
+    {
+     "op": "admit",
+     "name": "reject_empty_summary",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000001",
+      "content": "Content without a summary.",
+      "summary": "　",
+      "source": "AUTO",
+      "importance": 0.5
+     }
+    },
+    {
+     "op": "admit",
+     "name": "reject_embedding_failed",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000002",
+      "content": "This text cannot be embedded.",
+      "summary": "Unembeddable",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_fail": true
+     }
+    },
+    {
+     "op": "admit",
+     "name": "insert_empty_book",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000003",
+      "content": "Friday keeps the ledger in the counting house.",
+      "summary": "Friday keeps the ledger",
+      "source": "AUTO",
+      "importance": 0.6,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "insert_linked_band",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000004",
+      "content": "Friday balances the books each evening.",
+      "summary": "Friday balances the books",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "insert_linked_date_guard",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000005",
+      "content": "Friday dined at the Blue Lantern again.",
+      "summary": "Dinner again at the Blue Lantern",
+      "source": "AUTO",
+      "importance": 0.5,
+      "kind": "episodic",
+      "occurredAt": "2026-03-20T19:00:00.000Z",
+      "entities": [
+       "Blue Lantern"
+      ],
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "insert_linked_kind_mismatch",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000006",
+      "content": "Friday prefers green tea to coffee.",
+      "summary": "Prefers green tea",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "reinforce_footnote",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000007",
+      "content": "Wren keeps the lighthouse lamp trimmed with Mariana.",
+      "summary": "Wren and Mariana trim the lamp",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "absorb_near_duplicate",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000008",
+      "content": "Wren is afraid of deep water.",
+      "summary": "Wren is afraid of deep water",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "manual_over_auto_links",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000009",
+      "content": "Ash collects green sea glass.",
+      "summary": "Ash's sea glass",
+      "source": "MANUAL",
+      "importance": 0.9,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "manual_raises_importance",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-00000000000a",
+      "content": "Ash sings in the church choir.",
+      "summary": "Ash sings in the choir",
+      "source": "MANUAL",
+      "importance": 0.8,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "manual_never_lowers",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-00000000000b",
+      "content": "Ash plays the cello well.",
+      "summary": "Ash plays the cello",
+      "source": "MANUAL",
+      "importance": 0.4,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "digest_keeps_source",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-00000000000c",
+      "content": "Ash and Wren sail together.",
+      "summary": "They sail together",
+      "source": "MANUAL",
+      "importance": 0.7,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "cold_promote_with_footnotes",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-00000000000d",
+      "content": "Wren mends nets on Sundays at Gull Point.",
+      "summary": "Wren mends nets at Gull Point",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "cold_promote_near_duplicate",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-00000000000e",
+      "content": "Wren hums old sea shanties.",
+      "summary": "Wren hums sea shanties",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "member_redirects_to_digest",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-00000000000f",
+      "content": "Wren rows out to the harbour at dawn.",
+      "summary": "Wren rows out at dawn",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "four_hop_chain",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000010",
+      "content": "Chain member one, restated.",
+      "summary": "Chain one again",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "dangling_digest_promotes",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000011",
+      "content": "Dangling member, restated.",
+      "summary": "Dangling again",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "dangling_intermediate_promotes",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000028",
+      "content": "Dangling chain head, restated.",
+      "summary": "Chain head again",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "mixed_dimension_word_match",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000012",
+      "content": "Wren keeps the lighthouse ledger in the vault.",
+      "summary": "Wren's ledger in the vault",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "tfidf_scale_reinforces",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000013",
+      "content": "Plum jam fills the pantry jars.",
+      "summary": "Pantry plum jam",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ],
+      "_provider": "BUILTIN"
+     }
+    },
+    {
+     "op": "admit",
+     "name": "neural_scale_inserts",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000014",
+      "content": "Cider barrels fill the cellar.",
+      "summary": "Cellar cider",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "name_presence_flips",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000015",
+      "content": "She keeps a garden of thyme.",
+      "summary": "A thyme garden",
+      "source": "AUTO",
+      "importance": 0.5,
+      "aboutCharacterId": "c0000000-0000-4000-8000-000000000016",
+      "_vector": [
+       0.0,
+       0.0,
+       1.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "name_presence_named_kept",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000015",
+      "content": "Juniper keeps a garden of sage.",
+      "summary": "Juniper's sage garden",
+      "source": "AUTO",
+      "importance": 0.5,
+      "aboutCharacterId": "c0000000-0000-4000-8000-000000000016",
+      "_vector": [
+       0.0,
+       0.0,
+       0.0,
+       1.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "fallback_anchors_from_text",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000017",
+      "content": "Mariana met Bellamy at the Gull Point lighthouse on July 3.",
+      "summary": "Mariana met Bellamy",
+      "source": "AUTO",
+      "importance": 0.5,
+      "sourceMessageTimestamp": "2026-07-15T03:30:00.000Z",
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "source_message_timestamp_stamps",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000018",
+      "content": "The tide came in early.",
+      "summary": "Early tide",
+      "source": "AUTO",
+      "importance": 0.5,
+      "sourceMessageTimestamp": "2026-07-10T09:15:00.000Z",
+      "sourceMessageId": "e0000000-0000-4000-8000-000000000001",
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "bug209_first",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000019",
+      "content": "Bellamy whittles driftwood birds.",
+      "summary": "Bellamy whittles birds",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "bug209_second",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000019",
+      "content": "Bellamy whittles little driftwood birds.",
+      "summary": "Bellamy whittles little birds",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "concurrent",
+     "name": "concurrent_one_row",
+     "rows": [
+      {
+       "characterId": "c0000000-0000-4000-8000-00000000001a",
+       "content": "Corwin rings the harbour bell.",
+       "summary": "Corwin rings the bell",
+       "source": "AUTO",
+       "importance": 0.5,
+       "_vector": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+       ]
+      },
+      {
+       "characterId": "c0000000-0000-4000-8000-00000000001a",
+       "content": "Corwin rings the harbour bell at noon.",
+       "summary": "Corwin rings the bell at noon",
+       "source": "AUTO",
+       "importance": 0.5,
+       "_vector": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+       ]
+      }
+     ]
+    },
+    {
+     "op": "attempt",
+     "name": "keyed_first_attempt",
+     "jobId": "f0000000-0000-4000-8000-000000000001",
+     "rows": [
+      {
+       "characterId": "c0000000-0000-4000-8000-00000000001b",
+       "content": "Dorrit sweeps the chapel steps.",
+       "summary": "Dorrit sweeps the steps",
+       "source": "AUTO",
+       "importance": 0.5,
+       "_vector": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+       ]
+      }
+     ]
+    },
+    {
+     "op": "attempt",
+     "name": "keyed_retry_attempt",
+     "jobId": "f0000000-0000-4000-8000-000000000001",
+     "rows": [
+      {
+       "characterId": "c0000000-0000-4000-8000-00000000001b",
+       "content": "Dorrit sweeps the chapel steps.",
+       "summary": "Dorrit sweeps the steps",
+       "source": "AUTO",
+       "importance": 0.5,
+       "_vector": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+       ]
+      }
+     ]
+    },
+    {
+     "op": "attempt",
+     "name": "same_scope_twice",
+     "jobId": "f0000000-0000-4000-8000-000000000002",
+     "rows": [
+      {
+       "characterId": "c0000000-0000-4000-8000-00000000001c",
+       "content": "Edda patches sails by lamplight.",
+       "summary": "Edda patches sails",
+       "source": "AUTO",
+       "importance": 0.5,
+       "_vector": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+       ]
+      },
+      {
+       "characterId": "c0000000-0000-4000-8000-00000000001c",
+       "content": "Edda patches sails by lamplight.",
+       "summary": "Edda patches sails",
+       "source": "AUTO",
+       "importance": 0.5,
+       "_vector": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+       ]
+      }
+     ]
+    },
+    {
+     "op": "dryRunBook",
+     "name": "dry_run_book",
+     "retiring": [
+      "a0000000-0000-4000-8000-00000000001c"
+     ],
+     "rows": [
+      {
+       "characterId": "c0000000-0000-4000-8000-00000000001d",
+       "content": "Fenn carves oars from ash.",
+       "summary": "Fenn carves ash oars",
+       "source": "AUTO",
+       "importance": 0.5,
+       "_vector": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+       ]
+      },
+      {
+       "characterId": "c0000000-0000-4000-8000-00000000001d",
+       "content": "Fenn carves oars out of ash.",
+       "summary": "Fenn carves oars of ash",
+       "source": "AUTO",
+       "importance": 0.5,
+       "_vector": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+       ]
+      }
+     ]
+    },
+    {
+     "op": "admit",
+     "name": "rate_auto_insert",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-00000000001e",
+      "content": "Gale counts the gulls.",
+      "summary": "Gale counts gulls",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "rate_manual_insert",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-00000000001f",
+      "content": "Gale's twin counts crows.",
+      "summary": "Twin counts crows",
+      "source": "MANUAL",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "rate_backfill_insert",
+     "backfill": true,
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000020",
+      "content": "Gale's cousin counts terns.",
+      "summary": "Cousin counts terns",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "rate_dry_run",
+     "dryRun": true,
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000021",
+      "content": "Gale's aunt counts herons.",
+      "summary": "Aunt counts herons",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "rateCounts",
+     "name": "rate_counts",
+     "characterIds": [
+      "c0000000-0000-4000-8000-00000000001e",
+      "c0000000-0000-4000-8000-00000000001f",
+      "c0000000-0000-4000-8000-000000000020",
+      "c0000000-0000-4000-8000-000000000021"
+     ]
+    },
+    {
+     "op": "admit",
+     "name": "vanished_once_decides_again",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000022",
+      "content": "Hale keeps bees on the cliff top.",
+      "summary": "Hale's cliff bees",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "vanished_twice_inserts",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000023",
+      "content": "Ivo grows tall rye.",
+      "summary": "Ivo's tall rye",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "candidate",
+     "name": "via_candidate",
+     "candidate": {
+      "content": "Jory tars the boat hull.",
+      "summary": "Jory tars the hull",
+      "keywords": [
+       "boat"
+      ],
+      "targeting": null,
+      "importance": 0.65,
+      "kind": "semantic",
+      "when": null,
+      "entities": [
+       "Jory"
+      ],
+      "tags": [],
+      "subject": {
+       "holderId": "c0000000-0000-4000-8000-000000000024",
+       "aboutId": null
+      },
+      "provenance": {
+       "source": "AUTO",
+       "witnessedContext": "user_present",
+       "chatId": null,
+       "projectId": null,
+       "sourceMessageId": null,
+       "anchorTimeMs": 1780000000000,
+       "pass": "self-turn"
+      }
+     },
+     "resolved": {
+      "occurredAt": "2026-05-28T10:00:00.000Z",
+      "narrativeTime": null
+     },
+     "_vector": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "op": "admit",
+     "name": "invalid_row_neighbour",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000025",
+      "content": "Kit trims the lantern wick nightly.",
+      "summary": "Kit trims the wick nightly",
+      "source": "AUTO",
+      "importance": 0.5,
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "chicago",
+   "timezone": "America/Chicago",
+   "steps": [
+    {
+     "op": "admit",
+     "name": "chicago_fallback_anchors",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000026",
+      "content": "Mariana met Bellamy at the Gull Point lighthouse on July 3.",
+      "summary": "Mariana met Bellamy in Chicago time",
+      "source": "AUTO",
+      "importance": 0.5,
+      "sourceMessageTimestamp": "2026-07-15T03:30:00.000Z",
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    },
+    {
+     "op": "admit",
+     "name": "chicago_anchored_key",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-000000000027",
+      "content": "The ferry left at dusk.",
+      "summary": "Ferry at dusk",
+      "source": "AUTO",
+      "importance": 0.5,
+      "occurredAt": "2026-07-15T03:30:00.000Z",
+      "entities": [
+       "Ferry"
+      ],
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
+    }
+   ]
+  }
+ ],
+ "contentKeys": [
+  {
+   "characterId": "c0000000-0000-4000-8000-000000000001",
+   "content": "plain",
+   "summary": "s"
+  },
+  {
+   "characterId": "c0000000-0000-4000-8000-000000000001",
+   "content": "ctrl\u0001\u001f\t\n\"\\",
+   "summary": "s",
+   "aboutCharacterId": "c0000000-0000-4000-8000-000000000002",
+   "kind": "episodic",
+   "source": "AUTO",
+   "sourceMessageId": "e0000000-0000-4000-8000-000000000002",
+   "occurredAt": "2026-01-01T00:00:00.000Z"
+  },
+  {
+   "characterId": "c0000000-0000-4000-8000-000000000001",
+   "content": "astral 🧭 and   sep   end",
+   "summary": "été"
+  },
+  {
+   "characterId": "c0000000-0000-4000-8000-000000000001",
+   "content": "",
+   "summary": "",
+   "source": "MANUAL",
+   "kind": "semantic"
+  }
+ ],
+ "edits": [
+  {
+   "name": "text_change_reembeds",
+   "characterId": "c0000000-0000-4000-8000-000000000029",
+   "memoryId": "a0000000-0000-4000-8000-000000000021",
+   "patch": {
+    "content": "Lena bakes rye bread on Fridays.",
+    "summary": "Lena bakes rye on Fridays"
+   }
+  },
+  {
+   "name": "importance_recomputed",
+   "characterId": "c0000000-0000-4000-8000-000000000029",
+   "memoryId": "a0000000-0000-4000-8000-000000000022",
+   "patch": {
+    "importance": 0.8
+   }
+  },
+  {
+   "name": "importance_unchanged",
+   "characterId": "c0000000-0000-4000-8000-000000000029",
+   "memoryId": "a0000000-0000-4000-8000-000000000023",
+   "patch": {
+    "keywords": [
+     "night",
+     "books"
+    ],
+    "importance": 0.6
+   }
+  },
+  {
+   "name": "invalid_related",
+   "characterId": "c0000000-0000-4000-8000-000000000029",
+   "memoryId": "a0000000-0000-4000-8000-000000000021",
+   "patch": {
+    "relatedMemoryIds": [
+     "a9000000-0000-4000-8000-000000000001",
+     "a0000000-0000-4000-8000-000000000025",
+     "a0000000-0000-4000-8000-000000000022"
+    ]
+   }
+  },
+  {
+   "name": "links_both_ways_add",
+   "characterId": "c0000000-0000-4000-8000-000000000029",
+   "memoryId": "a0000000-0000-4000-8000-000000000024",
+   "patch": {
+    "relatedMemoryIds": [
+     "a0000000-0000-4000-8000-000000000022",
+     "a0000000-0000-4000-8000-000000000024",
+     "a0000000-0000-4000-8000-000000000022"
+    ]
+   }
+  },
+  {
+   "name": "links_both_ways_swap",
+   "characterId": "c0000000-0000-4000-8000-000000000029",
+   "memoryId": "a0000000-0000-4000-8000-000000000024",
+   "patch": {
+    "relatedMemoryIds": [
+     "a0000000-0000-4000-8000-000000000023"
+    ]
+   }
+  },
+  {
+   "name": "embed_first_refusal",
+   "characterId": "c0000000-0000-4000-8000-000000000029",
+   "memoryId": "a0000000-0000-4000-8000-000000000023",
+   "patch": {
+    "content": "This edit cannot be embedded.",
+    "tags": []
+   },
+   "_fail": true
+  },
+  {
+   "name": "another_characters_memory",
+   "characterId": "c0000000-0000-4000-8000-000000000029",
+   "memoryId": "a0000000-0000-4000-8000-000000000025",
+   "patch": {
+    "summary": "Stolen"
+   }
+  },
+  {
+   "name": "hot_digest_mirrors",
+   "characterId": "c0000000-0000-4000-8000-000000000015",
+   "memoryId": "a0000000-0000-4000-8000-000000000026",
+   "patch": {
+    "content": "Juniper and Wren tend the herb beds every spring."
+   }
+  },
+  {
+   "name": "digest_subject_moves",
+   "characterId": "c0000000-0000-4000-8000-000000000015",
+   "memoryId": "a0000000-0000-4000-8000-000000000027",
+   "patch": {
+    "aboutCharacterId": "c0000000-0000-4000-8000-000000000015"
+   }
+  },
+  {
+   "name": "cold_digest_no_mirror",
+   "characterId": "c0000000-0000-4000-8000-000000000015",
+   "memoryId": "a0000000-0000-4000-8000-000000000028",
+   "patch": {
+    "summary": "The orchard, still cold"
+   }
+  },
+  {
+   "name": "plain_row_no_mirror",
+   "characterId": "c0000000-0000-4000-8000-000000000015",
+   "memoryId": "a0000000-0000-4000-8000-000000000029",
+   "patch": {
+    "chatId": null
+   }
+  }
+ ],
+ "scopeKeys": {
+  "jobId": "f0000000-0000-4000-8000-000000000009",
+  "contentKeys": [
+   "k-a",
+   "k-b",
+   "k-a",
+   "k-a",
+   "k-b"
+  ]
+ }
+}

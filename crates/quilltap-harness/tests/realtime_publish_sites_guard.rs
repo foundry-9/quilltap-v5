@@ -94,6 +94,26 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
          re-added its own.",
     ),
     (
+        "crates/quilltap-core/src/services/admission/admit.rs",
+        "publish_realtime(RealtimeTopic::Memories, None);",
+        1,
+        "P4.D290 (v4 `admit.ts:403`, `8af764514`): an admission whose outcome \
+         has a row — insert, link, reinforce, absorb, promote — announces \
+         `memories` once, on the caller's thread after its last write returned \
+         (R-AF); a reject and a dry run write nothing and announce nothing. \
+         This IS the manual create's hint (`api/memories.rs` stays at 0). The \
+         behavioural half is `realtime::publish_sites::admission_publish_tests`.",
+    ),
+    (
+        "crates/quilltap-core/src/services/admission/update_memory.rs",
+        "publish_realtime(RealtimeTopic::Memories, None);",
+        1,
+        "P4.D290 (v4 `update-memory.ts:176`, `af48f6cc2`, bug 203): a hand edit \
+         that wrote announces `memories` once, after the row and its link \
+         deltas landed; a refused edit (not found, invalid related ids, an \
+         embedding failure) writes nothing and announces nothing.",
+    ),
+    (
         "crates/quilltap-core/src/api/memories.rs",
         "publish_realtime",
         0,

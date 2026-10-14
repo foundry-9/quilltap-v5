@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-core"
-version = "0.0.1298"
+version = "0.0.1299"
 edition = "2021"
 publish = false
 
@@ -57,6 +57,7 @@ aes-gcm = "0.10"          # AES-256-GCM (AEAD)
 aes = "0.8"               # Aes256 block cipher, for the custom 16-byte-nonce GCM type
 pbkdf2 = "0.12"           # PBKDF2
 sha2 = "0.10"             # SHA-256 / SHA-512 (digest + pepper hash)
+sha1 = "0.10"             # SHA-1 hex — admission's idempotency content key (P4.D290 LR-7, v4 `admit.ts` `admissionContentKey`)
 hmac = "0.12"             # HMAC for PBKDF2
 hex = "0.4"               # hex <-> bytes for the .dbkey fields
 base64 = "0.22"           # OpenRouter embedding base64-Float32 decode (model::embedding_wire)

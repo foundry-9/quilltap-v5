@@ -32,6 +32,7 @@ use crate::memory_gate::{
     append_capped_footnotes, calculate_reinforced_importance, extract_novel_details,
 };
 
+// LANE-REMOVE(P4.D297): v4 deleted memory-merge.ts's MemoryMergePlan in 8af764514
 /// v4 `MemoryMergePlan`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MemoryMergePlan {
@@ -129,6 +130,7 @@ fn same_ids(a: &[String], b: &[String]) -> bool {
     b.iter().all(|id| set.contains(id.as_str()))
 }
 
+// LANE-REMOVE(P4.D297): v4 deleted memory-merge.ts's planMemoryMerge in 8af764514
 /// Work out what folding `losers` into `survivor` changes (v4
 /// `planMemoryMerge`). Pure — no writes.
 ///

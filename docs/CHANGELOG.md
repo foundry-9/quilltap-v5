@@ -56,6 +56,14 @@ _Docs-only change._
 
 The P4.D288 work order's status header now names `149cb8fc1` as the commit P4.D290 through P4.D295 branch from.
 
+#### 2026-10-14 — ADMISSION: P4.D290 — admission's stateful half over SCORING + KEYSTONE (one entry point, the lock, the idempotency ledger, the one combine's writes, the hand edit)
+
+_Versions: core 0.0.1299._
+
+New `services::admission` (v4 `lib/memory/admission/` at the `83334b9a5` pin): `admit_candidate` / `admit_row` (empty-text reject before any embed, the memory-calendar zone, the name-presence flip, zone-aware fallback anchors, one embedding retry after 500 ms with `lexical_text`, the provider-scaled thresholds), the per-character lock (`with_admission_lock`), the idempotency ledger keyed by `AdmissionKeyScope`'s `jobId:contentKey:n` (`admission_content_key` is SHA-1 over v4's eight-element array; new dependency `sha1 = "0.10"`), `gather_neighbours` over both tiers (bug 200's orphan widen, bug 237's word-matched re-embed, the digest redirect, the dangling cold row), the vanished-target re-decide, `apply_fold` (footnotes → anchors → links → count as deltas, the first landed write is the commit point), `insert_row` with the vector in the create, the dry-run book, the rate ledger, `link_both_ways`, and the hand edit `update_memory` (embed first, text and vector in one upsert, link deltas both ways, frozen-archive invalidation, the hot-digest Commonplace mirror). Admission and the edit publish `memories` once per written outcome. The old gate (`services/memory_gate.rs`, crate-root `memory_merge.rs`) stays behaviour-frozen behind LANE-REMOVE markers for its stage-C callers.
+
+New differential families from the pin: `admission_tier3_equivalence` (44 steps over UTC and Chicago legs, plus tier-1 content-key and key-scope rows) and `update_memory_tier2_equivalence` (12 edits plus the Commonplace mirror); the retired `memory_gate_tier3` family is deleted and its builder renamed `build-admission-fixture.ts`. Census rows: two admission publish sites; the activity-span row re-pointed to `admit_row`. One measured divergence is pinned both ways and flagged: `FIND_BY_IDS_UNVALIDATED` (v4's `findByIds` drops a schema-invalid row; v5's does not).
+
 #### 2026-10-14 — KEYSTONE: P4.D288 — the memory-refactor + scenarios round's schema keystone
 
 _Docs-only change._

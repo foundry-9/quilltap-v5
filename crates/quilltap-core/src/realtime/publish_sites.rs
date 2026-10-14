@@ -1492,3 +1492,185 @@ mod transcript_publish_sites {
         assert_eq!(version(&path, "chat-1"), 0);
     }
 }
+
+// === P4.D290: admission publishes (append-only) ===
+//
+// v4 `admit.ts:403` (`if (outcome.memory) publishRealtime('memories')`) and
+// `update-memory.ts:176` — ONE `memories` hint per admission that has a row, sent on the
+// caller's thread after the last write returned (R-AF); a `reject` has no row
+// and a dry run writes nothing, so neither announces. Structurally held by
+// `realtime_publish_sites_guard`'s two `services/admission/` rows.
+#[cfg(test)]
+mod admission_publish_tests {
+    use super::*;
+    use crate::db::runtime::Db;
+    use crate::db::Writer;
+    use crate::model::embedding::CannedEmbeddingProvider;
+    use crate::realtime::types::RealtimeTopic;
+    use crate::services::admission::{
+        admit_row, update_memory, AdmitOptions, MemoryEditPatch, UpdateMemoryResult,
+    };
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAR: &str = "c0000000-0000-4000-8000-0000000000a1";
+
+    const DDL: &str = "
+        CREATE TABLE memories (
+            id TEXT PRIMARY KEY, characterId TEXT, aboutCharacterId TEXT, chatId TEXT,
+            projectId TEXT, content TEXT, summary TEXT, keywords TEXT, tags TEXT,
+            importance REAL, embedding BLOB, source TEXT, witnessedContext TEXT,
+            occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]',
+            kind TEXT DEFAULT 'semantic', sourceMessageId TEXT, lastAccessedAt TEXT,
+            reinforcementCount REAL, lastReinforcedAt TEXT, relatedMemoryIds TEXT,
+            reinforcedImportance REAL, tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
+        CREATE TABLE chat_settings (id TEXT PRIMARY KEY, timezone TEXT);
+    ";
+
+    fn memories() -> (String, Option<String>) {
+        (RealtimeTopic::Memories.as_str().to_string(), None)
+    }
+
+    /// The `memories` hints of a drain — admission also opens and closes an
+    /// activity span (`track_activity`), whose `jobs` hints are the activity
+    /// registry's, not this site's.
+    async fn memories_hints(cap: &mut HintCapture) -> Vec<(String, Option<String>)> {
+        cap.drain()
+            .await
+            .into_iter()
+            .filter(|(topic, _)| topic == RealtimeTopic::Memories.as_str())
+            .collect()
+    }
+
+    fn make_db() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("admission-publish.db");
+        {
+            let w = Writer::open_writable(&path, PEPPER).unwrap();
+            w.connection().execute_batch(DDL).unwrap();
+        }
+        let db = Db::open_main(&path, PEPPER).unwrap();
+        (dir, db)
+    }
+
+    fn row(content: &str) -> crate::admission::AdmissionRow {
+        crate::admission::AdmissionRow {
+            character_id: CHAR.into(),
+            content: content.into(),
+            summary: content.into(),
+            source: Some("AUTO".into()),
+            ..Default::default()
+        }
+    }
+
+    fn text(content: &str) -> String {
+        format!("{content}\n\n{content}")
+    }
+
+    fn opts(dry_run: bool) -> AdmitOptions<'static> {
+        AdmitOptions {
+            user_id: "user",
+            dry_run,
+            backfill: false,
+            dry_run_book: None,
+            key_scope: None,
+            host_zone_fallback: "UTC",
+        }
+    }
+
+    #[tokio::test]
+    async fn each_admission_with_a_row_announces_once_and_a_reject_or_dry_run_never() {
+        crate::services::admission::reset_admission_state_for_tests();
+        let (_dir, db) = make_db();
+        let mut cap = HintCapture::start();
+        cap.arm_writer_thread(&db).await;
+        let provider = CannedEmbeddingProvider::new()
+            .with_vector(text("Edda patches sails."), vec![1.0, 0.0])
+            .with_vector(text("Edda patches sails!"), vec![1.0, 0.0])
+            .with_vector(text("Edda patches sails at dusk."), vec![0.87, 0.493_052_5])
+            .with_vector(text("Edda patches sails by lamplight."), vec![1.0, 0.0])
+            .with_vector(text("A dry run."), vec![1.0, 0.0])
+            .with_vector(text("Edited sails."), vec![0.0, 1.0]);
+
+        // An insert.
+        let o = admit_row(&db, &provider, row("Edda patches sails."), opts(false))
+            .await
+            .unwrap();
+        assert_eq!(o.action.kind().as_str(), "insert");
+        assert_eq!(memories_hints(&mut cap).await, vec![memories()]);
+        // An absorb (a near-duplicate, count only).
+        let o = admit_row(&db, &provider, row("Edda patches sails!"), opts(false))
+            .await
+            .unwrap();
+        assert_eq!(o.action.kind().as_str(), "absorb");
+        assert_eq!(memories_hints(&mut cap).await, vec![memories()]);
+        // A reinforce (the related-to-reinforce band — a footnote).
+        let o = admit_row(
+            &db,
+            &provider,
+            row("Edda patches sails at dusk."),
+            opts(false),
+        )
+        .await
+        .unwrap();
+        assert_eq!(o.action.kind().as_str(), "reinforce");
+        assert_eq!(memories_hints(&mut cap).await, vec![memories()]);
+        // A reject has no row: nothing announced.
+        let o = admit_row(&db, &provider, row("   "), opts(false))
+            .await
+            .unwrap();
+        assert_eq!(o.action.kind().as_str(), "reject");
+        assert!(
+            memories_hints(&mut cap).await.is_empty(),
+            "a reject announced"
+        );
+        // A dry run writes nothing: nothing announced.
+        let o = admit_row(&db, &provider, row("A dry run."), opts(true))
+            .await
+            .unwrap();
+        assert_eq!(o.action.kind().as_str(), "absorb");
+        assert!(
+            memories_hints(&mut cap).await.is_empty(),
+            "a dry run announced"
+        );
+        // A hand edit announces once.
+        let id = o.memory.as_ref().unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let r = update_memory(
+            &db,
+            &provider,
+            CHAR,
+            &id,
+            MemoryEditPatch {
+                content: Some("Edited sails.".into()),
+                summary: Some("Edited sails.".into()),
+                ..Default::default()
+            },
+            "user",
+            "UTC",
+        )
+        .await
+        .unwrap();
+        assert!(matches!(r, UpdateMemoryResult::Ok { .. }), "{r:?}");
+        assert_eq!(memories_hints(&mut cap).await, vec![memories()]);
+        // …and a refused edit (not found) never does.
+        let r = update_memory(
+            &db,
+            &provider,
+            CHAR,
+            "a0000000-0000-4000-8000-00000000dead",
+            MemoryEditPatch::default(),
+            "user",
+            "UTC",
+        )
+        .await
+        .unwrap();
+        assert_eq!(r, UpdateMemoryResult::NotFound);
+        assert!(
+            memories_hints(&mut cap).await.is_empty(),
+            "a refused edit announced"
+        );
+    }
+}
+// === end P4.D290 ===

@@ -1,3 +1,14 @@
+//! **BEHAVIOUR-FROZEN LANE-REMOVE shim (work order P4.D290, LR-13 /
+//! §R.10(o)).** v4 deleted this service in `8af764514` — admission
+//! (`crate::services::admission`) is its replacement. It stays, unchanged in
+//! behaviour, only while sibling files of the round still call it
+//! (`api/memories.rs` → P4.D298; `memory_processor.rs` + `fold_episode_pass.rs`
+//! → P4.D296; `memory_dedup.rs` → P4.D297; the `memory_watermark_tier3`
+//! family → P4.D297): their unit tests pin the old `[MemoryGate]` contract, so
+//! a forwarding shim onto `admit_row` would redden them. Each marked item goes
+//! with its last caller's lane, or at §S.5. Its two items with no caller
+//! outside this file (`RELATED_THRESHOLD`, `GATE_TOP_K`) lost `pub`.
+//!
 //! The **memory gate** service — v4's `createMemoryWithGate` / `runMemoryGate`
 //! (`lib/memory/memory-service.ts` + `lib/memory/memory-gate.ts`). The pre-write
 //! similarity check that turned the memory system from append-only into
@@ -61,19 +72,22 @@ use crate::services::activity_registry::track_activity;
 
 use crate::db::runtime::Db;
 
+// LANE-REMOVE(P4.D290|P4.D296|P4.D297|P4.D298): v4 deleted memory-gate.ts's NEAR_DUPLICATE_THRESHOLD in 8af764514
 /// At or above this cosine similarity the candidate is an exact-or-near-exact
 /// restatement of an existing memory. No new row is written and the existing
 /// text is left alone, but the observation still counts:
 /// [`absorb_near_duplicate`] bumps the row's reinforcement count (v4
 /// `3f7320138` F1).
 pub const NEAR_DUPLICATE_THRESHOLD: f64 = 0.90;
+// LANE-REMOVE(P4.D290|P4.D296|P4.D297|P4.D298): v4 deleted memory-gate.ts's MERGE_THRESHOLD in 8af764514
 /// At or above this the best match is reinforced instead of duplicated.
 pub const MERGE_THRESHOLD: f64 = 0.85;
 /// Related-but-distinct band floor — matches here get bidirectionally linked.
-pub const RELATED_THRESHOLD: f64 = 0.70;
+const RELATED_THRESHOLD: f64 = 0.70;
 /// Top-K nearest existing memories fetched from the vector store during the gate.
-pub const GATE_TOP_K: usize = 5;
+const GATE_TOP_K: usize = 5;
 
+// LANE-REMOVE(P4.D296|P4.D297|P4.D298): v4 deleted memory-service.ts's MemoryGateOutcome.action in 8af764514
 /// The action the gate took (v4 `MemoryGateOutcome.action`, minus `SKIP_GATE`
 /// which is the deferred direct path).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +99,7 @@ pub enum GateAction {
     SkipEmbeddingFailed,
 }
 
+// LANE-REMOVE(P4.D296|P4.D297|P4.D298): v4 deleted memory-service.ts's MemoryGateOutcome in 8af764514
 /// The gate's result (v4 `MemoryGateOutcome`): the affected memory + the action,
 /// plus the per-outcome extras callers (e.g. the extraction path) consume.
 #[derive(Debug, Clone, PartialEq)]
@@ -109,6 +124,7 @@ pub struct MemoryGateOutcome {
     pub reinforcement_count: Option<f64>,
 }
 
+// LANE-REMOVE(P4.D296|P4.D297|P4.D298): v4 deleted memory-service.ts's CreateMemoryOptions in 8af764514
 /// Options for memory creation (v4 `CreateMemoryOptions`), minus the deferred
 /// `skipGate` / `skipEmbedding` flags (this port always runs the gate).
 #[derive(Debug, Clone, Default)]
@@ -204,6 +220,7 @@ fn apply_episodic_fallback_anchors(data: CreateMemoryOptions) -> CreateMemoryOpt
     next
 }
 
+// LANE-REMOVE(P4.D296|P4.D297|P4.D298): v4 deleted memory-service.ts's MemoryServiceOptions in 8af764514
 /// Options for the operation (v4 `MemoryServiceOptions`), minus the deferred skip
 /// flags.
 #[derive(Debug, Clone, Default)]
@@ -232,6 +249,7 @@ struct GateResult {
     embedding: Option<Vec<f32>>,
 }
 
+// LANE-REMOVE(P4.D296|P4.D297|P4.D298): v4 deleted memory-service.ts's createMemoryWithGate in 8af764514
 /// Create a memory through the gate (v4 `createMemoryWithGate`). Runs the
 /// name-presence check, the gate, and the per-outcome writes, returning the full
 /// outcome.
@@ -1061,6 +1079,7 @@ pub(crate) async fn reembed_memory<P: EmbeddingProvider>(
 pub(crate) const DEDUP_REEMBED_SEAM_MISSING: &str =
     "Error: memory embedding not assembled (dedup re-embed seam)";
 
+// LANE-REMOVE(P4.D297): v4 deleted memory-merge.ts's applyMemoryMerge in 8af764514
 /// Apply a merge plan to the survivor and re-embed it when its content (or its
 /// anchor date) changed (v4 `applyMemoryMerge`, `memory-merge.ts:139-176`,
 /// `3f7320138` F9). Returns the survivor as it now stands, or `None` when the

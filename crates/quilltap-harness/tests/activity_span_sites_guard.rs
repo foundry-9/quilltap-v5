@@ -47,10 +47,11 @@ const CENSUS: &[(&str, &str, &str, &str)] = &[
         "track_activity(\n            activity_kind_for_task(task_type),",
         "every cheap-LLM task funnels through here; the kind comes from TASK_TYPE_ACTIVITY",
     ),
-    // 4 — v4 `memory-gate.ts`.
+    // 4 — v4 `memory-gate.ts` → `admission/admit.ts` (`admitRow`, `8af764514`;
+    // P4.D290 re-pointed the row — O4 resolved).
     (
-        "crates/quilltap-core/src/services/memory_gate.rs",
-        "async fn run_memory_gate<P: EmbeddingProvider>",
+        "crates/quilltap-core/src/services/admission/admit.rs",
+        "pub async fn admit_row<P: EmbeddingProvider + Sync>",
         "track_activity(\n        ActivityKind::Memory,",
         "a memory formed from a tool call has no job row to count it",
     ),

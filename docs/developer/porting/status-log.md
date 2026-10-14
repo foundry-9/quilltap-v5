@@ -180703,3 +180703,125 @@ families regenerated from the pin and GREEN on the port before the re-run; both 
   - wardrobe-instructions: wardrobe_instructions_routes_equivalence wardrobe_instructions_tier2_equivalence 
   - wardrobe-routes: characters_wardrobe_route wardrobe_instructions_routes wardrobe_item_wear_history_route wardrobe_routes_equivalence wardrobe_wear_history_equivalence 
   - workbench: pascal_workbench_equivalence pascal_workbench_route_equivalence 
+
+## P4.D290 — admission, the stateful half (lane record, `83334b9a5` round, stage B)
+
+Lane `claude/p4.d290-admission-149cb8fc1`, worktree `.claude/worktrees/p4d290-admission`, cut from P4.D288's
+`KEYSTONE` `149cb8fc1` (P4.D289's `SCORING` `7e18b9cf7` is inside it). The session started on main's checkout
+(`d1434189c`); the lane worktree was created on the base before the first edit. v4 pin
+`/tmp/qt-v4-pin-p4d290-83334b9a5` (HEAD `83334b9a5`, `package.json` `4.10.0-dev.176`).
+
+### Lane start — the §2 probe (an OBSERVATION, §R.2) and the pin
+
+- **v4 moved** (observed 2026-10-14 21:40 UTC): `main` 17 commits past the pin — `7417e9a1b`, `01f508d4e`,
+  `a42c282b8`, `a8b2d2861`, `49f8906c3`, `75d094e63`, `8489d08b9`, `052659624`, `809e5104d`, `bbbcd2388`,
+  `b82037d75`, `3f64d3a6c`, `2432b9057` (**`release: 4.10.0`**), `f573a7576`, `37246654d` (4.11.0 dev),
+  `1e1712a12`, `7458ff94e`; `bugfix` moved past `1a2b2164c` (`489b228b6`). Branch `main`, tree clean. Out of
+  scope by the pin rule; recorded for `/driftcheck`.
+- **The dependency trap fired:** the live tree's lockfile moved (`@quilltap/plugin-utils` 2.6.3 → 2.7.1), so the
+  pin's root `node_modules` is its OWN (`npm ci --offline --no-audit --no-fund` in the pin, §R.3's cure);
+  `openai` 7.30.0, the native cipher module loads (`chacha20`). `packages/quilltap` + the plugin `node_modules`
+  stay symlinked (no admission path loads them).
+
+### Unit 1 — Tier 1, the C1-B surface (`ADMISSION`)
+
+- **NEW `services/admission/`** (`mod`, `admit`, `neighbours`, `apply`, `prepare`, `links`, `dry_run_book`,
+  `rate_ledger`, `update_memory`, `tests`): v4 `lib/memory/admission/{admit,neighbours,apply,prepare,links,
+  dry-run-book,rate-ledger,update-memory}.ts` at the pin, every line with its `module` binding. LR-1 (the key
+  scope mints `jobId:contentKey:n` inside `admit_row`, over the PREPARED row, only when not a dry run), LR-2 (the
+  500 ms retry sleep PORTED), LR-3 (the FIFO tokio lock, the entry dropped with its last holder), LR-5 (v4's
+  watermark comment at the site, NO call), LR-6 (the direct mirror call), LR-7 (`sha1 = "0.10"` — `serde_json`'s
+  escaping equals `JSON.stringify`'s for an all-string/null array; pinned by tier-1 rows carrying control
+  characters, a non-BMP character, U+2028/U+2029), LR-8 (the flip stores the HOLDER's id), LR-10, LR-11 (the
+  stale arm a re-measure; NEGATIVE pin), LR-4 NO-PORTs (job-child refusals, host-RPC, `patchChildIndex`).
+- **Three real port shapes the differentials found** (each fixed in the port, not the diff): `insert_row` answers
+  v4's CREATE ENTITY (`MemorySchema` order, `insertRow`'s explicit `null`s, no `lastAccessedAt` /
+  `lastReinforcedAt`) — a re-read omits the nulls, and the manual create's wire carries these bytes; the edit's
+  upsert answers the vector it was HANDED (the stored copy is int8-quantised — a re-read dequantises); an edit
+  that sets a nullable id to `null` keeps the key as `null` (v4's update answers the parsed merge).
+- **C1-B spellings (final):** `services::admission::{admit_candidate(db, provider, &MemoryCandidate,
+  &ResolvedCandidateTime, AdmitOptions), admit_row(db, provider, AdmissionRow, AdmitOptions), AdmitOptions<'a> {
+  user_id: &str, dry_run, backfill, dry_run_book: Option<&mut DryRunBook>, key_scope: Option<&AdmissionKeyScope>,
+  host_zone_fallback: &str }, AdmissionKeyScope::{new(job_id), next_key(&content_key), job_id()},
+  with_admission_lock(character_id, future), admission_content_key(&AdmissionRow) -> String,
+  gather_neighbours(db, provider, character_id, &[f32], exclude: Option<&HashSet<String>>, probe:
+  Option<&NeighbourProbe>, host_zone_fallback) -> GatheredNeighbours { neighbours, orphan_ids, searched_k,
+  reembedded: Option<usize> }, NeighbourProbe<'a> { text, user_id }, apply_fold(db, provider: Option<&P>,
+  &survivor, &FoldPlan, user_id: Option<&str>, host_zone_fallback) -> Option<Value>, update_memory(db, provider,
+  character_id, memory_id, MemoryEditPatch, user_id, host_zone_fallback) -> UpdateMemoryResult { Ok { memory },
+  NotFound, InvalidRelated { invalid_ids }, EmbeddingFailed { message } }, record_admission_insert(character_id,
+  at_ms: f64), count_recent_admissions(character_id, since_ms, now_ms) -> usize, RATE_LEDGER_WINDOW_MS: f64,
+  link_both_ways(db, character_id, memory_id, &[String]) -> Vec<String>, DryRunBook { retiring: HashSet,
+  inserted: HashMap<String, Vec<BookEntry>> }, create_dry_run_book(impl IntoIterator<Item = String>)}` plus
+  `insert_row`, `reembed_row`, `raise_importance`, `without_embedding`, `book_neighbours`, `record_book_insert`,
+  `reset_admission_state_for_tests`, `reset_rate_ledger_for_tests`, `ADMISSION_MAX_SEARCH_K`, `MAX_DIGEST_HOPS`.
+  Every provider is `P: EmbeddingProvider + Sync`; every async entry returns `Result<_, DbError>` (v4's throws);
+  every future is `Send` over `ErasedEmbeddingProvider` (compile-time pin in `tests.rs`). **ONE departure:**
+  `NeighbourProbe` carries `{ text, user_id }` — the zone rides `gather_neighbours`' trailing
+  `host_zone_fallback` (ONE source, not two; LR-10 / Tier 1 item 4 had named it on both).
+- **Families (NEW, green from the pin, zero SKIP):** `admission_tier3_equivalence` — 44 steps over a `utc` and a
+  `chicago` leg (the planted `chat_settings.timezone`): rejects (empty ×2 with zero embedding calls,
+  embedding-failed with both notes), insert / insert-linked (band, date-guard, mismatch), reinforce, absorb,
+  MANUAL-over-AUTO linked, MANUAL raises / never lowers, a digest keeps its source, cold promote ±footnotes, the
+  member → digest redirect, a 4-hop chain, a dangling first hop and a dangling intermediate, bug 237 (the WARN,
+  the word-matched re-embed folding, a failed re-embed skipped), TF-IDF vs neural at the same cosine, the
+  name-presence flip + its named pass-through, zone-aware fallback anchors (UTC `00:00Z` vs Chicago `05:00Z` for
+  "July 3"), `sourceMessageTimestamp` stamping, bug 209, the concurrent pair (one row + one fold), the keyed
+  repeat (two attempts) and its converse (`:0` / `:1` in one attempt), a dry run with a book, the rate ledger
+  (AUTO 1 / MANUAL / backfill / dry run 0), the vanished target once and twice, the candidate path, plus the
+  content-key and scope-key tier-1 rows. Comparands: the outcomes (action BYTES + structural, 1e-12), the
+  embedding calls in order, the owned lines (`module` + v4's camelCase keys, arrays as `…Json`), the watermark
+  INVARIANT (LR-5 — one `[characterId]` per inserting outcome that wrote), the rate counts, the `memories` dump
+  (minted ids by row content, wall-clock stamps placeholdered, embedding BLOBs exact).
+  `update_memory_tier2_equivalence` — 12 edits (re-embed on a text change, importance recomputed / unchanged,
+  invalid related ids, link deltas add + swap, the embed-first refusal writing nothing, another character's row,
+  the hot digest's mirror, the subject move writing BOTH buckets, a cold digest and a plain row mirroring
+  nothing): the results, the embedding calls (INTERACTIVE), the lines, the `memories` dump and the vault's
+  `Commonplace/` projection (ISO stamps masked — the mirror stamps now).
+- **Staging the races:** v4's own tests stage "retired between the decision and the write" with an in-memory
+  store; here the fixture carries an `AFTER UPDATE OF tier` trigger that deletes a row the moment a promotion
+  moved it hot, so BOTH sides' real code meets the vanish. The oracle drops v4's memory-index cache before EVERY
+  index read (LR-11 — v5 keeps none, and the trigger deletes behind v4's cache; without it v4 counted an orphan
+  v5 cannot see).
+- **MEASURED divergence, a FINDING for the human — `FIND_BY_IDS_UNVALIDATED`:** v4's `findByIds` (every
+  `findByFilter` read) runs each row through `MemorySchema` and silently DROPS one it refuses; v5's
+  `memories_read::find_by_ids` (P4.D288's file) does not validate. So a schema-invalid row (here a non-UUID id)
+  that the index still loads is an ORPHAN in v4 (bug 200's WARN; admission decides on the next row) and a LIVE
+  neighbour in v5. Consequence: **bug 200's orphan widen is unreachable in v5 except by a race** (ported
+  literally; no test can redden it). Pinned both ways on the `invalid_row_neighbour` step; the fix (validate in
+  `find_by_ids`, or the whole `findByFilter` class) is outside this lane's ownership — not made.
+- **Red-first (measured on `KEYSTONE`'s old paths with throwaway adapters, never committed):**
+  `memory_gate_tier3` at the pin is IMPORT-DEAD (`Cannot find module …/lib/memory/memory-service`; P4.D288's
+  re-aimed builder loads); the admission corpus through `create_memory_with_gate`: **14 of 43** admissions decide
+  a different action, and every outcome comparand (the trace, notes, `searchedK`, the row object) has no
+  old-path counterpart — **43 / 43** red at the outcome level; the edit corpus through `api::memories::
+  memory_update`: **12 / 12** red (8 refused by the old route's character check, which v4's `updateMemory` does
+  not make; 4 without the re-embed / v4's row shape).
+- **Unit tests (`services/admission/tests.rs`, 28 in the module):** the seven `applyFold` mirrors (deltas +
+  re-embed, the anchors patch, count-only no re-embed, the COMMIT POINT via a trigger that retires the row once
+  its footnotes land, nothing landed, **bug 226 via a trigger that counts five observations between the plan and
+  its count → 7**, a failed re-embed), raise / never-lower / the vanished-row WARN, the name-presence read-failure
+  WARN (+ the MANUAL silence leg), the neighbour merge best-first, the excluded row never re-embedded, no fallback
+  without a probe, the stale-cache NEGATIVE, `link_both_ways`, the FIFO lock; each line with its capture pin
+  (`global_capture::capture_async` — the binary shares these callsites with un-armed tests) and its silence leg.
+  The differential pins every other owned line per step (the full owned set is compared, so an absent line is a
+  silence leg too). The repository lines a fold triggers (`Memory reinforcement counted`, `Reinforcement
+  footnotes appended`, `Memory links updated`) run on the writer thread — P4.D288's own pins.
+- **Censuses:** `realtime_publish_sites_guard` gains `services/admission/admit.rs` 1 and
+  `services/admission/update_memory.rs` 1; the fenced behavioural module `realtime::publish_sites::
+  admission_publish_tests` (insert / absorb / reinforce / edit announce `memories` once; a reject, a dry run and
+  a refused edit never — the activity span's `jobs` hints filtered out as the registry's); `activity_span_
+  sites_guard` row 4 re-pointed to `admit_row` (O4 resolved).
+- **The old gate (LR-13):** `memory-gate-tier3.test.ts`, `memory_gate_tier3_equivalence.rs` and
+  `memory-gate-tier3.json` DELETED; `build-memory-gate-fixture.ts` → `build-admission-fixture.ts` (no other
+  recipe named it); `services/memory_gate.rs` + crate-root `memory_merge.rs` BEHAVIOUR-FROZEN with ten new
+  markers (`create_memory_with_gate` + its four types → P4.D296|P4.D297|P4.D298; `apply_memory_merge`,
+  `MemoryMergePlan`, `plan_memory_merge` → P4.D297; `NEAR_DUPLICATE_THRESHOLD` / `MERGE_THRESHOLD` →
+  P4.D290|… — the probe's import retires in Tier 2); `RELATED_THRESHOLD` / `GATE_TOP_K` lost `pub` (no outside
+  caller). `no_memory_lane_remove_markers_left` at `ADMISSION`: **34 markers** (24 inherited + 10), RED BY DESIGN.
+- **HANDOFF (§R.10(h)) — the unifier's watermark call:** in `services/admission/admit.rs` `admit_prepared`, the
+  `if admission_inserted(&outcome.action) { … }` block (v4's comment is there): after P4.D297 lands
+  `memory_maintenance::triggers::maybe_enqueue_maintenance`, call it fire-and-forget with
+  `&[character_id]`, logging DEBUG `Maintenance watermark check skipped after admission {module:
+  'memory:admission', characterId, error}` on failure; the `admission_tier3` watermark invariant becomes the
+  measured call list.
