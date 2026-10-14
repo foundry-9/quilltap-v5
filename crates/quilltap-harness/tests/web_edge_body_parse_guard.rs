@@ -107,15 +107,16 @@ const PARSER_WIRING: &[(&str, &str, &str)] = &[
 const COLLAPSE_CENSUS: &[(&str, usize, &str)] = &[
     (
         "crates/quilltap-web/src/system_data_routes.rs",
-        13,
+        12,
         "ADJUDICATED site by site (P4.62), and every arm is driven by \
-         `system_body_guards_equivalence` over v4's real handlers. ELEVEN are \
-         FAITHFUL: the almanack download's `content`/`filename` read the \
+         `system_body_guards_equivalence` over v4's real handlers. ELEVEN were \
+         FAITHFUL (TEN since P4.D288 deleted the memory-dedup POST's `threshold` \
+         read with the action, R-G): the almanack download's `content`/`filename` read the \
          server's OWN response entity; `action` (tasks-queue) lands every shape \
          on v4's one `!action || !includes(action)` sentence; `confirm` fails \
          `!== 'DELETE_ALL_MY_DATA'` identically and \
          `keepArchivedCharacterBundles` is v4's `!== false`, where None means \
-         KEEP; `threshold` is v4's own `typeof === 'number' ? … : 0.80`; `type` \
+         KEEP; `type` \
          is refused for every non-member by one enum sentence and \
          `priority`/`maxAttempts` are literally `typeof === 'number' ? … : \
          undefined`; the `str_field` passphrase reads are v4's `typeof x === \

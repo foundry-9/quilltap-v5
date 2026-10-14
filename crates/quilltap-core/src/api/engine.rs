@@ -1642,6 +1642,10 @@ impl CoreEngine {
                 group_scenario_path,
                 group_scenario_group_id,
                 general_scenario_path,
+                // P4.D288 (C2): carried, not yet read — the arm body that
+                // passes them into `SetScenarioBody` lands with P4.D295.
+                scenario_ref: _,
+                reload: _,
             } => match self.ready_db() {
                 Ok(db) => {
                     crate::services::chat_scenario::chat_set_scenario(
@@ -3188,35 +3192,8 @@ impl CoreEngine {
             },
 
             // --- Memory maintenance (P4.9H2A tier 2 — landed P4.43) ---------
-            // P4.D266 (R-D): the dedup fold re-embeds changed survivors through
-            // the OPTIONAL memory embedding seam (the photo-gallery shape —
-            // never the refusing `ready_memory_embedding`).
-            Request::MemoryDedupPreview { threshold } => match self.ready_db_and_memory_embedding() {
-                Ok((db, embedding)) => {
-                    super::memory_maintenance::memory_dedup(
-                        &db,
-                        embedding.as_ref(),
-                        SINGLE_USER_ID,
-                        threshold,
-                        true,
-                    )
-                    .await
-                }
-                Err(r) => r,
-            },
-            Request::MemoryDedupRun { threshold } => match self.ready_db_and_memory_embedding() {
-                Ok((db, embedding)) => {
-                    super::memory_maintenance::memory_dedup(
-                        &db,
-                        embedding.as_ref(),
-                        SINGLE_USER_ID,
-                        threshold,
-                        false,
-                    )
-                    .await
-                }
-                Err(r) => r,
-            },
+            // P4.D288 (R-G): the `system/tools` memory-dedup pair is DELETED with
+            // v4's (`104e986c7`); the summaries-regenerate pair stays.
             Request::ConversationSummariesRegenerateStatus => match self.ready_db() {
                 Ok(db) => {
                     super::memory_maintenance::conversation_summaries_regenerate(
@@ -3831,45 +3808,6 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::MemoryHousekeepPreview {
-                character_id,
-                max_memories,
-                max_age_months,
-                min_importance,
-                merge_similar,
-            } => match self.ready_db() {
-                Ok(db) => {
-                    super::memories::memory_housekeep_preview(
-                        &db,
-                        &character_id,
-                        max_memories,
-                        max_age_months,
-                        min_importance,
-                        merge_similar,
-                    )
-                    .await
-                }
-                Err(r) => r,
-            },
-            Request::MemoryHousekeep { options } => match self.ready_db() {
-                Ok(db) => super::memories::memory_housekeep(&db, options).await,
-                Err(r) => r,
-            },
-            Request::MemoryHousekeepSweep => match self.ready_db() {
-                Ok(db) => super::memories::memory_housekeep_sweep(&db, SINGLE_USER_ID).await,
-                Err(r) => r,
-            },
-            Request::MemoryHousekeepingConfigGet => match self.ready_db() {
-                Ok(db) => super::memories::memory_housekeeping_config_get(&db, SINGLE_USER_ID),
-                Err(r) => r,
-            },
-            Request::MemoryHousekeepingConfigSet { config } => match self.ready_db() {
-                Ok(db) => {
-                    super::memories::memory_housekeeping_config_set(&db, SINGLE_USER_ID, config)
-                        .await
-                }
-                Err(r) => r,
-            },
             Request::MemoryRecallConfigGet => match self.ready_db() {
                 Ok(db) => super::memories::memory_recall_config_get(&db),
                 Err(r) => r,
@@ -3884,20 +3822,6 @@ impl CoreEngine {
             },
             Request::MemoryExtractionLimitsSet { config } => match self.ready_db() {
                 Ok(db) => super::memories::memory_extraction_limits_set(&db, config).await,
-                Err(r) => r,
-            },
-            Request::MemoryExtractionConcurrencyGet => match self.ready_db() {
-                Ok(db) => super::memories::memory_extraction_concurrency_get(&db),
-                Err(r) => r,
-            },
-            Request::MemoryExtractionConcurrencySet { concurrency } => match self.ready_db() {
-                Ok(db) => {
-                    super::memories::memory_extraction_concurrency_set(
-                        &db,
-                        serde_json::json!({ "concurrency": concurrency }),
-                    )
-                    .await
-                }
                 Err(r) => r,
             },
             Request::MemoryBackfillProgress => match self.ready_db() {
@@ -3941,17 +3865,17 @@ impl CoreEngine {
             },
             // === P4.6BL tier 2: the two repair arms, un-refused over the live
             // memory_embedding seam (the P4.6s refusals retire here). ===
-            Request::MemoryGenerateEmbeddings {
-                character_id,
-                batch_size,
-            } => match self.ready_memory_embedding() {
+            // P4.D288 (C2): `batchSize` dropped with v4's `af48f6cc2`; the
+            // handler's own batch parameter goes with the backfill re-point
+            // (§S.5 (3)) — `None` is its default batch.
+            Request::MemoryGenerateEmbeddings { character_id } => match self.ready_memory_embedding() {
                 Ok((db, provider)) => {
                     super::memories::memory_generate_embeddings(
                         &db,
                         &provider,
                         SINGLE_USER_ID,
                         &character_id,
-                        batch_size,
+                        None,
                     )
                     .await
                 }
@@ -5611,10 +5535,6 @@ impl CoreEngine {
                 Ok(db) => super::memory_consolidation::memory_extraction_mode_config_set(&db, config).await,
                 Err(r) => r,
             },
-            Request::MemoryConsolidate { options } => match self.ready_db() {
-                Ok(db) => super::memory_consolidation::memory_consolidate(&db, SINGLE_USER_ID, options).await,
-                Err(r) => r,
-            },
             Request::WardrobeItemImageSaveTargets {
                 scope,
                 container_id,
@@ -5668,6 +5588,42 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.D265 ===
+
+            // === P4.D288: the 83334b9a5 round's wire (C2) ===
+            // The six refusals answer `p4d288_not_yet_available` (v4's action
+            // name + the owning order) until the owner fills the body; the two
+            // maintenance-config arms are FILLED (P4.D297's after KEYSTONE).
+            Request::MemoryMaintain { options: _ } => p4d288_not_yet_available("maintain", "P4.D297"),
+            Request::MemoryMaintenanceStatus { character_id: _ } => {
+                p4d288_not_yet_available("maintenance-status", "P4.D297")
+            }
+            Request::MemoryRepair { options: _ } => p4d288_not_yet_available("repair", "P4.D297"),
+            Request::MemoryMaintenanceConfigGet => match self.ready_db() {
+                Ok(db) => super::memory_maintenance_config::memory_maintenance_config_get(&db),
+                Err(r) => r,
+            },
+            Request::MemoryMaintenanceConfigSet { config } => match self.ready_db() {
+                Ok(db) => {
+                    super::memory_maintenance_config::memory_maintenance_config_set(
+                        &db,
+                        SINGLE_USER_ID,
+                        config,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ScenarioEverywhere { include_archived: _ } => {
+                p4d288_not_yet_available("everywhere", "P4.D295")
+            }
+            Request::ScenarioReadByRef {
+                mount_point_id: _,
+                path: _,
+            } => p4d288_not_yet_available("read", "P4.D295"),
+            Request::ChatGetScenarioSource { chat_id: _ } => {
+                p4d288_not_yet_available("scenario-source", "P4.D295")
+            }
+            // === end P4.D288 ===
             // === P4.D279: the 4a38222e6 round's wire (C2) — each arm the agreed
             // refusal (§R.14), replaced by P4.D281 this round ===
             Request::WardrobeFoldersList {
@@ -7571,6 +7527,21 @@ fn read_auto_lock_minutes(db: &Db) -> Option<f64> {
         None
     }
 }
+
+// === P4.D288: the 83334b9a5 round's wire (C2) — the ONE refusal helper ===
+
+/// The C2 refusal body (§R.14's agreed, loud, typed `not_available`): `Internal`
+/// `The '<action>' action is recognized but not yet available (<owner>).` —
+/// `action` is v4's action name, `owner` the order that fills the arm this
+/// round.
+pub(crate) fn p4d288_not_yet_available(action: &str, owner: &str) -> Response {
+    Response::error(
+        ErrorKind::Internal,
+        format!("The '{action}' action is recognized but not yet available ({owner})."),
+    )
+}
+
+// === end P4.D288 ===
 
 #[cfg(test)]
 mod tests {

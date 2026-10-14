@@ -24,6 +24,12 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — feat(core,web): P4.D288 unit 5 — the 83334b9a5 round's wire (C2): eight new verbs, ten retired, the maintenance-config arms filled
+
+_Versions: core 0.0.1291, web 0.0.238._
+
+Adds the round's eight dispatch variants in one fenced block (`memoryMaintain`, `memoryMaintenanceStatus`, `memoryRepair`, `memoryMaintenanceConfigGet/Set`, `scenarioEverywhere`, `scenarioReadByRef`, `chatGetScenarioSource`). Six answer a loud refusal naming the lane that fills them (`The '<action>' action is recognized but not yet available (<owner>).`); the two maintenance-config verbs are live, matching v4's route: GET returns the settings, and POST validates through v4's schema, merges sent phase toggles into the stored ones, replaces every other key, and logs v4's INFO line. `chatSetScenario` gains the raw `scenarioRef` / `reload` fields (carried until the scenarios lane reads them); `memoryGenerateEmbeddings` drops `batchSize`. Ten retired verbs are deleted along with their handlers (housekeep, housekeep-sweep, housekeeping-config, extraction-concurrency, consolidate, and the System Tools memory-dedup pair); dispatch now answers them with serde's unknown-variant 400, and `system/tools` answers v4's `Unknown action` envelope with the pin's action lists. Census updates: the dispatch census loses 8 rows and gains 1, the route-identifier exclusion is measured at 482, `COLLAPSE_CENSUS` drops from 13 to 12, and the scenario rows are re-cited at the pin. New family `p4_d288_wire_contract` covers decoding, the edge, and the two filled arms against v4's real handlers.
+
 #### 2026-10-14 — feat(core): P4.D288 unit 4 — the embedding-call seam, EmbeddingCallOptions with lexical_text (C1-10)
 
 _Versions: core 0.0.1290._

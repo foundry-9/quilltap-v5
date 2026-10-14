@@ -318,34 +318,6 @@ async fn seed_recall(db: &Db, per_turn: bool) {
         .expect("seed recall settings");
 }
 
-/// P4.55: seed `chat_settings.autoHousekeepingSettings` through the REAL writer
-/// — the Rust twin of the oracle case's `repos.chatSettings.updateForUser` call.
-async fn seed_housekeeping(db: &Db, user_id: &str) {
-    let bag = json!({
-        "enabled": true,
-        "perCharacterCap": 1234,
-        "perCharacterCapOverrides": {},
-        "autoMergeSimilarThreshold": 0.5,
-        "mergeSimilar": true,
-    })
-    .to_string();
-    let uid = user_id.to_string();
-    let now = quilltap_core::clock::now_iso();
-    db.write(move |w| {
-        quilltap_core::db::chat_settings::update_for_user(
-            w.main().connection(),
-            &uid,
-            &[(
-                "autoHousekeepingSettings",
-                quilltap_core::db::chat_settings::SettingsColVal::Text(bag),
-            )],
-            &now,
-        )
-    })
-    .await
-    .expect("seed housekeeping settings");
-}
-
 /// P4.55: seed `instance_settings['memoryExtractionLimits']` through the REAL
 /// writer — the twin of the oracle's `setMemoryExtractionLimits`.
 async fn seed_extraction_limits(db: &Db) {
@@ -838,196 +810,10 @@ fn memories_routes_match_oracle() {
         check_rounded("search_min_importance", &resp, &mut failed);
     }
 
-    // --- Housekeeping (deletes-nothing config → clock-independent) ---
-    // P4.D266 (v4 `d58548051`): the three bodies carry `wouldDemote` /
-    // `coldCount` / `demoted` / `demotedIds` in v4's key order. `check_body`'s
-    // `norm` sorts keys, so the ORDER is checked byte-wise here too. (A
-    // `housekeep_run_demotes` row was NOT added: which MNEMO rows a cap
-    // demotes rides the protection score and effective weight, both of which
-    // decay with wall-clock age between the oracle run and the Rust run —
-    // demotion is proven by `memory_housekeeping_tier2`.)
-    let check_key_order = |name: &str, got: &Response, failed: &mut Vec<String>| {
-        let got = serde_json::to_string(&response_data(got)).unwrap();
-        let want = serde_json::to_string(&oracle[name]["body"]).unwrap();
-        if got != want {
-            eprintln!("[{name}] KEY ORDER / BYTES MISMATCH:\n  rust:   {got}\n  oracle: {want}");
-            failed.push(format!("{name}:bytes"));
-        } else {
-            eprintln!("[{name}] bytes OK.");
-        }
-    };
-    {
-        let db = fresh_db(&spec, "hkp");
-        let resp = rt.block_on(memories::memory_housekeep_preview(
-            &db,
-            MNEMO,
-            Some(10000),
-            None,
-            Some(0.0),
-            None,
-        ));
-        check_body("housekeep_preview", &resp, &mut failed);
-        check_key_order("housekeep_preview", &resp, &mut failed);
-    }
-    {
-        let db = fresh_db(&spec, "hkd");
-        let resp = rt.block_on(memories::memory_housekeep(
-            &db,
-            json!({ "characterId": MNEMO, "maxMemories": 10000, "minImportance": 0, "dryRun": true }),
-        ));
-        check_body("housekeep_dryrun", &resp, &mut failed);
-        check_key_order("housekeep_dryrun", &resp, &mut failed);
-    }
-    {
-        let db = fresh_db(&spec, "hkr");
-        let resp = rt.block_on(memories::memory_housekeep(
-            &db,
-            json!({ "characterId": MNEMO, "maxMemories": 10000, "minImportance": 0, "dryRun": false }),
-        ));
-        check_body("housekeep_run", &resp, &mut failed);
-        check_key_order("housekeep_run", &resp, &mut failed);
-    }
-    // P4.D266 (Tier 2): the POST's `housekeepingOptionsSchema` refusals.
-    for (name, body) in [
-        (
-            "housekeep_invalid_max_memories",
-            json!({ "characterId": MNEMO, "maxMemories": 5 }),
-        ),
-        (
-            "housekeep_invalid_merge_threshold",
-            json!({ "characterId": MNEMO, "mergeThreshold": 0.5 }),
-        ),
-        (
-            "housekeep_invalid_character_id",
-            json!({ "characterId": "not-a-uuid" }),
-        ),
-    ] {
-        let db = fresh_db(&spec, "hkv");
-        let resp = rt.block_on(memories::memory_housekeep(&db, body));
-        check_error(name, &resp, &mut failed);
-    }
-    {
-        let db = fresh_db(&spec, "hks");
-        let resp = rt.block_on(memories::memory_housekeep_sweep(&db, &uid));
-        check_blanked("housekeep_sweep", &resp, &["jobId"], &mut failed);
-    }
-    // --- Configs ---
-    {
-        let db = fresh_db(&spec, "hcg");
-        check_body(
-            "housekeeping_config_get",
-            &memories::memory_housekeeping_config_get(&db, &uid),
-            &mut failed,
-        );
-    }
-    {
-        // P4.52 retired this row's fixture-vintage ruling: v4's whole-row
-        // `chatSettings.updateForUser` now survives the widened fixture and
-        // answers 200 with the settings bag, so both sides compare plainly.
-        let db = fresh_db(&spec, "hcs");
-        let resp = rt.block_on(memories::memory_housekeeping_config_set(
-            &db,
-            &uid,
-            json!({ "enabled": true, "perCharacterCap": 1500 }),
-        ));
-        check_body("housekeeping_config_set", &resp, &mut failed);
-    }
-    // P4.55 (the merge-verb silent-keep sweep): `housekeepingConfigSchema`
-    // safeParses BEFORE the read/merge/write — a present-but-invalid value 400s
-    // and stores NOTHING. v5 used to merge and PERSIST the garbage.
-    {
-        let db = fresh_db(&spec, "hcib");
-        let resp = rt.block_on(memories::memory_housekeeping_config_set(
-            &db,
-            &uid,
-            json!({ "enabled": "yes" }),
-        ));
-        check_error("housekeeping_config_set_invalid_bool", &resp, &mut failed);
-    }
-    {
-        let db = fresh_db(&spec, "hcir");
-        let resp = rt.block_on(memories::memory_housekeeping_config_set(
-            &db,
-            &uid,
-            json!({ "perCharacterCap": -5 }),
-        ));
-        check_error("housekeeping_config_set_out_of_range", &resp, &mut failed);
-    }
-    {
-        let db = fresh_db(&spec, "hciw");
-        rt.block_on(seed_housekeeping(&db, &uid));
-        let resp = rt.block_on(memories::memory_housekeeping_config_set(
-            &db,
-            &uid,
-            json!({ "perCharacterCap": "lots" }),
-        ));
-        let name = "housekeeping_config_invalid_writes_nothing";
-        check_error(name, &resp, &mut failed);
-        let uid2 = uid.clone();
-        let stored = db
-            .read_main(move |main| {
-                quilltap_core::db::chat_settings::find_auto_housekeeping_settings_by_user_id(
-                    main, &uid2,
-                )
-            })
-            .expect("read housekeeping settings after refused set")
-            .unwrap_or(Value::Null);
-        let want = &oracle[name]["storedAfter"];
-        if norm(&stored) != norm(want) {
-            eprintln!(
-                "[{name}] storedAfter MISMATCH:\n{}",
-                first_diff(&norm(&stored), &norm(want))
-            );
-            failed.push(format!("{name}:storedAfter"));
-        } else {
-            eprintln!("[{name}] storedAfter OK.");
-        }
-    }
-    {
-        // P4.56 — the float-literal nit, measured with a float-SENSITIVE
-        // comparand. Zod's `.int()` is `Number.isInteger`, so `200.0` PASSES;
-        // JS has no float/int distinction, so v4 stores and echoes `200`.
-        // v5's serde_json keeps the float. The family's `canon_numbers`
-        // normalizer collapses exactly that difference, so this arm goes
-        // through `norm_float_exact` on BOTH the echo and the stored bag.
-        let db = fresh_db(&spec, "hcfl");
-        let name = "housekeeping_config_set_int_float_literal";
-        let resp = rt.block_on(memories::memory_housekeeping_config_set(
-            &db,
-            &uid,
-            json!({ "perCharacterCap": 200.0, "autoMergeSimilarThreshold": 1.0 }),
-        ));
-        let got = response_data(&resp);
-        let want = &oracle[name]["body"];
-        if norm_float_exact(&got) != norm_float_exact(want) {
-            eprintln!(
-                "[{name}] MISMATCH (float-exact):\n{}",
-                first_diff(&norm_float_exact(&got), &norm_float_exact(want))
-            );
-            failed.push(name.to_string());
-        } else {
-            eprintln!("[{name}] OK (float-exact).");
-        }
-        let uid2 = uid.clone();
-        let stored = db
-            .read_main(move |main| {
-                quilltap_core::db::chat_settings::find_auto_housekeeping_settings_by_user_id(
-                    main, &uid2,
-                )
-            })
-            .expect("read housekeeping settings after the float-literal set")
-            .unwrap_or(Value::Null);
-        let want_stored = &oracle[name]["storedAfter"];
-        if norm_float_exact(&stored) != norm_float_exact(want_stored) {
-            eprintln!(
-                "[{name}] storedAfter MISMATCH (float-exact):\n{}",
-                first_diff(&norm_float_exact(&stored), &norm_float_exact(want_stored))
-            );
-            failed.push(format!("{name}:storedAfter"));
-        } else {
-            eprintln!("[{name}] storedAfter OK (float-exact).");
-        }
-    }
+    // P4.D288 (compile-forced, R-G): the housekeep / housekeep-sweep /
+    // housekeeping-config verbs and their handlers are DELETED with v4's
+    // (`104e986c7` — v4 answers its `Unknown action` envelope at the pin);
+    // their rows left with them. P4.D298 re-pins this family at the pin.
     {
         let db = fresh_db(&spec, "rcg");
         check_body(
@@ -1211,22 +997,8 @@ fn memories_routes_match_oracle() {
             eprintln!("[{name}] storedAfter OK (float-exact).");
         }
     }
-    {
-        let db = fresh_db(&spec, "ecg");
-        check_body(
-            "extraction_concurrency_get",
-            &memories::memory_extraction_concurrency_get(&db),
-            &mut failed,
-        );
-    }
-    {
-        let db = fresh_db(&spec, "ecs");
-        let resp = rt.block_on(memories::memory_extraction_concurrency_set(
-            &db,
-            json!({ "concurrency": 8 }),
-        ));
-        check_body("extraction_concurrency_set", &resp, &mut failed);
-    }
+    // P4.D288 (compile-forced, R-G): the extraction-concurrency pair is
+    // DELETED with v4's (`104e986c7`).
 
     // --- Regenerate + backfill status ---
     {

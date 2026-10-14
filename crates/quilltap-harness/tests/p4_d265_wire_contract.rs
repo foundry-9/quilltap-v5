@@ -86,12 +86,8 @@ fn p4_d265_contract_wire_shapes() {
             config: json!({"otherPass": "fold"})
         }
     );
-    assert_eq!(
-        decode(json!({"type":"memoryConsolidate","options":{"characterId":"c1","dryRun":true}})),
-        Request::MemoryConsolidate {
-            options: json!({"characterId": "c1", "dryRun": true})
-        }
-    );
+    // P4.D288 (R-G, v4 `104e986c7`): `memoryConsolidate` is DELETED — its
+    // `unknown variant` 400 is pinned by `p4_d288_wire_contract`.
     // [P4.D267] grown chatRecallReplay: the tri-states.
     match decode(json!({
         "type":"chatRecallReplay","chatId":"chat1",

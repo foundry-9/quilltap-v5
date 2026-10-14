@@ -1277,23 +1277,6 @@ pub enum Request {
         base_url: Option<String>,
     },
     // --- Memory maintenance (P4.9H2A tier 2) ---
-    /// v4 `GET /api/v1/system/tools?action=memory-dedup-preview` → `{success,
-    /// result}` (dry run). **DEFERRED LOUDLY** — the synchronous inline dedup
-    /// algorithm (union-find + dim-grouped cosine + scoreMemory) is a follow-up;
-    /// its deps (`cosine_similarity`, `extract_novel_details`, the delete-with-
-    /// unlink chokepoint) and the committed dedup fixture are already in place.
-    #[serde(rename_all = "camelCase")]
-    MemoryDedupPreview {
-        #[serde(default)]
-        threshold: Option<f64>,
-    },
-    /// v4 `POST /api/v1/system/tools?action=memory-dedup` → `{success, result}`.
-    /// **DEFERRED LOUDLY** (see `MemoryDedupPreview`).
-    #[serde(rename_all = "camelCase")]
-    MemoryDedupRun {
-        #[serde(default)]
-        threshold: Option<f64>,
-    },
     /// v4 `GET /api/v1/system/conversation-summaries?action=regenerate` →
     /// `{success, inFlight}`. **DEFERRED LOUDLY** — the status + enqueue +
     /// `REGENERATE_CONVERSATION_SUMMARIES` handler (re-mirror existing
@@ -1684,31 +1667,6 @@ pub enum Request {
     MemorySearch {
         search: serde_json::Value,
     },
-    /// v4 GET `?action=housekeep&characterId=` — `{success, preview: {…}}`.
-    #[serde(rename_all = "camelCase")]
-    MemoryHousekeepPreview {
-        character_id: String,
-        #[serde(default)]
-        max_memories: Option<i64>,
-        #[serde(default)]
-        max_age_months: Option<i64>,
-        #[serde(default)]
-        min_importance: Option<f64>,
-        #[serde(default)]
-        merge_similar: Option<bool>,
-    },
-    /// v4 POST `?action=housekeep` — `{success, dryRun, result: {…, details?}}`.
-    MemoryHousekeep {
-        options: serde_json::Value,
-    },
-    /// v4 POST `?action=housekeep-sweep` — `{success, jobId}`.
-    MemoryHousekeepSweep,
-    /// v4 GET `?action=housekeeping-config` — `{success, settings}`.
-    MemoryHousekeepingConfigGet,
-    /// v4 POST `?action=housekeeping-config` — merge-patch `{success, settings}`.
-    MemoryHousekeepingConfigSet {
-        config: serde_json::Value,
-    },
     /// v4 GET `?action=recall-config` — `{success, settings}`.
     MemoryRecallConfigGet,
     /// v4 POST `?action=recall-config` — merge-patch `{success, settings}`.
@@ -1720,12 +1678,6 @@ pub enum Request {
     /// v4 POST `?action=extraction-limits-config` — merge-patch `{success, settings}`.
     MemoryExtractionLimitsSet {
         config: serde_json::Value,
-    },
-    /// v4 GET `?action=extraction-concurrency` — `{success, concurrency}`.
-    MemoryExtractionConcurrencyGet,
-    /// v4 POST `?action=extraction-concurrency` — `{success, concurrency}`.
-    MemoryExtractionConcurrencySet {
-        concurrency: i64,
     },
     /// v4 GET `?action=backfill-embeddings` — `{success, progress: {remaining,
     /// inFlight}}`.
@@ -1753,12 +1705,11 @@ pub enum Request {
         batch_size: Option<i64>,
     },
     /// v4 POST `?action=embeddings` — the `generateMissingEmbeddings` service,
-    /// LIVE since P4.6BL (`engine.rs`).
+    /// LIVE since P4.6BL (`engine.rs`). P4.D288 (C2, v4 `af48f6cc2`):
+    /// `batchSize` DROPPED — serde ignores the key as Zod strips it.
     #[serde(rename_all = "camelCase")]
     MemoryGenerateEmbeddings {
         character_id: String,
-        #[serde(default)]
-        batch_size: Option<i64>,
     },
     /// v4 PUT `?action=embeddings` — the `rebuildVectorIndex` service, LIVE since
     /// P4.6BL (`engine.rs`).
@@ -2871,12 +2822,6 @@ pub enum Request {
     MemoryExtractionModeConfigSet {
         config: serde_json::Value,
     },
-    /// v4 `POST ?action=consolidate` (`consolidateSchema`, `route.ts:153-158`)
-    /// — `{success, dryRun: true, report}` | `{success, dryRun: false, jobId}`.
-    /// RAW options (the `MemoryHousekeep` precedent). P4.D271.
-    MemoryConsolidate {
-        options: serde_json::Value,
-    },
     /// v4 `GET /api/v1/wardrobe/[itemId]/images?scope=…&id=…&action=save-targets`
     /// (`01a83539d`) — `{albums: PhotoAlbumOption[]}`. P4.D275.
     #[serde(rename_all = "camelCase")]
@@ -2905,6 +2850,63 @@ pub enum Request {
         tags: Option<Option<serde_json::Value>>,
     },
     // === end P4.D265 ===
+
+    // === P4.D288: the 83334b9a5 round's wire (C2) ===
+    // The eight NEW variants of the round (contract C2, binding). Bodies that v4
+    // Zod-parses ride RAW so the handlers run the ported Zod. Until its owner
+    // fills it, an arm answers `Internal` `The '<action>' action is recognized
+    // but not yet available (<owner>).` (`engine::p4d288_not_yet_available`);
+    // the two maintenance-config arms are FILLED here (P4.D297's after KEYSTONE).
+    // The ten retired memory verbs are DELETED (R-G: serde's `unknown variant`
+    // 400 answers them, `dispatch.rs:69-78`).
+    //
+    // ---- the memories family (responses: Response::Memory(Value), R-J) ----
+    /// v4 POST /api/v1/memories?action=maintain — {success, dryRun:true, report}
+    /// | {success, dryRun:true, reports} | {success, dryRun:false, jobId, jobIds}. Owner P4.D297.
+    MemoryMaintain {
+        options: serde_json::Value,
+    },
+    /// v4 GET ?action=maintenance-status[&characterId=] — {success, ledger}.
+    /// `Some("")` = present-empty, which v4 reads as "all". Owner P4.D297.
+    #[serde(rename_all = "camelCase")]
+    MemoryMaintenanceStatus {
+        #[serde(default)]
+        character_id: Option<String>,
+    },
+    /// v4 POST ?action=repair — {success, report}. Owner P4.D297 (R-K).
+    MemoryRepair {
+        options: serde_json::Value,
+    },
+    /// v4 GET ?action=maintenance-config — {success, settings}. FILLED by P4.D288; P4.D297 after.
+    MemoryMaintenanceConfigGet,
+    /// v4 POST ?action=maintenance-config — {success, settings}. FILLED by P4.D288; P4.D297 after.
+    MemoryMaintenanceConfigSet {
+        config: serde_json::Value,
+    },
+
+    // ---- the scenarios family ----
+    /// v4 GET /scenarios?action=everywhere — Response::Scenario({ "sources": [...] }). Owner P4.D295.
+    #[serde(rename_all = "camelCase")]
+    ScenarioEverywhere {
+        #[serde(default)]
+        include_archived: bool,
+    },
+    /// v4 GET /scenarios?action=read&mountPointId=&path= — Response::Scenario({scenario, owner}).
+    /// Absent/empty → 400 `mountPointId and path are required`. Owner P4.D295.
+    #[serde(rename_all = "camelCase")]
+    ScenarioReadByRef {
+        #[serde(default)]
+        mount_point_id: Option<String>,
+        #[serde(default)]
+        path: Option<String>,
+    },
+    /// v4 GET /chats/[id]?action=scenario-source — Response::ChatAdmin({source, owner,
+    /// scenarioName, scenarioId, exists, changed, notes}). Owner P4.D295.
+    #[serde(rename_all = "camelCase")]
+    ChatGetScenarioSource {
+        chat_id: String,
+    },
+    // === end P4.D288 ===
 
     // === P4.D279: the 4a38222e6 round's wire (C2) ===
     // R-D: the folder actions are ONE scoped family of FIVE variants carrying
@@ -3492,6 +3494,13 @@ pub enum Request {
         group_scenario_group_id: Option<serde_json::Value>,
         #[serde(default)]
         general_scenario_path: Option<serde_json::Value>,
+        // P4.D288 (C2, v4 `545e299bb`): the two fields `setScenarioSchema`
+        // gained — RAW (the Zod floors live in `services::chat_scenario`); the
+        // arm body that passes them into `SetScenarioBody` lands with P4.D295.
+        #[serde(default)]
+        scenario_ref: Option<serde_json::Value>,
+        #[serde(default)]
+        reload: Option<serde_json::Value>,
     },
     /// Reset and re-queue danger classification (v4 `POST …?action=reclassify-danger`).
     #[serde(rename_all = "camelCase")]

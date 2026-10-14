@@ -51,8 +51,8 @@ use quilltap_core::model::completion::CannedCompletionProvider;
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::consolidation::{
-    clear_consolidation_runner, install_consolidation_runner, run_consolidation,
-    ConsolidationRunFuture, ConsolidationRunner, RunConsolidationOptions,
+    install_consolidation_runner, run_consolidation, ConsolidationRunFuture, ConsolidationRunner,
+    RunConsolidationOptions,
 };
 use quilltap_core::test_support::global_capture;
 use serde_json::{json, Value};
@@ -275,7 +275,12 @@ async fn memory_consolidation_routes_match_oracle() {
                 ("extraction-mode-config", _) => {
                     api::memory_extraction_mode_config_set(&db, body.clone()).await
                 }
-                ("consolidate", _) => api::memory_consolidate(&db, user_id, body.clone()).await,
+                // P4.D288 (compile-forced, R-G): the `consolidate` verb and its
+                // handler are DELETED with v4's (`104e986c7` — v4 answers its
+                // `Unknown action` envelope); P4.D297 re-points this family.
+                ("consolidate", _) => {
+                    Response::error(ErrorKind::BadRequest, "Unknown action: consolidate")
+                }
                 other => panic!("unknown route {other:?}"),
             }
         };
@@ -398,36 +403,9 @@ async fn memory_consolidation_routes_match_oracle() {
         }
     }
 
-    // ── R-E (v5-only): no runner → the typed refusal, after the 404 ─────────
-    clear_consolidation_runner();
-    {
-        let dir = tempfile::tempdir().unwrap();
-        let db = open_copy(dir.path(), pepper);
-        let missing = api::memory_consolidate(
-            &db,
-            user_id,
-            json!({ "characterId": "00000000-0000-4000-8000-0000000000ff", "dryRun": true }),
-        )
-        .await;
-        assert_eq!(
-            status_and_body(&missing).0,
-            404,
-            "the 404 precedes the refusal"
-        );
-        let refused = api::memory_consolidate(
-            &db,
-            user_id,
-            json!({ "characterId": "b1000000-0000-4000-8000-000000000002", "dryRun": true }),
-        )
-        .await;
-        match refused {
-            Response::Error(e) => {
-                assert_eq!(e.kind, ErrorKind::Internal);
-                assert!(e.message.contains("consolidation runner"), "{}", e.message);
-            }
-            other => panic!("expected the not-assembled refusal, got {other:?}"),
-        }
-    }
+    // P4.D288 (compile-forced): the R-E block (no runner → the typed refusal)
+    // tested `api::memory_consolidate`, DELETED with the verb (R-G) — the
+    // maintenance lane's `maintain` dry run carries R-E forward (R-N).
 
     assert!(
         failures.is_empty(),
@@ -436,7 +414,7 @@ async fn memory_consolidation_routes_match_oracle() {
         failures.join("\n\n")
     );
     eprintln!(
-        "OK: memory consolidation routes matched oracle ({} cases, PARTIAL_DEFAULTS_CLOBBER 3 rows both ways, the R-E refusal).",
+        "OK: memory consolidation routes matched oracle ({} cases, PARTIAL_DEFAULTS_CLOBBER 3 rows both ways).",
         cases.len()
     );
 }

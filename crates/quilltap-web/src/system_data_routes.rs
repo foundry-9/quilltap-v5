@@ -4,8 +4,8 @@
 //! also ride `POST /api/dispatch`; these edges give v4-URL parity for the
 //! Settings "Data & System" tab.
 //!
-//! - `GET  /api/v1/system/tools?action=tasks-queue|job-concurrency|delete-data-preview|memory-dedup-preview`
-//! - `POST /api/v1/system/tools?action=tasks-queue|job-concurrency|delete-data|memory-dedup`
+//! - `GET  /api/v1/system/tools?action=tasks-queue|job-concurrency|delete-data-preview`
+//! - `POST /api/v1/system/tools?action=tasks-queue|job-concurrency|delete-data`
 //! - `GET  /api/v1/system/jobs/{id}`
 //! - `DELETE /api/v1/system/jobs/{id}`
 //! - `POST /api/v1/system/jobs/{id}?action=pause|resume`
@@ -66,7 +66,9 @@ async fn dispatch_system(
 /// in literal order, the `availableActions` of both refusals. v5 does not
 /// serve `capabilities-report-progress` (GET); it stays in the list because the
 /// list is v4's `Object.keys` over the MAP, not over what this edge
-/// dispatches. (`ai-import-stream` on POST is SERVED since P4.9K2.)
+/// dispatches. (`ai-import-stream` on POST is SERVED since P4.9K2.) P4.D288
+/// (v4 `104e986c7`, R-G): `memory-dedup-preview` / `memory-dedup` LEFT both maps
+/// — they answer v4's own `Unknown action` envelope with these lists.
 const TOOLS_GET_ACTIONS: &[&str] = &[
     "tasks-queue",
     "job-concurrency",
@@ -76,7 +78,6 @@ const TOOLS_GET_ACTIONS: &[&str] = &[
     "capabilities-report-list",
     "capabilities-report-progress",
     "capabilities-report-get",
-    "memory-dedup-preview",
 ];
 
 /// v4 `system/unlock`'s thunk map, in literal order (`route.ts` at
@@ -92,7 +93,6 @@ const TOOLS_POST_ACTIONS: &[&str] = &[
     "import-execute",
     "capabilities-report-generate",
     "capabilities-report-delete",
-    "memory-dedup",
     "ai-import-stream",
 ];
 
@@ -224,8 +224,9 @@ pub fn zod_uuid(s: &str) -> bool {
     true
 }
 
-/// Unwrap a `Response::MemoryMaintenance(Value)` (the memory-dedup carrier) to
-/// v4's raw route body at 200 (P4.43).
+/// Unwrap a `Response::MemoryMaintenance(Value)` (the summaries-regenerate
+/// carrier since P4.D288 retired the memory-dedup pair) to v4's raw route body
+/// at 200 (P4.43).
 async fn dispatch_memory_maintenance(state: &SharedState, req: CoreRequest) -> AxumResponse {
     match dispatch_core(state, req).await {
         Ok(CoreResponse::MemoryMaintenance(v)) => (
@@ -369,20 +370,6 @@ pub async fn system_tools_get(
                 StatusCode::OK,
             )
             .await
-        }
-        // === P4.43: memory-dedup preview (v4's `?action=memory-dedup-preview`) ===
-        "memory-dedup-preview" => {
-            // v4: `thresholdParam ? parseFloat(thresholdParam) : 0.80`.
-            // Absent/empty → default (None). Present-and-numeric → `Some`;
-            // present-non-numeric → `Some(NaN)` so the handler answers v4's exact
-            // 400. (Rust's `parse` is stricter than JS `parseFloat` on trailing
-            // garbage like "0.8x" — a documented minor edge; the SPA rides the
-            // dispatch verb, not this parity edge.)
-            let threshold = q
-                .get("threshold")
-                .filter(|s| !s.is_empty())
-                .map(|s| s.parse::<f64>().unwrap_or(f64::NAN));
-            dispatch_memory_maintenance(&state, CoreRequest::MemoryDedupPreview { threshold }).await
         }
         _ => tools_unserved_action(action),
     }
@@ -554,21 +541,6 @@ pub async fn system_tools_post(
                 StatusCode::OK,
             )
             .await
-        }
-        // === P4.43: memory-dedup apply (v4's `?action=memory-dedup`) ===
-        "memory-dedup" => {
-            let Some(parsed) = parsed.as_ref() else {
-                return error_json(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to deduplicate memories",
-                );
-            };
-            // v4: `typeof thresholdParam === 'number' ? thresholdParam : 0.80`
-            // — v4's OWN coercion, so the collapse is faithful: absent, null and
-            // every wrong-typed value become the default, and only a real number
-            // reaches the range gate.
-            let threshold = parsed.get("threshold").and_then(Value::as_f64);
-            dispatch_memory_maintenance(&state, CoreRequest::MemoryDedupRun { threshold }).await
         }
         _ => tools_unserved_action(action),
     }

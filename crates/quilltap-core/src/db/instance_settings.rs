@@ -522,34 +522,12 @@ pub fn set_brahma_console_settings(
 
 // === end P4.D57 ===
 
-/// v4 `KEY_MEMORY_EXTRACTION_CONCURRENCY` — the per-instance MEMORY_EXTRACTION
-/// concurrency cap (default **1**, distinct from `maxConcurrentJobs`'s 4).
-const KEY_MEMORY_EXTRACTION_CONCURRENCY: &str = "memoryExtractionConcurrency";
-const DEFAULT_MEMORY_EXTRACTION_CONCURRENCY: i64 = 1;
+// P4.D288 (v4 `104e986c7`): the `memoryExtractionConcurrency` key and its
+// getter / setter are DELETED with v4's — the dead key is purged by the
+// settings move (`db::memory_maintenance_settings_move`) and dropped from a
+// restored archive (`DEAD_INSTANCE_SETTING_KEYS`).
 /// v4 `KEY_MEMORY_EXTRACTION_LIMITS`.
 const KEY_MEMORY_EXTRACTION_LIMITS: &str = "memoryExtractionLimits";
-
-/// v4 `getMemoryExtractionConcurrency()` — default 1 when unset OR when the stored
-/// value is not a finite integer `>= 1`; otherwise clamped to `[1, 32]`.
-pub fn get_memory_extraction_concurrency(main: &Connection) -> Result<i64, DbError> {
-    let Some(raw) = read_setting(main, KEY_MEMORY_EXTRACTION_CONCURRENCY) else {
-        return Ok(DEFAULT_MEMORY_EXTRACTION_CONCURRENCY);
-    };
-    match raw.trim().parse::<f64>() {
-        Ok(f) if f.is_finite() && f.floor() as i64 >= 1 => Ok((f.floor() as i64).clamp(1, 32)),
-        _ => Ok(DEFAULT_MEMORY_EXTRACTION_CONCURRENCY),
-    }
-}
-
-/// v4 `setMemoryExtractionConcurrency(value)` — clamp `[1, 32]` (floor) and store.
-pub fn set_memory_extraction_concurrency(main: &Connection, value: i64) -> Result<(), DbError> {
-    let clamped = value.clamp(1, 32);
-    write_setting(
-        main,
-        KEY_MEMORY_EXTRACTION_CONCURRENCY,
-        &clamped.to_string(),
-    )
-}
 
 /// v4 `getMemoryExtractionLimits()` — the `{enabled, maxPerHour, softStartFraction,
 /// softFloor}` object; documented defaults `{false, 20, 0.7, 0.7}` when unset,

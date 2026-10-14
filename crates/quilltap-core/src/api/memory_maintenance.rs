@@ -1,11 +1,11 @@
-//! The memory-maintenance dispatch handlers (P4.9H2A tier 2) — memory
-//! deduplication + conversation-summaries regeneration.
+//! The memory-maintenance dispatch handlers (P4.9H2A tier 2) — the
+//! conversation-summaries regeneration.
 //!
-//! **Memory dedup is LIVE** (P4.43 unit 6; v4 `?action=memory-dedup-preview` /
-//! `memory-dedup` on `/api/v1/system/tools`): the synchronous inline dedup over
-//! [`crate::services::memory_dedup`] (union-find + dim-grouped cosine +
-//! scoreMemory + the P4.D266 fold into each survivor, through the
-//! delete-with-unlink chokepoint).
+//! **Memory dedup is RETIRED** (P4.D288, R-G — v4 `104e986c7` removed the
+//! `system/tools` `memory-dedup-preview` / `memory-dedup` actions; the
+//! LLM-free successor is the maintenance job's fold phase, P4.D297's). The
+//! handler went with the two verbs; the service behind it
+//! ([`crate::services::memory_dedup`]) stays for its owner.
 //!
 //! **Conversation-summaries regeneration is LIVE** (P4.43 unit 7; v4
 //! `?action=regenerate` on `/api/v1/system/conversation-summaries`): GET reports
@@ -16,9 +16,8 @@
 use serde_json::json;
 
 use crate::db::runtime::Db;
-use crate::model::embedding::EmbeddingProvider;
+
 use crate::services::conversation_summaries_regen::count_in_flight;
-use crate::services::memory_dedup::deduplicate_all_memories;
 use crate::services::queue_service::enqueue_regenerate_conversation_summaries;
 
 use super::types::{ErrorKind, Response};
@@ -27,43 +26,6 @@ fn internal_fixed(sentence: &str, err: impl std::fmt::Display) -> Response {
     // v4 returns a FIXED per-route sentence and logs the real error (P4.D50).
     tracing::error!(error = %err, "{sentence}");
     Response::error(ErrorKind::Internal, sentence)
-}
-
-/// v4 `?action=memory-dedup-preview` (GET, dry run) / `memory-dedup` (POST,
-/// apply) — `{success, result}`. Threshold defaults to 0.80 and must be in
-/// `[0.5, 1.0]` (v4's exact 400 sentence).
-///
-/// `provider` is the memory-embedding seam the dedup fold re-embeds changed
-/// survivors through (R-D, P4.D266): OPTIONAL — v4 dedup never refuses for
-/// embedding reasons, so neither does v5; a `None` seam makes each re-embed
-/// fail non-fatally with v4's WARN.
-pub async fn memory_dedup<P: EmbeddingProvider>(
-    db: &Db,
-    provider: Option<&P>,
-    user_id: &str,
-    threshold: Option<f64>,
-    preview: bool,
-) -> Response {
-    let threshold = threshold.unwrap_or(0.80);
-    // v4: `isNaN(threshold) || threshold < 0.5 || threshold > 1.0`. A NaN is not
-    // contained in the range, so `!contains` covers v4's `isNaN` arm too.
-    if !(0.5..=1.0).contains(&threshold) {
-        return Response::error(
-            ErrorKind::BadRequest,
-            "Invalid threshold. Must be a number between 0.5 and 1.0",
-        );
-    }
-    match deduplicate_all_memories(db, provider, user_id, threshold, !preview).await {
-        Ok(result) => Response::MemoryMaintenance(json!({ "success": true, "result": result })),
-        Err(e) => internal_fixed(
-            if preview {
-                "Failed to preview memory deduplication"
-            } else {
-                "Failed to deduplicate memories"
-            },
-            e,
-        ),
-    }
 }
 
 /// v4 conversation-summaries `?action=regenerate`: GET → the in-flight count

@@ -179928,3 +179928,46 @@ migrationsSkipped: 90}`, none deferred. Measured:
   `character_optimizer_tier3` (P4.D292's — `memory_weighting` → salience); IMPORT-DEAD at the pin until
   unit 11 / the owner: `memory_dedup` (P4.D297), `context_summary_service_tier3` (dead builder — unit 11),
   `semantic_search_tuning_tier3` (P4.D291), `vault_conv_search` (path rename — unit 11).
+
+### Unit 5 — C2, the wire
+- Landed in ONE fence `// === P4.D288: the 83334b9a5 round's wire (C2) ===` in `api/types.rs` (the eight
+  variants exactly as C2 spells them) and `api/engine.rs` (their arms); the ONE helper
+  `engine::p4d288_not_yet_available(action, owner)` (pub(crate), in its own fence) — `maintain` /
+  `maintenance-status` / `repair` → P4.D297, `everywhere` / `read` / `scenario-source` → P4.D295. The two
+  config arms FILLED in NEW `api/memory_maintenance_config.rs` (`memory_maintenance_config_get` /
+  `_set` — P4.D297 may move them into its routes module after KEYSTONE). `ChatSetScenario` + `scenario_ref` /
+  `reload` (RAW; the arm binds them `_` with a "lands with P4.D295" comment); `MemoryGenerateEmbeddings` −
+  `batch_size` (the arm passes `None` to the handler's own batch parameter until §S.5 (3)).
+- DELETED (R-G): the ten variants + arms; `api/memories.rs` `hk_details`, `HousekeepBag`,
+  `memory_housekeep_preview`, `validate_housekeep_options`, `memory_housekeep`, `memory_housekeep_sweep`,
+  `housekeeping_config_default`, `memory_housekeeping_config_get` / `_set`, `validate_housekeeping_config`,
+  `memory_extraction_concurrency_get` / `_set`; `api/memory_maintenance.rs` `memory_dedup` (module doc
+  rewritten); `api/memory_consolidation.rs` `memory_consolidate` + `parse_consolidate_options` +
+  `ConsolidateOptions` + the dry-run constants; `db/instance_settings.rs`
+  `get/set_memory_extraction_concurrency` + the key constant. The SERVICES (`services/housekeeping.rs`,
+  `consolidation*.rs`, `memory_dedup.rs`) stay `pub` for P4.D297.
+- `quilltap-web/src/system_data_routes.rs`: `memory-dedup-preview` / `memory-dedup` left both action maps and
+  their arms (v4's own `Unknown action` envelope answers, measured against the pin's real route);
+  `COLLAPSE_CENSUS` 13 → 12 (the POST's `threshold` read went with the action; the note's "ELEVEN faithful"
+  became TEN).
+- `dispatch_wrong_type_census`: −8 rows (as predicted), +1 row (`ScenarioEverywhere.include_archived`);
+  `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` **MEASURED 482** (the survey predicted 479 — it missed that the rule
+  also drops `MemoryMaintenanceStatus.character_id` and `ScenarioReadByRef.{mount_point_id, path}`, which
+  C2 had listed as census rows); the existing scenario rows RE-CITED at the pin (v4 moved every per-scope
+  scenario route onto `scenario-item-route-factory.ts` — `:164` update, `:203` / `:213,229-231,71` rename,
+  `:251` delete, `:339` list; `groups/scenarios/route.ts:30`; `scenarios/route.ts:71-72`).
+- **Compile-forced edits in sibling-owned tests (recorded):** `p4_d265_wire_contract.rs` (the
+  `memoryConsolidate` decode assertion → a comment), `chat_scenario_routes_equivalence.rs` (`..` in the one
+  destructure, `scenario_ref: None, reload: None` in three literals — P4.D295's family),
+  `memory_consolidation_routes_equivalence.rs` (the `consolidate` arm answers `Unknown action: consolidate`;
+  the v5-only R-E no-runner block deleted with the handler — P4.D297's family), `memories_routes_equivalence.rs`
+  (the housekeep / housekeeping-config / extraction-concurrency blocks + `seed_housekeeping` +
+  `check_key_order` deleted with the verbs — P4.D298's family).
+- NEW family `p4_d288_wire_contract` (`quilltap-web/tests/`; oracle `cases/p4-d288-wire-contract.test.ts` — v4's
+  REAL memories + system/tools route handlers over the committed memories pair): the eight decodes, `batchSize`
+  ignored, the ten deleted types' `Invalid request: unknown variant` 400 and the six refusals' sentences
+  through a served instance; **7 config rows + 2 tools rows equal to v4** (status, body bytes, stored settings
+  after; the INFO by presence). Green on the first run.
+- **Residue for P4.D295 (recorded, not touched):** `query_param_semantics_equivalence` reddens 3 rows
+  (`chat_item_get__{empty,unknown,empty_then_known}`) — v4's chat-item GET `availableActions` gained
+  `scenario-source` at the pin; the REST edge + its action-list entry are P4.D295's (the scenario REST edges).

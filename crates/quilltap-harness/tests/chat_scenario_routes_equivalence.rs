@@ -392,6 +392,9 @@ fn decode(chat_id: &str, body: &Value) -> SetScenarioBody {
             group_scenario_path,
             group_scenario_group_id,
             general_scenario_path,
+            // P4.D288 (C2): the two fields `545e299bb` added — carried; their
+            // arm body is P4.D295's.
+            ..
         } => {
             assert_eq!(decoded_id, chat_id);
             SetScenarioBody {
@@ -1033,6 +1036,8 @@ fn chat_set_scenario_wire_shape() {
             group_scenario_path: Some(json!("Scenarios/g.md")),
             group_scenario_group_id: Some(json!("22222222-2222-4222-8222-222222222222")),
             general_scenario_path: Some(json!("Scenarios/gen.md")),
+            scenario_ref: None,
+            reload: None,
         }
     );
     // Every field is optional: the bare verb decodes, and clears the scene.
@@ -1047,6 +1052,8 @@ fn chat_set_scenario_wire_shape() {
             group_scenario_path: None,
             group_scenario_group_id: None,
             general_scenario_path: None,
+            scenario_ref: None,
+            reload: None,
         }
     );
     // A wrong-TYPED field must still DECODE, so the handler can answer v4's flat
@@ -1065,6 +1072,8 @@ fn chat_set_scenario_wire_shape() {
             group_scenario_path: None,
             group_scenario_group_id: None,
             general_scenario_path: None,
+            scenario_ref: None,
+            reload: None,
         }
     );
 }

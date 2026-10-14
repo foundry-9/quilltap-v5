@@ -753,7 +753,7 @@ const CENSUS: &[Row] = &[
         field: "include_archived",
         rust_type: "bool",
         v4: V4::Query,
-        note: "`groups/[id]/scenarios/route.ts:47` `readIncludeArchived`",
+        note: "`groups/[id]/scenarios/route.ts:35` → `lib/mount-index/scenario-item-route-factory.ts:339` `readIncludeArchived` (P4.D288 re-cited at `83334b9a5`)",
     },
     Row {
         variant: "GroupScenarioUpdate",
@@ -761,8 +761,8 @@ const CENSUS: &[Row] = &[
         rust_type: "bool",
         v4: V4::Query,
         note: concat!(
-            "`lib/mount-index/scenario-item-route-factory.ts:171` ",
-            "`readIncludeArchived`"
+            "`lib/mount-index/scenario-item-route-factory.ts:164` ",
+            "`readIncludeArchived` (P4.D288 re-cited at `83334b9a5`)"
         ),
     },
     Row {
@@ -771,9 +771,9 @@ const CENSUS: &[Row] = &[
         rust_type: "String",
         v4: V4::BodyParseLocallyCaught,
         note: concat!(
-            "`lib/mount-index/scenario-item-route-factory.ts:229` — ",
+            "`lib/mount-index/scenario-item-route-factory.ts:213,229-231,71` — ",
             "`renameScenarioSchema.parse` inside a LOCAL try/catch → 400 `Invalid ",
-            "request body: <joined messages>`, no `details` array"
+            "request body: <joined messages>`, no `details` array (P4.D288 re-cited)"
         ),
     },
     Row {
@@ -781,14 +781,14 @@ const CENSUS: &[Row] = &[
         field: "include_archived",
         rust_type: "bool",
         v4: V4::Query,
-        note: "`scenario-item-route-factory.ts:225` `readIncludeArchived`",
+        note: "`scenario-item-route-factory.ts:203` `readIncludeArchived` (P4.D288 re-cited)",
     },
     Row {
         variant: "GroupScenarioDelete",
         field: "include_archived",
         rust_type: "bool",
         v4: V4::Query,
-        note: "`scenario-item-route-factory.ts:274` `readIncludeArchived`",
+        note: "`scenario-item-route-factory.ts:251` `readIncludeArchived` (P4.D288 re-cited)",
     },
     Row {
         variant: "GroupWardrobeList",
@@ -805,21 +805,21 @@ const CENSUS: &[Row] = &[
         field: "include_archived",
         rust_type: "bool",
         v4: V4::Query,
-        note: "`groups/scenarios/route.ts:34` `readIncludeArchived`",
+        note: "`groups/scenarios/route.ts:30` `readIncludeArchived` (P4.D288 re-cited)",
     },
     Row {
         variant: "ScenarioList",
         field: "include_archived",
         rust_type: "bool",
         v4: V4::Query,
-        note: "`scenarios/route.ts:44` `readIncludeArchived`",
+        note: "`scenarios/route.ts:71-72` (the action dispatch's fallthrough `list`) → `scenario-item-route-factory.ts:339` `readIncludeArchived` (P4.D288 re-cited)",
     },
     Row {
         variant: "ScenarioUpdate",
         field: "include_archived",
         rust_type: "bool",
         v4: V4::Query,
-        note: "`scenarios/[scenarioPath]/route.ts:106` `readIncludeArchived`",
+        note: "`scenarios/[scenarioPath]/route.ts:24` → `scenario-item-route-factory.ts:164` `readIncludeArchived` (P4.D288 re-cited)",
     },
     Row {
         variant: "ScenarioRename",
@@ -827,8 +827,8 @@ const CENSUS: &[Row] = &[
         rust_type: "String",
         v4: V4::BodyParseLocallyCaught,
         note: concat!(
-            "`scenarios/[scenarioPath]/route.ts:175,213` — `.parse` in a LOCAL catch ",
-            "→ 400 `Invalid request body: <messages>`"
+            "`scenarios/[scenarioPath]/route.ts:24` → `scenario-item-route-factory.ts:213,229-231,71` — ",
+            "`.parse` in a LOCAL catch → 400 `Invalid request body: <messages>` (P4.D288 re-cited)"
         ),
     },
     Row {
@@ -836,14 +836,14 @@ const CENSUS: &[Row] = &[
         field: "include_archived",
         rust_type: "bool",
         v4: V4::Query,
-        note: "`scenarios/[scenarioPath]/route.ts:161` `readIncludeArchived`",
+        note: "`scenarios/[scenarioPath]/route.ts:24` → `scenario-item-route-factory.ts:203` `readIncludeArchived` (P4.D288 re-cited)",
     },
     Row {
         variant: "ScenarioDelete",
         field: "include_archived",
         rust_type: "bool",
         v4: V4::Query,
-        note: "`scenarios/[scenarioPath]/route.ts:233` `readIncludeArchived`",
+        note: "`scenarios/[scenarioPath]/route.ts:24` → `scenario-item-route-factory.ts:251` `readIncludeArchived` (P4.D288 re-cited)",
     },
     Row {
         variant: "ImageProfileList",
@@ -917,23 +917,6 @@ const CENSUS: &[Row] = &[
         note: "`embedding-profiles/route.ts:135-136` `searchParams`",
     },
     Row {
-        variant: "MemoryDedupPreview",
-        field: "threshold",
-        rust_type: "Option<f64>",
-        v4: V4::Query,
-        note: "`system/tools/route.ts:1183` `searchParams` + `parseFloat`",
-    },
-    Row {
-        variant: "MemoryDedupRun",
-        field: "threshold",
-        rust_type: "Option<f64>",
-        v4: V4::BodyHandRolled,
-        note: concat!(
-            "`system/tools/route.ts:1217` `typeof x === 'number' ? x : 0.80` — a ",
-            "wrong type SILENTLY defaults and answers 200"
-        ),
-    },
-    Row {
         variant: "ProjectChatList",
         field: "limit",
         rust_type: "Option<i64>",
@@ -997,14 +980,14 @@ const CENSUS: &[Row] = &[
         field: "include_archived",
         rust_type: "bool",
         v4: V4::Query,
-        note: "`projects/[id]/scenarios/route.ts:47` `readIncludeArchived`",
+        note: "`projects/[id]/scenarios/route.ts:32` → `scenario-item-route-factory.ts:339` `readIncludeArchived` (P4.D288 re-cited)",
     },
     Row {
         variant: "ProjectScenarioUpdate",
         field: "include_archived",
         rust_type: "bool",
         v4: V4::Query,
-        note: "`scenario-item-route-factory.ts:160` `readIncludeArchived`",
+        note: "`scenario-item-route-factory.ts:164` `readIncludeArchived` (P4.D288 re-cited)",
     },
     Row {
         variant: "ProjectScenarioRename",
@@ -1012,8 +995,8 @@ const CENSUS: &[Row] = &[
         rust_type: "String",
         v4: V4::BodyParseLocallyCaught,
         note: concat!(
-            "`scenario-item-route-factory.ts:231,271` — `.parse` in a LOCAL catch → ",
-            "400 `Invalid request body: <messages>`"
+            "`scenario-item-route-factory.ts:213,229-231,71` — `.parse` in a LOCAL catch → ",
+            "400 `Invalid request body: <messages>` (P4.D288 re-cited)"
         ),
     },
     Row {
@@ -1021,14 +1004,14 @@ const CENSUS: &[Row] = &[
         field: "include_archived",
         rust_type: "bool",
         v4: V4::Query,
-        note: "`scenario-item-route-factory.ts:217` `readIncludeArchived`",
+        note: "`scenario-item-route-factory.ts:203` `readIncludeArchived` (P4.D288 re-cited)",
     },
     Row {
         variant: "ProjectScenarioDelete",
         field: "include_archived",
         rust_type: "bool",
         v4: V4::Query,
-        note: "`scenario-item-route-factory.ts:291` `readIncludeArchived`",
+        note: "`scenario-item-route-factory.ts:251` `readIncludeArchived` (P4.D288 re-cited)",
     },
     Row {
         variant: "ProjectWardrobeList",
@@ -1087,45 +1070,6 @@ const CENSUS: &[Row] = &[
         note: "`memories/route.ts:312-320` `searchParams`",
     },
     Row {
-        variant: "MemoryHousekeepPreview",
-        field: "max_memories",
-        rust_type: "Option<i64>",
-        v4: V4::Query,
-        note: "`memories/route.ts:675-698` `searchParams`",
-    },
-    Row {
-        variant: "MemoryHousekeepPreview",
-        field: "max_age_months",
-        rust_type: "Option<i64>",
-        v4: V4::Query,
-        note: "`memories/route.ts:675-698` `searchParams`",
-    },
-    Row {
-        variant: "MemoryHousekeepPreview",
-        field: "min_importance",
-        rust_type: "Option<f64>",
-        v4: V4::Query,
-        note: "`memories/route.ts:675-698` `searchParams`",
-    },
-    Row {
-        variant: "MemoryHousekeepPreview",
-        field: "merge_similar",
-        rust_type: "Option<bool>",
-        v4: V4::Query,
-        note: "`memories/route.ts:675-698` `searchParams`",
-    },
-    Row {
-        variant: "MemoryExtractionConcurrencySet",
-        field: "concurrency",
-        rust_type: "i64",
-        v4: V4::BodySafeParse,
-        note: concat!(
-            "`memories/route.ts:135,1226` `safeParse` → an EXPLICIT ",
-            "`validationError(parsed.error)`, i.e. the same `{error:'Validation ",
-            "error',details:[…]}` envelope an uncaught `.parse` produces"
-        ),
-    },
-    Row {
         variant: "MemoryBackfillStart",
         field: "batch_size",
         rust_type: "Option<i64>",
@@ -1134,13 +1078,6 @@ const CENSUS: &[Row] = &[
             "`memories/route.ts:128,895` `safeParse` → explicit ",
             "`validationError(...)`"
         ),
-    },
-    Row {
-        variant: "MemoryGenerateEmbeddings",
-        field: "batch_size",
-        rust_type: "Option<i64>",
-        v4: V4::BodyParse,
-        note: "`memories/route.ts:95,972` `generateEmbeddingsSchema.parse`",
     },
     Row {
         variant: "MemoryRebuildIndex",
@@ -2420,6 +2357,18 @@ const CENSUS: &[Row] = &[
         note: "`wardrobe/[itemId]/images/route.ts` `sp.get('scope')` (a Zod enum over the query) — `9ecebf986` `?action=link-image`",
     },
     // === end P4.D279 ===
+    // === P4.D288: the 83334b9a5 round's wire (C2) — the ONE new field the
+    // route-identifier rule does not drop (`MemoryMaintenanceStatus.
+    // character_id`, `ScenarioReadByRef.{mount_point_id, path}` and
+    // `ChatGetScenarioSource.chat_id` are in its count) ===
+    Row {
+        variant: "ScenarioEverywhere",
+        field: "include_archived",
+        rust_type: "bool",
+        v4: V4::Query,
+        note: "`scenarios/route.ts:49` `readIncludeArchived`",
+    },
+    // === end P4.D288 ===
 ];
 
 /// The `ChatCreate` trio (the order's anchor). These are NOT `Request` fields —
@@ -2735,7 +2684,16 @@ fn is_route_identifier(field: &str) -> bool {
 // ride as ONE flattened `serde_json::Value` (`body`) — parsed by v4's own Zod
 // schemas inside P4.D281's handlers — so no body key entered the typed set.
 // Measured by running the test (red at 479 against 471 first).
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 479;
+// **P4.D288 (+3): 479 → 482** — the `83334b9a5` round's C2: −1
+// `MemoryHousekeepPreview.character_id` (the variant DELETED, R-G), +1
+// `ChatGetScenarioSource.chat_id` (the `[id]` segment), +1
+// `MemoryMaintenanceStatus.character_id` and +2 `ScenarioReadByRef.
+// {mount_point_id, path}` (v4 QUERY params — `memories/route.ts:823`,
+// `scenarios/route.ts:56-57` — which the rule drops as it drops every `*_id`
+// / `path`). The planning survey predicted 479; measured, never pasted (red
+// at 482 against 479 first). The census's only new ROW is
+// `ScenarioEverywhere.include_archived`.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 482;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus
