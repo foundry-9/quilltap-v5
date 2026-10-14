@@ -183320,3 +183320,17 @@ Branch `claude/p4.d301-chat-stream-submission-ledger-821101312`, stage A from
   suite (green alone; the recorded P4.D286 class), fixed with the one key.
   R-L5's recorded divergence: v5 still pushes no optimistic TOOL bubble
   (v4 does), outside the span. No composer mounted → nothing restored.
+- **Unit 5 — the gated beat (SPA 0.5.849).** NEW `apps/web/e2e/salon-send-
+  failure-restore-flow.spec.ts` (port 4339, own server over a copy of
+  `salon-main.db`, pre-spawn CLI writes: profile `c…01` → `OPENAI` with no
+  key — Solo Voyage's seat; profile `c…02` → `baseUrl
+  http://127.0.0.1:9/v1`, keyed), both beats behind `const
+  P4D288_SERVER_LANDED = false` (§S.9). Beat 1 stages NO roll (the order's
+  "nothing or one roll" — the chip half is pinned by the Salon spec);
+  beat 2 moves the seat with `chatUpdateParticipant`. **Run ONCE flipped to
+  `true` locally (never committed), by file, alone, on this lane's release
+  bins: 2 passed (1.2 m).** As committed: 2 skipped. By file, one at a time:
+  `salon-impersonation-voice-flow` 3 passed, `salon-optimistic-bubble-
+  reconcile` 2 passed, `salon-attachment-only-send-flow` 1 passed,
+  `salon-chain-pause-toast-flow` 2 passed / 3 skipped (its standing parks),
+  `salon-regenerate-stream-flow` 3 passed.
