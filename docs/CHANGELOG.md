@@ -188,6 +188,17 @@ Ports v4's `builtin-refit-policy.ts` and `scheduleRefit` (v4 `4ae0c4ca6`, pin `8
 - An empty `fittedAt` now counts no new memories, matching v4's `since ? … : 0`. The read itself is P4.D288's, so this is filtered at the caller and the body fix is handed off.
 - New family `builtin_refit_policy_equivalence` (v4's real code from the pin): 315 tier-1 rows, 23 planted scenarios across both `textShapeVersion` storage classes, 6 debounce scenarios under a virtual clock, and 2 step-10 rows through v4's real `runScheduledMaintenance`.
 
+#### 2026-10-14 — feat(core): P4.D291 unit 1 — the recall stage contracts and the one recall ranking (`services/recall/{types,context,rank}`)
+
+_Versions: core 0.0.1299._
+
+Starts v4's Phase-E recall pipeline (`584d28164`) under `services/recall/`.
+- `types.rs`: the stage contracts — `RecallCandidate` (replaces `SemanticSearchResult`; `salience` in place of the floored and raw weights), `RecallAdjustment`, `RawHit`, `HydratedHit`, `RecallStage`, `RecallTraceEntry` (`label` omitted when absent), `trace_stage`, `RenderedLine`, `RecallPool`.
+- `context.rs`: the owned recall context (now carrying `tuning` and the soft window), `build_turn_recall_context`, `build_retrospective_probes`.
+- `rank.rs`: `rank_for_recall`, `rank_by_blend`, `reserve_background_slots` and `by_blended_after` over the scoring module's one blend, sorted the way V8 sorts.
+
+New tier-1 family `recall_rank_equivalence` against v4's real `lib/memory/scoring/rank.ts` (142 rows: every multiplier, the gate and the cap, `extraFired`, the cross-project exclusion, ties and a NaN salience, R6's arithmetic). Inverting the sort or dropping `extraFired` turns it red.
+
 #### 2026-10-14 — KEYSTONE: P4.D288 — the memory-refactor + scenarios round's schema keystone
 
 _Docs-only change._

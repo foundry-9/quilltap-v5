@@ -183,6 +183,7 @@ pub mod queue_service;
 pub mod qtap_export;
 // ── end P4.9G4 ──
 pub mod quilltap_import;
+pub mod recall;
 pub mod recall_replay;
 pub mod recovery;
 pub mod regenerate_swipe;

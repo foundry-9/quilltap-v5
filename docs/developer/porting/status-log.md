@@ -181214,3 +181214,69 @@ filters); the hot filter is observable only when cold rows crowd the top 500 —
 - **v4 moved:** `7458ff94e` (15 commits past `01f508d4e`, incl. `2432b9057 release: 4.10.0`) observed 2026-10-14
   23:38 local; bugfix `489b228b6`. Not ported (the pin rule).
 - **Versions at close:** core 0.0.1304, host 0.0.206 (harness frozen 0.0.1110; web / cli / tauri / SPA untouched).
+
+## P4.D291 — recall as a pipeline, delivery, the context build's trailing sections, the mail deferral, the replay (lane record)
+
+Branch `claude/p4.d291-recall-pipeline-delivery-149cb8fc1`, worktree `.claude/worktrees/p4d291` — created from
+`KEYSTONE` = `149cb8fc1` (the session started on `main` `d1434189c` in the main checkout and moved to the new
+worktree before any edit). Pin `/tmp/qt-v4-pin-p4d291-83334b9a5` (`83334b9a5`, `4.10.0-dev.176`).
+
+### Lane start — the §2 probe (observation, §R.2) and the pin
+
+- Probe 2026-10-14 16:40 CDT: v4 checkout on `main`, tree CLEAN; `log 83334b9a5..main` = 17 commits (head
+  `7458ff94e` — `7417e9a1b`, `01f508d4e`, the release-checklist commits 7–13, bug 247's filing, bug 248's fix,
+  `release: 4.10.0` `2432b9057` + its merge back, `dev: started 4.11.0 development` `37246654d`); `bugfix` moved
+  to `489b228b6` ("bugfix: started 4.10.0 bug branch"). **v4 moved: all of the above observed at 2026-10-14
+  16:40 CDT** — out of scope by the pin rule; the pin is usable (HEAD `83334b9a5…`, `package.json`
+  `4.10.0-dev.176`).
+- The live tree's lockfile moved past the pin (`@quilltap/plugin-utils` 2.6.3 → 2.7.1, every plugin's
+  `package.json` to `^2.7.1`), so the pin got its OWN `npm ci --offline` (openai `7.30.0`, plugin-utils `2.6.3`,
+  the native `better-sqlite3` binding built) instead of the root symlink; `packages/quilltap/node_modules` is
+  symlinked (only its version stamp moved); every `plugins/dist/*/node_modules` is a real directory of symlinks
+  into the live plugin trees EXCEPT `@quilltap/plugin-utils`, which falls through to the pin's own 2.6.3.
+
+### Red-first at `KEYSTONE` (Tier 1 #1)
+
+One sweep (`recipe_sweep.py --run-all`, 35 families, `/tmp/p4d291/redfirst-sweep.json`): **ok 17 / run_failed 11
+/ regen_failed 7.**
+- **IMPORT-DEAD (the three the order names):** `memory_injector_equivalence` (`cases/memory-injector.ts` →
+  `@/lib/chat/context/memory-injector`), `memory_pools_equivalence` (same), `semantic_search_tuning_tier3_
+  equivalence` (→ `lib/memory/memory-service`).
+- **regen_failed on CASE BODIES this lane owns** (no builder is dead — every builder and path-rename case LOADS):
+  `regenerate_swipe_tier3` (the case dumps `vector_indices`, gone at the pin), `precompute` and `search_tools`
+  (their `plantSql` writes `vector_entries`), `self_inventory` (the case hands v4's formatter `effectiveWeight`;
+  the pin reads `salience.toFixed`).
+- **RED (first diverging assertion):** `build_context_tier3` (the log capture — v5's retired `[ContextManager]
+  Memory pools sized` / `[Memory] Marking memories accessed`), `orchestrator_tier3` (`multi_chain`'s stream keys
+  — to classify), `frozen_archive_tier2` (membership / order), `recall_replay` (the INFO's `ringSource` and the
+  rows), `first_message_context` + `carina_query_tier3` (the delivery-stamp DEBUG), `in_scene_voiced_tier3` +
+  `announcer_tier3` (the rehearsal rows), `enclave_step_tier3` (`STORED_BYTE_DIVERGENCES` 0 vs the ruled 2 — to
+  classify), `distill_search_extraction` (bug 212's `…T23:59:59.999Z` day end), `memories_routes` (11 cases, the
+  search rows among them — P4.D298's family; this lane's ranking share measured later).
+- **GREEN at `KEYSTONE`:** `salon_swipe_generate`, `message_finalizer_tier3`, `primary_stream_tier3`,
+  `post_office_concierge_lantern_suparna`, `mail_carina_tools`, `recall_tags`, `recall_tuning`, `recall_history`,
+  `recent_conversations_block`, `vault_conv_search`, `context_feeders_leaves`, `skip_signal`,
+  `post_office_commonplace`, `knowledge_injector`, `user_narration_anchor`, `inform_block`,
+  `p4_d265_wire_contract`.
+
+### Unit 1 — the stage contracts and the one recall ranking (core 0.0.1299)
+
+- `services/recall/types.rs` (the §7.3 spellings), `context.rs` (the owned recall context — `RecallContextInput`
+  now carries v4's `tuning` and `occurredWithin`, which the score stage's context copies need;
+  `build_turn_recall_context`; `build_retrospective_probes`), `rank.rs` (R-L2 — `rank_for_recall`,
+  `rank_by_blend`, `reserve_background_slots`, `by_blended_after`; every sort through `js_array_sort_by`, so a
+  NaN salience orders as V8 orders it).
+- NEW tier-1 `recall_rank_equivalence` (`cases/recall-rank.ts` imports v4's real `scoring/rank.ts` and
+  `recall/tuning.ts`): 132 `rankForRecall` rows (11 contexts × 2 pools × 2 best cosines × 3 `extraFired` sets —
+  scope both policies, temporal, retrospective, context, participant, ring, soft window, fresh 24 / 48 h with
+  the gate fading them, the cap under an explicit legacy tuning), 2 `rankByBlend` rows, 8 R6 rows. Red-first:
+  the family did not exist. Mutation proofs: `by_blended_after` inverted → red (row order); `extraFired` dropped
+  → red (`fired`).
+- Regen: `cd "$PIN" && $N/npx tsx $V5W/harness/oracle/cases/recall-rank.ts > /tmp/oracle-recall-rank.ndjson`;
+  run `QT_ORACLE_RECALL_RANK=… cargo test -p quilltap-harness --test recall_rank_equivalence`.
+- Gate (`CARGO_INCREMENTAL=0`): fmt clean; clippy clean (both feature sets); `cargo test --workspace` with
+  `QT_ORACLE_RECALL_RANK` — 782 `test result` lines, three targets red, each classified and none this unit's:
+  `cli_differential` (14 rows — P4.D299's CLI bytes at the pin), `no_memory_lane_remove_markers_left` (both
+  tests — the LANE-REMOVE census RED by design until §S.5, and P4.D289's scoring-chokepoint census, green only
+  on the union), `qtap_schema_embed_guard` (the vendored schema — P4.D294's). `recall_rank_matches_oracle` ran
+  (not skipped) and passed.
