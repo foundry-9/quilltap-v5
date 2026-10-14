@@ -566,10 +566,6 @@ pub fn get_memory_extraction_limits(main: &Connection) -> Result<serde_json::Val
     ))
 }
 
-/// Zod 4's `.int()` bound: `Number.isSafeInteger` (measured at the pin — a
-/// `maxPerHour` of 2^53 fails the parse).
-const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
-
 /// `MemoryExtractionLimitsSchema.parse` (`lib/schemas/settings.types.ts:218`) —
 /// `None` is the throw. The OUTPUT is Zod's: the four keys in schema order,
 /// every absent one `.default`ed, unknown keys stripped, numbers rendered as JS
@@ -577,41 +573,27 @@ const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 ///
 /// ```text
 /// enabled:           z.boolean().default(false)
-/// maxPerHour:        z.number().int().positive().default(20)
+/// maxPerHour:        z.number().int().positive().max(10_000).default(20)
 /// softStartFraction: z.number().min(0).max(1).default(0.7)
 /// softFloor:         z.number().min(0).max(1).default(0.7)
 /// ```
 fn parse_memory_extraction_limits(value: &serde_json::Value) -> Option<serde_json::Value> {
-    let obj = value.as_object()?; // `z.object` throws on a non-object
-    let enabled = match obj.get("enabled") {
-        None => false,
-        Some(serde_json::Value::Bool(b)) => *b,
-        Some(_) => return None,
-    };
-    let max_per_hour = match obj.get("maxPerHour") {
-        None => 20.0,
-        Some(v) => {
-            let n = v.as_f64()?; // `null` / non-number → `z.number()` throws
-            if n.fract() != 0.0 || n.abs() > MAX_SAFE_INTEGER || n <= 0.0 {
-                return None; // `.int()` (safe integers) + `.positive()`
-            }
-            n
-        }
-    };
-    let fraction = |k: &str| -> Option<f64> {
-        match obj.get(k) {
-            None => Some(0.7),
-            Some(v) => v.as_f64().filter(|n| (0.0..=1.0).contains(n)),
-        }
-    };
-    let soft_start_fraction = fraction("softStartFraction")?;
-    let soft_floor = fraction("softFloor")?;
-    Some(serde_json::json!({
-        "enabled": enabled,
-        "maxPerHour": super::js_number_to_json(max_per_hour),
-        "softStartFraction": super::js_number_to_json(soft_start_fraction),
-        "softFloor": super::js_number_to_json(soft_floor),
-    }))
+    // P4.D288: ONE parse — the typed one with Zod's issues (v4 `c2795733f`'s
+    // `maxPerHour` `.max(10_000)` included).
+    parse_memory_extraction_limits_settings(value)
+        .ok()
+        .map(|limits| limits.to_json())
+}
+
+/// P4.D288 (C1-5): [`get_memory_extraction_limits`] typed — the same read,
+/// the same WARN + defaults.
+pub fn get_memory_extraction_limits_settings(main: &Connection) -> MemoryExtractionLimits {
+    read_json_setting(
+        main,
+        KEY_MEMORY_EXTRACTION_LIMITS,
+        |v| parse_memory_extraction_limits_settings(v).ok(),
+        MemoryExtractionLimits::default,
+    )
 }
 
 /// v4 `setMemoryExtractionLimits(value)` — store the validated object (the route
@@ -694,6 +676,10 @@ pub struct MemoryConsolidationSettings {
     pub connection_profile_id: Option<String>,
     /// Cosine similarity at which two memories join a cluster (`0..=1`).
     pub cluster_threshold: f64,
+    /// P4.D288 (v4 `4ae0c4ca6`): the same, when the default embedding profile
+    /// is the Built-in (TF-IDF) one, whose cosines run far lower (`0..=1`,
+    /// default 0.30).
+    pub tfidf_cluster_threshold: f64,
     /// Smallest cluster worth a digest (int `>= 2`).
     pub min_cluster_size: i64,
     /// Largest cluster handed to one call (int `>= 2`).
@@ -716,6 +702,7 @@ impl Default for MemoryConsolidationSettings {
             enabled: false,
             connection_profile_id: None,
             cluster_threshold: 0.72,
+            tfidf_cluster_threshold: 0.30,
             min_cluster_size: 3,
             max_cluster_size: 30,
             mature_after_days: 7.0,
@@ -743,6 +730,10 @@ impl MemoryConsolidationSettings {
             "clusterThreshold".into(),
             super::js_number_to_json(self.cluster_threshold),
         );
+        m.insert(
+            "tfidfClusterThreshold".into(),
+            super::js_number_to_json(self.tfidf_cluster_threshold),
+        );
         m.insert("minClusterSize".into(), self.min_cluster_size.into());
         m.insert("maxClusterSize".into(), self.max_cluster_size.into());
         m.insert(
@@ -769,6 +760,7 @@ pub struct MemoryConsolidationSettingsInput {
     pub enabled: Option<bool>,
     pub connection_profile_id: Option<Option<String>>,
     pub cluster_threshold: Option<f64>,
+    pub tfidf_cluster_threshold: Option<f64>,
     pub min_cluster_size: Option<i64>,
     pub max_cluster_size: Option<i64>,
     pub mature_after_days: Option<f64>,
@@ -790,6 +782,9 @@ impl MemoryConsolidationSettingsInput {
         }
         if let Some(v) = self.cluster_threshold {
             m.insert("clusterThreshold".into(), super::js_number_to_json(v));
+        }
+        if let Some(v) = self.tfidf_cluster_threshold {
+            m.insert("tfidfClusterThreshold".into(), super::js_number_to_json(v));
         }
         if let Some(v) = self.min_cluster_size {
             m.insert("minClusterSize".into(), v.into());
@@ -891,8 +886,28 @@ fn zod_number_field(
     max: Option<f64>,
     issues: &mut Vec<ZodIssue>,
 ) -> Option<f64> {
-    use crate::api::zod_issues::{key, MAX_SAFE_INTEGER};
-    let at = || vec![key(k)];
+    zod_number_at(
+        got,
+        vec![crate::api::zod_issues::key(k)],
+        int,
+        min,
+        max,
+        issues,
+    )
+}
+
+/// [`zod_number_field`] at any `path` (P4.D288: a cap OVERRIDE sits at
+/// `["perCharacterCapOverrides", <characterId>]`).
+fn zod_number_at(
+    got: &serde_json::Value,
+    path: Vec<serde_json::Value>,
+    int: bool,
+    min: Option<(f64, bool)>,
+    max: Option<f64>,
+    issues: &mut Vec<ZodIssue>,
+) -> Option<f64> {
+    use crate::api::zod_issues::MAX_SAFE_INTEGER;
+    let at = || path.clone();
     let Some(n) = got.as_f64() else {
         issues.push(ZodIssue::invalid_type("number", at(), Some(got)));
         return None;
@@ -975,6 +990,18 @@ pub fn parse_memory_consolidation_settings(
             &mut issues,
         ) {
             out.cluster_threshold = n;
+        }
+    }
+    if let Some(v) = obj.get("tfidfClusterThreshold") {
+        if let Some(n) = zod_number_field(
+            v,
+            "tfidfClusterThreshold",
+            false,
+            Some((0.0, true)),
+            Some(1.0),
+            &mut issues,
+        ) {
+            out.tfidf_cluster_threshold = n;
         }
     }
     if let Some(v) = obj.get("minClusterSize") {
@@ -1185,6 +1212,727 @@ pub fn set_memory_extraction_mode_settings(
     Ok(validated)
 }
 
+// === P4.D288 (C1-5) — the memory maintenance settings document, the typed
+// extraction limits, the bug-244 PATCH parsers and the legacy translator (v4
+// `e0ac7493a` / `4ae0c4ca6` / `104e986c7` at the `83334b9a5` pin:
+// `lib/schemas/settings.types.ts:130-330`, `lib/schemas/patch-schema.ts`,
+// `lib/memory/settings-legacy.ts`, `lib/instance-settings/index.ts:46,266-283`)
+// (append-only) ===
+
+/// v4 `KEY_MEMORY_MAINTENANCE` (`index.ts:46`).
+pub const KEY_MEMORY_MAINTENANCE: &str = "memoryMaintenance";
+/// v4 `MEMORY_MAINTENANCE_CAP_MIN` (`settings.types.ts:135`).
+pub const MEMORY_MAINTENANCE_CAP_MIN: i64 = 100;
+/// v4 `MEMORY_MAINTENANCE_CAP_MAX` (`settings.types.ts:136`).
+pub const MEMORY_MAINTENANCE_CAP_MAX: i64 = 100_000;
+/// v4 `MemoryMaintenanceSettingsSchema.parse({}).perCharacterCap` — 2000 (NOT
+/// the 2,500 a Friday run once used; §R.4(e)).
+pub const MEMORY_MAINTENANCE_DEFAULT_CAP: i64 = 2000;
+
+/// v4 `MemoryMaintenancePhaseTogglesSchema` (`settings.types.ts:153-160`): the
+/// maintenance job's own per-phase switches, each `.default(true)`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MemoryMaintenancePhaseToggles {
+    /// Fold near-duplicate AUTO rows into one survivor (LLM-free).
+    pub fold_near_duplicates: bool,
+    /// Send the lowest-protection demotable rows cold when over the cap.
+    pub demote: bool,
+    /// Delete superseded cold rows past `coldRetentionDays`.
+    pub retire: bool,
+}
+
+impl Default for MemoryMaintenancePhaseToggles {
+    fn default() -> Self {
+        Self {
+            fold_near_duplicates: true,
+            demote: true,
+            retire: true,
+        }
+    }
+}
+
+impl MemoryMaintenancePhaseToggles {
+    /// v4's JSON, schema key order.
+    pub fn to_json(&self) -> serde_json::Value {
+        let mut m = serde_json::Map::new();
+        m.insert(
+            "foldNearDuplicates".into(),
+            self.fold_near_duplicates.into(),
+        );
+        m.insert("demote".into(), self.demote.into());
+        m.insert("retire".into(), self.retire.into());
+        serde_json::Value::Object(m)
+    }
+}
+
+/// v4 `MemoryMaintenanceSettings` (`settings.types.ts:170-185`), stored under
+/// `instance_settings.memoryMaintenance` (moved there from the per-user
+/// `chat_settings.autoHousekeepingSettings` by `move-memory-maintenance-
+/// settings-v1`, `db::memory_maintenance_settings_move`). "Every default lives
+/// here, once."
+#[derive(Clone, Debug, PartialEq)]
+pub struct MemoryMaintenanceSettings {
+    /// Maintenance runs automatically (post-write watermark + scheduled sweep).
+    pub enabled: bool,
+    /// Global per-character cap on demotable memories (int `100..=100000`).
+    pub per_character_cap: i64,
+    /// Per-character cap overrides keyed by characterId — an insertion-ordered
+    /// map whose values are integer caps (`serde_json::Number`s). Its JSON
+    /// emits V8's own-key order (O-11 — [`v8_own_key_order`]).
+    pub per_character_cap_overrides: serde_json::Map<String, serde_json::Value>,
+    /// Which of the job's own phases run when nobody asked for them by hand.
+    pub phases: MemoryMaintenancePhaseToggles,
+}
+
+impl Default for MemoryMaintenanceSettings {
+    /// v4 `MemoryMaintenanceSettingsSchema.parse({})`.
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            per_character_cap: MEMORY_MAINTENANCE_DEFAULT_CAP,
+            per_character_cap_overrides: serde_json::Map::new(),
+            phases: MemoryMaintenancePhaseToggles::default(),
+        }
+    }
+}
+
+impl MemoryMaintenanceSettings {
+    /// v4's stored / returned JSON (`JSON.stringify(validated)`): `enabled,
+    /// perCharacterCap, perCharacterCapOverrides, phases{foldNearDuplicates,
+    /// demote, retire}`; the overrides in V8's own-key order.
+    pub fn to_json(&self) -> serde_json::Value {
+        let mut m = serde_json::Map::new();
+        m.insert("enabled".into(), self.enabled.into());
+        m.insert("perCharacterCap".into(), self.per_character_cap.into());
+        m.insert(
+            "perCharacterCapOverrides".into(),
+            serde_json::Value::Object(v8_own_key_order(&self.per_character_cap_overrides)),
+        );
+        m.insert("phases".into(), self.phases.to_json());
+        serde_json::Value::Object(m)
+    }
+
+    /// v4 `resolveMemoryCap(settings, characterId)` (`lib/memory/settings.ts:
+    /// 64-73`) — the ONE per-character cap resolver: the override, else
+    /// `perCharacterCap`.
+    pub fn cap_for(&self, character_id: &str) -> i64 {
+        self.per_character_cap_overrides
+            .get(character_id)
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(self.per_character_cap)
+    }
+}
+
+/// V8's own-key order for a plain object (O-11): every canonical array-index
+/// key (the decimal string of a `u32` below `2^32 − 1`, no leading zero) first
+/// in ascending numeric order, then every other key in insertion order —
+/// what `JSON.stringify` of a parsed object emits. Character ids are UUIDs, so
+/// no real override moves; the corpus row with `"10"` / `"2"` pins the rule.
+fn v8_own_key_order(
+    map: &serde_json::Map<String, serde_json::Value>,
+) -> serde_json::Map<String, serde_json::Value> {
+    let index = |k: &str| -> Option<u32> {
+        let n: u32 = k.parse().ok()?;
+        (n != u32::MAX && k == n.to_string()).then_some(n)
+    };
+    let mut indexed: Vec<(u32, &String)> = map
+        .keys()
+        .filter_map(|k| index(k).map(|n| (n, k)))
+        .collect();
+    indexed.sort_by_key(|(n, _)| *n);
+    let mut out = serde_json::Map::new();
+    for (_, k) in indexed {
+        out.insert(k.clone(), map[k].clone());
+    }
+    for (k, v) in map {
+        if index(k).is_none() {
+            out.insert(k.clone(), v.clone());
+        }
+    }
+    out
+}
+
+/// `MemoryMaintenanceCapSchema` (`z.number().int().min(100).max(100000)`) at
+/// `path`.
+fn maintenance_cap_issues(
+    got: &serde_json::Value,
+    path: Vec<serde_json::Value>,
+    issues: &mut Vec<ZodIssue>,
+) -> Option<i64> {
+    zod_number_at(
+        got,
+        path,
+        true,
+        Some((MEMORY_MAINTENANCE_CAP_MIN as f64, true)),
+        Some(MEMORY_MAINTENANCE_CAP_MAX as f64),
+        issues,
+    )
+    .map(|n| n as i64)
+}
+
+/// `MemoryMaintenanceCapOverridesSchema` (`z.record(z.string(), cap)`) at
+/// `perCharacterCapOverrides`: a non-object is ONE `invalid_type` `expected
+/// record` issue; each entry's value is checked in input order.
+fn maintenance_overrides_issues(
+    got: &serde_json::Value,
+    issues: &mut Vec<ZodIssue>,
+) -> Option<serde_json::Map<String, serde_json::Value>> {
+    use crate::api::zod_issues::key;
+    let Some(obj) = got.as_object() else {
+        issues.push(ZodIssue::invalid_type(
+            "record",
+            vec![key("perCharacterCapOverrides")],
+            Some(got),
+        ));
+        return None;
+    };
+    let before = issues.len();
+    let mut out = serde_json::Map::new();
+    for (character_id, cap) in obj {
+        if let Some(n) = maintenance_cap_issues(
+            cap,
+            vec![key("perCharacterCapOverrides"), key(character_id)],
+            issues,
+        ) {
+            out.insert(character_id.clone(), n.into());
+        }
+    }
+    (issues.len() == before).then_some(out)
+}
+
+/// The phase toggles at `phases`: a non-object is `invalid_type` `expected
+/// object`; each present key must be a boolean. `defaults` decides whether an
+/// ABSENT key reads as `true` (the settings schema's `.default(true)`) or
+/// stays absent (the PATCH schema — `patchSchemaOf(Toggles)` strips the
+/// defaults). Returns the present / defaulted keys, schema order.
+fn phase_toggle_issues(
+    got: &serde_json::Value,
+    defaults: bool,
+    issues: &mut Vec<ZodIssue>,
+) -> Option<serde_json::Map<String, serde_json::Value>> {
+    use crate::api::zod_issues::key;
+    let Some(obj) = got.as_object() else {
+        issues.push(ZodIssue::invalid_type(
+            "object",
+            vec![key("phases")],
+            Some(got),
+        ));
+        return None;
+    };
+    let before = issues.len();
+    let mut out = serde_json::Map::new();
+    for k in ["foldNearDuplicates", "demote", "retire"] {
+        match obj.get(k) {
+            None if defaults => {
+                out.insert(k.into(), true.into());
+            }
+            None => {}
+            Some(serde_json::Value::Bool(b)) => {
+                out.insert(k.into(), (*b).into());
+            }
+            got => issues.push(ZodIssue::invalid_type(
+                "boolean",
+                vec![key("phases"), key(k)],
+                got,
+            )),
+        }
+    }
+    (issues.len() == before).then_some(out)
+}
+
+/// v4 `MemoryMaintenanceSettingsSchema.safeParse` — the parsed settings or
+/// Zod's issue list in schema key order. `phases` is `.prefault({})`: ABSENT
+/// reads every phase ON (a value stored before the toggles existed); a present
+/// `null` is an issue (a prefault, like a default, replaces `undefined` only).
+/// Unknown keys (the retired merge knobs) are stripped.
+pub fn parse_memory_maintenance_settings(
+    value: &serde_json::Value,
+) -> Result<MemoryMaintenanceSettings, Vec<ZodIssue>> {
+    use crate::api::zod_issues::key;
+    let Some(obj) = value.as_object() else {
+        return Err(vec![ZodIssue::invalid_type("object", vec![], Some(value))]);
+    };
+    let mut issues = Vec::new();
+    let mut out = MemoryMaintenanceSettings::default();
+    match obj.get("enabled") {
+        None => {}
+        Some(serde_json::Value::Bool(b)) => out.enabled = *b,
+        got => issues.push(ZodIssue::invalid_type("boolean", vec![key("enabled")], got)),
+    }
+    if let Some(v) = obj.get("perCharacterCap") {
+        if let Some(n) = maintenance_cap_issues(v, vec![key("perCharacterCap")], &mut issues) {
+            out.per_character_cap = n;
+        }
+    }
+    if let Some(v) = obj.get("perCharacterCapOverrides") {
+        if let Some(m) = maintenance_overrides_issues(v, &mut issues) {
+            out.per_character_cap_overrides = m;
+        }
+    }
+    let phases = obj
+        .get("phases")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(m) = phase_toggle_issues(&phases, true, &mut issues) {
+        let flag = |k: &str| {
+            m.get(k)
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(true)
+        };
+        out.phases = MemoryMaintenancePhaseToggles {
+            fold_near_duplicates: flag("foldNearDuplicates"),
+            demote: flag("demote"),
+            retire: flag("retire"),
+        };
+    }
+    if issues.is_empty() {
+        Ok(out)
+    } else {
+        Err(issues)
+    }
+}
+
+/// v4 `getMemoryMaintenanceSettings()` (`index.ts:266-272`): unwritten → the
+/// defaults SILENTLY; a stored value that fails `JSON.parse` or the schema →
+/// the defaults with v4's WARN `[InstanceSettings] memoryMaintenance failed to
+/// parse — using defaults` `{error}` ([`read_json_setting`]).
+pub fn get_memory_maintenance_settings(main: &Connection) -> MemoryMaintenanceSettings {
+    read_json_setting(
+        main,
+        KEY_MEMORY_MAINTENANCE,
+        |v| parse_memory_maintenance_settings(v).ok(),
+        MemoryMaintenanceSettings::default,
+    )
+}
+
+/// v4 `setMemoryMaintenanceSettings(value)` (`index.ts:274-283`): the current
+/// settings shallow-merged with `patch` (`{...current, ...value}` — a sent
+/// `perCharacterCapOverrides` or `phases` REPLACES the stored one whole),
+/// validated (`writeJsonSetting`'s `schema.parse` — a failure is `Err`
+/// carrying the `ZodError.message` bytes), stored as `JSON.stringify` in schema
+/// key order, and answered.
+pub fn set_memory_maintenance_settings(
+    main: &Connection,
+    patch: &serde_json::Value,
+) -> Result<MemoryMaintenanceSettings, DbError> {
+    let merged = merge_patch(get_memory_maintenance_settings(main).to_json(), patch);
+    let validated = parse_memory_maintenance_settings(&merged)
+        .map_err(|issues| DbError::Internal(crate::api::zod_issues::zod_error_message(&issues)))?;
+    write_setting(
+        main,
+        KEY_MEMORY_MAINTENANCE,
+        &validated.to_json().to_string(),
+    )?;
+    Ok(validated)
+}
+
+/// v4 `MemoryExtractionLimits` (`settings.types.ts:308-322`) — the extraction
+/// rate limiter, instance-wide (`instance_settings.memoryExtractionLimits`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct MemoryExtractionLimits {
+    /// The limiter is active. Off by default.
+    pub enabled: bool,
+    /// Memories one character may accrue per hour (int `1..=10000`, v4
+    /// `c2795733f`'s `.max(10_000)`).
+    pub max_per_hour: i64,
+    /// Fraction of `maxPerHour` where the graduated floor begins (`0..=1`).
+    pub soft_start_fraction: f64,
+    /// Importance floor in the graduated band (`0..=1`).
+    pub soft_floor: f64,
+}
+
+impl Default for MemoryExtractionLimits {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_per_hour: 20,
+            soft_start_fraction: 0.7,
+            soft_floor: 0.7,
+        }
+    }
+}
+
+impl MemoryExtractionLimits {
+    /// v4's JSON, schema key order, numbers JS-rendered.
+    pub fn to_json(&self) -> serde_json::Value {
+        let mut m = serde_json::Map::new();
+        m.insert("enabled".into(), self.enabled.into());
+        m.insert("maxPerHour".into(), self.max_per_hour.into());
+        m.insert(
+            "softStartFraction".into(),
+            super::js_number_to_json(self.soft_start_fraction),
+        );
+        m.insert(
+            "softFloor".into(),
+            super::js_number_to_json(self.soft_floor),
+        );
+        serde_json::Value::Object(m)
+    }
+}
+
+/// v4 `MemoryExtractionLimitsSchema.safeParse` with Zod's issue list — the
+/// `maxPerHour` bound `z.number().int().positive().max(10_000)`.
+pub fn parse_memory_extraction_limits_settings(
+    value: &serde_json::Value,
+) -> Result<MemoryExtractionLimits, Vec<ZodIssue>> {
+    use crate::api::zod_issues::key;
+    let Some(obj) = value.as_object() else {
+        return Err(vec![ZodIssue::invalid_type("object", vec![], Some(value))]);
+    };
+    let mut issues = Vec::new();
+    let mut out = MemoryExtractionLimits::default();
+    match obj.get("enabled") {
+        None => {}
+        Some(serde_json::Value::Bool(b)) => out.enabled = *b,
+        got => issues.push(ZodIssue::invalid_type("boolean", vec![key("enabled")], got)),
+    }
+    if let Some(v) = obj.get("maxPerHour") {
+        if let Some(n) = zod_number_field(
+            v,
+            "maxPerHour",
+            true,
+            Some((0.0, false)),
+            Some(10_000.0),
+            &mut issues,
+        ) {
+            out.max_per_hour = n as i64;
+        }
+    }
+    for (k, slot) in [
+        ("softStartFraction", &mut out.soft_start_fraction),
+        ("softFloor", &mut out.soft_floor),
+    ] {
+        if let Some(v) = obj.get(k) {
+            if let Some(n) =
+                zod_number_field(v, k, false, Some((0.0, true)), Some(1.0), &mut issues)
+            {
+                *slot = n;
+            }
+        }
+    }
+    if issues.is_empty() {
+        Ok(out)
+    } else {
+        Err(issues)
+    }
+}
+
+/// v4 `patchSchemaOf(schema)` (`lib/schemas/patch-schema.ts`, bug 244) over one
+/// field list: every key OPTIONAL and NOT defaulted — "what the caller sent,
+/// and nothing else" — bounds, enums and nullability kept, unknown keys
+/// stripped, output in schema key order. `check(key, value, issues)` answers
+/// the field's parsed value or pushes its issues.
+fn patch_of(
+    value: &serde_json::Value,
+    keys: &[&str],
+    mut check: impl FnMut(&str, &serde_json::Value, &mut Vec<ZodIssue>) -> Option<serde_json::Value>,
+) -> Result<serde_json::Map<String, serde_json::Value>, Vec<ZodIssue>> {
+    let Some(obj) = value.as_object() else {
+        return Err(vec![ZodIssue::invalid_type("object", vec![], Some(value))]);
+    };
+    let mut issues = Vec::new();
+    let mut out = serde_json::Map::new();
+    for k in keys {
+        if let Some(v) = obj.get(*k) {
+            if let Some(parsed) = check(k, v, &mut issues) {
+                out.insert((*k).to_string(), parsed);
+            }
+        }
+    }
+    if issues.is_empty() {
+        Ok(out)
+    } else {
+        Err(issues)
+    }
+}
+
+/// A `z.boolean()` patch field.
+fn bool_field(
+    k: &str,
+    v: &serde_json::Value,
+    issues: &mut Vec<ZodIssue>,
+) -> Option<serde_json::Value> {
+    if v.is_boolean() {
+        Some(v.clone())
+    } else {
+        issues.push(ZodIssue::invalid_type(
+            "boolean",
+            vec![crate::api::zod_issues::key(k)],
+            Some(v),
+        ));
+        None
+    }
+}
+
+/// A number patch field rendered as JS renders it.
+fn number_field(
+    k: &str,
+    v: &serde_json::Value,
+    int: bool,
+    min: Option<(f64, bool)>,
+    max: Option<f64>,
+    issues: &mut Vec<ZodIssue>,
+) -> Option<serde_json::Value> {
+    zod_number_field(v, k, int, min, max, issues).map(super::js_number_to_json)
+}
+
+/// `patchSchemaOf(MemoryConsolidationSettingsSchema)` (bug 244 — the
+/// consolidation-config write and `maintain`'s `settings.consolidation`).
+pub fn parse_memory_consolidation_patch(
+    value: &serde_json::Value,
+) -> Result<serde_json::Map<String, serde_json::Value>, Vec<ZodIssue>> {
+    patch_of(
+        value,
+        &[
+            "enabled",
+            "connectionProfileId",
+            "clusterThreshold",
+            "tfidfClusterThreshold",
+            "minClusterSize",
+            "maxClusterSize",
+            "matureAfterDays",
+            "maxClustersPerRun",
+            "watermark",
+            "coldRetentionDays",
+        ],
+        |k, v, issues| match k {
+            "enabled" => bool_field(k, v, issues),
+            "connectionProfileId" => match v {
+                serde_json::Value::Null | serde_json::Value::String(_) => Some(v.clone()),
+                _ => {
+                    issues.push(ZodIssue::invalid_type(
+                        "string",
+                        vec![crate::api::zod_issues::key(k)],
+                        Some(v),
+                    ));
+                    None
+                }
+            },
+            "clusterThreshold" | "tfidfClusterThreshold" => {
+                number_field(k, v, false, Some((0.0, true)), Some(1.0), issues)
+            }
+            "minClusterSize" | "maxClusterSize" => {
+                number_field(k, v, true, Some((2.0, true)), None, issues)
+            }
+            "matureAfterDays" => number_field(k, v, false, Some((0.0, true)), None, issues),
+            "maxClustersPerRun" | "watermark" => {
+                number_field(k, v, true, Some((0.0, false)), None, issues)
+            }
+            _ => match v {
+                serde_json::Value::Null => Some(serde_json::Value::Null),
+                _ => number_field(k, v, true, Some((0.0, false)), None, issues),
+            },
+        },
+    )
+}
+
+/// `patchSchemaOf(MemoryExtractionModeSettingsSchema)` (bug 244).
+pub fn parse_memory_extraction_mode_patch(
+    value: &serde_json::Value,
+) -> Result<serde_json::Map<String, serde_json::Value>, Vec<ZodIssue>> {
+    patch_of(
+        value,
+        &["otherPass", "perTurnOtherFloor", "foldCandidatesPerSubject"],
+        |k, v, issues| match k {
+            "otherPass" => match v.as_str() {
+                Some(s) if MEMORY_EXTRACTION_OTHER_PASS.contains(&s) => Some(v.clone()),
+                _ => {
+                    issues.push(ZodIssue::invalid_value(
+                        &MEMORY_EXTRACTION_OTHER_PASS,
+                        vec![crate::api::zod_issues::key(k)],
+                    ));
+                    None
+                }
+            },
+            "perTurnOtherFloor" => number_field(k, v, false, Some((0.0, true)), Some(1.0), issues),
+            _ => number_field(k, v, true, Some((0.0, false)), None, issues),
+        },
+    )
+}
+
+/// `patchSchemaOf(MemoryExtractionLimitsSchema)` (bug 244 — the
+/// extraction-limits-config write).
+pub fn parse_memory_extraction_limits_patch(
+    value: &serde_json::Value,
+) -> Result<serde_json::Map<String, serde_json::Value>, Vec<ZodIssue>> {
+    patch_of(
+        value,
+        &["enabled", "maxPerHour", "softStartFraction", "softFloor"],
+        |k, v, issues| match k {
+            "enabled" => bool_field(k, v, issues),
+            "maxPerHour" => number_field(k, v, true, Some((0.0, false)), Some(10_000.0), issues),
+            _ => number_field(k, v, false, Some((0.0, true)), Some(1.0), issues),
+        },
+    )
+}
+
+/// `patchSchemaOf(MemoryMaintenancePhaseTogglesSchema)` at the ROOT (the
+/// patch-schema jest row `{demote: false}` → `{demote: false}`).
+pub fn parse_memory_maintenance_phase_toggles_patch(
+    value: &serde_json::Value,
+) -> Result<serde_json::Map<String, serde_json::Value>, Vec<ZodIssue>> {
+    patch_of(
+        value,
+        &["foldNearDuplicates", "demote", "retire"],
+        bool_field,
+    )
+}
+
+/// The maintenance settings' PATCH: v4's `maintenanceConfigSchema`
+/// (`app/api/v1/memories/route.ts:163-168`) — the ONE maintenance patch schema
+/// at the pin (`patchSchemaOf(MemoryMaintenanceSettingsSchema)` itself has no
+/// caller): `enabled`, `phases` (`patchSchemaOf(Toggles)` — only the sent
+/// toggles; the route merges them into the STORED toggles), `perCharacterCap`
+/// and `perCharacterCapOverrides` (whole), each optional; unknown keys (the
+/// retired merge knobs) stripped. Note the schema's own key ORDER — `enabled,
+/// phases, perCharacterCap, perCharacterCapOverrides` — is the route's, not the
+/// settings schema's.
+pub fn parse_memory_maintenance_patch(
+    value: &serde_json::Value,
+) -> Result<serde_json::Map<String, serde_json::Value>, Vec<ZodIssue>> {
+    patch_of(
+        value,
+        &[
+            "enabled",
+            "phases",
+            "perCharacterCap",
+            "perCharacterCapOverrides",
+        ],
+        |k, v, issues| match k {
+            "enabled" => bool_field(k, v, issues),
+            "phases" => phase_toggle_issues(v, false, issues).map(serde_json::Value::Object),
+            "perCharacterCap" => {
+                maintenance_cap_issues(v, vec![crate::api::zod_issues::key(k)], issues)
+                    .map(serde_json::Value::from)
+            }
+            _ => maintenance_overrides_issues(v, issues).map(serde_json::Value::Object),
+        },
+    )
+}
+
+/// v4 `legacyHousekeepingToMaintenance(raw)` (`lib/memory/settings-legacy.ts:
+/// 29-61`) — the `memoryMaintenance` value carried over from a legacy per-user
+/// `chat_settings.autoHousekeepingSettings` (a JSON string or object): keeps
+/// `enabled`, the cap and the overrides, clamps every cap into the schema's
+/// bounds, drops the retired merge knobs. `None` for anything that is not an
+/// object (a string that fails `JSON.parse`, an array, `null`, a scalar).
+///
+/// The VALUE out is exactly what v4 `JSON.stringify`s: `{enabled,
+/// perCharacterCap, perCharacterCapOverrides}` — NO `phases` (they default at
+/// read time through the schema's `.prefault({})`). `clampCap` is `typeof n
+/// === 'number' ? n : Number(n)` (JS `Number()` over a string / boolean /
+/// `null` — `Number(null)` is 0, clamped up to 100), non-finite → dropped,
+/// else `min(100000, max(100, floor(n)))`; `enabled` is `v.enabled === true`.
+/// An override that cannot be clamped is DROPPED; the rest keep source order
+/// (V8's own-key order, which `JSON.parse` already produced).
+pub fn legacy_housekeeping_to_maintenance(raw: &serde_json::Value) -> Option<serde_json::Value> {
+    let parsed;
+    let value = match raw {
+        serde_json::Value::String(s) => {
+            // `JSON.parse` failure → null (serde refusing what V8 takes — `1e400`,
+            // a lone-surrogate escape — is the recorded `v8_json_parse_message` class).
+            parsed = serde_json::from_str::<serde_json::Value>(s).ok()?;
+            &parsed
+        }
+        other => other,
+    };
+    let v = value.as_object()?;
+    let clamp_cap = |n: &serde_json::Value| -> Option<i64> {
+        let num = match n {
+            serde_json::Value::Number(x) => x.as_f64()?,
+            other => crate::pascal::js_value::to_number(other),
+        };
+        if !num.is_finite() {
+            return None;
+        }
+        Some(
+            (num.floor().max(MEMORY_MAINTENANCE_CAP_MIN as f64))
+                .min(MEMORY_MAINTENANCE_CAP_MAX as f64) as i64,
+        )
+    };
+    // `v.perCharacterCapOverrides && typeof … === 'object'` admits an ARRAY
+    // too: `Object.entries([150, 250])` is `[["0", 150], ["1", 250]]`.
+    let entries: Vec<(String, serde_json::Value)> = match v.get("perCharacterCapOverrides") {
+        Some(serde_json::Value::Object(o)) => v8_own_key_order(o).into_iter().collect(),
+        Some(serde_json::Value::Array(a)) => a
+            .iter()
+            .enumerate()
+            .map(|(i, cap)| (i.to_string(), cap.clone()))
+            .collect(),
+        _ => Vec::new(),
+    };
+    let mut overrides = serde_json::Map::new();
+    for (character_id, cap) in entries {
+        if let Some(clamped) = clamp_cap(&cap) {
+            overrides.insert(character_id, clamped.into());
+        }
+    }
+    let mut out = serde_json::Map::new();
+    out.insert(
+        "enabled".into(),
+        (v.get("enabled") == Some(&serde_json::Value::Bool(true))).into(),
+    );
+    out.insert(
+        "perCharacterCap".into(),
+        v.get("perCharacterCap")
+            .and_then(clamp_cap)
+            .unwrap_or(MEMORY_MAINTENANCE_DEFAULT_CAP)
+            .into(),
+    );
+    out.insert(
+        "perCharacterCapOverrides".into(),
+        serde_json::Value::Object(overrides),
+    );
+    Some(serde_json::Value::Object(out))
+}
+
+/// v4 `DEAD_INSTANCE_SETTING_KEYS` (`settings-legacy.ts:65`): keys a backup may
+/// carry that nothing reads any more.
+pub const DEAD_INSTANCE_SETTING_KEYS: &[&str] = &["memoryExtractionConcurrency"];
+
+/// v4 `withMemoryMaintenanceFromLegacy(instanceSettings, chatSettings)`
+/// (`settings-legacy.ts:77-91`) — the RESTORE twin of the settings move: the
+/// archive's instance-settings rows minus the dead keys; when none carries
+/// `memoryMaintenance`, one DERIVED from the chat-settings row that HAS an
+/// `autoHousekeepingSettings` property (KEY PRESENCE — a `null` value
+/// qualifies, and then derives nothing) — the single user's, else the FIRST
+/// such row (not the latest — the migration's fallback differs, both v4's) —
+/// APPENDED LAST. The backup's own `memoryMaintenance` row wins. No log line.
+pub fn with_memory_maintenance_from_legacy(
+    instance_rows: &[(String, String)],
+    chat_settings_rows: &[serde_json::Value],
+) -> Vec<(String, String)> {
+    let mut rows: Vec<(String, String)> = instance_rows
+        .iter()
+        .filter(|(k, _)| !DEAD_INSTANCE_SETTING_KEYS.contains(&k.as_str()))
+        .cloned()
+        .collect();
+    if rows.iter().any(|(k, _)| k == KEY_MEMORY_MAINTENANCE) {
+        return rows;
+    }
+    let candidates: Vec<&serde_json::Map<String, serde_json::Value>> = chat_settings_rows
+        .iter()
+        .filter_map(serde_json::Value::as_object)
+        .filter(|s| s.contains_key("autoHousekeepingSettings"))
+        .collect();
+    let source = candidates
+        .iter()
+        .find(|s| {
+            s.get("userId").and_then(serde_json::Value::as_str)
+                == Some(crate::services::provisioning::SINGLE_USER_ID)
+        })
+        .or_else(|| candidates.first());
+    let Some(maintenance) =
+        source.and_then(|s| legacy_housekeeping_to_maintenance(&s["autoHousekeepingSettings"]))
+    else {
+        return rows;
+    };
+    rows.push((KEY_MEMORY_MAINTENANCE.to_string(), maintenance.to_string()));
+    rows
+}
+
+// === end P4.D288 ===
+
 #[cfg(test)]
 mod memory_programme_settings_tests {
     use super::*;
@@ -1204,7 +1952,7 @@ mod memory_programme_settings_tests {
         let c = conn();
         assert_eq!(
             get_memory_consolidation_settings(&c).to_json().to_string(),
-            r#"{"enabled":false,"connectionProfileId":null,"clusterThreshold":0.72,"minClusterSize":3,"maxClusterSize":30,"matureAfterDays":7,"maxClustersPerRun":40,"watermark":150,"coldRetentionDays":null}"#
+            r#"{"enabled":false,"connectionProfileId":null,"clusterThreshold":0.72,"tfidfClusterThreshold":0.3,"minClusterSize":3,"maxClusterSize":30,"matureAfterDays":7,"maxClustersPerRun":40,"watermark":150,"coldRetentionDays":null}"#
         );
         assert_eq!(
             get_memory_extraction_mode_settings(&c)
@@ -1235,7 +1983,7 @@ mod memory_programme_settings_tests {
             .unwrap();
         assert_eq!(
             stored,
-            r#"{"enabled":true,"connectionProfileId":null,"clusterThreshold":0.72,"minClusterSize":3,"maxClusterSize":30,"matureAfterDays":7,"maxClustersPerRun":40,"watermark":150,"coldRetentionDays":null}"#
+            r#"{"enabled":true,"connectionProfileId":null,"clusterThreshold":0.72,"tfidfClusterThreshold":0.3,"minClusterSize":3,"maxClusterSize":30,"matureAfterDays":7,"maxClustersPerRun":40,"watermark":150,"coldRetentionDays":null}"#
         );
     }
 

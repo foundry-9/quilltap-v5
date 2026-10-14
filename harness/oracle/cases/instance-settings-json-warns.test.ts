@@ -102,6 +102,8 @@ async function main(): Promise<void> {
     // P4.D265 (v4 `d58548051`).
     memoryConsolidation: settings.getMemoryConsolidationSettings,
     memoryExtractionMode: settings.getMemoryExtractionModeSettings,
+    // P4.D288 (v4 `e0ac7493a`).
+    memoryMaintenance: settings.getMemoryMaintenanceSettings,
   };
 
   await initializeDatabase();

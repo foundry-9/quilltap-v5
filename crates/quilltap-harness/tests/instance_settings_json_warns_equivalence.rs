@@ -63,6 +63,8 @@ fn get(conn: &rusqlite::Connection, key: &str) -> Value {
         // P4.D265 (v4 `d58548051`).
         "memoryConsolidation" => settings::get_memory_consolidation_settings(conn).to_json(),
         "memoryExtractionMode" => settings::get_memory_extraction_mode_settings(conn).to_json(),
+        // P4.D288 (v4 `e0ac7493a`).
+        "memoryMaintenance" => settings::get_memory_maintenance_settings(conn).to_json(),
         other => panic!("no getter for key {other}"),
     }
 }
@@ -164,10 +166,11 @@ fn instance_settings_json_warns_match_oracle() {
     // Every one of v4's `readJsonSetting` keys must be armed on the warning
     // side, and the corpus must keep silence legs, or a trimmed spec goes green.
     // P4.D265: seven (v4 `d58548051` added `memoryConsolidation` and
-    // `memoryExtractionMode`).
+    // `memoryExtractionMode`); P4.D288: eight (v4 `e0ac7493a` added
+    // `memoryMaintenance`).
     assert_eq!(
         keys_warned.len(),
-        7,
+        8,
         "every readJsonSetting key needs a warning arm: {keys_warned:?}"
     );
     assert!(silent >= 5, "every key needs a silence leg");

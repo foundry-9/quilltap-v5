@@ -179837,3 +179837,34 @@ migrationsSkipped: 90}`, none deferred. Measured:
   REAL repository over a migration-shape base built by v4's REAL migration + the repository pass, and a
   bare base): **94 ops, 68 captured lines (incl. silence legs), all equal on the first run.** Seed
   `harness/oracle/fixtures/memory-keystone-tier2.json` (NEW; the round's one keystone seed).
+
+### Unit 2 — C1-5, the settings document (`db/instance_settings.rs` P4.D288 region + crate-root `memory_settings.rs`)
+- Landed: `KEY_MEMORY_MAINTENANCE`, `MEMORY_MAINTENANCE_CAP_MIN` / `_MAX` / `_DEFAULT_CAP`,
+  `MemoryMaintenancePhaseToggles`, `MemoryMaintenanceSettings` (`to_json` in v4's key order with the overrides
+  in V8's own-key order — O-11, measured: `{b, "10", "2", "1", "01"}` emits `1, 2, 10, b, 01`; `cap_for`),
+  `parse_memory_maintenance_settings` (absent `phases` ⇒ all-on, `null` ⇒ an `invalid_type object` issue, the
+  override record's `invalid_type record` issue — measured), `get_` / `set_memory_maintenance_settings`,
+  `MemoryConsolidationSettings.tfidf_cluster_threshold` (+ `Input`, parse, `to_json`), the typed
+  `MemoryExtractionLimits` + `parse_memory_extraction_limits_settings` (`maxPerHour ≤ 10000`) +
+  `get_memory_extraction_limits_settings` (the `Value` getter now parses through it), the bug-244 patch
+  parsers `parse_memory_consolidation_patch` / `_extraction_mode_patch` / `_extraction_limits_patch` /
+  `_maintenance_phase_toggles_patch` / `_maintenance_patch`, `legacy_housekeeping_to_maintenance`,
+  `DEAD_INSTANCE_SETTING_KEYS`, `with_memory_maintenance_from_legacy`; `memory_settings::{MemorySettings,
+  resolve_memory_settings, resolve_memory_maintenance, ResolvedMemoryMaintenance (+ cap_for), …}`.
+- **Spelling departures (recorded):** `parse_memory_maintenance_patch` ports the route's
+  `maintenanceConfigSchema` (`route.ts:163-168`) — the ONE maintenance patch schema at the pin;
+  `patchSchemaOf(MemoryMaintenanceSettingsSchema)` itself has no caller there (its `phases` would keep the
+  toggles' field defaults). The settings façade takes `main: &Connection` (C1-5 wrote `db`) — every getter
+  under it reads a connection. `resolve_memory_settings` also carries the admission thresholds (P4.D289's
+  constants), the default recall tuning and the cosine floors, as v4's `MemorySettings` does.
+- **Found by the family:** v4's `legacyHousekeepingToMaintenance` admits an overrides ARRAY (`typeof … ===
+  'object'`): `[150, 250]` → `{"0":150,"1":250}` — v5 had dropped it; fixed.
+- **Named both-ways table `LEGACY_JSON_NUMBER_OVERFLOW`** (1 row): a hand-edited legacy string carrying `1e400`
+  — V8's `JSON.parse` reads `Infinity` (the cap then defaults); serde refuses the text (the
+  `v8_json_parse_message` class) so v5 translates nothing. `JSON.stringify` never writes such a literal.
+- Families: `memory_settings_schemas_equivalence` GROWN (140 rows: 42 accepted, 84 refused, 14 writes —
+  every `patch-schema.test.ts` row; the route's `maintenanceConfigSchema` rebuilt in the case from v4's
+  exported pieces, v4's own zod loaded by path); NEW `memory_settings_legacy_equivalence` (32 legacy + 9
+  restore rows); NEW `memory_settings_resolve_equivalence` (3 cases, the DEBUG bytes + each getter's WARN);
+  `instance_settings_json_warns_equivalence` GROWN (57 cases, 33 warning / 24 silent, eight keys armed).
+  Two core unit tests re-pinned for `tfidfClusterThreshold` (v4 moved the schema).

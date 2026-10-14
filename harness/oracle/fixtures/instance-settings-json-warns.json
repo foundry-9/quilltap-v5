@@ -1,5 +1,5 @@
 {
-  "$comment": "P4.113 Tier 2 — v4's readJsonSetting (lib/instance-settings/index.ts:130-145) through its REAL getters (five; P4.D265 adds the memoryConsolidation and memoryExtractionMode getters, v4 `d58548051`). Each case stores `raw` under `key` in instance_settings (null = the row absent) and calls the getter: the returned value, and every WARN it logged (message + whether `error` was present). A malformed value per key warns `[InstanceSettings] ${key} failed to parse — using defaults`; a valid value (and an absent row) is SILENT.",
+  "$comment": "P4.113 Tier 2 — v4's readJsonSetting (lib/instance-settings/index.ts:130-145) through its REAL getters (five; P4.D288 adds the memoryMaintenance getter and a maxPerHour-over-10000 limits case; P4.D265 adds the memoryConsolidation and memoryExtractionMode getters, v4 `d58548051`). Each case stores `raw` under `key` in instance_settings (null = the row absent) and calls the getter: the returned value, and every WARN it logged (message + whether `error` was present). A malformed value per key warns `[InstanceSettings] ${key} failed to parse — using defaults`; a valid value (and an absent row) is SILENT.",
   "cases": [
     { "name": "memoryRecall-absent", "key": "memoryRecall", "raw": null },
     { "name": "memoryRecall-valid", "key": "memoryRecall", "raw": "{\"scopePolicy\":\"exclude\",\"expandRelated\":true}" },
@@ -48,6 +48,15 @@
     { "name": "memoryExtractionMode-valid", "key": "memoryExtractionMode", "raw": "{\"otherPass\":\"fold\",\"perTurnOtherFloor\":0.5}" },
     { "name": "memoryExtractionMode-bad-json", "key": "memoryExtractionMode", "raw": "{," },
     { "name": "memoryExtractionMode-non-object", "key": "memoryExtractionMode", "raw": "\"hybrid\"" },
-    { "name": "memoryExtractionMode-bad-field", "key": "memoryExtractionMode", "raw": "{\"otherPass\":\"bogus\"}" }
+    { "name": "memoryExtractionMode-bad-field", "key": "memoryExtractionMode", "raw": "{\"otherPass\":\"bogus\"}" },
+    { "name": "memoryMaintenance-absent", "key": "memoryMaintenance", "raw": null },
+    { "name": "memoryMaintenance-valid", "key": "memoryMaintenance", "raw": "{\"enabled\":true,\"perCharacterCap\":500,\"perCharacterCapOverrides\":{\"a\":150},\"phases\":{\"demote\":false}}" },
+    { "name": "memoryMaintenance-no-phases", "key": "memoryMaintenance", "raw": "{\"enabled\":true,\"perCharacterCap\":2000,\"perCharacterCapOverrides\":{}}" },
+    { "name": "memoryMaintenance-empty-object", "key": "memoryMaintenance", "raw": "{}" },
+    { "name": "memoryMaintenance-bad-json", "key": "memoryMaintenance", "raw": "{not json" },
+    { "name": "memoryMaintenance-non-object", "key": "memoryMaintenance", "raw": "[1]" },
+    { "name": "memoryMaintenance-cap-out-of-bounds", "key": "memoryMaintenance", "raw": "{\"perCharacterCap\":99}" },
+    { "name": "memoryMaintenance-null-phases", "key": "memoryMaintenance", "raw": "{\"phases\":null}" },
+    { "name": "memoryExtractionLimits-max-per-hour-over", "key": "memoryExtractionLimits", "raw": "{\"maxPerHour\":10001}" }
   ]
 }

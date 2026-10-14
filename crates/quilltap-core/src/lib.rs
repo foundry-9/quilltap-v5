@@ -215,6 +215,7 @@ pub mod memory_injector;
 pub mod memory_merge;
 pub mod memory_pools;
 pub mod memory_scoring;
+pub mod memory_settings; // P4.D288 (C1-5)
 pub mod memory_tasks;
 pub mod memory_time;
 pub mod memory_weighting;

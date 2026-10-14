@@ -14,6 +14,13 @@
 //!   setter: the stored TEXT afterwards, the setter's answer, or the thrown
 //!   `ZodError.message`.
 //!
+//! P4.D288 (C1-5, the `83334b9a5` pin) grew the corpus: `tfidfClusterThreshold`,
+//! the `memoryMaintenance` schema (+ its setter's writes), the typed
+//! extraction limits (`maxPerHour ≤ 10000`), and the bug-244 PATCH schemas —
+//! v4's REAL `patchSchemaOf` over four schemas and the route's
+//! `maintenanceConfigSchema` (`schema: "patch:…"` rows, compared as the
+//! present-keys object), every `patch-schema.test.ts` row among them.
+//!
 //! Regenerate + run (a pure tsx oracle, no fixture):
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -52,12 +59,40 @@ fn memory_settings_schemas_match_oracle() {
             "parse" => {
                 let schema = row["schema"].as_str().unwrap();
                 let input = &row["input"];
-                let got: Result<Value, Vec<quilltap_core::api::zod_issues::ZodIssue>> =
-                    if schema == "memoryConsolidation" {
+                let obj = |m: serde_json::Map<String, Value>| Value::Object(m);
+                let got: Result<Value, Vec<quilltap_core::api::zod_issues::ZodIssue>> = match schema
+                {
+                    "memoryConsolidation" => {
                         settings::parse_memory_consolidation_settings(input).map(|s| s.to_json())
-                    } else {
+                    }
+                    "memoryExtractionMode" => {
                         settings::parse_memory_extraction_mode_settings(input).map(|s| s.to_json())
-                    };
+                    }
+                    // P4.D288 (C1-5).
+                    "memoryMaintenance" => {
+                        settings::parse_memory_maintenance_settings(input).map(|s| s.to_json())
+                    }
+                    "memoryExtractionLimits" => {
+                        settings::parse_memory_extraction_limits_settings(input)
+                            .map(|s| s.to_json())
+                    }
+                    "patch:memoryConsolidation" => {
+                        settings::parse_memory_consolidation_patch(input).map(obj)
+                    }
+                    "patch:memoryExtractionMode" => {
+                        settings::parse_memory_extraction_mode_patch(input).map(obj)
+                    }
+                    "patch:memoryExtractionLimits" => {
+                        settings::parse_memory_extraction_limits_patch(input).map(obj)
+                    }
+                    "patch:memoryMaintenancePhaseToggles" => {
+                        settings::parse_memory_maintenance_phase_toggles_patch(input).map(obj)
+                    }
+                    "patch:memoryMaintenanceConfig" => {
+                        settings::parse_memory_maintenance_patch(input).map(obj)
+                    }
+                    other => panic!("unknown schema {other}"),
+                };
                 let label = format!("{schema} {input}");
                 match (row["success"].as_bool().unwrap(), got) {
                     (true, Ok(v)) => {
@@ -96,12 +131,17 @@ fn memory_settings_schemas_match_oracle() {
                     )
                     .unwrap();
                 }
-                let got = if key == "memoryConsolidation" {
-                    settings::set_memory_consolidation_settings(&c, &row["patch"])
-                        .map(|s| s.to_json())
-                } else {
-                    settings::set_memory_extraction_mode_settings(&c, &row["patch"])
-                        .map(|s| s.to_json())
+                let got = match key {
+                    "memoryConsolidation" => {
+                        settings::set_memory_consolidation_settings(&c, &row["patch"])
+                            .map(|s| s.to_json())
+                    }
+                    "memoryMaintenance" => {
+                        settings::set_memory_maintenance_settings(&c, &row["patch"])
+                            .map(|s| s.to_json())
+                    }
+                    _ => settings::set_memory_extraction_mode_settings(&c, &row["patch"])
+                        .map(|s| s.to_json()),
                 };
                 let (answer, error) = match got {
                     Ok(v) => (v, Value::Null),
@@ -140,7 +180,7 @@ fn memory_settings_schemas_match_oracle() {
         failures.join("\n")
     );
     assert!(
-        parsed_rows >= 15 && refused_rows >= 40 && write_rows >= 8,
+        parsed_rows >= 40 && refused_rows >= 80 && write_rows >= 14,
         "the corpus shrank: {parsed_rows} accepted / {refused_rows} refused / {write_rows} writes"
     );
     eprintln!(

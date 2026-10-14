@@ -24,6 +24,12 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — feat(core): P4.D288 unit 2 — the memoryMaintenance settings document, the patch parsers, the legacy translator and resolve_memory_settings (C1-5)
+
+_Versions: core 0.0.1288._
+
+`db::instance_settings` gains v4's `memoryMaintenance` settings at the `83334b9a5` pin: the cap bounds (100 to 100,000, default 2000), `MemoryMaintenancePhaseToggles`, `MemoryMaintenanceSettings` (overrides kept insertion-ordered and emitted in V8's own-key order, `cap_for` as v4's one cap resolver), the parse with Zod's issues (an absent `phases` reads every phase on, `null` is refused), and the getter/setter with v4's merge and WARN. `MemoryConsolidationSettings` gains `tfidfClusterThreshold` (0.30); the extraction limits get a typed parse with `maxPerHour` capped at 10,000. New bug-244 patch parsers (present keys only, schema order) for the consolidation, extraction-mode, extraction-limits and phase-toggle schemas, plus the route's maintenance-config patch. `legacy_housekeeping_to_maintenance` and the restore twin `with_memory_maintenance_from_legacy` port `settings-legacy.ts` (an override array reads as index keys, as v4's does). New crate-root `memory_settings::resolve_memory_settings`, the one settings facade, with v4's DEBUG line. Families: `memory_settings_schemas` grown to 140 rows; new `memory_settings_legacy` (41 rows; one named both-ways row, `LEGACY_JSON_NUMBER_OVERFLOW`) and `memory_settings_resolve` (3 cases); `instance_settings_json_warns` grown to 57 cases.
+
 #### 2026-10-14 — feat(core): P4.D288 unit 1 — the memory extraction cursor repository (C1-1)
 
 _Versions: core 0.0.1287._
