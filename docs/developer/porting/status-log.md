@@ -180580,3 +180580,30 @@ migrationsSkipped: 90}`, none deferred. Measured:
   header, the family re-run alone: ok end-to-end.
 - The order's status header carries every C1 spelling as landed (each verified against the tree) and the six
   departures; the sha is recorded by the follow-up docs commit (P4.D289's `SCORING` precedent).
+
+### Tier 2 item 15 — the twelve mutation proofs (after `KEYSTONE`, no C1 change)
+
+Driver `/tmp/p4d288/mut/mutate.py` (one exact anchor per mutation, the family's sweep run section re-run against
+the pin's oracles, the file restored by `git checkout`, `TREE CLEAN` asserted after the batch). Each RED by name:
+
+| mutation | family red |
+|---|---|
+| the cursor ensure without its DROPs | `memory_extraction_cursors_ensure_matches_v4` |
+| the episode backfill taking the FIRST anchor | `memory_extraction_cursors_ensure_matches_v4` |
+| the vector retire re-quantizing a BLOB | `memory_vector_mirror_retire_ensure_matches_v4` (after the corpus growth below) |
+| the settings move writing `phases` | `memory_maintenance_settings_move_ensure_matches_v4` |
+| the recompute on `log2(count + 1)` | `recompute_reinforced_importance_matches_v4` |
+| the rezone through the strict ISO parser (`clock::iso_to_ms`) | `rezone_legacy_memory_occurred_at_matches_v4` (after the corpus growth below) |
+| retire without bug 201's partition | `memory_retire_matches_v4` |
+| a digest not retired with its last member | `memory_retire_matches_v4` |
+| the store without the length-skip (a mismatched row scored 0 instead of skipped — deleting the skip ALONE is an equivalent mutant: `cosine_similarity` already refuses a length mismatch) | `vector_store_tiers_match_oracle` (`memory_index_tier2` survives — it plants no mismatched row) |
+| the dimension tie flipped (`>` → `>=`) | `vector_store_tiers_match_oracle` (`memory_index_tier2` survives — no tie planted) |
+| `increment_reinforcement` rewinding `lastReinforcedAt` | `memories_tier2_matches_oracle` |
+| a stamp removed from `memory_episode_watermark_repair` | `no_migration_reruns_after_the_v5_chain` (v4 re-runs the id) + `memory_extraction_cursors_ensure_matches_v4` |
+
+**Two SURVIVED the first pass — both corpus gaps, closed in `cases/p4d288-ensures.ts`:** the vector-retire corpus
+held only round BLOB values (a 1e-3 re-quantization is the identity on them) — grown by a full-precision BLOB
+(`0.123456789`, `-1e-7`, `3.4e38`, `0.1 + 0.2`) and a 5-byte BLOB (no multiple of 4; v4's `mirrorBlob` hands the
+Buffer back as-is); the rezone corpus held no form where V8's whole `Date.parse` and a strict ISO parser part
+ways — grown by `…T00:00:00` (zone-less, LOCAL), `.000000Z`, `+00:00`, lowercase `t…z`, `… Z` and `.5Z`. Both
+families regenerated from the pin and GREEN on the port before the re-run; both mutations then RED.

@@ -411,6 +411,13 @@ async function main(): Promise<void> {
           entry.run('textempty', '[]', T0);
           memory(db, 'number');
           entry.run('number', 5, T0);
+          // BLOBs copied BYTE-FOR-BYTE (v4 `mirrorBlob` hands the Buffer back
+          // as-is): full-precision values a re-quantization would move, and a
+          // length that is no multiple of 4.
+          memory(db, 'precise');
+          entry.run('precise', f32([0.123456789, -1e-7, 3.4e38, 0.1 + 0.2]), T0);
+          memory(db, 'oddblob');
+          entry.run('oddblob', Buffer.from([1, 2, 3, 4, 5]), T0);
         },
         'indices-only': (db) => {
           db.exec(memoriesNow);
@@ -506,6 +513,14 @@ async function main(): Promise<void> {
             ['z-santiago-gap', '2022-09-11T00:00:00.000Z'],
             ['z-havana-gap', '2026-03-08T00:00:00.000Z'],
             ['z-garbage', 'T00:00:00 never'],
+            // Where V8's whole `Date.parse` and a strict ISO parser part ways
+            // (the zone-less form reads LOCAL time — UTC under the pinned TZ).
+            ['z-no-zone', '2026-07-14T00:00:00'],
+            ['z-micros', '2026-07-14T00:00:00.000000Z'],
+            ['z-plus-zero', '2026-07-14T00:00:00+00:00'],
+            ['z-lowercase', '2026-07-14t00:00:00z'],
+            ['z-space-zone', '2026-07-14T00:00:00 Z'],
+            ['z-half-second', '2026-07-14T00:00:00.5Z'],
           ];
           for (const [id, occurredAt] of rows) memory(db, id, { occurredAt });
           memory(db, 'z-null');
