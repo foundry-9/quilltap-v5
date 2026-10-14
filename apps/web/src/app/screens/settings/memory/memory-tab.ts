@@ -6,22 +6,32 @@ import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { ConversationSummaryRegenerateCard } from './conversation-summary-regenerate-card';
 import { EmbeddingProfilesCard } from './embedding-profiles/embedding-profiles-card';
 import { MemoryBackfillCard } from './memory-backfill-card';
-import { MemoryConsolidationCard } from './memory-consolidation-card';
-import { MemoryDedupCard } from './memory-dedup-card';
 import { MemoryExtractionGrainCard } from './memory-extraction-grain-card';
-import { MemoryHousekeepingCard } from './memory-housekeeping-card';
+import { MemoryMaintenanceCard } from './memory-maintenance-card';
 import { MemoryRecallCard } from './memory-recall-card';
 import { MemoryRegenerateCard } from './memory-regenerate-card';
+
+/**
+ * v4 `RETIRED_SECTIONS` (`MemorySearchTabContent.tsx:18-22` at `83334b9a5`): the
+ * three cards Phase G folded into Maintenance keep their old `?section=`
+ * anchors (old bookmarks, old help links) — each opens the Maintenance card.
+ */
+const RETIRED_SECTIONS: Record<string, string> = {
+  'memory-housekeeping': 'memory-maintenance',
+  'memory-consolidation': 'memory-maintenance',
+  'memory-deduplication': 'memory-maintenance',
+};
 
 /**
  * The Settings → Memory tab (v4 `components/settings/tabs/
  * MemorySearchTabContent.tsx`, subsystem `commonplace-book`): every
  * CollapsibleCard v4 ships — Embedding Profiles, Repair Missing Embeddings,
- * Housekeeping, Consolidation, Extraction Grain (both new in v4 `d58548051`),
- * Recall Relevance, Memory Deduplication, Regenerate Memories, and Regenerate
- * Conversation Summaries — nine cards in v4's order (`MemorySearchTabContent.tsx:
- * 25-59` at `01a83539d`), on v4's `sectionId` `?section=` deep links, ported
- * verbatim.
+ * Maintenance (v4 `b045dd986`: it replaced Housekeeping, Consolidation and
+ * Memory Deduplication), Extraction Grain, Recall Relevance, Regenerate
+ * Memories, and Regenerate Conversation Summaries — seven cards in v4's order
+ * (`MemorySearchTabContent.tsx:33-61` at `83334b9a5`), on v4's `sectionId`
+ * `?section=` deep links, ported verbatim; a retired anchor is mapped onto its
+ * successor before every `forceOpen` comparison.
  */
 @Component({
   selector: 'qt-settings-memory',
@@ -31,10 +41,8 @@ import { MemoryRegenerateCard } from './memory-regenerate-card';
     ConversationSummaryRegenerateCard,
     EmbeddingProfilesCard,
     MemoryBackfillCard,
-    MemoryConsolidationCard,
-    MemoryDedupCard,
     MemoryExtractionGrainCard,
-    MemoryHousekeepingCard,
+    MemoryMaintenanceCard,
     MemoryRecallCard,
     MemoryRegenerateCard,
   ],
@@ -66,21 +74,12 @@ import { MemoryRegenerateCard } from './memory-regenerate-card';
         </qt-collapsible-card>
 
         <qt-collapsible-card
-          title="Memory Housekeeping"
-          description="Retire stale, low-importance memories to the archive as characters approach their cap"
-          sectionId="memory-housekeeping"
-          [forceOpen]="section() === 'memory-housekeeping'"
+          title="Maintenance"
+          description="Fold repetitions, consolidate into digests, keep each character under the cap, and let old archive notes go"
+          sectionId="memory-maintenance"
+          [forceOpen]="section() === 'memory-maintenance'"
         >
-          <qt-memory-housekeeping-card />
-        </qt-collapsible-card>
-
-        <qt-collapsible-card
-          title="Consolidation"
-          description="Fold clusters of near-duplicate memories into digests, and shelve the originals in the archive"
-          sectionId="memory-consolidation"
-          [forceOpen]="section() === 'memory-consolidation'"
-        >
-          <qt-memory-consolidation-card />
+          <qt-memory-maintenance-card />
         </qt-collapsible-card>
 
         <qt-collapsible-card
@@ -99,15 +98,6 @@ import { MemoryRegenerateCard } from './memory-regenerate-card';
           [forceOpen]="section() === 'memory-recall'"
         >
           <qt-memory-recall-card />
-        </qt-collapsible-card>
-
-        <qt-collapsible-card
-          title="Memory Deduplication"
-          description="Find and remove duplicate memories"
-          sectionId="memory-deduplication"
-          [forceOpen]="section() === 'memory-deduplication'"
-        >
-          <qt-memory-dedup-card />
         </qt-collapsible-card>
 
         <qt-collapsible-card
@@ -139,7 +129,11 @@ export class MemoryTab implements OnInit {
     ? toSignal(this.route.queryParamMap, { requireSync: true })
     : undefined;
 
-  protected readonly section = computed(() => this.queryParams?.().get('section') ?? null);
+  /** v4 `:26-27` — `RETIRED_SECTIONS[requested] ?? requested`. */
+  protected readonly section = computed(() => {
+    const requested = this.queryParams?.().get('section') ?? null;
+    return requested ? (RETIRED_SECTIONS[requested] ?? requested) : null;
+  });
   protected readonly defaultOpen = signal(false);
 
   ngOnInit(): void {

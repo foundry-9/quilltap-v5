@@ -851,6 +851,12 @@ _No crate versions bumped._
 
 The vendored help tree brought to the round's pin, every byte from `git show 83334b9a5:`. Count unchanged at 131: two pages added (`help/memory-maintenance.md`, Phase G's single Maintenance page; `help/scenario-browser.md`, the scenario browser), two retired (`help/memory-consolidation.md`, `help/memory-housekeeping.md`), 21 re-vendored. All 131 files md5-equal to the pin with the same path set. `help_tree_equivalence` and `help_section_size_equivalence` were red at the pin before the copy (content only) and are green after, regenerated from the pin (131 docs, 779 chunks, max section 775 tokens); `help_tree_embed_guard` and `host_help_docs_boot` green before and after with their 131 literals unmoved. Comment-only history lines added to the three help tests. The host re-embeds the tree at build time; its source is unchanged, so no bump.
 
+#### 2026-10-14 — feat(spa): one Maintenance card replaces the housekeeping, consolidation and deduplication surfaces (P4.D300)
+
+_Versions: SPA 0.5.856._
+
+Settings → Memory now shows v4's seven cards: Embedding Profiles, Repair Missing Embeddings, Maintenance, Extraction Grain, Recall Relevance, Regenerate Memories and Regenerate Conversation Summaries. The old `section=memory-housekeeping`, `memory-consolidation` and `memory-deduplication` links open the Maintenance card. A character's memory list offers "Maintenance" (the Memory Maintenance dialog for that character) in place of "Cleanup". Deleted with v4 `b045dd986`: the Housekeeping card, the Consolidation card and its report dialog, the Memory Deduplication card, the housekeeping dialog, their fetchers, the two dedup client methods, and the retired request types (`memoryHousekeep*`, `memoryHousekeepingConfig*`, `memoryConsolidate`, `memoryExtractionConcurrency*`, `memoryDedup*`). `ConsolidationStats` gains `demotedCandidates` and drops `mirrorFilesWritten`; a consolidation report's `skippedReason` is only `no-llm`.
+
 #### 2026-10-14 — feat(spa): extraction rate limits on the Extraction Grain card (P4.D300)
 
 _Versions: SPA 0.5.855._

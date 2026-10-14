@@ -387,3 +387,60 @@ describe('MemoryList — tiers and digests (P4.D276, v4 d58548051)', () => {
     );
   });
 });
+
+/**
+ * P4.D300 — the Maintenance button (v4 `b045dd986`), transcribing v4's
+ * `opens the maintenance dialog for this character`
+ * (`__tests__/unit/components/memory/memory-list.test.tsx:142` at `83334b9a5`).
+ */
+describe('MemoryList — the Maintenance dialog (P4.D300)', () => {
+  it('opens the maintenance dialog for this character (v4 memory-list.test.tsx:142)', async () => {
+    const seen: DispatchReq[] = [];
+    const fixture = await render(stubClient([mem({ id: '1', summary: 'Alpha', content: 'Alpha', source: 'AUTO' })], (r) => seen.push(r)));
+    const button = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Maintenance',
+    ) as HTMLButtonElement;
+    expect(button.getAttribute('title')).toBe('Fold repetitions, consolidate, and keep this character under the cap');
+    button.click();
+    await settle(fixture);
+    const dialog = document.body.querySelector('qt-maintenance-dialog') as HTMLElement;
+    expect(dialog.querySelector('h2')?.textContent).toBe('Memory Maintenance');
+    // Fixed to this character: no picker, and the four pickable phases are offered.
+    expect(dialog.querySelector('#maintenance-target')).toBeNull();
+    expect(dialog.querySelectorAll('input[type="checkbox"]').length).toBe(4);
+    expect(seen.some((r) => r.type === 'memoryCharacterCounts')).toBe(false);
+    TestBed.resetTestingModule();
+  });
+
+  it('no Maintenance button with no memories', async () => {
+    const fixture = await render(stubClient([]));
+    const labels = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button')).map((b) => b.textContent?.trim());
+    expect(labels).not.toContain('Maintenance');
+    expect(labels).not.toContain('Cleanup');
+  });
+
+  it('a queued run re-reads the list from offset 0 and the dialog closes itself', async () => {
+    const seen: DispatchReq[] = [];
+    const client = stubClient([mem({ id: '1' })], (r) => seen.push(r));
+    const base = client.dispatchData!;
+    client.dispatchData = (async (req: DispatchReq) => {
+      if (req.type !== 'memoryMaintain') return base(req as never);
+      seen.push(req);
+      return { success: true, dryRun: false, jobId: 'j', jobIds: ['j'] };
+    }) as CoreClient['dispatchData'];
+    const fixture = await render(client);
+    (Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Maintenance') as HTMLButtonElement).click();
+    await settle(fixture);
+    const before = seen.filter((r) => r.type === 'memoryList').length;
+    const dialog = document.body.querySelector('qt-maintenance-dialog') as HTMLElement;
+    (Array.from(dialog.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Run for real') as HTMLButtonElement).click();
+    await settle(fixture, 10);
+    expect(JSON.stringify(seen.find((r) => r.type === 'memoryMaintain'))).toBe(
+      '{"type":"memoryMaintain","options":{"characterId":"c1","phases":["fold-near-duplicates","consolidate","demote","retire"],"dryRun":false}}',
+    );
+    const reads = seen.filter((r) => r.type === 'memoryList');
+    expect(reads.length).toBeGreaterThan(before);
+    expect(reads[reads.length - 1].offset).toBe(0);
+    expect(document.body.querySelector('qt-maintenance-dialog')).toBeNull();
+  });
+});

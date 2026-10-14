@@ -2646,8 +2646,6 @@ export type CoreRequest =
   | EmbeddingProfileListProvidersRequest
   | EmbeddingProfileListModelsRequest
   | EmbeddingProfileFetchModelsRequest
-  | MemoryDedupPreviewRequest
-  | MemoryDedupRunRequest
   | ConversationSummariesRegenerateStatusRequest
   | ConversationSummariesRegenerateRequest
   | ChatAnnouncementPostRequest
@@ -5985,66 +5983,7 @@ export interface MemoryByMessageRequest {
   messageId: string;
 }
 
-// --- Housekeeping -----------------------------------------------------------
-
-/** One line of a housekeeping preview/run detail (v4 `HousekeepingDetail`). */
-export interface HousekeepingDetail {
-  memoryId: string;
-  action: 'deleted' | 'demoted' | 'merged' | 'kept';
-  reason: string;
-  summary?: string;
-}
-
-/** The preview shape (v4 GET `action=housekeep` → `data.preview`). */
-export interface HousekeepingPreview {
-  /** P4.D276 — rows housekeeping would ARCHIVE (v4 `housekeeping-dialog.tsx:15`). */
-  wouldDemote: number;
-  wouldDelete: number;
-  /** The server still sends it (v4 `route.ts:754`); v4's client type dropped it and nothing renders it. */
-  wouldMerge?: number;
-  wouldKeep: number;
-  totalBefore: number;
-  totalAfter: number;
-  coldCount?: number;
-  details: HousekeepingDetail[];
-}
-
-/** The run result (v4 POST `action=housekeep` → `data.result`; `details` only when dryRun). */
-export interface HousekeepingResult {
-  /** P4.D276 — v4's success toast reads `result.demoted ?? 0`; absent on a pre-round server. */
-  demoted?: number;
-  deleted: number;
-  merged: number;
-  kept: number;
-  totalBefore: number;
-  totalAfter: number;
-  coldCount?: number;
-  demotedIds?: string[];
-  deletedIds: string[];
-  mergedIds: string[];
-  details?: HousekeepingDetail[];
-}
-
-/** The run options bag (v4 `housekeepingOptionsSchema`, incl. `dryRun`). */
-export interface MemoryHousekeepOptions {
-  characterId: string;
-  maxMemories?: number;
-  maxAgeMonths?: number;
-  minImportance?: number;
-  /** Retired by v4 `d58548051`; the server accepts and ignores it; the SPA never sends it. */
-  mergeSimilar?: boolean;
-  dryRun?: boolean;
-}
-
-/** The instance-wide housekeeping config (v4 defaults injected on Get). */
-export interface HousekeepingConfig {
-  enabled: boolean;
-  perCharacterCap: number;
-  perCharacterCapOverrides: Record<string, number>;
-  autoMergeSimilarThreshold: number;
-  /** Retired by v4 `d58548051`; the server accepts and ignores it; the SPA never sends it. */
-  mergeSimilar: boolean;
-}
+// --- Character memory counts ---------------------------------------------
 
 /**
  * One row of the character memory-count roster, sorted `demotable` desc, then
@@ -6064,30 +6003,6 @@ export interface CharacterMemoryCount {
   cold?: number;
 }
 
-export interface MemoryHousekeepPreviewRequest {
-  type: 'memoryHousekeepPreview';
-  characterId: string;
-  maxMemories?: number;
-  maxAgeMonths?: number;
-  minImportance?: number;
-  /** Retired by v4 `d58548051`; the server accepts and ignores it; the SPA never sends it. */
-  mergeSimilar?: boolean;
-}
-export interface MemoryHousekeepRequest {
-  type: 'memoryHousekeep';
-  options: MemoryHousekeepOptions;
-}
-export interface MemoryHousekeepSweepRequest {
-  type: 'memoryHousekeepSweep';
-}
-export interface MemoryHousekeepingConfigGetRequest {
-  type: 'memoryHousekeepingConfigGet';
-}
-export interface MemoryHousekeepingConfigSetRequest {
-  type: 'memoryHousekeepingConfigSet';
-  /** Merge-patch: send only changed fields. */
-  config: Partial<HousekeepingConfig>;
-}
 export interface MemoryCharacterCountsRequest {
   type: 'memoryCharacterCounts';
 }
@@ -6161,13 +6076,6 @@ export interface MemoryRecallConfigGetRequest {
 export interface MemoryRecallConfigSetRequest {
   type: 'memoryRecallConfigSet';
   config: Partial<RecallConfig>;
-}
-export interface MemoryExtractionConcurrencyGetRequest {
-  type: 'memoryExtractionConcurrencyGet';
-}
-export interface MemoryExtractionConcurrencySetRequest {
-  type: 'memoryExtractionConcurrencySet';
-  concurrency: number;
 }
 
 // --- Regenerate + per-chat --------------------------------------------------
@@ -6277,6 +6185,8 @@ export interface ConsolidationClusterReport {
 export interface ConsolidationStats {
   rowsLoaded: number;
   candidates: number;
+  /** Candidates that are cold (archived) rows (v4 `consolidation.ts:148-177` at `83334b9a5`, C3 §1). */
+  demotedCandidates: number;
   digestsLoaded: number;
   immatureSkipped: number;
   noEmbeddingSkipped: number;
@@ -6298,7 +6208,6 @@ export interface ConsolidationStats {
   contradictionsApplied: number;
   rowsMarkedConsidered: number;
   linksRewired: number;
-  mirrorFilesWritten: number;
   /** True when the run stopped issuing calls because its time budget ran out. */
   budgetExhausted: boolean;
   durationMs: number;
@@ -6315,8 +6224,12 @@ export interface ConsolidationReport {
   settings: MemoryConsolidationConfig;
   clusters: ConsolidationClusterReport[];
   stats: ConsolidationStats;
-  /** Set when the run did nothing at all, and why. */
-  skippedReason?: 'character-not-found' | 'archived' | 'no-llm';
+  /**
+   * Set when the run did nothing at all, and why. Narrowed to `'no-llm'` at
+   * `83334b9a5` (C3 §1) — the character-level skips moved up to
+   * {@link MaintenanceReport.skippedReason}.
+   */
+  skippedReason?: 'no-llm';
 }
 
 /** v4 GET `/api/v1/memories?action=consolidation-config` → `{ success, settings }`. */
@@ -6336,21 +6249,6 @@ export interface MemoryExtractionModeConfigGetRequest {
 export interface MemoryExtractionModeConfigSetRequest {
   type: 'memoryExtractionModeConfigSet';
   config: Partial<MemoryExtractionModeConfig>;
-}
-/**
- * v4 POST `?action=consolidate` → `{ success, dryRun: true, report }` |
- * `{ success, dryRun: false, jobId }`.
- */
-export interface MemoryConsolidateRequest {
-  type: 'memoryConsolidate';
-  options: {
-    characterId: string;
-    dryRun?: boolean;
-    /** int 1..1000 */
-    maxClustersPerRun?: number;
-    /** 0..1 */
-    clusterThreshold?: number;
-  };
 }
 // === end ===
 
@@ -6564,11 +6462,6 @@ export type MemoryRequest =
   | MemorySearchRequest
   | MemoryCountByChatRequest
   | MemoryByMessageRequest
-  | MemoryHousekeepPreviewRequest
-  | MemoryHousekeepRequest
-  | MemoryHousekeepSweepRequest
-  | MemoryHousekeepingConfigGetRequest
-  | MemoryHousekeepingConfigSetRequest
   | MemoryCharacterCountsRequest
   | MemoryEmbeddingStatusRequest
   | MemoryGenerateEmbeddingsRequest
@@ -6579,8 +6472,6 @@ export type MemoryRequest =
   | MemoryExtractionLimitsSetRequest
   | MemoryRecallConfigGetRequest
   | MemoryRecallConfigSetRequest
-  | MemoryExtractionConcurrencyGetRequest
-  | MemoryExtractionConcurrencySetRequest
   | MemoryRegenerateAllStatusRequest
   | MemoryRegenerateAllRequest
   | ChatQueueMemoriesRequest
@@ -6589,7 +6480,6 @@ export type MemoryRequest =
   | MemoryConsolidationConfigSetRequest
   | MemoryExtractionModeConfigGetRequest
   | MemoryExtractionModeConfigSetRequest
-  | MemoryConsolidateRequest
   // === end ===
   // === P4.D300: the 83334b9a5 memory verbs (C3 §1) ===
   | MemoryMaintainRequest
@@ -8752,7 +8642,9 @@ export interface BrahmaConsoleSettingsUpdateRequest {
 // response BODIES (`Response::EmbeddingProfile(Value)` for the eleven profile
 // verbs, `Response::MemoryMaintenance(Value)` for the four dedup/summaries
 // verbs), so the DTO shapes below mirror v4's route JSON name-for-name and each
-// helper reads its fields defensively.
+// helper reads its fields defensively. (The two Memory Deduplication verbs
+// retired with v4 `104e986c7` / `b045dd986` — their types and client methods
+// left with them, P4.D300.)
 // ===========================================================================
 
 /**
@@ -8824,32 +8716,6 @@ export interface EmbeddingProviderInfoDto {
   requiresApiKey: boolean;
   requiresBaseUrl: boolean;
   description?: string;
-}
-
-/** One character's row in a dedup preview/result (v4 `CharacterResult`). */
-export interface DedupCharacterResult {
-  characterId: string;
-  characterName: string;
-  originalCount: number;
-  withEmbeddings: number;
-  withoutEmbeddings: number;
-  clustersFound: number;
-  memoriesInClusters: number;
-  removedCount: number;
-  mergedDetailCount: number;
-  finalCount: number;
-}
-
-/** The dedup preview / result payload (v4 `DedupPreview`). */
-export interface DedupPreviewDto {
-  threshold: number;
-  dryRun: boolean;
-  characters: DedupCharacterResult[];
-  totalOriginal: number;
-  totalRemoved: number;
-  totalMergedDetails: number;
-  totalFinal: number;
-  processedAt: string;
 }
 
 /** The conversation-summaries in-flight status (v4 GET `{inFlight}`). */
@@ -8951,18 +8817,6 @@ export interface EmbeddingProfileFetchModelsRequest {
   type: 'embeddingProfileFetchModels';
   provider: string;
   baseUrl?: string;
-}
-
-/** v4 GET `/api/v1/system/tools?action=memory-dedup-preview` → `{success, result}`. */
-export interface MemoryDedupPreviewRequest {
-  type: 'memoryDedupPreview';
-  threshold?: number;
-}
-
-/** v4 POST `/api/v1/system/tools?action=memory-dedup` → `{success, result}`. */
-export interface MemoryDedupRunRequest {
-  type: 'memoryDedupRun';
-  threshold?: number;
 }
 
 /** v4 GET `/api/v1/system/conversation-summaries?action=regenerate` → `{success, inFlight}`. */

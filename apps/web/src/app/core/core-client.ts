@@ -20,7 +20,6 @@ import {
   type EmbeddingModelDto,
   type EmbeddingProfileCreateRequest,
   type EmbeddingProfileUpdateRequest,
-  type DedupPreviewDto,
 } from './core-contract';
 import {
   type ConnectionState,
@@ -373,19 +372,7 @@ export class CoreClient {
     await this.dispatchData({ type: 'embeddingProfileReapply', profileId });
   }
 
-  // === P4.9H2B: memory maintenance (§1) — dedup + summaries regen ===
-
-  /** v4 GET `?action=memory-dedup-preview` → `{success, result}` (the DedupPreview). */
-  async memoryDedupPreview(threshold?: number): Promise<DedupPreviewDto> {
-    const data = await this.dispatchData({ type: 'memoryDedupPreview', threshold });
-    return (data['result'] as DedupPreviewDto | undefined) ?? (data as unknown as DedupPreviewDto);
-  }
-
-  /** v4 POST `?action=memory-dedup` → `{success, result}` (the applied DedupPreview). */
-  async memoryDedupRun(threshold?: number): Promise<DedupPreviewDto> {
-    const data = await this.dispatchData({ type: 'memoryDedupRun', threshold });
-    return (data['result'] as DedupPreviewDto | undefined) ?? (data as unknown as DedupPreviewDto);
-  }
+  // === P4.9H2B: memory maintenance (§1) — summaries regen (the dedup pair retired with v4 `104e986c7`, P4.D300 L-9) ===
 
   /** v4 GET `/system/conversation-summaries?action=regenerate` → the in-flight count. */
   async conversationSummariesStatus(): Promise<number> {

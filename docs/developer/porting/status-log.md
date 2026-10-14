@@ -184161,3 +184161,43 @@ worktree for the session — same volume, same rules).
    selector is scoped to the card's own grid (the section brings a second
    one). **Red-first:** the grain card's mount row red on main's card (1);
    the section is new — mutation-proved (no snap-back: 1 arm red).
+10. **The switch: seven cards, the Maintenance button, the deletions**
+    (`b045dd986`, `104e986c7`). `memory-tab.ts`: seven cards in v4's order
+    (Maintenance after Repair Missing Embeddings), v4's `RETIRED_SECTIONS`
+    applied to `section` before every `forceOpen` comparison;
+    `memory-tab.spec.ts` re-pinned (nine → seven) + one row per retired
+    anchor + a pass-through row. `memory-list.ts` (L-15): **Maintenance** /
+    v4's title, the fixed dialog with `[characterId]` only (bare title), the
+    queued handler re-reading from offset 0 (the dialog closes itself);
+    v4's `memory-list.test.tsx:142` transcribed + 2 own rows. DELETED (survey
+    §2): `memory-housekeeping-card.ts` (+spec), `memory-consolidation-card.ts`
+    (+spec), `memory-consolidation-report-dialog.ts` (+spec),
+    `memory-dedup-card.ts` (+spec), `memory/housekeeping-dialog.ts` (+spec);
+    `memory.api.ts`'s `housekeepingConfig` key and six helpers
+    (`fetchHousekeepingPreview`, `runHousekeeping`, `fetchHousekeepingConfig`,
+    `setHousekeepingConfig`, `runHousekeepingSweep`, `consolidateMemories`)
+    + their two spec rows; `core-client.ts`'s `memoryDedupPreview` /
+    `memoryDedupRun` (L-9); in `core-contract.ts` the Housekeeping region
+    (`HousekeepingDetail` / `Preview` / `Result`, `MemoryHousekeepOptions`,
+    `HousekeepingConfig`, the five `MemoryHousekeep*` /
+    `MemoryHousekeepingConfig*` requests — `CharacterMemoryCount` and
+    `MemoryCharacterCountsRequest` kept), `MemoryExtractionConcurrency{Get,Set}Request`,
+    `MemoryConsolidateRequest`, `DedupCharacterResult` / `DedupPreviewDto`,
+    `MemoryDedup{Preview,Run}Request` and every union member. In place:
+    `ConsolidationStats` + `demotedCandidates` / − `mirrorFilesWritten`;
+    `ConsolidationReport.skippedReason` → `'no-llm'` (the report's
+    `CONSOLIDATION_SKIP_TEXT` now types against it). **The census** (`grep
+    -rn "Housekeep\|housekeep\|Dedup\|memoryConsolidate'\|ExtractionConcurrency"
+    apps/web/src`): residue is comments only (the history notes in the
+    tab / card / list / contract docs; `layout/activity-kinds.ts`'s `Mem`
+    title — byte-identical at the pin, L-11; `realtime.types.ts:51`,
+    `chat/*`, `data-retention-settings.ts` unrelated prose;
+    `search.logic.ts`'s `appendDeduped`) plus the help slug, moved in unit
+    12. **Red-first on main:** tab 5 of 6 (the pass-through row green by
+    construction); list 2 of 3 (the no-memories row green by construction).
+    **P4.D276's OPEN items retiring with the deleted files:** the
+    consolidation card's "no realtime subscription — the roster stays
+    stale" note (R-J; the counts now refresh through R-AB), the report
+    dialog's three-way `skippedReason` table, the housekeeping dialog's
+    `capUsed` / preview shape; the grain card's (R-E / R-F / R-J) carry on.
+    `npm run build` green; vitest 501 files / 9,537.

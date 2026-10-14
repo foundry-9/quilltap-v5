@@ -13,16 +13,11 @@ import type {
   BackfillProgress,
   CharacterMemoryCount,
   MaintenanceLedgerStatus,
-  ConsolidationReport,
-  HousekeepingConfig,
-  HousekeepingPreview,
-  HousekeepingResult,
   MemoryConsolidationConfig,
   MemoryCreateReply,
   MemoryDto,
   MemoryExtractionLimitsConfig,
   MemoryExtractionModeConfig,
-  MemoryHousekeepOptions,
   MemoryListRequest,
   MemoryMaintainOptions,
   MemoryMaintainReply,
@@ -40,7 +35,6 @@ export const memoryKeys = {
       ? (['memories', 'list', characterId, filters] as const)
       : (['memories', 'list', characterId] as const),
   backfill: () => ['memories', 'backfill'] as const,
-  housekeepingConfig: () => ['memories', 'housekeeping-config'] as const,
   characterCounts: () => ['memories', 'character-counts'] as const,
   /** Every per-chat count (the unscoped `memories` hint's prefix). */
   chatCounts: () => ['memories', 'chat-count'] as const,
@@ -124,31 +118,6 @@ export async function deleteMemory(core: CoreClient, memoryId: string): Promise<
   await core.dispatchData({ type: 'memoryDelete', memoryId });
 }
 
-// --- Housekeeping (per-character dialog) ------------------------------------
-
-/** GET the housekeeping preview (v4 `action=housekeep` GET → `data.preview`). */
-export async function fetchHousekeepingPreview(
-  core: CoreClient,
-  params: {
-    characterId: string;
-    maxMemories?: number;
-    maxAgeMonths?: number;
-    minImportance?: number;
-  },
-): Promise<HousekeepingPreview> {
-  const data = await core.dispatchData({ type: 'memoryHousekeepPreview', ...params });
-  return (data['preview'] as HousekeepingPreview) ?? (data as unknown as HousekeepingPreview);
-}
-
-/** POST the housekeeping run (v4 `action=housekeep` POST → `data.result`). */
-export async function runHousekeeping(
-  core: CoreClient,
-  options: MemoryHousekeepOptions,
-): Promise<HousekeepingResult> {
-  const data = await core.dispatchData({ type: 'memoryHousekeep', options });
-  return (data['result'] as HousekeepingResult) ?? (data as unknown as HousekeepingResult);
-}
-
 // --- Settings cards ---------------------------------------------------------
 
 /** GET the instance-wide backfill progress. */
@@ -172,33 +141,13 @@ export async function startBackfill(
   };
 }
 
-/** GET the housekeeping config (v4 defaults injected server-side). */
-export async function fetchHousekeepingConfig(core: CoreClient): Promise<HousekeepingConfig | null> {
-  const data = await core.dispatchData({ type: 'memoryHousekeepingConfigGet' });
-  return (data['settings'] as HousekeepingConfig | undefined) ?? null;
-}
-
-/** POST a housekeeping-config merge-patch (send only changed fields). */
-export async function setHousekeepingConfig(
-  core: CoreClient,
-  config: Partial<HousekeepingConfig>,
-): Promise<HousekeepingConfig | null> {
-  const data = await core.dispatchData({ type: 'memoryHousekeepingConfigSet', config });
-  return (data['settings'] as HousekeepingConfig | undefined) ?? null;
-}
-
-/** GET the per-character memory-count roster (memoryCount desc). */
+/** GET the per-character memory-count roster (demotable desc, then memoryCount desc — the server's order, L-12). */
 export async function fetchCharacterMemoryCounts(
   core: CoreClient,
 ): Promise<CharacterMemoryCount[]> {
   const data = await core.dispatchData({ type: 'memoryCharacterCounts' });
   const raw = data['characters'];
   return Array.isArray(raw) ? (raw as CharacterMemoryCount[]) : [];
-}
-
-/** POST a global housekeeping sweep (enqueues a background job). */
-export async function runHousekeepingSweep(core: CoreClient): Promise<void> {
-  await core.dispatchData({ type: 'memoryHousekeepSweep' });
 }
 
 /** GET the recall config (v4 defaults merged client-side). */
@@ -273,25 +222,6 @@ export async function setExtractionModeConfig(
 ): Promise<Partial<MemoryExtractionModeConfig> | null> {
   const data = await core.dispatchData({ type: 'memoryExtractionModeConfigSet', config: patch });
   return (data['settings'] as Partial<MemoryExtractionModeConfig> | undefined) ?? null;
-}
-
-/**
- * POST a consolidation for one character (v4 `?action=consolidate`). v4 posts
- * ONLY `{ characterId, dryRun }` (`memory-consolidation-card.tsx:165`); a dry
- * run answers `{ report }`, a real one `{ jobId }`.
- */
-export async function consolidateMemories(
-  core: CoreClient,
-  options: { characterId: string; dryRun: boolean },
-): Promise<{ report?: ConsolidationReport; jobId?: string }> {
-  const data = await core.dispatchData({
-    type: 'memoryConsolidate',
-    options: { characterId: options.characterId, dryRun: options.dryRun },
-  });
-  return {
-    report: data['report'] as ConsolidationReport | undefined,
-    jobId: data['jobId'] as string | undefined,
-  };
 }
 
 // --- Maintenance (P4.D300, v4 `b045dd986` at `83334b9a5`) -------------------

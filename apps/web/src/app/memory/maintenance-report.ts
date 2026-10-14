@@ -47,7 +47,7 @@ export const REPORT_SKIP_TEXT: Record<NonNullable<MaintenanceReport['skippedReas
 };
 
 /** v4 `CONSOLIDATION_SKIP_TEXT` (`:34-36`). */
-export const CONSOLIDATION_SKIP_TEXT: Record<'no-llm', string> = {
+export const CONSOLIDATION_SKIP_TEXT: Record<NonNullable<ConsolidationReport['skippedReason']>, string> = {
   'no-llm':
     'No model is available to do the consolidating. Name a connection profile, or configure the cheap LLM.',
 };
@@ -136,7 +136,7 @@ function consolidationView(report: ConsolidationReport): {
 } {
   const s = report.stats;
   return {
-    skipped: report.skippedReason ? CONSOLIDATION_SKIP_TEXT[report.skippedReason as 'no-llm'] ?? null : null,
+    skipped: report.skippedReason ? CONSOLIDATION_SKIP_TEXT[report.skippedReason] : null,
     stats: [
       { label: 'Notes considered', value: s.candidates },
       // `48790fb73`: "Clusters worth folding" over `clustersQualified` (was

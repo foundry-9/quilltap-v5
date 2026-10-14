@@ -17,7 +17,7 @@ import { CoreClient } from '../core/core-client';
 import type { MemoryDto, MemorySortBy, MemorySortOrder } from '../core/core-contract';
 import { SectionHeader } from '../ui/section-header';
 import { fetchMemories, fetchMemory, memoryKeys, type MemoryListPage } from './memory.api';
-import { HousekeepingDialog } from './housekeeping-dialog';
+import { MaintenanceDialog } from './maintenance-dialog';
 import { MemoryCard } from './memory-card';
 import { MemoryDigestViewer } from './memory-digest-viewer';
 import { MemoryEditor } from './memory-editor';
@@ -40,9 +40,10 @@ type TierFilter = 'ALL' | 'hot' | 'cold';
  * create/edit editor. Appended pages are deduped by id (offset instability during
  * a regenerate sweep — v4 parity). Delete is confirmed inline.
  *
- * The "Cleanup" housekeeping dialog lands in the P4.6t housekeeping unit; the
- * Source link on a card navigates to the source chat (deep message anchoring is
- * a P4.6t deferral). An archived card's `Superseded by a digest` opens the
+ * The "Maintenance" button opens the Memory Maintenance dialog fixed to this
+ * character (v4 `b045dd986`; it replaced "Cleanup" and the housekeeping dialog
+ * — the title is bare, as v4 passes no name). The Source link on a card
+ * navigates to the source chat (deep message anchoring is a P4.6t deferral). An archived card's `Superseded by a digest` opens the
  * digest in v4's viewer (`memoryGet`, v4 `handleViewDigest` `:195-205`).
  *
  * **Recorded divergence (P4.D276 R-A):** v4's list never passes
@@ -52,7 +53,7 @@ type TierFilter = 'ALL' | 'hot' | 'cold';
 @Component({
   selector: 'qt-memory-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SectionHeader, MemoryCard, MemoryDigestViewer, MemoryEditor, HousekeepingDialog],
+  imports: [SectionHeader, MemoryCard, MemoryDigestViewer, MemoryEditor, MaintenanceDialog],
   template: `
     <div class="space-y-4">
       @if (banner(); as msg) {
@@ -70,10 +71,10 @@ type TierFilter = 'ALL' | 'hot' | 'cold';
           <button
             type="button"
             class="px-3 py-1.5 qt-bg-muted qt-body text-sm rounded-lg qt-hover-accent"
-            title="Clean up old and low-importance memories"
-            (click)="showHousekeeping.set(true)"
+            title="Fold repetitions, consolidate, and keep this character under the cap"
+            (click)="showMaintenance.set(true)"
           >
-            Cleanup
+            Maintenance
           </button>
         }
       </div>
@@ -203,11 +204,11 @@ type TierFilter = 'ALL' | 'hot' | 'cold';
       <qt-memory-digest-viewer [memory]="digest" (close)="viewedDigest.set(null)" />
     }
 
-    @if (showHousekeeping()) {
-      <qt-housekeeping-dialog
+    @if (showMaintenance()) {
+      <qt-maintenance-dialog
         [characterId]="characterId()"
-        (close)="showHousekeeping.set(false)"
-        (complete)="onHousekeepingComplete()"
+        (close)="showMaintenance.set(false)"
+        (queued)="onMaintenanceQueued()"
       />
     }
 
@@ -257,7 +258,7 @@ export class MemoryList {
   protected readonly viewedDigest = signal<MemoryDto | null>(null);
 
   protected readonly showEditor = signal(false);
-  protected readonly showHousekeeping = signal(false);
+  protected readonly showMaintenance = signal(false);
   protected readonly editingMemory = signal<MemoryDto | null>(null);
   protected readonly pendingDeleteId = signal<string | null>(null);
   protected readonly deletingId = signal<string | null>(null);
@@ -404,8 +405,12 @@ export class MemoryList {
     }
   }
 
-  protected onHousekeepingComplete(): void {
-    this.showHousekeeping.set(false);
+  /**
+   * v4 `handleMaintenanceQueued` (`:232-235`): a real run is queued and works in
+   * the background; re-read the list from the first page so anything it has
+   * already finished shows. The dialog closes itself.
+   */
+  protected onMaintenanceQueued(): void {
     void this.queryClient.invalidateQueries({ queryKey: memoryKeys.list(this.characterId()) });
   }
 
