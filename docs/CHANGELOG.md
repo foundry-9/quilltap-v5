@@ -851,6 +851,12 @@ _No crate versions bumped._
 
 The vendored help tree brought to the round's pin, every byte from `git show 83334b9a5:`. Count unchanged at 131: two pages added (`help/memory-maintenance.md`, Phase G's single Maintenance page; `help/scenario-browser.md`, the scenario browser), two retired (`help/memory-consolidation.md`, `help/memory-housekeeping.md`), 21 re-vendored. All 131 files md5-equal to the pin with the same path set. `help_tree_equivalence` and `help_section_size_equivalence` were red at the pin before the copy (content only) and are green after, regenerated from the pin (131 docs, 779 chunks, max section 775 tokens); `help_tree_embed_guard` and `host_help_docs_boot` green before and after with their 131 literals unmoved. Comment-only history lines added to the three help tests. The host re-embeds the tree at build time; its source is unchanged, so no bump.
 
+#### 2026-10-14 — feat(spa): one memory settings-document helper and the maintenance / extraction-limits fetchers (P4.D300)
+
+_Versions: SPA 0.5.849._
+
+`injectMemorySettingsDocument` is the twin of v4's `useMemorySettingsDocument` hook: it reads one instance-wide memory settings document through TanStack Query, seeds the form over the defaults, saves one patch at a time, shows the server's echo over the defaults, invalidates its key, and toasts `<Noun> saved` or the read / write error text. `memory.api.ts` gains v4's `maintenance-config`, `extraction-limits-config` and `maintenance-status` query keys and the helpers for the maintenance settings, the extraction limits, the ledger and `memoryMaintain`.
+
 #### 2026-10-14 — feat(spa): the memory contract family of v4 83334b9a5, and the editor's "Already on file" toast (P4.D300)
 
 _Versions: SPA 0.5.848._

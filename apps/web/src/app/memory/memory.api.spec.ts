@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import type { CoreClient } from '../core/core-client';
 import {
+  createMemory,
+  fetchExtractionLimits,
+  fetchMaintenanceConfig,
+  fetchMaintenanceStatus,
+  runMaintenance,
+  setExtractionLimits,
+  setMaintenanceConfig,
   consolidateMemories,
   fetchConsolidationConfig,
   fetchExtractionModeConfig,
@@ -112,5 +119,58 @@ describe('memory.api — the d58548051 surface (P4.D276)', () => {
       { type: 'memoryConsolidate', options: { characterId: 'c1', dryRun: false } },
     ]);
     expect(queued).toEqual({ report: undefined, jobId: 'job-9' });
+  });
+});
+
+/**
+ * P4.D300 — the `83334b9a5` maintenance surface (C3 §1 / C2): v4's key bytes
+ * (`lib/query/keys.ts`, `b045dd986`) and each helper's exact request.
+ */
+describe('memory.api — the 83334b9a5 maintenance surface (P4.D300)', () => {
+  it('names the three new keys with v4 bytes', () => {
+    expect(memoryKeys.maintenanceConfig()).toEqual(['memories', 'maintenance-config']);
+    expect(memoryKeys.extractionLimitsConfig()).toEqual(['memories', 'extraction-limits-config']);
+    expect(memoryKeys.maintenanceStatus()).toEqual(['memories', 'maintenance-status']);
+  });
+
+  it('the maintenance + limits settings helpers send the patch untouched and read `settings`', async () => {
+    const a = stub({ settings: { enabled: true } });
+    expect(await fetchMaintenanceConfig(a.core)).toEqual({ enabled: true });
+    expect(await setMaintenanceConfig(a.core, { phases: { foldNearDuplicates: true, demote: false, retire: true } })).toEqual({ enabled: true });
+    expect(await fetchExtractionLimits(a.core)).toEqual({ enabled: true });
+    expect(await setExtractionLimits(a.core, { maxPerHour: 30 })).toEqual({ enabled: true });
+    expect(a.seen).toEqual([
+      { type: 'memoryMaintenanceConfigGet' },
+      { type: 'memoryMaintenanceConfigSet', config: { phases: { foldNearDuplicates: true, demote: false, retire: true } } },
+      { type: 'memoryExtractionLimitsGet' },
+      { type: 'memoryExtractionLimitsSet', config: { maxPerHour: 30 } },
+    ]);
+    const none = stub({});
+    expect(await fetchMaintenanceConfig(none.core)).toBeNull();
+  });
+
+  it('fetchMaintenanceStatus reads `ledger` (no characterId), [] when absent', async () => {
+    const hit = stub({ success: true, ledger: [{ characterId: 'c1' }] });
+    expect(await fetchMaintenanceStatus(hit.core)).toEqual([{ characterId: 'c1' }]);
+    expect(hit.seen).toEqual([{ type: 'memoryMaintenanceStatus' }]);
+    expect(await fetchMaintenanceStatus(stub({}).core)).toEqual([]);
+  });
+
+  it('runMaintenance sends the options in the caller\'s key order and hands back the reply', async () => {
+    const { core, seen } = stub({ success: true, dryRun: false, jobId: 'j1', jobIds: ['j1'] });
+    const reply = await runMaintenance(core, { characterId: 'c1', phases: ['retire'], dryRun: false });
+    expect(reply).toEqual({ success: true, dryRun: false, jobId: 'j1', jobIds: ['j1'] });
+    expect(JSON.stringify(seen)).toBe(
+      '[{"type":"memoryMaintain","options":{"characterId":"c1","phases":["retire"],"dryRun":false}}]',
+    );
+  });
+
+  it('createMemory reads `{ memory, action }`; `action` may be absent (a pre-round server)', async () => {
+    const bag = { characterId: 'c1', content: 'C', summary: 'S', keywords: [], importance: 0.5 };
+    expect(await createMemory(stub({ memory: { id: 'm' }, action: 'absorb' }).core, bag)).toEqual({
+      memory: { id: 'm' },
+      action: 'absorb',
+    });
+    expect((await createMemory(stub({ memory: { id: 'm' } }).core, bag)).action).toBeUndefined();
   });
 });

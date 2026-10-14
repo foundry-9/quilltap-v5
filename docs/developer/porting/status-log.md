@@ -184059,3 +184059,17 @@ worktree for the session — same volume, same rules).
    `insert` / `insert-linked` / absent / edit arms are green on main by
    construction (main always toasted `Memory created` / `updated`) and pin
    that the new branch does not over-fire.
+3. **The ONE settings-document helper (L-1)** — NEW
+   `screens/settings/memory/memory-settings-document.ts`,
+   `injectMemorySettingsDocument<T>({queryKey, read, write, defaults, noun})`,
+   an injection-context factory over `injectQuery` returning `{config, loading,
+   saving, error, setError, save}`; plus `memory.api.ts`'s three keys
+   (`maintenanceConfig`, `extractionLimitsConfig`, `maintenanceStatus` — v4
+   bytes) and six helpers (`fetch/setMaintenanceConfig`,
+   `fetch/setExtractionLimits`, `fetchMaintenanceStatus`, `runMaintenance`).
+   One measured wrinkle: TanStack's signal proxy maps a GENERIC `data` through
+   `Function & T`, which TypeScript refuses to call (TS2349) — the helper names
+   the signal's real type once. **Red-first:** the module does not exist on
+   main; against an inert shim (defaults forever, `save` a no-op) 8 of 9
+   arms red (the "no `settings` → defaults" arm is green by construction).
+   The `memory.api` rows are red by absence (the names do not exist on main).

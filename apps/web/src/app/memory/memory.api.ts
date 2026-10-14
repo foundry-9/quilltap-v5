@@ -12,6 +12,7 @@ import type {
   AdmissionActionKind,
   BackfillProgress,
   CharacterMemoryCount,
+  MaintenanceLedgerStatus,
   ConsolidationReport,
   HousekeepingConfig,
   HousekeepingPreview,
@@ -19,9 +20,13 @@ import type {
   MemoryConsolidationConfig,
   MemoryCreateReply,
   MemoryDto,
+  MemoryExtractionLimitsConfig,
   MemoryExtractionModeConfig,
   MemoryHousekeepOptions,
   MemoryListRequest,
+  MemoryMaintainOptions,
+  MemoryMaintainReply,
+  MemoryMaintenanceConfig,
   MemoryWriteBag,
   RecallConfig,
   RegenerateAllStatus,
@@ -47,6 +52,15 @@ export const memoryKeys = {
   consolidationConfig: () => ['memories', 'consolidation-config'] as const,
   /** v4 `queryKeys.memories.extractionModeConfig` (`lib/query/keys.ts:199`). */
   extractionModeConfig: () => ['memories', 'extraction-mode-config'] as const,
+  /** v4 `queryKeys.memories.maintenanceConfig` (`b045dd986`). */
+  maintenanceConfig: () => ['memories', 'maintenance-config'] as const,
+  /** v4 `queryKeys.memories.extractionLimitsConfig` (`b045dd986`). */
+  extractionLimitsConfig: () => ['memories', 'extraction-limits-config'] as const,
+  /**
+   * v4 `queryKeys.memories.maintenanceStatus` (`b045dd986`) — the ledger. The
+   * unscoped `memories` realtime hint refreshes it after a run commits (R-AB).
+   */
+  maintenanceStatus: () => ['memories', 'maintenance-status'] as const,
 };
 
 /** The paginated list page (v4 `{ memories, totalCount }`; `count` also pinned). */
@@ -278,4 +292,59 @@ export async function consolidateMemories(
     report: data['report'] as ConsolidationReport | undefined,
     jobId: data['jobId'] as string | undefined,
   };
+}
+
+// --- Maintenance (P4.D300, v4 `b045dd986` at `83334b9a5`) -------------------
+
+/** GET the maintenance settings (v4 `?action=maintenance-config` → `settings`). */
+export async function fetchMaintenanceConfig(
+  core: CoreClient,
+): Promise<Partial<MemoryMaintenanceConfig> | null> {
+  const data = await core.dispatchData({ type: 'memoryMaintenanceConfigGet' });
+  return (data['settings'] as Partial<MemoryMaintenanceConfig> | undefined) ?? null;
+}
+
+/** POST a maintenance-settings patch — the server merges it over the stored value. */
+export async function setMaintenanceConfig(
+  core: CoreClient,
+  patch: Partial<MemoryMaintenanceConfig>,
+): Promise<Partial<MemoryMaintenanceConfig> | null> {
+  const data = await core.dispatchData({ type: 'memoryMaintenanceConfigSet', config: patch });
+  return (data['settings'] as Partial<MemoryMaintenanceConfig> | undefined) ?? null;
+}
+
+/** GET the extraction rate limits (v4 `?action=extraction-limits-config` → `settings`). */
+export async function fetchExtractionLimits(
+  core: CoreClient,
+): Promise<Partial<MemoryExtractionLimitsConfig> | null> {
+  const data = await core.dispatchData({ type: 'memoryExtractionLimitsGet' });
+  return (data['settings'] as Partial<MemoryExtractionLimitsConfig> | undefined) ?? null;
+}
+
+/** POST an extraction-limits patch. */
+export async function setExtractionLimits(
+  core: CoreClient,
+  patch: Partial<MemoryExtractionLimitsConfig>,
+): Promise<Partial<MemoryExtractionLimitsConfig> | null> {
+  const data = await core.dispatchData({ type: 'memoryExtractionLimitsSet', config: patch });
+  return (data['settings'] as Partial<MemoryExtractionLimitsConfig> | undefined) ?? null;
+}
+
+/** GET the maintenance ledger, every character (v4 `?action=maintenance-status` → `ledger`). */
+export async function fetchMaintenanceStatus(core: CoreClient): Promise<MaintenanceLedgerStatus[]> {
+  const data = await core.dispatchData({ type: 'memoryMaintenanceStatus' });
+  const raw = data['ledger'];
+  return Array.isArray(raw) ? (raw as MaintenanceLedgerStatus[]) : [];
+}
+
+/**
+ * POST a maintenance run (v4 `?action=maintain`). The options are sent
+ * UNTOUCHED — their key order is v4's request body (the dialog builds it).
+ */
+export async function runMaintenance(
+  core: CoreClient,
+  options: MemoryMaintainOptions,
+): Promise<MemoryMaintainReply> {
+  const data = await core.dispatchData({ type: 'memoryMaintain', options });
+  return data as unknown as MemoryMaintainReply;
 }
