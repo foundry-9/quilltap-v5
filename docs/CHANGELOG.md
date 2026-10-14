@@ -827,6 +827,12 @@ _Versions: core 0.0.1284, host 0.0.200._
 
 `ChatErrorPayload` gains v4's two `ErrorEventExtras` keys, `userMessagePersisted` and `pendingToolResultsPersisted`, serialized after `details` and omitted when unset, so every frame that does not set them keeps v4's three-key shape. `CoreError` gains an optional `submission` rider (`SubmissionLedgerDto`, camelCase) for the send's dispatch rejection; `size_of::<CoreError>()` stays 96 bytes. The 40 existing struct literals (35 `CoreError`, 5 `ChatErrorPayload`, in 7 files) take `None`. New tier-1 family `chat_error_frame_equivalence` drives v4's real `encodeErrorEvent` over a 14-row shared corpus and compares frame bytes; three serde unit pins cover the five-key frame, the three-key frame, and the rejection envelope.
 
+#### 2026-10-14 — chore(help): re-vendor `help/` whole at v4 `83334b9a5` — `memory-maintenance` and `scenario-browser` in, `memory-consolidation` and `memory-housekeeping` out (P4.D303)
+
+_No crate versions bumped._
+
+The vendored help tree brought to the round's pin, every byte from `git show 83334b9a5:`. Count unchanged at 131: two pages added (`help/memory-maintenance.md`, Phase G's single Maintenance page; `help/scenario-browser.md`, the scenario browser), two retired (`help/memory-consolidation.md`, `help/memory-housekeeping.md`), 21 re-vendored. All 131 files md5-equal to the pin with the same path set. `help_tree_equivalence` and `help_section_size_equivalence` were red at the pin before the copy (content only) and are green after, regenerated from the pin (131 docs, 779 chunks, max section 775 tokens); `help_tree_embed_guard` and `host_help_docs_boot` green before and after with their 131 literals unmoved. Comment-only history lines added to the three help tests. The host re-embeds the tree at build time; its source is unchanged, so no bump.
+
 #### 2026-10-14 — docs(porting): record the human's approval of the `83334b9a5` round's planning rulings and P4.D290's `sha1` dependency
 
 _Docs-only change._

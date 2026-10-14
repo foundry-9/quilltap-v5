@@ -111,6 +111,8 @@ Change it and the new conversation begins in that style — no visit to the side
 
 The **Starting Scenario** box need not be filled by your own hand. On the same line as its label sits **Ask the Host to set the scene**: name the place and the moment, say whether the place is real or of your own world, and the Host goes off to make enquiries — through the document stores this company could see and, for a real place, the web besides — and returns with a paragraph or two of scene that leaves the cast out of it entirely. Revise it, use it, or file it among your scenarios for another evening. The whole procedure is set out in [The Scenario Builder](scenario-builder.md).
 
+The drop-down itself offers the scenes of this chat's own household; **Browse all scenarios…** at its head opens the [Scenario Browser](scenario-browser.md), which reaches every shelf in the house.
+
 ### A Word With the Concierge, Before the Doors Open
 
 Some conversations announce their character before the first syllable is spoken, and it has always been a small indignity to have to start such a chat in the ordinary way, wait for the room to be dressed, open the sidebar, and only *then* inform the Concierge of what everybody already knew — by which time the opening line had gone out through the ordinary desk and, on occasion, come back refused.
@@ -219,6 +221,16 @@ a second press once the reply has landed sends them on their way. The **Nudge**,
 **Skip** controls are answered in the same terms if you reach for them a beat too early. (An empty
 composer, by contrast, is met with a dignified silence — there is nothing to send, and you knew that
 already.)
+
+**Should a send come to grief before it reaches the record** — a connection profile with no API key
+on file, say, or a line that goes dead halfway through the reply — the Salon tells you so in a red
+notice that lingers long enough to be read, rather than letting your bubble flicker and vanish. If
+your message never made it into the transcript, it is handed straight back: the words return to the
+composer (and to your saved draft), with any attachments and staged tool results restored beside
+them, so that you may mend whatever was amiss and press Return again. If the server *did* record
+your message before the trouble began, it stays in the transcript where it belongs and the composer
+is left empty — use **Resend** on it rather than typing it twice. And should you have begun a fresh
+remark in the meantime, the Salon will not trample it.
 
 ## Message Actions
 
@@ -338,7 +350,9 @@ The same transcript twice is the same file twice, to the letter — nothing in i
 
 A scene chosen at the outset is not a sentence passed. The party that began in the conservatory may, by degrees, find itself wanting the shipyard at dawn — and there is no reason on earth to abandon a perfectly good conversation merely to change the furniture.
 
-Open the **Chat Sidebar** on the right, expand the **Chat** drawer, and find **Scenario**. The dropdown offers precisely what the new-chat dialog offered: your project's scenarios, the general ones kept in the Quilltap General shelf, any belonging to groups the present company keeps, and — when a single character holds the floor — that character's own. Choose one and its text is displayed beneath for your inspection. Choose **Custom...** instead and a writing-box appears, in which you may set whatever scene you please, in your own words. Press **Change scenario** to make it so.
+Open the **Chat Sidebar** on the right, expand the **Chat** drawer, and find **Scenario**. The dropdown offers precisely what the new-chat dialog offered: your project's scenarios, the general ones kept in the Quilltap General shelf, any belonging to groups the present company keeps, and — when a single character holds the floor — that character's own. Choose one and its text is displayed beneath for your inspection, with a smaller box below it — **Notes beneath the scene** — for anything you would like layered under it. Choose **Custom...** instead and the writing-box becomes the whole scene, in your own words. **Browse all scenarios…** opens the [Scenario Browser](scenario-browser.md), from which a scene on any shelf in the house may be plucked. Press **Change scenario** to make it so.
+
+Above the box, a line tells you where the chat's scene came from — **From: *Owner* › *Name*** — when it came from a scenario file. Should that file have been revised on its shelf since, the line says *the shelf copy has been revised* and offers **Reload from source**, which reads the file afresh and keeps your notes beneath it. Nothing else fetches the revision: pressing **Change scenario** to amend your notes keeps the scene exactly as the chat has it; should it have been removed, the line says *the shelf copy is gone*, and the chat's scene carries on untouched.
 
 Should you know *where* and *when* but not care to write the paragraph, the **Ask the Host to set the scene** button beneath the picker sends the Host off to research the place — in your stores, or on the web for a real one — and bring back a scene for the **Custom...** box. He knows the scene being replaced and where the conversation stands, and leaves the company out of it. See [The Scenario Builder](scenario-builder.md).
 
@@ -638,3 +652,4 @@ Characters with help tools enabled can navigate directly to this page:
 - [Characters](characters.md) — Create and manage chat participants
 - [Projects](projects.md) — Organize chats by project
 - [The Scenario Builder](scenario-builder.md) — Having the Host research and draft a starting scene
+- [The Scenario Browser](scenario-browser.md) — Plucking a scene from any shelf in the house

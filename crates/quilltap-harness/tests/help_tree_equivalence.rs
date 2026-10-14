@@ -126,7 +126,12 @@ async fn shipped_help_tree_matches_oracle() {
     // WHOLE); 131 = 131 after. P4.D287 (v4 `4a38222e6`): the count UNMOVED
     // at 131 = 131; measured RED on content alone (`docs[86]`, `chunks[526]`)
     // before `help/wardrobe.md` + `help/project-wardrobe.md` were re-vendored
-    // byte-exact; green after.
+    // byte-exact; green after. P4.D303 (v4 `83334b9a5`): the count UNMOVED at
+    // 131 = 131 (−2 +2 — `memory-consolidation.md` and
+    // `memory-housekeeping.md` retired, `memory-maintenance.md` and
+    // `scenario-browser.md` new); measured RED on content alone (walk order
+    // from index 68, `docs[22]`, `chunks[135]`) before the tree was
+    // re-vendored WHOLE; green after.
     assert_eq!(
         files.len(),
         want.count,

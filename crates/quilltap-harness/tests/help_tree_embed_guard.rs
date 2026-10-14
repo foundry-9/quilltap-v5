@@ -89,6 +89,11 @@ use quilltap_host::help_content::EMBEDDED_HELP;
 /// `system-backup-restore`, `wardrobe`) move no count. The tree re-vendored
 /// WHOLE at the pin (R-A). Measured RED at 131 on disk vs this constant's 130
 /// before the move.
+///
+/// **131 at v4 `83334b9a5` (131 − 2 + 2, P4.D303):** `memory-maintenance.md`
+/// + `scenario-browser.md` added, `memory-consolidation.md` +
+/// `memory-housekeeping.md` retired; the 21 re-vendored pages move no count.
+/// Measured GREEN before and after.
 const VENDORED_FILE_COUNT: usize = 131;
 
 fn repo_root() -> PathBuf {

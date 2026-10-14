@@ -109,6 +109,11 @@ async fn boot_syncs_the_embedded_help_tree_and_reindex_reads_it() {
     // 131 at v4 `01a83539d` (130 + 1, P4.D278): `help/memory-consolidation.md`;
     // the eight re-vendored memory / store / backup / wardrobe pages move no
     // count.
+    //
+    // 131 at v4 `83334b9a5` (131 − 2 + 2, P4.D303): `help/memory-maintenance.md`
+    // + `help/scenario-browser.md` added, `help/memory-consolidation.md` +
+    // `help/memory-housekeeping.md` retired; the 21 re-vendored pages move no
+    // count. Measured GREEN before and after.
     assert_eq!(expected, 131, "the vendored tree at v4 01a83539d");
 
     // ── 1. The boot ensure. ──
