@@ -92,7 +92,7 @@ use crate::db::vector_store::{CharacterVectorStore, Tier};
 use crate::db::{characters_read, chats_read, memories_read, DbError};
 use crate::episodic::{build_memory_embedding_text, js_date_parse_ms, EpisodicAnchorView};
 use crate::model::completion::CompletionProvider;
-use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::commonplace_digest_vault_bridge::{
     write_commonplace_digests_to_vault, CommonplaceMirrorFile, WriteCommonplaceDigestsInput,
@@ -1729,7 +1729,13 @@ pub async fn run_consolidation<C: CompletionProvider, E: EmbeddingProvider>(
                 }),
             );
             match embedding
-                .generate_embedding_for_user(&text, &user_id, None, EmbeddingPriority::Background)
+                // lexical_text: None until P4.D297 (maintenance — v4 `consolidation.ts:847`) lands it (C1-10).
+                .generate_embedding_for_user(
+                    &text,
+                    &user_id,
+                    None,
+                    EmbeddingCallOptions::background(),
+                )
                 .await
             {
                 Ok(result) => {

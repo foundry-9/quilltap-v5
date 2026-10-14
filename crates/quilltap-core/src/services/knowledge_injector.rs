@@ -51,7 +51,7 @@ use crate::literal_boost::{
     LITERAL_BOOST_CHARACTER, LITERAL_BOOST_GLOBAL, LITERAL_BOOST_GROUP, LITERAL_BOOST_PROJECT,
 };
 use crate::markdown::parse_frontmatter;
-use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::token_estimation::estimate_tokens;
 use qtap_uri::{format_doc_store_uri, format_self_uri};
 use serde_json::Value;
@@ -237,7 +237,8 @@ pub async fn retrieve_knowledge_for_turn<P: EmbeddingProvider>(
             &params.query,
             &params.user_id,
             params.embedding_profile_id.as_deref(),
-            EmbeddingPriority::Interactive,
+            // lexical_text: None — a query embed; v4 passes no `lexicalText` here (C1-10).
+            EmbeddingCallOptions::interactive(),
         )
         .await
     {

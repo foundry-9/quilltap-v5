@@ -23,7 +23,7 @@ use crate::db::runtime::Db;
 use crate::markdown::parse_frontmatter;
 use crate::memory_weighting::{format_relative_age, MemoryInputs};
 use crate::model::completion::{CompletionMessage, CompletionProvider};
-use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::cheap_llm_exec::CheapLlmTaskOptions;
 use crate::services::knowledge_injector::document_search::{
@@ -228,7 +228,8 @@ pub async fn search_vault_conversation_summaries<E: EmbeddingProvider>(
                 trimmed_query,
                 user_id,
                 embedding_profile_id,
-                EmbeddingPriority::Interactive,
+                // lexical_text: None — a query embed; v4 passes no `lexicalText` here (C1-10).
+                EmbeddingCallOptions::interactive(),
             )
             .await
         {

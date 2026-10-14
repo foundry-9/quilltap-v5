@@ -24,6 +24,12 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — feat(core): P4.D288 unit 4 — the embedding-call seam, EmbeddingCallOptions with lexical_text (C1-10)
+
+_Versions: core 0.0.1290._
+
+Every `EmbeddingProvider` call now takes v4's `EmbeddingCallOptions { priority, lexical_text }` in place of the bare priority (v4 `4ae0c4ca6`). The Built-in (TF-IDF) provider embeds `lexical_text` in place of `text` when a call carries it, with v4's DEBUG line; every other provider ignores it. The `Arc`, `dyn` and erased forwarders pass the options whole, and there is no defaulted trait method, so a wrapper cannot drop the field. All 20 impls (13 core, 6 harness, 1 web) and 32 call sites move; each production call site passes no lexical text yet, with a comment naming the lane that lands it or noting that v4 passes none for a query. A new unit test proves the Built-in path embeds the lexical text through each forwarder.
+
 #### 2026-10-14 — feat(core): P4.D288 unit 3 — v4's 23 job types, MEMORY_MAINTENANCE, the maintenance and extraction-pass vocabulary (C1-6)
 
 _Versions: core 0.0.1289._

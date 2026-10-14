@@ -62,7 +62,7 @@ use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::files::FileEntry;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::embedding::{
-    EmbeddingError, EmbeddingPriority, EmbeddingProvider, EmbeddingResult,
+    EmbeddingCallOptions, EmbeddingError, EmbeddingProvider, EmbeddingResult,
 };
 use quilltap_core::photos::save_image_to_album::{FileBytesStore, IngestImageRequest};
 use serde::Deserialize;
@@ -155,7 +155,7 @@ impl EmbeddingProvider for CannedEmbedding {
         text: &str,
         _user_id: &str,
         _profile_id: Option<&str>,
-        _priority: EmbeddingPriority,
+        _opts: EmbeddingCallOptions,
     ) -> Result<EmbeddingResult, EmbeddingError> {
         match self.table.get(text) {
             Some(v) => Ok(EmbeddingResult {

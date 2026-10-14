@@ -679,7 +679,7 @@ mod tests {
     use crate::db::memories::{CreateOptions, MemCreate};
     use crate::db::Writer;
     use crate::memory_merge::plan_memory_merge;
-    use crate::model::embedding::{EmbeddingError, EmbeddingPriority, EmbeddingResult};
+    use crate::model::embedding::{EmbeddingCallOptions, EmbeddingError, EmbeddingResult};
     use tempfile::{tempdir, TempDir};
 
     const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
@@ -712,7 +712,7 @@ mod tests {
             text: &str,
             _user_id: &str,
             _profile_id: Option<&str>,
-            _priority: EmbeddingPriority,
+            _opts: EmbeddingCallOptions,
         ) -> impl std::future::Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send
         {
             self.calls.lock().unwrap().push(text.to_string());

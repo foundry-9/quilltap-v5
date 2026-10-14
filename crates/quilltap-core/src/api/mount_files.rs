@@ -1193,7 +1193,8 @@ pub async fn mount_semantic_search<P: crate::model::embedding::EmbeddingProvider
             &query,
             user_id,
             None,
-            crate::model::embedding::EmbeddingPriority::Interactive,
+            // lexical_text: None — a query embed; v4 passes no `lexicalText` here (C1-10).
+            crate::model::embedding::EmbeddingCallOptions::interactive(),
         )
         .await
     {

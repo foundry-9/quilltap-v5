@@ -179902,3 +179902,29 @@ migrationsSkipped: 90}`, none deferred. Measured:
 - Families (from the pin): NEW `memory_extraction_pass_equivalence` (25 rows, 5 unknown passes — every flag
   combination, `pass: ''`, truthy non-boolean flags, a truthy number / `true` pass); `activity_tables`,
   `realtime_topics`, `background_jobs_tier2` GREEN (all three were red-first).
+
+### Unit 4 — C1-10, the embedding-call seam
+- Landed: `model::embedding::EmbeddingCallOptions { priority, lexical_text: Option<String> }` (+
+  `interactive()` / `background()` / `with_lexical_text`) replacing the bare `priority` on the trait, every
+  impl and every call site; `Arc<T>`, `DynEmbeddingProvider`, `ErasedEmbeddingProvider` forward it WHOLE; no
+  defaulted trait method. BUILTIN honours it: `ApiEmbeddingProvider` threads `opts.lexical_text` into
+  `generate_embedding` → `services/builtin_embedding.rs::generate_builtin_embedding(.., lexical_text)`, which
+  embeds `lexical_text.unwrap_or(text)` and emits v4's DEBUG `[Embedding] BUILTIN embed: using the caller's
+  lexical text {context, profileId, textChars, lexicalChars}` (UTF-16 lengths; bytes P4.D292's pin, §R.5).
+  The core `Recording` double in `memory_gate.rs` RECORDS each call's `lexical_text`.
+- **Measured:** 20 `EmbeddingProvider for` impls (13 core, 6 harness, 1 web — the order's "7 harness"
+  counted `activity_span_sites_guard`'s string literal); 32 call sites; 21 production sites carry the
+  one-line `lexical_text: None` comment — memory writers name the landing lane (P4.D290 admission +
+  anchor probe, P4.D292 EMBEDDING_GENERATE + the backfill, P4.D297 the consolidation digest — v4's
+  `lexicalText` callers at the pin, measured by `grep`), query embeds say v4 passes none.
+- Proof: `services::embedding_provider::tests::builtin_embeds_the_lexical_text_through_every_forwarder`
+  (a fitted BUILTIN vocabulary; the anchored text with `lexical_text` embeds exactly as the lexical text
+  alone, through the provider, `Arc`, the `dyn` shim and the erased wrapper; absent, `text`).
+- Families whose double changed signature, re-run from the pin: `embedding_provider_tier3`,
+  `photos_routes` GREEN. Red for reasons outside the seam (each read): `photo_tools` (a pin-built fixture
+  lacks `chats.otherExtractionWatermarkMessageId`, which v5's `chats_read` still selects — unit 6 retires
+  it); `embedding_generate_jobs` (P4.D292's — the failure recordings moved at the pin),
+  `anchor_gate_probe_tier3` (P4.D290's — v4's probe result gained lexical keys),
+  `character_optimizer_tier3` (P4.D292's — `memory_weighting` → salience); IMPORT-DEAD at the pin until
+  unit 11 / the owner: `memory_dedup` (P4.D297), `context_summary_service_tier3` (dead builder — unit 11),
+  `semantic_search_tuning_tier3` (P4.D291), `vault_conv_search` (path rename — unit 11).

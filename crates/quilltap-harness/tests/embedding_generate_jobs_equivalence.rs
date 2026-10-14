@@ -83,7 +83,8 @@ use quilltap_core::db::background_jobs::BackgroundJobsRepository;
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::embedding::{
-    CannedEmbeddingProvider, EmbeddingError, EmbeddingPriority, EmbeddingProvider, EmbeddingResult,
+    CannedEmbeddingProvider, EmbeddingCallOptions, EmbeddingError, EmbeddingProvider,
+    EmbeddingResult,
 };
 use quilltap_core::services::embedding_generate_job::{
     handle_embedding_generate, EmbeddingGeneratePayload,
@@ -152,7 +153,7 @@ impl EmbeddingProvider for CountingEmbedding {
         text: &str,
         user_id: &str,
         profile_id: Option<&str>,
-        priority: EmbeddingPriority,
+        opts: EmbeddingCallOptions,
     ) -> impl std::future::Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
         *self
             .calls
@@ -161,7 +162,7 @@ impl EmbeddingProvider for CountingEmbedding {
             .entry(text.to_string())
             .or_default() += 1;
         self.inner
-            .generate_embedding_for_user(text, user_id, profile_id, priority)
+            .generate_embedding_for_user(text, user_id, profile_id, opts)
     }
 }
 

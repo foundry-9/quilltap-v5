@@ -17,10 +17,18 @@ use crate::tfidf::{BuiltinEmbeddingProvider, LocalEmbeddingProviderState};
 /// `profile` (v4 `generateBuiltinEmbedding`). Reads the persisted vocabulary via
 /// `tfidf_vocabulary.findByProfileId`; if the profile has not been fitted yet,
 /// returns the exact v4 not-fitted [`EmbeddingError`].
+///
+/// P4.D288 (C1-10, v4 `4ae0c4ca6`, `embedding-service.ts:236-250`): a memory
+/// writer hands over its `lexical_text` — the memory without its anchor line —
+/// "and that is what a bag of words embeds; any other text is embedded as
+/// given". v4 logs DEBUG `[Embedding] BUILTIN embed: using the caller's lexical
+/// text {context, profileId, textChars, lexicalChars}` (UTF-16 lengths) once
+/// the vocabulary is loaded; its bytes are P4.D292's pin (§R.5).
 pub async fn generate_builtin_embedding(
     db: &Db,
     text: &str,
     profile: &EmbeddingProfileRow,
+    lexical_text: Option<&str>,
 ) -> Result<EmbeddingResult, EmbeddingError> {
     // Get the stored vocabulary for this profile.
     let pid = profile.id.clone();
@@ -64,8 +72,17 @@ pub async fn generate_builtin_embedding(
     let mut provider = BuiltinEmbeddingProvider::new(true);
     provider.load_state(state);
 
+    if let Some(lexical) = lexical_text {
+        tracing::debug!(
+            context = "generateBuiltinEmbedding",
+            profileId = %profile.id,
+            textChars = crate::jsstr::utf16_len(text),
+            lexicalChars = crate::jsstr::utf16_len(lexical),
+            "[Embedding] BUILTIN embed: using the caller's lexical text"
+        );
+    }
     let result = provider
-        .generate_embedding(text)
+        .generate_embedding(lexical_text.unwrap_or(text))
         .map_err(|e| EmbeddingError {
             message: format!("Built-in embedding failed: {}", e.message()),
             provider: Some("BUILTIN".to_string()),

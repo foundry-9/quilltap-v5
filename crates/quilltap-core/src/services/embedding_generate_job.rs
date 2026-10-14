@@ -53,7 +53,7 @@ use serde_json::Value;
 use crate::db::embedding_status::EmbeddingStatusRepository;
 use crate::db::runtime::Db;
 use crate::jsstr::{js_trim, utf16_len};
-use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 
 /// v4 `EMBEDDING_MAX_CHARS` (`lib/embedding/embedding-service.ts:74`) — the
 /// oversize pre-flight cap, in JS string length (UTF-16 code units). The single
@@ -351,7 +351,8 @@ async fn memory_try<E: EmbeddingProvider>(
             text,
             user_id,
             payload.profile_id.as_deref(),
-            EmbeddingPriority::Background,
+            // lexical_text: None until P4.D292 (EMBEDDING_GENERATE — v4 `embedding-generate.ts:168`) lands it (C1-10).
+            EmbeddingCallOptions::background(),
         )
         .await
         .map_err(|e| e.message)?;
@@ -484,7 +485,8 @@ async fn conversation_chunk_try<E: EmbeddingProvider>(
             &chunk.content,
             user_id,
             payload.profile_id.as_deref(),
-            EmbeddingPriority::Background,
+            // lexical_text: None until P4.D292 (EMBEDDING_GENERATE — v4 `embedding-generate.ts:168`) lands it (C1-10).
+            EmbeddingCallOptions::background(),
         )
         .await
         .map_err(|e| e.message)?;
@@ -864,7 +866,8 @@ async fn embed_section<E: EmbeddingProvider>(
                 &text,
                 user_id,
                 payload.profile_id.as_deref(),
-                EmbeddingPriority::Background,
+                // lexical_text: None until P4.D292 (EMBEDDING_GENERATE — v4 `embedding-generate.ts:168`) lands it (C1-10).
+                EmbeddingCallOptions::background(),
             )
             .await
             .map_err(|e| e.message)?;
@@ -976,7 +979,8 @@ async fn mount_chunk_try<E: EmbeddingProvider>(
             &chunk.content,
             user_id,
             payload.profile_id.as_deref(),
-            EmbeddingPriority::Background,
+            // lexical_text: None until P4.D292 (EMBEDDING_GENERATE — v4 `embedding-generate.ts:168`) lands it (C1-10).
+            EmbeddingCallOptions::background(),
         )
         .await
         .map_err(|e| e.message)?;

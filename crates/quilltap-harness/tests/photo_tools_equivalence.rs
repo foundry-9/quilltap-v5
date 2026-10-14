@@ -76,7 +76,7 @@ use std::path::{Path, PathBuf};
 use quilltap_core::db::files::FileEntry;
 use quilltap_core::db::Writer;
 use quilltap_core::model::embedding::{
-    CannedEmbeddingProvider, EmbeddingPriority, EmbeddingProvider,
+    CannedEmbeddingProvider, EmbeddingCallOptions, EmbeddingProvider,
 };
 use quilltap_core::photos::save_image_to_album::{
     FileBytesStore, IngestImageRequest, NoSideEffects,
@@ -1053,7 +1053,7 @@ fn photo_tools_matches_oracle() {
                             query.trim(),
                             &spec.user_id,
                             None,
-                            EmbeddingPriority::Interactive,
+                            EmbeddingCallOptions::interactive(),
                         ))
                         .map(|r| r.embedding)
                         .map_err(|e| e.message),

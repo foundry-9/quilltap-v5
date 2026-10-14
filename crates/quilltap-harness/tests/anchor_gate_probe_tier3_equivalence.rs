@@ -64,7 +64,8 @@ use quilltap_core::api::memories::memory_anchor_gate_probe;
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::embedding::{
-    EmbeddingError, EmbeddingPriority, EmbeddingProvider, EmbeddingResult, ErasedEmbeddingProvider,
+    EmbeddingCallOptions, EmbeddingError, EmbeddingProvider, EmbeddingResult,
+    ErasedEmbeddingProvider,
 };
 use quilltap_core::model::wire::CannedWireTransport;
 use quilltap_core::services::anchor_gate_probe::{
@@ -196,13 +197,13 @@ impl EmbeddingProvider for FailingProvider {
         text: &str,
         user_id: &str,
         profile_id: Option<&str>,
-        priority: EmbeddingPriority,
+        opts: EmbeddingCallOptions,
     ) -> impl Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
         let fail = text == self.fail_text;
         let message = self.message.clone();
         let call = self
             .inner
-            .generate_embedding_for_user(text, user_id, profile_id, priority);
+            .generate_embedding_for_user(text, user_id, profile_id, opts);
         async move {
             if fail {
                 Err(EmbeddingError::new(message))

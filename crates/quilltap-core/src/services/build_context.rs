@@ -4467,7 +4467,7 @@ mod distill_latency_tests {
 
     use super::*;
     use crate::model::completion::{CompletionError, CompletionParams, CompletionResponse};
-    use crate::model::embedding::{EmbeddingError, EmbeddingPriority, EmbeddingResult};
+    use crate::model::embedding::{EmbeddingCallOptions, EmbeddingError, EmbeddingResult};
     use crate::services::cheap_llm_exec::{
         provider_budget_for, CheapLlmLatencyClass, CheapLlmTaskExecutor,
     };
@@ -4520,7 +4520,7 @@ mod distill_latency_tests {
             _text: &str,
             _user_id: &str,
             _profile_id: Option<&str>,
-            _priority: EmbeddingPriority,
+            _opts: EmbeddingCallOptions,
         ) -> Result<EmbeddingResult, EmbeddingError> {
             Err(EmbeddingError::new("no embedding provider in this pin"))
         }
@@ -4791,7 +4791,7 @@ mod inter_character_log_tests {
 
     use super::*;
     use crate::model::completion::{CompletionError, CompletionParams, CompletionResponse};
-    use crate::model::embedding::{EmbeddingError, EmbeddingPriority, EmbeddingResult};
+    use crate::model::embedding::{EmbeddingCallOptions, EmbeddingError, EmbeddingResult};
     use crate::test_support::CaptureLayer;
     use std::sync::{Arc, Mutex};
 
@@ -4824,7 +4824,7 @@ mod inter_character_log_tests {
             _text: &str,
             _user_id: &str,
             _profile_id: Option<&str>,
-            _priority: EmbeddingPriority,
+            _opts: EmbeddingCallOptions,
         ) -> Result<EmbeddingResult, EmbeddingError> {
             Err(EmbeddingError::new("no embedding provider in this pin"))
         }

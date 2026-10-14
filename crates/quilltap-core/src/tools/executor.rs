@@ -68,7 +68,7 @@ use super::{
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
 use crate::host_zone::TimeZone;
-use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider, ErasedEmbeddingProvider};
+use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider, ErasedEmbeddingProvider};
 use crate::pascal::custom_tools::LlmInvoker;
 use crate::pascal::llm_consult::{ConsultRunner, CustomToolConsultContext, SeamConsultInvoker};
 use crate::photos::mount_embedding_effects::MountEmbeddingSideEffects;
@@ -1263,7 +1263,8 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
                         &query,
                         &ctx.user_id,
                         ctx.embedding_profile_id.as_deref(),
-                        EmbeddingPriority::Interactive,
+                        // lexical_text: None — a query embed; v4 passes no `lexicalText` here (C1-10).
+                        EmbeddingCallOptions::interactive(),
                     )
                     .await
                     .map(|r| r.embedding)

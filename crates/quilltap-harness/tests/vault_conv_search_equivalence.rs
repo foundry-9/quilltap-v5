@@ -45,7 +45,7 @@ use std::path::PathBuf;
 use quilltap_core::db::characters_read;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::embedding::{
-    EmbeddingPriority, EmbeddingProvider, ErasedEmbeddingProvider,
+    EmbeddingCallOptions, EmbeddingProvider, ErasedEmbeddingProvider,
 };
 use quilltap_core::model::wire::CannedWireTransport;
 use quilltap_core::recall_tags::TimeWindow;
@@ -283,7 +283,12 @@ async fn vault_conv_search_matches_oracle() {
         let user_id = fixture_spec.user_id.clone();
         async move {
             embedding
-                .generate_embedding_for_user(text, &user_id, None, EmbeddingPriority::Interactive)
+                .generate_embedding_for_user(
+                    text,
+                    &user_id,
+                    None,
+                    EmbeddingCallOptions::interactive(),
+                )
                 .await
                 .expect("embed the precomputed query")
                 .embedding

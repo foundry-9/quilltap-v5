@@ -58,6 +58,50 @@ pub enum EmbeddingPriority {
     Background,
 }
 
+/// v4 `EmbeddingCallOptions` (`lib/embedding/embedding-service.ts:93-102`,
+/// `4ae0c4ca6`) — the per-call options of every embedding call (P4.D288,
+/// contract C1-10; the seam): the priority lane, and `lexical_text` — "what a
+/// lexical (BUILTIN, TF-IDF) profile embeds instead of `text`. Memory writers
+/// pass `lexicalEmbeddingTextFor(memory)` — the memory without its anchor
+/// line. Ignored by every other provider; absent, the BUILTIN path embeds
+/// `text`."
+///
+/// Carried WHOLE by every forwarder (`Arc<T>`, [`DynEmbeddingProvider`],
+/// [`ErasedEmbeddingProvider`], the recording doubles) — there is NO defaulted
+/// trait method, so a wrapper cannot silently drop the field and embed the
+/// anchored text on BUILTIN.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EmbeddingCallOptions {
+    /// v4 `priority` (`'interactive'` when absent).
+    pub priority: EmbeddingPriority,
+    /// v4 `lexicalText` — BUILTIN embeds it in place of `text` when present.
+    pub lexical_text: Option<String>,
+}
+
+impl EmbeddingCallOptions {
+    /// An interactive call with no lexical text.
+    pub fn interactive() -> Self {
+        Self {
+            priority: EmbeddingPriority::Interactive,
+            lexical_text: None,
+        }
+    }
+
+    /// A background call with no lexical text.
+    pub fn background() -> Self {
+        Self {
+            priority: EmbeddingPriority::Background,
+            lexical_text: None,
+        }
+    }
+
+    /// The same call carrying `lexical_text`.
+    pub fn with_lexical_text(mut self, lexical_text: impl Into<String>) -> Self {
+        self.lexical_text = Some(lexical_text.into());
+        self
+    }
+}
+
 /// The embedding boundary — every embedding call goes through this trait.
 ///
 /// The method is async (`impl Future + Send`) because the real provider is a
@@ -67,13 +111,14 @@ pub enum EmbeddingPriority {
 pub trait EmbeddingProvider {
     /// Generate an embedding for `text` on behalf of `user_id`, optionally with an
     /// explicit `profile_id` (else the user's default profile). Mirrors v4's
-    /// `generateEmbeddingForUser(text, userId, profileId?, { priority })`.
+    /// `generateEmbeddingForUser(text, userId, profileId?, { priority,
+    /// lexicalText })`.
     fn generate_embedding_for_user(
         &self,
         text: &str,
         user_id: &str,
         profile_id: Option<&str>,
-        priority: EmbeddingPriority,
+        opts: EmbeddingCallOptions,
     ) -> impl Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send;
 }
 
@@ -89,9 +134,9 @@ impl<T: EmbeddingProvider> EmbeddingProvider for Arc<T> {
         text: &str,
         user_id: &str,
         profile_id: Option<&str>,
-        priority: EmbeddingPriority,
+        opts: EmbeddingCallOptions,
     ) -> impl Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
-        (**self).generate_embedding_for_user(text, user_id, profile_id, priority)
+        (**self).generate_embedding_for_user(text, user_id, profile_id, opts)
     }
 }
 
@@ -175,7 +220,7 @@ impl EmbeddingProvider for CannedEmbeddingProvider {
         text: &str,
         _user_id: &str,
         _profile_id: Option<&str>,
-        _priority: EmbeddingPriority,
+        _opts: EmbeddingCallOptions,
     ) -> impl Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
         // Resolve synchronously so the returned future owns its result and is
         // `'static` + `Send` (no borrow of `&self` escapes into the future).
@@ -209,7 +254,7 @@ impl EmbeddingProvider for NoEmbeddingProvider {
         text: &str,
         _user_id: &str,
         _profile_id: Option<&str>,
-        _priority: EmbeddingPriority,
+        _opts: EmbeddingCallOptions,
     ) -> impl Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
         let len = text.len();
         async move {
@@ -229,7 +274,7 @@ pub trait DynEmbeddingProvider: Send + Sync {
         text: &'a str,
         user_id: &'a str,
         profile_id: Option<&'a str>,
-        priority: EmbeddingPriority,
+        opts: EmbeddingCallOptions,
     ) -> Pin<Box<dyn Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send + 'a>>;
 }
 
@@ -239,9 +284,9 @@ impl<P: EmbeddingProvider + Send + Sync> DynEmbeddingProvider for P {
         text: &'a str,
         user_id: &'a str,
         profile_id: Option<&'a str>,
-        priority: EmbeddingPriority,
+        opts: EmbeddingCallOptions,
     ) -> Pin<Box<dyn Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send + 'a>> {
-        Box::pin(self.generate_embedding_for_user(text, user_id, profile_id, priority))
+        Box::pin(self.generate_embedding_for_user(text, user_id, profile_id, opts))
     }
 }
 
@@ -277,7 +322,7 @@ impl EmbeddingProvider for ErasedEmbeddingProvider {
         text: &str,
         user_id: &str,
         profile_id: Option<&str>,
-        priority: EmbeddingPriority,
+        opts: EmbeddingCallOptions,
     ) -> impl Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
         // Own the inputs + the Arc so the returned future is `'static` (no borrow of
         // `&self`/args escapes — mirrors how the canned provider owns its result).
@@ -287,7 +332,7 @@ impl EmbeddingProvider for ErasedEmbeddingProvider {
         let profile_id = profile_id.map(str::to_string);
         async move {
             inner
-                .generate_embedding_for_user_dyn(&text, &user_id, profile_id.as_deref(), priority)
+                .generate_embedding_for_user_dyn(&text, &user_id, profile_id.as_deref(), opts)
                 .await
         }
     }
@@ -301,7 +346,12 @@ mod tests {
     async fn returns_injected_vector_for_known_input() {
         let provider = CannedEmbeddingProvider::new().with_vector("hello", vec![1.0, 0.0, 0.0]);
         let result = provider
-            .generate_embedding_for_user("hello", "user-1", None, EmbeddingPriority::Background)
+            .generate_embedding_for_user(
+                "hello",
+                "user-1",
+                None,
+                EmbeddingCallOptions::background(),
+            )
             .await
             .unwrap();
         assert_eq!(result.embedding, vec![1.0, 0.0, 0.0]);
@@ -315,7 +365,7 @@ mod tests {
         let inner = CannedEmbeddingProvider::new().with_vector("hello", vec![1.0, 0.0]);
         let arc = Arc::new(inner);
         let result = arc
-            .generate_embedding_for_user("hello", "u", None, EmbeddingPriority::Background)
+            .generate_embedding_for_user("hello", "u", None, EmbeddingCallOptions::background())
             .await
             .unwrap();
         assert_eq!(result.embedding, vec![1.0, 0.0]);
@@ -330,7 +380,7 @@ mod tests {
         // Fails on both a first and a "retry" call (stateless → deterministic).
         for _ in 0..2 {
             let err = provider
-                .generate_embedding_for_user("bad", "u", None, EmbeddingPriority::Background)
+                .generate_embedding_for_user("bad", "u", None, EmbeddingCallOptions::background())
                 .await
                 .unwrap_err();
             assert_eq!(err.message, "provider down");
@@ -341,7 +391,7 @@ mod tests {
     async fn unregistered_input_is_an_error_not_a_silent_answer() {
         let provider = CannedEmbeddingProvider::new().with_vector("known", vec![1.0]);
         assert!(provider
-            .generate_embedding_for_user("unknown", "u", None, EmbeddingPriority::Interactive)
+            .generate_embedding_for_user("unknown", "u", None, EmbeddingCallOptions::interactive())
             .await
             .is_err());
     }

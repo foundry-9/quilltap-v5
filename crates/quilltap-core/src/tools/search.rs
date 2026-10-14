@@ -37,7 +37,7 @@ use crate::jsnum::to_fixed;
 use crate::literal_boost::{
     LITERAL_BOOST_CHARACTER, LITERAL_BOOST_GLOBAL, LITERAL_BOOST_GROUP, LITERAL_BOOST_PROJECT,
 };
-use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::project_roster_access::roster_gated_project_id;
 use crate::services::knowledge_injector::{
     search_document_chunks, DocumentSearchOptions, DocumentSearchResult,
@@ -717,7 +717,8 @@ async fn embed<P: EmbeddingProvider>(
             query,
             &context.user_id,
             context.embedding_profile_id.as_deref(),
-            EmbeddingPriority::Interactive,
+            // lexical_text: None — a query embed; v4 passes no `lexicalText` here (C1-10).
+            EmbeddingCallOptions::interactive(),
         )
         .await
         .map(|r| r.embedding)

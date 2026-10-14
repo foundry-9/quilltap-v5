@@ -45,7 +45,8 @@ use quilltap_core::db::memories::{CreateOptions, MemCreate};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::Writer;
 use quilltap_core::model::embedding::{
-    CannedEmbeddingProvider, EmbeddingError, EmbeddingPriority, EmbeddingProvider, EmbeddingResult,
+    CannedEmbeddingProvider, EmbeddingCallOptions, EmbeddingError, EmbeddingProvider,
+    EmbeddingResult,
 };
 use quilltap_core::services::memory_dedup::deduplicate_all_memories;
 use serde_json::{json, Map, Value};
@@ -104,11 +105,11 @@ impl EmbeddingProvider for Recording {
         text: &str,
         user_id: &str,
         profile_id: Option<&str>,
-        priority: EmbeddingPriority,
+        opts: EmbeddingCallOptions,
     ) -> impl std::future::Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
         self.calls.lock().unwrap().push(text.to_string());
         self.inner
-            .generate_embedding_for_user(text, user_id, profile_id, priority)
+            .generate_embedding_for_user(text, user_id, profile_id, opts)
     }
 }
 

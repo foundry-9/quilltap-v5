@@ -56,7 +56,7 @@ use crate::memory_weighting::{calculate_effective_weight, MemoryInputs, DEFAULT_
 use crate::model::completion::{
     CompletionMessage, CompletionParams, CompletionProvider, CompletionResponse,
 };
-use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::pascal::js_value::to_js_string;
 use crate::services::llm_logging::{
     log_llm_call, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage, LogResponse,
@@ -1633,7 +1633,13 @@ async fn semantic_candidates<EMB: EmbeddingProvider>(
         return Ok(None);
     }
     let embedding_result = embedding
-        .generate_embedding_for_user(search_query, user_id, None, EmbeddingPriority::Background)
+        // lexical_text: None — a query embed; v4 passes no `lexicalText` here (C1-10).
+        .generate_embedding_for_user(
+            search_query,
+            user_id,
+            None,
+            EmbeddingCallOptions::background(),
+        )
         .await
         .map_err(|e| e.message)?;
     let cid = character_id.to_string();

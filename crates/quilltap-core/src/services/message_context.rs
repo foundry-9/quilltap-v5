@@ -2399,7 +2399,7 @@ mod tests {
             CompletionError, CompletionParams, CompletionProvider, CompletionResponse,
         };
         use crate::model::embedding::{
-            EmbeddingError, EmbeddingPriority, EmbeddingProvider, EmbeddingResult,
+            EmbeddingCallOptions, EmbeddingError, EmbeddingProvider, EmbeddingResult,
         };
         use crate::services::build_context::{ContextCharacter, ContextChat, NoopSeams};
 
@@ -2424,7 +2424,7 @@ mod tests {
                 _text: &str,
                 _user_id: &str,
                 _profile_id: Option<&str>,
-                _priority: EmbeddingPriority,
+                _opts: EmbeddingCallOptions,
             ) -> Result<EmbeddingResult, EmbeddingError> {
                 Err(EmbeddingError::new("no embedding provider in this pin"))
             }

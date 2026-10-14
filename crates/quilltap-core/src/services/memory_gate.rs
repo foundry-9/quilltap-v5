@@ -55,7 +55,7 @@ use crate::memory_gate::{
     append_capped_footnotes, count_reinforcement_footnotes, extract_novel_details,
     occasions_are_distinct, MAX_REINFORCEMENT_FOOTNOTES,
 };
-use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::services::activity_kinds::ActivityKind;
 use crate::services::activity_registry::track_activity;
 
@@ -730,7 +730,8 @@ async fn generate_with_retry<P: EmbeddingProvider>(
             text,
             user_id,
             embedding_profile_id,
-            EmbeddingPriority::Background,
+            // lexical_text: None until P4.D290 (admission — v4 `admit.ts:145` / `neighbours.ts:144` / `apply.ts:85`) lands it (C1-10).
+            EmbeddingCallOptions::background(),
         )
         .await
     {
@@ -740,7 +741,8 @@ async fn generate_with_retry<P: EmbeddingProvider>(
                 text,
                 user_id,
                 embedding_profile_id,
-                EmbeddingPriority::Background,
+                // lexical_text: None until P4.D290 (admission — v4 `admit.ts:145` / `neighbours.ts:144` / `apply.ts:85`) lands it (C1-10).
+                EmbeddingCallOptions::background(),
             )
             .await
         {
@@ -999,7 +1001,8 @@ pub(crate) async fn reembed_memory<P: EmbeddingProvider>(
             &text,
             user_id,
             embedding_profile_id,
-            EmbeddingPriority::Background,
+            // lexical_text: None until P4.D290 (admission — v4 `admit.ts:145` / `neighbours.ts:144` / `apply.ts:85`) lands it (C1-10).
+            EmbeddingCallOptions::background(),
         )
         .await
     {
@@ -1701,6 +1704,9 @@ mod tests {
     struct Recording {
         inner: CannedEmbeddingProvider,
         calls: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+        /// P4.D288 (C1-10): the `lexical_text` each call carried — a double
+        /// keys on `text` and RECORDS the lexical text.
+        lexical: std::sync::Arc<std::sync::Mutex<Vec<Option<String>>>>,
     }
 
     impl Recording {
@@ -1708,6 +1714,7 @@ mod tests {
             Self {
                 inner,
                 calls: Default::default(),
+                lexical: Default::default(),
             }
         }
         fn calls(&self) -> Vec<String> {
@@ -1721,7 +1728,7 @@ mod tests {
             text: &str,
             user_id: &str,
             profile_id: Option<&str>,
-            priority: EmbeddingPriority,
+            opts: EmbeddingCallOptions,
         ) -> impl std::future::Future<
             Output = Result<
                 crate::model::embedding::EmbeddingResult,
@@ -1729,8 +1736,9 @@ mod tests {
             >,
         > + Send {
             self.calls.lock().unwrap().push(text.to_string());
+            self.lexical.lock().unwrap().push(opts.lexical_text.clone());
             self.inner
-                .generate_embedding_for_user(text, user_id, profile_id, priority)
+                .generate_embedding_for_user(text, user_id, profile_id, opts)
         }
     }
 

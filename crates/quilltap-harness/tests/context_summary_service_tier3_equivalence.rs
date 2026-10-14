@@ -414,7 +414,7 @@ impl quilltap_core::model::embedding::EmbeddingProvider for RecordingUnitEmbeddi
         text: &str,
         _user_id: &str,
         _profile_id: Option<&str>,
-        _priority: quilltap_core::model::embedding::EmbeddingPriority,
+        _opts: quilltap_core::model::embedding::EmbeddingCallOptions,
     ) -> impl std::future::Future<
         Output = Result<
             quilltap_core::model::embedding::EmbeddingResult,

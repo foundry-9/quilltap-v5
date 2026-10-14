@@ -64,7 +64,7 @@ use crate::db::vector_store::{CharacterVectorStore, VectorSearchResult};
 use crate::db::{memories_read, DbError};
 use crate::embedding_vector::cosine_similarity;
 use crate::episodic::{build_memory_embedding_text, js_date_parse_ms};
-use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::services::memory_gate::{MERGE_THRESHOLD, NEAR_DUPLICATE_THRESHOLD};
 use crate::services::memory_service::{anchor_view_of, embedding_vec_of};
 
@@ -234,7 +234,8 @@ impl<P: EmbeddingProvider + Sync> ProbeState<'_, P> {
                 text,
                 &self.input.user_id,
                 self.input.embedding_profile_id.as_deref(),
-                EmbeddingPriority::Background,
+                // lexical_text: None until P4.D290 (the anchor probe — v4 `anchor-gate-probe.ts:136-141`) lands it (C1-10).
+                EmbeddingCallOptions::background(),
             )
             .await
             .map(|r| r.embedding)
@@ -569,7 +570,7 @@ mod tests {
             text: &str,
             _user_id: &str,
             _profile_id: Option<&str>,
-            _priority: EmbeddingPriority,
+            _opts: EmbeddingCallOptions,
         ) -> impl Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
             let out = (self.0)(text);
             async move {

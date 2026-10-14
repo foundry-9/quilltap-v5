@@ -2321,7 +2321,7 @@ mod tests {
             _text: &str,
             _user_id: &str,
             _profile_id: Option<&str>,
-            _priority: crate::model::embedding::EmbeddingPriority,
+            _opts: crate::model::embedding::EmbeddingCallOptions,
         ) -> Result<crate::model::embedding::EmbeddingResult, crate::model::embedding::EmbeddingError>
         {
             Ok(crate::model::embedding::EmbeddingResult {

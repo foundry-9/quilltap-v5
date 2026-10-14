@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 
 use crate::db::help_search::{keyword_search, semantic_search, HelpSearchResult};
 use crate::db::runtime::Db;
-use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::tools::llm_number::llm_number;
 
 /// v4 `HelpSearchToolOutput` — `{ success, results?, error?, totalFound, query }`.
@@ -166,7 +166,8 @@ pub async fn execute_help_search<P: EmbeddingProvider>(
 
     // Semantic first (embed → search); any error there falls back to keyword search.
     let semantic = match provider
-        .generate_embedding_for_user(query, user_id, None, EmbeddingPriority::Interactive)
+        // lexical_text: None — a query embed; v4 passes no `lexicalText` here (C1-10).
+        .generate_embedding_for_user(query, user_id, None, EmbeddingCallOptions::interactive())
         .await
     {
         Ok(emb) => db.read_main(|c| semantic_search(c, &emb.embedding, limit, Some(query))),

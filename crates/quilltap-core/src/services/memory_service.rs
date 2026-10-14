@@ -74,8 +74,8 @@ use crate::memory_weighting::{
     calculate_effective_weight, compute_ranking_blend, default_min_cosine_for_provider,
     MemoryInputs, DEFAULT_WEIGHTING_CONFIG,
 };
+use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::model::embedding::{EmbeddingError, EmbeddingResult};
-use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
 use crate::recall_tags::{
     boost_gate_threshold, combine_recall_multipliers, ContextTag, MemoryTagView, RecallContext,
     RecallRelevance, ScopePolicy, TemporalTag, TimeWindow, RELATED_EXPANSION_MAX_PER_HIT,
@@ -597,7 +597,8 @@ async fn embed_text<P: EmbeddingProvider>(
             text,
             &options.user_id,
             options.embedding_profile_id.as_deref(),
-            EmbeddingPriority::Interactive,
+            // lexical_text: None — a query embed; v4 passes no `lexicalText` here (C1-10).
+            EmbeddingCallOptions::interactive(),
         )
         .await?;
     if let Some(memo) = &options.embedding_memo {
@@ -1772,7 +1773,8 @@ pub async fn generate_missing_embeddings<P: EmbeddingProvider>(
                     &text,
                     user_id,
                     embedding_profile_id,
-                    EmbeddingPriority::Background,
+                    // lexical_text: None until P4.D292 (the backfill — v4 `index-store/backfill.ts:58`) lands it (C1-10).
+                    EmbeddingCallOptions::background(),
                 )
                 .await
                 .map_err(|e| e.message)?;

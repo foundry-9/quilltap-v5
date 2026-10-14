@@ -43,7 +43,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+use quilltap_core::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use quilltap_core::model::wire::{CannedWireTransport, WireResponse};
 use quilltap_core::services::embedding_provider::ApiEmbeddingProvider;
 use serde_json::{json, Map, Value};
@@ -155,8 +155,8 @@ fn embedding_provider_matches_v4() {
         let profile_id = case["profileId"].as_str().map(str::to_string);
         let text = case["text"].as_str().unwrap();
         let priority = match case.get("priority").and_then(Value::as_str) {
-            Some("background") => EmbeddingPriority::Background,
-            _ => EmbeddingPriority::Interactive,
+            Some("background") => EmbeddingCallOptions::background(),
+            _ => EmbeddingCallOptions::interactive(),
         };
 
         // Register the canned transport FROM the oracle-recorded wire: the raw

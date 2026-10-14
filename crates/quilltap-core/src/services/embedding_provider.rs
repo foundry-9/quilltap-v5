@@ -98,7 +98,7 @@ use crate::db::embedding_profiles::{self, EmbeddingProfileRow};
 use crate::db::runtime::Db;
 use crate::embedding_vector::apply_embedding_profile;
 use crate::model::embedding::{
-    EmbeddingError, EmbeddingPriority, EmbeddingProvider, EmbeddingResult,
+    EmbeddingCallOptions, EmbeddingError, EmbeddingProvider, EmbeddingResult,
 };
 use crate::model::embedding_wire::{
     build_nanogpt_request, build_ollama_embed_request, build_ollama_legacy_request,
@@ -185,6 +185,7 @@ impl<T: WireTransport> ApiEmbeddingProvider<T> {
         text: &str,
         user_id: &str,
         profile_id: Option<&str>,
+        lexical_text: Option<&str>,
     ) -> Result<EmbeddingResult, EmbeddingError> {
         let mut profile: Option<EmbeddingProfileRow> = None;
 
@@ -208,7 +209,8 @@ impl<T: WireTransport> ApiEmbeddingProvider<T> {
             return Err(EmbeddingError::new("No embedding profile configured"));
         };
 
-        self.generate_embedding(text, &profile, user_id).await
+        self.generate_embedding(text, &profile, user_id, lexical_text)
+            .await
     }
 
     /// v4 `generateEmbedding`: the BUILTIN dispatch. v4's outer catch here is
@@ -220,10 +222,13 @@ impl<T: WireTransport> ApiEmbeddingProvider<T> {
         text: &str,
         profile: &EmbeddingProfileRow,
         user_id: &str,
+        // v4 `opts.lexicalText` (C1-10): BUILTIN embeds it; the API flow
+        // ignores it.
+        lexical_text: Option<&str>,
     ) -> Result<EmbeddingResult, EmbeddingError> {
         // Built-in provider has special handling for vocabulary state.
         if profile.provider == "BUILTIN" {
-            return generate_builtin_embedding(&self.db, text, profile).await;
+            return generate_builtin_embedding(&self.db, text, profile, lexical_text).await;
         }
 
         // All other providers use the API-based flow.
@@ -608,7 +613,7 @@ impl<T: WireTransport> EmbeddingProvider for ApiEmbeddingProvider<T> {
         text: &str,
         user_id: &str,
         profile_id: Option<&str>,
-        _priority: EmbeddingPriority,
+        opts: EmbeddingCallOptions,
     ) -> impl std::future::Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
         // Lights the "Emb" chip for the whole call, including the wait for
         // interactive quiet — an embedding minted to answer a search counts as
@@ -620,7 +625,10 @@ impl<T: WireTransport> EmbeddingProvider for ApiEmbeddingProvider<T> {
         // fixture-driven differential silently starts counting.
         crate::services::activity_registry::track_activity(
             crate::services::activity_kinds::ActivityKind::Embedding,
-            self.generate_for_user(text, user_id, profile_id),
+            async move {
+                self.generate_for_user(text, user_id, profile_id, opts.lexical_text.as_deref())
+                    .await
+            },
         )
     }
 }
@@ -728,7 +736,7 @@ mod tests {
         let (db, _scratch) = test_db("none").await;
         let provider = ApiEmbeddingProvider::new(db, CannedWireTransport::new());
         let err = provider
-            .generate_for_user("hi", "u-no-profiles", None)
+            .generate_for_user("hi", "u-no-profiles", None, None)
             .await
             .unwrap_err();
         assert_eq!(err.message, "No embedding profile configured");
@@ -752,7 +760,7 @@ mod tests {
         let provider = ApiEmbeddingProvider::new(db, transport);
         // The explicit id does not exist → the default profile resolves.
         let r = provider
-            .generate_for_user("hi", "u1", Some("ep-nonexistent"))
+            .generate_for_user("hi", "u1", Some("ep-nonexistent"), None)
             .await
             .unwrap();
         assert_eq!(r.provider, "OPENAI");
@@ -803,7 +811,7 @@ mod tests {
         // process-global registry; serialize with the exact-count registry tests
         // (the drop also zeroes, so this test leaves no residue either).
         let _activity = crate::services::activity_registry::ActivityTestGuard::new();
-        use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+        use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
         let (db, _scratch) = test_db("activity-span").await;
         seed_profile(&db, "ep-default", "u1", "OPENAI", Some("ak-1"), None, true).await;
         seed_api_key(&db, "ak-1", "u1", "sk-test").await;
@@ -821,7 +829,7 @@ mod tests {
         // Through the TRAIT method — the wrapped entry point, not
         // `generate_for_user` (which is the unwrapped body).
         provider
-            .generate_embedding_for_user("hi", "u1", None, EmbeddingPriority::Interactive)
+            .generate_embedding_for_user("hi", "u1", None, EmbeddingCallOptions::interactive())
             .await
             .expect("embedding");
 
@@ -841,7 +849,7 @@ mod tests {
         let provider = ApiEmbeddingProvider::new(db, CannedWireTransport::new());
         for pid in ["ep-1", "ep-2"] {
             let err = provider
-                .generate_for_user("hi", "u1", Some(pid))
+                .generate_for_user("hi", "u1", Some(pid), None)
                 .await
                 .unwrap_err();
             assert_eq!(err.message, "No API key found for OPENAI embedding profile");
@@ -876,7 +884,7 @@ mod tests {
                 .unwrap();
                 let provider = ApiEmbeddingProvider::new(db, CannedWireTransport::new());
                 provider
-                    .generate_for_user("hi", "u1", Some("ep-1"))
+                    .generate_for_user("hi", "u1", Some("ep-1"), None)
                     .await
                     .unwrap_err()
             })
@@ -899,7 +907,7 @@ mod tests {
         seed_profile(&db, "ep-1", "u1", "MYSTERY", None, None, false).await;
         let provider = ApiEmbeddingProvider::new(db, CannedWireTransport::new());
         let err = provider
-            .generate_for_user("hi", "u1", Some("ep-1"))
+            .generate_for_user("hi", "u1", Some("ep-1"), None)
             .await
             .unwrap_err();
         // v4's wrap is dead code: the registry gate's plain Error escapes as-is.
@@ -914,7 +922,7 @@ mod tests {
         seed_profile(&db, "ep-1", "u1", "ANTHROPIC", None, None, false).await;
         let provider = ApiEmbeddingProvider::new(db, CannedWireTransport::new());
         let err = provider
-            .generate_for_user("hi", "u1", Some("ep-1"))
+            .generate_for_user("hi", "u1", Some("ep-1"), None)
             .await
             .unwrap_err();
         assert_eq!(
@@ -941,7 +949,7 @@ mod tests {
         );
         let provider = ApiEmbeddingProvider::new(db, transport);
         let err = provider
-            .generate_for_user("hi", "u1", Some("ep-1"))
+            .generate_for_user("hi", "u1", Some("ep-1"), None)
             .await
             .unwrap_err();
         // v4's wrap is dead code: the plugin's plain throw escapes unwrapped.
@@ -980,7 +988,7 @@ mod tests {
                 embed_ok.clone(),
             );
         let p1 = ApiEmbeddingProvider::new(db.clone(), t1);
-        p1.generate_for_user("hi", "u1", Some("ep-1"))
+        p1.generate_for_user("hi", "u1", Some("ep-1"), None)
             .await
             .unwrap();
 
@@ -1006,7 +1014,7 @@ mod tests {
             );
         let p2 = ApiEmbeddingProvider::new(db, t2);
         let r1 = p2
-            .generate_for_user("hi", "u1", Some("ep-1"))
+            .generate_for_user("hi", "u1", Some("ep-1"), None)
             .await
             .unwrap();
         assert_eq!(r1.embedding, vec![1.0, 0.0]);
@@ -1014,7 +1022,7 @@ mod tests {
         // entry being consumed again would be fine; what we assert is the
         // result still resolves with num_ctx 2048 from cache).
         let r2 = p2
-            .generate_for_user("hi", "u1", Some("ep-1"))
+            .generate_for_user("hi", "u1", Some("ep-1"), None)
             .await
             .unwrap();
         assert_eq!(r2.embedding, vec![1.0, 0.0]);
@@ -1052,5 +1060,115 @@ mod tests {
             ),
             "rate limited"
         );
+    }
+
+    /// P4.D288 (C1-10) — the seam's proof: BUILTIN embeds `lexical_text` when a
+    /// call carries it and `text` when not, and every forwarder (`Arc`, the
+    /// `dyn` shim, the erased wrapper) carries the field WHOLE.
+    #[tokio::test]
+    async fn builtin_embeds_the_lexical_text_through_every_forwarder() {
+        use crate::model::embedding::{
+            DynEmbeddingProvider, EmbeddingCallOptions, EmbeddingProvider, ErasedEmbeddingProvider,
+        };
+        use crate::tfidf::{state_idf_json, state_vocabulary_json, BuiltinEmbeddingProvider};
+
+        let (db, _dir) = test_db("lexical").await;
+        seed_profile(&db, "ep-b", "u1", "BUILTIN", None, None, true).await;
+        let mut fitter = BuiltinEmbeddingProvider::new(true);
+        fitter
+            .fit_corpus(
+                &[
+                    "the harbour lantern glows over the quay".to_string(),
+                    "Mara trusts the crew of the airship".to_string(),
+                    "a ledger of tides and lanterns".to_string(),
+                ],
+                "2020-01-01T00:00:00.000Z".to_string(),
+            )
+            .unwrap();
+        let state = fitter.get_state().unwrap();
+        let (vocab, idf) = (state_vocabulary_json(&state), state_idf_json(&state));
+        let (avg, size) = (state.avg_doc_length, state.vocabulary.len() as f64);
+        db.write(move |ws| {
+            let c = ws.main().connection();
+            c.execute_batch(
+                "CREATE TABLE tfidf_vocabularies (id TEXT PRIMARY KEY, profileId TEXT, \
+                 userId TEXT, vocabulary TEXT, idf TEXT, avgDocLength REAL, vocabularySize REAL, \
+                 includeBigrams INTEGER, fittedAt TEXT, createdAt TEXT, updatedAt TEXT)",
+            )?;
+            c.execute(
+                "INSERT INTO tfidf_vocabularies VALUES ('v1', 'ep-b', 'u1', ?1, ?2, ?3, ?4, 1, \
+                 '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
+                rusqlite::params![vocab, idf, avg, size],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+        let anchored = "Mara trusts the crew\n\n(when: 2026-07-04)";
+        let lexical = "a ledger of tides and lanterns";
+        let provider = ApiEmbeddingProvider::new(db.clone(), CannedWireTransport::new());
+        let plain = provider
+            .generate_embedding_for_user(anchored, "u1", None, EmbeddingCallOptions::background())
+            .await
+            .unwrap();
+        let of_lexical = provider
+            .generate_embedding_for_user(lexical, "u1", None, EmbeddingCallOptions::background())
+            .await
+            .unwrap();
+        assert_ne!(
+            plain.embedding, of_lexical.embedding,
+            "the corpus tells the two apart"
+        );
+        let opts = || EmbeddingCallOptions::background().with_lexical_text(lexical);
+
+        let direct = provider
+            .generate_embedding_for_user(anchored, "u1", None, opts())
+            .await
+            .unwrap();
+        assert_eq!(
+            direct.embedding, of_lexical.embedding,
+            "BUILTIN embeds the lexical text"
+        );
+
+        let arc = std::sync::Arc::new(ApiEmbeddingProvider::new(
+            db.clone(),
+            CannedWireTransport::new(),
+        ));
+        let via_arc = arc
+            .generate_embedding_for_user(anchored, "u1", None, opts())
+            .await
+            .unwrap();
+        assert_eq!(via_arc.embedding, of_lexical.embedding, "Arc forwards it");
+
+        let dyn_provider: &dyn DynEmbeddingProvider = &provider;
+        let via_dyn = dyn_provider
+            .generate_embedding_for_user_dyn(anchored, "u1", None, opts())
+            .await
+            .unwrap();
+        assert_eq!(
+            via_dyn.embedding, of_lexical.embedding,
+            "the dyn shim forwards it"
+        );
+
+        let erased = ErasedEmbeddingProvider::new(ApiEmbeddingProvider::new(
+            db.clone(),
+            CannedWireTransport::new(),
+        ));
+        let via_erased = erased
+            .generate_embedding_for_user(anchored, "u1", None, opts())
+            .await
+            .unwrap();
+        assert_eq!(
+            via_erased.embedding, of_lexical.embedding,
+            "the erased wrapper forwards it"
+        );
+
+        // Absent, BUILTIN embeds `text` (through the same forwarders).
+        let none = erased
+            .generate_embedding_for_user(anchored, "u1", None, EmbeddingCallOptions::interactive())
+            .await
+            .unwrap();
+        assert_eq!(none.embedding, plain.embedding);
     }
 }

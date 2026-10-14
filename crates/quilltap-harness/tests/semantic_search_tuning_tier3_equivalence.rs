@@ -43,7 +43,7 @@ use std::sync::Mutex;
 
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::embedding::{
-    EmbeddingError, EmbeddingPriority, EmbeddingProvider, EmbeddingResult,
+    EmbeddingCallOptions, EmbeddingError, EmbeddingProvider, EmbeddingResult,
 };
 use quilltap_core::recall_tags::{ContextTag, ScopePolicy, TemporalTag, TimeWindow};
 use quilltap_core::recall_tuning::{resolve_recall_tuning, validate_recall_tuning_input};
@@ -70,7 +70,7 @@ impl EmbeddingProvider for ScriptedEmbedding {
         text: &str,
         _user_id: &str,
         _profile_id: Option<&str>,
-        _priority: EmbeddingPriority,
+        _opts: EmbeddingCallOptions,
     ) -> impl std::future::Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
         self.calls.lock().unwrap().push(text.to_string());
         let result = match self.spec.get(text) {

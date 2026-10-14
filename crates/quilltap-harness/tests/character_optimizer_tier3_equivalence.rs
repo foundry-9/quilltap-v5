@@ -77,7 +77,7 @@ use quilltap_core::model::completion::{
     CompletionResponse,
 };
 use quilltap_core::model::embedding::{
-    EmbeddingError, EmbeddingPriority, EmbeddingProvider, EmbeddingResult,
+    EmbeddingCallOptions, EmbeddingError, EmbeddingProvider, EmbeddingResult,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -350,7 +350,7 @@ impl EmbeddingProvider for ScriptedEmbedding {
         text: &str,
         _user_id: &str,
         _profile_id: Option<&str>,
-        _priority: EmbeddingPriority,
+        _opts: EmbeddingCallOptions,
     ) -> impl std::future::Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
         let result = if self.throws {
             Err(EmbeddingError::new("canned embedding failure"))

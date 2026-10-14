@@ -29,7 +29,7 @@ use std::sync::Arc;
 use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
-use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::photos::save_image_to_album::FileBytesStore;
 use crate::photos::user_gallery_service::{
     get_user_gallery_entry, list_user_gallery, needs_query_embedding, remove_from_user_gallery,
@@ -144,7 +144,8 @@ pub async fn photo_gallery_list<P: EmbeddingProvider + Sync>(
             );
         };
         match provider
-            .generate_embedding_for_user(&query, user_id, None, EmbeddingPriority::Interactive)
+            // lexical_text: None — a query embed; v4 passes no `lexicalText` here (C1-10).
+            .generate_embedding_for_user(&query, user_id, None, EmbeddingCallOptions::interactive())
             .await
         {
             Ok(e) => Some(e.embedding),
