@@ -24,6 +24,12 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — docs(porting): P4.D289 records its `SCORING` sha (`7e18b9cf7`) in the order header
+
+_Docs-only change._
+
+The `SCORING` commit's sha is written into P4.D289's status header so P4.D288 can rebase onto it; the final C1-A spellings were written with the commit itself.
+
 #### 2026-10-14 — SCORING: P4.D289 — the memory programme's pure leaf family (scoring, the memory calendar, the candidate, footnotes, pure admission, embedding text)
 
 _Versions: core 0.0.1284._
