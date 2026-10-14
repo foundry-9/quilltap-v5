@@ -180356,3 +180356,33 @@ migrationsSkipped: 90}`, none deferred. Measured:
   to `Retired memories` with `reason=retention` / `near-duplicate-fold`), and — **unit-5 residue** —
   `tri_state_edges_share_the_decoder`'s typed-only total 123 → 121 (the two retired `system_data_routes.rs` dedup
   arms). Versions: core 0.0.1295, host 0.0.203, web 0.0.240.
+
+### Unit 10 — C1-11, the carriers' pure helpers
+
+- **NEW `services/carriers/{mod,cursor_bundle,scenario_source_remap}.rs`.** `cursor_bundle`:
+  `cursors_to_bundle_fields(&ExtractionCursorMap) -> Map` (other → episode → turn, a key only for a non-empty id),
+  `take_bundle_cursors(&mut Map) -> ExtractionCursorMap` (`shift_remove` — the other keys keep their places),
+  `BundleCursors = Vec<(String, ExtractionCursorMap)>`, `load_bundle_cursors(&Connection) -> Option<BundleCursors>`,
+  `with_bundle_cursor_fields(&Connection, Map, Option<&BundleCursors>) -> Map`, `restore_bundle_cursors(&Connection,
+  chat_id, &ExtractionCursorMap) -> usize`; v4's three WARNs + the DEBUG on `module:
+  'memory:extraction:cursor-bundle'`; an absent table reads as none, creating nothing (a restore into one would WARN
+  where v4 creates the table lazily — unreachable on a booted instance, the boot ensure creates it; recorded).
+  `scenario_source_remap`: `read_scenario_source(&Value) -> Option<ScenarioSource>`, `remap_scenario_source(&Value,
+  impl Fn(&str) -> Option<String>) -> Option<ScenarioSource>` (an empty mapped id drops, v4's falsy check).
+- **Families:** NEW `cursor_bundle_equivalence` (tier-1: 4 maps + 3 takes; tier-2: one oracle invocation per
+  shape — `migration` / `fresh` / `absent` — over `base-<shape>.db` v4 builds; the preloaded / per-chat reads, the
+  restore's DEBUG, the foreign-key refusal's WARN, the failure arms after a renamed `chatId` and a renamed
+  `messageId`; v4's one-read `findAllByChat` reads `SELECT *` and only Zod-drops rows, so its WARN arm is POSED by a
+  throwing method and its error text masked) GREEN — 7 pure, 28 stateful ops, 8 lines; NEW
+  `scenario_source_remap_equivalence` (tier-1, 20 reads + 15 remaps — Zod ≥ 4.5's code-point max holds an astral
+  501-unit path) GREEN; core unit tests for v5's own WARN arms over reads that fail in v5's build.
+- **Finding — `DQS_QUOTED_IDENTIFIER_FALLBACK` (a named both-ways row, FLAGGED for a ruling):** v4's driver builds
+  SQLite with `SQLITE_DQS=0` (`better-sqlite3-multiple-ciphers/deps/defines.gypi:17`); v5's pinned
+  `quilltap-sqlite3mc-sys` sets no `SQLITE_DQS`, so SQLite's legacy fallback reads a double-quoted identifier that
+  names no column as a STRING literal. Every v5 repository that quotes identifiers (the cursor repository among
+  them) silently matches nothing on a missing column where v4 errors. Not changed here (the sys crate is pinned;
+  the define would force the amalgamation recompile and move every such query at once) — the human's call.
+- **Recipes:** both in their headers (`QT_CURSOR_BUNDLE_SHAPE` × 3 + `QT_FIXTURE_CURSOR_BUNDLE_DIR` →
+  `/tmp/oracle-cursor-bundle-<shape>.ndjson`, run with `QT_ORACLE_CURSOR_BUNDLE_DIR=/tmp`;
+  `QT_ORACLE_SCENARIO_SOURCE_REMAP`). Gotcha: v4's repository factory caches each collection's "initialized" flag —
+  one shape per PROCESS.

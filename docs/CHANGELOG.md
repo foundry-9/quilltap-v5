@@ -24,6 +24,23 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — feat(core): P4.D288 unit 10 — the carriers' pure helpers (C1-11)
+
+_Versions: core 0.0.1296._
+
+Adds `services::carriers`, the two pieces of v4 that both carrier lanes share. Pre-Phase-D field names stay readable.
+
+`cursor_bundle` (v4 `cursor-bundle.ts`) moves a chat's extraction cursors between bundles and the cursor table:
+- the pure pair: `cursors_to_bundle_fields` (in other → episode → turn order, skipping blank cursors) and `take_bundle_cursors` (removes all three keys in place);
+- the three best-effort wrappers `load_bundle_cursors`, `with_bundle_cursor_fields` and `restore_bundle_cursors`, carrying v4's three `[ExtractionCursors]` WARNs and its DEBUG on `module: 'memory:extraction:cursor-bundle'`;
+- a read of an instance with no cursor table answers "no cursors" and creates nothing.
+
+`scenario_source_remap` (v4 `source-remap.ts`) provides `read_scenario_source` (`null` / `''` / an absent value → none, a string is JSON-parsed, then the `ScenarioSourceSchema` check) and `remap_scenario_source` (an unmapped mount, or one mapped to `''`, drops the source).
+
+Families:
+- new `cursor_bundle_equivalence`: tier-1 for the pure pair, tier-2 over the migration, fresh and absent table shapes, including the WARN arms. It also records `DQS_QUOTED_IDENTIFIER_FALLBACK` both ways: v4's SQLite is built with `SQLITE_DQS=0` and v5's is not, so a renamed double-quoted column reads as a string literal in v5 instead of failing.
+- new `scenario_source_remap_equivalence` (tier-1, 20 reads and 15 remaps).
+
 #### 2026-10-14 — feat(core,host,web): P4.D288 unit 9 — the memory verbs, policy protection, the one retire path, the Commonplace mirror (C1-7)
 
 _Versions: core 0.0.1295, host 0.0.203, web 0.0.240._

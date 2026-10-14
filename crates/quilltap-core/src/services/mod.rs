@@ -111,6 +111,7 @@ pub mod frozen_archive;
 // === P4.9K0 ===
 pub mod generator_progress;
 // === end P4.9K0 ===
+pub mod carriers; // P4.D288 (C1-11)
 pub mod commonplace_mirror; // P4.D288 (C1-7, L-3)
 pub mod help_doc_chunking;
 pub mod help_doc_sync;
