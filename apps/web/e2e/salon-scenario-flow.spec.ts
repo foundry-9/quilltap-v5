@@ -207,7 +207,11 @@ test.describe('P4.D116 — the in-chat scenario picker', () => {
     // --- Pick the project scenario: the Host announces the revision.
     const before = await scenarioChips(page).count();
     await picker.selectOption({ label: PRESET_NAME });
-    await expect(control.locator('textarea')).toHaveCount(0);
+    // P4.D302 (v4 `545e299bb`): a preset shows the Notes box beneath it — ONE
+    // textarea, empty (Custom → preset clears the old scene rather than posting
+    // it as notes). Before, a preset showed no textarea at all.
+    await expect(control.locator('textarea')).toHaveCount(1);
+    await expect(control.getByLabel('Notes beneath the scene')).toHaveValue('');
     await save(page);
     await expect(page.getByText('Scenario updated')).toBeVisible({ timeout: 10_000 });
     await expect(scenarioChips(page)).toHaveCount(before + 1);
@@ -301,13 +305,13 @@ test.describe('P4.D116 — the in-chat scenario picker', () => {
     const control = page.locator('qt-chat-scenario-control');
     await expect(control).toBeVisible({ timeout: 15_000 });
     const picker = control.locator('select');
-    // The archived scenario is this project's ONLY one, so with the toggle off
-    // there is NOTHING to offer and v4's `hasAnyScenarioOptions` rule hides
-    // the whole dropdown (the checkbox deliberately sits OUTSIDE that @if so
-    // it stays reachable in exactly this state — the first live run's catch:
-    // hidden-entirely is a STRONGER hiding than an option-less select).
+    // P4.D302 (v4 `545e299bb` deleted `hasAnyScenarioOptions`): the dropdown
+    // ALWAYS renders now — so "Browse all scenarios…" is reachable — and the
+    // archived scenario, this project's only one, is simply not among its
+    // options while the toggle is off.
     await expect(control.getByRole('checkbox')).toBeVisible({ timeout: 15_000 });
-    await expect(picker).toHaveCount(0);
+    await expect(picker).toBeVisible({ timeout: 15_000 });
+    await expect(picker.locator('option', { hasText: ARCHIVE_SCENARIO })).toHaveCount(0);
 
     await control.getByRole('checkbox').check();
     await expect(picker).toBeVisible({ timeout: 15_000 });

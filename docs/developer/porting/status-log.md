@@ -184657,3 +184657,54 @@ stays symlinked (§R.3's cure not needed for this lane).
   becomes "sends exactly the selection's one pointer" over all six kinds (+ the
   key-order row), the free-text row seeds a selection.
 - Gate: lint / build / `npm test` green — 504 files / 10,206 tests.
+
+### Unit 6 — e2e: the two re-pins, the builder measurement, NEW `scenario-browser-flow.spec.ts`
+
+- **The binary (recorded):** the worktree's cloned `target/release/quilltap-web`
+  (2026-10-12) predated main's last crate change (2026-10-13 11:53), and
+  `e2e/support/env.ts` prefers release, so the stale release copies were deleted
+  from THIS worktree and `CARGO_INCREMENTAL=0 cargo build -p quilltap-web -p
+  quilltap-cli` (debug) serves the branch's `dist`. The first by-file run timed
+  out in global setup (the shared server's 30 s readiness on a first debug
+  boot; teardown removed its log); a re-run with the log captured booted
+  cleanly — not reproduced since.
+- `e2e/salon-scenario-flow.spec.ts` (4330), **measured on the branch**: `:210`
+  re-pinned (a preset now shows ONE textarea, `aria-label="Notes beneath the
+  scene"`, value `''`) and `:310` re-pinned (the dropdown ALWAYS renders; the
+  archived scenario is absent from its options while the toggle is off; the
+  `hasAnyScenarioOptions` comment rewritten). **2 passed / 0 failed.** The
+  re-pick beat still answers `Scenario unchanged` on main's server (the body
+  match, no source) — as the order predicted, nothing else moved; the gated
+  flip of that no-op on the union is the unifier's to confirm (§S.9).
+- `e2e/scenario-builder-flow.spec.ts`, measured by file: **(a) went red** —
+  the "Starting Scenario (Optional)" label's `for` now names the select (v4's
+  `new-chat-scenario-select`), so a bare `getByLabel('Starting scenario')`
+  resolved to the select AND the editor (strict-mode violation). Re-pinned to
+  `getByRole('textbox', { name: 'Starting scenario' })`, and the select
+  assertion made unconditional (it always renders). (c) (`:266`) held unchanged
+  — the touched setter selects the saved General scenario. **5 passed / 0
+  failed** after the re-pin.
+- `e2e/new-chat-flow.spec.ts`, measured by file: **5 passed / 0 failed** — no
+  re-pin needed.
+- NEW `e2e/scenario-browser-flow.spec.ts` on **4340** (its own instance under
+  `ARTIFACTS_DIR`, the `salon-scenario-flow` recipe; its own mock LLM on 45340
+  for the gated create beat's greeting; seeds through dispatch — two projects
+  with a scenario each, one archived, and a General scenario), `const
+  P4D288_SERVER_LANDED = false`. **UNGATED, 3 passed:** New Chat's dropdown
+  carries `Browse all scenarios…`, choosing it opens "Every scene on every
+  shelf" and leaves the select where it was, Cancel closes; Escape inside the
+  browser closes ONLY the browser (New Chat stays, the search box was
+  focused); the same on the in-chat control with the sidebar left open.
+  **GATED, 4 skipped:** another project's scene through the Projects section
+  → Use → Elsewhere `Owner › Name` + the body previewed → Create Chat → the
+  provenance line; search across every shelf + `Nothing on that shelf answers
+  to the name.` + Show archived's `archived` badge; a General pick snapping
+  native; the Notes box saved and re-seeded, revised → plain save `Scenario
+  unchanged` with NO new Host chip → Reload `Scenario updated` WITH one → the
+  shelf file deleted → `— the shelf copy is gone` and Custom with the text.
+  **Recorded for the unifier:** on main's server the salon fixture has NO
+  "Quilltap General" mount — `scenarioCreate` answers `Quilltap General mount
+  has not been provisioned yet — restart the server` — so the seed records the
+  refusal instead of failing `beforeAll`, and the General beat asserts it is
+  null (if P4.D295's boot heal does not provision the mount on this fixture,
+  that beat reds with the server's own sentence).

@@ -947,6 +947,12 @@ _Versions: SPA 0.5.847._
 
 The Commonplace Book card and editor now label importance through v4's `importanceBand` (`e0ac7493a`): High at 0.7 or above, Medium from 0.3, Low below 0.3 (was 0.4). `memory-format.ts` carries `IMPORTANCE_HIGH`, `IMPORTANCE_LOW` and `importanceBand`; the format and card specs are re-pinned at 0.3 / 0.29 / 0.69 / 0.7.
 
+#### 2026-10-14 — test(e2e): scenario browser flow, and the scenario re-pins (P4.D302 unit 6)
+
+_No crate versions bumped._
+
+New `e2e/scenario-browser-flow.spec.ts` on its own instance (port 4340): "Browse all scenarios…" opens the browser and leaves the select unchanged, Cancel closes it, and Escape closes only the browser, both on New Chat and in the Salon sidebar. Gated beats cover a pick from another project shown under "Elsewhere" and named on the provenance line after Create, search and Show archived, a General pick, and the Notes box / revised / Reload / gone flow; they stay behind `P4D288_SERVER_LANDED = false` until the scenarios server lands. Re-pins: `salon-scenario-flow` (a preset shows the Notes box; the dropdown always renders) and `scenario-builder-flow` (a): the label now names the select, so the editor is read by role.
+
 #### 2026-10-14 — fix(spa): New Chat holds one scenario selection, so it shows what it creates (P4.D302 unit 5)
 
 _Versions: SPA 0.5.851._

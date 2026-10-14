@@ -112,10 +112,15 @@ test.describe('P4.D218 — the Host sets the scene', () => {
     await builderFooterButton(page, 'Use this scene').click();
     await expect(builderDialog(page)).toHaveCount(0);
 
-    // The scene is the custom text; no preset stays selected.
-    await expect(page.getByLabel('Starting scenario')).toContainText(MOCK_LLM_REPLY);
-    const presets = page.locator('#new-chat-scenario-select');
-    if (await presets.count()) await expect(presets).toHaveValue('__custom__');
+    // The scene is the custom text; no preset stays selected. P4.D302 (v4
+    // `545e299bb`): the "Starting Scenario (Optional)" label now names the
+    // select (`for="new-chat-scenario-select"`), so a bare
+    // `getByLabel('Starting scenario')` resolves to the select AND the editor
+    // — the editor is read by its role; and the select ALWAYS renders now.
+    await expect(page.getByRole('textbox', { name: 'Starting scenario' })).toContainText(
+      MOCK_LLM_REPLY,
+    );
+    await expect(page.locator('#new-chat-scenario-select')).toHaveValue('__custom__');
   });
 
   test('(b) Salon: build, Use fills the custom box, and Change scenario has the Host announce it', async ({
