@@ -775,6 +775,14 @@ Ports the pure half of v4's memory refactor (pin `83334b9a5`) as the round's fir
 
 The old modules (`memory_weighting`, `day_references`, the pure halves of `memory_gate` and `episodic`) become LANE-REMOVE shims for the consumer lanes; the crate-root reinforced-importance formula forwards to the new one. New harness families: `memory_scoring`, `memory_time` (two TZ legs, with the ruled `MEMORY_ZONE_VALIDITY` and `ZONELESS_PARSE_AS_UTC` tables), `memory_time_zone_refresh_tier2` (`MEMORY_ZONE_ROW_UNVALIDATED`), `memory_candidate`, `reinforcement_footnotes`, `admission_decide`, `admission_fold_plan`, `memory_embedding_text`; seven tier-1 families re-aimed at the pin; a new `no_memory_lane_remove_markers_left` census (red by design until unification) with the wardrobe census scoped by sha.
 
+#### 2026-10-14 — feat(host): P4.D299 — the instance lock records the listening port (v4 bug 239), read leniently, rewrites keep every key in place
+
+_Versions: host 0.0.200, web 0.0.238._
+
+Ports the server half of v4 `93c5af6ad` (bug 239). `LockFileContent` gains an optional `port` between `processArgv0` and `history`, read through one lenient predicate (`lock_port_from_json`: a JSON number that is an integer in 1–65535; anything else reads as no port, never a parse failure — a strict read would have failed boot on the re-read arm or shut a running server down through the heartbeat). Every rewrite of an existing lock (the stale claim, the re-entrant path, the heartbeat, both releases) now edits the parsed key-order-preserving map the way v4 rewrites its parsed object: assigned keys keep their slot, unknown keys and a malformed `port` ride through, a claim replaces `port` in place or appends it after `history` when the claimed lock had none, and drops it with `shift_remove` when this process has no valid port. The CLI write-lock writes no port and its claim still rebuilds from fresh content (v4's launcher shape). v4's two `database:instance-lock` DEBUG lines (`Building instance lock content` on the server's fresh build, `Recorded listening port on instance lock` on a claim) carry the `module` binding.
+
+`HostConfig.listening_port` (default `None`, so the Tauri shell records none) is threaded through `HostAssembler` into `pre_open`'s claim; `quilltap-web` sets it from `--port` (`--port 0` records none). New tier-2 family `instance_lock_port_equivalence` against v4's real `instance-lock.ts` (33 rows: fresh writes under seven `PORT` shapes, claims of nine planted port shapes × valid/invalid `PORT`, a foreign-host claim, re-entrant + heartbeat over malformed ports and unknown keys): 63 failures on unported main, 0 after.
+
 #### 2026-10-14 — docs(porting): record the human's approval of the `83334b9a5` round's planning rulings and P4.D290's `sha1` dependency
 
 _Docs-only change._

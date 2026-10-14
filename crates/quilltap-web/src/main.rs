@@ -239,7 +239,11 @@ fn main() {
         .build()
         .expect("tokio runtime");
     rt.block_on(async move {
-        let config = production_host_config(base_dir.clone(), version.clone());
+        let mut config = production_host_config(base_dir.clone(), version.clone());
+        // v4 bug 239: the lock records the port this server serves on — set
+        // here, after the shared (Tauri-too) config and before the boot takes
+        // the lock, which happens ahead of the bind below (P4.D299 R-L3).
+        config.listening_port = listening_port_for(args.port);
         let startup = boot_startup_status(config);
         // --spa-dir → QUILLTAP_SPA_DIR → beside the binary → placeholders.
         let spa_dir = quilltap_web::spa::resolve_spa_dir_for_process(args.spa_dir.clone());
@@ -293,9 +297,27 @@ fn main() {
     });
 }
 
+/// The port recorded in the instance lock for `--port` (P4.D299 R-L3): the
+/// configured port when it is a valid one, `None` for `--port 0` — an
+/// ephemeral bind whose real port is unknown when the lock is taken (v4
+/// records nothing for an invalid `PORT`, `instance-lock.ts:328-333`). A `u16`
+/// is never above 65535, so `0` is the one invalid value.
+fn listening_port_for(port: u16) -> Option<u16> {
+    (port != 0).then_some(port)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_listening_port_is_the_configured_one_and_zero_records_none() {
+        assert_eq!(listening_port_for(3000), Some(3000));
+        assert_eq!(listening_port_for(3005), Some(3005));
+        assert_eq!(listening_port_for(1), Some(1));
+        assert_eq!(listening_port_for(65535), Some(65535));
+        assert_eq!(listening_port_for(0), None);
+    }
 
     /// The rejected-timezone WARN tells the truth jiff measured (P4.140, Tier 2
     /// item 13): a POSIX-rule `TZ` keeps the display zone while the calendar

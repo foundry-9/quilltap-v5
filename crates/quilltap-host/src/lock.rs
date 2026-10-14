@@ -25,9 +25,14 @@
 //!   drivers and, by default, exits the process (v4 closes the DB and
 //!   `process.exit(1)`s).
 //!
-//! The file format is v4's `JSON.stringify(content, null, 2) + '\n'` (field
-//! order preserved by struct declaration order) so a v5 lock is readable by
-//! v4's launcher helpers and vice versa. The [`classify_lock_status`] function
+//! The file format is v4's `JSON.stringify(content, null, 2) + '\n'` so a v5
+//! lock is readable by v4's launcher helpers and vice versa. A FRESH lock is
+//! the serialized struct (field order = declaration order = v4's
+//! `buildLockContent`); every rewrite of an EXISTING lock edits the parsed,
+//! key-order-preserving map instead (P4.D299 R-L1 — v4 rewrites the parsed
+//! object, so an assigned key keeps its slot, a new key appends, and keys v5
+//! does not model — a newer v4's, or a malformed `port` — ride through
+//! untouched). The [`classify_lock_status`] function
 //! mirrors the launcher's read-only `getLockStatus`
 //! (`packages/quilltap/lib/lock-helpers.js`) vocabulary —
 //! `absent|corrupt|active|stale|suspect` — so the P4.3 CLI lock verbs can
@@ -46,7 +51,8 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::{Map, Value};
 
 use crate::env::{detect_environment_type, EnvironmentType};
 
@@ -106,7 +112,42 @@ pub struct LockFileContent {
     pub environment: EnvironmentType,
     pub process_title: String,
     pub process_argv0: String,
+    /// v4 bug 239 (`93c5af6ad`): the HTTP port the server listens on, so the
+    /// CLI tools that talk to a running server can find it from an instance
+    /// name. Absent in locks written before it, by the CLI's own write-lock,
+    /// and by a server with no valid port (`--port 0`; the Tauri shell).
+    /// Read LENIENTLY ([`lock_port_from_json`]): a malformed value is `None`,
+    /// never a parse failure — a strict read would turn a v4-written oddity
+    /// into a failed boot (the re-read arm of [`acquire_instance_lock`]) or a
+    /// heartbeat shutdown (P4.D299 R-O / R-L2).
+    #[serde(
+        default,
+        deserialize_with = "deserialize_lock_port",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub port: Option<u16>,
     pub history: Vec<LockHistoryEntry>,
+}
+
+/// The lock's port, by v4's ONE lenient predicate (`resolveServerPort`,
+/// `lock-helpers.js:151-154`; the server writes only values that pass it):
+/// `Number.isInteger(p) && p >= 1 && p <= 65535` over the JSON value. `3005`,
+/// `3005.0`, `3.005e3` → `3005`; a string, a non-integer, `0`, `70000`, `-1`,
+/// `null`, a boolean or an object → `None`. Total: every input yields
+/// `Some(valid)` or `None`.
+///
+/// NOT the predicate `quilltap db --lock-status` prints its `Port:` line by —
+/// that one is v4's UNBOUNDED `Number.isInteger(lock.port)` (`quilltap.js:595`),
+/// kept in the CLI.
+pub fn lock_port_from_json(value: &Value) -> Option<u16> {
+    let n = value.as_f64()?;
+    (n.is_finite() && n.trunc() == n && (1.0..=65535.0).contains(&n)).then_some(n as u16)
+}
+
+fn deserialize_lock_port<'de, D: Deserializer<'de>>(d: D) -> Result<Option<u16>, D::Error> {
+    // Any JSON value deserializes into `Value`; the predicate never refuses.
+    let value = Value::deserialize(d)?;
+    Ok(lock_port_from_json(&value))
 }
 
 /// The lock-conflict error (v4 `InstanceLockError`): another live process
@@ -245,12 +286,23 @@ fn get_lock_owner(lock_path: &Path) -> Option<LockOwnership> {
 /// claims and its release still compare PID + hostname as v4's launcher does
 /// (the P4.D166 lane record's six-site table).
 fn remember_lock_owner(lock_path: &Path, content: &LockFileContent) {
+    remember_owner(
+        lock_path,
+        content.pid,
+        &content.hostname,
+        &content.started_at,
+    );
+}
+
+/// [`remember_lock_owner`] for a rewrite over the raw map (the identity this
+/// process just wrote into it).
+fn remember_owner(lock_path: &Path, pid: u32, hostname: &str, started_at: &str) {
     lock_owners().lock().unwrap().insert(
         lock_path.to_path_buf(),
         LockOwnership {
-            pid: content.pid,
-            hostname: content.hostname.clone(),
-            started_at: content.started_at.clone(),
+            pid,
+            hostname: hostname.to_string(),
+            started_at: started_at.to_string(),
         },
     );
 }
@@ -288,8 +340,13 @@ fn our_identity() -> (u32, String, String, String) {
     (std::process::id(), hostname(), title, argv0)
 }
 
-/// v4 `buildLockContent()`.
-fn build_lock_content() -> LockFileContent {
+/// v4 `buildLockContent()` — `port` between `processArgv0` and `history`
+/// when given (v4's `...(port !== undefined ? { port } : {})` spread). The
+/// server passes its listening port; the CLI write-lock passes `None` (v4's
+/// launcher `buildLockContent`, `lock-helpers.js:224-236`, writes none). The
+/// `Building instance lock content` DEBUG is the SERVER's alone, so it is
+/// emitted at [`acquire_instance_lock`]'s fresh build, not here (R-L5).
+fn build_lock_content(port: Option<u16>) -> LockFileContent {
     let now = now_iso();
     let (pid, host, title, argv0) = our_identity();
     LockFileContent {
@@ -300,6 +357,7 @@ fn build_lock_content() -> LockFileContent {
         environment: detect_environment_type(),
         process_title: title,
         process_argv0: argv0,
+        port,
         history: Vec::new(),
     }
 }
@@ -320,6 +378,59 @@ fn add_history_entry(content: &mut LockFileContent, event: LockEvent, detail: Op
     }
 }
 
+/// v4 `addHistoryEntry` over the raw map: `{ ...content, history }` — the
+/// `history` key keeps its slot. Only ever called on a map whose typed read
+/// succeeded, so `history` is an array.
+fn add_raw_history_entry(raw: &mut Map<String, Value>, event: LockEvent, detail: Option<String>) {
+    let (pid, host, _, _) = our_identity();
+    let entry = LockHistoryEntry {
+        event,
+        pid,
+        hostname: host,
+        timestamp: now_iso(),
+        detail,
+    };
+    let entry = serde_json::to_value(entry).expect("a history entry serializes");
+    if let Some(Value::Array(history)) = raw.get_mut("history") {
+        history.push(entry);
+        let len = history.len();
+        if len > MAX_HISTORY_ENTRIES {
+            history.drain(0..len - MAX_HISTORY_ENTRIES);
+        }
+    }
+}
+
+/// v4's `content.<key> = value` on the parsed object: an existing key keeps
+/// its position (`preserve_order`'s `insert`), a new one appends.
+fn set_raw(raw: &mut Map<String, Value>, key: &str, value: impl Into<Value>) {
+    raw.insert(key.to_string(), value.into());
+}
+
+/// v4 `applyListeningPort(content)` — record THIS process's port on a lock
+/// being taken over (in place when the claimed lock had a `port`, appended
+/// after `history` when it had none), or drop the previous holder's when this
+/// process has no valid port. `shift_remove`, never `remove`: the latter is a
+/// SWAP-remove that would move the last key into `port`'s slot.
+fn apply_listening_port(raw: &mut Map<String, Value>, port: Option<u16>) {
+    match port {
+        Some(port) => {
+            set_raw(raw, "port", port);
+            tracing::debug!(
+                module = "database:instance-lock",
+                port,
+                "Recorded listening port on instance lock"
+            );
+        }
+        None => {
+            raw.shift_remove("port");
+            tracing::debug!(
+                module = "database:instance-lock",
+                "Recorded listening port on instance lock"
+            );
+        }
+    }
+}
+
 // ============================================================================
 // File IO
 // ============================================================================
@@ -327,13 +438,24 @@ fn add_history_entry(content: &mut LockFileContent, event: LockEvent, detail: Op
 /// v4 `readLockFile`: parse, shape-validate (pid number, hostname string,
 /// history array — serde covers all three), `None` on missing/corrupt.
 pub fn read_lock_file(lock_path: &Path) -> Option<LockFileContent> {
-    let raw = std::fs::read_to_string(lock_path).ok()?;
-    serde_json::from_str(&raw).ok()
+    read_lock_file_raw(lock_path).map(|(typed, _)| typed)
+}
+
+/// [`read_lock_file`] plus the parsed map the rewrites edit (R-L1): ONE read
+/// of the file, the typed view deciding, the raw map written back.
+fn read_lock_file_raw(lock_path: &Path) -> Option<(LockFileContent, Map<String, Value>)> {
+    let text = std::fs::read_to_string(lock_path).ok()?;
+    let Ok(Value::Object(raw)) = serde_json::from_str::<Value>(&text) else {
+        return None;
+    };
+    let typed = serde_json::from_value(Value::Object(raw.clone())).ok()?;
+    Some((typed, raw))
 }
 
 /// v4 `writeLockFile`: pretty-2-space JSON + trailing newline, atomically via
-/// tmp + rename (the tmp is cleaned up on failure).
-fn write_lock_file(lock_path: &Path, content: &LockFileContent) -> Result<(), LockError> {
+/// tmp + rename (the tmp is cleaned up on failure). Writes either a fresh
+/// [`LockFileContent`] or an edited raw map.
+fn write_lock_file<T: Serialize>(lock_path: &Path, content: &T) -> Result<(), LockError> {
     let tmp = lock_path.with_extension("lock.tmp");
     let json = serde_json::to_string_pretty(content)
         .map_err(|e| LockError::Io(format!("serialize lock: {e}")))?;
@@ -501,32 +623,40 @@ fn foreign_stale_claim_reason(existing: &LockFileContent, heartbeat_age_ms: f64)
     )
 }
 
-/// v4 `claimStaleLock`: preserve history, log `stale-detected` + reason,
-/// overwrite the identity, log `stale-claimed`.
+/// v4 `claimStaleLock`: `{ ...existing }`, log `stale-detected` + reason,
+/// overwrite the identity keys IN PLACE, apply this process's listening port,
+/// log `stale-claimed` — every key v4 never assigns (unknown ones included)
+/// rides through where it stood (R-L1).
 fn claim_stale_lock(
     lock_path: &Path,
-    existing: LockFileContent,
+    mut raw: Map<String, Value>,
     reason: String,
+    port: Option<u16>,
 ) -> Result<(), LockError> {
-    let mut content = existing;
-    add_history_entry(&mut content, LockEvent::StaleDetected, Some(reason));
+    add_raw_history_entry(&mut raw, LockEvent::StaleDetected, Some(reason));
 
     let (pid, host, title, argv0) = our_identity();
-    content.pid = pid;
-    content.hostname = host;
-    content.started_at = now_iso();
-    content.last_heartbeat = now_iso();
-    content.environment = detect_environment_type();
-    content.process_title = title;
-    content.process_argv0 = argv0;
-    add_history_entry(
-        &mut content,
+    let started_at = now_iso();
+    set_raw(&mut raw, "pid", pid);
+    set_raw(&mut raw, "hostname", host.clone());
+    set_raw(&mut raw, "startedAt", started_at.clone());
+    set_raw(&mut raw, "lastHeartbeat", now_iso());
+    set_raw(
+        &mut raw,
+        "environment",
+        serde_json::to_value(detect_environment_type()).expect("environment serializes"),
+    );
+    set_raw(&mut raw, "processTitle", title);
+    set_raw(&mut raw, "processArgv0", argv0);
+    apply_listening_port(&mut raw, port);
+    add_raw_history_entry(
+        &mut raw,
         LockEvent::StaleClaimed,
         Some(format!("Claimed by PID {pid}")),
     );
 
-    write_lock_file(lock_path, &content)?;
-    remember_lock_owner(lock_path, &content);
+    write_lock_file(lock_path, &raw)?;
+    remember_owner(lock_path, pid, &host, &started_at);
     Ok(())
 }
 
@@ -534,13 +664,35 @@ fn claim_stale_lock(
 /// the heartbeat ([`heartbeat_tick`]) and releases via
 /// [`release_instance_lock`]. A live conflict is [`LockError::Conflict`] —
 /// the typed boot error the assembly surfaces.
-pub fn acquire_instance_lock(lock_path: &Path) -> Result<(), LockError> {
-    let mut existing = read_lock_file(lock_path);
+///
+/// `port` is this process's listening port (v4's `resolveListeningPort()`;
+/// in v5 `quilltap-web --port` when it is 1–65535, else `None` — P4.D299
+/// R-L3): written into a fresh lock, applied on a stale claim, and left
+/// untouched by the re-entrant path (v4 never assigns it there).
+pub fn acquire_instance_lock(lock_path: &Path, port: Option<u16>) -> Result<(), LockError> {
+    let mut existing = read_lock_file_raw(lock_path);
 
     if existing.is_none() {
         // No lock — atomic create (O_CREAT | O_EXCL); EEXIST re-reads and
         // falls through to the stale logic.
-        let mut content = build_lock_content();
+        let mut content = build_lock_content(port);
+        // v4 `buildLockContent`'s DEBUG — the server's fresh build only (the
+        // CLI write-lock shares `build_lock_content` but v4's launcher logs
+        // nothing there). `port` is omitted when absent, as winston drops v4's
+        // `undefined`.
+        match port {
+            Some(port) => tracing::debug!(
+                module = "database:instance-lock",
+                pid = content.pid,
+                port,
+                "Building instance lock content"
+            ),
+            None => tracing::debug!(
+                module = "database:instance-lock",
+                pid = content.pid,
+                "Building instance lock content"
+            ),
+        }
         add_history_entry(
             &mut content,
             LockEvent::Acquired,
@@ -561,7 +713,7 @@ pub fn acquire_instance_lock(lock_path: &Path) -> Result<(), LockError> {
                 return Ok(());
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                existing = read_lock_file(lock_path);
+                existing = read_lock_file_raw(lock_path);
                 if existing.is_none() {
                     return Err(LockError::Io(format!(
                         "Instance lock file at {} was transiently created by another process \
@@ -574,26 +726,31 @@ pub fn acquire_instance_lock(lock_path: &Path) -> Result<(), LockError> {
         }
     }
 
-    let existing = existing.expect("checked above");
+    let (existing, mut raw) = existing.expect("checked above");
     let (our_pid, our_host, title, argv0) = our_identity();
     let same_host = existing.hostname == our_host;
     let same_pid = existing.pid == our_pid;
     let pid_alive = same_host && is_pid_alive(existing.pid);
 
-    // Re-entrant: same PID on same host (repeated init).
+    // Re-entrant: same PID on same host (repeated init). Over the raw map:
+    // `port` (even a malformed one) and unknown keys stay where they stood.
     if same_host && same_pid {
-        let mut updated = existing;
-        add_history_entry(
-            &mut updated,
+        add_raw_history_entry(
+            &mut raw,
             LockEvent::Acquired,
             Some("Re-entrant acquisition (same PID)".to_string()),
         );
-        updated.started_at = now_iso();
-        updated.environment = detect_environment_type();
-        updated.process_title = title;
-        updated.process_argv0 = argv0;
-        write_lock_file(lock_path, &updated)?;
-        remember_lock_owner(lock_path, &updated);
+        let started_at = now_iso();
+        set_raw(&mut raw, "startedAt", started_at.clone());
+        set_raw(
+            &mut raw,
+            "environment",
+            serde_json::to_value(detect_environment_type()).expect("environment serializes"),
+        );
+        set_raw(&mut raw, "processTitle", title);
+        set_raw(&mut raw, "processArgv0", argv0);
+        write_lock_file(lock_path, &raw)?;
+        remember_owner(lock_path, existing.pid, &existing.hostname, &started_at);
         return Ok(());
     }
 
@@ -601,8 +758,9 @@ pub fn acquire_instance_lock(lock_path: &Path) -> Result<(), LockError> {
     if same_host && !pid_alive {
         return claim_stale_lock(
             lock_path,
-            existing.clone(),
+            raw,
             format!("PID {} is no longer running", existing.pid),
+            port,
         );
     }
 
@@ -631,7 +789,7 @@ pub fn acquire_instance_lock(lock_path: &Path) -> Result<(), LockError> {
         }
 
         let stale_reason = foreign_stale_claim_reason(&existing, age_ms);
-        return claim_stale_lock(lock_path, existing, stale_reason);
+        return claim_stale_lock(lock_path, raw, stale_reason, port);
     }
 
     // A live, different process on the same host — refuse.
@@ -659,8 +817,12 @@ pub fn acquire_instance_lock(lock_path: &Path) -> Result<(), LockError> {
 /// Bug 126: ownership is [`is_still_our_lock`], never a hostname comparison.
 /// The recorded hostname is REFRESHED on each write so the file keeps a
 /// useful label even when the OS name has since changed.
+///
+/// The rewrite edits the raw map (R-L1): only `lastHeartbeat` and `hostname`
+/// move; a `port` — malformed or not — and every unknown key are kept as v4's
+/// parsed-object rewrite keeps them.
 pub fn heartbeat_tick(lock_path: &Path) -> bool {
-    let Some(mut content) = read_lock_file(lock_path) else {
+    let Some((content, mut raw)) = read_lock_file_raw(lock_path) else {
         tracing::error!(
             lockPath = %lock_path.display(),
             "Instance lock file disappeared — another process may claim the database. Shutting down."
@@ -685,13 +847,15 @@ pub fn heartbeat_tick(lock_path: &Path) -> bool {
         );
         return false; // taken over
     }
-    content.last_heartbeat = now_iso();
-    content.hostname = hostname();
-    let _ = write_lock_file(lock_path, &content);
-    remember_lock_owner(lock_path, &content);
+    let last_heartbeat = now_iso();
+    let host = hostname();
+    set_raw(&mut raw, "lastHeartbeat", last_heartbeat.clone());
+    set_raw(&mut raw, "hostname", host.clone());
+    let _ = write_lock_file(lock_path, &raw);
+    remember_owner(lock_path, content.pid, &host, &content.started_at);
     tracing::debug!(
         lockPath = %lock_path.display(),
-        lastHeartbeat = %content.last_heartbeat,
+        lastHeartbeat = %last_heartbeat,
         "Lock heartbeat updated"
     );
     true
@@ -704,7 +868,7 @@ pub fn heartbeat_tick(lock_path: &Path) -> bool {
 /// Bug 126: ownership is [`is_still_our_lock`]. A process whose OS hostname
 /// changed under it used to ORPHAN its own lock here.
 pub fn release_instance_lock(lock_path: &Path) {
-    let Some(existing) = read_lock_file(lock_path) else {
+    let Some((existing, mut raw)) = read_lock_file_raw(lock_path) else {
         return;
     };
     let (pid, host, _, _) = our_identity();
@@ -723,13 +887,13 @@ pub fn release_instance_lock(lock_path: &Path) {
         );
         return; // not ours — skip
     }
-    let mut updated = existing;
-    add_history_entry(
-        &mut updated,
+    // v4's `addHistoryEntry(existing, …)` spread, over the raw map (R-L1).
+    add_raw_history_entry(
+        &mut raw,
         LockEvent::Released,
         Some(format!("Released by PID {pid}")),
     );
-    let _ = write_lock_file(lock_path, &updated);
+    let _ = write_lock_file(lock_path, &raw);
     let _ = std::fs::remove_file(lock_path);
     forget_lock_owner(lock_path);
     tracing::info!(
@@ -905,8 +1069,9 @@ pub fn acquire_write_lock(data_dir: &Path) -> Result<(), WriteLockError> {
         LockStatus::Absent => {}
     }
 
-    // Absent — atomic create so we lose cleanly to any racing process.
-    let mut content = build_lock_content();
+    // Absent — atomic create so we lose cleanly to any racing process. v4's
+    // launcher `buildLockContent` writes NO `port` (R-L4).
+    let mut content = build_lock_content(None);
     add_history_entry(
         &mut content,
         LockEvent::Acquired,
@@ -970,13 +1135,15 @@ pub fn acquire_write_lock(data_dir: &Path) -> Result<(), WriteLockError> {
 
 /// v4 launcher `claimStaleLock`: fresh content for THIS process, prior history
 /// preserved, `stale-detected` + `stale-claimed` entries appended (the CLI
-/// detail flavor).
+/// detail flavor). It REBUILDS from fresh content (`lock-helpers.js:368-373`),
+/// so the previous holder's `port` and unknown keys are dropped — v4's
+/// launcher shape, unlike the server's in-place claim.
 fn claim_stale_write_lock(
     lock_path: &Path,
     existing: Option<LockFileContent>,
     reason: String,
 ) -> Result<(), WriteLockError> {
-    let mut content = build_lock_content();
+    let mut content = build_lock_content(None);
     if let Some(prior) = existing {
         content.history = prior.history;
     }
@@ -997,20 +1164,20 @@ fn claim_stale_write_lock(
 /// final `released` history entry, then unlink. Idempotent; never errors.
 pub fn release_write_lock(data_dir: &Path) {
     let lock_path = data_dir.join("quilltap.lock");
-    let Some(existing) = read_lock_file(&lock_path) else {
+    let Some((existing, mut raw)) = read_lock_file_raw(&lock_path) else {
         return; // missing or corrupt — don't touch a lock we can't prove is ours
     };
     let (pid, host, _, _) = our_identity();
     if existing.pid != pid || existing.hostname != host {
         return;
     }
-    let mut updated = existing;
-    add_history_entry(
-        &mut updated,
+    // v4's `{ ...lock, history }` spread, over the raw map (R-L1).
+    add_raw_history_entry(
+        &mut raw,
         LockEvent::Released,
         Some(format!("Released by PID {pid} (quilltap db --write)")),
     );
-    let _ = write_lock_file(&lock_path, &updated);
+    let _ = write_lock_file(&lock_path, &raw);
     let _ = std::fs::remove_file(&lock_path);
 }
 
@@ -1062,7 +1229,7 @@ mod tests {
     #[test]
     fn fresh_acquire_then_release_unlinks() {
         let (path, _scratch) = temp_lock_path();
-        acquire_instance_lock(&path).unwrap();
+        acquire_instance_lock(&path, None).unwrap();
         let content = read_lock_file(&path).expect("lock written");
         assert_eq!(content.pid, std::process::id());
         assert_eq!(content.hostname, hostname());
@@ -1081,8 +1248,8 @@ mod tests {
     #[test]
     fn reentrant_same_pid_refreshes() {
         let (path, _scratch) = temp_lock_path();
-        acquire_instance_lock(&path).unwrap();
-        acquire_instance_lock(&path).unwrap(); // same PID → re-entrant
+        acquire_instance_lock(&path, None).unwrap();
+        acquire_instance_lock(&path, None).unwrap(); // same PID → re-entrant
         let content = read_lock_file(&path).unwrap();
         assert_eq!(content.pid, std::process::id());
         assert_eq!(content.history.len(), 2);
@@ -1099,7 +1266,7 @@ mod tests {
     fn stale_dead_pid_is_claimed_with_history() {
         let (path, _scratch) = temp_lock_path();
         let dead = dead_pid();
-        let mut content = build_lock_content();
+        let mut content = build_lock_content(None);
         content.pid = dead;
         write_lock_file(&path, &content).unwrap();
 
@@ -1111,7 +1278,7 @@ mod tests {
             other => panic!("expected stale, got {other:?}"),
         }
 
-        acquire_instance_lock(&path).unwrap();
+        acquire_instance_lock(&path, None).unwrap();
         let claimed = read_lock_file(&path).unwrap();
         assert_eq!(claimed.pid, std::process::id());
         let events: Vec<LockEvent> = claimed.history.iter().map(|h| h.event).collect();
@@ -1127,11 +1294,11 @@ mod tests {
     fn live_conflict_same_host_refuses() {
         let (path, _scratch) = temp_lock_path();
         // PID 1 is always alive (kill → EPERM → alive).
-        let mut content = build_lock_content();
+        let mut content = build_lock_content(None);
         content.pid = 1;
         write_lock_file(&path, &content).unwrap();
 
-        match acquire_instance_lock(&path) {
+        match acquire_instance_lock(&path, None) {
             Err(LockError::Conflict(e)) => {
                 assert!(e.message.contains("Another Quilltap instance"));
                 assert!(e.message.contains("PID 1"));
@@ -1151,14 +1318,14 @@ mod tests {
     fn foreign_host_fresh_heartbeat_refuses_stale_claims() {
         let (path, _scratch) = temp_lock_path();
         // A docker lock from another host with a FRESH heartbeat → refuse.
-        let mut content = build_lock_content();
+        let mut content = build_lock_content(None);
         content.pid = 4242;
         content.hostname = "some-other-host".to_string();
         content.environment = EnvironmentType::Docker;
         content.last_heartbeat = now_iso();
         write_lock_file(&path, &content).unwrap();
 
-        match acquire_instance_lock(&path) {
+        match acquire_instance_lock(&path, None) {
             Err(LockError::Conflict(e)) => {
                 // v4 `25f534c0b` rewrote this sentence: the old one ended
                 // "Stop the other instance or use the lock override to force
@@ -1203,7 +1370,7 @@ mod tests {
             classify_lock_status(&path, iso_to_ms(&now_iso()).unwrap()),
             LockStatus::Stale { .. }
         ));
-        acquire_instance_lock(&path).unwrap();
+        acquire_instance_lock(&path, None).unwrap();
         assert_eq!(read_lock_file(&path).unwrap().pid, std::process::id());
         release_instance_lock(&path);
     }
@@ -1223,14 +1390,14 @@ mod tests {
             EnvironmentType::Docker,
         ] {
             let (path, _scratch) = temp_lock_path();
-            let mut content = build_lock_content();
+            let mut content = build_lock_content(None);
             content.pid = 4242;
             content.hostname = "laptop-elsewhere".to_string();
             content.environment = env.clone();
             content.last_heartbeat = now_iso();
             write_lock_file(&path, &content).unwrap();
 
-            match acquire_instance_lock(&path) {
+            match acquire_instance_lock(&path, None) {
                 Err(LockError::Conflict(e)) => {
                     assert!(
                         e.message.contains("laptop-elsewhere"),
@@ -1262,14 +1429,14 @@ mod tests {
             EnvironmentType::Docker,
         ] {
             let (path, _scratch) = temp_lock_path();
-            let mut content = build_lock_content();
+            let mut content = build_lock_content(None);
             content.pid = 4242;
             content.hostname = "laptop-elsewhere".to_string();
             content.environment = env.clone();
             content.last_heartbeat = "2020-01-01T00:00:00.000Z".to_string();
             write_lock_file(&path, &content).unwrap();
 
-            acquire_instance_lock(&path).unwrap();
+            acquire_instance_lock(&path, None).unwrap();
             let claimed = read_lock_file(&path).unwrap();
             assert_eq!(claimed.pid, std::process::id());
             let detail = claimed.history[0].detail.as_deref().unwrap();
@@ -1290,7 +1457,7 @@ mod tests {
     /// cannot pin it).
     #[test]
     fn foreign_fresh_conflict_message_is_v4s_bytes() {
-        let mut existing = build_lock_content();
+        let mut existing = build_lock_content(None);
         existing.pid = 4242;
         existing.hostname = "elsewhere-host".to_string();
         existing.environment = EnvironmentType::Local;
@@ -1317,7 +1484,7 @@ mod tests {
     /// empty `lastHeartbeat` takes (`Infinity` rendered as V8 renders it).
     #[test]
     fn foreign_stale_claim_reason_is_v4s_bytes() {
-        let mut existing = build_lock_content();
+        let mut existing = build_lock_content(None);
         existing.hostname = "elsewhere-host".to_string();
         existing.environment = EnvironmentType::Docker;
         existing.last_heartbeat = "2020-01-01T00:00:00.000Z".to_string();
@@ -1337,7 +1504,7 @@ mod tests {
     #[test]
     fn heartbeat_rewrites_and_detects_loss() {
         let (path, _scratch) = temp_lock_path();
-        acquire_instance_lock(&path).unwrap();
+        acquire_instance_lock(&path, None).unwrap();
         let before = read_lock_file(&path).unwrap().last_heartbeat;
         std::thread::sleep(std::time::Duration::from_millis(5));
         assert!(heartbeat_tick(&path));
@@ -1364,7 +1531,7 @@ mod tests {
     #[test]
     fn heartbeat_survives_a_hostname_change_and_refreshes_the_label() {
         let (path, _scratch) = temp_lock_path();
-        acquire_instance_lock(&path).unwrap();
+        acquire_instance_lock(&path, None).unwrap();
         let ours = read_lock_file(&path).unwrap();
 
         // The OS renamed the machine under us: same PID, same startedAt, a
@@ -1406,7 +1573,7 @@ mod tests {
     #[test]
     fn heartbeat_reports_loss_when_only_started_at_moved() {
         let (path, _scratch) = temp_lock_path();
-        acquire_instance_lock(&path).unwrap();
+        acquire_instance_lock(&path, None).unwrap();
         let mut taken = read_lock_file(&path).unwrap();
         taken.started_at = "2030-01-01T00:00:00.000Z".to_string();
         write_lock_file(&path, &taken).unwrap();
@@ -1422,7 +1589,7 @@ mod tests {
     #[test]
     fn release_skips_another_processes_record() {
         let (path, _scratch) = temp_lock_path();
-        acquire_instance_lock(&path).unwrap();
+        acquire_instance_lock(&path, None).unwrap();
         let mut theirs = read_lock_file(&path).unwrap();
         theirs.pid = 99_999;
         theirs.started_at = "2020-01-01T00:00:00.000Z".to_string();
@@ -1452,7 +1619,7 @@ mod tests {
     #[test]
     fn heartbeat_loss_logs_v4s_sentences() {
         let (path, _scratch) = temp_lock_path();
-        acquire_instance_lock(&path).unwrap();
+        acquire_instance_lock(&path, None).unwrap();
 
         let lines = captured(|| {
             assert!(heartbeat_tick(&path));
@@ -1506,7 +1673,7 @@ mod tests {
     #[test]
     fn history_is_capped_at_fifty() {
         let (path, _scratch) = temp_lock_path();
-        let mut content = build_lock_content();
+        let mut content = build_lock_content(None);
         for i in 0..60 {
             add_history_entry(&mut content, LockEvent::Acquired, Some(format!("e{i}")));
         }
@@ -1529,7 +1696,7 @@ mod tests {
         // create sees EEXIST and re-reads (still unreadable) → the transient
         // error, NOT a clobber (faithful to v4's create-exclusive path).
         assert!(matches!(
-            acquire_instance_lock(&path),
+            acquire_instance_lock(&path, None),
             Err(LockError::Io(_))
         ));
         let _ = std::fs::remove_file(&path);
@@ -1544,7 +1711,7 @@ mod tests {
             .arg("30")
             .spawn()
             .expect("spawn sleep");
-        let mut content = build_lock_content();
+        let mut content = build_lock_content(None);
         content.pid = child.id();
         write_lock_file(&path, &content).unwrap();
 
@@ -1606,7 +1773,7 @@ mod tests {
 
         // A stale (dead-PID) lock is claimed, preserving history.
         let dead = dead_pid();
-        let mut stale = build_lock_content();
+        let mut stale = build_lock_content(None);
         stale.pid = dead;
         add_history_entry(&mut stale, LockEvent::Acquired, Some("old".to_string()));
         write_lock_file(&path, &stale).unwrap();
@@ -1638,7 +1805,7 @@ mod tests {
         // executable name contains "quilltap", so the probe passes) refuses
         // with the ACTIVE message shape.
         let own = std::process::id();
-        let mut live = build_lock_content();
+        let mut live = build_lock_content(None);
         live.pid = own;
         write_lock_file(&path, &live).unwrap();
         let err = acquire_write_lock(&data_dir).unwrap_err();
@@ -1712,5 +1879,431 @@ mod tests {
         let content = read_lock_file(&path).expect("v4 lock parses");
         assert_eq!(content.environment, EnvironmentType::Electron);
         let _ = std::fs::remove_file(&path);
+    }
+
+    // ========================================================================
+    // P4.D299 — v4 bug 239 (`93c5af6ad`): the lock's optional `port`.
+    // KEY ORDER is the contract, so every assertion reads the written BYTES
+    // (memory note `serde-json-map-eq-ignores-order`), never `Value ==`.
+    // ========================================================================
+
+    /// The top-level keys of the lock file, in the file's order.
+    fn keys_of(path: &Path) -> Vec<String> {
+        let raw = std::fs::read_to_string(path).unwrap();
+        let map: Map<String, Value> = serde_json::from_str(&raw).unwrap();
+        map.keys().cloned().collect()
+    }
+
+    /// The raw text of one top-level key's value (`None` when absent).
+    fn raw_value(path: &Path, key: &str) -> Option<String> {
+        let raw = std::fs::read_to_string(path).unwrap();
+        let map: Map<String, Value> = serde_json::from_str(&raw).unwrap();
+        map.get(key).map(|v| serde_json::to_string(v).unwrap())
+    }
+
+    const V4_ORDER_WITH_PORT: [&str; 9] = [
+        "pid",
+        "hostname",
+        "startedAt",
+        "lastHeartbeat",
+        "environment",
+        "processTitle",
+        "processArgv0",
+        "port",
+        "history",
+    ];
+
+    /// A complete plant (every field the typed read requires) whose `pid`,
+    /// `port` and extra keys the caller chooses; `port` is spliced between
+    /// `processArgv0` and `history` as v4 writes it.
+    fn plant(
+        path: &Path,
+        pid: u32,
+        port: Option<&str>,
+        before: &[(&str, &str)],
+        after: &[(&str, &str)],
+    ) {
+        let mut parts: Vec<String> = before
+            .iter()
+            .map(|(k, v)| format!("  \"{k}\": {v}"))
+            .collect();
+        parts.push(format!("  \"pid\": {pid}"));
+        parts.push(format!("  \"hostname\": \"{}\"", hostname()));
+        parts.push("  \"startedAt\": \"2026-01-02T03:04:05.000Z\"".to_string());
+        parts.push("  \"lastHeartbeat\": \"2026-01-02T03:04:05.000Z\"".to_string());
+        parts.push("  \"environment\": \"local\"".to_string());
+        parts.push("  \"processTitle\": \"node\"".to_string());
+        parts.push("  \"processArgv0\": \"/usr/bin/node\"".to_string());
+        if let Some(port) = port {
+            parts.push(format!("  \"port\": {port}"));
+        }
+        parts.push("  \"history\": []".to_string());
+        parts.extend(after.iter().map(|(k, v)| format!("  \"{k}\": {v}")));
+        std::fs::write(path, format!("{{\n{}\n}}\n", parts.join(",\n"))).unwrap();
+    }
+
+    // ---- v4's four `listening port` jest cases ----
+
+    #[test]
+    fn fresh_lock_records_the_port_between_argv0_and_history() {
+        let (path, _scratch) = temp_lock_path();
+        acquire_instance_lock(&path, Some(3005)).unwrap();
+        assert_eq!(keys_of(&path), V4_ORDER_WITH_PORT);
+        assert_eq!(raw_value(&path, "port").as_deref(), Some("3005"));
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            raw.contains("\",\n  \"port\": 3005,\n  \"history\": ["),
+            "{raw}"
+        );
+        assert_eq!(read_lock_file(&path).unwrap().port, Some(3005));
+        release_instance_lock(&path);
+    }
+
+    #[test]
+    fn fresh_lock_records_3000() {
+        let (path, _scratch) = temp_lock_path();
+        acquire_instance_lock(&path, Some(3000)).unwrap();
+        assert_eq!(raw_value(&path, "port").as_deref(), Some("3000"));
+        release_instance_lock(&path);
+    }
+
+    #[test]
+    fn fresh_lock_without_a_port_writes_no_key() {
+        let (path, _scratch) = temp_lock_path();
+        acquire_instance_lock(&path, None).unwrap();
+        assert!(!keys_of(&path).contains(&"port".to_string()));
+        release_instance_lock(&path);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn stale_claim_replaces_the_holders_port_in_place() {
+        let (path, _scratch) = temp_lock_path();
+        plant(&path, dead_pid(), Some("3001"), &[], &[]);
+        acquire_instance_lock(&path, Some(3007)).unwrap();
+        assert_eq!(keys_of(&path), V4_ORDER_WITH_PORT);
+        assert_eq!(raw_value(&path, "port").as_deref(), Some("3007"));
+        release_instance_lock(&path);
+    }
+
+    // ---- the placements v4's spread produces ----
+
+    #[test]
+    #[cfg(unix)]
+    fn claiming_a_portless_lock_appends_the_port_after_history() {
+        let (path, _scratch) = temp_lock_path();
+        plant(&path, dead_pid(), None, &[], &[]);
+        acquire_instance_lock(&path, Some(3007)).unwrap();
+        let keys = keys_of(&path);
+        assert_eq!(keys.last().map(String::as_str), Some("port"));
+        assert_eq!(keys[keys.len() - 2], "history");
+        release_instance_lock(&path);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn claiming_without_a_port_shift_removes_the_key_keeping_order() {
+        let (path, _scratch) = temp_lock_path();
+        plant(
+            &path,
+            dead_pid(),
+            Some("3001"),
+            &[("aaFirst", "true")],
+            &[("zzExtra", "{\"a\": 1}")],
+        );
+        acquire_instance_lock(&path, None).unwrap();
+        // A swap-remove would have moved `zzExtra` into `port`'s slot.
+        assert_eq!(
+            keys_of(&path),
+            [
+                "aaFirst",
+                "pid",
+                "hostname",
+                "startedAt",
+                "lastHeartbeat",
+                "environment",
+                "processTitle",
+                "processArgv0",
+                "history",
+                "zzExtra"
+            ]
+        );
+        release_instance_lock(&path);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn unknown_keys_ride_through_claim_reentrant_and_heartbeat() {
+        let (path, _scratch) = temp_lock_path();
+        plant(
+            &path,
+            dead_pid(),
+            Some("3001"),
+            &[("aaFirst", "true")],
+            &[("zzExtra", "{\"a\": 1, \"list\": [1, \"two\", null]}")],
+        );
+        let want = [
+            "aaFirst",
+            "pid",
+            "hostname",
+            "startedAt",
+            "lastHeartbeat",
+            "environment",
+            "processTitle",
+            "processArgv0",
+            "port",
+            "history",
+            "zzExtra",
+        ];
+        acquire_instance_lock(&path, Some(3007)).unwrap(); // claim
+        assert_eq!(keys_of(&path), want);
+        acquire_instance_lock(&path, Some(4000)).unwrap(); // re-entrant
+        assert_eq!(keys_of(&path), want);
+        assert_eq!(raw_value(&path, "port").as_deref(), Some("3007"));
+        assert!(heartbeat_tick(&path));
+        assert_eq!(keys_of(&path), want);
+        assert_eq!(raw_value(&path, "aaFirst").as_deref(), Some("true"));
+        assert_eq!(
+            raw_value(&path, "zzExtra").as_deref(),
+            Some("{\"a\":1,\"list\":[1,\"two\",null]}")
+        );
+        release_instance_lock(&path);
+        assert!(!path.exists());
+    }
+
+    /// The release's rewrite is ONE `add_raw_history_entry` over the raw map
+    /// (both releases then unlink the file, so the written record is not
+    /// observable through them); this pins that the rewrite keeps every key
+    /// and a malformed `port` where they stood.
+    #[test]
+    fn the_release_rewrite_keeps_every_key_in_place() {
+        let mut raw: Map<String, Value> = serde_json::from_str(
+            r#"{"aaFirst":true,"pid":1,"hostname":"h","port":"abc","history":[],"zzExtra":{"a":1}}"#,
+        )
+        .unwrap();
+        add_raw_history_entry(&mut raw, LockEvent::Released, Some("Released".to_string()));
+        let keys: Vec<&str> = raw.keys().map(String::as_str).collect();
+        assert_eq!(
+            keys,
+            ["aaFirst", "pid", "hostname", "port", "history", "zzExtra"]
+        );
+        assert_eq!(raw["port"], Value::from("abc"));
+        assert_eq!(raw["history"].as_array().unwrap().len(), 1);
+    }
+
+    // ---- the lenient read (R-L2) ----
+
+    #[test]
+    fn the_port_predicate_is_v4s_lenient_one() {
+        let parse = |s: &str| lock_port_from_json(&serde_json::from_str::<Value>(s).unwrap());
+        for (text, want) in [
+            ("3005", Some(3005)),
+            ("3005.0", Some(3005)),
+            ("3.005e3", Some(3005)),
+            ("1", Some(1)),
+            ("65535", Some(65535)),
+            ("\"3005\"", None),
+            ("3000.5", None),
+            ("0", None),
+            ("-0", None),
+            ("70000", None),
+            ("65536", None),
+            ("-1", None),
+            ("12345678901234567890", None),
+            ("1e21", None),
+            ("null", None),
+            ("true", None),
+            ("{}", None),
+            ("[]", None),
+        ] {
+            assert_eq!(parse(text), want, "{text}");
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_malformed_port_never_fails_the_read_the_heartbeat_or_the_reentrant_path() {
+        for bad in ["\"abc\"", "3000.5", "70000", "null", "{}"] {
+            let (path, _scratch) = temp_lock_path();
+            plant(&path, std::process::id(), Some(bad), &[], &[]);
+            let typed = read_lock_file(&path).unwrap_or_else(|| panic!("{bad}: read is None"));
+            assert_eq!(typed.port, None, "{bad}");
+            let bad_bytes = raw_value(&path, "port").unwrap();
+            // Re-entrant (same PID): the boot must not fail, the value stays.
+            acquire_instance_lock(&path, Some(3007))
+                .unwrap_or_else(|e| panic!("{bad}: re-entrant acquire failed: {e}"));
+            assert_eq!(
+                raw_value(&path, "port").as_deref(),
+                Some(bad_bytes.as_str())
+            );
+            // The heartbeat keeps it byte-for-byte and does NOT report a loss.
+            assert!(heartbeat_tick(&path), "{bad}: heartbeat reported loss");
+            assert_eq!(
+                raw_value(&path, "port").as_deref(),
+                Some(bad_bytes.as_str())
+            );
+            assert_eq!(keys_of(&path), V4_ORDER_WITH_PORT, "{bad}");
+            release_instance_lock(&path);
+            assert!(!path.exists(), "{bad}");
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_claim_replaces_a_malformed_port() {
+        for bad in ["\"abc\"", "3000.5", "70000", "null", "{}"] {
+            let (path, _scratch) = temp_lock_path();
+            plant(&path, dead_pid(), Some(bad), &[], &[]);
+            acquire_instance_lock(&path, Some(3007)).unwrap();
+            assert_eq!(raw_value(&path, "port").as_deref(), Some("3007"), "{bad}");
+            assert_eq!(keys_of(&path), V4_ORDER_WITH_PORT, "{bad}");
+            release_instance_lock(&path);
+        }
+    }
+
+    #[test]
+    fn a_whole_float_port_reads_as_the_integer() {
+        let (path, _scratch) = temp_lock_path();
+        plant(&path, 4242, Some("3005.0"), &[], &[]);
+        assert_eq!(read_lock_file(&path).unwrap().port, Some(3005));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_malformed_port_lock_classifies_never_corrupt() {
+        let (path, _scratch) = temp_lock_path();
+        plant(&path, dead_pid(), Some("\"abc\""), &[], &[]);
+        let status = classify_lock_status_probed(&path, 0);
+        assert!(
+            matches!(status, LockStatus::Stale { .. }),
+            "malformed port must classify, got {status:?}"
+        );
+    }
+
+    // ---- the CLI write-lock writes none (R-L4) ----
+
+    #[test]
+    #[cfg(unix)]
+    fn the_write_lock_writes_no_port_and_drops_a_prior_holders() {
+        let (path, _scratch) = temp_lock_path();
+        let data_dir = path.parent().unwrap().to_path_buf();
+        acquire_write_lock(&data_dir).unwrap();
+        assert!(!keys_of(&path).contains(&"port".to_string()));
+        release_write_lock(&data_dir);
+        assert!(!path.exists());
+
+        // A stale holder's `port` and unknown keys are DROPPED by the
+        // launcher's rebuild-from-fresh claim (`lock-helpers.js:368-373`).
+        plant(
+            &path,
+            dead_pid(),
+            Some("3001"),
+            &[("aaFirst", "true")],
+            &[("zzExtra", "1")],
+        );
+        acquire_write_lock(&data_dir).unwrap();
+        let keys = keys_of(&path);
+        assert_eq!(
+            keys,
+            [
+                "pid",
+                "hostname",
+                "startedAt",
+                "lastHeartbeat",
+                "environment",
+                "processTitle",
+                "processArgv0",
+                "history"
+            ]
+        );
+        release_write_lock(&data_dir);
+    }
+
+    // ---- the two DEBUG lines (R-L5) ----
+
+    fn owned_lines(lines: &[String]) -> Vec<String> {
+        lines
+            .iter()
+            .filter(|l| {
+                l.contains("Building instance lock content")
+                    || l.contains("Recorded listening port on instance lock")
+            })
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn the_fresh_build_logs_its_port_and_omits_none() {
+        let (path, _scratch) = temp_lock_path();
+        let lines = owned_lines(&captured(|| {
+            acquire_instance_lock(&path, Some(3005)).unwrap();
+        }));
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        let pid = std::process::id();
+        assert!(
+            lines[0].starts_with("DEBUG quilltap_host::lock"),
+            "{lines:?}"
+        );
+        assert!(
+            lines[0].contains(&format!(
+                " module=database:instance-lock pid={pid} port=3005"
+            )),
+            "{lines:?}"
+        );
+        release_instance_lock(&path);
+
+        let (path, _scratch) = temp_lock_path();
+        let lines = owned_lines(&captured(|| {
+            acquire_instance_lock(&path, None).unwrap();
+        }));
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].contains(&format!(" module=database:instance-lock pid={pid}")),
+            "{lines:?}"
+        );
+        assert!(!lines[0].contains("port="), "{lines:?}");
+        release_instance_lock(&path);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn the_claim_logs_the_recorded_port_and_not_the_build_line() {
+        let (path, _scratch) = temp_lock_path();
+        plant(&path, dead_pid(), Some("3001"), &[], &[]);
+        let lines = owned_lines(&captured(|| {
+            acquire_instance_lock(&path, Some(3007)).unwrap();
+        }));
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].contains("Recorded listening port on instance lock"));
+        assert!(
+            lines[0].contains(" module=database:instance-lock port=3007"),
+            "{lines:?}"
+        );
+        release_instance_lock(&path);
+
+        let (path, _scratch) = temp_lock_path();
+        plant(&path, dead_pid(), Some("3001"), &[], &[]);
+        let lines = owned_lines(&captured(|| {
+            acquire_instance_lock(&path, None).unwrap();
+        }));
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].contains(" module=database:instance-lock"));
+        assert!(!lines[0].contains("port="), "{lines:?}");
+        release_instance_lock(&path);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn the_write_lock_logs_neither_line() {
+        let (path, _scratch) = temp_lock_path();
+        let data_dir = path.parent().unwrap().to_path_buf();
+        let lines = owned_lines(&captured(|| {
+            acquire_write_lock(&data_dir).unwrap();
+            release_write_lock(&data_dir);
+            plant(&path, dead_pid(), Some("3001"), &[], &[]);
+            acquire_write_lock(&data_dir).unwrap();
+            release_write_lock(&data_dir);
+        }));
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }

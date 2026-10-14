@@ -182924,3 +182924,15 @@ scenario_pure_equivalence`.
   promoting the right default.
 - **Cleanup:** the pin worktree removed; the lane's `target/` deleted; `/tmp/p4d295` scratch removed (the regen
   recipes are recorded per unit above).
+
+## P4.D299 — commit 1: the instance lock's `port` (v4 bug 239, server half) — 2026-10-14
+
+Lane `claude/p4-instance-lock-cli-flags-541a66`, pinned at v4 `83334b9a5`.
+`LockFileContent.port` (lenient `lock_port_from_json`), every rewrite of an
+existing lock over the raw preserve-order map (R-L1), `HostConfig.listening_port`
+→ `pre_open` → `acquire_instance_lock(path, port)`, `quilltap-web --port` →
+`listening_port` (`0` → none; Tauri none, no signature forced). NEW tier-2
+family `instance_lock_port_equivalence` (case `harness/oracle/cases/instance-lock-port.ts`):
+red-first on unported `main` 63 failures over 33 rows (the re-entrant
+malformed-port rows failed BOOT, as the order predicted); green 33/0. The
+full lane record follows with the CLI commit.

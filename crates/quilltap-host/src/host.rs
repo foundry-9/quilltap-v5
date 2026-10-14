@@ -139,6 +139,14 @@ pub struct HostConfig {
     /// zero-characters gate. **Default `true`** (v4 parity — its startup seeding
     /// is unconditional); tests that need a bare fresh instance opt out.
     pub seed_sample_content: bool,
+    /// v4 bug 239 (`93c5af6ad`): the HTTP port this process listens on,
+    /// recorded in the instance lock so the CLI's server-talking tools find
+    /// the server from an instance name. `quilltap-web` sets its `--port` when
+    /// it is 1–65535 (`--port 0`, an ephemeral bind, records none — v4's
+    /// invalid-`PORT` arm). The lock is taken BEFORE the bind, so this is the
+    /// CONFIGURED port, exactly as v4 records its configured `PORT`. Default
+    /// `None` — the Tauri shell (no HTTP listener) records none (P4.D299 R-L3).
+    pub listening_port: Option<u16>,
 }
 
 impl HostConfig {
@@ -167,6 +175,7 @@ impl HostConfig {
             spine: None,
             terminal: true,
             seed_sample_content: true,
+            listening_port: None,
         }
     }
 
@@ -283,6 +292,7 @@ impl Host {
             extra: config.extra_handlers,
             seed_sample_content: config.seed_sample_content,
             rt,
+            listening_port: config.listening_port,
         };
 
         let base_dir = config.base_dir.clone();
@@ -449,6 +459,8 @@ struct HostAssembler {
     extra: Vec<(String, Arc<dyn JobHandler>)>,
     seed_sample_content: bool,
     rt: tokio::runtime::Handle,
+    /// [`HostConfig::listening_port`], handed to every lock claim.
+    listening_port: Option<u16>,
 }
 
 /// One assembly's ordered teardown, shared by two callers: the engine's own
@@ -537,7 +549,7 @@ impl EngineAssembler for HostAssembler {
         // heartbeat: bounded on purpose — the same process re-acquires
         // re-entrantly, a same-host contender reaps the dead PID, and a
         // cross-host contender waits out at most the stale window.
-        lock::acquire_instance_lock(&lock_path).map_err(|e| e.to_string())
+        lock::acquire_instance_lock(&lock_path, self.listening_port).map_err(|e| e.to_string())
     }
 
     fn assemble(

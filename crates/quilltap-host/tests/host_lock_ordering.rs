@@ -56,6 +56,7 @@ fn plant_contender_lock(base: &Path) {
         environment: quilltap_host::env::EnvironmentType::Local,
         process_title: "quilltap".to_string(),
         process_argv0: "/usr/local/bin/quilltap".to_string(),
+        port: None,
         history: vec![],
     };
     let path = lock::instance_lock_path(base);
@@ -156,6 +157,57 @@ async fn an_uncontended_boot_claims_and_releases_the_lock() {
         other => panic!("unexpected: {other:?}"),
     }
     assert!(!lock_path.exists(), "shutdown released the lock");
+}
+
+/// P4.D299 (v4 bug 239, `93c5af6ad`): `HostConfig::listening_port` reaches
+/// the lock — `Some(4321)` is written between `processArgv0` and `history`
+/// (v4's `buildLockContent` placement); the default `None` (the Tauri shell)
+/// writes no `port` key at all.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_listening_port_is_recorded_in_the_lock() {
+    for (port, want) in [(Some(4321u16), Some("4321")), (None, None)] {
+        let dir = tempfile::tempdir().unwrap();
+        provisioned_instance(dir.path());
+        let lock_path = lock::instance_lock_path(dir.path());
+
+        let mut config = base_config(dir.path());
+        config.env_pepper = Some(PEPPER.to_string());
+        // A served host whose lock vanishes exits the process after the
+        // heartbeat; this test never loses it, but never let it kill the run.
+        config.on_lock_lost = Some(std::sync::Arc::new(|| {}));
+        assert_eq!(config.listening_port, None, "the default records none");
+        config.listening_port = port;
+        let host = Host::start(config).unwrap();
+
+        let raw = std::fs::read_to_string(&lock_path).unwrap();
+        let map: serde_json::Map<String, serde_json::Value> = serde_json::from_str(&raw).unwrap();
+        let keys: Vec<&str> = map.keys().map(String::as_str).collect();
+        match want {
+            Some(value) => {
+                assert_eq!(
+                    keys,
+                    [
+                        "pid",
+                        "hostname",
+                        "startedAt",
+                        "lastHeartbeat",
+                        "environment",
+                        "processTitle",
+                        "processArgv0",
+                        "port",
+                        "history"
+                    ]
+                );
+                assert_eq!(serde_json::to_string(&map["port"]).unwrap(), value);
+            }
+            None => assert!(!keys.contains(&"port"), "{raw}"),
+        }
+
+        match host.core().dispatch(Request::Lock).await {
+            Response::UnlockState(_) => {}
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
 }
 
 /// Boot against a live foreign lock: refused, with the partitions untouched.
