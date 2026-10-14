@@ -183220,3 +183220,44 @@ Branch `claude/p4.d301-chat-stream-submission-ledger-821101312`, stage A from
   call drive `process_message_with_ledger(&mut deps, &input, &ledger)` in
   place of `process_message` and assert `(Some(l.user_message_persisted),
   Some(l.pending_tool_results_persisted)) == want_error_flags[call][0]`.
+- **Unit 3 — bug 242 + the reducer's error record + the contract riders (SPA
+  0.5.847).** `chat-stream.reducer.ts`: `inChain: (frame.chainDepth ?? 0) > 0
+  ? true : s.inChain`; `ChatStreamState.errorSubmission` (booleans only, v4
+  `:695-698`; `{}` on a three-key frame; `null` initially).
+  `core-contract.ts` (C3 §3, in place): `CoreError.submission?`,
+  `CoreDispatchError.submission` (copied in the constructor),
+  `ChatStreamFrame.userMessagePersisted?` / `pendingToolResultsPersisted?`.
+  `frame-trace.ts` re-authored to the server's REAL shapes: `singleTurnTrace`
+  now `initializing` status → depth-0 `turnStart` → its statuses (v5 emits
+  the `initializing` status BEFORE the turnStart — `orchestrator.rs`'s
+  "Initial status" precedes "turnStart (chainDepth 0)" — so the trace opens
+  with that status rather than literally with the turnStart, which is the
+  truthful order); `multiTurnChainTrace` gains its depth-0 first turn (`m9`,
+  a FINAL bubble) and, measured by reading, the depth-0 `turnStart` each
+  chained turn's re-entered `process_message` sends right after the chain's
+  depth-N one (v4 the same — `orchestrator.service.ts:410` is unconditional,
+  its comment "Chained turns 2+ get the same event from the turn
+  orchestrator"); `skipDoneTrace` likewise (the skip decision,
+  `handle_turn_skip`, runs after the depth-0 emit). Doc comment corrected.
+  **Red-first (main's reducer, final spec text): 10 RED** — the six bug-242
+  rows bar two, the four `errorSubmission` rows, AND two pre-existing cases
+  the truthful traces turned red (`interleaves content…` now folds a depth-0
+  turnStart and main marks its bubble intermediate; the chain case's first
+  turn) — the fixture lie had hidden the bug from every reducer spec.
+  **GREEN on main, recorded as convergences:** v4's `emptyResponse`-after-
+  depth-0 case (v5's empty-response toast rides `finalDone`, never
+  `inChain`) and "a depth-1 turnStart still enters the chain". v4's case 1's
+  other three asserts (`fetchChat`, `notifyQueueChange`, the responder reset)
+  are v5's dispatch-reconcile work, not the fold's — not transcribed into the
+  reducer spec (recorded). Re-measured importers: `chat/message-list.spec.ts`
+  (three chain expectations move to `['m9', 'm10', 'm11']` / `['m9']` /
+  `['m9', 'm11']` — the depth-0 first turn is now on screen),
+  `chat/streaming-message.spec.ts` (unchanged, green), the brahma console's
+  eight specs (green — it folds through `reduceChatFrame`).
+  **R-L10 RECORDED, not aligned:** v4's send path skips the intermediate
+  bubble on `!fullContent` (`useSSEStreaming.ts:1130`), its continue path on
+  `!fullContent.trim()` (`:1348`) and emits its final done only on
+  `fullContent.trim()` (`:1322`); v5's one reducer uses
+  `content.trim().length > 0` for every intermediate done
+  (`chat-stream.reducer.ts:400`) — so a whitespace-only intermediate reply
+  shows a bubble in v4's send path and none in v5. No span hunk moved it.

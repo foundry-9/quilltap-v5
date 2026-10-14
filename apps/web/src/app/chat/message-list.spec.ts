@@ -140,24 +140,26 @@ describe('buildStreamRenderItems (dogfood finding #7)', () => {
   });
 
   it('renders one row per finished chained turn, in order', () => {
+    // P4.D301: the trace now opens with the user's depth-0 first turn (m9),
+    // as the server really sends it, ahead of the two chained turns.
     const items = buildStreamRenderItems(foldChain(), []);
-    expect(items.map((i) => (i.type === 'message' ? i.message.id : 'grp'))).toEqual(['m10', 'm11']);
-    expect(items[0].type === 'message' && items[0].message.content).toBe('Hi, I am Ada.');
-    expect(items[0].type === 'message' && items[0].message.participantId).toBe('p1');
+    expect(items.map((i) => (i.type === 'message' ? i.message.id : 'grp'))).toEqual(['m9', 'm10', 'm11']);
+    expect(items[1].type === 'message' && items[1].message.content).toBe('Hi, I am Ada.');
+    expect(items[1].type === 'message' && items[1].message.participantId).toBe('p1');
   });
 
   it('surfaces each turn AS it completes — only the first bubble after the first done', () => {
-    // Frames 0..2 = turnStart, content, done(m10) — the first turn is finished
-    // but the chain has not moved on yet.
+    // Frames 0..2 = turnStart(0), content, done(m9) — the first turn is
+    // finished but the chain has not moved on yet.
     const items = buildStreamRenderItems(foldChain(3), []);
-    expect(items.map((i) => (i.type === 'message' ? i.message.id : 'grp'))).toEqual(['m10']);
+    expect(items.map((i) => (i.type === 'message' ? i.message.id : 'grp'))).toEqual(['m9']);
   });
 
   it('dedupes by id against the canonical flow (post-reconcile rows never double)', () => {
     // The canonical refetch already holds m10; its streamed twin must drop out.
     const canonical = [message({ id: 'm10', content: 'Canonical Ada line' })];
     const items = buildStreamRenderItems(foldChain(), canonical);
-    expect(items.map((i) => (i.type === 'message' ? i.message.id : 'grp'))).toEqual(['m11']);
+    expect(items.map((i) => (i.type === 'message' ? i.message.id : 'grp'))).toEqual(['m9', 'm11']);
   });
 
   it('a skipped turn renders nothing but its Host note DOES render as a chip', () => {
@@ -546,7 +548,7 @@ describe('MessageList — forwarding the danger verdict (P4.69, v4 VirtualizedMe
   });
 
   it('rings the stream-accumulated finished bubbles too (v5’s second MessageRow path)', () => {
-    // foldChain() lands two finished chained replies in the stream state; only
+    // foldChain() lands three finished replies in the stream state; only
     // those rows are on screen (no canonical messages), so every ring counted
     // here comes from the stream path.
     const flagged = render([], foldChain(), true);

@@ -791,6 +791,12 @@ Ports the server half of v4 `93c5af6ad` (bug 239). `LockFileContent` gains an op
 
 `HostConfig.listening_port` (default `None`, so the Tauri shell records none) is threaded through `HostAssembler` into `pre_open`'s claim; `quilltap-web` sets it from `--port` (`--port 0` records none). New tier-2 family `instance_lock_port_equivalence` against v4's real `instance-lock.ts` (33 rows: fresh writes under seven `PORT` shapes, claims of nine planted port shapes × valid/invalid `PORT`, a foreign-host claim, re-entrant + heartbeat over malformed ports and unknown keys): 63 failures on unported main, 0 after.
 
+#### 2026-10-14 — fix(salon): bug 242 — a depth-0 turnStart no longer puts the turn in a chain; the stream reducer records the error frame's persistence flags (P4.D301)
+
+_Versions: SPA 0.5.847._
+
+The stream reducer sets `inChain` only for a `turnStart` with `chainDepth > 0` and never clears it on depth 0 (v4 `b045dd986`). The server sends a depth-0 `turnStart` inside every `process_message`, so every single-character turn used to fold as a chained one; the visible effect in v5 was a tool-only single-character reply (a `done` with a `messageId` and empty content) showing no live bubble until the refetch. The reducer also records the error frame's `userMessagePersisted` / `pendingToolResultsPersisted` as `errorSubmission`, copying a key only when it is a real boolean. `core-contract.ts` gains `CoreError.submission`, `CoreDispatchError.submission` and the two optional error-frame keys. The hand-written `frame-trace.ts` fixtures now carry the depth-0 `turnStart` the server really sends (before a first turn, and after each chained turn's own `turnStart`); the reducer and message-list specs were re-measured against them.
+
 #### 2026-10-14 — feat(chat): bug 241's per-request submission ledger through process_message and the send's two error shells (P4.D301)
 
 _Versions: core 0.0.1285, host 0.0.201._

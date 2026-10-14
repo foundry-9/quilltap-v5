@@ -4715,6 +4715,15 @@ export interface CoreError {
    * (P4.D174 §C.3 — the §3 unification review found them unreachable before).
    */
   alreadySaved?: { relativePath?: string; keptAt?: string };
+  // === P4.D301: the submission ledger ===
+  /**
+   * What of a failed Salon send reached the database (v4 bug 241): present
+   * ONLY on the send's initial-turn rejection (the server's `run_send`). The
+   * same two flags ride the error frame, which races this reply on the event
+   * stream — this copy is the race-free one the Salon reads first.
+   */
+  submission?: { userMessagePersisted: boolean; pendingToolResultsPersisted: boolean };
+  // === end P4.D301 ===
 }
 
 // ===========================================================================
@@ -4921,6 +4930,8 @@ export class CoreDispatchError extends Error {
   readonly code?: string;
   /** v4's `body.keptAt` on the `ALREADY_SAVED` 409 (see {@link CoreError.alreadySaved}). */
   readonly keptAt?: string;
+  /** P4.D301: the failed send's persistence flags (see {@link CoreError.submission}). */
+  readonly submission?: { userMessagePersisted: boolean; pendingToolResultsPersisted: boolean };
   constructor(error: CoreError) {
     super(error.message);
     this.name = 'CoreDispatchError';
@@ -4928,6 +4939,7 @@ export class CoreDispatchError extends Error {
     this.pepperState = error.pepperState;
     this.code = error.code;
     this.keptAt = error.alreadySaved?.keptAt;
+    this.submission = error.submission;
   }
 }
 
@@ -4994,6 +5006,10 @@ export interface ChatStreamFrame {
   error?: string;
   errorType?: string;
   details?: string;
+  // P4.D301 (v4 bug 241 `ErrorEventExtras`): the Salon send shell's error frame
+  // only — whether the user row / the staged TOOL rows were saved first.
+  userMessagePersisted?: boolean;
+  pendingToolResultsPersisted?: boolean;
 
   // done family
   done?: boolean;

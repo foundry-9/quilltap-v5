@@ -123,9 +123,11 @@ describe('chat stream reducer', () => {
   it('handles a multi-turn chain: one bubble per turn, terminal chainComplete', () => {
     const final = foldChatFrames(framesFor(multiTurnChainTrace, FIXTURE_CHAT_ID));
     const bubbles = assistant(final.messages);
-    expect(bubbles.map((m) => m.id)).toEqual(['m10', 'm11']);
-    expect(bubbles[0]).toMatchObject({ content: 'Hi, I am Ada.', participantId: 'p1', intermediate: true });
-    expect(bubbles[1]).toMatchObject({ content: 'And I am Bob.', participantId: 'p2', intermediate: true });
+    expect(bubbles.map((m) => m.id)).toEqual(['m9', 'm10', 'm11']);
+    // P4.D301 (bug 242): the first turn is depth 0 — not in the chain yet.
+    expect(bubbles[0]).toMatchObject({ content: 'Shall we begin?', participantId: 'p0', intermediate: false });
+    expect(bubbles[1]).toMatchObject({ content: 'Hi, I am Ada.', participantId: 'p1', intermediate: true });
+    expect(bubbles[2]).toMatchObject({ content: 'And I am Bob.', participantId: 'p2', intermediate: true });
     expect(final.inChain).toBe(false);
     expect(final.finished).toBe(true);
     expect(final.respondingParticipantId).toBeNull();
@@ -346,5 +348,123 @@ describe('chat stream reducer', () => {
       fileProcessing: [{ filename: 'a.txt', type: 'text', usedImageDescriptionLLM: false }],
     };
     expect(reduceChatFrame(prev, frame)).toBe(prev);
+  });
+});
+
+/**
+ * P4.D301 — bug 242 (v4 `b045dd986`, `useSSEStreaming.ts:756-762`): only a
+ * CHAINED `turnStart` (`chainDepth > 0`) enters a chain; the depth-0 one the
+ * server sends before every first turn (and again inside every chained turn's
+ * re-entered `process_message`) must leave `inChain` exactly as it was. v4's two
+ * `useSSEStreaming-single-turn-done.test.tsx` cases are transcribed as folds.
+ */
+describe('chat stream reducer — the depth-0 turnStart (bug 242)', () => {
+  const TURN_START: ChatStreamFrame = {
+    turnStart: true,
+    participantId: 'participant-1',
+    characterName: 'Ada',
+    chainDepth: 0,
+  };
+
+  it('runs the end-of-turn path after a depth-0 turnStart and done (v4 case 1)', () => {
+    const final = foldChatFrames([
+      TURN_START,
+      { content: 'Good evening to you.' },
+      { done: true, messageId: 'assistant-1', participantId: 'participant-1' },
+    ]);
+    expect(final.inChain).toBe(false);
+    const bubbles = assistant(final.messages);
+    expect(bubbles).toHaveLength(1);
+    expect(bubbles[0]).toMatchObject({ id: 'assistant-1', content: 'Good evening to you.', intermediate: false });
+    // v4's other three asserts (`fetchChat`, `notifyQueueChange`, the responder
+    // reset) are v5's dispatch-reconcile work, never the fold's — `finished` is
+    // chainComplete's alone. What the fold owes is the final done.
+    expect(final.finalDone?.messageId).toBe('assistant-1');
+  });
+
+  it('carries emptyResponse to the final done after a depth-0 turnStart (v4 case 2 — v5 converges)', () => {
+    // v5's empty-response toast rides `finalDone`, which never read `inChain`:
+    // GREEN on unported main, recorded as a convergence.
+    const final = foldChatFrames([
+      TURN_START,
+      { done: true, emptyResponse: true, messageId: 'assistant-1', participantId: 'participant-1' },
+    ]);
+    expect(final.finalDone?.emptyResponse).toBe(true);
+  });
+
+  it('a depth-1 turnStart still enters the chain', () => {
+    const s = reduceChatFrame(initialChatStreamState(), { ...TURN_START, chainDepth: 1 });
+    expect(s.inChain).toBe(true);
+  });
+
+  it('a depth-0 turnStart never takes a chain back out (v4 only declines to set)', () => {
+    const inChain = reduceChatFrame(initialChatStreamState(), { ...TURN_START, chainDepth: 1 });
+    expect(reduceChatFrame(inChain, TURN_START).inChain).toBe(true);
+    // An absent chainDepth reads as 0 (v4 `data.chainDepth || 0`).
+    const { chainDepth: _d, ...noDepth } = TURN_START;
+    expect(reduceChatFrame(initialChatStreamState(), noDepth).inChain).toBe(false);
+  });
+
+  it("emits a bubble for an empty-content depth-0 done with a messageId — v5's one bug-242 symptom", () => {
+    // A tool-only single-character reply: no prose, but a saved message.
+    const final = foldChatFrames([
+      TURN_START,
+      { content: '   ' },
+      { done: true, messageId: 'assistant-2', participantId: 'participant-1' },
+    ]);
+    const bubbles = assistant(final.messages);
+    expect(bubbles).toHaveLength(1);
+    expect(bubbles[0]).toMatchObject({ id: 'assistant-2', intermediate: false });
+  });
+
+  it('the real single-turn trace (depth-0 turnStart first) folds to a final, non-intermediate bubble', () => {
+    const final = foldChatFrames(framesFor(singleTurnTrace, FIXTURE_CHAT_ID));
+    expect(final.inChain).toBe(false);
+    expect(assistant(final.messages)[0]).toMatchObject({ id: 'm1', intermediate: false });
+  });
+});
+
+/**
+ * P4.D301 — bug 241: the send shell's error frame carries v4's two
+ * `ErrorEventExtras` flags; the reducer records them for the Salon's restore
+ * decision (R-L6), copying a key ONLY when it is a real boolean (v4
+ * `useSSEStreaming.ts:695-698`). Read structurally so the red-first run against
+ * the old state shape fails on the missing field rather than not compiling.
+ */
+describe('chat stream reducer — the error frame persistence flags (bug 241)', () => {
+  type WithSubmission = {
+    errorSubmission: { userMessagePersisted?: boolean; pendingToolResultsPersisted?: boolean } | null;
+  };
+  const sub = (s: unknown) => (s as WithSubmission).errorSubmission;
+
+  it('records both flags off a five-key error frame', () => {
+    const s = reduceChatFrame(initialChatStreamState(), {
+      error: 'Failed to generate response',
+      errorType: 'Error',
+      details: 'No API key configured for this connection profile',
+      userMessagePersisted: false,
+      pendingToolResultsPersisted: true,
+    } as ChatStreamFrame);
+    expect(s.error).toBe('Failed to generate response: No API key configured for this connection profile');
+    expect(sub(s)).toEqual({ userMessagePersisted: false, pendingToolResultsPersisted: true });
+  });
+
+  it('copies booleans only — a string "true" is not a flag', () => {
+    const s = reduceChatFrame(initialChatStreamState(), {
+      error: 'Failed to generate response',
+      details: 'x',
+      userMessagePersisted: 'true',
+      pendingToolResultsPersisted: false,
+    } as unknown as ChatStreamFrame);
+    expect(sub(s)).toEqual({ pendingToolResultsPersisted: false });
+  });
+
+  it('a three-key frame records an empty flag set (the server did not say)', () => {
+    const s = reduceChatFrame(initialChatStreamState(), { error: 'Failed', errorType: 'fatal_error', details: '' });
+    expect(sub(s)).toEqual({});
+  });
+
+  it('starts null', () => {
+    expect(sub(initialChatStreamState())).toBeNull();
   });
 });

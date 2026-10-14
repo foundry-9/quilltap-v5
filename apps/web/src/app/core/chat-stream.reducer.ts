@@ -150,6 +150,14 @@ export interface ChatStreamState {
   messages: StreamMessage[];
   /** A recorded transport / stream error (v4 throws; we halt and record). */
   error: string | null;
+  /**
+   * The error frame's persistence flags (P4.D301, v4 bug 241 — the send shell's
+   * `userMessagePersisted` / `pendingToolResultsPersisted`), each copied ONLY
+   * when the frame carried a real boolean (v4 `useSSEStreaming.ts:695-698`), so
+   * an absent key means "the server did not say". `null` until an error frame.
+   * The Salon reads it when the dispatch rejection carries no `submission`.
+   */
+  errorSubmission: { userMessagePersisted?: boolean; pendingToolResultsPersisted?: boolean } | null;
   /** The terminal chain has completed (chainComplete, or a non-chained final done). */
   finished: boolean;
   /**
@@ -194,6 +202,7 @@ export function initialChatStreamState(): ChatStreamState {
     respondingParticipantId: null,
     messages: [],
     error: null,
+    errorSubmission: null,
     finished: false,
     chainReason: null,
     chainPaused: false,
@@ -235,7 +244,14 @@ export function reduceChatFrame(prev: ChatStreamState, frame: ChatStreamFrame): 
   // transport / stream error — record and halt (v4 throws out of the loop)
   if (frame.error) {
     const message = frame.details ? `${frame.error}: ${frame.details}` : frame.error;
-    s = { ...s, error: message, status: null, streaming: false, waitingForResponse: false };
+    const errorSubmission: NonNullable<ChatStreamState['errorSubmission']> = {};
+    if (typeof frame.userMessagePersisted === 'boolean') {
+      errorSubmission.userMessagePersisted = frame.userMessagePersisted;
+    }
+    if (typeof frame.pendingToolResultsPersisted === 'boolean') {
+      errorSubmission.pendingToolResultsPersisted = frame.pendingToolResultsPersisted;
+    }
+    s = { ...s, error: message, errorSubmission, status: null, streaming: false, waitingForResponse: false };
   }
 
   // tool detection — push a batch tagged with the current prose offset
@@ -292,11 +308,17 @@ export function reduceChatFrame(prev: ChatStreamState, frame: ChatStreamFrame): 
     s = { ...s, finalDone: { ...(s.finalDone ?? emptyDone()), pendingExternalTurn: true } };
   }
 
-  // turn start (a chained character is about to respond) — reset the buffer
+  // turn start (a character is about to respond) — reset the buffer. Only a
+  // CHAINED turn (depth > 0) enters a chain: the server also sends a depth-0
+  // turnStart before every first turn (and inside every chained turn's
+  // re-entered process_message) so the bubble shows the right responder, and
+  // that one must leave the turn's done on the ordinary path. v4 never CLEARS
+  // `inChain` on depth 0, it only declines to set it (bug 242, `b045dd986`,
+  // `useSSEStreaming.ts:756-762`).
   if (frame.turnStart) {
     s = {
       ...s,
-      inChain: true,
+      inChain: (frame.chainDepth ?? 0) > 0 ? true : s.inChain,
       content: '',
       reasoning: '',
       toolBatches: [],

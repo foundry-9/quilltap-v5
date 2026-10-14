@@ -4,6 +4,16 @@
  * chat_events.rs` (which serializes byte-identical to v4's SSE frames) and the
  * orchestrator/native-loop orderings the tier-3 differentials exercise.
  *
+ * ⚠ P4.D301 (bug 242): until then the single-turn trace had NO depth-0
+ * `turnStart` and the chain trace opened at `chainDepth: 1`, though the server
+ * sends a depth-0 `turnStart` from inside EVERY `process_message` call
+ * (`services/orchestrator.rs`, "turnStart (chainDepth 0) + status" — v4
+ * `orchestrator.service.ts:410`, after the `initializing` status): before a
+ * first turn, AND right after the chain's own depth-N `turnStart` for each
+ * chained turn, because the chain re-enters `process_message`. Every reducer
+ * spec that used the old traces folded a shape the server never sends, which
+ * is exactly how the pre-fix `inChain` survived unnoticed.
+ *
  * Every entry is a `ScopedEvent` exactly as it arrives on `GET /api/events`:
  * a bare single-key (or flat-multi-key) chat frame plus its `chatId` scope tag.
  * The traces cover: content+reasoning interleave, a tool batch spliced at an
@@ -16,8 +26,14 @@ import type { ScopedEvent } from '../core-contract';
 const CHAT = 'chat-1';
 const OTHER = 'chat-2';
 
-/** A single turn: status → interleaved reasoning + content → done with a bubble. */
+/**
+ * A single turn, in the server's real order: the `initializing` status, the
+ * depth-0 `turnStart` naming the responder, the statuses, interleaved
+ * reasoning + content, then done with a bubble.
+ */
 export const singleTurnTrace: ScopedEvent[] = [
+  { chatId: CHAT, status: { stage: 'initializing', message: 'Loading chat...' } },
+  { chatId: CHAT, turnStart: true, participantId: 'p1', characterName: 'Friday', chainDepth: 0 },
   { chatId: CHAT, status: { stage: 'sending', message: 'Sending to Friday…', characterName: 'Friday', characterId: 'c1' } },
   { chatId: CHAT, status: { stage: 'streaming', message: 'Friday is composing a reply…' } },
   { chatId: CHAT, reasoning: 'Let me think' },
@@ -52,13 +68,24 @@ export const toolBatchTrace: ScopedEvent[] = [
   { chatId: CHAT, done: true, messageId: 'm2', participantId: 'p1', toolsExecuted: true, provider: 'ANTHROPIC', modelName: 'claude-sonnet-5' },
 ];
 
-/** A two-character chain: turnStart / content / intermediate done / turnComplete ×2, then chainComplete. */
+/**
+ * A first turn and a two-character chain behind it. The first turn is the
+ * user's send (depth 0 — NOT in a chain: its done is a final bubble); each
+ * chained turn opens with the chain's depth-N `turnStart` and then the depth-0
+ * one its re-entered `process_message` sends (which must not take the chain
+ * back out), content, an intermediate done, `turnComplete`; then chainComplete.
+ */
 export const multiTurnChainTrace: ScopedEvent[] = [
+  { chatId: CHAT, turnStart: true, participantId: 'p0', characterName: 'Friday', chainDepth: 0 },
+  { chatId: CHAT, content: 'Shall we begin?' },
+  { chatId: CHAT, done: true, messageId: 'm9', participantId: 'p0', provider: 'ANTHROPIC', modelName: 'claude-sonnet-5', toolsExecuted: false },
   { chatId: CHAT, turnStart: true, participantId: 'p1', characterName: 'Ada', chainDepth: 1 },
+  { chatId: CHAT, turnStart: true, participantId: 'p1', characterName: 'Ada', chainDepth: 0 },
   { chatId: CHAT, content: 'Hi, I am Ada.' },
   { chatId: CHAT, done: true, messageId: 'm10', participantId: 'p1', provider: 'ANTHROPIC', modelName: 'claude-sonnet-5', toolsExecuted: false },
   { chatId: CHAT, turnComplete: true, participantId: 'p1', messageId: 'm10', chainDepth: 1, skipped: false },
   { chatId: CHAT, turnStart: true, participantId: 'p2', characterName: 'Bob', chainDepth: 2 },
+  { chatId: CHAT, turnStart: true, participantId: 'p2', characterName: 'Bob', chainDepth: 0 },
   { chatId: CHAT, content: 'And I am Bob.' },
   { chatId: CHAT, done: true, messageId: 'm11', participantId: 'p2', provider: 'ANTHROPIC', modelName: 'claude-sonnet-5', toolsExecuted: false },
   { chatId: CHAT, turnComplete: true, participantId: 'p2', messageId: 'm11', chainDepth: 2, skipped: false },
@@ -68,6 +95,7 @@ export const multiTurnChainTrace: ScopedEvent[] = [
 /** A "nothing to add" turn-pass: a Host announcement then a skip done (no bubble). */
 export const skipDoneTrace: ScopedEvent[] = [
   { chatId: CHAT, turnStart: true, participantId: 'p3', characterName: 'Cyd', chainDepth: 1 },
+  { chatId: CHAT, turnStart: true, participantId: 'p3', characterName: 'Cyd', chainDepth: 0 },
   {
     chatId: CHAT,
     hostAnnouncement: { id: 'host-1', type: 'message', systemSender: 'host', content: 'Cyd has nothing to add.' },
