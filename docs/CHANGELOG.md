@@ -947,6 +947,12 @@ _Versions: SPA 0.5.847._
 
 The Commonplace Book card and editor now label importance through v4's `importanceBand` (`e0ac7493a`): High at 0.7 or above, Medium from 0.3, Low below 0.3 (was 0.4). `memory-format.ts` carries `IMPORTANCE_HIGH`, `IMPORTANCE_LOW` and `importanceBand`; the format and card specs are re-pinned at 0.3 / 0.29 / 0.69 / 0.7.
 
+#### 2026-10-14 — docs(porting): P4.D302 lane close — the scenarios SPA lane complete
+
+_Docs-only change._
+
+Marks the P4.D302 work order LANE COMPLETE and appends the lane-close record to `status-log.md`: the SPA gate (504 files / 10,206 tests), the four Playwright files by file, the Rust workspace gate (one by-design red, `qtap_schema_embed_guard`, owned by P4.D294's re-vendor, confirmed against the pin), the recorder reproducing its fixture byte for byte, the Tier 3 deferrals, notes for the unifier, and the dogfood list.
+
 #### 2026-10-14 — test(e2e): scenario browser flow, and the scenario re-pins (P4.D302 unit 6)
 
 _No crate versions bumped._

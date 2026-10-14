@@ -184708,3 +184708,59 @@ stays symlinked (§R.3's cure not needed for this lane).
   refusal instead of failing `beforeAll`, and the General beat asserts it is
   null (if P4.D295's boot heal does not provision the mount on this fixture,
   that beat reds with the server's own sentence).
+
+### Lane close — the gate, the records, the 💸
+
+- **SPA gate** (unit 5's tree; unit 6 touched only `e2e/`): `npm run lint` /
+  `npm run build` / `npm test` green — **504 files / 10,206 tests**, zero new
+  skips.
+- **Playwright by file, one invocation at a time** (the order's four):
+  `scenario-browser-flow` **3 passed / 4 skipped** (the gated beats),
+  `salon-scenario-flow` **2 / 0**, `scenario-builder-flow` **5 / 0** (after the
+  (a) re-pin), `new-chat-flow` **5 / 0**.
+- **Rust workspace gate** (`CARGO_INCREMENTAL=0`; no `crates/` path on the
+  branch — `git diff --name-only main` carries no `crates/`, `help/`,
+  `docs/v4/` or `core/realtime-topic-map.ts` path): `cargo fmt --all --check`
+  0; `cargo clippy --workspace --all-targets -D warnings` 0, and with
+  `--features quilltap-core/native-transport` 0; `cargo test --workspace
+  --no-fail-fast` **742 binaries / 4,951 passed / 1 failed / 3 ignored** — the
+  one red is `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts`,
+  re-run against the PIN (`QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin) with the
+  same answer (v4 105,310 bytes, vendored 103,075): §R.3's by-design red,
+  owned by P4.D294's re-vendor. Not a finding. `recipe_sweep.py --self-test`
+  0 failures (no recipe touched).
+- **The recorder** re-run from the pin at lane close: 607 rows,
+  BYTE-IDENTICAL to the committed `scenario-selection.ndjson`.
+- **L-N, measured:** `git grep scenario-browser 83334b9a5 -- components app lib`
+  finds nothing — no v4 component links `help/scenario-browser.md`; no help
+  hunk, no HANDOFF (P4.D303 vendors it).
+- **Tier 3, recorded (never silent):** 14 — the seed's continuation arm is a
+  `NewChatOptions.continuationFromChatId` input nothing in production sets
+  (v5's New Chat has no continuation source), its v4 row a spec row; 15 —
+  nothing beyond C2 / C3 §2 was needed (no STOP-and-flag raised; no
+  client-side reconstruction of a server rule); 16 — v4's unknown-`?action=`
+  400 on `GET /scenarios` has no v5 transport, nothing SPA-side; 17 — help,
+  no hunk (L-N).
+- **No ruled divergence added; no HANDOFF.** For the unifier (§S.9): flip
+  `P4D288_SERVER_LANDED`; the General beat needs the "Quilltap General" mount
+  on the salon fixture (absent on main's server — the seed records the
+  refusal); the salon-scenario-flow re-pick no-op is expected to hold
+  (`Scenario unchanged`) on P4.D295's server too, since the first UI save
+  records the source (order "What the recorded description got wrong" item 1).
+- **v4 moved (§R.2):** at lane start v4 `main` was 17 commits past the pin
+  (`7458ff94e`, incl. `release: 4.10.0` and `dev: started 4.11.0`), `bugfix`
+  1 (`489b228b6`). Out of scope by the pin rule.
+- **💸 for the dogfood pass** (the order's list, unchanged): Browse from New
+  Chat across real project / group shelves and character vaults (a vault
+  shelf read-only, its scenario snapping native in a one-character chat); a
+  scene from ANOTHER project created into a chat and named on the provenance
+  line; the shelf copy edited in the Scenarios manager → "has been revised" →
+  a plain Change scenario keeping the scene → Reload announced by the Host;
+  the shelf copy deleted → "is gone" with the scene kept as Custom text; the
+  Notes box round-tripping through a save and a reopen; search across every
+  shelf; Show archived; Escape inside New Chat closing only the browser; the
+  `?characterId=` entrance into a project with a default now showing AND
+  creating the character's scene. Do not file survey OP-11's
+  `[ScenarioLocation] Refused scenario ref` WARN — v4-faithful.
+- **Versions at close:** SPA **0.5.851** (from 0.5.846, five bumps); no crate
+  version moved; `quilltap-harness` untouched.
