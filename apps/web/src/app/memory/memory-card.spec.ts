@@ -56,15 +56,14 @@ describe('MemoryCard', () => {
     expect(label.getAttribute('title')).toBe('Importance: 80%');
   });
 
-  it('shows Medium for >= 0.4 and Low below', () => {
-    expect(
-      (render(mem({ importance: 0.5 })).nativeElement.querySelector('.qt-text-label-xs') as HTMLElement)
-        .textContent?.trim(),
-    ).toBe('Medium');
-    expect(
-      (render(mem({ importance: 0.2 })).nativeElement.querySelector('.qt-text-label-xs') as HTMLElement)
-        .textContent?.trim(),
-    ).toBe('Low');
+  it('shows Medium for >= 0.3 and Low below (v4 importanceBand, e0ac7493a)', () => {
+    const band = (importance: number) =>
+      (render(mem({ importance })).nativeElement.querySelector('.qt-text-label-xs') as HTMLElement)
+        .textContent?.trim();
+    expect(band(0.69)).toBe('Medium');
+    expect(band(0.3)).toBe('Medium');
+    expect(band(0.29)).toBe('Low');
+    expect(band(0.2)).toBe('Low');
   });
 
   it('marks AUTO vs MANUAL source', () => {

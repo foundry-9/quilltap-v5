@@ -851,6 +851,12 @@ _No crate versions bumped._
 
 The vendored help tree brought to the round's pin, every byte from `git show 83334b9a5:`. Count unchanged at 131: two pages added (`help/memory-maintenance.md`, Phase G's single Maintenance page; `help/scenario-browser.md`, the scenario browser), two retired (`help/memory-consolidation.md`, `help/memory-housekeeping.md`), 21 re-vendored. All 131 files md5-equal to the pin with the same path set. `help_tree_equivalence` and `help_section_size_equivalence` were red at the pin before the copy (content only) and are green after, regenerated from the pin (131 docs, 779 chunks, max section 775 tokens); `help_tree_embed_guard` and `host_help_docs_boot` green before and after with their 131 literals unmoved. Comment-only history lines added to the three help tests. The host re-embeds the tree at build time; its source is unchanged, so no bump.
 
+#### 2026-10-14 — feat(spa): the memory importance band moves to v4's .3 floor (P4.D300)
+
+_Versions: SPA 0.5.847._
+
+The Commonplace Book card and editor now label importance through v4's `importanceBand` (`e0ac7493a`): High at 0.7 or above, Medium from 0.3, Low below 0.3 (was 0.4). `memory-format.ts` carries `IMPORTANCE_HIGH`, `IMPORTANCE_LOW` and `importanceBand`; the format and card specs are re-pinned at 0.3 / 0.29 / 0.69 / 0.7.
+
 #### 2026-10-14 — docs(porting): record the human's approval of the `83334b9a5` round's planning rulings and P4.D290's `sha1` dependency
 
 _Docs-only change._

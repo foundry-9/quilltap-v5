@@ -1,7 +1,8 @@
 /**
  * Pure Commonplace Book presentation logic, transcribed verbatim from v4 so the
  * thresholds/joins are unit-provable without a DOM (the P4.6q Play-As precedent).
- *   - importance buckets: v4 `memory-card.tsx` (≥0.7 High, ≥0.4 Medium, else Low)
+ *   - importance buckets: v4 `importanceBand` (`lib/memory/scoring/importance.ts`,
+ *     `e0ac7493a`; ≥0.7 High, ≥0.3 Medium, else Low — was ≥0.4 before the pin)
  *   - keywords join/split: v4 `memory-editor.tsx` (comma-joined ↔ trimmed array)
  *   - page-dedupe: v4 `memory-list.tsx` (skip ids already in the list)
  */
@@ -10,21 +11,35 @@ import type { MemoryDto } from '../core/core-contract';
 
 export type ImportanceBucket = 'High' | 'Medium' | 'Low';
 
-/** v4: `importance >= 0.7 ? 'High' : importance >= 0.4 ? 'Medium' : 'Low'`. */
+/** v4 `IMPORTANCE_HIGH` — at or above this a memory is in the high band. */
+export const IMPORTANCE_HIGH = 0.7;
+/** v4 `IMPORTANCE_LOW` — below this a memory is in the low band. */
+export const IMPORTANCE_LOW = 0.3;
+
+export type ImportanceBand = 'high' | 'medium' | 'low';
+
+/** v4 `importanceBand` (`lib/memory/scoring/importance.ts`): high ≥ 0.7, low < 0.3, medium between. */
+export function importanceBand(value: number): ImportanceBand {
+  if (value >= IMPORTANCE_HIGH) return 'high';
+  if (value < IMPORTANCE_LOW) return 'low';
+  return 'medium';
+}
+
+/** v4 `memory-card.tsx` / `memory-editor.tsx`: `band === 'high' ? 'High' : band === 'medium' ? 'Medium' : 'Low'`. */
 export function importanceLabel(importance: number): ImportanceBucket {
-  if (importance >= 0.7) return 'High';
-  if (importance >= 0.4) return 'Medium';
-  return 'Low';
+  const band = importanceBand(importance);
+  return band === 'high' ? 'High' : band === 'medium' ? 'Medium' : 'Low';
 }
 
 /**
- * v4: `>= 0.7 → destructive`, `>= 0.4 → warning`, else `secondary`. Returns the
+ * v4 `memory-card.tsx`: high → destructive, medium → warning, else `secondary`. Returns the
  * `qt-text-*` class the card paints the importance label with. (qt-class-exception:
  * the glob is prose, not a class.)
  */
 export function importanceColorClass(importance: number): string {
-  if (importance >= 0.7) return 'qt-text-destructive';
-  if (importance >= 0.4) return 'qt-text-warning';
+  const band = importanceBand(importance);
+  if (band === 'high') return 'qt-text-destructive';
+  if (band === 'medium') return 'qt-text-warning';
   return 'qt-text-secondary';
 }
 

@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import type { MemoryDto } from '../core/core-contract';
 import {
+  IMPORTANCE_HIGH,
+  IMPORTANCE_LOW,
+  importanceBand,
   appendUniqueMemories,
   importanceColorClass,
   importanceLabel,
@@ -37,19 +40,35 @@ function mem(over: Partial<MemoryDto>): MemoryDto {
   };
 }
 
-describe('memory-format: importance buckets (v4 memory-card thresholds)', () => {
-  it('labels >= 0.7 High, >= 0.4 Medium, else Low (boundaries inclusive)', () => {
+describe('memory-format: importance buckets (v4 importanceBand, e0ac7493a)', () => {
+  it('labels >= 0.7 High, >= 0.3 Medium, else Low (boundaries inclusive at the pin)', () => {
     expect(importanceLabel(0.7)).toBe('High');
     expect(importanceLabel(0.69)).toBe('Medium');
-    expect(importanceLabel(0.4)).toBe('Medium');
-    expect(importanceLabel(0.39)).toBe('Low');
+    expect(importanceLabel(0.3)).toBe('Medium');
+    expect(importanceLabel(0.29)).toBe('Low');
     expect(importanceLabel(0)).toBe('Low');
     expect(importanceLabel(1)).toBe('High');
+  });
+
+  it('the old 0.3-0.4 strip is Medium now (was Low before e0ac7493a)', () => {
+    expect(importanceLabel(0.35)).toBe('Medium');
+    expect(importanceColorClass(0.35)).toBe('qt-text-warning');
+  });
+
+  it('importanceBand: high >= IMPORTANCE_HIGH, low < IMPORTANCE_LOW, medium between', () => {
+    expect(IMPORTANCE_HIGH).toBe(0.7);
+    expect(IMPORTANCE_LOW).toBe(0.3);
+    expect(importanceBand(0.7)).toBe('high');
+    expect(importanceBand(0.6999)).toBe('medium');
+    expect(importanceBand(0.3)).toBe('medium');
+    expect(importanceBand(0.29)).toBe('low');
   });
 
   it('colors match the label bucket', () => {
     expect(importanceColorClass(0.9)).toBe('qt-text-destructive');
     expect(importanceColorClass(0.5)).toBe('qt-text-warning');
+    expect(importanceColorClass(0.3)).toBe('qt-text-warning');
+    expect(importanceColorClass(0.29)).toBe('qt-text-secondary');
     expect(importanceColorClass(0.1)).toBe('qt-text-secondary');
   });
 
