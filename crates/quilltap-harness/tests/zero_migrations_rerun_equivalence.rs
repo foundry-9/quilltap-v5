@@ -37,17 +37,17 @@
 //! Regenerate + run (three steps around this file, Node 24, from the round's
 //! pin, `TZ=UTC QUILLTAP_TIMEZONE=UTC`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
-//!   D=/tmp/qt-zero-rerun ; rm -rf $D /tmp/oracle-zero-rerun-*.ndjson
-//!   cd <the pinned v4 worktree>
-//!   TZ=UTC QUILLTAP_TIMEZONE=UTC QT_ZERO_RERUN_PHASE=build QT_FIXTURE_ZERO_RERUN_DIR=$D \
+//!   rm -rf /tmp/qt-zero-rerun /tmp/oracle-zero-rerun-*.ndjson
+//!   cd ~/source/quilltap-server
+//!   TZ=UTC QUILLTAP_TIMEZONE=UTC QT_ZERO_RERUN_PHASE=build QT_FIXTURE_ZERO_RERUN_DIR=/tmp/qt-zero-rerun \
 //!     $N/npx tsx $V5W/harness/oracle/cases/zero-rerun.ts > /tmp/oracle-zero-rerun-build.ndjson
-//!   cd $V5W && QT_ZERO_RERUN_WRITE=1 QT_FIXTURE_ZERO_RERUN_DIR=$D \
+//!   cd $V5W && QT_ZERO_RERUN_WRITE=1 QT_FIXTURE_ZERO_RERUN_DIR=/tmp/qt-zero-rerun \
 //!     cargo test -p quilltap-harness --test zero_migrations_rerun_equivalence -- write_after_v5
-//!   cd <the pinned v4 worktree>
-//!   TZ=UTC QUILLTAP_TIMEZONE=UTC QT_ZERO_RERUN_PHASE=v4 QT_FIXTURE_ZERO_RERUN_DIR=$D \
+//!   cd ~/source/quilltap-server
+//!   TZ=UTC QUILLTAP_TIMEZONE=UTC QT_ZERO_RERUN_PHASE=v4 QT_FIXTURE_ZERO_RERUN_DIR=/tmp/qt-zero-rerun \
 //!     $N/npx tsx $V5W/harness/oracle/cases/zero-rerun.ts > /tmp/oracle-zero-rerun-v4.ndjson
-//!   cd $V5W && QT_ORACLE_ZERO_RERUN_DIR=/tmp QT_FIXTURE_ZERO_RERUN_DIR=$D \
-//!     cargo test -p quilltap-harness --test zero_migrations_rerun_equivalence -- --nocapture
+//!   cd $V5W && QT_ORACLE_ZERO_RERUN_DIR=/tmp QT_FIXTURE_ZERO_RERUN_DIR=/tmp/qt-zero-rerun \
+//!     cargo test -p quilltap-harness --test zero_migrations_rerun_equivalence -- no_migration_reruns --nocapture
 
 use std::path::{Path, PathBuf};
 

@@ -24,6 +24,19 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — KEYSTONE: P4.D288 — the memory-refactor + scenarios round's schema keystone
+
+_Docs-only change._
+
+The keystone that P4.D290 through P4.D295 branch from.
+
+The gate:
+- fmt is clean, and clippy is clean with both feature sets.
+- The workspace suite (781 binaries) passed 5,162 tests and failed 4. All four failures are in the three binaries that are red by design for sibling lanes: the CLI differential, the embedded `.qtap` schema guard and the 24 lane-remove markers.
+- All 41 of the lane's families pass from the pin with no skips. The zero-rerun family's recipe header was fixed so the sweep driver can run it.
+
+The work order's status header records every C1 spelling as landed and six departures, each with its reason.
+
 #### 2026-10-14 — feat(core): P4.D288 unit 13 — zero v4 re-runs after v5's span chain; the settled cursor chain stamped
 
 _Versions: core 0.0.1298._

@@ -180542,3 +180542,41 @@ migrationsSkipped: 90}`, none deferred. Measured:
   the compare; `QT_FIXTURE_ZERO_RERUN_DIR=/tmp/qt-zero-rerun`, `QT_ORACLE_ZERO_RERUN_DIR=/tmp`, `TZ=UTC
   QUILLTAP_TIMEZONE=UTC`, from the pinned worktree). The case's base build needs no network; the two phases each
   run as ONE invocation.
+
+### Unit 14 — the keystone gate + `KEYSTONE`
+
+- `cargo fmt --all` (clean, nothing moved); the censuses re-measured LAST, on the final tree, inside the workspace
+  run: `dispatch_wrong_type_census`, the realtime publish-site census (`realtime_publish_sites_guard`), the
+  collapse censuses and **the wardrobe LANE-REMOVE census GREEN**; `no_memory_lane_remove_markers_left` RED BY
+  DESIGN at **24 markers** (unchanged since unit 9 — the consumer lanes' and the unifier's to delete; §S.5) with
+  `no_source_outside_the_scoring_module_names_the_floored_weight`'s offenders (P4.D289's consumers').
+- No crate bump at `KEYSTONE` (docs + a harness recipe header only); the last code bumps are unit 13's (core
+  0.0.1298) and unit 12's (host 0.0.204); web 0.0.240 (unit 9).
+- **Gate** (`CARGO_INCREMENTAL=0`, `QT_V4_CHECKOUT` / `QT_V4_ROOT` = the pin): `cargo fmt --all --check` clean;
+  `cargo clippy --workspace --all-targets -- -D warnings` AND with `--features quilltap-core/native-transport`
+  clean; `cargo test --workspace --no-fail-fast` — **781 binaries / 5,162 passed / 4 failed / 3 ignored**: the
+  four reds are the three RED-BY-DESIGN binaries only (`cli_differential` → P4.D299; `qtap_schema_embed_guard`'s
+  `the_embedded_schema_equals_the_v4_checkouts` → P4.D294; `no_memory_lane_remove_markers_left` — the markers +
+  the floored-weight offenders); core + host + web green; the live-checkout guards against the pin:
+  `provisioning_equivalence` + `migration_indexes` GREEN, the two help guards green at the pin.
+- **§R.13(a) — the owned families FROM THE PIN, by name, zero SKIP** (`recipe_sweep.py --run-all --families …`,
+  `/tmp/p4d288/u14-sweep.json`): **41 / 41 ok** — `provisioning_equivalence`, `migration_index_backfill_
+  equivalence`, `restore_vintage_state`, `memory_tiers_ensure_equivalence`, `vector_store_tiers_equivalence`,
+  `memories_tier2_equivalence`, `memory_extraction_cursors_tier2`, `memory_index_tier2_equivalence`,
+  `memory_retire_tier2_equivalence`, `policy_protection_equivalence`, `memory_settings_schemas_equivalence`,
+  `memory_settings_legacy_equivalence`, `instance_settings_json_warns_equivalence`, `chat_settings_tier2_
+  equivalence`, `chats_tier2_equivalence`, `tfidf_text_shape_ensure_equivalence`, `tfidf_vocabulary_tier2_
+  equivalence`, `tfidf_vocabulary_upsert_tier2_equivalence`, `memory_delete_tier2_equivalence`,
+  `memory_cascade_tier2_equivalence`, `reset_builtins_equivalence`, `characters_delete_callers_census`,
+  `character_archive_tier2_equivalence`, `archive_reencrypt_tier2_equivalence`, `memory_extraction_pass_
+  equivalence`, `cursor_bundle_equivalence`, `scenario_source_remap_equivalence`, `memory_settings_resolve_
+  equivalence`, `commonplace_mirror_equivalence`, `write_apply_equivalence`, `embedding_blob_binding_guard`,
+  `p4_d288_wire_contract`, `zero_migrations_rerun_equivalence`, `memory_rewrite_heals_ensure_equivalence` and the
+  seven other span ensure families. (There is no `cascade_delete_tier2` family by that name; the cascade-delete
+  surface is `memory_cascade_tier2` + `reset_builtins` + the `characters_delete_callers_census`.)
+  The first sweep caught ONE recipe defect of mine — `zero_migrations_rerun_equivalence`'s header said `cd <the
+  pinned v4 worktree>` (the driver maps only `cd ~/source/quilltap-server` onto `--v4`), defined `$D` in the
+  regen half the run half never saw, and ran `write_after_v5`'s SKIP in the final step; all three fixed in the
+  header, the family re-run alone: ok end-to-end.
+- The order's status header carries every C1 spelling as landed (each verified against the tree) and the six
+  departures; the sha is recorded by the follow-up docs commit (P4.D289's `SCORING` precedent).
