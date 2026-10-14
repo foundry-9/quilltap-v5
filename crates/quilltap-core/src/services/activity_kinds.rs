@@ -80,12 +80,11 @@ impl ActivityKind {
 pub const JOB_TYPE_ACTIVITY: &[(&str, Option<ActivityKind>)] = &[
     // ── Mem ──────────────────────────────────────────────────────────────────
     ("MEMORY_EXTRACTION", Some(ActivityKind::Memory)),
-    ("INTER_CHARACTER_MEMORY", Some(ActivityKind::Memory)),
     ("MEMORY_REGENERATE_CHAT", Some(ActivityKind::Memory)),
     ("MEMORY_REGENERATE_ALL", Some(ActivityKind::Memory)),
-    ("MEMORY_HOUSEKEEPING", Some(ActivityKind::Memory)),
-    // P4.D265 (v4 `d58548051`, `activity-kinds.ts:45`).
-    ("MEMORY_CONSOLIDATION", Some(ActivityKind::Memory)),
+    // P4.D288 (v4 `104e986c7`, `activity-kinds.ts:44`): the one maintenance
+    // job replaces housekeeping + consolidation; `INTER_CHARACTER_MEMORY` gone.
+    ("MEMORY_MAINTENANCE", Some(ActivityKind::Memory)),
     ("CARINA_MEMORY_EXTRACTION", Some(ActivityKind::Memory)),
     // ── Emb ──────────────────────────────────────────────────────────────────
     ("EMBEDDING_GENERATE", Some(ActivityKind::Embedding)),

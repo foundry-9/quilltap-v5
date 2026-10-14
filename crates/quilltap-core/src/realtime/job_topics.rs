@@ -95,7 +95,6 @@ pub fn topics_for_completed_job(job_type: Option<&str>, payload: Option<&Value>)
         )],
 
         Some("MEMORY_EXTRACTION")
-        | Some("INTER_CHARACTER_MEMORY")
         | Some("CARINA_MEMORY_EXTRACTION")
         | Some("MEMORY_REGENERATE_CHAT") => {
             // Every one of these carries `chatId` on its payload, which is what
@@ -106,23 +105,15 @@ pub fn topics_for_completed_job(job_type: Option<&str>, payload: Option<&Value>)
             )]
         }
 
-        // Character-scoped: prunes across every chat that character was in, so
-        // the hint is collection-wide by necessity.
-        Some("MEMORY_HOUSEKEEPING") => vec![TopicHint::collection(RealtimeTopic::Memories)],
-
-        // P4.D265 (v4 `d58548051`, `job-topics.ts:91-97`): a dry run writes
-        // nothing (strict boolean `true` — a `"true"` string is NOT a dry run);
-        // a real run moves memories and rewrites the Commonplace vault files.
-        Some("MEMORY_CONSOLIDATION") => {
-            if payload.and_then(|p| p.get("dryRun")) == Some(&Value::Bool(true)) {
-                vec![]
-            } else {
-                vec![
-                    TopicHint::collection(RealtimeTopic::Memories),
-                    TopicHint::collection(RealtimeTopic::MountPoints),
-                ]
-            }
-        }
+        // P4.D288 (v4 `104e986c7`, `job-topics.ts:85-90`): character-scoped —
+        // folds, digests, demotions and retirements reach across every chat
+        // that character was in, so the hint is collection-wide by necessity;
+        // the Commonplace/ mirror files land in the character's vault, which
+        // the Scriptorium watches. NO dry-run arm (a dry run never enqueues).
+        Some("MEMORY_MAINTENANCE") => vec![
+            TopicHint::collection(RealtimeTopic::Memories),
+            TopicHint::collection(RealtimeTopic::MountPoints),
+        ],
 
         // A rendered conversation lands in a document store; the Scriptorium
         // and the character conversations tab both watch that.

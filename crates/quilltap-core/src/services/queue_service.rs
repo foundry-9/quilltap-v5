@@ -441,6 +441,141 @@ pub async fn enqueue_job_with_priority(
     Ok(id)
 }
 
+// === P4.D288 (C1-6) — the job vocabulary the `83334b9a5` round shares (v4
+// `104e986c7` / `ac6348c5f` / `64743ee13`: `lib/schemas/job.types.ts:20-43`,
+// `lib/background-jobs/queue-service.ts:55-121,329-345`,
+// `lib/memory/maintenance/types.ts:15-40`). The ENQUEUES are each owner's
+// fenced region; only the types live here (append-only) ===
+
+/// v4 `MEMORY_MAINTENANCE` — the ONE memory maintenance job, in the slot the
+/// retired `MEMORY_HOUSEKEEPING` / `MEMORY_CONSOLIDATION` held. Registered by
+/// P4.D297; until then a claimed row fails with the runner's "recognized but
+/// not yet available" sentence (O-12).
+pub const MEMORY_MAINTENANCE: &str = "MEMORY_MAINTENANCE";
+
+/// v4 `MAINTENANCE_PHASES` (`maintenance/types.ts:15`) — the phases, in the
+/// order they always run; each skippable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MaintenancePhase {
+    FoldNearDuplicates,
+    Consolidate,
+    Demote,
+    Retire,
+    Mirror,
+}
+
+impl MaintenancePhase {
+    /// v4's order.
+    pub const ALL: [Self; 5] = [
+        Self::FoldNearDuplicates,
+        Self::Consolidate,
+        Self::Demote,
+        Self::Retire,
+        Self::Mirror,
+    ];
+
+    /// The kebab wire string.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FoldNearDuplicates => "fold-near-duplicates",
+            Self::Consolidate => "consolidate",
+            Self::Demote => "demote",
+            Self::Retire => "retire",
+            Self::Mirror => "mirror",
+        }
+    }
+
+    /// The enum's exact parse.
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|p| p.as_str() == s)
+    }
+}
+
+/// v4 `MaintenanceReason` (`maintenance/types.ts:31`) — why a run was asked
+/// for (the ledger and the logs).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MaintenanceReason {
+    Scheduled,
+    Watermark,
+    Manual,
+}
+
+impl MaintenanceReason {
+    pub const ALL: [Self; 3] = [Self::Scheduled, Self::Watermark, Self::Manual];
+
+    /// The wire string.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Scheduled => "scheduled",
+            Self::Watermark => "watermark",
+            Self::Manual => "manual",
+        }
+    }
+
+    /// The exact parse.
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|r| r.as_str() == s)
+    }
+}
+
+/// v4 `MemoryExtractionPass` (`queue-service.ts:113`) — the grain a
+/// `MEMORY_EXTRACTION` job runs at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MemoryExtractionPass {
+    Turn,
+    OtherFold,
+    EpisodeFold,
+}
+
+impl MemoryExtractionPass {
+    pub const ALL: [Self; 3] = [Self::Turn, Self::OtherFold, Self::EpisodeFold];
+
+    /// The wire string (also the cursor pass's — `turn` / `other-fold` /
+    /// `episode-fold`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Turn => "turn",
+            Self::OtherFold => "other-fold",
+            Self::EpisodeFold => "episode-fold",
+        }
+    }
+
+    /// The exact parse.
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|p| p.as_str() == s)
+    }
+}
+
+/// v4 `memoryExtractionPassOf(payload)` (`queue-service.ts:116-121`) — a
+/// payload's grain, reading the pre-Phase-D flags of rows still in the queue:
+/// `payload.pass` when TRUTHY (JS truthiness), else `episode-fold` for a truthy
+/// `foldEpisodeCatchup`, else `other-fold` for a truthy `foldOtherCatchup`,
+/// else `turn`.
+///
+/// R-X: v4 returns a truthy `pass` it does not know AS IS (its type is erased
+/// at run time) — `Err` carries that raw value, exactly as v4 holds it (a
+/// string, or any other truthy JSON value); the extraction lane's `PassOf`
+/// wraps it (it lands on the episode branch, as v4's does).
+pub fn pass_of(payload: &Value) -> Result<MemoryExtractionPass, Value> {
+    let get = |k: &str| payload.get(k);
+    if crate::api::system_qtap::js_truthy(get("pass")) {
+        let raw = get("pass").expect("truthy");
+        return raw
+            .as_str()
+            .and_then(MemoryExtractionPass::parse)
+            .ok_or_else(|| raw.clone());
+    }
+    if crate::api::system_qtap::js_truthy(get("foldEpisodeCatchup")) {
+        return Ok(MemoryExtractionPass::EpisodeFold);
+    }
+    if crate::api::system_qtap::js_truthy(get("foldOtherCatchup")) {
+        return Ok(MemoryExtractionPass::OtherFold);
+    }
+    Ok(MemoryExtractionPass::Turn)
+}
+
+// === end P4.D288 ===
+
 /// One `MEMORY_EXTRACTION` enqueue (v4 `MemoryExtractionPayload` as the
 /// enqueue side writes it). `fold_other_catchup` is v4 `d58548051`'s idle
 /// catch-up flag (the daily sweep's); v4's `foldOtherIgnoreIdle` and
@@ -1799,7 +1934,7 @@ mod activity_snapshot_tests {
         let _g = ActivityTestGuard::new();
         let (db, _scratch) = test_db("bykind").await;
         seed_job(&db, "j1", "u1", "MEMORY_EXTRACTION", "PENDING").await;
-        seed_job(&db, "j2", "u1", "MEMORY_HOUSEKEEPING", "PROCESSING").await;
+        seed_job(&db, "j2", "u1", "MEMORY_MAINTENANCE", "PROCESSING").await;
         seed_job(&db, "j3", "u1", "EMBEDDING_GENERATE", "PENDING").await;
         // Deliberately uncounted (v4's `null`) — must not land on any chip.
         seed_job(&db, "j4", "u1", "AUTONOMOUS_ROOM_TURN", "PENDING").await;

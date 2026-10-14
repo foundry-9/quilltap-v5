@@ -86,8 +86,9 @@ pub const FROZEN_ARCHIVE_SELF_DIGESTS: i64 = 5;
 /// `FROZEN_ARCHIVE_POOL_FACTOR`).
 const FROZEN_ARCHIVE_POOL_FACTOR: usize = 4;
 
-/// v4 `JOBS_INVALIDATING_FROZEN_ARCHIVE` (`job-dispatcher.ts:649`).
-const JOBS_INVALIDATING_FROZEN_ARCHIVE: [&str; 2] = ["MEMORY_HOUSEKEEPING", "MEMORY_CONSOLIDATION"];
+/// v4 `JOBS_INVALIDATING_FROZEN_ARCHIVE` (`job-dispatcher.ts:663` at the
+/// `83334b9a5` pin — P4.D288, the job-type list: the one maintenance job).
+const JOBS_INVALIDATING_FROZEN_ARCHIVE: [&str; 1] = ["MEMORY_MAINTENANCE"];
 
 struct CacheEntry {
     character_id: String,
@@ -284,8 +285,8 @@ pub fn invalidate_all_frozen_archives() {
 /// per-turn memory writes deliberately do NOT invalidate — that would rebuild
 /// the archive every turn and defeat the prefix cache it exists for.
 ///
-/// Fires on EVERY non-dry `MEMORY_HOUSEKEEPING` / `MEMORY_CONSOLIDATION`
-/// completion, changed or not. Only a JSON `true` `dryRun` skips. A string
+/// Fires on EVERY non-dry `MEMORY_MAINTENANCE` (P4.D288's list — before it the
+/// two retired types) completion, changed or not. Only a JSON `true` `dryRun` skips. A string
 /// `characterId` drops that character's chats; an EMPTY string (falsy in v4)
 /// or a non-string / absent one drops EVERY archive ("a user-wide sweep touched
 /// every character") — the line logs `""` for the former and `all` for the
@@ -958,7 +959,7 @@ mod tests {
         // drops the swept character after a single-character sweep
         seed_global("fa-hook-1", "chat-1");
         seed_global("fa-hook-2", "chat-1");
-        let lines = hook("MEMORY_HOUSEKEEPING", json!({ "characterId": "fa-hook-1" }));
+        let lines = hook("MEMORY_MAINTENANCE", json!({ "characterId": "fa-hook-1" }));
         assert!(!global_has("fa-hook-1", "chat-1"));
         assert!(
             global_has("fa-hook-2", "chat-1"),
@@ -967,28 +968,28 @@ mod tests {
         assert_eq!(
             lines.last().unwrap(),
             "DEBUG quilltap::jobs Invalidated frozen memory archives after job jobId=job-1 \
-             type=MEMORY_HOUSEKEEPING characterId=fa-hook-1"
+             type=MEMORY_MAINTENANCE characterId=fa-hook-1"
         );
 
         // drops everything after a user-wide sweep
-        let lines = hook("MEMORY_HOUSEKEEPING", json!({ "reason": "scheduled" }));
+        let lines = hook("MEMORY_MAINTENANCE", json!({ "reason": "scheduled" }));
         assert!(!global_has("fa-hook-2", "chat-1"));
         assert_eq!(
             lines.last().unwrap(),
             "DEBUG quilltap::jobs Invalidated frozen memory archives after job jobId=job-1 \
-             type=MEMORY_HOUSEKEEPING characterId=all"
+             type=MEMORY_MAINTENANCE characterId=all"
         );
 
         // leaves the cache alone for a dry run — and ONLY a JSON `true` is dry
         seed_global("fa-hook-3", "chat-1");
         assert!(hook(
-            "MEMORY_HOUSEKEEPING",
+            "MEMORY_MAINTENANCE",
             json!({ "characterId": "fa-hook-3", "dryRun": true })
         )
         .is_empty());
         assert!(global_has("fa-hook-3", "chat-1"));
         let lines = hook(
-            "MEMORY_HOUSEKEEPING",
+            "MEMORY_MAINTENANCE",
             json!({ "characterId": "fa-hook-3", "dryRun": "true" }),
         );
         assert!(
@@ -1002,29 +1003,26 @@ mod tests {
         assert!(hook("MEMORY_EXTRACTION", json!({ "characterId": "fa-hook-4" })).is_empty());
         assert!(global_has("fa-hook-4", "chat-1"));
 
-        // MEMORY_CONSOLIDATION per character
-        let lines = hook(
-            "MEMORY_CONSOLIDATION",
-            json!({ "characterId": "fa-hook-4" }),
-        );
+        // MEMORY_MAINTENANCE per character
+        let lines = hook("MEMORY_MAINTENANCE", json!({ "characterId": "fa-hook-4" }));
         assert!(!global_has("fa-hook-4", "chat-1"));
         assert!(lines
             .last()
             .unwrap()
-            .contains("type=MEMORY_CONSOLIDATION characterId=fa-hook-4"));
+            .contains("type=MEMORY_MAINTENANCE characterId=fa-hook-4"));
 
         // `characterId: ""` is a string but falsy → ALL, logged as ""
         seed_global("fa-hook-5", "chat-1");
-        let lines = hook("MEMORY_HOUSEKEEPING", json!({ "characterId": "" }));
+        let lines = hook("MEMORY_MAINTENANCE", json!({ "characterId": "" }));
         assert!(!global_has("fa-hook-5", "chat-1"));
         assert!(lines
             .last()
             .unwrap()
-            .ends_with("type=MEMORY_HOUSEKEEPING characterId="));
+            .ends_with("type=MEMORY_MAINTENANCE characterId="));
 
         // a non-string characterId → null → ALL, logged 'all'
         seed_global("fa-hook-6", "chat-1");
-        let lines = hook("MEMORY_HOUSEKEEPING", json!({ "characterId": 7 }));
+        let lines = hook("MEMORY_MAINTENANCE", json!({ "characterId": 7 }));
         assert!(!global_has("fa-hook-6", "chat-1"));
         assert!(lines.last().unwrap().ends_with("characterId=all"));
 
@@ -1070,7 +1068,7 @@ mod tests {
             let db = Db::open_main(&path, PEPPER).unwrap();
             let create = BjCreate {
                 user_id: "u1".into(),
-                job_type: "MEMORY_HOUSEKEEPING".into(),
+                job_type: "MEMORY_MAINTENANCE".into(),
                 status: Some("PENDING".into()),
                 payload: json!({ "characterId": "fa-runner-char" }),
                 priority: 0.0,
@@ -1093,7 +1091,7 @@ mod tests {
             .unwrap();
 
             let mut registry = HandlerRegistry::new();
-            registry.register("MEMORY_HOUSEKEEPING", Box::new(Done));
+            registry.register("MEMORY_MAINTENANCE", Box::new(Done));
             let runner = JobRunner::new(db, registry);
 
             {
@@ -1114,7 +1112,7 @@ mod tests {
             assert!(
                 lines.iter().any(|l| l
                     == "DEBUG quilltap::jobs Invalidated frozen memory archives after job \
-                        jobId=fa-runner-job type=MEMORY_HOUSEKEEPING characterId=fa-runner-char"),
+                        jobId=fa-runner-job type=MEMORY_MAINTENANCE characterId=fa-runner-char"),
                 "{lines:?}"
             );
             invalidate_frozen_archive("fa-runner-other");

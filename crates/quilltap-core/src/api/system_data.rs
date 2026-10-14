@@ -156,9 +156,6 @@ pub fn estimate_tokens_for_job(job_type: &str, payload: &Value) -> i64 {
         "MEMORY_EXTRACTION" => {
             base + ceil_div4(str_len("userMessage")) + ceil_div4(str_len("assistantMessage")) + 300
         }
-        "INTER_CHARACTER_MEMORY" => {
-            base + ceil_div4(str_len("userMessage")) + ceil_div4(str_len("assistantMessage")) + 400
-        }
         "CONTEXT_SUMMARY" => base + 2000,
         "TITLE_UPDATE" => base + 300,
         "CHAT_DANGER_CLASSIFICATION" => base + 1000,
@@ -179,7 +176,6 @@ pub fn estimate_tokens_for_job(job_type: &str, payload: &Value) -> i64 {
 pub fn job_type_name(job_type: &str) -> &str {
     match job_type {
         "MEMORY_EXTRACTION" => "Memory Extraction",
-        "INTER_CHARACTER_MEMORY" => "Character Memory",
         "CONTEXT_SUMMARY" => "Context Summary",
         "TITLE_UPDATE" => "Title Update",
         "LLM_LOG_CLEANUP" => "LLM Log Cleanup",
@@ -632,11 +628,10 @@ pub fn jobs_list(
     }
 }
 
-/// v4's `BackgroundJobTypeEnum` (25 values at `01a83539d`, in v4's enum order)
+/// v4's `BackgroundJobTypeEnum` (23 values at `83334b9a5`, in v4's enum order)
 /// — the enqueue type gate.
 pub const JOB_TYPES: &[&str] = &[
     "MEMORY_EXTRACTION",
-    "INTER_CHARACTER_MEMORY",
     "CONTEXT_SUMMARY",
     "TITLE_UPDATE",
     "LLM_LOG_CLEANUP",
@@ -650,9 +645,9 @@ pub const JOB_TYPES: &[&str] = &[
     "CHARACTER_AVATAR_GENERATION",
     "WARDROBE_ITEM_IMAGE_GENERATION",
     "CONVERSATION_RENDER",
-    "MEMORY_HOUSEKEEPING",
-    // P4.D265 (v4 `d58548051`, `job.types.ts:37`).
-    "MEMORY_CONSOLIDATION",
+    // P4.D288 (v4 `104e986c7`): the one maintenance job, in the housekeeping
+    // slot.
+    "MEMORY_MAINTENANCE",
     "MEMORY_REGENERATE_CHAT",
     "MEMORY_REGENERATE_ALL",
     "WARDROBE_OUTFIT_ANNOUNCEMENT",

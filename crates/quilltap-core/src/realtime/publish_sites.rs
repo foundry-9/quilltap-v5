@@ -286,7 +286,7 @@ mod tests {
         let resp = crate::api::system_data::jobs_enqueue_now(
             &db,
             "u1",
-            "MEMORY_HOUSEKEEPING",
+            "MEMORY_MAINTENANCE",
             &json!({}),
             None,
             None,

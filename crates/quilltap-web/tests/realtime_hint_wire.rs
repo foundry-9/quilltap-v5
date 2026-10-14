@@ -104,7 +104,7 @@ async fn an_enqueue_puts_a_jobs_hint_on_the_event_stream() {
     let resp = client
         .post(format!("http://{addr}/api/v1/system/jobs"))
         .header("content-type", "application/json")
-        .body(json!({ "type": "MEMORY_HOUSEKEEPING", "payload": {} }).to_string())
+        .body(json!({ "type": "MEMORY_MAINTENANCE", "payload": {} }).to_string())
         .send()
         .await
         .unwrap();

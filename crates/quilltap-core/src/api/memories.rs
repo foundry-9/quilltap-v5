@@ -1586,7 +1586,6 @@ pub async fn memory_regenerate_all(db: &Db, user_id: &str) -> Response {
                     "MEMORY_REGENERATE_ALL".into(),
                     "MEMORY_REGENERATE_CHAT".into(),
                     "MEMORY_EXTRACTION".into(),
-                    "INTER_CHARACTER_MEMORY".into(),
                 ],
                 &["PENDING".into(), "PROCESSING".into()],
             )

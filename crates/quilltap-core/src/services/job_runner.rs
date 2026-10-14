@@ -138,10 +138,9 @@ pub struct HandlerRegistry {
 /// loud-fallback failure (naming the ported vs unported split); a type NOT in this
 /// set gets v4 `getHandler`'s `No handler registered for job type: <type>`. Kept in
 /// sync with the v4 registry so an unported type fails loudly and traceably rather
-/// than silently vanishing.
+/// than silently vanishing. v4's 23 at the `83334b9a5` pin, in v4's enum order.
 pub const KNOWN_JOB_TYPES: &[&str] = &[
     "MEMORY_EXTRACTION",
-    "INTER_CHARACTER_MEMORY",
     "CONTEXT_SUMMARY",
     "TITLE_UPDATE",
     "LLM_LOG_CLEANUP",
@@ -155,10 +154,12 @@ pub const KNOWN_JOB_TYPES: &[&str] = &[
     "CHARACTER_AVATAR_GENERATION",
     "WARDROBE_ITEM_IMAGE_GENERATION",
     "CONVERSATION_RENDER",
-    "MEMORY_HOUSEKEEPING",
-    // P4.D265 (v4 `d58548051`): registered by P4.D271; until then the loud
-    // "recognized but not yet available" fallback answers.
-    "MEMORY_CONSOLIDATION",
+    // P4.D288 (v4 `104e986c7`, `job.types.ts:20-43`): ONE maintenance job in
+    // the housekeeping slot — `MEMORY_HOUSEKEEPING` and `MEMORY_CONSOLIDATION`
+    // retired, `INTER_CHARACTER_MEMORY` gone (`ac6348c5f`). Registered by
+    // P4.D297; until then the loud "recognized but not yet available" fallback
+    // answers (O-12, the P4.D265 precedent).
+    "MEMORY_MAINTENANCE",
     "MEMORY_REGENERATE_CHAT",
     "MEMORY_REGENERATE_ALL",
     "WARDROBE_OUTFIT_ANNOUNCEMENT",
@@ -821,7 +822,7 @@ mod tests {
             vec![ActivityKind::Image],
         );
         assert_eq!(
-            attribution_for_job_type("MEMORY_HOUSEKEEPING").await,
+            attribution_for_job_type("MEMORY_MAINTENANCE").await,
             vec![ActivityKind::Memory],
         );
         assert_eq!(
@@ -954,21 +955,32 @@ mod tests {
             .contains("recognized but its handler is not yet available"));
     }
 
-    /// P4.D265: `MEMORY_CONSOLIDATION` is a KNOWN type with no handler until
-    /// P4.D271 — an enqueued job fails with the loud "recognized" sentence,
-    /// never v4's unknown-type throw.
+    /// P4.D288 (O-12, the P4.D265 precedent): `MEMORY_MAINTENANCE` is a KNOWN
+    /// type with no handler until P4.D297 — an enqueued job fails with the loud
+    /// "recognized" sentence, never v4's unknown-type throw; the two retired
+    /// types now answer that throw.
     #[tokio::test]
-    async fn memory_consolidation_is_recognized_but_unhandled() {
+    async fn memory_maintenance_is_recognized_but_unhandled() {
         assert_eq!(
-            HandlerRegistry::unregistered_error("MEMORY_CONSOLIDATION"),
-            "Job type \"MEMORY_CONSOLIDATION\" is recognized but its handler is not yet \
+            HandlerRegistry::unregistered_error("MEMORY_MAINTENANCE"),
+            "Job type \"MEMORY_MAINTENANCE\" is recognized but its handler is not yet \
              available in the native runner"
         );
+        for retired in [
+            "MEMORY_HOUSEKEEPING",
+            "MEMORY_CONSOLIDATION",
+            "INTER_CHARACTER_MEMORY",
+        ] {
+            assert_eq!(
+                HandlerRegistry::unregistered_error(retired),
+                format!("No handler registered for job type: {retired}")
+            );
+        }
         let (_dir, db) = make_db();
         enqueue(
             &db,
             "c",
-            "MEMORY_CONSOLIDATION",
+            "MEMORY_MAINTENANCE",
             0.0,
             "2020-01-01T00:00:01.000Z",
         )

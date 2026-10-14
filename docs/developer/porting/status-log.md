@@ -179868,3 +179868,37 @@ migrationsSkipped: 90}`, none deferred. Measured:
   restore rows); NEW `memory_settings_resolve_equivalence` (3 cases, the DEBUG bytes + each getter's WARN);
   `instance_settings_json_warns_equivalence` GROWN (57 cases, 33 warning / 24 silent, eight keys armed).
   Two core unit tests re-pinned for `tfidfClusterThreshold` (v4 moved the schema).
+
+### Unit 3 — C1-6, the job types
+- Landed: `KNOWN_JOB_TYPES` (`job_runner.rs`) and `JOB_TYPES` (`api/system_data.rs`) = v4's 23 in v4's order
+  (`MEMORY_MAINTENANCE` in the housekeeping slot); the three retired types OUT of `activity_kinds.rs` (the Mem
+  block in v4's order), `realtime/job_topics.rs` (INTER arm removed; `MEMORY_HOUSEKEEPING` +
+  `MEMORY_CONSOLIDATION` arms → ONE `MEMORY_MAINTENANCE` arm `[memories, mountPoints]`, no dry-run arm, v4
+  `job-topics.ts:85-90`), `frozen_archive.rs` `JOBS_INVALIDATING_FROZEN_ARCHIVE` (→ `["MEMORY_MAINTENANCE"]`,
+  v4 `job-dispatcher.ts:663`; the hook's pin-shape no-op arm stays P4.D291's), the System Tools estimate +
+  name rows, `api/memories.rs` regenerate-all's wipe set (three types). `services::queue_service` P4.D288
+  region: `MEMORY_MAINTENANCE`, `MaintenancePhase` (`ALL` v4 order, kebab `as_str`, `parse`),
+  `MaintenanceReason`, `MemoryExtractionPass`, `pass_of`.
+- **Spelling (recorded):** `pass_of(&Value) -> Result<MemoryExtractionPass, Value>` — `Err` carries v4's
+  unknown truthy `pass` AS IS (a string, or any truthy JSON value; R-X), which P4.D296's `PassOf` wraps.
+- §R.10(e): the old gate's after-insert `maybe_enqueue_housekeeping` (`services/memory_gate.rs`, both insert
+  arms) DELETED with its helper + the two constants — the behaviour-frozen gate keeps its admission
+  behaviour and enqueues nothing retired. The PRODUCERS (the host housekeeping loop, the scheduler in
+  `queue_service.rs`, `consolidation_triggers.rs`, the host consolidation runner) are P4.D297's and stay — a
+  registered handler still runs (the registry does not consult the list); the retired rows are purged at boot
+  by unit 7's ensures; no build ships in the window (O-12).
+- **Test-forced mechanical edits (recorded):** `job_runner.rs` tests — the attribution test and
+  `memory_consolidation_is_recognized_but_unhandled` → `memory_maintenance_is_recognized_but_unhandled` (O-12's
+  proof; the three retired types now answer `No handler registered for job type: …`); `frozen_archive.rs`
+  `job_hook_cases_and_edges` + `the_runner_hook_*` (type strings → `MEMORY_MAINTENANCE`, assertions
+  unchanged — P4.D291 re-pins the pin-shape no-op arm); `realtime/publish_sites.rs`
+  `the_collection_post_enqueue_publishes_too` and `queue_service.rs`
+  `active_counts_by_kind_folds_types_and_skips_the_uncounted` (the enqueue gate / kind table refuse the
+  retired type); `quilltap-web/tests/realtime_hint_wire.rs:107`; the `background-jobs-tier2.json` seed's one
+  `MEMORY_HOUSEKEEPING` create (v4's enum refuses it at the pin).
+- **Residue (P4.D297's family, recorded, not touched):** `quilltap-web/tests/system_body_guards_equivalence.rs`
+  case `jobs_payload_null` posts `MEMORY_HOUSEKEEPING` (gated differential; P4.D297 owns
+  `system_body_guards`).
+- Families (from the pin): NEW `memory_extraction_pass_equivalence` (25 rows, 5 unknown passes — every flag
+  combination, `pass: ''`, truthy non-boolean flags, a truthy number / `true` pass); `activity_tables`,
+  `realtime_topics`, `background_jobs_tier2` GREEN (all three were red-first).

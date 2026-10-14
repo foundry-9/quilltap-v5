@@ -158,7 +158,7 @@
       "comment": "Fresh PROCESSING row K (created AFTER resetAllProcessingJobs so it doesn't change that op's count=1). markCompleted target next.",
       "data": {
         "userId": "aa000000-0000-4000-8000-0000000000aa",
-        "type": "MEMORY_HOUSEKEEPING",
+        "type": "MEMORY_MAINTENANCE",
         "status": "PROCESSING",
         "payload": {},
         "priority": 0,

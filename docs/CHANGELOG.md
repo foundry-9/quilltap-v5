@@ -24,6 +24,12 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — feat(core): P4.D288 unit 3 — v4's 23 job types, MEMORY_MAINTENANCE, the maintenance and extraction-pass vocabulary (C1-6)
+
+_Versions: core 0.0.1289._
+
+The job-type lists follow v4's `83334b9a5` pin: `KNOWN_JOB_TYPES` and the enqueue gate `JOB_TYPES` carry v4's 23 types in v4's order, with `MEMORY_MAINTENANCE` in the housekeeping slot; `MEMORY_HOUSEKEEPING`, `MEMORY_CONSOLIDATION` and `INTER_CHARACTER_MEMORY` leave every list (the activity kinds, the realtime job topics — `MEMORY_MAINTENANCE` hints `memories` and `mountPoints`, with no dry-run arm —, the frozen-archive invalidation list, the System Tools estimate and name rows, and the regenerate-all wipe set). Until the maintenance handler lands, a queued `MEMORY_MAINTENANCE` row fails with the runner's "recognized but not yet available" sentence. New in `services::queue_service`: `MEMORY_MAINTENANCE`, `MaintenancePhase`, `MaintenanceReason`, `MemoryExtractionPass` and `pass_of`, which reads v4's deprecated catch-up flags with JS truthiness and returns an unknown pass as is. The old admission gate no longer enqueues housekeeping after an insert. New tier-1 family `memory_extraction_pass` (25 rows); `activity_tables`, `realtime_topics` and `background_jobs_tier2` green from the pin. A few unit and web tests that named a retired type now name `MEMORY_MAINTENANCE`.
+
 #### 2026-10-14 — feat(core): P4.D288 unit 2 — the memoryMaintenance settings document, the patch parsers, the legacy translator and resolve_memory_settings (C1-5)
 
 _Versions: core 0.0.1288._
