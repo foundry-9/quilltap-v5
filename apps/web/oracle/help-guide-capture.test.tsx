@@ -32,8 +32,8 @@
  * ## Regenerating
  *
  * jest ignores paths outside the checkout, so this file is COPIED into a v4
- * worktree pinned at the lane's target (drift-ledger §5.1; last run by P4.D230
- * at `acadcc7cd` — substitute the round's pin):
+ * worktree pinned at the lane's target (drift-ledger §5.1; last run by P4.D300
+ * at `83334b9a5` — substitute the round's pin; give jest `--testTimeout=180000`):
  *
  * ```bash
  * V5=~/source/quilltap-v5

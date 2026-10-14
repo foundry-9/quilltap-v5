@@ -184217,3 +184217,22 @@ worktree for the session — same volume, same rules).
     expectation (it pins the same arm through the service; recorded here as
     a touch outside the order's named file list). **Red-first on main:** 3
     arms red (the arm row, the coverage row, the sweep row).
+12. **Help (§R.10(k))** — `help/help-categories.ts:93`
+    `'memory-housekeeping'` → `'memory-maintenance'` (v4
+    `lib/help-guide/categories.ts:72`, `b045dd986`). The recorder re-run at
+    THIS lane's pin: `rm -rf /tmp/p4d300/help-capture`; recorder copied to
+    `"$PIN/__tests__/unit/zz-p49i2b-capture.test.tsx"`;
+    `P49I2B_OUT=/tmp/p4d300/help-capture npx jest --watchman=false
+    --testTimeout=180000 __tests__/unit/zz-p49i2b-capture.test.tsx` (1 / 1,
+    rc 0; the pin's jest setup rebuilt `better-sqlite3` in the pin's OWN
+    `node_modules` — the §R.3 install, not the live tree's); copied test
+    removed. **The diff, as predicted:** `help-guide-tables.json` ONE
+    changed line (`:77`, the slug); `help-guide-vectors.json`,
+    `label-from-url-vectors.json`, `param-routes-vectors.json`,
+    `welcome-card.json` byte-identical. No other moved byte — no finding.
+    `help-categories.spec.ts` RED on the new fixture before the source edit
+    (1 arm, `HELP_CATEGORIES matches v4 row for row`), green after. Until
+    P4.D303 vendors `help/memory-maintenance.md` the slug resolves to no
+    document and drops out of the category (`help-guide-tab.ts:168-175`),
+    as the order measured. README + recorder header name `83334b9a5` /
+    P4.D300.

@@ -22,5 +22,8 @@ files re-recorded byte-identical); RE-CAPTURED at `acadcc7cd` by P4.D230 (v4
 #76: `content-routing`'s `dangerous-content` → `the-concierge` and the new
 `/settings?tab=concierge` row in the tables; the two concierge URLs added to
 sections B and C of the recorder, so both vector files grew by two rows;
-`param-routes-vectors.json` + `welcome-card.json` byte-identical). Fix the
-PORT, never these files.
+`param-routes-vectors.json` + `welcome-card.json` byte-identical); RE-CAPTURED
+at `83334b9a5` by P4.D300 (v4 `b045dd986`: the Commonplace Book category's
+`memory-housekeeping` → `memory-maintenance` — ONE changed line in
+`help-guide-tables.json`; the other four files re-recorded byte-identical).
+Fix the PORT, never these files.
