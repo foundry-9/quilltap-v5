@@ -184329,3 +184329,60 @@ worktree for the session — same volume, same rules).
     pass on the union; if admission does not absorb it, the beat fails
     LOUDLY naming the action it took (`admission answered …`). The unifier
     owns that first run (§S.9).
+
+### Lane close (2026-10-14)
+
+- **The gate (final tree `19c9b93aa`):** no Rust hunk — `git diff --stat
+  main -- crates harness` EMPTY, so `cargo fmt` / `clippy` / `cargo test
+  --workspace` are not this lane's gate; `recipe_sweep.py --self-test` 0
+  failures. SPA: `npm run lint` clean (956 qt classes resolve), `npm run
+  build` clean, `npm test` **502 files / 9,570 tests**, none skipped
+  (baseline at lane start 499 / 9,498). Playwright by file, one run at a
+  time: `memory-maintenance-flow` 5 passed / 6 skipped (gated);
+  `settings-memory-consolidation-flow` 3 / 0 / 0; `settings-flow` 9 / 0 / 0;
+  `settings-memory-flow` 3 / 0 / 0; `salon-memories-realtime-flow` 0 / 0 / 1
+  (gated); `chat-delete-flow` 3 / 0 / 0.
+- **The help re-capture diff:** ONE moved slug in `help-guide-tables.json`
+  (`:77`), four files byte-identical.
+- **L-11 measured:** `layout/activity-kinds.ts` unchanged — the `Mem` title
+  is byte-identical to v4 `lib/background-jobs/activity-kinds.ts:87` at the
+  pin; `JOB_TYPE_ACTIVITY` is Rust (P4.D288's job-type lists).
+- **Ruled / recorded:** L-4 (the dialog's no role / Escape / backdrop — v4
+  has none, Tier 3 item 24); L-13 (`MemoryGraphRepairReport` type only, no
+  `memoryRepair` caller, Tier 3 item 23); L-10's Cleanup-archives beat
+  retired WITHOUT a successor (Tier 3 item 25); R-AB's retirement of the
+  P4.D177 §C.4 / P4.D276 R-A narrowing on the `memories` arm. No new ruled
+  divergence table.
+- **P4.D276 OPEN items (Tier 3 item 26):** carried on the kept grain card —
+  R-E / R-F / R-J as written there (the R-F rationale rewritten per L-2);
+  RETIRED with the five deleted files — the consolidation card's stale-roster
+  note, the report dialog's three-way skip table, the housekeeping dialog's
+  preview shape.
+- **Touches outside the order's named file list (recorded, no other lane
+  owns them):** `core/realtime.service.spec.ts:74-83` (pins the `memories`
+  arm through the service — behaviour-forced by R-AB);
+  `e2e/chat-delete-flow.spec.ts:259` (asserts the re-extract confirm —
+  string-forced by L-8).
+- **HANDOFF:** none. The gated beats (`memory-maintenance-flow`'s six,
+  `salon-memories-realtime-flow`'s one) are the unifier's §S.9 flip of
+  `P4D288_SERVER_LANDED` in BOTH files.
+- **v4 moved (§R.2 observations):** at lane start 12 commits past the pin
+  (`7417e9a1b` … `3f64d3a6c`, 10:24 CDT); at close 16 (adds `2432b9057`
+  **`release: 4.10.0`** — the squash the ledger watches for —,
+  `f573a7576` merge back, `37246654d` "started 4.11.0 development",
+  `1e1712a12`; observed 12:25 CDT). Checkout clean, on `main`. Out of scope;
+  for `/driftcheck`.
+- **Fixtures changed:** `apps/web/src/app/help/__fixtures__/help-guide-tables.json`
+  (re-recorded at the pin; invalidates nothing downstream — only
+  `help-categories.spec.ts` reads it); NEW
+  `apps/web/src/testing/fixtures/memory-maintenance-text.ndjson` (29 rows).
+  No committed DB pair touched.
+- **Regen recipes:** the help capture — `oracle/help-guide-capture.test.tsx`
+  header (unit 12 above for this lane's exact commands); the text oracle —
+  `oracle/memory-maintenance-text.recorder.ts` header (unit 14).
+- **💸 rows:** the order's list stands, plus: the editor's "Already on file"
+  toast on the union (Tier 2 item 22's beat runs first at §S.9).
+- **Versions at close:** SPA `0.5.861` (from `0.5.846`, fifteen commits; the
+  unifier recounts per §R.8). No crate version moved; harness frozen.
+- **Cleanup:** the pin worktree removed; this worktree's `target/` deleted;
+  `/tmp/p4d300` scratch removed; nothing pushed to `main`.

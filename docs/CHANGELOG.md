@@ -851,6 +851,12 @@ _No crate versions bumped._
 
 The vendored help tree brought to the round's pin, every byte from `git show 83334b9a5:`. Count unchanged at 131: two pages added (`help/memory-maintenance.md`, Phase G's single Maintenance page; `help/scenario-browser.md`, the scenario browser), two retired (`help/memory-consolidation.md`, `help/memory-housekeeping.md`), 21 re-vendored. All 131 files md5-equal to the pin with the same path set. `help_tree_equivalence` and `help_section_size_equivalence` were red at the pin before the copy (content only) and are green after, regenerated from the pin (131 docs, 779 chunks, max section 775 tokens); `help_tree_embed_guard` and `host_help_docs_boot` green before and after with their 131 literals unmoved. Comment-only history lines added to the three help tests. The host re-embeds the tree at build time; its source is unchanged, so no bump.
 
+#### 2026-10-14 — docs(porting): P4.D300 lane close — the memory SPA of v4 Phase G
+
+_Docs-only change._
+
+The P4.D300 lane record gains its close: the gate (no Rust hunk; SPA lint, build and 502 vitest files green; six e2e files run one at a time), the help re-capture diff, the L-11 measurement, the retired and carried P4.D276 items, two recorded touches outside the named file list, and v4's moves past the pin (including `release: 4.10.0`). The order's status header reads LANE COMPLETE.
+
 #### 2026-10-14 — test(e2e): the memory Maintenance flow, and the retired-UI beats moved or removed (P4.D300)
 
 _Versions: SPA 0.5.861._
