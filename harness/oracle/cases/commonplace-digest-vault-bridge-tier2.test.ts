@@ -14,7 +14,9 @@
  * content carries `FAILWRITE`); a missing holder; an archived holder; a vault
  * whose store type is not `character`; a FILESYSTEM vault; a vaultless
  * character; a dangling vault pointer; the stale pre-existing file overwritten;
- * an empty file list; a list of only empty files.
+ * an empty file list; a list of only empty files. P4.D288 (bug 208, the
+ * `83334b9a5` pin): an empty file now REMOVES the bucket's existing mirror
+ * (`removed`, its DEBUG) and counts `skipped` only when there was none.
  *
  * Comparands per call: the result object and the captured lines (the bridge's
  * own, `Document absent from database-backed store`, `Failed to resolve
@@ -56,6 +58,9 @@ const CAPTURED = new Set([
   'Commonplace mirror complete',
   'Document absent from database-backed store',
   'Failed to resolve character vault store',
+  // P4.D288 (bug 208, the `83334b9a5` pin): an emptied bucket's file removed.
+  'Removed Commonplace mirror for an emptied bucket',
+  'Failed to remove an emptied Commonplace mirror',
 ]);
 
 /** A logger's own context minus the root logger's `service` / `environment`

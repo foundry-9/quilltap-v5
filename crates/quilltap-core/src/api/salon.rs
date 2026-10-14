@@ -1183,13 +1183,31 @@ pub async fn message_delete(
     if memory_count > 0 {
         if let Some(action) = memory_action {
             if action == "DELETE_MEMORIES" || action == "REGENERATE_MEMORIES" {
-                match crate::services::memory_service::delete_memories_by_source_messages_with_vectors(
+                // P4.D288 (C1-7): every memory the message(s) sourced, through
+                // the ONE retire path (`message-cascade`, v4
+                // `messages/[id]/route.ts:186`).
+                let mut memory_ids: Vec<String> = Vec::new();
+                for source_message_id in &ids_to_delete {
+                    let smid = source_message_id.clone();
+                    match db.read_main(move |c| {
+                        crate::db::memories_read::find_by_source_message_id(c, &smid)
+                    }) {
+                        Ok(rows) => memory_ids.extend(rows.iter().filter_map(|m| {
+                            m.get("id").and_then(Value::as_str).map(str::to_string)
+                        })),
+                        Err(e) => return internal(e),
+                    }
+                }
+                match crate::services::memory_retire::retire_and_announce(
                     db,
-                    &ids_to_delete,
+                    memory_ids,
+                    crate::services::memory_retire::RetireOptions::new(
+                        crate::services::memory_retire::RetireReason::MessageCascade,
+                    ),
                 )
                 .await
                 {
-                    Ok(r) => memories_deleted = r.deleted,
+                    Ok(r) => memories_deleted = r.retired,
                     Err(e) => return internal(e),
                 }
             }

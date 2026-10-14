@@ -43,6 +43,9 @@ pub struct ResetBuiltinsResult {
     pub post_reset_ids: Vec<(String, Option<String>)>,
     pub remapped_id_count: usize,
     pub import: ImportResult,
+    /// P4.D288 (R-AF): the cascade deletes' memory retirements, for the
+    /// caller to announce once the reset's write has committed.
+    pub announcements: Vec<crate::services::memory_retire::RetirementAnnouncement>,
 }
 
 /// A reset failure — a cascade delete that reported failure (v4 `serverError`) or
@@ -120,10 +123,12 @@ pub fn reset_builtins(
 
     // 2. Cascade-delete each existing built-in (no exclusive chats/images).
     let mut deleted_character_ids = Vec::new();
+    let mut announcements = Vec::new();
     for &name in BUILTIN_CHARACTER_NAMES {
         if let Some(id) = id_of(name) {
-            let (success, _, _, _) = execute_cascade_delete(main, mount, &id, false, false)?;
-            if !success {
+            let outcome = execute_cascade_delete(main, mount, &id, false, false)?;
+            announcements.extend(outcome.announcement);
+            if !outcome.success {
                 return Err(ResetError::DeleteFailed {
                     name: name.to_string(),
                 });
@@ -190,6 +195,7 @@ pub fn reset_builtins(
         post_reset_ids,
         remapped_id_count: id_mapping.len(),
         import,
+        announcements,
     })
 }
 

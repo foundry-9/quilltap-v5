@@ -5,20 +5,13 @@
  * `deleteMemoriesBySourceMessagesWithVectors` /
  * `deleteMemoriesByChatIdWithVectors`).
  *
- * Seeds, through v4's REAL repositories:
- *   - one `memories` row per seed (pinned id + `seedTimestamp`, with the
- *     chatId / sourceMessageId / relatedMemoryIds the cascades read), and
- *   - the per-character vector stores: a `vector_indices` metadata row per
- *     character in `seedMetaCharacterIds` (including characters with NO entries —
- *     the untouched-store sentinel proof) plus one `vector_entries` row per seed
- *     that carries a vector (`vector: null` seeds get no entry — the `hasVector`
- *     counting proof).
- *
- * `saveMeta` / `addEntry` mint their timestamps, so after seeding the builder pins
- * every `vector_indices.createdAt/updatedAt` and `vector_entries.createdAt` to the
- * sentinel via rawQuery — the differential then distinguishes a flush-time
- * metadata bump (minted, collapsed to `<ts>`) from an untouched store (sentinel
- * preserved).
+ * Seeds, through v4's REAL repository, one `memories` row per seed (pinned
+ * id + `seedTimestamp`, with the chatId / sourceMessageId / relatedMemoryIds
+ * the cascades read). P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin): the
+ * `vector_indices` / `vector_entries` mirror is gone — a seed's vector is the
+ * row's own `embedding` (v4's `create` stores the quantized blob); a `vector:
+ * null` seed has none (the loaded-index counting proof). `seedMetaCharacterIds`
+ * and `dimensions` are kept in the committed spec, read by nothing.
  *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -73,25 +66,12 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const { initializeDatabase, closeDatabase, rawQuery } = await import(
-    '@/lib/database/manager'
-  );
+  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { MemoriesRepository } = await import(
     '@/lib/database/repositories/memories.repository'
   );
-  const { VectorIndicesRepository } = await import(
-    '@/lib/database/repositories/vector-indices.repository'
-  );
-
   await initializeDatabase();
   const memories = new MemoriesRepository();
-  const vectors = new VectorIndicesRepository();
-
-  // Metadata rows first — including entry-less characters (their stores must
-  // exist so an untouched sweep leaves a provable sentinel).
-  for (const characterId of spec.seedMetaCharacterIds) {
-    await vectors.saveMeta(characterId, spec.dimensions);
-  }
 
   let seededEntries = 0;
   for (const seed of spec.seedMemories) {
@@ -106,7 +86,7 @@ async function main(): Promise<void> {
         keywords: [],
         tags: [],
         importance: 0.5,
-        embedding: null,
+        embedding: seed.vector ? new Float32Array(seed.vector) : null,
         source: 'AUTO',
         witnessedContext: null,
         sourceMessageId: seed.sourceMessageId,
@@ -118,27 +98,13 @@ async function main(): Promise<void> {
       } as never,
       { id: seed.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );
-    if (seed.vector) {
-      await vectors.addEntry({
-        id: seed.id,
-        characterId: seed.characterId,
-        embedding: new Float32Array(seed.vector),
-      });
-      seededEntries++;
-    }
+    if (seed.vector) seededEntries++;
   }
-
-  // Pin the seed-minted vector timestamps to the sentinel (see header).
-  await rawQuery('UPDATE vector_indices SET createdAt = ?, updatedAt = ?', [
-    spec.seedTimestamp,
-    spec.seedTimestamp,
-  ]);
-  await rawQuery('UPDATE vector_entries SET createdAt = ?', [spec.seedTimestamp]);
 
   await closeDatabase();
   process.stderr.write(
     `built memory-cascade fixture: ${out} (${spec.seedMemories.length} memories, ` +
-      `${spec.seedMetaCharacterIds.length} metas, ${seededEntries} entries)\n`
+      `${seededEntries} with a vector)\n`
   );
   process.exit(0);
 }

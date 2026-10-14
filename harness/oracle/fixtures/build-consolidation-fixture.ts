@@ -20,7 +20,8 @@
  *     consolidation and an uncensored desk connection profile; `chat_settings`
  *     with `cheapLLMSettings` (USER_DEFINED → the cheap profile) and the
  *     Concierge on duty with the desk;
- *   - a vector entry for every embedded memory (the store the run loads);
+ *   - every embedded memory's vector on its own row (P4.D288: the mirror the
+ *     run used to load is gone with v4 `af48f6cc2`);
  *   - a mount-index trigger plant failing any document write whose content
  *     carries the plant's marker (the bridge's per-file catch);
  *   - the `instance_settings` and `background_jobs` tables (the settings and
@@ -38,7 +39,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { DAY, DIMS, TEMPLATE, digestVector, memoryId, rowOf, rowVector } from './consolidation-corpus';
+import { DAY, TEMPLATE, digestVector, memoryId, rowOf, rowVector } from './consolidation-corpus';
 
 interface Named {
   id: string;
@@ -160,13 +161,9 @@ async function main(): Promise<void> {
 
   const maindb = (await import('@/lib/database/backends/sqlite/client')).getRawDatabase?.();
   if (!maindb) throw new Error('main DB handle unavailable');
-  const { VectorIndexMetaSchema, VectorEntryRowSchema } = await import('@/lib/schemas/vector-indices.types');
-  for (const [name, schema] of [
-    ['vector_indices', VectorIndexMetaSchema],
-    ['vector_entries', VectorEntryRowSchema],
-  ] as Array<[string, unknown]>) {
-    for (const sql of generateDDL(name, schema as never)) maindb.exec(sql);
-  }
+  // P4.D288 (v4 `af48f6cc2`, the `83334b9a5` pin): the `vector_indices` /
+  // `vector_entries` mirror is gone — each memory's vector is its row's own
+  // `embedding` (written by `create` below), the only copy the index loads.
   // The instance_settings table the consolidation settings live in (v4's
   // `create-instance-settings-table` migration's DDL; a builder runs no
   // migrations).
@@ -266,14 +263,11 @@ async function main(): Promise<void> {
   );
 
   // ── memories ────────────────────────────────────────────────────────────
-  const { VectorIndicesRepository } = await import('@/lib/database/repositories/vector-indices.repository');
-  const vectors = new VectorIndicesRepository();
   const iso = (agoDays: number) => new Date(NOW - agoDays * DAY).toISOString();
   const resolveLink = (holderIndex: number, link: string) =>
     /^[0-9a-f]{8}-/.test(link) ? link : memoryId(holderIndex, rowOf(link));
 
   for (const h of spec.holders) {
-    await vectors.saveMeta(h.id, DIMS);
     for (const t of TEMPLATE) {
       const id = memoryId(h.index, t.row);
       const about =
@@ -315,9 +309,6 @@ async function main(): Promise<void> {
         } as never,
         { id, createdAt: created, updatedAt: created },
       );
-      if (embedding) {
-        await vectors.addEntry({ id, characterId: h.id, embedding });
-      }
     }
   }
 
@@ -331,7 +322,6 @@ async function main(): Promise<void> {
       const v = r();
       return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
     };
-    await vectors.saveMeta(spec.hoarder.id, spec.hoarder.dims);
     for (let i = 0; i < spec.hoarder.rows; i++) {
       const id = `000000fe-0000-4000-8000-${(i + 1).toString(16).padStart(12, '0')}`;
       const raw = Array.from({ length: spec.hoarder.dims }, gauss);
@@ -370,7 +360,6 @@ async function main(): Promise<void> {
         } as never,
         { id, createdAt: created, updatedAt: created },
       );
-      await vectors.addEntry({ id, characterId: spec.hoarder.id, embedding });
     }
   }
 

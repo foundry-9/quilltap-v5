@@ -18,7 +18,7 @@ use crate::api::types::{ErrorKind, Response};
 use crate::db::chats::ChatUpdate;
 use crate::db::runtime::Db;
 use crate::db::{chats_messages_read, chats_read, memories_read, DbError};
-use crate::services::memory_service::delete_memory_with_vector;
+use crate::services::memory_retire::{retire_and_announce, RetireOptions, RetireReason};
 
 fn not_found(resource: &str) -> Response {
     Response::error(ErrorKind::NotFound, format!("{resource} not found"))
@@ -89,19 +89,31 @@ pub async fn message_reattribute(
             Ok(rows) => rows,
             Err(e) => return Response::error(ErrorKind::Internal, e.to_string()),
         };
+    // P4.D288 (C1-7): the re-attributed line's memories were extracted for
+    // the old speaker; they go together through the ONE retire path
+    // (`message-reattribution`, v4 `messages/[id]/route.ts:429`). A failure is
+    // logged and swallowed — the re-attribution itself still proceeds.
     let mut memories_deleted: i64 = 0;
-    for memory in &memories_from_message {
-        let character_id = memory
-            .get("characterId")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let memory_id = memory.get("id").and_then(Value::as_str).unwrap_or_default();
-        match delete_memory_with_vector(db, character_id, memory_id).await {
-            Ok(true) => memories_deleted += 1,
-            Ok(false) => {}
+    if !memories_from_message.is_empty() {
+        let ids: Vec<String> = memories_from_message
+            .iter()
+            .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
+            .collect();
+        match retire_and_announce(
+            db,
+            ids,
+            RetireOptions::new(RetireReason::MessageReattribution),
+        )
+        .await
+        {
+            Ok(report) => memories_deleted = report.retired,
             Err(e) => {
-                tracing::error!(memory_id, error = %e,
-                    "[Messages API v1] Failed to delete memory during re-attribution");
+                tracing::error!(
+                    messageId = %message_id,
+                    memoryCount = memories_from_message.len(),
+                    error = %e,
+                    "[Messages API v1] Failed to delete memories during re-attribution"
+                );
             }
         }
     }

@@ -97,7 +97,12 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'debug';
 
-  const CAPTURED_PREFIXES = ['Fetched most important memories', 'Memory failed validation in '];
+  // P4.D288 (bug 215): the recap bands' DEBUG joins the capture.
+  const CAPTURED_PREFIXES = [
+    'Fetched most important memories',
+    'Memory failed validation in ',
+    'Fetched recap importance band',
+  ];
   const { logger } = await import('@/lib/logger');
   let captured: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
   const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
@@ -128,7 +133,16 @@ async function main(): Promise<void> {
   // code (v5 never had a production caller either — retired, not ported). The
   // committed fixture keeps their rows (§R.7/no-fixture-edit); skip them here
   // rather than crash on the deleted methods.
-  const retiredKinds = new Set(['findByKeywords', 'findByAboutCharacterId']);
+  // P4.D288 (the `83334b9a5` pin): v4 deleted `countHotByCharacterId`
+  // (`c2795733f`), `findColdIdsByCharacterId` (`af48f6cc2`) and
+  // `findExpiredColdIds` (`104e986c7`) — their rows are skipped the same way.
+  const retiredKinds = new Set([
+    'findByKeywords',
+    'findByAboutCharacterId',
+    'countHotByCharacterId',
+    'findColdIdsByCharacterId',
+    'findExpiredColdIds',
+  ]);
   const queries = spec.queries.filter((q) => !retiredKinds.has(q.kind));
 
   const results: Array<{ kind: string; result: unknown; lines: unknown[] }> = [];

@@ -5,19 +5,23 @@
  * `deleteMemoriesBySourceMessagesWithVectors` /
  * `deleteMemoriesByChatIdWithVectors`).
  *
- * Like the deletion-chokepoint case these are module functions calling
- * `getRepositories()` + the DB-backed vector store, and the delete path touches
- * no LLM — so they run directly under the tsx real-DB path (no jest, no model
- * mock). We copy the pre-seeded fixture, run the fixed op sequence via v4's REAL
- * memory-service, assert each op's return against the spec's `expect`, then dump
- * `memories` + `vector_indices` + `vector_entries` canonically (one NDJSON line
- * per table, plus a `returns` line) for the Rust diff.
+ * P4.D288 (C1-7, the `83334b9a5` pin): v4 `af48f6cc2` DELETED the four
+ * `…WithVectors` functions — every deletion is `retireMemories`. The committed
+ * op list (§R.7) is RE-AIMED onto each one's successor at the pin, the same way
+ * on both sides: `deleteMemoryWithVector` → the item route's shape (the row's
+ * owner checked, then `retireMemories([id], 'item-delete')`, `ok = retired >
+ * 0`); `deleteMemoriesBySourceMessage(s)` → the messages route's
+ * (`findBySourceMessageId` per message, then ONE `retireMemories(…,
+ * 'message-cascade')`); `deleteMemoriesByChatId` → `retireChatMemories`
+ * (`characterCount` is the report's `charactersAffected`). v4's store is
+ * LOADED for every character first (`memoryIndex.shape`), so `vectorsRemoved`
+ * counts the loaded index (L-2, `MEMORY_INDEX_ALWAYS_LOADED`). Each return is
+ * still asserted against the spec's `expect`, then emitted; only `memories`
+ * is dumped (the mirror tables are gone).
  *
  * NORMALIZATION SPEC: sentinel-aware minted-timestamp placeholder on
- * `memories.updatedAt` (a neighbour scrubbed by the chokepoint is rewritten
- * through `updateForCharacter`, minting) and `vector_indices.updatedAt` (a store
- * flush that actually removed entries runs `saveMeta`, minting). Everything else
- * is pinned by the fixture builder. This case emits the raw (un-collapsed) dumps.
+ * `memories.updatedAt` (the neighbour scrub mints). Everything else is pinned
+ * by the fixture builder. This case emits the raw (un-collapsed) dump.
  *
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -83,39 +87,57 @@ async function main(): Promise<void> {
   process.env.LOG_LEVEL = 'error';
 
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
-  const {
-    deleteMemoryWithVector,
-    deleteMemoriesBySourceMessageWithVectors,
-    deleteMemoriesBySourceMessagesWithVectors,
-    deleteMemoriesByChatIdWithVectors,
-  } = await import('@/lib/memory/memory-service');
+  const { MemoriesRepository } = await import('@/lib/database/repositories/memories.repository');
+  const { retireMemories, retireChatMemories } = await import('@/lib/memory/retire');
+  const { memoryIndex } = await import('@/lib/memory/index-store');
+  (globalThis as Record<string, unknown>).__quilltapJobHost = { shuttingDown: true };
 
   await initializeDatabase();
+  const repo = new MemoriesRepository();
+  // L-2: load every holder's index before the first retirement.
+  const holders = (await rawQuery('SELECT DISTINCT characterId FROM memories')) as Array<{ characterId: string }>;
+  for (const h of holders) await memoryIndex.shape(h.characterId, 3);
+
+  const bySourceMessages = async (ids: string[]) => {
+    const memoryIds: string[] = [];
+    for (const id of ids) memoryIds.push(...(await repo.findBySourceMessageId(id)).map((m) => m.id));
+    const r = await retireMemories(memoryIds, { reason: 'message-cascade' });
+    return { deleted: r.retired, vectorsRemoved: r.vectorsRemoved };
+  };
 
   const returns: unknown[] = [];
   for (const [i, op] of spec.ops.entries()) {
     const label = `op[${i}] ${op.kind}`;
     switch (op.kind) {
       case 'deleteMemoryWithVector': {
-        const ok = await deleteMemoryWithVector(op.characterId as string, op.memoryId as string);
+        const existing = await repo.findById(op.memoryId as string);
+        let ok = false;
+        if (existing && existing.characterId === op.characterId) {
+          ok = (await retireMemories([op.memoryId as string], { reason: 'item-delete' })).retired > 0;
+        }
         assertDeepEqual({ ok }, op.expect, label);
         returns.push({ ok });
         break;
       }
       case 'deleteMemoriesBySourceMessage': {
-        const r = await deleteMemoriesBySourceMessageWithVectors(op.sourceMessageId as string);
+        const r = await bySourceMessages([op.sourceMessageId as string]);
         assertDeepEqual(r, op.expect, label);
         returns.push(r);
         break;
       }
       case 'deleteMemoriesBySourceMessages': {
-        const r = await deleteMemoriesBySourceMessagesWithVectors(op.sourceMessageIds as string[]);
+        const r = await bySourceMessages(op.sourceMessageIds as string[]);
         assertDeepEqual(r, op.expect, label);
         returns.push(r);
         break;
       }
       case 'deleteMemoriesByChatId': {
-        const r = await deleteMemoriesByChatIdWithVectors(op.chatId as string);
+        const report = await retireChatMemories(op.chatId as string);
+        const r = {
+          deleted: report.retired,
+          vectorsRemoved: report.vectorsRemoved,
+          characterCount: report.charactersAffected,
+        };
         assertDeepEqual(r, op.expect, label);
         returns.push(r);
         break;
@@ -125,11 +147,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const tables: Array<{ table: string; orderBy: string }> = [
-    { table: 'memories', orderBy: 'id' },
-    { table: 'vector_indices', orderBy: 'id' },
-    { table: 'vector_entries', orderBy: 'id' },
-  ];
+  const tables: Array<{ table: string; orderBy: string }> = [{ table: 'memories', orderBy: 'id' }];
   const lines: string[] = [];
   for (const t of tables) {
     const columns = (

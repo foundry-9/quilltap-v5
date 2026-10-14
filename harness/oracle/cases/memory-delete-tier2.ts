@@ -16,12 +16,15 @@
  * `<ts>` (a row left at the sentinel proves it was NOT touched). This case emits
  * the raw (un-collapsed) dump.
  *
- * P4.D265 (v4 `3f7320138` F8): the chokepoint's lines are captured too (a
- * transport spliced into the singleton logger) and emitted as `lines: [{level,
- * message, fields}]` in op order — the batch line now carries `countSource`
- * (`repository` on every parent-side call this oracle makes; the child's
- * `resolved-ids` arm is unreachable here and is a v5 unit pin). `durationMs`
- * is real wall-clock on both sides — the Rust harness normalizes it.
+ * P4.D288 (C1-7, the `83334b9a5` pin): v4 `af48f6cc2` DELETED the gate's two
+ * chokepoints — every deletion is `retireMemories` (`lib/memory/retire.ts`).
+ * The committed op list (§R.7 unchanged) is RE-AIMED: each op's ids go
+ * through `retireMemories(ids, { reason: 'item-delete' })` on both sides (a
+ * single delete as a one-id list). The retirement's lines are captured in op
+ * order — the neighbour scrub, the digest scan, the base `deleteMany`, the
+ * index eviction (v4's store LOADED first for both holders, L-2), and the
+ * closing `Retired memories` / `Nothing to retire` — `durationMs` (real
+ * wall-clock both sides) normalized by the Rust harness.
  *
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -71,10 +74,15 @@ async function main(): Promise<void> {
   process.env.LOG_LEVEL = 'debug';
 
   const CAPTURED = new Set([
-    '[MemoryGate] deleteMemoryWithUnlink complete',
-    '[MemoryGate] deleteMemoryWithUnlink touched an unusually large neighbour set',
-    '[MemoryGate] deleteMemoriesWithUnlinkBatch complete',
-    '[MemoryGate] deleteMemoriesWithUnlinkBatch touched an unusually large neighbour set',
+    'Scrubbed deleted ids from related links',
+    'Nothing to retire',
+    'Found digests naming doomed members',
+    'Digest retires with its last member',
+    'Scrubbed digest links to retired memories',
+    'Entities deleted',
+    'Evicted retired memories from the index',
+    'Retirement rewrote an unusually large neighbour set',
+    'Retired memories',
   ]);
   const { logger } = await import('@/lib/logger');
   const lines: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
@@ -89,19 +97,24 @@ async function main(): Promise<void> {
   });
 
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
-  const { deleteMemoryWithUnlink, deleteMemoriesWithUnlinkBatch } = await import(
-    '@/lib/memory/memory-gate'
-  );
+  const { retireMemories } = await import('@/lib/memory/retire');
+  const { memoryIndex } = await import('@/lib/memory/index-store');
+  (globalThis as Record<string, unknown>).__quilltapJobHost = { shuttingDown: true };
 
   await initializeDatabase();
+  // L-2: load every holder's index before the first retirement (silently —
+  // the capture starts with the ops).
+  const holders = (await rawQuery('SELECT DISTINCT characterId FROM memories')) as Array<{ characterId: string }>;
+  for (const h of holders) await memoryIndex.shape(h.characterId, 3);
+  lines.length = 0;
 
   for (const op of spec.ops) {
     switch (op.kind) {
       case 'deleteMemoryWithUnlink':
-        await deleteMemoryWithUnlink(op.id as string);
+        await retireMemories([op.id as string], { reason: 'item-delete' });
         break;
       case 'deleteMemoriesWithUnlinkBatch':
-        await deleteMemoriesWithUnlinkBatch(op.ids as string[]);
+        await retireMemories(op.ids as string[], { reason: 'item-delete' });
         break;
       default:
         throw new Error(`unknown op kind: ${(op as Op).kind}`);

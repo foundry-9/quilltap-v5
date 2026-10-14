@@ -36,9 +36,10 @@ use crate::model::tool_wire::normalize_js_numbers;
 use crate::services::memory_gate::{
     create_memory_with_gate, CreateMemoryOptions, GateAction, MemoryServiceOptions,
 };
-use crate::services::memory_service::{
-    delete_memories_by_chat_id_with_vectors, search_memories_semantic, SemanticSearchOptions,
+use crate::services::memory_retire::{
+    announce_retirement, retire_chat_memories, retire_memories, RetireOptions, RetireReason,
 };
+use crate::services::memory_service::{search_memories_semantic, SemanticSearchOptions};
 use crate::services::queue_service::{enqueue_memory_extraction_batch, MemoryExtractionBatchEntry};
 
 use super::types::{ErrorKind, Response};
@@ -673,12 +674,25 @@ pub async fn memory_delete(db: &Db, memory_id: &str) -> Response {
         Ok(false) => return not_found("Memory"),
         Err(e) => return internal(e),
     }
-    let mid = memory_id.to_string();
-    let deleted = db
-        .write(move |w| w.main().memories().delete_with_unlink(&mid))
+    // P4.D288 (C1-7): the ONE retire path (`item-delete`, v4 `[id]/route.ts:
+    // 163`) — the row, every link naming it and its vector, then the
+    // announcement after the commit (R-AF). The response bytes are unchanged;
+    // v4's `retired === 0` → 404 arm is P4.D298's.
+    let ids = vec![memory_id.to_string()];
+    let retired = db
+        .write(move |w| {
+            retire_memories(
+                w.main().connection(),
+                &ids,
+                RetireOptions::new(RetireReason::ItemDelete),
+            )
+        })
         .await;
-    match deleted {
-        Ok(_) => Response::Memory(json!({ "success": true })),
+    match retired {
+        Ok(report) => {
+            announce_retirement(db, report.announcement.as_ref()).await;
+            Response::Memory(json!({ "success": true }))
+        }
         Err(e) => internal(e),
     }
 }
@@ -698,11 +712,19 @@ pub async fn memory_delete_by_chat(db: &Db, chat_id: &str) -> Response {
         Ok(false) => return not_found("Chat"),
         Err(e) => return internal(e),
     }
-    match delete_memories_by_chat_id_with_vectors(db, chat_id).await {
-        Ok(res) => {
-            // v4 `app/api/v1/memories/route.ts:1093`. No publish here: this path
-            // runs through `deleteMemoriesWithUnlinkBatch`, and the memory-gate
-            // chokepoint already announces `memories` collection-wide — a
+    // P4.D288 (C1-7): v4 `retireChatMemories` (bug 201's partition — manual,
+    // cold and still-living digest rows are spared); the announcement after
+    // the commit (R-AF). `sparedCount` and the renamed line are P4.D298's.
+    let cid = chat_id.to_string();
+    let wiped = db
+        .write(move |w| retire_chat_memories(w.main().connection(), &cid))
+        .await;
+    match wiped {
+        Ok(report) => {
+            announce_retirement(db, report.announcement.as_ref()).await;
+            // v4 `app/api/v1/memories/route.ts:1250`. No publish here: this path
+            // runs through `retireMemories`, whose announcement already
+            // announces `memories` collection-wide — a
             // chat-scoped subscriber takes it, since the id filter only discards
             // an event naming a DIFFERENT id. A second, chat-scoped hint would
             // cost every subscriber a duplicate refetch, and would fire on the
@@ -715,11 +737,11 @@ pub async fn memory_delete_by_chat(db: &Db, chat_id: &str) -> Response {
             // deleted-something branch.
             tracing::debug!(
                 chatId = chat_id,
-                deleted = res.deleted,
+                deleted = report.retired,
                 "[Memories API] Deleted every memory for a chat"
             );
             Response::Memory(
-                json!({ "success": true, "chatId": chat_id, "deletedCount": res.deleted }),
+                json!({ "success": true, "chatId": chat_id, "deletedCount": report.retired }),
             )
         }
         Err(e) => internal(e),
@@ -1838,10 +1860,12 @@ mod tests {
                 ("m-1", CHAR_A),
                 ("m-2", "b0000000-0000-4000-8000-00000000000b"),
             ] {
+                // AUTO, as extraction writes them: the chat wipe spares MANUAL
+                // rows (bug 201, P4.D288) — the column's default.
                 c.execute(
                     "INSERT INTO \"memories\" (\"id\", \"characterId\", \"chatId\", \"content\", \
-                     \"summary\", \"createdAt\", \"updatedAt\") \
-                     VALUES (?1, ?2, ?3, 'c', 's', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
+                     \"summary\", \"source\", \"createdAt\", \"updatedAt\") \
+                     VALUES (?1, ?2, ?3, 'c', 's', 'AUTO', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
                     rusqlite::params![mid, char_id, CHAT_A],
                 )
                 .unwrap();

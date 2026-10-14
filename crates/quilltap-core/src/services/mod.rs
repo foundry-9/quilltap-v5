@@ -111,6 +111,7 @@ pub mod frozen_archive;
 // === P4.9K0 ===
 pub mod generator_progress;
 // === end P4.9K0 ===
+pub mod commonplace_mirror; // P4.D288 (C1-7, L-3)
 pub mod help_doc_chunking;
 pub mod help_doc_sync;
 pub mod home;
@@ -141,6 +142,7 @@ pub mod memory_gate;
 pub mod memory_index; // P4.D288 (C1-3)
 pub mod memory_processor;
 pub mod memory_recap;
+pub mod memory_retire; // P4.D288 (C1-7)
 pub mod memory_service;
 pub mod memory_subject;
 pub mod memory_time_zone;

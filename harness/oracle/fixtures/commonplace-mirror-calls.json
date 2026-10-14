@@ -1,0 +1,130 @@
+{
+  "_doc": "P4.D288 (C1-7, L-3): the Commonplace mirror's calls \u2014 `commonplace-mirror-tier2.test.ts` and `commonplace_mirror_equivalence.rs` run them in order on ONE copy of the consolidation fixture pair. `sql` runs on main; `mirror` calls mirrorCommonplaceForSubjects / mirror_commonplace_for_subjects; `retire` retires ids (`item-delete`) and the retirement's announcement refreshes the removed digests' buckets.",
+  "calls": [
+    {
+      "name": "plant_friday_digests",
+      "kind": "sql",
+      "sql": [
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, importance, source, reinforcedImportance, tier, createdAt, updatedAt) VALUES ('0c7a0000-0000-4000-8000-000000000001', '0c010000-0000-4000-8000-000000000001', '0c5b0000-0000-4000-8000-000000000001', 'Laura maps the northern reaches.', 'digest 1', 0.5, 'CONSOLIDATED', 0.9, 'hot', '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z')",
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, importance, source, reinforcedImportance, tier, createdAt, updatedAt) VALUES ('0c7a0000-0000-4000-8000-000000000002', '0c010000-0000-4000-8000-000000000001', '0c5b0000-0000-4000-8000-000000000001', 'Laura distrusts the river guides.', 'digest 2', 0.5, 'CONSOLIDATED', 0.6, 'hot', '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z')",
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, importance, source, reinforcedImportance, tier, createdAt, updatedAt) VALUES ('0c7a0000-0000-4000-8000-000000000003', '0c010000-0000-4000-8000-000000000001', '0c010000-0000-4000-8000-000000000001', 'Friday keeps the ledger.', 'digest 3', 0.5, 'CONSOLIDATED', 0.8, 'hot', '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z')",
+        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, importance, source, reinforcedImportance, tier, createdAt, updatedAt) VALUES ('0c7a0000-0000-4000-8000-000000000004', '0c010000-0000-4000-8000-000000000001', '0c010000-0000-4000-8000-000000000001', 'Friday never sleeps past six.', 'digest 4', 0.5, 'CONSOLIDATED', 0.7, 'hot', '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z')"
+      ]
+    },
+    {
+      "name": "written",
+      "kind": "mirror",
+      "holderId": "0c010000-0000-4000-8000-000000000001",
+      "subjects": [
+        "0c5b0000-0000-4000-8000-000000000001",
+        "0c010000-0000-4000-8000-000000000001",
+        "0c5b0000-0000-4000-8000-000000000001"
+      ],
+      "updatedAt": "2026-10-08T12:00:00.000Z"
+    },
+    {
+      "name": "unchanged",
+      "kind": "mirror",
+      "holderId": "0c010000-0000-4000-8000-000000000001",
+      "subjects": [
+        "0c5b0000-0000-4000-8000-000000000001",
+        "0c010000-0000-4000-8000-000000000001"
+      ],
+      "updatedAt": "2026-10-09T12:00:00.000Z"
+    },
+    {
+      "name": "no_subjects",
+      "kind": "mirror",
+      "holderId": "0c010000-0000-4000-8000-000000000001",
+      "subjects": [],
+      "updatedAt": "2026-10-09T12:00:00.000Z"
+    },
+    {
+      "name": "vanished_subject",
+      "kind": "mirror",
+      "holderId": "0c010000-0000-4000-8000-000000000001",
+      "subjects": [
+        "0c5b0000-0000-4000-8000-0000000000aa"
+      ],
+      "updatedAt": "2026-10-09T12:00:00.000Z"
+    },
+    {
+      "name": "missing_holder",
+      "kind": "mirror",
+      "holderId": "0c7a0000-0000-4000-8000-0000000000ff",
+      "subjects": [
+        "0c5b0000-0000-4000-8000-000000000001"
+      ],
+      "updatedAt": "2026-10-09T12:00:00.000Z"
+    },
+    {
+      "name": "cold_laura",
+      "kind": "sql",
+      "sql": [
+        "UPDATE memories SET tier = 'cold' WHERE characterId = '0c010000-0000-4000-8000-000000000001' AND aboutCharacterId = '0c5b0000-0000-4000-8000-000000000001' AND source = 'CONSOLIDATED'"
+      ]
+    },
+    {
+      "name": "emptied_bucket",
+      "kind": "mirror",
+      "holderId": "0c010000-0000-4000-8000-000000000001",
+      "subjects": [
+        "0c5b0000-0000-4000-8000-000000000001"
+      ],
+      "updatedAt": "2026-10-10T12:00:00.000Z"
+    },
+    {
+      "name": "emptied_again",
+      "kind": "mirror",
+      "holderId": "0c010000-0000-4000-8000-000000000001",
+      "subjects": [
+        "0c5b0000-0000-4000-8000-000000000001"
+      ],
+      "updatedAt": "2026-10-10T12:00:00.000Z"
+    },
+    {
+      "name": "plant_cap",
+      "kind": "sql",
+      "sql": [
+        "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 205) INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, importance, source, reinforcedImportance, tier, createdAt, updatedAt) SELECT printf('0c7b0000-0000-4000-8000-%012d', i), '0c020000-0000-4000-8000-000000000001', '0c5b0000-0000-4000-8000-000000000001', printf('Laura detail number %d.', i), printf('cap %d', i), 0.5, 'CONSOLIDATED', 0.3 + (i % 50) / 100.0, 'hot', printf('2026-08-01T00:%02d:%02d.000Z', i / 60, i % 60), '2026-08-01T00:00:00.000Z' FROM n"
+      ]
+    },
+    {
+      "name": "digest_cap",
+      "kind": "mirror",
+      "holderId": "0c020000-0000-4000-8000-000000000001",
+      "subjects": [
+        "0c5b0000-0000-4000-8000-000000000001"
+      ],
+      "updatedAt": "2026-10-11T12:00:00.000Z"
+    },
+    {
+      "name": "retire_a_self_digest",
+      "kind": "retire",
+      "ids": [
+        "0c7a0000-0000-4000-8000-000000000003"
+      ]
+    },
+    {
+      "name": "retire_the_last_self_digest",
+      "kind": "retire",
+      "ids": [
+        "0c7a0000-0000-4000-8000-000000000004"
+      ]
+    }
+  ],
+  "projections": [
+    {
+      "name": "links",
+      "sql": "SELECT l.mountPointId, l.relativePath, l.fileName, f.fileType, f.sha256, f.fileSizeBytes, f.source, d.content, d.contentSha256, d.plainTextLength, l.chunkCount, l.conversionStatus, l.extractionStatus, l.plainTextLength AS linkPlainTextLength FROM doc_mount_file_links l JOIN doc_mount_files f ON f.id = l.fileId LEFT JOIN doc_mount_documents d ON d.fileId = f.id WHERE l.relativePath LIKE 'Commonplace/%' ORDER BY l.relativePath, d.content"
+    },
+    {
+      "name": "folders",
+      "sql": "SELECT f.mountPointId, f.name, f.path, p.path AS parentPath FROM doc_mount_folders f LEFT JOIN doc_mount_folders p ON p.id = f.parentId WHERE f.path LIKE 'Commonplace%' ORDER BY f.path, f.mountPointId"
+    },
+    {
+      "name": "chunks",
+      "sql": "SELECT c.mountPointId, l.relativePath, c.chunkIndex, c.content, c.tokenCount, c.headingContext FROM doc_mount_chunks c JOIN doc_mount_file_links l ON l.id = c.linkId WHERE l.relativePath LIKE 'Commonplace/%' ORDER BY l.relativePath, c.content, c.chunkIndex"
+    }
+  ]
+}

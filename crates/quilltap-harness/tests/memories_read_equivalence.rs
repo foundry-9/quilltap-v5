@@ -100,8 +100,6 @@ struct Query {
     tier: Option<String>,
     #[serde(default)]
     subject: Option<String>,
-    #[serde(default, rename = "olderThan")]
-    older_than: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -122,9 +120,11 @@ struct OracleLine {
 }
 
 /// The messages the oracle captures (its `CAPTURED_PREFIXES`).
-const CAPTURED_PREFIXES: [&str; 2] = [
+const CAPTURED_PREFIXES: [&str; 3] = [
     "Fetched most important memories",
     "Memory failed validation in ",
+    // P4.D288 (bug 215).
+    "Fetched recap importance band",
 ];
 
 /// v4's line rendered as v5's capture rig renders the port's: `LEVEL
@@ -322,19 +322,9 @@ fn run_query(writer: &Writer, q: &Query) -> Value {
                     .expect("findHotDigests"),
             )
         }
-        "countHotByCharacterId" => {
-            Value::from(mr::count_hot_by_character_id(conn, cid()).expect("countHotByCharacterId"))
-        }
         "countUnconsideredHot" => {
             Value::from(mr::count_unconsidered_hot(conn, cid()).expect("countUnconsideredHot"))
         }
-        "findColdIdsByCharacterId" => Value::from(
-            mr::find_cold_ids_by_character_id(conn, cid()).expect("findColdIdsByCharacterId"),
-        ),
-        "findExpiredColdIds" => Value::from(
-            mr::find_expired_cold_ids(conn, cid(), q.older_than.as_deref().unwrap())
-                .expect("findExpiredColdIds"),
-        ),
         other => panic!("unknown query kind: {other}"),
     }
 }
@@ -388,7 +378,15 @@ fn memories_read_matches_oracle() {
     // ported). The committed fixture keeps their rows unchanged; skip them
     // here, matching the oracle case's own filter, rather than call the
     // retired methods.
-    let retired = ["findByKeywords", "findByAboutCharacterId"];
+    // P4.D288 (the `83334b9a5` pin): the three readers v4 deleted
+    // (`c2795733f`, `af48f6cc2`, `104e986c7`) skip the same way.
+    let retired = [
+        "findByKeywords",
+        "findByAboutCharacterId",
+        "countHotByCharacterId",
+        "findColdIdsByCharacterId",
+        "findExpiredColdIds",
+    ];
     let queries: Vec<&Query> = spec
         .queries
         .iter()

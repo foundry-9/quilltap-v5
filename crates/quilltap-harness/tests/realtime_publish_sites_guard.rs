@@ -35,8 +35,10 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
     (
         "crates/quilltap-core/src/services/queue_service.rs",
         "publish_realtime(RealtimeTopic::Jobs, None);",
-        6,
-        "v4 has THREE queue-service publishes; v5 has six sites for them, \
+        7,
+        "v4 has FOUR queue-service publishes (P4.D288: `enqueueEmbeddingGenerateMany`, \
+         `af48f6cc2`, the fourth — v5's `enqueue_embedding_generate_many`); v5 has \
+         seven sites for them, \
          because v4's one `enqueueJob` is `enqueue_job` + \
          `enqueue_job_with_priority` + TWO in-transaction mints that bypass \
          it (the blocking render enqueue, and P4.82's blocking \
@@ -73,15 +75,23 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
     ),
     (
         "crates/quilltap-core/src/db/memories.rs",
+        "publish_realtime",
+        0,
+        "P4.D288 (C1-7, v4 `af48f6cc2`): the repository no longer publishes — \
+         the gate's two delete chokepoints (bug 128's publish sites) were \
+         deleted with v4's; every deletion is the ONE retire path, which \
+         announces after the commit. A publish here would fire inside the \
+         writer closure, before the rows are committed.",
+    ),
+    (
+        "crates/quilltap-core/src/services/memory_retire.rs",
         "publish_realtime(RealtimeTopic::Memories, None);",
-        2,
-        "bug 128 (`4a9be9878`). v4 publishes `memories` from the memory GATE — \
-         `deleteMemoryWithUnlink` and `deleteMemoriesWithUnlinkBatch` — whose \
-         v5 twins are these two repository methods. Holding the count here is \
-         what makes the layering choice non-deletable: the eight callers reach \
-         the hint by construction. A THIRD site would mean someone re-added the \
-         route's publish; a FIRST would mean the silence guards (`if deleted` / \
-         `if deleted > 0`) were dropped.",
+        1,
+        "bug 128 re-homed (v4 `af48f6cc2`): `announceRetirement` publishes \
+         `memories` once per committed retirement that deleted something \
+         (R-AF — after the writer commit). ONE site, so every deletion caller \
+         reaches the hint by construction; a SECOND would mean a caller \
+         re-added its own.",
     ),
     (
         "crates/quilltap-core/src/api/memories.rs",
@@ -89,11 +99,11 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
         0,
         "bug 128's other half. v4's PR ADDED a publish to `handleDeleteByChatId` \
          in its first commit and REMOVED it in the second (`ba89e0caa`) as \
-         redundant-and-wrong: the gate already announces `memories` \
+         redundant-and-wrong: the retirement already announces `memories` \
          collection-wide, which a chat-scoped subscriber takes (the client's id \
          filter only discards an event naming a DIFFERENT id), so a second hint \
          costs every subscriber a duplicate refetch — and would fire on the one \
-         case the gate is right to stay silent for, a chat with nothing to \
+         case the retirement is right to stay silent for, a chat with nothing to \
          delete. `git show 4a9be9878` is the NET, and the net is ZERO publishes \
          in this file. The behavioural half is \
          `realtime::publish_sites::memory_gate_tests`.",

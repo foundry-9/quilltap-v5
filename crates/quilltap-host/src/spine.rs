@@ -141,7 +141,6 @@ use quilltap_core::services::embedding_generate_job::{
     handle_embedding_generate, EmbeddingGeneratePayload,
 };
 // === end P4.6BL ===
-use quilltap_core::db::memories::CountSource;
 use quilltap_core::services::embedding_provider::ApiEmbeddingProvider;
 use quilltap_core::services::file_storage::{
     ProductionFileBytes, RealProjectImageUpload, StorageBackend,
@@ -3039,10 +3038,8 @@ impl JobHandler for MemoryHousekeepingHandler {
                     merge_threshold,
                     merge_similar,
                     dry_run: Some(dry_run),
-                    // R-C: the job path is v4's CHILD, whose buffered
-                    // `bulkDelete` returns nothing, so its batch lines read
-                    // `countSource: 'resolved-ids'`.
-                    count_source: Some(CountSource::ResolvedIds),
+                    // (P4.D288: the F8 `countSource` label went with v4's
+                    // `deleteMemoriesWithUnlinkBatch`, `af48f6cc2`.)
                     ..Default::default()
                 };
                 // v4 catches per-character errors and continues the sweep.

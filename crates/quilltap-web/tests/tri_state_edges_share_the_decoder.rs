@@ -604,8 +604,10 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 123,
-        "123 = 117 + P4.D281's six (five in `wardrobe_routes.rs` net — the folder list, the four \
+        total, 121,
+        "121 = 123 − P4.D288's two (unit 5, R-G: the retired `system_data_routes.rs` dedup arms \
+         `MemoryDedupPreview` / `MemoryDedupRun` deleted with their wire verbs). \
+         123 = 117 + P4.D281's six (five in `wardrobe_routes.rs` net — the folder list, the four \
          folder writes and the character create, less the retired 404-first item GET — and the \
          character edge's folder list). 117 = 115 + P4.D256's two `wardrobe_routes.rs` constructions (the item GET's \
          `WardrobeItemWearHistory` and its unknown-action 404-first `WardrobeItemGet`). \

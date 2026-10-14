@@ -891,7 +891,9 @@ pub(crate) async fn count_reinforcement(
             writers
                 .main()
                 .memories()
-                .increment_reinforcement(&character_id, &memory_id, &at_w)
+                // P4.D288 (C1-7, mechanical): `by` joined the verb (bug 226);
+                // one observation here, as before.
+                .increment_reinforcement(&character_id, &memory_id, &at_w, 1)
         })
         .await?;
     Ok(counted.map(|r| Counted {

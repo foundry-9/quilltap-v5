@@ -16,9 +16,15 @@
 //! returned, lines}]`; this side REPLAYS that exact op list (creates through
 //! `parse_create_memory` — v4's prefill + `MemorySchema` — then
 //! `MemoriesRepository::create`; `increment_reinforcement`, `update_tier_bulk`,
-//! `mark_considered` on the writer; `services::memory_access::
-//! mark_memories_accessed` over a `Db` on the same file) and compares each
+//! `mark_considered` on the writer; L-6 (P4.D288): the retired
+//! `markMemoriesAccessed` re-aimed at `update_access_time_bulk`) and compares each
 //! op's answer and its lines (level, message, fields in v4's key order).
+//!
+//! P4.D288 (C1-7, the `83334b9a5` pin): the committed op list's retired
+//! deleters and `replaceInMemories` are RE-AIMED onto the pin's successors
+//! (the oracle header carries the mapping), and a KEYSTONE phase after the
+//! tier phase replays every new repository verb from the oracle's own op list
+//! — answers and lines compared as the tier phase's are.
 //!
 //! NORMALIZATION: minted-timestamp placeholder. ids + createdAt + every payload
 //! column are pinned; only `updatedAt` (bumped by every mutator) and
@@ -40,6 +46,9 @@
 
 use quilltap_core::db::memories::{CreateOptions, MemCreate, MemUpdate};
 use quilltap_core::db::Writer;
+use quilltap_core::services::memory_retire::{
+    retire_chat_memories, retire_memories, RetireOptions, RetireReason,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -268,7 +277,63 @@ fn normalize(dump: &mut Value, label: &str) {
                 obj.insert((*col).to_string(), Value::String("<ts>".to_string()));
             }
         }
+        // P4.D288: `supersededAt` is PINNED when a create states it (the
+        // keystone phase's `2026-05-0…` stamps compare exactly) and MINTED
+        // (`now`) when a tier move sets `supersededById` — only the minted
+        // ones collapse, so NULL vs set still compares.
+        if let Some(Value::String(v)) = obj.get("supersededAt") {
+            if !v.starts_with("2026-05-0") {
+                obj.insert(
+                    "supersededAt".to_string(),
+                    Value::String("<ts>".to_string()),
+                );
+            }
+        }
     }
+}
+
+/// v4's counted-reinforcement answer — `{ reinforcementCount,
+/// reinforcedImportance, lastReinforcedAt }` (P4.D288: `lastReinforcedAt`
+/// joined) or `null`.
+fn reinforcement_json(r: Option<quilltap_core::db::memories::Reinforcement>) -> Value {
+    match r {
+        Some(r) => serde_json::json!({
+            "reinforcementCount": js_number(r.reinforcement_count),
+            "reinforcedImportance": js_number(r.reinforced_importance),
+            "lastReinforcedAt": r.last_reinforced_at,
+        }),
+        None => Value::Null,
+    }
+}
+
+/// An oracle op's captured lines rendered as the capture rig renders v5's:
+/// `LEVEL target message k=v …`, fields in v4's key order.
+fn want_lines(t: &Value) -> Vec<String> {
+    t["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| {
+            let message = l["message"].as_str().unwrap();
+            let target = if message.starts_with("[Memory]") {
+                "quilltap::memories"
+            } else {
+                "quilltap::db"
+            };
+            let mut out = format!(
+                "{} {target} {message}",
+                l["level"].as_str().unwrap().to_uppercase()
+            );
+            for (k, v) in l["fields"].as_object().unwrap() {
+                let rendered = match v {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                out.push_str(&format!(" {k}={rendered}"));
+            }
+            out
+        })
+        .collect()
 }
 
 #[test]
@@ -355,25 +420,47 @@ fn memories_tier2_matches_oracle() {
                     repo.replace_in_memories(ids, search, replace)
                         .expect("replaceInMemories");
                 }
+                // P4.D288 (C1-7): the retired deleters RE-AIMED onto the pin's
+                // successors, the oracle's mapping (see its header).
                 Op::Delete { id } => {
-                    repo.delete(id).expect("delete");
+                    retire_memories(
+                        writer.connection(),
+                        std::slice::from_ref(id),
+                        RetireOptions::new(RetireReason::ItemDelete),
+                    )
+                    .expect("delete → retireMemories");
                 }
                 Op::DeleteForCharacter {
                     character_id,
                     memory_id,
                 } => {
-                    repo.delete_for_character(character_id, memory_id)
-                        .expect("deleteForCharacter");
+                    repo.bulk_delete_unsafe(character_id, std::slice::from_ref(memory_id))
+                        .expect("deleteForCharacter → bulkDeleteUnsafe");
                 }
                 Op::BulkDelete { character_id, ids } => {
-                    repo.bulk_delete(character_id, ids).expect("bulkDelete");
+                    repo.bulk_delete_unsafe(character_id, ids)
+                        .expect("bulkDelete → bulkDeleteUnsafe");
                 }
                 Op::DeleteByChatId { chat_id } => {
-                    repo.delete_by_chat_id(chat_id).expect("deleteByChatId");
+                    retire_chat_memories(writer.connection(), chat_id)
+                        .expect("deleteByChatId → retireChatMemories");
                 }
                 Op::DeleteBySourceMessageId { source_message_id } => {
-                    repo.delete_by_source_message_id(source_message_id)
-                        .expect("deleteBySourceMessageId");
+                    let ids: Vec<String> =
+                        quilltap_core::db::memories_read::find_by_source_message_id(
+                            writer.connection(),
+                            source_message_id,
+                        )
+                        .expect("findBySourceMessageId")
+                        .iter()
+                        .filter_map(|m| m["id"].as_str().map(str::to_string))
+                        .collect();
+                    retire_memories(
+                        writer.connection(),
+                        &ids,
+                        RetireOptions::new(RetireReason::MessageCascade),
+                    )
+                    .expect("deleteBySourceMessageId → retireMemories");
                 }
                 Op::Retired { .. } => {}
             }
@@ -433,17 +520,10 @@ fn memories_tier2_matches_oracle() {
                 let (r, lines) = quilltap_core::test_support::captured_with(|| {
                     writer
                         .memories()
-                        .increment_reinforcement(&s("characterId"), &s("memoryId"), &s("at"))
+                        .increment_reinforcement(&s("characterId"), &s("memoryId"), &s("at"), 1)
                         .expect("incrementReinforcement")
                 });
-                let v = match r {
-                    Some(r) => serde_json::json!({
-                        "reinforcementCount": js_number(r.reinforcement_count),
-                        "reinforcedImportance": js_number(r.reinforced_importance),
-                    }),
-                    None => Value::Null,
-                };
-                (v, lines)
+                (reinforcement_json(r), lines)
             }
             "updateTierBulk" => {
                 let extra = &op["extra"];
@@ -477,58 +557,54 @@ fn memories_tier2_matches_oracle() {
                 });
                 (Value::from(n), lines)
             }
-            "markMemoriesAccessed" => {
-                let db = quilltap_core::db::runtime::Db::open_main(&work, &spec.test_pepper_base64)
-                    .expect("open a Db beside the writer");
-                let rt = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .unwrap();
-                let ((), lines) = quilltap_core::test_support::captured_with(|| {
-                    rt.block_on(
-                        quilltap_core::services::memory_access::mark_memories_accessed(
-                            &db,
-                            &s("characterId"),
-                            &ids(),
-                        ),
-                    )
+            // L-6 (P4.D288): re-aimed at the repository verb v4's
+            // `stampAccessed` calls.
+            "updateAccessTimeBulk" => {
+                let (n, lines) = quilltap_core::test_support::captured_with(|| {
+                    writer
+                        .memories()
+                        .update_access_time_bulk(&s("characterId"), &ids())
+                        .expect("updateAccessTimeBulk")
                 });
-                (Value::Null, lines)
+                (Value::from(n), lines)
             }
             other => panic!("unknown tier op: {other}"),
         };
         assert_eq!(returned, t["returned"], "tier op {i} ({kind}): the answer");
-        let want: Vec<String> = t["lines"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|l| {
-                let message = l["message"].as_str().unwrap();
-                let target = if message.starts_with("[Memory]") {
-                    "quilltap::memories"
-                } else {
-                    "quilltap::db"
-                };
-                let mut out = format!(
-                    "{} {target} {message}",
-                    l["level"].as_str().unwrap().to_uppercase()
-                );
-                for (k, v) in l["fields"].as_object().unwrap() {
-                    let rendered = match v {
-                        Value::String(s) => s.clone(),
-                        other => other.to_string(),
-                    };
-                    out.push_str(&format!(" {k}={rendered}"));
-                }
-                out
-            })
-            .collect();
+        let want = want_lines(t);
         assert_eq!(lines, want, "tier op {i} ({kind}): the lines");
         tier_lines += want.len();
     }
     assert!(
         tier_lines >= 8,
         "the tier phase compared only {tier_lines} lines"
+    );
+
+    // === P4.D288: the keystone phase, replayed from the oracle's own op list ===
+    let keystone_ops = oracle["keystone"]
+        .as_array()
+        .cloned()
+        .expect("the oracle carries no `keystone` phase — regenerate it (P4.D288)");
+    assert!(
+        keystone_ops.len() >= 50,
+        "the keystone phase shrank: {}",
+        keystone_ops.len()
+    );
+    let mut keystone_lines = 0usize;
+    for (i, t) in keystone_ops.iter().enumerate() {
+        let (returned, lines) = replay_keystone_op(&writer, &t["op"], i);
+        let kind = t["op"]["kind"].as_str().unwrap();
+        assert_eq!(
+            returned, t["returned"],
+            "keystone op {i} ({kind}): the answer"
+        );
+        let want = want_lines(t);
+        assert_eq!(lines, want, "keystone op {i} ({kind}): the lines");
+        keystone_lines += want.len();
+    }
+    assert!(
+        keystone_lines >= 25,
+        "the keystone phase compared only {keystone_lines} lines"
     );
 
     let mut got = writer
@@ -576,8 +652,164 @@ fn memories_tier2_matches_oracle() {
         );
     }
     eprintln!(
-        "OK: memories tier-2 matched oracle ({n} rows, {} refusals, {} tier ops / {tier_lines} lines).",
+        "OK: memories tier-2 matched oracle ({n} rows, {} refusals, {} tier ops / {tier_lines} lines, {} keystone ops / {keystone_lines} lines).",
         errors.len(),
-        tier_ops.len()
+        tier_ops.len(),
+        keystone_ops.len()
     );
+}
+
+/// Replay one keystone op (P4.D288) on the writer: `(answer, lines)` in the
+/// oracle's shapes — a refusal answers `{error}` with the bare message.
+fn replay_keystone_op(writer: &Writer, op: &Value, i: usize) -> (Value, Vec<String>) {
+    use quilltap_core::db::memories_read as mr;
+    let kind = op["kind"].as_str().unwrap();
+    let s = |k: &str| op[k].as_str().unwrap().to_string();
+    let ids = |k: &str| -> Vec<String> {
+        op[k]
+            .as_array()
+            .map(|a| a.iter().map(|v| v.as_str().unwrap().to_string()).collect())
+            .unwrap_or_default()
+    };
+    let err = |e: quilltap_core::db::DbError| serde_json::json!({ "error": quilltap_core::db::fallback::error_text(&e) });
+    let repo = writer.memories();
+    let conn = writer.connection();
+    let (returned, lines) = quilltap_core::test_support::captured_with(|| -> Value {
+        match kind {
+            "create" => {
+                let opts = &op["options"];
+                let id = opts["id"].as_str().unwrap();
+                let data = quilltap_core::db::memories::parse_create_memory(&op["data"], Some(id))
+                    .unwrap_or_else(|e| panic!("keystone op {i}: v4 accepted, v5 refused: {e}"));
+                repo.create(
+                    &data,
+                    &CreateOptions {
+                        id: id.to_string(),
+                        created_at: opts["createdAt"].as_str().unwrap().to_string(),
+                        updated_at: opts["updatedAt"].as_str().unwrap().to_string(),
+                    },
+                )
+                .expect("keystone create");
+                Value::Null
+            }
+            "plant" => {
+                conn.execute_batch(op["sql"].as_str().unwrap())
+                    .expect("plant");
+                Value::Null
+            }
+            "incrementReinforcement" => {
+                let by = op.get("by").and_then(Value::as_i64).unwrap_or(1);
+                match repo.increment_reinforcement(&s("characterId"), &s("memoryId"), &s("at"), by)
+                {
+                    Ok(r) => reinforcement_json(r),
+                    Err(e) => err(e),
+                }
+            }
+            "addRelatedMemoryIds" => serde_json::json!(repo
+                .add_related_memory_ids(&s("characterId"), &s("memoryId"), &ids("ids"))
+                .expect("addRelatedMemoryIds")),
+            "removeRelatedMemoryIds" => serde_json::json!(repo
+                .remove_related_memory_ids(&s("characterId"), &s("memoryId"), &ids("ids"))
+                .expect("removeRelatedMemoryIds")),
+            "removeRelatedMemoryIdsEverywhere" => Value::from(
+                repo.remove_related_memory_ids_everywhere(&ids("ids"))
+                    .expect("removeRelatedMemoryIdsEverywhere"),
+            ),
+            "appendReinforcementFootnotes" => match repo
+                .append_reinforcement_footnotes(&s("characterId"), &s("memoryId"), &ids("details"))
+                .expect("appendReinforcementFootnotes")
+            {
+                Some(r) => serde_json::json!({ "content": r.content, "appended": r.appended }),
+                None => Value::Null,
+            },
+            "countCapBreakdown" => mr::count_cap_breakdown(conn, &s("characterId"))
+                .expect("countCapBreakdown")
+                .to_json(),
+            "findDanglingLinks" => {
+                let scope = op.get("characterIds").map(|_| ids("characterIds"));
+                mr::find_dangling_links(conn, scope.as_deref())
+                    .expect("findDanglingLinks")
+                    .to_json()
+            }
+            "findDigestsContainingMembers" => Value::Array(
+                mr::find_digests_containing_members(conn, &ids("characterIds"), &ids("memberIds"))
+                    .expect("findDigestsContainingMembers")
+                    .into_iter()
+                    .map(|d| {
+                        serde_json::json!({
+                            "id": d.id,
+                            "characterId": d.character_id,
+                            "consolidatedFrom": d.consolidated_from,
+                        })
+                    })
+                    .collect(),
+            ),
+            "findIdsSupersededByAny" => Value::Array(
+                mr::find_ids_superseded_by_any(conn, &ids("characterIds"), &ids("digestIds"))
+                    .expect("findIdsSupersededByAny")
+                    .into_iter()
+                    .map(|(id, c)| serde_json::json!({ "id": id, "characterId": c }))
+                    .collect(),
+            ),
+            "findDigestSubjectsByIds" => Value::Array(
+                mr::find_digest_subjects_by_ids(conn, &ids("ids"))
+                    .expect("findDigestSubjectsByIds")
+                    .into_iter()
+                    .map(|d| {
+                        serde_json::json!({
+                            "id": d.id,
+                            "characterId": d.character_id,
+                            "aboutCharacterId": d.about_character_id,
+                        })
+                    })
+                    .collect(),
+            ),
+            "removeConsolidatedMembers" => Value::from(
+                repo.remove_consolidated_members(&s("characterId"), &s("digestId"), &ids("ids"))
+                    .expect("removeConsolidatedMembers"),
+            ),
+            "updateTierBulk" => {
+                let extra = &op["extra"];
+                let tri = |k: &str| match extra.get(k) {
+                    None => None,
+                    Some(Value::Null) => Some(None),
+                    Some(v) => Some(Some(v.as_str().unwrap().to_string())),
+                };
+                Value::from(
+                    repo.update_tier_bulk(
+                        &s("characterId"),
+                        &ids("ids"),
+                        &s("tier"),
+                        quilltap_core::db::memories::TierExtra {
+                            superseded_by_id: tri("supersededById"),
+                            consolidated_at: tri("consolidatedAt"),
+                        },
+                    )
+                    .expect("updateTierBulk"),
+                )
+            }
+            "findRecentByImportanceTier" => {
+                let limits = &op["limits"];
+                let limit = |k: &str, d: i64| limits.get(k).and_then(Value::as_i64).unwrap_or(d);
+                let (high, medium, low) = mr::find_recent_by_importance_tier(
+                    conn,
+                    &s("characterId"),
+                    limit("high", 20),
+                    limit("medium", 10),
+                    limit("low", 5),
+                )
+                .expect("findRecentByImportanceTier");
+                let id_list = |rows: Vec<Value>| -> Vec<Value> {
+                    rows.into_iter().map(|m| m["id"].clone()).collect()
+                };
+                serde_json::json!({ "high": id_list(high), "medium": id_list(medium), "low": id_list(low) })
+            }
+            "bulkDeleteUnsafe" => Value::from(
+                repo.bulk_delete_unsafe(&s("characterId"), &ids("ids"))
+                    .expect("bulkDeleteUnsafe"),
+            ),
+            other => panic!("unknown keystone op: {other}"),
+        }
+    });
+    (returned, lines)
 }

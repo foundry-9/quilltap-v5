@@ -1,7 +1,7 @@
 //! P4.D266 — the `MEMORY_HOUSEKEEPING` job handler (`spine.rs`
 //! `MemoryHousekeepingHandler`, v4 `lib/background-jobs/handlers/
-//! memory-housekeeping.ts` at `01a83539d`) and the F8 `countSource` label per
-//! path (R-C).
+//! memory-housekeeping.ts` at `01a83539d`) and the retire path's line per
+//! path (P4.D288).
 //!
 //! - **The outcome cache now measures `demoted + deleted`** (v4 `d58548051`):
 //!   a demote-only sweep is EFFECTIVE, so the watermark backoff no longer
@@ -11,10 +11,10 @@
 //!   `Completed sweep for character` INFO, the per-character `Sweep failed for
 //!   character` ERROR (the sweep continues), and the closing `Job complete`
 //!   INFO — with their keys in v4's order, and silence legs.
-//! - **The F8 label (R-C):** v4 runs the job in its forked child, whose buffered
-//!   `bulkDelete` returns nothing, so the retention delete's batch lines say
-//!   `countSource: 'resolved-ids'`; the Memories API (`?action=housekeep`) and
-//!   dedup run in v4's parent and say `'repository'`.
+//! - **The retire path (P4.D288, C1-7):** the retention delete and dedup's
+//!   fold both run through `memory_retire` — `Retired memories` with v4's
+//!   reason (the F8 `countSource` label went with v4's
+//!   `deleteMemoriesWithUnlinkBatch`, `af48f6cc2`).
 //!
 //! The batch-delete DEBUG is emitted INSIDE a `Db::write` closure, on the
 //! writer THREAD, which neither of core's thread-scoped capture rigs can see
@@ -326,11 +326,12 @@ async fn a_failed_character_sweep_logs_and_continues() {
     );
 }
 
-/// R-C: the retention delete on the JOB path logs `countSource=resolved-ids`
-/// on the batch line (emitted on the writer thread — this binary's global rig
-/// sees it); the Memories API path logs `countSource=repository`.
+/// P4.D288 (C1-7): the retention delete on BOTH paths runs through the ONE
+/// retire path — `Retired memories` with `reason=retention` (emitted on the
+/// writer thread — this binary's global rig sees it). The F8 `countSource`
+/// label went with v4's `deleteMemoriesWithUnlinkBatch` (`af48f6cc2`).
 #[tokio::test]
-async fn the_job_path_labels_resolved_ids_and_the_api_path_repository() {
+async fn both_retention_paths_retire_through_the_one_path() {
     let _serial = arm().await;
     let (_d, db) = instance();
     let cid = uuid("a4", 1);
@@ -350,15 +351,11 @@ async fn the_job_path_labels_resolved_ids_and_the_api_path_repository() {
         .handle(&db, &job(json!({ "characterId": cid, "reason": "manual" })))
         .await;
     let lines = disarm();
-    let batch = only_line(
-        &lines,
-        "[MemoryGate] deleteMemoriesWithUnlinkBatch complete",
-    );
+    let batch = only_line(&lines, " Retired memories ");
     assert!(
-        batch.contains(" countSource=resolved-ids "),
-        "the job path mirrors v4's child: {batch:?}"
+        batch.contains(" module=memory:retire reason=retention keep=null requested=1 retired=1 "),
+        "the job path retires through the one path: {batch:?}"
     );
-    assert!(!batch.contains("countSource=repository"), "{batch:?}");
 
     // The Memories API path, over a second character planted the same way.
     let _ = &_serial;
@@ -379,7 +376,6 @@ async fn the_job_path_labels_resolved_ids_and_the_api_path_repository() {
         &db,
         &cid2,
         &quilltap_core::services::housekeeping::HousekeepingOptions {
-            count_source: Some(quilltap_core::db::memories::CountSource::Repository),
             ..Default::default()
         },
     )
@@ -387,20 +383,19 @@ async fn the_job_path_labels_resolved_ids_and_the_api_path_repository() {
     .unwrap();
     let lines = disarm();
     assert_eq!(r.deleted, 1);
-    let batch = only_line(
-        &lines,
-        "[MemoryGate] deleteMemoriesWithUnlinkBatch complete",
+    let batch = only_line(&lines, " Retired memories ");
+    assert!(
+        batch.contains(" module=memory:retire reason=retention keep=null requested=1 retired=1 "),
+        "the API path retires through the one path: {batch:?}"
     );
-    assert!(batch.contains(" countSource=repository "), "{batch:?}");
-    assert!(!batch.contains("resolved-ids"), "{batch:?}");
 }
 
-/// R-C + Tier 2 item 17: dedup runs in v4's PARENT, so its batch line says
-/// `countSource=repository`; and the all-characters driver logs v4's two INFO
+/// P4.D288 (C1-7): dedup retires its folded rows through the ONE retire path
+/// (`reason=near-duplicate-fold`); and the all-characters driver logs v4's two INFO
 /// lines (`Starting deduplication for all characters`, `Deduplication
 /// complete`) with v4's keys, plus the per-character `Bulk deleted memories`.
 #[tokio::test]
-async fn dedup_labels_repository_and_logs_its_info_lines() {
+async fn dedup_retires_through_the_one_path_and_logs_its_info_lines() {
     let _serial = arm().await;
     let (_d, db) = instance();
     let created = quilltap_core::api::characters::character_create(
@@ -478,11 +473,13 @@ async fn dedup_labels_repository_and_logs_its_info_lines() {
     .unwrap();
     let lines = disarm();
     assert_eq!(result["totalRemoved"], 1, "{result}");
-    let batch = only_line(
-        &lines,
-        "[MemoryGate] deleteMemoriesWithUnlinkBatch complete",
+    let batch = only_line(&lines, " Retired memories ");
+    assert!(
+        batch.contains(
+            " module=memory:retire reason=near-duplicate-fold keep=null requested=1 retired=1 "
+        ),
+        "dedup retires its folded rows through the one path: {batch:?}"
     );
-    assert!(batch.contains(" countSource=repository "), "{batch:?}");
     let start = only_line(
         &lines,
         "[MemoryDedup] Starting deduplication for all characters",

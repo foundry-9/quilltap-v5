@@ -57,13 +57,13 @@ use crate::db::folders::FoldersRepository;
 use crate::db::groups::GroupsRepository;
 use crate::db::image_profiles::ImageProfilesRepository;
 use crate::db::llm_logs::LLMLogsRepository;
-use crate::db::memories::MemoriesRepository;
 use crate::db::projects::ProjectsRepository;
 use crate::db::prompt_templates::PromptTemplatesRepository;
 use crate::db::roleplay_templates::RoleplayTemplatesRepository;
 use crate::db::runtime::{Db, WriterSet};
 use crate::db::tags::TagsRepository;
 use crate::db::{api_keys, chat_settings, DbError};
+use crate::services::memory_retire::{retire_memories, RetireOptions, RetireReason, RetireReport};
 
 // ── The summary shape (v4 `DeleteSummary`, :191) ─────────────────────────────
 
@@ -291,7 +291,7 @@ pub async fn delete_user_data(
     db: &Db,
     user_id: &str,
     options: DeleteUserDataOptions,
-) -> Result<(), DbError> {
+) -> Result<RetireReport, DbError> {
     let user_id = user_id.to_string();
     db.write(move |ws| delete_user_data_on_writer(ws, &user_id, options))
         .await
@@ -303,7 +303,7 @@ pub fn delete_user_data_on_writer(
     ws: &mut WriterSet,
     user_id: &str,
     options: DeleteUserDataOptions,
-) -> Result<(), DbError> {
+) -> Result<RetireReport, DbError> {
     let keep_archives = options.keep_archives();
     let main = ws.main().connection();
     let mount = ws.mount_index().map(|w| w.connection());
@@ -346,15 +346,24 @@ pub fn delete_user_data_on_writer(
     //    `memories.delete` was the last bypass of the chokepoint on this path;
     //    [`delete_all_routes_memory_deletion_through_the_chokepoint`] pins that
     //    it is not reached from here, the shape of v4's own regression test.
-    {
-        let memories = MemoriesRepository::new(main);
+    //
+    //    P4.D288 (C1-7, §R.10(q)): the ONE retire path (`restore-replace`, v4
+    //    `delete-service.ts:169`). Its report leaves the closure as this fn's
+    //    return value; the after-commit `announce_retirement` (R-AF) at the two
+    //    callers is P4.D293's (§R.10(l)) — the CONSUMER CONTRACT: hand
+    //    `report.announcement` to `memory_retire::announce_retirement` once the
+    //    wipe's write has committed.
+    let retired = {
         let mut memory_ids: Vec<String> = Vec::new();
         for character_id in &characters {
             memory_ids.extend(memory_ids_for_character(main, character_id));
         }
-        memories
-            .delete_many_with_unlink(&memory_ids, crate::db::memories::CountSource::Repository)?;
-    }
+        retire_memories(
+            main,
+            &memory_ids,
+            RetireOptions::new(RetireReason::RestoreReplace),
+        )?
+    };
 
     // 3. The per-row entity deletes, in v4's `Promise.all` order (:126).
     //
@@ -486,7 +495,7 @@ pub fn delete_user_data_on_writer(
     // 5. The format-3 bulk truncate (v4 :164).
     clear_format3_entities(main, mount);
 
-    Ok(())
+    Ok(retired)
 }
 
 // ── The counts (v4 `deleteAllUserData` :221 / `previewDeleteAllUserData` :303) ─

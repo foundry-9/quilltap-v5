@@ -697,17 +697,24 @@ pub fn find_most_important(
     })
 }
 
-/// `findRecentByImportanceTier` — high (`≥0.7`, limit), medium (`≥0.3` then
-/// in-memory `< 0.7` on `reinforcedImportance ?? importance`, take), low
-/// (`<0.3`, limit). Returns `(high, medium, low)`.
+/// v4 `findRecentByImportanceTier(characterId, limits)` (`:485-528`, bug 215
+/// at `c2795733f`): three bands, each ONE predicate on `reinforcedImportance`
+/// — high `>= 0.7`, medium `>= 0.3 AND < 0.7`, low `< 0.3` — so every hot row
+/// falls in exactly one band (a NULL `reinforcedImportance` in none), SQL does
+/// the limit, `createdAt DESC`. Bug 215: the high and low bands used to filter
+/// raw `importance` while the medium ceiling read reinforced importance, so a
+/// 0.65 row reinforced past 0.7 landed in no band at all.
 ///
-/// P4.D265 (v4 `d58548051`): every leg gains `tier: 'hot'` — an EXACT
-/// `tier = 'hot'` through `findByFilter` (NOT [`HOT_TIER_SQL`]), so a NULL-tier
-/// row is EXCLUDED here (measured). Each leg is v4's own 4-argument fallback
-/// around a `findByFilter` (itself a fallback): outside the strict scope a
-/// failed leg logs `Error finding entities by filter` and answers `[]`; inside
-/// it the leg's own `Error finding <high|medium|low>-importance memories
-/// {characterId, limit}` follows and the `Err` propagates (R-I).
+/// Each band is an EXACT `tier = 'hot'` through `findByFilter` (NOT
+/// [`HOT_TIER_SQL`] — a NULL-tier row is excluded, P4.D265 measured) inside
+/// v4's own 4-argument fallback: a `limit <= 0` band answers `[]` with no
+/// query and no line; otherwise DEBUG `Fetched recap importance band
+/// {characterId, band, limit, returned}`. Outside the strict scope a failed
+/// band logs `Error finding entities by filter` and answers `[]`; inside it
+/// the band's own `Error finding <high|medium|low>-importance memories
+/// {characterId, limit}` follows and the `Err` propagates (R-I). v4 runs the
+/// three under `Promise.all`; each settles in band order. Returns `(high,
+/// medium, low)`.
 #[allow(clippy::type_complexity)]
 pub fn find_recent_by_importance_tier(
     conn: &Connection,
@@ -719,57 +726,61 @@ pub fn find_recent_by_importance_tier(
     use super::fallback::{
         find_by_filter_strict_aware, importance_tier_leg_or_empty, ImportanceTierLeg,
     };
-    let thresh_high = 0.7_f64;
-    let thresh_med = 0.3_f64;
-    let high =
-        importance_tier_leg_or_empty(ImportanceTierLeg::High, character_id, high_limit, || {
-            find_by_filter_strict_aware("memories", || {
-                query_memories(
-                    conn,
-                    "WHERE characterId = ?1 AND tier = 'hot' AND importance >= ?2 \
-                 ORDER BY createdAt DESC LIMIT ?3",
-                    &[&character_id, &thresh_high, &high_limit],
-                )
-            })
-        })?;
-    let medium = importance_tier_leg_or_empty(
-        ImportanceTierLeg::Medium,
-        character_id,
-        medium_limit,
-        || {
-            let all_above_low = find_by_filter_strict_aware("memories", || {
-                query_memories(
-                    conn,
-                    "WHERE characterId = ?1 AND tier = 'hot' AND importance >= ?2 \
-                     ORDER BY createdAt DESC",
-                    &[&character_id, &thresh_med],
-                )
-            })?;
-            Ok(all_above_low
-                .into_iter()
-                .filter(|m| {
-                    let eff = m
-                        .get("reinforcedImportance")
-                        .and_then(Value::as_f64)
-                        .or_else(|| m.get("importance").and_then(Value::as_f64))
-                        .unwrap_or(0.0);
-                    eff < 0.7
-                })
-                .take(medium_limit.max(0) as usize)
-                .collect())
-        },
+    const HIGH_FLOOR: f64 = 0.7;
+    const MEDIUM_FLOOR: f64 = 0.3;
+    let band = |leg: ImportanceTierLeg,
+                name: &str,
+                predicate: &str,
+                bounds: &[f64],
+                limit: i64|
+     -> Result<Vec<Value>, DbError> {
+        importance_tier_leg_or_empty(leg, character_id, limit, || {
+            if limit <= 0 {
+                return Ok(Vec::new());
+            }
+            let sql = format!(
+                "WHERE characterId = ? AND tier = 'hot' AND {predicate} \
+                 ORDER BY createdAt DESC LIMIT ?"
+            );
+            let mut params: Vec<&dyn ToSql> = vec![&character_id];
+            for b in bounds {
+                params.push(b);
+            }
+            params.push(&limit);
+            let memories =
+                find_by_filter_strict_aware("memories", || query_memories(conn, &sql, &params))?;
+            tracing::debug!(
+                target: "quilltap::db",
+                characterId = %character_id,
+                band = name,
+                limit = limit,
+                returned = memories.len(),
+                "Fetched recap importance band"
+            );
+            Ok(memories)
+        })
+    };
+    let high = band(
+        ImportanceTierLeg::High,
+        "high",
+        "reinforcedImportance >= ?",
+        &[HIGH_FLOOR],
+        high_limit,
     )?;
-    let low =
-        importance_tier_leg_or_empty(ImportanceTierLeg::Low, character_id, low_limit, || {
-            find_by_filter_strict_aware("memories", || {
-                query_memories(
-                    conn,
-                    "WHERE characterId = ?1 AND tier = 'hot' AND importance < ?2 \
-                 ORDER BY createdAt DESC LIMIT ?3",
-                    &[&character_id, &thresh_med, &low_limit],
-                )
-            })
-        })?;
+    let medium = band(
+        ImportanceTierLeg::Medium,
+        "medium",
+        "reinforcedImportance >= ? AND reinforcedImportance < ?",
+        &[MEDIUM_FLOOR, HIGH_FLOOR],
+        medium_limit,
+    )?;
+    let low = band(
+        ImportanceTierLeg::Low,
+        "low",
+        "reinforcedImportance < ?",
+        &[MEDIUM_FLOOR],
+        low_limit,
+    )?;
     Ok((high, medium, low))
 }
 
@@ -991,6 +1002,7 @@ pub fn count_by_character_id(conn: &Connection, character_id: &str) -> Result<i6
 // fallback value with its ERROR line, strict-aware (R-I).
 // ============================================================================
 
+// LANE-REMOVE(P4.D297): v4 deleted countHotByCharacterId in c2795733f
 /// v4 `countHotByCharacterId` (`:758-771`): `SELECT COUNT(*) AS n FROM
 /// memories WHERE characterId = ? AND` [`HOT_TIER_SQL`] — the number the
 /// housekeeping cap and the consolidation watermark are measured against.
@@ -1015,21 +1027,6 @@ pub fn count_unconsidered_hot(conn: &Connection, character_id: &str) -> Result<i
                 "WHERE characterId = ?1 AND {HOT_TIER_SQL} AND consolidatedAt IS NULL \
                  AND source != 'CONSOLIDATED'"
             ),
-            &[&character_id],
-        )
-    })
-}
-
-/// v4 `findColdIdsByCharacterId` (`:801-814`): `SELECT id FROM memories WHERE
-/// characterId = ? AND tier = 'cold'` — the vector store's tier stamp source.
-pub fn find_cold_ids_by_character_id(
-    conn: &Connection,
-    character_id: &str,
-) -> Result<Vec<String>, DbError> {
-    super::fallback::cold_memory_ids_or_empty(character_id, || {
-        query_ids(
-            conn,
-            "SELECT id FROM memories WHERE characterId = ?1 AND tier = 'cold'",
             &[&character_id],
         )
     })
@@ -1095,6 +1092,7 @@ pub fn find_hot_digests(
     })
 }
 
+// LANE-REMOVE(P4.D297): v4 deleted findExpiredColdIds in 104e986c7
 /// v4 `findExpiredColdIds(characterId, olderThan)` (`:947-965`): superseded,
 /// cold, non-MANUAL rows last touched before `olderThan` (a STRING compare on
 /// `updatedAt`) — the only rows `coldRetentionDays` may delete. CONSOLIDATED
@@ -1428,6 +1426,464 @@ pub fn count_corpus_since(conn: &Connection, since: Option<&str>) -> Result<(i64
         };
         Ok((total, created_since))
     })
+}
+
+// === P4.D288 (C1-7 / L-5): the retire path's reads (`memories.repository.ts`
+// at the `83334b9a5` pin) ===
+
+/// v4 `countCapBreakdown`'s `{ hotTotal, demotable, protected, cold }`
+/// (bug 210, locked decision 3): the cap counts DEMOTABLE rows only — hot AUTO
+/// rows; MANUAL rows and digests are hot but `protected`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CapBreakdown {
+    pub hot_total: i64,
+    pub demotable: i64,
+    pub protected: i64,
+    pub cold: i64,
+}
+
+impl CapBreakdown {
+    /// v4's object, in its key order.
+    pub fn to_json(self) -> Value {
+        serde_json::json!({
+            "hotTotal": self.hot_total,
+            "demotable": self.demotable,
+            "protected": self.protected,
+            "cold": self.cold,
+        })
+    }
+}
+
+/// v4 `countCapBreakdown(characterId)` (`:1005-1029`): one aggregate over
+/// [`HOT_TIER_SQL`] (a NULL tier reads hot); `protected = hotTotal −
+/// demotable`. FALLBACK all-zero with ERROR `Error counting memories against
+/// the housekeeping cap {collection, characterId, error}` (strict-aware).
+pub fn count_cap_breakdown(conn: &Connection, character_id: &str) -> Result<CapBreakdown, DbError> {
+    super::fallback::cap_breakdown_or_zero(character_id, CapBreakdown::default(), || {
+        let sql = format!(
+            "SELECT \
+               SUM(CASE WHEN {HOT_TIER_SQL} THEN 1 ELSE 0 END) AS hot, \
+               SUM(CASE WHEN {HOT_TIER_SQL} AND source = 'AUTO' THEN 1 ELSE 0 END) AS demotable, \
+               SUM(CASE WHEN {HOT_TIER_SQL} THEN 0 ELSE 1 END) AS cold \
+             FROM memories WHERE characterId = ?"
+        );
+        let (hot, demotable, cold): (Option<i64>, Option<i64>, Option<i64>) =
+            conn.query_row(&sql, [character_id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })?;
+        let hot_total = hot.unwrap_or(0);
+        let demotable = demotable.unwrap_or(0);
+        Ok(CapBreakdown {
+            hot_total,
+            demotable,
+            protected: hot_total - demotable,
+            cold: cold.unwrap_or(0),
+        })
+    })
+}
+
+/// v4 `DanglingMemoryLink` — row `id` (held by `character_id`) names
+/// `target`, which no longer exists.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DanglingMemoryLink {
+    pub id: String,
+    pub character_id: String,
+    pub target: String,
+}
+
+/// v4 `DanglingMemoryLinks` — dangling links by column. `consolidated_from`
+/// carries the digest's WHOLE `consolidatedFrom` length (dangling members
+/// included); `superseded_by` the member's own tier.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DanglingMemoryLinks {
+    pub related: Vec<DanglingMemoryLink>,
+    pub consolidated_from: Vec<(DanglingMemoryLink, i64)>,
+    pub superseded_by: Vec<(DanglingMemoryLink, super::vector_store::Tier)>,
+}
+
+impl DanglingMemoryLinks {
+    /// v4's object: `{related: [{id, characterId, target}], consolidatedFrom:
+    /// [{id, characterId, target, memberCount}], supersededBy: [{id,
+    /// characterId, target, tier}]}`.
+    pub fn to_json(&self) -> Value {
+        let link = |l: &DanglingMemoryLink| serde_json::json!({ "id": l.id, "characterId": l.character_id, "target": l.target });
+        serde_json::json!({
+            "related": self.related.iter().map(link).collect::<Vec<_>>(),
+            "consolidatedFrom": self.consolidated_from.iter().map(|(l, n)| {
+                let mut v = link(l);
+                v["memberCount"] = Value::from(*n);
+                v
+            }).collect::<Vec<_>>(),
+            "supersededBy": self.superseded_by.iter().map(|(l, t)| {
+                let mut v = link(l);
+                v["tier"] = Value::from(t.as_str());
+                v
+            }).collect::<Vec<_>>(),
+        })
+    }
+}
+
+/// v4 `findDanglingLinks(characterIds?)` (`:1290-1345`): links that name a row
+/// which no longer exists — the graph repair's scan. Per holder chunk (or once
+/// for the whole table when `character_ids` is `None`): `relatedMemoryIds`
+/// then `consolidatedFrom` through `json_each` + `NOT EXISTS`, then the
+/// `supersededById` pass. An EMPTY scope answers the empty set with no line.
+/// DEBUG `Scanned for dangling memory links {holders, related,
+/// consolidatedFrom, supersededBy}` (`holders` the count, or `all`). **No
+/// fallback** — "a scan that failed must not read as a clean graph": ERROR
+/// `Error scanning for dangling memory links {collection, characters,
+/// error}`, then the `Err`.
+pub fn find_dangling_links(
+    conn: &Connection,
+    character_ids: Option<&[String]>,
+) -> Result<DanglingMemoryLinks, DbError> {
+    let run = || -> Result<DanglingMemoryLinks, DbError> {
+        let scoped: Option<Vec<&String>> = character_ids.map(|ids| {
+            let mut out: Vec<&String> = Vec::new();
+            for id in ids {
+                if !out.contains(&id) {
+                    out.push(id);
+                }
+            }
+            out
+        });
+        let mut out = DanglingMemoryLinks::default();
+        if scoped.as_ref().is_some_and(|s| s.is_empty()) {
+            return Ok(out);
+        }
+        let chunks: Vec<Option<&[&String]>> = match &scoped {
+            Some(s) => s.chunks(SQLITE_VARIABLE_CHUNK_SIZE).map(Some).collect(),
+            None => vec![None],
+        };
+        for chunk in chunks {
+            let holder = chunk.map_or_else(String::new, |c| {
+                format!("AND m.characterId IN ({})", vec!["?"; c.len()].join(","))
+            });
+            let params: Vec<&dyn ToSql> = chunk
+                .map(|c| c.iter().map(|s| *s as &dyn ToSql).collect())
+                .unwrap_or_default();
+            for column in ["relatedMemoryIds", "consolidatedFrom"] {
+                let sql = format!(
+                    "SELECT m.id AS id, m.characterId AS characterId, j.value AS target, \
+                            json_array_length(m.{column}) AS listLength \
+                       FROM memories m, json_each(m.{column}) j \
+                      WHERE m.{column} IS NOT NULL \
+                        AND m.{column} <> '[]' \
+                        AND json_valid(m.{column}) \
+                        {holder} \
+                        AND NOT EXISTS (SELECT 1 FROM memories t WHERE t.id = j.value)"
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let rows = stmt.query_map(params.as_slice(), |r| {
+                    Ok((
+                        DanglingMemoryLink {
+                            id: r.get(0)?,
+                            character_id: r.get(1)?,
+                            target: r.get(2)?,
+                        },
+                        r.get::<_, i64>(3)?,
+                    ))
+                })?;
+                for row in rows {
+                    let (link, list_length) = row?;
+                    if column == "relatedMemoryIds" {
+                        out.related.push(link);
+                    } else {
+                        out.consolidated_from.push((link, list_length));
+                    }
+                }
+            }
+            let sql = format!(
+                "SELECT m.id AS id, m.characterId AS characterId, m.supersededById AS target, m.tier AS tier \
+                   FROM memories m \
+                  WHERE m.supersededById IS NOT NULL \
+                    {holder} \
+                    AND NOT EXISTS (SELECT 1 FROM memories t WHERE t.id = m.supersededById)"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params.as_slice(), |r| {
+                Ok((
+                    DanglingMemoryLink {
+                        id: r.get(0)?,
+                        character_id: r.get(1)?,
+                        target: r.get(2)?,
+                    },
+                    super::vector_store::Tier::of_cell(r.get::<_, Option<String>>(3)?.as_deref()),
+                ))
+            })?;
+            for row in rows {
+                out.superseded_by.push(row?);
+            }
+        }
+        match &scoped {
+            Some(s) => tracing::debug!(
+                target: "quilltap::db",
+                holders = s.len(),
+                related = out.related.len(),
+                consolidatedFrom = out.consolidated_from.len(),
+                supersededBy = out.superseded_by.len(),
+                "Scanned for dangling memory links"
+            ),
+            None => tracing::debug!(
+                target: "quilltap::db",
+                holders = "all",
+                related = out.related.len(),
+                consolidatedFrom = out.consolidated_from.len(),
+                supersededBy = out.superseded_by.len(),
+                "Scanned for dangling memory links"
+            ),
+        }
+        Ok(out)
+    };
+    run().inspect_err(|e| {
+        super::fallback::log_dangling_scan_failure(character_ids.map(<[String]>::len), e);
+    })
+}
+
+/// A digest as the digest lookups return it — v4's `{ id, characterId,
+/// consolidatedFrom }` (the member list parsed leniently).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DigestRef {
+    pub id: String,
+    pub character_id: String,
+    pub consolidated_from: Vec<String>,
+}
+
+/// v4's lenient JSON id-list read (`parseJsonIdList`, `:57-65`): a NULL /
+/// empty cell, a non-array or unparseable text → `[]`; non-string elements
+/// dropped.
+pub fn parse_json_id_list(raw: Option<&str>) -> Vec<String> {
+    match raw.filter(|s| !s.is_empty()) {
+        Some(s) => match serde_json::from_str::<Value>(s) {
+            Ok(Value::Array(items)) => items
+                .into_iter()
+                .filter_map(|x| match x {
+                    Value::String(s) => Some(s),
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        },
+        None => Vec::new(),
+    }
+}
+
+/// v4 `findDigestsContainingMembers(characterIds, memberIds)` (`:1234-1285`):
+/// the given holders' rows whose `consolidatedFrom` names any member,
+/// pre-filtered with a quoted-id `LIKE` per member (members chunked by 50,
+/// holders by `SQLITE_VARIABLE_CHUNK_SIZE − 50`), first-found order, each id
+/// once. Either list empty (after dedupe) → `[]` with no line. DEBUG `Found
+/// digests naming doomed members {holders, members, digests}`. FALLBACK `[]`
+/// with ERROR `Error finding digests containing members {collection,
+/// characters, members, error}` (strict-aware; the counts as passed).
+pub fn find_digests_containing_members(
+    conn: &Connection,
+    character_ids: &[String],
+    member_ids: &[String],
+) -> Result<Vec<DigestRef>, DbError> {
+    super::fallback::digests_containing_members_or_empty(
+        character_ids.len(),
+        member_ids.len(),
+        || {
+            let holders = dedupe(character_ids);
+            let members = dedupe(member_ids);
+            if holders.is_empty() || members.is_empty() {
+                return Ok(Vec::new());
+            }
+            const MEMBER_CHUNK: usize = 50;
+            let mut found: Vec<DigestRef> = Vec::new();
+            for holder_chunk in holders.chunks(SQLITE_VARIABLE_CHUNK_SIZE - MEMBER_CHUNK) {
+                for member_chunk in members.chunks(MEMBER_CHUNK) {
+                    let sql = format!(
+                        "SELECT id, characterId, consolidatedFrom FROM memories \
+                          WHERE characterId IN ({}) \
+                            AND ({})",
+                        vec!["?"; holder_chunk.len()].join(","),
+                        vec!["consolidatedFrom LIKE ?"; member_chunk.len()].join(" OR ")
+                    );
+                    let likes: Vec<String> = member_chunk
+                        .iter()
+                        .map(|id| format!("%\"{id}\"%"))
+                        .collect();
+                    let mut p: Vec<&dyn ToSql> = Vec::new();
+                    for h in holder_chunk {
+                        p.push(*h);
+                    }
+                    for l in &likes {
+                        p.push(l);
+                    }
+                    let mut stmt = conn.prepare(&sql)?;
+                    let rows = stmt.query_map(p.as_slice(), |r| {
+                        Ok((
+                            r.get::<_, String>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, Option<String>>(2)?,
+                        ))
+                    })?;
+                    for row in rows {
+                        let (id, character_id, raw) = row?;
+                        if found.iter().any(|d| d.id == id) {
+                            continue;
+                        }
+                        found.push(DigestRef {
+                            id,
+                            character_id,
+                            consolidated_from: parse_json_id_list(raw.as_deref()),
+                        });
+                    }
+                }
+            }
+            tracing::debug!(
+                target: "quilltap::db",
+                holders = holders.len(),
+                members = members.len(),
+                digests = found.len(),
+                "Found digests naming doomed members"
+            );
+            Ok(found)
+        },
+    )
+}
+
+/// v4 `findIdsSupersededByAny(characterIds, digestIds)` (`:1349-1379`): the
+/// given holders' rows whose `supersededById` names one of `digest_ids`, as
+/// `(id, characterId)` — both lists chunked by half the variable budget,
+/// holders outer. Empty holders (after dedupe) or digests → `[]`. No DEBUG.
+/// FALLBACK `[]` with ERROR `Error finding members superseded by digests
+/// {collection, characters, digests, error}` (strict-aware).
+pub fn find_ids_superseded_by_any(
+    conn: &Connection,
+    character_ids: &[String],
+    digest_ids: &[String],
+) -> Result<Vec<(String, String)>, DbError> {
+    super::fallback::superseded_by_any_or_empty(character_ids.len(), digest_ids.len(), || {
+        let holders = dedupe(character_ids);
+        if holders.is_empty() || digest_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let half = SQLITE_VARIABLE_CHUNK_SIZE / 2;
+        let mut out = Vec::new();
+        for holder_chunk in holders.chunks(half) {
+            for digest_chunk in digest_ids.chunks(half) {
+                let sql = format!(
+                    "SELECT id, characterId FROM memories \
+                      WHERE supersededById IN ({}) \
+                        AND characterId IN ({})",
+                    vec!["?"; digest_chunk.len()].join(","),
+                    vec!["?"; holder_chunk.len()].join(",")
+                );
+                let mut p: Vec<&dyn ToSql> = Vec::new();
+                for d in digest_chunk {
+                    p.push(d);
+                }
+                for h in holder_chunk {
+                    p.push(*h);
+                }
+                let mut stmt = conn.prepare(&sql)?;
+                let rows = stmt.query_map(p.as_slice(), |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                })?;
+                for row in rows {
+                    out.push(row?);
+                }
+            }
+        }
+        Ok(out)
+    })
+}
+
+/// v4 `findDigestSubjectsByIds`' row — `{ id, characterId, aboutCharacterId }`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DigestSubjectRow {
+    pub id: String,
+    pub character_id: String,
+    pub about_character_id: Option<String>,
+}
+
+/// v4 `findDigestSubjectsByIds(ids)` (`:1432-1456`): holder and subject of
+/// every digest (`source = 'CONSOLIDATED'`) among `ids` (deduped, chunked) —
+/// read before such rows are deleted, so the Commonplace mirror of their
+/// buckets can be refreshed after the commit. No DEBUG. FALLBACK `[]` with
+/// ERROR `Error finding digest subjects {collection, count, error}`
+/// (strict-aware; `count` the ids as passed).
+pub fn find_digest_subjects_by_ids(
+    conn: &Connection,
+    ids: &[String],
+) -> Result<Vec<DigestSubjectRow>, DbError> {
+    super::fallback::digest_subjects_or_empty(ids.len(), || {
+        let mut out = Vec::new();
+        for chunk in dedupe(ids).chunks(SQLITE_VARIABLE_CHUNK_SIZE) {
+            let sql = format!(
+                "SELECT id, characterId, aboutCharacterId FROM memories \
+                  WHERE source = 'CONSOLIDATED' AND id IN ({})",
+                vec!["?"; chunk.len()].join(",")
+            );
+            let p: Vec<&dyn ToSql> = chunk.iter().map(|s| *s as &dyn ToSql).collect();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(p.as_slice(), |r| {
+                Ok(DigestSubjectRow {
+                    id: r.get(0)?,
+                    character_id: r.get(1)?,
+                    about_character_id: r.get(2)?,
+                })
+            })?;
+            for row in rows {
+                out.push(row?);
+            }
+        }
+        Ok(out)
+    })
+}
+
+/// The retire path's raw row — v4 `retire.ts`'s `RetireRow` (`SELECT id,
+/// characterId, source, tier, aboutCharacterId, consolidatedFrom,
+/// supersededById`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetireRow {
+    pub id: String,
+    pub character_id: String,
+    pub source: Option<String>,
+    pub tier: Option<String>,
+    pub about_character_id: Option<String>,
+    pub consolidated_from: Option<String>,
+    pub superseded_by_id: Option<String>,
+}
+
+/// v4 `retire.ts`'s `resolveRows(ids)` (`:136-149`): a bare `rawQuery` per
+/// `SQLITE_VARIABLE_CHUNK_SIZE` chunk — no `safeQuery`, so a failure
+/// propagates with v4's backend lines only. Row order is the database's.
+pub fn find_retire_rows(conn: &Connection, ids: &[String]) -> Result<Vec<RetireRow>, DbError> {
+    let mut out = Vec::new();
+    for chunk in ids.chunks(SQLITE_VARIABLE_CHUNK_SIZE) {
+        let sql = format!(
+            "SELECT id, characterId, source, tier, aboutCharacterId, consolidatedFrom, supersededById \
+               FROM memories WHERE id IN ({})",
+            vec!["?"; chunk.len()].join(",")
+        );
+        let p: Vec<&dyn ToSql> = chunk.iter().map(|s| s as &dyn ToSql).collect();
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(p.as_slice(), |r| {
+            Ok(RetireRow {
+                id: r.get(0)?,
+                character_id: r.get(1)?,
+                source: r.get(2)?,
+                tier: r.get(3)?,
+                about_character_id: r.get(4)?,
+                consolidated_from: r.get(5)?,
+                superseded_by_id: r.get(6)?,
+            })
+        })?;
+        for row in rows {
+            out.push(row?);
+        }
+    }
+    Ok(out)
+}
+
+/// v4's `Array.from(new Set(xs))` — first-seen order.
+fn dedupe(xs: &[String]) -> Vec<&String> {
+    let mut seen = std::collections::HashSet::new();
+    xs.iter().filter(|x| seen.insert(x.as_str())).collect()
 }
 
 // === end P4.D288 ===

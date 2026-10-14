@@ -39,7 +39,8 @@ use crate::commonplace_file::{
     CommonplaceSubject, COMMONPLACE_FOLDER,
 };
 use crate::db::database_store::{
-    read_database_document, write_database_document, DbStoreErrorCode, StoreError,
+    delete_database_document, read_database_document, write_database_document, DbStoreErrorCode,
+    StoreError,
 };
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
@@ -75,19 +76,27 @@ pub struct WriteCommonplaceDigestsResult {
     pub written: usize,
     pub unchanged: usize,
     pub skipped: usize,
+    /// P4.D288 (v4 bug 208): files removed because their bucket no longer
+    /// holds a hot digest — `None` until the first removal (v4's optional
+    /// `removed`, added to the result object only then).
+    pub removed: Option<usize>,
     /// Why the whole mirror was skipped, when it was: `archived` |
     /// `missing-character` | `no-vault`.
     pub skipped_reason: Option<&'static str>,
 }
 
 impl WriteCommonplaceDigestsResult {
-    /// v4's object (`skippedReason` omitted when absent).
+    /// v4's object (`removed` / `skippedReason` omitted when absent; `removed`
+    /// lands after `skipped`, where v4's first increment inserts the key).
     pub fn to_json(&self) -> Value {
         let mut v = json!({
             "written": self.written,
             "unchanged": self.unchanged,
             "skipped": self.skipped,
         });
+        if let Some(n) = self.removed {
+            v["removed"] = json!(n);
+        }
         if let Some(r) = self.skipped_reason {
             v["skippedReason"] = json!(r);
         }
@@ -149,6 +158,33 @@ pub(crate) fn read_database_document_if_exists(
         }
         Err(e) => Err(e.to_string()),
     }
+}
+
+/// P4.D288 (C1-7) — v4 `deleteDatabaseDocumentIfExists`
+/// (`mount-index/database-store.ts:200-213`): `true` when a document was
+/// removed, `false` when nothing was at the path. v4's NOT_FOUND catch (and
+/// its `Document already absent on delete` DEBUG) is unreachable here: v5's
+/// [`delete_database_document`] answers `false` for an absent link and never
+/// raises NOT_FOUND. Every other failure propagates as its text.
+async fn delete_database_document_if_exists(
+    db: &Db,
+    mount_point_id: &str,
+    relative_path: &str,
+) -> Result<bool, String> {
+    let (mp, rel) = (mount_point_id.to_string(), relative_path.to_string());
+    db.write(move |writers| {
+        let Some(mi) = writers.mount_index() else {
+            return Err(DbError::PartitionUnavailable(
+                crate::write_partition::WriteDbTarget::MountIndex,
+            ));
+        };
+        delete_database_document(mi.connection(), &mp, &rel)
+    })
+    .await
+    .map_err(|e| match &e {
+        DbError::Internal(m) => m.clone(),
+        other => crate::db::fallback::error_text(other),
+    })
 }
 
 fn store_to_db_error(e: StoreError) -> DbError {
@@ -288,7 +324,44 @@ async fn mirror(
         .await
         .map_err(|e| crate::db::fallback::error_text(&e))?;
     }
-    result.skipped += input.files.len() - to_write.len();
+    // === P4.D288 (C1-7, v4 bug 208 at `83334b9a5`) ===
+    // A bucket with no hot digest left (its last one was deleted) has no
+    // canon to state: remove its file rather than leave it presenting the
+    // deleted digests as established fact.
+    for file in input.files.iter().filter(|f| f.digests.is_empty()) {
+        let subject = if file.is_self {
+            CommonplaceSubject::SelfFile
+        } else {
+            CommonplaceSubject::Other {
+                id: file.subject_character_id.clone(),
+                name: file.subject_name.clone(),
+            }
+        };
+        let path = commonplace_path_for(&subject);
+        match delete_database_document_if_exists(db, &mount_point_id, &path).await {
+            Ok(true) => {
+                result.removed = Some(result.removed.unwrap_or(0) + 1);
+                tracing::debug!(
+                    context = CONTEXT,
+                    characterId = %input.holder_character_id,
+                    path = %path,
+                    "Removed Commonplace mirror for an emptied bucket"
+                );
+            }
+            Ok(false) => result.skipped += 1,
+            Err(error) => {
+                result.skipped += 1;
+                tracing::warn!(
+                    context = CONTEXT,
+                    characterId = %input.holder_character_id,
+                    path = %path,
+                    error = %error,
+                    "Failed to remove an emptied Commonplace mirror"
+                );
+            }
+        }
+    }
+    // === end P4.D288 ===
 
     for file in to_write {
         let subject = if file.is_self {
@@ -385,14 +458,26 @@ pub async fn write_commonplace_digests_to_vault(
             );
         }
     }
-    tracing::debug!(
-        context = CONTEXT,
-        characterId = %input.holder_character_id,
-        written = result.written,
-        unchanged = result.unchanged,
-        skipped = result.skipped,
-        "Commonplace mirror complete"
-    );
+    // v4 spreads `...result`: `removed` rides after `skipped` once set.
+    match result.removed {
+        Some(removed) => tracing::debug!(
+            context = CONTEXT,
+            characterId = %input.holder_character_id,
+            written = result.written,
+            unchanged = result.unchanged,
+            skipped = result.skipped,
+            removed = removed,
+            "Commonplace mirror complete"
+        ),
+        None => tracing::debug!(
+            context = CONTEXT,
+            characterId = %input.holder_character_id,
+            written = result.written,
+            unchanged = result.unchanged,
+            skipped = result.skipped,
+            "Commonplace mirror complete"
+        ),
+    }
     result
 }
 

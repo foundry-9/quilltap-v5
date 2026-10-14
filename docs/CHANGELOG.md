@@ -24,6 +24,47 @@ _Docs-only change._
 
 `/carryout` rule 2 now has the lane check where the session started against the base its order's Preamble names (`main` at the orders' commit, or the parent order's recorded `SCORING` / `KEYSTONE` / `ADMISSION` sha) and move to a correctly based branch or worktree before working; an unrecorded stacking sha is a STOP, never a guess. The app can no longer be told which branch to open a session on.
 
+#### 2026-10-14 — feat(core,host,web): P4.D288 unit 9 — the memory verbs, policy protection, the one retire path, the Commonplace mirror (C1-7)
+
+_Versions: core 0.0.1295, host 0.0.203, web 0.0.240._
+
+Ports v4's one deletion path for memory rows (`retireMemories`, memory refactor Phase B with bugs 200 / 201 / 225 / 234). `services::memory_retire::retire_memories` runs on the writer's connection. In order, it:
+- spares MANUAL rows, cold rows and digests with a living member when `keep_manual` is set;
+- retires a digest together with its last member, up to three cascade passes (except under `retention`);
+- scrubs the doomed ids from every row's `relatedMemoryIds` and from surviving digests' `consolidatedFrom`, as SQL deltas;
+- cuts orphaned members loose (cold, `supersededById` cleared);
+- deletes the rows and counts the loaded index's vectors.
+
+The archive invalidation, the `memories` publish and the Commonplace refresh now run after the commit through `announce_retirement`. Also added: `retire_chat_memories` (bug 201's INFO), `preview_chat_wipe`, `scrub_dangling_memory_links`, and a `retire_and_announce` helper.
+
+Every deletion caller moves onto the retire path with v4's reason:
+- the item and chat-wipe routes;
+- message cascades and both re-attributions;
+- swipe regenerate;
+- character delete (v4's catch ported; the half-completed delete retired);
+- character archive (its vector-store step dropped);
+- the `replace` wipe (the report now leaves the closure);
+- housekeeping retention and the dedup fold.
+
+The four `*_with_vectors` deleters, the gate's two `…WithUnlink` chokepoints, `delete`, `delete_for_character`, `bulk_delete`, `delete_by_chat_id`, `delete_by_source_message_id` and `CountSource` are removed. So are `find_cold_ids_by_character_id` and the housekeeping options' `count_source`.
+
+New repository verbs:
+- `increment_reinforcement` takes `by` (refused below 1), moves `lastReinforcedAt` forward only, and returns it;
+- the link deltas `add_related_memory_ids` / `remove_related_memory_ids` (unchanged lists are not written);
+- `remove_related_memory_ids_everywhere`, `append_reinforcement_footnotes` (capped), `bulk_delete_unsafe` (with v4's base `deleteMany` lines) and `remove_consolidated_members`;
+- the reads `count_cap_breakdown`, `find_dangling_links` (no fallback), `find_digests_containing_members`, `find_ids_superseded_by_any` and `find_digest_subjects_by_ids`;
+- `find_recent_by_importance_tier` now bands on `reinforcedImportance` alone, with a band DEBUG (bug 215).
+
+Each verb's fallback or rethrow line has its home in `db::fallback`. The retired `Error deleting memory` and `Error deleting memory for character` lines leave the census. A new pure `policy_protection` module and a new `services::commonplace_mirror::mirror_commonplace_for_subjects` arrive (200 digests per bucket). The Commonplace bridge now removes an emptied bucket's file (bug 208), and its result and completion line gain `removed`.
+
+Families:
+- new: `memory_retire_tier2` (13 ops, the end state, both ways), `policy_protection_equivalence` (tier-1), `commonplace_mirror_equivalence` (13 calls, 3 projections), and `memory_retire_sole_deleter_guard`;
+- `memories_tier2` re-aimed and grown with a 51-op keystone phase;
+- `memory_delete_tier2` and `memory_cascade_tier2` re-pointed onto the retire path;
+- `memories_read` drops the three retired readers and captures the recap-band line;
+- the bridge family regenerated with bug 208's lines;
+- the realtime publish-site census re-homed (`memories` publishes from `memory_retire.rs`; `queue_service.rs` counts 7).
+
 #### 2026-10-14 — feat(core,host): P4.D288 unit 8 — the memory index over rows; the vector mirror retired (C1-3)
 
 _Versions: core 0.0.1294, host 0.0.202, web 0.0.239._

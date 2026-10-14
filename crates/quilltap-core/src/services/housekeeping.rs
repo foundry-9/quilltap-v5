@@ -21,9 +21,9 @@
 //!
 //! The only deletion is the opt-in **retention sweep**
 //! (`memoryConsolidation.coldRetentionDays`): superseded cold non-MANUAL rows
-//! older than the window go through the chokepoint
-//! (`delete_many_with_unlink`), then out of the vector store (non-fatal, v4's
-//! WARN). A sweep that changed anything invalidates the character's frozen
+//! older than the window go through the ONE retire path (P4.D288 —
+//! `memory_retire`, reason `retention`: links, digests and vectors with the
+//! rows). A sweep that changed anything invalidates the character's frozen
 //! archive. Reasons are formatted with the ported JS `toFixed`
 //! ([`crate::jsnum::to_fixed`]) so the detail strings match v4 byte-for-byte at
 //! equal wall-clock.
@@ -37,7 +37,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
 
-use crate::db::memories::{CountSource, TierExtra};
+use crate::db::memories::TierExtra;
 use crate::db::runtime::Db;
 use crate::db::{memories_read, DbError};
 use crate::jsnum::to_fixed;
@@ -74,11 +74,6 @@ pub struct HousekeepingOptions {
     pub merge_threshold: Option<f64>,
     /// Preview without applying (default false).
     pub dry_run: Option<bool>,
-    /// The F8 `countSource` label on the retention delete's batch lines (R-C):
-    /// `None` → [`CountSource::Repository`] (v4's parent — the Memories API);
-    /// the `MEMORY_HOUSEKEEPING` job passes [`CountSource::ResolvedIds`] (v4's
-    /// child).
-    pub count_source: Option<CountSource>,
 }
 
 /// The resolved defaults (v4 `DEFAULT_OPTIONS`).
@@ -89,7 +84,6 @@ struct ResolvedOptions {
     min_importance: f64,
     merge_similar: bool,
     dry_run: bool,
-    count_source: CountSource,
 }
 
 impl HousekeepingOptions {
@@ -101,7 +95,6 @@ impl HousekeepingOptions {
             min_importance: self.min_importance.unwrap_or(0.3),
             merge_similar: self.merge_similar.unwrap_or(false),
             dry_run: self.dry_run.unwrap_or(false),
-            count_source: self.count_source.unwrap_or(CountSource::Repository),
         }
     }
 }
@@ -523,24 +516,20 @@ pub async fn run_housekeeping(
     }
 
     if !opts.dry_run && !expired_ids.is_empty() {
-        // Delete through the chokepoint so neighbours' relatedMemoryIds are
-        // scrubbed before the rows go away. R-C: the label is the PATH's — the
-        // MEMORY_HOUSEKEEPING job mirrors v4's child (`resolved-ids`), the
-        // Memories API v4's parent (`repository`).
-        let ids = expired_ids.clone();
-        let count_source = opts.count_source;
-        let deleted_count = db
-            .write(move |writers| {
-                writers
-                    .main()
-                    .memories()
-                    .delete_many_with_unlink(&ids, count_source)
-            })
-            .await?;
-
-        // P4.D288 (C1-3, mechanical): the vector-mirror cleanup is gone with the
-        // mirror — the rows deleted above were the only copy of their vectors
-        // (the retire path replaces this delete in unit 9).
+        // P4.D288 (C1-7): the ONE retire path (`retention`, v4
+        // `maintenance/run.ts:348`) — the neighbour scrub, the digest
+        // bookkeeping and the vectors with the rows; retention never takes a
+        // digest with its last member. (The F8 `countSource` label went with
+        // v4's `deleteMemoriesWithUnlinkBatch`, `af48f6cc2`.)
+        let report = crate::services::memory_retire::retire_and_announce(
+            db,
+            expired_ids.clone(),
+            crate::services::memory_retire::RetireOptions::new(
+                crate::services::memory_retire::RetireReason::Retention,
+            ),
+        )
+        .await?;
+        let deleted_count = report.retired;
         result.deleted = deleted_count;
         result.deleted_ids = expired_ids.clone();
         vector_store_dirty = true;

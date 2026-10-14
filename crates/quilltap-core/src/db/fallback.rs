@@ -1303,18 +1303,6 @@ pub fn log_memory_update_failure(memory_id: &str, error: &DbError) {
     );
 }
 
-/// `memories.delete`'s wrap: `Error deleting memory {collection, memoryId}`.
-pub fn log_memory_delete_failure(memory_id: &str, error: &DbError) {
-    tracing::error!(
-        target: "quilltap::db",
-        collection = "memories",
-        memoryId = %memory_id,
-        error = %error_text(error),
-        strictFailures = strict_repository_failures_active().then_some(true),
-        "Error deleting memory"
-    );
-}
-
 /// `memories.updateForCharacter`'s outer wrap: `Error updating memory for
 /// character {collection, characterId, memoryId}` (beneath the two update lines).
 pub fn log_memory_update_for_character_failure(
@@ -1333,23 +1321,6 @@ pub fn log_memory_update_for_character_failure(
     );
 }
 
-/// `memories.deleteForCharacter`'s outer wrap: `Error deleting memory for
-/// character {collection, characterId, memoryId}`.
-pub fn log_memory_delete_for_character_failure(
-    character_id: &str,
-    memory_id: &str,
-    error: &DbError,
-) {
-    tracing::error!(
-        target: "quilltap::db",
-        collection = "memories",
-        characterId = %character_id,
-        memoryId = %memory_id,
-        error = %error_text(error),
-        strictFailures = strict_repository_failures_active().then_some(true),
-        "Error deleting memory for character"
-    );
-}
 // === end P4.156 (R-G) ===
 
 // === P4.156 — the chat-informs repository's remaining 4-argument FALLBACK
@@ -1724,23 +1695,8 @@ pub fn unconsidered_hot_count_or_zero(
     })
 }
 
-/// v4 `findColdIdsByCharacterId` (`:801-814`): ERROR `Error finding cold
-/// memory ids {collection, characterId, error}`, fallback `[]`.
-pub fn cold_memory_ids_or_empty(
-    character_id: &str,
-    read: impl FnOnce() -> Result<Vec<String>, DbError>,
-) -> Result<Vec<String>, DbError> {
-    memories_fallback(Vec::new(), read, |error, strict| {
-        tracing::error!(
-            target: "quilltap::db",
-            collection = "memories",
-            characterId = %character_id,
-            error = %error_text(error),
-            strictFailures = strict,
-            "Error finding cold memory ids"
-        );
-    })
-}
+// (P4.D288: `findColdIdsByCharacterId`'s home RETIRED with v4's reader,
+// `af48f6cc2` — the store loads tiers from rows now.)
 
 /// v4 `findHotDigests` (`:824-860`): ERROR `Error finding hot digests
 /// {collection, characterId, subject, limit, error}` (`subject` renders `self`
@@ -2523,18 +2479,18 @@ mod tests {
         );
     }
 
-    /// P4.156 (R-G) — the five memories wraps: v4's bytes (`collection`
-    /// first, the context in v4's order, the bare `error`), `strictFailures`
-    /// LAST inside the scope only.
+    /// P4.156 (R-G) — the memories wraps: v4's bytes (`collection` first,
+    /// the context in v4's order, the bare `error`), `strictFailures` LAST
+    /// inside the scope only. P4.D288: `Error deleting memory` and `Error
+    /// deleting memory for character` RETIRED with v4's `delete` /
+    /// `deleteForCharacter` (`af48f6cc2`, R-F).
     #[test]
-    fn the_five_memory_wraps_log_v4s_lines() {
+    fn the_memory_wraps_log_v4s_lines() {
         let ((), lines) = crate::test_support::captured_with(|| {
             log_memory_create_failure("ch-1", &posed());
             log_memory_update_failure("m-1", &posed());
-            log_memory_delete_failure("m-1", &posed());
-            log_memory_update_for_character_failure("ch-1", "m-1", &posed());
             with_strict_repository_failures(|| {
-                log_memory_delete_for_character_failure("ch-1", "m-1", &posed());
+                log_memory_update_for_character_failure("ch-1", "m-1", &posed());
             });
         });
         assert_eq!(
@@ -2542,9 +2498,48 @@ mod tests {
             vec![
                 "ERROR quilltap::db Error creating memory collection=memories characterId=ch-1 error=posed".to_string(),
                 "ERROR quilltap::db Error updating memory collection=memories memoryId=m-1 error=posed".to_string(),
-                "ERROR quilltap::db Error deleting memory collection=memories memoryId=m-1 error=posed".to_string(),
-                "ERROR quilltap::db Error updating memory for character collection=memories characterId=ch-1 memoryId=m-1 error=posed".to_string(),
-                "ERROR quilltap::db Error deleting memory for character collection=memories characterId=ch-1 memoryId=m-1 error=posed strictFailures=true".to_string(),
+                "ERROR quilltap::db Error updating memory for character collection=memories characterId=ch-1 memoryId=m-1 error=posed strictFailures=true".to_string(),
+            ]
+        );
+    }
+
+    /// P4.D288 (C1-7) — the retire path's repository homes: the four
+    /// RETHROW lines, then each FALLBACK home answering its fallback outside
+    /// the scope and the `Err` inside it.
+    #[test]
+    fn the_retire_path_homes_log_v4s_lines() {
+        let (got, lines) = crate::test_support::captured_with(|| {
+            log_memory_link_update_failure("ch-1", "m-1", "add", &posed());
+            log_memory_footnotes_failure("ch-1", "m-1", &posed());
+            log_memory_bulk_delete_failure("ch-1", 3, &posed());
+            log_dangling_scan_failure(None, &posed());
+            log_dangling_scan_failure(Some(2), &posed());
+            (
+                related_scrub_or_zero(4, || Err(posed())).unwrap(),
+                digest_members_removed_or_zero("ch-1", "d-1", 2, || Err(posed())).unwrap(),
+                cap_breakdown_or_zero("ch-1", (0, 0), || Err(posed())).unwrap(),
+                digests_containing_members_or_empty::<i32>(1, 2, || Err(posed())).unwrap(),
+                superseded_by_any_or_empty::<i32>(1, 2, || Err(posed())).unwrap(),
+                with_strict_repository_failures(|| {
+                    digest_subjects_or_empty::<i32>(5, || Err(posed())).is_err()
+                }),
+            )
+        });
+        assert_eq!(got, (0, 0, (0, 0), vec![], vec![], true));
+        assert_eq!(
+            lines,
+            vec![
+                "ERROR quilltap::db Error updating memory links collection=memories characterId=ch-1 memoryId=m-1 op=add error=posed".to_string(),
+                "ERROR quilltap::db Error appending reinforcement footnotes collection=memories characterId=ch-1 memoryId=m-1 error=posed".to_string(),
+                "ERROR quilltap::db Error bulk deleting memories for character collection=memories characterId=ch-1 count=3 error=posed".to_string(),
+                "ERROR quilltap::db Error scanning for dangling memory links collection=memories characters=all error=posed".to_string(),
+                "ERROR quilltap::db Error scanning for dangling memory links collection=memories characters=2 error=posed".to_string(),
+                "ERROR quilltap::db Error scrubbing related memory links collection=memories count=4 error=posed".to_string(),
+                "ERROR quilltap::db Error removing members from digest collection=memories characterId=ch-1 digestId=d-1 count=2 error=posed".to_string(),
+                "ERROR quilltap::db Error counting memories against the housekeeping cap collection=memories characterId=ch-1 error=posed".to_string(),
+                "ERROR quilltap::db Error finding digests containing members collection=memories characters=1 members=2 error=posed".to_string(),
+                "ERROR quilltap::db Error finding members superseded by digests collection=memories characters=1 digests=2 error=posed".to_string(),
+                "ERROR quilltap::db Error finding digest subjects collection=memories count=5 error=posed strictFailures=true".to_string(),
             ]
         );
     }
@@ -3133,6 +3128,200 @@ pub fn instance_default_profile_or_none<T>(
         } else {
             Ok(None)
         }
+    })
+}
+
+// --- C1-7: the retire path's repository verbs (`memories.repository.ts` at
+// the pin). RETHROW homes log and hand the error back; FALLBACK homes answer
+// their fallback outside the strict scope.
+
+/// v4 `updateRelatedMemoryIdsAtomically`'s RETHROW (`:756-759`): ERROR `Error
+/// updating memory links {collection, characterId, memoryId, op, error,
+/// strictFailures?}`. Logs only.
+pub fn log_memory_link_update_failure(
+    character_id: &str,
+    memory_id: &str,
+    op: &str,
+    error: &DbError,
+) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "memories",
+        characterId = %character_id,
+        memoryId = %memory_id,
+        op = %op,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error updating memory links"
+    );
+}
+
+/// v4 `appendReinforcementFootnotes`' RETHROW (`:858-860`): ERROR `Error
+/// appending reinforcement footnotes {collection, characterId, memoryId,
+/// error, strictFailures?}`. Logs only.
+pub fn log_memory_footnotes_failure(character_id: &str, memory_id: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "memories",
+        characterId = %character_id,
+        memoryId = %memory_id,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error appending reinforcement footnotes"
+    );
+}
+
+/// v4 `bulkDeleteUnsafe`'s RETHROW (`:902-904`): ERROR `Error bulk deleting
+/// memories for character {collection, characterId, count, error,
+/// strictFailures?}`. Logs only.
+pub fn log_memory_bulk_delete_failure(character_id: &str, count: usize, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "memories",
+        characterId = %character_id,
+        count = count,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error bulk deleting memories for character"
+    );
+}
+
+/// v4 `removeRelatedMemoryIdsEverywhere`'s `safeQuery` (`:809-812`): ERROR
+/// `Error scrubbing related memory links {collection, count, error}`, FALLBACK
+/// `0` (strict-aware).
+pub fn related_scrub_or_zero(
+    count: usize,
+    run: impl FnOnce() -> Result<i64, DbError>,
+) -> Result<i64, DbError> {
+    memories_fallback(0, run, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            count = count,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error scrubbing related memory links"
+        );
+    })
+}
+
+/// v4 `removeConsolidatedMembers`' `safeQuery` (`:1421-1424`): ERROR `Error
+/// removing members from digest {collection, characterId, digestId, count,
+/// error}`, FALLBACK `0` (strict-aware).
+pub fn digest_members_removed_or_zero(
+    character_id: &str,
+    digest_id: &str,
+    count: usize,
+    run: impl FnOnce() -> Result<i64, DbError>,
+) -> Result<i64, DbError> {
+    memories_fallback(0, run, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            digestId = %digest_id,
+            count = count,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error removing members from digest"
+        );
+    })
+}
+
+/// v4 `countCapBreakdown`'s `safeQuery` (`:1024-1028`): ERROR `Error counting
+/// memories against the housekeeping cap {collection, characterId, error}`,
+/// FALLBACK all-zero (strict-aware).
+pub fn cap_breakdown_or_zero<T>(
+    character_id: &str,
+    zero: T,
+    read: impl FnOnce() -> Result<T, DbError>,
+) -> Result<T, DbError> {
+    memories_fallback(zero, read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error counting memories against the housekeeping cap"
+        );
+    })
+}
+
+/// v4 `findDanglingLinks`' RETHROW (`:1340-1344`, "No fallback: a scan that
+/// failed must not read as a clean graph"): ERROR `Error scanning for dangling
+/// memory links {collection, characters, error, strictFailures?}` —
+/// `characters` the scoped holder count, or `all`. Logs only.
+pub fn log_dangling_scan_failure(characters: Option<usize>, error: &DbError) {
+    let characters = characters.map_or_else(|| "all".to_string(), |n| n.to_string());
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "memories",
+        characters = %characters,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error scanning for dangling memory links"
+    );
+}
+
+/// v4 `findDigestsContainingMembers`' `safeQuery` (`:1281-1284`): ERROR
+/// `Error finding digests containing members {collection, characters, members,
+/// error}`, FALLBACK `[]` (strict-aware).
+pub fn digests_containing_members_or_empty<T>(
+    characters: usize,
+    members: usize,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characters = characters,
+            members = members,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding digests containing members"
+        );
+    })
+}
+
+/// v4 `findIdsSupersededByAny`' `safeQuery` (`:1375-1378`): ERROR `Error
+/// finding members superseded by digests {collection, characters, digests,
+/// error}`, FALLBACK `[]` (strict-aware).
+pub fn superseded_by_any_or_empty<T>(
+    characters: usize,
+    digests: usize,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characters = characters,
+            digests = digests,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding members superseded by digests"
+        );
+    })
+}
+
+/// v4 `findDigestSubjectsByIds`' `safeQuery` (`:1452-1455`): ERROR `Error
+/// finding digest subjects {collection, count, error}`, FALLBACK `[]`
+/// (strict-aware).
+pub fn digest_subjects_or_empty<T>(
+    count: usize,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            count = count,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding digest subjects"
+        );
     })
 }
 

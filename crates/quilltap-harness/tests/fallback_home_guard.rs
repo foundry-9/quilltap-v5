@@ -108,9 +108,10 @@ const HOME_MESSAGES: &[&str] = &[
     // `db/memories.rs`.
     "Error creating memory",
     "Error updating memory",
-    "Error deleting memory",
     "Error updating memory for character",
-    "Error deleting memory for character",
+    // (P4.D288: `Error deleting memory` / `Error deleting memory for
+    // character` RETIRED with v4's `delete` / `deleteForCharacter`,
+    // `af48f6cc2` — R-F.)
     // P4.155 → §S.1 (the `94fbb1ae3` smalls unification): the store-backed
     // `_create` override's line and the store-backed `create` wrap's line
     // (`store-backed.repository.ts:130-175, 234-236`), folded from the
@@ -148,7 +149,7 @@ const HOME_MESSAGES: &[&str] = &[
     "Error finding memories about characters",
     "Error counting hot memories for character",
     "Error counting unconsidered hot memories",
-    "Error finding cold memory ids",
+    // ("Error finding cold memory ids" RETIRED by P4.D288 with v4 `af48f6cc2`.)
     "Error finding hot digests",
     "Error finding expired cold memories",
     "Error updating entities",
@@ -174,6 +175,17 @@ const HOME_MESSAGES: &[&str] = &[
     "Error counting entities",
     "Error finding active background jobs by type",
     "Error finding the instance default embedding profile",
+    // C1-7: the retire path's repository verbs (four RETHROW, six FALLBACK).
+    "Error updating memory links",
+    "Error appending reinforcement footnotes",
+    "Error bulk deleting memories for character",
+    "Error scanning for dangling memory links",
+    "Error scrubbing related memory links",
+    "Error removing members from digest",
+    "Error counting memories against the housekeeping cap",
+    "Error finding digests containing members",
+    "Error finding members superseded by digests",
+    "Error finding digest subjects",
     // === end P4.D288 ===
 ];
 

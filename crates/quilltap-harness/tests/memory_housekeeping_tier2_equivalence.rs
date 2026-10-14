@@ -117,7 +117,6 @@ fn options_from_json(v: &Value) -> HousekeepingOptions {
         merge_similar: v.get("mergeSimilar").and_then(Value::as_bool),
         merge_threshold: v.get("mergeThreshold").and_then(Value::as_f64),
         dry_run: v.get("dryRun").and_then(Value::as_bool),
-        count_source: None,
     }
 }
 

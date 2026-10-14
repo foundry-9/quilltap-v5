@@ -1195,7 +1195,13 @@ async fn characters_reset_builtins(db: &Db) -> AxumResponse {
         .await;
 
     let result = match outcome {
-        Ok(Ok(r)) => r,
+        Ok(Ok(r)) => {
+            // P4.D288 (R-AF): the built-ins' memory retirements, after commit.
+            for a in &r.announcements {
+                quilltap_core::services::memory_retire::announce_retirement(db, Some(a)).await;
+            }
+            r
+        }
         // v4's per-cause error mapping: a failed built-in delete → 500 with the
         // named message; a missing/unparseable embedded seed → 400; anything
         // else → the generic catch-all 500.

@@ -585,7 +585,7 @@ fn run_pair(
             drop(rt);
             lines.extend(wiped);
             op_results.push(match outcome {
-                Ok(()) => json!({"op": "wipe", "ok": true}),
+                Ok(_) => json!({"op": "wipe", "ok": true}),
                 Err(e) => json!({"op": "wipe", "error": e.to_string()}),
             });
             main = Some(Writer::open_writable(&main_path, &spec.pepper).expect("reopen main"));

@@ -350,8 +350,10 @@ fn system_delete_data_matches_oracle() {
 /// routing by mocking the repository; Rust has no repository to mock, so the pin
 /// here is BEHAVIOURAL, over the one observable the chokepoint adds:
 ///
-/// **the neighbour scrub.** `delete_many_with_unlink` rewrites every SURVIVING
-/// row's `relatedMemoryIds` to drop the doomed ids. In the full-wipe case that
+/// **the neighbour scrub.** The retire path (P4.D288 —
+/// `memory_retire::retire_memories`, `restore-replace`; formerly the gate's
+/// `delete_many_with_unlink`) rewrites every SURVIVING row's
+/// `relatedMemoryIds` to drop the doomed ids. In the full-wipe case that
 /// is normally a no-op (every neighbour is itself doomed — v4's why-comment),
 /// but a memory whose `characterId` belongs to no character of this user is not
 /// collected, so it survives the wipe *and* is a neighbour. Under the old
@@ -443,7 +445,7 @@ fn delete_all_routes_memory_deletion_through_the_chokepoint() {
     let parsed: Vec<String> = serde_json::from_str(&related).unwrap_or_default();
     assert!(
         parsed.is_empty(),
-        "the wipe must run through delete_many_with_unlink, which scrubs the \
-         doomed id out of a surviving neighbour's relatedMemoryIds; found {related}"
+        "the wipe must run through the retire path (`retire_memories`), which scrubs \
+         the doomed id out of a surviving neighbour's relatedMemoryIds; found {related}"
     );
 }

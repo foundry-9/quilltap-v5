@@ -16,7 +16,7 @@
 //! [`super::user_identity_resolver`], [`super::message_context`] (the full
 //! provider-ready context, continue-mode), the [`CompletionProvider`] seam (the
 //! one generation), the swipe-group bookkeeping on `chat_messages`, and the
-//! ported [`super::memory_service::delete_memories_by_source_message_with_vectors`]
+//! ONE retire path ([`super::memory_retire::retire_and_announce`], P4.D288)
 //! cascade.
 //!
 //! ## The tracked deferral is CLOSED (v4 `f564b0de3`, P4.D207)
@@ -69,7 +69,7 @@ use crate::model::stream::{
 use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
 use crate::services::build_context::{BuildContextSeams, ConnectionProfileInput};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
-use crate::services::memory_service::delete_memories_by_source_message_with_vectors;
+use crate::services::memory_retire::{retire_and_announce, RetireOptions, RetireReason};
 use crate::services::message_context::{
     self, FormattedMsg, MessageContextParams, MessageContextSeams,
 };
@@ -1091,11 +1091,19 @@ where
         .to_string();
     if cascade_action != "KEEP_MEMORIES" {
         let cascade: Result<(), DbError> = async {
+            // P4.D288 (C1-7): the replaced variant's memories through the ONE
+            // retire path (`swipe-regenerate`, v4 `regenerate-swipe.service.ts:
+            // 344-348` — `findBySourceMessageId`, then the retire).
             let tid = target_message_id.clone();
-            let count =
-                db.read_main(move |c| memories_read::count_by_source_message_id(c, &tid))?;
-            if count > 0 {
-                delete_memories_by_source_message_with_vectors(db, &target_message_id).await?;
+            let memories =
+                db.read_main(move |c| memories_read::find_by_source_message_id(c, &tid))?;
+            if !memories.is_empty() {
+                let ids: Vec<String> = memories
+                    .iter()
+                    .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
+                    .collect();
+                retire_and_announce(db, ids, RetireOptions::new(RetireReason::SwipeRegenerate))
+                    .await?;
             }
             Ok(())
         }

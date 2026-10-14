@@ -235,6 +235,7 @@ pub mod moderation_finish_reason;
 pub mod participant_filters;
 pub mod pascal;
 pub mod photos;
+pub mod policy_protection; // P4.D288 (C1-7)
 pub mod post_office;
 pub mod pricing;
 pub mod project_roster_access;

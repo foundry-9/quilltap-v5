@@ -6,8 +6,10 @@
 //! `memories` is a plain `AbstractBaseRepository<Memory>` in the **main** db with
 //! no base-method override, so `create` / `update` / `delete` are the standard
 //! internals; on top of them the repo adds character-scoped and bulk mutators
-//! (`updateForCharacter`, `bulkDelete`, `updateAccessTime{,Bulk}`,
-//! `deleteByChatId`, `deleteBySourceMessageId{,s}`, `replaceInMemories`).
+//! (`updateForCharacter`, `updateAccessTime{,Bulk}`, the tier moves, the
+//! reinforcement counter, the link / footnote / member deltas, and
+//! `bulkDeleteUnsafe` — P4.D288: the retire path's only deleter; v4's bare
+//! `delete` is REMOVED, R-F).
 //!
 //! ## Marshaling (verified against v4's `mapToSQLiteType` + `documentToRow`)
 //!
@@ -45,21 +47,6 @@ use super::DbError;
 use crate::chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE};
 use crate::clock::now_iso;
 use crate::embedding_blob::float32_to_blob;
-use crate::realtime::bus::publish_realtime;
-use crate::realtime::types::RealtimeTopic;
-
-/// v4's `SINGLE_DELETE_NEIGHBOUR_WARN` (`lib/memory/memory-gate.ts:474`) — the
-/// warn-log threshold for single-memory deletions touching an unusually large
-/// neighbour set. Either indicates a hub node (interesting) or a bug. Compared
-/// with `>=`, and the warn is IN ADDITION to the debug, never instead of it.
-const SINGLE_DELETE_NEIGHBOUR_WARN: usize = 20;
-
-/// v4's `BATCH_DELETE_NEIGHBOUR_WARN` (`lib/memory/memory-gate.ts:481`) — the
-/// batch twin. Batch cascades from large characters or chats are expected; the
-/// warn fires when neighbour count outstrips even those. Compared with `>=`
-/// against `neighboursTouched` (the rows actually rewritten), NOT the candidate
-/// count the one-pass scan returned.
-const BATCH_DELETE_NEIGHBOUR_WARN: usize = 200;
 
 /// Create fields — the post-Zod `Omit<Memory,'id'|'createdAt'|'updatedAt'>` shape
 /// (defaults already materialized by the caller, mirroring v4's `_create` which
@@ -112,11 +99,38 @@ pub struct MemCreate {
 
 /// P4.D265 (v4 `70f9b495c`): what
 /// [`MemoriesRepository::increment_reinforcement`] wrote — v4's `{
-/// reinforcementCount, reinforcedImportance }`.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// reinforcementCount, reinforcedImportance, lastReinforcedAt }` (P4.D288:
+/// `lastReinforcedAt` joined with bug 226's forward-only rule).
+#[derive(Debug, Clone, PartialEq)]
 pub struct Reinforcement {
     pub reinforcement_count: f64,
     pub reinforced_importance: f64,
+    pub last_reinforced_at: String,
+}
+
+/// P4.D288 (C1-7) — what [`MemoriesRepository::append_reinforcement_footnotes`]
+/// wrote: v4's `{ content, appended }` (the content as it now stands, and the
+/// details actually appended, possibly none).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppendedFootnotes {
+    pub content: String,
+    pub appended: Vec<String>,
+}
+
+/// P4.D288 (C1-7) — v4's `op: 'add' | 'remove'` on the link-delta pair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LinkOp {
+    Add,
+    Remove,
+}
+
+impl LinkOp {
+    fn as_str(self) -> &'static str {
+        match self {
+            LinkOp::Add => "add",
+            LinkOp::Remove => "remove",
+        }
+    }
 }
 
 /// P4.D265 (v4 `d58548051`): the `extra` that rides along on
@@ -128,30 +142,6 @@ pub struct Reinforcement {
 pub struct TierExtra {
     pub superseded_by_id: Option<Option<String>>,
     pub consolidated_at: Option<Option<String>>,
-}
-
-/// P4.D265 (v4 `3f7320138` F8): the `countSource` field on both
-/// `deleteMemoriesWithUnlinkBatch` lines. v4 renders `'resolved-ids'` only
-/// where `bulkDelete` returned a non-number — inside the forked job child (a
-/// buffered write) — and `'repository'` everywhere in the parent. v5 has no
-/// child, so the label is a property of the v4 call PATH a v5 site mirrors
-/// (R-C): `lib/memory/housekeeping.ts:397` run by `MEMORY_HOUSEKEEPING` and
-/// `deleteMemoriesByChatIdWithVectors` run by `MEMORY_REGENERATE_CHAT` are
-/// the child paths; every other caller is parent-side.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CountSource {
-    Repository,
-    ResolvedIds,
-}
-
-impl CountSource {
-    /// v4's literal.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            CountSource::Repository => "repository",
-            CountSource::ResolvedIds => "resolved-ids",
-        }
-    }
 }
 
 /// v4's `_create` validation of a memory (`base.repository.ts:350-368` over
@@ -573,23 +563,6 @@ impl<'c> MemoriesRepository<'c> {
         Ok(n > 0)
     }
 
-    /// `delete` — returns `Ok(false)` when no row matched.
-    ///
-    /// P4.149: a failure logs the base `Error deleting entity` then the
-    /// repository's `Error deleting memory {collection, memoryId}`
-    /// (`memories.repository.ts:486-497`) and propagates.
-    pub fn delete(&self, id: &str) -> Result<bool, DbError> {
-        self.conn
-            .execute("DELETE FROM memories WHERE id = ?1", params![id])
-            .map(|n| n > 0)
-            .map_err(|e| {
-                let e = DbError::from(e);
-                super::fallback::log_delete_failure("memories", id, &e);
-                super::fallback::log_memory_delete_failure(id, &e);
-                e
-            })
-    }
-
     /// `updateForCharacter` — update only if the memory exists AND belongs to
     /// `character_id` (else a no-op returning `Ok(false)`).
     ///
@@ -636,72 +609,6 @@ impl<'c> MemoriesRepository<'c> {
         })
     }
 
-    /// `deleteForCharacter` — delete only if owned by `character_id`.
-    ///
-    /// P4.149: v4's shape as [`Self::update_for_character`]
-    /// (`memories.repository.ts:503-522`) — `Memory not found for deletion
-    /// {memoryId, characterId}` / `Memory does not belong to character`, and the
-    /// outer `Error deleting memory for character` on a failed delete.
-    pub fn delete_for_character(
-        &self,
-        character_id: &str,
-        memory_id: &str,
-    ) -> Result<bool, DbError> {
-        match super::fallback::find_by_id_or_none("memories", memory_id, || {
-            self.character_id_of(memory_id)
-        }) {
-            None => {
-                tracing::warn!(
-                    target: "quilltap::db",
-                    memoryId = %memory_id,
-                    characterId = %character_id,
-                    "Memory not found for deletion"
-                );
-                return Ok(false);
-            }
-            Some(owner) if owner != character_id => {
-                tracing::warn!(
-                    target: "quilltap::db",
-                    characterId = %character_id,
-                    memoryId = %memory_id,
-                    "Memory does not belong to character"
-                );
-                return Ok(false);
-            }
-            Some(_) => {}
-        }
-        self.delete(memory_id).inspect_err(|e| {
-            super::fallback::log_memory_delete_for_character_failure(character_id, memory_id, e);
-        })
-    }
-
-    /// `bulkDelete` — `deleteMany({ characterId, id: { $in } })`; empty → 0.
-    ///
-    /// **Chunked** (v4 `805ef12bf`): v4's query translator expands `$in` to one
-    /// bind variable per id and this one binds them directly, so a full-wipe
-    /// cascade can exceed `SQLITE_MAX_VARIABLE_NUMBER` (999 on older builds,
-    /// 32766 on current ones) and the whole statement fails with "too many SQL
-    /// variables" instead of deleting. The chunks are summed, exactly as v4
-    /// accumulates `deletedCount`.
-    pub fn bulk_delete(&self, character_id: &str, memory_ids: &[String]) -> Result<i64, DbError> {
-        if memory_ids.is_empty() {
-            return Ok(0);
-        }
-        let mut deleted = 0i64;
-        for chunk in chunk_array(memory_ids, SQLITE_VARIABLE_CHUNK_SIZE) {
-            let placeholders = (0..chunk.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
-            let sql =
-                format!("DELETE FROM memories WHERE characterId = ? AND id IN ({placeholders})");
-            let mut p: Vec<&dyn ToSql> = Vec::with_capacity(1 + chunk.len());
-            p.push(&character_id);
-            for id in chunk {
-                p.push(id);
-            }
-            deleted += self.conn.execute(&sql, p.as_slice())? as i64;
-        }
-        Ok(deleted)
-    }
-
     /// `updateAccessTime` — set `lastAccessedAt = now` if owned. (v4's `update`
     /// also bumps `updatedAt`.)
     pub fn update_access_time(&self, character_id: &str, memory_id: &str) -> Result<bool, DbError> {
@@ -746,38 +653,52 @@ impl<'c> MemoriesRepository<'c> {
         Ok(n as i64)
     }
 
-    /// P4.D265 (v4 `70f9b495c`, bug 182) — v4 `incrementReinforcement`
-    /// (`memories.repository.ts:571-606`): count one more reinforcement of
+    /// P4.D265 (v4 `70f9b495c`, bug 182), widened by P4.D288 (v4 `c2795733f`,
+    /// bug 226) — v4 `incrementReinforcement(characterId, memoryId, at, by)`
+    /// (`memories.repository.ts:622-662`): count `by` more observations of
     /// `memory_id` (scoped to `character_id`) as a read-then-write inside ONE
-    /// transaction, so two concurrent reinforcements both count. `updatedAt`
-    /// is minted BEFORE the transaction (v4 reads `getCurrentTimestamp()`
-    /// first); `lastReinforcedAt` is `at`.
+    /// transaction, so two concurrent reinforcements both count.
     ///
-    /// Inside a SAVEPOINT (v4's `db.transaction`, which nests when the job
-    /// applier's `BEGIN IMMEDIATE` is open): `SELECT "importance",
-    /// "reinforcementCount"` for the id AND character; none → `Ok(None)` + WARN
+    /// `by` must be a positive integer: anything else is REFUSED before the
+    /// `safeQuery` — `Memory reinforcement: delta must be a positive integer
+    /// (got {by})`, no line, nothing read (v4 throws ahead of the try).
+    /// `updatedAt` is minted BEFORE the transaction (v4 reads
+    /// `getCurrentTimestamp()` first). Inside a SAVEPOINT (v4's
+    /// `db.transaction`, which nests when the job applier's `BEGIN IMMEDIATE`
+    /// is open): `SELECT "importance", "reinforcementCount",
+    /// "lastReinforcedAt"` for the id AND character; none → `Ok(None)` + WARN
     /// `Memory not found for reinforcement {memoryId, characterId}`; else
-    /// `count = (reinforcementCount ?? 1) + 1`, `importance =
-    /// calculate_reinforced_importance(importance ?? 0.5, count)`, one UPDATE
-    /// keyed by `id` alone, and DEBUG `Memory reinforcement counted {memoryId,
-    /// characterId, reinforcementCount, reinforcedImportance}`. A failure is
-    /// v4's 3-argument RETHROW: ERROR `Error reinforcing memory` (the
-    /// `db::fallback` home), then the `Err` propagates. NO-PORT (§R.4(o)):
-    /// the `getRawDatabase()` null throw and the job child's buffered
-    /// `increment*` arm — v5 has no child.
+    /// `count = (reinforcementCount ?? 1) + by`, `importance =
+    /// calculate_reinforced_importance(importance ?? 0.5, count)` (the formula
+    /// moves to `memory_scoring` with unit 12), and `lastReinforcedAt` moves
+    /// FORWARD only — the stored value when it is truthy and sorts after `at`
+    /// (a JS string `>`, compared in UTF-16 code units), else `at` — so a merge
+    /// carrying a loser's older timestamp never rewinds a reinforcement
+    /// committed since. One UPDATE keyed by `id` alone, then DEBUG `Memory
+    /// reinforcement counted {memoryId, characterId, by, reinforcementCount,
+    /// reinforcedImportance, lastReinforcedAt}`. A failure is v4's 3-argument
+    /// RETHROW: ERROR `Error reinforcing memory` (the `db::fallback` home), then
+    /// the `Err` propagates. NO-PORT (§R.4(o)): the `getRawDatabase()` null
+    /// throw and the job child's buffered `increment*` arm — v5 has no child.
     pub fn increment_reinforcement(
         &self,
         character_id: &str,
         memory_id: &str,
         at: &str,
+        by: i64,
     ) -> Result<Option<Reinforcement>, DbError> {
+        if by < 1 {
+            return Err(DbError::Internal(format!(
+                "Memory reinforcement: delta must be a positive integer (got {by})"
+            )));
+        }
         let now = now_iso();
         let counted = self
-            .reinforce_in_savepoint(character_id, memory_id, at, &now)
+            .reinforce_in_savepoint(character_id, memory_id, at, by, &now)
             .inspect_err(|e| {
                 super::fallback::log_memory_reinforce_failure(character_id, memory_id, e);
             })?;
-        match counted {
+        match &counted {
             None => {
                 tracing::warn!(
                     target: "quilltap::db",
@@ -791,8 +712,10 @@ impl<'c> MemoriesRepository<'c> {
                     target: "quilltap::db",
                     memoryId = %memory_id,
                     characterId = %character_id,
+                    by = by,
                     reinforcementCount = r.reinforcement_count,
                     reinforcedImportance = r.reinforced_importance,
+                    lastReinforcedAt = %r.last_reinforced_at,
                     "Memory reinforcement counted"
                 );
             }
@@ -806,55 +729,52 @@ impl<'c> MemoriesRepository<'c> {
         character_id: &str,
         memory_id: &str,
         at: &str,
+        by: i64,
         now: &str,
     ) -> Result<Option<Reinforcement>, DbError> {
-        self.conn
-            .execute_batch("SAVEPOINT \"memory_reinforcement\"")?;
-        let work = || -> Result<Option<Reinforcement>, DbError> {
-            let row: Option<(Option<f64>, Option<f64>)> = self
+        super::schema_probe::in_savepoint(self.conn, "memory_reinforcement", |_| {
+            let row: Option<(Option<f64>, Option<f64>, Option<String>)> = self
                 .conn
                 .query_row(
-                    "SELECT \"importance\", \"reinforcementCount\" FROM \"memories\" \
-                     WHERE \"id\" = ? AND \"characterId\" = ?",
+                    "SELECT \"importance\", \"reinforcementCount\", \"lastReinforcedAt\" \
+                     FROM \"memories\" WHERE \"id\" = ? AND \"characterId\" = ?",
                     params![memory_id, character_id],
-                    |r| Ok((r.get(0)?, r.get(1)?)),
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
                 )
                 .map(Some)
                 .or_else(|e| match e {
                     rusqlite::Error::QueryReturnedNoRows => Ok(None),
                     other => Err(other),
                 })?;
-            let Some((importance, count)) = row else {
+            let Some((importance, count, stored_at)) = row else {
                 return Ok(None);
             };
-            let reinforcement_count = count.unwrap_or(1.0) + 1.0;
+            let reinforcement_count = count.unwrap_or(1.0) + by as f64;
             let reinforced_importance = crate::memory_gate::calculate_reinforced_importance(
                 importance.unwrap_or(0.5),
                 reinforcement_count,
             );
+            let last_reinforced_at = match stored_at {
+                Some(s) if !s.is_empty() && s.encode_utf16().gt(at.encode_utf16()) => s,
+                _ => at.to_string(),
+            };
             self.conn.execute(
                 "UPDATE \"memories\" SET \"reinforcementCount\" = ?, \"reinforcedImportance\" = ?, \
                  \"lastReinforcedAt\" = ?, \"updatedAt\" = ? WHERE \"id\" = ?",
-                params![reinforcement_count, reinforced_importance, at, now, memory_id],
+                params![
+                    reinforcement_count,
+                    reinforced_importance,
+                    last_reinforced_at,
+                    now,
+                    memory_id
+                ],
             )?;
             Ok(Some(Reinforcement {
                 reinforcement_count,
                 reinforced_importance,
+                last_reinforced_at,
             }))
-        };
-        match work() {
-            Ok(v) => {
-                self.conn
-                    .execute_batch("RELEASE \"memory_reinforcement\"")?;
-                Ok(v)
-            }
-            Err(e) => {
-                let _ = self.conn.execute_batch(
-                    "ROLLBACK TO \"memory_reinforcement\"; RELEASE \"memory_reinforcement\"",
-                );
-                Err(e)
-            }
-        }
+        })
     }
 
     /// P4.D265 (v4 `d58548051`) — v4 `updateTierBulk`
@@ -984,23 +904,7 @@ impl<'c> MemoriesRepository<'c> {
         })
     }
 
-    /// `deleteByChatId` — `deleteMany({ chatId })`.
-    pub fn delete_by_chat_id(&self, chat_id: &str) -> Result<i64, DbError> {
-        let n = self
-            .conn
-            .execute("DELETE FROM memories WHERE chatId = ?1", params![chat_id])?;
-        Ok(n as i64)
-    }
-
-    /// `deleteBySourceMessageId` — `deleteMany({ sourceMessageId })`.
-    pub fn delete_by_source_message_id(&self, source_message_id: &str) -> Result<i64, DbError> {
-        let n = self.conn.execute(
-            "DELETE FROM memories WHERE sourceMessageId = ?1",
-            params![source_message_id],
-        )?;
-        Ok(n as i64)
-    }
-
+    // LANE-REMOVE(P4.D298): v4 deleted replaceInMemories in e0ac7493a
     /// `replaceInMemories` — for each id, literal substring replace across
     /// content / summary / keywords (`split(search).join(replace)` = replace
     /// ALL); only `update`s a memory if something changed. Returns the ids of
@@ -1086,250 +990,384 @@ impl<'c> MemoriesRepository<'c> {
             .map_err(DbError::from)
     }
 
-    // -----------------------------------------------------------------------
-    // The deletion chokepoint (v4 `lib/memory/memory-gate.ts`).
+    // === P4.D288 (C1-7): the retire path's writer verbs (v4 `af48f6cc2` +
+    // `c2795733f`, `memories.repository.ts` at the `83334b9a5` pin) ===
     //
-    // v4 places `deleteMemoryWithUnlink` / `deleteMemoriesWithUnlinkBatch` in
-    // memory-gate.ts (parallel to `createMemoryWithGate` on the write side), but
-    // they are pure `memories`-table operations — a neighbour-unlink scan wrapped
-    // around the repo's own `updateForCharacter` / `delete` / `bulkDelete` — so
-    // they live on the repository here. Every cascade path (housekeeping retention
-    // sweeps, chat-wipe, swipe-group cleanup, single-memory delete) funnels
-    // through one of these two so a deleted id never lingers in another memory's
-    // `relatedMemoryIds`.
-    // -----------------------------------------------------------------------
+    // v4's bare `delete` REFUSES at the pin (`:868-873` — an ERROR `Refused a
+    // bare memory delete; memories are deleted through retireMemories`, then a
+    // throw); v5 REMOVES it (R-F), so the refusal has no caller to reach and
+    // its line is recorded unreachable. The old deleters (`deleteForCharacter`,
+    // `bulkDelete`, `deleteByChatId`, `deleteBySourceMessageId`, the gate's two
+    // `…WithUnlink` chokepoints) are gone with v4's: every row deletion is
+    // `services::memory_retire::retire_memories`, which alone calls
+    // [`Self::bulk_delete_unsafe`].
 
-    /// v4's `deleteMemoryWithUnlink` — the single-memory chokepoint. Delete one
-    /// memory and scrub the deleted id from every neighbour's `relatedMemoryIds`.
-    /// Idempotent: if the row is already gone, returns `Ok(false)` without touching
-    /// neighbours.
-    ///
-    /// The `LIKE '%"<id>"%'` pre-filter narrows the scan; the quoted id inside the
-    /// pattern prevents partial-UUID collisions across the JSON column (v4's
-    /// `likeParam`). Each neighbour that actually lists the id is rewritten through
-    /// `updateForCharacter` (character-scoped, bumps `updatedAt`); then the target
-    /// row is deleted.
-    pub fn delete_with_unlink(&self, memory_id: &str) -> Result<bool, DbError> {
-        // v4 takes its clock BEFORE the `findById` precondition, but returns from
-        // that precondition without logging — so the early exit narrates nothing
-        // on either side.
-        let started_at = crate::clock::now_unix_ms();
-        // v4: `findById` → if missing, false without touching neighbours.
-        if !self.row_exists(memory_id)? {
-            return Ok(false);
-        }
-        let like_param = format!("%\"{memory_id}\"%");
-        let neighbours = self.scan_neighbours(
-            "SELECT id, characterId, relatedMemoryIds FROM memories \
-             WHERE relatedMemoryIds LIKE ?1 AND id != ?2",
-            params![like_param, memory_id],
-        )?;
-        let neighbour_count = neighbours.len();
-        let mut characters_affected: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
-        for (id, character_id, related_raw) in neighbours {
-            let current = parse_related_ids(related_raw.as_deref());
-            if !current.iter().any(|x| x == memory_id) {
-                continue;
-            }
-            let filtered: Vec<String> = current.into_iter().filter(|x| x != memory_id).collect();
-            let patch = MemUpdate {
-                related_memory_ids: Some(filtered),
-                ..Default::default()
-            };
-            self.update_for_character(&character_id, &id, &patch)?;
-            characters_affected.insert(character_id);
-        }
-        let deleted = self.delete(memory_id)?;
-
-        // v4 `memory-gate.ts:538-548`. Log-only (the finding-#103/#110/#116
-        // class): the row set and the returned bool are identical whether or not
-        // these fire, so their only proof is the capturing layer in this module's
-        // tests. `durationMs` is a REAL wall-clock read — v4's
-        // `Date.now() - startedAt` — never the pinned harness clock.
-        let duration_ms = crate::clock::now_unix_ms() - started_at;
-        if neighbour_count >= SINGLE_DELETE_NEIGHBOUR_WARN {
-            tracing::warn!(
-                memoryId = memory_id,
-                neighbourCount = neighbour_count,
-                charactersAffected = characters_affected.len(),
-                durationMs = duration_ms,
-                "[MemoryGate] deleteMemoryWithUnlink touched an unusually large neighbour set"
-            );
-        }
-        tracing::debug!(
-            memoryId = memory_id,
-            neighbourCount = neighbour_count,
-            charactersAffected = characters_affected.len(),
-            durationMs = duration_ms,
-            "[MemoryGate] deleteMemoryWithUnlink complete"
-        );
-
-        // Bug 128 (`4a9be9878`). Collection-wide: this takes a memory id, not a
-        // chat id, so there is no narrower hint to give. A no-op from the job
-        // child by design — the parent chokepoints announce a child's deletions.
-        //
-        // The five-line logging gap `4a9be9878` widened (the two `complete`
-        // debugs, the two neighbour-set WARNs, and `handleDeleteByChatId`'s
-        // `[Memories API] Deleted every memory for a chat`) is CLOSED — P4.88.
-        // The four gate lines are emitted above and in the batch twin; the route
-        // line lives in `api/memories.rs`.
-        //
-        // v4 publishes from the GATE (`lib/memory/memory-gate.ts`), whose v5
-        // twin is this repo method, so every one of the eight callers
-        // (`api/memories.rs`, `memory_service` ×2, `character_archive::service`,
-        // `cascade_delete`, `memory_dedup`, `delete_all`, `housekeeping`) is
-        // covered by construction — including the by-chat delete route, which
-        // deliberately publishes NOTHING of its own.
-        if deleted {
-            publish_realtime(RealtimeTopic::Memories, None);
-        }
-        Ok(deleted)
+    /// v4 `addRelatedMemoryIds` (`:676-682`, bug 231): add `ids` to one row's
+    /// `relatedMemoryIds` against the row as it stands at write time — a delta,
+    /// not a whole-array write. Ids already present, and the row's own id, are
+    /// skipped. `Ok(None)` when the row is missing (or another character's).
+    pub fn add_related_memory_ids(
+        &self,
+        character_id: &str,
+        memory_id: &str,
+        ids: &[String],
+    ) -> Result<Option<Vec<String>>, DbError> {
+        self.update_related_memory_ids(character_id, memory_id, LinkOp::Add, ids)
     }
 
-    /// v4's `deleteMemoriesWithUnlinkBatch` — the cascade chokepoint. Scans every
-    /// row with a non-empty links array ONCE, scrubs every doomed id from each
-    /// neighbour's `relatedMemoryIds` in one update per neighbour, then deletes the
-    /// doomed set grouped by character (the repo's `bulkDelete` is
-    /// characterId-scoped). Returns the number of rows actually deleted. Empty
-    /// input → 0.
-    ///
-    /// P4.D265 (F8): `count_source` is v4's `countSource` label on both lines
-    /// ([`CountSource`] — the v4 call path this site mirrors, R-C). The count
-    /// itself is unchanged: v4's child counts the resolved ids, which equal
-    /// the rows the commit deletes.
-    pub fn delete_many_with_unlink(
+    /// v4 `removeRelatedMemoryIds` (`:688-694`): the removal twin of
+    /// [`Self::add_related_memory_ids`].
+    pub fn remove_related_memory_ids(
         &self,
-        memory_ids: &[String],
-        count_source: CountSource,
-    ) -> Result<i64, DbError> {
-        // v4's empty short circuit PRECEDES its `const startedAt = Date.now()`,
-        // so an empty batch narrates nothing at all.
-        if memory_ids.is_empty() {
-            return Ok(0);
-        }
-        let started_at = crate::clock::now_unix_ms();
-        let doomed: std::collections::HashSet<&str> =
-            memory_ids.iter().map(String::as_str).collect();
-
-        // One-pass scan of every row with a non-empty links array (v4's stable
-        // query shape, filtered in-JS regardless of batch size).
-        let candidates = self.scan_neighbours(
-            "SELECT id, characterId, relatedMemoryIds FROM memories \
-             WHERE relatedMemoryIds IS NOT NULL AND relatedMemoryIds != '[]'",
-            params![],
-        )?;
-        let mut characters_affected: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
-        let mut neighbours_touched = 0usize;
-        for (id, character_id, related_raw) in candidates {
-            if doomed.contains(id.as_str()) {
-                continue;
-            }
-            let current = parse_related_ids(related_raw.as_deref());
-            if current.is_empty() {
-                continue;
-            }
-            let filtered: Vec<String> = current
-                .iter()
-                .filter(|x| !doomed.contains(x.as_str()))
-                .cloned()
-                .collect();
-            if filtered.len() == current.len() {
-                continue;
-            }
-            let patch = MemUpdate {
-                related_memory_ids: Some(filtered),
-                ..Default::default()
-            };
-            self.update_for_character(&character_id, &id, &patch)?;
-            characters_affected.insert(character_id);
-            neighbours_touched += 1;
-        }
-
-        // Resolve id → characterId for the doomed set, group, `bulkDelete` per
-        // character (final DB state is independent of group iteration order).
-        //
-        // **Chunked** (v4 `805ef12bf`): each id is one bind variable, and a
-        // full-wipe cascade can pass more ids than `SQLITE_MAX_VARIABLE_NUMBER`
-        // allows in a single statement. Every chunk accumulates into the SAME
-        // map, so the grouping is unchanged.
-        let mut by_character: std::collections::HashMap<String, Vec<String>> =
-            std::collections::HashMap::new();
-        for chunk in chunk_array(memory_ids, SQLITE_VARIABLE_CHUNK_SIZE) {
-            let placeholders = (0..chunk.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
-            let sql = format!("SELECT id, characterId FROM memories WHERE id IN ({placeholders})");
-            let mut stmt = self.conn.prepare(&sql)?;
-            let p: Vec<&dyn ToSql> = chunk.iter().map(|s| s as &dyn ToSql).collect();
-            let rows = stmt.query_map(p.as_slice(), |r| {
-                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-            })?;
-            for row in rows {
-                let (id, character_id) = row?;
-                by_character.entry(character_id).or_default().push(id);
-            }
-        }
-
-        let mut deleted = 0i64;
-        for (character_id, ids) in by_character {
-            deleted += self.bulk_delete(&character_id, &ids)?;
-        }
-
-        // v4 `memory-gate.ts:623-633` — the batch twin of the single-id pair.
-        // `requested` counts the ids handed in (ghosts included); `deleted` the
-        // rows that existed. The WARN compares `neighboursTouched`, not the
-        // candidate count the one-pass scan returned.
-        let duration_ms = crate::clock::now_unix_ms() - started_at;
-        if neighbours_touched >= BATCH_DELETE_NEIGHBOUR_WARN {
-            tracing::warn!(
-                requested = memory_ids.len(),
-                deleted = deleted,
-                countSource = count_source.as_str(),
-                neighboursTouched = neighbours_touched,
-                charactersAffected = characters_affected.len(),
-                durationMs = duration_ms,
-                "[MemoryGate] deleteMemoriesWithUnlinkBatch touched an unusually large neighbour set"
-            );
-        }
-        tracing::debug!(
-            requested = memory_ids.len(),
-            deleted = deleted,
-            countSource = count_source.as_str(),
-            neighboursTouched = neighbours_touched,
-            charactersAffected = characters_affected.len(),
-            durationMs = duration_ms,
-            "[MemoryGate] deleteMemoriesWithUnlinkBatch complete"
-        );
-
-        // Bug 128: collection-wide for the same reason as the single-id path,
-        // and doubly so — a batch can span several chats.
-        if deleted > 0 {
-            publish_realtime(RealtimeTopic::Memories, None);
-        }
-        Ok(deleted)
+        character_id: &str,
+        memory_id: &str,
+        ids: &[String],
+    ) -> Result<Option<Vec<String>>, DbError> {
+        self.update_related_memory_ids(character_id, memory_id, LinkOp::Remove, ids)
     }
 
-    /// Run a `SELECT id, characterId, relatedMemoryIds` scan, collecting the raw
-    /// `(id, characterId, relatedMemoryIds-text)` triples the unlink passes read.
-    fn scan_neighbours(
+    /// v4 `updateRelatedMemoryIdsAtomically` (`:696-760`): the delta (non-empty
+    /// strings, deduped in first-seen order) and `updatedAt` taken BEFORE the
+    /// transaction; inside ONE savepoint the row's `relatedMemoryIds` read
+    /// leniently, the delta applied, and an UNCHANGED list written NOT at all.
+    /// A missing row → WARN `Memory not found for link update {memoryId,
+    /// characterId, op}` and `Ok(None)`; else DEBUG `Memory links updated
+    /// {memoryId, characterId, op, requested, changed, size}`. A failure is
+    /// v4's RETHROW: ERROR `Error updating memory links {collection,
+    /// characterId, memoryId, op, error}`, then the `Err`.
+    fn update_related_memory_ids(
         &self,
-        sql: &str,
-        p: &[&dyn ToSql],
-    ) -> Result<Vec<(String, String, Option<String>)>, DbError> {
-        let mut stmt = self.conn.prepare(sql)?;
-        let rows = stmt.query_map(p, |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, Option<String>>(2)?,
-            ))
+        character_id: &str,
+        memory_id: &str,
+        op: LinkOp,
+        ids: &[String],
+    ) -> Result<Option<Vec<String>>, DbError> {
+        let mut delta: Vec<&str> = Vec::new();
+        for id in ids {
+            if !id.is_empty() && !delta.contains(&id.as_str()) {
+                delta.push(id);
+            }
+        }
+        let now = now_iso();
+        let written = super::schema_probe::in_savepoint(self.conn, "memory_link_update", |_| {
+            let row: Option<Option<String>> = self
+                .conn
+                .query_row(
+                    "SELECT \"relatedMemoryIds\" FROM \"memories\" WHERE \"id\" = ? AND \"characterId\" = ?",
+                    params![memory_id, character_id],
+                    |r| r.get(0),
+                )
+                .map(Some)
+                .or_else(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                    other => Err(other),
+                })?;
+            let Some(raw) = row else {
+                return Ok(None);
+            };
+            let current = parse_related_ids(raw.as_deref());
+            let next: Vec<String> = match op {
+                LinkOp::Add => {
+                    let mut next = current.clone();
+                    for id in &delta {
+                        if *id == memory_id || next.iter().any(|x| x == id) {
+                            continue;
+                        }
+                        next.push((*id).to_string());
+                    }
+                    next
+                }
+                LinkOp::Remove => current
+                    .iter()
+                    .filter(|x| !delta.contains(&x.as_str()))
+                    .cloned()
+                    .collect(),
+            };
+            if next == current {
+                return Ok(Some((current, false)));
+            }
+            self.conn.execute(
+                "UPDATE \"memories\" SET \"relatedMemoryIds\" = ?, \"updatedAt\" = ? WHERE \"id\" = ?",
+                params![json_array(&next)?, now, memory_id],
+            )?;
+            Ok(Some((next, true)))
+        })
+        .inspect_err(|e| {
+            super::fallback::log_memory_link_update_failure(
+                character_id,
+                memory_id,
+                op.as_str(),
+                e,
+            );
         })?;
-        let mut out = Vec::new();
-        for row in rows {
-            out.push(row?);
+        match written {
+            None => {
+                tracing::warn!(
+                    target: "quilltap::db",
+                    memoryId = %memory_id,
+                    characterId = %character_id,
+                    op = op.as_str(),
+                    "Memory not found for link update"
+                );
+                Ok(None)
+            }
+            Some((list, changed)) => {
+                tracing::debug!(
+                    target: "quilltap::db",
+                    memoryId = %memory_id,
+                    characterId = %character_id,
+                    op = op.as_str(),
+                    requested = delta.len(),
+                    changed = changed,
+                    size = list.len(),
+                    "Memory links updated"
+                );
+                Ok(Some(list))
+            }
         }
-        Ok(out)
     }
+
+    /// v4 `removeRelatedMemoryIdsEverywhere` (`:767-813`, bug 234): remove
+    /// `ids` from the `relatedMemoryIds` of EVERY row that names any of them,
+    /// whichever character holds it — one SQL removal delta per chunk of
+    /// `⌊(SQLITE_VARIABLE_CHUNK_SIZE − 1) / 2⌋` (each id binds twice), applied
+    /// against the rows as they stand. Empty (after dedupe) → `0`, no line.
+    /// DEBUG `Scrubbed deleted ids from related links {ids, changed}`. A
+    /// failure → ERROR `Error scrubbing related memory links {collection,
+    /// count, error}` and `Ok(0)` (strict-aware; `count` the ids as passed).
+    pub fn remove_related_memory_ids_everywhere(&self, ids: &[String]) -> Result<i64, DbError> {
+        super::fallback::related_scrub_or_zero(ids.len(), || {
+            let mut removing: Vec<&String> = Vec::new();
+            for id in ids {
+                if !removing.contains(&id) {
+                    removing.push(id);
+                }
+            }
+            if removing.is_empty() {
+                return Ok(0);
+            }
+            let now = now_iso();
+            let chunk_size = ((SQLITE_VARIABLE_CHUNK_SIZE - 1) / 2).max(1);
+            let mut changed = 0i64;
+            for chunk in removing.chunks(chunk_size) {
+                let placeholders = vec!["?"; chunk.len()].join(",");
+                let sql = format!(
+                    "UPDATE memories \
+                        SET relatedMemoryIds = ( \
+                              SELECT COALESCE(json_group_array(value), '[]') \
+                                FROM json_each(memories.relatedMemoryIds) \
+                               WHERE value NOT IN ({placeholders}) \
+                            ), \
+                            updatedAt = ? \
+                      WHERE relatedMemoryIds IS NOT NULL \
+                        AND relatedMemoryIds <> '[]' \
+                        AND json_valid(relatedMemoryIds) \
+                        AND EXISTS ( \
+                              SELECT 1 FROM json_each(memories.relatedMemoryIds) \
+                               WHERE value IN ({placeholders}) \
+                            )"
+                );
+                let mut p: Vec<&dyn ToSql> = Vec::with_capacity(chunk.len() * 2 + 1);
+                for id in chunk {
+                    p.push(*id);
+                }
+                p.push(&now);
+                for id in chunk {
+                    p.push(*id);
+                }
+                changed += self.conn.execute(&sql, p.as_slice())? as i64;
+            }
+            tracing::debug!(
+                target: "quilltap::db",
+                ids = removing.len(),
+                changed = changed,
+                "Scrubbed deleted ids from related links"
+            );
+            Ok(changed)
+        })
+    }
+
+    /// v4 `appendReinforcementFootnotes` (`:820-861`, bug 231): append novel
+    /// details as `[+]` footnotes against the row as it stands at write time —
+    /// the cap and the "already there" check read the live content inside ONE
+    /// savepoint ([`crate::reinforcement_footnotes::append_capped_footnotes`]
+    /// at [`MAX_REINFORCEMENT_FOOTNOTES`]); nothing appended → no write. A
+    /// missing row → WARN `Memory not found for reinforcement footnotes
+    /// {memoryId, characterId}` and `Ok(None)`; else DEBUG `Reinforcement
+    /// footnotes appended {memoryId, characterId, offered, appended}`. A
+    /// failure is v4's RETHROW: ERROR `Error appending reinforcement footnotes
+    /// {collection, characterId, memoryId, error}`, then the `Err`.
+    ///
+    /// [`MAX_REINFORCEMENT_FOOTNOTES`]: crate::reinforcement_footnotes::MAX_REINFORCEMENT_FOOTNOTES
+    pub fn append_reinforcement_footnotes(
+        &self,
+        character_id: &str,
+        memory_id: &str,
+        details: &[String],
+    ) -> Result<Option<AppendedFootnotes>, DbError> {
+        let now = now_iso();
+        let result = super::schema_probe::in_savepoint(self.conn, "memory_footnotes", |_| {
+            let row: Option<Option<String>> = self
+                .conn
+                .query_row(
+                    "SELECT \"content\" FROM \"memories\" WHERE \"id\" = ? AND \"characterId\" = ?",
+                    params![memory_id, character_id],
+                    |r| r.get(0),
+                )
+                .map(Some)
+                .or_else(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                    other => Err(other),
+                })?;
+            let Some(content) = row else {
+                return Ok(None);
+            };
+            let (content, appended) = crate::reinforcement_footnotes::append_capped_footnotes(
+                content.as_deref().unwrap_or(""),
+                details,
+                crate::reinforcement_footnotes::MAX_REINFORCEMENT_FOOTNOTES,
+            );
+            if !appended.is_empty() {
+                self.conn.execute(
+                    "UPDATE \"memories\" SET \"content\" = ?, \"updatedAt\" = ? WHERE \"id\" = ?",
+                    params![content, now, memory_id],
+                )?;
+            }
+            Ok(Some(AppendedFootnotes { content, appended }))
+        })
+        .inspect_err(|e| {
+            super::fallback::log_memory_footnotes_failure(character_id, memory_id, e);
+        })?;
+        match &result {
+            None => tracing::warn!(
+                target: "quilltap::db",
+                memoryId = %memory_id,
+                characterId = %character_id,
+                "Memory not found for reinforcement footnotes"
+            ),
+            Some(r) => tracing::debug!(
+                target: "quilltap::db",
+                memoryId = %memory_id,
+                characterId = %character_id,
+                offered = details.len(),
+                appended = r.appended.len(),
+                "Reinforcement footnotes appended"
+            ),
+        }
+        Ok(result)
+    }
+
+    /// v4 `bulkDeleteUnsafe` (`:882-905`): delete a character's rows outright
+    /// — nothing else. Named *Unsafe* because it scrubs no links and touches no
+    /// index: `services::memory_retire::retire_memories` is its only caller
+    /// (`memory_retire_sole_deleter_guard` greps for any other). Empty → `0`
+    /// with no line. Chunked at [`SQLITE_VARIABLE_CHUNK_SIZE`] (v4
+    /// `805ef12bf`: one bind per id, and a full-wipe cascade can pass the
+    /// variable ceiling); each chunk is v4's base `deleteMany` — INFO `Entities
+    /// deleted {collection, count}` per chunk, a zero count included. A failure
+    /// logs the base RETHROW `Error deleting entities`, then v4's `Error bulk
+    /// deleting memories for character {collection, characterId, count,
+    /// error}`, and propagates.
+    pub fn bulk_delete_unsafe(
+        &self,
+        character_id: &str,
+        memory_ids: &[String],
+    ) -> Result<i64, DbError> {
+        let run = || -> Result<i64, DbError> {
+            if memory_ids.is_empty() {
+                return Ok(0);
+            }
+            let mut deleted = 0i64;
+            for chunk in chunk_array(memory_ids, SQLITE_VARIABLE_CHUNK_SIZE) {
+                let placeholders = vec!["?"; chunk.len()].join(", ");
+                let sql = format!(
+                    "DELETE FROM memories WHERE characterId = ? AND id IN ({placeholders})"
+                );
+                let mut p: Vec<&dyn ToSql> = Vec::with_capacity(1 + chunk.len());
+                p.push(&character_id);
+                for id in chunk {
+                    p.push(id);
+                }
+                let n = self.conn.execute(&sql, p.as_slice()).map_err(|e| {
+                    let e = DbError::from(e);
+                    super::fallback::log_delete_many_failure("memories", &e);
+                    e
+                })?;
+                super::fallback::log_entities_deleted("memories", n);
+                deleted += n as i64;
+            }
+            Ok(deleted)
+        };
+        run().inspect_err(|e| {
+            super::fallback::log_memory_bulk_delete_failure(character_id, memory_ids.len(), e);
+        })
+    }
+
+    /// v4 `removeConsolidatedMembers` (`:1387-1425`, review of bug 225):
+    /// remove `member_ids` from one digest's `consolidatedFrom` in SQL against
+    /// the row as it stands — a delta. Empty (after dedupe) → `0`, no line.
+    /// Chunked at `SQLITE_VARIABLE_CHUNK_SIZE − 3`; `changed` is the MAX over
+    /// chunks (v4's `Math.max`, one row). DEBUG `Removed members from digest
+    /// {characterId, digestId, members, changed}`. A failure → ERROR `Error
+    /// removing members from digest {collection, characterId, digestId, count,
+    /// error}` and `Ok(0)` (strict-aware).
+    pub fn remove_consolidated_members(
+        &self,
+        character_id: &str,
+        digest_id: &str,
+        member_ids: &[String],
+    ) -> Result<i64, DbError> {
+        super::fallback::digest_members_removed_or_zero(
+            character_id,
+            digest_id,
+            member_ids.len(),
+            || {
+                let mut members: Vec<&String> = Vec::new();
+                for id in member_ids {
+                    if !members.contains(&id) {
+                        members.push(id);
+                    }
+                }
+                if members.is_empty() {
+                    return Ok(0);
+                }
+                let now = now_iso();
+                let mut changed = 0i64;
+                for chunk in members.chunks(SQLITE_VARIABLE_CHUNK_SIZE - 3) {
+                    let sql = format!(
+                        "UPDATE memories \
+                            SET consolidatedFrom = ( \
+                                  SELECT COALESCE(json_group_array(value), '[]') \
+                                    FROM json_each(memories.consolidatedFrom) \
+                                   WHERE value NOT IN ({}) \
+                                ), \
+                                updatedAt = ? \
+                          WHERE id = ? AND characterId = ? \
+                            AND json_valid(consolidatedFrom)",
+                        vec!["?"; chunk.len()].join(",")
+                    );
+                    let mut p: Vec<&dyn ToSql> = Vec::with_capacity(chunk.len() + 3);
+                    for id in chunk {
+                        p.push(*id);
+                    }
+                    p.push(&now);
+                    p.push(&digest_id);
+                    p.push(&character_id);
+                    changed = changed.max(self.conn.execute(&sql, p.as_slice())? as i64);
+                }
+                tracing::debug!(
+                    target: "quilltap::db",
+                    characterId = %character_id,
+                    digestId = %digest_id,
+                    members = members.len(),
+                    changed = changed,
+                    "Removed members from digest"
+                );
+                Ok(changed)
+            },
+        )
+    }
+    // === end P4.D288 ===
 
     /// True iff a row with this id exists (v4's `_update` `findById` precondition).
     fn row_exists(&self, id: &str) -> Result<bool, DbError> {
@@ -1522,89 +1560,6 @@ mod tests {
         raw.map(|cell| parse_related_ids(cell.as_deref()))
     }
 
-    #[test]
-    fn delete_with_unlink_scrubs_neighbours_and_deletes() {
-        // mA1 is referenced by mA2 (same char) and mB1 (other char); mA3 never
-        // references it.
-        let (_dir, w) = seed(&[
-            ("mA1", "charA", &["mA2", "mB1"]),
-            ("mA2", "charA", &["mA1", "mA3"]),
-            ("mA3", "charA", &["mA2"]),
-            ("mB1", "charB", &["mA1"]),
-        ]);
-        let repo = w.memories();
-        assert!(repo.delete_with_unlink("mA1").unwrap());
-        assert_eq!(related_of(&w, "mA1"), None, "target deleted");
-        assert_eq!(
-            related_of(&w, "mA2"),
-            Some(vec!["mA3".to_string()]),
-            "scrubbed"
-        );
-        assert_eq!(
-            related_of(&w, "mB1"),
-            Some(vec![]),
-            "cross-character neighbour scrubbed"
-        );
-        assert_eq!(
-            related_of(&w, "mA3"),
-            Some(vec!["mA2".to_string()]),
-            "non-referencing row untouched"
-        );
-    }
-
-    #[test]
-    fn delete_with_unlink_missing_is_noop() {
-        let (_dir, w) = seed(&[("mA2", "charA", &["mA1"])]);
-        let repo = w.memories();
-        assert!(!repo.delete_with_unlink("nope").unwrap());
-        // Neighbour with a stale ref is left exactly as-is (no scan on a miss).
-        assert_eq!(related_of(&w, "mA2"), Some(vec!["mA1".to_string()]));
-    }
-
-    #[test]
-    fn delete_many_with_unlink_batch_scrubs_and_deletes_across_chars() {
-        let (_dir, w) = seed(&[
-            ("mA4", "charA", &["mA5"]),
-            ("mA5", "charA", &["mA4", "mB2", "mA6"]),
-            ("mA6", "charA", &[]),
-            ("mB2", "charB", &["mA4"]),
-            ("mB3", "charB", &["mB2"]),
-        ]);
-        let repo = w.memories();
-        let deleted = repo
-            .delete_many_with_unlink(
-                &["mA4".to_string(), "mB2".to_string()],
-                CountSource::Repository,
-            )
-            .unwrap();
-        assert_eq!(deleted, 2, "two rows deleted across two characters");
-        assert_eq!(related_of(&w, "mA4"), None);
-        assert_eq!(related_of(&w, "mB2"), None);
-        assert_eq!(
-            related_of(&w, "mA5"),
-            Some(vec!["mA6".to_string()]),
-            "both doomed ids scrubbed in one update, survivor kept"
-        );
-        assert_eq!(related_of(&w, "mB3"), Some(vec![]));
-        assert_eq!(
-            related_of(&w, "mA6"),
-            Some(vec![]),
-            "empty-links row untouched"
-        );
-    }
-
-    #[test]
-    fn delete_many_with_unlink_empty_is_zero() {
-        let (_dir, w) = seed(&[("mA1", "charA", &["mA2"])]);
-        let repo = w.memories();
-        assert_eq!(
-            repo.delete_many_with_unlink(&[], CountSource::Repository)
-                .unwrap(),
-            0
-        );
-        assert_eq!(related_of(&w, "mA1"), Some(vec!["mA2".to_string()]));
-    }
-
     // ── P4.D126 unit 2: the SQLite bind-variable ceiling (v4 `805ef12bf`) ────
     //
     // RED-FIRST, measured 2026-08-26 before the chunking landed: both sites
@@ -1633,45 +1588,14 @@ mod tests {
         ids[39_999] = "mB1".to_string();
 
         let deleted = repo
-            .bulk_delete("charA", &ids)
-            .expect("a chunked bulk_delete must not hit the variable limit");
+            .bulk_delete_unsafe("charA", &ids)
+            .expect("a chunked bulk_delete_unsafe must not hit the variable limit");
         assert_eq!(deleted, 2, "only charA's two rows are in scope");
         assert_eq!(related_of(&w, "mA1"), None);
         assert_eq!(related_of(&w, "mA2"), None);
         assert!(
             related_of(&w, "mB1").is_some(),
             "the characterId scope still holds across chunks"
-        );
-    }
-
-    /// The chokepoint's doomed-id → character resolve, same ceiling. Every chunk
-    /// accumulates into the SAME map, so the by-character grouping — and the
-    /// neighbour scrub that runs before it — are unchanged.
-    #[test]
-    fn delete_many_with_unlink_chunks_past_the_variable_limit() {
-        let (_dir, w) = seed(&[
-            ("mA1", "charA", &[]),
-            ("mA2", "charA", &[]),
-            ("mB1", "charB", &[]),
-            ("mB2", "charB", &["mA1", "mB1"]),
-        ]);
-        let repo = w.memories();
-        let mut ids: Vec<String> = (0..40_000).map(|i| format!("ghost-{i}")).collect();
-        ids[0] = "mA1".to_string();
-        ids[SQLITE_VARIABLE_CHUNK_SIZE] = "mA2".to_string();
-        ids[39_999] = "mB1".to_string();
-
-        let deleted = repo
-            .delete_many_with_unlink(&ids, CountSource::Repository)
-            .expect("a chunked resolve must not hit the variable limit");
-        assert_eq!(deleted, 3, "all three real rows, across two characters");
-        assert_eq!(related_of(&w, "mA1"), None);
-        assert_eq!(related_of(&w, "mA2"), None);
-        assert_eq!(related_of(&w, "mB1"), None);
-        assert_eq!(
-            related_of(&w, "mB2"),
-            Some(vec![]),
-            "the surviving neighbour is still scrubbed of BOTH doomed ids"
         );
     }
 
@@ -1686,53 +1610,26 @@ mod tests {
         // 899 is the last id of chunk 1; 900 is the first of chunk 2.
         ids[SQLITE_VARIABLE_CHUNK_SIZE - 1] = "mA1".to_string();
         ids[SQLITE_VARIABLE_CHUNK_SIZE] = "mA2".to_string();
-        assert_eq!(repo.bulk_delete("charA", &ids).unwrap(), 2);
+        assert_eq!(repo.bulk_delete_unsafe("charA", &ids).unwrap(), 2);
         assert_eq!(related_of(&w, "mA1"), None);
         assert_eq!(related_of(&w, "mA2"), None);
     }
 
     // -----------------------------------------------------------------------
-    // The deletion chokepoint's four log lines (P4.88 — v4
-    // `lib/memory/memory-gate.ts:545-548` and `:630-633`).
-    //
-    // Log-only: every `memories` row and every returned count is identical
-    // whether or not these fire, so the ONLY proof is a capturing layer over the
-    // real repository method (the finding-#103/#110/#116 class). Each test
-    // asserts the line's whole field set AND the discriminating values;
-    // `durationMs` is a real wall-clock read, so it is asserted present and
-    // non-negative rather than pinned.
+    // The capture rig the line-pinning tests below share (the deletion
+    // chokepoint's four line tests RETIRED with v4's gate deleters — P4.D288,
+    // `af48f6cc2`; the retire path's lines are `memory_retire`'s).
     // -----------------------------------------------------------------------
 
-    /// The `durationMs=<n>` a captured line carries, parsed.
-    fn duration_ms_of(line: &str) -> i64 {
-        let tail = line
-            .split(" durationMs=")
-            .nth(1)
-            .unwrap_or_else(|| panic!("no durationMs field in {line:?}"));
-        tail.split(' ')
-            .next()
-            .unwrap()
-            .parse()
-            .unwrap_or_else(|_| panic!("durationMs is not an integer in {line:?}"))
-    }
-
-    /// Every captured line whose message contains `needle`.
-    fn lines_with<'a>(lines: &'a [String], needle: &str) -> Vec<&'a String> {
-        lines.iter().filter(|l| l.contains(needle)).collect()
-    }
-
-    /// P4.93 — the five capture tests below go through THIS, not
+    /// P4.93 — the capture tests below go through THIS, not
     /// `test_support::captured` directly.
     ///
     /// `captured` installs a THREAD-scoped subscriber, and `tracing` caches each
-    /// callsite's `Interest` **globally** on first use. The two sibling tests
-    /// above (`delete_with_unlink_scrubs_neighbours_and_deletes`,
-    /// `delete_with_unlink_missing_is_noop`) reach `delete_with_unlink` with NO
-    /// subscriber armed on their thread; if one of them touches the
-    /// `deleteMemoryWithUnlink complete` callsite first, the interest cache can
-    /// retire it for the whole binary and the capture below sees nothing. That
-    /// is exactly what `delete_with_unlink_logs_v4s_complete_debug` did once in
-    /// a full workspace run ("exactly one complete line: []") while passing
+    /// callsite's `Interest` **globally** on first use. A sibling test that
+    /// reaches a logging repository method with NO subscriber armed on its
+    /// thread can retire that callsite for the whole binary, and the capture
+    /// sees nothing. That is exactly what a (since-retired) chokepoint line
+    /// test did once in a full workspace run ("exactly one complete line: []") while passing
     /// alone and twice in its own binary.
     ///
     /// The fix is to keep a dispatcher permanently registered, so every rebuild
@@ -1781,152 +1678,15 @@ mod tests {
         });
     }
 
-    #[test]
-    fn delete_with_unlink_logs_v4s_complete_debug() {
-        let (_dir, w) = seed(&[
-            ("mA1", "charA", &["mA2"]),
-            ("mA2", "charA", &["mA1"]),
-            ("mB1", "charB", &["mA1"]),
-        ]);
-        let lines = captured(|| {
-            w.memories().delete_with_unlink("mA1").unwrap();
-        });
-        let hits = lines_with(&lines, "[MemoryGate] deleteMemoryWithUnlink complete");
-        assert_eq!(hits.len(), 1, "exactly one complete line: {lines:?}");
-        let line = hits[0];
-        assert!(line.starts_with("DEBUG "), "v4 logs at debug: {line:?}");
-        assert!(line.contains(" memoryId=mA1"), "{line:?}");
-        // Two neighbours name it (mA2 same character, mB1 another); both are
-        // rewritten, so two characters are affected.
-        assert!(line.contains(" neighbourCount=2"), "{line:?}");
-        assert!(line.contains(" charactersAffected=2"), "{line:?}");
-        assert!(duration_ms_of(line) >= 0, "{line:?}");
-        assert!(
-            lines_with(&lines, "unusually large neighbour set").is_empty(),
-            "two neighbours is under the 20 threshold: {lines:?}"
-        );
-    }
-
-    /// v4's `SINGLE_DELETE_NEIGHBOUR_WARN = 20`, compared with `>=`. Both sides
-    /// of the bound, so a flipped comparison or an off-by-one reddens.
-    #[test]
-    fn delete_with_unlink_warns_at_v4s_single_threshold() {
-        let warn = "[MemoryGate] deleteMemoryWithUnlink touched an unusually large neighbour set";
-        for (neighbours, expect_warn) in [(19usize, false), (20usize, true)] {
-            let mut rows: Vec<(String, String, Vec<String>)> =
-                vec![("target".to_string(), "charA".to_string(), Vec::new())];
-            for i in 0..neighbours {
-                rows.push((format!("n{i}"), "charA".to_string(), vec!["target".into()]));
-            }
-            let borrowed: Vec<(&str, &str, Vec<&str>)> = rows
-                .iter()
-                .map(|(a, b, c)| {
-                    (
-                        a.as_str(),
-                        b.as_str(),
-                        c.iter().map(String::as_str).collect(),
-                    )
-                })
-                .collect();
-            let seeds: Vec<(&str, &str, &[&str])> = borrowed
-                .iter()
-                .map(|(a, b, c)| (*a, *b, c.as_slice()))
-                .collect();
-            let (_dir, w) = seed(&seeds);
-            let lines = captured(|| {
-                w.memories().delete_with_unlink("target").unwrap();
-            });
-            let hits = lines_with(&lines, warn);
-            assert_eq!(
-                hits.len(),
-                usize::from(expect_warn),
-                "{neighbours} neighbours, expect_warn={expect_warn}: {lines:?}"
-            );
-            if expect_warn {
-                let line = hits[0];
-                assert!(line.starts_with("WARN "), "v4 logs at warn: {line:?}");
-                assert!(line.contains(" memoryId=target"), "{line:?}");
-                assert!(line.contains(" neighbourCount=20"), "{line:?}");
-                assert!(line.contains(" charactersAffected=1"), "{line:?}");
-                assert!(duration_ms_of(line) >= 0, "{line:?}");
-            }
-            // The debug fires either way — v4 warns IN ADDITION, never instead.
-            assert_eq!(
-                lines_with(&lines, "deleteMemoryWithUnlink complete").len(),
-                1,
-                "{lines:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn delete_many_with_unlink_logs_v4s_complete_debug() {
-        let (_dir, w) = seed(&[
-            ("mA1", "charA", &[]),
-            ("mA2", "charA", &["mA1"]),
-            ("mB1", "charB", &["mA1"]),
-            ("mB2", "charB", &[]),
-        ]);
-        let ids = vec!["mA1".to_string(), "mB2".to_string(), "ghost".to_string()];
-        let lines = captured(|| {
-            w.memories()
-                .delete_many_with_unlink(&ids, CountSource::Repository)
-                .unwrap();
-        });
-        let hits = lines_with(
-            &lines,
-            "[MemoryGate] deleteMemoriesWithUnlinkBatch complete",
-        );
-        assert_eq!(hits.len(), 1, "exactly one complete line: {lines:?}");
-        let line = hits[0];
-        assert!(line.starts_with("DEBUG "), "v4 logs at debug: {line:?}");
-        // `requested` counts the ids handed in (the ghost included); `deleted`
-        // counts the rows that existed.
-        assert!(line.contains(" requested=3"), "{line:?}");
-        assert!(line.contains(" deleted=2"), "{line:?}");
-        // P4.D265 (F8): `countSource` between `deleted` and `neighboursTouched`
-        // (v4's ONE `logFields` key order, `memory-gate.ts:900-928`).
-        assert!(
-            line.contains(" deleted=2 countSource=repository neighboursTouched=2"),
-            "{line:?}"
-        );
-        assert!(line.contains(" charactersAffected=2"), "{line:?}");
-        assert!(duration_ms_of(line) >= 0, "{line:?}");
-        assert!(
-            lines_with(&lines, "unusually large neighbour set").is_empty(),
-            "two neighbours is under the 200 threshold: {lines:?}"
-        );
-    }
-
-    /// P4.D265 (F8, R-C): the job-child path's `resolved-ids` label — v4's
-    /// child arm is unreachable through the oracle, so the rendering is pinned
-    /// here; the count is unchanged.
-    #[test]
-    fn delete_many_with_unlink_renders_the_resolved_ids_label() {
-        let (_dir, w) = seed(&[("mA1", "charA", &[]), ("mA2", "charA", &[])]);
-        let ids = vec!["mA1".to_string(), "ghost".to_string()];
-        let (n, lines) = crate::test_support::captured_with(|| {
-            w.memories()
-                .delete_many_with_unlink(&ids, CountSource::ResolvedIds)
-                .unwrap()
-        });
-        assert_eq!(n, 1);
-        let hits = lines_with(&lines, "deleteMemoriesWithUnlinkBatch complete");
-        assert!(
-            hits[0].contains(" deleted=1 countSource=resolved-ids neighboursTouched=0"),
-            "{hits:?}"
-        );
-        assert_eq!(CountSource::Repository.as_str(), "repository");
-    }
-
-    /// P4.D265 (v4 `70f9b495c`): the increment's hit / miss / wrong-character
-    /// / NULL-count arms and their lines.
+    /// P4.D265 (v4 `70f9b495c`) + P4.D288 (bug 226): the increment's hit /
+    /// miss / wrong-character / NULL-count arms and their lines, `by`, the
+    /// forward-only `lastReinforcedAt`, and the refusal BEFORE anything runs.
     #[test]
     fn increment_reinforcement_counts_inside_one_savepoint() {
         let (_dir, w) = seed(&[("m1", "charA", &[]), ("m2", "charA", &[])]);
         let repo = w.memories();
         let (r, lines) = crate::test_support::captured_with(|| {
-            repo.increment_reinforcement("charA", "m1", "2026-05-03T00:00:00.000Z")
+            repo.increment_reinforcement("charA", "m1", "2026-05-03T00:00:00.000Z", 1)
                 .unwrap()
         });
         let r = r.expect("hit");
@@ -1935,12 +1695,36 @@ mod tests {
             r.reinforced_importance,
             crate::memory_gate::calculate_reinforced_importance(0.5, 2.0)
         );
+        assert_eq!(r.last_reinforced_at, "2026-05-03T00:00:00.000Z");
         assert_eq!(lines.len(), 1, "{lines:?}");
         assert!(lines[0].starts_with(
-            "DEBUG quilltap::db Memory reinforcement counted memoryId=m1 characterId=charA reinforcementCount=2 "
+            "DEBUG quilltap::db Memory reinforcement counted memoryId=m1 characterId=charA by=1 reinforcementCount=2 "
         ));
+        assert!(
+            lines[0].ends_with(" lastReinforcedAt=2026-05-03T00:00:00.000Z"),
+            "{lines:?}"
+        );
+        // `by` counts several observations; an OLDER `at` never rewinds.
+        let r = repo
+            .increment_reinforcement("charA", "m1", "2026-01-01T00:00:00.000Z", 3)
+            .unwrap()
+            .unwrap();
+        assert_eq!(r.reinforcement_count, 5.0);
+        assert_eq!(r.last_reinforced_at, "2026-05-03T00:00:00.000Z");
+        let (refused, lines) = crate::test_support::captured_with(|| {
+            repo.increment_reinforcement("charA", "m1", "t", 0)
+                .err()
+                .map(|e| e.to_string())
+        });
+        assert!(refused
+            .unwrap()
+            .contains("Memory reinforcement: delta must be a positive integer (got 0)"),);
+        assert!(
+            lines.is_empty(),
+            "the refusal precedes the safeQuery: {lines:?}"
+        );
         let (miss, lines) = crate::test_support::captured_with(|| {
-            repo.increment_reinforcement("charB", "m1", "t").unwrap()
+            repo.increment_reinforcement("charB", "m1", "t", 1).unwrap()
         });
         assert!(miss.is_none());
         assert_eq!(
@@ -1954,7 +1738,7 @@ mod tests {
             )
             .unwrap();
         let r = repo
-            .increment_reinforcement("charA", "m2", "t")
+            .increment_reinforcement("charA", "m2", "t", 1)
             .unwrap()
             .unwrap();
         assert_eq!(r.reinforcement_count, 2.0, "NULL count reads 1 (v4 `?? 1`)");
@@ -1967,6 +1751,99 @@ mod tests {
             )
             .unwrap();
         assert_eq!(stamp, "t");
+    }
+
+    /// P4.D288 (C1-7): the link deltas compose (add skips self + present, an
+    /// unchanged list writes nothing), the everywhere-scrub removes across
+    /// holders, the footnotes cap, and the digest member delta.
+    #[test]
+    fn the_delta_verbs_apply_against_the_row_as_it_stands() {
+        let (_dir, w) = seed(&[
+            ("m1", "charA", &["m2"]),
+            ("m2", "charA", &[]),
+            ("m3", "charB", &["m2", "m9"]),
+        ]);
+        let repo = w.memories();
+        let ids = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let (got, lines) = crate::test_support::captured_with(|| {
+            (
+                repo.add_related_memory_ids("charA", "m1", &ids(&["m1", "m2", "m3", "m3", ""]))
+                    .unwrap(),
+                repo.remove_related_memory_ids("charA", "m1", &ids(&["m9"]))
+                    .unwrap(),
+                repo.add_related_memory_ids("charB", "m1", &ids(&["m3"]))
+                    .unwrap(),
+            )
+        });
+        assert_eq!(got.0, Some(ids(&["m2", "m3"])));
+        assert_eq!(got.1, Some(ids(&["m2", "m3"])));
+        assert_eq!(got.2, None);
+        assert_eq!(
+            lines,
+            vec![
+                "DEBUG quilltap::db Memory links updated memoryId=m1 characterId=charA op=add requested=3 changed=true size=2",
+                "DEBUG quilltap::db Memory links updated memoryId=m1 characterId=charA op=remove requested=1 changed=false size=2",
+                "WARN quilltap::db Memory not found for link update memoryId=m1 characterId=charB op=add",
+            ]
+        );
+        let (n, lines) = crate::test_support::captured_with(|| {
+            repo.remove_related_memory_ids_everywhere(&ids(&["m2", "m2"]))
+                .unwrap()
+        });
+        assert_eq!(n, 2);
+        assert_eq!(
+            lines,
+            vec!["DEBUG quilltap::db Scrubbed deleted ids from related links ids=1 changed=2"]
+        );
+        assert_eq!(related_of(&w, "m1"), Some(ids(&["m3"])));
+        assert_eq!(related_of(&w, "m3"), Some(ids(&["m9"])));
+        assert_eq!(repo.remove_related_memory_ids_everywhere(&[]).unwrap(), 0);
+
+        let details: Vec<String> = (0..10).map(|i| format!("d{i}")).collect();
+        let first = repo
+            .append_reinforcement_footnotes("charA", "m2", &details)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            first.appended.len(),
+            crate::reinforcement_footnotes::MAX_REINFORCEMENT_FOOTNOTES
+        );
+        let second = repo
+            .append_reinforcement_footnotes("charA", "m2", &details)
+            .unwrap()
+            .unwrap();
+        assert!(second.appended.is_empty());
+        assert_eq!(second.content, first.content);
+        assert!(repo
+            .append_reinforcement_footnotes("charB", "m2", &details)
+            .unwrap()
+            .is_none());
+
+        w.connection()
+            .execute(
+                "UPDATE memories SET consolidatedFrom = '[\"a\",\"b\",\"c\"]' WHERE id = 'm1'",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            repo.remove_consolidated_members("charA", "m1", &ids(&["b", "x", "b"]))
+                .unwrap(),
+            1
+        );
+        let (cf,): (String,) = w
+            .connection()
+            .query_row(
+                "SELECT consolidatedFrom FROM memories WHERE id = 'm1'",
+                [],
+                |r| Ok((r.get(0)?,)),
+            )
+            .unwrap();
+        assert_eq!(cf, "[\"a\",\"c\"]");
+        assert_eq!(
+            repo.remove_consolidated_members("charB", "m1", &ids(&["a"]))
+                .unwrap(),
+            0
+        );
     }
 
     /// P4.D265 (v4 `d58548051`): the tier move — extras, the foreign-id scope,
@@ -2047,84 +1924,6 @@ mod tests {
         );
     }
 
-    /// The empty-input short circuit returns before v4 ever reads its clock, so
-    /// NOTHING is logged — v4's `if (memoryIds.length === 0) return 0` precedes
-    /// `const startedAt = Date.now()`.
-    #[test]
-    fn delete_many_with_unlink_is_silent_on_an_empty_batch() {
-        let (_dir, w) = seed(&[("mA1", "charA", &[])]);
-        let lines = captured(|| {
-            assert_eq!(
-                w.memories()
-                    .delete_many_with_unlink(&[], CountSource::Repository)
-                    .unwrap(),
-                0
-            );
-        });
-        assert!(
-            lines_with(&lines, "[MemoryGate]").is_empty(),
-            "the empty short circuit precedes v4's clock read: {lines:?}"
-        );
-    }
-
-    /// v4's `BATCH_DELETE_NEIGHBOUR_WARN = 200`, compared with `>=` against
-    /// `neighboursTouched` (NOT the candidate count). Both sides of the bound.
-    #[test]
-    fn delete_many_with_unlink_warns_at_v4s_batch_threshold() {
-        let warn =
-            "[MemoryGate] deleteMemoriesWithUnlinkBatch touched an unusually large neighbour set";
-        for (neighbours, expect_warn) in [(199usize, false), (200usize, true)] {
-            let mut rows: Vec<(String, String, Vec<String>)> =
-                vec![("target".to_string(), "charA".to_string(), Vec::new())];
-            for i in 0..neighbours {
-                rows.push((format!("n{i}"), "charA".to_string(), vec!["target".into()]));
-            }
-            let borrowed: Vec<(&str, &str, Vec<&str>)> = rows
-                .iter()
-                .map(|(a, b, c)| {
-                    (
-                        a.as_str(),
-                        b.as_str(),
-                        c.iter().map(String::as_str).collect(),
-                    )
-                })
-                .collect();
-            let seeds: Vec<(&str, &str, &[&str])> = borrowed
-                .iter()
-                .map(|(a, b, c)| (*a, *b, c.as_slice()))
-                .collect();
-            let (_dir, w) = seed(&seeds);
-            let ids = vec!["target".to_string()];
-            let lines = captured(|| {
-                w.memories()
-                    .delete_many_with_unlink(&ids, CountSource::Repository)
-                    .unwrap();
-            });
-            let hits = lines_with(&lines, warn);
-            assert_eq!(
-                hits.len(),
-                usize::from(expect_warn),
-                "{neighbours} neighbours, expect_warn={expect_warn}: {lines:?}"
-            );
-            if expect_warn {
-                let line = hits[0];
-                assert!(line.starts_with("WARN "), "v4 logs at warn: {line:?}");
-                assert!(line.contains(" requested=1"), "{line:?}");
-                assert!(line.contains(" deleted=1"), "{line:?}");
-                assert!(
-                    line.contains(" deleted=1 countSource=repository neighboursTouched=200"),
-                    "{line:?}"
-                );
-                assert!(line.contains(" charactersAffected=1"), "{line:?}");
-            }
-            assert_eq!(
-                lines_with(&lines, "deleteMemoriesWithUnlinkBatch complete").len(),
-                1,
-                "{lines:?}"
-            );
-        }
-    }
-
     /// P4.149 (P4.144 item 11): a failed OWNER read is v4's fallback `findById`
     /// — `Error finding entity by ID` then `Memory not found for update`, and
     /// `Ok(false)`: the caller CONTINUES (v5's `?` had stopped it). A missing row
@@ -2151,10 +1950,9 @@ mod tests {
             got.push(repo.update_for_character("c-1", "m-1", &patch).unwrap());
             got.push(repo.update_for_character("c-1", "m-2", &patch).unwrap());
             got.push(repo.update_for_character("c-1", "m-gone", &patch).unwrap());
-            got.push(repo.delete_for_character("c-9", "m-1").unwrap());
-            got.push(repo.delete_for_character("c-1", "m-gone").unwrap());
+            got.push(repo.update_for_character("c-9", "m-1", &patch).unwrap());
         });
-        assert_eq!(got, [true, false, false, false, false]);
+        assert_eq!(got, [true, false, false, false]);
         let lines: Vec<&String> = lines
             .iter()
             .filter(|l| l.starts_with("ERROR") || l.starts_with("WARN"))
@@ -2166,13 +1964,14 @@ mod tests {
                 "WARN quilltap::db Memory not found for update memoryId=m-2 characterId=c-1",
                 "WARN quilltap::db Memory not found for update memoryId=m-gone characterId=c-1",
                 "WARN quilltap::db Memory does not belong to character characterId=c-9 memoryId=m-1",
-                "WARN quilltap::db Memory not found for deletion memoryId=m-gone characterId=c-1",
             ]
         );
     }
 
-    /// P4.149: a failed WRITE under `update_for_character` / `delete_for_character`
-    /// logs v4's three rethrow lines in order and propagates.
+    /// P4.149: a failed WRITE under `update_for_character` logs v4's three
+    /// rethrow lines in order and propagates (P4.D288: `delete_for_character`
+    /// RETIRED with v4's, R-F); a failed `bulk_delete_unsafe` logs the base
+    /// `deleteMany` line, then v4's own.
     #[test]
     fn a_failed_write_logs_the_three_rethrow_lines_and_propagates() {
         let (_d, w) = seed(&[("m-1", "c-1", &[])]);
@@ -2190,7 +1989,10 @@ mod tests {
         let mut errs = Vec::new();
         let lines = captured(|| {
             errs.push(repo.update_for_character("c-1", "m-1", &patch).is_err());
-            errs.push(repo.delete_for_character("c-1", "m-1").is_err());
+            errs.push(
+                repo.bulk_delete_unsafe("c-1", &["m-1".to_string()])
+                    .is_err(),
+            );
         });
         assert_eq!(errs, [true, true]);
         let lines: Vec<&String> = lines
@@ -2203,9 +2005,8 @@ mod tests {
                 "ERROR quilltap::db Error updating entity collection=memories id=m-1 error=planted",
                 "ERROR quilltap::db Error updating memory collection=memories memoryId=m-1 error=planted",
                 "ERROR quilltap::db Error updating memory for character collection=memories characterId=c-1 memoryId=m-1 error=planted",
-                "ERROR quilltap::db Error deleting entity collection=memories id=m-1 error=planted",
-                "ERROR quilltap::db Error deleting memory collection=memories memoryId=m-1 error=planted",
-                "ERROR quilltap::db Error deleting memory for character collection=memories characterId=c-1 memoryId=m-1 error=planted",
+                "ERROR quilltap::db Error deleting entities collection=memories error=planted",
+                "ERROR quilltap::db Error bulk deleting memories for character collection=memories characterId=c-1 count=1 error=planted",
             ]
         );
     }

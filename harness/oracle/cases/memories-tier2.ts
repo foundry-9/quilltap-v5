@@ -30,11 +30,32 @@
  * `incrementReinforcement` (hit / miss / wrong character / a planted NULL
  * count), `updateTierBulk` (cold with extras, a foreign id untouched, hot with
  * `supersededById: null`, a bare demotion, `[]`, > `SQLITE_VARIABLE_CHUNK_SIZE`
- * ids), `markConsidered`, and v4's REAL `markMemoriesAccessed` (its
- * fire-and-forget flushed with `setImmediate` before the next op). Each op is
+ * ids), `markConsidered`, and (L-6, P4.D288) `updateAccessTimeBulk` — the
+ * repository verb v4's `stampAccessed` calls, re-aimed from the retired
+ * `markMemoriesAccessed`. Each op is
  * emitted as `{op, returned, lines}` — the op itself (so the Rust side replays
  * exactly this list), the method's answer, and the repository / service lines
  * it logged (a transport spliced into the singleton logger).
+ *
+ * P4.D288 (C1-7, the `83334b9a5` pin): v4 `af48f6cc2` DELETED the
+ * repository's deleters (`deleteForCharacter`, `bulkDelete`, `deleteByChatId`,
+ * `deleteBySourceMessageId`; the bare `delete` now REFUSES) and `e0ac7493a`
+ * deleted `replaceInMemories`. The committed op list (§R.7, unchanged) is
+ * RE-AIMED onto the pin's successors, the same way on both sides: `delete` →
+ * `retireMemories([id], 'item-delete')`; `deleteForCharacter` /
+ * `bulkDelete` → `bulkDeleteUnsafe` (character-scoped, so the not-owned no-op
+ * holds); `deleteByChatId` → `retireChatMemories`; `deleteBySourceMessageId`
+ * → `findBySourceMessageId` + `retireMemories(…, 'message-cascade')`;
+ * `replaceInMemories` → the retired method's own body over v4's REAL
+ * `findById` / `update` (`REPLACE_IN_MEMORIES_OVER_PRIMITIVES`). A KEYSTONE
+ * phase follows the tier phase — every new repository verb (counted
+ * reinforcement with `by` / forward-only / the refusal, the composing link
+ * deltas, the everywhere scrub, the footnotes cap, `bulkDeleteUnsafe`, the
+ * digest member delta, the cap breakdown, the dangling scan, the three digest
+ * lookups, bug 215's recap bands, `supersededAt` in all three states) — each
+ * `{op, returned, lines}` like the tier phase; the four repository jest
+ * files' (`memories-{link-deltas,cap-breakdown,bulk-delete,recap-bands}`)
+ * rows are its seeds.
  *
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -95,6 +116,17 @@ async function main(): Promise<void> {
     'Memory reinforcement counted',
     'Moved memories between tiers',
     '[Memory] Marking memories accessed',
+    // P4.D288: the keystone phase's repository lines.
+    'Memory links updated',
+    'Memory not found for link update',
+    'Scrubbed deleted ids from related links',
+    'Reinforcement footnotes appended',
+    'Memory not found for reinforcement footnotes',
+    'Entities deleted',
+    'Removed members from digest',
+    'Found digests naming doomed members',
+    'Scanned for dangling memory links',
+    'Fetched recap importance band',
   ]);
   const { logger } = await import('@/lib/logger');
   let captured: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
@@ -119,6 +151,11 @@ async function main(): Promise<void> {
     '@/lib/database/repositories/memories.repository'
   );
 
+  const { retireMemories, retireChatMemories } = await import('@/lib/memory/retire');
+  // Hold off v4's job host (the retire's announcement may enqueue nothing,
+  // but a runner claiming mid-case would race the dump).
+  (globalThis as Record<string, unknown>).__quilltapJobHost = { shuttingDown: true };
+
   await initializeDatabase();
   const repo = new MemoriesRepository();
 
@@ -139,24 +176,41 @@ async function main(): Promise<void> {
       case 'updateAccessTimeBulk':
         await repo.updateAccessTimeBulk(op.characterId as string, op.ids as string[]);
         break;
-      case 'replaceInMemories':
-        await repo.replaceInMemories(op.ids as string[], op.search as string, op.replace as string);
+      case 'replaceInMemories': {
+        // REPLACE_IN_MEMORIES_OVER_PRIMITIVES: the retired method's body
+        // (`split(search).join(replace)` on content / summary / keywords,
+        // `update` only when something changed) over v4's REAL repository.
+        const search = op.search as string;
+        const rep = (t: string) => t.split(search).join(op.replace as string);
+        for (const id of op.ids as string[]) {
+          const m = await repo.findById(id);
+          if (!m) continue;
+          const keywords = m.keywords ?? [];
+          const changed =
+            m.content.includes(search) || m.summary.includes(search) || keywords.some((k) => k.includes(search));
+          if (changed) {
+            await repo.update(id, { content: rep(m.content), summary: rep(m.summary), keywords: keywords.map(rep) } as never);
+          }
+        }
         break;
+      }
       case 'delete':
-        await repo.delete(op.id as string);
+        await retireMemories([op.id as string], { reason: 'item-delete' });
         break;
       case 'deleteForCharacter':
-        await repo.deleteForCharacter(op.characterId as string, op.memoryId as string);
+        await repo.bulkDeleteUnsafe(op.characterId as string, [op.memoryId as string]);
         break;
       case 'bulkDelete':
-        await repo.bulkDelete(op.characterId as string, op.ids as string[]);
+        await repo.bulkDeleteUnsafe(op.characterId as string, op.ids as string[]);
         break;
       case 'deleteByChatId':
-        await repo.deleteByChatId(op.chatId as string);
+        await retireChatMemories(op.chatId as string);
         break;
-      case 'deleteBySourceMessageId':
-        await repo.deleteBySourceMessageId(op.sourceMessageId as string);
+      case 'deleteBySourceMessageId': {
+        const rows = await repo.findBySourceMessageId(op.sourceMessageId as string);
+        await retireMemories(rows.map((m) => m.id), { reason: 'message-cascade' });
         break;
+      }
       case 'deleteBySourceMessageIds':
         // v4 `ad1c4c37f` deletes `deleteBySourceMessageIds` as dead code (v5
         // never had a production caller either — retired, not ported). The
@@ -170,7 +224,10 @@ async function main(): Promise<void> {
   }
 
   // === P4.D265: the tier phase ===
-  const { markMemoriesAccessed } = await import('@/lib/memory/memory-service');
+  // L-6 (P4.D288): `lib/memory/memory-service.ts` is gone at the pin — the
+  // two `markMemoriesAccessed` ops are RE-AIMED at the repository verb v4's
+  // `recall/deliver.ts` `stampAccessed` calls (`updateAccessTimeBulk`, its
+  // answer recorded); delivery semantics are P4.D291's.
   const T = 'd2650000-0000-4000-8000-0000000000a1';
   const O = 'd2650000-0000-4000-8000-0000000000a2';
   const tid = (n: number) => `d2650000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -219,8 +276,8 @@ async function main(): Promise<void> {
     { kind: 'updateTierBulk', characterId: T, ids: [], tier: 'cold', extra: {} },
     { kind: 'updateTierBulk', characterId: T, ids: [...ghosts, tid(104)], tier: 'cold', extra: {} },
     { kind: 'markConsidered', characterId: T, ids: [tid(103), tid(104), tid(106)], when: at(6) },
-    { kind: 'markMemoriesAccessed', characterId: T, ids: [tid(101), '', tid(101), tid(103)] },
-    { kind: 'markMemoriesAccessed', characterId: T, ids: [] },
+    { kind: 'updateAccessTimeBulk', characterId: T, ids: [tid(101), '', tid(101), tid(103)] },
+    { kind: 'updateAccessTimeBulk', characterId: T, ids: [] },
   ];
   const tier: Array<Record<string, unknown>> = [];
   for (const op of tierOps) {
@@ -251,15 +308,188 @@ async function main(): Promise<void> {
       case 'markConsidered':
         returned = await repo.markConsidered(op.characterId as string, op.ids as string[], op.when as string);
         break;
-      case 'markMemoriesAccessed':
-        markMemoriesAccessed(op.characterId as string, op.ids as string[]);
-        // Fire-and-forget: let the repository write land before the next op.
-        for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+      case 'updateAccessTimeBulk':
+        returned = await repo.updateAccessTimeBulk(op.characterId as string, op.ids as string[]);
         break;
       default:
         throw new Error(`unknown tier op: ${op.kind}`);
     }
     tier.push({ op, returned, lines: captured });
+  }
+  captured = [];
+
+  // === P4.D288: the keystone phase (see the header) ===
+  const K = 'd2880000-0000-4000-8000-0000000000a1';
+  const KO = 'd2880000-0000-4000-8000-0000000000a2';
+  const kid = (n: number) => `d2880000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const kat = (n: number) => `2026-05-0${n}T00:00:00.000Z`;
+  const kopt = (n: number, created = kat(1)) => ({ id: kid(n), createdAt: created, updatedAt: kat(1) });
+  const kmem = (characterId: string, extra: Record<string, unknown> = {}) => ({
+    characterId,
+    content: 'keystone phase',
+    summary: 'keystone',
+    importance: 0.5,
+    ...extra,
+  });
+  const ri = (n: number, v: number, created: string) => ({
+    kind: 'create',
+    data: kmem(K, { importance: v, reinforcedImportance: v, source: 'AUTO' }),
+    options: kopt(n, created),
+  });
+  const keystoneOps: Array<Record<string, unknown>> = [
+    // Seeds: links, footnotes, a digest pair, a dangling graph, the cap mix.
+    { kind: 'create', data: kmem(K, { relatedMemoryIds: [kid(99)] }), options: kopt(1) },
+    { kind: 'create', data: kmem(K, { content: 'Friday keeps the ledger.' }), options: kopt(2) },
+    { kind: 'create', data: kmem(KO, { relatedMemoryIds: [kid(1), kid(2)] }), options: kopt(3) },
+    {
+      kind: 'create',
+      data: kmem(K, { source: 'CONSOLIDATED', aboutCharacterId: KO, consolidatedFrom: [kid(5), kid(6), kid(77)] }),
+      options: kopt(4),
+    },
+    { kind: 'create', data: kmem(K, { tier: 'cold', supersededById: kid(4), supersededAt: kat(2) }), options: kopt(5) },
+    { kind: 'create', data: kmem(K, { tier: 'cold', supersededById: kid(4), supersededAt: null }), options: kopt(6) },
+    { kind: 'create', data: kmem(K, { tier: 'cold', supersededById: kid(88) }), options: kopt(7) },
+    { kind: 'create', data: kmem(K, { source: 'MANUAL' }), options: kopt(8) },
+    // Counted reinforcement: by, forward-only, the refusal, a miss.
+    { kind: 'incrementReinforcement', characterId: K, memoryId: kid(2), at: kat(4), by: 3 },
+    { kind: 'incrementReinforcement', characterId: K, memoryId: kid(2), at: kat(3) },
+    { kind: 'incrementReinforcement', characterId: K, memoryId: kid(2), at: kat(5), by: 0 },
+    { kind: 'incrementReinforcement', characterId: KO, memoryId: kid(2), at: kat(5), by: 2 },
+    // The link deltas compose; self + present skipped; unchanged → no write.
+    { kind: 'addRelatedMemoryIds', characterId: K, memoryId: kid(1), ids: [kid(2)] },
+    { kind: 'addRelatedMemoryIds', characterId: K, memoryId: kid(1), ids: [kid(8), kid(2), kid(1), '', kid(8)] },
+    { kind: 'removeRelatedMemoryIds', characterId: K, memoryId: kid(1), ids: [kid(42)] },
+    { kind: 'removeRelatedMemoryIds', characterId: K, memoryId: kid(1), ids: [kid(8), kid(42)] },
+    { kind: 'addRelatedMemoryIds', characterId: KO, memoryId: kid(1), ids: [kid(8)] },
+    { kind: 'plant', sql: `UPDATE memories SET relatedMemoryIds = NULL WHERE id = '${kid(8)}'` },
+    { kind: 'addRelatedMemoryIds', characterId: K, memoryId: kid(8), ids: [kid(2)] },
+    // The everywhere scrub — across holders, an invalid cell untouched.
+    { kind: 'plant', sql: `UPDATE memories SET relatedMemoryIds = 'not json' WHERE id = '${kid(6)}'` },
+    { kind: 'removeRelatedMemoryIdsEverywhere', ids: [kid(2), kid(2)] },
+    { kind: 'removeRelatedMemoryIdsEverywhere', ids: [] },
+    // Footnotes against the live content; the cap; a miss.
+    { kind: 'appendReinforcementFootnotes', characterId: K, memoryId: kid(2), details: ['Marguerite'] },
+    { kind: 'appendReinforcementFootnotes', characterId: K, memoryId: kid(2), details: ['Valparaiso', 'Marguerite'] },
+    {
+      kind: 'appendReinforcementFootnotes',
+      characterId: K,
+      memoryId: kid(2),
+      details: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'],
+    },
+    { kind: 'appendReinforcementFootnotes', characterId: KO, memoryId: kid(2), details: ['x'] },
+    // The reads.
+    { kind: 'countCapBreakdown', characterId: K },
+    { kind: 'countCapBreakdown', characterId: kid(999) },
+    { kind: 'findDanglingLinks' },
+    { kind: 'findDanglingLinks', characterIds: [K, K] },
+    { kind: 'findDanglingLinks', characterIds: [] },
+    { kind: 'findDigestsContainingMembers', characterIds: [K, KO], memberIds: [kid(5), kid(77)] },
+    { kind: 'findDigestsContainingMembers', characterIds: [], memberIds: [kid(5)] },
+    { kind: 'findIdsSupersededByAny', characterIds: [K], digestIds: [kid(4), kid(88)] },
+    { kind: 'findDigestSubjectsByIds', ids: [kid(4), kid(1), kid(4)] },
+    // The digest member delta (a dedupe, an absent member, another holder).
+    { kind: 'removeConsolidatedMembers', characterId: K, digestId: kid(4), ids: [kid(77), kid(77), kid(0)] },
+    { kind: 'removeConsolidatedMembers', characterId: KO, digestId: kid(4), ids: [kid(5)] },
+    { kind: 'removeConsolidatedMembers', characterId: K, digestId: kid(4), ids: [] },
+    // supersededAt moves with supersededById: stamped, cut, untouched.
+    { kind: 'updateTierBulk', characterId: K, ids: [kid(8)], tier: 'cold', extra: { supersededById: kid(4) } },
+    { kind: 'updateTierBulk', characterId: K, ids: [kid(5)], tier: 'cold', extra: { supersededById: null } },
+    { kind: 'updateTierBulk', characterId: K, ids: [kid(6)], tier: 'hot', extra: {} },
+    // Bug 215's recap bands on reinforcedImportance alone.
+    ri(20, 0.8, '2026-10-01T00:01:00.000Z'),
+    ri(21, 0.7, '2026-10-01T00:02:00.000Z'),
+    ri(22, 0.69, '2026-10-01T00:03:00.000Z'),
+    ri(23, 0.3, '2026-10-01T00:04:00.000Z'),
+    ri(24, 0.29, '2026-10-01T00:05:00.000Z'),
+    { kind: 'plant', sql: `UPDATE memories SET importance = 0.65 WHERE id = '${kid(20)}'` },
+    { kind: 'findRecentByImportanceTier', characterId: K, limits: {} },
+    { kind: 'findRecentByImportanceTier', characterId: K, limits: { high: 1, medium: 0, low: 5 } },
+    // bulkDeleteUnsafe last: another holder's id untouched, then empty.
+    { kind: 'bulkDeleteUnsafe', characterId: K, ids: [kid(24), kid(3), kid(1000)] },
+    { kind: 'bulkDeleteUnsafe', characterId: K, ids: [] },
+  ];
+  const keystone: Array<Record<string, unknown>> = [];
+  for (const op of keystoneOps) {
+    captured = [];
+    let returned: unknown = null;
+    const ids = (k: string) => (op[k] as string[]) ?? [];
+    try {
+      switch (op.kind) {
+        case 'create':
+          await repo.create(op.data as never, op.options as never);
+          break;
+        case 'plant':
+          await rawQuery(op.sql as string);
+          break;
+        case 'incrementReinforcement':
+          returned = await repo.incrementReinforcement(
+            op.characterId as string,
+            op.memoryId as string,
+            op.at as string,
+            ...(op.by === undefined ? [] : [op.by as number]),
+          );
+          break;
+        case 'addRelatedMemoryIds':
+          returned = await repo.addRelatedMemoryIds(op.characterId as string, op.memoryId as string, ids('ids'));
+          break;
+        case 'removeRelatedMemoryIds':
+          returned = await repo.removeRelatedMemoryIds(op.characterId as string, op.memoryId as string, ids('ids'));
+          break;
+        case 'removeRelatedMemoryIdsEverywhere':
+          returned = await repo.removeRelatedMemoryIdsEverywhere(ids('ids'));
+          break;
+        case 'appendReinforcementFootnotes':
+          returned = await repo.appendReinforcementFootnotes(
+            op.characterId as string,
+            op.memoryId as string,
+            ids('details'),
+          );
+          break;
+        case 'countCapBreakdown':
+          returned = await repo.countCapBreakdown(op.characterId as string);
+          break;
+        case 'findDanglingLinks':
+          returned = await repo.findDanglingLinks(op.characterIds as string[] | undefined);
+          break;
+        case 'findDigestsContainingMembers':
+          returned = await repo.findDigestsContainingMembers(ids('characterIds'), ids('memberIds'));
+          break;
+        case 'findIdsSupersededByAny':
+          returned = await repo.findIdsSupersededByAny(ids('characterIds'), ids('digestIds'));
+          break;
+        case 'findDigestSubjectsByIds':
+          returned = await repo.findDigestSubjectsByIds(ids('ids'));
+          break;
+        case 'removeConsolidatedMembers':
+          returned = await repo.removeConsolidatedMembers(
+            op.characterId as string,
+            op.digestId as string,
+            ids('ids'),
+          );
+          break;
+        case 'updateTierBulk':
+          returned = await repo.updateTierBulk(
+            op.characterId as string,
+            ids('ids'),
+            op.tier as 'hot' | 'cold',
+            op.extra as never,
+          );
+          break;
+        case 'findRecentByImportanceTier': {
+          const r = await repo.findRecentByImportanceTier(op.characterId as string, op.limits as never);
+          returned = { high: r.high.map((m) => m.id), medium: r.medium.map((m) => m.id), low: r.low.map((m) => m.id) };
+          break;
+        }
+        case 'bulkDeleteUnsafe':
+          returned = await repo.bulkDeleteUnsafe(op.characterId as string, ids('ids'));
+          break;
+        default:
+          throw new Error(`unknown keystone op: ${op.kind}`);
+      }
+    } catch (err) {
+      returned = { error: err instanceof Error ? err.message : String(err) };
+    }
+    keystone.push({ op, returned, lines: captured });
   }
   captured = [];
 
@@ -297,7 +527,7 @@ async function main(): Promise<void> {
   await closeDatabase();
 
   const dump = canonicalizeRows({ table: 'memories', columns, rawRows, orderBy: 'id' });
-  process.stdout.write(JSON.stringify({ case: 'memories-tier2', ...dump, errors, tier }) + '\n');
+  process.stdout.write(JSON.stringify({ case: 'memories-tier2', ...dump, errors, tier, keystone }) + '\n');
   process.exit(0);
 }
 

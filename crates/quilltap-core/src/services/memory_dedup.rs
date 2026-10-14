@@ -21,10 +21,9 @@
 //!      into its survivor first (`apply_memory_merge` — the patch, then ONE
 //!      re-embed through the optional embedding seam when the content or the
 //!      anchor date changed); a failed fold KEEPS its losers; then bulk-delete
-//!      the rest through the [`delete_many_with_unlink`] chokepoint (so
-//!      neighbours' `relatedMemoryIds` are scrubbed), clean the character's
-//!      vector store (best-effort — v4's WARN), and invalidate the character's
-//!      frozen archive.
+//!      the rest through the ONE retire path ([`retire_and_announce`] — so
+//!      neighbours' `relatedMemoryIds` are scrubbed and the vectors go with
+//!      the rows), and invalidate the character's frozen archive.
 //!
 //! `deduplicate_all_memories` iterates every character, pushing a ZERO-FILLED
 //! entry on a per-character failure so the character still appears (v4's
@@ -32,7 +31,7 @@
 //! order-for-key-order; `processedAt` (and each survivor's minted `updatedAt`)
 //! are the placeholdered fields in the differential.
 //!
-//! [`delete_many_with_unlink`]: crate::db::memories::MemoriesRepository::delete_many_with_unlink
+//! [`retire_and_announce`]: crate::services::memory_retire::retire_and_announce
 
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
@@ -40,7 +39,6 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde_json::{json, Value};
 
-use crate::db::memories::CountSource;
 use crate::db::runtime::Db;
 use crate::db::{characters_read, js_number_to_json, memories_read, DbError};
 use crate::embedding_vector::cosine_similarity;
@@ -430,17 +428,19 @@ async fn deduplicate_character_memories<P: EmbeddingProvider>(
             );
         }
 
-        // Bulk delete through the chokepoint so neighbours' relatedMemoryIds
-        // get scrubbed (the survivors from their freshly committed lists).
-        let ids = remove_ids.clone();
-        let deleted = db
-            .write(move |writers| {
-                writers
-                    .main()
-                    .memories()
-                    .delete_many_with_unlink(&ids, CountSource::Repository)
-            })
-            .await?;
+        // P4.D288 (C1-7): the ONE retire path (`near-duplicate-fold`, v4
+        // `fold-near-duplicates.ts:195`) — every link to the folded rows (the
+        // survivors' freshly committed lists included) scrubbed, their vectors
+        // with them; the announcement after the commit (R-AF).
+        let deleted = crate::services::memory_retire::retire_and_announce(
+            db,
+            remove_ids.clone(),
+            crate::services::memory_retire::RetireOptions::new(
+                crate::services::memory_retire::RetireReason::NearDuplicateFold,
+            ),
+        )
+        .await?
+        .retired;
         tracing::info!(
             context = CHAR_CONTEXT,
             characterId = character_id,
@@ -448,10 +448,6 @@ async fn deduplicate_character_memories<P: EmbeddingProvider>(
             deleted = deleted,
             "[MemoryDedup] Bulk deleted memories"
         );
-
-        // P4.D288 (C1-3, mechanical): the vector-mirror cleanup is gone with the
-        // mirror — the rows deleted above were the only copy of their vectors
-        // (the retire path replaces this delete in unit 9).
 
         crate::services::frozen_archive::invalidate_frozen_archive(character_id);
     }

@@ -23,7 +23,8 @@
 //!    touched: `characterDocumentMountPointId` (the vault survives),
 //!    `defaultImageId` and `avatarOverrides` (they point at blobs the prune
 //!    keeps — nulling them is what took the face off old messages).
-//! 4. Prune (idempotent, re-runnable): own memories, the vector store, then
+//! 4. Prune (idempotent, re-runnable): own memories (through the ONE retire
+//!    path — P4.D288; the vector store went with v4 `af48f6cc2`), then
 //!    every vault link outside the keep-set, through the document-store delete
 //!    paths so link-group orphan GC runs.
 //!
@@ -69,10 +70,12 @@ use crate::db::{
     doc_mount_points::DocMountPointsRepository,
     embedding_status::EmbeddingStatusRepository,
     files::{CreateOptions as FileCreateOptions, FileCreate, FileEntry, FilesRepository},
-    memories::MemoriesRepository,
     memories_read, vault_character_update, DbError,
 };
 use crate::services::file_storage::{PixelCodec, StorageBackend};
+use crate::services::memory_retire::{
+    announce_retirement, retire_memories, RetireOptions, RetireReason,
+};
 use crate::services::mount_index::converters::DocumentTextExtractor;
 use crate::services::qtap_export::{stream_export_records, ExportOptions};
 use crate::services::quilltap_import::ndjson::{assemble_export_from_stream, read_ndjson_lines};
@@ -1214,7 +1217,8 @@ fn warn_flip(character_id: &str, flip: ParticipantFlip, error: &str) {
 async fn prune_archived_character_state(db: &Db, character_id: &str) -> Result<bool, ArchiveError> {
     let steps = [
         delete_own_memories(db, character_id).await,
-        delete_vector_store(db, character_id).await,
+        // P4.D288 (C1-3 / C1-7): v4 `af48f6cc2` dropped the vector-store step
+        // — the vectors lived on the memory rows just retired.
         prune_vault(db, character_id).await,
     ];
     let complete = steps.iter().all(|s| *s);
@@ -1235,50 +1239,40 @@ async fn delete_own_memories(db: &Db, character_id: &str) -> bool {
             let conn = ws.main().connection();
             let memories = memories_read::find_by_character_id(conn, &cid)?;
             if memories.is_empty() {
-                return Ok(());
+                return Ok(None);
             }
             let ids: Vec<String> = memories
                 .iter()
                 .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
                 .collect();
-            // Through the gate, never repos.memories.delete*: it scrubs the
-            // deleted ids out of surviving neighbours' relatedMemoryIds first.
-            MemoriesRepository::new(conn)
-                .delete_many_with_unlink(&ids, crate::db::memories::CountSource::Repository)?;
+            // P4.D288 (C1-7): through the ONE retire path (`character-archive`,
+            // v4 `archive-service.ts:764`), never a bare row delete — it scrubs
+            // the retired ids out of every surviving row's links and evicts
+            // their vectors (bug 200).
+            let report = retire_memories(
+                conn,
+                &ids,
+                RetireOptions::new(RetireReason::CharacterArchive),
+            )?;
             let statuses = EmbeddingStatusRepository::new(conn);
             for id in &ids {
                 statuses.delete_by_entity("MEMORY", id)?;
             }
-            Ok(())
+            Ok(report.announcement)
         })
         .await;
     match outcome {
-        Ok(()) => true,
+        Ok(announcement) => {
+            // R-AF: the retirement's effects after the commit.
+            announce_retirement(db, announcement.as_ref()).await;
+            true
+        }
         Err(e) => {
             tracing::warn!(
                 target: "quilltap::archive",
                 character_id,
                 error = %e,
                 "Failed to delete memories for archived character",
-            );
-            false
-        }
-    }
-}
-
-async fn delete_vector_store(db: &Db, character_id: &str) -> bool {
-    // P4.D288 (C1-3, mechanical): there is no stored vector store to delete —
-    // the memory rows ARE the index — so the step always succeeds.
-    let _ = (db, character_id);
-    let outcome: Result<(), DbError> = Ok(());
-    match outcome {
-        Ok(_) => true,
-        Err(e) => {
-            tracing::warn!(
-                target: "quilltap::archive",
-                character_id,
-                error = %e,
-                "Failed to delete vector store for archived character",
             );
             false
         }

@@ -24,6 +24,9 @@ use crate::db::wardrobe_wear_stats::WardrobeWearStatsRepository;
 use crate::db::{characters_read, chats_read, memories_read, DbError};
 use crate::photos::character_gallery_service::remove_from_character_gallery;
 use crate::photos::resolve_character_avatar::{resolve_character_avatar, AvatarKind};
+use crate::services::memory_retire::{
+    retire_memories, RetireOptions, RetireReason, RetirementAnnouncement,
+};
 
 /// One exclusive-image entry (v4 `ExclusiveCharacterImage`).
 #[derive(Debug, Clone)]
@@ -300,21 +303,35 @@ fn delete_file_completely(main: &Connection, file_id: &str) -> Result<bool, DbEr
     files.delete(file_id)
 }
 
+/// v4 `executeCascadeDelete`'s `{ success, deletedChats, deletedImages,
+/// deletedMemories }`, plus (P4.D288, R-AF) the memory retirement's
+/// announcement for the caller to make once its write has committed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CascadeDeleteOutcome {
+    pub success: bool,
+    pub deleted_chats: i64,
+    pub deleted_images: i64,
+    pub deleted_memories: i64,
+    pub announcement: Option<RetirementAnnouncement>,
+}
+
 /// v4 `executeCascadeDelete`. Deletes the character + its memories, and — when
-/// requested — its exclusive chats + images. Returns
-/// `(success, deletedChats, deletedImages, deletedMemories)`. A WRITE.
+/// requested — its exclusive chats + images. A WRITE; hand
+/// [`CascadeDeleteOutcome::announcement`] to
+/// [`announce_retirement`](crate::services::memory_retire::announce_retirement)
+/// after the commit.
 pub fn execute_cascade_delete(
     main: &Connection,
     mount: &Connection,
     character_id: &str,
     delete_exclusive_chats: bool,
     delete_exclusive_images: bool,
-) -> Result<(bool, i64, i64, i64), DbError> {
+) -> Result<CascadeDeleteOutcome, DbError> {
     if characters_read::find_by_id_raw(main, character_id)?.is_none() {
-        return Ok((false, 0, 0, 0));
+        return Ok(CascadeDeleteOutcome::default());
     }
     let Some(preview) = get_cascade_delete_preview(main, mount, character_id)? else {
-        return Ok((false, 0, 0, 0));
+        return Ok(CascadeDeleteOutcome::default());
     };
 
     let mut deleted_chats = 0i64;
@@ -359,20 +376,40 @@ pub fn execute_cascade_delete(
         }
     }
 
-    // Always scrub memories through the unlink-batch chokepoint (cross-character
-    // relatedMemoryIds get rewritten before the rows go away).
+    // P4.D288 (C1-7, v4 `cascade-delete.ts:372-386`): always retire the
+    // character's memories through the ONE retire path (`character-delete`),
+    // so cross-character links are scrubbed before the rows go away. v4's
+    // catch: a failure logs `Failed to delete memories for character <id>`
+    // and the delete PROCEEDS — the retirement runs in its own savepoint so a
+    // failure leaves no half-retired corpus behind. The vectors lived on the
+    // rows (v4's `memoryIndex.reload` drops a cache v5 does not keep), so
+    // LIVE-DATA hazard (2) — the half-completed delete — is retired.
+    let mut announcement = None;
     if preview.memory_count > 0 {
-        let memories = memories_read::find_by_character_id(main, character_id)?;
-        let ids: Vec<String> = memories
-            .iter()
-            .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
-            .collect();
-        deleted_memories = crate::db::memories::MemoriesRepository::new(main)
-            .delete_many_with_unlink(&ids, crate::db::memories::CountSource::Repository)?;
+        let retired =
+            crate::db::schema_probe::in_savepoint(main, "cascade_delete_memories", |conn| {
+                let ids: Vec<String> = memories_read::find_by_character_id(conn, character_id)?
+                    .iter()
+                    .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
+                    .collect();
+                retire_memories(
+                    conn,
+                    &ids,
+                    RetireOptions::new(RetireReason::CharacterDelete),
+                )
+            });
+        match retired {
+            Ok(report) => {
+                deleted_memories = report.retired;
+                announcement = report.announcement;
+            }
+            Err(e) => tracing::error!(
+                contextJson = %serde_json::json!({ "characterId": character_id }),
+                error = %crate::db::fallback::error_text(&e),
+                "Failed to delete memories for character {character_id}"
+            ),
+        }
     }
-
-    // P4.D288 (C1-3, mechanical): the vector mirror is gone — the memory rows
-    // deleted above carried the only copy of their vectors.
 
     // Plugin data.
     main.execute(
@@ -386,7 +423,13 @@ pub fn execute_cascade_delete(
     // vault's name (v4 `CharactersRepository.delete`'s reconcile, bug 186).
     crate::db::character_vault::delete_character_and_reconcile(main, Some(mount), character_id)?;
 
-    Ok((true, deleted_chats, deleted_images, deleted_memories))
+    Ok(CascadeDeleteOutcome {
+        success: true,
+        deleted_chats,
+        deleted_images,
+        deleted_memories,
+        announcement,
+    })
 }
 
 /// The cascade's wear-ledger step (v4 `3ee3b1342`, `cascade-delete.ts:

@@ -10,7 +10,8 @@
 //! per-file failure (the fixture's mount-index trigger plant), a missing /
 //! archived / store-type-mismatch / FILESYSTEM / vaultless / dangling-vault
 //! holder, the stale pre-existing file overwritten, an empty list, a list of
-//! only empty files. Comparands per call: the result object and every captured
+//! only empty files (P4.D288, bug 208 at `83334b9a5`: an empty file REMOVES
+//! the bucket's existing mirror — `removed` + its DEBUG). Comparands per call: the result object and every captured
 //! line (level, message, every context field in v4's order — the
 //! `Document absent from database-backed store` debug with v4's `module:
 //! 'service'`, and v4's `Failed to resolve character vault store` WARN with
@@ -60,6 +61,9 @@ const CAPTURED: &[&str] = &[
     "Commonplace mirror complete",
     "Document absent from database-backed store",
     "Failed to resolve character vault store",
+    // P4.D288 (bug 208).
+    "Removed Commonplace mirror for an emptied bucket",
+    "Failed to remove an emptied Commonplace mirror",
 ];
 
 /// Every 36-char UUID not in the committed spec text → `<id>`: the vault mount

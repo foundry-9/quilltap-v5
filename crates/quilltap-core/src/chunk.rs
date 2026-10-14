@@ -1,11 +1,11 @@
 //! v4 `lib/utils/chunk.ts` (`805ef12bf`) — the bind-variable budget for chunked
-//! SQLite `IN (…)` queries, plus the order-preserving splitter both memory
-//! deletion sites feed it to.
+//! SQLite `IN (…)` queries, plus the order-preserving splitter the memory
+//! repository feeds it to.
 //!
-//! One home, two consumers, exactly as v4 has it: the doomed-id → character
-//! resolve in [`crate::db::memories::MemoriesRepository::delete_many_with_unlink`]
-//! and the `characterId`-scoped
-//! [`crate::db::memories::MemoriesRepository::bulk_delete`]. Both build a single
+//! One home, many consumers, as v4 has it — among them the retire path's row
+//! resolve and its `characterId`-scoped
+//! [`crate::db::memories::MemoriesRepository::bulk_delete_unsafe`] (P4.D288;
+//! the gate's two deleters it replaced were the first). Each builds a single
 //! `IN (…)` list with one bind variable per id, and a full-wipe restore or a
 //! large character cascade on an instance with tens of thousands of memories
 //! passes more ids than SQLite will accept in one statement.

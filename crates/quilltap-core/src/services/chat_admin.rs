@@ -65,7 +65,7 @@ use crate::services::context_summary::tasks::{title_chat, title_help_chat};
 use crate::services::image_job_common::{
     cheap_llm_config_from_settings, cheap_llm_profile_from_value,
 };
-use crate::services::memory_service::delete_memory_with_vector;
+use crate::services::memory_retire::{retire_and_announce, RetireOptions, RetireReason};
 use crate::services::queue_service::{
     enqueue_chat_danger_classification, enqueue_context_summary, enqueue_conversation_render,
 };
@@ -489,11 +489,10 @@ pub(crate) fn require_chat(db: &Db, chat_id: &str) -> Result<(), Response> {
 ///
 /// ## Memory deletion is best-effort and counted
 ///
-/// For every affected message, each memory whose `sourceMessageId` matches is
-/// deleted through [`delete_memory_with_vector`] (which re-checks ownership
-/// against the memory's own `characterId`, so the count is "actually deleted",
-/// not "found"). A single failure is logged and skipped — one bad memory must not
-/// abort the re-attribution.
+/// Every memory whose `sourceMessageId` names an affected message is retired
+/// in ONE call through the retire path (P4.D288 — `message-reattribution`);
+/// the count is the rows actually deleted. A failure is logged and skipped —
+/// the memory cleanup must not abort the re-attribution.
 pub async fn chat_bulk_reattribute(
     db: &Db,
     chat_id: &str,
@@ -582,39 +581,43 @@ pub async fn chat_bulk_reattribute(
         .collect();
 
     // Delete the memories those messages produced (best effort, counted).
+    // P4.D288 (C1-7): the re-attributed lines' memories were extracted for
+    // the old speaker; they go together through the ONE retire path
+    // (`message-reattribution`, v4 `chats/[id]/actions/bulk.ts:82`). Best
+    // effort: a failure is logged and the re-attribution still proceeds.
     let mut memories_deleted = 0usize;
+    let mut memory_ids_to_retire: Vec<String> = Vec::new();
     for msg_id in affected
         .iter()
         .filter_map(|m| m.get("id").and_then(Value::as_str))
     {
         let mid = msg_id.to_string();
-        let from_message = match db
-            .read_main(move |c| memories_read::find_by_source_message_id(c, &mid))
-        {
-            Ok(rows) => rows,
+        match db.read_main(move |c| memories_read::find_by_source_message_id(c, &mid)) {
+            Ok(rows) => memory_ids_to_retire.extend(
+                rows.iter()
+                    .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string)),
+            ),
             Err(e) => {
                 tracing::error!(error = %e, "[Chats v1] Failed to read memories during bulk re-attribution");
-                continue;
             }
-        };
-        for memory in from_message {
-            let (Some(memory_id), Some(character_id)) = (
-                memory.get("id").and_then(Value::as_str),
-                memory.get("characterId").and_then(Value::as_str),
-            ) else {
-                continue;
-            };
-            match delete_memory_with_vector(db, character_id, memory_id).await {
-                Ok(true) => memories_deleted += 1,
-                Ok(false) => {}
-                Err(e) => {
-                    // v4 logs and continues — best-effort cleanup.
-                    tracing::error!(
-                        memory_id,
-                        error = %e,
-                        "[Chats v1] Failed to delete memory during bulk re-attribution"
-                    );
-                }
+        }
+    }
+    if !memory_ids_to_retire.is_empty() {
+        let memory_count = memory_ids_to_retire.len();
+        match retire_and_announce(
+            db,
+            memory_ids_to_retire,
+            RetireOptions::new(RetireReason::MessageReattribution),
+        )
+        .await
+        {
+            Ok(report) => memories_deleted = report.retired.max(0) as usize,
+            Err(e) => {
+                tracing::error!(
+                    memoryCount = memory_count,
+                    error = %e,
+                    "[Chats v1] Failed to delete memories during bulk re-attribution"
+                );
             }
         }
     }

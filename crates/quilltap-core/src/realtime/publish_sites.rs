@@ -774,13 +774,14 @@ mod tests {
 
 // ── bug 128: the memory gate's two delete chokepoints ────────────────────────
 //
-// v4 (`4a9be9878`) publishes `memories` from `lib/memory/memory-gate.ts`'s
-// `deleteMemoryWithUnlink` / `deleteMemoriesWithUnlinkBatch`, whose v5 twins are
-// `db::memories::MemoriesRepository::{delete_with_unlink, delete_many_with_unlink}`.
-// Publishing from the repository is what makes all EIGHT callers correct by
-// construction, and it is also why these pins need
-// [`HintCapture::arm_writer_thread`]: a repository method only ever runs on the
-// write pool's dedicated OS thread.
+// v4 (`4a9be9878`) published `memories` from the memory gate's two delete
+// chokepoints; since `af48f6cc2` (P4.D288, C1-7) the ONE retire path publishes
+// it — `announceRetirement`, whose v5 twin
+// `services::memory_retire::announce_retirement` runs AFTER the writer commit
+// (R-AF), on the caller's thread, whenever a retirement deleted something.
+// Every deletion caller goes through it, so all of them are correct by
+// construction. (`arm_writer_thread` stays armed: a stray writer-thread
+// publish would surface as an extra hint.)
 //
 // The route's NON-publish (`api::memories::memory_delete_by_chat`) is held two
 // ways: behaviourally below — a chat with nothing to delete produces ZERO hints,
@@ -807,11 +808,6 @@ mod memory_gate_tests {
             kind TEXT DEFAULT 'semantic', sourceMessageId TEXT, lastAccessedAt TEXT,
             reinforcementCount REAL, lastReinforcedAt TEXT, relatedMemoryIds TEXT,
             reinforcedImportance REAL, tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
-        CREATE TABLE vector_indices (
-            id TEXT PRIMARY KEY, characterId TEXT, version REAL, dimensions REAL,
-            createdAt TEXT, updatedAt TEXT);
-        CREATE TABLE vector_entries (
-            id TEXT PRIMARY KEY, characterId TEXT, embedding BLOB, createdAt TEXT);
     ";
 
     fn memories() -> (String, Option<String>) {
@@ -875,42 +871,50 @@ mod memory_gate_tests {
         }
     }
 
+    /// Retire `ids` through the ONE path (`item-delete`), announcing after the
+    /// commit; returns the rows retired.
+    async fn retire(db: &Db, ids: &[&str]) -> i64 {
+        crate::services::memory_retire::retire_and_announce(
+            db,
+            ids.iter().map(|s| s.to_string()).collect(),
+            crate::services::memory_retire::RetireOptions::new(
+                crate::services::memory_retire::RetireReason::ItemDelete,
+            ),
+        )
+        .await
+        .unwrap()
+        .retired
+    }
+
     #[tokio::test]
-    async fn deleting_one_memory_announces_the_namespace() {
+    async fn retiring_one_memory_announces_the_namespace() {
         let mut cap = HintCapture::start();
         let (_dir, db) = make_db("gate1", &[("m-1", "ch-1", "chat-1")]);
         cap.arm_writer_thread(&db).await;
 
-        let deleted = db
-            .write(|w| w.main().memories().delete_with_unlink("m-1"))
-            .await
-            .unwrap();
-        assert!(
-            deleted,
-            "the delete must land for this pin to mean anything"
+        assert_eq!(
+            retire(&db, &["m-1"]).await,
+            1,
+            "the retirement must land for this pin to mean anything"
         );
         assert_eq!(cap.drain_expecting(1).await, vec![memories()]);
     }
 
-    /// v4's `if (deleted)` guard: an already-gone memory is a no-op, and a
-    /// no-op announces nothing.
+    /// v4's `if (report.retired > 0)` guard: an already-gone memory is a
+    /// no-op, and a no-op announces nothing.
     #[tokio::test]
-    async fn deleting_an_already_gone_memory_announces_nothing() {
+    async fn retiring_an_already_gone_memory_announces_nothing() {
         let mut cap = HintCapture::start();
         let (_dir, db) = make_db("gate2", &[("m-1", "ch-1", "chat-1")]);
         cap.arm_writer_thread(&db).await;
 
-        let deleted = db
-            .write(|w| w.main().memories().delete_with_unlink("m-nope"))
-            .await
-            .unwrap();
-        assert!(!deleted);
+        assert_eq!(retire(&db, &["m-nope"]).await, 0);
         assert_eq!(cap.drain().await, vec![]);
     }
 
-    /// The batch twin, and the coalescing that makes a cascade one hint.
+    /// A cascade across holders, and the coalescing that makes it one hint.
     #[tokio::test]
-    async fn a_batch_delete_announces_the_namespace_once() {
+    async fn a_batch_retirement_announces_the_namespace_once() {
         let mut cap = HintCapture::start();
         let (_dir, db) = make_db(
             "gate3",
@@ -922,48 +926,21 @@ mod memory_gate_tests {
         );
         cap.arm_writer_thread(&db).await;
 
-        let n = db
-            .write(|w| {
-                w.main().memories().delete_many_with_unlink(
-                    &["m-1".into(), "m-2".into(), "m-3".into()],
-                    crate::db::memories::CountSource::Repository,
-                )
-            })
-            .await
-            .unwrap();
-        assert_eq!(n, 3);
+        assert_eq!(retire(&db, &["m-1", "m-2", "m-3"]).await, 3);
         assert_eq!(cap.drain_expecting(1).await, vec![memories()]);
     }
 
-    /// v4's `if (deleted > 0)`, both ways in: an EMPTY id list returns before
-    /// the scan, and a list of ids that match nothing deletes nothing.
+    /// Both ways in: an EMPTY id list returns before any write, and a list of
+    /// ids that match nothing retires nothing.
     #[tokio::test]
-    async fn a_batch_that_deletes_nothing_announces_nothing() {
+    async fn a_retirement_that_deletes_nothing_announces_nothing() {
         let mut cap = HintCapture::start();
         let (_dir, db) = make_db("gate4", &[("m-1", "ch-1", "chat-1")]);
         cap.arm_writer_thread(&db).await;
 
-        let empty = db
-            .write(|w| {
-                w.main()
-                    .memories()
-                    .delete_many_with_unlink(&[], crate::db::memories::CountSource::Repository)
-            })
-            .await
-            .unwrap();
-        assert_eq!(empty, 0);
+        assert_eq!(retire(&db, &[]).await, 0);
         assert_eq!(cap.drain().await, vec![], "the empty-list early return");
-
-        let missing = db
-            .write(|w| {
-                w.main().memories().delete_many_with_unlink(
-                    &["m-nope".into()],
-                    crate::db::memories::CountSource::Repository,
-                )
-            })
-            .await
-            .unwrap();
-        assert_eq!(missing, 0);
+        assert_eq!(retire(&db, &["m-nope"]).await, 0);
         assert_eq!(
             cap.drain().await,
             vec![],
@@ -976,8 +953,8 @@ mod memory_gate_tests {
     /// `provision_fresh_instance` rather than a reduced hand-rolled DDL (which
     /// would also collide with the `chats` DDL this round is moving elsewhere).
     ///
-    /// ONE collection-wide hint, published by the gate; the route contributes
-    /// none of its own.
+    /// ONE collection-wide hint, published by the retirement's announcement;
+    /// the route contributes none of its own.
     async fn provisioned(tag: &str, rows: &[(&str, &str, &str)]) -> (tempfile::TempDir, Db) {
         let dir = tempfile::tempdir().unwrap();
         let data = dir.path().join(tag);
@@ -1004,7 +981,7 @@ mod memory_gate_tests {
     }
 
     #[tokio::test]
-    async fn the_by_chat_delete_route_announces_once_from_the_gate() {
+    async fn the_by_chat_delete_route_announces_once_from_the_retirement() {
         let mut cap = HintCapture::start();
         let (_dir, db) = provisioned(
             "bychat",
@@ -1022,8 +999,8 @@ mod memory_gate_tests {
     }
 
     /// **Commit 2's exact edge** (v4 `ba89e0caa` removed the route's own publish
-    /// for this): a chat with no memories returns before the gate is ever
-    /// called, so nothing was deleted, nothing changed, and nothing is
+    /// for this): a chat with no memories retires nothing, so nothing was
+    /// deleted, nothing changed, and nothing is
     /// announced. A route-level publish would fire here.
     #[tokio::test]
     async fn the_route_announces_nothing_for_a_chat_with_no_memories() {

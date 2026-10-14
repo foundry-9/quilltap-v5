@@ -180257,3 +180257,102 @@ migrationsSkipped: 90}`, none deferred. Measured:
   --no-fail-fast` all 30 binaries green; the new / rewritten harness families green by name
   (`memory_index_tier2`, `vector_store_tiers`, `write_apply` 23 scenarios). Versions: core 0.0.1294, host
   0.0.202, web 0.0.239.
+
+### Unit 9 — C1-7, the verbs, `policy_protection`, the ONE retire path, every caller migrated
+
+- **Repository verbs (`db/memories.rs`, `db/memories_read.rs` P4.D288 regions, L-5):**
+  `increment_reinforcement(cid, mid, at, by)` (refusal BEFORE the safeQuery — `Memory reinforcement: delta
+  must be a positive integer (got N)`, no line; forward-only `lastReinforcedAt` by a JS string `>` in UTF-16
+  units; `Reinforcement.last_reinforced_at`; the DEBUG gains `by` + `lastReinforcedAt`; the formula stays
+  `memory_gate::calculate_reinforced_importance` until unit 12); `add_related_memory_ids` /
+  `remove_related_memory_ids` (ONE savepoint, delta deduped first-seen, self + present skipped, an unchanged
+  list NOT written; WARN `Memory not found for link update`, DEBUG `Memory links updated`, RETHROW `Error
+  updating memory links`); `remove_related_memory_ids_everywhere` (v4's SQL removal delta, chunks of
+  ⌊(900−1)/2⌋, FALLBACK 0); `append_reinforcement_footnotes` (`AppendedFootnotes`, the cap read live);
+  `bulk_delete_unsafe` (per-chunk base `deleteMany` INFO `Entities deleted` + its RETHROW, then `Error bulk
+  deleting memories for character`); `remove_consolidated_members` (`changed = max` over chunks of 897);
+  `count_cap_breakdown` (`CapBreakdown`); `find_dangling_links` (NO fallback, `DanglingMemoryLinks` +
+  `to_json`); `find_digests_containing_members` (`DigestRef`, LIKE chunks of 50); `find_ids_superseded_by_any`;
+  `find_digest_subjects_by_ids` (`DigestSubjectRow`); `find_retire_rows` (`RetireRow`, a bare `rawQuery`
+  twin); `parse_json_id_list`; `find_recent_by_importance_tier` REWRITTEN for bug 215 (three bands on
+  `reinforcedImportance` alone, `limit <= 0` → `[]` no query, DEBUG `Fetched recap importance band`).
+  Ten new `db::fallback` homes (`HOME_MESSAGES` +10); `Error deleting memory` / `Error deleting memory for
+  character` and `findColdIdsByCharacterId`'s `Error finding cold memory ids` RETIRED from the home and the
+  census with v4's methods.
+- **R-F:** `MemoriesRepository::delete` REMOVED (v4's refusal ERROR recorded unreachable — no caller);
+  `delete_for_character`, `bulk_delete`, `delete_by_chat_id`, `delete_by_source_message_id`,
+  `delete_with_unlink`, `delete_many_with_unlink`, `CountSource` (+ `HousekeepingOptions.count_source`)
+  DELETED; `find_cold_ids_by_character_id` DELETED (no caller left). **L-1 markers:**
+  `count_hot_by_character_id` + `find_expired_cold_ids` `LANE-REMOVE(P4.D297)` (`c2795733f` / `104e986c7`;
+  `housekeeping.rs` still reads them), `replace_in_memories` `LANE-REMOVE(P4.D298)` (`e0ac7493a`).
+- **NEW crate-root `policy_protection.rs`** (`PolicyProtection`, `SparedBy`, `policy_protection_of`,
+  `partition_by_policy_protection`). **NEW `services/memory_retire.rs`**: `RetireReason` (11 kebab),
+  `RetireOptions { reason, keep_manual }`, `RetireReport` (v4's ten fields + `announcement`),
+  `RetirementAnnouncement`, `retire_memories` (writer-side, plan → ≤3-pass cascade unless `Retention` → the
+  scrubs → per holder `indexed_among` BEFORE `bulk_delete_unsafe` + `memory_index::remove` → WARN / DEBUG;
+  `sparedBy` rides as `sparedByJson`), `announce_retirement` (R-AF — frozen archives, `memories` publish, the
+  Commonplace refresh per removed digest's bucket + its DEBUG), `retire_and_announce`, `retire_chat_memories`
+  (INFO when spared > 0 + DEBUG), `preview_chat_wipe`, `scrub_dangling_memory_links` (`DanglingScrubReport`
+  carrying both announcements, in v4's order). v4's job-child arm and the refresh's import-failure WARN
+  recorded unreachable. **NEW `services/commonplace_mirror.rs`** (L-3,
+  `COMMONPLACE_MIRROR_DIGESTS_PER_BUCKET = 200`, the four lines on `module: 'memory:commonplace-mirror'`;
+  the parent-only arm unreachable; the commit-hook halves P4.D297's). **The bridge's bug-208 arm:** an
+  emptied bucket's file removed (`delete_database_document_if_exists` — v4's NOT_FOUND catch unreachable,
+  v5's delete answers `false`), `WriteCommonplaceDigestsResult.removed: Option<usize>`, the completion line's
+  `removed` after `skipped`.
+- **Every deletion caller migrated** (`api/memories.rs` item + by-chat — response bytes UNCHANGED, the
+  `retired === 0` 404 and `sparedCount` are P4.D298's; `api/salon.rs` message cascade; `services/chat_admin.rs`
+  + `message_reattribute.rs` re-attribution (one retire per call; the failure line's fields now v4's
+  `memoryCount` — the per-memory id is gone with the per-memory loop); `regenerate_swipe.rs`;
+  `cascade_delete.rs` (v4's catch + `Failed to delete memories for character <id>` ported in its own
+  savepoint, `CascadeDeleteOutcome` carrying the announcement — **hazard (2) retired**);
+  `quilltap_import/reset.rs` (`ResetBuiltinsResult.announcements`, announced by the web route);
+  `character_archive/service.rs` (the vector-store prune step DROPPED with v4's); `delete_all.rs` (the
+  in-closure `retire_memories(RestoreReplace)`; `delete_user_data[_on_writer]` now return its `RetireReport`
+  — **the consumer contract for P4.D293 (§R.10(l)): announce `report.announcement` once the wipe has
+  committed**; the two callers discard it until then); `housekeeping.rs` (`Retention`); `memory_dedup.rs`
+  (`NearDuplicateFold`). Compile-forced mechanical edits in sibling files, recorded: `memory_gate.rs`
+  (`increment_reinforcement(…, 1)`), `quilltap-host/src/spine.rs` + its handler test (`count_source` gone).
+- **Families (all GREEN):** NEW `memory_retire_tier2` (13 ops over a base.db v4 builds — bug 201's wipe +
+  idempotence + preview, invariant 8 incl. `retention` and a three-pass chain, the orphan cut, the graph
+  repair's scan + scrub + rescan, the 200-neighbour WARN; answers, every line, the end state);
+  NEW `policy_protection_equivalence` (tier-1, 42 rows + 3 partitions); NEW `commonplace_mirror_equivalence`
+  (13 calls over the consolidation pair — written, unchanged, no subjects, vanished subject, missing holder,
+  emptied (REMOVED) + again, the 200 cap over 205, two retirements' refreshes — 3 projections);
+  `memories_tier2` RE-AIMED (the committed op list's retired deleters → `retireMemories` /
+  `bulkDeleteUnsafe` / `retireChatMemories` / `findBySourceMessageId` + retire; `replaceInMemories` →
+  `REPLACE_IN_MEMORIES_OVER_PRIMITIVES` (the retired body over v4's real `findById` / `update`); L-6's
+  `markMemoriesAccessed` → `updateAccessTimeBulk`) and GROWN (a 51-op keystone phase: every verb, the
+  refusal, `supersededAt` in three states, the jest files' seeds); `memory_delete_tier2` +
+  `memory_cascade_tier2` RE-POINTED (the oracle loads v4's store first — L-2 — so `vectorsRemoved` meets);
+  `memories_read` (three retired readers skipped by name, the band DEBUG captured);
+  `commonplace_digest_vault_bridge_tier2` regenerated with bug 208's two lines; NEW
+  `memory_retire_sole_deleter_guard` (`bulk_delete_unsafe(` + the one `DELETE FROM memories` literal);
+  `fallback_home_guard` +10 / −3; `realtime_publish_sites_guard` re-homed (`db/memories.rs` 0,
+  `services/memory_retire.rs` 1) + **unit-8 residue fixed:** `queue_service.rs` 6 → 7
+  (`enqueue_embedding_generate_many`, v4's fourth queue publish).
+- **Fixtures changed:** `build-memory-cascade-fixture.ts` (the vector repository gone — a seed's vector is
+  its row's `embedding`), `build-consolidation-fixture.ts` (the same — the mirror DDL + `saveMeta` /
+  `addEntry` removed), NEW `commonplace-mirror-calls.json`. **Invalidated by the consolidation builder
+  re-aim:** every family on the consolidation pair not regenerated here — `canon_commonplace_tier2`,
+  `consolidation_service_tier3`, `consolidation_triggers_tier2`, `memory_consolidation_routes` (unit 11 /
+  P4.D297's regen).
+- **Recipes:** `memory_retire_tier2`, `policy_protection_equivalence` and `commonplace_mirror_equivalence`
+  in their headers (`QT_FIXTURE_MEMORY_RETIRE_DIR` + `QT_ORACLE_MEMORY_RETIRE_TIER2`;
+  `QT_ORACLE_POLICY_PROTECTION`; the consolidation pair + `QT_ORACLE_COMMONPLACE_MIRROR`, jest from the
+  `/tmp` mirror). Gotcha: v4's `rawQuery` reads a `WITH … INSERT` as a query and refuses it — the mirror
+  case plants through the raw handle's `exec`.
+- **Gate (unit 9):** `cargo test --workspace --no-fail-fast` (pin env + this unit's oracle env) — 777 result lines, 63
+  red tests in 21 binaries, every one classified: the committed-fixture `scenarioSource` class (unit 11's widening —
+  `brahma_console`, `help_chat(s)`, `subprompts`, `outfit_selections`, `attach_mount_file`, `avatar_rolls_tier2`,
+  `chat_cast_routes`, `chat_delete`, `chat_gallery`, `chat_regenerate_title_tier3`, `chat_scenario_routes`,
+  `chat_upload_{auto_describe,codec_wiring}`, `delete_messages_callers_census`, `in_scene_voiced_tier3`,
+  `inform_drop_lives_on_the_action`, `photo_side_effects_wiring`, `title_update_tier3`, `web_search_runner_wire`);
+  RED BY DESIGN — `cli_differential` (P4.D299, union-only), `qtap_schema_embed_guard` (P4.D294),
+  `no_memory_lane_remove_markers_left` (24 markers; the scoring-chokepoint half's 44 offenders are P4.D289's
+  consumer lanes'); and three of this unit's own, FIXED and green by name after: `api::memories`
+  `delete_by_chat_logs_v4s_debug_on_both_arms` (its seed rows took the column's MANUAL default, which the chat wipe
+  now spares — seeded AUTO), the host's `memory_housekeeping_handler` pair (re-pointed from the gate's batch line
+  to `Retired memories` with `reason=retention` / `near-duplicate-fold`), and — **unit-5 residue** —
+  `tri_state_edges_share_the_decoder`'s typed-only total 123 → 121 (the two retired `system_data_routes.rs` dedup
+  arms). Versions: core 0.0.1295, host 0.0.203, web 0.0.240.

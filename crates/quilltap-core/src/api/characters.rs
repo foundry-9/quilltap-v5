@@ -2079,18 +2079,27 @@ pub async fn character_delete(
         if characters_read::find_by_id_raw(main, &cid)?.is_none() {
             return Ok(Err(not_found("Character")));
         }
-        let (success, dc, di, dm) = crate::services::cascade_delete::execute_cascade_delete(
+        let outcome = crate::services::cascade_delete::execute_cascade_delete(
             main,
             mount,
             &cid,
             cascade_chats,
             cascade_images,
         )?;
-        Ok(Ok((success, dc, di, dm)))
+        Ok(Ok(outcome))
     })
     .await;
     match out {
-        Ok(Ok((success, dc, di, dm))) => {
+        Ok(Ok(outcome)) => {
+            // P4.D288 (R-AF): the memory retirement's effects after the commit.
+            crate::services::memory_retire::announce_retirement(db, outcome.announcement.as_ref())
+                .await;
+            let (success, dc, di, dm) = (
+                outcome.success,
+                outcome.deleted_chats,
+                outcome.deleted_images,
+                outcome.deleted_memories,
+            );
             if !success {
                 internal("Failed to delete character")
             } else {
