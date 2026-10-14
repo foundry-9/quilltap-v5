@@ -19,9 +19,17 @@ import {
 
 /**
  * P4.D276 — the memory surfaces of v4 `d58548051` ("feat(memory):
- * consolidation and hot/cold tiers", pinned at `01a83539d`): the Settings →
- * Memory tab's Consolidation + Extraction Grain cards, the housekeeping
- * dialog's archive, the list's tier filter, and the digest viewer.
+ * consolidation and hot/cold tiers", pinned at `01a83539d`) that SURVIVE v4's
+ * Phase G (`b045dd986`, P4.D300 L-10): the Extraction Grain card on its anchor
+ * and its round trip, the list's tier filter, and the digest viewer. The
+ * Consolidation card, its report dialog and the housekeeping dialog were
+ * deleted with Phase G: the `section=memory-consolidation` anchor beat MOVED to
+ * `memory-maintenance-flow.spec.ts` (re-pointed at the Maintenance card), and
+ * the Consolidation save / dry-run / `Consolidate for real` and Cleanup-archives
+ * beats were deleted with the UI. The Cleanup beat has no like-for-like
+ * successor: the cap floor is 100 and the fixture's characters hold fewer
+ * notes (Mnemo ~45), so no UI run can demote on the fixture — RECORDED; the
+ * Archived tier stays covered by the digest-viewer beat's planted cold row.
  *
  * **Its own instance (R-I).** A private, locked copy of the committed memories
  * fixture (`crates/quilltap-web/tests/fixtures/memories-{main,mount}.db`) on the
@@ -31,23 +39,9 @@ import {
  * `quilltap-web --spa-dir`.
  *
  * **Two describes.**
- * - LIVE — the two new cards' `?section=` anchors and labels. SPA-only: against
- *   a pre-round server the cards fall back to their defaults (and show their
- *   read-error line), and the beats read labels only.
- * - GATED behind `P4D265_SERVER_LANDED` (§S.9) — every beat that needs the
- *   round's server (P4.D265's wire, P4.D266's housekeeping, P4.D269's `tier`,
- *   P4.D271's consolidation verbs). The unifier flips it on the union.
- *
- * **Never a model call (R-I).** v4 resolves a model route ONLY when a run's
- * cluster selection is non-empty (`lib/memory/consolidation.ts:837-840`). The
- * lane MEASURED the fixture (status-log P4.D276 record): Pip holds ZERO
- * memories and is on the counts roster, so a Pip dry run selects nothing and
- * calls no model BY CONSTRUCTION — and the beat asserts it
- * (`report.stats.clustersSelected === 0`, no `skippedReason`) so a regression
- * that resolves a route early fails loudly. Mnemo's ~45 templated, TF-IDF-
- * embedded notes would cluster and reach the fixture's `Local Mock` profile
- * (`http://127.0.0.1:1/v1`): every Mnemo / Orla consolidation leg is a 💸
- * dogfood row, never a beat.
+ * - LIVE — the Extraction Grain card's `?section=` anchor and labels.
+ * - GATED behind `P4D265_SERVER_LANDED` (§S.9; flipped on the `01a83539d`
+ *   union) — the grain round trip and the digest viewer.
  *
  * **The digest plant (R-K).** The committed fixture predates the tier columns;
  * P4.D265's boot ensure adds them to the COPY. The plant is therefore: boot →
@@ -55,8 +49,6 @@ import {
  * write-lock refuses while a server holds the instance) → two `quilltap db
  * --write` statements (one statement per call) → reboot. It turns one Mnemo
  * note into a one-member digest and sends its pair cold, superseded by it.
- * This recipe can only run on the union (the columns do not exist before
- * P4.D265); it is exercised when §S.9 flips the gate.
  */
 
 const P4D265_SERVER_LANDED = true;
@@ -73,7 +65,6 @@ const MOUNT_FIXTURE = resolve(FIXTURES_DIR, 'memories-mount.db');
 
 // The builder's pinned ids (`harness/oracle/fixtures/build-memories-web-fixture.ts`).
 const MNEMO = 'b1000000-0000-4000-8000-000000000001';
-const PIP = 'b1000000-0000-4000-8000-000000000003';
 const MEM_REL_A = 'b2000000-0000-4000-8000-0000000000e0'; // 'Smuggler cove east of the reef.'
 const MEM_REL_B = 'b2000000-0000-4000-8000-0000000000e1'; // 'The reef hides a cove reachable at low tide.'
 
@@ -177,16 +168,6 @@ function dispatchResponse(page: Page, type: string): Promise<Response> {
   );
 }
 
-/** Count every dispatch of `type` the page sends from now on. */
-function countDispatches(page: Page, type: string): { count: () => number } {
-  let n = 0;
-  page.on('request', (req) => {
-    if (!req.url().endsWith('/api/dispatch') || req.method() !== 'POST') return;
-    if ((req.postDataJSON() as { type?: string } | null)?.type === type) n += 1;
-  });
-  return { count: () => n };
-}
-
 const toast = (page: Page, text: string | RegExp) =>
   page.locator('[role="toast-container"]').getByText(text);
 
@@ -220,17 +201,7 @@ test.describe('P4.D276 — the memory surfaces of v4 d58548051', () => {
   // -------------------------------------------------------------------------
   // LIVE — SPA-only: the anchors and the labels.
   // -------------------------------------------------------------------------
-  test.describe('LIVE — the new cards on their anchors', () => {
-    test('section=memory-consolidation force-opens the Consolidation card', async ({ page }) => {
-      test.setTimeout(60_000);
-      await page.goto(`${BASE_URL}/settings?tab=memory&section=memory-consolidation`);
-      await unlock(page, page.getByRole('heading', { name: 'Consolidation', exact: true }));
-      const card = page.locator('#memory-consolidation');
-      await expect(card.getByText('Enable automatic consolidation')).toBeVisible({ timeout: 10_000 });
-      await expect(card.getByText('Consolidate now', { exact: true })).toBeVisible();
-      await expect(card.getByRole('button', { name: 'Dry run' })).toBeVisible();
-    });
-
+  test.describe('LIVE — the Extraction Grain card on its anchor', () => {
     test('section=memory-extraction-grain force-opens the Extraction Grain card', async ({ page }) => {
       test.setTimeout(60_000);
       await page.goto(`${BASE_URL}/settings?tab=memory&section=memory-extraction-grain`);
@@ -273,141 +244,6 @@ test.describe('P4.D276 — the memory surfaces of v4 d58548051', () => {
       await page.locator('#extraction-other-pass').selectOption('hybrid');
       expect((await restored).status()).toBe(200);
       await expect(page.locator('#extraction-other-pass')).toHaveValue('hybrid');
-    });
-
-    test('Consolidation saves a field, refuses a bad one locally, and toggles the switch', async ({ page }) => {
-      test.setTimeout(90_000);
-      await page.goto(`${BASE_URL}/settings?tab=memory&section=memory-consolidation`);
-      await unlock(page, page.getByRole('heading', { name: 'Consolidation', exact: true }));
-      const watermark = page.locator('#consolidation-watermark');
-      await expect(watermark).toBeEnabled({ timeout: 10_000 });
-
-      const saved = dispatchResponse(page, 'memoryConsolidationConfigSet');
-      await watermark.fill('200');
-      await watermark.blur();
-      expect((await saved).status()).toBe(200);
-      await expect(toast(page, 'Consolidation settings saved')).toBeVisible({ timeout: 10_000 });
-      await page.reload();
-      await unlock(page, page.getByRole('heading', { name: 'Consolidation', exact: true }));
-      await expect(page.locator('#consolidation-watermark')).toHaveValue('200', { timeout: 10_000 });
-
-      // A bad threshold is refused inline and NOTHING is posted (count, not hope —
-      // the P4.D253 "passed with nothing posted" shape).
-      const sets = countDispatches(page, 'memoryConsolidationConfigSet');
-      const threshold = page.locator('#consolidation-clusterThreshold');
-      await threshold.fill('2');
-      await threshold.blur();
-      await expect(
-        page.locator('#memory-consolidation').getByText('Cluster threshold must be a number between 0 and 1'),
-      ).toBeVisible();
-      await page.waitForTimeout(500);
-      expect(sets.count()).toBe(0);
-
-      // The master switch round-trips. No field is asserted after it: v4's
-      // server-side `.partial()` default-fill resets them (R-F; P4.D271 owns that).
-      const box = page.locator('#memory-consolidation input[type="checkbox"]');
-      const toggled = dispatchResponse(page, 'memoryConsolidationConfigSet');
-      await box.click();
-      expect((await toggled).status()).toBe(200);
-      await expect(box).toBeChecked();
-      await page.reload();
-      await unlock(page, page.getByRole('heading', { name: 'Consolidation', exact: true }));
-      const reloaded = page.locator('#memory-consolidation input[type="checkbox"]');
-      await expect(reloaded).toBeChecked({ timeout: 10_000 });
-      const untoggled = dispatchResponse(page, 'memoryConsolidationConfigSet');
-      await reloaded.click();
-      expect((await untoggled).status()).toBe(200);
-      await expect(reloaded).not.toBeChecked();
-    });
-
-    test('a dry run on the zero-memory character calls no model and reports nothing to fold; a real run queues', async ({
-      page,
-    }) => {
-      test.setTimeout(90_000);
-      await page.goto(`${BASE_URL}/settings?tab=memory&section=memory-consolidation`);
-      await unlock(page, page.getByRole('heading', { name: 'Consolidation', exact: true }));
-      const roster = page.getByLabel('Character to consolidate');
-      await expect(roster.locator(`option[value="${PIP}"]`)).toHaveText('Pip (0 memories)', { timeout: 10_000 });
-      await roster.selectOption(PIP);
-
-      const dry = dispatchResponse(page, 'memoryConsolidate');
-      await page.getByRole('button', { name: 'Dry run' }).click();
-      const dryRes = await dry;
-      expect(dryRes.status()).toBe(200);
-      const body = (await dryRes.json()) as {
-        data?: { report?: { stats?: { clustersSelected?: number }; skippedReason?: string } };
-      };
-      // R-I's tripwire: nothing selected, so no route was ever resolved.
-      expect(body.data?.report?.stats?.clustersSelected).toBe(0);
-      expect(body.data?.report?.skippedReason).toBeUndefined();
-
-      const dialog = page.locator('qt-memory-consolidation-report-dialog');
-      await expect(dialog.getByRole('heading', { name: 'Consolidation, Rehearsed — Pip' })).toBeVisible();
-      await expect(dialog.getByText('Not a single cluster worth folding. The shelves are in good order.')).toBeVisible();
-      await expect(dialog.getByText(/\d+\.\ds\.$/)).toBeVisible();
-      await dialog.locator('.qt-dialog-footer').getByRole('button', { name: 'Close' }).click();
-      await expect(dialog).toHaveCount(0);
-
-      const real = dispatchResponse(page, 'memoryConsolidate');
-      await page.getByRole('button', { name: 'Consolidate for real' }).click();
-      expect((await real).status()).toBe(200);
-      await expect(
-        toast(page, 'The consolidation has been sent below stairs — it will run in the background'),
-      ).toBeVisible({ timeout: 10_000 });
-    });
-
-    test('Cleanup archives (never deletes) and the Archived tier lists what it moved', async ({ page }) => {
-      test.setTimeout(90_000);
-      await page.goto(`${BASE_URL}/characters/${MNEMO}`);
-      const memoriesTab = page.locator('nav.qt-tab-group').getByRole('button', { name: 'Memories' });
-      await unlock(page, memoriesTab);
-      await memoriesTab.click();
-      await expect(page.getByRole('heading', { name: /Memories \(\d+\)/ })).toBeVisible({ timeout: 10_000 });
-
-      await page.getByRole('button', { name: 'Cleanup', exact: true }).click();
-      const dialog = page.getByRole('dialog').filter({ hasText: 'Memory Cleanup' });
-      await expect(dialog.getByText('Archive', { exact: true })).toBeVisible({ timeout: 10_000 });
-      const run = dialog.getByRole('button', { name: /^Archive \d+ Memories$/ });
-      await expect(run).toBeEnabled({ timeout: 10_000 });
-      const label = (await run.textContent())?.trim() ?? '';
-      const n = Number(/^Archive (\d+) Memories$/.exec(label)?.[1]);
-      // The lane measured ≥ 1 candidate (status-log P4.D276, measurement 30): a
-      // preview reading 0 is a regression, not a pass.
-      expect(n).toBeGreaterThanOrEqual(1);
-
-      const ran = dispatchResponse(page, 'memoryHousekeep');
-      await run.click();
-      const ranRes = await ran;
-      expect(ranRes.status()).toBe(200);
-      const result = ((await ranRes.json()) as { data?: { result?: { demoted?: number } } }).data?.result;
-      const demoted = result?.demoted ?? 0;
-      expect(demoted).toBeGreaterThanOrEqual(1);
-      await expect(
-        toast(
-          page,
-          demoted === 1
-            ? 'One memory has been shown to the archive, where it will keep.'
-            : `${demoted} memories have been shown to the archive, where they will keep.`,
-        ),
-      ).toBeVisible({ timeout: 10_000 });
-
-      const tier = page.getByLabel('Filter by tier');
-      await tier.selectOption('cold');
-      const cards = page.locator('qt-memory-card');
-      await expect(cards.first()).toBeVisible({ timeout: 10_000 });
-      // Count AFTER the filtered list has settled — never a first-matching-poll
-      // toHaveCount (e2e-tohavecount-resolves-on-first-matching-poll).
-      await expect(cards.first().locator('span', { hasText: /^Archived$/ })).toBeVisible();
-      await page.waitForTimeout(500);
-      const archivedCount = await cards.count();
-      expect(archivedCount).toBeGreaterThanOrEqual(demoted);
-      for (let i = 0; i < archivedCount; i++) {
-        await expect(cards.nth(i).locator('span.rounded-full', { hasText: /^Archived$/ })).toBeVisible();
-      }
-
-      await tier.selectOption('hot');
-      await page.waitForTimeout(500);
-      await expect(page.locator('qt-memory-card span.rounded-full', { hasText: /^Archived$/ })).toHaveCount(0);
     });
 
     test('a superseded card opens The Digest over the page, action-less', async ({ page }) => {

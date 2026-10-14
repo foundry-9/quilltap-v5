@@ -184269,3 +184269,63 @@ worktree for the session — same volume, same rules).
     agree with v4 byte for byte. **Red:** a mutant band floor (`.4`) turns 2
     rows red (`IMPORTANCE`, `v=0.3`). Regen recipe: the recorder header
     (`PIN=/tmp/qt-v4-pin-p4d300-83334b9a5`, `V5W` = this worktree).
+15. **The e2e (L-10, §S.9)** — NEW `e2e/memory-maintenance-flow.spec.ts`
+    (port 4338, its own locked copy of the committed memories pair — the
+    `settings-memory-consolidation-flow.spec.ts` recipe; `const
+    P4D288_SERVER_LANDED = false` + a gate reason naming P4.D288's wire,
+    P4.D297's maintain / status / job and P4.D298's create `action`).
+    **LIVE (5, green against `main`'s server):** `section=memory-maintenance`
+    + each retired anchor force-opening the card (the retired ids name no
+    card); the seven headings; **Run maintenance…** → the picker (`Choose a
+    character…`, `Every character`, `Mnemo ({n} counted)` / `Pip (0
+    counted)` from the live counts read), `Every character` + Consolidate →
+    Dry run disabled + the warning, Close closes; the memory list's
+    **Maintenance** → the bare-titled fixed variant (4 phase boxes, no
+    picker, no `Cleanup`); Rate limits saves `enabled` (`Extraction limits
+    saved`), survives a reload, refuses `Notes per hour` 0 with ZERO
+    dispatches counted, and is put back. One measured fix on the way: the
+    picker beat first waited on a `memoryCharacterCounts` response that
+    never comes — the card already read the same key, so the dialog's read
+    is TanStack's cached one; the beat reads the options instead. The LIVE
+    describe is NOT serial (one red must not mask the rest). **GATED (6,
+    skipped with the reason):** the switches + cap + an override save and
+    survive a reload (then put back); **Cluster threshold (Built-in)**
+    saves / reloads; a Pip four-phase dry run with the R-I tripwire (no
+    `consolidation.skippedReason`, `clustersSelected === 0`) and the
+    request body by `JSON.stringify`; a Mnemo fixed dry run with
+    Consolidate unticked (`Within the cap. …`, `no archive retention window
+    is set`); a Pip `retire` real run → the toast, the dialog closed, and
+    **Pip's ledger card `(by hand)` WITHOUT a reload** (R-AB's push); and
+    Tier 2 item 22's editor beat (below). Pip's zero memories are read by
+    the CLI (`--json`) before the server boots and asserted in the gated
+    `beforeAll`. **Edited per L-10:** `settings-memory-consolidation-flow.spec.ts`
+    (the grain anchor + round trip and the digest viewer kept; the
+    consolidation anchor beat MOVED to the new file; the Consolidation
+    save, the Pip dry run + `Consolidate for real`, and Cleanup-archives
+    beats DELETED with their helpers — **the Cleanup-archives beat retires
+    WITHOUT a successor** (cap floor 100 > the fixture's counts, Mnemo
+    ~45), recorded in its header; Tier 3 item 25);
+    `settings-memory-flow.spec.ts` (the dedup beat + its doc lines);
+    `settings-flow.spec.ts:834-850` (the seven headings, the three retired
+    absent, seven cards); `salon-memories-realtime-flow.spec.ts` (re-aimed
+    at `memoryMaintain { options: { phases: ['retire'], dryRun: false } }`,
+    `data.jobIds[0]` polled, gated behind `P4D288_SERVER_LANDED` too).
+    **Runs, by FILE, one at a time:** `memory-maintenance-flow` 5 passed /
+    5 skipped (re-run with the editor beat: 5 passed / 6 skipped);
+    `settings-memory-consolidation-flow` 3 passed; `settings-flow` 9 passed;
+    `settings-memory-flow` 3 passed; `salon-memories-realtime-flow` 1
+    skipped (gated); `chat-delete-flow` 3 passed (its re-extract confirm
+    re-pinned in unit 13).
+16. **Tier 2 item 22 — the editor's reinforced toast, GATED.** The beat is
+    AUTHORED, self-contained: it files a fresh manual note on Mnemo, then
+    the identical text again, asserting the first reply's `action` ∈
+    {`insert`, `insert-linked`} + `Memory created`, the second's ∈
+    {`reinforce`, `absorb`, `promote-and-reinforce`} + the "Already on
+    file" toast, and the bag's five keys (no `source`). **The measurement
+    the order asked for could not be made from this lane** (admission is
+    P4.D290's, unbuilt on `main`): the fixture carries a default BUILTIN
+    TF-IDF profile with embedded notes (P4.D276's measurement), and an
+    identical repeat scores cosine 1 under it — so the beat is expected to
+    pass on the union; if admission does not absorb it, the beat fails
+    LOUDLY naming the action it took (`admission answered …`). The unifier
+    owns that first run (§S.9).

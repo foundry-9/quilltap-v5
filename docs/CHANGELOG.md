@@ -851,6 +851,12 @@ _No crate versions bumped._
 
 The vendored help tree brought to the round's pin, every byte from `git show 83334b9a5:`. Count unchanged at 131: two pages added (`help/memory-maintenance.md`, Phase G's single Maintenance page; `help/scenario-browser.md`, the scenario browser), two retired (`help/memory-consolidation.md`, `help/memory-housekeeping.md`), 21 re-vendored. All 131 files md5-equal to the pin with the same path set. `help_tree_equivalence` and `help_section_size_equivalence` were red at the pin before the copy (content only) and are green after, regenerated from the pin (131 docs, 779 chunks, max section 775 tokens); `help_tree_embed_guard` and `host_help_docs_boot` green before and after with their 131 literals unmoved. Comment-only history lines added to the three help tests. The host re-embeds the tree at build time; its source is unchanged, so no bump.
 
+#### 2026-10-14 — test(e2e): the memory Maintenance flow, and the retired-UI beats moved or removed (P4.D300)
+
+_Versions: SPA 0.5.861._
+
+New `e2e/memory-maintenance-flow.spec.ts` (its own instance on port 4338) walks the Maintenance card on its four anchors, the seven Memory headings, the Run maintenance picker and its every-character refusal, the memory list's fixed dialog, and the Rate limits round trip, live against the current server; six more beats (the switches, cap and override, the Built-in threshold, dry runs on Pip and Mnemo, a real run refreshing the ledger without a reload, and the editor's "Already on file" toast) wait behind `P4D288_SERVER_LANDED`. The consolidation, settings and memory-settings flows drop the deleted Consolidation, Cleanup and Deduplication beats; the settings flow checks the seven cards; the memories-realtime beat now fires `memoryMaintain` (gated) instead of the deleted housekeeping sweep.
+
 #### 2026-10-14 — test(spa): a recorded v4 oracle for the memory maintenance text (P4.D300)
 
 _Versions: SPA 0.5.860._

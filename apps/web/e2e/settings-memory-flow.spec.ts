@@ -8,9 +8,10 @@ import { E2E_PASSPHRASE } from './support/env';
  * walks the locked→unlock gate first; workers: 1, alphabetical).
  * "settings-memory-flow" sorts after "foundation" ('se' > 'fo').
  *
- * P4.9H2B — the embedding-profiles + memory-maintenance cards (Settings →
+ * P4.9H2B — the embedding-profiles + conversation-summaries cards (Settings →
  * Memory), walked LIVE against P4.9H2A's `embeddingProfile*` /
- * `memoryDedup*` / `conversationSummariesRegenerate*` verbs.
+ * `conversationSummariesRegenerate*` verbs. (The Memory Deduplication card and
+ * its `memoryDedup*` beat were deleted with v4 Phase G, `b045dd986` — P4.D300.)
  *
  * ACTIVATE-AT-UNIFY: these beats need P4.9H2A's server half. Until it lands on
  * main the describe SKIPS on a NAMED constant (never a capability probe). The
@@ -18,9 +19,9 @@ import { E2E_PASSPHRASE } from './support/env';
  *
  * FLIPPED at the P4.41/42/9H2 unification (2026-08-06): the profile verbs are
  * LIVE, so the CRUD beat runs. P4.9H2A landed its tier-2 units 6+7 as LOUD
- * REFUSALS (`memoryDedup*` / `conversationSummariesRegenerate*` answer the
- * named not-available arm), so the two maintenance beats stay gated on their
- * OWN named constant below until the follow-up ports the implementations.
+ * REFUSALS (`conversationSummariesRegenerate*` answered the named
+ * not-available arm), so its beat stayed gated on its OWN named constant below
+ * until the follow-up ported the implementation.
  *
  * The shared e2e instance has NO API keys and a mock-pointed default embedding
  * profile — so these beats create/edit/delete a NON-default BUILTIN profile
@@ -29,9 +30,8 @@ import { E2E_PASSPHRASE } from './support/env';
  */
 const P49H2A_SERVER_LANDED = true;
 /**
- * The memory-dedup + conversation-summaries implementations (P4.9H2A units 6+7,
- * landed by P4.43 — `services/memory_dedup.rs` +
- * `services/conversation_summaries_regen.rs`). Both beats below are now active.
+ * The conversation-summaries implementation (P4.9H2A unit 7, landed by P4.43 —
+ * `services/conversation_summaries_regen.rs`). The beat below is active.
  */
 const P49H2A_MAINTENANCE_LANDED = true;
 
@@ -139,29 +139,6 @@ test.describe('P4.9H2B — the Commonplace Book management cards', () => {
     await reloadedToggle.uncheck();
     await cleared;
     await expect(reloadedToggle).not.toBeChecked({ timeout: 10_000 });
-  });
-
-  test('memory deduplication: preview renders and Run is disabled at zero removable', async ({
-    page,
-  }) => {
-    test.skip(
-      !P49H2A_MAINTENANCE_LANDED,
-      'memoryDedupPreview refuses loudly (P4.9H2A units 6+7 deferred) — flip P49H2A_MAINTENANCE_LANDED when the dedup port lands',
-    );
-    const card = await openMemoryCard(page, 'memory-deduplication');
-    const analyzed = nextDispatch(page);
-    await card.getByRole('button', { name: 'Analyze Memories' }).click();
-    await analyzed;
-
-    // The dialog opens; the seeded memories have no near-duplicates, so Run is
-    // disabled and the zero-state copy shows.
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByText('No duplicate memories found at this threshold')).toBeVisible({
-      timeout: 15_000,
-    });
-    await expect(dialog.getByRole('button', { name: 'Run Deduplication' })).toBeDisabled();
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
   });
 
   test('conversation summaries: a single click enqueues a regeneration', async ({ page }) => {

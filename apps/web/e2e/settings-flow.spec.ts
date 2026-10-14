@@ -838,15 +838,19 @@ test.describe('P4.6t — Settings Memory tab (Commonplace Book cards)', () => {
     // Embedding Profiles is first and open by default (its inner h2 doubles the
     // collapsible title — `.first()`); the rest render collapsed but titled.
     await expect(page.getByRole('heading', { name: 'Embedding Profiles' }).first()).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Memory Housekeeping' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Consolidation', exact: true })).toBeVisible();
+    // v4 Phase G (`b045dd986`, P4.D300): ONE Maintenance card replaces Memory
+    // Housekeeping, Consolidation and Memory Deduplication — seven cards.
+    await expect(page.getByRole('heading', { name: 'Maintenance', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Extraction Grain', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Recall Relevance' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Memory Deduplication' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Regenerate Memories' })).toBeVisible();
     await expect(
       page.getByRole('heading', { name: 'Regenerate Conversation Summaries' }),
     ).toBeVisible();
+    for (const retired of ['Memory Housekeeping', 'Consolidation', 'Memory Deduplication']) {
+      await expect(page.getByRole('heading', { name: retired, exact: true })).toHaveCount(0);
+    }
+    await expect(page.locator('qt-collapsible-card')).toHaveCount(7);
   });
 
   test('a Recall Relevance toggle round-trips through the server', async ({ page }) => {
