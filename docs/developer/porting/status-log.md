@@ -184115,3 +184115,19 @@ worktree for the session — same volume, same rules).
    `excess === 0` vs the warning, silent when effective. 11 arms. **Red:** new
    module (by absence); mutation-proved — the pre-`48790fb73` always-warning
    arm and a `toLocaleString` in the demote part turn 2 arms red.
+7. **The Consolidation particulars + the defaults** — NEW
+   `memory-consolidation-particulars.ts` (the collapsed disclosure with
+   `aria-expanded`; v4's seven `NUMBER_FIELDS` — **Cluster threshold
+   (Built-in)** IN, retention OUT; both error shapes; draft cleared FIRST;
+   unchanged → no save; the profile select with v5's `profileLabel` moved
+   verbatim and L-3's snap-back) over the card's consolidation document
+   (an `input.required<MemorySettingsDocument<…>>()`); NEW
+   `memory-setting-defaults.ts` (`MEMORY_SETTING_DEFAULTS.{maintenance,
+   consolidation, extractionLimits}` — v4 `settings-defaults.ts:92-100`; the
+   Tier 2 recorder pins them against v4's real `Schema.parse({})`).
+   `MemoryConsolidationConfig` gains `tfidfClusterThreshold` IN PLACE
+   (between `clusterThreshold` and `minClusterSize`, C3 §1); the doomed
+   consolidation card's `DEFAULT_CONFIG` and the report-dialog spec's
+   fixture gain the key so they compile until their deletion. **Red:**
+   against a mutant carrying main's shape (no Built-in field, the draft kept
+   on a refusal, no snap-back) 4 of 6 arms red.

@@ -6202,6 +6202,8 @@ export interface MemoryConsolidationConfig {
   enabled: boolean;
   connectionProfileId: string | null;
   clusterThreshold: number;
+  /** 0..1, default 0.30 — `clusterThreshold` when the default embedding profile is the Built-in TF-IDF one (v4 `4ae0c4ca6`, C3 §1). */
+  tfidfClusterThreshold: number;
   minClusterSize: number;
   maxClusterSize: number;
   matureAfterDays: number;

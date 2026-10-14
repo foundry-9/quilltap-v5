@@ -851,6 +851,12 @@ _No crate versions bumped._
 
 The vendored help tree brought to the round's pin, every byte from `git show 83334b9a5:`. Count unchanged at 131: two pages added (`help/memory-maintenance.md`, Phase G's single Maintenance page; `help/scenario-browser.md`, the scenario browser), two retired (`help/memory-consolidation.md`, `help/memory-housekeeping.md`), 21 re-vendored. All 131 files md5-equal to the pin with the same path set. `help_tree_equivalence` and `help_section_size_equivalence` were red at the pin before the copy (content only) and are green after, regenerated from the pin (131 docs, 779 chunks, max section 775 tokens); `help_tree_embed_guard` and `host_help_docs_boot` green before and after with their 131 literals unmoved. Comment-only history lines added to the three help tests. The host re-embeds the tree at build time; its source is unchanged, so no bump.
 
+#### 2026-10-14 — feat(spa): the Consolidation particulars and the memory settings defaults (P4.D300)
+
+_Versions: SPA 0.5.853._
+
+New `memory-consolidation-particulars.ts` ports v4's collapsed "Consolidation particulars" section of the Maintenance card: the connection profile and seven number fields, now including "Cluster threshold (Built-in)" (`tfidfClusterThreshold`, v4 `4ae0c4ca6`) and no longer the archive retention. New `memory-setting-defaults.ts` holds v4's defaults for the maintenance, consolidation and extraction-limits settings. `MemoryConsolidationConfig` gains `tfidfClusterThreshold`.
+
 #### 2026-10-14 — feat(spa): the memory maintenance ledger (P4.D300)
 
 _Versions: SPA 0.5.852._

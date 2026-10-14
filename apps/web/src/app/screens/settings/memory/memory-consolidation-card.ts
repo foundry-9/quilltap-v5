@@ -31,6 +31,7 @@ const DEFAULT_CONFIG: MemoryConsolidationConfig = {
   enabled: false,
   connectionProfileId: null,
   clusterThreshold: 0.72,
+  tfidfClusterThreshold: 0.3,
   minClusterSize: 3,
   maxClusterSize: 30,
   matureAfterDays: 7,
