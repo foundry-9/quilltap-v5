@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-14 — docs(porting): record the human's approval of the `83334b9a5` round's planning rulings and P4.D290's `sha1` dependency
+
+_Docs-only change._
+
+The human approved every planning ruling of the `83334b9a5` memory-refactor + scenarios round (§R.11 R-A … R-AL and each order's lane-local calls) and P4.D290's one new dependency, `sha1 = "0.10"`. All sixteen orders' §R.11 and the `phase-4.md` ORDERED section now say so; no ruling is pending at lane start.
+
 #### 2026-10-14 — docs(porting): order the `83334b9a5` memory-refactor + scenarios drift catch-up round — sixteen lanes, P4.D288–P4.D303
 
 _Docs-only change._

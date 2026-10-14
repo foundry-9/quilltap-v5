@@ -7228,7 +7228,9 @@ P4.D291 → P4.D296 → P4.D297 → P4.D298 → P4.D293 → P4.D294 → P4.D295 
 P4.D299 → P4.D301 → P4.D303 → P4.D300 → P4.D302. **The oracle baseline MOVES
 to `83334b9a5` at the unification.**
 
-**Before lane start, for the human:** P4.D290 asks for ONE new dependency,
+**APPROVED by the human 2026-10-14:** every planning ruling of the round
+(§R.11 R-A … R-AL and the lanes' local calls) and the dependency below.
+**Was, before lane start, for the human:** P4.D290 asks for ONE new dependency,
 `sha1 = "0.10"` (v4's `admission_content_key` is SHA-1 over the prepared
 row — an overrule is a STOP item for that lane). v4 `main` moved two
 commits past the pin during planning (`7417e9a1b` dead-code sweep,
