@@ -17,6 +17,7 @@ import {
 } from '../../../memory/memory.api';
 import { ToastService } from '../../../ui/toast.service';
 import { readErrorText, writeErrorText } from './api-error-text';
+import { MemoryExtractionLimitsSection } from './memory-extraction-limits-section';
 
 type OtherPass = MemoryExtractionModeConfig['otherPass'];
 
@@ -56,15 +57,20 @@ const OTHER_PASS_OPTIONS: ReadonlyArray<{ value: OtherPass; label: string; descr
  * (`memoryExtractionModeConfigGet/Set`).
  *
  * Ported faithfully: one key per save, the server's echo shown over
- * `DEFAULT_CONFIG` (P4.D276 R-F — v4's server-side default-fill clobber stays
- * visible); the select snaps back to the stored mode on a failed save (R-E);
+ * `DEFAULT_CONFIG` (P4.D276 R-F's mechanics; since v4 bug 244 the server merges
+ * a patch over the stored value, so the echo IS the merged stored document —
+ * the SPA is unchanged by it, P4.D300 L-2); the select snaps back to the stored
+ * mode on a failed save (R-E);
  * the blur rules clear the draft FIRST and coerce with `Number` (no trim), so a
  * BLANK floor saves `0` while a blank per-subject is refused — v4's
- * `Number('') === 0` asymmetry, kept. No realtime subscription (R-J).
+ * `Number('') === 0` asymmetry, kept. No realtime subscription (R-J). Since
+ * v4 `b045dd986` the card also carries the extraction rate limits (its own
+ * settings document, `memory-extraction-limits-section.ts`) below its error line.
  */
 @Component({
   selector: 'qt-memory-extraction-grain-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [MemoryExtractionLimitsSection],
   template: `
     @if (configQuery.isLoading()) {
       <p class="qt-text-small qt-text-muted">Loading extraction settings…</p>
@@ -134,6 +140,10 @@ const OTHER_PASS_OPTIONS: ReadonlyArray<{ value: OtherPass; label: string; descr
         @if (error(); as msg) {
           <p class="qt-text-small qt-text-destructive">{{ msg }}</p>
         }
+
+        <div class="pt-4 border-t qt-border-default">
+          <qt-memory-extraction-limits-section />
+        </div>
       </div>
     }
   `,

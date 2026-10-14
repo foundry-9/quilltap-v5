@@ -184148,3 +184148,16 @@ worktree for the session — same volume, same rules).
    (by absence); mutation-proved — a one-key `phases` patch, Consolidate
    disabled by `!m.enabled`, no snap-back, "protected" for "exempt", an
    override draft dropped on a refusal: 5 arms red.
+9. **The Rate limits section on the Extraction Grain card** — NEW
+   `memory-extraction-limits-section.ts` (its own settings document over
+   `memoryExtractionLimitsGet/Set` — LIVE against `main`'s server, which
+   already answers `{success, settings}` from instance settings; the
+   checkbox with L-3's snap-back; three fields disabled `saving ||
+   !enabled`, ids `extraction-limits-${key}`, bounds and v4's sentence; the
+   loading line; its OWN error line), mounted in the grain card after its
+   error line inside `<div class="pt-4 border-t qt-border-default">`. L-2's
+   comment rewrite on the grain card (bug 244 makes the echo the merged
+   stored value; the SPA is unchanged by it). The grain spec's help-text
+   selector is scoped to the card's own grid (the section brings a second
+   one). **Red-first:** the grain card's mount row red on main's card (1);
+   the section is new — mutation-proved (no snap-back: 1 arm red).

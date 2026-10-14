@@ -138,7 +138,8 @@ describe('MemoryExtractionGrainCard (P4.D276)', () => {
     expect(host(f).querySelector('label[for="extraction-per-subject"]')?.textContent?.trim()).toBe(
       'Fold candidates per subject',
     );
-    const helps = Array.from(host(f).querySelectorAll('.grid p.qt-text-xs')).map((p) =>
+    // The card's own grid (the Rate limits section below it has a grid of its own — P4.D300).
+    const helps = Array.from(host(f).querySelector('.grid')!.querySelectorAll('p.qt-text-xs')).map((p) =>
       p.textContent?.replace(/\s+/g, ' ').trim(),
     );
     expect(helps).toEqual([
@@ -271,5 +272,15 @@ describe('MemoryExtractionGrainCard (P4.D276)', () => {
     });
     await commit(f, perSubject(f), '4');
     expect(errorLine(f)).toBe('Failed to save extraction settings');
+  });
+
+  it('mounts the Rate limits section below its error line, in a bordered block (P4.D300, v4 :189)', async () => {
+    const seen: Req[] = [];
+    const f = await rendered({ memoryExtractionLimitsGet: () => ({ success: true, settings: { enabled: true } }) }, seen);
+    const section = host(f).querySelector('qt-memory-extraction-limits-section') as HTMLElement;
+    expect(section).not.toBeNull();
+    expect(section.parentElement!.className).toBe('pt-4 border-t qt-border-default');
+    expect(section.querySelector('h3')?.textContent).toBe('Rate limits');
+    expect(seen.some((r) => r.type === 'memoryExtractionLimitsGet')).toBe(true);
   });
 });
