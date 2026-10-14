@@ -851,6 +851,12 @@ _No crate versions bumped._
 
 The vendored help tree brought to the round's pin, every byte from `git show 83334b9a5:`. Count unchanged at 131: two pages added (`help/memory-maintenance.md`, Phase G's single Maintenance page; `help/scenario-browser.md`, the scenario browser), two retired (`help/memory-consolidation.md`, `help/memory-housekeeping.md`), 21 re-vendored. All 131 files md5-equal to the pin with the same path set. `help_tree_equivalence` and `help_section_size_equivalence` were red at the pin before the copy (content only) and are green after, regenerated from the pin (131 docs, 779 chunks, max section 775 tokens); `help_tree_embed_guard` and `host_help_docs_boot` green before and after with their 131 literals unmoved. Comment-only history lines added to the three help tests. The host re-embeds the tree at build time; its source is unchanged, so no bump.
 
+#### 2026-10-14 — test(spa): a recorded v4 oracle for the memory maintenance text (P4.D300)
+
+_Versions: SPA 0.5.860._
+
+New `apps/web/oracle/memory-maintenance-text.recorder.ts` runs v4's real modules at `83334b9a5` (the settings defaults, the cap bounds, the importance band, the phase list and labels, and the ledger's `summaryLine`, including the two client components loaded through `tsx`) and records 29 rows to `src/testing/fixtures/memory-maintenance-text.ndjson`. `memory-maintenance-text.oracle.spec.ts` compares the SPA's constants and functions against every row.
+
 #### 2026-10-14 — feat(spa): the chat memory wipe and re-extract say what they spare (P4.D300)
 
 _Versions: SPA 0.5.859._

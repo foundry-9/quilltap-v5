@@ -184252,3 +184252,20 @@ worktree for the session — same volume, same rules).
     recorded). **Red-first on main:** 4 arms red (the confirm text ×2, the
     spared toast, the re-extract constant); the non-number / zero
     `sparedCount` arm is green on main by construction.
+14. **Tier 2 item 21 — the recorded oracle for the pure text.** NEW
+    `apps/web/oracle/memory-maintenance-text.recorder.ts`, run with `npx tsx`
+    from the lane's pin, staged at `/tmp/p4d300/memory-maintenance-text.ndjson`
+    (`rm -f` first, `wc -l` = 29 after), copied to
+    `apps/web/src/testing/fixtures/memory-maintenance-text.ndjson` (+ README
+    row). 29 rows: `MEMORY_SETTING_DEFAULTS.{maintenance, consolidation,
+    extractionLimits}` (v4's REAL `Schema.parse({})`), `MEMORY_CAP_BOUNDS`,
+    `IMPORTANCE_HIGH/LOW`, `MAINTENANCE_PHASES`, `PHASE_LABELS`, 10
+    `importanceBand` edges, 12 `summaryLine` arms. **The `.tsx` imports
+    LOADED under `tsx`** (`components/tools/memory-maintenance-ledger.tsx`,
+    `components/memory/maintenance-report.tsx`) — no lib-only fallback was
+    needed. NEW `memory-maintenance-text.oracle.spec.ts` compares every row
+    through `JSON.stringify` (key order is part of the value): 30 / 30 green
+    first run — the SPA's transcribed defaults, labels and `summaryLine`
+    agree with v4 byte for byte. **Red:** a mutant band floor (`.4`) turns 2
+    rows red (`IMPORTANCE`, `v=0.3`). Regen recipe: the recorder header
+    (`PIN=/tmp/qt-v4-pin-p4d300-83334b9a5`, `V5W` = this worktree).

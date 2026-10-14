@@ -182,3 +182,23 @@ for counts 0 / 1 / 2 / 8.
   Expect 112 lines, with `grep -c 'a week ago'` and `grep -c 'a month ago'`
   both > 0; a shorter file means the recorder errored and the redirect already
   truncated the old one.
+
+## `memory-maintenance-text.ndjson`
+
+_Recorded 2026-10-14 at v4 `83334b9a5` by P4.D300 (Tier 2 item 21), from the
+lane's pinned worktree._
+
+**29 rows** — 7 constants (`MEMORY_SETTING_DEFAULTS.{maintenance,
+consolidation, extractionLimits}`, each its schema's REAL `.parse({})`;
+`MEMORY_CAP_BOUNDS`; `IMPORTANCE_HIGH` / `IMPORTANCE_LOW`;
+`MAINTENANCE_PHASES`; the report's `PHASE_LABELS`) + 10 `importanceBand` edges
+(0 … 0.29, 0.2999, 0.3, 0.6999, 0.7 … 1) + 12 `summaryLine` arms (both skips,
+each part alone, the skipped-consolidation arms incl. an empty reason, big
+demote numbers with no `toLocaleString`, every part). Recorded by
+`apps/web/oracle/memory-maintenance-text.recorder.ts` through `npx tsx` from the
+pin — v4's two client components (`memory-maintenance-ledger.tsx`,
+`maintenance-report.tsx`) load under `tsx`, so `summaryLine` and `PHASE_LABELS`
+are v4's own, not reimplemented. Drives
+`app/screens/settings/memory/memory-maintenance-text.oracle.spec.ts` (objects
+compared through `JSON.stringify` — key order is part of the value).
+
