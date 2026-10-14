@@ -17,7 +17,11 @@
 //! `characters` archive subcommands and `docs docker-mounts`) — the
 //! tool-catalog static-data-transcription precedent. `main_help.txt` (the
 //! `anchor-probe` line), `recall_replay_help.txt` and `anchor_probe_help.txt`
-//! are re-captured / captured at v4 `01a83539d` (P4.D269).
+//! are re-captured / captured at v4 `01a83539d` (P4.D269); `db_help.txt`,
+//! `recall_replay_help.txt` and `anchor_probe_help.txt` again at v4
+//! `83334b9a5` (P4.D299 — bug 239's port flags, the `memories --character`
+//! flag block, the two tools' admission / text-fallback paragraphs), where
+//! `main_help.txt` re-captured byte-identical.
 
 mod anchor_probe_cmd;
 mod completion_cmd;

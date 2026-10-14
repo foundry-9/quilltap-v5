@@ -710,6 +710,21 @@ fn handle_lock_command(data_dir: &str, lock_status: bool, lock_clean: bool, lock
             "  Started:      {}",
             non_empty_or(lock_str(&lock, "startedAt"), "unknown")
         ));
+        // v4 bug 239 (`quilltap.js:595-597`): `Number.isInteger(lock.port)` —
+        // UNBOUNDED, NOT the lock's lenient 1–65535 predicate
+        // (`quilltap_host::lock::lock_port_from_json`, which the server and the
+        // port resolver use). So `0`, `-7`, `70000`, `1e21` all print; a
+        // string / non-integer / `null` prints nothing. `${lock.port}` is JS
+        // `String(number)`: `1e21` → `1e+21`, `-0` → `0`, a big integer at
+        // double precision.
+        if let Some(port) = lock.get("port").and_then(Value::as_f64) {
+            if port.is_finite() && port.trunc() == port {
+                out::log(&format!(
+                    "  Port:         {}",
+                    quilltap_core::pascal::js_value::number_to_string(port)
+                ));
+            }
+        }
 
         if !lock_str(&lock, "lastHeartbeat").is_empty() {
             let age_s = quilltap_core::jsnum::math_round(heartbeat_age_ms(&lock) / 1000.0);

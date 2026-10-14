@@ -2130,6 +2130,292 @@ fn dead_pid() -> u32 {
     pid
 }
 
+// === P4.D299: the lock's `port` + server port resolution (v4 bug 239) ===
+
+/// [`lock_json`] with a `port` spliced between `processArgv0` and `history` —
+/// v4's `buildLockContent` placement. `port` is the RAW JSON text, so the
+/// plant carries `1e21`, `-0`, `3005.0` exactly as written (a `Value` would
+/// re-render them).
+fn lock_json_with_port(
+    pid: u32,
+    hostname: &str,
+    environment: &str,
+    last_heartbeat: &str,
+    history: Vec<serde_json::Value>,
+    port: Option<&str>,
+) -> String {
+    let text = lock_json(pid, hostname, environment, last_heartbeat, history);
+    match port {
+        None => text,
+        Some(port) => {
+            let at = text
+                .find("\n  \"history\":")
+                .expect("lock_json has history");
+            let spliced = format!("{}\n  \"port\": {port},{}", &text[..at], &text[at..]);
+            // A plant that does not parse would compare two "corrupt" runs
+            // and pass vacuously — refuse it here.
+            let parsed: serde_json::Map<String, serde_json::Value> =
+                serde_json::from_str(&spliced).expect("the port plant is valid JSON");
+            let keys: Vec<&str> = parsed.keys().map(String::as_str).collect();
+            assert_eq!(keys[7..], ["port", "history"], "{spliced}");
+            spliced
+        }
+    }
+}
+
+/// One server-talking tool's half of the P4.D299 rows.
+struct PortTool<'a> {
+    tool: &'a str,
+    id: &'a str,
+    v4_line: String,
+    v5_prefix: String,
+    /// The refusal both dialects answer (`(v4, v5)`): the failure text is
+    /// unchanged across the span, so no row here depends on the rendering
+    /// lanes' bytes (R-L7).
+    refusal: (Answer, Answer),
+}
+
+/// R-L8: every fallback row resolves to 3000 and must never reach a FOREIGN
+/// server there (the human's v4 dev server listens on 3000). Both loopback
+/// families are bound and dropped first; a bind that fails is a loud failure
+/// naming it, never a silent skip and never a request against the holder.
+fn port_3000_is_free() -> Result<(), String> {
+    for addr in ["127.0.0.1:3000", "[::1]:3000"] {
+        if let Err(e) = std::net::TcpListener::bind(addr) {
+            return Err(format!(
+                "port 3000 is in use ({addr}: {e}); the fallback rows need it free"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn p4d299_port_rows(ctx: &mut Ctx, t: &PortTool, host: &str, node: &str) {
+    let live_s = ctx.live.to_string_lossy().into_owned();
+    let inst_a = format!("{live_s}/instA");
+    let tool = t.tool;
+    let id = t.id;
+    let s = |v: &[&str]| -> Vec<String> { v.iter().map(|x| x.to_string()).collect() };
+    let opts = || CaseOpts {
+        normalize_recall: true,
+        ..Default::default()
+    };
+    let lock_file = |live: &Path| live.join("instA/data/quilltap.lock");
+
+    // A live Quilltap-shaped holder — this block's own sleeper (the `:4222`
+    // precedent: the shared 60 s one is long dead here).
+    let mut sleeper = Command::new(node)
+        .args(["-e", "setTimeout(() => {}, 600000)"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("spawn P4.D299 node sleeper");
+    let live_pid = sleeper.id();
+    let stub = spawn_wire_stub(t.refusal.0.clone(), t.refusal.1.clone());
+    let stub_port = stub.port.to_string();
+    let dead_port = {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port().to_string()
+    };
+    let plant = |port: Option<String>, pid: u32, heartbeat: String| {
+        let host = host.to_string();
+        move |live: &Path| {
+            std::fs::write(
+                lock_file(live),
+                lock_json_with_port(pid, &host, "local", &heartbeat, vec![], port.as_deref()),
+            )
+            .unwrap();
+        }
+    };
+    let pair = || WireExpect::Pair {
+        v4_line: &t.v4_line,
+        v5_prefix: &t.v5_prefix,
+    };
+    let live_lock = plant(Some(stub_port.clone()), live_pid, iso_minus_secs(60));
+
+    // The live lock's port is found by name / by dir, in every flag position.
+    let found: Vec<(&str, Vec<String>)> = vec![
+        ("-i before id", s(&[tool, "-i", "instA", id])),
+        ("--instance after id", s(&[tool, id, "--instance", "instA"])),
+        ("leading global -i", s(&["-i", "instA", tool, id])),
+        ("-d", s(&[tool, "-d", &inst_a, id])),
+        ("--data-dir after id", s(&[tool, id, "--data-dir", &inst_a])),
+        (
+            "--passphrase before id",
+            s(&[tool, "--passphrase", "hunter2", "-i", "instA", id]),
+        ),
+        (
+            "--passphrase after id",
+            s(&[tool, "-i", "instA", id, "--passphrase", "hunter2"]),
+        ),
+        (
+            "--passphrase last token",
+            s(&[tool, "-i", "instA", id, "--passphrase"]),
+        ),
+    ];
+    for (label, args) in found {
+        ctx.case_wire(
+            &format!("{tool} port from lock {label}"),
+            &args,
+            CaseOpts {
+                pre: Some(Box::new(live_lock.clone())),
+                ..opts()
+            },
+            &stub,
+            pair(),
+        );
+    }
+
+    // The cross-implementation read (survey §7.2): the lock is written by
+    // v5's OWN server path (`acquire_instance_lock(…, Some(port))`), its
+    // `pid` then re-pointed at the live node sleeper so both sides' PID
+    // probes find it alive, and v4's launcher at the pin resolves the port
+    // from it — v4's CLI finding a v5 server by instance name.
+    {
+        let port: u16 = stub.port;
+        ctx.case_wire(
+            &format!("{tool} port from a v5-written lock"),
+            &s(&[tool, id, "-i", "instA"]),
+            CaseOpts {
+                pre: Some(Box::new(move |live: &Path| {
+                    let path = lock_file(live);
+                    quilltap_host::lock::acquire_instance_lock(&path, Some(port))
+                        .expect("v5 writes the lock");
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    let mut map: serde_json::Map<String, serde_json::Value> =
+                        serde_json::from_str(&text).unwrap();
+                    map.insert("pid".to_string(), serde_json::Value::from(live_pid));
+                    std::fs::write(
+                        &path,
+                        format!("{}\n", serde_json::to_string_pretty(&map).unwrap()),
+                    )
+                    .unwrap();
+                })),
+                ..opts()
+            },
+            &stub,
+            pair(),
+        );
+    }
+
+    // An explicit --port wins over a live lock naming ANOTHER port (no note),
+    // and short-circuits before the both-flags check (R-L9).
+    let other_lock = plant(Some(dead_port.clone()), live_pid, iso_minus_secs(60));
+    for (label, args) in [
+        (
+            "--port wins",
+            s(&[tool, id, "--port", &stub_port, "-i", "instA"]),
+        ),
+        (
+            "--port with both flags",
+            s(&[tool, id, "--port", &stub_port, "-i", "instA", "-d", &inst_a]),
+        ),
+    ] {
+        ctx.case_wire(
+            &format!("{tool} {label}"),
+            &args,
+            CaseOpts {
+                pre: Some(Box::new(other_lock.clone())),
+                ..opts()
+            },
+            &stub,
+            pair(),
+        );
+    }
+
+    // Refusals before any request.
+    for (label, args) in [
+        ("both flags", s(&[tool, id, "-i", "instA", "-d", &inst_a])),
+        ("unknown instance", s(&[tool, id, "-i", "nosuch"])),
+        ("-p refused", s(&[tool, id, "-p", "3005"])),
+        ("leading global -p", s(&["-p", "3005", tool, id])),
+    ] {
+        ctx.case_wire(
+            &format!("{tool} {label}"),
+            &args,
+            CaseOpts {
+                pre: Some(Box::new(live_lock.clone())),
+                ..opts()
+            },
+            &stub,
+            WireExpect::Nothing,
+        );
+    }
+
+    // The lock names a port nobody listens on: the reach sentence and the
+    // BARE base hint.
+    ctx.case_with(
+        &format!("{tool} lock port unreachable"),
+        &s(&[tool, id, "-i", "instA"]),
+        CaseOpts {
+            pre: Some(Box::new(plant(
+                Some(dead_port.clone()),
+                live_pid,
+                iso_minus_secs(60),
+            ))),
+            ..opts()
+        },
+    );
+
+    // The five fallback arms: each a connect failure at 3000 with its `why`.
+    match port_3000_is_free() {
+        Err(holder) => ctx
+            .failures
+            .push(format!("[{tool} fallback rows] {holder}")),
+        Ok(()) => {
+            let mut sleeper_plain = Command::new("sleep")
+                .arg("600")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .expect("spawn sleep");
+            let suspect_pid = sleeper_plain.id();
+            let dead = dead_pid();
+            let fallback: Vec<(&str, PreHook)> = vec![
+                (
+                    "active portless",
+                    Box::new(plant(None, live_pid, iso_minus_secs(60))),
+                ),
+                (
+                    "stale",
+                    Box::new(plant(Some("3005".to_string()), dead, iso_minus_secs(60))),
+                ),
+                (
+                    "suspect",
+                    Box::new(plant(
+                        Some("3005".to_string()),
+                        suspect_pid,
+                        iso_minus_secs(600),
+                    )),
+                ),
+                (
+                    "corrupt",
+                    Box::new(move |live: &Path| {
+                        std::fs::write(lock_file(live), "{ not json").unwrap()
+                    }),
+                ),
+                ("absent", Box::new(|_: &Path| {})),
+            ];
+            for (label, pre) in fallback {
+                ctx.case_with(
+                    &format!("{tool} fallback {label}"),
+                    &s(&[tool, id, "-i", "instA"]),
+                    CaseOpts {
+                        pre: Some(pre),
+                        ..opts()
+                    },
+                );
+            }
+            let _ = sleeper_plain.kill();
+            let _ = sleeper_plain.wait();
+        }
+    }
+
+    let _ = sleeper.kill();
+    let _ = sleeper.wait();
+}
+// === end P4.D299 ===
+
 // ============================================================================
 // The differential
 // ============================================================================
@@ -2955,6 +3241,106 @@ fn cli_differential() {
     );
     let _ = sleeper_renamed.kill();
     let _ = sleeper_renamed.wait();
+
+    // === P4.D299: `--lock-status`'s `Port:` line (v4 bug 239, `quilltap.js:595-597`) ===
+    // v4's UNBOUNDED `Number.isInteger(lock.port)`: `0`, `-7`, `1e21`, `-0`
+    // and a past-2^53 integer all print (through JS `String(number)`); a
+    // string, a non-integer, `null` and a boolean print nothing.
+    for raw in [
+        "3005",
+        "\"3005\"",
+        "3000.5",
+        "3005.0",
+        "0",
+        "-7",
+        "1e21",
+        "-0",
+        "null",
+        "true",
+        "12345678901234567890",
+    ] {
+        let host = host.clone();
+        let raw_owned = raw.to_string();
+        ctx.case_with(
+            &format!("lock status stale port {raw}"),
+            &d(&["--lock-status"]),
+            CaseOpts {
+                pre: Some(Box::new(move |live: &Path| {
+                    std::fs::write(
+                        live.join("instA/data/quilltap.lock"),
+                        lock_json_with_port(
+                            dead,
+                            &host,
+                            "local",
+                            "2026-01-02T03:04:05.000Z",
+                            vec![],
+                            Some(&raw_owned),
+                        ),
+                    )
+                    .unwrap();
+                })),
+                ..Default::default()
+            },
+        );
+    }
+    {
+        let mut sleeper_port = Command::new(&ctx.node)
+            .args(["-e", "setTimeout(() => {}, 600000)"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn port node sleeper");
+        let pid = sleeper_port.id();
+        let host = host.clone();
+        ctx.case_with(
+            "lock status active with port",
+            &d(&["--lock-status"]),
+            CaseOpts {
+                pre: Some(Box::new(move |live: &Path| {
+                    std::fs::write(
+                        live.join("instA/data/quilltap.lock"),
+                        lock_json_with_port(
+                            pid,
+                            &host,
+                            "local",
+                            &iso_minus_secs(600),
+                            vec![],
+                            Some("3005"),
+                        ),
+                    )
+                    .unwrap();
+                })),
+                ..Default::default()
+            },
+        );
+        let _ = sleeper_port.kill();
+        let _ = sleeper_port.wait();
+    }
+    // The cross-host arm (a `docker` lock, fresh heartbeat): its own status
+    // line, then the `Port:` line.
+    ctx.case_with(
+        "lock status docker fresh with port",
+        &d(&["--lock-status"]),
+        CaseOpts {
+            pre: Some(Box::new(move |live: &Path| {
+                std::fs::write(
+                    live.join("instA/data/quilltap.lock"),
+                    lock_json_with_port(
+                        dead,
+                        "elsewhere-host",
+                        "docker",
+                        &iso_minus_secs(60),
+                        vec![],
+                        Some("3005"),
+                    ),
+                )
+                .unwrap();
+            })),
+            normalize_heartbeat: true,
+            ..Default::default()
+        },
+    );
+    // === end P4.D299 ===
     // --write claims a stale (dead-PID) lock, runs, and releases it.
     {
         let opts = CaseOpts {
@@ -5133,6 +5519,44 @@ fn cli_differential() {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o600));
         }
+
+        // === P4.D299: recall-replay server port resolution (v4 bug 239) ===
+        let node = ctx.node.clone();
+        p4d299_port_rows(
+            &mut ctx,
+            &PortTool {
+                tool: "recall-replay",
+                id: CID,
+                v4_line: v4_line.clone(),
+                v5_prefix: v5_prefix.clone(),
+                refusal: (
+                    (400, "{\"error\":\"Chat settings not found.\"}".to_string()),
+                    dispatch_err(Response::error(
+                        ErrorKind::BadRequest,
+                        "Chat settings not found.",
+                    )),
+                ),
+            },
+            &host,
+            &node,
+        );
+        // v4 resolves the port BEFORE loading `--tuning-file`, so the
+        // both-flags error wins over a missing tuning file.
+        ctx.case_with(
+            "recall-replay both flags beat a bad tuning file",
+            &s(&[
+                "recall-replay",
+                CID,
+                "-i",
+                "instA",
+                "-d",
+                &inst_a,
+                "--tuning-file",
+                "/nonexistent/tuning.json",
+            ]),
+            recall_opts(),
+        );
+        // === end P4.D299 ===
     }
 
     // === P4.D291: recall-replay rendering ===
@@ -5380,6 +5804,25 @@ fn cli_differential() {
             &s(&["anchor-probe", CHAR, "--port", &dead_port]),
             recall_opts(),
         );
+
+        // === P4.D299: anchor-probe server port resolution (v4 bug 239) ===
+        let node = ctx.node.clone();
+        p4d299_port_rows(
+            &mut ctx,
+            &PortTool {
+                tool: "anchor-probe",
+                id: CHAR,
+                v4_line: v4_line.to_string(),
+                v5_prefix: v5_prefix.to_string(),
+                refusal: (
+                    (404, "{\"error\":\"Character not found\"}".to_string()),
+                    dispatch_err(Response::error(ErrorKind::NotFound, "Character not found")),
+                ),
+            },
+            &host,
+            &node,
+        );
+        // === end P4.D299 ===
     }
 
     // Registry round-trip: the same mutation sequence on each side must leave

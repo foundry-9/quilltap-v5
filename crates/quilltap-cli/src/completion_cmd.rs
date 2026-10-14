@@ -1,8 +1,11 @@
 //! `quilltap completion <shell>` — the shell-completion emitters (v4
 //! `packages/quilltap/lib/completion-commands.js`). The three scripts are
 //! byte transcriptions of v4's `lib/completion/*.template` files (re-captured
-//! at v4 `6afacb18` — bug 101, the flag-tolerant rewrite of all three; before
-//! that at `03154b72`, the `db characters` sub-subverb family), emitted
+//! at v4 `83334b9a5` — P4.D299: bug 239's `--instance --data-dir
+//! --passphrase` on `recall-replay` / `anchor-probe`, `b045dd986`'s `db
+//! --tier` and memories `maintain` lines; before that at `6afacb18` — bug 101,
+//! the flag-tolerant rewrite of all three — and `03154b72`, the `db
+//! characters` sub-subverb family), emitted
 //! verbatim. v4's emitter reads the template and writes it through untouched,
 //! so there is nothing to substitute on either side — the shipped bytes ARE
 //! v4's file. `tests/completion_behavior.rs` drives these same bytes under a

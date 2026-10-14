@@ -182936,3 +182936,173 @@ family `instance_lock_port_equivalence` (case `harness/oracle/cases/instance-loc
 red-first on unported `main` 63 failures over 33 rows (the re-entrant
 malformed-port rows failed BOOT, as the order predicted); green 33/0. The
 full lane record follows with the CLI commit.
+
+## P4.D299 — lane record (host lock `port` + CLI port resolution, v4 bug 239) — 2026-10-14
+
+Branch `claude/p4-instance-lock-cli-flags-541a66`, cut from `main` `821101312`
+(the worktree had been created at P4.D289's tip `53a0e5071` with no commits of
+its own; reset to `main` before any work — the order is stage A from `main`).
+Pin `/tmp/qt-v4-pin-p4d299-83334b9a5` = `83334b9a5…` (`4.10.0-dev.176`
+verified). Commits: `d69b54b3f` (lock + `HostConfig` + web + the lock family),
+then the CLI commit.
+
+**§R.2 observations.** The probe at lane start (2026-10-14 08:13 CDT): v4's
+checkout on `main`, CLEAN, `log 83334b9a5..main` = TEN commits —
+`7417e9a1b`, `01f508d4e`, `a42c282b8`, `a8b2d2861`, `49f8906c3`, `75d094e63`
+("Release checklist 12: CLI docs, completions and tooling; fix migrations
+status ids" — touches `packages/quilltap`, OUT of scope by the pin rule),
+`8489d08b9`, `052659624` + `809e5104d` (bug 247 filed), `bbbcd2388` (wardrobe
+copy-to-folder); `bugfix` unmoved past `1a2b2164c`. v4 moved: `bbbcd2388`
+observed at 08:13 CDT. **The live `node_modules` had moved** (`@quilltap/
+plugin-utils` 2.6.3 → 2.7.1, `a8b2d2861`), so the pin got its own `npm ci
+--offline` (§R.3's cure; `--ignore-scripts`, with the identical-version
+`better-sqlite3` native build copied in); `openai` 7.30.0 at the pin.
+
+**Red-first.** Tier R from the pin on unported `main`: 361 cases, 14 failures —
+MINE (9): `db help`, `anchor-probe help`, `anchor-probe -h`, `anchor-probe no
+id`, `recall-replay help`, `recall-replay no chat`, `completion bash|fish|zsh`;
+P4.D290's residue (5): `anchor-probe table`, `anchor-probe empty rows`,
+`anchor-probe limit 1e2|20|200` (v4's relabel — `would fold` / `near-dup
+absorbed`); recall-replay table rows GREEN as predicted. `completion_behavior`
+10/10 on `main`'s templates, RED at `:586` after the copy. The NEW lock family
+on `main` (one-arg API adapted to ignore the port): 63 failures over 33 rows —
+every fresh-with-port row, every claim row, and the re-entrant
+malformed-port rows FAILED BOOT (the order's C-3 prediction, measured). The
+lock unit rows and the host / parse / resolver twins could not compile
+against `main`'s signatures (compile-red); each was then proven by the Tier 2
+mutations below.
+
+**Landed (Tier 1 #2–#12).** `lock_port_from_json` (R-L2) behind
+`LockFileContent.port`'s `deserialize_with`; raw-map rewrites for the claim,
+re-entrant, heartbeat and both releases (R-L1, `shift_remove`);
+`build_lock_content(port)` / `acquire_instance_lock(path, port)` (R-L4); the
+two DEBUGs with `module = "database:instance-lock"`, `port` omitted on `None`,
+the `Building…` line emitted at the server's fresh-acquire site only (R-L5);
+`HostConfig.listening_port` (appended last, `None` default) → `HostAssembler`
+(appended last) → `pre_open`; `quilltap-web` `listening_port_for(--port)`
+(`0` → `None`) after `production_host_config`, before `boot_startup_status` —
+**no Tauri signature forced, `quilltap-tauri` untouched**; `resolve.rs`
+`resolve_server_port` / `ServerTarget` / `PortSource` / `DEFAULT_SERVER_PORT`
+(R-L9, R-L10 — two reads of the lock file, documented), the `#[allow(dead_code)]`
+on `Resolved.instance_name` dropped; both tools' `Flags` + `parse_flags`
+(`-d`/`--data-dir`, `-i`/`--instance`, swallowed `--passphrase`, `port:
+Option<i64>`, `-p` still unknown) and the fenced connection preludes
+(recall-replay's moved ahead of the body build); `db --lock-status`'s `Port:`
+line; `anchor_probe_help.txt` / `recall_replay_help.txt` / `db_help.txt` and
+the three templates byte-captured at the pin — every hunk exactly the span's
+(bug 239's flag lines + two-line `--port`, `8af764514`'s and `584d28164`'s
+paragraphs, `b045dd986`'s four-line `memories --character` block, `--tier`,
+`maintain`, `--phases`/`--cap`/`--repair`/`--write`, `(-p --port)`,
+`rr_flags`/`ap_flags`); **`main_help.txt` re-captured BYTE-IDENTICAL**
+(`cmp`, measured). Capture-vintage docs updated (`main.rs`, `completion_cmd.rs`,
+the two `HELP` consts).
+
+**A correction to the order.** #10 says the `Port:` line renders "through
+`nodefmt::js_num_string`": that fn prints `1e21` and `-0` (and a serde
+`1.2345678901234567e19`) where v4's `${lock.port}` prints `1e+21`, `0` and
+`12345678901234567000`. The line uses core's
+`pascal::js_value::number_to_string` (JS `String(number)`), measured equal to
+v4 on all eleven raw values by hand and in Tier R.
+
+**A finding in my own Tier R (fixed before commit).** The first
+`lock_json_with_port` spliced its comma on the wrong side, so every port plant
+was invalid JSON: the eleven `lock status stale port …` rows passed VACUOUSLY
+(both sides printed `CORRUPT`) and the lock-resolved rows failed only on the
+missing request pair. The helper now parses its own output and asserts the
+`port, history` tail — a plant can no longer pass by being corrupt.
+
+**Green, by name, from the pin.** `instance_lock_port_equivalence` 33 rows / 0
+(`QT_ORACLE_INSTANCE_LOCK_PORT`, regenerated fresh before the gate, 33 lines;
+0.52 s — it ran); `lock::tests` 37/37 (16 new); `host_lock_ordering` 6/6 (NEW
+`the_listening_port_is_recorded_in_the_lock`, `on_lock_lost` set);
+`host_cadence` 4/4; `lock_conflict_boot_status` 2/2; `quilltap-web` bin
+`the_listening_port_is_the_configured_one_and_zero_records_none`;
+`completion_behavior` 12/12 (anchor-probe's set → the pin's seven, NEW
+`bash_completes_the_p4d299_template_lines` +
+`fish_and_zsh_carry_the_p4d299_template_lines`); `quilltap-cli` bins 63/63
+(the 12 resolver twins + 10 parse twins). **Tier R: 417 cases, 5 failures —
+exactly P4.D290's residue above**; all 56 new P4.D299 rows green: the
+`Port:` line over `3005`, `"3005"`, `3000.5`, `3005.0`, `0`, `-7`, `1e21`,
+`-0`, `null`, `true`, `12345678901234567890` (stale plant), a live node-sleeper
+plant, a cross-host `docker` fresh plant (Tier 2 #15); per tool: the lock's
+port via `-i` / `--instance` / leading global `-i` / `-d` / `--data-dir` /
+`--passphrase` ×3 positions (each a refusal through the two-dialect
+`WireStub`, wire pair asserted), the v5-written lock read by v4's launcher
+(Tier 2 #14 — v4's CLI finding a v5 server by instance name, proven),
+`--port` winning (no note) and with both flags (no error, R-L9), both-flags /
+unknown-instance / `-p` / leading `-p` refusals (`WireExpect::Nothing`), an
+unreachable lock port (bare hint), the five fallback arms (active portless,
+stale, suspect, corrupt, absent) behind R-L8's port-3000-free guard, and
+recall-replay's both-flags-beat-a-bad-tuning-file row.
+
+**Mutation proofs (Tier 2 #13), each applied, run red, reverted:** M1 `remove`
+for `shift_remove` → `claiming_without_a_port_shift_removes_the_key_keeping_order`
+RED; M2 the claim re-serializing the typed struct (the `flatten`-class loss)
+→ 3 RED (incl. `unknown_keys_ride_through…`, `claiming_a_portless_lock_appends…`);
+M3 a strict `Option<u16>` read → 4 RED (incl. the heartbeat-leniency row);
+M4 `0.0..=` for `1.0..=` → `resolve::tests::the_lock_port_is_read_leniently`
+RED; M5 the `Port:` predicate bounded to 1–65535 → v5 prints nothing for `0` /
+`-7` where v4 prints them (measured by hand against the pin's launcher — the
+Tier R rows of the same values cover it in the gate).
+
+**Gate (final tree).** `cargo fmt --all --check` clean; `cargo clippy
+--workspace --all-targets -- -D warnings` and `--features
+quilltap-core/native-transport` both clean (`apps/web/dist` built first);
+`recipe_sweep.py --self-test` 0 failures (the new header lists under no problem
+class); `cargo test --workspace --no-fail-fast` with the env block inline:
+749 result lines, 4,994 passed / 2 failed / 3 ignored, zero SKIP lines — the
+two reds are `cli_differential` (P4.D290's five rows) and
+`qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts`
+(§R.3's pin red, P4.D294's). Observation: `provisioning_equivalence`,
+`help_tree_equivalence` and `help_section_size_equivalence` reported `ok` in
+0.00 s under `QT_V4_CHECKOUT` = the pin — they gate on their own env vars
+(e.g. `QT_FRESH_SCHEMA_LIVE`), which this lane does not set; not this lane's.
+Commit 1's tree alone: `cargo check --workspace --all-targets` clean.
+
+**Observations / deferrals (Tier 3, loud).**
+- #16 (R-P): `memory-diff`'s port resolution, the `memories` verb family and
+  `db memories --tier` stay OUT — their refusals (`main.rs` `not_yet_available`,
+  `db_cmd.rs`) stand; the templates advertise them as v4's bytes.
+- #17: v5's typed lock read requires every field where v4 validates only
+  `pid` / `hostname` / `history` — measured example: a lock missing
+  `processArgv0` is `Corrupt` in v5 (`classify_lock_status_probed`) and
+  classified in v4's `getLockStatus`; so the resolver says "unreadable" where
+  v4 reads its port. Not changed.
+- #18 (R-L5): the pre-existing `lock.rs` lines (`Instance lock released`, the
+  heartbeat lines, the skip WARN) carry no `module` binding; only the two new
+  DEBUGs do. Not retrofitted.
+- #19: no server-side `overrideInstanceLock` twin exists or was added.
+- #20: no `PORT` env knob (v5's knob is `--port`).
+- NEW observation: a NUMBER that is not in JS-canonical form (`3005.0`,
+  `1e21`, a past-2^53 integer) is re-emitted by a v5 rewrite in serde's form
+  (`3005.0`, `1e21`, the exact digits) where v4's `JSON.stringify` re-renders
+  it (`3005`, `1e+21`, `12345678901234567000`). Strings, `null`, objects and
+  in-range integers round-trip byte-equal (the family's malformed rows use
+  only those). Recorded, not changed.
+- The release rewrite is not observable through `release_*` (both unlink the
+  file); `the_release_rewrite_keeps_every_key_in_place` pins the one
+  `add_raw_history_entry` they share.
+
+**HANDOFFs:** none. **Fixtures:** no committed fixture touched; nothing
+invalidated. **Versions at close:** host 0.0.200, web 0.0.238, cli 0.0.33;
+core / tauri / harness (frozen 0.0.1110) unchanged.
+
+**Regen recipe** (the family's header, run from the pin):
+`cd /tmp/qt-v4-pin-p4d299-83334b9a5 && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH QT_ORACLE_OUT=/tmp/p4d299/oracle-instance-lock-port.ndjson npx tsx $V5W/harness/oracle/cases/instance-lock-port.ts`,
+then `QT_ORACLE_INSTANCE_LOCK_PORT=/tmp/p4d299/oracle-instance-lock-port.ndjson cargo test -p quilltap-harness --test instance_lock_port_equivalence -- --nocapture`.
+Tier R: `QT_V4_CHECKOUT=$PIN QT_V4_ROOT=$PIN QT_NODE=$HOME/.nvm/versions/node/v24.13.1/bin/node cargo test -p quilltap-cli --test cli_differential -- --nocapture` (port 3000 must be free — R-L8 fails loud otherwise).
+
+### 💸 for the dogfood pass (the order's list stands)
+
+- `quilltap-web --port 3005` → `quilltap db --lock-status --data-dir <inst>`
+  shows `Port:         3005`; the lock has `"port": 3005` between
+  `processArgv0` and `history`.
+- `quilltap anchor-probe <id> --data-dir <inst>` / `-i <name>` finds the 3005
+  server with the DIM note; v4's launcher at the pin does the same from the
+  v5-written lock.
+- `kill -9`, re-probe → the `stale (PID … is no longer running)` hint; restart
+  → the claim replaces the port IN PLACE.
+- A v4-written lock with `port` claimed by v5 keeps every v4 key in place.
+- Hand-edit a running server's lock `port` to `"abc"` → it survives the next
+  heartbeat and the file still reads `"abc"`.
+- `quilltap completion bash` → `anchor-probe --<TAB>` offers `--instance`.

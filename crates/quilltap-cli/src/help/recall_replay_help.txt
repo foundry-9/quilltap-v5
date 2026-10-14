@@ -7,8 +7,14 @@ Replays the per-turn memory recall for a chat turn against the running
 Quilltap server and prints the full candidate table twice — the pre-overhaul
 ranking and the episodic (retrospective/time-window/entity) ranking — so the
 recall constants can be tuned against real "the character forgot" turns.
+After them: what the text fallback would have returned, and the stage trace
+(query → gather → hydrate → score → select → assemble). The anti-repetition
+ring is the one in force at that turn, read from the chat's recall records.
 
 Options:
+  -d, --data-dir <path>      Instance root; used to find the server's port
+  -i, --instance <name>      Registered instance whose server to call (see 'quilltap instances')
+      --passphrase <pass>    Accepted and ignored (this tool never opens the database)
       --turn <number>        1-based interchange to replay at (default: last)
       --char <characterId>   Character whose memories are searched
                              (default: first LLM-controlled participant)
@@ -36,7 +42,8 @@ Options:
                              fresh (non-deterministic) distillation
       --as-of                Search only memories created before the turn's
                              opening message (the corpus as it stood then)
-      --port <number>        Server port for API calls (default: 3000)
+      --port <number>        Server port for API calls. Default: the port recorded in the
+                             --instance/--data-dir server's lock file, else 3000
       --json                 Print the raw JSON result instead of tables
   -h, --help                 Show this help
 

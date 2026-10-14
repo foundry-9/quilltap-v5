@@ -36,6 +36,8 @@ use crate::http;
 use crate::nodefmt;
 use crate::nodefmt::slice_utf16;
 use crate::out;
+use crate::resolve;
+use quilltap_host::instances::InstanceRegistry;
 use serde_json::Value;
 
 const RESET: &str = "\x1b[0m";
@@ -48,7 +50,9 @@ const CYAN: &str = "\x1b[36m";
 
 /// v4 `printRecallReplayHelp` — a BYTE CAPTURE of `node
 /// packages/quilltap/bin/quilltap.js recall-replay --help` stdout at v4
-/// `01a83539d` (P4.D269 R-B). The template literal starts and ends with a
+/// `83334b9a5` (P4.D299 — bug 239's three flag lines and two-line `--port`,
+/// `584d28164`'s "After them: what the text fallback…" paragraph; first
+/// captured at `01a83539d`, P4.D269 R-B). The template literal starts and ends with a
 /// newline and `console.log` appends one more; its `\`-continued example line
 /// is a JS line continuation, which the capture keeps exactly as Node prints it
 /// (an inline Rust literal would have to re-derive it).
@@ -63,7 +67,13 @@ struct Flags {
     tuning_file: Option<String>,
     signals_from: Option<String>,
     as_of: bool,
-    port: i64,
+    /// `None` unless `--port` is given — the lock then supplies it
+    /// ([`resolve::resolve_server_port`]).
+    port: Option<i64>,
+    /// `-d` / `--data-dir`, `-i` / `--instance` (v4 bug 239): which
+    /// instance's server lock names the port. Empty when absent.
+    data_dir: String,
+    instance: String,
     json: bool,
     help: bool,
 }
@@ -80,7 +90,9 @@ fn parse_flags(args: &[String]) -> (Flags, Vec<String>) {
         tuning_file: None,
         signals_from: None,
         as_of: false,
-        port: 3000,
+        port: None,
+        data_dir: String::new(),
+        instance: String::new(),
         json: false,
         help: false,
     };
@@ -144,11 +156,23 @@ fn parse_flags(args: &[String]) -> (Flags, Vec<String>) {
                 flags.signals_from = args.get(i).cloned();
             }
             "--as-of" => flags.as_of = true,
+            // `args[++i]` — a missing value reads as empty (v4's `undefined`).
+            "-d" | "--data-dir" => {
+                i += 1;
+                flags.data_dir = args.get(i).cloned().unwrap_or_default();
+            }
+            "-i" | "--instance" => {
+                i += 1;
+                flags.instance = args.get(i).cloned().unwrap_or_default();
+            }
+            // Accepted so universal flags never error; this tool talks to the
+            // running server and never opens the database itself.
+            "--passphrase" => i += 1,
             "--port" => {
                 i += 1;
                 let n = nodefmt::js_parse_int(args.get(i).map(String::as_str));
                 match n {
-                    Some(v) if (1..=65535).contains(&v) => flags.port = v,
+                    Some(v) if (1..=65535).contains(&v) => flags.port = Some(v),
                     _ => {
                         out::elog("Error: --port must be between 1 and 65535");
                         out::exit(1);
@@ -427,8 +451,28 @@ pub fn run(args: &[String]) {
     }
     let chat_id = &positional[0];
 
+    // === P4.D299: server port resolution ===
+    // v4 resolves here, BEFORE the body and its `--tuning-file` /
+    // `--signals-from` refusals, so a both-flags error beats a bad tuning file.
+    let target = match resolve::resolve_server_port(
+        flags.port,
+        &flags.instance,
+        &flags.data_dir,
+        &InstanceRegistry::at_default_location(),
+    ) {
+        Ok(target) => target,
+        Err(message) => {
+            out::elog(&format!("Error: {message}"));
+            out::exit(1);
+        }
+    };
+    let port = target.port;
+    if let Some(note) = &target.note {
+        out::write_stderr(&format!("{DIM}{note}{RESET}\n"));
+    }
     // v5 posts the same verb through its own dispatch endpoint.
-    let url = format!("http://localhost:{}/api/dispatch", flags.port);
+    let url = format!("http://localhost:{port}/api/dispatch");
+    // === end P4.D299 ===
     let mut body = serde_json::Map::new();
     body.insert(
         "type".to_string(),
@@ -476,17 +520,18 @@ pub fn run(args: &[String]) {
         "{BOLD}Replaying recall{RESET} for chat {DIM}{chat_id}{RESET} via {DIM}{url}{RESET}\n"
     ));
 
-    let (status, payload_text) = match http::post(flags.port, "/api/dispatch", Some(&body_text)) {
+    // === P4.D299: server port resolution ===
+    let (status, payload_text) = match http::post(port, "/api/dispatch", Some(&body_text)) {
         Ok(r) => r,
         Err(message) => {
             out::elog(&format!(
-                "{RED}Could not reach Quilltap server at http://localhost:{}: {message}{RESET}",
-                flags.port
+                "{RED}Could not reach Quilltap server at http://localhost:{port}: {message}{RESET}"
             ));
-            out::elog("Start the server (npm run dev) or pass --port to match a non-default port.");
+            out::elog(&target.hint);
             out::exit(1);
         }
     };
+    // === end P4.D299 ===
 
     let payload: serde_json::Value = match serde_json::from_str(&payload_text) {
         // `res.json()` is `JSON.parse`: re-shape the numbers the JS way.
@@ -708,4 +753,58 @@ pub fn run(args: &[String]) {
     // === end P4.D291 ===
     out::log("");
     out::exit(0);
+}
+
+#[cfg(test)]
+mod tests {
+    // === P4.D299: the universal flags (v4 `server-port-resolution.test.js`) ===
+    use super::*;
+
+    fn parse(args: &[&str]) -> (Flags, Vec<String>) {
+        let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+        parse_flags(&args)
+    }
+
+    #[test]
+    fn accepts_the_instance_flag_around_the_positional_id() {
+        for args in [
+            &["--instance", "V4test", "ID"][..],
+            &["ID", "--instance", "V4test"],
+            &["-i", "V4test", "ID"],
+            &["ID", "-i", "V4test"],
+        ] {
+            let (flags, positional) = parse(args);
+            assert_eq!(flags.instance, "V4test", "{args:?}");
+            assert_eq!(positional, ["ID"], "{args:?}");
+        }
+    }
+
+    #[test]
+    fn accepts_the_data_dir_flag() {
+        for args in [&["--data-dir", "/x/y", "ID"][..], &["ID", "-d", "/x/y"]] {
+            let (flags, positional) = parse(args);
+            assert_eq!(flags.data_dir, "/x/y", "{args:?}");
+            assert_eq!(positional, ["ID"], "{args:?}");
+        }
+    }
+
+    #[test]
+    fn accepts_passphrase_without_treating_its_value_as_the_id() {
+        assert_eq!(parse(&["--passphrase", "hunter2", "ID"]).1, ["ID"]);
+        assert_eq!(parse(&["ID", "--passphrase", "hunter2"]).1, ["ID"]);
+        assert_eq!(parse(&["ID", "--passphrase"]).1, ["ID"]);
+    }
+
+    #[test]
+    fn leaves_the_port_unset_unless_given() {
+        assert_eq!(parse(&["ID"]).0.port, None);
+        assert_eq!(parse(&["ID", "--port", "3005"]).0.port, Some(3005));
+    }
+
+    #[test]
+    fn a_trailing_value_flag_reads_as_empty() {
+        assert_eq!(parse(&["ID", "-i"]).0.instance, "");
+        assert_eq!(parse(&["ID", "--data-dir"]).0.data_dir, "");
+    }
+    // === end P4.D299 ===
 }

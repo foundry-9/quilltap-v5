@@ -579,11 +579,24 @@ fn bash_completes_the_p4d269_template_lines() {
     }
     let bash = Bash::new();
 
-    // `anchor-probe` offers exactly its four flags (v4's `ap_flags`).
+    // `anchor-probe` offers exactly v4's `ap_flags` — seven since `93c5af6ad`
+    // (bug 239) put `--instance --data-dir --passphrase` at its head.
     let line = "quilltap anchor-probe --";
     let mut got = bash.complete(line);
     got.sort();
-    assert_eq!(got, ["--help", "--json", "--limit", "--port"], "`{line}`");
+    assert_eq!(
+        got,
+        [
+            "--data-dir",
+            "--help",
+            "--instance",
+            "--json",
+            "--limit",
+            "--passphrase",
+            "--port"
+        ],
+        "`{line}`"
+    );
 
     // The memories tier values, and CONSOLIDATED among the sources.
     let line = "quilltap memories --tier ";
@@ -648,5 +661,88 @@ fn fish_and_zsh_carry_the_p4d269_template_lines() {
     assert!(
         BASH_TEMPLATE.contains("vf_anchor_probe=\" --limit --port \""),
         "bash template lost anchor-probe's valued-flag list"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// P4.D299 — the `83334b9a5` template lines: bug 239's (`93c5af6ad`) universal
+// flags on `recall-replay` / `anchor-probe`, and `b045dd986`'s `db --tier` +
+// the memories `maintain` / `--phases` / `--cap` / `--repair` / `--write`
+// lines. The memories lines are v4's bytes advertising a family v5 still
+// refuses loud (R-P, the R-J precedent above).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn bash_completes_the_p4d299_template_lines() {
+    if !has_shell("bash") {
+        eprintln!(
+            "SKIPPING bash_completes_the_p4d299_template_lines: no working `bash` on this host"
+        );
+        return;
+    }
+    let bash = Bash::new();
+
+    let line = "quilltap recall-replay cid --";
+    let got = bash.complete(line);
+    for flag in ["--instance", "--data-dir", "--passphrase"] {
+        assert_offers(&got, flag, line);
+    }
+
+    let line = "quilltap db --tier ";
+    let mut got = bash.complete(line);
+    got.sort();
+    assert_eq!(got, ["cold", "hot"], "`{line}`");
+
+    let line = "quilltap memories --phases ";
+    let mut got = bash.complete(line);
+    got.sort();
+    assert_eq!(
+        got,
+        [
+            "consolidate",
+            "demote",
+            "fold-near-duplicates",
+            "mirror",
+            "retire"
+        ],
+        "`{line}`"
+    );
+
+    let line = "quilltap memories ";
+    let got = bash.complete(line);
+    assert_offers(&got, "maintain", line);
+    assert!(
+        !got.iter().any(|w| w == "consolidate"),
+        "`{line}` still offers the retired `consolidate` verb: {got:?}"
+    );
+}
+
+#[test]
+fn fish_and_zsh_carry_the_p4d299_template_lines() {
+    assert!(
+        FISH_TEMPLATE.contains(
+            "complete -c quilltap -n '__quilltap_using_subcommand db' -l 'tier' -d 'Memory tier' -x -a 'hot cold'"
+        ),
+        "fish template lacks db --tier"
+    );
+    assert!(
+        FISH_TEMPLATE.contains("-f -a 'maintain' -d 'Run memory maintenance'"),
+        "fish template lacks memories maintain"
+    );
+    assert!(
+        !FISH_TEMPLATE.contains("-f -a 'consolidate'"),
+        "fish template still offers memories consolidate"
+    );
+    assert!(
+        ZSH_TEMPLATE.contains("'--tier[Memory tier]:tier:(hot cold)'"),
+        "zsh template lacks db --tier"
+    );
+    assert!(
+        ZSH_TEMPLATE.contains("'(-p --port)'{-p,--port}'[Server port]:port:'"),
+        "zsh template lacks the memories (-p --port) spec"
+    );
+    assert!(
+        ZSH_TEMPLATE.contains("'maintain:Run memory maintenance"),
+        "zsh template lacks memories maintain"
     );
 }
