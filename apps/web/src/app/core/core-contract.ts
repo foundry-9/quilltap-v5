@@ -890,8 +890,9 @@ export interface ChatCreateOutfitSelectionInput {
  * The chat-creation request (re-pinned P4.6q from v4's flattened `POST
  * /api/v1/chats` body and the live `services/chat_create::ChatCreateRequest`).
  * The dispatch flattens every field beside `type` into the server's create
- * driver. Scenario source precedence is `scenarioId` > `projectScenarioPath` >
- * (`groupScenarioPath` + `groupScenarioGroupId`) > `generalScenarioPath`; free
+ * driver. Scenario source precedence is `scenarioRef` > `scenarioId` >
+ * `projectScenarioPath` > (`groupScenarioPath` + `groupScenarioGroupId`) >
+ * `generalScenarioPath` (v4 `545e299bb` put the universal ref FIRST); free
  * `scenario` notes ride independently and layer beneath the resolved preset.
  * `timestampConfig` is omitted when its `mode` is `NONE`; `avatarGenerationEnabled`
  * is only ever sent `true`. The autonomous-room fields are carried for shape (the
@@ -921,6 +922,12 @@ export interface ChatCreateRequest {
    */
   conciergeState?: ConciergeState;
   scenario?: string;
+  /**
+   * P4.D302 (v4 `545e299bb`, C3 §2) — a scenario from ANY shelf, by ref. NOT
+   * nullable (v4's `createChatSchema` spells it `.optional()`): omit it, never
+   * send `null`. The path rides exactly as the catalogue returned it (R-Z).
+   */
+  scenarioRef?: ScenarioRef;
   scenarioId?: string;
   projectScenarioPath?: string;
   groupScenarioPath?: string;
@@ -6533,6 +6540,11 @@ export type MemoryRequest =
   | ChatRetryImageUncensoredRequest
   | MessageRetryUncensoredRequest
   | ChatSetScenarioRequest
+  // === P4.D302: scenarios from anywhere (C3 §2) ===
+  | ScenarioEverywhereRequest
+  | ScenarioReadByRefRequest
+  | ChatGetScenarioSourceRequest
+  // === end P4.D302 ===
   // P4.6ar/P4.6as/P4.6at (folded at unification; the block at the end of this
   // file).
   | LlmLogsListRequest
@@ -7334,11 +7346,15 @@ export interface MessageRetryUncensoredRequest {
  * (`.nullish()` throughout) — the absent/null/value tri-state is preserved end
  * to end, so the server can tell "leave this tier alone" from "clear it".
  * The client sends the tier fields `scenarioSelectionToPayload` produces, plus
- * `scenario` (the free text) only when the selection is Custom.
+ * `scenario` on EVERY save (v4 `545e299bb`): under Custom it is the whole
+ * scene, under a preset it is the notes beneath it.
  *
- * Precedence, resolved server-side: `scenarioId` > `projectScenarioPath` >
- * `groupScenarioPath` > `generalScenarioPath`, with free `scenario` layered
- * beneath whatever resolves — the same chain `chatCreate` uses.
+ * Precedence, resolved server-side: `scenarioRef` > `scenarioId` >
+ * `projectScenarioPath` > `groupScenarioPath` > `generalScenarioPath`, with
+ * free `scenario` layered beneath whatever resolves — the same chain
+ * `chatCreate` uses. `reload: true` (only ever sent `true` — v4 refuses a
+ * `null`) asks for the source's revised copy; without it a save that resolves
+ * to the chat's own revised source keeps the scene the chat has.
  */
 export interface ChatSetScenarioRequest {
   type: 'chatSetScenario';
@@ -7352,6 +7368,10 @@ export interface ChatSetScenarioRequest {
   groupScenarioGroupId?: string | null;
   /** ≤ 500 chars (v4's schema bound). */
   generalScenarioPath?: string | null;
+  /** P4.D302 (C3 §2) — a scenario from any shelf, by ref. */
+  scenarioRef?: ScenarioRef | null;
+  /** P4.D302 (C3 §2) — re-read the recorded source (Reload from source). */
+  reload?: boolean;
 }
 
 /**
@@ -9076,3 +9096,45 @@ export function isScenarioBuilderProgressEvent(
 }
 
 // === end P4.D218 ===
+
+// === P4.D302: scenarios from anywhere (C3 §2) ===
+//
+// v4 `545e299bb` — a scenario may come from ANY shelf in the instance (a
+// character vault, a project's or group's store, Quilltap General), addressed
+// by one universal ref. The three request verbs are served by P4.D295; until
+// that lane lands on the union, `main`'s server answers each with serde's
+// `unknown variant` 400, which the SPA reads as v4's own degradations (no
+// source recorded; "The shelves could not be reached").
+
+/** The universal pointer to one scenario file, wherever it lives (v4 `ScenarioRef`). */
+export interface ScenarioRef { mountPointId: string; path: string; }
+/** Where a chat's scene was taken from, and the body hash it was taken at. */
+export interface ScenarioSource { mountPointId: string; path: string; bodySha256: string; }
+/** One row of the instance-wide catalogue — no body; `excerpt` ≤ 240 units + `…`. */
+export interface EverywhereScenario { path: string; scenarioId?: string; filename: string; name: string; description?: string; isDefault: boolean; archived: boolean; excerpt: string; updatedAt: string; }
+/** One owner's shelf (General first, then projects, groups, characters). */
+export interface EverywhereSource { scope: 'general' | 'project' | 'group' | 'character'; id: string | null; name: string; mountPointId: string; scenarios: EverywhereScenario[]; warnings: string[]; }
+/** `chatGetScenarioSource`'s answer (v4 `GET /chats/[id]?action=scenario-source`). */
+export interface ScenarioSourceInfo { source: ScenarioSource | null; owner: { scope: string; id: string | null; name: string } | null; scenarioName: string | null; scenarioId: string | null; exists: boolean; changed: boolean; notes: string | null; }
+
+/** v4 `GET /api/v1/scenarios?action=everywhere` → `{ sources: EverywhereSource[] }`. */
+export interface ScenarioEverywhereRequest { type: 'scenarioEverywhere'; includeArchived?: boolean }
+/**
+ * v4 `GET /api/v1/scenarios?action=read&mountPointId=&path=` →
+ * {@link ScenarioReadByRefResult}. 400 `mountPointId and path are required` /
+ * `Invalid scenario ref: …`, 404 `Scenario not found`.
+ */
+export interface ScenarioReadByRefRequest { type: 'scenarioReadByRef'; mountPointId: string; path: string }
+/** v4 `GET /api/v1/chats/[id]?action=scenario-source` → {@link ScenarioSourceInfo}. */
+export interface ChatGetScenarioSourceRequest { type: 'chatGetScenarioSource'; chatId: string }
+
+/**
+ * `scenarioReadByRef`'s answer (L-C). {@link ScenarioDto} IS v5's name for v4's
+ * `ParsedScenario` (same keys, same order) — no second DTO.
+ */
+export interface ScenarioReadByRefResult {
+  scenario: ScenarioDto;
+  owner: { scope: string; id: string | null; name: string; mountPointId: string };
+}
+
+// === end P4.D302 ===

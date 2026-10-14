@@ -947,6 +947,12 @@ _Versions: SPA 0.5.847._
 
 The Commonplace Book card and editor now label importance through v4's `importanceBand` (`e0ac7493a`): High at 0.7 or above, Medium from 0.3, Low below 0.3 (was 0.4). `memory-format.ts` carries `IMPORTANCE_HIGH`, `IMPORTANCE_LOW` and `importanceBand`; the format and card specs are re-pinned at 0.3 / 0.29 / 0.69 / 0.7.
 
+#### 2026-10-14 — feat(spa): scenario store selection, seed and browser helpers, recorded against v4 (P4.D302 unit 1)
+
+_Versions: SPA 0.5.847._
+
+Ports the pure half of v4 `545e299bb`'s scenario SPA at the `83334b9a5` pin. The contract gains the C3 §2 scenario region (`ScenarioRef`, `ScenarioSource`, `EverywhereScenario`, `EverywhereSource`, `ScenarioSourceInfo`, the `scenarioEverywhere` / `scenarioReadByRef` / `chatGetScenarioSource` requests, `ScenarioReadByRefResult`), `ChatCreateRequest.scenarioRef` (first in the precedence), and `ChatSetScenarioRequest.scenarioRef` / `reload`. `ScenarioSelection` gains the `store` kind (`store:<mountPointId>:<path>`, label kept from `current`), the browse token, and the `scenarioRef` payload. New `scenario-seed.ts` (New Chat's character > project > general seed) and `scenario-browser.logic.ts` (`isInHierarchy`, `pickToSelection`, `scenarioMatchesSearch`). A new recorder drives v4's real `types.ts`, `scenario-seed.ts` and `ScenarioBrowserDialog.tsx` helpers from the pin into a 607-row fixture compared row for row.
+
 #### 2026-10-14 — docs(porting): record the human's approval of the `83334b9a5` round's planning rulings and P4.D290's `sha1` dependency
 
 _Docs-only change._

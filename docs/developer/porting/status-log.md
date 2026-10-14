@@ -184386,3 +184386,56 @@ worktree for the session — same volume, same rules).
   unifier recounts per §R.8). No crate version moved; harness frozen.
 - **Cleanup:** the pin worktree removed; this worktree's `target/` deleted;
   `/tmp/p4d300` scratch removed; nothing pushed to `main`.
+
+## P4.D302 — scenarios from anywhere, the SPA (lane `claude/p4.d302-scenarios-spa-821101312`, 2026-10-14)
+
+Stage A from `main` `821101312`; v4 pin `83334b9a5` (`4.10.0-dev.176`), pin
+worktree `/tmp/qt-v4-pin-p4d302-83334b9a5` (HEAD verified, the three symlink
+classes, `node_modules/openai` `7.30.0`).
+
+**§R.2 probe at lane start (2026-10-14 15:23 CDT) — an OBSERVATION, recorded,
+lane continued:** the v4 checkout is on `main`, CLEAN (the planning-time dirt is
+gone), and **v4 moved: 17 commits past `83334b9a5` on `main`** (`7417e9a1b` …
+`7458ff94e`, incl. `2432b9057 release: 4.10.0`, `f573a7576 merge: 4.10.0 back
+into main`, `37246654d dev: started 4.11.0 development`, bugs 247 / 248, and
+Release checklists 5–13) **and 1 on `bugfix`** (`489b228b6 bugfix: started
+4.10.0 bug branch`). Out of scope by the pin rule; the pin is usable. The live
+tree's `package.json` moved one dependency (`@quilltap/plugin-utils` `^2.6.2`
+→ `^2.7.1`); the recorder imports neither it nor anything that does, so the pin
+stays symlinked (§R.3's cure not needed for this lane).
+
+### Unit 1 — the C3 §2 contract region, the `store` selection, the seed, the browser helpers, the recorder
+
+- `core-contract.ts` (§R.10(j)): C3 §2 verbatim inside the `P4.D302` fence
+  (the five interfaces, the three request types, `ScenarioReadByRefResult`
+  per L-C), the three union members in a fenced block after
+  `ChatSetScenarioRequest`; in place: `ChatCreateRequest.scenarioRef?` with
+  the precedence comment putting it FIRST, `ChatSetScenarioRequest.scenarioRef?`
+  + `reload?` with the doc comment stating `scenario` rides every save.
+- `scenario/scenario.types.ts`: `STORE_SCENARIO_PREFIX`, `BROWSE_SCENARIO_VALUE`,
+  the `store` arm, `ScenarioRef` re-exported, `scenarioValueToSelection(value,
+  current?)`, the payload's `scenarioRef`. The two exhaustive switches over
+  `ScenarioSelection` outside the types module (`chat-scenario-control.ts`'s
+  preview, the types module's own two) carry a `default` arm, so none was
+  compile-forced; the control's preview gains its `store` arm in unit 5.
+- NEW `screens/new-chat/scenario-seed.ts` (v4's 40 lines, verbatim) and
+  `scenario/scenario-browser.logic.ts` (`isInHierarchy` / `pickToSelection` /
+  `scenarioMatchesSearch` + `sourceKey` / `rowKey` / `SCOPE_SECTIONS`).
+- NEW `apps/web/oracle/scenario-selection.recorder.ts` → `src/testing/fixtures/
+  scenario-selection.ndjson` (**607 rows**) → NEW `scenario/scenario-selection.
+  oracle.spec.ts`. **Tier 2 item 11 LANDED:** `tsx` loads v4's
+  `ScenarioBrowserDialog.tsx` from the pin as-is, so the browser's three helpers
+  are recorded from v4's REAL code (113 of the rows) — no transcription-only
+  proof. Re-run from the pin reproduced the file byte-for-byte.
+  **Regen recipe** (from `apps/web`, Node 24):
+  `PIN=/tmp/qt-v4-pin-p4d302-83334b9a5; cp oracle/scenario-selection.recorder.ts "$PIN/"; OUT=src/testing/fixtures/scenario-selection.ndjson; rm -f "$OUT"; (cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH QT_RECORD_BROWSER=1 npx tsx scenario-selection.recorder.ts) > "$OUT"; wc -l "$OUT"` → 607.
+- `scenario.types.spec.ts` gains v4's 5 token + 2 payload cases (+ the two
+  new literals).
+- **Red-first** (main's `scenario.types.ts` + a scratch shim widening the
+  union and the signature only, never committed): `scenario.types.spec.ts`
+  **6 red** of the 8 new; `scenario-selection.oracle.spec.ts` **85 red**
+  (72 `scenarioValueToSelection`, 4 each `scenarioSelectionToValue` /
+  `scenarioSelectionToPayload` / `roundTrip`, 1 byte-order row); the 401
+  seed / browser rows exercise modules NEW in this lane (no main counterpart).
+- Gate: `npm run lint` / `npm run build` / `npm test` green — 500 files /
+  10,113 tests.
