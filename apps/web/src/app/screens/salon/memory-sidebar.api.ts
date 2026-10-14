@@ -71,8 +71,9 @@ export async function confirmAndQueueMemories(
 /**
  * Delete Memories (n) (v4 `handleDeleteChatMemories`, `:17-63`): re-read the
  * live count (a dropped socket can leave a stale rendered zero), toast at zero,
- * confirm quoting the RE-READ count, delete, toast the server's own
- * `deletedCount`. A failed probe falls through to the rendered count. Answers
+ * confirm quoting the RE-READ count (bug 201's wording, v4 `124c8aca3`), delete,
+ * toast the server's own `deletedCount` and, when the wipe spared hand-written,
+ * archived or digest rows, its `sparedCount`. A failed probe falls through to the rendered count. Answers
  * whether memories were deleted (the caller's cue to refresh the count).
  */
 export async function confirmAndDeleteChatMemories(
@@ -92,12 +93,24 @@ export async function confirmAndDeleteChatMemories(
     toasts.showError('This chat has no memories to delete');
     return false;
   }
-  if (!window.confirm(`Delete all ${count} memories created from this chat? This action cannot be undone.`)) {
+  if (
+    !window.confirm(
+      `Delete the memories extracted from this chat (${count} on record)? Hand-written entries, archived entries and consolidated digests stay on the shelf. This action cannot be undone.`,
+    )
+  ) {
     return false;
   }
   try {
     const res = await core.dispatchData({ type: 'memoryDeleteByChat', chatId });
-    toasts.showSuccess(`Deleted ${res['deletedCount']} memories`);
+    // Manual, cold and digest rows are spared by the wipe (v4 bug 201,
+    // `useMemoryActions.ts:55-58`). v4 also sets the count to `spared`; v5
+    // re-reads it by invalidation (the caller's refresh), so no twin is needed.
+    const spared = typeof res['sparedCount'] === 'number' ? res['sparedCount'] : 0;
+    toasts.showSuccess(
+      spared > 0
+        ? `Deleted ${res['deletedCount']} memories; kept ${spared} hand-written, archived or digest entries`
+        : `Deleted ${res['deletedCount']} memories`,
+    );
     return true;
   } catch (err) {
     toasts.showError(

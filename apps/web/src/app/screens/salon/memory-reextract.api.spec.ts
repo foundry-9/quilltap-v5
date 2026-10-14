@@ -40,7 +40,7 @@ describe('confirmAndReextractMemories', () => {
     expect(await confirmAndReextractMemories(core, toasts, 'c1')).toBe(false);
     expect(confirm).toHaveBeenCalledWith(REEXTRACT_CONFIRM);
     expect(REEXTRACT_CONFIRM).toBe(
-      'This will delete all existing memories from this chat and re-extract them from the conversation. Are you sure?',
+      'This will delete the memories extracted from this chat and re-extract them from the conversation. Hand-written entries, archived entries and consolidated digests are kept. Are you sure?',
     );
     expect(calls).toEqual([]);
     expect(toasts.showSuccess).not.toHaveBeenCalled();

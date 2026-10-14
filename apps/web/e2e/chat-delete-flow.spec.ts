@@ -256,7 +256,7 @@ test.describe('P4.80 — deleting a chat', () => {
       'chatQueueMemories',
     ]);
     expect(asked).toBe(
-      'This will delete all existing memories from this chat and re-extract them from the conversation. Are you sure?',
+      'This will delete the memories extracted from this chat and re-extract them from the conversation. Hand-written entries, archived entries and consolidated digests are kept. Are you sure?',
     );
     // The operator hears v4's own words, and ONLY those: the count, or one of
     // the queue verb's two refusals (`actions/memories.ts:82,122-127` — the

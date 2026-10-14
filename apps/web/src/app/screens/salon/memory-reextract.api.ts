@@ -25,9 +25,13 @@ import { CoreDispatchError } from '../../core/core-contract';
 import type { CoreClient } from '../../core/core-client';
 import { notifyQueueChange } from '../../layout/queue-status.logic';
 
-/** v4's confirmation sentence, byte for byte. */
+/**
+ * v4's confirmation sentence, byte for byte — bug 201's wording (`124c8aca3`),
+ * shared by the Salon list and the character Conversations tab as v4's three
+ * sites share it.
+ */
 export const REEXTRACT_CONFIRM =
-  'This will delete all existing memories from this chat and re-extract them from the conversation. Are you sure?';
+  'This will delete the memories extracted from this chat and re-extract them from the conversation. Hand-written entries, archived entries and consolidated digests are kept. Are you sure?';
 
 /** The toast surface the action needs (a structural slice of `ToastService`). */
 export interface ReextractToasts {

@@ -184236,3 +184236,19 @@ worktree for the session — same volume, same rules).
     document and drops out of the category (`help-guide-tab.ts:168-175`),
     as the order measured. README + recorder header name `83334b9a5` /
     P4.D300.
+13. **Bug 201's wording (L-8, `124c8aca3`)** — `memory-sidebar.api.ts`: the
+    confirm `Delete the memories extracted from this chat ({n} on record)?
+    Hand-written entries, archived entries and consolidated digests stay on
+    the shelf. This action cannot be undone.`; the toast reads `sparedCount`
+    (`typeof … === 'number'`, else 0) → `Deleted {n} memories; kept {s}
+    hand-written, archived or digest entries` when `s > 0`, else v4's plain
+    `Deleted {n} memories` (the pre-round server's reply — no `sparedCount`
+    — lands there). `memory-reextract.api.ts`'s ONE `REEXTRACT_CONFIRM`
+    (both sites — the Salon list and the character Conversations tab —
+    already share it) → v4's new sentence. v4's `setChatMemoryCount(spared)`
+    has no twin (v5 re-reads by invalidation — measured, no edit outside
+    these files). Also re-pinned, string-forced: `e2e/chat-delete-flow.spec.ts:259`
+    (the re-extract confirm it asserts; a file no round lane owns —
+    recorded). **Red-first on main:** 4 arms red (the confirm text ×2, the
+    spared toast, the re-extract constant); the non-number / zero
+    `sparedCount` arm is green on main by construction.

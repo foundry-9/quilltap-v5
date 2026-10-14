@@ -125,16 +125,36 @@ describe('confirmAndDeleteChatMemories (Delete Memories (n))', () => {
     expect(confirm).not.toHaveBeenCalled();
   });
 
-  it('confirms quoting the RE-READ count, deletes, and toasts the server deletedCount', async () => {
+  it('confirms quoting the RE-READ count, deletes, and toasts the server deletedCount (bug 201: no sparedCount → v4\'s plain toast)', async () => {
     const { core, toasts, calls } = rig(async (req) =>
       req.type === 'memoryCountByChat' ? { memoryCount: 9 } : { deletedCount: 9 },
     );
     expect(await confirmAndDeleteChatMemories(core, toasts, 'c1', 2)).toBe(true);
     expect(confirm).toHaveBeenCalledWith(
-      'Delete all 9 memories created from this chat? This action cannot be undone.',
+      'Delete the memories extracted from this chat (9 on record)? Hand-written entries, archived entries and consolidated digests stay on the shelf. This action cannot be undone.',
     );
     expect(calls).toEqual(['memoryCountByChat', 'memoryDeleteByChat']);
     expect(toasts.showSuccess).toHaveBeenCalledWith('Deleted 9 memories');
+  });
+
+  it('bug 201 (v4 124c8aca3): a positive sparedCount names what the wipe kept', async () => {
+    const { core, toasts } = rig(async (req) =>
+      req.type === 'memoryCountByChat' ? { memoryCount: 9 } : { deletedCount: 6, sparedCount: 3 },
+    );
+    expect(await confirmAndDeleteChatMemories(core, toasts, 'c1', 9)).toBe(true);
+    expect(toasts.showSuccess).toHaveBeenCalledWith(
+      'Deleted 6 memories; kept 3 hand-written, archived or digest entries',
+    );
+  });
+
+  it('bug 201: sparedCount 0 or not a number reads v4\'s plain toast', async () => {
+    for (const spared of [0, '3', null]) {
+      const { core, toasts } = rig(async (req) =>
+        req.type === 'memoryCountByChat' ? { memoryCount: 2 } : { deletedCount: 2, sparedCount: spared },
+      );
+      await confirmAndDeleteChatMemories(core, toasts, 'c1', 2);
+      expect(toasts.showSuccess).toHaveBeenCalledWith('Deleted 2 memories');
+    }
   });
 
   it('a failed probe falls through to the rendered count', async () => {
@@ -144,7 +164,7 @@ describe('confirmAndDeleteChatMemories (Delete Memories (n))', () => {
     });
     expect(await confirmAndDeleteChatMemories(core, toasts, 'c1', 3)).toBe(true);
     expect(confirm).toHaveBeenCalledWith(
-      'Delete all 3 memories created from this chat? This action cannot be undone.',
+      'Delete the memories extracted from this chat (3 on record)? Hand-written entries, archived entries and consolidated digests stay on the shelf. This action cannot be undone.',
     );
   });
 
