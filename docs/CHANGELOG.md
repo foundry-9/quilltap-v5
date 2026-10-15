@@ -462,6 +462,12 @@ Re-vendors v4's `public/schemas/qtap-export.schema.json` at the `83334b9a5` pin 
 
 Re-dumps `schema-key-order.json` from v4's real schemas at the pin. `chat` goes from 102 to 103 keys (drops `otherExtractionWatermarkMessageId`, adds `scenarioSource` and `scenarioNotes` after `scenarioText`) and `memory` from 29 to 30 (`supersededAt` after `supersededById`). No other kind moved.
 
+#### 2026-10-15 — docs(porting): P4.D295 lane close — the gate, the residue and the HANDOFFs recorded; the order marked LANE COMPLETE
+
+_Docs-only change._
+
+Records the P4.D295 lane close: the full workspace gate, its five classified reds, the deferrals and HANDOFFs, and the owed dogfood rows. Marks the work order LANE COMPLETE.
+
 #### 2026-10-15 — test(core): P4.D295 Tier 2 — table twins, the remaining scenario lines pinned, store errors rendered bare
 
 _Versions: core 0.0.1304._

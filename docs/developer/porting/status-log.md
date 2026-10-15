@@ -182878,3 +182878,49 @@ scenario_pure_equivalence`.
   `actions/participants.ts:382/458/503/551/648`); the projected surfaces (`chat_get` — `scenarioText` only, as v4's
   `handlers/get.ts`; the chat list, project / character lists, search, the autonomous-rooms DTO) omit both keys
   on both sides. **No leak; no HANDOFF.** (The capstone already byte-matches the create body with the keys.)
+
+### Lane close — the gate, the residue, the record (core 0.0.1304; no web / host / cli / SPA bump)
+
+- **Branch** `claude/p4.d295-scenarios-from-anywhere-server-149cb8fc1` from `KEYSTONE` `149cb8fc1`; commits
+  `80efc7924` (unit 1), `0eccc0980` (unit 2), `579def1bc` (unit 3), `4326c6b18` (unit 4), `b6f36d52c` (unit 5),
+  `af6c85a58` (Tier 2), plus this record. Web edge re-measured: none needed (the family stays DISPATCH-ONLY), so
+  no `COLLAPSE_CENSUS` row and no `quilltap-web` bump.
+- **Gate (final tree, from the pin, `CARGO_INCREMENTAL=0`):** fmt clean; clippy clean both feature sets;
+  `recipe_sweep.py --self-test` 0; `cargo test --workspace --no-fail-fast` **783 binaries / 5,172 passed / 5
+  failed / 3 ignored**, zero SKIP in the lane's families (scenario_pure, scenario_location, scenarios_routes,
+  chat_scenario_routes, chat_create_capstone, scenario_resolvers, vault_read_overlay — each `ok` by name, with
+  `doc_mount_fallback_sites_census` 6/6 after the LAST re-measure). **The five reds, each classified:**
+  `cli_differential` (14 rows — `db help`, the three completions, `recall-replay`, `anchor-probe`: §R.13(l),
+  P4.D299 / P4.D290 / P4.D291, green on the union); `no_memory_lane_remove_markers_left` ×2 (P4.D289's census,
+  RED by design until §S.5 deletes the shims); `qtap_schema_embed_guard` (P4.D294's, §R.13); and
+  **`p4_d288_wire_contract::the_edge_answers_the_deleted_verbs_and_the_refusals` — CAUSED BY THIS LANE AS
+  INTENDED:** it pins `scenarioEverywhere` / `scenarioReadByRef` / `chatGetScenarioSource` as P4.D288's
+  `not yet available (P4.D295)` refusals, which this lane fills (the order's §R.7 red). The file is P4.D288's,
+  so it is not edited here. **HANDOFF (unifier):** drop the three P4.D295 rows from that test's refusal table
+  (the P4.D297 rows stay until P4.D297 lands).
+- **Landed (the order's scope, whole):** the location chokepoint (probe / ensure / heal / L2 rethrow, the
+  read-only character location, classify, `lookup_scenario_ref` with R-Z's decode); the six route families on
+  ONE factory with their lines; `ScenarioEverywhere` (`EXCERPT_LONE_SURROGATE`) + `ScenarioReadByRef`; the
+  recipe (resolver, chat create's `scenarioRef`, `?action=scenario` with `keep_current_scene` / `reload`,
+  `?action=scenario-source`, the `Scenario changed` INFO); the project / group create hooks; the General boot
+  heal; P4.D279's vault sort item CLOSED. **Hazard (a)'s write half RETIRES** — `?action=scenario` now writes
+  all three recipe keys (its export / backup half stays with C1-9 + the carrier lanes).
+- **Ruled tables:** `EXCERPT_LONE_SURROGATE` (R-AA); `RELOAD_NULL_DECODES_ABSENT` (STOP-AND-FLAG to the human —
+  C2's `Option<Value>` decodes `reload: null` as absent where v4 400s; the fix is P4.D288's wire field).
+- **Deferred, loudly (by the order):** R-Y (the startup heals); L-4 NO-PORT; the carriers (P4.D293 / P4.D294);
+  L-6's `qtap_uri` fold (the item routes keep the no-decode seam). L-9's choice: `ScenarioRef` read from
+  `db::chats`, with `scenario_ref` added to `ChatCreateRequest`. The scenario-pure case is named `.ts`, not
+  `.test.ts` (it is a tsx runner, not jest).
+- **Every HANDOFF (unifier unless named):** (1) `host.rs:1927-1929`'s stale comment + the L2 → L37 host capture
+  row (§S.5 item 7); (2) the dispatch census's scenario `note` re-citations (P4.D288's file); (3)
+  `ensure_official_store` step 2 (adopting a still-linked store) — reachable in v4, deferred in v5, pinned by
+  the fixture unlinking BARE's store; (4) `characters_read::find_by_id`'s `StoreUnavailable` message (its
+  owner); (5) the C2 `reload` field (P4.D288 / the human's ruling); (6) the `p4_d288_wire_contract` rows above.
+- **v4 moved:** `7417e9a1b` … `7458ff94e` (17 commits incl. `release: 4.10.0` `2432b9057`) + bugfix `489b228b6`,
+  observed 2026-10-15 12:45 UTC — out of scope by the pin rule.
+- 💸 **Dogfood rows owed:** a scenario picked from another project's store into a new chat (`scenarioRef`);
+  an edited source file with an ordinary save (scene kept) vs `reload: true` (new copy); a source-only save
+  (`changed: true`, no announcement); the instance-wide browser's excerpts; a mixed-case vault `Prompts/` folder
+  promoting the right default.
+- **Cleanup:** the pin worktree removed; the lane's `target/` deleted; `/tmp/p4d295` scratch removed (the regen
+  recipes are recorded per unit above).
