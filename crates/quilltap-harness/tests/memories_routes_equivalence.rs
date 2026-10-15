@@ -439,6 +439,116 @@ const P4D298_COUNTS_PLANT: &[&str] = &[
     "UPDATE memories SET tier = 'cold' WHERE id = 'b2000000-0000-4000-8000-0000000000f1'",
     "UPDATE memories SET tier = NULL WHERE id = 'b2000000-0000-4000-8000-0000000000b3'",
 ];
+const P4D298_RETIRE_FAILS_PLANT: &[&str] = &[
+    "CREATE TRIGGER qt_p4d298_retire_fails BEFORE DELETE ON memories BEGIN SELECT RAISE(ABORT, 'planted retire failure'); END",
+];
+
+/// The three re-attribution / cascade lines this lane owns (`af48f6cc2`) —
+/// the routes around them log siblings' lines this family does not compare.
+const REATTRIBUTION_LINES: &[&str] = &[
+    "[Messages API v1] Cascade deleted memories with message",
+    "[Messages API v1] Failed to delete memories during re-attribution",
+    "[Chats v1] Failed to delete memories during bulk re-attribution",
+];
+
+/// A MEASURED retire-path difference under the cascade line (P4.D288's
+/// retire path, not this lane's line): with Mnemo's index LOADED first (L-2,
+/// `MEMORY_INDEX_ALWAYS_LOADED` — size 46 measured), v4's message-cascade
+/// retire still reports `vectorsRemoved: 0` for the swipe pair's two embedded
+/// rows, where v5's reports 2. The line's bytes are pinned with the value
+/// masked; this table pins the two values both ways, so a convergence on
+/// either side trips it. `(row, v4, v5)`.
+const CASCADE_VECTORS_REMOVED: &[(&str, &str, &str)] = &[(
+    "message_delete_cascade_line",
+    "vectorsRemoved=0",
+    "vectorsRemoved=2",
+)];
+
+/// §R.7 `RETIRED_MEMORY_VERB_UNKNOWN_VARIANT` (R-G, L-4) — the seven retired
+/// memories verbs, both ways. v4's half: each oracle row answers 400
+/// `{"error":"Unknown action: <verb>","availableActions":[…]}` with the verb
+/// absent from the list (v4 `104e986c7` / `af48f6cc2`). v5's half: each retired
+/// wire type fails `serde_json::from_value::<Request>` with serde's `unknown
+/// variant` — the string `dispatch.rs` wraps as `400 Invalid request: …`.
+/// (`row`, v4 verb, v5 wire type). Fifteen rows: the order's twelve plus the
+/// three `housekeep_invalid_*` Zod rows, which now reach the same envelope.
+const RETIRED_MEMORY_VERB_UNKNOWN_VARIANT: &[(&str, &str, &str)] = &[
+    ("housekeep_preview", "housekeep", "memoryHousekeepPreview"),
+    ("housekeep_dryrun", "housekeep", "memoryHousekeep"),
+    ("housekeep_run", "housekeep", "memoryHousekeep"),
+    (
+        "housekeep_invalid_max_memories",
+        "housekeep",
+        "memoryHousekeep",
+    ),
+    (
+        "housekeep_invalid_merge_threshold",
+        "housekeep",
+        "memoryHousekeep",
+    ),
+    (
+        "housekeep_invalid_character_id",
+        "housekeep",
+        "memoryHousekeep",
+    ),
+    ("housekeep_sweep", "housekeep-sweep", "memoryHousekeepSweep"),
+    (
+        "housekeeping_config_get",
+        "housekeeping-config",
+        "memoryHousekeepingConfigGet",
+    ),
+    (
+        "housekeeping_config_set",
+        "housekeeping-config",
+        "memoryHousekeepingConfigSet",
+    ),
+    (
+        "housekeeping_config_set_invalid_bool",
+        "housekeeping-config",
+        "memoryHousekeepingConfigSet",
+    ),
+    (
+        "housekeeping_config_set_out_of_range",
+        "housekeeping-config",
+        "memoryHousekeepingConfigSet",
+    ),
+    (
+        "housekeeping_config_invalid_writes_nothing",
+        "housekeeping-config",
+        "memoryHousekeepingConfigSet",
+    ),
+    (
+        "housekeeping_config_set_int_float_literal",
+        "housekeeping-config",
+        "memoryHousekeepingConfigSet",
+    ),
+    (
+        "extraction_concurrency_get",
+        "extraction-concurrency",
+        "memoryExtractionConcurrencyGet",
+    ),
+    (
+        "extraction_concurrency_set",
+        "extraction-concurrency",
+        "memoryExtractionConcurrencySet",
+    ),
+];
+
+/// `<LEVEL> <target> <rest>` → `<LEVEL> <rest>` (the three lines live in three
+/// modules; v4 has none).
+fn without_target(line: &str) -> String {
+    let mut parts = line.splitn(3, ' ');
+    let level = parts.next().unwrap_or("");
+    let _target = parts.next();
+    format!("{level} {}", parts.next().unwrap_or(""))
+}
+
+fn is_reattribution_line(rest_after_level: &str) -> bool {
+    REATTRIBUTION_LINES
+        .iter()
+        .any(|m| rest_after_level.starts_with(m))
+}
+
 const P4D298_DELETE_RACE_PLANT: &[&str] = &[
     "CREATE TRIGGER qt_p4d298_keep_row BEFORE DELETE ON memories WHEN old.id = 'b2000000-0000-4000-8000-0000000000e1' BEGIN SELECT RAISE(IGNORE); END",
 ];
@@ -1626,6 +1736,157 @@ fn memories_routes_match_oracle() {
             let (resp, lines) =
                 global_capture::capture(|| memories::memory_character_counts(&db, &uid));
             check_row(name, &resp, &lines, None, &mut failed);
+        }
+
+        // --- The three re-attribution / cascade lines, each with its silence
+        // leg (the retire succeeding) and a forced retire failure for the two
+        // ERRORs (a `RAISE(ABORT)` trigger on every memory delete).
+        {
+            const MSG_S2A_TARGET: &str = "e1000000-0000-4000-8000-000000000002";
+            const SOURCE_P: &str = "e1000000-0000-4000-8000-000000000001";
+            for (name, fails) in [
+                ("message_delete_cascade_line", false),
+                ("reattribute_line_silent", false),
+                ("reattribute_retire_fails_line", true),
+                ("bulk_reattribute_line_silent", false),
+                ("bulk_reattribute_retire_fails_line", true),
+            ] {
+                let db = fresh_db(&spec, name);
+                if fails {
+                    plant(&rt, &db, P4D298_RETIRE_FAILS_PLANT);
+                }
+                let (resp, lines) = global_capture::capture(|| {
+                    if name.starts_with("message_delete") {
+                        rt.block_on(quilltap_core::api::salon::message_delete(
+                            &db,
+                            &uid,
+                            MSG_S2A,
+                            Some("DELETE_MEMORIES"),
+                            false,
+                        ))
+                    } else if name.starts_with("reattribute") {
+                        rt.block_on(
+                            quilltap_core::services::message_reattribute::message_reattribute(
+                                &db,
+                                &uid,
+                                MSG_S2A,
+                                MSG_S2A_TARGET,
+                            ),
+                        )
+                    } else {
+                        rt.block_on(quilltap_core::services::chat_admin::chat_bulk_reattribute(
+                            &db,
+                            CHAT_SALON,
+                            Some(SOURCE_P),
+                            MSG_S2A_TARGET,
+                            None,
+                        ))
+                    }
+                });
+                let rec = &oracle[name];
+                let got_status = match &resp {
+                    Response::Error(e) => status_of(e.kind),
+                    _ => 200,
+                };
+                let want_lines: Vec<String> = rec["logs"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|l| without_target(&render_v4_line(l)))
+                    .filter(|l| is_reattribution_line(l.split_once(' ').map_or("", |x| x.1)))
+                    .collect();
+                let got_lines: Vec<String> = lines
+                    .iter()
+                    .map(|l| without_target(l))
+                    .filter(|l| is_reattribution_line(l.split_once(' ').map_or("", |x| x.1)))
+                    .collect();
+                let mut bad = Vec::new();
+                let (want_lines, got_lines) = match CASCADE_VECTORS_REMOVED
+                    .iter()
+                    .find(|(n, _, _)| *n == name)
+                {
+                    Some((_, v4_value, v5_value)) => {
+                        if !want_lines.iter().any(|l| l.ends_with(v4_value))
+                            || !got_lines.iter().any(|l| l.ends_with(v5_value))
+                        {
+                            bad.push(format!(
+                                "CASCADE_VECTORS_REMOVED moved (v4 {v4_value}, v5 {v5_value} recorded):\n{want_lines:?}\n{got_lines:?}"
+                            ));
+                        }
+                        let mask = |ls: Vec<String>| -> Vec<String> {
+                            ls.iter().map(|l| mask_field(l, "vectorsRemoved")).collect()
+                        };
+                        (mask(want_lines), mask(got_lines))
+                    }
+                    None => (want_lines, got_lines),
+                };
+                let (gt, wt) = (
+                    serde_json::to_string_pretty(&dump_all_memories(&db)).unwrap(),
+                    serde_json::to_string_pretty(&rec["tables"]).unwrap(),
+                );
+                if got_status as u64 != rec["status"].as_u64().unwrap() {
+                    bad.push(format!("status {got_status} vs {}", rec["status"]));
+                }
+                if got_lines != want_lines {
+                    bad.push(format!(
+                        "lines:\n--- v4 ---\n{}\n--- v5 ---\n{}",
+                        want_lines.join("\n"),
+                        got_lines.join("\n")
+                    ));
+                }
+                if gt != wt {
+                    bad.push(format!("tables:\n{}", first_diff(&gt, &wt)));
+                }
+                // The capture leg must have seen the line it pins (and the
+                // silence leg none): never a vacuous equal.
+                let pinned = want_lines.len();
+                let expected = usize::from(name.starts_with("message_delete") || fails);
+                if pinned != expected {
+                    bad.push(format!(
+                        "v4 logged {pinned} pinned lines, the row expects {expected}"
+                    ));
+                }
+                if bad.is_empty() {
+                    eprintln!("[{name}] OK (P4.D298).");
+                } else {
+                    eprintln!("[{name}] MISMATCH (P4.D298):\n{}", bad.join("\n"));
+                    failed.push(name.to_string());
+                }
+            }
+        }
+
+        // --- §R.7 `RETIRED_MEMORY_VERB_UNKNOWN_VARIANT` (both halves).
+        for (row, verb, wire_type) in RETIRED_MEMORY_VERB_UNKNOWN_VARIANT {
+            let rec = &oracle[*row];
+            let mut bad = Vec::new();
+            let actions: Vec<&str> = rec["body"]["availableActions"]
+                .as_array()
+                .map(|a| a.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default();
+            if rec["status"] != 400
+                || rec["body"]["error"] != json!(format!("Unknown action: {verb}"))
+                || actions.is_empty()
+                || actions.contains(verb)
+            {
+                bad.push(format!("v4 half moved: {} {}", rec["status"], rec["body"]));
+            }
+            match serde_json::from_value::<quilltap_core::api::types::Request>(
+                json!({ "type": wire_type }),
+            ) {
+                Err(e)
+                    if e.to_string()
+                        .contains(&format!("unknown variant `{wire_type}`")) => {}
+                other => bad.push(format!("v5 half moved: {other:?}")),
+            }
+            if bad.is_empty() {
+                eprintln!("[{row}] OK (RETIRED_MEMORY_VERB_UNKNOWN_VARIANT).");
+            } else {
+                eprintln!(
+                    "[{row}] RETIRED_MEMORY_VERB_UNKNOWN_VARIANT: {}",
+                    bad.join("; ")
+                );
+                failed.push(format!("{row}:retired-verb"));
+            }
         }
 
         // --- The list's `filterImportance`; the search's `TOOL_MIN_IMPORTANCE`.

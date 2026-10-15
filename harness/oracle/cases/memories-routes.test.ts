@@ -185,7 +185,26 @@ async function runCase(
 ): Promise<Record<string, unknown>> {
   jest.resetModules();
   applyMocks(spec, c.clock === true);
-  // === P4.D298: the log capture (append-only) ===
+  // === P4.D298: the job host held off, the markdown stub, the log capture (append-only) ===
+  // Hold v4's job host off BEFORE any import (a runner spawned mid-case claims
+  // queued jobs — memory note `v4-oracle-job-host-and-log-capture`).
+  (globalThis as Record<string, unknown>).__quilltapJobHost = {
+    child: null,
+    spawning: false,
+    shuttingDown: true,
+    childCrashed: false,
+    restartTimestamps: [],
+    signalHandlersInstalled: false,
+    invalidationListeners: new Set(),
+  };
+  // The messages / chats routes transitively import the npm-native markdown
+  // renderer (ESM-only `unified`); stub it so jest can compile (the
+  // salon-mutations idiom).
+  jest.doMock('@/lib/services/markdown-renderer.service', () => ({
+    __esModule: true,
+    renderMarkdownToHtml: async () => null,
+    canPreRenderMessage: () => false,
+  }));
   const logs = await installLogCapture();
   // === end ===
   // Register the provider plugins (incl. the BUILTIN embeddings provider) so the
@@ -352,6 +371,12 @@ const P4D298_REINFORCED_PLANT = [
 /** The search's only hit loses its `reinforcedImportance` (a vector kept). */
 const P4D298_NULL_REINFORCED_PLANT = [
   "UPDATE memories SET reinforcedImportance = NULL WHERE id = 'b2000000-0000-4000-8000-0000000000e0'",
+];
+
+/** A retire that THROWS (every memory delete aborts) — the two
+ *  re-attribution catches' ERRORs. */
+const P4D298_RETIRE_FAILS_PLANT = [
+  "CREATE TRIGGER qt_p4d298_retire_fails BEFORE DELETE ON memories BEGIN SELECT RAISE(ABORT, 'planted retire failure'); END",
 ];
 
 /** A delete the trigger swallows: the row survives, so `retired === 0`. */
@@ -699,6 +724,62 @@ async function main(): Promise<void> {
         );
       },
     },
+    // The three re-attribution / cascade lines (af48f6cc2) over this fixture's
+    // swipe pair `d…02` / `d…03`, which sourced `f0` / `f1`.
+    {
+      name: 'message_delete_cascade_line',
+      run: async () => {
+        // P4.D288's L-2 (`MEMORY_INDEX_ALWAYS_LOADED`): v4's `vectorsRemoved`
+        // counts only an index its process has LOADED; v5's is always loaded.
+        const { memoryIndex } = await import('@/lib/memory/index-store');
+        await memoryIndex.shape(MNEMO, 3);
+        const r = await (await loadRoute('@/app/api/v1/messages/[id]/route')).DELETE(
+          mockRequest(`http://localhost/api/v1/messages/${MSG_S2A}?memoryAction=DELETE_MEMORIES`),
+          { params: Promise.resolve({ id: MSG_S2A }) },
+        );
+        const { status } = await respond(r);
+        return { status, body: null, tables: await dumpAllMemories() };
+      },
+    },
+    ...([
+      ['reattribute_line_silent', false],
+      ['reattribute_retire_fails_line', true],
+    ] as const).map(
+      ([name, fails]): CaseSpec => ({
+        name,
+        run: async () => {
+          if (fails) await plantSql(P4D298_RETIRE_FAILS_PLANT);
+          const r = await (await loadRoute('@/app/api/v1/messages/[id]/route')).POST(
+            mockRequest(`http://localhost/api/v1/messages/${MSG_S2A}?action=reattribute`, {
+              newParticipantId: 'e1000000-0000-4000-8000-000000000002',
+            }),
+            { params: Promise.resolve({ id: MSG_S2A }) },
+          );
+          const { status } = await respond(r);
+          return { status, body: null, tables: await dumpAllMemories() };
+        },
+      }),
+    ),
+    ...([
+      ['bulk_reattribute_line_silent', false],
+      ['bulk_reattribute_retire_fails_line', true],
+    ] as const).map(
+      ([name, fails]): CaseSpec => ({
+        name,
+        run: async () => {
+          if (fails) await plantSql(P4D298_RETIRE_FAILS_PLANT);
+          const r = await (await loadRoute('@/app/api/v1/chats/[id]/route')).POST(
+            mockRequest(`http://localhost/api/v1/chats/${CHAT_SALON}?action=bulk-reattribute`, {
+              sourceParticipantId: 'e1000000-0000-4000-8000-000000000001',
+              targetParticipantId: 'e1000000-0000-4000-8000-000000000002',
+            }),
+            { params: Promise.resolve({ id: CHAT_SALON }) },
+          );
+          const { status } = await respond(r);
+          return { status, body: null, tables: await dumpAllMemories() };
+        },
+      }),
+    ),
     // === end ===
     // === P4.D269: list/search rows (append-only) ===
     // v4 `d58548051`: the list's `?tier=` (TWO code paths with different

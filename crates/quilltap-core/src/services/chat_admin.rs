@@ -615,7 +615,7 @@ pub async fn chat_bulk_reattribute(
             Err(e) => {
                 tracing::error!(
                     memoryCount = memory_count,
-                    error = %e,
+                    error = %crate::db::fallback::error_text(&e),
                     "[Chats v1] Failed to delete memories during bulk re-attribution"
                 );
             }

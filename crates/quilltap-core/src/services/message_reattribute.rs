@@ -111,7 +111,7 @@ pub async fn message_reattribute(
                 tracing::error!(
                     messageId = %message_id,
                     memoryCount = memories_from_message.len(),
-                    error = %e,
+                    error = %crate::db::fallback::error_text(&e),
                     "[Messages API v1] Failed to delete memories during re-attribution"
                 );
             }

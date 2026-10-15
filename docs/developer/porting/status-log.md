@@ -181918,3 +181918,32 @@ Versions at close: core 0.0.1300, host 0.0.205 (web unchanged — test-only edit
   test installs `global_capture` once and captures each P4.D298 row on the caller thread.
 - Family at this commit: every P4.D298 row green except the two named RESIDUE rows; the reds left are the
   create / update / search rows of units 13–14 and §S.5 (4).
+
+### Units 11–12 — the three re-attribution / cascade lines; the retired verbs
+
+- **Lines:** `api/salon.rs`'s DELETE_MEMORIES / REGENERATE_MEMORIES arm logs INFO `[Messages API v1] Cascade
+  deleted memories with message` `{messageId, memoriesDeleted: report.retired, vectorsRemoved:
+  report.vectors_removed}` after the retire (a pre-existing gap); the two ERRORs in
+  `services/message_reattribute.rs` / `services/chat_admin.rs` (P4.D288 had already moved their KEYS and the
+  one-line-per-call shape) now render `error` through `db::fallback::error_text` — v4's `error.message`, never
+  `sqlite error: …`. The retire CALLS are P4.D288's, untouched.
+- **Rows (in `memories_routes_equivalence`, over the memories fixture — the salon / chat-dialogs families'
+  fixtures source no memories on these paths):** the oracle drives v4's REAL `messages/[id]` DELETE /
+  `?action=reattribute` and `chats/[id]?action=bulk-reattribute` over the swipe pair `d…02`/`d…03` (sources of
+  `f0`/`f1`): `message_delete_cascade_line`, `reattribute_line_silent`, `reattribute_retire_fails_line`,
+  `bulk_reattribute_line_silent`, `bulk_reattribute_retire_fails_line` — the retire forced to THROW by a planted
+  `BEFORE DELETE ON memories … RAISE(ABORT, 'planted retire failure')` trigger, so both catches are REACHED
+  through v4's real code (no NEGATIVE pin needed). Status, the three lines (target stripped — three modules),
+  and the memory dump compared; a vacuous-equal guard asserts the capture legs see exactly one pinned line and
+  the silence legs none. The oracle stubs `markdown-renderer.service` (the salon idiom — the routes import ESM
+  `unified`) and holds v4's job host off for every case.
+- **NEW named both-ways table `CASCADE_VECTORS_REMOVED`:** with Mnemo's index LOADED first (P4.D288's L-2,
+  `MEMORY_INDEX_ALWAYS_LOADED`; size 46 measured), v4's cascade retire still reports `vectorsRemoved: 0` for the
+  pair's two embedded rows where v5's reports 2 — a retire-path counting difference in P4.D288's code (not the
+  line). The line bytes are pinned with the value masked; the table pins `0` / `2` both ways. For the unifier /
+  P4.D288 to classify.
+- **§R.7 `RETIRED_MEMORY_VERB_UNKNOWN_VARIANT` (L-4):** FIFTEEN rows, not twelve — the order's count left out
+  the three `housekeep_invalid_*` Zod rows, which now reach the same envelope. v4's half: 400 `Unknown action:
+  <verb>` + a non-empty `availableActions` without the verb; v5's half: `serde_json::from_value::<Request>`
+  fails `unknown variant \`<type>\`` for `memoryHousekeepPreview` / `memoryHousekeep` / `memoryHousekeepSweep` /
+  `memoryHousekeepingConfigGet` / `Set` / `memoryExtractionConcurrencyGet` / `Set`. 15 / 15 hold.

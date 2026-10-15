@@ -1207,7 +1207,17 @@ pub async fn message_delete(
                 )
                 .await
                 {
-                    Ok(r) => memories_deleted = r.retired,
+                    Ok(r) => {
+                        memories_deleted = r.retired;
+                        // v4 `messages/[id]/route.ts:187-191` — the report's
+                        // values, after the retire.
+                        tracing::info!(
+                            messageId = message_id,
+                            memoriesDeleted = r.retired,
+                            vectorsRemoved = r.vectors_removed,
+                            "[Messages API v1] Cascade deleted memories with message"
+                        );
+                    }
                     Err(e) => return internal(e),
                 }
             }

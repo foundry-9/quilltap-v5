@@ -138,6 +138,15 @@ Deleted: housekeeping, its outcome cache, the consolidation triggers, the dedup 
 
 New differential families from the pin: `memory_maintenance_planning`, `memory_maintenance_tier2`, `memory_maintenance_consolidate_tier3`, `memory_maintenance_queue_tier2`, `memory_maintenance_routes`, `memory_graph_repair_tier2`, and the census `maintenance_commit_hook_unreachable_census` (R-L: the commit hook is unreachable at the pin, so it is not ported). Retired families: `memory_housekeeping_tier2`, `memory_watermark_tier3`, `consolidation_triggers_tier2`, `memory_dedup`, `consolidation_service_tier3`. Re-aimed: `memory_consolidation_routes`, `consolidation_tasks`, `system_body_guards`, `realtime_topics`, `system_jobs_collection`. Host: a new cadence test for the memory-maintenance startup tick. The `p4_d288_wire_contract` refusal rows for the three filled arms are retired, and `host_zone_sites_census` counts the `maintain` arm's display-zone read (8 → 9).
 
+#### 2026-10-15 — feat(memories-api): P4.D298 units 11–12 — the re-attribution / cascade lines and the retired-verb table
+
+_Versions: core 0.0.1301._
+
+- The message DELETE's memory cascade logs v4's `[Messages API v1] Cascade deleted memories with message` `{messageId, memoriesDeleted, vectorsRemoved}` from the retire report.
+- The two re-attribution ERRORs (`[Messages API v1] Failed to delete memories during re-attribution`, `[Chats v1] Failed to delete memories during bulk re-attribution`) carry the bare SQLite message as `error`.
+- `memories_routes_equivalence` drives v4's real message DELETE, reattribute and bulk-reattribute routes over the memories fixture: the cascade line, both ERRORs under a planted `RAISE(ABORT)` retire failure, and both silence legs. A measured retire-path difference (v4 `vectorsRemoved: 0` with the index loaded, v5 2) is pinned both ways as `CASCADE_VECTORS_REMOVED`.
+- New §R.7 table `RETIRED_MEMORY_VERB_UNKNOWN_VARIANT`: fifteen config-oracle rows answer v4's `Unknown action` envelope, and each retired wire type fails serde with `unknown variant`.
+
 #### 2026-10-15 — feat(memories-api): P4.D298 units 2–10 — item GET/DELETE, chat wipe, counts, list/search importance, embeddings, backfill, regenerate-all, limits
 
 _Versions: core 0.0.1300._
