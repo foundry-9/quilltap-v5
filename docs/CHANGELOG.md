@@ -56,6 +56,12 @@ _Docs-only change._
 
 The P4.D288 work order's status header now names `149cb8fc1` as the commit P4.D290 through P4.D295 branch from.
 
+#### 2026-10-14 — docs(porting): P4.D290 lane complete — order header
+
+_Docs-only change._
+
+The order's status header records the lane as complete, with its two HANDOFFs and the versions at close.
+
 #### 2026-10-14 — feat(memory): P4.D290 Tier 2 — the anchor probe decides through admission; the CLI's anchor-probe rendering; mutation proofs and the jest mirrors
 
 _Versions: core 0.0.1300, cli 0.0.33._
