@@ -337,8 +337,156 @@ async fn seed_extraction_limits(db: &Db) {
     .expect("seed extraction limits");
 }
 
+// === P4.D298: the log + plant helpers (append-only) ===
+/// v4 `{level, message, fields}` → v5's capture rendering (`<LEVEL> <target>
+/// <message> k=v …`); an array / object field renders through the `…Json`
+/// file-layer convention (§R.5).
+fn render_v4_line(line: &Value) -> String {
+    let level = line["level"].as_str().unwrap().to_uppercase();
+    let message = line["message"].as_str().unwrap();
+    let target = if message.starts_with("[Memories API") {
+        "quilltap_core::api::memories"
+    } else if message.starts_with("[Messages API v1]") {
+        "quilltap_core::api::salon"
+    } else {
+        "quilltap_core::services::chat_admin"
+    };
+    let mut out = format!("{level} {target} {message}");
+    if let Some(fields) = line["fields"].as_object() {
+        for (k, v) in fields {
+            match v {
+                Value::String(s) => out.push_str(&format!(" {k}={s}")),
+                Value::Object(_) | Value::Array(_) => {
+                    out.push_str(&format!(" {k}Json={}", serde_json::to_string(v).unwrap()))
+                }
+                other => out.push_str(&format!(" {k}={other}")),
+            }
+        }
+    }
+    out
+}
+
+/// v5's captured `[Memories API…]` lines — the route's own (siblings' lines
+/// are compared by presence, on v4's side, where they are visible).
+fn own_v5_lines(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|l| {
+            let rest = l.splitn(3, ' ').nth(2).unwrap_or("");
+            rest.starts_with("[Memories API")
+        })
+        .cloned()
+        .collect()
+}
+
+/// The twin of the oracle's `plantSql` (a plant on the case's own copy).
+fn plant(rt: &tokio::runtime::Runtime, db: &Db, statements: &'static [&'static str]) {
+    rt.block_on(db.write(move |w| {
+        for sql in statements {
+            w.main()
+                .connection()
+                .execute_batch(sql)
+                .map_err(quilltap_core::db::DbError::from)?;
+        }
+        Ok(())
+    }))
+    .expect("plant");
+}
+
+/// The twin of the oracle's `dumpAllMemories` (ordered by the BAKED id).
+fn dump_all_memories(db: &Db) -> Value {
+    db.read_main(|conn| {
+        let mut stmt = conn.prepare(
+            "SELECT id, characterId, chatId, source, tier, relatedMemoryIds, consolidatedFrom, lastAccessedAt FROM memories ORDER BY id",
+        )?;
+        let cols = [
+            "id",
+            "characterId",
+            "chatId",
+            "source",
+            "tier",
+            "relatedMemoryIds",
+            "consolidatedFrom",
+            "lastAccessedAt",
+        ];
+        let rows = stmt
+            .query_map([], |r| {
+                let mut m = serde_json::Map::new();
+                for (i, c) in cols.iter().enumerate() {
+                    let v: Option<String> = r.get(i)?;
+                    m.insert((*c).to_string(), v.map(Value::String).unwrap_or(Value::Null));
+                }
+                Ok(Value::Object(m))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Value::Array(rows))
+    })
+    .unwrap()
+}
+
+/// The twins of the oracle's `P4D298_*` plants.
+const P4D298_SPARE_PLANT: &[&str] = &[
+    "UPDATE memories SET chatId = 'c1000000-0000-4000-8000-000000000001' WHERE id = 'b2000000-0000-4000-8000-100000000011'",
+    "UPDATE memories SET tier = 'cold' WHERE id = 'b2000000-0000-4000-8000-0000000000f1'",
+    "UPDATE memories SET source = 'CONSOLIDATED', chatId = 'c1000000-0000-4000-8000-000000000001', consolidatedFrom = '[\"b2000000-0000-4000-8000-0000000000b1\"]' WHERE id = 'b2000000-0000-4000-8000-0000000000b0'",
+    "UPDATE memories SET tier = 'cold', supersededById = 'b2000000-0000-4000-8000-0000000000b0' WHERE id = 'b2000000-0000-4000-8000-0000000000b1'",
+];
+const P4D298_COUNTS_PLANT: &[&str] = &[
+    "UPDATE memories SET source = 'MANUAL' WHERE characterId = 'b1000000-0000-4000-8000-000000000002'",
+    "UPDATE memories SET characterId = 'b1000000-0000-4000-8000-000000000003' WHERE id IN ('b2000000-0000-4000-8000-100000000011','b2000000-0000-4000-8000-100000000013','b2000000-0000-4000-8000-100000000015','b2000000-0000-4000-8000-100000000017','b2000000-0000-4000-8000-100000000019','b2000000-0000-4000-8000-100000000021')",
+    "UPDATE memories SET tier = NULL WHERE id = 'b2000000-0000-4000-8000-100000000011'",
+    "UPDATE memories SET tier = 'cold' WHERE id = 'b2000000-0000-4000-8000-100000000013'",
+    "UPDATE memories SET tier = 'cold' WHERE id = 'b2000000-0000-4000-8000-0000000000f1'",
+    "UPDATE memories SET tier = NULL WHERE id = 'b2000000-0000-4000-8000-0000000000b3'",
+];
+const P4D298_DELETE_RACE_PLANT: &[&str] = &[
+    "CREATE TRIGGER qt_p4d298_keep_row BEFORE DELETE ON memories WHEN old.id = 'b2000000-0000-4000-8000-0000000000e1' BEGIN SELECT RAISE(IGNORE); END",
+];
+const P4D298_REINFORCED_PLANT: &[&str] = &[
+    "UPDATE memories SET reinforcedImportance = 0.9 WHERE id = 'b2000000-0000-4000-8000-100000000019'",
+    "UPDATE memories SET reinforcedImportance = 0.1 WHERE id = 'b2000000-0000-4000-8000-100000000027'",
+];
+const P4D298_NULL_REINFORCED_PLANT: &[&str] = &[
+    "UPDATE memories SET reinforcedImportance = NULL WHERE id = 'b2000000-0000-4000-8000-0000000000e0'",
+];
+const P4D298_STALE_JOBS_PLANT: &[&str] = &[
+    "INSERT INTO background_jobs (id, userId, type, status, payload, scheduledAt, createdAt, updatedAt) VALUES ('b9000000-0000-4000-8000-000000000001', 'e18e05bc-63e8-4539-8a85-719b7a508850', 'MEMORY_EXTRACTION', 'PENDING', '{}', '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z')",
+    "INSERT INTO background_jobs (id, userId, type, status, payload, scheduledAt, createdAt, updatedAt) VALUES ('b9000000-0000-4000-8000-000000000002', 'e18e05bc-63e8-4539-8a85-719b7a508850', 'INTER_CHARACTER_MEMORY', 'PENDING', '{}', '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z')",
+];
+
+/// The rows whose v4 half lands with a §S.5 handoff, not on this branch —
+/// RESIDUE both ways: a mismatch is reported and tolerated; a MATCH fails
+/// loudly ("the residue closed — move the row to the strict set"). (3) the
+/// embeddings pair's re-point onto P4.D292's `memory_index_backfill`; (4) the
+/// search route's re-point onto P4.D291's recall search.
+const S5_RESIDUE: &[(&str, &str)] = &[
+    ("search_min_importance_default", "§S.5 (4)"),
+    (
+        "list_min_importance_reinforced_paginated",
+        "P4.D288 — `memories_read`'s paginated filter compares `importance`, v4 the `reinforcedImportance` column",
+    ),
+];
+
+/// A minted value inside a captured line (`jobId=<uuid>`) → `<minted>`.
+fn mask_field(line: &str, key: &str) -> String {
+    let pat = format!(" {key}=");
+    let Some(at) = line.find(&pat) else {
+        return line.to_string();
+    };
+    let start = at + pat.len();
+    let end = line[start..]
+        .find(' ')
+        .map(|i| start + i)
+        .unwrap_or(line.len());
+    format!("{}<minted>{}", &line[..start], &line[end..])
+}
+// === end ===
+
 #[test]
 fn memories_routes_match_oracle() {
+    // P4.D298: one global capturing subscriber for the whole binary, armed
+    // before any callsite is reached (memory note `capture-rig-writer-thread`).
+    quilltap_core::test_support::global_capture::install();
     let Some(oracle_path) = env_or_skip("QT_ORACLE_MEMORIES_ROUTES") else {
         return;
     };
@@ -1288,6 +1436,542 @@ fn memories_routes_match_oracle() {
             let p = provider(&db);
             let resp = rt.block_on(memories::memory_search(&db, &p, &uid, FIXED_NOW_MS, body));
             check_bytes(name, &resp, true, &mut failed);
+        }
+    }
+    // === end ===
+
+    // === P4.D298: item GET / DELETE, the chat wipe, the counts (append-only) ===
+    // Bodies by BYTES in wire key order (memory note
+    // `serde-json-map-eq-ignores-order`), refusals as status + the `{error}`
+    // body; the route's own `[Memories API…]` lines captured on the caller
+    // thread and compared with v4's, in order; tables as the oracle dumps them.
+    {
+        use quilltap_core::test_support::global_capture;
+        let check_row_in = |oracle: &HashMap<String, Value>,
+                            name: &str,
+                            got: &Response,
+                            lines: &[String],
+                            tables: Option<Value>,
+                            failed: &mut Vec<String>| {
+            let rec = &oracle[name];
+            let want_status = rec["status"].as_u64().unwrap_or(0) as u16;
+            let (got_status, mut got_body) = match got {
+                Response::Error(e) => (
+                    status_of(e.kind),
+                    e.validation_wire_body()
+                        .unwrap_or_else(|| json!({ "error": e.message })),
+                ),
+                other => (200, response_data(other)),
+            };
+            let mut want_body = rec["body"].clone();
+            canon_numbers(&mut got_body);
+            canon_numbers(&mut want_body);
+            let (g, w) = (
+                serde_json::to_string_pretty(&got_body).unwrap(),
+                serde_json::to_string_pretty(&want_body).unwrap(),
+            );
+            let mut bad = Vec::new();
+            if got_status != want_status {
+                bad.push(format!("status {got_status} vs {want_status}"));
+            }
+            if g != w {
+                bad.push(format!("body:\n{}", first_diff(&g, &w)));
+            }
+            let want_lines: Vec<String> = rec["logs"]
+                .as_array()
+                .map(|a| a.iter().map(render_v4_line).collect())
+                .unwrap_or_default();
+            let got_lines = own_v5_lines(lines);
+            if got_lines != want_lines {
+                bad.push(format!(
+                    "lines:\n--- v4 ---\n{}\n--- v5 ---\n{}",
+                    want_lines.join("\n"),
+                    got_lines.join("\n")
+                ));
+            }
+            if let Some(t) = tables {
+                let (gt, wt) = (
+                    serde_json::to_string_pretty(&t).unwrap(),
+                    serde_json::to_string_pretty(&rec["tables"]).unwrap(),
+                );
+                if gt != wt {
+                    bad.push(format!("tables:\n{}", first_diff(&gt, &wt)));
+                }
+            }
+            if bad.is_empty() {
+                eprintln!("[{name}] OK (P4.D298).");
+            } else {
+                eprintln!("[{name}] MISMATCH (P4.D298):\n{}", bad.join("\n"));
+                failed.push(name.to_string());
+            }
+        };
+        let check_row = |name: &str,
+                         got: &Response,
+                         lines: &[String],
+                         tables: Option<Value>,
+                         failed: &mut Vec<String>| {
+            check_row_in(&oracle, name, got, lines, tables, failed)
+        };
+        // The sibling chokepoints' lines, by PRESENCE on v4's side (v5's run on
+        // the writer thread — invisible to the caller-thread rig).
+        let expect_sibling = |name: &str, msg: &str, failed: &mut Vec<String>| {
+            let present = oracle[name]["siblingMessages"]
+                .as_array()
+                .map(|a| a.iter().any(|m| m.as_str() == Some(msg)))
+                .unwrap_or(false);
+            if !present {
+                eprintln!("[{name}] v4 sibling line absent: {msg}");
+                failed.push(format!("{name}:sibling"));
+            }
+        };
+
+        // Item GET — bug 219: no stamp; v4's DEBUG.
+        for name in ["get", "get_does_not_stamp"] {
+            let db = fresh_db(&spec, name);
+            let (resp, lines) =
+                global_capture::capture(|| rt.block_on(memories::memory_get(&db, MEM_TAGGED_2)));
+            let tables = (name == "get_does_not_stamp").then(|| {
+                let rows = dump_all_memories(&db);
+                let row = rows
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|r| r["id"] == MEM_TAGGED_2)
+                    .cloned();
+                json!({
+                    "present": row.is_some(),
+                    "lastAccessedAt": row.map(|r| r["lastAccessedAt"].clone()).unwrap_or(Value::Null),
+                })
+            });
+            check_row(name, &resp, &lines, tables, &mut failed);
+        }
+        {
+            let db = fresh_db(&spec, "getm-d298");
+            let (resp, lines) =
+                global_capture::capture(|| rt.block_on(memories::memory_get(&db, MISSING)));
+            check_row("get_missing", &resp, &lines, None, &mut failed);
+        }
+        // Item DELETE through the ONE retire path; the INFO.
+        {
+            let db = fresh_db(&spec, "del-d298");
+            let (resp, lines) =
+                global_capture::capture(|| rt.block_on(memories::memory_delete(&db, MEM_REL_B)));
+            check_row("delete", &resp, &lines, None, &mut failed);
+            expect_sibling("delete", "memory:retire|Retired memories", &mut failed);
+        }
+        // `retired === 0` → 404 (a trigger swallows the delete).
+        {
+            let name = "delete_race_retired_zero";
+            let db = fresh_db(&spec, name);
+            plant(&rt, &db, P4D298_DELETE_RACE_PLANT);
+            let (resp, lines) =
+                global_capture::capture(|| rt.block_on(memories::memory_delete(&db, MEM_REL_B)));
+            let tables = dump_rows(&db, &["b2000000-0000-4000-8000-0000000000e0", MEM_REL_B]);
+            // `dump_rows` sorts nothing — the oracle's `dumpMemoryRows` shape.
+            let mut t = tables;
+            canon_numbers(&mut t);
+            check_row(name, &resp, &lines, Some(t), &mut failed);
+        }
+        // The chat wipe — bug 201's spares, `sparedCount`, the renamed DEBUG.
+        {
+            let db = fresh_db(&spec, "dbc-d298");
+            let (resp, lines) = global_capture::capture(|| {
+                rt.block_on(memories::memory_delete_by_chat(&db, CHAT_SALON))
+            });
+            check_row("delete_by_chat", &resp, &lines, None, &mut failed);
+            expect_sibling(
+                "delete_by_chat",
+                "memory:retire|Wiped a chat's extracted memories",
+                &mut failed,
+            );
+        }
+        {
+            let name = "delete_by_chat_spares_manual_cold_digest";
+            let db = fresh_db(&spec, name);
+            plant(&rt, &db, P4D298_SPARE_PLANT);
+            let (resp, lines) = global_capture::capture(|| {
+                rt.block_on(memories::memory_delete_by_chat(&db, CHAT_SALON))
+            });
+            check_row(
+                name,
+                &resp,
+                &lines,
+                Some(dump_all_memories(&db)),
+                &mut failed,
+            );
+            expect_sibling(
+                name,
+                "memory:retire|Chat wipe spared manual, cold and digest rows",
+                &mut failed,
+            );
+        }
+        {
+            let db = fresh_db(&spec, "dbcm-d298");
+            let (resp, lines) = global_capture::capture(|| {
+                rt.block_on(memories::memory_delete_by_chat(&db, MISSING))
+            });
+            check_row("delete_by_chat_missing", &resp, &lines, None, &mut failed);
+        }
+        // The counts — bug 210's four keys and two-key sort.
+        {
+            let db = fresh_db(&spec, "cc-d298");
+            let (resp, lines) =
+                global_capture::capture(|| memories::memory_character_counts(&db, &uid));
+            check_row("character_counts", &resp, &lines, None, &mut failed);
+        }
+        {
+            let name = "character_counts_breakdown";
+            let db = fresh_db(&spec, name);
+            plant(&rt, &db, P4D298_COUNTS_PLANT);
+            let (resp, lines) =
+                global_capture::capture(|| memories::memory_character_counts(&db, &uid));
+            check_row(name, &resp, &lines, None, &mut failed);
+        }
+
+        // --- The list's `filterImportance`; the search's `TOOL_MIN_IMPORTANCE`.
+        let mut residue_rows: Vec<(&str, bool, String)> = Vec::new();
+        for (name, limit) in [
+            ("list_min_importance_reinforced_legacy", None),
+            ("list_min_importance_reinforced_paginated", Some(50)),
+        ] {
+            let db = fresh_db(&spec, name);
+            plant(&rt, &db, P4D298_REINFORCED_PLANT);
+            let resp = memories::memory_list(
+                &db,
+                MNEMO,
+                None,
+                Some(0.7),
+                None,
+                None,
+                Some("importance"),
+                Some("asc"),
+                limit,
+                None,
+            );
+            if S5_RESIDUE.iter().any(|(n, _)| *n == name) {
+                let (g, w) = (
+                    serde_json::to_string_pretty(&response_data(&resp)).unwrap(),
+                    serde_json::to_string_pretty(&oracle[name]["body"]).unwrap(),
+                );
+                residue_rows.push((name, g == w, first_diff(&g, &w)));
+            } else {
+                check_row(name, &resp, &[], None, &mut failed);
+            }
+        }
+
+        // A §S.5 residue row: compared, then judged against `S5_RESIDUE`.
+        let residue_or_strict = |name: &str, ok: bool, detail: String, failed: &mut Vec<String>| {
+            match (S5_RESIDUE.iter().find(|(n, _)| *n == name), ok) {
+                (None, true) => eprintln!("[{name}] OK (P4.D298)."),
+                (None, false) => {
+                    eprintln!("[{name}] MISMATCH (P4.D298):\n{detail}");
+                    failed.push(name.to_string());
+                }
+                (Some((_, owner)), false) => {
+                    eprintln!("[{name}] RESIDUE ({owner} — lands at the unification):\n{detail}")
+                }
+                (Some((_, owner)), true) => {
+                    eprintln!(
+                        "[{name}] the {owner} residue CLOSED on this branch — move the row to the strict set"
+                    );
+                    failed.push(format!("{name}:residue-closed"));
+                }
+            }
+        };
+        for (name, ok, detail) in residue_rows.drain(..) {
+            residue_or_strict(name, ok, detail, &mut failed);
+        }
+        {
+            let name = "search_min_importance_default";
+            let db = fresh_db(&spec, name);
+            plant(&rt, &db, P4D298_NULL_REINFORCED_PLANT);
+            let p = provider(&db);
+            let resp = rt.block_on(memories::memory_search(
+                &db,
+                &p,
+                &uid,
+                FIXED_NOW_MS,
+                json!({ "characterId": MNEMO, "query": "smuggler cove hidden by the reef", "limit": 5 }),
+            ));
+            let mut got = response_data(&resp);
+            let mut want = oracle[name]["body"].clone();
+            for v in [&mut got, &mut want] {
+                round_floats(v);
+                canon_numbers(v);
+            }
+            let (g, w) = (
+                serde_json::to_string_pretty(&got).unwrap(),
+                serde_json::to_string_pretty(&want).unwrap(),
+            );
+            let head: String = g.chars().take(400).collect();
+            residue_or_strict(
+                name,
+                g == w,
+                format!("{}  GOT (head): {head}", first_diff(&g, &w)),
+                &mut failed,
+            );
+        }
+
+        // --- The extraction limits through C1-5's ONE patch parser (L-1's
+        // envelope: status + `error`; v4's `details` are the recorded
+        // no-details class); bug 244's patch keeps an unsent key.
+        let check_stored = |name: &str, db: &Db, failed: &mut Vec<String>| {
+            let stored = db
+                .read_main(quilltap_core::db::instance_settings::get_memory_extraction_limits)
+                .expect("read limits");
+            let want = &oracle[name]["storedAfter"];
+            let (g, w) = (
+                serde_json::to_string(&stored).unwrap(),
+                serde_json::to_string(want).unwrap(),
+            );
+            if g != w {
+                eprintln!("[{name}] storedAfter MISMATCH:\n  GOT : {g}\n  WANT: {w}");
+                failed.push(format!("{name}:storedAfter"));
+            }
+        };
+        let strip_details = |name: &str| {
+            let mut rec = oracle[name].clone();
+            if let Some(b) = rec["body"].as_object_mut() {
+                b.remove("details");
+            }
+            rec
+        };
+        for (name, body, seed_floor) in [
+            ("extraction_limits_set", json!({ "maxPerHour": 50 }), None),
+            (
+                "extraction_limits_patch_keeps_soft_floor",
+                json!({ "maxPerHour": 40 }),
+                Some(0.42),
+            ),
+            (
+                "extraction_limits_set_invalid_type",
+                json!({ "maxPerHour": "many" }),
+                None,
+            ),
+            (
+                "extraction_limits_set_out_of_range",
+                json!({ "softFloor": 1.5 }),
+                None,
+            ),
+            (
+                "extraction_limits_set_over_max",
+                json!({ "maxPerHour": 10001 }),
+                None,
+            ),
+            (
+                "extraction_limits_set_null",
+                json!({ "softFloor": null }),
+                None,
+            ),
+        ] {
+            let db = fresh_db(&spec, name);
+            if let Some(floor) = seed_floor {
+                let bag = json!({ "enabled": true, "maxPerHour": 77, "softStartFraction": 0.25, "softFloor": floor });
+                rt.block_on(db.write(move |w| {
+                    quilltap_core::db::instance_settings::set_memory_extraction_limits(
+                        w.main().connection(),
+                        &bag,
+                    )
+                }))
+                .expect("seed limits");
+            }
+            let (resp, lines) = global_capture::capture(|| {
+                rt.block_on(memories::memory_extraction_limits_set(&db, body))
+            });
+            let rec = strip_details(name);
+            let mut local = oracle.clone();
+            local.insert(name.to_string(), rec);
+            check_row_in(&local, name, &resp, &lines, None, &mut failed);
+            if oracle[name].get("storedAfter").is_some() {
+                check_stored(name, &db, &mut failed);
+            }
+        }
+        // The recall INFO (a Tier-2 pre-existing gap closed).
+        for (name, body) in [
+            ("recall_config_set", json!({ "scopePolicy": "exclude" })),
+            (
+                "recall_config_set_per_turn",
+                json!({ "perTurnConversationSummaries": true }),
+            ),
+        ] {
+            let db = fresh_db(&spec, &format!("{name}-d298"));
+            let (resp, lines) = global_capture::capture(|| {
+                rt.block_on(memories::memory_recall_config_set(&db, body))
+            });
+            check_row(name, &resp, &lines, None, &mut failed);
+        }
+
+        // --- POST `embeddings` without `batchSize` (Zod strips any value).
+        for (name, batch) in [
+            ("embeddings_batchsize_ignored_999", json!(999)),
+            ("embeddings_batchsize_ignored_string", json!("x")),
+            ("embeddings_batchsize_ignored_zero", json!(0)),
+        ] {
+            // The dispatch layer drops the unknown key exactly as Zod strips it.
+            let req: quilltap_core::api::types::Request = serde_json::from_value(json!({
+                "type": "memoryGenerateEmbeddings",
+                "characterId": MNEMO,
+                "batchSize": batch,
+            }))
+            .expect("serde ignores `batchSize`");
+            let quilltap_core::api::types::Request::MemoryGenerateEmbeddings { character_id } = req
+            else {
+                unreachable!()
+            };
+            let db = fresh_db(&spec, name);
+            let p = provider(&db);
+            let resp = rt.block_on(memories::memory_generate_embeddings(
+                &db,
+                &p,
+                &uid,
+                &character_id,
+            ));
+            check_row(name, &resp, &[], None, &mut failed);
+        }
+        // PUT `embeddings` — `failed` = `countWithoutEmbedding` at the pin.
+        {
+            let name = "rebuild_index_failed_counts_unembedded";
+            let db = fresh_db(&spec, name);
+            let resp = rt.block_on(memories::memory_rebuild_index(&db, MNEMO, true));
+            let (g, w) = (
+                serde_json::to_string(&response_data(&resp)).unwrap(),
+                serde_json::to_string(&oracle[name]["body"]).unwrap(),
+            );
+            if g == w {
+                eprintln!("[{name}] OK (P4.D298).");
+            } else {
+                eprintln!("[{name}] MISMATCH (P4.D298):\n  GOT : {g}\n  WANT: {w}");
+                failed.push(name.to_string());
+            }
+        }
+
+        // --- The backfill through ONE deduped batch (`enqueueMissingEmbeddings`).
+        let embedding_jobs = |db: &Db| -> Value {
+            db.read_main(|conn| {
+                let repo = quilltap_core::db::background_jobs::BackgroundJobsRepository::new(conn);
+                let jobs = repo.find_recent_by_type("EMBEDDING_GENERATE", 100)?;
+                let payloads: Vec<Value> = jobs
+                    .iter()
+                    .filter_map(|j| serde_json::from_str::<Value>(&j.payload).ok())
+                    .collect();
+                let mut entity_ids: Vec<String> = payloads
+                    .iter()
+                    .filter_map(|p| p["entityId"].as_str().map(str::to_string))
+                    .collect();
+                entity_ids.sort();
+                let mut profile_ids: Vec<String> = payloads
+                    .iter()
+                    .filter_map(|p| p["profileId"].as_str().map(str::to_string))
+                    .collect();
+                profile_ids.sort();
+                profile_ids.dedup();
+                Ok(json!({ "count": payloads.len(), "entityIds": entity_ids, "profileIds": profile_ids }))
+            })
+            .unwrap()
+        };
+        {
+            let name = "backfill_start";
+            let db = fresh_db(&spec, &format!("{name}-d298"));
+            let (resp, lines) = global_capture::capture(|| {
+                rt.block_on(memories::memory_backfill_start(
+                    &db,
+                    &uid,
+                    json!({ "characterId": MNEMO, "batchSize": 500 }),
+                ))
+            });
+            check_row(name, &resp, &lines, Some(embedding_jobs(&db)), &mut failed);
+        }
+        {
+            let name = "backfill_start_skips_queued";
+            let db = fresh_db(&spec, name);
+            let (resp, lines) = global_capture::capture(|| {
+                let bag = json!({ "characterId": MNEMO, "batchSize": 500 });
+                let _ = rt.block_on(memories::memory_backfill_start(&db, &uid, bag.clone()));
+                rt.block_on(memories::memory_backfill_start(&db, &uid, bag))
+            });
+            check_row(name, &resp, &lines, Some(embedding_jobs(&db)), &mut failed);
+        }
+        {
+            let name = "backfill_start_all_characters";
+            let db = fresh_db(&spec, name);
+            let (resp, lines) = global_capture::capture(|| {
+                rt.block_on(memories::memory_backfill_start(&db, &uid, json!({})))
+            });
+            check_row(name, &resp, &lines, Some(embedding_jobs(&db)), &mut failed);
+        }
+        {
+            let name = "backfill_start_bad_character_id";
+            let db = fresh_db(&spec, name);
+            let (resp, lines) = global_capture::capture(|| {
+                rt.block_on(memories::memory_backfill_start(
+                    &db,
+                    &uid,
+                    json!({ "characterId": "nope", "batchSize": 2001 }),
+                ))
+            });
+            let mut local = oracle.clone();
+            local.insert(name.to_string(), strip_details(name));
+            check_row_in(&local, name, &resp, &lines, None, &mut failed);
+        }
+
+        // --- Regenerate-all: three types cleared; the retired type survives.
+        let jobs_of = |db: &Db, t: &'static str| -> Value {
+            db.read_main(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT type, status, payload FROM background_jobs WHERE type = ? ORDER BY id",
+                )?;
+                let rows = stmt
+                    .query_map([t], |r| {
+                        let payload: String = r.get(2)?;
+                        Ok(json!({
+                            "type": r.get::<_, String>(0)?,
+                            "status": r.get::<_, String>(1)?,
+                            "payload": serde_json::from_str::<Value>(&payload).unwrap_or(Value::Null),
+                        }))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(json!({ "jobs": rows }))
+            })
+            .unwrap()
+        };
+        for (name, stale) in [
+            ("regenerate_all", false),
+            ("regenerate_all_keeps_retired_type", true),
+        ] {
+            let db = fresh_db(&spec, &format!("{name}-d298"));
+            if stale {
+                plant(&rt, &db, P4D298_STALE_JOBS_PLANT);
+            }
+            let (resp, lines) =
+                global_capture::capture(|| rt.block_on(memories::memory_regenerate_all(&db, &uid)));
+            let lines: Vec<String> = lines.iter().map(|l| mask_field(l, "jobId")).collect();
+            let mut rec = oracle[name].clone();
+            rec["body"]["jobId"] = json!("<minted>");
+            if let Some(logs) = rec["logs"].as_array_mut() {
+                for l in logs.iter_mut() {
+                    if l["fields"].get("jobId").is_some() {
+                        l["fields"]["jobId"] = json!("<minted>");
+                    }
+                }
+            }
+            let mut resp_masked = response_data(&resp);
+            resp_masked["jobId"] = json!("<minted>");
+            let mut local = oracle.clone();
+            local.insert(name.to_string(), rec);
+            let tables = stale.then(|| {
+                json!({
+                    "interCharacter": jobs_of(&db, "INTER_CHARACTER_MEMORY"),
+                    "extraction": jobs_of(&db, "MEMORY_EXTRACTION"),
+                })
+            });
+            check_row_in(
+                &local,
+                name,
+                &Response::Memory(resp_masked),
+                &lines,
+                tables,
+                &mut failed,
+            );
         }
     }
     // === end ===

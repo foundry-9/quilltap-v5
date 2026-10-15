@@ -181813,3 +181813,108 @@ lanes' offenders), `memory_retire_sole_deleter_guard` (`services/admission/tests
 `qtap_schema_embed_guard` (the vendored qtap-export schema predates the pin — P4.D294's re-vendor).
 
 Versions at close: core 0.0.1300, host 0.0.205 (web unchanged — test-only edits; harness frozen).
+
+## P4.D298 — the Memories API (lane record, `83334b9a5` round, stage C)
+
+### Lane start — where the session started, the §2 probe (an OBSERVATION, §R.2) and the pin
+
+- **Session start / move:** the session opened on `main` at `d1434189c` (the main checkout, clean). The lane
+  moved to a NEW worktree `.claude/worktrees/p4d298-memories-api` (spaceless via `~/source/quilltap-v5`) on
+  branch `claude/p4.d298-memories-api-e43551bf5`, cut from **`ADMISSION` = `e43551bf5`** (verified against
+  P4.D290's status header on `claude/p4.d290-admission-149cb8fc1`; no pre-start from `KEYSTONE`). Target cloned
+  warm from main's (`cp -cR`, 46 s).
+- **§2 probe (2026-10-15 15:23 CDT):** v4 `main` branch, tree CLEAN; **v4 moved:** `log 01f508d4e..main` shows
+  SIXTEEN commits (`a42c282b8` … `936a34720`, incl. `2432b9057 release: 4.10.0`, `f573a7576` merge, `37246654d`
+  "started 4.11.0 development", bug 247 / bug 248 filings and fixes); `bugfix` moved one commit
+  (`489b228b6 bugfix: started 4.10.0 bug branch`). Out of scope under the pin rule — recorded, not ported.
+- **The pin:** `/tmp/qt-v4-pin-p4d298-83334b9a5` (`git rev-parse HEAD` = `83334b9a5befca33…`,
+  `package.json` `4.10.0-dev.176`). **§R.3's dependency trap fired:** the live tree's
+  `@quilltap/plugin-utils` moved `2.6.3` → `2.7.1` past the pin, so the root `node_modules` is the pin's OWN
+  `npm ci --offline --ignore-scripts` (openai `7.30.0`, plugin-utils `2.6.3`) with `better-sqlite3`'s
+  `build/` copied from the live tree (12.11.1 both sides — memory note `tier-r-vacuous-equal-rows`);
+  `packages/quilltap/node_modules` and the fifteen `plugins/dist/*/node_modules` are symlinks to the live tree
+  (the plugin dirs carry plugin-utils 2.7.1; no oracle this lane runs loads a provider plugin's
+  plugin-utils path — the families use the BUILTIN embedder).
+
+### Red-first — the base census at `ADMISSION`
+
+- `memories_routes_equivalence` at the base (both NDJSONs regenerated from the pin, 41 + 34 records): RED rows
+  `character_counts`, `create_insert`, `create_near_duplicate` (+ tables), `update`, `delete_by_chat`, and the
+  search rows `search`, `search_min_importance`, `search_include_cold` (each also in the P4.D269 byte block) —
+  every list / count-by-chat / by-message / config / backfill / regenerate row green.
+- Compile-forced edits P4.D288 made in my files pre-`KEYSTONE` (its unit 5 / 9 records, read): the housekeep /
+  housekeeping-config / extraction-concurrency handlers DELETED from `api/memories.rs` with their rows in
+  `memories_routes_equivalence.rs` (`seed_housekeeping`, `check_key_order`); the item DELETE and the chat wipe
+  already route through `retire_memories` / `retire_chat_memories` (bytes unchanged); the two re-attribution
+  ERRORs already carry v4's keys (`{messageId, memoryCount, error}` / `{memoryCount, error}`) at ONE line per
+  retire. **Measured:** regenerate-all's clear list at the base is already the three v4 types
+  (`INTER_CHARACTER_MEMORY` gone at `KEYSTONE`); `get/set_memory_extraction_concurrency` are DELETED (no
+  `HANDOFF:` needed). LANE-REMOVE census at the base: 34 markers (P4.D290's record).
+
+### Units 2–10 — item GET / DELETE, the chat wipe, the counts, list + search, embeddings, backfill, regenerate-all, limits
+
+- **Item GET** (bug 219, R-AG): the `update_access_time` write is GONE; DEBUG `[Memories API v1] Fetched memory
+  (access time not stamped)` `{memoryId, characterId}`; v4's catch (ERROR `[Memories API v1] Error fetching
+  memory` + 500 `Failed to fetch memory`) ported. Rows `get` (lines), `get_does_not_stamp` (`lastAccessedAt`
+  null after the GET + a 350 ms settle, both sides), `get_missing`.
+- **Item DELETE:** `retire_memories(ItemDelete)` → `retired == 0` ⇒ 404; INFO `[Memories API v1] Memory
+  deleted` `{memoryId, characterId}`; v4's catch (ERROR `Error deleting memory` + 500 `Failed to delete
+  memory`). v4's `handleEntityDeletion` / `scheduleRefit` comments only (§S.5 (2)). Rows `delete` (lines + the
+  retire path's `Retired memories` by PRESENCE on v4's side) and **`delete_race_retired_zero`** (a `BEFORE DELETE
+  … RAISE(IGNORE)` trigger on the row: the retire deletes nothing → 404 on both sides, the neighbour's link
+  scrubbed on both — the retire path scrubs before it deletes).
+- **Chat wipe** (bugs 200 / 201): `{success, chatId, deletedCount, sparedCount}` + DEBUG `[Memories API] Wiped a
+  chat's extracted memories` `{chatId, deleted, spared}`; module tests re-pinned. Row
+  **`delete_by_chat_spares_manual_cold_digest`**: a MANUAL row, a cold row and a CONSOLIDATED digest planted in
+  the chat beside the plain AUTO `f0`; **measured:** a digest is spared only while a member "still names it"
+  (`supersededById` — v4 `digestsWithLivingMember`), so the plant also points member `b1` at the digest →
+  `deletedCount 1`, `sparedCount 3` both sides, every memory row dumped equal. **Hazard (b) retires on the
+  union** (the retire path is P4.D288's; the route now answers v4's `sparedCount`).
+- **Counts** (bug 210): `count_cap_breakdown` per character → `{id, name, memoryCount: hotTotal + cold,
+  hotTotal, demotable, protected, cold}`, stable sort `demotable` desc then `memoryCount` desc, DEBUG
+  `[Memories API] Character memory counts computed` `{userId, characters}`. Row
+  `character_counts_breakdown` (Orla all MANUAL, six Mnemo rows moved to Pip with a NULL-tier and a cold row:
+  Mnemo → Pip → Orla, the second key deciding Pip over Orla).
+- **List:** the legacy path filters `filter_importance(importance, reinforcedImportance)` (the sort stays raw
+  `importance`). Row `list_min_importance_reinforced_legacy` GREEN. **Residue (P4.D288, finding):**
+  `list_min_importance_reinforced_paginated` — `memories_read::find_by_character_id_paginated` renders `AND
+  importance >= ?` where v4 `findByCharacterIdPaginated` filters `reinforcedImportance: { $gte }`
+  (`memories.repository.ts:258-259`); the same in `find_by_importance` (`memories_read.rs:632` — v4 `:341`).
+  HANDOFF hunk: `memories_read.rs:540` `" AND importance >= ?"` → `" AND reinforcedImportance >= ?"`, and
+  `:632` likewise. Carried in the family as a both-ways RESIDUE row (a match fails loudly).
+- **Search:** `min_importance: Some(bag.min_importance.unwrap_or(TOOL_MIN_IMPORTANCE))`. Row
+  `search_min_importance_default` (the hit's `reinforcedImportance` planted NULL): **v4 returns the row
+  hydrated `reinforcedImportance: 0.5`; v5 answers 500 `Invalid column type Null at index: 22, name:
+  reinforcedImportance`** — `memories_read`'s row reader (`num(&mut m, "reinforcedImportance", 22)`, P4.D288's
+  file) fails on a NULL where v4's Zod defaults 0.5. A FINDING for the unifier (P4.D288's reader; the search
+  itself is §S.5 (4)'s re-point). Carried as a both-ways RESIDUE row.
+- **Embeddings:** POST drops the 1..50 check and the `batch_size` parameter (the sweep keeps the base
+  service's old batch of 10 until §S.5 (3)); rows `embeddings_batchsize_ignored_{999,string,zero}` GREEN (the
+  dispatch decode drops `batchSize` exactly as Zod strips it). **Measured:** `rebuild_index_failed_counts_
+  unembedded` is ALREADY GREEN on the base (`failed: 4` both sides) — the order predicted it as §S.5 (3)'s
+  residue; it is strict. Compile-forced: `embedding_generate_jobs_equivalence.rs` (P4.D292's family) loses the
+  `batch_size` argument and its route-body field.
+- **Backfill start:** Zod-faithful `parse_backfill_bag` (issues in schema order, the house 400 per L-1) →
+  character 404 → `enqueue_missing_embeddings` → the `no-profile` 400 / the zero sentence / INFO
+  `[Memories API] Embedding backfill batch enqueued` `{userId, characterId: id ?? '(all)', enqueued,
+  remaining}` + the templates; the per-row loop is GONE. Rows `backfill_start`, `backfill_start_skips_queued`
+  (second POST `enqueued: 0, remaining: 4` + the template, BOTH INFOs), `backfill_start_all_characters`,
+  `backfill_start_bad_character_id` — all GREEN, the job dumps equal.
+- **Regenerate-all:** the clear list measured already v4's three; both INFOs (`Cleared in-flight regenerate
+  jobs before fresh sweep` when `cleared > 0`, `Regenerate-all fan-out enqueued` with its minted `jobId`
+  masked). Row `regenerate_all_keeps_retired_type` (a PENDING `MEMORY_EXTRACTION` cleared, a PENDING
+  `INTER_CHARACTER_MEMORY` SURVIVING, `cleared: 1`) GREEN.
+- **Extraction limits:** `parse_memory_extraction_limits_patch` (C1-5) is the ONE validator;
+  `validate_extraction_limits_config`, `zod_number`, `zod_safe_int` DELETED; INFO `[Memories API] Extraction
+  rate limits updated (instance-wide)` `{enabled, maxPerHour}`. Rows: the existing limits rows green, plus
+  `extraction_limits_patch_keeps_soft_floor` (bug 244: a seeded `softFloor 0.42` survives `{maxPerHour: 40}`,
+  storedAfter equal), `_set_over_max`, `_set_null`. Recall-config (hand validator kept — its accepted set is
+  `patchSchemaOf(MemoryRecallSettingsSchema)`'s; C1-5 names no recall patch parser) gains its INFO
+  `[Memories API] Recall settings updated (instance-wide)`.
+- **Instrument:** both oracle cases splice v4's logger transports at `debug` per case (the route's own
+  `[Memories API…]` lines compared in order; `memory:retire` / `memory:admission` / `memory:update-memory`
+  lines recorded by PRESENCE — v5's run inside `Db::write`, invisible to the caller-thread rig); the config
+  case holds v4's job host off for every case; in-case plants through a keyed connection + re-init. The Rust
+  test installs `global_capture` once and captures each P4.D298 row on the caller thread.
+- Family at this commit: every P4.D298 row green except the two named RESIDUE rows; the reds left are the
+  create / update / search rows of units 13–14 and §S.5 (4).

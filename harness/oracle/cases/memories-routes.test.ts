@@ -185,6 +185,9 @@ async function runCase(
 ): Promise<Record<string, unknown>> {
   jest.resetModules();
   applyMocks(spec, c.clock === true);
+  // === P4.D298: the log capture (append-only) ===
+  const logs = await installLogCapture();
+  // === end ===
   // Register the provider plugins (incl. the BUILTIN embeddings provider) so the
   // semantic-search arm resolves the builtin embedding at query time.
   const { initializePlugins } = await import('@/lib/startup/plugin-initialization');
@@ -211,11 +214,15 @@ async function runCase(
   await initializeDatabase();
   try {
     const out = await c.run({});
+    // P4.D298: let an un-awaited tail land before the lines are read.
+    await new Promise((r) => setImmediate(r));
     return {
       name: c.name,
       status: out.status,
       body: out.body,
       ...(out.tables !== undefined ? { tables: out.tables } : {}),
+      logs: logs.own,
+      siblingMessages: [...new Set(logs.sibling)],
     };
   } finally {
     // Let any fire-and-forget write (the item-GET access-time bump; the search
@@ -228,6 +235,130 @@ async function runCase(
     rmSync(work, { recursive: true, force: true });
   }
 }
+
+// === P4.D298: the log capture + plant helpers (append-only) ===
+interface LogLine {
+  level: string;
+  message: string;
+  fields: Record<string, unknown>;
+}
+
+/** Splice v4's logger transports (children share the array) so every line
+ *  lands here, at debug. `own` = the route's `[Memories API…]` / `[Messages
+ *  API v1]` lines (`{level, message, fields}`, `service` / `environment`
+ *  dropped, `error.message` folded in as `error`, an `undefined` field
+ *  OMITTED by the JSON round-trip — §R.5); `sibling` = the bare messages of
+ *  the chokepoints' lines (`memory:retire` / `memory:admission` /
+ *  `memory:update-memory`), compared by PRESENCE only. */
+async function installLogCapture(): Promise<{ own: LogLine[]; sibling: string[] }> {
+  process.env.LOG_LEVEL = 'debug';
+  const { logger } = await import('@/lib/logger');
+  const own: LogLine[] = [];
+  const sibling: string[] = [];
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as {
+        level: string;
+        message: string;
+        context?: Record<string, unknown>;
+        error?: { message: string };
+      };
+      const { service: _s, environment: _e, ...fields } = (data.context ?? {}) as Record<
+        string,
+        unknown
+      >;
+      if (data.error) fields.error = data.error.message;
+      if (/^\[(Memories API|Messages API v1|Chats v1)/.test(data.message)) {
+        own.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+      } else if (
+        typeof fields.module === 'string' &&
+        ['memory:retire', 'memory:admission', 'memory:update-memory'].includes(fields.module)
+      ) {
+        sibling.push(`${fields.module}|${data.message}`);
+      }
+    },
+  });
+  return { own, sibling };
+}
+
+/** Plant SQL on the case's own copy through a DEDICATED keyed connection, then
+ *  re-open v4's connection (memory note `jest-oracle-in-case-plants`). */
+async function plantSql(statements: string[]): Promise<void> {
+  const Driver = require(
+    require('node:path').join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'),
+  );
+  const db = new Driver(process.env.SQLITE_PATH);
+  const hex = Buffer.from(process.env.ENCRYPTION_MASTER_PEPPER ?? '', 'base64').toString('hex');
+  db.pragma(`key = "x'${hex}'"`);
+  try {
+    for (const sql of statements) db.exec(sql);
+  } finally {
+    db.close();
+  }
+  const { closeDatabase, initializeDatabase } = await import('@/lib/database/manager');
+  await closeDatabase();
+  await initializeDatabase();
+}
+
+/** Every memory row's identity + the columns the retire / wipe rows move,
+ *  ordered by the BAKED id (never a minted one). */
+async function dumpAllMemories(): Promise<unknown> {
+  const Driver = require(
+    require('node:path').join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'),
+  );
+  const db = new Driver(process.env.SQLITE_PATH, { readonly: true });
+  const hex = Buffer.from(process.env.ENCRYPTION_MASTER_PEPPER ?? '', 'base64').toString('hex');
+  db.pragma(`key = "x'${hex}'"`);
+  try {
+    return db
+      .prepare(
+        'SELECT id, characterId, chatId, source, tier, relatedMemoryIds, consolidatedFrom, lastAccessedAt FROM memories ORDER BY id',
+      )
+      .all();
+  } finally {
+    db.close();
+  }
+}
+
+const P4D298_SPARE_PLANT = [
+  // MANUAL in the chat — spared.
+  "UPDATE memories SET chatId = 'c1000000-0000-4000-8000-000000000001' WHERE id = 'b2000000-0000-4000-8000-100000000011'",
+  // cold in the chat — spared.
+  "UPDATE memories SET tier = 'cold' WHERE id = 'b2000000-0000-4000-8000-0000000000f1'",
+  // a digest in the chat whose member (outside the chat) lives — spared.
+  "UPDATE memories SET source = 'CONSOLIDATED', chatId = 'c1000000-0000-4000-8000-000000000001', consolidatedFrom = '[\"b2000000-0000-4000-8000-0000000000b1\"]' WHERE id = 'b2000000-0000-4000-8000-0000000000b0'",
+  // …a member "still names it" (`supersededById`) — v4's living-member rule.
+  "UPDATE memories SET tier = 'cold', supersededById = 'b2000000-0000-4000-8000-0000000000b0' WHERE id = 'b2000000-0000-4000-8000-0000000000b1'",
+  // (f0 stays a plain AUTO row in the chat — retired.)
+];
+
+const P4D298_COUNTS_PLANT = [
+  "UPDATE memories SET source = 'MANUAL' WHERE characterId = 'b1000000-0000-4000-8000-000000000002'",
+  "UPDATE memories SET characterId = 'b1000000-0000-4000-8000-000000000003' WHERE id IN ('b2000000-0000-4000-8000-100000000011','b2000000-0000-4000-8000-100000000013','b2000000-0000-4000-8000-100000000015','b2000000-0000-4000-8000-100000000017','b2000000-0000-4000-8000-100000000019','b2000000-0000-4000-8000-100000000021')",
+  "UPDATE memories SET tier = NULL WHERE id = 'b2000000-0000-4000-8000-100000000011'",
+  "UPDATE memories SET tier = 'cold' WHERE id = 'b2000000-0000-4000-8000-100000000013'",
+  "UPDATE memories SET tier = 'cold' WHERE id = 'b2000000-0000-4000-8000-0000000000f1'",
+  "UPDATE memories SET tier = NULL WHERE id = 'b2000000-0000-4000-8000-0000000000b3'",
+];
+
+/** `reinforcedImportance` moved apart from `importance` (both ways), so the
+ *  list's `filterImportance` read decides which row a `minImportance` keeps. */
+const P4D298_REINFORCED_PLANT = [
+  "UPDATE memories SET reinforcedImportance = 0.9 WHERE id = 'b2000000-0000-4000-8000-100000000019'",
+  "UPDATE memories SET reinforcedImportance = 0.1 WHERE id = 'b2000000-0000-4000-8000-100000000027'",
+];
+
+/** The search's only hit loses its `reinforcedImportance` (a vector kept). */
+const P4D298_NULL_REINFORCED_PLANT = [
+  "UPDATE memories SET reinforcedImportance = NULL WHERE id = 'b2000000-0000-4000-8000-0000000000e0'",
+];
+
+/** A delete the trigger swallows: the row survives, so `retired === 0`. */
+const P4D298_DELETE_RACE_PLANT = [
+  "CREATE TRIGGER qt_p4d298_keep_row BEFORE DELETE ON memories WHEN old.id = 'b2000000-0000-4000-8000-0000000000e1' BEGIN SELECT RAISE(IGNORE); END",
+];
+// === end ===
 
 // === P4.D269: list/search rows (append-only) ===
 /** The plant every P4.D269 row runs on its copy (the Rust twin is
@@ -484,6 +615,91 @@ async function main(): Promise<void> {
           ),
         ),
     },
+    // === P4.D298: item GET / DELETE, the chat wipe, the counts (append-only) ===
+    {
+      // Bug 219: viewing is not an access — `lastAccessedAt` stays as it was.
+      name: 'get_does_not_stamp',
+      run: async () => {
+        const out = await itemGet(MEM_TAGGED_2);
+        await new Promise((r) => setTimeout(r, 350));
+        const rows = (await dumpAllMemories()) as Array<{ id: string; lastAccessedAt: unknown }>;
+        const row = rows.find((r) => r.id === MEM_TAGGED_2);
+        return { ...out, tables: { present: row !== undefined, lastAccessedAt: row?.lastAccessedAt ?? null } };
+      },
+    },
+    {
+      // The retire found nothing to delete (`retired === 0`) → 404.
+      name: 'delete_race_retired_zero',
+      run: async () => {
+        await plantSql(P4D298_DELETE_RACE_PLANT);
+        const r = await (await loadRoute('@/app/api/v1/memories/[id]/route')).DELETE(
+          mockRequest(`${B}/${MEM_REL_B}`),
+          { params: Promise.resolve({ id: MEM_REL_B }) },
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpMemoryRows([MEM_REL_A, MEM_REL_B]) };
+      },
+    },
+    {
+      // Bug 201: manual, cold and living-digest rows survive the wipe.
+      name: 'delete_by_chat_spares_manual_cold_digest',
+      run: async () => {
+        await plantSql(P4D298_SPARE_PLANT);
+        const r = await (await loadRoute('@/app/api/v1/memories/route')).DELETE(
+          mockRequest(`${B}?chatId=${CHAT_SALON}`),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpAllMemories() };
+      },
+    },
+    {
+      name: 'delete_by_chat_missing',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).DELETE(mockRequest(`${B}?chatId=${MISSING}`)),
+        ),
+    },
+    {
+      // Bug 210: the four cap keys; both sort keys decide an order.
+      name: 'character_counts_breakdown',
+      run: async () => {
+        await plantSql(P4D298_COUNTS_PLANT);
+        return listGet(`action=character-memory-counts`);
+      },
+    },
+    {
+      name: 'list_min_importance_reinforced_legacy',
+      run: async () => {
+        await plantSql(P4D298_REINFORCED_PLANT);
+        return listGet(`characterId=${MNEMO}&minImportance=0.7&sortBy=importance&sortOrder=asc`);
+      },
+    },
+    {
+      name: 'list_min_importance_reinforced_paginated',
+      run: async () => {
+        await plantSql(P4D298_REINFORCED_PLANT);
+        return listGet(`characterId=${MNEMO}&limit=50&minImportance=0.7&sortBy=importance&sortOrder=asc`);
+      },
+    },
+    {
+      // `minImportance ?? TOOL_MIN_IMPORTANCE`: the 0 default filters the
+      // `reinforcedImportance` COLUMN, so a NULL row drops out.
+      name: 'search_min_importance_default',
+      clock: true,
+      run: async () => {
+        await plantSql(P4D298_NULL_REINFORCED_PLANT);
+        return respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=search`, {
+              characterId: MNEMO,
+              query: 'smuggler cove hidden by the reef',
+              limit: 5,
+            }),
+          ),
+        );
+      },
+    },
+    // === end ===
     // === P4.D269: list/search rows (append-only) ===
     // v4 `d58548051`: the list's `?tier=` (TWO code paths with different
     // NULL-tier rules) + `source=CONSOLIDATED`; the search's `includeCold:

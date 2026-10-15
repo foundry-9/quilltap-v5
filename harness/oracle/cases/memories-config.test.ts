@@ -226,6 +226,69 @@ async function dumpEmbeddingJobs(): Promise<unknown> {
   };
 }
 
+// === P4.D298: the log capture + plant helper (append-only) ===
+interface LogLine {
+  level: string;
+  message: string;
+  fields: Record<string, unknown>;
+}
+
+/** The `memories-routes` capture's twin: the route's `[Memories API…]` lines,
+ *  `service` / `environment` dropped, `undefined` fields omitted (§R.5). */
+async function installLogCapture(): Promise<{ own: LogLine[] }> {
+  process.env.LOG_LEVEL = 'debug';
+  const { logger } = await import('@/lib/logger');
+  const own: LogLine[] = [];
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as {
+        level: string;
+        message: string;
+        context?: Record<string, unknown>;
+        error?: { message: string };
+      };
+      const { service: _s, environment: _e, ...fields } = (data.context ?? {}) as Record<
+        string,
+        unknown
+      >;
+      if (data.error) fields.error = data.error.message;
+      if (/^\[Memories API/.test(data.message)) {
+        own.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+      }
+    },
+  });
+  return { own };
+}
+
+/** Plant SQL on the case's own copy through a DEDICATED keyed connection, then
+ *  re-open v4's connection (memory note `jest-oracle-in-case-plants`). */
+async function plantSql(statements: string[]): Promise<void> {
+  const Driver = require(
+    require('node:path').join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'),
+  );
+  const db = new Driver(process.env.SQLITE_PATH);
+  const hex = Buffer.from(process.env.ENCRYPTION_MASTER_PEPPER ?? '', 'base64').toString('hex');
+  db.pragma(`key = "x'${hex}'"`);
+  try {
+    for (const sql of statements) db.exec(sql);
+  } finally {
+    db.close();
+  }
+  const { closeDatabase, initializeDatabase } = await import('@/lib/database/manager');
+  await closeDatabase();
+  await initializeDatabase();
+}
+
+/** Two in-flight jobs regenerate-all must treat differently: a PENDING
+ *  `MEMORY_EXTRACTION` it clears, a PENDING `INTER_CHARACTER_MEMORY` (a retired
+ *  type) it leaves (`ac6348c5f`). */
+const P4D298_STALE_JOBS_PLANT = [
+  "INSERT INTO background_jobs (id, userId, type, status, payload, scheduledAt, createdAt, updatedAt) VALUES ('b9000000-0000-4000-8000-000000000001', 'e18e05bc-63e8-4539-8a85-719b7a508850', 'MEMORY_EXTRACTION', 'PENDING', '{}', '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z')",
+  "INSERT INTO background_jobs (id, userId, type, status, payload, scheduledAt, createdAt, updatedAt) VALUES ('b9000000-0000-4000-8000-000000000002', 'e18e05bc-63e8-4539-8a85-719b7a508850', 'INTER_CHARACTER_MEMORY', 'PENDING', '{}', '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z')",
+];
+// === end ===
+
 async function respond(r: unknown): Promise<{ status: number; body: unknown }> {
   const resp = r as { status: number; json: () => Promise<unknown> };
   return { status: resp.status, body: await resp.json() };
@@ -239,6 +302,21 @@ async function runCase(
 ): Promise<Record<string, unknown>> {
   jest.resetModules();
   applyMocks(spec, c.clock === true);
+  // === P4.D298: the job host held off + the log capture (append-only) ===
+  // Hold v4's job host off BEFORE any import: an enqueue spawns a runner that
+  // claims (and runs) the PENDING jobs mid-case — v5 has no runner here
+  // (memory note `v4-oracle-job-host-and-log-capture`).
+  (globalThis as Record<string, unknown>).__quilltapJobHost = {
+    child: null,
+    spawning: false,
+    shuttingDown: true,
+    childCrashed: false,
+    restartTimestamps: [],
+    signalHandlersInstalled: false,
+    invalidationListeners: new Set(),
+  };
+  const logs = await installLogCapture();
+  // === end ===
   // Register the provider plugins (incl. the BUILTIN embeddings provider) so the
   // semantic-search arm resolves the builtin embedding at query time.
   const { initializePlugins } = await import('@/lib/startup/plugin-initialization');
@@ -274,6 +352,7 @@ async function runCase(
       body: out.body,
       ...(out.tables !== undefined ? { tables: out.tables } : {}),
       ...(out.storedAfter !== undefined ? { storedAfter: out.storedAfter } : {}),
+      logs: logs.own,
     };
   } finally {
     // Let any fire-and-forget write (the item-GET access-time bump; the search
@@ -661,6 +740,131 @@ async function main(): Promise<void> {
           ),
         ),
     },
+    // === P4.D298: limits / embeddings / backfill / regenerate rows (append-only) ===
+    {
+      // Bug 244: a tuned `softFloor` survives a `{maxPerHour}` POST.
+      name: 'extraction_limits_patch_keeps_soft_floor',
+      run: async () => {
+        await loadRoute('@/app/api/v1/memories/route');
+        const { setMemoryExtractionLimits, getMemoryExtractionLimits } = await import(
+          '@/lib/instance-settings'
+        );
+        await setMemoryExtractionLimits({
+          enabled: true,
+          maxPerHour: 77,
+          softStartFraction: 0.25,
+          softFloor: 0.42,
+        });
+        const r = await respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=extraction-limits-config`, { maxPerHour: 40 }),
+          ),
+        );
+        return { ...r, storedAfter: await getMemoryExtractionLimits() };
+      },
+    },
+    {
+      // `patchSchemaOf` keeps `.max(10_000)` and the integer rule.
+      name: 'extraction_limits_set_over_max',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=extraction-limits-config`, { maxPerHour: 10001 }),
+          ),
+        ),
+    },
+    {
+      name: 'extraction_limits_set_null',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=extraction-limits-config`, { softFloor: null }),
+          ),
+        ),
+    },
+    // `af48f6cc2`: `batchSize` left the schema — Zod strips any value.
+    ...[
+      ['embeddings_batchsize_ignored_999', 999],
+      ['embeddings_batchsize_ignored_string', 'x'],
+      ['embeddings_batchsize_ignored_zero', 0],
+    ].map(
+      ([name, batchSize]): CaseSpec => ({
+        name: name as string,
+        run: async () =>
+          respond(
+            await (await loadRoute('@/app/api/v1/memories/route')).POST(
+              mockRequest(`${B}?action=embeddings`, { characterId: MNEMO, batchSize }),
+            ),
+          ),
+      }),
+    ),
+    {
+      // PUT `?action=embeddings`: `failed` is now `countWithoutEmbedding`.
+      name: 'rebuild_index_failed_counts_unembedded',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).PUT(
+            mockRequest(`${B}?action=embeddings`, { characterId: MNEMO, confirm: true }),
+          ),
+        ),
+    },
+    {
+      // ONE batch skips rows that already hold an active job: the second POST
+      // enqueues nothing while every row is still missing.
+      name: 'backfill_start_skips_queued',
+      run: async () => {
+        const route = await loadRoute('@/app/api/v1/memories/route');
+        await respond(
+          await route.POST(
+            mockRequest(`${B}?action=backfill-embeddings`, { characterId: MNEMO, batchSize: 500 }),
+          ),
+        );
+        const r = await respond(
+          await route.POST(
+            mockRequest(`${B}?action=backfill-embeddings`, { characterId: MNEMO, batchSize: 500 }),
+          ),
+        );
+        return { ...r, tables: await dumpEmbeddingJobs() };
+      },
+    },
+    {
+      name: 'backfill_start_all_characters',
+      run: async () => {
+        const r = await (await loadRoute('@/app/api/v1/memories/route')).POST(
+          mockRequest(`${B}?action=backfill-embeddings`, {}),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpEmbeddingJobs() };
+      },
+    },
+    {
+      name: 'backfill_start_bad_character_id',
+      run: async () =>
+        respond(
+          await (await loadRoute('@/app/api/v1/memories/route')).POST(
+            mockRequest(`${B}?action=backfill-embeddings`, { characterId: 'nope', batchSize: 2001 }),
+          ),
+        ),
+    },
+    {
+      name: 'regenerate_all_keeps_retired_type',
+      run: async () => {
+        await plantSql(P4D298_STALE_JOBS_PLANT);
+        const r = await (await loadRoute('@/app/api/v1/memories/route')).POST(
+          mockRequest(`${B}?action=regenerate-all`, {}),
+        );
+        const { status, body } = await respond(r);
+        return {
+          status,
+          body,
+          tables: {
+            interCharacter: await dumpJobsByType('INTER_CHARACTER_MEMORY'),
+            extraction: await dumpJobsByType('MEMORY_EXTRACTION'),
+          },
+        };
+      },
+    },
+    // === end ===
     // --- Regenerate + backfill status (job-structural) ---
     { name: 'backfill_progress', run: () => listGet(`action=backfill-embeddings`) },
     { name: 'regenerate_status', run: () => listGet(`action=regenerate-all`) },

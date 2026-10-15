@@ -29,6 +29,7 @@ use crate::db::runtime::Db;
 use crate::db::{
     characters_read, chat_settings, chats_read, instance_settings, memories_read, tags, DbError,
 };
+use crate::memory_scoring::{filter_importance, TOOL_MIN_IMPORTANCE};
 use crate::model::embedding::EmbeddingProvider;
 // P4.56: the shared "render a JSON number the JS way" walk (an integer-valued
 // float collapses, exactly as `JSON.stringify` writes it).
@@ -191,9 +192,16 @@ pub fn memory_list(
                 let ql = q.to_lowercase();
                 memories.retain(|m| memory_matches_search(m, &ql));
             }
+            // v4 `filterImportance(m) >= minImportance` (`route.ts:374`) —
+            // `reinforcedImportance ?? importance`. The sort's `importance` key
+            // below stays the RAW importance (`:384-386`).
             if let Some(min) = min_importance {
-                memories
-                    .retain(|m| m.get("importance").and_then(Value::as_f64).unwrap_or(0.0) >= min);
+                memories.retain(|m| {
+                    filter_importance(
+                        m.get("importance").and_then(Value::as_f64).unwrap_or(0.0),
+                        m.get("reinforcedImportance").and_then(Value::as_f64),
+                    ) >= min
+                });
             }
             if let Some(src) = source {
                 memories.retain(|m| m.get("source").and_then(Value::as_str) == Some(src));
@@ -367,10 +375,15 @@ pub fn memory_by_message(db: &Db, user_id: &str, message_id: &str) -> Response {
 // Get one (v4 GET /api/v1/memories/[id])
 // ===========================================================================
 
-/// v4 item GET: ownership via character, `tagDetails`, a fire-and-forget access-time
-/// bump, `{memory}`. The bump is applied synchronously here (the v5 single writer
-/// has no fire-and-forget lane at the read boundary; the differential dumps the
-/// row's `lastAccessedAt` structurally where it matters).
+/// v4 item GET (`[id]/route.ts:34-74`): ownership via character, `tagDetails`,
+/// `{memory}`.
+///
+/// "Viewing a memory is not an access (bug 219, refactor decision 7):
+/// `lastAccessedAt` records that a model was shown the row, and it feeds
+/// protection's recent-access bonus and housekeeping's inactivity clock. An
+/// operator's or script's inspection must not move either." Delivery is the
+/// ONE writer of `lastAccessedAt` (R-AG). A failed read is v4's catch: ERROR
+/// `[Memories API v1] Error fetching memory` + 500 `Failed to fetch memory`.
 pub async fn memory_get(db: &Db, memory_id: &str) -> Response {
     let mid = memory_id.to_string();
     let loaded: Result<Option<(Value, String)>, DbError> = db.read_main(move |main| {
@@ -391,17 +404,19 @@ pub async fn memory_get(db: &Db, memory_id: &str) -> Response {
     let (memory, character_id) = match loaded {
         Ok(Some(v)) => v,
         Ok(None) => return not_found("Memory"),
-        Err(e) => return internal(e),
+        Err(e) => {
+            tracing::error!(
+                error = %crate::db::fallback::error_text(&e),
+                "[Memories API v1] Error fetching memory"
+            );
+            return Response::error(ErrorKind::Internal, "Failed to fetch memory");
+        }
     };
-    // Access-time bump (v4 fire-and-forget; failures are swallowed there too).
-    let mid = memory_id.to_string();
-    let cid = character_id.clone();
-    let _ = db
-        .write(move |w| {
-            let _ = w.main().memories().update_access_time(&cid, &mid);
-            Ok::<(), DbError>(())
-        })
-        .await;
+    tracing::debug!(
+        memoryId = memory_id,
+        characterId = %character_id,
+        "[Memories API v1] Fetched memory (access time not stamped)"
+    );
     Response::Memory(json!({ "memory": memory }))
 }
 
@@ -409,14 +424,23 @@ pub async fn memory_get(db: &Db, memory_id: &str) -> Response {
 // Character memory counts (v4 GET ?action=character-memory-counts)
 // ===========================================================================
 
-/// v4 `handleCharacterMemoryCounts`: `{success, characters: [{id, name,
-/// memoryCount}]}`, sorted by memoryCount DESCENDING.
+/// v4 `handleCharacterMemoryCounts` (`route.ts:1022-1052`): `{success,
+/// characters: [{id, name, memoryCount, hotTotal, demotable, protected,
+/// cold}]}`.
+///
+/// "The housekeeping cap measures demotable rows only (hot AUTO; bug 210), so
+/// the card compares `demotable` to the cap. `memoryCount` stays the total
+/// across both tiers for older readers." Sorted by the cap-measured count
+/// descending, then `memoryCount` descending ("so characters nearest their cap
+/// surface first"); v4's `Array.sort` is stable, so a full tie keeps the
+/// `findByUserId` order.
 pub fn memory_character_counts(db: &Db, user_id: &str) -> Response {
     let uid = user_id.to_string();
     let result: Result<Vec<Value>, DbError> = db.read_main(move |main| {
         db.read_mount_index(move |mount| {
             let chars = characters_read::find_by_user_id(main, mount, &uid)?;
-            let mut out: Vec<(String, Value)> = Vec::with_capacity(chars.len());
+            // (demotable, memoryCount, row)
+            let mut out: Vec<(i64, i64, Value)> = Vec::with_capacity(chars.len());
             for c in chars {
                 let id = c
                     .get("id")
@@ -424,24 +448,37 @@ pub fn memory_character_counts(db: &Db, user_id: &str) -> Response {
                     .unwrap_or("")
                     .to_string();
                 let name = c.get("name").cloned().unwrap_or(Value::Null);
-                let count = memories_read::count_by_character_id(main, &id)?;
+                let b = memories_read::count_cap_breakdown(main, &id)?;
+                let memory_count = b.hot_total + b.cold;
                 out.push((
-                    id.clone(),
-                    json!({ "id": id, "name": name, "memoryCount": count }),
+                    b.demotable,
+                    memory_count,
+                    json!({
+                        "id": id,
+                        "name": name,
+                        "memoryCount": memory_count,
+                        "hotTotal": b.hot_total,
+                        "demotable": b.demotable,
+                        "protected": b.protected,
+                        "cold": b.cold,
+                    }),
                 ));
             }
-            // Sort by memoryCount desc; v4's Array.sort is stable, so ties keep
-            // the findByUserId order.
-            out.sort_by(|a, b| {
-                let ca = a.1.get("memoryCount").and_then(Value::as_i64).unwrap_or(0);
-                let cb = b.1.get("memoryCount").and_then(Value::as_i64).unwrap_or(0);
-                cb.cmp(&ca)
-            });
-            Ok(out.into_iter().map(|(_, v)| v).collect())
+            // `b.demotable - a.demotable || b.memoryCount - a.memoryCount`
+            // (`slice::sort_by` is stable, as v4's is).
+            out.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
+            Ok(out.into_iter().map(|(_, _, v)| v).collect())
         })
     });
     match result {
-        Ok(characters) => Response::Memory(json!({ "success": true, "characters": characters })),
+        Ok(characters) => {
+            tracing::debug!(
+                userId = user_id,
+                characters = characters.len(),
+                "[Memories API] Character memory counts computed"
+            );
+            Response::Memory(json!({ "success": true, "characters": characters }))
+        }
         Err(e) => internal(e),
     }
 }
@@ -654,30 +691,33 @@ pub async fn memory_update(db: &Db, memory_id: &str, bag: Value) -> Response {
 // Delete (v4 DELETE /api/v1/memories/[id])
 // ===========================================================================
 
-/// v4 item DELETE: ownership via character, `deleteMemoryWithUnlink` (scrubs
-/// neighbours' `relatedMemoryIds`), `{success: true}`. v4's fire-and-forget
-/// `handleEntityDeletion` / `scheduleRefit` are host-timing seams (not ported).
+/// v4 item DELETE (`[id]/route.ts:147-195`): ownership via character, then
+/// the ONE retire path (`item-delete`), `{success: true}`.
+///
+/// "The deletion chokepoint removes the row, scrubs every link that names it
+/// and evicts its vector (bug 200: an orphan vector blinded the gate)." A row
+/// that vanished between the read and the retire (`retired === 0`) is v4's
+/// 404. The announcement runs after the commit (R-AF). A thrown error is v4's
+/// catch: ERROR `[Memories API v1] Error deleting memory` + 500 `Failed to
+/// delete memory`.
 pub async fn memory_delete(db: &Db, memory_id: &str) -> Response {
     let mid = memory_id.to_string();
-    let exists: Result<bool, DbError> = db.read_main(move |main| {
+    let owner: Result<Option<String>, DbError> = db.read_main(move |main| {
         let Some(existing) = memories_read::find_by_id(main, &mid)? else {
-            return Ok(false);
+            return Ok(None);
         };
         let cid = existing
             .get("characterId")
             .and_then(Value::as_str)
-            .unwrap_or("");
-        Ok(characters_read::find_by_id_raw(main, cid)?.is_some())
+            .unwrap_or("")
+            .to_string();
+        Ok(characters_read::find_by_id_raw(main, &cid)?.map(|_| cid))
     });
-    match exists {
-        Ok(true) => {}
-        Ok(false) => return not_found("Memory"),
-        Err(e) => return internal(e),
-    }
-    // P4.D288 (C1-7): the ONE retire path (`item-delete`, v4 `[id]/route.ts:
-    // 163`) — the row, every link naming it and its vector, then the
-    // announcement after the commit (R-AF). The response bytes are unchanged;
-    // v4's `retired === 0` → 404 arm is P4.D298's.
+    let character_id = match owner {
+        Ok(Some(cid)) => cid,
+        Ok(None) => return not_found("Memory"),
+        Err(e) => return delete_failed(&e),
+    };
     let ids = vec![memory_id.to_string()];
     let retired = db
         .write(move |w| {
@@ -688,21 +728,47 @@ pub async fn memory_delete(db: &Db, memory_id: &str) -> Response {
             )
         })
         .await;
-    match retired {
-        Ok(report) => {
-            announce_retirement(db, report.announcement.as_ref()).await;
-            Response::Memory(json!({ "success": true }))
-        }
-        Err(e) => internal(e),
+    let report = match retired {
+        Ok(report) => report,
+        Err(e) => return delete_failed(&e),
+    };
+    announce_retirement(db, report.announcement.as_ref()).await;
+    if report.retired == 0 {
+        return not_found("Memory");
     }
+
+    // v4: "Clean up embedding status (non-blocking)" — `handleEntityDeletion(
+    // 'MEMORY', memoryId)`, WARN `[Memories API v1] Failed to handle entity
+    // deletion` `{memoryId, error}` on a rejection — then "Schedule refit for
+    // BUILTIN profiles (non-blocking)" — `scheduleRefit(user.id)`, WARN
+    // `[Memories API v1] Failed to schedule refit after delete` `{memoryId,
+    // error}`. Both are P4.D292's (R-Q); their calls here land with §S.5 (2).
+
+    tracing::info!(
+        memoryId = memory_id,
+        characterId = %character_id,
+        "[Memories API v1] Memory deleted"
+    );
+    Response::Memory(json!({ "success": true }))
+}
+
+/// v4 item DELETE's catch arm.
+fn delete_failed(e: &DbError) -> Response {
+    tracing::error!(
+        error = %crate::db::fallback::error_text(e),
+        "[Memories API v1] Error deleting memory"
+    );
+    Response::error(ErrorKind::Internal, "Failed to delete memory")
 }
 
 // ===========================================================================
 // Delete by chat (v4 DELETE /api/v1/memories?chatId=)
 // ===========================================================================
 
-/// v4 `handleDeleteByChatId`: chat ownership, `deleteMemoriesByChatIdWithVectors`,
-/// `{success, chatId, deletedCount}`.
+/// v4 `handleDeleteByChatId` (`route.ts:1240-1269`): chat ownership, then
+/// `retireChatMemories` — "Manual rows, cold rows and digests with surviving
+/// members are spared (bug 201)" — and `{success, chatId, deletedCount,
+/// sparedCount}`.
 pub async fn memory_delete_by_chat(db: &Db, chat_id: &str) -> Response {
     let cid = chat_id.to_string();
     let owned: Result<bool, DbError> =
@@ -712,9 +778,7 @@ pub async fn memory_delete_by_chat(db: &Db, chat_id: &str) -> Response {
         Ok(false) => return not_found("Chat"),
         Err(e) => return internal(e),
     }
-    // P4.D288 (C1-7): v4 `retireChatMemories` (bug 201's partition — manual,
-    // cold and still-living digest rows are spared); the announcement after
-    // the commit (R-AF). `sparedCount` and the renamed line are P4.D298's.
+    // The announcement runs after the commit (R-AF).
     let cid = chat_id.to_string();
     let wiped = db
         .write(move |w| retire_chat_memories(w.main().connection(), &cid))
@@ -738,11 +802,15 @@ pub async fn memory_delete_by_chat(db: &Db, chat_id: &str) -> Response {
             tracing::debug!(
                 chatId = chat_id,
                 deleted = report.retired,
-                "[Memories API] Deleted every memory for a chat"
+                spared = report.spared,
+                "[Memories API] Wiped a chat's extracted memories"
             );
-            Response::Memory(
-                json!({ "success": true, "chatId": chat_id, "deletedCount": report.retired }),
-            )
+            Response::Memory(json!({
+                "success": true,
+                "chatId": chat_id,
+                "deletedCount": report.retired,
+                "sparedCount": report.spared,
+            }))
         }
         Err(e) => internal(e),
     }
@@ -926,7 +994,10 @@ pub async fn memory_search<P: EmbeddingProvider + Sync>(
         embedding_profile_id: None,
         limit: Some(bag.limit as usize),
         min_score: bag.min_score,
-        min_importance: bag.min_importance,
+        // v4 `minImportance ?? TOOL_MIN_IMPORTANCE` (`route.ts:660`). Not a
+        // no-op: with `0` the recall search filters on the
+        // `reinforcedImportance` COLUMN, which excludes a NULL row (§R.4(f)).
+        min_importance: Some(bag.min_importance.unwrap_or(TOOL_MIN_IMPORTANCE)),
         source: bag.source,
         about_character_id: None,
         apply_literal_phrase_boost: false,
@@ -968,52 +1039,6 @@ pub async fn memory_search<P: EmbeddingProvider + Sync>(
         Ok(b) => Response::Memory(b),
         Err(e) => internal(e),
     }
-}
-
-// ===========================================================================
-// Config: auto-housekeeping (per-user, chat_settings)
-// ===========================================================================
-
-/// Zod `z.number()` over a JSON value — JSON cannot express `NaN`, so any
-/// number literal passes the base check.
-fn zod_number(v: &Value) -> Option<f64> {
-    v.as_f64().filter(|f| !f.is_nan())
-}
-
-/// Zod `.int()` — `Number.isSafeInteger`. (`f.fract()` of an infinity is `NaN`,
-/// so the non-finite arm falls out here too.)
-fn zod_safe_int(f: f64) -> bool {
-    f.fract() == 0.0 && f.abs() <= 9_007_199_254_740_991.0
-}
-
-/// v4 `extractionLimitsConfigSchema` (`route.ts:115-120`) — the housekeeping
-/// sibling; see [`validate_housekeeping_config`] for the shared semantics.
-fn validate_extraction_limits_config(bag: &Value) -> Result<(), Response> {
-    let Some(obj) = bag.as_object() else {
-        return Err(bad_request("Validation error"));
-    };
-    if let Some(v) = obj.get("enabled") {
-        if !v.is_boolean() {
-            return Err(bad_request("Validation error"));
-        }
-    }
-    // `z.number().int().min(1).max(10000)`
-    if let Some(v) = obj.get("maxPerHour") {
-        match zod_number(v) {
-            Some(f) if zod_safe_int(f) && (1.0..=10_000.0).contains(&f) => {}
-            _ => return Err(bad_request("Validation error")),
-        }
-    }
-    // `z.number().min(0).max(1)` for both fractions.
-    for key in ["softStartFraction", "softFloor"] {
-        if let Some(v) = obj.get(key) {
-            match zod_number(v) {
-                Some(f) if (0.0..=1.0).contains(&f) => {}
-                _ => return Err(bad_request("Validation error")),
-            }
-        }
-    }
-    Ok(())
 }
 
 // ===========================================================================
@@ -1086,10 +1111,18 @@ pub async fn memory_recall_config_set(db: &Db, bag: Value) -> Response {
         })
         .await;
     match wrote {
-        Ok(_) => Response::Memory(json!({
-            "success": true,
-            "settings": merged.to_json(),
-        })),
+        Ok(_) => {
+            tracing::info!(
+                scopePolicy = %merged.scope_policy,
+                expandRelated = merged.expand_related,
+                perTurnConversationSummaries = merged.per_turn_conversation_summaries,
+                "[Memories API] Recall settings updated (instance-wide)"
+            );
+            Response::Memory(json!({
+                "success": true,
+                "settings": merged.to_json(),
+            }))
+        }
         Err(e) => internal(e),
     }
 }
@@ -1102,23 +1135,32 @@ pub fn memory_extraction_limits_get(db: &Db) -> Response {
     }
 }
 
-/// v4 POST `?action=extraction-limits-config` — validate FIRST
-/// ([`validate_extraction_limits_config`]), then merge-patch, store,
-/// `{success, settings}`.
+/// v4 POST `?action=extraction-limits-config` (`route.ts:909-935`):
+/// `extractionLimitsConfigSchema = patchSchemaOf(MemoryExtractionLimitsSchema)`
+/// — "Every settings write validates through the façade's own schemas, as a
+/// patch: an omitted key stays omitted, so a card that sends one field changes
+/// one field (bug 244 — `.partial()` alone re-applies every default)." ONE
+/// validator (C1-5's [`instance_settings::parse_memory_extraction_limits_patch`])
+/// FIRST — a refusal stores nothing and answers the family's house 400
+/// `Validation error` (L-1) — then the `?? current` merge, the store, the
+/// INFO, `{success, settings: merged}`.
 pub async fn memory_extraction_limits_set(db: &Db, bag: Value) -> Response {
-    if let Err(resp) = validate_extraction_limits_config(&bag) {
-        return resp;
-    }
+    let patch = match instance_settings::parse_memory_extraction_limits_patch(&bag) {
+        Ok(p) => p,
+        Err(_issues) => return bad_request("Validation error"),
+    };
     let current = match db.read_main(instance_settings::get_memory_extraction_limits) {
         Ok(c) => c,
         Err(e) => return internal(e),
     };
     let pick = |key: &str| {
-        bag.get(key)
+        patch
+            .get(key)
             .cloned()
             .unwrap_or_else(|| current[key].clone())
     };
-    // P4.56: the housekeeping sibling's reasoning — see there.
+    // P4.56: the stored and echoed numbers render as JS renders them (an
+    // integer-valued float collapses, as `JSON.stringify` writes it).
     let merged = normalize_js_numbers(json!({
         "enabled": pick("enabled"),
         "maxPerHour": pick("maxPerHour"),
@@ -1130,7 +1172,14 @@ pub async fn memory_extraction_limits_set(db: &Db, bag: Value) -> Response {
         .write(move |w| instance_settings::set_memory_extraction_limits(w.main().connection(), &m2))
         .await;
     match wrote {
-        Ok(_) => Response::Memory(json!({ "success": true, "settings": merged })),
+        Ok(_) => {
+            tracing::info!(
+                enabled = %merged["enabled"],
+                maxPerHour = %merged["maxPerHour"],
+                "[Memories API] Extraction rate limits updated (instance-wide)"
+            );
+            Response::Memory(json!({ "success": true, "settings": merged }))
+        }
         Err(e) => internal(e),
     }
 }
@@ -1205,8 +1254,10 @@ pub fn memory_regenerate_all_status(db: &Db, user_id: &str) -> Response {
     }))
 }
 
-/// v4 POST `?action=regenerate-all` — `handleRegenerateAll`: wipe in-flight
-/// regenerate/extraction jobs, resolve the standard + dangerous-compatible cheap
+/// v4 POST `?action=regenerate-all` — `handleRegenerateAll` (`route.ts:
+/// 1271-1361`): wipe in-flight regenerate/extraction jobs (`MEMORY_REGENERATE_ALL`,
+/// `MEMORY_REGENERATE_CHAT`, `MEMORY_EXTRACTION` — `ac6348c5f` dropped
+/// `INTER_CHARACTER_MEMORY`, a retired type nothing enqueues), resolve the standard + dangerous-compatible cheap
 /// profiles, enqueue ONE fan-out (deduped on userId). `{success, jobId, isNew,
 /// cleared, message}`.
 pub async fn memory_regenerate_all(db: &Db, user_id: &str) -> Response {
@@ -1227,6 +1278,13 @@ pub async fn memory_regenerate_all(db: &Db, user_id: &str) -> Response {
         Ok(n) => n as i64,
         Err(e) => return internal(e),
     };
+    if cleared > 0 {
+        tracing::info!(
+            userId = user_id,
+            cleared = cleared,
+            "[Memories API] Cleared in-flight regenerate jobs before fresh sweep"
+        );
+    }
 
     // 2. Resolve the cheap profiles up front (v4's self-contained payload).
     let uid = user_id.to_string();
@@ -1294,6 +1352,14 @@ pub async fn memory_regenerate_all(db: &Db, user_id: &str) -> Response {
             Ok(r) => r,
             Err(e) => return internal(e),
         };
+    tracing::info!(
+        userId = user_id,
+        jobId = %job_id,
+        isNew = is_new,
+        standardProfileId = %standard_id,
+        dangerousProfileId = %dangerous_id,
+        "[Memories API] Regenerate-all fan-out enqueued"
+    );
 
     let cleared_suffix = if cleared > 0 {
         format!(
@@ -1362,44 +1428,115 @@ pub fn memory_embedding_status(db: &Db, user_id: &str, character_id: &str) -> Re
     }
 }
 
-/// v4 `backfillStartSchema`.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BackfillBag {
-    #[serde(default)]
-    character_id: Option<String>,
-    #[serde(default = "default_batch_size")]
-    batch_size: i64,
-}
-fn default_batch_size() -> i64 {
-    500
+/// v4 `backfillStartSchema` (`route.ts:180-185`), Zod-faithful over the
+/// dispatch bag: `characterId: z.uuid().optional()`, `batchSize:
+/// z.number().int().min(1).max(2000).prefault(500)`. The issues come back in
+/// schema order (the `parse_search_bag` shape); the handler answers the
+/// memories family's house 400 `Validation error` (L-1).
+fn parse_backfill_bag(bag: &Value) -> Result<(Option<String>, i64), Vec<ZodIssue>> {
+    let Some(obj) = bag.as_object() else {
+        return Err(vec![ZodIssue::invalid_type("object", vec![], Some(bag))]);
+    };
+    let mut issues = Vec::new();
+    let character_id = match obj.get("characterId") {
+        None => None,
+        Some(Value::String(s)) if zod_uuid_ok(s) => Some(s.clone()),
+        Some(Value::String(_)) => {
+            issues.push(ZodIssue::invalid_uuid(vec![zod_key("characterId")]));
+            None
+        }
+        Some(other) => {
+            issues.push(ZodIssue::invalid_type(
+                "string",
+                vec![zod_key("characterId")],
+                Some(other),
+            ));
+            None
+        }
+    };
+    let batch_size = match obj.get("batchSize") {
+        None => Some(500),
+        Some(v) => match v.as_f64() {
+            Some(n) if n.fract() == 0.0 && n.abs() <= MAX_SAFE_INTEGER => {
+                if n < 1.0 {
+                    issues.push(ZodIssue::too_small_number(
+                        json!(1),
+                        vec![zod_key("batchSize")],
+                    ));
+                }
+                if n > 2000.0 {
+                    issues.push(ZodIssue::too_big_number(
+                        json!(2000),
+                        vec![zod_key("batchSize")],
+                    ));
+                }
+                Some(n as i64)
+            }
+            Some(n) => {
+                let as_value = crate::db::js_number_to_json(n);
+                issues.push(ZodIssue::invalid_int_type(
+                    vec![zod_key("batchSize")],
+                    Some(&as_value),
+                ));
+                None
+            }
+            None => {
+                issues.push(ZodIssue::invalid_type(
+                    "number",
+                    vec![zod_key("batchSize")],
+                    Some(v),
+                ));
+                None
+            }
+        },
+    };
+    if !issues.is_empty() {
+        return Err(issues);
+    }
+    Ok((character_id, batch_size.unwrap_or(500)))
 }
 
-/// v4 POST `?action=backfill-embeddings` — `handleBackfillStart`: batch-enqueue
-/// `EMBEDDING_GENERATE` for memories missing an embedding. `{success, enqueued,
-/// remaining, message}`.
+/// v4 POST `?action=backfill-embeddings` — `handleBackfillStart`
+/// (`route.ts:1082-1133`): ONE deduped batch through
+/// `enqueueMissingEmbeddings` (rows already holding an active
+/// `EMBEDDING_GENERATE` job are skipped). `{success, enqueued, remaining,
+/// message}`. Every row already queued (`enqueued: 0`, `remaining > 0`) takes
+/// the INFO + template arm, not the zero sentence.
 pub async fn memory_backfill_start(db: &Db, user_id: &str, bag: Value) -> Response {
-    let bag: BackfillBag = match serde_json::from_value(bag) {
-        Ok(b) => b,
-        Err(e) => return bad_request(format!("Invalid backfill body: {e}")),
+    let (character_id, batch_size) = match parse_backfill_bag(&bag) {
+        Ok(parsed) => parsed,
+        Err(_issues) => return bad_request("Validation error"),
     };
-    if let Some(cid) = &bag.character_id {
+    if let Some(cid) = &character_id {
         match character_exists(db, cid) {
             Ok(true) => {}
             Ok(false) => return not_found("Character"),
             Err(e) => return internal(e),
         }
     }
-    let char_filter = bag.character_id.clone();
-    let batch = bag.batch_size;
-    let missing: Result<Vec<Value>, DbError> = db.read_main(move |conn| {
-        memories_read::find_ids_without_embedding(conn, char_filter.as_deref(), Some(batch))
-    });
-    let missing = match missing {
-        Ok(m) => m,
+    let queued = match crate::services::memory_index::enqueue_missing_embeddings(
+        db,
+        user_id,
+        character_id.as_deref(),
+        batch_size,
+    )
+    .await
+    {
+        Ok(q) => q,
         Err(e) => return internal(e),
     };
-    if missing.is_empty() {
+    let (enqueued, remaining) = match queued {
+        crate::services::memory_index::EnqueueMissingEmbeddingsResult::NoProfile { .. } => {
+            return bad_request(
+                "No default embedding profile is configured. Set one in the Commonplace Book tab before running the backfill.",
+            )
+        }
+        crate::services::memory_index::EnqueueMissingEmbeddingsResult::Ok {
+            enqueued,
+            remaining,
+        } => (enqueued, remaining),
+    };
+    if enqueued == 0 && remaining == 0 {
         return Response::Memory(json!({
             "success": true,
             "enqueued": 0,
@@ -1407,45 +1544,13 @@ pub async fn memory_backfill_start(db: &Db, user_id: &str, bag: Value) -> Respon
             "message": "No memories missing embeddings — nothing to backfill.",
         }));
     }
-    // Resolve the user's default embedding profile.
-    let uid = user_id.to_string();
-    let default = db.read_main(move |conn| crate::db::embedding_profiles::find_default(conn, &uid));
-    let profile = match default {
-        Ok(Some(p)) => p,
-        Ok(None) => {
-            return bad_request(
-                "No default embedding profile is configured. Set one in the Commonplace Book tab before running the backfill.",
-            )
-        }
-        Err(e) => return internal(e),
-    };
-    // Enqueue one EMBEDDING_GENERATE per missing memory (v4 warns + continues on
-    // an individual enqueue failure).
-    let mut enqueued = 0i64;
-    for m in &missing {
-        let (Some(id), Some(char_id)) = (
-            m.get("id").and_then(Value::as_str),
-            m.get("characterId").and_then(Value::as_str),
-        ) else {
-            continue;
-        };
-        let payload = json!({
-            "entityType": "MEMORY",
-            "entityId": id,
-            "characterId": char_id,
-            "profileId": profile.id,
-        });
-        if crate::services::queue_service::enqueue_embedding_generate(db, user_id, payload)
-            .await
-            .is_ok()
-        {
-            enqueued += 1;
-        }
-    }
-    let char_filter = bag.character_id.clone();
-    let remaining = db
-        .read_main(move |conn| memories_read::count_without_embedding(conn, char_filter.as_deref()))
-        .unwrap_or(0);
+    tracing::info!(
+        userId = user_id,
+        characterId = character_id.as_deref().unwrap_or("(all)"),
+        enqueued = enqueued,
+        remaining = remaining,
+        "[Memories API] Embedding backfill batch enqueued"
+    );
     let message = if remaining > 0 {
         format!(
             "Enqueued {enqueued} embedding jobs. {remaining} memories still missing embeddings — run again to continue."
@@ -1466,24 +1571,24 @@ pub async fn memory_backfill_start(db: &Db, user_id: &str, bag: Value) -> Respon
 // ============================================================================
 
 /// v4 POST `?action=embeddings` → `handleGenerateEmbeddings`
-/// (`app/api/v1/memories/route.ts:963`): Zod parse (uuid + batchSize 1–50,
-/// prefault 10), character ownership, default-profile gate, the all-embedded
-/// early return, else the synchronous `generateMissingEmbeddings` sweep.
-/// The Zod `details` array is the standing repo-wide deferral — the 400 body
-/// carries the middleware's `Validation error` message alone.
+/// (`app/api/v1/memories/route.ts:1135-1181`): Zod parse (`characterId` uuid
+/// only — `af48f6cc2` dropped `batchSize`, which Zod now strips), character
+/// ownership, default-profile gate, the all-embedded early return, else the
+/// synchronous `generateMissingEmbeddings` sweep (`...result` spreads
+/// `processed, failed, skipped`). The Zod `details` array is the standing
+/// repo-wide deferral — the 400 body carries the middleware's `Validation
+/// error` message alone.
+///
+/// The sweep still runs on the base's `memory_service` backfill (its old
+/// per-call batch of 10); the re-point onto P4.D292's
+/// `services/memory_index_backfill.rs` is §S.5 (3).
 pub async fn memory_generate_embeddings<P: crate::model::embedding::EmbeddingProvider>(
     db: &Db,
     provider: &P,
     user_id: &str,
     character_id: &str,
-    batch_size: Option<i64>,
 ) -> Response {
     if !super::chat_outfits::is_zod_uuid(character_id) {
-        return bad_request("Validation error");
-    }
-    // `z.number().min(1).max(50).prefault(10)`.
-    let batch = batch_size.unwrap_or(10);
-    if !(1..=50).contains(&batch) {
         return bad_request("Validation error");
     }
     match character_exists(db, character_id) {
@@ -1533,7 +1638,7 @@ pub async fn memory_generate_embeddings<P: crate::model::embedding::EmbeddingPro
         user_id,
         character_id,
         None,
-        batch as usize,
+        GENERATE_EMBEDDINGS_SWEEP_BATCH,
     )
     .await
     {
@@ -1549,6 +1654,10 @@ pub async fn memory_generate_embeddings<P: crate::model::embedding::EmbeddingPro
         "remaining": missing - result.processed - result.failed,
     }))
 }
+
+/// The base backfill service's per-call batch (the retired `batchSize`
+/// prefault) — gone with §S.5 (3)'s re-point.
+const GENERATE_EMBEDDINGS_SWEEP_BATCH: usize = 10;
 
 /// v4 PUT `?action=embeddings` → `handleRebuildIndex`
 /// (`app/api/v1/memories/route.ts:1047`): Zod parse (uuid + `confirm` literal
@@ -1898,9 +2007,9 @@ mod tests {
         (tracing::subscriber::set_default(sub), logs)
     }
 
-    /// v4 `app/api/v1/memories/route.ts:1093`. Log-only: the response body and
-    /// every `memories` row are identical whether or not this fires, so the only
-    /// proof is the capturing layer over the real handler.
+    /// v4 `app/api/v1/memories/route.ts:1261` (bug 201's rename). Log-only: the
+    /// response body and every `memories` row are identical whether or not this
+    /// fires, so the only proof is the capturing layer over the real handler.
     #[tokio::test]
     async fn delete_by_chat_logs_v4s_debug_on_both_arms() {
         let (_dir, db) = provisioned();
@@ -1912,7 +2021,7 @@ mod tests {
             assert!(matches!(resp, Response::Memory(_)), "{resp:?}");
             let hits: Vec<&String> = lines
                 .iter()
-                .filter(|l| l.contains("[Memories API] Deleted every memory for a chat"))
+                .filter(|l| l.contains("[Memories API] Wiped a chat's extracted memories"))
                 .collect();
             assert_eq!(hits.len(), 1, "one line per call: {lines:?}");
             let line = hits[0];
@@ -1923,6 +2032,7 @@ mod tests {
                 "the EMPTY chat still narrates deleted=0 — v4 logs after the \
                  call, not inside a deleted-something branch: {line:?}"
             );
+            assert!(line.ends_with(" spared=0"), "{line:?}");
         }
     }
 
@@ -1942,7 +2052,7 @@ mod tests {
         assert!(
             !lines
                 .iter()
-                .any(|l| l.contains("[Memories API] Deleted every memory")),
+                .any(|l| l.contains("[Memories API] Wiped a chat")),
             "{lines:?}"
         );
     }

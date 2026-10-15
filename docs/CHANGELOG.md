@@ -138,6 +138,22 @@ Deleted: housekeeping, its outcome cache, the consolidation triggers, the dedup 
 
 New differential families from the pin: `memory_maintenance_planning`, `memory_maintenance_tier2`, `memory_maintenance_consolidate_tier3`, `memory_maintenance_queue_tier2`, `memory_maintenance_routes`, `memory_graph_repair_tier2`, and the census `maintenance_commit_hook_unreachable_census` (R-L: the commit hook is unreachable at the pin, so it is not ported). Retired families: `memory_housekeeping_tier2`, `memory_watermark_tier3`, `consolidation_triggers_tier2`, `memory_dedup`, `consolidation_service_tier3`. Re-aimed: `memory_consolidation_routes`, `consolidation_tasks`, `system_body_guards`, `realtime_topics`, `system_jobs_collection`. Host: a new cadence test for the memory-maintenance startup tick. The `p4_d288_wire_contract` refusal rows for the three filled arms are retired, and `host_zone_sites_census` counts the `maintain` arm's display-zone read (8 → 9).
 
+#### 2026-10-15 — feat(memories-api): P4.D298 units 2–10 — item GET/DELETE, chat wipe, counts, list/search importance, embeddings, backfill, regenerate-all, limits
+
+_Versions: core 0.0.1300._
+
+The Memories API's non-admission handlers moved onto v4's `83334b9a5` pin:
+
+- Item GET no longer stamps `lastAccessedAt` (bug 219) and logs `[Memories API v1] Fetched memory (access time not stamped)`; a read failure answers v4's 500 `Failed to fetch memory`.
+- Item DELETE retires through the retire path and answers 404 when nothing was retired; it logs `[Memories API v1] Memory deleted`.
+- The chat wipe answers `sparedCount` and logs `[Memories API] Wiped a chat's extracted memories` with `spared` (bug 201).
+- Character memory counts carry `hotTotal`, `demotable`, `protected`, `cold` (`memoryCount = hotTotal + cold`), sorted by `demotable` then `memoryCount` (bug 210), with v4's DEBUG.
+- The legacy list's `minImportance` reads `reinforcedImportance ?? importance`; the search defaults `minImportance` to 0.
+- POST `embeddings` ignores `batchSize`; the backfill start runs as one deduped batch through `enqueue_missing_embeddings` with v4's Zod rules and INFO; regenerate-all logs its two INFOs.
+- The extraction-limits POST validates through the shared patch parser (the hand validator is deleted) and logs v4's INFO; recall-config logs its INFO.
+
+`memories_routes_equivalence` gains 36 rows (bodies by bytes, the route's lines, table dumps) from the pin; both oracle cases now capture v4's log lines and hold v4's job host off. `embedding_generate_jobs_equivalence` drops the `batchSize` argument (compile-forced).
+
 #### 2026-10-14 — ADMISSION: P4.D290 — admission's stateful half over SCORING + KEYSTONE (one entry point, the lock, the idempotency ledger, the one combine's writes, the hand edit)
 
 _Versions: core 0.0.1299._

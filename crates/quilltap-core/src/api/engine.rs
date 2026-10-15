@@ -3865,9 +3865,8 @@ impl CoreEngine {
             },
             // === P4.6BL tier 2: the two repair arms, un-refused over the live
             // memory_embedding seam (the P4.6s refusals retire here). ===
-            // P4.D288 (C2): `batchSize` dropped with v4's `af48f6cc2`; the
-            // handler's own batch parameter goes with the backfill re-point
-            // (§S.5 (3)) — `None` is its default batch.
+            // P4.D288 (C2) + P4.D298: `batchSize` dropped with v4's
+            // `af48f6cc2` (Zod strips it; serde ignores it).
             Request::MemoryGenerateEmbeddings { character_id } => match self.ready_memory_embedding() {
                 Ok((db, provider)) => {
                     super::memories::memory_generate_embeddings(
@@ -3875,7 +3874,6 @@ impl CoreEngine {
                         &provider,
                         SINGLE_USER_ID,
                         &character_id,
-                        None,
                     )
                     .await
                 }

@@ -113,8 +113,8 @@ struct FailingTextW {
 #[serde(rename_all = "camelCase")]
 struct RouteBodyW {
     character_id: String,
-    // P4.D292: a corpus body's `batchSize` is parsed but never sent — the wire
-    // dropped it at `KEYSTONE` (see the route phase).
+    // P4.D298 (compile-forced): `batchSize` left the route with v4's
+    // `af48f6cc2`; a corpus row that still sends it is ignored, as Zod strips it.
     confirm: Option<bool>,
 }
 
@@ -629,13 +629,6 @@ async fn embedding_generate_jobs_match_oracle() {
                     &embedding,
                     &spec.user_id,
                     &case.body.character_id,
-                    // P4.D292: the wire dropped `batchSize` at `KEYSTONE` (C2 —
-                    // v4 `af48f6cc2`; Zod strips the key), and the engine arm
-                    // passes `None`: a body's `batchSize` never reaches the
-                    // handler, so `gen-invalid-batch` answers v4's 200. (The
-                    // parameter itself leaves with the backfill re-point —
-                    // §S.5 (3); this argument goes with it.)
-                    None,
                 )
                 .await
             }
