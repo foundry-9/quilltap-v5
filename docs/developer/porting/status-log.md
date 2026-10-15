@@ -180981,3 +180981,15 @@ This lane's half (the `builtinRefit` key) is written into the Rust comparand (fe
   Result objects byte-compared, lines whole per op (the silence legs), `background_jobs` masked. **4 / 4 green.**
 - Regen: the family's header recipe (outputs `/tmp/qt-builtin-refit-policy`, `/tmp/oracle-builtin-refit-policy.ndjson`;
   this lane ran it into `/tmp/p4d292/brp`, `/tmp/p4d292/oracle-brp.ndjson`).
+
+### Unit 2 — boot PHASE 3.8 + the refit debounce driver (host)
+
+- `host.rs` `assemble`: a fenced `// === P4.D292: v4's PHASE 3.8 … ===` spawn of `check_builtin_refit` right after
+  `reconcile_embedding_dimensions_at_boot` (never joined); a fenced `refit_debounce_loop` spawn beside the sweep
+  loops (`stop_rx.clone()`), and the loop fn itself (fenced): fire due → sleep until `next_deadline()` / the
+  scheduler's notify / the stop (a dropped stop sender ends it — no spin).
+- NEW `crates/quilltap-host/tests/host_boot_p4d292_refit_check.rs` (global capture, one test): a fresh `setup`
+  instance (its default IS BUILTIN — asserted as the premise) + two planted memories → ONE `EMBEDDING_REFIT` with
+  `reason=unfitted source=check`, `Host::start` returning before the row lands; then `schedule_refit` on the live
+  host fires ≥ 5 s later through the driver (`pending_count` back to 0). `cargo test -p quilltap-host` green whole
+  (no boot-order pin disturbed).

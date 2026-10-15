@@ -621,6 +621,23 @@ impl EngineAssembler for HostAssembler {
         reconcile_embedding_dimensions_at_boot(db);
         // === end P4.d27 / P4.D222 ===
 
+        // === P4.D292: v4's PHASE 3.8, the TF-IDF refit check ===
+        // v4 `instrumentation.ts:995-1013` — `void checkBuiltinRefit()` right
+        // after 3.7, fire-and-forget: a BUILTIN default whose vocabulary is
+        // unfitted, stamped with the anchored text shape, or drifted gets ONE
+        // refit + full reindex enqueued; a neural default is a no-op. Spawned on
+        // the host runtime, never joined, never fails boot (the check answers
+        // its all-null struct after its own WARN). v4's `Failed to import the
+        // TF-IDF refit check` WARN has no analogue (no dynamic import).
+        {
+            let db = db.clone();
+            self.rt.spawn(async move {
+                let _ =
+                    quilltap_core::services::builtin_refit_policy::check_builtin_refit(&db).await;
+            });
+        }
+        // === end P4.D292 ===
+
         // The terminal manager (P4.1c) — one per assembly (it holds this
         // assembly's Db); published on the host slot for the transport's
         // terminal routes.
@@ -922,6 +939,10 @@ impl EngineAssembler for HostAssembler {
             },
             crate::files_store::LocalStorageBackend::new(self.base_dir.join("files")),
         ));
+        // === P4.D292: the refit debounce driver (R-Q) ===
+        self.rt
+            .spawn(refit_debounce_loop(db.clone(), stop_rx.clone()));
+        // === end P4.D292 ===
         self.rt.spawn(danger_scan_loop(
             db.clone(),
             stop_rx,
@@ -2428,6 +2449,49 @@ async fn heartbeat_loop(
 
 /// v4 `scheduled-cleanup.ts`: run the LLM-log cleanup enqueuer immediately at
 /// startup, then every 24 h. Errors are swallowed (v4 catches + logs).
+// === P4.D292: the refit debounce driver (R-Q, L-8) ===
+/// v4 `scheduleRefit`'s `setTimeout(5000)` — the host half. The core keeps
+/// the pending checks as a deadline table
+/// ([`quilltap_core::services::embedding_job_scheduler`]); this task fires
+/// the due ones with the wall clock, then sleeps until the earliest deadline —
+/// woken early by the scheduler's notify whenever a check is armed or
+/// re-armed — and exits on the assembly's stop. It never polls: with nothing
+/// pending it waits on the notify (or the stop) alone.
+async fn refit_debounce_loop(db: Db, mut stop: watch::Receiver<bool>) {
+    use quilltap_core::services::embedding_job_scheduler::{
+        fire_due_refits, next_deadline, schedule_notify,
+    };
+    loop {
+        if *stop.borrow() {
+            break;
+        }
+        // Register for the wake BEFORE reading the deadline, so a schedule
+        // between the read and the wait is not missed.
+        let notified = schedule_notify().notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        fire_due_refits(&db, now_unix_ms()).await;
+        let now = now_unix_ms();
+        let wait =
+            next_deadline().map(|d| std::time::Duration::from_millis((d - now).max(0) as u64));
+        tokio::select! {
+            changed = stop.changed() => {
+                if changed.is_err() {
+                    break;
+                }
+            }
+            _ = &mut notified => {}
+            _ = async {
+                match wait {
+                    Some(w) => tokio::time::sleep(w).await,
+                    None => std::future::pending::<()>().await,
+                }
+            } => {}
+        }
+    }
+}
+// === end P4.D292 ===
+
 async fn cleanup_loop(db: Db, mut stop: watch::Receiver<bool>, interval_ms: u64) {
     loop {
         if *stop.borrow() {
