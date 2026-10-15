@@ -39,6 +39,21 @@
 //! the fixture, so the map is compared verbatim (the recompile's whole effect,
 //! including the new scene inside each compiled stack).
 //!
+//! ## P4.D295 (v4 `545e299bb`, pinned at `83334b9a5`)
+//!
+//! The resolver answers the RECIPE (`{scenarioText, scenarioSource,
+//! scenarioNotes}`) and takes `{userId, characterId}`; the `resolver_*` rows
+//! emit it (or the refusal / throw). The verb rows add `reload` /
+//! `scenarioRef`, the kept scene, the whole-recipe no-op, the provenance- and
+//! notes-only writes (no new Host bubble); the `source_*` rows drive
+//! `?action=scenario-source` (`chat_get_scenario_source`). Every row compares
+//! its scenario lines (L21–L33 + the location's) through a GLOBAL capture
+//! (the writes run on the writer thread), the export route's own `Markdown
+//! transcript exported` DEBUG excluded on both sides (not this slice's line).
+//! Response bodies compare in KEY ORDER; the table dumps keep the sorted
+//! compare (the chat row's key order is `chats_read`'s contract, not this
+//! family's).
+//!
 //! Fixture (Node 24, from the v4 checkout — see the builder's header):
 //!   TZ=UTC QT_FIXTURE_CS_MAIN=…/chat-scenario-main.db \
 //!   QT_FIXTURE_CS_MOUNT=…/chat-scenario-mount.db \
@@ -53,10 +68,15 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
 use quilltap_core::api::types::{ErrorKind, Request, Response};
+use quilltap_core::db::chats::ScenarioRef;
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::services::chat_scenario::{chat_set_scenario, SetScenarioBody};
+use quilltap_core::scenarios::location::ScenarioLocationError;
+use quilltap_core::services::chat_scenario::{
+    chat_get_scenario_source, chat_set_scenario, SetScenarioBody,
+};
 use quilltap_core::services::scenario_selection::{
-    resolve_scenario_selection, ResolveScenarioSelectionOptions, ScenarioSelectionFields,
+    resolve_scenario_selection, ResolveScenarioSelectionOptions, ScenarioSelectionError,
+    ScenarioSelectionFields,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -94,6 +114,11 @@ const VALIDATION_DETAILS_GAP: &[&str] = &[
     "verb_path_too_long",
     "verb_wrong_type_scenario",
     "verb_wrong_type_path",
+    // P4.D295: the two new body fields' Zod floors.
+    "verb_reload_null_refuses",
+    "verb_reload_string_refuses",
+    "verb_scenario_ref_malformed_refuses",
+    "verb_scenario_ref_empty_path_refuses",
 ];
 
 /// Cases that WRITE: a Host bubble is minted (fresh id + `createdAt` on both
@@ -119,7 +144,121 @@ const WRITING_CASES: &[&str] = &[
     "verb_group_path_without_group_id",
     "verb_dangling_scenario_id",
     "verb_unreadable_character_skipped",
+    // P4.D295: the whole-recipe compare makes these write (the BY-DESIGN flip
+    // §R.13(h): a re-pick of the seeded general text now TRACES its source).
+    "verb_noop_same_general_preset",
+    "verb_reload_true_no_source",
+    "verb_scenario_ref_null_is_absent",
+    "verb_ref_ok",
+    "verb_kept_scene_no_reload",
+    "verb_reload_pulls_the_revision",
+    "verb_kept_scene_falls_through_when_text_was_edited",
+    "verb_provenance_only_change",
+    "verb_notes_only_change",
 ];
+
+/// [P4.D295] **`RELOAD_NULL_DECODES_ABSENT`** — a recorded divergence, pinned
+/// both ways. v4's `reload: z.boolean().optional()` is NOT nullable, so
+/// `reload: null` is its flat `Validation error` 400 and nothing is written. The
+/// `KEYSTONE` C2 field (`api/types.rs` — P4.D288's, frozen) is
+/// `#[serde(default)] reload: Option<serde_json::Value>`, and serde decodes a
+/// JSON `null` into an `Option` as `None` — indistinguishable from absent — so
+/// v5's floor (which refuses `Some(Null)`, unit-pinned in `chat_scenario`) never
+/// sees it: v5 answers 200 and WRITES. Flagged to the human (a C2 shape change
+/// is a STOP-and-flag, §R.14). Asserted: v4 400 `Validation error`; v5 200 — a
+/// v5 that starts refusing trips this table (retire it then).
+const RELOAD_NULL_DECODES_ABSENT: &[&str] = &["verb_reload_null_refuses"];
+
+/// [P4.D295] The scenario lines a row logs — the v4 case captures the same set.
+const LINE_PREFIXES: &[&str] = &[
+    "[Chats v1] ",
+    "[ScenarioLocation] ",
+    "Scenario file body is empty; skipping",
+    "Scenarios: multiple isDefault: true entries",
+];
+/// The export route's own line — not this slice's (both sides drop it).
+const FOREIGN_LINES: &[&str] = &["[Chats v1] Markdown transcript exported"];
+
+/// The pinned stores the recipe rows plant against (the builder's `GENERAL_MP`).
+const GENERAL_MP: &str = "83000000-0000-4000-8000-000000000003";
+const NOT_AN_OWNER: &str = "83000000-0000-4000-8000-0000000000ff";
+const OLD_WELCOME: &str = "The concourse as it once stood, before the revision.";
+
+/// A PROCESS-GLOBAL capture: the verb's writes run on the WRITER thread.
+fn global_capture() -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
+    static BUF: std::sync::OnceLock<std::sync::Arc<std::sync::Mutex<Vec<String>>>> =
+        std::sync::OnceLock::new();
+    BUF.get_or_init(|| {
+        use tracing_subscriber::layer::SubscriberExt;
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry()
+            .with(quilltap_core::test_support::CaptureLayer(buf.clone()));
+        tracing::subscriber::set_global_default(subscriber).expect("one global capture per binary");
+        buf
+    })
+    .clone()
+}
+
+/// The scenario lines since the last call (`LEVEL message k=v`), buffer cleared.
+fn take_lines() -> Vec<String> {
+    let buf = global_capture();
+    let mut b = buf.lock().unwrap();
+    let out = b
+        .iter()
+        .filter_map(|l| {
+            let (level, rest) = l.split_once(' ')?;
+            let (_target, rest) = rest.split_once(' ')?;
+            (LINE_PREFIXES.iter().any(|p| rest.starts_with(p))
+                && !FOREIGN_LINES.iter().any(|p| rest.starts_with(p)))
+            .then(|| format!("{level} {rest}"))
+        })
+        .collect();
+    b.clear();
+    out
+}
+
+fn sha256_hex(s: &str) -> String {
+    quilltap_core::services::scenario_selection::hash_scenario_body(s)
+}
+
+/// [P4.D295] A raw main-DB plant on the per-case copy.
+fn main_exec(db: &Db, sql: &'static str, args: Vec<Value>) {
+    db.write_blocking(move |w| {
+        let params: Vec<rusqlite::types::Value> = args
+            .iter()
+            .map(|v| match v {
+                Value::Null => rusqlite::types::Value::Null,
+                Value::String(s) => rusqlite::types::Value::Text(s.clone()),
+                other => rusqlite::types::Value::Text(other.to_string()),
+            })
+            .collect();
+        w.main()
+            .connection()
+            .execute(sql, rusqlite::params_from_iter(params.iter()))?;
+        Ok(())
+    })
+    .expect("plant");
+}
+
+/// [P4.D295] Plant a chat's stored recipe — the v4 case's `plantRecipe`.
+fn plant_recipe(
+    db: &Db,
+    chat_id: &str,
+    text: Option<&str>,
+    source: Option<Value>,
+    notes: Option<&str>,
+) {
+    main_exec(
+        db,
+        "UPDATE \"chats\" SET \"scenarioText\" = ?1, \"scenarioSource\" = ?2, \"scenarioNotes\" = ?3 WHERE \"id\" = ?4",
+        vec![
+            text.map_or(Value::Null, |t| json!(t)),
+            source.map_or(Value::Null, |s| json!(serde_json::to_string(&s).unwrap())),
+            notes.map_or(Value::Null, |n| json!(n)),
+            json!(chat_id),
+        ],
+    );
+}
 
 /// The three cases that export a transcript AFTER a `?action=scenario` call.
 const EXPORT_CASES: &[&str] = &[
@@ -137,6 +276,7 @@ const FROZEN_NOW_ISO: &str = "2026-05-05T00:00:00.000Z";
 #[serde(rename_all = "camelCase")]
 struct Spec {
     test_pepper_base64: String,
+    user_id: String,
     general_body: String,
     free_text_notes: String,
 }
@@ -245,6 +385,13 @@ fn blank_minted_messages(v: &mut Value) {
             }
         }
     }
+}
+/// [P4.D295] A response body in KEY ORDER (v4's object-literal order is the
+/// wire contract; `serde_json` map equality would be order-blind).
+fn norm_ordered(v: &Value) -> String {
+    let mut v = v.clone();
+    canon_numbers(&mut v);
+    serde_json::to_string_pretty(&v).unwrap()
 }
 fn norm(v: &Value) -> String {
     let mut v = v.clone();
@@ -392,13 +539,14 @@ fn decode(chat_id: &str, body: &Value) -> SetScenarioBody {
             group_scenario_path,
             group_scenario_group_id,
             general_scenario_path,
-            // P4.D288 (C2): the two fields `545e299bb` added — carried; their
-            // arm body is P4.D295's.
-            ..
+            scenario_ref,
+            reload,
         } => {
             assert_eq!(decoded_id, chat_id);
             SetScenarioBody {
                 scenario,
+                scenario_ref,
+                reload,
                 scenario_id,
                 project_scenario_path,
                 group_scenario_path,
@@ -434,12 +582,34 @@ fn normalize_host_heading(markdown: &str) -> String {
         .join("\n")
 }
 
-/// The `resolver_*` shape the oracle emits (`undefined` does not survive JSON).
-fn resolver_body(resolved: Option<String>) -> Value {
-    json!({
-        "resolved": resolved.clone().map_or(Value::Null, Value::String),
-        "wasUndefined": resolved.is_none(),
-    })
+/// The `resolver_*` shape the oracle emits: `{resolved: <recipe>}`, or the
+/// thrown error as `<name>: <message>`.
+fn resolver_body(
+    resolved: Result<
+        quilltap_core::services::scenario_selection::ResolvedScenario,
+        ScenarioSelectionError,
+    >,
+) -> Value {
+    match resolved {
+        Ok(r) => json!({
+            "resolved": {
+                "scenarioText": r.scenario_text,
+                "scenarioSource": r.scenario_source.map(|s| serde_json::to_value(s).unwrap()),
+                "scenarioNotes": r.scenario_notes,
+            }
+        }),
+        Err(ScenarioSelectionError::Refused(reason)) => {
+            json!({ "threw": format!("ScenarioRefRefusedError: Invalid scenarioRef: {reason}") })
+        }
+        Err(ScenarioSelectionError::Location(e)) => {
+            let name = match e {
+                ScenarioLocationError::Uri(_) => "URIError",
+                ScenarioLocationError::NotFound(_) => "ScenarioNotFoundError",
+                _ => "Error",
+            };
+            json!({ "threw": format!("{name}: {e}") })
+        }
+    }
 }
 
 #[test]
@@ -486,80 +656,107 @@ fn chat_scenario_routes_match_oracle() {
     let mut failed: Vec<String> = Vec::new();
     let mut driven: BTreeSet<String> = BTreeSet::new();
 
-    let mut check = |name: &str, status: u16, body: Value, tables: Option<Value>| {
-        driven.insert(name.to_string());
-        let Some(want) = oracle.get(name) else {
-            failed.push(format!("{name}_MISSING_FROM_ORACLE"));
-            return;
-        };
-        let want_status = want["status"].as_u64().unwrap() as u16;
-        let mut want_body = want["body"].clone();
-        if status != want_status {
-            eprintln!("[{name}] STATUS {status} != {want_status}");
-            failed.push(format!("{name}_status"));
-        }
+    let mut check =
+        |name: &str, status: u16, body: Value, tables: Option<Value>, lines: Vec<String>| {
+            driven.insert(name.to_string());
+            let Some(want) = oracle.get(name) else {
+                failed.push(format!("{name}_MISSING_FROM_ORACLE"));
+                return;
+            };
+            let want_status = want["status"].as_u64().unwrap() as u16;
+            let mut want_body = want["body"].clone();
+            if status != want_status {
+                eprintln!("[{name}] STATUS {status} != {want_status}");
+                failed.push(format!("{name}_status"));
+            }
 
-        // The Zod `details` gap, asserted in both directions.
-        if VALIDATION_DETAILS_GAP.contains(&name) {
-            let v4_details_ok = want_body
-                .get("details")
-                .and_then(Value::as_array)
-                .is_some_and(|a| !a.is_empty());
-            let v5_has_details = body.get("details").is_some();
-            if !v4_details_ok || v5_has_details {
-                eprintln!(
-                    "[{name}] the recorded validation-details gap no longer holds \
+            // The Zod `details` gap, asserted in both directions.
+            if VALIDATION_DETAILS_GAP.contains(&name) {
+                let v4_details_ok = want_body
+                    .get("details")
+                    .and_then(Value::as_array)
+                    .is_some_and(|a| !a.is_empty());
+                let v5_has_details = body.get("details").is_some();
+                if !v4_details_ok || v5_has_details {
+                    eprintln!(
+                        "[{name}] the recorded validation-details gap no longer holds \
                      (v4 details present={v4_details_ok}, v5 details present={v5_has_details}) \
                      — re-rule it or drop the entry"
-                );
-                failed.push(format!("{name}_details_gap"));
-            }
-            if let Some(o) = want_body.as_object_mut() {
-                o.remove("details");
-            }
-        }
-
-        if norm(&body) != norm(&want_body) {
-            eprintln!(
-                "[{name}] BODY MISMATCH:\n{}",
-                first_diff(&norm(&body), &norm(&want_body))
-            );
-            failed.push(name.to_string());
-        } else {
-            eprintln!("[{name}] body OK.");
-        }
-
-        if let Some(mut got_tables) = tables {
-            let mut want_tables = want["tables"].clone();
-            if WRITING_CASES.contains(&name) {
-                for (is_v4, tbl) in [(true, &mut want_tables), (false, &mut got_tables)] {
-                    match tbl.get_mut("chat").and_then(Value::as_object_mut) {
-                        Some(chat) => failed.extend(assert_and_strip_clock(name, chat, is_v4)),
-                        None => failed.push(format!("{name}_clock_shape")),
-                    }
-                    if let Some(msgs) = tbl.get_mut("messages") {
-                        blank_minted_messages(msgs);
-                    }
+                    );
+                    failed.push(format!("{name}_details_gap"));
+                }
+                if let Some(o) = want_body.as_object_mut() {
+                    o.remove("details");
                 }
             }
-            if norm(&got_tables) != norm(&want_tables) {
+
+            if norm_ordered(&body) != norm_ordered(&want_body) {
                 eprintln!(
-                    "[{name} tables] MISMATCH:\n{}",
-                    first_diff(&norm(&got_tables), &norm(&want_tables))
+                    "[{name}] BODY MISMATCH:\n{}",
+                    first_diff(&norm_ordered(&body), &norm_ordered(&want_body))
                 );
-                failed.push(format!("{name}_tables"));
+                failed.push(name.to_string());
             } else {
-                eprintln!("[{name} tables] OK.");
+                eprintln!("[{name}] body OK.");
             }
-        }
-    };
+
+            // [P4.D295] The scenario lines, in order.
+            let want_lines: Vec<String> = want["lines"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|l| l.as_str())
+                        .filter(|l| {
+                            let rest = l.split_once(' ').map_or(*l, |(_, r)| r);
+                            !FOREIGN_LINES.iter().any(|p| rest.starts_with(p))
+                        })
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            if lines != want_lines {
+                eprintln!("[{name}] LINES MISMATCH:\n  v4: {want_lines:#?}\n  v5: {lines:#?}");
+                failed.push(format!("{name}_lines"));
+            }
+
+            if let Some(mut got_tables) = tables {
+                let mut want_tables = want["tables"].clone();
+                if WRITING_CASES.contains(&name) {
+                    for (is_v4, tbl) in [(true, &mut want_tables), (false, &mut got_tables)] {
+                        match tbl.get_mut("chat").and_then(Value::as_object_mut) {
+                            Some(chat) => failed.extend(assert_and_strip_clock(name, chat, is_v4)),
+                            None => failed.push(format!("{name}_clock_shape")),
+                        }
+                        if let Some(msgs) = tbl.get_mut("messages") {
+                            blank_minted_messages(msgs);
+                        }
+                    }
+                }
+                if norm(&got_tables) != norm(&want_tables) {
+                    eprintln!(
+                        "[{name} tables] MISMATCH:\n{}",
+                        first_diff(&norm(&got_tables), &norm(&want_tables))
+                    );
+                    failed.push(format!("{name}_tables"));
+                } else {
+                    eprintln!("[{name} tables] OK.");
+                }
+            }
+        };
 
     // ── the resolver, in isolation ──────────────────────────────────────────
+    #[derive(Clone, Copy)]
+    enum ResolverPrep {
+        None,
+        ArchiveBea,
+        UnprovisionGeneral,
+    }
     struct ResolverCase {
         name: &'static str,
         fields: Value,
         project_id: Option<String>,
         character_id: Option<&'static str>,
+        prep: ResolverPrep,
     }
     let r = |name: &'static str,
              fields: Value,
@@ -569,6 +766,18 @@ fn chat_scenario_routes_match_oracle() {
         fields,
         project_id,
         character_id,
+        prep: ResolverPrep::None,
+    };
+    let rp = |name: &'static str,
+              fields: Value,
+              project_id: Option<String>,
+              character_id: Option<&'static str>,
+              prep: ResolverPrep| ResolverCase {
+        name,
+        fields,
+        project_id,
+        character_id,
+        prep,
     };
     let resolver_cases = vec![
         r("resolver_nothing_chosen", json!({}), None, None),
@@ -703,27 +912,122 @@ fn chat_scenario_routes_match_oracle() {
             None,
             None,
         ),
+        // ── P4.D295: the recipe ──────────────────────────────────────────────
+        r(
+            "resolver_ref_ok",
+            json!({ "scenarioRef": { "mountPointId": GENERAL_MP, "path": GENERAL_PATH }, "scenario": "Beneath." }),
+            None,
+            None,
+        ),
+        r(
+            "resolver_ref_missing_falls_through",
+            json!({ "scenarioRef": { "mountPointId": GENERAL_MP, "path": GONE_PATH }, "projectScenarioPath": PROJECT_PATH }),
+            Some(PROJ.to_string()),
+            None,
+        ),
+        r(
+            "resolver_ref_refused_bad_path",
+            json!({ "scenarioRef": { "mountPointId": GENERAL_MP, "path": "../x.md" } }),
+            None,
+            None,
+        ),
+        r(
+            "resolver_ref_refused_not_an_owner",
+            json!({ "scenarioRef": { "mountPointId": NOT_AN_OWNER, "path": GENERAL_PATH } }),
+            None,
+            None,
+        ),
+        r(
+            "resolver_ref_malformed_percent_throws",
+            json!({ "scenarioRef": { "mountPointId": GENERAL_MP, "path": "%E0" } }),
+            None,
+            None,
+        ),
+        r(
+            "resolver_ref_percent_decoded",
+            json!({ "scenarioRef": { "mountPointId": GENERAL_MP, "path": "Scenarios%2Fwelcome.md" } }),
+            None,
+            None,
+        ),
+        rp(
+            "resolver_archived_character_scenario_id",
+            json!({ "scenarioId": scen_bea_2, "generalScenarioPath": GENERAL_PATH }),
+            None,
+            Some(BEA),
+            ResolverPrep::ArchiveBea,
+        ),
+        rp(
+            "resolver_general_unprovisioned",
+            json!({ "generalScenarioPath": GENERAL_PATH, "scenario": "Notes alone." }),
+            None,
+            None,
+            ResolverPrep::UnprovisionGeneral,
+        ),
+        r(
+            "resolver_bad_project_path",
+            json!({ "projectScenarioPath": "../x.md", "generalScenarioPath": GENERAL_PATH }),
+            Some(PROJ.to_string()),
+            None,
+        ),
+        r(
+            "resolver_nested_group_path",
+            json!({ "groupScenarioPath": "Scenarios/a/b.md", "groupScenarioGroupId": GRP }),
+            None,
+            None,
+        ),
+        r(
+            "resolver_general_path_percent_decoded",
+            json!({ "generalScenarioPath": "welc%6Fme" }),
+            None,
+            None,
+        ),
+        r(
+            "resolver_general_path_malformed_percent_throws",
+            json!({ "generalScenarioPath": "welc%E0me" }),
+            None,
+            None,
+        ),
+        r(
+            "resolver_notes_under_a_custom_scene_are_not_notes",
+            json!({ "scenario": "  Only notes.  " }),
+            None,
+            None,
+        ),
     ];
     for c in &resolver_cases {
         let (db, _scratch) = fresh_db(&spec, c.name);
+        match c.prep {
+            ResolverPrep::None => {}
+            ResolverPrep::ArchiveBea => main_exec(
+                &db,
+                "UPDATE \"characters\" SET \"archivedAt\" = ?1 WHERE \"id\" = ?2",
+                vec![json!("2026-05-02T00:00:00.000Z"), json!(BEA)],
+            ),
+            ResolverPrep::UnprovisionGeneral => main_exec(
+                &db,
+                "DELETE FROM \"instance_settings\" WHERE \"key\" = ?1",
+                vec![json!("generalMountPointId")],
+            ),
+        }
+        let _ = take_lines();
         let f = &c.fields;
         let s = |k: &str| f.get(k).and_then(Value::as_str).map(str::to_string);
+        let scenario_ref: Option<ScenarioRef> = f.get("scenarioRef").map(|r| ScenarioRef {
+            mount_point_id: r["mountPointId"].as_str().unwrap().to_string(),
+            path: r["path"].as_str().unwrap().to_string(),
+        });
         let character_id = c.character_id.map(str::to_string);
         let project_id = c.project_id.clone();
+        let user_id = spec.user_id.clone();
         let resolved = db
             .read_main(|main| {
                 db.read_mount_index(|mount| {
-                    let character = match &character_id {
-                        Some(id) => {
-                            quilltap_core::db::characters_read::find_by_id(main, mount, id)?
-                        }
-                        None => None,
-                    };
-                    resolve_scenario_selection(
+                    Ok(resolve_scenario_selection(
                         main,
                         mount,
                         &ScenarioSelectionFields {
                             scenario: s("scenario").as_deref(),
+                            scenario_ref: scenario_ref.as_ref(),
                             scenario_id: s("scenarioId").as_deref(),
                             project_scenario_path: s("projectScenarioPath").as_deref(),
                             group_scenario_path: s("groupScenarioPath").as_deref(),
@@ -731,15 +1035,16 @@ fn chat_scenario_routes_match_oracle() {
                             general_scenario_path: s("generalScenarioPath").as_deref(),
                         },
                         &ResolveScenarioSelectionOptions {
+                            user_id: &user_id,
                             project_id: project_id.as_deref(),
-                            character: character.as_ref(),
+                            character_id: character_id.as_deref(),
                             log_tag: Some("[Chats v1]"),
                         },
-                    )
+                    ))
                 })
             })
             .expect("resolver read");
-        check(c.name, 200, resolver_body(resolved), None);
+        check(c.name, 200, resolver_body(resolved), None, take_lines());
     }
 
     // ── POST ?action=scenario ───────────────────────────────────────────────
@@ -959,12 +1264,297 @@ fn chat_scenario_routes_match_oracle() {
     ];
     for (name, chat_id, body, dump) in &verb_cases {
         let (db, _scratch) = fresh_db(&spec, name);
-        let r = rt.block_on(chat_set_scenario(&db, chat_id, decode(chat_id, body)));
+        let _ = take_lines();
+        let r = rt.block_on(chat_set_scenario(
+            &db,
+            chat_id,
+            decode(chat_id, body),
+            &spec.user_id,
+        ));
+        let lines = take_lines();
         let (status, out) = status_body(&r);
         let tables = dump.then(
             || json!({ "chat": dump_chat(&db, chat_id), "messages": dump_messages(&db, chat_id) }),
         );
-        check(name, status, out, tables);
+        check(name, status, out, tables, lines);
+    }
+
+    // ── P4.D295: the recipe verb rows (+ their plants) ──────────────────────
+    let welcome = json!({ "mountPointId": GENERAL_MP, "path": GENERAL_PATH, "bodySha256": sha256_hex(&spec.general_body) });
+    let welcome_old = json!({ "mountPointId": GENERAL_MP, "path": GENERAL_PATH, "bodySha256": sha256_hex(OLD_WELCOME) });
+    let old_text = format!("{OLD_WELCOME}\n\nOld notes.");
+    type Plant<'a> = Option<(&'a str, Option<String>, Option<Value>, Option<&'a str>)>;
+    let recipe_cases: Vec<(&str, &str, Value, bool, Plant)> = vec![
+        (
+            "verb_reload_true_no_source",
+            NULL_CHAT,
+            json!({ "generalScenarioPath": GENERAL_PATH, "reload": true }),
+            true,
+            None,
+        ),
+        (
+            "verb_reload_null_refuses",
+            CHAT,
+            json!({ "generalScenarioPath": GENERAL_PATH, "reload": null }),
+            false,
+            None,
+        ),
+        (
+            "verb_reload_string_refuses",
+            CHAT,
+            json!({ "generalScenarioPath": GENERAL_PATH, "reload": "yes" }),
+            false,
+            None,
+        ),
+        (
+            "verb_scenario_ref_null_is_absent",
+            NULL_CHAT,
+            json!({ "scenarioRef": null, "generalScenarioPath": GENERAL_PATH }),
+            true,
+            None,
+        ),
+        (
+            "verb_scenario_ref_malformed_refuses",
+            CHAT,
+            json!({ "scenarioRef": { "mountPointId": "x", "path": GENERAL_PATH } }),
+            false,
+            None,
+        ),
+        (
+            "verb_scenario_ref_empty_path_refuses",
+            CHAT,
+            json!({ "scenarioRef": { "mountPointId": GENERAL_MP, "path": "" } }),
+            false,
+            None,
+        ),
+        (
+            "verb_ref_ok",
+            NULL_CHAT,
+            json!({ "scenarioRef": { "mountPointId": GENERAL_MP, "path": GENERAL_PATH } }),
+            true,
+            None,
+        ),
+        (
+            "verb_ref_refused_not_an_owner",
+            CHAT,
+            json!({ "scenarioRef": { "mountPointId": NOT_AN_OWNER, "path": GENERAL_PATH } }),
+            false,
+            None,
+        ),
+        (
+            "verb_ref_refused_bad_path",
+            CHAT,
+            json!({ "scenarioRef": { "mountPointId": GENERAL_MP, "path": "Scenarios/a/b.md" } }),
+            false,
+            None,
+        ),
+        (
+            "verb_ref_malformed_percent",
+            CHAT,
+            json!({ "scenarioRef": { "mountPointId": GENERAL_MP, "path": "%E0" } }),
+            false,
+            None,
+        ),
+        (
+            "verb_kept_scene_no_reload",
+            CHAT,
+            json!({ "generalScenarioPath": GENERAL_PATH, "scenario": "New notes." }),
+            true,
+            Some((
+                CHAT,
+                Some(old_text.clone()),
+                Some(welcome_old.clone()),
+                Some("Old notes."),
+            )),
+        ),
+        (
+            "verb_kept_scene_same_notes_is_a_noop",
+            CHAT,
+            json!({ "generalScenarioPath": GENERAL_PATH, "scenario": "Old notes." }),
+            true,
+            Some((
+                CHAT,
+                Some(old_text.clone()),
+                Some(welcome_old.clone()),
+                Some("Old notes."),
+            )),
+        ),
+        (
+            "verb_reload_pulls_the_revision",
+            CHAT,
+            json!({ "generalScenarioPath": GENERAL_PATH, "scenario": "Old notes.", "reload": true }),
+            true,
+            Some((
+                CHAT,
+                Some(old_text.clone()),
+                Some(welcome_old.clone()),
+                Some("Old notes."),
+            )),
+        ),
+        (
+            "verb_kept_scene_falls_through_when_text_was_edited",
+            CHAT,
+            json!({ "generalScenarioPath": GENERAL_PATH }),
+            true,
+            Some((
+                CHAT,
+                Some("A hand-edited scene that no longer ends in its notes.".to_string()),
+                Some(welcome_old.clone()),
+                Some("Old notes."),
+            )),
+        ),
+        (
+            "verb_provenance_only_change",
+            CHAT,
+            json!({ "generalScenarioPath": GENERAL_PATH }),
+            true,
+            Some((CHAT, Some(spec.general_body.clone()), None, None)),
+        ),
+        (
+            "verb_notes_only_change",
+            CHAT,
+            json!({ "generalScenarioPath": GENERAL_PATH }),
+            true,
+            Some((
+                CHAT,
+                Some(spec.general_body.clone()),
+                Some(welcome.clone()),
+                Some("Stale notes."),
+            )),
+        ),
+        (
+            "verb_whole_recipe_noop",
+            CHAT,
+            json!({ "generalScenarioPath": GENERAL_PATH }),
+            true,
+            Some((
+                CHAT,
+                Some(spec.general_body.clone()),
+                Some(welcome.clone()),
+                None,
+            )),
+        ),
+    ];
+    let mut ruled_outcomes: Vec<(String, u16)> = Vec::new();
+    for (name, chat_id, body, dump, plant) in &recipe_cases {
+        if RELOAD_NULL_DECODES_ABSENT.contains(name) {
+            let (db, _scratch) = fresh_db(&spec, name);
+            let r = rt.block_on(chat_set_scenario(
+                &db,
+                chat_id,
+                decode(chat_id, body),
+                &spec.user_id,
+            ));
+            let _ = take_lines();
+            ruled_outcomes.push((name.to_string(), status_body(&r).0));
+            continue;
+        }
+        let (db, _scratch) = fresh_db(&spec, name);
+        if let Some((cid, text, source, notes)) = plant {
+            plant_recipe(&db, cid, text.as_deref(), source.clone(), *notes);
+        }
+        let _ = take_lines();
+        let r = rt.block_on(chat_set_scenario(
+            &db,
+            chat_id,
+            decode(chat_id, body),
+            &spec.user_id,
+        ));
+        let lines = take_lines();
+        let (status, out) = status_body(&r);
+        let tables = dump.then(
+            || json!({ "chat": dump_chat(&db, chat_id), "messages": dump_messages(&db, chat_id) }),
+        );
+        check(name, status, out, tables, lines);
+    }
+
+    // ── P4.D295: `GET ?action=scenario-source` ───────────────────────────────
+    let source_cases: Vec<(&str, &str, Plant)> = vec![
+        ("source_none", NULL_CHAT, None),
+        (
+            "source_none_keeps_notes",
+            NULL_CHAT,
+            Some((
+                NULL_CHAT,
+                Some("Custom.".to_string()),
+                None,
+                Some("Leftover notes."),
+            )),
+        ),
+        (
+            "source_ok_unchanged",
+            CHAT,
+            Some((
+                CHAT,
+                Some(spec.general_body.clone()),
+                Some(welcome.clone()),
+                None,
+            )),
+        ),
+        (
+            "source_ok_changed",
+            CHAT,
+            Some((
+                CHAT,
+                Some(old_text.clone()),
+                Some(welcome_old.clone()),
+                Some("Old notes."),
+            )),
+        ),
+        (
+            "source_missing_file",
+            CHAT,
+            Some((
+                CHAT,
+                Some("Gone.".to_string()),
+                Some({
+                    let mut w = welcome.clone();
+                    w["path"] = json!(GONE_PATH);
+                    w
+                }),
+                None,
+            )),
+        ),
+        (
+            "source_refused_not_an_owner",
+            CHAT,
+            Some((
+                CHAT,
+                Some("Elsewhere.".to_string()),
+                Some({
+                    let mut w = welcome.clone();
+                    w["mountPointId"] = json!(NOT_AN_OWNER);
+                    w
+                }),
+                None,
+            )),
+        ),
+        (
+            "source_refused_bad_path",
+            CHAT,
+            Some((
+                CHAT,
+                Some("Nested.".to_string()),
+                Some({
+                    let mut w = welcome.clone();
+                    w["path"] = json!("Scenarios/a/b.md");
+                    w
+                }),
+                None,
+            )),
+        ),
+        ("source_chat_missing", MISSING_ID, None),
+    ];
+    for (name, chat_id, plant) in &source_cases {
+        let (db, _scratch) = fresh_db(&spec, name);
+        if let Some((cid, text, source, notes)) = plant {
+            plant_recipe(&db, cid, text.as_deref(), source.clone(), *notes);
+        }
+        let _ = take_lines();
+        let r = rt.block_on(chat_get_scenario_source(&db, chat_id, &spec.user_id));
+        let lines = take_lines();
+        let (status, out) = status_body(&r);
+        check(name, status, out, None, lines);
     }
 
     // ── the transcript carry (`scenario-change` ∈ HOST_LINK_KINDS) ──────────
@@ -980,7 +1570,13 @@ fn chat_scenario_routes_match_oracle() {
         ),
     ] {
         let (db, _scratch) = fresh_db(&spec, name);
-        rt.block_on(chat_set_scenario(&db, CHAT, decode(CHAT, &body)));
+        let _ = take_lines();
+        rt.block_on(chat_set_scenario(
+            &db,
+            CHAT,
+            decode(CHAT, &body),
+            &spec.user_id,
+        ));
         let r = quilltap_core::services::markdown_transcript::chat_export_markdown(
             &db,
             "f0000000-0000-4000-8000-00000000000f",
@@ -994,7 +1590,20 @@ fn chat_scenario_routes_match_oracle() {
             ),
             other => status_body(other),
         };
-        check(name, status, body_out, None);
+        check(name, status, body_out, None, take_lines());
+    }
+
+    // RELOAD_NULL_DECODES_ABSENT, both ways (see the table).
+    for (name, status) in ruled_outcomes {
+        let want = &oracle[&name];
+        driven.insert(name.clone());
+        if want["status"] != 400 || want["body"]["error"] != "Validation error" || status != 200 {
+            eprintln!(
+                "[{name}] RELOAD_NULL_DECODES_ABSENT no longer holds (v4 {} / v5 {status}) — retire the table",
+                want["status"]
+            );
+            failed.push(format!("{name}_ruled"));
+        }
     }
 
     // Coverage by SHAPE: the oracle's names and the driven names must agree.

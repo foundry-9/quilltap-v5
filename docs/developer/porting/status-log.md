@@ -182771,3 +182771,69 @@ scenario_pure_equivalence`.
   re-cite at the union.
 - **Mutation proofs:** a GET that heals → 9 rows red (the GET lines + the folder pins); no decode in the location →
   7 rows red (the `%` rows).
+
+### Unit 4 — the recipe: resolver, create, `?action=scenario`, `?action=scenario-source` (core 0.0.1302)
+
+- **`services/scenario_selection.rs` WHOLE REWRITE** (Δ20–Δ25): `ResolvedScenario`, `ScenarioSelectionError {
+  Refused (Display "Invalid scenarioRef: …"), Location }`, `ScenarioSelectionFields` + `scenario_ref`,
+  `ResolveScenarioSelectionOptions { user_id, project_id, character_id, log_tag }` (the hydrated `character` is
+  GONE), `read_from_scope` (L21 owner-less / L22 not-a-path — NEW / L23 no store — General unprovisioned now says
+  `generalScenarioPath provided but its general has no scenario store` / L24 no body) through the location's probe
+  + `read`, `read_character_scenario_by_id` (the location's `list(includeArchived)` + `id_for_path`; L25 — an
+  ARCHIVED or other user's character no longer resolves, Δ21), the `scenarioRef` arm first (refused → typed error;
+  missing → L26 `{mountPointId, path}` and fall through), JS-trim notes stored ONLY under a preset (Δ24), L27 DEBUG.
+  The field-keyed lines (`{ [field]: rawPath }`) go through a `field_line!` macro (static tracing field names).
+- **`chat_create.rs` scenario region:** `ChatCreateRequest.scenario_ref: Option<ScenarioRef>` + its `from_raw` read
+  (L-9 — `KEYSTONE` defined `db::chats::ScenarioRef` but not this field); `validate_create_body` checks `scenarioRef`
+  between `scenarioId` and `projectScenarioPath` through NEW `api::zod_issues::zod_scenario_ref_issues` (a fenced
+  P4.D295 region, §R.10(m)) — `null` is the object `invalid_type`, a malformed ref's issues are nested; the resolve
+  passes `characterId = primary?.id` + `userId`; a refusal is `HandleCreateError::bad_request` AFTER the Green Room's
+  first status; a location throw is v4's route 500 `Internal server error` (measured); the row writes all three
+  keys; every other consumer reads only `scenario_text`.
+- **`chat_scenario.rs`:** `SetScenarioBody` + `scenario_ref` / `reload` (raw) with their Zod floors
+  (`ScenarioRefSchema.nullish()`, `z.boolean().optional()` — NOT nullable); `find_character_owning_scenario` returns
+  the id (the HYDRATED walk kept); the resolve; `keep_current_scene` unless `reload: true` (L29); the whole-recipe
+  no-op (L30); the three-key write; `textChanged` gates ONLY the recompile (L31, now this file's own WARN with v4's
+  sentence — the shared `compile_all_stacks_best_effort` logs a different one) and the Host announcement; L32 INFO
+  on EVERY write in camelCase with `textChanged`, the `'ref'` arm first and `sourceMountPointId` (L-10, correction 6);
+  NEW `chat_get_scenario_source` (L33; the lookup's L8–L10 fire on every GET of a refused source — L-3). The
+  `ChatSetScenario` arm forwards the two fields and `ChatGetScenarioSource` is filled (both pass `SINGLE_USER_ID`);
+  `chat_set_scenario` takes `user_id`.
+- **L28 / L31's `error` field** renders v4's `CharacterVaultUnavailableError` message
+  (`VaultUnavailable::message`) from the structured `DbError::StoreUnavailable` — **HANDOFF (owner of
+  `db/characters_read.rs::find_by_id`):** its `StoreUnavailable.message` is a v5 sentence (`applyDocumentStoreOverlayOne:
+  vault unavailable for character … (mount …)`) where v4's message is `Character … has no usable vault
+  (characterDocumentMountPointId=…): properties.json missing`; fixing it there makes this file's helper the
+  identity (and may move other 503 bodies — measure).
+- **`db/scenarios.rs`:** `resolve_scenario_body` + the three `resolve_*_scenario_body` DELETED (v4 deleted their
+  twins); header rewritten.
+- **Differentials:**
+  - `chat_scenario_routes_equivalence` **54 → 92 rows**: the 19 `resolver_*` rows re-aimed (`{userId,
+    characterId}`, emitting the recipe or the throw) + 13 NEW resolver rows (ref ok / missing / refused ×2 /
+    malformed `%` / `%`-decoded, an archived character's `scenarioId`, General unprovisioned, a bad project path, a
+    nested group path, a `%`-decoded and a malformed general path, notes under a custom scene); 17 NEW verb rows
+    (`reload` absent / true / `null` / `"yes"`, `scenarioRef: null`, a malformed ref, an empty ref path, a ref ok /
+    refused ×2 / malformed `%`, the kept scene, the kept scene with the same notes = a no-op, `reload: true` pulling
+    the revision, the kept-scene fall-through, a provenance-only change, a notes-only change, the whole-recipe
+    no-op) and 8 `source_*` rows (none, none-keeps-notes, ok unchanged / changed, missing, refused ×2, chat
+    missing); `verb_noop_same_general_preset` FLIPPED to `changed: true` + a write BY DESIGN (§R.13(h)); every row's
+    lines (L21–L33 + the location's) through a GLOBAL capture (the export route's own `Markdown transcript exported`
+    DEBUG excluded both sides); response bodies in KEY ORDER (the table dumps keep the sorted compare — the chat
+    row's key order is `chats_read`'s).
+  - **Ruled divergence `RELOAD_NULL_DECODES_ABSENT` — STOP-AND-FLAG to the human (§R.10(a), §R.14):** v4 400s
+    `reload: null`; `KEYSTONE`'s C2 field `#[serde(default)] reload: Option<serde_json::Value>` decodes JSON `null`
+    as `None` (serde's `Option`), so the dispatch path can never hand the floor `Some(Null)` and v5 answers 200 and
+    WRITES. The floor itself refuses `Some(Null)` (unit-pinned). The fix is a C2 shape change in `api/types.rs`
+    (e.g. a deserializer keeping `Null` as `Some(Value::Null)`, the double-option idiom) — P4.D288's frozen file; the
+    table asserts both ways (v4 400, v5 200) so a fix trips it. The lane continued on everything else.
+  - `chat_create_capstone_equivalence` **141 → 149 rows** (the builder seeds ONE General `Scenarios/welcome.md`; a
+    `<scenario:<character>:<title>>` token both runners resolve off the hydrated row for the minted scenario id):
+    ref ok (the stored recipe byte-identical), ref refused (400 after the first status, nothing written), ref missing
+    (falls through to the notes), ref malformed `%` (500), `scenarioRef: null` / malformed / empty path (the Zod
+    `details` bytes), a character scenario by id through the primary character.
+  - `scenario_resolvers_equivalence` **REWRITTEN (L-8)**: `cases/scenario-resolvers.ts` drives v4's REAL
+    `resolveScenarioLocation('general', …).read` + `lookupScenarioRef` over the SAME `scenario-resolvers.json`
+    fixture — the pre-span 9 rows + `..` / nested / blank / `%`-decoded / malformed `%`, and 7 ref rows (incl. the
+    fixture's ownerless "project" store REFUSED) — **18 / 18**.
+- **Mutation proofs:** the `textChanged` gate removed → the provenance-only / notes-only / flipped-noop rows' tables
+  + `export_after_noop` red (a Host bubble appears); `keep_current_scene` ignored → the two kept-scene rows red.

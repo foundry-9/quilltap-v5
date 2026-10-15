@@ -2107,6 +2107,23 @@ pub fn zod_tfidf_text_shape_version_issues(row: &serde_json::Map<String, Value>)
 
 // === end P4.D293 ===
 
+// === P4.D295: the scenario ref schema (append-only) ===
+
+/// v4 `ScenarioRefSchema` (`lib/schemas/chat.types.ts:810` at `83334b9a5`) —
+/// `{ mountPointId: UUIDSchema, path: z.string().min(1).max(500) }` — Zod's
+/// issues at `prefix` (`["scenarioRef"]` on a create body). The source schema's
+/// first two keys, the same rules ([`zod_scenario_source_issues`]); a value
+/// that is not an object is the one `invalid_type` (`expected object`).
+pub fn zod_scenario_ref_issues(value: &Value, prefix: &[Value]) -> Vec<ZodIssue> {
+    let mut issues = zod_scenario_source_issues(value, prefix);
+    // The source schema's third key is not the ref's.
+    let sha = child_path(prefix, key("bodySha256"));
+    issues.retain(|i| i.path() != sha.as_slice());
+    issues
+}
+
+// === end P4.D295 ===
+
 #[cfg(test)]
 mod tests {
     /// P4.124: v4 `GroupSchema` — each shape the order named, both edges (the

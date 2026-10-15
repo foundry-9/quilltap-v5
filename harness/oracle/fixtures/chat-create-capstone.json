@@ -3403,6 +3403,170 @@
         "conciergeState": "locked"
       },
       "comment": "P4.D227 (v4 `3b463d6b1`, #76; route.concierge-state.test.ts `newChatsStartAs`): ignores an explicit locked request while the Concierge is off duty (a stale form)."
+    },
+    {
+      "name": "scen_ref_ok",
+      "progressId": "e0000000-0000-4000-8000-0000000d9501",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000d9501",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "scenarioRef": {
+          "mountPointId": "d0000000-0000-4000-8000-0000000000f1",
+          "path": "Scenarios/welcome.md"
+        },
+        "scenario": "Notes beneath."
+      }
+    },
+    {
+      "name": "scen_ref_refused_not_an_owner",
+      "progressId": "e0000000-0000-4000-8000-0000000d9502",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000d9502",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "scenarioRef": {
+          "mountPointId": "d0000000-0000-4000-8000-0000000000fe",
+          "path": "Scenarios/welcome.md"
+        }
+      }
+    },
+    {
+      "name": "scen_ref_missing_falls_through",
+      "progressId": "e0000000-0000-4000-8000-0000000d9503",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000d9503",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "scenarioRef": {
+          "mountPointId": "d0000000-0000-4000-8000-0000000000f1",
+          "path": "Scenarios/gone.md"
+        },
+        "scenario": "Only notes."
+      }
+    },
+    {
+      "name": "scen_ref_malformed_percent",
+      "progressId": "e0000000-0000-4000-8000-0000000d9504",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000d9504",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "scenarioRef": {
+          "mountPointId": "d0000000-0000-4000-8000-0000000000f1",
+          "path": "%E0"
+        }
+      }
+    },
+    {
+      "name": "vb_scenario_ref_explicit_null",
+      "progressId": "e0000000-0000-4000-8000-0000000d9505",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000d9505",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "scenarioRef": null
+      }
+    },
+    {
+      "name": "vb_scenario_ref_malformed",
+      "progressId": "e0000000-0000-4000-8000-0000000d9506",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000d9506",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "scenarioRef": {
+          "mountPointId": "x",
+          "path": "Scenarios/a.md"
+        }
+      }
+    },
+    {
+      "name": "vb_scenario_ref_empty_path",
+      "progressId": "e0000000-0000-4000-8000-0000000d9507",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000d9507",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "scenarioRef": {
+          "mountPointId": "d0000000-0000-4000-8000-0000000000f1",
+          "path": ""
+        }
+      }
+    },
+    {
+      "name": "scen_character_default_by_id",
+      "progressId": "e0000000-0000-4000-8000-0000000d9508",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000d9508",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "scenarioId": "<scenario:aria:Opening>"
+      }
     }
   ],
   "conciergeSettings": {

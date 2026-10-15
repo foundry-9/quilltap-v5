@@ -1,36 +1,29 @@
-//! Preset-scenario service surface — v4's
-//! `lib/mount-index/{scenarios-common,project-scenarios,group-scenarios,
-//! general-scenarios}.ts`.
+//! Scenarios — the shared file-IO primitives, v4
+//! `lib/mount-index/scenarios-common.ts` (`545e299bb`, pinned at `83334b9a5`).
 //!
 //! A preset scenario is a plain markdown file at `Scenarios/<filename>.md`
 //! inside a document store (a project's official store, a group's official
-//! store, or the instance-wide "Quilltap General" store). Chat creation resolves
-//! the chosen scenario's *body* (content after any YAML frontmatter, trimmed) and
-//! bakes it into `chat.scenarioText`.
+//! store, or the instance-wide "Quilltap General" store) with optional YAML
+//! frontmatter (`name`, `description`, `isDefault`, `archived`). Every
+//! file-backed scope is addressed through the scenario location
+//! ([`crate::scenarios::location`]), which wraps these helpers:
+//! [`parse_scenario_doc`], the pure [`build_scenario_list`] (sort, archived
+//! filter, default-conflict resolution), [`set_scenario_default_in_folder`],
+//! [`build_scenario_file_content`] and the route's [`resolve_scenario_path`].
 //!
-//! The `resolveScenarioBody` read slice and (P4.6n) the full list / read-by-path /
-//! create / rename / delete / set-default service surface v4's
-//! `scenarios-common.ts` offers — `parseScenarioDoc`, `listScenariosInFolder`,
-//! `readScenarioByPath`, `setScenarioDefaultInFolder`, `buildScenarioFileContent`,
-//! and `resolveScenarioPath`. The three scope wrappers (group / project / general)
-//! reuse the same primitives, differing only in the folder constant and (general)
-//! the `instance_settings` pointer + unprovisioned degradation.
+//! v4 DELETED `listScenariosInFolder`, `readScenarioByPath`,
+//! `resolveScenarioBody` and the three per-tier modules with the span; their v5
+//! twins went with them (P4.D295).
 //!
 //! Every function is a free function over a borrowed [`rusqlite::Connection`] —
-//! the **mount-index** DB connection (where document bytes live), composing the
-//! already-ported `read_database_document` / `write_database_document`,
-//! `parse_frontmatter` / `serialize_frontmatter` / `update_frontmatter_in_content`,
-//! and the `doc_mount_documents` folder/path reads. The general resolver
-//! additionally reads the "Quilltap General" store pointer from the main-DB
-//! `instance_settings`, so it takes both connections.
+//! the **mount-index** DB connection (where document bytes live).
 
 use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use super::database_store::{read_database_document, write_database_document, StoreError};
+use super::database_store::{write_database_document, StoreError};
 use super::doc_mount_documents::{DocMountDocumentsRepository, VaultFolderDoc};
-use super::instance_settings::get_general_mount_point_id;
 use super::DbError;
 use crate::collation::locale_compare;
 use crate::doc_edit::markdown_parser::{serialize_frontmatter, update_frontmatter_in_content};
@@ -40,86 +33,6 @@ use crate::markdown::{body_after, parse_frontmatter};
 /// The folder every scope keeps its scenarios in (all three constants are
 /// `'Scenarios'` in v4).
 pub const SCENARIOS_FOLDER: &str = "Scenarios";
-
-/// **Deliberately ignores `archived`** (v4 `d25dacc1`) — archiving hides a
-/// scenario from the menus, it does not break the chats that already chose it.
-///
-/// v4 `resolveScenarioBody` (`scenarios-common.ts:195`): resolve a scenario's
-/// body by `<folderName>/<filename>.md` path. Accepts a bare filename or a full
-/// relative path. Returns `None` when the file is missing or has no usable body.
-///
-/// `conn` is the mount-index DB connection (where the store's documents live).
-/// Any read error (missing document, degraded store) is swallowed to `None` —
-/// v4 logs a warning and returns null.
-pub fn resolve_scenario_body(
-    conn: &Connection,
-    mount_point_id: &str,
-    scenario_path: &str,
-    folder_name: &str,
-) -> Option<String> {
-    // v4: normalised = scenarioPath.trim(); prefix the folder; append `.md`.
-    let trimmed = scenario_path.trim();
-    let prefix = format!("{folder_name}/");
-    let mut normalised = if trimmed.starts_with(&prefix) {
-        trimmed.to_string()
-    } else {
-        // `replace(/^\/+/, '')` — strip leading slashes before joining.
-        format!("{}{}", prefix, trimmed.trim_start_matches('/'))
-    };
-    // `/\.md$/i` — case-insensitive `.md` suffix.
-    if !ends_with_md_ci(&normalised) {
-        normalised.push_str(".md");
-    }
-
-    // v4 wraps the read in try/catch → null. `read_database_document` returns a
-    // store error on a missing document, which we swallow.
-    let doc = read_database_document(conn, mount_point_id, &normalised).ok()?;
-    let fm = parse_frontmatter(&doc.content);
-    let body = js_trim(body_after(&doc.content, &fm));
-    if body.is_empty() {
-        None
-    } else {
-        Some(body.to_string())
-    }
-}
-
-/// v4 `resolveProjectScenarioBody` — resolve from a project's official store.
-pub fn resolve_project_scenario_body(
-    mount_index: &Connection,
-    mount_point_id: &str,
-    scenario_path: &str,
-) -> Option<String> {
-    resolve_scenario_body(mount_index, mount_point_id, scenario_path, SCENARIOS_FOLDER)
-}
-
-/// v4 `resolveGroupScenarioBody` — resolve from a group's official store.
-pub fn resolve_group_scenario_body(
-    mount_index: &Connection,
-    mount_point_id: &str,
-    scenario_path: &str,
-) -> Option<String> {
-    resolve_scenario_body(mount_index, mount_point_id, scenario_path, SCENARIOS_FOLDER)
-}
-
-/// v4 `resolveGeneralScenarioBody` — resolve from the instance-wide "Quilltap
-/// General" store. Reads the store pointer from `instance_settings` (main DB);
-/// returns `None` when the singleton mount has not been provisioned. The
-/// document read then goes to the mount-index DB.
-pub fn resolve_general_scenario_body(
-    main: &Connection,
-    mount_index: &Connection,
-    scenario_path: &str,
-) -> Result<Option<String>, DbError> {
-    let Some(mount_point_id) = get_general_mount_point_id(main)? else {
-        return Ok(None);
-    };
-    Ok(resolve_scenario_body(
-        mount_index,
-        &mount_point_id,
-        scenario_path,
-        SCENARIOS_FOLDER,
-    ))
-}
 
 // ===========================================================================
 // The list / read / write service surface (v4 `scenarios-common.ts`, P4.6n)

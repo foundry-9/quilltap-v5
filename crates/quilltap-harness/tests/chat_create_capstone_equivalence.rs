@@ -900,8 +900,37 @@ fn chat_create_capstone_matches_oracle() {
             greeting_log: true,
         };
 
+        // P4.D295: `<scenario:<characterKey>:<title>>` → that character's
+        // minted, path-derived scenario id off the HYDRATED row (the v4
+        // runner resolves the same token).
+        let mut request_text = serde_json::to_string(&c.request).unwrap();
+        let spec_json: Value =
+            serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+        while let Some(start) = request_text.find("<scenario:") {
+            let end = start + request_text[start..].find('>').expect("token end");
+            let token = request_text[start..=end].to_string();
+            let inner = &token["<scenario:".len()..token.len() - 1];
+            let (key, title) = inner.split_once(':').expect("token shape");
+            let character_id = spec_json["characters"][key]["id"]
+                .as_str()
+                .expect("character key");
+            let hydrated = quilltap_core::db::characters_read::find_by_id(
+                main_w.connection(),
+                mount_w.connection(),
+                character_id,
+            )
+            .expect("read character")
+            .expect("character exists");
+            let id = hydrated["scenarios"]
+                .as_array()
+                .and_then(|a| a.iter().find(|s| s["title"] == title))
+                .and_then(|s| s["id"].as_str())
+                .unwrap_or_else(|| panic!("token {token} did not resolve"))
+                .to_string();
+            request_text = request_text.replace(&token, &id);
+        }
         let request: ChatCreateRequest =
-            serde_json::from_value(c.request.clone()).expect("parse request");
+            serde_json::from_str(&request_text).expect("parse request");
 
         // Emitter built from the REQUEST's progressId (v4
         // `createCreationProgressEmitter`): absent → inert (no frames).

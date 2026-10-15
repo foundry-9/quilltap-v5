@@ -29,7 +29,7 @@ use serde_json::{json, Map, Value};
 use crate::api::engine::SINGLE_USER_ID;
 use crate::chat_timestamp;
 use crate::clock::{iso_from_unix_ms, now_iso};
-use crate::db::chats::{ChatCreate, ChatsRepository, CreateOptions};
+use crate::db::chats::{ChatCreate, ChatsRepository, CreateOptions, ScenarioRef};
 use crate::db::chats_messages::{ChatEventInput, ChatMessagesRepository};
 use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
@@ -82,7 +82,8 @@ use crate::services::prospero_notifications::{
     ProsperoContextAnnouncement, ProsperoGroupContextWhisper,
 };
 use crate::services::scenario_selection::{
-    resolve_scenario_selection, ResolveScenarioSelectionOptions, ScenarioSelectionFields,
+    resolve_scenario_selection, ResolveScenarioSelectionOptions, ScenarioSelectionError,
+    ScenarioSelectionFields,
 };
 use crate::services::system_prompt_compiler::compile_all_identity_stacks;
 use crate::tools::wardrobe_shared::resolve_project_mount_point_ids_for_chat;
@@ -194,6 +195,12 @@ pub struct ChatCreateRequest {
     pub title: Option<String>,
     /// Free-text scenario notes (layered beneath any resolved preset body).
     pub scenario: Option<String>,
+    /// v4 `scenarioRef: ScenarioRefSchema.optional()` (`545e299bb`) — a
+    /// scenario from anywhere in the instance, as picked in the scenario
+    /// browser; resolved FIRST. A ref naming a mount that holds no scenarios is
+    /// a 400 `Invalid scenarioRef: …`. (P4.D295 — `KEYSTONE` defined the type
+    /// in `db::chats`, not this field; L-9.)
+    pub scenario_ref: Option<ScenarioRef>,
     pub scenario_id: Option<String>,
     pub project_scenario_path: Option<String>,
     pub general_scenario_path: Option<String>,
@@ -282,6 +289,12 @@ impl ChatCreateRequest {
                 .unwrap_or_default(),
             title: s("title"),
             scenario: s("scenario"),
+            scenario_ref: raw.get("scenarioRef").and_then(|v| {
+                Some(ScenarioRef {
+                    mount_point_id: v.get("mountPointId")?.as_str()?.to_string(),
+                    path: v.get("path")?.as_str()?.to_string(),
+                })
+            }),
             scenario_id: s("scenarioId"),
             project_scenario_path: s("projectScenarioPath"),
             general_scenario_path: s("generalScenarioPath"),
@@ -840,6 +853,17 @@ pub fn validate_create_body(body: &Map<String, Value>) -> Result<(), Vec<CreateZ
     check_opt_string(body.get("title"), at("title"), None, &mut issues);
     check_opt_string(body.get("scenario"), at("scenario"), None, &mut issues);
     check_opt_uuid(body.get("scenarioId"), at("scenarioId"), &mut issues);
+    // v4 `scenarioRef: ScenarioRefSchema.optional()` (`chats/route.ts:114`,
+    // `545e299bb`) — between `scenarioId` and `projectScenarioPath` in the
+    // schema, so its issues land there; `.optional()` is NOT nullable (an
+    // explicit `null` is the object `invalid_type`), and a malformed ref's
+    // issues are NESTED (`["scenarioRef", "mountPointId"]`).
+    if let Some(v) = body.get("scenarioRef") {
+        issues.extend(crate::api::zod_issues::zod_scenario_ref_issues(
+            v,
+            &at("scenarioRef"),
+        ));
+    }
     check_opt_string(
         body.get("projectScenarioPath"),
         at("projectScenarioPath"),
@@ -1227,11 +1251,12 @@ where
     //    beneath it. The precedence chain lives in `resolve_scenario_selection`
     //    (v4 `44a8137e` extracted it out of this route) so the in-chat scenario
     //    picker resolves a selection exactly the way the New Chat dialog does.
-    let resolved_scenario = resolve_scenario_selection(
+    let resolved_scenario = match resolve_scenario_selection(
         main,
         mount,
         &ScenarioSelectionFields {
             scenario: req.scenario.as_deref(),
+            scenario_ref: req.scenario_ref.as_ref(),
             scenario_id: req.scenario_id.as_deref(),
             project_scenario_path: req.project_scenario_path.as_deref(),
             group_scenario_path: req.group_scenario_path.as_deref(),
@@ -1239,11 +1264,33 @@ where
             general_scenario_path: req.general_scenario_path.as_deref(),
         },
         &ResolveScenarioSelectionOptions {
+            user_id,
             project_id: req.project_id.as_deref(),
-            character: primary_character.as_ref(),
+            // v4 `characterId: primaryCharacter?.id ?? null` (`chats/route.ts:
+            // 1232-1253`) — the id; the resolver reads the vault through the
+            // scenario location.
+            character_id: primary_character
+                .as_ref()
+                .and_then(|c| c.get("id"))
+                .and_then(Value::as_str),
             log_tag: Some("[Chats v1]"),
         },
-    )?;
+    ) {
+        Ok(resolved) => resolved,
+        // v4: `ScenarioRefRefusedError` → `badRequest(error.message)` — AFTER
+        // the Green Room's first status; nothing is written yet.
+        Err(refused @ ScenarioSelectionError::Refused(_)) => {
+            return Err(HandleCreateError::bad_request(refused.to_string()))
+        }
+        // A throw past `handleCreate` (a malformed `%` in a ref's path — V8's
+        // `URIError`, R-Z) is v4's route catch: 500 `Internal server error`
+        // (measured — the `scen_ref_malformed_percent` capstone row).
+        Err(ScenarioSelectionError::Location(_)) => {
+            return Err(HandleCreateError::Db(DbError::Internal(
+                "Internal server error".to_string(),
+            )))
+        }
+    };
 
     // 5. Build the chat context (system prompt + first message + characters).
     // v4 `2f4254b42` (`chats/route.ts:1164`): the opener's subprompts,
@@ -1261,7 +1308,7 @@ where
         mount,
         &built.first_character_id,
         built.first_user_character_id.as_deref(),
-        resolved_scenario.as_deref(),
+        resolved_scenario.scenario_text.as_deref(),
         built.first_selected_system_prompt_id.as_deref(),
         Some(&opener_subprompts),
         // P4.D168: the greeting's FORCED progressions report rides the same
@@ -1452,7 +1499,15 @@ where
         "lastMessageAt": Value::Null,
         "lastRenameCheckInterchange": 0,
         "projectId": req.project_id.clone(),
-        "scenarioText": resolved_scenario.clone(),
+        // v4 `chats/route.ts:1341-1343` (`545e299bb`): the recipe travels
+        // together — the text the prompt reads, the file the preset came from,
+        // and the notes layered beneath it.
+        "scenarioText": resolved_scenario.scenario_text.clone(),
+        "scenarioSource": resolved_scenario
+            .scenario_source
+            .as_ref()
+            .map_or(Value::Null, |src| serde_json::to_value(src).unwrap_or(Value::Null)),
+        "scenarioNotes": resolved_scenario.scenario_notes.clone(),
         "disabledTools": Value::Array(project_disabled_tools),
         "disabledToolGroups": Value::Array(project_disabled_tool_groups),
         "imageProfileId": chat_image_profile_id,
@@ -1562,7 +1617,7 @@ where
     let outfit_ctx = OutfitContext {
         user_id,
         project_mount_point_ids: &project_mount_point_ids,
-        scenario_text: resolved_scenario.as_deref(),
+        scenario_text: resolved_scenario.scenario_text.as_deref(),
         cheap_settings,
         source_chat_id: req.continuation_from_chat_id.as_deref(),
         // A new chat (v4 `route.ts:1370` passes `source: 'chat-start'`).
@@ -1622,7 +1677,7 @@ where
             &participants,
             &chat_id,
             req.project_id.as_deref(),
-            resolved_scenario.as_deref(),
+            resolved_scenario.scenario_text.as_deref(),
             true,
         )
         .await;
@@ -1651,7 +1706,7 @@ where
             &participants,
             &chat_id,
             req.project_id.as_deref(),
-            resolved_scenario.as_deref(),
+            resolved_scenario.scenario_text.as_deref(),
             true,
         )
         .await;
@@ -1684,7 +1739,7 @@ where
             &participants,
             &chat_id,
             req.project_id.as_deref(),
-            resolved_scenario.as_deref(),
+            resolved_scenario.scenario_text.as_deref(),
             false,
         )
         .await;

@@ -367,6 +367,16 @@ async function main(): Promise<void> {
     'generalMountPointId',
     W.generalMountPointId,
   ]);
+  // P4.D295: one General scenario, for the `scenarioRef` create rows (v4
+  // `545e299bb` — a ref resolves through the scenario location).
+  {
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    await writeDatabaseDocument(
+      W.generalMountPointId,
+      'Scenarios/welcome.md',
+      '---\nname: Welcome\n---\n\nThe great hall, banners stirring in a draught.',
+    );
+  }
 
   // The shared tier. G_SHIRT is the oldest default in the fixture, so it layers
   // innermost everywhere. G_LIVERY is a COMPOSITE whose two components ALSO live

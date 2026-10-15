@@ -380,7 +380,20 @@ async function runCase(
   }
 
   try {
-    const req = createMockRequest(c.request);
+    // P4.D295: `<scenario:<characterKey>:<title>>` → that character's
+    // (minted, path-derived) scenario id, read off the HYDRATED row — the
+    // `scenarioId` create rows (the Rust runner resolves the same token).
+    let requestText = JSON.stringify(c.request);
+    for (const m of requestText.matchAll(/<scenario:([a-z]+):([^>]+)>/g)) {
+      const { getRepositories } = await import('@/lib/repositories/factory');
+      const ch = (await getRepositories().characters.findById(
+        (spec as unknown as { characters: Record<string, { id: string }> }).characters[m[1]].id,
+      )) as unknown as { scenarios?: Array<{ id: string; title: string }> } | null;
+      const id = ch?.scenarios?.find((x) => x.title === m[2])?.id;
+      if (!id) throw new Error(`token ${m[0]} did not resolve`);
+      requestText = requestText.split(m[0]).join(id);
+    }
+    const req = createMockRequest(JSON.parse(requestText));
     const response = await POST(req as never);
     const status: number = response.status;
     const body = await response.json();

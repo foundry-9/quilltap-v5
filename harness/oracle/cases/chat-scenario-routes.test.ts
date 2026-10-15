@@ -184,9 +184,74 @@ async function readMessages(chatId: string): Promise<unknown> {
   return (await getRepositories().chats.getMessages(chatId)) as unknown;
 }
 
+/** [P4.D295] The scenario lines a case logs (L21–L33 + the location's). */
+const LINE_PREFIXES = [
+  '[Chats v1] ',
+  '[ScenarioLocation] ',
+  'Scenario file body is empty; skipping',
+  'Scenarios: multiple isDefault: true entries',
+];
+let capturedLines: string[] = [];
+
+function renderField(k: string, v: unknown): string {
+  if (v === null || v === undefined) return ` ${k}=null`;
+  if (Array.isArray(v) || typeof v === 'object') return ` ${k}Json=${JSON.stringify(v)}`;
+  return ` ${k}=${String(v)}`;
+}
+
+async function installCapture(): Promise<void> {
+  capturedLines = [];
+  const { logger } = await import('@/lib/logger');
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as {
+        level: string;
+        message: string;
+        context?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!LINE_PREFIXES.some((p) => data.message.startsWith(p))) return;
+      const { service: _s, environment: _e, ...fields } = data.context ?? {};
+      let line = `${data.level.toUpperCase()} ${data.message}`;
+      for (const [k, v] of Object.entries(fields)) line += renderField(k, v);
+      if (data.error) line += ` error=${data.error.message}`;
+      capturedLines.push(line);
+    },
+  });
+}
+
+/** [P4.D295] A raw main-DB statement on the per-case copy (a plant). */
+async function mainExec(sql: string, ...args: unknown[]): Promise<void> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const main = getRawDatabase() as unknown as {
+    prepare: (s: string) => { run: (...a: unknown[]) => unknown };
+  };
+  main.prepare(sql).run(...args);
+}
+
+/** [P4.D295] Plant a chat's stored recipe (the three columns, raw). */
+function plantRecipe(
+  chatId: string,
+  text: string | null,
+  source: { mountPointId: string; path: string; bodySha256: string } | null,
+  notes: string | null,
+) {
+  return () =>
+    mainExec(
+      'UPDATE "chats" SET "scenarioText" = ?, "scenarioSource" = ?, "scenarioNotes" = ? WHERE "id" = ?',
+      text,
+      source === null ? null : JSON.stringify(source),
+      notes,
+      chatId,
+    );
+}
+
 interface CaseSpec {
   name: string;
   run: () => Promise<{ status: number; body: unknown; tables?: unknown }>;
+  /** [P4.D295] A plant run after the DB opens, before the capture starts. */
+  prep?: () => Promise<void>;
 }
 
 async function respond(r: unknown): Promise<{ status: number; body: unknown }> {
@@ -283,12 +348,15 @@ async function runCase(
   } as unknown as DateConstructor;
 
   try {
+    if (c.prep) await c.prep();
+    await installCapture();
     const out = await c.run();
     return {
       name: c.name,
       status: out.status,
       body: out.body,
       ...(out.tables !== undefined ? { tables: out.tables } : {}),
+      lines: capturedLines,
     };
   } finally {
     global.Date = RealDate;
@@ -332,7 +400,8 @@ async function main(): Promise<void> {
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  // [P4.D295] DEBUG: L27 / L29 / L30 / L33 and the location's L1 are DEBUG.
+  process.env.LOG_LEVEL = 'debug';
 
   const B = 'http://localhost/api/v1';
   const loadRoute = async (): Promise<Record<string, (...a: unknown[]) => Promise<unknown>>> =>
@@ -379,32 +448,64 @@ async function main(): Promise<void> {
 
   /**
    * `resolveScenarioSelection` called directly — v4's REAL module, nothing
-   * mocked. `character` is the hydrated row when a case names one.
+   * mocked. Since `545e299bb` it takes `{ userId, characterId }` and answers
+   * the RECIPE (`{ scenarioText, scenarioSource, scenarioNotes }`); a refused
+   * `scenarioRef` THROWS `ScenarioRefRefusedError` (`Invalid scenarioRef: …`).
    */
   const resolver = (
     name: string,
     fields: Record<string, unknown>,
     opts: { projectId?: string | null; characterId?: string | null } = {},
+    prep?: () => Promise<void>,
   ): CaseSpec => ({
     name,
+    prep,
     run: async () => {
       const { resolveScenarioSelection } = await import('@/lib/chat/scenario-selection');
       const { getRepositories } = await import('@/lib/repositories/factory');
-      const repos = getRepositories();
-      const character = opts.characterId ? await repos.characters.findById(opts.characterId) : null;
-      const resolved = await resolveScenarioSelection(fields as never, {
-        repos,
-        projectId: opts.projectId ?? null,
-        character: character as never,
-        logTag: '[Chats v1]',
-      });
-      // `undefined` does not survive JSON — emit v4's two outcomes distinctly.
-      return {
-        status: 200,
-        body: { resolved: resolved === undefined ? null : resolved, wasUndefined: resolved === undefined },
-      };
+      try {
+        const resolved = await resolveScenarioSelection(fields as never, {
+          repos: getRepositories(),
+          userId: spec.userId,
+          projectId: opts.projectId ?? null,
+          characterId: opts.characterId ?? null,
+          logTag: '[Chats v1]',
+        });
+        return { status: 200, body: { resolved } };
+      } catch (error) {
+        return {
+          status: 200,
+          body: { threw: error instanceof Error ? `${error.name}: ${error.message}` : String(error) },
+        };
+      }
     },
   });
+
+  /** [P4.D295] `GET ?action=scenario-source`. */
+  const getSource = async (chatId: string) =>
+    respond(
+      await (await loadRoute()).GET(mockRequest(`${B}/chats/${chatId}?action=scenario-source`), {
+        params: Promise.resolve({ id: chatId }),
+      }),
+    );
+  const sourceCase = (name: string, chatId: string, prep?: () => Promise<void>): CaseSpec => ({
+    name,
+    prep,
+    run: () => getSource(chatId),
+  });
+  const verbWithPrep = (name: string, chatId: string, body: unknown, prep: () => Promise<void>): CaseSpec => ({
+    ...verb(name, chatId, body),
+    prep,
+  });
+
+  // [P4.D295] The pinned stores + bodies the recipe rows plant against.
+  const GENERAL_MP = '83000000-0000-4000-8000-000000000003';
+  const NOT_AN_OWNER = '83000000-0000-4000-8000-0000000000ff';
+  const { createHash } = await import('node:crypto');
+  const sha = (b: string) => createHash('sha256').update(b, 'utf8').digest('hex');
+  const welcome = { mountPointId: GENERAL_MP, path: GENERAL_PATH, bodySha256: sha(spec.generalBody) };
+  const OLD_WELCOME = 'The concourse as it once stood, before the revision.';
+  const welcomeOld = { mountPointId: GENERAL_MP, path: GENERAL_PATH, bodySha256: sha(OLD_WELCOME) };
 
   const LONG_PATH = 'S'.repeat(501);
 
@@ -605,6 +706,79 @@ async function main(): Promise<void> {
     // 400 — even though `handleSetScenario` itself parses first. v5 has no
     // separate route layer, so its verb must reproduce the composite.
     refusal('verb_bad_body_chat_missing', MISSING_ID, { scenarioId: 'not-a-uuid' }),
+
+    // ── P4.D295 (v4 `545e299bb`): the recipe ───────────────────────────────
+    // The resolver: refs, the archived character, the new arms.
+    resolver('resolver_ref_ok', { scenarioRef: { mountPointId: GENERAL_MP, path: GENERAL_PATH }, scenario: 'Beneath.' }),
+    resolver('resolver_ref_missing_falls_through', {
+      scenarioRef: { mountPointId: GENERAL_MP, path: GONE_PATH },
+      projectScenarioPath: PROJECT_PATH,
+    }, { projectId: PROJ }),
+    resolver('resolver_ref_refused_bad_path', { scenarioRef: { mountPointId: GENERAL_MP, path: '../x.md' } }),
+    resolver('resolver_ref_refused_not_an_owner', { scenarioRef: { mountPointId: NOT_AN_OWNER, path: GENERAL_PATH } }),
+    resolver('resolver_ref_malformed_percent_throws', { scenarioRef: { mountPointId: GENERAL_MP, path: '%E0' } }),
+    resolver('resolver_ref_percent_decoded', { scenarioRef: { mountPointId: GENERAL_MP, path: 'Scenarios%2Fwelcome.md' } }),
+    resolver(
+      'resolver_archived_character_scenario_id',
+      { scenarioId: SCEN_BEA_2, generalScenarioPath: GENERAL_PATH },
+      { characterId: BEA },
+      () => mainExec('UPDATE "characters" SET "archivedAt" = ? WHERE "id" = ?', '2026-05-02T00:00:00.000Z', BEA),
+    ),
+    resolver(
+      'resolver_general_unprovisioned',
+      { generalScenarioPath: GENERAL_PATH, scenario: 'Notes alone.' },
+      {},
+      () => mainExec('DELETE FROM "instance_settings" WHERE "key" = ?', 'generalMountPointId'),
+    ),
+    resolver('resolver_bad_project_path', { projectScenarioPath: '../x.md', generalScenarioPath: GENERAL_PATH }, { projectId: PROJ }),
+    resolver('resolver_nested_group_path', { groupScenarioPath: 'Scenarios/a/b.md', groupScenarioGroupId: GRP }),
+    resolver('resolver_general_path_percent_decoded', { generalScenarioPath: 'welc%6Fme' }),
+    resolver('resolver_general_path_malformed_percent_throws', { generalScenarioPath: 'welc%E0me' }),
+    resolver('resolver_notes_under_a_custom_scene_are_not_notes', { scenario: '  Only notes.  ' }),
+    // `?action=scenario` — the two new body fields' Zod floors.
+    verb('verb_reload_true_no_source', NULL_CHAT, { generalScenarioPath: GENERAL_PATH, reload: true }),
+    refusal('verb_reload_null_refuses', CHAT, { generalScenarioPath: GENERAL_PATH, reload: null }),
+    refusal('verb_reload_string_refuses', CHAT, { generalScenarioPath: GENERAL_PATH, reload: 'yes' }),
+    verb('verb_scenario_ref_null_is_absent', NULL_CHAT, { scenarioRef: null, generalScenarioPath: GENERAL_PATH }),
+    refusal('verb_scenario_ref_malformed_refuses', CHAT, { scenarioRef: { mountPointId: 'x', path: GENERAL_PATH } }),
+    refusal('verb_scenario_ref_empty_path_refuses', CHAT, { scenarioRef: { mountPointId: GENERAL_MP, path: '' } }),
+    // A ref: ok; refused (400 `Invalid scenarioRef: …`); a malformed `%`.
+    verb('verb_ref_ok', NULL_CHAT, { scenarioRef: { mountPointId: GENERAL_MP, path: GENERAL_PATH } }),
+    refusal('verb_ref_refused_not_an_owner', CHAT, { scenarioRef: { mountPointId: NOT_AN_OWNER, path: GENERAL_PATH } }),
+    refusal('verb_ref_refused_bad_path', CHAT, { scenarioRef: { mountPointId: GENERAL_MP, path: 'Scenarios/a/b.md' } }),
+    refusal('verb_ref_malformed_percent', CHAT, { scenarioRef: { mountPointId: GENERAL_MP, path: '%E0' } }),
+    // The kept scene: the chat's source file was revised since it was picked
+    // (its stored hash is the OLD body's, its text the OLD body + notes).
+    verbWithPrep('verb_kept_scene_no_reload', CHAT, { generalScenarioPath: GENERAL_PATH, scenario: 'New notes.' },
+      plantRecipe(CHAT, `${OLD_WELCOME}\n\nOld notes.`, welcomeOld, 'Old notes.')),
+    verbWithPrep('verb_kept_scene_same_notes_is_a_noop', CHAT, { generalScenarioPath: GENERAL_PATH, scenario: 'Old notes.' },
+      plantRecipe(CHAT, `${OLD_WELCOME}\n\nOld notes.`, welcomeOld, 'Old notes.')),
+    verbWithPrep('verb_reload_pulls_the_revision', CHAT, { generalScenarioPath: GENERAL_PATH, scenario: 'Old notes.', reload: true },
+      plantRecipe(CHAT, `${OLD_WELCOME}\n\nOld notes.`, welcomeOld, 'Old notes.')),
+    verbWithPrep('verb_kept_scene_falls_through_when_text_was_edited', CHAT, { generalScenarioPath: GENERAL_PATH },
+      plantRecipe(CHAT, 'A hand-edited scene that no longer ends in its notes.', welcomeOld, 'Old notes.')),
+    // A provenance-only change: the same words, now traced to their file —
+    // written, `changed: true`, no recompile, no Host bubble (textChanged false).
+    verbWithPrep('verb_provenance_only_change', CHAT, { generalScenarioPath: GENERAL_PATH },
+      plantRecipe(CHAT, spec.generalBody, null, null)),
+    // A notes-only change (planted stale notes beside an unchanged text).
+    verbWithPrep('verb_notes_only_change', CHAT, { generalScenarioPath: GENERAL_PATH },
+      plantRecipe(CHAT, spec.generalBody, welcome, 'Stale notes.')),
+    // The whole-recipe no-op.
+    verbWithPrep('verb_whole_recipe_noop', CHAT, { generalScenarioPath: GENERAL_PATH },
+      plantRecipe(CHAT, spec.generalBody, welcome, null)),
+    // ── `GET ?action=scenario-source` ─────────────────────────────────────────
+    sourceCase('source_none', NULL_CHAT),
+    sourceCase('source_none_keeps_notes', NULL_CHAT, plantRecipe(NULL_CHAT, 'Custom.', null, 'Leftover notes.')),
+    sourceCase('source_ok_unchanged', CHAT, plantRecipe(CHAT, spec.generalBody, welcome, null)),
+    sourceCase('source_ok_changed', CHAT, plantRecipe(CHAT, `${OLD_WELCOME}\n\nOld notes.`, welcomeOld, 'Old notes.')),
+    sourceCase('source_missing_file', CHAT, plantRecipe(CHAT, 'Gone.', { ...welcome, path: GONE_PATH }, null)),
+    sourceCase('source_refused_not_an_owner', CHAT, plantRecipe(CHAT, 'Elsewhere.', { ...welcome, mountPointId: NOT_AN_OWNER }, null)),
+    sourceCase('source_refused_bad_path', CHAT, plantRecipe(CHAT, 'Nested.', { ...welcome, path: 'Scenarios/a/b.md' }, null)),
+    {
+      name: 'source_chat_missing',
+      run: () => getSource(MISSING_ID),
+    },
 
     // ── the transcript carry (`scenario-change` ∈ HOST_LINK_KINDS) ──────────
     {

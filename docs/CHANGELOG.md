@@ -462,6 +462,23 @@ Re-vendors v4's `public/schemas/qtap-export.schema.json` at the `83334b9a5` pin 
 
 Re-dumps `schema-key-order.json` from v4's real schemas at the pin. `chat` goes from 102 to 103 keys (drops `otherExtractionWatermarkMessageId`, adds `scenarioSource` and `scenarioNotes` after `scenarioText`) and `memory` from 29 to 30 (`supersededAt` after `supersededById`). No other kind moved.
 
+#### 2026-10-15 — feat(core): P4.D295 unit 4 — the scenario recipe: the resolver, chat create's scenarioRef, ?action=scenario and ?action=scenario-source
+
+_Versions: core 0.0.1302._
+
+The chat's scene is now a recipe, as in v4's `545e299bb`: `scenarioText`, `scenarioSource` (the file it came from and its body hash) and `scenarioNotes`. It is written together by chat create and `?action=scenario`.
+- `resolve_scenario_selection` is rewritten. It returns the recipe and takes `user_id` and `character_id`; it no longer takes a hydrated character. A `scenarioRef` is checked first, and a refused ref is a 400 `Invalid scenarioRef: …`.
+- Every pointer resolves through the scenario location, so paths are `%`-decoded and `..` / nested paths are refused. An archived or other user's character scenario no longer resolves. Notes are stored as `scenarioNotes` only under a preset.
+- The resolver logs v4's L21–L27 lines, with the new bad-path arm and General's unprovisioned text.
+- Chat create validates `scenarioRef` at v4's Zod position: `null` and malformed refs return v4's issue bytes. Create writes all three keys. A malformed `%` is v4's 500 `Internal server error`.
+- `?action=scenario` adds `scenarioRef` and `reload`. An ordinary save keeps the stored scene when its source file was revised (`reload: true` pulls the revision). The no-op check compares the whole recipe.
+- A provenance-only or notes-only change is written and answers `changed: true`, but neither recompiles nor announces. `Scenario changed` logs `textChanged`, the `ref` source and `sourceMountPointId` in camelCase.
+- `?action=scenario-source` (`ChatGetScenarioSource`) now answers instead of the keystone's refusal.
+- The recompile and skip lines render v4's vault-unavailable message.
+- `db::scenarios`' per-tier body resolvers are deleted. `scenario_resolvers_equivalence` is rewritten onto the location.
+
+Families: `chat_scenario_routes_equivalence` grew from 54 to 92 rows, with lines through a global capture and bodies compared in key order. `chat_create_capstone_equivalence` grew from 141 to 149 rows. `scenario_resolvers_equivalence` has 18 rows. One ruled divergence, `RELOAD_NULL_DECODES_ABSENT`: the keystone's `reload: Option<Value>` decodes JSON `null` as absent, so v4's 400 cannot be reached through dispatch. It is flagged as a C2 shape issue. Two mutations turn rows red: the `textChanged` gate removed, and the kept scene ignored.
+
 #### 2026-10-15 — feat(core): P4.D295 unit 3 — the scenario routes on one factory, the catalogue and by-ref read verbs, the union, the create hooks and the General heal
 
 _Versions: core 0.0.1301._

@@ -1642,10 +1642,10 @@ impl CoreEngine {
                 group_scenario_path,
                 group_scenario_group_id,
                 general_scenario_path,
-                // P4.D288 (C2): carried, not yet read — the arm body that
-                // passes them into `SetScenarioBody` lands with P4.D295.
-                scenario_ref: _,
-                reload: _,
+                // P4.D295 (v4 `545e299bb`): the two fields `setScenarioSchema`
+                // gained, forwarded raw to the Zod floors.
+                scenario_ref,
+                reload,
             } => match self.ready_db() {
                 Ok(db) => {
                     crate::services::chat_scenario::chat_set_scenario(
@@ -1653,12 +1653,15 @@ impl CoreEngine {
                         &chat_id,
                         crate::services::chat_scenario::SetScenarioBody {
                             scenario,
+                            scenario_ref,
+                            reload,
                             scenario_id,
                             project_scenario_path,
                             group_scenario_path,
                             group_scenario_group_id,
                             general_scenario_path,
                         },
+                        SINGLE_USER_ID,
                     )
                     .await
                 }
@@ -5692,9 +5695,18 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::ChatGetScenarioSource { chat_id: _ } => {
-                p4d288_not_yet_available("scenario-source", "P4.D295")
-            }
+            // P4.D295: v4 `actions/scenario.ts:226-266`.
+            Request::ChatGetScenarioSource { chat_id } => match self.ready_db() {
+                Ok(db) => {
+                    crate::services::chat_scenario::chat_get_scenario_source(
+                        &db,
+                        &chat_id,
+                        SINGLE_USER_ID,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             // === end P4.D288 ===
             // === P4.D279: the 4a38222e6 round's wire (C2) — each arm the agreed
             // refusal (§R.14), replaced by P4.D281 this round ===
