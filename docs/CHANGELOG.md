@@ -76,6 +76,12 @@ _Docs-only change._
 
 The stacking point P4.D296 / P4.D297 / P4.D298 branch from, with every C1-B signature as landed and the one departure.
 
+#### 2026-10-15 — docs(porting): P4.D296 lane record and status header — LANE COMPLETE
+
+_No crate versions bumped._
+
+The lane record (landed vs open, five handoffs, the fixtures changed, the final gate and the 11-family sweep from the pin) and the work order's status header.
+
 #### 2026-10-15 — feat(memory): P4.D296 Tier 1 #15 + Tier 2 — the enqueue surface proven, the regenerate handlers, the context build degrading as v4's does
 
 _Versions: core 0.0.1303, host 0.0.206._

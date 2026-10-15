@@ -181605,3 +181605,68 @@ the dry-run action and the CLI's `memory-diff` keep their existing loud refusals
   (HANDOFF to the unifier / P4.D297). Meanwhile the sweep itself is differential-proven by `fold_other_pass_tier3`'s
   four real-`enqueueFoldCatchups` ops and the tick by `scheduled_maintenance`'s unit test.
 - `memory_extraction_cursors_writers_census` row 3 gains the regenerate wipe (`memory_regenerate_job.rs .clear_for_chat(`) — red in the final gate, classified, green by name.
+
+### P4.D296 — memory extraction — LANE COMPLETE (2026-10-15)
+
+Branch `claude/p4.d296-extraction-e43551bf5` (worktree `.claude/worktrees/p4d296-extraction`), stacked on `ADMISSION`
+`e43551bf5`; the session started on `main` `d1434189c` and moved before the first edit (record above). Commits:
+`427286869` (Tier 1 #1–#4), `3dcf24568` (#5–#10), `05d1169af` (#11–#14, #16, #17), `a26d197ed` (#15, Tier 2 R-V, L-17),
+the closing docs commit (this record + the status header). Versions at close: core 0.0.1303, host 0.0.206 (harness frozen 0.0.1110).
+
+**Landed:** Tier 1 #1–#17 whole except the items OPEN below; Tier 2 R-V (both regenerate handlers + family). L-1 / L-3
+are ported faithfully (💸 rows); L-2 and L-17 MEASURED (records above); L-4 `UNKNOWN_PASS_CURSOR_ROW` measured and
+pinned both ways; L-5 pinned (`memory_tasks`' tier-1 `ctx_prior_plain_human` row; an observation for the human — a candidate v4
+filing); L-6 pinned both ways (`extraction_enqueue_tier2`); L-7 pinned (`memory_processor_tier3`'s
+`turn3_reclose_same_turn`: no contributions, no finish); L-9 moved (canon loaders); L-10 / R-AH done (the old `MemoryCandidate` gone);
+L-18 memoised canon; L-19's dry-run plumbing pinned by tier-3 dry-run rows; L-20 family names kept; L-21 measured
+no-op.
+
+**OPEN / deferred (loud):**
+- **R-W (Tier 3)** — the extraction dry run (`?action=extract-memories-dry-run`) and `quilltap memory-diff`: their
+  existing loud refusals stand; no wire variant added.
+- **Carina's project (bug 222) and the `pass: carina` provenance** have no differential row: every Carina corpus
+  chat has `projectId: null` (the #5–#10 record's claim that Carina's family carried the project was wrong — corrected
+  above). The context threads `project_id` / the description to every unit (code), unproven by a row.
+- An Unmoderated chat's `isDangerousChat` on the extraction route (the route carries it; no corpus row) and the
+  extraction `llm_logs` rows of the turn grain (the pipeline family compares its own `llm_logs`).
+- **The Concierge-policy WARN and the cost-event WARN** have no v5 home (the seams are infallible) — recorded, not
+  ported.
+
+**HANDOFFs (for `/unify`):**
+1. `services/memory_extraction_job.rs` `finish_extraction_job` — call P4.D291's `with_recall_lines` (its recorded
+   spelling) at the ONE private call site; append, recall record first (L-12). The tier-3 row "planted recall record
+   kept first" is green only on the union.
+2. The two canon loader re-points (`wardrobe_instructions.rs:28`, `consolidation.rs:832-838`) onto
+   `services::canon_loaders`, then delete `services/memory_processor.rs` (its ONE `LANE-REMOVE(P4.D296)` shim).
+3. `FoldEpisodePassSeams` (constructed at `orchestrator.rs`, `courier_transport.rs`, `enclave/step.rs`,
+   `help_chat/summary_check.rs`) runs the fold memory passes with `IN_LOOP_FOLD_ZONE_FALLBACK = "UTC"` and no job id —
+   thread the host's zone.
+4. `embedding_remainder_equivalence`'s Phase 4 (queue-memories) rows — re-run on the union (the family dies at the pin
+   in P4.D292's phases on this branch); the rows are covered whole by `extraction_enqueue_tier2`.
+5. `maintenance_ops_tier2` — its builder seeds the retired `MEMORY_HOUSEKEEPING` job type (dead at the pin); the
+   sweep half's `foldEpisodeCatchup` comparand is green on the union once the builder is re-typed (P4.D297 / unifier).
+
+**Fixtures changed (and what they invalidate):** the shared `build-memory-processor-fixture.ts` (grown: profiles, chat
+settings, pronouns, chats + messages + row extras, a seed's `source` / `sourceMessageId` / `chatId`, the cursor /
+`instance_settings` / `memories` / `background_jobs` tables, `QT_FIXTURE_SPEC`) — invalidates every oracle built from
+it (`memory_processor_tier3`, `fold_episode_tier3`, `fold_other_pass_tier3`, `extraction_enqueue_tier2`,
+`memory_regenerate_jobs_tier3`; regenerate each); `build-memory-pipeline-jobs-fixture.ts` and
+`build-carina-memory-extraction-fixture.ts` (the cursor table + an `instance_settings` limits row) — invalidate their
+families' oracles; `build-context-summary-service-fixture.ts` (the `connection_profiles` / cursor / `instance_settings`
+tables) — invalidates `context_summary_service_tier3`'s oracle; specs `memory-processor-tier3.json`,
+`fold-episode-tier3.json`, `fold-other-pass-tier3.json`, NEW `extraction-enqueue-tier2.json`,
+`memory-regenerate-jobs-tier3.json` (each reproduced by its committed `harness/oracle/scripts/gen-*-spec.py`).
+DELETED: `build-fold-episode-fixture.ts`, `build-fold-other-pass-fixture.ts`, `memory-tasks-tier1.test.ts/.json`.
+
+**Gate (final tree):** fmt clean; clippy clean with both feature sets (incl. `--features quilltap-core/native-transport`);
+`cargo test --workspace --no-fail-fast` with every family's env vars: 785 binaries / 5,182 passed / 5 failed / 3
+ignored — the five: `memory_extraction_cursors_writers_census` (the regenerate wipe, classified in `a26d197ed`, green
+by name) and the four standing reds unchanged from `ADMISSION` (`no_memory_lane_remove_markers_left` ×2, red by design
+on every lane; `memory_retire_sole_deleter_guard` counting P4.D290's `services/admission/tests.rs`;
+`qtap_schema_embed_guard` against the live v4 checkout past the pin); every one of this lane's families RAN (no SKIP;
+`OK:` lines captured). Sweep from the pin (`recipe_sweep.py --run-all --force`, `--v5w` spaceless, announced, alone):
+**11 / 11 ok** — `memory_tasks`, `turn_transcript`, `memory_processor_tier3`, `fold_episode_tier3`,
+`fold_other_pass_tier3`, `memory_pipeline_jobs_tier3`, `carina_memory_extraction_tier3`,
+`context_summary_service_tier3`, `canon_commonplace_tier2`, `extraction_enqueue_tier2`, `memory_regenerate_jobs_tier3`
+(`extraction_context_degrade` has no regen recipe — it rides the turn family's fixture; green in the gate).
+`recipe_sweep.py --self-test` exit 0. No `apps/web` hunk.
