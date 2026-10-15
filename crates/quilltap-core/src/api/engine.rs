@@ -3794,10 +3794,24 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::MemoryUpdate { memory_id, memory } => match self.ready_db() {
-                Ok(db) => super::memories::memory_update(&db, &memory_id, memory).await,
-                Err(r) => r,
-            },
+            // P4.D298 (bug 203, L-2): through `update_memory` on the OPTIONAL
+            // embedding seam — an importance-only edit needs no provider.
+            Request::MemoryUpdate { memory_id, memory } => {
+                match self.ready_db_and_memory_embedding() {
+                    Ok((db, provider)) => {
+                        super::memories::memory_update(
+                            &db,
+                            provider.as_ref(),
+                            SINGLE_USER_ID,
+                            &memory_id,
+                            crate::host_zone::zone_name(&self.inner.config.display_zone),
+                            memory,
+                        )
+                        .await
+                    }
+                    Err(r) => r,
+                }
+            }
             Request::MemoryDelete { memory_id } => match self.ready_db() {
                 Ok(db) => super::memories::memory_delete(&db, &memory_id).await,
                 Err(r) => r,

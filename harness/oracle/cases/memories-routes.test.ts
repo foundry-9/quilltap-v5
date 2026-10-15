@@ -842,6 +842,36 @@ async function main(): Promise<void> {
         }),
       ];
     })(),
+    // --- The item PUT through the edit chokepoint (bug 203 / 236).
+    ...((): CaseSpec[] => {
+      const put = (name: string, id: string, body: unknown, plant?: string[]): CaseSpec => ({
+        name,
+        run: async () => {
+          if (plant) await plantSql(plant);
+          const out = await respond(
+            await (await loadRoute('@/app/api/v1/memories/[id]/route')).PUT(
+              mockRequest(`${B}/${id}`, body),
+              { params: Promise.resolve({ id }) },
+            ),
+          );
+          const rows = (await dumpAllMemories()) as Array<Record<string, unknown>>;
+          return { ...out, tables: rows.filter((r) => r.id === id || r.id === MEM_TAGGED_2) };
+        },
+      });
+      const NO_PROFILE = ['DELETE FROM embedding_profiles'];
+      return [
+        put('update_text_reembeds', MEM_TAGGED_1, {
+          content: 'The old captain Alden mentored every apprentice at the harbor.',
+        }),
+        put('update_importance_only_no_profile', MEM_TAGGED_1, { importance: 0.35 }, NO_PROFILE),
+        put('update_text_no_profile_502', MEM_TAGGED_1, { summary: 'Alden mentored them all.' }, NO_PROFILE),
+        put('update_invalid_related_400', MEM_TAGGED_1, { relatedMemoryIds: [MISSING] }),
+        put('update_related_links_both_ways', MEM_TAGGED_1, { relatedMemoryIds: [MEM_TAGGED_2] }),
+        put('update_blank_after_trim_400', MEM_TAGGED_1, { summary: ' \u00a0 ' }),
+        put('update_bad_body_missing_memory_404', MISSING, { importance: 'very' }),
+        put('update_null_about_character', MEM_TAGGED_1, { aboutCharacterId: null, keywords: ['alden'] }),
+      ];
+    })(),
     // The three re-attribution / cascade lines (af48f6cc2) over this fixture's
     // swipe pair `d…02` / `d…03`, which sourced `f0` / `f1`.
     {

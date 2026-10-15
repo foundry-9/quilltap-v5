@@ -138,6 +138,19 @@ Deleted: housekeeping, its outcome cache, the consolidation triggers, the dedup 
 
 New differential families from the pin: `memory_maintenance_planning`, `memory_maintenance_tier2`, `memory_maintenance_consolidate_tier3`, `memory_maintenance_queue_tier2`, `memory_maintenance_routes`, `memory_graph_repair_tier2`, and the census `maintenance_commit_hook_unreachable_census` (R-L: the commit hook is unreachable at the pin, so it is not ported). Retired families: `memory_housekeeping_tier2`, `memory_watermark_tier3`, `consolidation_triggers_tier2`, `memory_dedup`, `consolidation_service_tier3`. Re-aimed: `memory_consolidation_routes`, `consolidation_tasks`, `system_body_guards`, `realtime_topics`, `system_jobs_collection`. Host: a new cadence test for the memory-maintenance startup tick. The `p4_d288_wire_contract` refusal rows for the three filled arms are retired, and `host_zone_sites_census` counts the `maintain` arm's display-zone read (8 → 9).
 
+#### 2026-10-15 — feat(memories-api): P4.D298 unit 14 — the item PUT through the edit chokepoint
+
+_Versions: core 0.0.1303._
+
+The memory item PUT now goes through `update_memory` (bug 203), as v4's `[id]/route.ts` does at the `83334b9a5` pin:
+
+- The two 404s come before validation, so a malformed body for a missing memory answers 404.
+- A Zod-faithful `updateMemorySchema` parser trims `content` / `summary` with JavaScript's trim; a blank edit is the family's 400 (bug 236).
+- The four result arms: the 502 (`Internal` + `details.status: 502`) with v4's WARN `[Memories API v1] Memory edit refused: embedding failed`, the `relatedMemoryIds` 400, the 404, and success with the DEBUG `[Memories API v1] Memory updated` `{memoryId, characterId, fields}`.
+- The arm runs on the optional embedding seam, so an importance-only edit needs no provider.
+
+`memories_routes_equivalence` re-pins `update` and adds eight rows from the pin: a re-embedded text edit, importance-only and text edits with no embedding profile, the related-ids 400 and both-ways links, the blank-after-trim 400, the 404-before-validation order, and an explicit `null`. The host-zone census counts the new zone read.
+
 #### 2026-10-15 — feat(memories-api): P4.D298 unit 13 — the manual create through admission
 
 _Versions: core 0.0.1302._

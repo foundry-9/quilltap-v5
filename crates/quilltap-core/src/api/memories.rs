@@ -21,10 +21,8 @@
 //! column); the only divergence — a character whose vault is unavailable, which
 //! v4's overlaid `findById` would drop to NotFound — is out of the fixture.
 
-use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
-use crate::db::memories::MemUpdate;
 use crate::db::runtime::Db;
 use crate::db::{
     characters_read, chat_settings, chats_read, instance_settings, memories_read, tags, DbError,
@@ -977,46 +975,101 @@ fn bad_gateway(message: impl Into<String>) -> Response {
 // Update (v4 PUT /api/v1/memories/[id])
 // ===========================================================================
 
-/// v4 `updateMemorySchema` — the item PUT body (all optional). `aboutCharacterId`
-/// / `chatId` are nullable (present-null → SQL NULL).
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct UpdateBag {
-    #[serde(default)]
-    content: Option<String>,
-    #[serde(default)]
-    summary: Option<String>,
-    #[serde(default)]
-    keywords: Option<Vec<String>>,
-    #[serde(default)]
-    tags: Option<Vec<String>>,
-    #[serde(default)]
-    importance: Option<f64>,
-    // `Option<Option<_>>`: absent → None (untouched); present (incl. null) → Some.
-    #[serde(default, deserialize_with = "double_option")]
-    about_character_id: Option<Option<String>>,
-    #[serde(default, deserialize_with = "double_option")]
-    chat_id: Option<Option<String>>,
-    #[serde(default)]
-    related_memory_ids: Option<Vec<String>>,
-}
-
-/// Distinguish `absent` from an explicit `null` for a nullable field.
-fn double_option<'de, D, T>(de: D) -> Result<Option<Option<T>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    Ok(Some(Option::deserialize(de)?))
-}
-
-/// v4 item PUT: ownership via character, `updateForCharacter`, `{memory}`. Does
-/// NOT re-embed (only v4's fire-and-forget `scheduleRefit` — a host-timing seam).
-pub async fn memory_update(db: &Db, memory_id: &str, bag: Value) -> Response {
-    let bag: UpdateBag = match serde_json::from_value(bag) {
-        Ok(b) => b,
-        Err(e) => return bad_request(format!("Invalid memory update body: {e}")),
+/// v4 `updateMemorySchema.parse(body)`'s OUTPUT (`[id]/route.ts:19-29`) as
+/// admission's [`MemoryEditPatch`](crate::services::admission::MemoryEditPatch):
+/// every key optional, `content` / `summary` TRIMMED (bug 236 — a blank edit is
+/// a 400), `aboutCharacterId` / `chatId` nullable (present `null` → `Some(None)`).
+/// Issues in schema order (the house 400 per L-1).
+fn parse_update_bag(
+    bag: &Value,
+) -> Result<crate::services::admission::MemoryEditPatch, Vec<ZodIssue>> {
+    let Some(obj) = bag.as_object() else {
+        return Err(vec![ZodIssue::invalid_type("object", vec![], Some(bag))]);
     };
+    let mut issues = Vec::new();
+    let trimmed_opt = |k: &str, issues: &mut Vec<ZodIssue>| -> Option<String> {
+        obj.get(k)?;
+        // `z.string().trim().min(1).optional()` — Zod's default `.min(1)` text.
+        match obj.get(k) {
+            Some(Value::String(s)) => {
+                let t = crate::jsstr::js_trim(s);
+                if t.is_empty() {
+                    issues.push(ZodIssue::too_small_string(json!(1), vec![zod_key(k)]));
+                }
+                Some(t.to_string())
+            }
+            other => {
+                issues.push(ZodIssue::invalid_type("string", vec![zod_key(k)], other));
+                None
+            }
+        }
+    };
+    let content = trimmed_opt("content", &mut issues);
+    let summary = trimmed_opt("summary", &mut issues);
+    let keywords = array_of(obj, "keywords", &mut issues, |v, path, issues| match v {
+        Value::String(s) => Some(s.clone()),
+        other => {
+            issues.push(ZodIssue::invalid_type("string", path, Some(other)));
+            None
+        }
+    });
+    let uuid_item = |v: &Value, path: Vec<Value>, issues: &mut Vec<ZodIssue>| match v {
+        Value::String(s) if zod_uuid_ok(s) => Some(s.clone()),
+        Value::String(_) => {
+            issues.push(ZodIssue::invalid_uuid(path));
+            None
+        }
+        other => {
+            issues.push(ZodIssue::invalid_type("string", path, Some(other)));
+            None
+        }
+    };
+    let tags = array_of(obj, "tags", &mut issues, uuid_item);
+    let importance = zod_bounded_number(obj, "importance", 0.0, 1.0, &mut issues);
+    // Present `null` → `Some(None)`; absent → `None` (untouched).
+    let nullable = |k: &str, issues: &mut Vec<ZodIssue>| -> Option<Option<String>> {
+        match obj.get(k) {
+            None => None,
+            Some(Value::Null) => Some(None),
+            Some(_) => nullable_uuid(obj, k, issues).map(Some),
+        }
+    };
+    let about_character_id = nullable("aboutCharacterId", &mut issues);
+    let chat_id = nullable("chatId", &mut issues);
+    let related_memory_ids = array_of(obj, "relatedMemoryIds", &mut issues, uuid_item);
+    if !issues.is_empty() {
+        return Err(issues);
+    }
+    Ok(crate::services::admission::MemoryEditPatch {
+        content,
+        summary,
+        keywords,
+        tags,
+        importance,
+        about_character_id,
+        chat_id,
+        related_memory_ids,
+    })
+}
+
+/// v4 item PUT (`[id]/route.ts:79-142`): the 404s FIRST (the row, then its
+/// character — a malformed body for a missing memory is a 404, not a 400),
+/// then `updateMemorySchema.parse` (the house 400), then the edit chokepoint.
+///
+/// "Through the edit chokepoint, not a raw row update: it re-embeds changed
+/// text, recomputes reinforcedImportance, links both sides, invalidates the
+/// frozen archive, publishes `memories` and refreshes a digest's Commonplace
+/// mirror (bug 203)." `provider` is the OPTIONAL seam (L-2): `None` drives
+/// [`NoEmbeddingProvider`](crate::model::embedding::NoEmbeddingProvider), so an
+/// importance-only edit still succeeds and a text edit answers v4's 502.
+pub async fn memory_update<P: EmbeddingProvider + Sync>(
+    db: &Db,
+    provider: Option<&P>,
+    user_id: &str,
+    memory_id: &str,
+    host_zone_fallback: &str,
+    bag: Value,
+) -> Response {
     // Ownership: find existing + its character.
     let mid = memory_id.to_string();
     let character_id: Result<Option<String>, DbError> = db.read_main(move |main| {
@@ -1038,36 +1091,72 @@ pub async fn memory_update(db: &Db, memory_id: &str, bag: Value) -> Response {
         Ok(None) => return not_found("Memory"),
         Err(e) => return internal(e),
     };
-
-    let patch = MemUpdate {
-        content: bag.content,
-        summary: bag.summary,
-        keywords: bag.keywords,
-        tags: bag.tags,
-        related_memory_ids: bag.related_memory_ids,
-        importance: bag.importance,
-        about_character_id: bag.about_character_id,
-        chat_id: bag.chat_id,
-        ..Default::default()
+    let patch = match parse_update_bag(&bag) {
+        Ok(p) => p,
+        Err(_issues) => return bad_request("Validation error"),
     };
-    let mid = memory_id.to_string();
-    let cid = character_id.clone();
-    let updated = db
-        .write(move |w| w.main().memories().update_for_character(&cid, &mid, &patch))
-        .await;
-    match updated {
-        Ok(true) => {}
-        Ok(false) => return not_found("Memory"),
+    let fields: Vec<&'static str> = patch.keys();
+    let result = match provider {
+        Some(p) => {
+            crate::services::admission::update_memory(
+                db,
+                p,
+                &character_id,
+                memory_id,
+                patch,
+                user_id,
+                host_zone_fallback,
+            )
+            .await
+        }
+        None => {
+            crate::services::admission::update_memory(
+                db,
+                &crate::model::embedding::NoEmbeddingProvider,
+                &character_id,
+                memory_id,
+                patch,
+                user_id,
+                host_zone_fallback,
+            )
+            .await
+        }
+    };
+    use crate::services::admission::UpdateMemoryResult;
+    let memory = match result {
+        Ok(UpdateMemoryResult::Ok { memory }) => memory,
+        Ok(UpdateMemoryResult::EmbeddingFailed { message }) => {
+            // "The provider could not embed the new text; nothing was saved."
+            tracing::warn!(
+                memoryId = memory_id,
+                characterId = %character_id,
+                error = %message,
+                "[Memories API v1] Memory edit refused: embedding failed"
+            );
+            return bad_gateway(format!(
+                "The memory was not saved because its new text could not be embedded. {message}"
+            ));
+        }
+        Ok(UpdateMemoryResult::InvalidRelated { invalid_ids }) => {
+            return bad_request(format!(
+                "relatedMemoryIds must name existing memories of the same character: {}",
+                invalid_ids.join(", ")
+            ))
+        }
+        Ok(UpdateMemoryResult::NotFound) => return not_found("Memory"),
         Err(e) => return internal(e),
-    }
-    let mid = memory_id.to_string();
-    let reread: Result<Option<Value>, DbError> =
-        db.read_main(move |main| memories_read::find_by_id(main, &mid));
-    match reread {
-        Ok(Some(memory)) => Response::Memory(json!({ "memory": memory })),
-        Ok(None) => not_found("Memory"),
-        Err(e) => internal(e),
-    }
+    };
+    tracing::debug!(
+        memoryId = memory_id,
+        characterId = %character_id,
+        fieldsJson = %serde_json::to_string(&fields).unwrap_or_default(),
+        "[Memories API v1] Memory updated"
+    );
+    // v4: "Schedule refit for BUILTIN profiles (non-blocking)" —
+    // `scheduleRefit(user.id)`, WARN `[Memories API v1] Failed to schedule
+    // refit after update` `{memoryId, error}` on a rejection. P4.D292's (R-Q);
+    // the call here lands with §S.5 (2).
+    Response::Memory(json!({ "memory": memory }))
 }
 
 // ===========================================================================

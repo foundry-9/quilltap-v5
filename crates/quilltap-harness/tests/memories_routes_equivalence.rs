@@ -1016,16 +1016,7 @@ fn memories_routes_match_oracle() {
 
     // --- Create — P4.D298 re-pinned these rows below (`{memory, action}`,
     // admission, the route's lines); the gate-era checks left with the gate.
-    // --- Update (no re-embed) ---
-    {
-        let db = fresh_db(&spec, "up");
-        let resp = rt.block_on(memories::memory_update(
-            &db,
-            MEM_TAGGED_1,
-            json!({ "importance": 0.95, "summary": "Alden, the stern mentor." }),
-        ));
-        check_blanked("update", &resp, &["updatedAt"], &mut failed);
-    }
+    // --- Update — P4.D298 re-pinned this row below (`update_memory`).
     // --- Delete (+ unlink scrub) ---
     {
         let db = fresh_db(&spec, "del");
@@ -2237,6 +2228,174 @@ fn memories_routes_match_oracle() {
                 "[create key order] the residue CLOSED for {closed:?} — compare the create bodies by bytes"
             );
             failed.push("create_key_order:residue-closed".into());
+        }
+
+        // --- The item PUT through `update_memory` (bug 203 / 236). The provider
+        // message after `Could not embed the edited memory: ` is provider-specific
+        // and MASKED (L-2); `updatedAt` masked; floats (the re-embedded vector)
+        // rounded to 6 places; bodies by BYTES (update_memory answers
+        // `MemorySchema` order).
+        const NO_PROFILE: &[&str] = &["DELETE FROM embedding_profiles"];
+        let mask_embed_message = |s: &str| -> String {
+            const PREFIX: &str = "Could not embed the edited memory: ";
+            match s.find(PREFIX) {
+                Some(i) => format!("{}{PREFIX}<provider message>", &s[..i]),
+                None => s.to_string(),
+            }
+        };
+        for (name, id, body, plant_sql) in [
+            (
+                "update",
+                MEM_TAGGED_1,
+                json!({ "importance": 0.95, "summary": "Alden, the stern mentor." }),
+                None,
+            ),
+            (
+                "update_text_reembeds",
+                MEM_TAGGED_1,
+                json!({ "content": "The old captain Alden mentored every apprentice at the harbor." }),
+                None,
+            ),
+            (
+                "update_importance_only_no_profile",
+                MEM_TAGGED_1,
+                json!({ "importance": 0.35 }),
+                Some(NO_PROFILE),
+            ),
+            (
+                "update_text_no_profile_502",
+                MEM_TAGGED_1,
+                json!({ "summary": "Alden mentored them all." }),
+                Some(NO_PROFILE),
+            ),
+            (
+                "update_invalid_related_400",
+                MEM_TAGGED_1,
+                json!({ "relatedMemoryIds": [MISSING] }),
+                None,
+            ),
+            (
+                "update_related_links_both_ways",
+                MEM_TAGGED_1,
+                json!({ "relatedMemoryIds": [MEM_TAGGED_2] }),
+                None,
+            ),
+            (
+                "update_blank_after_trim_400",
+                MEM_TAGGED_1,
+                json!({ "summary": " \u{a0} " }),
+                None,
+            ),
+            (
+                "update_bad_body_missing_memory_404",
+                MISSING,
+                json!({ "importance": "very" }),
+                None,
+            ),
+            (
+                "update_null_about_character",
+                MEM_TAGGED_1,
+                json!({ "aboutCharacterId": null, "keywords": ["alden"] }),
+                None,
+            ),
+        ] {
+            let db = fresh_db(&spec, &format!("{name}-d298"));
+            if let Some(sql) = plant_sql {
+                plant(&rt, &db, sql);
+            }
+            let p = provider(&db);
+            let (resp, lines) = global_capture::capture(|| {
+                rt.block_on(memories::memory_update(
+                    &db,
+                    Some(&p),
+                    &uid,
+                    id,
+                    "UTC",
+                    body,
+                ))
+            });
+            let rec = &oracle[name];
+            let want_status = rec["status"].as_u64().unwrap();
+            let mut bad = Vec::new();
+            match &resp {
+                Response::Error(e) => {
+                    if MEMORY_BAD_GATEWAY_AS_INTERNAL.contains(&name) {
+                        let carried = e.kind == ErrorKind::Internal
+                            && e.details.as_deref() == Some(&json!({ "status": 502 }));
+                        if want_status != 502 || !carried {
+                            bad.push(format!(
+                                "MEMORY_BAD_GATEWAY_AS_INTERNAL moved: v4 {want_status}, v5 {:?} {:?}",
+                                e.kind, e.details
+                            ));
+                        }
+                    } else if u64::from(status_of(e.kind)) != want_status {
+                        bad.push(format!("status {:?} vs {want_status}", e.kind));
+                    }
+                    let want_error =
+                        mask_embed_message(rec["body"]["error"].as_str().unwrap_or(""));
+                    if mask_embed_message(&e.message) != want_error {
+                        bad.push(format!("error {:?} vs {want_error:?}", e.message));
+                    }
+                }
+                other => {
+                    let mut got = response_data(other);
+                    let mut want = rec["body"].clone();
+                    for v in [&mut got, &mut want] {
+                        if let Some(m) = v.get_mut("memory").and_then(Value::as_object_mut) {
+                            m.insert("updatedAt".into(), json!("<minted>"));
+                        }
+                        round_floats(v);
+                        canon_numbers(v);
+                    }
+                    let (g, w) = (
+                        serde_json::to_string_pretty(&got).unwrap(),
+                        serde_json::to_string_pretty(&want).unwrap(),
+                    );
+                    if want_status != 200 {
+                        bad.push(format!("v5 answered 200, v4 {want_status}"));
+                    }
+                    if g != w {
+                        bad.push(format!("body:\n{}", first_diff(&g, &w)));
+                    }
+                }
+            }
+            let render = |l: &str| mask_embed_message(l);
+            let want_lines: Vec<String> = rec["logs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|l| render(&render_v4_line(l)))
+                .collect();
+            let got_lines: Vec<String> = own_v5_lines(&lines).iter().map(|l| render(l)).collect();
+            if got_lines != want_lines {
+                bad.push(format!(
+                    "lines:\n--- v4 ---\n{}\n--- v5 ---\n{}",
+                    want_lines.join("\n"),
+                    got_lines.join("\n")
+                ));
+            }
+            // The edited row and its neighbour as the oracle dumps them.
+            let dumped: Vec<Value> = dump_all_memories(&db)
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|r| r["id"] == id || r["id"] == MEM_TAGGED_2)
+                .cloned()
+                .collect();
+            let (gt, wt) = (
+                serde_json::to_string_pretty(&dumped).unwrap(),
+                serde_json::to_string_pretty(&rec["tables"]).unwrap(),
+            );
+            // (The pre-P4.D298 `update` row records no tables.)
+            if rec.get("tables").is_some() && gt != wt {
+                bad.push(format!("tables:\n{}", first_diff(&gt, &wt)));
+            }
+            if bad.is_empty() {
+                eprintln!("[{name}] OK (P4.D298).");
+            } else {
+                eprintln!("[{name}] MISMATCH (P4.D298):\n{}", bad.join("\n"));
+                failed.push(format!("{name}:d298"));
+            }
         }
 
         // --- §R.7 `RETIRED_MEMORY_VERB_UNKNOWN_VARIANT` (both halves).

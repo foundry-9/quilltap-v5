@@ -182017,3 +182017,29 @@ Versions at close: core 0.0.1300, host 0.0.205 (web unchanged — test-only edit
   `details.status: 502`"; `MemoryCharacterCounts`' "`{success, characters: [{id, name, memoryCount}]}`
   (memoryCount desc)" → "`{…, hotTotal, demotable, protected, cold}` sorted `demotable` desc then
   `memoryCount` desc".
+
+### Unit 14 — the item PUT through `update_memory`
+
+- **Handler** (`memory_update(db, provider: Option<&P>, user_id, memory_id, host_zone_fallback, bag)`): the row
+  404 → the character 404 (BEFORE validation — the order finding; v5 had parsed first) → `parse_update_bag`
+  (`updateMemorySchema` → admission's `MemoryEditPatch`; `content` / `summary` through `js_trim`, Zod's default
+  `.min(1)` text; present `null` → `Some(None)`; the house 400) → `update_memory(…, user_id,
+  host_zone_fallback)` (C1-B's trailing argument) → `EmbeddingFailed { message }` ⇒ WARN `[Memories API v1]
+  Memory edit refused: embedding failed {memoryId, characterId, error: message}` + the L-5 502 `The memory was
+  not saved because its new text could not be embedded. <message>`; `InvalidRelated` ⇒ 400 `relatedMemoryIds
+  must name existing memories of the same character: <ids joined ', '>`; `NotFound` ⇒ 404; `Ok` ⇒ DEBUG
+  `[Memories API v1] Memory updated {memoryId, characterId, fields}` (`fieldsJson` — `MemoryEditPatch::keys()`,
+  schema order, present keys only) → v4's refit comment (§S.5 (2)) → `{memory}` (the row as `update_memory`
+  answers it, vector included, `MemorySchema` order — bytes equal). The arm moved to the optional seam (L-2).
+  `UpdateBag` / `double_option` / the raw `update_for_character` write RETIRED (the nullable reader is now the
+  parser's present-null arm).
+- **Rows** (all GREEN, bodies by bytes with `updatedAt` masked and the vector rounded to 6 places, the
+  provider message after `Could not embed the edited memory: ` masked in the body AND the WARN): `update`
+  (re-pinned — summary edit re-embedded, `reinforcedImportance` recomputed), `update_text_reembeds`,
+  `update_importance_only_no_profile` (`DELETE FROM embedding_profiles` on both sides → 200),
+  `update_text_no_profile_502` (→ `MEMORY_BAD_GATEWAY_AS_INTERNAL`'s second row), `update_invalid_related_400`,
+  `update_related_links_both_ways` (both rows' `relatedMemoryIds` dumped), `update_blank_after_trim_400`,
+  `update_bad_body_missing_memory_404` (the order finding: v4 404, never 400), `update_null_about_character`
+  (`fields: ['keywords', 'aboutCharacterId']`). The chokepoint's own lines (`memory:update-memory`) by
+  PRESENCE on v4's side.
+- **Census:** `host_zone_sites_census` 9 → 10 (the PUT arm's `zone_name`).
