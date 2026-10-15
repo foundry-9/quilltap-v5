@@ -192,6 +192,9 @@ const HOME_MESSAGES: &[&str] = &[
     "Error finding TF-IDF vocabulary by profile ID",
     "Error deleting embedding status by entity",
     // === end P4.D292 ===
+    // === P4.D293 — the restore's 22l refusal (L-4) ===
+    "Error creating TF-IDF vocabulary",
+    // === end P4.D293 ===
 ];
 
 const HOME: &str = "db/fallback.rs";

@@ -357,6 +357,20 @@ Starts v4's Phase-E recall pipeline (`584d28164`) under `services/recall/`.
 
 New tier-1 family `recall_rank_equivalence` against v4's real `lib/memory/scoring/rank.ts` (142 rows: every multiplier, the gate and the cap, `extraFired`, the cross-project exclusion, ties and a NaN salience, R6's arithmetic). Inverting the sort or dropping `extraFired` turns it red.
 
+#### 2026-10-15 — feat(core): P4.D293 unit 2 — the restore carries cursors, scenario sources and the legacy settings; the wipe clears cursors and announces after commit
+
+_Versions: core 0.0.1300._
+
+The restore and new-account remap halves of v4 `ac6348c5f`, `64743ee13`, `c2795733f`, `545e299bb`, `e0ac7493a` and `4ae0c4ca6`, at the `83334b9a5` pin.
+
+- Restore phase 7 takes the three bundled cursor keys off each archive chat before the decode and writes them to `memory_extraction_cursors` after the chat is created, through the C1-11 helpers.
+- A `scenarioSource` that is not an object (a JSON string) is refused with v4's Zod message instead of serde's. An invalid object is still refused by the chat create.
+- 22l refuses a vocabulary whose `textShapeVersion` is `null`, a string, a fraction or negative, with v4's two repository errors (new `db::fallback` home for `Error creating TF-IDF vocabulary`), the warning and the WARN. Absent is 0.
+- 22o runs the instance-settings rows through `with_memory_maintenance_from_legacy`: the dead `memoryExtractionConcurrency` is dropped and an old archive's `autoHousekeepingSettings` becomes a `memoryMaintenance` row appended last. The summary counts the translated rows.
+- The new-account remap carries the episode and turn cursor keys and re-points `scenarioSource` through the shared remapper.
+- The wipe truncates `memory_extraction_cursors` and no longer lists the vector tables. `delete_user_data` announces the retirement after the writer commits, so the restore and System Tools delete-all both announce once, after commit.
+- Harness: four derived restore archives (legacy vectors, cursors, scenario source, legacy settings plus two variants) with md5-checked derive scripts; 10 new restore cases; 5 new uuid-remap cases; two new delete-all cases and a per-case retirement record; the vintage survey covers the new archives; mutation proofs for adoption, duplicates, cursors, the shape refusal, the settings translation, the truncate and the announce.
+
 #### 2026-10-15 — feat(core): P4.D293 unit 1 — backups stop carrying the vector mirror; old archives' vectors adopted on restore
 
 _Versions: core 0.0.1299._

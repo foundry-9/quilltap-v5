@@ -792,6 +792,143 @@ function edgeCases(): Case[] {
         ],
       }),
     },
+    // [P4.D293] v4 `c2795733f` / `64743ee13`: the episode and turn cursor keys
+    // follow their messages too (LAST in the scalar list, BUNDLE_CURSOR_FIELDS
+    // order). A cursor naming a message OUTSIDE the archive still mints.
+    {
+      name: 'chat_episode_watermark',
+      note: "[P4.D293] episodeExtractionWatermarkMessageId is minted at the chat's scalar pass (after the other key) and REUSED by its message (v4 c2795733f)",
+      targetUserId: t,
+      data: bag({
+        chats: [
+          {
+            id: 'chat-old',
+            participants: [],
+            tags: [],
+            otherExtractionWatermarkMessageId: 'msg-a',
+            episodeExtractionWatermarkMessageId: 'msg-b',
+            messages: [
+              { id: 'msg-a', type: 'message' },
+              { id: 'msg-b', type: 'message' },
+            ],
+          },
+        ],
+      }),
+    },
+    {
+      name: 'chat_turn_watermark',
+      note: "[P4.D293] turnExtractionWatermarkMessageId (v4 64743ee13) minted LAST; one naming a message outside the archive still gets a minted id",
+      targetUserId: t,
+      data: bag({
+        chats: [
+          {
+            id: 'chat-old',
+            participants: [],
+            tags: [],
+            otherExtractionWatermarkMessageId: 'msg-a',
+            episodeExtractionWatermarkMessageId: 'msg-b',
+            turnExtractionWatermarkMessageId: 'msg-not-in-archive',
+            messages: [
+              { id: 'msg-a', type: 'message' },
+              { id: 'msg-b', type: 'message' },
+            ],
+          },
+        ],
+      }),
+    },
+    // [P4.D293] v4 545e299bb: the scenario source follows its store through the
+    // shared remapper — after the chat scalars + userId, before participants.
+    {
+      name: 'chat_scenario_source',
+      note: '[P4.D293] chat-1 names a store first seen at a character (minted there, reused); chat-2 names one first seen at the chat (minted between the chat scalars and its participants); docMountPoints then reuses both. Unknown keys are stripped (Zod), the key keeps its place',
+      targetUserId: t,
+      data: bag({
+        characters: [
+          { id: 'char-1', characterDocumentMountPointId: '5ce00000-0000-4000-8000-000000000001' },
+        ],
+        chats: [
+          {
+            id: 'chat-1',
+            participants: [{ id: 'p-1', characterId: 'char-1' }],
+            tags: [],
+            scenarioSource: {
+              mountPointId: '5ce00000-0000-4000-8000-000000000001',
+              path: 'Scenarios/The Road.md',
+              bodySha256: 'abababababababababababababababababababababababababababababababab',
+              extra: 'stripped',
+            },
+            scenarioNotes: 'Notes ride along.',
+            title: 'after the source',
+            messages: [],
+          },
+          {
+            id: 'chat-2',
+            participants: [{ id: 'p-2', characterId: 'char-1' }],
+            tags: [],
+            scenarioSource: {
+              mountPointId: '5ce00000-0000-4000-8000-000000000002',
+              path: 'Scenarios/The Sea.md',
+              bodySha256: 'abababababababababababababababababababababababababababababababab',
+            },
+            messages: [],
+          },
+        ],
+        docMountPoints: [
+          { id: '5ce00000-0000-4000-8000-000000000001' },
+          { id: '5ce00000-0000-4000-8000-000000000002' },
+        ],
+      }),
+    },
+    {
+      name: 'chat_scenario_source_json_string',
+      note: '[P4.D293] a source carried as a JSON STRING (a raw row) is parsed, re-pointed, and lands as an OBJECT; a null / empty-string source is left as it came',
+      targetUserId: t,
+      data: bag({
+        chats: [
+          {
+            id: 'chat-1',
+            participants: [],
+            tags: [],
+            scenarioSource: JSON.stringify({
+              mountPointId: '5ce00000-0000-4000-8000-000000000003',
+              path: 'Scenarios/A String.md',
+              bodySha256: 'abababababababababababababababababababababababababababababababab',
+            }),
+            messages: [],
+          },
+          { id: 'chat-2', participants: [], tags: [], scenarioSource: null, messages: [] },
+          { id: 'chat-3', participants: [], tags: [], scenarioSource: '', messages: [] },
+        ],
+      }),
+    },
+    {
+      name: 'chat_scenario_source_invalid',
+      note: '[P4.D293] a source the schema refuses (a bad uuid; a short sha; unparseable JSON text) becomes null and mints nothing',
+      targetUserId: t,
+      data: bag({
+        chats: [
+          {
+            id: 'chat-1',
+            participants: [],
+            tags: [],
+            scenarioSource: { mountPointId: 'not-a-uuid', path: 'Scenarios/x.md', bodySha256: 'abababababababababababababababababababababababababababababababab' },
+            messages: [],
+          },
+          {
+            id: 'chat-2',
+            participants: [],
+            tags: [],
+            scenarioSource: {
+              mountPointId: '5ce00000-0000-4000-8000-000000000004',
+              path: 'Scenarios/x.md',
+              bodySha256: 'abc',
+            },
+            messages: [],
+          },
+          { id: 'chat-3', participants: [], tags: [], scenarioSource: '{not json', messages: [] },
+        ],
+      }),
+    },
     {
       name: 'pass_through_collections',
       note: 'providerModels (global) and textReplacementRules (global config, nothing references rule ids) pass through untouched — ids included',

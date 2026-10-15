@@ -322,6 +322,15 @@ fn no_restore_phase_names_a_column_a_migrated_table_lacks() {
         "restore-archive-gen2.zip",
         "restore-archive-memory-graph.zip",
         "restore-archive-orphan-links.zip",
+        // [P4.D293] the `83334b9a5` carriers' writes on a vintage instance
+        // once P4.D288's mirror-boot ensures have run: the extraction-cursor
+        // INSERTs, memory `supersededAt`, chat `scenarioSource` /
+        // `scenarioNotes`, tf-idf `textShapeVersion`, the translated
+        // `memoryMaintenance` row and the adopted legacy vectors.
+        "restore-archive-legacy-vectors.zip",
+        "restore-archive-cursors.zip",
+        "restore-archive-scenario-source.zip",
+        "restore-archive-legacy-settings.zip",
     ] {
         for (suffix, mode) in [
             ("replace", RestoreMode::Replace),

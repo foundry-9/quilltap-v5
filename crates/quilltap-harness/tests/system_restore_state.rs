@@ -434,6 +434,68 @@ const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
         "restore_memory_tiers_new_account",
         "mountIndex",
         "doc_mount_files",
+    ), // [P4.D293] the four carrier archives derived from `restore-archive.zip`
+    // replay the same legacy disk-key `portrait.png` in `new-account` mode —
+    // the ruled residual reached by four more archive shapes, not new ones.
+    (
+        "restore_legacy_vectors_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_legacy_vectors_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_legacy_vectors_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
+    (
+        "restore_cursors_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_cursors_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_cursors_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
+    (
+        "restore_scenario_source_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_scenario_source_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_scenario_source_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
+    (
+        "restore_legacy_settings_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_legacy_settings_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_legacy_settings_new_account",
+        "mountIndex",
+        "doc_mount_files",
     ),
 ];
 
@@ -507,7 +569,12 @@ const V5_STATS_GAP: &[(&str, &str)] = &[
         "Project Files: The Voyage",
     ),
     ("restore_store_row_fails_new_account", "Quilltap Uploads"),
-    ("restore_memory_tiers_new_account", "Quilltap Uploads"),
+    ("restore_memory_tiers_new_account", "Quilltap Uploads"), // [P4.D293] the same one `files/portrait.png` replayed into the target's
+    // uploads mount by the four carrier archives' `new-account` arms.
+    ("restore_legacy_vectors_new_account", "Quilltap Uploads"),
+    ("restore_cursors_new_account", "Quilltap Uploads"),
+    ("restore_scenario_source_new_account", "Quilltap Uploads"),
+    ("restore_legacy_settings_new_account", "Quilltap Uploads"),
 ];
 
 /// The columns [`V5_STATS_GAP`] makes incomparable on its named rows.
@@ -1257,6 +1324,20 @@ fn archive_for(name: &str) -> &'static str {
         // [P4.D258 Tier 2 item 11] an `embedding: {}` memory beside two sound
         // ones — `derive-restore-archive-empty-embedding.py`.
         EMPTY_EMBEDDING_CASE => "restore-archive-empty-embedding.zip",
+        // [P4.D293] the `83334b9a5` carriers — `derive-restore-archive-
+        // {legacy-vectors,cursors,scenario-source,legacy-settings}.py`.
+        "restore_legacy_vectors_replace" | "restore_legacy_vectors_new_account" => {
+            "restore-archive-legacy-vectors.zip"
+        }
+        "restore_cursors_replace" | "restore_cursors_new_account" => "restore-archive-cursors.zip",
+        "restore_scenario_source_replace" | "restore_scenario_source_new_account" => {
+            "restore-archive-scenario-source.zip"
+        }
+        "restore_legacy_settings_replace" | "restore_legacy_settings_new_account" => {
+            "restore-archive-legacy-settings.zip"
+        }
+        "restore_legacy_settings_own_replace" => "restore-archive-legacy-settings-own.zip",
+        "restore_legacy_settings_null_replace" => "restore-archive-legacy-settings-null.zip",
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -1483,6 +1564,17 @@ fn renamed_columns_in(
     }
 }
 
+/// [P4.D293 L-2] The oracle's `STALE_CURSOR_SQL`: a stale `episode-fold`
+/// cursor for chat `c1…02` — an id the cursors archive recreates with NO
+/// cursor of its own — planted with foreign keys off (the chat is not on the
+/// target yet). The `replace` wipe's truncate must remove it.
+const STALE_CURSOR_SQL: &str = "PRAGMA foreign_keys = OFF; \
+INSERT INTO \"memory_extraction_cursors\" (\"id\", \"chatId\", \"pass\", \"messageId\", \"createdAt\", \"updatedAt\") \
+VALUES ('c1000000-0000-4000-8000-000000000002:episode-fold', 'c1000000-0000-4000-8000-000000000002', \
+'episode-fold', 'd1000000-0000-4000-8000-0000000000ee', '2026-01-01T00:00:00.000Z', \
+'2026-01-01T00:00:00.000Z'); \
+PRAGMA foreign_keys = ON;";
+
 /// [P4.D264] The oracle's `WEAR_STALE_ROWS_SQL`: one stale row on the
 /// archive's (Travelling Coat × unattributed) key and one on an item the
 /// archive never names. `replace` wipes both (the delete list); `new-account`
@@ -1516,6 +1608,8 @@ fn wear_ledger_ddl(name: &str) -> bool {
 /// (`tolerant_insert`), so its catch is reached by a trigger, not a rename.
 fn plant_sql_in(name: &str) -> &'static [(&'static str, &'static str)] {
     match name {
+        // [P4.D293 L-2] the oracle's `STALE_CURSOR_SQL`, byte for byte.
+        "restore_cursors_replace" => &[("quilltap.db", STALE_CURSOR_SQL)],
         // [P4.D264] two STALE ledger rows on the target — the oracle's
         // `WEAR_STALE_ROWS_SQL`, byte for byte.
         "restore_wardrobe_wear_replace" | "restore_wardrobe_wear_new_account" => {
@@ -1989,6 +2083,11 @@ fn system_restore_state_equivalence() {
             &mut failures,
         );
 
+        // [P4.D293] the carrier arms are LIVE in the oracle (the row diff
+        // above proves v5 equal to it; this keeps the archives from going
+        // vacuous).
+        assert_carriers_live(name, &case["summary"], want_state, &mut failures);
+
         // [P4.D152] bug 117's own comparand, taken from the RAW dumps.
         assert_bug117_stored_sha(name, &got_state, want_state, &mut failures);
 
@@ -2108,15 +2207,17 @@ fn system_restore_state_equivalence() {
     // lets the P4.D264 tombstone twin into the bulk diff (the bound arm of
     // `ARCHIVED_CHARACTER_RESTORE` converged). 45 + 6 = 51: P4.D273's three
     // derived archives in both modes (the store claim map's arms, 22a-i, the
-    // memory tiers).
+    // memory tiers). 51 + 10 = 61: P4.D293's carriers — the legacy-vectors,
+    // cursors, scenario-source and legacy-settings archives in both modes,
+    // plus the legacy-settings `-own` and `-null` replace arms.
     assert_eq!(
         empty_embedding_seen, 1,
         "{EMPTY_EMBEDDING_CASE} is missing from the oracle — regenerate it"
     );
     assert_eq!(
         seen,
-        51,
-        "expected all fifty-one restore cases in the oracle (ten + the #58 orphan-links arm \
+        61,
+        "expected all sixty-one restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
@@ -2127,7 +2228,8 @@ fn system_restore_state_equivalence() {
          + P4.161's memory-, inform-, entity- and kind-refusal arms \
          + P4.D264's five wardrobe-carrier arms + its tombstone twin + P4.D258's \
          empty-embedding arm + P4.D273's store-binding, store-row-fails and memory-tiers \
-         arms in both modes)"
+         arms in both modes + P4.D293's legacy-vectors, cursors, scenario-source and \
+         legacy-settings arms in both modes and the legacy-settings own / null arms)"
     );
     for f in &failures {
         eprintln!("FAILURE {f}");
@@ -4820,8 +4922,8 @@ const MEMORY_TIERS_CASES: &[&str] = &[
 /// `tier: 'cold'` with `supersededById` the digest's restored id; the pre-tier
 /// row is `tier: 'hot'`, `consolidatedFrom: '[]'` (v4's create prefill); the
 /// `tier: 'warm'` row is refused (absent, with v4's ZodError — the ONLY `Failed
-/// to restore memory` warning on either side); the chat's watermark names its
-/// own restored message.
+/// to restore memory` warning on either side); the chat's watermark lands as
+/// its `other-fold` CURSOR naming its own restored message (P4.D293).
 #[allow(clippy::too_many_arguments)]
 fn assert_memory_tiers_restored(
     name: &str,
@@ -4945,13 +5047,160 @@ fn assert_memory_tiers_restored(
             .iter()
             .find(|m| str_at(m, "content") == Some(message_content.as_str()))
             .and_then(|m| str_at(m, "id"));
-        let watermark = chat.and_then(|c| str_at(c, "otherExtractionWatermarkMessageId"));
+        // [P4.D293] v4 `ac6348c5f`: the archive's OTHER watermark (a chat
+        // column at the baseline) is a BUNDLE key now — stripped off the chat
+        // and written to `memory_extraction_cursors` as the chat's
+        // `other-fold` cursor. The chat row carries no watermark column.
+        let chat_id = chat.and_then(|c| str_at(c, "id"));
+        let watermark = rows_of(dump, "main", "memory_extraction_cursors")
+            .iter()
+            .find(|r| str_at(r, "chatId") == chat_id && str_at(r, "pass") == Some("other-fold"))
+            .and_then(|r| str_at(r, "messageId"));
+        if chat.is_some_and(|c| c.get("otherExtractionWatermarkMessageId").is_some()) {
+            failures.push(format!(
+                "[{name}] MEMORY TIERS ({side}): the restored chat row still carries a watermark key"
+            ));
+        }
         if watermark.is_none() || watermark != message_id {
             failures.push(format!(
                 "[{name}] MEMORY TIERS ({side}): the watermark {watermark:?} does not name its \
                  restored message {message_id:?}"
             ));
         }
+    }
+}
+
+/// ## [P4.D293] The `83334b9a5` carriers' arms, LIVE on v4's side
+///
+/// The whole-dump diff proves v5 writes what v4 writes; it cannot prove the
+/// derived archives still EXERCISE anything (an archive that adopted nothing
+/// would pass on both sides). So, per carrier case, the oracle's own state is
+/// held to the arms its derive script plants:
+/// - legacy vectors: `legacyVectorsAdopted` 3 (bare, `{}`, the LAST duplicate),
+///   `ad…02` still without an embedding;
+/// - cursors: `replace` holds exactly the archive's four (the STALE plant gone
+///   — L-2's truncate), `new-account` five (a blank `""` OTHER key is MINTED by
+///   v4's remapper and lands as a cursor — v4's, mirrored, recorded);
+///   `supersededAt` verbatim on all three rows (L-6);
+/// - scenario source: `replace` refuses two chats (the JSON string and the bad
+///   uuid), `new-account` restores all three with the bad one's source null;
+/// - legacy settings: `memoryMaintenance` derived `{"enabled":true,
+///   "perCharacterCap":100,"perCharacterCapOverrides":{"<Riya>":100000}}` — the
+///   archive's character id in BOTH modes (R-AE) — the tf-idf shapes `0` and
+///   `1` landed and the `null` refused; the `-own` arm keeps the archive's
+///   row, the `-null` arm derives none.
+fn assert_carriers_live(
+    name: &str,
+    want_summary: &Value,
+    want: &Value,
+    failures: &mut Vec<String>,
+) {
+    let rows = |t: &str| rows_of(want, "main", t);
+    let maintenance = || {
+        rows("instance_settings")
+            .iter()
+            .find(|r| str_at(r, "key") == Some("memoryMaintenance"))
+            .and_then(|r| str_at(r, "value"))
+            .map(str::to_string)
+    };
+    let mut fail = |what: String| failures.push(format!("[{name}] CARRIERS (v4): {what}"));
+    match name {
+        "restore_legacy_vectors_replace" | "restore_legacy_vectors_new_account" => {
+            if want_summary["legacyVectorsAdopted"] != json!(3) {
+                fail(format!(
+                    "legacyVectorsAdopted {}",
+                    want_summary["legacyVectorsAdopted"]
+                ));
+            }
+            let with_embedding = rows("memories")
+                .iter()
+                .filter(|m| m.get("embedding").is_some_and(|e| !e.is_null()))
+                .count();
+            if with_embedding != 4 {
+                fail(format!(
+                    "{with_embedding} memories carry an embedding, want 4"
+                ));
+            }
+        }
+        "restore_cursors_replace" | "restore_cursors_new_account" => {
+            let want_n = if name.ends_with("replace") { 4 } else { 5 };
+            let n = rows("memory_extraction_cursors").len();
+            if n != want_n {
+                fail(format!("{n} cursors, want {want_n}"));
+            }
+            if rows("memory_extraction_cursors")
+                .iter()
+                .any(|r| str_at(r, "messageId") == Some("d1000000-0000-4000-8000-0000000000ee"))
+            {
+                fail("the stale cursor survived".to_string());
+            }
+            let stamped = rows("memories")
+                .iter()
+                .filter(|m| str_at(m, "supersededAt").is_some())
+                .count();
+            if stamped != 2 || rows("memories").len() != 3 {
+                fail(format!(
+                    "{stamped} of {} memories carry supersededAt, want 2 of 3",
+                    rows("memories").len()
+                ));
+            }
+        }
+        "restore_scenario_source_replace" | "restore_scenario_source_new_account" => {
+            let want_n = if name.ends_with("replace") { 1 } else { 3 };
+            if rows("chats").len() != want_n {
+                fail(format!(
+                    "{} chats restored, want {want_n}",
+                    rows("chats").len()
+                ));
+            }
+            let sourced = rows("chats")
+                .iter()
+                .filter(|c| c.get("scenarioSource").is_some_and(|v| !v.is_null()))
+                .count();
+            if sourced != want_n.min(2) {
+                fail(format!("{sourced} chats carry a scenario source"));
+            }
+        }
+        "restore_legacy_settings_replace" | "restore_legacy_settings_new_account" => {
+            let want_value = "{\"enabled\":true,\"perCharacterCap\":100,\"perCharacterCapOverrides\":{\"a1000000-0000-4000-8000-000000000002\":100000}}";
+            if maintenance().as_deref() != Some(want_value) {
+                fail(format!("memoryMaintenance {:?}", maintenance()));
+            }
+            let mut shapes: Vec<String> = rows("tfidf_vocabularies")
+                .iter()
+                .map(|r| {
+                    r.get("textShapeVersion")
+                        .map(Value::to_string)
+                        .unwrap_or_default()
+                })
+                .collect();
+            shapes.sort();
+            if shapes != ["0", "1"] {
+                fail(format!("tf-idf shapes {shapes:?}"));
+            }
+            if rows("instance_settings")
+                .iter()
+                .any(|r| str_at(r, "key") == Some("memoryExtractionConcurrency"))
+            {
+                fail("the dead key restored".to_string());
+            }
+        }
+        "restore_legacy_settings_own_replace" => {
+            if maintenance().as_deref()
+                != Some(
+                    "{\"enabled\":false,\"perCharacterCap\":3000,\"perCharacterCapOverrides\":{}}",
+                )
+            {
+                fail(format!("memoryMaintenance {:?}", maintenance()));
+            }
+        }
+        "restore_legacy_settings_null_replace" if maintenance().is_some() => {
+            fail(format!(
+                "memoryMaintenance {:?} derived from a null",
+                maintenance()
+            ));
+        }
+        _ => {}
     }
 }
 

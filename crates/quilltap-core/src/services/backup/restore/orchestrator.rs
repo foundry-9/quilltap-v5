@@ -707,9 +707,23 @@ fn restore_on_writer(
             // summary pair, so deriving on the archive's JSON before the typed
             // decode is v4's `withConciergeModeFromLegacy(stripScenarioSeeded
             // Summary(chat))` exactly.
+            // P4.D293 (v4 `ac6348c5f` + `64743ee13`, `restore.ts:262-265`): the
+            // fold passes' cursors ride the archive chat under their legacy
+            // field names — any archive vintage, from the baseline's lone
+            // OTHER key to the pin's three. They are TAKEN off the chat
+            // (C1-11's `take_bundle_cursors` — all three keys deleted, only a
+            // non-empty string kept) BEFORE the Concierge derive and the typed
+            // decode, and written to `memory_extraction_cursors` once the chat
+            // exists (below). No message-id check: a cursor naming a message
+            // the archive lacks is written all the same, as v4 writes it.
+            let mut bundled = chat.clone();
+            let cursors = bundled
+                .as_object_mut()
+                .map(crate::services::carriers::cursor_bundle::take_bundle_cursors)
+                .unwrap_or_default();
             let chat_in =
                 crate::services::dangerous_content::chat_override::with_concierge_mode_from_legacy(
-                    chat.clone(),
+                    bundled,
                 );
             // v4's `repos.chats.create` validates the three Concierge enums
             // (P4.124): an out-of-enum value skips the chat with the ZodError.
@@ -735,6 +749,27 @@ fn restore_on_writer(
             {
                 skip(&mut w, &zod);
                 continue;
+            }
+            // P4.D293 (L-11, v4 `545e299bb`): a `scenarioSource` that is not an
+            // OBJECT — a raw row's JSON STRING among them — is refused by v4's
+            // `ChatMetadataSchema` in `create` (`expected object, received
+            // string`, measured on `restore_scenario_source_replace`), which
+            // the typed decode would refuse with serde's sentence instead. So
+            // it is checked first, through C1-9's own `ScenarioSource::parse`
+            // (the schema's issues at `["scenarioSource"]`), on the Concierge
+            // refusal's path. An OBJECT the schema refuses (a bad uuid) reaches
+            // `chats.create`, whose refusal already carries v4's bytes.
+            if let Some(source) = chat_in
+                .get("scenarioSource")
+                .filter(|v| !v.is_null() && !v.is_object())
+            {
+                if let Err(issues) = crate::db::chats::ScenarioSource::parse(
+                    source,
+                    &[Value::String("scenarioSource".into())],
+                ) {
+                    skip(&mut w, &crate::api::zod_issues::zod_error_message(&issues));
+                    continue;
+                }
             }
             let mut create: crate::db::chats::ChatCreate = match serde_json::from_value(chat_in) {
                 Ok(v) => v,
@@ -778,6 +813,10 @@ fn restore_on_writer(
                 );
                 continue;
             }
+            // v4 `:274` `await restoreBundleCursors(createdChat.id, cursors)` —
+            // after the create, BEFORE the messages; best-effort, its own WARN
+            // per failed pass and DEBUG when anything was written.
+            crate::services::carriers::cursor_bundle::restore_bundle_cursors(main, &id, &cursors);
             for message in chat
                 .get("messages")
                 .and_then(Value::as_array)
@@ -1843,6 +1882,33 @@ fn restore_on_writer(
     {
         let repo = crate::db::tfidf_vocabulary::TfidfVocabularyRepository::new(main);
         for v in &data.tfidf_vocabularies {
+            // P4.D293 (L-4, v4 `4ae0c4ca6`): v4's `create` validates
+            // `textShapeVersion` through `z.number().int().nonnegative()
+            // .default(0)` — ABSENT is 0; `null`, a string, a fraction or a
+            // negative REFUSES the vocabulary (the schema's two ERRORs, then
+            // the per-row warning + WARN with the ZodError message), never a
+            // silent 0 that would mark a refused vocabulary as fitted. A REAL
+            // `1.0` is an integer (R-R).
+            let issues = v
+                .as_object()
+                .map(crate::api::zod_issues::zod_tfidf_text_shape_version_issues)
+                .unwrap_or_default();
+            if !issues.is_empty() {
+                let zod = crate::api::zod_issues::zod_error_message(&issues);
+                crate::db::fallback::log_tfidf_vocabulary_create_refused(
+                    &zod,
+                    &s(v, "profileId"),
+                    target_user_id,
+                );
+                w.push(format!("Failed to restore TF-IDF vocabulary: {zod}"));
+                tracing::warn!(
+                    target: "quilltap::restore",
+                    vocabularyId = %id_of(v),
+                    error = %zod,
+                    "Failed to restore tfidf vocabulary"
+                );
+                continue;
+            }
             let create = crate::db::tfidf_vocabulary::TvCreate {
                 profile_id: s(v, "profileId"),
                 user_id: target_user_id.to_string(),
@@ -1853,7 +1919,8 @@ fn restore_on_writer(
                 include_bigrams: b(v, "includeBigrams", false),
                 fitted_at: s(v, "fittedAt"),
                 // P4.D288 (O-7): v4 spreads the archived row into `create`,
-                // whose `.default(0)` fills an archive from before the column.
+                // whose `.default(0)` fills an archive from before the column
+                // (any other shape was refused above).
                 text_shape_version: n(v, "textShapeVersion", 0.0),
             };
             warn_row!(
@@ -1996,12 +2063,29 @@ fn restore_on_writer(
 
     // ── 22o. Instance settings — LAST, because the mount-point keys point at
     //    the doc_mount_points restored above. Raw upsert by key (`:746`).
-    for row in &data.instance_settings {
-        let key = s(row, "key");
+    //
+    //    P4.D293 (v4 `e0ac7493a`, `restore.ts:1178`): the rows go through
+    //    C1-5's `with_memory_maintenance_from_legacy` first — the dead
+    //    `memoryExtractionConcurrency` dropped, and a pre-Phase-A archive's
+    //    `chat_settings.autoHousekeepingSettings` translated into a
+    //    `memoryMaintenance` row APPENDED LAST unless the archive carries its
+    //    own. Over `data` — the REMAPPED bundle in `new-account` mode, as v4's
+    //    (L-13) — so the count is the TRANSLATED rows' (the preview keeps the
+    //    archive's). A `new-account` restore leaves the per-character cap
+    //    overrides keyed by the ARCHIVE's character ids (R-AE — v4's, mirrored).
+    let instance_rows: Vec<(String, String)> = data
+        .instance_settings
+        .iter()
+        .map(|row| (s(row, "key"), s(row, "value")))
+        .collect();
+    for (key, value) in crate::db::instance_settings::with_memory_maintenance_from_legacy(
+        &instance_rows,
+        &data.chat_settings,
+    ) {
         match main.execute(
             "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES (?1, ?2) \
              ON CONFLICT(\"key\") DO UPDATE SET \"value\" = excluded.\"value\"",
-            rusqlite::params![key, s(row, "value")],
+            rusqlite::params![key, value],
         ) {
             Ok(_) => c.instance_settings += 1,
             Err(e) => {

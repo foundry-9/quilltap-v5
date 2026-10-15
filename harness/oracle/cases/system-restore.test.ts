@@ -138,6 +138,20 @@ const WEAR_STALE_ROWS_SQL =
   "('3e0000ff-0000-4000-8000-0000000000f2', 'ae0000ff-0000-4000-8000-0000000000f2', NULL, 7, " +
   "'2026-01-02T00:00:00.000Z', '2026-01-08T00:00:00.000Z', NULL, " +
   "'2026-01-02T00:00:00.000Z', '2026-01-08T00:00:00.000Z')";
+/**
+ * [P4.D293 L-2] A STALE extraction cursor on the `replace` target, for chat
+ * `c1…02` — an id the cursors archive recreates WITHOUT a cursor of its own.
+ * Foreign keys are switched off around the insert (the chat does not exist on
+ * the target yet); the wipe's truncate must remove it, or it would survive
+ * onto the recreated chat. Both sides run it verbatim.
+ */
+const STALE_CURSOR_SQL =
+  'PRAGMA foreign_keys = OFF; ' +
+  'INSERT INTO "memory_extraction_cursors" ("id", "chatId", "pass", "messageId", "createdAt", "updatedAt") ' +
+  "VALUES ('c1000000-0000-4000-8000-000000000002:episode-fold', 'c1000000-0000-4000-8000-000000000002', " +
+  "'episode-fold', 'd1000000-0000-4000-8000-0000000000ee', '2026-01-01T00:00:00.000Z', " +
+  "'2026-01-01T00:00:00.000Z'); " +
+  'PRAGMA foreign_keys = ON;';
 const SINGLE_USER_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
 
 const RESTORE_CASES: Array<{
@@ -696,6 +710,62 @@ const RESTORE_CASES: Array<{
   // files the archetype in Quilltap General through that pointer. Built by
   // `fixtures/derive-restore-archive-general-pointer.py`.
   { name: 'restore_general_pointer_fresh_replace', archive: 'restore-archive-general-pointer.zip' },
+
+  // ── [P4.D293] the `83334b9a5` carriers, both modes ─────────────────────
+  //
+  // `restore-archive-legacy-vectors.zip` (v4 `af48f6cc2`, L-5): an OLD
+  // archive's mirror rows adopted onto memories that arrived without an
+  // embedding — bare adopts, own kept, `{}` adopts, the last duplicate wins,
+  // the orphan creates nothing (`legacyVectorsAdopted` 3). Built by
+  // `fixtures/derive-restore-archive-legacy-vectors.py`.
+  { name: 'restore_legacy_vectors_replace', archive: 'restore-archive-legacy-vectors.zip' },
+  {
+    name: 'restore_legacy_vectors_new_account',
+    archive: 'restore-archive-legacy-vectors.zip',
+    mode: 'new-account',
+  },
+  // `restore-archive-cursors.zip` (v4 `ac6348c5f` + `64743ee13`, `c2795733f`):
+  // the bundled cursors taken off each chat and written to
+  // `memory_extraction_cursors` (three keys; blanks; the lone baseline-vintage
+  // OTHER key), and memory `supersededAt` verbatim (L-6). The `replace` target
+  // is planted with a STALE cursor for a chat id the archive recreates and
+  // carries no cursor for (L-2: the wipe's truncate removes it). Built by
+  // `fixtures/derive-restore-archive-cursors.py`.
+  {
+    name: 'restore_cursors_replace',
+    archive: 'restore-archive-cursors.zip',
+    plantSqlIn: [['main', STALE_CURSOR_SQL]],
+  },
+  {
+    name: 'restore_cursors_new_account',
+    archive: 'restore-archive-cursors.zip',
+    mode: 'new-account',
+  },
+  // `restore-archive-scenario-source.zip` (v4 `545e299bb`, L-11): a valid
+  // source, one as a JSON STRING, and an invalid one — `replace` refuses that
+  // chat through `ChatMetadataSchema`; `new-account` re-points the valid ones
+  // through the remapper and nulls the invalid one. Built by
+  // `fixtures/derive-restore-archive-scenario-source.py`.
+  { name: 'restore_scenario_source_replace', archive: 'restore-archive-scenario-source.zip' },
+  {
+    name: 'restore_scenario_source_new_account',
+    archive: 'restore-archive-scenario-source.zip',
+    mode: 'new-account',
+  },
+  // `restore-archive-legacy-settings*.zip` (v4 `e0ac7493a` + `4ae0c4ca6`,
+  // L-4 / L-13 / R-AE): the legacy `autoHousekeepingSettings` translated into
+  // a `memoryMaintenance` row APPENDED LAST (the archive's own wins; a `null`
+  // derives nothing), the dead `memoryExtractionConcurrency` dropped, and the
+  // tf-idf `textShapeVersion` absent → 0 / `1` / `null` REFUSED. Built by
+  // `fixtures/derive-restore-archive-legacy-settings.py`.
+  { name: 'restore_legacy_settings_replace', archive: 'restore-archive-legacy-settings.zip' },
+  {
+    name: 'restore_legacy_settings_new_account',
+    archive: 'restore-archive-legacy-settings.zip',
+    mode: 'new-account',
+  },
+  { name: 'restore_legacy_settings_own_replace', archive: 'restore-archive-legacy-settings-own.zip' },
+  { name: 'restore_legacy_settings_null_replace', archive: 'restore-archive-legacy-settings-null.zip' },
 ];
 
 /** jest.setup stubs the file-storage manager; the restore file phase IS the

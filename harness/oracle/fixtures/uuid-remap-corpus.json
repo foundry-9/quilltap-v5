@@ -4604,6 +4604,373 @@
       }
     },
     {
+      "name": "chat_episode_watermark",
+      "note": "[P4.D293] episodeExtractionWatermarkMessageId is minted at the chat's scalar pass (after the other key) and REUSED by its message (v4 c2795733f)",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [
+          {
+            "id": "chat-old",
+            "participants": [],
+            "tags": [],
+            "otherExtractionWatermarkMessageId": "msg-a",
+            "episodeExtractionWatermarkMessageId": "msg-b",
+            "messages": [
+              {
+                "id": "msg-a",
+                "type": "message"
+              },
+              {
+                "id": "msg-b",
+                "type": "message"
+              }
+            ]
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": []
+      }
+    },
+    {
+      "name": "chat_turn_watermark",
+      "note": "[P4.D293] turnExtractionWatermarkMessageId (v4 64743ee13) minted LAST; one naming a message outside the archive still gets a minted id",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [
+          {
+            "id": "chat-old",
+            "participants": [],
+            "tags": [],
+            "otherExtractionWatermarkMessageId": "msg-a",
+            "episodeExtractionWatermarkMessageId": "msg-b",
+            "turnExtractionWatermarkMessageId": "msg-not-in-archive",
+            "messages": [
+              {
+                "id": "msg-a",
+                "type": "message"
+              },
+              {
+                "id": "msg-b",
+                "type": "message"
+              }
+            ]
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": []
+      }
+    },
+    {
+      "name": "chat_scenario_source",
+      "note": "[P4.D293] chat-1 names a store first seen at a character (minted there, reused); chat-2 names one first seen at the chat (minted between the chat scalars and its participants); docMountPoints then reuses both. Unknown keys are stripped (Zod), the key keeps its place",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-1",
+            "characterDocumentMountPointId": "5ce00000-0000-4000-8000-000000000001"
+          }
+        ],
+        "chats": [
+          {
+            "id": "chat-1",
+            "participants": [
+              {
+                "id": "p-1",
+                "characterId": "char-1"
+              }
+            ],
+            "tags": [],
+            "scenarioSource": {
+              "mountPointId": "5ce00000-0000-4000-8000-000000000001",
+              "path": "Scenarios/The Road.md",
+              "bodySha256": "abababababababababababababababababababababababababababababababab",
+              "extra": "stripped"
+            },
+            "scenarioNotes": "Notes ride along.",
+            "title": "after the source",
+            "messages": []
+          },
+          {
+            "id": "chat-2",
+            "participants": [
+              {
+                "id": "p-2",
+                "characterId": "char-1"
+              }
+            ],
+            "tags": [],
+            "scenarioSource": {
+              "mountPointId": "5ce00000-0000-4000-8000-000000000002",
+              "path": "Scenarios/The Sea.md",
+              "bodySha256": "abababababababababababababababababababababababababababababababab"
+            },
+            "messages": []
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [
+          {
+            "id": "5ce00000-0000-4000-8000-000000000001"
+          },
+          {
+            "id": "5ce00000-0000-4000-8000-000000000002"
+          }
+        ],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": []
+      }
+    },
+    {
+      "name": "chat_scenario_source_json_string",
+      "note": "[P4.D293] a source carried as a JSON STRING (a raw row) is parsed, re-pointed, and lands as an OBJECT; a null / empty-string source is left as it came",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [
+          {
+            "id": "chat-1",
+            "participants": [],
+            "tags": [],
+            "scenarioSource": "{\"mountPointId\":\"5ce00000-0000-4000-8000-000000000003\",\"path\":\"Scenarios/A String.md\",\"bodySha256\":\"abababababababababababababababababababababababababababababababab\"}",
+            "messages": []
+          },
+          {
+            "id": "chat-2",
+            "participants": [],
+            "tags": [],
+            "scenarioSource": null,
+            "messages": []
+          },
+          {
+            "id": "chat-3",
+            "participants": [],
+            "tags": [],
+            "scenarioSource": "",
+            "messages": []
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": []
+      }
+    },
+    {
+      "name": "chat_scenario_source_invalid",
+      "note": "[P4.D293] a source the schema refuses (a bad uuid; a short sha; unparseable JSON text) becomes null and mints nothing",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [],
+        "chats": [
+          {
+            "id": "chat-1",
+            "participants": [],
+            "tags": [],
+            "scenarioSource": {
+              "mountPointId": "not-a-uuid",
+              "path": "Scenarios/x.md",
+              "bodySha256": "abababababababababababababababababababababababababababababababab"
+            },
+            "messages": []
+          },
+          {
+            "id": "chat-2",
+            "participants": [],
+            "tags": [],
+            "scenarioSource": {
+              "mountPointId": "5ce00000-0000-4000-8000-000000000004",
+              "path": "Scenarios/x.md",
+              "bodySha256": "abc"
+            },
+            "messages": []
+          },
+          {
+            "id": "chat-3",
+            "participants": [],
+            "tags": [],
+            "scenarioSource": "{not json",
+            "messages": []
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": []
+      }
+    },
+    {
       "name": "pass_through_collections",
       "note": "providerModels (global) and textReplacementRules (global config, nothing references rule ids) pass through untouched — ids included",
       "targetUserId": "11111111-2222-3333-4444-555555555555",

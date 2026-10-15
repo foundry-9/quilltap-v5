@@ -823,13 +823,43 @@ fn remap_chat(r: &mut UuidRemapper, chat: &Value, target_user_id: &str) -> Value
             "storyBackgroundImageId",
             "imageProfileId",
             // Message-id reference: messages are remapped below, so the
-            // "other-subject" extraction watermark must follow its message
-            // (v4 `d58548051`).
+            // "other-subject", episode and turn extraction watermarks must
+            // follow their messages (v4 `d58548051`; P4.D293 — `c2795733f`'s
+            // episode key, `64743ee13`'s turn key, LAST in `BUNDLE_CURSOR_
+            // FIELDS` order — the mint order the corpus pins). The remapper
+            // always mints, so a cursor naming a message outside the archive
+            // still gets a fresh id.
             "otherExtractionWatermarkMessageId",
+            "episodeExtractionWatermarkMessageId",
+            "turnExtractionWatermarkMessageId",
         ],
         &["tags", "impersonatingParticipantIds"],
         target_user_id,
     );
+
+    // P4.D293 (v4 `545e299bb`, `uuid-remap.ts:320-324`): "The scenario source
+    // names a mount; mounts are remapped by the same remapper, so the pointer
+    // follows its store." Only for a TRUTHY source (an absent / `null` / `""`
+    // one is left as it came); the result — re-pointed, or `null` for a source
+    // the schema refuses (no mint then), a JSON string becoming an OBJECT — is
+    // assigned onto the existing key, which keeps its place. Through C1-11's
+    // `remap_scenario_source`; the mint lands after the chat scalars and
+    // `userId`, before the participants.
+    if is_truthy(chat.get("scenarioSource")) {
+        let remapper = std::cell::RefCell::new(&mut *r);
+        let source = crate::services::carriers::scenario_source_remap::remap_scenario_source(
+            &chat["scenarioSource"],
+            |id| Some(remapper.borrow_mut().remap(&Value::String(id.to_string()))),
+        );
+        if let Some(obj) = remapped.as_object_mut() {
+            obj.insert(
+                "scenarioSource".to_string(),
+                source
+                    .and_then(|s| serde_json::to_value(s).ok())
+                    .unwrap_or(Value::Null),
+            );
+        }
+    }
 
     let participants: Vec<Value> = chat
         .get("participants")

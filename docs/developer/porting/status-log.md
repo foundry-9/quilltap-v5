@@ -182290,3 +182290,92 @@ Versions at close: core 0.0.1300, host 0.0.205 (web unchanged — test-only edit
   `instanceSettings` — e0ac7493a's derived `memoryMaintenance`; the memory-tiers archives' OTHER watermark landing
   in the cursor table; `restore_memory_tiers_*`'s chat-column assertion). fmt + both clippies clean; core lib
   `services::backup` 63/63.
+
+### Unit 2 — the restore's carriers + the new-account remap + the wipe (core 0.0.1300)
+
+One commit: the four carrier halves share `system_restore_state` (the cursors archive's `replace` arm is red until
+the wipe's truncate lands), so they land and go green together.
+
+- **Phase 7 cursors** (`ac6348c5f` + `64743ee13`): C1-11's `take_bundle_cursors` on the archive chat BEFORE the
+  Concierge derive and the typed decode; `restore_bundle_cursors(main, &id, …)` after the create, before the
+  messages. No message-id check (the `turn` cursor naming `d1…ff`, absent from the archive, is written on both
+  sides).
+- **22l** (`4ae0c4ca6`, L-4): NEW `api::zod_issues::zod_tfidf_text_shape_version_issues` (fenced P4.D293
+  region) — absent → 0; `null` / string → `invalid_type`; a fraction → the integer gate; a negative →
+  `>=0`; REFUSED with v4's two ERRORs through the NEW home `db::fallback::log_tfidf_vocabulary_create_refused`
+  (`Data validation failed` + the repository's OWN `Error creating TF-IDF vocabulary {collection, context,
+  profileId, userId, error}` — v4's tf-idf `create` is a bespoke `safeQuery`, not the base `_create`, so
+  `log_refused_create`'s `Error creating entity` would have been the wrong line; `fallback_home_guard`'s
+  `HOME_MESSAGES` gains it in a fenced region) + the warning `Failed to restore TF-IDF vocabulary: <ZodError>` +
+  WARN `Failed to restore tfidf vocabulary {vocabularyId, error}` — byte-equal to the oracle row.
+- **22o** (`e0ac7493a`, L-13, R-AE): the rows through C1-5's `with_memory_maintenance_from_legacy` over `data`
+  (the REMAPPED bundle in `new-account`, as v4's) — measured: the derived value and its LAST position equal on
+  both sides in both modes; the summary counts the translated rows. **45 committed restore cases moved** (every
+  archive derived from `restore-archive.zip` carries the legacy `autoHousekeepingSettings` object, so v4 now
+  derives `{"enabled":false,"perCharacterCap":2000,"perCharacterCapOverrides":{}}` for each). **R-AE** pinned
+  as plain equality: the `new-account` arm keeps the override key the ARCHIVE's Riya id (`a1…02`) on both
+  sides. **R-AE candidate v4 filing (for the human):** a `new-account` restore leaves per-character cap
+  overrides keyed by character ids the restore re-minted (stale — they name no character).
+- **`scenarioSource` (L-11)**: `remap_chat` re-points a TRUTHY source through C1-11's `remap_scenario_source`
+  with the shared remapper (a `RefCell` over the `&mut` remapper — C1-11 takes `impl Fn`); assigned onto the
+  existing key. **Measured in REPLACE mode:** an invalid object (bad uuid) — refused by `KEYSTONE`'s
+  `ChatCreate` refusal with v4's ZodError bytes (green, no flag); **a valid source as a JSON STRING — v4
+  REFUSES the chat** (`ChatMetadataSchema`: `expected object, received string`), where v5's typed decode
+  refused it with serde's sentence. Fixed through C1-9's own `ScenarioSource::parse` ahead of the decode (on
+  the Concierge pre-decode refusal path) — byte-equal now. In `new-account` mode the JSON string is parsed,
+  re-pointed and lands as an OBJECT; the invalid one becomes `null` with no mint.
+- **The remap** (`c2795733f` / `64743ee13`): the episode + turn cursor keys LAST in the scalar list. Corpus +5
+  cases (`chat_episode_watermark`, `chat_turn_watermark`, `chat_scenario_source` — a store first seen at a
+  character vs at the chat —, `_json_string`, `_invalid`) — `uuid-remap-corpus.json` regenerated from the pin,
+  41 cases green. **Mutation:** the turn key dropped from the Rust list → `chat_turn_watermark` red
+  (`getSize(): rust 3 vs oracle 4`).
+- **The wipe** (L-2, L-3, R-AF): `FORMAT3_MAIN_TABLES` + `memory_extraction_cursors` after `chat_informs` (v4's
+  why-comment carried), − the two vector tables; `delete_user_data` announces `report.announcement` through
+  `memory_retire::announce_retirement` after `db.write(…).await` returns `Ok` — `delete_all_user_data`
+  routes through it, so BOTH entry points announce once, after commit; a failed wipe announces nothing.
+  `store_name_reconcile_equivalence.rs:574` needed NO change (`KEYSTONE` already returns `RetireReport` from
+  `delete_user_data_on_writer`; that test drives the writer fn directly and announces nothing — measured green
+  both legs). **R-AF measured** (`system_delete_data_equivalence`, NEW per-case `retire` record): every wipe
+  that retires anything — one `memories` publish + `Retired memories` on BOTH sides; the empty second wipe —
+  none on both; NEW case `delete_data_retires_a_digest` (a planted CONSOLIDATED digest, Lorian about Riya):
+  the announce's `Refreshed Commonplace mirror after retiring a digest` with `written: 0` on BOTH sides —
+  v4 inside `retireMemories` with the characters still live, v5 after the commit with them deleted — **no
+  cadence difference observable** (no R-AF row needed). NEW `delete_data_clears_cursors` (CHAT_1's three
+  cursors through v4's REAL `setCursor` / C1-1's `set_cursor`, + an orphan with foreign keys off): 0 on both.
+  The v5 side reads a process-global capture (the retire DEBUG is on the writer thread) under a binary
+  serial lock, and counts publishes off a fresh no-flush thread bus. **Mutations:** the cursor table out of
+  the list → `main.memory_extraction_cursors: rust 1 != oracle 0`; the announce removed → every wipe case's
+  retire record red.
+- **Derived archives (L-9 — no committed archive rebuilt)**: a shared `fixtures/restore_archive_derive.py` +
+  four scripts, each md5-checking `restore-archive.zip` (`6b076003…`) unchanged before and after:
+  `restore-archive-legacy-vectors.zip` (adopted 3: bare, `{}`, the LAST of a duplicate pair; own kept; the
+  orphan creates nothing), `restore-archive-cursors.zip` (three keys / blanks / the lone baseline-vintage OTHER
+  key in the old column slot; `supersededAt` with / without / beside a null `supersededById`),
+  `restore-archive-scenario-source.zip`, `restore-archive-legacy-settings{,-own,-null}.zip`. **Finding (the
+  archive):** the vintage survey caught two extra vocabularies on ONE profile — a migrated instance's
+  `tfidf_vocabularies.profileId` is UNIQUE and references `embedding_profiles` (a generateDDL target has
+  neither) — so each derived vocabulary carries its own cloned embedding profile.
+- **Cases:** `system-restore.test.ts` +10 (both modes of the four, + the legacy-settings `-own` / `-null`
+  replace arms; `restore_cursors_replace` plants `STALE_CURSOR_SQL`, verbatim both sides); the Rust
+  `seen` 51 → 61; the four `new-account` arms join the two ruled carves they reach as shapes of
+  `restore-archive.zip` (`PHASE_ORDER_RESIDUAL`'s three mount tables, `V5_STATS_GAP`'s uploads rollup — not new
+  divergences); NEW `assert_carriers_live` holds each oracle arm LIVE (non-vacuity). `restore_memory_tiers_*`
+  re-pointed: the OTHER watermark is the restored chat's `other-fold` CURSOR naming its message, and the chat row
+  carries no watermark key. `restore_vintage_state`'s survey +4 archives × both modes (item 14) — green on the
+  P4.D288 mirror-boot region as landed (no HANDOFF).
+- **Observation (v4's, mirrored, recorded — a candidate filing for the human):** in `new-account` mode a BLANK
+  (`""`) bundle cursor key is a string, so v4's `remapFields` MINTS an id for it, and the restore then writes a
+  cursor naming a message that does not exist (`restore_cursors_new_account`: 5 cursors vs `replace`'s 4).
+  Both sides agree; `take_bundle_cursors`'s blank rule runs after the remap.
+- **Restore mutation proofs (Tier 2 item 19):** adoption onto a row with its own embedding → 6 failures;
+  first-duplicate-wins → `main.memories` differs; cursors not restored → the memory-tiers cursor pin + the
+  cursor tables; the `textShapeVersion: null` refusal disabled → census + warnings red; the settings translation
+  bypassed → 106 failures (`summary.instanceSettings: rust 2 vs oracle 3`). (The derived row FIRST instead of
+  LAST is C1-5's own translator — P4.D288's, frozen; its order is pinned there.)
+- **Families after the unit (from the pin):** `system_restore_state` 4/4 (61 restore + 7 preview cases),
+  `system_restore_equivalence`, `system_backup_equivalence` (8), `backup_uuid_remap_equivalence` (41),
+  `system_delete_data_equivalence` (11 cases + the chokepoint test), `restore_vintage_state` 9/9,
+  `system_restore_guards_equivalence` (17), `backup_mount_index_coercion_equivalence` (20),
+  `store_name_reconcile_equivalence` (both legs), `fallback_home_guard`, `zod_issues_home_guard`,
+  `spelling_guard` — all GREEN. fmt + both clippies clean; core lib (backup / delete_all / zod_issues /
+  carriers) 79/79.

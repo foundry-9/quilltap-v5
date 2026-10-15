@@ -2073,6 +2073,40 @@ mod p4d298_datetime_offset_tests {
 }
 // === end P4.D298 ===
 
+// === P4.D293 — the backup / restore carriers (append-only) ===
+
+/// v4 `TfidfVocabularySchema.textShapeVersion` (`lib/schemas/embedding-job.
+/// types.ts:57`, `4ae0c4ca6`): `z.number().int().nonnegative().default(0)` —
+/// ABSENT takes the default (no issue); `null`, a string or any non-number is
+/// `invalid_type`; a non-integer number fails the integer gate (which ABORTS);
+/// otherwise the safe-integer bounds, then `nonnegative` (`>=0`). The restore's
+/// 22l refuses a vocabulary on any of these (P4.D293 L-4); a REAL `1.0` is an
+/// integer to Zod (R-R).
+pub fn zod_tfidf_text_shape_version_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    let Some(v) = row.get("textShapeVersion") else {
+        return issues;
+    };
+    let at = || vec![key("textShapeVersion")];
+    match v.as_f64() {
+        None => issues.push(ZodIssue::invalid_type("number", at(), Some(v))),
+        Some(n) if n.fract() != 0.0 => issues.push(ZodIssue::invalid_int_type(at(), Some(v))),
+        Some(n) => {
+            if n > MAX_SAFE_INTEGER {
+                issues.push(ZodIssue::too_big_int(at()));
+            } else if n < -MAX_SAFE_INTEGER {
+                issues.push(ZodIssue::too_small_int(at()));
+            }
+            if n < 0.0 {
+                issues.push(ZodIssue::too_small_number(json!(0), at()));
+            }
+        }
+    }
+    issues
+}
+
+// === end P4.D293 ===
+
 #[cfg(test)]
 mod tests {
     /// P4.124: v4 `GroupSchema` — each shape the order named, both edges (the

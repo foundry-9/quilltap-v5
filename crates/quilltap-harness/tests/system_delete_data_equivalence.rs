@@ -150,6 +150,125 @@ fn count_all(db: &Db) -> Value {
 
 const CONFIRM: &str = "DELETE_ALL_MY_DATA";
 
+/// [P4.D293] The binary's tests run one at a time: the wipe's `Retired
+/// memories` DEBUG logs on the WRITER thread, so the retire record reads a
+/// PROCESS-GLOBAL capture (the `system_restore_state` idiom, memory note
+/// `capture-rig-writer-thread`), which a parallel test would colour.
+fn serial() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+fn global_capture() -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
+    static BUF: std::sync::OnceLock<std::sync::Arc<std::sync::Mutex<Vec<String>>>> =
+        std::sync::OnceLock::new();
+    BUF.get_or_init(|| {
+        use tracing_subscriber::layer::SubscriberExt;
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry()
+            .with(quilltap_core::test_support::CaptureLayer(buf.clone()));
+        tracing::subscriber::set_global_default(subscriber).expect("one global capture per binary");
+        buf
+    })
+    .clone()
+}
+
+/// [P4.D293] The oracle's `RETIRE_LOGGED`: the retire path's own lines, compared
+/// by level + message (their bytes are P4.D288's — §R.5).
+const RETIRE_LOGGED: &[&str] = &[
+    "Retired memories",
+    "Refreshed Commonplace mirror after retiring a digest",
+    "Commonplace mirror refresh after retiring a digest failed",
+];
+
+/// [P4.D293, R-AF] Run one case with a thread bus armed and the global capture
+/// cleared, and answer v4's `retire` record: `memoriesPublishes` — the
+/// `memories` realtime publishes (each bus is fresh and its flush never runs,
+/// so every publish of a NEW key logs `Realtime publish queued` once) — and the
+/// retire path's lines, level + message. The announce runs on THIS thread,
+/// after the writer commits (`delete_all::delete_user_data`).
+fn with_retire_record<T>(f: impl FnOnce() -> T) -> (T, Value) {
+    use quilltap_core::realtime::bus::{
+        arm_realtime_bus_for_current_thread, disarm_realtime_bus_for_current_thread, BusSpawner,
+    };
+    let buf = global_capture();
+    buf.lock().unwrap().clear();
+    let (tx, _rx) = tokio::sync::broadcast::channel(64);
+    let spawner: BusSpawner = std::sync::Arc::new(|_fut| {});
+    arm_realtime_bus_for_current_thread(tx, spawner, || 0);
+    let out = f();
+    disarm_realtime_bus_for_current_thread();
+    let lines = buf.lock().unwrap().clone();
+    let publishes = lines
+        .iter()
+        .filter(|l| l.contains("Realtime publish queued") && l.contains("topic=memories"))
+        .count();
+    let logs: Vec<Value> = lines
+        .iter()
+        .filter_map(|l| {
+            let mut parts = l.splitn(3, ' ');
+            let (level, _target, rest) = (parts.next()?, parts.next()?, parts.next()?);
+            let m = RETIRE_LOGGED
+                .iter()
+                .find(|m| rest == **m || rest.starts_with(&format!("{m} ")))?;
+            let mut line = json!({ "level": level.to_lowercase(), "message": m });
+            // The mirror refresh's `written` — what R-AF's cadence moves.
+            if *m == "Refreshed Commonplace mirror after retiring a digest" {
+                let written = rest
+                    .split(' ')
+                    .find_map(|f| f.strip_prefix("written="))
+                    .and_then(|n| n.parse::<u64>().ok());
+                line["written"] = json!(written);
+            }
+            Some(line)
+        })
+        .collect();
+    (out, json!({ "memoriesPublishes": publishes, "logs": logs }))
+}
+
+/// [P4.D293, R-AF] The oracle's `DIGEST_SQL`, byte for byte: a CONSOLIDATED
+/// digest held by Lorian about Riya, so the wipe's announce refreshes a mirror.
+fn plant_digest(db: &Db) {
+    db.write_blocking(|ws| {
+        ws.main().connection().execute_batch(
+            "INSERT INTO \"memories\" (\"id\", \"characterId\", \"aboutCharacterId\", \"content\", \"summary\", \
+             \"source\", \"tier\", \"consolidatedFrom\", \"consolidatedAt\", \"createdAt\", \"updatedAt\") VALUES \
+             ('ae0000d1-0000-4000-8000-0000000000d1', 'a1000000-0000-4000-8000-000000000001', \
+             'a1000000-0000-4000-8000-000000000002', 'Lorian has come to trust Riya.', 'trust', \
+             'CONSOLIDATED', 'hot', '[]', '2026-03-02T00:00:00.000Z', '2026-03-02T00:00:00.000Z', \
+             '2026-03-02T00:00:00.000Z')",
+        )?;
+        Ok(())
+    })
+    .expect("plant the digest");
+}
+
+/// [P4.D293 L-2] The oracle's cursor plant: CHAT_1's three cursors through
+/// C1-1's `set_cursor` (v4's REAL `setCursor`), then the orphan's raw insert
+/// with foreign keys off — byte for byte.
+fn plant_cursors(db: &Db) {
+    use quilltap_core::db::memory_extraction_cursors::{
+        ExtractionCursorPass, MemoryExtractionCursorsRepository,
+    };
+    db.write_blocking(|ws| {
+        let c = ws.main().connection();
+        let repo = MemoryExtractionCursorsRepository::new(c);
+        let chat = "c1000000-0000-4000-8000-000000000001";
+        repo.set_cursor(chat, ExtractionCursorPass::OtherFold, "d1000000-0000-4000-8000-000000000001")?;
+        repo.set_cursor(chat, ExtractionCursorPass::EpisodeFold, "d1000000-0000-4000-8000-000000000002")?;
+        repo.set_cursor(chat, ExtractionCursorPass::Turn, "d1000000-0000-4000-8000-0000000000ff")?;
+        c.execute_batch(
+            "PRAGMA foreign_keys = OFF; \
+             INSERT INTO \"memory_extraction_cursors\" (\"id\", \"chatId\", \"pass\", \"messageId\", \"createdAt\", \"updatedAt\") \
+             VALUES ('c10000ee-0000-4000-8000-0000000000ee:turn', 'c10000ee-0000-4000-8000-0000000000ee', 'turn', \
+             'd10000ee-0000-4000-8000-0000000000ee', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'); \
+             PRAGMA foreign_keys = ON;",
+        )?;
+        Ok(())
+    })
+    .expect("plant the cursors");
+}
+
 /// ## `conversation_annotations` — the delete-all wipe (bug 10, v4 CONVERGED)
 ///
 /// v4 used to delete this table on no path at all: it was absent from
@@ -169,6 +288,7 @@ const CONFIRM: &str = "DELETE_ALL_MY_DATA";
 
 #[test]
 fn system_delete_data_matches_oracle() {
+    let _serial = serial();
     let oracle_path = match std::env::var("QT_ORACLE_SYSTEM_DELETE_DATA") {
         Ok(p) => p,
         Err(_) => {
@@ -196,11 +316,20 @@ fn system_delete_data_matches_oracle() {
     let mut failed: Vec<String> = Vec::new();
     let mut ran = 0usize;
 
-    let mut check = |name: &str, status: u16, body: Value, counts: Value| {
+    let mut check = |name: &str, status: u16, body: Value, counts: Value, retire: Value| {
         let Some(exp) = oracle.get(name) else {
             failed.push(format!("{name}: MISSING from oracle"));
             return;
         };
+        // [P4.D293, R-AF] the wipe's retirement as announced: the `memories`
+        // publish count and the retire path's lines (level + message).
+        if retire != exp["retire"] {
+            failed.push(format!(
+                "{name}: retire record mismatch\n  rust:   {retire}\n  oracle: {}",
+                exp["retire"]
+            ));
+            return;
+        }
         let exp_status = exp["status"].as_u64().unwrap() as u16;
         if status != exp_status {
             failed.push(format!(
@@ -252,44 +381,60 @@ fn system_delete_data_matches_oracle() {
     // 1. The pristine fixture's counts (the preview baseline).
     {
         let db = fresh_db("pristine");
-        check("pristine_counts", 0, Value::Null, count_all(&db));
+        let ((), retire) = with_retire_record(|| ());
+        check("pristine_counts", 0, Value::Null, count_all(&db), retire);
     }
 
     // 2. Preview — counts only, and the DB must be untouched.
     {
         let db = fresh_db("preview");
-        let (s, b) = outcome(&system_data::delete_data_preview(&db, USER));
-        check("delete_data_preview", s, b, count_all(&db));
+        let ((s, b), retire) =
+            with_retire_record(|| outcome(&system_data::delete_data_preview(&db, USER)));
+        check("delete_data_preview", s, b, count_all(&db), retire);
     }
 
     // 3. The wrong-sentinel refusal — 400, and nothing written.
     {
         let db = fresh_db("badconfirm");
-        let (s, b) = outcome(&rt.block_on(system_data::delete_data(&db, USER, "nope", None)));
-        check("delete_data_wrong_confirm", s, b, count_all(&db));
+        let ((s, b), retire) = with_retire_record(|| {
+            outcome(&rt.block_on(system_data::delete_data(&db, USER, "nope", None)))
+        });
+        check("delete_data_wrong_confirm", s, b, count_all(&db), retire);
     }
 
     // 4. The full delete.
     {
         let db = fresh_db("delete");
-        let (s, b) = outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)));
-        check("delete_data", s, b, count_all(&db));
+        let ((s, b), retire) = with_retire_record(|| {
+            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)))
+        });
+        check("delete_data", s, b, count_all(&db), retire);
     }
 
     // 5. Idempotence — the second run summarizes zeros and changes nothing.
     {
         let db = fresh_db("twice");
-        let _ = rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None));
-        let (s, b) = outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)));
-        check("delete_data_twice", s, b, count_all(&db));
+        let ((s, b), retire) = with_retire_record(|| {
+            let _ = rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None));
+            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)))
+        });
+        check("delete_data_twice", s, b, count_all(&db), retire);
     }
 
     // 6. `instance_settings` survives the wipe (a row is WRITTEN first).
     {
         let db = fresh_db("instset");
-        let _ = rt.block_on(system_data::job_concurrency_set(&db, 7));
-        let (s, b) = outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)));
-        check("delete_data_keeps_instance_settings", s, b, count_all(&db));
+        let ((s, b), retire) = with_retire_record(|| {
+            let _ = rt.block_on(system_data::job_concurrency_set(&db, 7));
+            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)))
+        });
+        check(
+            "delete_data_keeps_instance_settings",
+            s,
+            b,
+            count_all(&db),
+            retire,
+        );
     }
 
     // 7. P4.D65 (the banked P4.D63 unit-8 arm): the archive-bundle SWEEP.
@@ -303,28 +448,69 @@ fn system_delete_data_matches_oracle() {
     // port that read the flag but inverted it.
     {
         let db = fresh_db("sweeparch");
-        let (s, b) =
-            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, Some(false))));
-        check("delete_data_sweeps_archive_bundles", s, b, count_all(&db));
+        let ((s, b), retire) = with_retire_record(|| {
+            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, Some(false))))
+        });
+        check(
+            "delete_data_sweeps_archive_bundles",
+            s,
+            b,
+            count_all(&db),
+            retire,
+        );
     }
     {
         let db = fresh_db("keeparch");
-        let (s, b) =
-            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, Some(true))));
+        let ((s, b), retire) = with_retire_record(|| {
+            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, Some(true))))
+        });
         check(
             "delete_data_keeps_archive_bundles_explicitly",
             s,
             b,
             count_all(&db),
+            retire,
         );
     }
 
     // 8. Preview on an already-wiped instance: all zeros, still no writes.
     {
         let db = fresh_db("previewafter");
-        let _ = rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None));
-        let (s, b) = outcome(&system_data::delete_data_preview(&db, USER));
-        check("delete_data_preview_after_wipe", s, b, count_all(&db));
+        let ((s, b), retire) = with_retire_record(|| {
+            let _ = rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None));
+            outcome(&system_data::delete_data_preview(&db, USER))
+        });
+        check(
+            "delete_data_preview_after_wipe",
+            s,
+            b,
+            count_all(&db),
+            retire,
+        );
+    }
+
+    // 9. [P4.D293 L-2] The cursor table in the truncate list: CHAT_1's three
+    //    cursors (the chat delete's cascade takes them) and an orphan only the
+    //    truncate reaches.
+    {
+        let db = fresh_db("cursors");
+        let ((s, b), retire) = with_retire_record(|| {
+            plant_cursors(&db);
+            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)))
+        });
+        check("delete_data_clears_cursors", s, b, count_all(&db), retire);
+    }
+
+    // 10. [P4.D293, R-AF] A retired digest: the announce refreshes its holder's
+    //     Commonplace mirror — v4 inside `retireMemories` (before the wipe
+    //     deletes the characters), v5 after the writer commits.
+    {
+        let db = fresh_db("digest");
+        let ((s, b), retire) = with_retire_record(|| {
+            plant_digest(&db);
+            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)))
+        });
+        check("delete_data_retires_a_digest", s, b, count_all(&db), retire);
     }
 
     assert!(
@@ -333,7 +519,8 @@ fn system_delete_data_matches_oracle() {
         failed.len(),
         failed.join("\n")
     );
-    assert_eq!(ran, 9, "expected 9 cases to run, ran {ran}");
+    // [P4.D293] +2: `delete_data_clears_cursors`, `delete_data_retires_a_digest`.
+    assert_eq!(ran, 11, "expected 11 cases to run, ran {ran}");
 }
 
 // ── P4.D126 unit 1: the full-wipe deletion chokepoint (v4 `914b59e13`) ───────
@@ -367,6 +554,7 @@ fn system_delete_data_matches_oracle() {
 /// Runs unconditionally — no env var, so it can never silently skip.
 #[test]
 fn delete_all_routes_memory_deletion_through_the_chokepoint() {
+    let _serial = serial();
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

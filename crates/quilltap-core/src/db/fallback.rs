@@ -3374,3 +3374,28 @@ pub fn log_embedding_status_delete_failure(entity_type: &str, entity_id: &str, e
 }
 
 // === end P4.D292 ===
+
+// === P4.D293 — the backup / restore carriers (append-only) ===
+
+/// v4 `TfidfVocabularyRepository.create` refusing an entity its schema
+/// rejects (`tfidf-vocabulary.repository.ts:91-123`, the restore's 22l —
+/// P4.D293 L-4): the base `validate`'s ERROR `Data validation failed
+/// {collection, error}`, then the repository's OWN rethrowing `safeQuery`
+/// line `Error creating TF-IDF vocabulary {collection, context, profileId,
+/// userId, error}` (its `collection` injected by the base `safeQuery`). `zod`
+/// is the `ZodError.message`. Logs only — the caller pushes its warning.
+pub fn log_tfidf_vocabulary_create_refused(zod: &str, profile_id: &str, user_id: &str) {
+    log_data_validation_failed("tfidf_vocabularies", zod);
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "tfidf_vocabularies",
+        context = "TfidfVocabularyRepository.create",
+        profileId = %profile_id,
+        userId = %user_id,
+        error = %zod,
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error creating TF-IDF vocabulary"
+    );
+}
+
+// === end P4.D293 ===

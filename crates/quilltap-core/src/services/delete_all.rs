@@ -199,11 +199,19 @@ const FORMAT3_MAIN_TABLES: &[&str] = &[
     // collide on the preserved primary keys, exactly as `chat_documents` does.
     "chat_informs",
     // === end P4.D205 ===
+    // === P4.D293 (v4 `ac6348c5f`, `delete-service.ts:41-44`) ===
+    // "Fold-pass extraction cursors (no userId). The chat delete's cascade
+    // would remove them, but clearing them here keeps a restore from merging
+    // cursors of a chat id it is about to recreate." (Every v5 instance carries
+    // the cascade — R-C; this catches a cursor whose chat the wipe never
+    // reaches.)
+    "memory_extraction_cursors",
+    // === end P4.D293 ===
     "conversation_chunks",
     "tfidf_vocabularies",
     "embedding_status",
-    "vector_entries",
-    "vector_indices",
+    // P4.D293 (v4 `af48f6cc2`): `vector_entries` / `vector_indices` are no
+    // longer listed — the mirror is retired (no instance carries the tables).
     "text_replacement_rules",
     // === P4.D264 (v4 `3ee3b1342`, `delete-service.ts:53-56`) ===
     // "The wardrobe wear ledger. Global like the rest of this list (no userId),
@@ -287,14 +295,28 @@ pub fn clear_format3_entities(main: &Connection, mount: Option<&Connection>) {
 
 /// v4 `lib/backup/restore/delete-service.ts:90` `deleteUserData(userId)` —
 /// the full per-user wipe, ALSO used by restore's `replace` mode.
+///
+/// P4.D293 (R-AF, §R.10(l)): the memory wipe's retirement is ANNOUNCED here,
+/// once the writer has COMMITTED — the frozen-archive invalidations, the
+/// realtime `memories` publish and the Commonplace mirror refresh for retired
+/// digests (`memory_retire::announce_retirement`). A wipe that fails announces
+/// nothing. Both async entry points come through here: the `replace` restore
+/// and the System Tools delete-all ([`delete_all_user_data`], v4
+/// `delete-service.ts:327` → `deleteUserData`). (v4 announces INSIDE
+/// `retireMemories`, before its character deletes; v5's writer cannot await
+/// the mirror, so the announce follows the commit — the cadence difference is
+/// the lane record's R-AF row.)
 pub async fn delete_user_data(
     db: &Db,
     user_id: &str,
     options: DeleteUserDataOptions,
 ) -> Result<RetireReport, DbError> {
     let user_id = user_id.to_string();
-    db.write(move |ws| delete_user_data_on_writer(ws, &user_id, options))
-        .await
+    let report = db
+        .write(move |ws| delete_user_data_on_writer(ws, &user_id, options))
+        .await?;
+    crate::services::memory_retire::announce_retirement(db, report.announcement.as_ref()).await;
+    Ok(report)
 }
 
 /// The wipe body, on the writer thread. Reads run over the writer's own
@@ -349,10 +371,8 @@ pub fn delete_user_data_on_writer(
     //
     //    P4.D288 (C1-7, §R.10(q)): the ONE retire path (`restore-replace`, v4
     //    `delete-service.ts:169`). Its report leaves the closure as this fn's
-    //    return value; the after-commit `announce_retirement` (R-AF) at the two
-    //    callers is P4.D293's (§R.10(l)) — the CONSUMER CONTRACT: hand
-    //    `report.announcement` to `memory_retire::announce_retirement` once the
-    //    wipe's write has committed.
+    //    return value; [`delete_user_data`] announces it once the wipe's write
+    //    has committed (R-AF, P4.D293).
     let retired = {
         let mut memory_ids: Vec<String> = Vec::new();
         for character_id in &characters {
