@@ -181098,3 +181098,15 @@ This lane's half (the `builtinRefit` key) is written into the Rust comparand (fe
   one, 2 failures, the tier kept), rebuild ×2 (`indexed 6 / failed 2` with `coldIndexed 2`; `0 / 1`), many-enqueue
   ×3 (empty → `[]`, no line; 7 requested → 4 queued / 3 already, priority 10 MEMORY + CONVERSATION_CHUNK, 0 HELP_DOC
   + MOUNT_CHUNK; again → the DEBUG, 0). GREEN — the two many-enqueue line pins (§R.5, P4.D288's bodies) live here.
+
+### Unit 8 — the character optimizer (L-9)
+
+- `generators/optimizer.rs`: `semantic_candidates` over `memory_index::search(…, IndexSearchOptions { hot_only: true,
+  exclude: None, limit: 500 })`; `rank_by_salience` (C1-A `sort_by_salience` over `SalienceInput::from_iso`) in place
+  of `rank_memories_by_weight` (DELETED with its test; a new unit test pins nothing-dropped + stable ties). The
+  `memory_weighting` import is gone from this file; the module itself is NOT deleted (`memory_injector`,
+  `frozen_archive`, `housekeeping`, `memory_service` still call it — §R.10(o): not this lane's last caller).
+- **`character_optimizer_tier3`** red-first (regen_failed: the corpus's three P4.D268 `plantSql` inserted into
+  `vector_entries`) → GREEN from the pin: each plant now `UPDATE memories SET embedding = X'…'` (the corpus is
+  this lane's); the builder `build-characters-fixture.ts` was not touched (not dead at the tip — the case, not the
+  builder, carried the mirror).

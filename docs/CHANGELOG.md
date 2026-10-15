@@ -84,6 +84,16 @@ New `services::admission` (v4 `lib/memory/admission/` at the `83334b9a5` pin): `
 
 New differential families from the pin: `admission_tier3_equivalence` (44 steps over UTC and Chicago legs, plus tier-1 content-key and key-scope rows) and `update_memory_tier2_equivalence` (12 edits plus the Commonplace mirror); the retired `memory_gate_tier3` family is deleted and its builder renamed `build-admission-fixture.ts`. Census rows: two admission publish sites; the activity-span row re-pointed to `admit_row`. One measured divergence is pinned both ways and flagged: `FIND_BY_IDS_UNVALIDATED` (v4's `findByIds` drops a schema-invalid row; v5's does not).
 
+#### 2026-10-15 — feat(generators): P4.D292 unit 8 — the character optimizer searches the memory rows and ranks by salience
+
+_Versions: core 0.0.1304._
+
+The character optimizer's memory pipeline at the pin.
+
+- The semantic arm calls `memory_index::search(character, vector, { hot_only, limit 500 })` (v4 `:737`, `af48f6cc2`), so vectors come from `memories.embedding`. It used to load the vector store directly.
+- Candidates are ranked by `sort_by_salience` (v4 `:775`, `e0ac7493a`), which is stable and drops nothing. This replaces `rank_memories_by_weight` and its weight floor. That function and its test are gone. `memory_weighting` stays, because other lanes still call it.
+- `character_optimizer_tier3` is green from the pin. Its three P4.D268 plants put their vector on the memory row.
+
 #### 2026-10-15 — feat(memory): P4.D292 unit 7 — the index-store backfill pair moves to `memory_index_backfill`
 
 _Versions: core 0.0.1303._

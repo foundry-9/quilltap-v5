@@ -38,7 +38,6 @@ use crate::db::memories_read::{
     find_by_character_about_character, search_by_content_about_character,
 };
 use crate::db::runtime::Db;
-use crate::db::vector_store::CharacterVectorStore;
 use crate::db::{characters_read, connection_profiles, embedding_profiles, wardrobe_read, DbError};
 use crate::generators::field_semantics::{
     COMMITTEE_DRIFT_GUARDRAIL, COMPANION_TRUST_DISPOSITION, CONVERSATIONAL_VOICE_DIRECTION,
@@ -52,7 +51,7 @@ use crate::generators::llm_json::{
 };
 use crate::jsnum::to_fixed;
 use crate::jsstr::{js_trim, js_trim_end, utf16_len, v8_json_parse_message};
-use crate::memory_weighting::{calculate_effective_weight, MemoryInputs, DEFAULT_WEIGHTING_CONFIG};
+use crate::memory_scoring::{sort_by_salience, SalienceInput};
 use crate::model::completion::{
     CompletionMessage, CompletionParams, CompletionProvider, CompletionResponse,
 };
@@ -893,47 +892,29 @@ fn created_at_ms(m: &Value) -> Option<i64> {
         .and_then(iso_to_ms)
 }
 
-/// The weighting inputs of a memory row (`None` when `createdAt` or
-/// `importance` is unusable — the JS `NaN` weight, dropped by the threshold).
-fn memory_inputs(m: &Value) -> Option<MemoryInputs> {
-    let ms = |key: &str| {
-        m.get(key)
-            .and_then(Value::as_str)
-            .and_then(iso_to_ms)
-            .map(|x| x as f64)
-    };
-    Some(MemoryInputs {
-        importance: m.get("importance").and_then(Value::as_f64)?,
-        reinforced_importance: m.get("reinforcedImportance").and_then(Value::as_f64),
-        created_at_ms: created_at_ms(m)? as f64,
-        last_reinforced_at_ms: ms("lastReinforcedAt"),
-        last_accessed_at_ms: ms("lastAccessedAt"),
-        reinforcement_count: m.get("reinforcementCount").and_then(Value::as_u64),
-        graph_degree: m
-            .get("relatedMemoryIds")
-            .and_then(Value::as_array)
-            .map_or(0, Vec::len),
-        kind_episodic: m.get("kind").and_then(Value::as_str) == Some("episodic"),
-        occurred_at_ms: crate::episodic::event_time_ms(m.get("occurredAt").and_then(Value::as_str)),
-    })
-}
-
-/// v4 `rankMemoriesByWeight(memories)` with the default config: weight every
-/// row at `now_ms`, drop those under `minWeightThreshold`, STABLE-sort
-/// descending by effective weight.
-pub fn rank_memories_by_weight(memories: Vec<Value>, now_ms: i64) -> Vec<Value> {
-    let mut weighted: Vec<(Value, f64)> = memories
-        .into_iter()
-        .filter_map(|m| {
-            let inputs = memory_inputs(&m)?;
-            let w = calculate_effective_weight(&inputs, &DEFAULT_WEIGHTING_CONFIG, now_ms as f64)
-                .effective_weight;
-            Some((m, w))
-        })
-        .filter(|(_, w)| *w >= DEFAULT_WEIGHTING_CONFIG.min_weight_threshold)
-        .collect();
-    weighted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    weighted.into_iter().map(|(m, _)| m).collect()
+/// v4 `sortBySalience(candidateMemories)` (`character-optimizer.service.ts:775`,
+/// Phase A `e0ac7493a` — it replaced `rankMemoriesByWeight`): "Rank by
+/// salience (reinforced importance × time decay)" — STABLE, descending, and
+/// it drops NOTHING (the old weight threshold is gone). The row is v4's
+/// `SalienceInput`: a missing `importance` is JS `undefined` (→ `NaN`, which
+/// the sort's `|| index` keeps in place).
+fn rank_by_salience(memories: Vec<Value>, now_ms: i64) -> Vec<Value> {
+    sort_by_salience(
+        memories,
+        |m| {
+            SalienceInput::from_iso(
+                m.get("importance")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(f64::NAN),
+                m.get("reinforcedImportance").and_then(Value::as_f64),
+                m.get("createdAt")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+                m.get("lastReinforcedAt").and_then(Value::as_str),
+            )
+        },
+        now_ms as f64,
+    )
 }
 
 /// `memory.reinforcementCount >= MIN_REINFORCED_MEMORIES` (JS: a missing or
@@ -1642,14 +1623,25 @@ async fn semantic_candidates<EMB: EmbeddingProvider>(
         )
         .await
         .map_err(|e| e.message)?;
-    let cid = character_id.to_string();
-    let store = db
-        .read_main(move |c| Ok(CharacterVectorStore::load(c, &cid)))
-        .map_err(|e| e.to_string())?;
-    // Hot vectors only, filtered BEFORE the top-500 (v4 `vectorStore.search(…,
-    // 500, isHotVector)`, `d58548051`): archived shards were folded into digests.
-    let matched: HashSet<String> = store
-        .search_filtered(&embedding_result.embedding, 500, |_id, is_cold| !is_cold)
+    // v4 `memoryIndex.search(characterId, vector, { limit: 500, hotOnly: true
+    // })` (`af48f6cc2`): the vectors come from `memories.embedding`, hot rows
+    // only, filtered BEFORE the top-500 — archived shards were folded into
+    // digests; a multi-length index scores only the query's length (P4.D292).
+    let (cid, query) = (character_id.to_string(), embedding_result.embedding);
+    let matched: HashSet<String> = db
+        .read_main(move |c| {
+            Ok(crate::services::memory_index::search(
+                c,
+                &cid,
+                &query,
+                crate::services::memory_index::IndexSearchOptions {
+                    hot_only: true,
+                    exclude: None,
+                    limit: 500,
+                },
+            ))
+        })
+        .map_err(|e| e.to_string())?
         .into_iter()
         .map(|r| r.id)
         .collect();
@@ -1837,8 +1829,9 @@ async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
         });
     }
 
-    // Rank by weight and filter by reinforcement
-    let ranked = rank_memories_by_weight(candidate_memories, now_ms);
+    // Rank by salience (reinforced importance × time decay) and filter by
+    // reinforcement (v4 `:774-776`, P4.D292 — was `rankMemoriesByWeight`).
+    let ranked = rank_by_salience(candidate_memories, now_ms);
     let reinforced: Vec<Value> = ranked.into_iter().filter(is_reinforced).collect();
     let filtered_count = reinforced.len();
     let qualifying_memories: Vec<Value> = reinforced
@@ -2243,24 +2236,26 @@ mod tests {
         assert_eq!(out["wardrobeItem"]["types"], json!(["top"]));
     }
 
-    /// `rankMemoriesByWeight` — the threshold drop, the STABLE descending sort,
-    /// and the `NaN`-weight drop for an unparsable `createdAt`.
+    /// `sortBySalience` (P4.D292) — descending by salience, ties STABLE, and
+    /// NOTHING dropped (the old weight floor is gone with `rankMemoriesByWeight`):
+    /// a sub-floor importance and an unparsable `createdAt` both stay.
     #[test]
-    fn rank_memories_by_weight_orders_and_drops() {
+    fn rank_by_salience_orders_and_keeps_every_row() {
         let now = 1_772_446_830_000_i64;
         let day = |d: i64| format!("2026-03-0{d}T00:00:00.000Z");
-        let mem = |id: &str, importance: f64, created: &str| json!({"id": id, "importance": importance, "createdAt": created, "relatedMemoryIds": []});
-        let ranked = rank_memories_by_weight(
+        let mem = |id: &str, importance: f64, created: &str| json!({"id": id, "importance": importance, "createdAt": created});
+        let ranked = rank_by_salience(
             vec![
-                mem("low", 0.04, &day(1)), // under the 0.05 floor → dropped
+                mem("low", 0.04, &day(1)),
                 mem("a", 0.5, &day(1)),
                 mem("b", 0.9, &day(1)),
                 mem("a2", 0.5, &day(1)), // ties with `a` → stays AFTER it
-                mem("nan", 0.9, "not a date"), // JS NaN → dropped
+                mem("nan", 0.9, "not a date"), // NaN salience → kept, by index
             ],
             now,
         );
         let ids: Vec<&str> = ranked.iter().map(|m| m["id"].as_str().unwrap()).collect();
-        assert_eq!(ids, ["b", "a", "a2"]);
+        assert_eq!(ids.len(), 5, "nothing is dropped: {ids:?}");
+        assert_eq!(&ids[..3], ["b", "a", "a2"], "{ids:?}");
     }
 }

@@ -1,5 +1,9 @@
 {
-  "$comment": "P4.9K1 — the character-optimizer corpus over the committed character-generators-{main,mount}.db pair. Mira a2…01 (9 memories: 7 reinforced about herself, one rc=1, one about Nix), Nix a2…02 (none). Minted ids are NEVER baked here (P4.157 R-B — every one P4.151's rebuild re-minted had gone stale, and the `subId`s the canned answers named matched nothing the model was shown): a canned answer names an existing sub-item as `{{systemPrompt:<name>}}` / `{{scenario:<title>}}` / `{{wardrobe:<title>}}`, which BOTH sides resolve per case off the LIVE `placeholderCharacterId` on its fresh pair copy, refusing a miss with `<Kind> not found: <name>`. `calls` is the scripted model answer per CALL INDEX (0 = the analysis, then one per sub-step in v4's order: general, Harbor, Market, Default, Terse, physical, wardrobe, properties, newSystemPrompts); a case that ends before the model has none. `embeddings` cans `generateEmbeddingForUser` by the exact query text; `embeddingThrows` makes it throw. The wall clock is frozen at `frozenNowMs` on both sides (the suggestions-file stamp + the memory-weight decay).",
+  "$comment": [
+    "P4.9K1 — the character-optimizer corpus over the committed character-generators-{main,mount}.db pair. Mira a2…01 (9 memories: 7 reinforced about herself, one rc=1, one about Nix), Nix a2…02 (none). Minted ids are NEVER baked here (P4.157 R-B — every one P4.151's rebuild re-minted had gone stale, and the `subId`s the canned answers named matched nothing the model was shown): a canned answer names an existing sub-item as `{{systemPrompt:<name>}}` / `{{scenario:<title>}}` / `{{wardrobe:<title>}}`, which BOTH sides resolve per case off the LIVE `placeholderCharacterId` on its fresh pair copy, refusing a miss with `<Kind> not found: <name>`. `calls` is the scripted model answer per CALL INDEX (0 = the analysis, then one per sub-step in v4's order: general, Harbor, Market, Default, Terse, physical, wardrobe, properties, newSystemPrompts); a case that ends before the model has none. `embeddings` cans `generateEmbeddingForUser` by the exact query text; `embeddingThrows` makes it throw. The wall clock is frozen at `frozenNowMs` on both sides (the suggestions-file stamp + the memory-weight decay).",
+    "P4.D292 (pin 83334b9a5): the semantic arm searches memoryIndex (memories.embedding, hot only, limit 500) and the",
+    "ranking is sortBySalience (e0ac7493a); the P4.D268 plants put their vector on the memories row."
+  ],
   "placeholderCharacterId": "a2000002-0000-4000-8000-000000000001",
   "frozenNowMs": 1772446830000,
   "profileId": "c0000002-0000-4000-8000-000000000001",
@@ -524,10 +528,10 @@
         "properties",
         "newPrompts"
       ],
-      "$comment": "P4.D268 (v4 d58548051): a reinforced, top-importance COLD about-self row is dropped after the no-query branch (`m.tier !== 'cold'`) — the prompts equal apply_happy's.",
+      "$comment": "P4.D268 (v4 d58548051): a reinforced, top-importance COLD about-self row is dropped after the no-query branch (`m.tier !== 'cold'`) — the prompts equal apply_happy's. P4.D292 (v4 af48f6cc2): the vector sits on memories.embedding (the mirror is gone).",
       "plantSql": [
         "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000501', 'a2000002-0000-4000-8000-000000000001', 'a2000002-0000-4000-8000-000000000001', 'Mira once swore off the lantern and the brass ring forever.', 'An archived lantern-and-ring vow.', '[]', '[]', 0.99, 'AUTO', 9, '[]', 0.99, 'semantic', '[]', 'cold', 'd2680000-0000-4000-8000-000000000502', '[]', '2026-02-12T00:00:00.000Z', '2026-02-12T00:00:00.000Z')",
-        "INSERT INTO vector_entries (id, characterId, embedding, createdAt) VALUES ('d2680000-0000-4000-8000-000000000501', 'a2000002-0000-4000-8000-000000000001', X'00000000000000000000803F00000000', '2026-02-12T00:00:00.000Z')"
+        "UPDATE memories SET embedding = X'00000000000000000000803F00000000' WHERE id = 'd2680000-0000-4000-8000-000000000501'"
       ]
     },
     {
@@ -550,10 +554,10 @@
         "[]",
         "[]"
       ],
-      "$comment": "P4.D268: the same cold row matches the text search ('lantern') and is dropped after the text branch.",
+      "$comment": "P4.D268: the same cold row matches the text search ('lantern') and is dropped after the text branch. P4.D292 (v4 af48f6cc2): the vector sits on memories.embedding (the mirror is gone).",
       "plantSql": [
         "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000501', 'a2000002-0000-4000-8000-000000000001', 'a2000002-0000-4000-8000-000000000001', 'Mira once swore off the lantern and the brass ring forever.', 'An archived lantern-and-ring vow.', '[]', '[]', 0.99, 'AUTO', 9, '[]', 0.99, 'semantic', '[]', 'cold', 'd2680000-0000-4000-8000-000000000502', '[]', '2026-02-12T00:00:00.000Z', '2026-02-12T00:00:00.000Z')",
-        "INSERT INTO vector_entries (id, characterId, embedding, createdAt) VALUES ('d2680000-0000-4000-8000-000000000501', 'a2000002-0000-4000-8000-000000000001', X'00000000000000000000803F00000000', '2026-02-12T00:00:00.000Z')"
+        "UPDATE memories SET embedding = X'00000000000000000000803F00000000' WHERE id = 'd2680000-0000-4000-8000-000000000501'"
       ]
     },
     {
@@ -584,10 +588,10 @@
         "[]",
         "[]"
       ],
-      "$comment": "P4.D268: the same cold row's vector sits on the query axis; the hot-vector filter drops it BEFORE the top-500 and the tier filter after the semantic branch.",
+      "$comment": "P4.D268: the same cold row's vector sits on the query axis; the hot-vector filter drops it BEFORE the top-500 and the tier filter after the semantic branch. P4.D292 (v4 af48f6cc2): the vector sits on memories.embedding (the mirror is gone).",
       "plantSql": [
         "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000501', 'a2000002-0000-4000-8000-000000000001', 'a2000002-0000-4000-8000-000000000001', 'Mira once swore off the lantern and the brass ring forever.', 'An archived lantern-and-ring vow.', '[]', '[]', 0.99, 'AUTO', 9, '[]', 0.99, 'semantic', '[]', 'cold', 'd2680000-0000-4000-8000-000000000502', '[]', '2026-02-12T00:00:00.000Z', '2026-02-12T00:00:00.000Z')",
-        "INSERT INTO vector_entries (id, characterId, embedding, createdAt) VALUES ('d2680000-0000-4000-8000-000000000501', 'a2000002-0000-4000-8000-000000000001', X'00000000000000000000803F00000000', '2026-02-12T00:00:00.000Z')"
+        "UPDATE memories SET embedding = X'00000000000000000000803F00000000' WHERE id = 'd2680000-0000-4000-8000-000000000501'"
       ]
     }
   ]

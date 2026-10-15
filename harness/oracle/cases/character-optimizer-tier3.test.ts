@@ -20,7 +20,8 @@
  *   - `@/lib/embedding/embedding-service` `generateEmbeddingForUser` → the
  *     case's canned vector by exact query text, or a throw. `isEmbeddingAvailable`
  *     stays REAL (the fixture's default embedding profile makes it true), and
- *     so does `@/lib/embedding/vector-store` over the fixture's `vector_indices`.
+ *     so does `@/lib/embedding/vector-store` over the fixture's `memories.embedding`
+ *     rows (P4.D292: the vector mirror is gone at the pin).
  *   - `@/lib/startup` `isPluginSystemInitialized` → true; the provider registry
  *     is REAL (`initializeProviderRegistry` over the dist plugins).
  *   - `Date` frozen at the corpus `frozenNowMs` (the suggestions-file stamp,

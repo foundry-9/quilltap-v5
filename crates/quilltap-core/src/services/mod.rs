@@ -111,7 +111,7 @@ pub mod fold_episode_pass;
 pub mod fold_other_pass;
 pub mod frozen_archive;
 pub mod memory_index_backfill; // P4.D292 (L-3)
-// === P4.9K0 ===
+                               // === P4.9K0 ===
 pub mod generator_progress;
 // === end P4.9K0 ===
 pub mod admission; // P4.D290 (C1-B) — v4 `lib/memory/admission/` (the stateful half)
