@@ -181040,3 +181040,12 @@ This lane's half (the `builtinRefit` key) is written into the Rust comparand (fe
   three owned lines whole, sibling tags present, vectors (hex) + status rows. GREEN. **Observation for P4.D288:**
   `Upserted memory vectors` fires inside the writer closure (C1-3's `upsert(conn, …)`), so a caller-thread rig
   cannot see it — exempted from this family's tag check, recorded.
+
+### Unit 5 — `embedding_provider_tier3` grown (Tier 1 #8; the BUILTIN DEBUG landed at `KEYSTONE`)
+
+- Spec `embedding-provider-tier3.json` +2 cases (`builtin_lexical`: text with an anchor line + a 🌊, `lexicalText`
+  without it; `openai_lexical_ignored`: background priority, the wire body carries `text`); the case passes
+  `lexicalText`, captures `[Embedding] BUILTIN embed: using the caller's lexical text` per case (`LOG_LEVEL=debug`);
+  the Rust side passes `lexical_text` and compares the DEBUG whole per case (the silence leg on the other 12).
+  Measured non-vacuous: v4 `textChars 81 / lexicalChars 47`; the BUILTIN vector has no `salon` dimension (the
+  anchor's `place: Salon`, in the fitted vocabulary). 14 / 14 GREEN from the pin.

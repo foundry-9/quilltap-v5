@@ -46,6 +46,7 @@ use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use quilltap_core::model::wire::{CannedWireTransport, WireResponse};
 use quilltap_core::services::embedding_provider::ApiEmbeddingProvider;
+use quilltap_core::test_support::global_capture;
 use serde_json::{json, Map, Value};
 
 fn spec_path() -> PathBuf {
@@ -72,6 +73,8 @@ struct OracleRow {
     outcome: Value,
     /// The recorded wire calls: {method, url, body, status, statusText, responseBody}.
     wire: Vec<Value>,
+    /// P4.D292: the BUILTIN lexical-text DEBUG lines the case logged.
+    lines: Vec<Value>,
 }
 
 fn load_oracle(path: &str) -> Vec<OracleRow> {
@@ -87,10 +90,12 @@ fn load_oracle(path: &str) -> Vec<OracleRow> {
                 json!({ "error": v.get("error").cloned().expect("result or error") })
             };
             let wire = v["wire"].as_array().cloned().unwrap_or_default();
+            let lines = v["lines"].as_array().cloned().unwrap_or_default();
             OracleRow {
                 case,
                 outcome,
                 wire,
+                lines,
             }
         })
         .collect()
@@ -98,6 +103,7 @@ fn load_oracle(path: &str) -> Vec<OracleRow> {
 
 #[test]
 fn embedding_provider_matches_v4() {
+    global_capture::install();
     let Ok(oracle_path) = std::env::var("QT_ORACLE_EMBEDDING_PROVIDER") else {
         eprintln!("SKIP: embedding_provider_tier3_equivalence: QT_ORACLE_EMBEDDING_PROVIDER unset");
         return;
@@ -154,10 +160,16 @@ fn embedding_provider_matches_v4() {
         let user_id = users[case["user"].as_str().unwrap()].clone();
         let profile_id = case["profileId"].as_str().map(str::to_string);
         let text = case["text"].as_str().unwrap();
-        let priority = match case.get("priority").and_then(Value::as_str) {
+        let mut priority = match case.get("priority").and_then(Value::as_str) {
             Some("background") => EmbeddingCallOptions::background(),
             _ => EmbeddingCallOptions::interactive(),
         };
+        // P4.D292: v4's `lexicalText` (BUILTIN embeds it; every API provider
+        // ignores it).
+        priority.lexical_text = case
+            .get("lexicalText")
+            .and_then(Value::as_str)
+            .map(str::to_string);
 
         // Register the canned transport FROM the oracle-recorded wire: the raw
         // key is the exact (method, url, body-bytes) v4 sent, the response the
@@ -181,12 +193,49 @@ fn embedding_provider_matches_v4() {
         // pair except the deliberate cache exercises inside one case.
         let provider = ApiEmbeddingProvider::new(db.clone(), transport);
 
-        let got = match rt.block_on(provider.generate_embedding_for_user(
-            text,
-            &user_id,
-            profile_id.as_deref(),
-            priority,
-        )) {
+        let (outcome, lines) = global_capture::capture(|| {
+            rt.block_on(provider.generate_embedding_for_user(
+                text,
+                &user_id,
+                profile_id.as_deref(),
+                priority,
+            ))
+        });
+        // P4.D292: the BUILTIN lexical-text DEBUG, whole (and absent wherever
+        // v4 logged none).
+        let got_lines: Vec<String> = lines
+            .into_iter()
+            .filter(|l| l.contains("[Embedding] BUILTIN embed: using the caller's lexical text"))
+            .map(|l| {
+                let mut parts = l.splitn(3, ' ');
+                let level = parts.next().unwrap().to_string();
+                let _target = parts.next();
+                format!("{level} {}", parts.next().unwrap_or_default())
+            })
+            .collect();
+        let want_lines: Vec<String> = row
+            .lines
+            .iter()
+            .map(|l| {
+                let mut out = format!(
+                    "{} {}",
+                    l["level"].as_str().unwrap().to_uppercase(),
+                    l["message"].as_str().unwrap()
+                );
+                for (k, v) in l["fields"].as_object().unwrap() {
+                    match v {
+                        Value::String(s) => out.push_str(&format!(" {k}={s}")),
+                        other => out.push_str(&format!(" {k}={other}")),
+                    }
+                }
+                out
+            })
+            .collect();
+        assert_eq!(
+            got_lines, want_lines,
+            "case {id}: the lexical-text DEBUG diverged"
+        );
+        let got = match outcome {
             Ok(r) => {
                 let embedding: Vec<Value> =
                     r.embedding.iter().map(|&x| js_num(f64::from(x))).collect();

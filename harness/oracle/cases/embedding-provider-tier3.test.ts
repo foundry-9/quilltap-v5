@@ -58,6 +58,8 @@ interface Case {
   profileId: string | null;
   text: string;
   priority?: 'interactive' | 'background';
+  /** P4.D292: v4 `EmbeddingCallOptions.lexicalText` (`4ae0c4ca6`). */
+  lexicalText?: string;
   wire: WireEntry[];
 }
 
@@ -109,7 +111,7 @@ async function main(): Promise<void> {
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   delete process.env.BASE_URL; // the OpenRouter referer default path
-  process.env.LOG_LEVEL = 'error';
+  process.env.LOG_LEVEL = 'debug';
 
   jest.resetModules();
   jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
@@ -195,6 +197,22 @@ async function main(): Promise<void> {
     });
   };
 
+  // P4.D292: the BUILTIN lexical-text DEBUG, captured per case (its silence
+  // leg is every case that passes no `lexicalText`).
+  const capturedLines: Array<Record<string, unknown>> = [];
+  {
+    const { logger } = await import('@/lib/logger');
+    const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+    internal.transports.splice(0, internal.transports.length, {
+      write: (d: unknown) => {
+        const data = d as { level: string; message: string; context?: Record<string, unknown> };
+        if (data.message !== "[Embedding] BUILTIN embed: using the caller's lexical text") return;
+        const { service: _s, environment: _e, ...fields } = data.context ?? {};
+        capturedLines.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+      },
+    });
+  }
+
   const lines: string[] = [];
   try {
     await initializeDatabase();
@@ -211,7 +229,10 @@ async function main(): Promise<void> {
           c.text,
           userId,
           c.profileId ?? undefined,
-          c.priority ? { priority: c.priority } : {}
+          {
+            ...(c.priority ? { priority: c.priority } : {}),
+            ...(c.lexicalText !== undefined ? { lexicalText: c.lexicalText } : {}),
+          }
         );
         row = {
           case: c.id,
@@ -237,6 +258,7 @@ async function main(): Promise<void> {
         };
       }
       row.wire = recorded;
+      row.lines = capturedLines.splice(0);
       lines.push(JSON.stringify(row));
     }
   } finally {

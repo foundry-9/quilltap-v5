@@ -20,7 +20,12 @@
     "explicit-missing case passes `missingProfileId`, which no profile carries.",
     "",
     "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (shared with the other",
-    "fixtures); every api key value is SYNTHETIC."
+    "fixtures); every api key value is SYNTHETIC.",
+    "P4.D292 (v4 4ae0c4ca6, pin 83334b9a5): two `lexicalText` cases — BUILTIN embeds the caller's",
+    "lexical text in place of `text` (the vector is the lexical text's; DEBUG `[Embedding] BUILTIN embed:",
+    "using the caller's lexical text` with UTF-16 `textChars` / `lexicalChars`, a non-BMP char in both),",
+    "and OPENAI ignores it (the wire body carries `text`). Every case's lines are captured, so the DEBUG's",
+    "silence leg is every case without `lexicalText`."
   ],
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "users": {
@@ -32,9 +37,24 @@
   "missingProfileId": "0cd30cce-fd0a-4dba-80cf-7de7dd263ec0",
   "missingApiKeyId": "72e09937-350d-48a3-b48d-45fa83c7c8dc",
   "apiKeys": [
-    { "ref": "akA", "user": "a", "provider": "OPENAI", "keyValue": "sk-test-openai-a" },
-    { "ref": "akOrD", "user": "d", "provider": "OPENROUTER", "keyValue": "sk-or-test-d" },
-    { "ref": "akOaiD", "user": "d", "provider": "OPENAI", "keyValue": "sk-test-openai-d" }
+    {
+      "ref": "akA",
+      "user": "a",
+      "provider": "OPENAI",
+      "keyValue": "sk-test-openai-a"
+    },
+    {
+      "ref": "akOrD",
+      "user": "d",
+      "provider": "OPENROUTER",
+      "keyValue": "sk-or-test-d"
+    },
+    {
+      "ref": "akOaiD",
+      "user": "d",
+      "provider": "OPENAI",
+      "keyValue": "sk-test-openai-d"
+    }
   ],
   "profiles": [
     {
@@ -170,8 +190,20 @@
           "status": 200,
           "statusText": "OK",
           "body": {
-            "data": [{ "embedding": [3, 4, 0, 12] }],
-            "usage": { "prompt_tokens": 5, "total_tokens": 5 }
+            "data": [
+              {
+                "embedding": [
+                  3,
+                  4,
+                  0,
+                  12
+                ]
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 5,
+              "total_tokens": 5
+            }
           }
         }
       ]
@@ -215,13 +247,26 @@
           "urlSuffix": "/api/show",
           "status": 200,
           "statusText": "OK",
-          "body": { "model_info": { "nomic.context_length": 2048 } }
+          "body": {
+            "model_info": {
+              "nomic.context_length": 2048
+            }
+          }
         },
         {
           "urlSuffix": "/api/embed",
           "status": 200,
           "statusText": "OK",
-          "body": { "embeddings": [[0.5, 0.5, 0.5, 0.5]] }
+          "body": {
+            "embeddings": [
+              [
+                0.5,
+                0.5,
+                0.5,
+                0.5
+              ]
+            ]
+          }
         }
       ]
     },
@@ -237,8 +282,24 @@
           "statusText": "Internal Server Error",
           "body": {}
         },
-        { "urlSuffix": "/api/embeddings", "status": 200, "statusText": "OK", "body": { "embedding": [1, 2, 2] } },
-        { "urlSuffix": "/api/embed", "status": 404, "statusText": "Not Found", "body": {} }
+        {
+          "urlSuffix": "/api/embeddings",
+          "status": 200,
+          "statusText": "OK",
+          "body": {
+            "embedding": [
+              1,
+              2,
+              2
+            ]
+          }
+        },
+        {
+          "urlSuffix": "/api/embed",
+          "status": 404,
+          "statusText": "Not Found",
+          "body": {}
+        }
       ]
     },
     {
@@ -254,9 +315,19 @@
           "body": {
             "id": "gen-1",
             "object": "list",
-            "data": [{ "object": "embedding", "embedding": "AADAPwAAEMA=", "index": 0 }],
+            "data": [
+              {
+                "object": "embedding",
+                "embedding": "AADAPwAAEMA=",
+                "index": 0
+              }
+            ],
             "model": "openai/text-embedding-3-small",
-            "usage": { "prompt_tokens": 2, "total_tokens": 2, "cost": 0.000001 }
+            "usage": {
+              "prompt_tokens": 2,
+              "total_tokens": 2,
+              "cost": 1e-06
+            }
           }
         }
       ]
@@ -271,7 +342,11 @@
           "urlSuffix": "/embeddings",
           "status": 429,
           "statusText": "Too Many Requests",
-          "body": { "error": { "message": "rate limit exceeded" } }
+          "body": {
+            "error": {
+              "message": "rate limit exceeded"
+            }
+          }
         }
       ]
     },
@@ -293,8 +368,18 @@
           "status": 200,
           "statusText": "OK",
           "body": {
-            "data": [{ "embedding": [3, 4] }],
-            "usage": { "prompt_tokens": 2, "total_tokens": 2 }
+            "data": [
+              {
+                "embedding": [
+                  3,
+                  4
+                ]
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 2,
+              "total_tokens": 2
+            }
           }
         }
       ]
@@ -309,7 +394,51 @@
           "urlSuffix": "/embeddings",
           "status": 429,
           "statusText": "Too Many Requests",
-          "body": { "error": { "message": "rate limited", "code": 429 } }
+          "body": {
+            "error": {
+              "message": "rate limited",
+              "code": 429
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "builtin_lexical",
+      "user": "a",
+      "profileId": null,
+      "text": "the lantern 🌊 hums beside the commonplace book\n(when: 2026-06-16 · place: Salon)",
+      "lexicalText": "the lantern 🌊 hums beside the commonplace book",
+      "wire": []
+    },
+    {
+      "id": "openai_lexical_ignored",
+      "user": "a",
+      "profileId": "c9e29269-eaa8-443f-8f9c-528aa35e23cf",
+      "text": "the salon hums tonight",
+      "lexicalText": "an ignored lexical text",
+      "priority": "background",
+      "wire": [
+        {
+          "urlSuffix": "/embeddings",
+          "status": 200,
+          "statusText": "OK",
+          "body": {
+            "data": [
+              {
+                "embedding": [
+                  3,
+                  4,
+                  0,
+                  12
+                ]
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 5,
+              "total_tokens": 5
+            }
+          }
         }
       ]
     }

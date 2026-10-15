@@ -84,6 +84,13 @@ New `services::admission` (v4 `lib/memory/admission/` at the `83334b9a5` pin): `
 
 New differential families from the pin: `admission_tier3_equivalence` (44 steps over UTC and Chicago legs, plus tier-1 content-key and key-scope rows) and `update_memory_tier2_equivalence` (12 edits plus the Commonplace mirror); the retired `memory_gate_tier3` family is deleted and its builder renamed `build-admission-fixture.ts`. Census rows: two admission publish sites; the activity-span row re-pointed to `admit_row`. One measured divergence is pinned both ways and flagged: `FIND_BY_IDS_UNVALIDATED` (v4's `findByIds` drops a schema-invalid row; v5's does not).
 
+#### 2026-10-15 — test(harness): P4.D292 unit 5 — embedding_provider_tier3 pins BUILTIN's lexical text and its DEBUG
+
+_No crate versions bumped._
+
+- `embedding_provider_tier3` gains two cases. In `builtin_lexical`, BUILTIN embeds the caller's `lexicalText` instead of the anchored `text`, so the vector lacks the anchor's terms. The DEBUG `[Embedding] BUILTIN embed: using the caller's lexical text {context, profileId, textChars, lexicalChars}` logs UTF-16 lengths with a non-BMP character. In `openai_lexical_ignored`, the wire body carries `text`.
+- Every case's lines are captured, so the DEBUG's silence leg is every case without `lexicalText`. 14 / 14 green from the pin.
+
 #### 2026-10-15 — feat(embedding): P4.D292 unit 4 — EMBEDDING_GENERATE embeds the anchored memory text and hands BUILTIN the lexical text
 
 _Versions: core 0.0.1301, host 0.0.206._
