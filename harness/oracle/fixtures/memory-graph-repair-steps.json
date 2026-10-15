@@ -1,0 +1,66 @@
+{
+ "comment": "P4.D297 repair family: dangling-link plants over the maintenance fixture, then the steps IN ORDER on ONE copy ('@holder' resolves through the tier-2 spec). The table dumps are taken before failed_scan renames the memories table away.",
+ "plants": [
+  "UPDATE memories SET relatedMemoryIds = '[\"4a0d0000-0000-4000-8000-000000000001\",\"4a020001-0000-4000-8000-000000000001\"]' WHERE id = '4a010001-0000-4000-8000-000000000001'",
+  "UPDATE memories SET relatedMemoryIds = '[\"4a010001-0000-4000-8000-000000000009\",\"4a0d0000-0000-4000-8000-000000000002\",\"4a0d0000-0000-4000-8000-000000000002\"]' WHERE id = '4a010001-0000-4000-8000-000000000002'",
+  "UPDATE memories SET relatedMemoryIds = '[\"4a0d0000-0000-4000-8000-000000000003\"]' WHERE id = '4a020001-0000-4000-8000-000000000005'",
+  "UPDATE memories SET consolidatedFrom = '[\"4a030001-0000-4000-8000-000000000001\",\"4a030001-0000-4000-8000-000000000002\",\"4a030001-0000-4000-8000-000000000003\",\"4a030001-0000-4000-8000-000000000004\",\"4a030001-0000-4000-8000-000000000005\",\"4a030001-0000-4000-8000-000000000008\",\"4a0d0000-0000-4000-8000-000000000004\"]' WHERE id = '4a030002-0000-4000-8000-000000000001'",
+  "DELETE FROM memories WHERE id IN ('4a040004-0000-4000-8000-000000000001','4a040004-0000-4000-8000-000000000002')",
+  "UPDATE memories SET supersededById = '4a0d0000-0000-4000-8000-000000000005' WHERE id = '4a030001-0000-4000-8000-000000000009'",
+  "UPDATE memories SET supersededById = '4a0d0000-0000-4000-8000-000000000006' WHERE id = '4a020001-0000-4000-8000-000000000006'",
+  "UPDATE memories SET relatedMemoryIds = 'not json' WHERE id = '4a060001-0000-4000-8000-000000000001'"
+ ],
+ "steps": [
+  {
+   "name": "dry_all",
+   "body": {
+    "dryRun": true
+   }
+  },
+  {
+   "name": "dry_scoped",
+   "body": {
+    "characterId": "@folder",
+    "dryRun": true
+   }
+  },
+  {
+   "name": "live_scoped",
+   "body": {
+    "characterId": "@folder"
+   }
+  },
+  {
+   "name": "dry_all_after_scoped",
+   "body": {
+    "dryRun": true
+   }
+  },
+  {
+   "name": "live_all",
+   "body": {}
+  },
+  {
+   "name": "dry_all_clean",
+   "body": {
+    "dryRun": true
+   }
+  },
+  {
+   "name": "live_all_again_no_body"
+  },
+  {
+   "name": "not_found",
+   "body": {
+    "characterId": "@unknown"
+   }
+  },
+  {
+   "name": "failed_scan",
+   "sql": "ALTER TABLE memories RENAME TO memories_gone",
+   "body": {
+    "dryRun": true
+   }
+  }
+ ]
+}

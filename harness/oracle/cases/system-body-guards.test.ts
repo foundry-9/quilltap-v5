@@ -7,8 +7,8 @@
  *
  * Three routes, all driven by their real exported handler:
  *   - `app/api/v1/system/tools/route.ts` POST — `tasks-queue`,
- *     `job-concurrency`, `capabilities-report-delete`, `delete-data`,
- *     `memory-dedup`
+ *     `job-concurrency`, `capabilities-report-delete`, `delete-data`, and
+ *     the RETIRED `memory-dedup` (v4 `104e986c7` — `Unknown action`)
  *   - `app/api/v1/system/jobs/route.ts` POST — the enqueue body
  *   - `app/api/v1/system/unlock/route.ts` POST — the action + body-shape gates
  *
@@ -107,11 +107,9 @@ const CASES: CaseSpec[] = [
   },
   { name: 'delete_data_body_not_json', route: 'tools', action: 'delete-data', body: null, badJson: true },
 
-  // ── tools ?action=memory-dedup — v4 coerces `typeof !== 'number'` to 0.80
-  // The accepted arms RUN the deduplicator, so exactly one of them is driven over
-  // HTTP (its `result` is the oracle's stub echo on one side and a real sweep on
-  // the other — normalized). The refusals are what pin the coercion: a
-  // wrong-typed threshold that did NOT become 0.80 would answer 400 here.
+  // ── tools ?action=memory-dedup — RETIRED (v4 `104e986c7`: maintenance's
+  // near-duplicate fold replaced the deduplicator; P4.D297). Every former arm
+  // now answers the route's `Unknown action` 400, whatever the body.
   { name: 'dedup_threshold_string', route: 'tools', action: 'memory-dedup', body: { threshold: '0.9' } },
   { name: 'dedup_threshold_low', route: 'tools', action: 'memory-dedup', body: { threshold: 0.4 } },
   { name: 'dedup_threshold_high', route: 'tools', action: 'memory-dedup', body: { threshold: 1.5 } },
@@ -122,7 +120,7 @@ const CASES: CaseSpec[] = [
   { name: 'jobs_type_null', route: 'jobs', body: { type: null, payload: {} } },
   { name: 'jobs_type_number', route: 'jobs', body: { type: 7, payload: {} } },
   { name: 'jobs_type_object', route: 'jobs', body: { type: {}, payload: {} } },
-  { name: 'jobs_payload_null', route: 'jobs', body: { type: 'MEMORY_HOUSEKEEPING', payload: null } },
+  { name: 'jobs_payload_null', route: 'jobs', body: { type: 'MEMORY_MAINTENANCE', payload: null } },
   { name: 'jobs_body_not_json', route: 'jobs', body: null, badJson: true },
   // The ACCEPTED enqueue arms (`payload: []`, a wrong-typed `priority`) live in
   // `system-jobs-collection`, whose comparand is the STORED ROW — the only place
@@ -261,16 +259,6 @@ function applyMocks(): void {
     ...jest.requireActual('@/lib/instance-settings'),
     getMaxConcurrentJobs: async () => 4,
     setMaxConcurrentJobs: async () => {},
-  }));
-  jest.doMock('@/lib/tools/memory-dedup', () => ({
-    __esModule: true,
-    deduplicateAllMemories: async (_userId: string, threshold: number) => ({
-      threshold,
-      totalOriginal: 0,
-      totalRemoved: 0,
-      totalMergedDetails: 0,
-      totalFinal: 0,
-    }),
   }));
   // The app is LOCKED, so `handleChangePassphrase` refuses before the dbkey is
   // touched. Nothing in this oracle may re-wrap a pepper.

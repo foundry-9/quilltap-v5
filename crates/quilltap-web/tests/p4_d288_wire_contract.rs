@@ -203,22 +203,10 @@ async fn the_edge_answers_the_deleted_verbs_and_the_refusals() {
             "{t}: {message}"
         );
     }
+    // P4.D297 FILLED `maintain` / `maintenance-status` / `repair` (their bytes
+    // are `memory_maintenance_routes_equivalence`'s); the refusal rows left are
+    // the arms still awaiting their owner.
     for (req, action, owner) in [
-        (
-            json!({"type":"memoryMaintain","options":{}}),
-            "maintain",
-            "P4.D297",
-        ),
-        (
-            json!({"type":"memoryMaintenanceStatus"}),
-            "maintenance-status",
-            "P4.D297",
-        ),
-        (
-            json!({"type":"memoryRepair","options":{}}),
-            "repair",
-            "P4.D297",
-        ),
         (
             json!({"type":"scenarioEverywhere"}),
             "everywhere",

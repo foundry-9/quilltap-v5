@@ -1,0 +1,31 @@
+{
+  "runs": [
+    { "name": "fold_budget_spent", "holder": "folder", "ctx": { "timeBudgetMs": 0 }, "request": { "reason": "manual", "phases": ["fold-near-duplicates"] } },
+    { "name": "fold_dry", "holder": "folder", "request": { "reason": "manual", "phases": ["fold-near-duplicates"], "dryRun": true } },
+    { "name": "fold_live", "holder": "folder", "request": { "reason": "manual", "phases": ["fold-near-duplicates"] } },
+    { "name": "demote_dry", "holder": "demoter", "request": { "reason": "manual", "phases": ["demote"], "dryRun": true, "settings": { "cap": 20 } } },
+    { "name": "demote_live", "holder": "demoter", "request": { "reason": "manual", "phases": ["demote"], "settings": { "cap": 20 } } },
+    { "name": "demote_again", "holder": "demoter", "request": { "reason": "manual", "phases": ["demote"], "settings": { "cap": 20 } } },
+    { "name": "retire_dry", "holder": "retirer", "request": { "reason": "manual", "phases": ["retire"], "dryRun": true } },
+    { "name": "retire_live", "holder": "retirer", "request": { "reason": "manual", "phases": ["retire"] } },
+    { "name": "mixed_dry", "holder": "mixed", "request": { "reason": "scheduled", "dryRun": true } },
+    { "name": "mixed_live", "holder": "mixed", "request": { "reason": "scheduled" } },
+    { "name": "archived", "holder": "archived", "request": { "reason": "scheduled" } },
+    { "name": "not_found", "holder": "unknown", "request": { "reason": "watermark", "phases": ["demote"] } },
+    { "name": "fold_then_demote_ties", "holder": "tiefold", "request": { "reason": "manual", "phases": ["fold-near-duplicates", "demote"], "settings": { "cap": 2 } } },
+    { "name": "order_demote", "holder": "order", "request": { "reason": "manual", "phases": ["demote"], "settings": { "cap": 1 } } },
+    {
+      "name": "toggles_and_no_window",
+      "holder": "order",
+      "plant": { "maintenance": { "phases": { "foldNearDuplicates": true, "demote": false, "retire": true } }, "consolidation": { "coldRetentionDays": null } },
+      "request": { "reason": "scheduled" }
+    },
+    {
+      "name": "maintenance_off_watermark",
+      "holder": "order",
+      "plant": { "maintenance": { "enabled": false } },
+      "request": { "reason": "watermark", "phases": ["demote", "retire"], "exemptPhases": [] }
+    },
+    { "name": "maintenance_off_manual_exempt", "holder": "order", "request": { "reason": "manual", "phases": ["demote"], "settings": { "cap": 1 } } }
+  ]
+}

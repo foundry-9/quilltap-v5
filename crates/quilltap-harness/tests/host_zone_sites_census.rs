@@ -229,11 +229,12 @@ const VALUE_SITES: &[(&str, &str, usize, &str)] = &[
     (
         "api/engine.rs",
         "&self.inner.config.display_zone",
-        8,
+        9,
         "`CoreConfig.display_zone` — the Compose reply preface, the Salon-load \
          whispers (`salon::chat_get`), the markdown export's zone-less offsets \
-         (P4.140 item (g)), and the five autonomous-room routes' cron NAME \
-         (`host_zone::zone_name` of it — the tick's own derivation)",
+         (P4.140 item (g)), the five autonomous-room routes' cron NAME \
+         (`host_zone::zone_name` of it — the tick's own derivation), and the \
+         `maintain` dry run's memory-calendar fallback NAME (P4.D297)",
     ),
     (
         "services/conversation_render_job.rs",

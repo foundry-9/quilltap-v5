@@ -5590,14 +5590,36 @@ impl CoreEngine {
             // === end P4.D265 ===
 
             // === P4.D288: the 83334b9a5 round's wire (C2) ===
-            // The six refusals answer `p4d288_not_yet_available` (v4's action
+            // The refusals answer `p4d288_not_yet_available` (v4's action
             // name + the owning order) until the owner fills the body; the two
             // maintenance-config arms are FILLED (P4.D297's after KEYSTONE).
-            Request::MemoryMaintain { options: _ } => p4d288_not_yet_available("maintain", "P4.D297"),
-            Request::MemoryMaintenanceStatus { character_id: _ } => {
-                p4d288_not_yet_available("maintenance-status", "P4.D297")
-            }
-            Request::MemoryRepair { options: _ } => p4d288_not_yet_available("repair", "P4.D297"),
+            // P4.D297 filled the three maintenance verbs' bodies.
+            Request::MemoryMaintain { options } => match self.ready_db() {
+                Ok(db) => {
+                    Box::pin(super::memory_maintenance_routes::memory_maintain(
+                        &db,
+                        SINGLE_USER_ID,
+                        options,
+                        crate::host_zone::zone_name(&self.inner.config.display_zone),
+                    ))
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::MemoryMaintenanceStatus { character_id } => match self.ready_db() {
+                Ok(db) => super::memory_maintenance_routes::memory_maintenance_status(
+                    &db,
+                    character_id.as_deref(),
+                ),
+                Err(r) => r,
+            },
+            Request::MemoryRepair { options } => match self.ready_db() {
+                Ok(db) => {
+                    super::memory_maintenance_routes::memory_repair(&db, SINGLE_USER_ID, options)
+                        .await
+                }
+                Err(r) => r,
+            },
             Request::MemoryMaintenanceConfigGet => match self.ready_db() {
                 Ok(db) => super::memory_maintenance_config::memory_maintenance_config_get(&db),
                 Err(r) => r,

@@ -68,10 +68,10 @@
 //!   internally (same draw source) and reads `(provider, model)` off it. The
 //!   autonomous step's pre-resolve is best-effort (the step picks its own
 //!   speaker) — a wrong guess only mis-sizes the context budget.
-//! - **`MEMORY_HOUSEKEEPING`** ([`MemoryHousekeepingHandler`]): the v4 job
-//!   handler body (settings cascade + character enumeration + the outcome-cache
-//!   record) is glue over already-ported pieces; its end-to-end differential
-//!   rides the P4.4 jobs vertical.
+//! - **`MEMORY_MAINTENANCE`** (P4.D297 —
+//!   [`crate::memory_maintenance::memory_maintenance_job_handler`]): core's
+//!   handler over the host-installed maintenance runner (R-N); its
+//!   differential is the core `memory_maintenance_queue_tier2` family.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -145,8 +145,6 @@ use quilltap_core::services::embedding_provider::ApiEmbeddingProvider;
 use quilltap_core::services::file_storage::{
     ProductionFileBytes, RealProjectImageUpload, StorageBackend,
 };
-use quilltap_core::services::housekeeping::{run_housekeeping, HousekeepingOptions};
-use quilltap_core::services::housekeeping_outcome_cache::record_housekeeping_outcome;
 use quilltap_core::services::job_runner::{JobFuture, JobHandler, JobOutcome};
 // === P4.24 ===
 use quilltap_core::services::llm_log_cleanup_job::{handle_llm_log_cleanup, LlmLogCleanupPayload};
@@ -2932,181 +2930,6 @@ where
 // The model-dependent job handlers (thin payload-decode wrappers)
 // ===========================================================================
 
-/// `MEMORY_HOUSEKEEPING` — v4 `handleMemoryHousekeeping`
-/// (`lib/background-jobs/handlers/memory-housekeeping.ts`): the auto-settings
-/// gate, the explicit-vs-all character resolution, the payload-over-settings
-/// option cascade, and the outcome-cache record — glue over the ported
-/// [`run_housekeeping`] + settings/outcome readers (module header).
-pub struct MemoryHousekeepingHandler;
-
-impl JobHandler for MemoryHousekeepingHandler {
-    fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
-        Box::pin(async move {
-            let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
-            // P4.D288 (mechanical): the auto switch moved off the user's
-            // `chat_settings.autoHousekeepingSettings` column (dropped) onto the
-            // instance-wide `memoryMaintenance` document — same position, new
-            // storage (its JSON carries `enabled` / `perCharacterCap` /
-            // `perCharacterCapOverrides`; the two merge keys are gone with the
-            // retired merge pass, so they fall to the service default); the
-            // maintenance job that replaces this handler is P4.D297's.
-            let auto: Option<Value> = db
-                .read_main(|conn| {
-                    Ok(quilltap_core::db::instance_settings::get_memory_maintenance_settings(conn))
-                })
-                .ok()
-                .map(|m| m.to_json());
-            let auto_enabled = auto
-                .as_ref()
-                .and_then(|a| a.get("enabled"))
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            let reason = payload.get("reason").and_then(Value::as_str);
-            // v4: automatic triggers bail when auto-housekeeping is off;
-            // manual / reason-less jobs still run.
-            if !auto_enabled {
-                if let Some(r) = reason {
-                    if r != "manual" {
-                        return JobOutcome::Completed(None);
-                    }
-                }
-            }
-
-            // Explicit characterId wins; otherwise sweep every character.
-            let mut targets: Vec<String> = Vec::new();
-            if let Some(cid) = payload.get("characterId").and_then(Value::as_str) {
-                targets.push(cid.to_string());
-            } else {
-                let uid = job.user_id.clone();
-                let chars = db.read_main(move |main| {
-                    db.read_mount_index(|mount| {
-                        quilltap_core::db::characters_read::find_by_user_id(main, mount, &uid)
-                    })
-                });
-                match chars {
-                    Ok(rows) => targets.extend(
-                        rows.iter()
-                            .filter_map(|c| c.get("id").and_then(Value::as_str))
-                            .map(String::from),
-                    ),
-                    Err(e) => {
-                        // v4 logs and RETURNS (a completed no-op).
-                        tracing::error!(
-                            jobId = %job.id,
-                            userId = %job.user_id,
-                            error = %e,
-                            "[Housekeeping] Failed to enumerate characters for user"
-                        );
-                        return JobOutcome::Completed(None);
-                    }
-                }
-            }
-
-            // Payload overrides win over user settings, which win over the
-            // housekeeping defaults (absent = None → the service default).
-            let g = |v: Option<&Value>, k: &str| v.and_then(|o| o.get(k)).cloned();
-            let merge_threshold = payload
-                .get("mergeThreshold")
-                .and_then(Value::as_f64)
-                .or_else(|| g(auto.as_ref(), "autoMergeSimilarThreshold").and_then(|v| v.as_f64()));
-            let merge_similar = payload
-                .get("mergeSimilar")
-                .and_then(Value::as_bool)
-                .or_else(|| g(auto.as_ref(), "mergeSimilar").and_then(|v| v.as_bool()));
-            let dry_run = payload
-                .get("dryRun")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-
-            // v4 `payload.reason ?? 'unknown'` / `payload.dryRun ?? false`.
-            let reason_label = reason.unwrap_or("unknown");
-            let (mut total_demoted, mut total_deleted, mut total_merged) = (0i64, 0i64, 0usize);
-
-            for character_id in &targets {
-                let per_char_cap = payload
-                    .get("maxMemories")
-                    .and_then(Value::as_f64)
-                    .or_else(|| {
-                        auto.as_ref()
-                            .and_then(|a| a.get("perCharacterCapOverrides"))
-                            .and_then(|o| o.get(character_id.as_str()))
-                            .and_then(Value::as_f64)
-                    })
-                    .or_else(|| g(auto.as_ref(), "perCharacterCap").and_then(|v| v.as_f64()));
-                let options = HousekeepingOptions {
-                    max_memories: per_char_cap.map(|v| v as usize),
-                    // R-F: both merge resolutions are kept and passed — the
-                    // sweep accepts and ignores them (`mergeSimilar: true`
-                    // logs its one retired-pass DEBUG).
-                    merge_threshold,
-                    merge_similar,
-                    dry_run: Some(dry_run),
-                    // (P4.D288: the F8 `countSource` label went with v4's
-                    // `deleteMemoriesWithUnlinkBatch`, `af48f6cc2`.)
-                    ..Default::default()
-                };
-                // v4 catches per-character errors and continues the sweep.
-                // NO-PORT (§R.4(o)): v4's non-finite `deleted` guard (DEBUG
-                // `[Housekeeping] Non-finite deleted count; using deleted id
-                // count`) — v5's count is the repository's real count.
-                match run_housekeeping(db, character_id, &options).await {
-                    Ok(result) => {
-                        total_demoted += result.demoted;
-                        total_deleted += result.deleted;
-                        total_merged += result.merged;
-                        // A demote-only sweep is EFFECTIVE (v4 `d58548051`):
-                        // the backoff measures demoted + deleted. Dry runs
-                        // don't count — they don't reduce the hot tier.
-                        if !dry_run {
-                            record_housekeeping_outcome(
-                                character_id,
-                                (result.demoted + result.deleted) as f64,
-                                result.total_before as f64,
-                                result.cap_used as f64,
-                            );
-                        }
-                        tracing::info!(
-                            jobId = %job.id,
-                            userId = %job.user_id,
-                            characterId = %character_id,
-                            reason = reason_label,
-                            dryRun = dry_run,
-                            totalBefore = result.total_before,
-                            totalAfter = result.total_after,
-                            demoted = result.demoted,
-                            deleted = result.deleted,
-                            cold = result.cold_count,
-                            merged = result.merged,
-                            kept = result.kept,
-                            "[Housekeeping] Completed sweep for character"
-                        );
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            jobId = %job.id,
-                            userId = %job.user_id,
-                            characterId = %character_id,
-                            error = %e,
-                            "[Housekeeping] Sweep failed for character"
-                        );
-                    }
-                }
-            }
-            tracing::info!(
-                jobId = %job.id,
-                userId = %job.user_id,
-                charactersSwept = targets.len(),
-                totalDemoted = total_demoted,
-                totalDeleted = total_deleted,
-                totalMerged = total_merged,
-                reason = reason_label,
-                "[Housekeeping] Job complete"
-            );
-            JobOutcome::Completed(None)
-        })
-    }
-}
-
 /// `CHAT_DANGER_CLASSIFICATION` — a payload decode around the
 /// differential-verified
 /// [`handle_chat_danger_classification`] with the real moderation/completion
@@ -3976,10 +3799,18 @@ impl SpineFactory for ProductionSpineFactory {
                 "AUTONOMOUS_ROOM_TURN".to_string(),
                 Box::new(autonomous_turn_handler(Arc::clone(&spine))),
             ),
+            // === P4.D297: the memory maintenance job (§R.10(t)) ===
+            // ONE registration where v4's two (`MEMORY_HOUSEKEEPING`,
+            // `MEMORY_CONSOLIDATION`) stood; it installs the process-global
+            // maintenance runner too (R-N — the API's in-process dry run).
             (
-                "MEMORY_HOUSEKEEPING".to_string(),
-                Box::new(MemoryHousekeepingHandler),
+                "MEMORY_MAINTENANCE".to_string(),
+                crate::memory_maintenance::memory_maintenance_job_handler(
+                    wire.clone(),
+                    self.tz.clone(),
+                ),
             ),
+            // === end P4.D297 ===
             (
                 "CHAT_DANGER_CLASSIFICATION".to_string(),
                 Box::new(ChatDangerClassificationHandler { wire: wire.clone() }),
@@ -4066,12 +3897,6 @@ impl SpineFactory for ProductionSpineFactory {
                 Box::new(HeadShouldersBackfillJobHandler { wire: wire.clone() }),
             ),
             // === end P4.82 ===
-            // P4.D271 (R-E): installs the process-global consolidation runner
-            // too (the API's in-process dry run).
-            (
-                "MEMORY_CONSOLIDATION".to_string(),
-                crate::memory_consolidation::memory_consolidation_job_handler(wire.clone()),
-            ),
         ];
 
         // The provider wire-actions driver (the P4.6 unification wire): the

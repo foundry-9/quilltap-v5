@@ -58,6 +58,7 @@ pub mod memories;
 pub mod memory_consolidation;
 pub mod memory_maintenance;
 pub mod memory_maintenance_config; // P4.D288 (C2)
+pub mod memory_maintenance_routes; // P4.D297
 pub mod mount_files;
 pub mod mount_points;
 // === P4.83: the prompt-templates verbs ===

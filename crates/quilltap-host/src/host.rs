@@ -40,8 +40,7 @@ use quilltap_core::api::{
     BootError, CoreConfig, CoreEngine, EngineAssembler, EngineAssembly, EngineShutdown, Event,
     InstanceDirectory,
 };
-use quilltap_core::clock::{iso_to_ms, now_unix_ms};
-use quilltap_core::db::background_jobs::BackgroundJobsRepository;
+use quilltap_core::clock::now_unix_ms;
 use quilltap_core::db::chat_settings;
 use quilltap_core::db::runtime::Db;
 use quilltap_core::db::table_shape::EnsureFailures;
@@ -58,7 +57,7 @@ use quilltap_core::services::job_runner::{
 };
 use quilltap_core::services::job_scheduler::{
     should_run_startup_tick, DAILY_INTERVAL_MS, DANGER_SCAN_INTERVAL_MS, POLL_INTERVAL_MS,
-    RECENT_RUN_WINDOW_MS, STARTUP_GRACE_MS, STUCK_JOB_CHECK_INTERVAL_MS,
+    STARTUP_GRACE_MS, STUCK_JOB_CHECK_INTERVAL_MS,
 };
 use quilltap_core::services::queue_service;
 use quilltap_core::services::scheduled_maintenance::{run_scheduled_maintenance, TranscriptStore};
@@ -105,9 +104,10 @@ pub struct HostConfig {
     pub stuck_check_ms: u64,
     /// The LLM-log cleanup sweep cadence (v4: 24 h; runs immediately at start).
     pub cleanup_interval_ms: u64,
-    /// The memory-housekeeping sweep cadence (v4: 24 h; startup tick after the
-    /// grace, skipped when a scheduled sweep COMPLETED within 20 h).
-    pub housekeeping_interval_ms: u64,
+    /// The memory-maintenance sweep cadence (v4 `MAINTENANCE_INTERVAL_MS`:
+    /// 24 h; startup tick after the grace, skipped when a scheduled
+    /// `MEMORY_MAINTENANCE` run COMPLETED within 20 h — P4.D297).
+    pub memory_maintenance_interval_ms: u64,
     /// The maintenance sweep cadence (v4: 24 h; startup tick after the grace,
     /// skipped when `lastMaintenanceSweepAt` is within 20 h).
     pub maintenance_interval_ms: u64,
@@ -157,7 +157,7 @@ impl HostConfig {
             autonomous_tick_ms: 60_000,
             stuck_check_ms: STUCK_JOB_CHECK_INTERVAL_MS as u64,
             cleanup_interval_ms: DAILY_INTERVAL_MS as u64,
-            housekeeping_interval_ms: DAILY_INTERVAL_MS as u64,
+            memory_maintenance_interval_ms: DAILY_INTERVAL_MS as u64,
             maintenance_interval_ms: DAILY_INTERVAL_MS as u64,
             danger_scan_interval_ms: DANGER_SCAN_INTERVAL_MS as u64,
             startup_grace_ms: STARTUP_GRACE_MS as u64,
@@ -274,7 +274,7 @@ impl Host {
             autonomous_tick_ms: config.autonomous_tick_ms,
             stuck_check_ms: config.stuck_check_ms,
             cleanup_interval_ms: config.cleanup_interval_ms,
-            housekeeping_interval_ms: config.housekeeping_interval_ms,
+            memory_maintenance_interval_ms: config.memory_maintenance_interval_ms,
             maintenance_interval_ms: config.maintenance_interval_ms,
             danger_scan_interval_ms: config.danger_scan_interval_ms,
             startup_grace_ms: config.startup_grace_ms,
@@ -440,7 +440,7 @@ struct HostAssembler {
     autonomous_tick_ms: u64,
     stuck_check_ms: u64,
     cleanup_interval_ms: u64,
-    housekeeping_interval_ms: u64,
+    memory_maintenance_interval_ms: u64,
     maintenance_interval_ms: u64,
     danger_scan_interval_ms: u64,
     startup_grace_ms: u64,
@@ -915,20 +915,22 @@ impl EngineAssembler for HostAssembler {
             self.on_lock_lost.clone(),
         ));
 
-        // The four scheduler sweeps (v4 instrumentation.ts order: cleanup →
-        // housekeeping → maintenance → danger scan; the autonomous tick above
-        // is the fifth).
+        // The four scheduler sweeps (v4 instrumentation.ts PHASE 3.5 order:
+        // cleanup → memory maintenance → (data) maintenance → danger scan; the
+        // autonomous tick above is the fifth).
         self.rt.spawn(cleanup_loop(
             db.clone(),
             stop_rx.clone(),
             self.cleanup_interval_ms,
         ));
-        self.rt.spawn(housekeeping_loop(
+        // === P4.D297: the memory maintenance scheduler (§R.10(f)) ===
+        self.rt.spawn(memory_maintenance_loop(
             db.clone(),
             stop_rx.clone(),
             self.startup_grace_ms,
-            self.housekeeping_interval_ms,
+            self.memory_maintenance_interval_ms,
         ));
+        // === end P4.D297 ===
         self.rt.spawn(maintenance_loop(
             db.clone(),
             stop_rx.clone(),
@@ -2504,52 +2506,54 @@ async fn cleanup_loop(db: Db, mut stop: watch::Receiver<bool>, interval_ms: u64)
     }
 }
 
-/// v4 `runStartupHousekeepingTick`'s short-circuit: skip the startup tick when
-/// a COMPLETED `MEMORY_HOUSEKEEPING` job with `payload.reason === 'scheduled'`
-/// finished within the 20 h window (peeking the 50 most recent rows). A check
-/// failure runs anyway (v4 warns + runs).
-fn should_run_startup_housekeeping(db: &Db, now_ms: i64) -> bool {
-    let recent = db.read_main(|conn| {
-        BackgroundJobsRepository::new(conn).find_recent_by_type("MEMORY_HOUSEKEEPING", 50)
-    });
-    let Ok(jobs) = recent else {
-        return true;
-    };
-    let cutoff = now_ms - RECENT_RUN_WINDOW_MS;
-    !jobs.iter().any(|job| {
-        if job.status != "COMPLETED" {
-            return false;
-        }
-        let scheduled = serde_json::from_str::<serde_json::Value>(&job.payload)
-            .ok()
-            .and_then(|p| p.get("reason").and_then(|r| r.as_str().map(str::to_string)))
-            == Some("scheduled".to_string());
-        if !scheduled {
-            return false;
-        }
-        iso_to_ms(&job.updated_at).map(|ts| ts >= cutoff) == Some(true)
-    })
-}
-
-/// v4 `scheduled-housekeeping.ts`: a 5-minute-grace startup tick (skipped when
-/// a scheduled sweep COMPLETED within 20 h), then the 24 h cadence.
-async fn housekeeping_loop(
+/// v4 `scheduleMemoryMaintenance` (`lib/memory/maintenance/scheduler.ts:
+/// 36-54`, P4.D297): INFO `Maintenance scheduler started {intervalMs,
+/// startupGraceMs}`; after the grace, the startup tick — skipped when a
+/// scheduled `MEMORY_MAINTENANCE` run COMPLETED within 20 h
+/// ([`should_run_startup_tick`]) — then a scheduled pass on the 24 h cadence.
+/// A failed pass logs v4's ERRORs (`Startup maintenance tick failed` /
+/// `Scheduled maintenance tick failed {error}`). v4's `stopMemoryMaintenance
+/// Scheduler` INFO (`Maintenance scheduler stopped`) has no production caller
+/// at the pin (only its tests) — unreached by architecture (L-12): the stop
+/// flag ends this loop silently.
+async fn memory_maintenance_loop(
     db: Db,
     mut stop: watch::Receiver<bool>,
     grace_ms: u64,
     interval_ms: u64,
 ) {
+    use quilltap_core::services::memory_maintenance::scheduler::{
+        run_scheduled_memory_maintenance, should_run_startup_tick, MODULE,
+    };
+    tracing::info!(
+        module = MODULE,
+        intervalMs = interval_ms,
+        startupGraceMs = grace_ms,
+        "Maintenance scheduler started"
+    );
     if !sleep_or_stop(&mut stop, grace_ms).await {
         return;
     }
-    if should_run_startup_housekeeping(&db, now_unix_ms()) {
-        let _ = queue_service::run_scheduled_housekeeping(&db).await;
+    if should_run_startup_tick(&db, now_unix_ms()) {
+        if let Err(error) = run_scheduled_memory_maintenance(&db).await {
+            tracing::error!(
+                module = MODULE,
+                error = %quilltap_core::db::fallback::error_text(&error),
+                "Startup maintenance tick failed"
+            );
+        }
     }
     loop {
         if !sleep_or_stop(&mut stop, interval_ms).await {
             break;
         }
-        let _ = queue_service::run_scheduled_housekeeping(&db).await;
+        if let Err(error) = run_scheduled_memory_maintenance(&db).await {
+            tracing::error!(
+                module = MODULE,
+                error = %quilltap_core::db::fallback::error_text(&error),
+                "Scheduled maintenance tick failed"
+            );
+        }
     }
 }
 

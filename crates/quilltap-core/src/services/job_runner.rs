@@ -494,17 +494,17 @@ impl JobRunner {
                 // placement (both mark arms reach it, as the topics loop above
                 // does). `job` and `payload` are in scope. One call each,
                 // appended by their owners; nothing else.
-                // === job-completion hooks (append-only; P4.D268, P4.D271) ===
+                // === job-completion hooks (append-only; P4.D268, P4.D271, P4.D297) ===
                 crate::services::frozen_archive::invalidate_frozen_archives_for_completed_job(
                     &job.id,
                     &job.job_type,
                     &payload,
                 );
-                crate::services::consolidation_triggers::check_consolidation_watermark_after_job(
-                    &self.inner.db,
-                    job,
-                )
-                .await;
+                // P4.D297 (R-M): v4's `recordMaintenanceAfterCommit` +
+                // `mirrorCommonplaceAfterCommit` over the handler's stashed
+                // summary; a non-maintenance job is a no-op. (v4's commit-hook
+                // watermark is R-L's NO-PORT.)
+                crate::services::memory_maintenance::after_job_completed(&self.inner.db, job).await;
                 // === end job-completion hooks ===
             }
             JobOutcome::Failed(message) => {
@@ -1141,67 +1141,44 @@ mod tests {
         assert!(after >= before);
     }
 
-    // The `memories` table columns `run_housekeeping`'s batched load reads. An
-    // empty table drives the real service's early-return path.
-    const MEMORIES_DDL: &str = "CREATE TABLE memories (\
-        id TEXT PRIMARY KEY, characterId TEXT, aboutCharacterId TEXT, chatId TEXT, \
-        projectId TEXT, content TEXT, summary TEXT, keywords TEXT, tags TEXT, \
-        importance REAL, embedding BLOB, source TEXT, witnessedContext TEXT,
-            occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]', kind TEXT DEFAULT 'semantic', \
-        sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL, \
-        lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL, \
-        tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);";
-
-    /// A `MEMORY_HOUSEKEEPING` handler wrapping the REAL ported
-    /// `services::housekeeping::run_housekeeping`. Decodes `characterId` from the
-    /// payload, runs the real sweep, and returns the result to merge into
-    /// `payload.result` — exercising the whole enqueue→claim→dispatch→
-    /// markCompleted(merge) loop with a real service.
-    struct HousekeepingHandler;
-    impl JobHandler for HousekeepingHandler {
-        fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
+    /// A handler that completes with a result, so the runner's
+    /// `markCompleted(merge)` path is exercised end to end.
+    struct MergeResultHandler;
+    impl JobHandler for MergeResultHandler {
+        fn handle<'a>(&'a self, _db: &'a Db, _job: &'a BackgroundJob) -> JobFuture<'a> {
             Box::pin(async move {
-                let payload: serde_json::Value =
-                    serde_json::from_str(&job.payload).unwrap_or(serde_json::Value::Null);
-                let character_id = payload
-                    .get("characterId")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let opts = super::super::housekeeping::HousekeepingOptions::default();
-                match super::super::housekeeping::run_housekeeping(db, &character_id, &opts).await {
-                    Ok(result) => JobOutcome::Completed(Some(serde_json::json!({
-                        "deleted": result.deleted,
-                        "totalBefore": result.total_before,
-                    }))),
-                    Err(e) => JobOutcome::Failed(e.to_string()),
-                }
+                JobOutcome::Completed(Some(serde_json::json!({
+                    "deleted": 0,
+                    "totalBefore": 0,
+                })))
             })
         }
     }
 
-    /// End-to-end: enqueue a `MEMORY_HOUSEKEEPING` job → the runner claims it →
-    /// dispatches to the REAL `run_housekeeping` service (empty character → clean
-    /// no-op) → marks COMPLETED, merging the handler's result into `payload.result`
-    /// (proving the `merge_result_into_payload` path — Phase-2 deferral #3 — works
-    /// through the runner, not just in isolation).
+    /// End-to-end: enqueue a job through the REAL queue service → the runner
+    /// claims it → dispatches to the handler → marks COMPLETED, merging the
+    /// handler's result into `payload.result` (proving the
+    /// `merge_result_into_payload` path — Phase-2 deferral #3 — works through
+    /// the runner, not just in isolation). The handler was the retired
+    /// housekeeping sweep's until P4.D297 deleted it with v4's twin.
     #[tokio::test]
     async fn end_to_end_real_handler_dispatch_and_complete() {
         let (_dir, db) = make_db();
-        exec_batch(&db, MEMORIES_DDL).await;
 
         // Enqueue through the REAL queue_service (its wake hook fires; no-op if
         // unregistered — the runner pumps below regardless).
-        let job_id = super::super::queue_service::enqueue_memory_housekeeping(
+        let job_id = super::super::queue_service::enqueue_job(
             &db,
             "u1",
+            "LLM_LOG_CLEANUP",
             serde_json::json!({ "characterId": "char-empty" }),
+            1.0,
         )
         .await
         .unwrap();
 
         let mut reg = HandlerRegistry::new();
-        reg.register("MEMORY_HOUSEKEEPING", Box::new(HousekeepingHandler));
+        reg.register("LLM_LOG_CLEANUP", Box::new(MergeResultHandler));
         let runner = JobRunner::new(db.clone(), reg);
 
         let out = runner.pump_claim().await;
@@ -1272,15 +1249,5 @@ mod tests {
             })
             .unwrap();
         assert_eq!(status, "COMPLETED");
-    }
-
-    /// Run a raw batch off the runtime (async wrapper over `Db::write`).
-    async fn exec_batch(db: &Db, sql: &'static str) {
-        db.write(move |ws| {
-            ws.main().connection().execute_batch(sql)?;
-            Ok::<(), DbError>(())
-        })
-        .await
-        .unwrap();
     }
 }

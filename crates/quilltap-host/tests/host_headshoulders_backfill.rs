@@ -96,7 +96,7 @@ fn quiet_config(base: &Path, with_spine: bool) -> HostConfig {
     config.autonomous_tick_ms = hour;
     config.stuck_check_ms = hour;
     config.cleanup_interval_ms = hour;
-    config.housekeeping_interval_ms = hour;
+    config.memory_maintenance_interval_ms = hour;
     config.maintenance_interval_ms = hour;
     config.danger_scan_interval_ms = hour;
     config.startup_grace_ms = hour;

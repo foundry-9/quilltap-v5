@@ -1,0 +1,56 @@
+{
+  "runs": [
+    { "name": "dry_all", "characterId": "0c010000-0000-4000-8000-000000000001", "request": { "reason": "manual", "phases": ["consolidate", "mirror"], "dryRun": true }, "now": "2026-10-08T12:00:00.000Z", "answers": "valid" },
+    { "name": "real_all_scheduled_override", "characterId": "0c020000-0000-4000-8000-000000000001", "request": { "reason": "scheduled", "phases": ["consolidate", "mirror"], "exemptPhases": [], "settings": { "consolidation": { "enabled": true } } }, "now": "2026-10-08T12:00:00.000Z", "answers": "valid" },
+    { "name": "real_rerun", "characterId": "0c020000-0000-4000-8000-000000000001", "request": { "reason": "watermark", "phases": ["consolidate", "mirror"], "exemptPhases": [], "settings": { "consolidation": { "enabled": true } } }, "now": "2026-10-22T12:00:00.000Z", "answers": "rerun" },
+    { "name": "scheduled_disabled", "characterId": "0c020000-0000-4000-8000-000000000001", "request": { "reason": "scheduled", "phases": ["consolidate", "mirror"], "exemptPhases": [] }, "now": "2026-10-22T12:00:00.000Z", "answers": "valid" },
+    { "name": "failures", "characterId": "0c030000-0000-4000-8000-000000000001", "request": { "reason": "manual", "phases": ["consolidate", "mirror"] }, "now": "2026-10-08T12:00:00.000Z", "answers": "failures" },
+    { "name": "embed_fail", "characterId": "0c040000-0000-4000-8000-000000000001", "request": { "reason": "manual", "phases": ["consolidate", "mirror"] }, "now": "2026-10-08T12:00:00.000Z", "answers": "embed_fail" },
+    { "name": "no_model", "characterId": "0c050000-0000-4000-8000-000000000001", "request": { "reason": "manual", "phases": ["consolidate", "mirror"] }, "userId": "0c000000-0000-4000-8000-0000000000ff", "now": "2026-10-08T12:00:00.000Z", "answers": "valid" },
+    { "name": "configured_profile", "characterId": "0c060000-0000-4000-8000-000000000001", "request": { "reason": "manual", "phases": ["consolidate", "mirror"], "dryRun": true, "settings": { "consolidation": { "connectionProfileId": "0cf00000-0000-4000-8000-000000000002", "clusterThreshold": 0.8 } } }, "now": "2026-10-08T12:00:00.000Z", "answers": "valid" },
+    {
+      "name": "budget_profile_12000",
+      "characterId": "0c060000-0000-4000-8000-000000000001",
+      "plantSql": ["UPDATE connection_profiles SET maxTokens = 12000 WHERE id = '0cf00000-0000-4000-8000-000000000002'"],
+      "request": { "reason": "manual", "phases": ["consolidate"], "dryRun": true, "settings": { "consolidation": { "connectionProfileId": "0cf00000-0000-4000-8000-000000000002" } } },
+      "now": "2026-10-08T12:00:00.000Z",
+      "answers": "valid"
+    },
+    {
+      "name": "budget_profile_floor",
+      "characterId": "0c060000-0000-4000-8000-000000000001",
+      "plantSql": ["UPDATE connection_profiles SET maxTokens = 2000 WHERE id = '0cf00000-0000-4000-8000-000000000002'"],
+      "request": { "reason": "manual", "phases": ["consolidate"], "dryRun": true, "settings": { "consolidation": { "connectionProfileId": "0cf00000-0000-4000-8000-000000000002" } } },
+      "now": "2026-10-08T12:00:00.000Z",
+      "answers": "valid"
+    },
+    { "name": "missing_profile", "characterId": "0c070000-0000-4000-8000-000000000001", "request": { "reason": "manual", "phases": ["consolidate", "mirror"], "dryRun": true, "settings": { "maxClustersPerRun": 3, "consolidation": { "connectionProfileId": "0cf00000-0000-4000-8000-0000000000ff" } } }, "now": "2026-10-08T12:00:00.000Z", "answers": "valid" },
+    { "name": "empty_answers", "characterId": "0c060000-0000-4000-8000-000000000001", "request": { "reason": "manual", "phases": ["consolidate"], "dryRun": true }, "now": "2026-10-08T12:00:00.000Z", "answers": "empty" },
+    { "name": "job_mode", "characterId": "0c080000-0000-4000-8000-000000000001", "mode": "job", "request": { "reason": "manual", "phases": ["consolidate", "mirror"] }, "now": "2026-10-08T12:00:00.000Z", "answers": "valid" },
+    { "name": "max_zero", "characterId": "0c090000-0000-4000-8000-000000000001", "request": { "reason": "manual", "phases": ["consolidate", "mirror"], "settings": { "maxClustersPerRun": 0 } }, "now": "2026-10-08T12:00:00.000Z", "answers": "valid" },
+    {
+      "name": "demoted_candidates",
+      "characterId": "0c090000-0000-4000-8000-000000000001",
+      "plantSql": ["UPDATE memories SET tier = 'cold', consolidatedAt = NULL WHERE characterId = '0c090000-0000-4000-8000-000000000001' AND source = 'AUTO' AND supersededById IS NULL AND (rowid % 3) = 0"],
+      "request": { "reason": "manual", "phases": ["consolidate"], "dryRun": true },
+      "now": "2026-10-08T12:00:00.000Z",
+      "answers": "valid"
+    },
+    { "name": "cap_dry", "characterId": "0c5b0000-0000-4000-8000-000000000008", "request": { "reason": "manual", "phases": ["consolidate", "mirror"], "dryRun": true }, "now": "2026-10-08T12:00:00.000Z", "answers": "valid" },
+    { "name": "cap_real", "characterId": "0c5b0000-0000-4000-8000-000000000008", "request": { "reason": "manual", "phases": ["consolidate", "mirror"] }, "now": "2026-10-08T12:00:00.000Z", "answers": "valid" },
+    { "name": "archived", "characterId": "0c5b0000-0000-4000-8000-000000000003", "request": { "reason": "manual", "phases": ["consolidate", "mirror"], "dryRun": true }, "now": "2026-10-08T12:00:00.000Z", "answers": "valid" },
+    { "name": "not_found", "characterId": "0c5b0000-0000-4000-8000-0000000000cc", "request": { "reason": "scheduled", "phases": ["consolidate", "mirror"], "dryRun": true }, "now": "2026-10-08T12:00:00.000Z", "answers": "valid" },
+    { "name": "quiet", "characterId": "0c5b0000-0000-4000-8000-000000000009", "request": { "reason": "manual", "phases": ["consolidate", "mirror"] }, "now": "2026-10-08T12:00:00.000Z", "answers": "valid" },
+    {
+      "name": "builtin_profile",
+      "characterId": "0c010000-0000-4000-8000-000000000001",
+      "plantSql": [
+        "CREATE TABLE IF NOT EXISTS \"embedding_profiles\" (\n  \"id\" TEXT PRIMARY KEY NOT NULL,\n  \"userId\" TEXT NOT NULL,\n  \"name\" TEXT NOT NULL,\n  \"provider\" TEXT NOT NULL,\n  \"apiKeyId\" TEXT,\n  \"baseUrl\" TEXT,\n  \"modelName\" TEXT NOT NULL,\n  \"dimensions\" REAL,\n  \"truncateToDimensions\" REAL,\n  \"normalizeL2\" INTEGER DEFAULT 1,\n  \"isDefault\" INTEGER DEFAULT 0,\n  \"tags\" TEXT DEFAULT '[]',\n  \"createdAt\" TEXT NOT NULL,\n  \"updatedAt\" TEXT NOT NULL\n)",
+        "INSERT INTO embedding_profiles (id, userId, name, provider, modelName, isDefault, createdAt, updatedAt) VALUES ('0ce00000-0000-4000-8000-000000000001', '0c000000-0000-4000-8000-0000000000ee', 'Built-in', 'BUILTIN', 'tfidf', 1, '2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z')"
+      ],
+      "request": { "reason": "manual", "phases": ["consolidate"], "dryRun": true },
+      "now": "2026-10-08T12:00:00.000Z",
+      "answers": "valid"
+    }
+  ]
+}

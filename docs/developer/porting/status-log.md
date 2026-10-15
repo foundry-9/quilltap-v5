@@ -181670,3 +181670,146 @@ on every lane; `memory_retire_sole_deleter_guard` counting P4.D290's `services/a
 `context_summary_service_tier3`, `canon_commonplace_tier2`, `extraction_enqueue_tier2`, `memory_regenerate_jobs_tier3`
 (`extraction_context_degrade` has no regen recipe — it rides the turn family's fixture; green in the gate).
 `recipe_sweep.py --self-test` exit 0. No `apps/web` hunk.
+
+## P4.D297 — memory maintenance as one job (lane record, `83334b9a5` round, stage C)
+
+Lane `claude/p4.d297-memory-maintenance-e43551bf5`, worktree `.claude/worktrees/p4d297-memory-maintenance`, cut from
+P4.D290's `ADMISSION` `e43551bf5` (verified against P4.D290's lane-branch status header; `KEYSTONE` `149cb8fc1` and
+`SCORING` `7e18b9cf7` inside it). The session started on main's checkout (`d1434189c`); the lane worktree was created
+on the base before the first edit. v4 pin `/tmp/qt-v4-pin-p4d297-83334b9a5` (HEAD `83334b9a5`, `4.10.0-dev.176`).
+
+### Lane start — the §2 probe (an OBSERVATION, §R.2) and the pin
+
+- **v4 moved** (observed 2026-10-15 11:12 CDT): `main` 15 commits past `01f508d4e` — `a42c282b8` … `7458ff94e`
+  (incl. `2432b9057` **`release: 4.10.0`**, `f573a7576`, `37246654d` 4.11.0 dev, `b82037d75` bug 248,
+  `052659624` / `809e5104d` bug 247); `bugfix` `489b228b6`. Tree clean. Out of scope by the pin rule.
+- The live lockfile moved (`@quilltap/plugin-utils` 2.6.3 → 2.7.1): the pin got its own `npm ci --offline`.
+
+### Red-first (sweep from the pin on `ADMISSION`)
+
+- IMPORT-DEAD / regen-failed, by design: `memory_housekeeping_tier2`, `memory_watermark_tier3`,
+  `consolidation_triggers_tier2`, `consolidation_service_tier3`, `memory_dedup`; `system_body_guards` (the dedup
+  `doMock` unresolvable). RED: `memory_consolidation_routes` 18 failures; `consolidation_tasks` 2 (`''`, `'   '`).
+  Already green: `memory_merge_plan`, `activity_tables`, `realtime_topics`, `system_jobs_collection`,
+  `consolidation_clustering`, `consolidation_plan`, `retired_job_rows_purge_ensure` (P4.D288's, by name). The three
+  C2 maintenance arms answered `p4d288_not_yet_available`.
+- **`PARTIAL_DEFAULTS_CLOBBER` measured at the pin — FULL CONVERGENCE:** `clobber_cold_retention` stores
+  `{enabled: true, …, clusterThreshold: 0.5, …, watermark: 300, coldRetentionDays: 90}` with `fields
+  ["coldRetentionDays"]`; `clobber_null_cold_retention` keeps `enabled: true`, `coldRetentionDays: null`;
+  `clobber_fold_candidates` keeps `otherPass: 'fold'`, `perTurnOtherFloor: 0.5`; `consolidation_set_empty` names
+  `[]`. The table is retired to a positive both-ways `PATCH_PRESERVES_STORED`.
+
+### What landed (Tier 1 units 1–22)
+
+- NEW `services/memory_maintenance/` (`types`, `corpus`, `demote`, `fold_near_duplicates`, `consolidate`, `run`,
+  `ledger`, `triggers`, `scheduler`, `job_results`, `after_job`, `runner`), `services/memory_maintenance_job.rs`,
+  `services/memory_repair.rs`, `api/memory_maintenance_routes.rs`; the engine's three C2 arm bodies; the queue
+  region `// === P4.D297: memory maintenance enqueue ===`; ONE completion-region call
+  (`memory_maintenance::after_job_completed`); host `memory_maintenance.rs` (renamed from `memory_consolidation.rs`
+  — `HostMaintenanceRunner` + the one `MEMORY_MAINTENANCE` registration), the maintenance loop, the
+  `memory_maintenance_interval_ms` rename (+ the five host tests). Consolidation reshaped (`consolidate(input,
+  opts)`, the loader moved out, bug 211, `resolve_cluster_threshold`, `profile_max_tokens_for`, digest embeds via
+  the memory-calendar zone + `lexical_text`); bug 246 in `consolidation_tasks.rs`; bug 244 in
+  `api/memory_consolidation.rs`.
+- DELETED: `housekeeping.rs`, `housekeeping_outcome_cache.rs`, `consolidation_triggers.rs`,
+  `memory_consolidation_job.rs`, `memory_dedup.rs`, `MemoryHousekeepingHandler`, the housekeeping loop, the retired
+  queue fns, `quilltap-host/tests/memory_housekeeping_handler.rs`; the five retired families (each `.rs` + case +
+  fixtures + builders). **LANE-REMOVE:** this lane was the last caller of `services/memory_gate.rs`'s
+  `apply_memory_merge` / `DEDUP_REEMBED_SEAM_MISSING` and of the crate-root `memory_merge.rs` (`MemoryMergePlan`,
+  `plan_memory_merge` — the whole file) — all deleted; markers **34 → 31**, `no_memory_lane_remove_markers_left`
+  RED BY DESIGN.
+- **A port finding (fixed in the port):** v4's background-job reads are fallback `safeQuery` (`[]` on failure),
+  so the ledger seed WARN, the startup-check WARN, `findPendingMaintenance`'s WARN and the handler's
+  concurrent-run WARN are unreachable through v4's real code — v5 routes the four reads through
+  `db::fallback::find_by_filter_or_empty` (pinned negative). Likewise a v5 `find_default` error maps to `None`.
+
+### Families (green from the pin, by name, zero SKIP)
+
+- `memory_maintenance_planning` — 3079 rows (`resolvePhases` 3024 cells, the ledger's 8 scenarios over a mocked
+  `findRecentByType` sorted `updatedAt DESC`, `planDemotion` incl. floor-saturated ties, the fold planner incl.
+  the 2003-row cap, `bucketCandidates` incl. bug 211's cap, `summarize`, `withImpliedPhases`,
+  `resolveClusterThreshold` 18).
+- `memory_maintenance_tier2` — 17 runs, 70 lines, 2 re-embeds, the `memories` table; invariant 10 both sides.
+- `memory_maintenance_consolidate_tier3` — 21 runs, 382 lines, 63 canned calls, 9 embeddings, the table, the
+  `Commonplace/` documents; bug 246's 12000 / floor / empty-answer rows, `BUILTIN` at 0.30, demoted candidates,
+  the mirror in both modes (Job → `deferredToCommit: true`).
+- `memory_maintenance_queue_tier2` — 46 steps, 79 lines: the seeded ledger, the widen (phase union, `undefined`
+  absorbing, `manual` winning, exemption union, settings merge), PROCESSING never absorbing, a deferred
+  `scheduledAt`, the batch + user fan-out, the watermark (debounce, cap over demotable rows, the throttles, a
+  seeded consolidate throttle, archived / unknown, both off, the ineffective-demotion backoff after a real run),
+  the scheduler + startup tick (runs / skipped), the handler (no characterId; the defer twice; older-than-running;
+  a Job-mode fold through the host-RPC seam; a `dryRun` payload running LIVE with the hook standing down; the
+  whole automatic run) each followed by the completion region; the mirror hook (a bucket mirrored; dry / other
+  type / nothing touched). Oracle seams: the run "as of" `spec.now`; `callHost('foldNearDuplicates')` routed to
+  the parent's real `applyNearDuplicateFolds`; `setJobResult` captured and handed to the dispatcher's two hooks.
+- `memory_maintenance_routes` — 52 cases, 55 lines (maintain dry / LLM-free all / refused / live / widen / no
+  body, the validation class incl. both cap edges, 404 before the dry rule; status all / one / present-empty /
+  404 / seeded; repair; maintenance-config incl. L-7's two stored shapes and the bounds; six retired actions as
+  the 400 class, R-G) + 5 v5-only R-N rows (no runner → refusal AFTER the 400 / dry-rule / 404 arms; a live
+  enqueue needs none). **Oracle artifact fixed:** v4's `jest.setup.ts` mocks `embedding-service` whole.
+- `memory_graph_repair_tier2` — 9 steps over every dangling column, a partial digest, an all-members-gone digest
+  (`graph-repair` retirement), cold + hot dangling `supersededById`, non-JSON links skipped, scoped vs whole,
+  no-profile skip, 404, a failed scan → 500 (no fallback). The scrub's five writer-thread lines are excluded BY
+  NAME (`WRITER_THREAD_TAGS`; their effects pinned by `repaired` + the table). Rig fixes: the maintenance builder
+  gained `users` + `embedding_profiles` (v4 creates the latter lazily); v4's `logger.error` third argument is
+  captured as the trailing `error` field v5 renders.
+- `maintenance_commit_hook_unreachable_census` (R-L) — green at the pin AND the live checkout: exactly four
+  `memories.create(` callers; `insertRow` ← `applyAction` ← `admitPrepared` (throws in the child); the digest
+  create inside `executePlan`, gated by the hook's `MEMORY_MAINTENANCE` return; no job imports the restore or the
+  import. **NO-PORT:** `maybeEnqueueMaintenanceAfterCommit` / `characterIdsFromMemoryWrites`; R-B's mark log and
+  the `WATERMARK_ROWID_WINDOW` table retire with `consolidation_triggers.rs`.
+- Re-aimed, green: `memory_consolidation_routes` (bug 244, `PATCH_PRESERVES_STORED`), `consolidation_tasks` (the
+  floor re-pinned 12 → 11 unparseable + an explicit `empty_answers >= 2`), `system_body_guards` (dedup `doMock`
+  dropped, four `Unknown action` rows, `jobs_payload_null` → `MEMORY_MAINTENANCE`), `realtime_topics` (four
+  `MEMORY_MAINTENANCE` dry-run shapes → both hints; the retired types → none), `system_jobs_collection` (sample
+  type swapped). Unchanged green: `consolidation_clustering`, `consolidation_plan`, `memory_merge_plan` (the
+  dedup-merge rows already retired by P4.D289), `activity_tables`, `retired_job_rows_purge_ensure`.
+- Host: `memory_maintenance_startup_tick_enqueues_per_holder_and_honors_recent_run` (one job per live holder, the
+  20-h skip, the aged re-run; red under a never-skip mutation).
+
+### Tier 2
+
+- **Mutation proofs (24)**, each restored and `cmp`-verified: demote tie-break newest-first (planning 7, tier-2 2);
+  a transitive fold (planning 4, tier-2 6); `swap_remove` in the corpus — SURVIVED at first (no corpus folded
+  ahead of a tied demotion) → new holder Tilda + `fold_then_demote_ties` → tier-2 2; the debounce after the read
+  (queue 1); PROCESSING absorbing (queue 23).
+- **L-6:** v5's pump is serial (one claim awaited at a time, a reentrancy lock), so two `MEMORY_MAINTENANCE` jobs
+  cannot RUN for one character in one process; the defer is reachable only against a stale PROCESSING row a killed
+  process left until the stuck reset — the queue family's `handler_deferred` rows pin exactly that. Ported
+  faithfully either way.
+- **L-3:** the frozen `services/memory_gate.rs` calls none of the retired callees — no L-3 HANDOFF.
+- **Unit 16:** `JOBS_INVALIDATING_FROZEN_ARCHIVE` reads only `MEMORY_MAINTENANCE` on `ADMISSION`; the empty-id
+  arm is still the old one on the base, but P4.D291's lane branch carries v4's return-silently arm — lands on the
+  union, no HANDOFF. `db/chat_settings.rs` carries no `autoHousekeepingSettings` reader — no HANDOFF.
+- **L-12:** `stopMemoryMaintenanceScheduler` has no production caller at the pin — the stop line is unreached by
+  architecture; `Maintenance scheduler started` is the loop's line.
+
+### HANDOFF / NO-PORT / deferrals
+
+- **HANDOFF (§R.10(h)) — the unifier's watermark call:** in `services/admission/admit.rs` `admit_prepared`'s
+  `if admission_inserted(&outcome.action)` block, call
+  `crate::services::memory_maintenance::triggers::maybe_enqueue_maintenance(db, &[character_id.clone()],
+  crate::clock::now_unix_ms() as f64).await` (it never fails — v4's catch DEBUG `Maintenance watermark check
+  skipped after admission` has no failing arm in v5); the `admission_tier3` watermark invariant becomes the
+  measured call list.
+- **NO-PORT (recorded):** `QUILLTAP_TEST_MAINTENANCE_FAIL_AFTER_PLAN` and its two arms (R-AL); host-RPC
+  `foldNearDuplicates`, the `applyNearDuplicateFolds` child throw, `notifyChild('vectorStore')`,
+  `processSingleton`, the yields, L-2's write-list hooks and their lines; `maybeEnqueueMaintenanceAfterCommit`
+  (R-L).
+- **Deferred (Tier 3):** `Response::MemoryMaintenance`'s rename (R-J — doc reworded only); the CLI `memories
+  maintain` / `status` / `validate --repair` (R-P, P4.D299's refusals stand).
+
+### Gate (lane close)
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` and with
+`--features quilltap-core/native-transport` clean; `recipe_sweep.py --self-test` 0 failures; the 12 owned families
++ `system_body_guards` + `realtime_topics` + `system_jobs_collection` + `retired_job_rows_purge_ensure` each from the
+pin by name, green. `cargo test --workspace --no-fail-fast` with the lane env block: 783 binaries / 5,160 passed / 6
+failed / 3 ignored, zero `SKIP:`. Two reds were lane-caused and are fixed and green by name: `host_zone_sites_census`
+(the `maintain` arm's `display_zone` read, 8 → 9) and `p4_d288_wire_contract` (its three `P4.D297` refusal rows
+retired — the arms are filled). Four are inherited or by design, in files this lane does not touch:
+`no_memory_lane_remove_markers_left` (31 markers, RED BY DESIGN until §S.5) and its scoring-chokepoint twin (other
+lanes' offenders), `memory_retire_sole_deleter_guard` (`services/admission/tests.rs`, P4.D290's), and
+`qtap_schema_embed_guard` (the vendored qtap-export schema predates the pin — P4.D294's re-vendor).
+
+Versions at close: core 0.0.1300, host 0.0.205 (web unchanged — test-only edits; harness frozen).

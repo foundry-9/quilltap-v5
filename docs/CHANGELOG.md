@@ -126,6 +126,18 @@ New `memory_extraction::{prompts, parse, window}` — the pure half of v4's one 
 
 Differentials from the pin: `memory_tasks_equivalence` rewritten over a new tsx case (`extraction-pure-tier1.ts`, 135 rows: clocks in five zones incl. a DST edge and the zone-fallback rows, all four builders, 42 `passCap` cells, 34 parse rows, every fold rule); `turn_transcript_equivalence` grown 19 → 30 builder cases plus 14 turn-list / anchor / material rows. The old `memory-tasks-tier1` case and fixture are removed (their v4 subject was deleted).
 
+#### 2026-10-15 — feat(core,host): P4.D297 — memory maintenance as one job: five phases, the ledger, repair, bugs 244 / 246
+
+_Versions: core 0.0.1300, host 0.0.205._
+
+New `services::memory_maintenance` (v4 `lib/memory/maintenance/` at the `83334b9a5` pin): ONE `MEMORY_MAINTENANCE` job running five ordered, individually skippable phases (fold near-duplicates → consolidate → demote → retire → mirror) over one insertion-ordered corpus read. `resolve_phases` honours the per-phase exemption; the fold is survivor-first and non-transitive under admission's lock; demote moves exactly `demotable − cap` rows, lowest protection first; retire goes by `supersededAt ?? updatedAt` through the one retire path; the mirror runs in-process or defers to the after-commit hook in a job. Also new: the parent-side ledger (`should_enqueue`, the 90 % cap watermark, the 15-min / 1-h / 6-h throttles, the 2-min debounce, seeded from the last 100 jobs), the watermark trigger, the daily scheduler plus startup tick (host loop, `memory_maintenance_interval_ms`), the per-character PENDING-only widening enqueue (bugs 221 / 223), the handler's defer behind an older PROCESSING run, the summary stash consumed by one completion-region call, the host-installed `MaintenanceRunner`, and `repair_memory_graph`.
+
+API: `maintain`, `maintenance-status` and `repair` are filled in a new `api/memory_maintenance_routes.rs`. Bug 244: consolidation-config and extraction-mode-config writes keep unsent keys (`PARTIAL_DEFAULTS_CLOBBER` measured to full convergence and replaced by `PATCH_PRESERVES_STORED`). Bug 246: consolidation's request budget is `max(4000, profile maxTokens)` and an empty answer gets its own verdict. Bug 211's demoted candidates and `tfidfClusterThreshold` ride consolidation's new loader.
+
+Deleted: housekeeping, its outcome cache, the consolidation triggers, the dedup service, the old consolidation job and housekeeping handler and loop, and the crate-root `memory_merge.rs` plus the dedup shims in `services/memory_gate.rs` (this lane was the last caller; LANE-REMOVE markers 34 → 31).
+
+New differential families from the pin: `memory_maintenance_planning`, `memory_maintenance_tier2`, `memory_maintenance_consolidate_tier3`, `memory_maintenance_queue_tier2`, `memory_maintenance_routes`, `memory_graph_repair_tier2`, and the census `maintenance_commit_hook_unreachable_census` (R-L: the commit hook is unreachable at the pin, so it is not ported). Retired families: `memory_housekeeping_tier2`, `memory_watermark_tier3`, `consolidation_triggers_tier2`, `memory_dedup`, `consolidation_service_tier3`. Re-aimed: `memory_consolidation_routes`, `consolidation_tasks`, `system_body_guards`, `realtime_topics`, `system_jobs_collection`. Host: a new cadence test for the memory-maintenance startup tick. The `p4_d288_wire_contract` refusal rows for the three filled arms are retired, and `host_zone_sites_census` counts the `maintain` arm's display-zone read (8 → 9).
+
 #### 2026-10-14 — ADMISSION: P4.D290 — admission's stateful half over SCORING + KEYSTONE (one entry point, the lock, the idempotency ledger, the one combine's writes, the hand edit)
 
 _Versions: core 0.0.1299._

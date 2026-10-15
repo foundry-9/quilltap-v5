@@ -1,6 +1,6 @@
 /**
- * The canned consolidation answers (P4.D271) shared by the service and
- * trigger oracles: per answer set, per cluster topic letter (the first
+ * The canned consolidation answers (P4.D271; the maintenance consolidate
+ * tier-3 oracle's since P4.D297): per answer set, per cluster topic letter (the first
  * `[<topic><n>]` marker in the NOTES), the model's answer — a JSON object, a
  * raw string, or `{ fail }` (the provider throws that message).
  */
@@ -107,6 +107,8 @@ export const ANSWER_SETS: Record<string, Record<string, Answer>> = {
     G: { digests: [{ ...(VALID.G as any).digests[0], content: '(topic G) The harbour bell FAILEMBED sounds at noon.' }] },
   },
   handler_dry: { ...VALID, B: { fail: 'provider exploded' } },
+  // P4.D297 (bug 246): an empty / whitespace answer is its own verdict.
+  empty: { ...VALID, A: '', B: '   \n ' },
   rerun: {
     A: {
       digests: [

@@ -120,182 +120,6 @@ pub async fn enqueue_job_at(
     Ok(id)
 }
 
-/// v4 `enqueueMemoryHousekeeping`: de-dupe against in-flight
-/// `MEMORY_HOUSEKEEPING` jobs for the same (userId, characterId), then enqueue
-/// with `maxAttempts: 1` (housekeeping is retry-hostile — the daily scheduler
-/// re-enqueues anyway). Returns the existing or new job id.
-pub async fn enqueue_memory_housekeeping(
-    db: &Db,
-    user_id: &str,
-    payload: Value,
-) -> Result<String, DbError> {
-    enqueue_memory_housekeeping_at(db, user_id, payload, None).await
-}
-
-/// P4.D271 (R-G): [`enqueue_memory_housekeeping`] with v4's `options` passed
-/// through — the scheduled pass defers housekeeping behind consolidation. An
-/// in-flight job's id is returned unchanged (v4 does not reschedule it).
-pub async fn enqueue_memory_housekeeping_at(
-    db: &Db,
-    user_id: &str,
-    payload: Value,
-    scheduled_at: Option<String>,
-) -> Result<String, DbError> {
-    // De-dupe against in-flight jobs. v4 wraps the check in a try/catch and
-    // falls through to enqueue on failure — double work beats none.
-    let uid = user_id.to_string();
-    let in_flight = db.read_main(|conn| {
-        let repo = crate::db::background_jobs::BackgroundJobsRepository::new(conn);
-        let mut jobs = repo.find_by_user_id(&uid, Some("PENDING"))?;
-        jobs.extend(repo.find_by_user_id(&uid, Some("PROCESSING"))?);
-        Ok(jobs)
-    });
-    if let Ok(jobs) = in_flight {
-        let our_char = payload.get("characterId").and_then(Value::as_str);
-        let existing = jobs.iter().find(|j| {
-            if j.job_type != "MEMORY_HOUSEKEEPING" {
-                return false;
-            }
-            let job_char: Option<Value> = serde_json::from_str::<Value>(&j.payload)
-                .ok()
-                .and_then(|p| p.get("characterId").cloned());
-            job_char.as_ref().and_then(Value::as_str) == our_char
-        });
-        if let Some(existing) = existing {
-            return Ok(existing.id.clone());
-        }
-    }
-
-    enqueue_job_at(
-        db,
-        user_id,
-        "MEMORY_HOUSEKEEPING",
-        payload,
-        1.0,
-        scheduled_at,
-    )
-    .await
-}
-
-// === P4.D271: the memory-consolidation enqueue (append-only) ===
-/// v4 `MemoryConsolidationPayload` (`queue-service.ts:650-660`): one job per
-/// character. The STORED payload is the caller's literal — v4's
-/// `JSON.stringify` drops an `undefined` key, so absent keys are OMITTED, in
-/// v4's order `characterId, [dryRun], [maxClustersPerRun], trigger`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct MemoryConsolidationPayload {
-    pub character_id: String,
-    /// Run clustering and the model calls, write nothing, log the report.
-    pub dry_run: Option<bool>,
-    /// Override `memoryConsolidation.maxClustersPerRun` for this run.
-    pub max_clusters_per_run: Option<f64>,
-    /// `scheduled` | `watermark` | `manual` — automatic triggers bail when
-    /// consolidation is disabled.
-    pub trigger: Option<String>,
-}
-
-impl MemoryConsolidationPayload {
-    pub fn to_json(&self) -> Value {
-        let mut m = serde_json::Map::new();
-        m.insert(
-            "characterId".into(),
-            Value::String(self.character_id.clone()),
-        );
-        if let Some(d) = self.dry_run {
-            m.insert("dryRun".into(), Value::Bool(d));
-        }
-        if let Some(n) = self.max_clusters_per_run {
-            m.insert("maxClustersPerRun".into(), crate::db::js_number_to_json(n));
-        }
-        if let Some(t) = &self.trigger {
-            m.insert("trigger".into(), Value::String(t.clone()));
-        }
-        Value::Object(m)
-    }
-
-    /// A stored job payload, read as v4's handler casts it (`payload as
-    /// MemoryConsolidationPayload`): a missing / non-string `characterId` is
-    /// `None` (the handler's no-`characterId` arm).
-    pub fn decode(payload: &Value) -> Option<Self> {
-        let character_id = payload
-            .get("characterId")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())?
-            .to_string();
-        Some(Self {
-            character_id,
-            dry_run: payload.get("dryRun").and_then(Value::as_bool),
-            max_clusters_per_run: payload.get("maxClustersPerRun").and_then(Value::as_f64),
-            trigger: payload
-                .get("trigger")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-        })
-    }
-}
-
-/// v4 `enqueueMemoryConsolidation` (`queue-service.ts:662-708`): dedupe against
-/// the user's PENDING + PROCESSING `MEMORY_CONSOLIDATION` jobs for the same
-/// character AND the same dry-run flag — a dry run never stands in for a real
-/// run, or vice versa — then enqueue with `maxAttempts` 1 (retry-hostile like
-/// housekeeping: a rerun redoes every model call, and the next scheduled or
-/// watermark pass picks up whatever this one left).
-pub async fn enqueue_memory_consolidation(
-    db: &Db,
-    user_id: &str,
-    payload: &MemoryConsolidationPayload,
-) -> Result<String, DbError> {
-    let dry_run = payload.dry_run == Some(true);
-    let uid = user_id.to_string();
-    let in_flight = db.read_main(|conn| {
-        let repo = crate::db::background_jobs::BackgroundJobsRepository::new(conn);
-        let mut jobs = repo.find_by_user_id(&uid, Some("PENDING"))?;
-        jobs.extend(repo.find_by_user_id(&uid, Some("PROCESSING"))?);
-        Ok(jobs)
-    });
-    match in_flight {
-        Ok(jobs) => {
-            let existing = jobs.iter().find(|j| {
-                if j.job_type != "MEMORY_CONSOLIDATION" {
-                    return false;
-                }
-                let p: Value = serde_json::from_str(&j.payload).unwrap_or(Value::Null);
-                p.get("characterId").and_then(Value::as_str) == Some(payload.character_id.as_str())
-                    && (p.get("dryRun") == Some(&Value::Bool(true))) == dry_run
-            });
-            if let Some(existing) = existing {
-                // v4's `trigger: payload.trigger` — an absent trigger is OMITTED.
-                match payload.trigger.as_deref() {
-                    Some(trigger) => tracing::debug!(
-                        characterId = %payload.character_id,
-                        existingJobId = %existing.id,
-                        trigger = %trigger,
-                        dryRun = dry_run,
-                        "[Consolidation] Job already in flight for character; not enqueuing another"
-                    ),
-                    None => tracing::debug!(
-                        characterId = %payload.character_id,
-                        existingJobId = %existing.id,
-                        dryRun = dry_run,
-                        "[Consolidation] Job already in flight for character; not enqueuing another"
-                    ),
-                }
-                return Ok(existing.id.clone());
-            }
-        }
-        Err(e) => {
-            // Fall through — a duplicate run is wasteful, not harmful.
-            tracing::warn!(
-                characterId = %payload.character_id,
-                error = %crate::db::fallback::error_text(&e),
-                "[Consolidation] Failed to check for existing jobs during enqueue"
-            );
-        }
-    }
-    enqueue_job(db, user_id, "MEMORY_CONSOLIDATION", payload.to_json(), 1.0).await
-}
-// === end P4.D271 ===
-
 /// v4 `enqueueMemoryRegenerateAll` (P4.6s) — the single fan-out job, deduped on
 /// an in-flight `MEMORY_REGENERATE_ALL` for the user (a double-click yields the
 /// existing job). Returns `(jobId, isNew)`. `maxAttempts` 1.
@@ -686,6 +510,349 @@ pub fn pass_of(payload: &Value) -> Result<MemoryExtractionPass, Value> {
 }
 
 // === end P4.D288 ===
+
+// === P4.D297: memory maintenance enqueue ===
+// v4 `lib/background-jobs/queue-service.ts:325-343, :635-785` (`104e986c7`, at
+// the `83334b9a5` pin). The payload is a preserve-order `serde_json::Map`
+// throughout — its BYTES are a comparand (the widened payload keeps the
+// prior's key positions and appends new keys, as v4's object spreads do):
+// API `{"reason":"manual"[,"phases"][,"settings"],"characterId","exemptPhases"}`,
+// scheduler `{"reason":"scheduled","characterId","exemptPhases":[]}`, watermark
+// `{"characterId","reason":"watermark","phases","exemptPhases":[]}`. v4's
+// `MemoryMaintenancePayload` has no `dryRun` — a dry run never becomes a job.
+
+/// v4 `unionPhases(a, b)`: "union two phase lists; `undefined` (every phase)
+/// absorbs anything" — first-seen order, deduped. A non-array is `undefined`.
+fn union_phases(a: Option<&Value>, b: Option<&Value>) -> Option<Vec<Value>> {
+    let (Some(Value::Array(a)), Some(Value::Array(b))) = (a, b) else {
+        return None;
+    };
+    let mut out: Vec<Value> = Vec::new();
+    for p in a.iter().chain(b.iter()) {
+        if !out.contains(p) {
+            out.push(p.clone());
+        }
+    }
+    Some(out)
+}
+
+/// v4 `exemptPhasesOf(payload)`: "the phases a request asks for by hand: they
+/// run whatever the enabled switches and per-phase toggles say. A manual
+/// request exempts what it names (every phase when it names none); an
+/// automatic one exempts nothing." — `exemptPhases` when JS-truthy (an array,
+/// even empty), else `[]` unless `reason === 'manual'`, else `phases ?? ALL`.
+pub fn exempt_phases_of(payload: &serde_json::Map<String, Value>) -> Value {
+    match payload.get("exemptPhases") {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => {}
+        Some(Value::String(s)) if s.is_empty() => {}
+        Some(Value::Number(n)) if n.as_f64() == Some(0.0) => {}
+        Some(v) => return v.clone(),
+    }
+    if payload.get("reason").and_then(Value::as_str) != Some("manual") {
+        return Value::Array(Vec::new());
+    }
+    match payload.get("phases") {
+        None | Some(Value::Null) => Value::Array(
+            MaintenancePhase::ALL
+                .into_iter()
+                .map(|p| Value::String(p.as_str().to_string()))
+                .collect(),
+        ),
+        Some(v) => v.clone(),
+    }
+}
+
+fn phase_values(v: &Value) -> Vec<Value> {
+    match v {
+        Value::Array(a) => a.clone(),
+        _ => Vec::new(),
+    }
+}
+
+/// v4 `widenPayload(prior, payload)`: "fold `payload` into a waiting job's
+/// payload. Each phase keeps its own exemption." `{...prior, [phases: union],
+/// reason: payload.reason === 'manual' ? 'manual' : prior.reason,
+/// exemptPhases: [...new Set([...exemptPhasesOf(prior),
+/// ...exemptPhasesOf(payload)])], [settings: {...prior.settings,
+/// ...payload.settings}]}`, then `delete phases` when the union is
+/// `undefined`. "For the ledger and the logs only: what may skip the switches
+/// is `exemptPhases`."
+pub fn widen_maintenance_payload(
+    prior: &serde_json::Map<String, Value>,
+    payload: &serde_json::Map<String, Value>,
+) -> serde_json::Map<String, Value> {
+    let phases = union_phases(prior.get("phases"), payload.get("phases"));
+    let mut exempt: Vec<Value> = Vec::new();
+    for p in phase_values(&exempt_phases_of(prior))
+        .into_iter()
+        .chain(phase_values(&exempt_phases_of(payload)))
+    {
+        if !exempt.contains(&p) {
+            exempt.push(p);
+        }
+    }
+    let mut widened = prior.clone();
+    if let Some(phases) = &phases {
+        widened.insert("phases".into(), Value::Array(phases.clone()));
+    }
+    let reason = if payload.get("reason").and_then(Value::as_str) == Some("manual") {
+        Some(Value::String("manual".to_string()))
+    } else {
+        prior.get("reason").cloned()
+    };
+    match reason {
+        Some(r) => {
+            widened.insert("reason".into(), r);
+        }
+        // `reason: undefined` — `JSON.stringify` drops the key.
+        None => {
+            widened.shift_remove("reason");
+        }
+    }
+    widened.insert("exemptPhases".into(), Value::Array(exempt));
+    if let Some(settings) = payload.get("settings").filter(|s| js_truthy_value(s)) {
+        let mut merged = match prior.get("settings") {
+            Some(Value::Object(o)) => o.clone(),
+            _ => serde_json::Map::new(),
+        };
+        if let Value::Object(o) = settings {
+            for (k, v) in o {
+                merged.insert(k.clone(), v.clone());
+            }
+        }
+        widened.insert("settings".into(), Value::Object(merged));
+    }
+    if phases.is_none() {
+        widened.shift_remove("phases");
+    }
+    widened
+}
+
+fn js_truthy_value(v: &Value) -> bool {
+    match v {
+        Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Number(n) => n.as_f64().is_some_and(|x| x != 0.0 && !x.is_nan()),
+        Value::String(s) => !s.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
+    }
+}
+
+/// One of the user's PENDING maintenance jobs, as the enqueue tracks it.
+#[derive(Clone, Debug)]
+pub struct PendingMaintenance {
+    pub id: String,
+    pub payload: serde_json::Map<String, Value>,
+}
+
+fn character_of(payload: &serde_json::Map<String, Value>) -> Option<&Value> {
+    payload.get("characterId")
+}
+
+/// v4 `findPendingMaintenance(userId, characterId?)`: "the user's PENDING
+/// maintenance jobs, or null when they cannot be read". v4's `findByUserId`
+/// is a fallback `safeQuery` over `findByFilter` — a failed read logs `Error
+/// finding entities by filter` and answers `[]` — so the helper's own catch
+/// (WARN `[Maintenance] Failed to check for pending jobs during enqueue
+/// {characterId, error}`, then `null`) is unreachable through v4's real code:
+/// pinned NEGATIVE, its v5 home the fallback below. "A duplicate run is
+/// wasteful, not harmful."
+fn find_pending_maintenance(db: &Db, user_id: &str) -> Option<Vec<PendingMaintenance>> {
+    let uid = user_id.to_string();
+    let jobs = db
+        .read_main(|conn| {
+            Ok(crate::db::fallback::find_by_filter_or_empty(
+                "background_jobs",
+                || {
+                    crate::db::background_jobs::BackgroundJobsRepository::new(conn)
+                        .find_by_user_id(&uid, Some("PENDING"))
+                },
+            ))
+        })
+        .unwrap_or_default();
+    Some(
+        jobs.into_iter()
+            .filter(|j| j.job_type == MEMORY_MAINTENANCE)
+            .map(|j| PendingMaintenance {
+                id: j.id,
+                payload: match serde_json::from_str::<Value>(&j.payload) {
+                    Ok(Value::Object(m)) => m,
+                    _ => serde_json::Map::new(),
+                },
+            })
+            .collect(),
+    )
+}
+
+/// v4 `enqueueMaintenanceAgainst(userId, payload, pending, options)`:
+/// "enqueue (or widen) one character's maintenance job against an
+/// already-read list of the user's PENDING maintenance jobs, which it keeps up
+/// to date." A PENDING job for the same `characterId` absorbs the request
+/// (its payload widened in place; DEBUG `[Maintenance] Pending job widened to
+/// the requested phases {characterId, existingJobId, phases: widened.phases ??
+/// 'all', exemptPhases, reason}`, root logger); else a new job with
+/// `maxAttempts` 1 (`options.scheduledAt` passed through).
+async fn enqueue_maintenance_against(
+    db: &Db,
+    user_id: &str,
+    payload: serde_json::Map<String, Value>,
+    pending: &mut Option<Vec<PendingMaintenance>>,
+    scheduled_at: Option<String>,
+) -> Result<String, DbError> {
+    let mut normalized = payload.clone();
+    normalized.insert("exemptPhases".into(), exempt_phases_of(&payload));
+    let character = character_of(&payload).cloned();
+    if let Some(list) = pending.as_mut() {
+        if let Some(existing) = list
+            .iter_mut()
+            .find(|j| character_of(&j.payload) == character.as_ref())
+        {
+            let widened = widen_maintenance_payload(&existing.payload, &normalized);
+            let (id, stored) = (existing.id.clone(), Value::Object(widened.clone()));
+            db.write(move |w| {
+                w.main().background_jobs().update(
+                    &id,
+                    &crate::db::background_jobs::BjUpdate {
+                        payload: Some(stored),
+                        updated_at: now_iso(),
+                        ..Default::default()
+                    },
+                )
+            })
+            .await?;
+            existing.payload = widened.clone();
+            let character_text = character
+                .as_ref()
+                .map(|c| c.as_str().map_or_else(|| c.to_string(), str::to_string))
+                .unwrap_or_default();
+            let exempt_json = widened
+                .get("exemptPhases")
+                .map(Value::to_string)
+                .unwrap_or_else(|| "null".to_string());
+            let reason_text = match widened.get("reason") {
+                Some(Value::String(s)) => s.clone(),
+                Some(v) => v.to_string(),
+                None => "undefined".to_string(),
+            };
+            match widened.get("phases") {
+                Some(phases) => tracing::debug!(
+                    characterId = %character_text,
+                    existingJobId = %existing.id,
+                    phasesJson = %phases,
+                    exemptPhasesJson = %exempt_json,
+                    reason = %reason_text,
+                    "[Maintenance] Pending job widened to the requested phases"
+                ),
+                None => tracing::debug!(
+                    characterId = %character_text,
+                    existingJobId = %existing.id,
+                    phases = "all",
+                    exemptPhasesJson = %exempt_json,
+                    reason = %reason_text,
+                    "[Maintenance] Pending job widened to the requested phases"
+                ),
+            }
+            return Ok(existing.id.clone());
+        }
+    }
+    let id = enqueue_job_at(
+        db,
+        user_id,
+        MEMORY_MAINTENANCE,
+        Value::Object(normalized.clone()),
+        1.0,
+        scheduled_at,
+    )
+    .await?;
+    if let Some(list) = pending.as_mut() {
+        list.push(PendingMaintenance {
+            id: id.clone(),
+            payload: normalized,
+        });
+    }
+    Ok(id)
+}
+
+/// v4 `enqueueMemoryMaintenance(userId, payload, options?)`: "enqueue memory
+/// maintenance for one character. Dedupe key is the character, whatever the
+/// reason (bug 221): a PENDING maintenance job for the same character absorbs
+/// the request — it widens to the phases asked for and adopts the requested
+/// overrides — so the daily sweep, a watermark run and a manual run collapse
+/// into one job. … A PROCESSING job never absorbs a request: it has already
+/// read the corpus and may be past the phase asked for. A new PENDING job is
+/// created instead, and the handler defers it while the running one
+/// finishes, so two runs never work on one character at once. Retry-hostile:
+/// … attempts default to 1."
+pub async fn enqueue_memory_maintenance(
+    db: &Db,
+    user_id: &str,
+    payload: serde_json::Map<String, Value>,
+    scheduled_at: Option<String>,
+) -> Result<String, DbError> {
+    let mut pending = find_pending_maintenance(db, user_id);
+    enqueue_maintenance_against(db, user_id, payload, &mut pending, scheduled_at).await
+}
+
+/// v4 `enqueueMemoryMaintenanceMany(userId, characterIds, payload, options?)`:
+/// "one maintenance job per listed character, each deduped per character,
+/// with one read of the user's pending jobs for the whole batch. Returns every
+/// job id, new or widened, without duplicates." Each payload is `{...payload,
+/// characterId}` (the id appended unless the base already carries it).
+pub async fn enqueue_memory_maintenance_many(
+    db: &Db,
+    user_id: &str,
+    character_ids: &[String],
+    payload: serde_json::Map<String, Value>,
+    scheduled_at: Option<String>,
+) -> Result<Vec<String>, DbError> {
+    let mut pending = find_pending_maintenance(db, user_id);
+    let mut ids: Vec<String> = Vec::new();
+    for character_id in character_ids {
+        let mut one = payload.clone();
+        one.insert("characterId".into(), Value::String(character_id.clone()));
+        let id = enqueue_maintenance_against(db, user_id, one, &mut pending, scheduled_at.clone())
+            .await?;
+        if !id.is_empty() && !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    Ok(ids)
+}
+
+/// v4 `enqueueMemoryMaintenanceForUser(userId, payload, options?)`: "one
+/// maintenance job per live character the user owns (each deduped per
+/// character). Returns every job id, new or widened." DEBUG `[Maintenance]
+/// User-wide run fanned out per character {userId, reason, characters,
+/// jobs}`.
+pub async fn enqueue_memory_maintenance_for_user(
+    db: &Db,
+    user_id: &str,
+    payload: serde_json::Map<String, Value>,
+) -> Result<Vec<String>, DbError> {
+    let uid = user_id.to_string();
+    let characters = db.read_main(|main| {
+        db.read_mount_index(|mount| crate::db::characters_read::find_by_user_id(main, mount, &uid))
+    })?;
+    let live: Vec<String> = characters
+        .iter()
+        .filter(|c| !crate::api::characters::is_archived(c))
+        .filter_map(|c| c.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect();
+    let reason = payload
+        .get("reason")
+        .map(|r| r.as_str().map_or_else(|| r.to_string(), str::to_string))
+        .unwrap_or_else(|| "undefined".to_string());
+    let ids = enqueue_memory_maintenance_many(db, user_id, &live, payload, None).await?;
+    tracing::debug!(
+        userId = %user_id,
+        reason = %reason,
+        characters = live.len(),
+        jobs = ids.len(),
+        "[Maintenance] User-wide run fanned out per character"
+    );
+    Ok(ids)
+}
+// === end P4.D297 ===
 
 // === P4.D296: memory extraction enqueue ===
 
@@ -1738,108 +1905,6 @@ pub async fn cleanup_finished_jobs(db: &Db, now_ms: i64) -> Result<(usize, usize
 // ============================================================================
 // Scheduler sweep bodies (v4 `scheduled-*.ts` — the portable enqueuer loops)
 // ============================================================================
-
-/// v4 `HOUSEKEEPING_AFTER_CONSOLIDATION_DELAY_MS` (`scheduled-housekeeping.ts:41`):
-/// when the scheduled pass enqueued consolidation, housekeeping waits this
-/// long so it sweeps the post-consolidation corpus.
-pub const HOUSEKEEPING_AFTER_CONSOLIDATION_DELAY_MS: i64 = 30 * 60 * 1000;
-
-/// v4 `runScheduledHousekeeping()` (`scheduled-housekeeping.ts:133-195`, P4.D271):
-/// consolidation FIRST (its own enabled switch; a failure never blocks
-/// housekeeping), then — for every user whose `autoHousekeepingSettings.enabled`
-/// is true — one `MEMORY_HOUSEKEEPING` job (`{ reason: 'scheduled' }`),
-/// deferred 30 minutes when the consolidation pass enqueued anything (a dedupe
-/// hit counts — v4's `charactersEnqueued`). The enqueue helper dedupes against
-/// in-flight jobs for the same (userId, characterId). Returns
-/// `(usersProcessed, jobsEnqueued)`. The host driver calls this on the daily
-/// cadence. v4's four pre-existing lines (the start INFO, the per-user WARN,
-/// the completion INFO, the outer ERROR + rethrow) are carried with the
-/// consolidation ones, under v4's child `module: 'scheduled-housekeeping'`.
-pub async fn run_scheduled_housekeeping(db: &Db) -> Result<(usize, usize), DbError> {
-    const MODULE: &str = "scheduled-housekeeping";
-    tracing::info!(
-        module = MODULE,
-        "Starting scheduled memory housekeeping pass"
-    );
-
-    // Consolidation first (its own enabled switch; never blocks housekeeping).
-    let consolidation_enqueued =
-        match crate::services::consolidation_triggers::run_scheduled_consolidation(db).await {
-            Ok(r) => r.characters_enqueued,
-            Err(e) => {
-                tracing::warn!(
-                    module = MODULE,
-                    error = %crate::db::fallback::error_text(&e),
-                    "Scheduled consolidation pass failed; housekeeping continues"
-                );
-                0
-            }
-        };
-    let scheduled_at = (consolidation_enqueued > 0).then(|| {
-        crate::clock::iso_from_unix_ms(
-            crate::clock::now_unix_ms() + HOUSEKEEPING_AFTER_CONSOLIDATION_DELAY_MS,
-        )
-    });
-    if scheduled_at.is_some() {
-        tracing::debug!(
-            module = MODULE,
-            consolidationEnqueued = consolidation_enqueued,
-            delayMs = HOUSEKEEPING_AFTER_CONSOLIDATION_DELAY_MS,
-            "Housekeeping deferred behind consolidation"
-        );
-    }
-
-    let settings = match db.read_main(crate::db::chat_settings::find_all_scheduler_settings) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::error!(
-                module = MODULE,
-                error = %crate::db::fallback::error_text(&e),
-                "Scheduled housekeeping pass failed"
-            );
-            return Err(e);
-        }
-    };
-    // P4.D288 (mechanical): the per-user `autoHousekeepingSettings.enabled`
-    // column is dropped; the switch is the instance-wide `memoryMaintenance`
-    // document's `enabled` — same position, new storage (the scheduled
-    // maintenance pass that replaces this is P4.D297's).
-    let enabled = db
-        .read_main(|conn| Ok(crate::db::instance_settings::get_memory_maintenance_settings(conn)))
-        .map(|m| m.enabled)
-        .unwrap_or(false);
-    let mut users_processed = 0usize;
-    let mut jobs_enqueued = 0usize;
-    for s in &settings {
-        if !enabled {
-            continue;
-        }
-        // v4 passes `{ reason: 'scheduled' }`; the payload otherwise defaults.
-        let payload = serde_json::json!({ "reason": "scheduled" });
-        match enqueue_memory_housekeeping_at(db, &s.user_id, payload, scheduled_at.clone()).await {
-            Ok(_) => {
-                jobs_enqueued += 1;
-                users_processed += 1;
-            }
-            Err(e) => {
-                tracing::warn!(
-                    module = MODULE,
-                    userId = %s.user_id,
-                    error = %crate::db::fallback::error_text(&e),
-                    "Failed to enqueue scheduled housekeeping for user"
-                );
-            }
-        }
-    }
-    tracing::info!(
-        module = MODULE,
-        usersProcessed = users_processed,
-        jobsEnqueued = jobs_enqueued,
-        totalUsers = settings.len(),
-        "Scheduled housekeeping pass complete"
-    );
-    Ok((users_processed, jobs_enqueued))
-}
 
 /// v4 `runScheduledCleanup()` — for every user whose
 /// `llmLoggingSettings.enabled` is true AND `retentionDays > 0`, enqueue one

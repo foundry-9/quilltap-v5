@@ -45,7 +45,7 @@ use crate::consolidation_clustering::ClusterKind;
 use crate::consolidation_tasks::{ConsolidationContradiction, ConsolidationDigestOutput};
 use crate::db::memories::{MemCreate, MemUpdate};
 use crate::episodic::js_date_parse_ms;
-use crate::memory_gate::calculate_reinforced_importance;
+use crate::memory_scoring::reinforced_importance as calculate_reinforced_importance;
 use crate::recall_tags::{parse_targeting_tags, ContextTag, ScopeTag, TemporalTag};
 
 /// Ceiling on a digest's `reinforcementCount`.

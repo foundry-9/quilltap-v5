@@ -1,27 +1,27 @@
-//! P4.D271 route differential: `api::memory_consolidation::*` vs v4's REAL
-//! memories route handlers (`app/api/v1/memories/route.ts`, `d58548051`,
-//! byte-identical at the `01a83539d` pin) — GET/POST
+//! P4.D271 route differential, reshaped by P4.D297 (bug 244, `b045dd986`):
+//! `api::memory_consolidation::*` vs v4's REAL memories route handlers
+//! (`app/api/v1/memories/route.ts` at the `83334b9a5` pin) — GET/POST
 //! `?action=consolidation-config`, GET/POST `?action=extraction-mode-config`,
-//! POST `?action=consolidate` — each case over a FRESH copy of the committed
-//! memories-{main,mount}.db pair (widened in place to the tier columns by
-//! P4.D265). Comparands: success bodies whole (minted job ids masked; a dry
-//! run's `startedAt` / `finishedAt` / `durationMs` normalized), errors as
+//! and the RETIRED POST `?action=consolidate` (v4 `b045dd986` — `maintain`
+//! covers it; v4 answers its `Unknown action` 400 and v5's dispatch the serde
+//! `unknown variant` 400, R-G: the rows compare the 400 class and the `error`
+//! text the route answers) — each case over a FRESH copy of the committed
+//! memories-{main,mount}.db pair. Comparands: success bodies whole, errors as
 //! status + `error` message (v5's house class answers no `details` — R-K),
-//! the stored settings after each config call, the `MEMORY_CONSOLIDATION`
-//! rows each consolidate call left, and the captured `[Memories API]` lines
-//! (v4's `fields` array under v5's `fieldsJson` key).
+//! the stored settings after each config call, and the captured `[Memories
+//! API]` lines (v4's `fields` array under v5's `fieldsJson` key).
 //!
-//! **`PARTIAL_DEFAULTS_CLOBBER` (P4.D271 R-A, a ruled both-ways table).**
-//! v4's `<Schema>.partial()` parse fills every `.default()` for an absent key
-//! (measured here: `fields` lists all nine / all three keys on every POST), so
-//! a POST of one key resets every tuned stored value to its default. v5 ports
-//! the clobber. The table pins BOTH halves: v5's bytes equal v4's (the generic
-//! comparison) AND the tuned value is LOST on both sides (the explicit rows
-//! below). A v4 fix (stored values preserved) turns the second half red — the
-//! convergence signal; re-measure, then reshape.
-//!
-//! R-E's v5-only arm: with no runner installed the dry run answers the typed
-//! refusal — after the 404.
+//! **`PATCH_PRESERVES_STORED` (both ways — P4.D297 retired P4.D271 R-A's
+//! `PARTIAL_DEFAULTS_CLOBBER`).** Bug 244's `patchSchemaOf` keeps a POST to
+//! the keys it SENT: a tuned stored value survives a write of another key on
+//! BOTH sides, and the INFO's `fields` names only the sent keys. Measured at
+//! the pin by P4.D297's red-first (lane record): `clobber_cold_retention`
+//! stores `{enabled: true, clusterThreshold: 0.5, …, watermark: 300,
+//! coldRetentionDays: 90}` with `fields ["coldRetentionDays"]`;
+//! `clobber_null_cold_retention` keeps `enabled: true` with
+//! `coldRetentionDays: null`; `clobber_fold_candidates` keeps `otherPass:
+//! 'fold'`, `perTurnOtherFloor: 0.5`. A v4 regression (the clobber back) turns
+//! the explicit rows below red on the v4 side.
 //!
 //! Generate (Node 24, from the v4 checkout or the round's pin — a /tmp mirror):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5} ; M=/tmp/qt-consolidation-oracle
@@ -38,7 +38,6 @@
 //!     cargo test -p quilltap-harness --test memory_consolidation_routes_equivalence -- --nocapture
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use quilltap_core::api::memory_consolidation as api;
 use quilltap_core::api::types::{ErrorKind, Response};
@@ -47,34 +46,8 @@ use quilltap_core::db::instance_settings::{
     set_memory_consolidation_settings, set_memory_extraction_mode_settings,
 };
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::model::completion::CannedCompletionProvider;
-use quilltap_core::model::embedding::CannedEmbeddingProvider;
-use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
-use quilltap_core::services::consolidation::{
-    install_consolidation_runner, run_consolidation, ConsolidationRunFuture, ConsolidationRunner,
-    RunConsolidationOptions,
-};
 use quilltap_core::test_support::global_capture;
 use serde_json::{json, Value};
-
-/// A runner whose model answers nothing — the corpus's dry runs make zero calls.
-struct SilentRunner;
-
-impl ConsolidationRunner for SilentRunner {
-    fn run<'a>(
-        &'a self,
-        db: &'a Db,
-        character_id: &'a str,
-        opts: RunConsolidationOptions,
-    ) -> ConsolidationRunFuture<'a> {
-        Box::pin(async move {
-            let completion = CannedCompletionProvider::new();
-            let embedding = CannedEmbeddingProvider::new();
-            let executor = CheapLlmTaskExecutor::new();
-            run_consolidation(db, &completion, &embedding, &executor, character_id, opts).await
-        })
-    }
-}
 
 fn status_of(kind: ErrorKind) -> u16 {
     match kind {
@@ -235,8 +208,6 @@ async fn memory_consolidation_routes_match_oracle() {
         "b1000000-0000-4000-8000-000000000002",
         user_id,
     ];
-    install_consolidation_runner(Arc::new(SilentRunner));
-
     let cases = corpus["cases"].as_array().unwrap();
     assert_eq!(
         cases.len(),
@@ -357,7 +328,7 @@ async fn memory_consolidation_routes_match_oracle() {
         }
     }
 
-    // ── PARTIAL_DEFAULTS_CLOBBER — the second half, on BOTH sides ───────────
+    // ── PATCH_PRESERVES_STORED — the tuned values KEPT, on BOTH sides ───────
     let oracle_stored = |name: &str| -> Value {
         oracle
             .iter()
@@ -369,13 +340,13 @@ async fn memory_consolidation_routes_match_oracle() {
         ("v4", oracle_stored("clobber_cold_retention")),
         ("v5", results["clobber_cold_retention"].clone()),
     ] {
-        if stored["enabled"] != json!(false)
-            || stored["clusterThreshold"].as_f64() != Some(0.72)
-            || stored["watermark"].as_f64() != Some(150.0)
+        if stored["enabled"] != json!(true)
+            || stored["clusterThreshold"].as_f64() != Some(0.5)
+            || stored["watermark"].as_f64() != Some(300.0)
             || stored["coldRetentionDays"].as_f64() != Some(90.0)
         {
             failures.push(format!(
-                "PARTIAL_DEFAULTS_CLOBBER clobber_cold_retention ({side}): the tuned values were expected LOST — {stored} (a v4 fix? re-measure)"
+                "PATCH_PRESERVES_STORED clobber_cold_retention ({side}): the tuned values were expected KEPT — {stored} (the clobber back? re-measure)"
             ));
         }
     }
@@ -383,9 +354,9 @@ async fn memory_consolidation_routes_match_oracle() {
         ("v4", oracle_stored("clobber_null_cold_retention")),
         ("v5", results["clobber_null_cold_retention"].clone()),
     ] {
-        if stored["enabled"] != json!(false) || !stored["coldRetentionDays"].is_null() {
+        if stored["enabled"] != json!(true) || !stored["coldRetentionDays"].is_null() {
             failures.push(format!(
-                "PARTIAL_DEFAULTS_CLOBBER clobber_null_cold_retention ({side}): {stored}"
+                "PATCH_PRESERVES_STORED clobber_null_cold_retention ({side}): {stored}"
             ));
         }
     }
@@ -393,19 +364,30 @@ async fn memory_consolidation_routes_match_oracle() {
         ("v4", oracle_stored("clobber_fold_candidates")),
         ("v5", results["clobber_fold_candidates"].clone()),
     ] {
-        if stored["otherPass"] != json!("hybrid")
-            || stored["perTurnOtherFloor"].as_f64() != Some(0.75)
+        if stored["otherPass"] != json!("fold")
+            || stored["perTurnOtherFloor"].as_f64() != Some(0.5)
             || stored["foldCandidatesPerSubject"].as_f64() != Some(5.0)
         {
             failures.push(format!(
-                "PARTIAL_DEFAULTS_CLOBBER clobber_fold_candidates ({side}): {stored}"
+                "PATCH_PRESERVES_STORED clobber_fold_candidates ({side}): {stored}"
             ));
         }
     }
-
-    // P4.D288 (compile-forced): the R-E block (no runner → the typed refusal)
-    // tested `api::memory_consolidate`, DELETED with the verb (R-G) — the
-    // maintenance lane's `maintain` dry run carries R-E forward (R-N).
+    // The INFO names only the sent keys (bug 244), both sides: the one-key
+    // write lists one key, the empty write none.
+    for (name, want_fields) in [
+        ("clobber_cold_retention", r#"["coldRetentionDays"]"#),
+        ("consolidation_set_empty", "[]"),
+        ("clobber_fold_candidates", r#"["foldCandidatesPerSubject"]"#),
+    ] {
+        let row = oracle.iter().find(|o| o["name"] == name).unwrap();
+        let fields = serde_json::to_string(&row["lines"][0]["context"]["fields"]).unwrap();
+        if fields != want_fields {
+            failures.push(format!(
+                "PATCH_PRESERVES_STORED {name} (v4): fields {fields}, expected {want_fields}"
+            ));
+        }
+    }
 
     assert!(
         failures.is_empty(),
@@ -414,7 +396,7 @@ async fn memory_consolidation_routes_match_oracle() {
         failures.join("\n\n")
     );
     eprintln!(
-        "OK: memory consolidation routes matched oracle ({} cases, PARTIAL_DEFAULTS_CLOBBER 3 rows both ways).",
+        "OK: memory consolidation routes matched oracle ({} cases, PATCH_PRESERVES_STORED 3 rows both ways + 3 field rows).",
         cases.len()
     );
 }

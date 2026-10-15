@@ -14,10 +14,11 @@
 //!   the three `deleteMemoriesBy*WithVectors` cascades): the vector-store-aware
 //!   wrappers around the deletion chokepoint. No model call; verified by a plain
 //!   tier-2 differential.
-//! * [`housekeeping`] — the retention sweep (v4 `runHousekeeping` /
-//!   `needsHousekeeping`): protection-gated policy deletions, the opt-in
-//!   stored-vector similarity merge, and cap enforcement, applied through the
-//!   chokepoint. No model call; verified by a plain tier-2 differential.
+//! * [`memory_maintenance`] — the ONE memory maintenance job (v4
+//!   `lib/memory/maintenance/`, P4.D297): fold near-duplicates → consolidate →
+//!   demote → retire → mirror over one corpus read, its ledger, watermark and
+//!   daily sweep. It replaced the retention sweep (`housekeeping`), its outcome
+//!   cache, the consolidation triggers and the dedup service.
 //! * [`turn_orchestrator`] — the turn-orchestration decision core (v4
 //!   `shouldChainNext` / `persistTurnParticipantId` + the `handleTurnAction`
 //!   mutation core): the per-step chain decision (guards + all-LLM auto-pause +
@@ -74,7 +75,6 @@ pub mod compression_cache;
 pub mod concierge_notifications;
 pub mod connection_profile_legacy_fields;
 pub mod consolidation;
-pub mod consolidation_triggers;
 pub mod context_summary;
 pub mod context_summary_job;
 pub mod conversation_summaries_regen;
@@ -119,8 +119,6 @@ pub mod help_doc_chunking;
 pub mod help_doc_sync;
 pub mod home;
 pub mod host_notifications;
-pub mod housekeeping;
-pub mod housekeeping_outcome_cache;
 pub mod image_job_common;
 pub mod image_job_storage;
 pub mod image_profile_resolution;
@@ -137,14 +135,15 @@ pub mod llm_errors;
 pub mod llm_log_cleanup_job;
 pub mod llm_logging;
 pub mod maintenance;
-pub mod memory_consolidation_job;
-pub mod memory_dedup;
 pub mod memory_extraction_job;
 pub mod memory_gate;
 pub mod memory_index; // P4.D288 (C1-3)
+pub mod memory_maintenance; // P4.D297
+pub mod memory_maintenance_job; // P4.D297
 pub mod memory_processor;
 pub mod memory_recap;
 pub mod memory_regenerate_job;
+pub mod memory_repair; // P4.D297 (R-K)
 pub mod memory_retire; // P4.D288 (C1-7)
 pub mod memory_service;
 pub mod memory_subject;

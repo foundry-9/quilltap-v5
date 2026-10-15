@@ -3,9 +3,9 @@
 //!
 //! **Memory dedup is RETIRED** (P4.D288, R-G — v4 `104e986c7` removed the
 //! `system/tools` `memory-dedup-preview` / `memory-dedup` actions; the
-//! LLM-free successor is the maintenance job's fold phase, P4.D297's). The
-//! handler went with the two verbs; the service behind it
-//! ([`crate::services::memory_dedup`]) stays for its owner.
+//! LLM-free successor is the maintenance job's fold phase,
+//! [`crate::services::memory_maintenance::fold_near_duplicates`]). The handler
+//! went with the two verbs, the service with P4.D297.
 //!
 //! **Conversation-summaries regeneration is LIVE** (P4.43 unit 7; v4
 //! `?action=regenerate` on `/api/v1/system/conversation-summaries`): GET reports

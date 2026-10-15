@@ -1,71 +1,73 @@
-//! Memory consolidation — the Commonplace Book's missing verb. v4
-//! `lib/memory/consolidation.ts` (`d58548051`, byte-identical at the
-//! `01a83539d` pin).
+//! Memory consolidation — the Commonplace Book's missing verb, as the
+//! planner and the model route. v4 `lib/memory/consolidation.ts` at the
+//! `83334b9a5` pin (`104e986c7` moved its loader out; bug 246 from
+//! `64743ee13`; `tfidfClusterThreshold` from `4ae0c4ca6`).
 //!
 //! The book could append, reinforce, link, and delete; it could not *combine*.
 //! This service folds clusters of a character's hot memories about one subject
 //! into **digest** rows (`source: 'CONSOLIDATED'`) and sends the members to the
 //! cold tier, superseded by the digest that replaced them
-//! (docs/developer/features/memory-consolidation-and-tiers.md §4).
+//! (docs/developer/features/complete/memory-consolidation-and-tiers.md §4).
 //!
-//! One run, per character:
+//! "This module is the planner and the model route; the maintenance job's
+//! `consolidate` phase (`maintenance/consolidate.ts`) feeds it and announces
+//! what it wrote." One call of [`consolidate`], per character:
 //!
-//!   1. **Load** (paged): every row feeds the link index; hot AUTO rows older
-//!      than `matureAfterDays` with an embedding are candidates, bucketed by
-//!      subject (self / another character / no subject); each bucket's existing
-//!      hot digests come along as cluster seeds. MANUAL rows are never
-//!      candidates — nothing sends a hand-written row cold.
+//!   1. **Buckets** arrive from the phase's loader
+//!      ([`crate::services::memory_maintenance::consolidate`]): candidates are
+//!      AUTO rows older than `matureAfterDays` with an embedding — hot rows,
+//!      and cold rows demoted by the cap with no successor (`supersededById`
+//!      null, bug 211) — bucketed by subject (self / another character / no
+//!      subject), each with its hot digests as cluster seeds. MANUAL rows are
+//!      never candidates.
 //!   2. **Cluster** each bucket ([`crate::consolidation_clustering`], pure) and
 //!      pick the qualifying clusters by total `reinforcedImportance`, up to
-//!      `maxClustersPerRun`. Clusters below the size floor have their
-//!      never-considered rows stamped `consolidatedAt` so they are not
-//!      rescanned every run; they re-qualify when a new neighbour arrives.
+//!      `maxClustersPerRun`, at the cluster threshold for the default embedding
+//!      profile's scale ([`resolve_cluster_threshold`]). Clusters below the
+//!      size floor have their never-considered rows stamped `consolidatedAt` so
+//!      they are not rescanned every run; they re-qualify when a new neighbour
+//!      arrives.
 //!   3. **Consolidate**: one model call per cluster
 //!      ([`crate::consolidation_tasks`]), on
-//!      `memoryConsolidation.connectionProfileId` or else the cheap LLM. A call
+//!      `memoryConsolidation.connectionProfileId` or else the cheap LLM, with
+//!      an output budget of `max(4000, the routed profile's)` (bug 246). A call
 //!      that fails, times out, or answers out of schema skips its cluster —
 //!      nothing is written for it, and its rows stay unconsidered so the next
 //!      run retries them.
 //!   4. **Plan, then write** ([`crate::consolidation_plan`], pure). The whole
 //!      batch is computed before a single write is issued, then committed as
 //!      ONE main-partition write (P4.D271 R-D — v4's job batch commits
-//!      atomically). Digests never go through the memory gate, which would
-//!      absorb a digest into its own members.
-//!   5. **Mirror** each touched bucket's digests into the holder's vault
-//!      (`Commonplace/<Subject>.md`, `Commonplace/Self.md`), where the
-//!      extractor's canon loaders read them back.
+//!      atomically). Digests are inserted directly with their embedding —
+//!      never through admission, which would absorb a digest into its own
+//!      members.
 //!
-//! A dry run does steps 1–3 and plans step 4, writes nothing, and returns the
-//! report (it still makes one model call per selected cluster, each logged).
+//! "It announces nothing: the frozen-archive invalidation, the realtime hint
+//! and the `Commonplace/` mirror are the maintenance run's effects, after
+//! commit. A dry run does steps 1–3 and plans step 4, and writes nothing."
 //!
 //! Concierge: consolidation reads across chats, so it inherits the posture of
 //! the chats its members came from. A Locked member chat wins (no reroute, no
 //! failover — the operator said never); otherwise an Unmoderated one routes the
 //! call to the uncensored desk; otherwise the global Moderated policy applies.
 //!
-//! **v5 shapes (P4.D271 rulings):** R-C — `in_job` skips the in-process
-//! announce (the job runner's completion hooks publish `memories` and
-//! invalidate the frozen archive once); R-D — the plan is ONE `Db::write`
-//! closure, so its lines run on the writer thread; R-E — the API's in-process
-//! dry run reaches the model through the process-global
-//! [`ConsolidationRunner`] the host installs; R-F — the OTHER subject canon is
-//! a lane-local copy of the extraction pass's private hand canon
-//! (`HANDOFF(P4.D270)`); R-J — `now_ms` drives `startedAt`, the maturity
-//! cutoff, the `nowIso` stamps and the selection floor, while `finishedAt` /
-//! `durationMs` stay wall-clock and the time budget reads an injectable
-//! monotonic clock. v4's batch loader truncates the corpus on a failing page
-//! (`Error loading memory batch`); v5's fails the run (P4.D265's reader,
-//! recorded — Tier 3).
+//! **v5 shapes (P4.D271 rulings, as they stand after P4.D297):** R-D — the
+//! plan is ONE `Db::write` closure, so its lines run on the writer thread;
+//! R-F — the OTHER subject canon is the extraction pass's hand canon
+//! (`HANDOFF(P4.D270)`; §S.5 (8) re-points it with P4.D296's canon loaders);
+//! R-J — `now_ms` drives `startedAt`, the selection floor and the `nowIso`
+//! stamps, while `finishedAt` / `durationMs` stay wall-clock and the time
+//! budget reads an injectable monotonic clock. R-C's `in_job` and R-E's
+//! runner slot are GONE (L-11 / R-N): the maintenance run's mode decides the
+//! mirror and the announce, and the process-global runner is
+//! [`crate::services::memory_maintenance::runner`]'s.
 
 use std::collections::{HashMap, HashSet};
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Instant;
 
 use serde_json::{json, Map, Value};
 
-use crate::canon::{load_canon_for_self, render_other_canon_block, render_self_canon_block};
+use crate::canon::{render_other_canon_block, render_self_canon_block};
 use crate::cheap_llm::{
     resolve_uncensored_cheap_llm_selection, selection_from_profile, CheapLlmProfile,
     CheapLlmSelection, UncensoredFallbackOptions,
@@ -89,61 +91,26 @@ use crate::db::instance_settings::{
 use crate::db::memories::{CreateOptions, MemUpdate, TierExtra};
 use crate::db::runtime::Db;
 use crate::db::vector_store::Tier;
-use crate::db::{characters_read, chats_read, memories_read, DbError};
-use crate::episodic::{build_memory_embedding_text, js_date_parse_ms, EpisodicAnchorView};
+use crate::db::{characters_read, chats_read, DbError};
+use crate::episodic::js_date_parse_ms;
+use crate::memory_embedding_text::{
+    embedding_text_for, lexical_embedding_text_for, AnchorEntities, EmbeddingTextSource,
+};
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
-use crate::services::commonplace_digest_vault_bridge::{
-    write_commonplace_digests_to_vault, CommonplaceMirrorFile, WriteCommonplaceDigestsInput,
-};
 use crate::services::dangerous_content::chat_override::{
     get_concierge_state, should_use_uncensored_route, ConciergeState,
 };
 use crate::services::dangerous_content::resolver::resolve_concierge_settings;
+use crate::services::memory_maintenance::types::MaintenanceReason;
+use crate::services::memory_processor::load_canon_for_self_with_commonplace;
 
-/// Rows per page when loading a character's corpus.
-pub const CONSOLIDATION_LOAD_PAGE_SIZE: i64 = 250;
-
-/// Most candidate rows clustered per subject bucket in one run. Clustering is
-/// O(n²) in memory and time; a bucket past this keeps its never-considered rows
-/// first, then the weightiest, and the rest wait for the next run.
-pub const CONSOLIDATION_MAX_BUCKET_ROWS: usize = 2000;
-
-const DAY_MS: f64 = 86_400_000.0;
 const MODULE: &str = "memory:consolidation";
 
 // ============================================================================
 // Public types
 // ============================================================================
-
-/// v4's run trigger (`'scheduled' | 'watermark' | 'manual'`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConsolidationTrigger {
-    Scheduled,
-    Watermark,
-    Manual,
-}
-
-impl ConsolidationTrigger {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ConsolidationTrigger::Scheduled => "scheduled",
-            ConsolidationTrigger::Watermark => "watermark",
-            ConsolidationTrigger::Manual => "manual",
-        }
-    }
-
-    /// A stored payload's `trigger`; anything unrecognized is `None`.
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "scheduled" => Some(Self::Scheduled),
-            "watermark" => Some(Self::Watermark),
-            "manual" => Some(Self::Manual),
-            _ => None,
-        }
-    }
-}
 
 /// Which subject bucket a cluster belongs to (v4 `ConsolidationBucketRef`).
 #[derive(Debug, Clone, PartialEq)]
@@ -275,11 +242,15 @@ impl ConsolidationClusterReport {
     }
 }
 
-/// v4 `ConsolidationStats` (key order = `emptyStats()`).
+/// v4 `ConsolidationStats` (key order = `createConsolidationStats()`; v4
+/// exports the factory for the maintenance loader — here [`Default`]).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ConsolidationStats {
     pub rows_loaded: usize,
     pub candidates: usize,
+    /// Candidates that were cold — demoted by the cap, never superseded (bug
+    /// 211).
+    pub demoted_candidates: usize,
     pub digests_loaded: usize,
     pub immature_skipped: usize,
     pub no_embedding_skipped: usize,
@@ -301,7 +272,6 @@ pub struct ConsolidationStats {
     pub contradictions_applied: usize,
     pub rows_marked_considered: usize,
     pub links_rewired: usize,
-    pub mirror_files_written: usize,
     /// True when the run stopped issuing calls because its time budget ran out.
     pub budget_exhausted: bool,
     pub duration_ms: i64,
@@ -312,6 +282,7 @@ impl ConsolidationStats {
         json!({
             "rowsLoaded": self.rows_loaded,
             "candidates": self.candidates,
+            "demotedCandidates": self.demoted_candidates,
             "digestsLoaded": self.digests_loaded,
             "immatureSkipped": self.immature_skipped,
             "noEmbeddingSkipped": self.no_embedding_skipped,
@@ -333,7 +304,6 @@ impl ConsolidationStats {
             "contradictionsApplied": self.contradictions_applied,
             "rowsMarkedConsidered": self.rows_marked_considered,
             "linksRewired": self.links_rewired,
-            "mirrorFilesWritten": self.mirror_files_written,
             "budgetExhausted": self.budget_exhausted,
             "durationMs": self.duration_ms,
         })
@@ -346,15 +316,17 @@ pub struct ConsolidationReport {
     pub character_id: String,
     pub character_name: Option<String>,
     pub dry_run: bool,
-    pub trigger: ConsolidationTrigger,
+    pub trigger: MaintenanceReason,
     pub started_at: String,
     pub finished_at: String,
-    /// The settings the run actually used (stored settings + overrides), as
-    /// v4's spread object.
+    /// The settings the run actually used (stored settings + overrides, the
+    /// cluster threshold RESOLVED for the profile's scale), as v4's spread
+    /// object.
     pub settings: Value,
     pub clusters: Vec<ConsolidationClusterReport>,
     pub stats: ConsolidationStats,
-    /// `character-not-found` | `archived` | `no-llm`.
+    /// `no-llm` — the loader's `character-not-found` / `archived` skips are
+    /// the maintenance run's now (`Maintenance skipped`).
     pub skipped_reason: Option<&'static str>,
 }
 
@@ -385,32 +357,33 @@ impl ConsolidationReport {
     }
 }
 
-/// A monotonic elapsed-milliseconds reading (R-J: the time budget's clock).
-pub type ElapsedClock = Arc<dyn Fn() -> i64 + Send + Sync>;
+pub use crate::services::memory_maintenance::types::ElapsedClock;
 
-/// v4 `RunConsolidationOptions`, plus v5's `in_job` (R-C) and the injectable
-/// budget clock (R-J).
+/// v4 `RunConsolidationOptions`, plus the injectable budget clock (P4.D271
+/// R-J) and the host's zone fallback (the digest embeds read the memory
+/// calendar — v4 `refreshMemoryTimeZone()`).
 #[derive(Clone)]
 pub struct RunConsolidationOptions {
     /// Cluster and call the model, but write nothing.
     pub dry_run: bool,
     /// Override `maxClustersPerRun`.
     pub max_clusters_per_run: Option<f64>,
-    /// Override any stored setting for this run (v4's spread) — a JSON object.
-    pub settings_override: Option<Value>,
+    /// Override any stored setting for this run (v4's spread — a
+    /// `Partial<MemoryConsolidationSettings>`).
+    pub settings_override: Option<Map<String, Value>>,
     /// The user whose profiles and embedding provider to use; defaults to the
     /// character's owner.
     pub user_id: Option<String>,
     /// Stop issuing model calls after this long (ms).
     pub time_budget_ms: Option<i64>,
-    pub trigger: ConsolidationTrigger,
+    /// Recorded in the report and logs (v4 `trigger ?? 'manual'`).
+    pub trigger: MaintenanceReason,
     /// v4's `opts.now` clock override, in ms.
     pub now_ms: Option<i64>,
-    /// R-C: true inside the `MEMORY_CONSOLIDATION` job — the runner's
-    /// completion hooks announce the commit, so the run does not.
-    pub in_job: bool,
-    /// R-J: elapsed ms since the run started; `None` → a real `Instant`.
+    /// R-J: elapsed ms since the call started; `None` → a real `Instant`.
     pub elapsed: Option<ElapsedClock>,
+    /// The host's IANA zone (the memory calendar's last resort).
+    pub host_zone_fallback: String,
 }
 
 impl Default for RunConsolidationOptions {
@@ -421,56 +394,12 @@ impl Default for RunConsolidationOptions {
             settings_override: None,
             user_id: None,
             time_budget_ms: None,
-            trigger: ConsolidationTrigger::Manual,
+            trigger: MaintenanceReason::Manual,
             now_ms: None,
-            in_job: false,
             elapsed: None,
+            host_zone_fallback: "UTC".to_string(),
         }
     }
-}
-
-// ============================================================================
-// R-E — the process-global runner the host installs
-// ============================================================================
-
-/// The boxed future a [`ConsolidationRunner`] answers.
-pub type ConsolidationRunFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<ConsolidationReport, DbError>> + Send + 'a>>;
-
-/// Runs [`run_consolidation`] over the providers it owns (P4.D271 R-E). The
-/// host installs one at boot ([`install_consolidation_runner`]); the API's
-/// in-process dry run and the job handler reach the model through it.
-pub trait ConsolidationRunner: Send + Sync {
-    fn run<'a>(
-        &'a self,
-        db: &'a Db,
-        character_id: &'a str,
-        opts: RunConsolidationOptions,
-    ) -> ConsolidationRunFuture<'a>;
-}
-
-fn runner_slot() -> &'static RwLock<Option<Arc<dyn ConsolidationRunner>>> {
-    static SLOT: RwLock<Option<Arc<dyn ConsolidationRunner>>> = RwLock::new(None);
-    &SLOT
-}
-
-/// Install the process's consolidation runner (the host, once at boot; a test
-/// may swap in a canned one).
-pub fn install_consolidation_runner(runner: Arc<dyn ConsolidationRunner>) {
-    *runner_slot().write().expect("consolidation runner slot") = Some(runner);
-}
-
-/// The installed runner, if any.
-pub fn consolidation_runner() -> Option<Arc<dyn ConsolidationRunner>> {
-    runner_slot()
-        .read()
-        .expect("consolidation runner slot")
-        .clone()
-}
-
-/// Test seam: clear the installed runner.
-pub fn clear_consolidation_runner() {
-    *runner_slot().write().expect("consolidation runner slot") = None;
 }
 
 // ============================================================================
@@ -500,7 +429,7 @@ fn parse_ms(s: Option<&str>) -> Option<f64> {
 
 /// The memory JSON's `{"0":v,…}` `Float32Array` object → the f32s, in index
 /// order (each value is an f32 promoted exactly — R-H). `None` when absent or
-/// empty (v4 `hasEmbedding`).
+/// empty.
 fn embedding_of(memory: &Value) -> Option<Vec<f32>> {
     let obj = memory.get("embedding")?.as_object()?;
     if obj.is_empty() {
@@ -514,16 +443,17 @@ fn embedding_of(memory: &Value) -> Option<Vec<f32>> {
     Some(out)
 }
 
-fn bucket_key_of(memory: &Value, holder_id: &str) -> String {
-    match str_field(memory, "aboutCharacterId").filter(|s| !s.is_empty()) {
-        None => "none".to_string(),
-        Some(about) if about == holder_id => "self".to_string(),
-        Some(about) => format!("other:{about}"),
-    }
+/// v4 `hasEmbedding(memory)` — a non-empty `Float32Array` (exported for the
+/// maintenance loader).
+pub fn has_embedding(memory: &Value) -> bool {
+    memory
+        .get("embedding")
+        .and_then(Value::as_object)
+        .is_some_and(|o| !o.is_empty())
 }
 
 /// v4 `eventTimeMs`: `occurredAt ?? createdAt`, NaN → `None`.
-fn event_time_ms(memory: &Value) -> Option<f64> {
+pub fn event_time_ms(memory: &Value) -> Option<f64> {
     let iso = str_field(memory, "occurredAt").or_else(|| str_field(memory, "createdAt"));
     parse_ms(iso.as_deref())
 }
@@ -551,15 +481,16 @@ fn to_cluster_item(memory: &Value, embedding: Vec<f32>) -> ClusterItem {
     }
 }
 
-struct Bucket {
-    key: String,
-    reference: ConsolidationBucketRef,
+/// v4 `ConsolidationBucket` — one subject bucket: its candidate rows and the
+/// hot digests that seed its clusters.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConsolidationBucket {
+    pub key: String,
+    pub reference: ConsolidationBucketRef,
     /// `aboutCharacterId` digests in this bucket carry.
-    about_character_id: Option<String>,
-    rows: Vec<Value>,
-    digests: Vec<Value>,
-    /// False when the subject character no longer exists — no mirror file then.
-    subject_exists: bool,
+    pub about_character_id: Option<String>,
+    pub rows: Vec<Value>,
+    pub digests: Vec<Value>,
 }
 
 #[derive(Clone)]
@@ -574,34 +505,6 @@ impl AsCluster for TaggedCluster {
     }
 }
 
-/// v4 `capBucketRows`: never-considered first, then weightiest; stable.
-fn cap_bucket_rows(rows: Vec<Value>) -> Vec<Value> {
-    if rows.len() <= CONSOLIDATION_MAX_BUCKET_ROWS {
-        return rows;
-    }
-    let mut sorted = rows;
-    let considered = |m: &Value| -> i32 {
-        i32::from(str_field(m, "consolidatedAt").is_some_and(|s| !s.is_empty()))
-    };
-    sorted.sort_by(|a, b| {
-        let (ac, bc) = (considered(a), considered(b));
-        if ac != bc {
-            return ac.cmp(&bc);
-        }
-        let d = num_field(b, "reinforcedImportance").unwrap_or(0.0)
-            - num_field(a, "reinforcedImportance").unwrap_or(0.0);
-        if d > 0.0 {
-            std::cmp::Ordering::Greater
-        } else if d < 0.0 {
-            std::cmp::Ordering::Less
-        } else {
-            std::cmp::Ordering::Equal
-        }
-    });
-    sorted.truncate(CONSOLIDATION_MAX_BUCKET_ROWS);
-    sorted
-}
-
 struct ModelRoute {
     base: CheapLlmSelection,
     available_profiles: Vec<CheapLlmProfile>,
@@ -611,14 +514,40 @@ struct ModelRoute {
 /// The run's settings: the stored object with the override spread over it
 /// (v4 `{...stored, ...opts.settings}` — stored keys keep their places, new
 /// keys append).
-fn merge_settings(stored: &MemoryConsolidationSettings, overrides: Option<&Value>) -> Value {
+fn merge_settings(
+    stored: &MemoryConsolidationSettings,
+    overrides: Option<&Map<String, Value>>,
+) -> Value {
     let mut merged = stored.to_json();
-    if let (Some(Value::Object(o)), Value::Object(m)) = (overrides, &mut merged) {
+    if let (Some(o), Value::Object(m)) = (overrides, &mut merged) {
         for (k, v) in o {
             m.insert(k.clone(), v.clone());
         }
     }
     merged
+}
+
+/// v4 `resolveClusterThreshold(settings, provider, override)`
+/// (`settings-defaults.ts:82-89`, `4ae0c4ca6`): "the cosine at which
+/// consolidation joins two memories, for vectors made by `provider`:
+/// `tfidfClusterThreshold` for the Built-in (TF-IDF) profile,
+/// `clusterThreshold` otherwise. An explicit per-run `override` (the API's
+/// dry-run knob) wins on either provider." `override_` is v4's `typeof
+/// override === 'number'` arm.
+pub fn resolve_cluster_threshold(
+    cluster_threshold: f64,
+    tfidf_cluster_threshold: f64,
+    provider: Option<&str>,
+    override_: Option<f64>,
+) -> f64 {
+    if let Some(o) = override_ {
+        return o;
+    }
+    if crate::embedding_scale::is_lexical_embedding_provider(provider) {
+        tfidf_cluster_threshold
+    } else {
+        cluster_threshold
+    }
 }
 
 struct RunSettings {
@@ -700,6 +629,19 @@ struct RoutedCall {
     policy_chat_id: Option<String>,
 }
 
+/// v4 `profileMaxTokensFor(route, selection)` (bug 246): "the output budget
+/// of the profile a cluster's call was routed to, as extraction reads it
+/// (`resolveMaxTokens`). Undefined when the selection names no known profile;
+/// the call then keeps the consolidation floor."
+fn profile_max_tokens_for(route: &ModelRoute, selection: &CheapLlmSelection) -> Option<i64> {
+    let id = selection.connection_profile_id.as_deref()?;
+    let profile = route.available_profiles.iter().find(|p| p.id == id)?;
+    Some(crate::context_budget::resolve_max_tokens(
+        profile.max_tokens.map(|v| v as i64),
+        profile.model_class.as_deref(),
+    ))
+}
+
 /// v4 `routeForCluster`: route one cluster's call under the Concierge posture
 /// of its members' chats (a per-run chat cache).
 fn route_for_cluster(
@@ -775,7 +717,7 @@ fn character_overlay(db: &Db, id: &str) -> Option<Value> {
 fn describe_buckets(
     db: &Db,
     holder: &Value,
-    buckets: &mut [Bucket],
+    buckets: &mut [ConsolidationBucket],
     keys: &HashSet<String>,
 ) -> HashMap<String, Option<String>> {
     let mut canon: HashMap<String, Option<String>> = HashMap::new();
@@ -788,13 +730,20 @@ fn describe_buckets(
         match bucket.reference.kind {
             ConsolidationBucketKind::SelfBucket => {
                 bucket.reference.subject_name = holder_name.clone();
-                let block = render_self_canon_block(&load_canon_for_self(
+                // "The card fields plus `Commonplace/Self.md`, as the
+                // extractor reads them" (v4 `loadCanonForSelfWithCommonplace`,
+                // `104e986c7`).
+                let block = render_self_canon_block(&load_canon_for_self_with_commonplace(
+                    db,
                     &holder_id,
                     &holder_name,
                     holder.get("manifesto").and_then(Value::as_str),
                     holder.get("personality").and_then(Value::as_str),
                     holder.get("description").and_then(Value::as_str),
                     holder.get("identity").and_then(Value::as_str),
+                    holder
+                        .get("characterDocumentMountPointId")
+                        .and_then(Value::as_str),
                 ));
                 canon.insert(bucket.key.clone(), Some(block));
             }
@@ -818,7 +767,6 @@ fn describe_buckets(
                 });
                 let Some(subject) = subject else {
                     bucket.reference.subject_name = "an unnamed acquaintance".to_string();
-                    bucket.subject_exists = false;
                     canon.insert(bucket.key.clone(), None);
                     continue;
                 };
@@ -918,11 +866,15 @@ async fn execute_plan(
 
     db.write(move |writers| {
         let main = writers.main();
-        // P4.D288 (C1-3, mechanical): no vector mirror to stage into — the
-        // rows are the index (`services::memory_index`).
         for c in &creates {
+            // "The vector rides in the create itself, so a digest never exists
+            // without it; the index then caches it without a second write."
+            let mut data = clone_mem_create(&c.data);
+            if let Some(e) = &c.embedding {
+                data.embedding = Some(e.clone());
+            }
             main.memories().create(
-                &c.data,
+                &data,
                 &CreateOptions {
                     id: c.id.clone(),
                     created_at: now_iso.clone(),
@@ -930,12 +882,14 @@ async fn execute_plan(
                 },
             )?;
             if let Some(e) = &c.embedding {
-                let patch = MemUpdate {
-                    embedding: Some(Some(e.clone())),
-                    ..Default::default()
-                };
-                main.memories()
-                    .update_for_character(&character_id, &c.id, &patch)?;
+                crate::services::memory_index::index_inserted(
+                    &character_id,
+                    &[crate::services::memory_index::MemoryIndexEntry {
+                        id: c.id.clone(),
+                        embedding: e.clone(),
+                        tier: Some(Tier::Hot),
+                    }],
+                );
             }
             tracing::debug!(
                 module = MODULE,
@@ -947,9 +901,7 @@ async fn execute_plan(
         }
 
         for (id, patch, embedding, members) in &updates {
-            // P4.D288 (C1-3, mechanical): a revised digest's vector was written
-            // to the mirror ONLY — it now rides the same row update through the
-            // index (v4 `memoryIndex.upsert` with `alongside`).
+            // "The revised text and its vector land in one row update."
             match embedding {
                 Some(e) => {
                     crate::services::memory_index::upsert(
@@ -958,7 +910,7 @@ async fn execute_plan(
                         vec![crate::services::memory_index::MemoryIndexUpsert {
                             id: id.clone(),
                             embedding: e.clone(),
-                            tier: None,
+                            tier: Some(Tier::Hot),
                             alongside: clone_mem_update(patch),
                         }],
                     )?;
@@ -978,7 +930,6 @@ async fn execute_plan(
         }
 
         for (target, ids) in &moves {
-            // P4.D288 (C1-3, mechanical): the ONE writer of `.tier`.
             crate::services::memory_index::set_tier(
                 main.connection(),
                 &character_id,
@@ -1073,101 +1024,35 @@ fn clone_mem_update(p: &MemUpdate) -> MemUpdate {
     }
 }
 
-/// v4 `mirrorTouchedBuckets`: mirror every touched bucket's post-run digests
-/// into the holder's vault. v4's catch around the bridge is UNREACHABLE
-/// in-process (the bridge never throws; only v4's NO-PORT host-RPC arm could),
-/// so it has no port.
-async fn mirror_touched_buckets(
-    db: &Db,
-    holder: &Value,
-    buckets: &[Bucket],
+/// v4 `touchedSubjects(buckets, plan, bucketKeyByOutcome)`: "the digest
+/// subjects a plan touches — the buckets whose Commonplace files the run
+/// changes. The no-subject bucket has no mirror and is left out." Deduped,
+/// first-seen (creates, then updates).
+fn touched_subjects(
+    buckets: &[ConsolidationBucket],
     plan: &ConsolidationWritePlan,
     bucket_key_by_outcome: &[String],
-    now_iso: &str,
-) -> usize {
-    let mut touched: Vec<(String, Vec<&PlannedDigest>)> = Vec::new();
+) -> Vec<String> {
+    let mut subjects: Vec<String> = Vec::new();
     for d in plan
         .creates
         .iter()
         .map(|c| &c.digest)
         .chain(plan.updates.iter().map(|u| &u.digest))
     {
-        let key = bucket_key_by_outcome[d.cluster_index].clone();
-        match touched.iter_mut().find(|(k, _)| *k == key) {
-            Some((_, list)) => list.push(d),
-            None => touched.push((key, vec![d])),
-        }
-    }
-
-    let holder_id = id_of(holder);
-    let mut files: Vec<CommonplaceMirrorFile> = Vec::new();
-    for (key, planned) in &touched {
-        let Some(bucket) = buckets.iter().find(|b| &b.key == key) else {
-            continue;
-        };
-        if bucket.reference.kind == ConsolidationBucketKind::None || !bucket.subject_exists {
-            continue;
-        }
-        let mut entries = Vec::new();
-        for existing in &bucket.digests {
-            let eid = id_of(existing);
-            entries.push(match planned.iter().find(|d| d.id == eid) {
-                Some(revised) => crate::commonplace_file::CommonplaceDigestEntry {
-                    content: revised.content.clone(),
-                    kind: revised.kind.clone(),
-                    occurred_at: revised.occurred_at.clone(),
-                    reinforced_importance: revised.reinforced_importance,
-                },
-                None => crate::commonplace_file::CommonplaceDigestEntry {
-                    content: str_field(existing, "content").unwrap_or_default(),
-                    kind: str_field(existing, "kind").unwrap_or_else(|| "semantic".to_string()),
-                    occurred_at: str_field(existing, "occurredAt"),
-                    reinforced_importance: num_field(existing, "reinforcedImportance")
-                        .or_else(|| num_field(existing, "importance"))
-                        .unwrap_or(f64::NAN),
-                },
-            });
-        }
-        for d in planned {
-            if d.action != crate::consolidation_plan::DigestAction::Create {
-                continue;
+        let key = &bucket_key_by_outcome[d.cluster_index];
+        let about = buckets
+            .iter()
+            .find(|b| &b.key == key)
+            .and_then(|b| b.about_character_id.clone())
+            .filter(|a| !a.is_empty());
+        if let Some(about) = about {
+            if !subjects.contains(&about) {
+                subjects.push(about);
             }
-            entries.push(crate::commonplace_file::CommonplaceDigestEntry {
-                content: d.content.clone(),
-                kind: d.kind.clone(),
-                occurred_at: d.occurred_at.clone(),
-                reinforced_importance: d.reinforced_importance,
-            });
         }
-        let is_self = bucket.reference.kind == ConsolidationBucketKind::SelfBucket;
-        files.push(CommonplaceMirrorFile {
-            subject_character_id: if is_self {
-                holder_id.clone()
-            } else {
-                bucket
-                    .reference
-                    .subject_character_id
-                    .clone()
-                    .unwrap_or_default()
-            },
-            subject_name: bucket.reference.subject_name.clone(),
-            is_self,
-            digests: entries,
-        });
     }
-    if files.is_empty() {
-        return 0;
-    }
-    write_commonplace_digests_to_vault(
-        db,
-        &WriteCommonplaceDigestsInput {
-            holder_character_id: holder_id,
-            files,
-            updated_at: now_iso.to_string(),
-        },
-    )
-    .await
-    .written
+    subjects
 }
 
 /// Render an optional string as v4's JSON-ish log value (`null` when absent).
@@ -1179,17 +1064,45 @@ fn or_null(v: Option<&str>) -> String {
 // Entry point
 // ============================================================================
 
-/// Run consolidation for one character. Never fails for an ordinary failure (a
-/// bad call, a missing vault); fails only when the corpus itself cannot be read
-/// or the plan cannot be committed.
-pub async fn run_consolidation<C: CompletionProvider, E: EmbeddingProvider>(
+/// v4 `ConsolidationInput` — what [`consolidate`] is handed: the holder and
+/// its bucketed corpus.
+pub struct ConsolidationInput {
+    /// The holder, with its vault overlay when it could be read.
+    pub holder: Value,
+    /// Every row the holder has (links only), for the link rewrites, in load
+    /// order.
+    pub row_index: OrderedMap<LinkIndexRow>,
+    /// The subject buckets, in first-seen order.
+    pub buckets: Vec<ConsolidationBucket>,
+    /// Stats seeded by the loader (rows, candidates, skips).
+    pub stats: ConsolidationStats,
+}
+
+/// v4 `ConsolidationRun`.
+pub struct ConsolidationRun {
+    pub report: ConsolidationReport,
+    /// The writes the run issued, or would have issued in a dry run.
+    pub plan: ConsolidationWritePlan,
+    /// Rows of clusters too small to fold, stamped considered with the plan.
+    pub below_min_considered: Vec<String>,
+    /// Digest subjects whose Commonplace files the run changes.
+    pub touched_subjects: Vec<String>,
+}
+
+/// v4 `consolidate(input, opts)`: "consolidate one character's bucketed
+/// candidates: cluster, call the model per cluster, plan, embed the digests,
+/// and (unless a dry run) issue the writes. It announces nothing — the
+/// maintenance run does that after the writes commit. Never throws for an
+/// ordinary failure (a bad call, a missing vault)." Fails only when the plan
+/// cannot be committed.
+pub async fn consolidate<C: CompletionProvider, E: EmbeddingProvider>(
     db: &Db,
     completion: &C,
     embedding: &E,
     executor: &CheapLlmTaskExecutor,
-    character_id: &str,
+    input: ConsolidationInput,
     opts: RunConsolidationOptions,
-) -> Result<ConsolidationReport, DbError> {
+) -> Result<ConsolidationRun, DbError> {
     let started = Instant::now();
     let elapsed: ElapsedClock = opts
         .elapsed
@@ -1202,22 +1115,67 @@ pub async fn run_consolidation<C: CompletionProvider, E: EmbeddingProvider>(
     let stored = db
         .read_main(|c| Ok(get_memory_consolidation_settings(c)))
         .unwrap_or_default();
-    let merged_settings = merge_settings(&stored, opts.settings_override.as_ref());
+    let mut merged_settings = merge_settings(&stored, opts.settings_override.as_ref());
+    let ConsolidationInput {
+        holder,
+        row_index,
+        mut buckets,
+        mut stats,
+    } = input;
+    let character_id = id_of(&holder);
+    let character_id = character_id.as_str();
+    let holder_name = str_field(&holder, "name");
+    let user_id = opts
+        .user_id
+        .clone()
+        .or_else(|| str_field(&holder, "userId"))
+        .unwrap_or_default();
+    let mut cluster_reports: Vec<ConsolidationClusterReport> = Vec::new();
+
+    // "The clustered vectors are the default profile's; cluster on its
+    // scale." v4's `findDefault` is a safeQuery over a table its repository
+    // creates on first access, so a failed read answers `null` there and the
+    // caller's catch (DEBUG `Could not read the default embedding profile;
+    // clustering on the neural scale`) is unreachable through v4's real code —
+    // v5's `Err` is that `null`, with no line of this module's.
+    let uid = user_id.clone();
+    let embedding_provider: Option<String> = db
+        .read_main(|c| crate::db::embedding_profiles::find_default(c, &uid))
+        .ok()
+        .flatten()
+        .map(|p| p.provider);
+    let override_threshold = opts
+        .settings_override
+        .as_ref()
+        .and_then(|o| o.get("clusterThreshold"))
+        .and_then(Value::as_f64);
+    let resolved_threshold = resolve_cluster_threshold(
+        merged_settings
+            .get("clusterThreshold")
+            .and_then(Value::as_f64)
+            .unwrap_or(f64::NAN),
+        merged_settings
+            .get("tfidfClusterThreshold")
+            .and_then(Value::as_f64)
+            .unwrap_or(f64::NAN),
+        embedding_provider.as_deref(),
+        override_threshold,
+    );
+    if let Value::Object(m) = &mut merged_settings {
+        m.insert("clusterThreshold".into(), num(resolved_threshold));
+    }
     let settings = run_settings(&merged_settings);
     let max_clusters = opts
         .max_clusters_per_run
         .unwrap_or(settings.max_clusters_per_run);
-    let mut stats = ConsolidationStats::default();
-    let mut cluster_reports: Vec<ConsolidationClusterReport> = Vec::new();
 
     let finish = |stats: &mut ConsolidationStats,
                   clusters: Vec<ConsolidationClusterReport>,
-                  skipped_reason: Option<&'static str>,
-                  character_name: Option<String>| {
+                  skipped_reason: Option<&'static str>| {
         stats.duration_ms = started.elapsed().as_millis() as i64;
         ConsolidationReport {
             character_id: character_id.to_string(),
-            character_name,
+            character_name: holder_name.clone(),
             dry_run,
             trigger,
             started_at: now_iso.clone(),
@@ -1229,45 +1187,6 @@ pub async fn run_consolidation<C: CompletionProvider, E: EmbeddingProvider>(
         }
     };
 
-    // Raw read on purpose: the archived-character tombstone lives on the row,
-    // and a broken vault must not hide a character that still holds memories.
-    let cid = character_id.to_string();
-    let holder_raw = db
-        .read_main(|c| Ok(characters_read::find_by_id_raw_or_none(c, &cid)))
-        .ok()
-        .flatten();
-    let Some(holder_raw) = holder_raw else {
-        tracing::info!(
-            module = MODULE,
-            characterId = %character_id,
-            trigger = trigger.as_str(),
-            "Consolidation skipped: character not found"
-        );
-        return Ok(finish(
-            &mut stats,
-            cluster_reports,
-            Some("character-not-found"),
-            None,
-        ));
-    };
-    if crate::api::characters::is_archived(&holder_raw) {
-        tracing::info!(
-            module = MODULE,
-            characterId = %character_id,
-            trigger = trigger.as_str(),
-            "Consolidation skipped: character is archived"
-        );
-        let name = str_field(&holder_raw, "name");
-        return Ok(finish(&mut stats, cluster_reports, Some("archived"), name));
-    }
-    let holder = character_overlay(db, character_id).unwrap_or_else(|| holder_raw.clone());
-    let holder_name = str_field(&holder, "name");
-    let user_id = opts
-        .user_id
-        .clone()
-        .or_else(|| str_field(&holder_raw, "userId"))
-        .unwrap_or_default();
-
     tracing::debug!(
         module = MODULE,
         characterId = %character_id,
@@ -1275,6 +1194,7 @@ pub async fn run_consolidation<C: CompletionProvider, E: EmbeddingProvider>(
         dryRun = dry_run,
         maxClusters = max_clusters,
         clusterThreshold = settings.cluster_threshold,
+        embeddingProvider = %or_null(embedding_provider.as_deref()),
         minClusterSize = settings.min_cluster_size,
         maxClusterSize = settings.max_cluster_size,
         matureAfterDays = settings.mature_after_days,
@@ -1282,79 +1202,9 @@ pub async fn run_consolidation<C: CompletionProvider, E: EmbeddingProvider>(
         "Consolidation starting"
     );
 
-    // ── 1. Load ───────────────────────────────────────────────────────────────
-    let mature_cutoff_ms = now_ms as f64 - settings.mature_after_days * DAY_MS;
-    let pages = db.read_main(|c| {
-        memories_read::find_by_character_id_in_batches(
-            c,
-            character_id,
-            CONSOLIDATION_LOAD_PAGE_SIZE,
-        )
-    })?;
-    let mut row_index: OrderedMap<LinkIndexRow> = OrderedMap::new();
-    let mut buckets: Vec<Bucket> = Vec::new();
-    for page in pages {
-        for memory in page {
-            stats.rows_loaded += 1;
-            let id = id_of(&memory);
-            let related: Vec<String> = memory
-                .get("relatedMemoryIds")
-                .and_then(Value::as_array)
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|v| v.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default();
-            row_index.set(
-                &id,
-                LinkIndexRow {
-                    id: id.clone(),
-                    related_memory_ids: related,
-                },
-            );
-            if str_field(&memory, "tier").unwrap_or_else(|| "hot".to_string()) != "hot" {
-                continue;
-            }
-            let source = str_field(&memory, "source");
-            let has_embedding = embedding_of(&memory).is_some();
-            if source.as_deref() == Some("CONSOLIDATED") {
-                if !has_embedding {
-                    stats.no_embedding_skipped += 1;
-                    continue;
-                }
-                bucket_for(&mut buckets, &memory, character_id)
-                    .digests
-                    .push(memory);
-                stats.digests_loaded += 1;
-                continue;
-            }
-            // Hand-written rows are never sent cold by policy (spec §B4).
-            if source.as_deref() != Some("AUTO") {
-                continue;
-            }
-            let created = parse_ms(str_field(&memory, "createdAt").as_deref());
-            if created.is_none_or(|c| c > mature_cutoff_ms) {
-                stats.immature_skipped += 1;
-                continue;
-            }
-            if !has_embedding {
-                stats.no_embedding_skipped += 1;
-                continue;
-            }
-            bucket_for(&mut buckets, &memory, character_id)
-                .rows
-                .push(memory);
-            stats.candidates += 1;
-        }
-    }
     let mut rows_by_id: HashMap<String, Value> = HashMap::new();
     let mut digests_by_id: HashMap<String, Value> = HashMap::new();
-    for bucket in buckets.iter_mut() {
-        let before = bucket.rows.len();
-        let capped = cap_bucket_rows(std::mem::take(&mut bucket.rows));
-        stats.bucket_rows_capped += before - capped.len();
-        bucket.rows = capped;
+    for bucket in &buckets {
         for row in &bucket.rows {
             rows_by_id.insert(id_of(row), row.clone());
         }
@@ -1568,6 +1418,7 @@ pub async fn run_consolidation<C: CompletionProvider, E: EmbeddingProvider>(
                 &routed.selection,
                 character_id,
                 fallback.as_ref(),
+                profile_max_tokens_for(route, &routed.selection),
             )
             .await;
 
@@ -1696,26 +1547,31 @@ pub async fn run_consolidation<C: CompletionProvider, E: EmbeddingProvider>(
             .map(|c| c.digest.clone())
             .chain(plan.updates.iter().map(|u| u.digest.clone()))
             .collect();
+        // "Anchor dates render on the instance's memory calendar."
+        let memory_time_zone = crate::services::memory_time_zone::refresh_memory_time_zone(
+            db,
+            &opts.host_zone_fallback,
+            now_ms as f64,
+        );
         for digest in &planned {
             if failed.contains(&digest.cluster_index) {
                 continue;
             }
-            let text = build_memory_embedding_text(
-                &digest.summary,
-                &digest.content,
-                Some(&EpisodicAnchorView {
-                    occurred_at: digest.occurred_at.clone(),
-                    narrative_time: digest.narrative_time.clone(),
-                    entities: digest.entities.clone(),
-                }),
-            );
+            let source = EmbeddingTextSource {
+                summary: &digest.summary,
+                content: &digest.content,
+                occurred_at: digest.occurred_at.as_deref(),
+                narrative_time: digest.narrative_time.as_deref(),
+                entities: AnchorEntities::Strings(&digest.entities),
+            };
+            let text = embedding_text_for(&source, &memory_time_zone);
             match embedding
-                // lexical_text: None until P4.D297 (maintenance — v4 `consolidation.ts:847`) lands it (C1-10).
                 .generate_embedding_for_user(
                     &text,
                     &user_id,
                     None,
-                    EmbeddingCallOptions::background(),
+                    EmbeddingCallOptions::background()
+                        .with_lexical_text(lexical_embedding_text_for(&source)),
                 )
                 .await
             {
@@ -1780,29 +1636,15 @@ pub async fn run_consolidation<C: CompletionProvider, E: EmbeddingProvider>(
 
     if !dry_run {
         execute_plan(db, character_id, &plan, &below_min_considered, &now_iso).await?;
-        if plan.creates.len() + plan.updates.len() + plan.tier_moves.len() > 0 {
-            // In-process runs commit here, so announce here. Inside the job
-            // (R-C) the runner's completion hooks cover the frozen archive and
-            // the realtime hint — once each.
-            if !opts.in_job {
-                crate::services::frozen_archive::invalidate_frozen_archive(character_id);
-                crate::realtime::bus::publish_realtime(
-                    crate::realtime::types::RealtimeTopic::Memories,
-                    None,
-                );
-            }
-            stats.mirror_files_written =
-                mirror_touched_buckets(db, &holder, &buckets, &plan, &final_bucket_key, &now_iso)
-                    .await;
-        }
     }
+    let touched = touched_subjects(&buckets, &plan, &final_bucket_key);
 
     let skipped = if route.is_some() || selection.selected.is_empty() {
         None
     } else {
         Some("no-llm")
     };
-    let report = finish(&mut stats, cluster_reports, skipped, holder_name.clone());
+    let report = finish(&mut stats, cluster_reports, skipped);
     tracing::info!(
         module = MODULE,
         characterId = %character_id,
@@ -1810,6 +1652,7 @@ pub async fn run_consolidation<C: CompletionProvider, E: EmbeddingProvider>(
         trigger = trigger.as_str(),
         dryRun = dry_run,
         candidates = report.stats.candidates,
+        demotedCandidates = report.stats.demoted_candidates,
         digestsLoaded = report.stats.digests_loaded,
         clustersFound = report.stats.clusters_found,
         clustersSelected = report.stats.clusters_selected,
@@ -1821,36 +1664,14 @@ pub async fn run_consolidation<C: CompletionProvider, E: EmbeddingProvider>(
         membersSuperseded = report.stats.members_superseded,
         rowsMarkedConsidered = report.stats.rows_marked_considered,
         linksRewired = report.stats.links_rewired,
-        mirrorFilesWritten = report.stats.mirror_files_written,
         budgetExhausted = report.stats.budget_exhausted,
         durationMs = report.stats.duration_ms,
         "Consolidation run complete"
     );
-    Ok(report)
-}
-
-fn bucket_for<'b>(buckets: &'b mut Vec<Bucket>, memory: &Value, holder_id: &str) -> &'b mut Bucket {
-    let key = bucket_key_of(memory, holder_id);
-    if let Some(i) = buckets.iter().position(|b| b.key == key) {
-        return &mut buckets[i];
-    }
-    let about = str_field(memory, "aboutCharacterId").filter(|s| !s.is_empty());
-    let kind = match key.as_str() {
-        "self" => ConsolidationBucketKind::SelfBucket,
-        "none" => ConsolidationBucketKind::None,
-        _ => ConsolidationBucketKind::Other,
-    };
-    buckets.push(Bucket {
-        key: key.clone(),
-        reference: ConsolidationBucketRef {
-            kind,
-            subject_character_id: if key == "none" { None } else { about.clone() },
-            subject_name: String::new(),
-        },
-        about_character_id: if key == "none" { None } else { about },
-        rows: Vec::new(),
-        digests: Vec::new(),
-        subject_exists: key != "none",
-    });
-    buckets.last_mut().expect("just pushed")
+    Ok(ConsolidationRun {
+        report,
+        plan,
+        below_min_considered,
+        touched_subjects: touched,
+    })
 }

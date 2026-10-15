@@ -212,7 +212,6 @@ pub mod memory_extraction; // P4.D296
 pub mod memory_format;
 pub mod memory_gate;
 pub mod memory_injector;
-pub mod memory_merge;
 pub mod memory_pools;
 pub mod memory_scoring;
 pub mod memory_settings; // P4.D288 (C1-5)

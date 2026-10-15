@@ -240,7 +240,7 @@ fn system_jobs_collection_matches_oracle() {
         let resp = rt.block_on(system_data::jobs_enqueue_now(
             &db,
             USER,
-            "MEMORY_HOUSEKEEPING",
+            "MEMORY_MAINTENANCE",
             &json!({ "characterId": LORIAN }),
             Some(3.0),
             Some(5.0),
@@ -298,7 +298,7 @@ fn system_jobs_collection_matches_oracle() {
             &rt.block_on(system_data::jobs_enqueue_now(
                 &db,
                 USER,
-                "MEMORY_HOUSEKEEPING",
+                "MEMORY_MAINTENANCE",
                 &Value::Null,
                 None,
                 None,
@@ -311,7 +311,7 @@ fn system_jobs_collection_matches_oracle() {
             &rt.block_on(system_data::jobs_enqueue_now(
                 &db,
                 USER,
-                "MEMORY_HOUSEKEEPING",
+                "MEMORY_MAINTENANCE",
                 &json!("nope"),
                 None,
                 None,
@@ -336,7 +336,7 @@ fn system_jobs_collection_matches_oracle() {
         let resp = rt.block_on(system_data::jobs_enqueue_now(
             &db,
             USER,
-            "MEMORY_HOUSEKEEPING",
+            "MEMORY_MAINTENANCE",
             &json!([]),
             None,
             None,

@@ -1,0 +1,594 @@
+{
+ "comment": "P4.D297 queue family steps, run IN ORDER on ONE copy of the maintenance fixture pair. '@<holder>' strings resolve to the spec's holder ids ('@subject', '@unknown' too). Job plants are stamped relative to each side's own clock at plant time (hoursAgo); maybeEnqueue / startupTick read 'base + offsetMs'.",
+ "plants": [
+  "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, entities, kind, reinforcementCount, relatedMemoryIds, reinforcedImportance, tier, consolidatedFrom, createdAt, updatedAt) VALUES ('4a0e0000-0000-4000-8000-000000000001', '4a0f0000-0000-4000-8000-0000000000cc', NULL, 'Orphan note.', 'orphan note.', '[]', '[]', 0.5, 'AUTO', '[]', 'semantic', 1, '[]', 0.5, 'hot', '[]', '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z')"
+ ],
+ "jobs": [
+  {
+   "id": "4ab00000-0000-4000-8000-000000000001",
+   "type": "MEMORY_MAINTENANCE",
+   "status": "COMPLETED",
+   "payload": {
+    "characterId": "@order",
+    "reason": "watermark",
+    "phases": [
+     "consolidate",
+     "mirror"
+    ]
+   },
+   "hoursAgo": 0.1
+  },
+  {
+   "id": "4ab00000-0000-4000-8000-000000000002",
+   "type": "MEMORY_MAINTENANCE",
+   "status": "PROCESSING",
+   "payload": {
+    "characterId": "@order",
+    "reason": "watermark",
+    "phases": [
+     "demote"
+    ],
+    "exemptPhases": []
+   },
+   "hoursAgo": 1
+  },
+  {
+   "id": "4ab00000-0000-4000-8000-000000000003",
+   "type": "MEMORY_MAINTENANCE",
+   "status": "FAILED",
+   "payload": {
+    "characterId": "@mixed",
+    "reason": "manual"
+   },
+   "hoursAgo": 2
+  },
+  {
+   "id": "4ab00000-0000-4000-8000-000000000004",
+   "type": "MEMORY_MAINTENANCE",
+   "status": "COMPLETED",
+   "payload": {
+    "reason": "scheduled"
+   },
+   "hoursAgo": 25
+  },
+  {
+   "id": "4ab00000-0000-4000-8000-000000000005",
+   "type": "MEMORY_MAINTENANCE",
+   "status": "COMPLETED",
+   "payload": {
+    "characterId": "@folder",
+    "reason": "scheduled"
+   },
+   "hoursAgo": 30
+  },
+  {
+   "id": "4ab00000-0000-4000-8000-000000000006",
+   "type": "MEMORY_MAINTENANCE",
+   "status": "PROCESSING",
+   "payload": {
+    "characterId": "@folder",
+    "reason": "manual",
+    "phases": [
+     "fold-near-duplicates"
+    ]
+   },
+   "hoursAgo": 0.5
+  },
+  {
+   "id": "4ab00000-0000-4000-8000-000000000007",
+   "type": "LLM_LOG_CLEANUP",
+   "status": "COMPLETED",
+   "payload": {
+    "characterId": "@demoter",
+    "reason": "scheduled"
+   },
+   "hoursAgo": 0.2
+  }
+ ],
+ "steps": [
+  {
+   "op": "status",
+   "name": "status_seeded_all"
+  },
+  {
+   "op": "status",
+   "name": "status_seeded_retirer",
+   "characterId": "@retirer"
+  },
+  {
+   "op": "status",
+   "name": "status_unknown",
+   "characterId": "@unknown"
+  },
+  {
+   "op": "enqueue",
+   "name": "enqueue_manual_demote",
+   "payload": {
+    "characterId": "@demoter",
+    "reason": "manual",
+    "phases": [
+     "demote"
+    ]
+   }
+  },
+  {
+   "op": "enqueue",
+   "name": "widen_watermark_fold",
+   "payload": {
+    "characterId": "@demoter",
+    "reason": "watermark",
+    "phases": [
+     "fold-near-duplicates"
+    ]
+   }
+  },
+  {
+   "op": "enqueue",
+   "name": "widen_scheduled_all",
+   "payload": {
+    "characterId": "@demoter",
+    "reason": "scheduled"
+   }
+  },
+  {
+   "op": "enqueue",
+   "name": "widen_manual_settings",
+   "payload": {
+    "characterId": "@demoter",
+    "reason": "manual",
+    "phases": [
+     "retire"
+    ],
+    "settings": {
+     "cap": 50
+    }
+   }
+  },
+  {
+   "op": "enqueue",
+   "name": "widen_settings_merge",
+   "payload": {
+    "characterId": "@demoter",
+    "reason": "watermark",
+    "phases": [
+     "demote"
+    ],
+    "settings": {
+     "maxClustersPerRun": 3
+    }
+   }
+  },
+  {
+   "op": "enqueue",
+   "name": "processing_never_absorbs",
+   "payload": {
+    "characterId": "@order",
+    "reason": "watermark",
+    "phases": [
+     "demote"
+    ]
+   }
+  },
+  {
+   "op": "enqueue",
+   "name": "manual_no_phases",
+   "payload": {
+    "characterId": "@retirer",
+    "reason": "manual"
+   }
+  },
+  {
+   "op": "enqueue",
+   "name": "scheduled_new",
+   "payload": {
+    "characterId": "@mixed",
+    "reason": "scheduled",
+    "phases": [
+     "demote",
+     "retire"
+    ]
+   }
+  },
+  {
+   "op": "enqueue",
+   "name": "explicit_exempt_widen",
+   "payload": {
+    "characterId": "@mixed",
+    "reason": "manual",
+    "phases": [
+     "consolidate"
+    ],
+    "exemptPhases": []
+   }
+  },
+  {
+   "op": "enqueue",
+   "name": "deferred_schedule",
+   "payload": {
+    "characterId": "@archived",
+    "reason": "watermark",
+    "phases": [
+     "retire"
+    ]
+   },
+   "scheduledOffsetMs": 120000
+  },
+  {
+   "op": "enqueueMany",
+   "name": "many_mixed_batch",
+   "characterIds": [
+    "@folder",
+    "@mixed",
+    "@demoter",
+    "@folder"
+   ],
+   "payload": {
+    "reason": "scheduled"
+   }
+  },
+  {
+   "op": "enqueueForUser",
+   "name": "for_user",
+   "payload": {
+    "reason": "manual",
+    "phases": [
+     "retire"
+    ]
+   }
+  },
+  {
+   "op": "jobs",
+   "name": "jobs_snapshot_1"
+  },
+  {
+   "op": "sql",
+   "sql": "DELETE FROM background_jobs WHERE status = 'PENDING'"
+  },
+  {
+   "op": "maybeEnqueue",
+   "name": "watermark_empty",
+   "ids": [],
+   "offsetMs": 0
+  },
+  {
+   "op": "maybeEnqueue",
+   "name": "watermark_cap_reached",
+   "ids": [
+    "@mixed"
+   ],
+   "offsetMs": 0
+  },
+  {
+   "op": "maybeEnqueue",
+   "name": "watermark_debounced",
+   "ids": [
+    "@mixed"
+   ],
+   "offsetMs": 60000
+  },
+  {
+   "op": "maybeEnqueue",
+   "name": "watermark_demote_throttled",
+   "ids": [
+    "@mixed"
+   ],
+   "offsetMs": 180000
+  },
+  {
+   "op": "maybeEnqueue",
+   "name": "watermark_below_cap",
+   "ids": [
+    "@demoter",
+    "@unknown"
+   ],
+   "offsetMs": 0
+  },
+  {
+   "op": "consolidationSettings",
+   "value": {
+    "enabled": true,
+    "watermark": 1,
+    "coldRetentionDays": 30
+   }
+  },
+  {
+   "op": "maybeEnqueue",
+   "name": "watermark_consolidation",
+   "ids": [
+    "@demoter",
+    "@archived",
+    "@unknown",
+    "@order"
+   ],
+   "offsetMs": 300000
+  },
+  {
+   "op": "maybeEnqueue",
+   "name": "watermark_consolidation_throttled",
+   "ids": [
+    "@demoter",
+    "@mixed"
+   ],
+   "offsetMs": 600000
+  },
+  {
+   "op": "maintenanceSettings",
+   "value": {
+    "enabled": false,
+    "perCharacterCap": 2000
+   }
+  },
+  {
+   "op": "consolidationSettings",
+   "value": {
+    "enabled": false,
+    "coldRetentionDays": 30
+   }
+  },
+  {
+   "op": "maybeEnqueue",
+   "name": "watermark_both_off",
+   "ids": [
+    "@folder"
+   ],
+   "offsetMs": 0
+  },
+  {
+   "op": "scheduled",
+   "name": "scheduled_both_off"
+  },
+  {
+   "op": "maintenanceSettings",
+   "value": {
+    "enabled": true,
+    "perCharacterCap": 2000,
+    "perCharacterCapOverrides": {
+     "@mixed": 100
+    }
+   }
+  },
+  {
+   "op": "jobs",
+   "name": "jobs_snapshot_2"
+  },
+  {
+   "op": "sql",
+   "sql": "DELETE FROM background_jobs WHERE status = 'PENDING'"
+  },
+  {
+   "op": "startupTick",
+   "name": "startup_tick_runs",
+   "offsetMs": 0
+  },
+  {
+   "op": "scheduled",
+   "name": "scheduled_again_absorbed"
+  },
+  {
+   "op": "job",
+   "job": {
+    "id": "4ab00000-0000-4000-8000-000000000008",
+    "type": "MEMORY_MAINTENANCE",
+    "status": "COMPLETED",
+    "payload": {
+     "characterId": "@mixed",
+     "reason": "scheduled"
+    },
+    "hoursAgo": 1
+   }
+  },
+  {
+   "op": "startupTick",
+   "name": "startup_tick_skipped",
+   "offsetMs": 0
+  },
+  {
+   "op": "jobs",
+   "name": "jobs_snapshot_3"
+  },
+  {
+   "op": "sql",
+   "sql": "DELETE FROM background_jobs WHERE status = 'PENDING'"
+  },
+  {
+   "op": "handler",
+   "name": "handler_no_character",
+   "job": {
+    "id": "4ab00000-0000-4000-8000-000000000010",
+    "payload": {
+     "reason": "manual"
+    },
+    "hoursAgo": 0
+   }
+  },
+  {
+   "op": "handler",
+   "name": "handler_deferred",
+   "job": {
+    "id": "4ab00000-0000-4000-8000-000000000011",
+    "payload": {
+     "characterId": "@order",
+     "reason": "manual",
+     "phases": [
+      "demote"
+     ],
+     "exemptPhases": [
+      "demote"
+     ]
+    },
+    "hoursAgo": 0
+   }
+  },
+  {
+   "op": "handler",
+   "name": "handler_deferred_again_widens",
+   "job": {
+    "id": "4ab00000-0000-4000-8000-000000000012",
+    "payload": {
+     "characterId": "@order",
+     "reason": "watermark",
+     "phases": [
+      "retire"
+     ],
+     "exemptPhases": []
+    },
+    "hoursAgo": 0
+   }
+  },
+  {
+   "op": "handler",
+   "name": "handler_older_than_running",
+   "job": {
+    "id": "4ab00000-0000-4000-8000-000000000013",
+    "payload": {
+     "characterId": "@folder",
+     "reason": "watermark",
+     "phases": [
+      "fold-near-duplicates",
+      "demote",
+      "retire"
+     ],
+     "exemptPhases": []
+    },
+    "hoursAgo": 2
+   }
+  },
+  {
+   "op": "status",
+   "name": "status_after_fold_run",
+   "characterId": "@folder"
+  },
+  {
+   "op": "handler",
+   "name": "handler_full_demote",
+   "job": {
+    "id": "4ab00000-0000-4000-8000-000000000014",
+    "payload": {
+     "characterId": "@demoter",
+     "reason": "manual",
+     "phases": [
+      "demote",
+      "retire"
+     ],
+     "exemptPhases": [
+      "demote",
+      "retire"
+     ],
+     "settings": {
+      "cap": 20
+     }
+    },
+    "hoursAgo": 0
+   }
+  },
+  {
+   "op": "status",
+   "name": "status_after_demote_run",
+   "characterId": "@demoter"
+  },
+  {
+   "op": "handler",
+   "name": "handler_dry_payload_runs_live",
+   "job": {
+    "id": "4ab00000-0000-4000-8000-000000000015",
+    "payload": {
+     "characterId": "@retirer",
+     "reason": "manual",
+     "phases": [
+      "retire"
+     ],
+     "exemptPhases": [
+      "retire"
+     ],
+     "dryRun": true
+    },
+    "hoursAgo": 0
+   }
+  },
+  {
+   "op": "handler",
+   "name": "handler_whole_automatic",
+   "job": {
+    "id": "4ab00000-0000-4000-8000-000000000016",
+    "payload": {
+     "characterId": "@mixed",
+     "reason": "scheduled",
+     "exemptPhases": []
+    },
+    "hoursAgo": 0
+   }
+  },
+  {
+   "op": "status",
+   "name": "status_after_whole_run",
+   "characterId": "@mixed"
+  },
+  {
+   "op": "maybeEnqueue",
+   "name": "watermark_ineffective_backoff",
+   "ids": [
+    "@mixed"
+   ],
+   "offsetMs": 1200000
+  },
+  {
+   "op": "status",
+   "name": "status_all_after_handlers"
+  },
+  {
+   "op": "hook",
+   "name": "hook_mirrors_bucket",
+   "jobType": "MEMORY_MAINTENANCE",
+   "payload": {
+    "characterId": "@mixed",
+    "reason": "manual"
+   },
+   "touched": [
+    [
+     "@mixed",
+     [
+      "@subject"
+     ]
+    ]
+   ]
+  },
+  {
+   "op": "hook",
+   "name": "hook_dry_payload",
+   "jobType": "MEMORY_MAINTENANCE",
+   "payload": {
+    "characterId": "@retirer",
+    "dryRun": true
+   },
+   "touched": [
+    [
+     "@retirer",
+     [
+      "@subject"
+     ]
+    ]
+   ]
+  },
+  {
+   "op": "hook",
+   "name": "hook_other_type",
+   "jobType": "LLM_LOG_CLEANUP",
+   "payload": {},
+   "touched": [
+    [
+     "@retirer",
+     [
+      "@subject"
+     ]
+    ]
+   ]
+  },
+  {
+   "op": "hook",
+   "name": "hook_nothing_touched",
+   "jobType": "MEMORY_MAINTENANCE",
+   "payload": {},
+   "touched": []
+  }
+ ]
+}

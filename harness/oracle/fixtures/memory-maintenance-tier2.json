@@ -1,0 +1,21 @@
+{
+  "testPepperBase64": "Qm1haW50ZW5hbmNlLXRpZXIyLXRlc3QtcGVwcGVyMDE=",
+  "userId": "4a000000-0000-4000-8000-0000000000ee",
+  "seedTimestamp": "2026-08-01T00:00:00.000Z",
+  "now": "2026-10-08T12:00:00.000Z",
+  "subject": { "id": "4a5b0000-0000-4000-8000-000000000001", "name": "Laura" },
+  "holders": {
+    "folder": { "id": "4a010000-0000-4000-8000-000000000001", "name": "Fenwick" },
+    "demoter": { "id": "4a020000-0000-4000-8000-000000000001", "name": "Dorrit" },
+    "retirer": { "id": "4a030000-0000-4000-8000-000000000001", "name": "Rosalind" },
+    "mixed": { "id": "4a040000-0000-4000-8000-000000000001", "name": "Mabel" },
+    "archived": { "id": "4a050000-0000-4000-8000-000000000001", "name": "Ghost" },
+    "order": { "id": "4a060000-0000-4000-8000-000000000001", "name": "Ordway" },
+    "tiefold": { "id": "4a070000-0000-4000-8000-000000000001", "name": "Tilda" }
+  },
+  "unknownId": "4a0f0000-0000-4000-8000-0000000000cc",
+  "settings": {
+    "maintenance": { "enabled": true, "perCharacterCap": 2000, "perCharacterCapOverrides": { "4a040000-0000-4000-8000-000000000001": 100 } },
+    "consolidation": { "enabled": false, "coldRetentionDays": 30 }
+  }
+}

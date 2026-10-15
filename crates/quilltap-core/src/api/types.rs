@@ -4554,9 +4554,11 @@ pub enum Response {
     /// `{providers}`, `{provider, models}` / `Record<provider, models[]>`. Pinned
     /// by `embedding_profiles_routes_equivalence`.
     EmbeddingProfile(serde_json::Value),
-    /// A memory-maintenance-family body (P4.9H2A): dedup `{success, result}`,
-    /// summaries `{success, jobId, message}` / `{success, inFlight}`. Pinned by
-    /// the memory-dedup + summaries-regen differentials.
+    /// The conversation-summaries regeneration body (P4.9H2A): `{success,
+    /// jobId, message}` / `{success, inFlight}`. Pinned by the summaries-regen
+    /// differential. (The memory dedup bodies went with v4's `104e986c7`; the
+    /// maintenance verbs answer through [`Response::Memory`] — R-J. The
+    /// variant's rename is deferred, recorded by P4.D297.)
     MemoryMaintenance(serde_json::Value),
     /// A mount-points-family body (`{mountPoints}`, `{mountPoint}`,
     /// `{mountPoint, warning?}`, `{message}`). Pinned by

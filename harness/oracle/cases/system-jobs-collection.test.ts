@@ -197,7 +197,7 @@ function buildCases(): CaseSpec[] {
       normalize: ['jobId'],
       run: async () => {
         const created = await jobsPost({
-          type: 'MEMORY_HOUSEKEEPING',
+          type: 'MEMORY_MAINTENANCE',
           payload: { characterId: LORIAN },
           priority: 3,
           maxAttempts: 5,
@@ -217,11 +217,11 @@ function buildCases(): CaseSpec[] {
     },
     {
       name: 'jobs_collection_post_no_payload',
-      run: () => jobsPost({ type: 'MEMORY_HOUSEKEEPING' }),
+      run: () => jobsPost({ type: 'MEMORY_MAINTENANCE' }),
     },
     {
       name: 'jobs_collection_post_payload_not_object',
-      run: () => jobsPost({ type: 'MEMORY_HOUSEKEEPING', payload: 'nope' }),
+      run: () => jobsPost({ type: 'MEMORY_MAINTENANCE', payload: 'nope' }),
     },
     // P4.67 / P4.62(b): v4's gate is `!payload || typeof payload !== 'object'`.
     // An ARRAY is neither falsy nor a non-object, so it passes the ROUTE gate — and
@@ -232,7 +232,7 @@ function buildCases(): CaseSpec[] {
       name: 'jobs_collection_post_payload_array',
       normalize: ['jobId'],
       run: async () => {
-        const created = await jobsPost({ type: 'MEMORY_HOUSEKEEPING', payload: [] });
+        const created = await jobsPost({ type: 'MEMORY_MAINTENANCE', payload: [] });
         const jobId = (created.body as { jobId?: string }).jobId ?? '';
         const after = await jobsGet('?includeJobs=true');
         const jobs = ((after.body as { jobs?: Array<Record<string, unknown>> }).jobs ??

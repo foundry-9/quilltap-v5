@@ -1,0 +1,491 @@
+{
+ "cases": [
+  {
+   "name": "maintain_dry_one_all_phases",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002",
+    "dryRun": true
+   }
+  },
+  {
+   "name": "maintain_dry_one_llm_free_settings",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000001",
+    "dryRun": true,
+    "phases": [
+     "demote",
+     "retire",
+     "fold-near-duplicates"
+    ],
+    "settings": {
+     "cap": 100,
+     "maxClustersPerRun": 60
+    }
+   }
+  },
+  {
+   "name": "maintain_dry_one_consolidate_implies_mirror",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002",
+    "dryRun": true,
+    "phases": [
+     "consolidate"
+    ],
+    "settings": {
+     "consolidation": {
+      "clusterThreshold": 0.9,
+      "minClusterSize": 4
+     }
+    }
+   }
+  },
+  {
+   "name": "maintain_dry_all_llm_free",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "dryRun": true,
+    "phases": [
+     "demote"
+    ]
+   }
+  },
+  {
+   "name": "maintain_dry_all_refused",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "dryRun": true
+   }
+  },
+  {
+   "name": "maintain_dry_all_consolidate_refused",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "dryRun": true,
+    "phases": [
+     "mirror",
+     "consolidate"
+    ]
+   }
+  },
+  {
+   "name": "maintain_live_one",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002",
+    "phases": [
+     "consolidate"
+    ],
+    "settings": {
+     "maxClustersPerRun": 5,
+     "consolidation": {
+      "clusterThreshold": 0.9
+     }
+    }
+   },
+   "jobs": true
+  },
+  {
+   "name": "maintain_live_one_twice_widens",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002",
+    "phases": [
+     "demote"
+    ]
+   },
+   "twice": true,
+   "jobs": true
+  },
+  {
+   "name": "maintain_live_all_no_body",
+   "method": "POST",
+   "action": "maintain",
+   "jobs": true
+  },
+  {
+   "name": "maintain_live_dry_false",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000003",
+    "dryRun": false,
+    "settings": {
+     "cap": 100000
+    }
+   },
+   "jobs": true
+  },
+  {
+   "name": "maintain_bad_phase",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "phases": [
+     "dedup"
+    ]
+   }
+  },
+  {
+   "name": "maintain_empty_phases",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "phases": []
+   }
+  },
+  {
+   "name": "maintain_bad_uuid",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "characterId": "nope"
+   }
+  },
+  {
+   "name": "maintain_cap_low",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "settings": {
+     "cap": 99
+    }
+   }
+  },
+  {
+   "name": "maintain_cap_high",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "settings": {
+     "cap": 100001
+    }
+   }
+  },
+  {
+   "name": "maintain_max_clusters_fraction",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "settings": {
+     "maxClustersPerRun": 1.5
+    }
+   }
+  },
+  {
+   "name": "maintain_max_clusters_zero",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "settings": {
+     "maxClustersPerRun": 0
+    }
+   }
+  },
+  {
+   "name": "maintain_bad_consolidation",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "settings": {
+     "consolidation": {
+      "clusterThreshold": "x"
+     }
+    }
+   }
+  },
+  {
+   "name": "maintain_dry_run_string",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "dryRun": "yes"
+   }
+  },
+  {
+   "name": "maintain_body_array",
+   "method": "POST",
+   "action": "maintain",
+   "body": []
+  },
+  {
+   "name": "maintain_not_found",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "characterId": "00000000-0000-4000-8000-0000000000ff"
+   }
+  },
+  {
+   "name": "maintain_not_found_before_dry_rule",
+   "method": "POST",
+   "action": "maintain",
+   "body": {
+    "characterId": "00000000-0000-4000-8000-0000000000ff",
+    "dryRun": true
+   }
+  },
+  {
+   "name": "status_all_empty",
+   "method": "GET",
+   "action": "maintenance-status"
+  },
+  {
+   "name": "status_one",
+   "method": "GET",
+   "action": "maintenance-status",
+   "query": {
+    "characterId": "b1000000-0000-4000-8000-000000000002"
+   }
+  },
+  {
+   "name": "status_present_empty",
+   "method": "GET",
+   "action": "maintenance-status",
+   "query": {
+    "characterId": ""
+   }
+  },
+  {
+   "name": "status_not_found",
+   "method": "GET",
+   "action": "maintenance-status",
+   "query": {
+    "characterId": "00000000-0000-4000-8000-0000000000ff"
+   }
+  },
+  {
+   "name": "status_seeded_all",
+   "method": "GET",
+   "action": "maintenance-status",
+   "plantSql": [
+    "INSERT INTO background_jobs (id, userId, type, status, payload, priority, attempts, maxAttempts, lastError, scheduledAt, startedAt, completedAt, createdAt, updatedAt) VALUES ('b1b00000-0000-4000-8000-000000000001', 'e18e05bc-63e8-4539-8a85-719b7a508850', 'MEMORY_MAINTENANCE', 'COMPLETED', '{\"characterId\":\"b1000000-0000-4000-8000-000000000001\",\"reason\":\"scheduled\",\"phases\":[\"demote\",\"retire\"]}', 0, 1, 1, NULL, '2026-10-01T00:00:00.000Z', NULL, NULL, '2026-10-01T00:00:00.000Z', '2026-10-01T00:05:00.000Z')",
+    "INSERT INTO background_jobs (id, userId, type, status, payload, priority, attempts, maxAttempts, lastError, scheduledAt, startedAt, completedAt, createdAt, updatedAt) VALUES ('b1b00000-0000-4000-8000-000000000002', 'e18e05bc-63e8-4539-8a85-719b7a508850', 'MEMORY_MAINTENANCE', 'PROCESSING', '{\"characterId\":\"b1000000-0000-4000-8000-000000000002\",\"reason\":\"manual\"}', 0, 1, 1, NULL, '2026-10-02T00:00:00.000Z', NULL, NULL, '2026-10-02T00:00:00.000Z', '2026-10-02T00:01:00.000Z')"
+   ]
+  },
+  {
+   "name": "status_seeded_one",
+   "method": "GET",
+   "action": "maintenance-status",
+   "query": {
+    "characterId": "b1000000-0000-4000-8000-000000000001"
+   },
+   "plantSql": [
+    "INSERT INTO background_jobs (id, userId, type, status, payload, priority, attempts, maxAttempts, lastError, scheduledAt, startedAt, completedAt, createdAt, updatedAt) VALUES ('b1b00000-0000-4000-8000-000000000001', 'e18e05bc-63e8-4539-8a85-719b7a508850', 'MEMORY_MAINTENANCE', 'COMPLETED', '{\"characterId\":\"b1000000-0000-4000-8000-000000000001\",\"reason\":\"watermark\",\"phases\":[\"consolidate\",\"mirror\"]}', 0, 1, 1, NULL, '2026-10-01T00:00:00.000Z', NULL, NULL, '2026-10-01T00:00:00.000Z', '2026-10-01T00:05:00.000Z')"
+   ]
+  },
+  {
+   "name": "repair_dry_all",
+   "method": "POST",
+   "action": "repair",
+   "body": {
+    "dryRun": true
+   }
+  },
+  {
+   "name": "repair_live_one",
+   "method": "POST",
+   "action": "repair",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000001"
+   },
+   "jobs": true
+  },
+  {
+   "name": "repair_live_all_no_body",
+   "method": "POST",
+   "action": "repair",
+   "jobs": true
+  },
+  {
+   "name": "repair_not_found",
+   "method": "POST",
+   "action": "repair",
+   "body": {
+    "characterId": "00000000-0000-4000-8000-0000000000ff"
+   }
+  },
+  {
+   "name": "repair_bad_dry_run",
+   "method": "POST",
+   "action": "repair",
+   "body": {
+    "dryRun": "yes"
+   }
+  },
+  {
+   "name": "repair_bad_uuid",
+   "method": "POST",
+   "action": "repair",
+   "body": {
+    "characterId": "nope"
+   }
+  },
+  {
+   "name": "config_get_default",
+   "method": "GET",
+   "action": "maintenance-config"
+  },
+  {
+   "name": "config_set_toggle_merge",
+   "method": "POST",
+   "action": "maintenance-config",
+   "body": {
+    "phases": {
+     "demote": false
+    }
+   },
+   "stored": "{\"enabled\":true,\"perCharacterCap\":500,\"perCharacterCapOverrides\":{},\"phases\":{\"foldNearDuplicates\":false,\"demote\":true,\"retire\":true}}"
+  },
+  {
+   "name": "config_set_replace_rest",
+   "method": "POST",
+   "action": "maintenance-config",
+   "body": {
+    "enabled": true
+   },
+   "stored": "{\"enabled\":false,\"perCharacterCap\":500,\"perCharacterCapOverrides\":{\"b1000000-0000-4000-8000-000000000001\":300},\"phases\":{\"foldNearDuplicates\":false,\"demote\":true,\"retire\":true}}"
+  },
+  {
+   "name": "config_set_cap_low",
+   "method": "POST",
+   "action": "maintenance-config",
+   "body": {
+    "perCharacterCap": 99
+   }
+  },
+  {
+   "name": "config_set_cap_min",
+   "method": "POST",
+   "action": "maintenance-config",
+   "body": {
+    "perCharacterCap": 100
+   }
+  },
+  {
+   "name": "config_set_cap_max_overrides",
+   "method": "POST",
+   "action": "maintenance-config",
+   "body": {
+    "perCharacterCap": 100000,
+    "perCharacterCapOverrides": {
+     "b1000000-0000-4000-8000-000000000001": 150
+    }
+   }
+  },
+  {
+   "name": "config_set_cap_high",
+   "method": "POST",
+   "action": "maintenance-config",
+   "body": {
+    "perCharacterCap": 100001
+   }
+  },
+  {
+   "name": "config_set_override_low",
+   "method": "POST",
+   "action": "maintenance-config",
+   "body": {
+    "perCharacterCapOverrides": {
+     "b1000000-0000-4000-8000-000000000001": 99
+    }
+   }
+  },
+  {
+   "name": "config_set_unknown_keys_stripped",
+   "method": "POST",
+   "action": "maintenance-config",
+   "body": {
+    "enabled": true,
+    "mergeThreshold": 0.9
+   }
+  },
+  {
+   "name": "config_stored_without_phases",
+   "method": "GET",
+   "action": "maintenance-config",
+   "stored": "{\"enabled\":true,\"perCharacterCap\":500}"
+  },
+  {
+   "name": "config_stored_phases_null",
+   "method": "GET",
+   "action": "maintenance-config",
+   "stored": "{\"enabled\":true,\"phases\":null}"
+  },
+  {
+   "name": "config_set_over_stored_without_phases",
+   "method": "POST",
+   "action": "maintenance-config",
+   "body": {
+    "phases": {
+     "retire": false
+    }
+   },
+   "stored": "{\"enabled\":true,\"perCharacterCap\":500}"
+  },
+  {
+   "name": "retired_post_housekeep",
+   "method": "POST",
+   "action": "housekeep",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002"
+   },
+   "retiredTag": "memoryHousekeep"
+  },
+  {
+   "name": "retired_get_housekeep",
+   "method": "GET",
+   "action": "housekeep",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002"
+   },
+   "retiredTag": "memoryHousekeepPreview"
+  },
+  {
+   "name": "retired_post_housekeep_sweep",
+   "method": "POST",
+   "action": "housekeep-sweep",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002"
+   },
+   "retiredTag": "memoryHousekeepSweep"
+  },
+  {
+   "name": "retired_get_housekeeping_config",
+   "method": "GET",
+   "action": "housekeeping-config",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002"
+   },
+   "retiredTag": "memoryHousekeepingConfigGet"
+  },
+  {
+   "name": "retired_post_housekeeping_config",
+   "method": "POST",
+   "action": "housekeeping-config",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002"
+   },
+   "retiredTag": "memoryHousekeepingConfigSet"
+  },
+  {
+   "name": "retired_post_consolidate",
+   "method": "POST",
+   "action": "consolidate",
+   "body": {
+    "characterId": "b1000000-0000-4000-8000-000000000002"
+   },
+   "retiredTag": "memoryConsolidate"
+  }
+ ]
+}

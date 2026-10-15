@@ -23,8 +23,8 @@
 //!   'DELETE_ALL_MY_DATA'` refuses every non-matching shape identically, and
 //!   `keepArchivedCharacterBundles !== false` keeps the bundles for absent, null
 //!   and wrong-typed alike — exactly what `Option<bool>` + "None keeps" does.
-//! - **`threshold`** — FAITHFUL. v4 itself coerces
-//!   (`typeof x === 'number' ? x : 0.80`).
+//! - **`threshold`** — RETIRED with v4's `memory-dedup` action (`104e986c7`;
+//!   P4.D297): its four arms now pin the tools route's `Unknown action` 400.
 //! - **`type`** — FAITHFUL. `BackgroundJobTypeEnum.safeParse` refuses every
 //!   non-member with one sentence.
 //! - **the passphrase `str_field`** — FAITHFUL. v4 is literally
@@ -295,7 +295,8 @@ fn cases() -> Vec<Case> {
             json!({"confirm": "nope", "keepArchivedCharacterBundles": false}),
         ),
         bad_json("delete_data_body_not_json", Tools, "delete-data"),
-        // ── memory-dedup ──
+        // ── memory-dedup — RETIRED (v4 `104e986c7`, P4.D297): every former arm
+        //    answers the tools route's `Unknown action` 400 ──
         c(
             "dedup_threshold_string",
             Tools,
@@ -341,7 +342,7 @@ fn cases() -> Vec<Case> {
             "jobs_payload_null",
             Jobs,
             "",
-            json!({"type": "MEMORY_HOUSEKEEPING", "payload": null}),
+            json!({"type": "MEMORY_MAINTENANCE", "payload": null}),
         ),
         bad_json("jobs_body_not_json", Jobs, ""),
         // ── system/unlock: the action gate, then the body-shape gate ──
@@ -386,21 +387,16 @@ const RECORDED_DIVERGENCES: &[(&str, u16, &str)] = &[(
     "Invalid job type. Must be one of: ",
 )];
 
-/// Two fields cannot be equal by construction, and both are normalized on BOTH
+/// One field cannot be equal by construction, and it is normalized on BOTH
 /// sides:
 ///
 /// - `processorStatus` — v4's `getProcessorStatus()` reports a forked-child
 ///   snapshot the oracle PINS with a mock; in v5 the pump is a host seam and a
 ///   `start` really starts it. The echo that matters (`success`, `action`) is
 ///   compared verbatim.
-/// - the dedup sweep's `result` — the oracle's stub echo on one side, a REAL
-///   pass over the served fixture on the other.
-fn normalize(name: &str, body: &Value) -> Value {
+fn normalize(_name: &str, body: &Value) -> Value {
     let mut b = body.clone();
     if let Some(o) = b.as_object_mut() {
-        if name.starts_with("dedup_") && o.contains_key("result") {
-            o.insert("result".into(), Value::String("<NORM>".into()));
-        }
         if o.contains_key("processorStatus") {
             o.insert("processorStatus".into(), Value::String("<NORM>".into()));
         }

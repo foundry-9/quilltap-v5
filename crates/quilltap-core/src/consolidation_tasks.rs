@@ -54,9 +54,16 @@ pub use prompt_text::CONSOLIDATION_SYSTEM_PROMPT;
 /// Task type recorded on the LLM log and the activity registry.
 pub const CONSOLIDATION_TASK_TYPE: &str = "memory-consolidation";
 
-/// Output-token ceiling for one cluster's answer (a 30-member cluster fits
-/// comfortably).
-pub const CONSOLIDATION_MAX_TOKENS: f64 = 4000.0;
+/// v4 `CONSOLIDATION_MIN_MAX_TOKENS` (bug 246, `64743ee13`): "output-token
+/// floor for one cluster's answer (a 30-member cluster fits comfortably). The
+/// call takes the profile's own budget when it is larger: a reasoning model
+/// counts its thinking against the same ceiling, and at a flat 4,000 it could
+/// spend every token thinking and answer nothing."
+pub const CONSOLIDATION_MIN_MAX_TOKENS: i64 = 4000;
+
+/// v4 `CONSOLIDATION_EMPTY_ANSWER_REASON`: "the reason an empty answer is
+/// skipped under, so it is not read as bad JSON".
+pub const CONSOLIDATION_EMPTY_ANSWER_REASON: &str = "empty answer: the model returned no text (a reasoning model may have spent the whole output budget thinking)";
 
 /// Longest member text shown to the model, in characters (UTF-16 units).
 pub const MEMBER_CONTENT_CHAR_CAP: usize = 1200;
@@ -620,6 +627,13 @@ pub fn parse_consolidation_response(
     content: &str,
     input_handles: &[String],
 ) -> ConsolidationValidation {
+    // Bug 246: an empty (or whitespace) answer is its own verdict, before the
+    // JSON parse.
+    if js_trim(content).is_empty() {
+        return ConsolidationValidation::Invalid {
+            reason: CONSOLIDATION_EMPTY_ANSWER_REASON.to_string(),
+        };
+    }
     match parse_llm_json_object(content) {
         Ok(raw) => validate_consolidation_output(&raw, input_handles),
         Err(err) => ConsolidationValidation::Invalid {
@@ -633,7 +647,8 @@ pub fn parse_consolidation_response(
 
 /// Run the consolidation call for one cluster. The task result is successful
 /// whenever the provider answered; the result's verdict says whether the answer
-/// passed validation.
+/// passed validation. `profile_max_tokens` is the routed profile's output
+/// budget (`resolveMaxTokens`) — "never below the floor" (bug 246).
 #[allow(clippy::too_many_arguments)]
 pub async fn consolidate_memory_cluster<C: CompletionProvider>(
     executor: &CheapLlmTaskExecutor,
@@ -642,8 +657,10 @@ pub async fn consolidate_memory_cluster<C: CompletionProvider>(
     selection: &CheapLlmSelection,
     character_id: &str,
     uncensored_fallback: Option<&UncensoredFallbackOptions<'_>>,
+    profile_max_tokens: Option<i64>,
 ) -> CheapLlmTaskResult<ConsolidationValidation> {
     let handles: Vec<String> = input.members.iter().map(|m| m.handle.clone()).collect();
+    let max_tokens = CONSOLIDATION_MIN_MAX_TOKENS.max(profile_max_tokens.unwrap_or(0));
     let messages = vec![
         CompletionMessage::system(CONSOLIDATION_SYSTEM_PROMPT),
         CompletionMessage::user(build_consolidation_user_message(input)),
@@ -657,6 +674,7 @@ pub async fn consolidate_memory_cluster<C: CompletionProvider>(
         hasExistingDigest = input.existing_digest.as_deref().is_some_and(|s| !s.is_empty()),
         provider = %selection.provider,
         model = %selection.model_name,
+        maxTokens = max_tokens,
         "[Consolidation] Sending cluster to model"
     );
     executor
@@ -666,7 +684,7 @@ pub async fn consolidate_memory_cluster<C: CompletionProvider>(
             messages,
             |content: &str| parse_consolidation_response(content, &handles),
             uncensored_fallback,
-            Some(CONSOLIDATION_MAX_TOKENS),
+            Some(max_tokens as f64),
             Some(character_id),
             Some(CONSOLIDATION_TASK_TYPE),
             CheapLlmTaskOptions::default(),

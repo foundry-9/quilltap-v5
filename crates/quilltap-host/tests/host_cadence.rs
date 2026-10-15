@@ -230,7 +230,7 @@ fn quiet_config(base: &Path) -> HostConfig {
     config.autonomous_tick_ms = hour;
     config.stuck_check_ms = hour;
     config.cleanup_interval_ms = hour;
-    config.housekeeping_interval_ms = hour;
+    config.memory_maintenance_interval_ms = hour;
     config.maintenance_interval_ms = hour;
     config.danger_scan_interval_ms = hour;
     config.startup_grace_ms = hour;
@@ -504,6 +504,132 @@ async fn maintenance_startup_tick_honors_recent_run_window() {
     wait_until(
         || session_count(&db) == 0,
         "aged stamp re-runs the startup tick",
+    )
+    .await;
+}
+
+/// P4.D297 — the MEMORY-maintenance loop (v4 `scheduleMemoryMaintenance`):
+/// after the grace, the startup tick enqueues ONE `MEMORY_MAINTENANCE` job per
+/// live character holding memories (an archived holder and an orphaned row's
+/// missing character skipped), payload `{reason: 'scheduled', characterId,
+/// exemptPhases: []}`; a re-boot while a SCHEDULED run COMPLETED within 20 h
+/// skips the startup tick; once that run ages past 20 h a re-boot enqueues
+/// again. (A bare `Host::start` registers no job handlers, so the jobs stay
+/// PENDING and countable.) The queue / scheduler BYTES are the queue family's
+/// (`memory_maintenance_queue_tier2_equivalence`); this pins the host cadence.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn memory_maintenance_startup_tick_enqueues_per_holder_and_honors_recent_run() {
+    const LIVE: &str = "c1000000-0000-4000-8000-000000000001";
+    const ARCHIVED: &str = "c1000000-0000-4000-8000-000000000002";
+    const GONE: &str = "c1000000-0000-4000-8000-0000000000ff";
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    quilltap_core::services::provisioning::provision_fresh_instance(&data, PEPPER)
+        .expect("provision");
+    let db_path = data.join("quilltap.db");
+    {
+        let w = Writer::open_writable(&db_path, PEPPER).unwrap();
+        let c = w.connection();
+        for (id, archived) in [(LIVE, None), (ARCHIVED, Some("2026-01-02T00:00:00.000Z"))] {
+            c.execute(
+                "INSERT INTO characters (id, userId, name, archivedAt, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'Holder', ?3, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+                rusqlite::params![id, USER, archived],
+            )
+            .unwrap();
+        }
+        for (n, holder) in [(1, LIVE), (2, ARCHIVED), (3, GONE)] {
+            c.execute(
+                "INSERT INTO memories (id, characterId, content, summary, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'A note.', 'a note.', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+                rusqlite::params![format!("d1000000-0000-4000-8000-00000000000{n}"), holder],
+            )
+            .unwrap();
+        }
+        c.execute(
+            "INSERT INTO instance_settings (\"key\", \"value\") VALUES ('memoryMaintenance', '{\"enabled\":true}') \
+             ON CONFLICT(\"key\") DO UPDATE SET \"value\" = excluded.\"value\"",
+            [],
+        )
+        .unwrap();
+    }
+    let payloads = |db: &Db| -> Vec<(String, String)> {
+        db.read_main(|c| {
+            let mut stmt = c.prepare(
+                "SELECT status, payload FROM background_jobs WHERE type = 'MEMORY_MAINTENANCE' \
+                 ORDER BY createdAt, id",
+            )?;
+            let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        })
+        .unwrap()
+    };
+
+    // (a) the startup tick after the grace: one job, the live holder's.
+    let mut config = quiet_config(dir.path());
+    config.startup_grace_ms = 100;
+    let host = Host::start(config).unwrap();
+    let db = host.core().db().unwrap();
+    wait_until(
+        || count_jobs(&db, "MEMORY_MAINTENANCE") >= 1,
+        "the memory-maintenance startup tick",
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(
+        payloads(&db),
+        [(
+            "PENDING".to_string(),
+            format!(r#"{{"reason":"scheduled","characterId":"{LIVE}","exemptPhases":[]}}"#)
+        )],
+    );
+    drop(db);
+    match host.core().dispatch(Request::Lock).await {
+        Response::UnlockState(_) => {}
+        other => panic!("unexpected: {other:?}"),
+    }
+
+    // (b) that scheduled run COMPLETED just now → a re-boot skips the tick.
+    let mark_completed = |at: &str| {
+        let w = Writer::open_writable(&db_path, PEPPER).unwrap();
+        w.connection()
+            .execute(
+                "UPDATE background_jobs SET status = 'COMPLETED', updatedAt = ?1 \
+                 WHERE type = 'MEMORY_MAINTENANCE'",
+                rusqlite::params![at],
+            )
+            .unwrap();
+    };
+    let now_ms = quilltap_core::clock::now_unix_ms();
+    mark_completed(&quilltap_core::clock::iso_from_unix_ms(now_ms));
+    let mut config = quiet_config(dir.path());
+    config.startup_grace_ms = 100;
+    let host2 = Host::start(config).unwrap();
+    let db = host2.core().db().unwrap();
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    assert_eq!(
+        count_jobs(&db, "MEMORY_MAINTENANCE"),
+        1,
+        "a scheduled run completed within 20 h must skip the startup tick"
+    );
+    drop(db);
+    match host2.core().dispatch(Request::Lock).await {
+        Response::UnlockState(_) => {}
+        other => panic!("unexpected: {other:?}"),
+    }
+
+    // (c) aged past 20 h → the re-boot's startup tick enqueues again.
+    mark_completed(&quilltap_core::clock::iso_from_unix_ms(
+        now_ms - 21 * 60 * 60 * 1000,
+    ));
+    let mut config = quiet_config(dir.path());
+    config.startup_grace_ms = 100;
+    let host3 = Host::start(config).unwrap();
+    let db = host3.core().db().unwrap();
+    wait_until(
+        || count_jobs(&db, "MEMORY_MAINTENANCE") == 2,
+        "an aged scheduled run re-runs the startup tick",
     )
     .await;
 }

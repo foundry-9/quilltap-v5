@@ -93,6 +93,7 @@ fn consolidation_tasks_match_oracle() {
     };
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read oracle {path}: {e}"));
     let mut failures = Vec::new();
+    let mut empty_answers = 0usize;
     let (mut messages, mut parses, mut validates, mut lossy, mut invalid, mut unparseable) =
         (0, 0, 0, 0, 0, 0);
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -131,12 +132,16 @@ fn consolidation_tasks_match_oracle() {
                 .to_json();
                 if c["out"]["ok"] == false {
                     invalid += 1;
-                    if c["out"]["reason"]
-                        .as_str()
-                        .unwrap()
-                        .starts_with("unparseable JSON")
-                    {
+                    let reason = c["out"]["reason"].as_str().unwrap();
+                    if reason.starts_with("unparseable JSON") {
                         unparseable += 1;
+                    }
+                    // Bug 246 (P4.D297): an empty / whitespace-only answer is
+                    // the empty-answer verdict, checked BEFORE the parse.
+                    if reason
+                        == quilltap_core::consolidation_tasks::CONSOLIDATION_EMPTY_ANSWER_REASON
+                    {
+                        empty_answers += 1;
                     }
                 }
                 if serde_json::to_string(&got).unwrap() != serde_json::to_string(&c["out"]).unwrap()
@@ -176,9 +181,11 @@ fn consolidation_tasks_match_oracle() {
         parses >= 70 && validates >= 6,
         "parses {parses} validates {validates}"
     );
+    // Bug 246 moved the `''` / `'   '` rows from V8's `unparseable JSON` to
+    // the empty-answer verdict (12 → 11 unparseable at the `83334b9a5` pin).
     assert!(
-        invalid >= 50 && unparseable >= 12,
-        "invalid {invalid} unparseable {unparseable}"
+        invalid >= 50 && unparseable >= 11 && empty_answers >= 2,
+        "invalid {invalid} unparseable {unparseable} empty answers {empty_answers}"
     );
     eprintln!(
         "OK: consolidation tasks matched oracle ({messages} user messages incl. {lossy} lossy, {parses} parses ({invalid} invalid, {unparseable} unparseable), {validates} raw validations)."
