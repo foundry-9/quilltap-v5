@@ -530,6 +530,36 @@ pub fn find_core_whisper_enabled(
     })
 }
 
+// === P4.D295: the raw finder the scenario location classifies a mount with (L-2) ===
+
+/// v4 `characters.findByDocumentMountPointIdRaw(mountPointId)`
+/// (`characters.repository.ts:145-147` — `findOneByFilter`, `LIMIT 1`, no
+/// `ORDER BY`), without the vault overlay: the character whose vault is that
+/// mount. A failed read logs `Error finding entity by filter` and answers
+/// `None` (the fallback `safeQuery`), the same row-marshal contract as
+/// [`find_by_id_raw_or_none`].
+pub fn find_by_document_mount_point_id_raw(
+    main: &Connection,
+    mount_point_id: &str,
+) -> Option<Value> {
+    super::fallback::find_one_by_filter_or_none("characters", || {
+        Ok(query_raw(
+            main,
+            "characterDocumentMountPointId = ?1 LIMIT 1",
+            &[&mount_point_id],
+        )?
+        .pop())
+    })
+}
+
+/// v4 `characters.findAllRaw()` exactly as its callers see it: `_findAll`'s
+/// fallback (`Error finding all entities` → `[]`) over [`find_all_raw`]'s
+/// unordered full scan.
+pub fn find_all_raw_or_empty(main: &Connection) -> Vec<Value> {
+    super::fallback::find_all_or_empty("characters", || find_all_raw(main))
+}
+// === end P4.D295 ===
+
 #[cfg(test)]
 mod tests {
     use super::*;

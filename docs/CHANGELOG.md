@@ -462,6 +462,23 @@ Re-vendors v4's `public/schemas/qtap-export.schema.json` at the `83334b9a5` pin 
 
 Re-dumps `schema-key-order.json` from v4's real schemas at the pin. `chat` goes from 102 to 103 keys (drops `otherExtractionWatermarkMessageId`, adds `scenarioSource` and `scenarioNotes` after `scenarioText`) and `memory` from 29 to 30 (`supersededAt` after `supersededById`). No other kind moved.
 
+#### 2026-10-15 — feat(core): P4.D295 unit 2 — the scenario location, the catalogue and their raw finders
+
+_Versions: core 0.0.1300._
+
+`crate::scenarios::location` ports v4's `lib/scenarios/location.ts`, the one place that answers where a scenario lives and how to read or write it.
+- `resolve_scenario_location`: a read probe never provisions. `ensure` provisions a project or group store and heals `Scenarios/`; a heal failure logs `[ScenarioLocation] Failed to ensure Scenarios folder` and is returned as an error, not swallowed.
+- The character location is read-only, and only the caller's live, vaulted characters resolve. `classify_scenario_mount` checks General, then character vaults, then project and group official stores; linked and arbitrary stores classify as nothing.
+- `lookup_scenario_ref` answers ok, missing or refused, with v4's reasons, and decodes `%` escapes. A malformed escape is a `URIError`.
+- The store writes: create, update, rename (a same-name rename of a missing file is now a 404), delete and `set_default` (`None` clears).
+- L1 to L11 are logged.
+
+`crate::scenarios::everywhere::list_scenarios_everywhere` is the instance-wide catalogue, with excerpts only. `db::scenarios` gains the pure `build_scenario_list`, which logs the multiple-default WARN with the location's context. `parse_scenario_doc` now logs its empty-body WARN; v5 had never ported it. `set_scenario_default_in_folder` takes `Option` and logs v4's demote-failure WARN.
+
+New raw finders, in v4's `_findAll` / `findOneByFilter` shape (no `ORDER BY`, rows validated against v4's row schema, fallback lines): `projects` and `groups` gain `find_all_raw`, `find_by_id_raw_or_none` and `find_by_official_mount_point_id_raw`; `characters_read` gains `find_by_document_mount_point_id_raw` and `find_all_raw_or_empty`.
+
+New tier-2 family `scenario_location_equivalence`, with a run-time fixture builder and a case that replays 85 operations in order against v4's real modules, logs included: 85 of 85 match. It covers the catalogue's case-insensitive name tie in rowid order and an excerpt under `EXCERPT_LONE_SURROGATE`. Two mutations each turn rows red: a probe that provisions, and raw finders in reverse rowid order.
+
 #### 2026-10-15 — feat(core): P4.D295 unit 1 — the scenario slice's pure half, tier-1 against v4
 
 _Versions: core 0.0.1299._

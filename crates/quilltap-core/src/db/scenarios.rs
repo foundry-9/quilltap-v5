@@ -253,7 +253,12 @@ pub fn parse_scenario_doc(doc: &VaultFolderDoc) -> Option<ParsedScenario> {
     // v4 `content.slice(parsed.bodyStartOffset).trim()`.
     let body = js_trim(body_after(&doc.content, &parsed)).to_string();
     if body.is_empty() {
-        // v4 logs a warning and returns null; the log is a no-op seam here.
+        // v4 `scenarios-common.ts:154-160` (L13).
+        tracing::warn!(
+            mountPointId = %doc.mount_point_id,
+            relativePath = %doc.relative_path,
+            "Scenario file body is empty; skipping"
+        );
         return None;
     }
 
@@ -279,31 +284,42 @@ pub fn parse_scenario_doc(doc: &VaultFolderDoc) -> Option<ParsedScenario> {
     })
 }
 
-/// v4 `listScenariosInFolder` (`scenarios-common.ts:123`): list every
-/// `<folder>/*.md`, parsed and sorted by `relativePath.localeCompare` (the ICU4X
-/// en-US port), then default-conflict resolution — the alphabetically-first
-/// `rawIsDefault` wins; later ones are demoted to `isDefault:false` in the
-/// RESPONSE ONLY (on-disk frontmatter is NOT rewritten) with a warning naming the
-/// winner + ignored files.
-pub fn list_scenarios_in_folder(
-    mount: &Connection,
-    mount_point_id: &str,
-    folder_name: &str,
-    include_archived: bool,
-) -> Result<ListScenariosResult, DbError> {
-    let repo = DocMountDocumentsRepository::new(mount);
-    let mut docs = repo.find_many_by_mount_points_in_folder_or_empty(
-        &[mount_point_id.to_string()],
-        folder_name,
-        ".md",
-    )?;
+/// The `logContext` v4's `buildScenarioList` spreads into its multiple-default
+/// WARN (L14): the location's `{ scope, id, mountPointId }` (`id` `null` for
+/// General).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScenarioListLogContext {
+    pub scope: String,
+    pub id: Option<String>,
+    pub mount_point_id: String,
+}
 
-    // v4 `docs.sort((a, b) => a.relativePath.localeCompare(b.relativePath))`.
+/// v4 `buildScenarioList(docs, parse, { includeArchived }, logContext)`
+/// (`scenarios-common.ts:189-238`, pure): one folder's already-fetched
+/// documents → a sorted scenario list with default-conflict resolution — what
+/// every scenario location's `list` runs, shared with the instance-wide lister
+/// (which fetches every owner's documents in ONE query and buckets them by
+/// mount). Sorted by `relativePath.localeCompare` (the ICU4X en-US port);
+/// archived files are dropped unless asked for and never win the default; the
+/// alphabetically-first `rawIsDefault` wins and later ones are demoted in the
+/// RESPONSE ONLY (on-disk frontmatter is NOT rewritten), with the warning
+/// string and WARN `Scenarios: multiple isDefault: true entries
+/// {...logContext, winner, offenders}`.
+///
+/// `parse` is the scope's parser: `parseScenarioDoc` for the store tiers, the
+/// vault parser for a character's vault (whose default is a column).
+pub fn build_scenario_list(
+    mut docs: Vec<VaultFolderDoc>,
+    parse: impl Fn(&VaultFolderDoc) -> Option<ParsedScenario>,
+    include_archived: bool,
+    log_context: &ScenarioListLogContext,
+) -> ListScenariosResult {
+    // v4 `[...docs].sort((a, b) => a.relativePath.localeCompare(b.relativePath))`.
     docs.sort_by(|a, b| locale_compare(&a.relative_path, &b.relative_path));
 
     let mut scenarios: Vec<ParsedScenario> = Vec::new();
     for doc in &docs {
-        if let Some(s) = parse_scenario_doc(doc) {
+        if let Some(s) = parse(doc) {
             // v4 `d25dacc1`: archived files are excluded from the list unless
             // the caller opts in.
             if s.archived && !include_archived {
@@ -350,40 +366,77 @@ pub fn list_scenarios_in_folder(
             "Multiple scenarios mark themselves as default; using \"{winner}\". \
              These are also marked default but are being ignored: {ignored}."
         ));
+        // L14 — the spread `logContext` first, then `winner`, `offenders`.
+        tracing::warn!(
+            scope = %log_context.scope,
+            id = log_context.id.as_deref().unwrap_or("null"),
+            mountPointId = %log_context.mount_point_id,
+            winner = %winner,
+            offendersJson = %serde_json::to_string(&offenders).unwrap_or_default(),
+            "Scenarios: multiple isDefault: true entries"
+        );
     }
 
-    Ok(ListScenariosResult {
+    ListScenariosResult {
         scenarios,
         warnings,
-    })
+    }
 }
 
-/// v4 `readScenarioByPath` (`scenarios-common.ts:179`): read one scenario by
-/// relative path. `isDefault` reflects ONLY the file's own frontmatter (no
-/// sibling cross-reference). `None` when the file is missing or its body is empty.
+/// The store-tier `list` over one mount (pre-location callers; the route
+/// families move onto [`crate::scenarios::location`] in P4.D295's routes unit,
+/// which deletes this).
+pub fn list_scenarios_in_folder(
+    mount: &Connection,
+    mount_point_id: &str,
+    folder_name: &str,
+    include_archived: bool,
+) -> Result<ListScenariosResult, DbError> {
+    let docs = DocMountDocumentsRepository::new(mount)
+        .find_many_by_mount_points_in_folder_or_empty(
+            &[mount_point_id.to_string()],
+            folder_name,
+            ".md",
+        )?;
+    Ok(build_scenario_list(
+        docs,
+        parse_scenario_doc,
+        include_archived,
+        &ScenarioListLogContext {
+            scope: String::new(),
+            id: None,
+            mount_point_id: mount_point_id.to_string(),
+        },
+    ))
+}
+
+/// One store-tier scenario by path (pre-location callers; deleted with
+/// [`list_scenarios_in_folder`]).
 pub fn read_scenario_by_path(
     mount: &Connection,
     mount_point_id: &str,
     relative_path: &str,
 ) -> Result<Option<ParsedScenario>, DbError> {
     let repo = DocMountDocumentsRepository::new(mount);
-    let Some(doc) = repo.find_with_link_by_mount_point_and_path(mount_point_id, relative_path)?
-    else {
-        return Ok(None);
-    };
-    Ok(parse_scenario_doc(&doc))
+    Ok(repo
+        .find_with_link_by_mount_point_and_path(mount_point_id, relative_path)?
+        .and_then(|d| parse_scenario_doc(&d)))
 }
 
-/// v4 `setScenarioDefaultInFolder` (`scenarios-common.ts:232`): a **sequenced
-/// multi-file write with NO transaction** — (1) set `isDefault:true` on the chosen
-/// file (throw when absent), (2) demote every other `isDefault:true` file, each
-/// individually try/caught. The deliberate no-transaction means a partial failure
-/// falls back to the alphabetical tiebreaker (a soft warning surfaces on the next
-/// list). Writes only when `updateFrontmatterInContent` changed the content.
+/// v4 `setScenarioDefaultInFolder(mp, defaultPath | null, folder)`
+/// (`scenarios-common.ts:249-291`): a **sequenced multi-file write with NO
+/// transaction** — (1) set `isDefault: true` on the chosen file (throw when
+/// absent; skipped when CLEARING — `None`), (2) demote every other
+/// `isDefault: true` file, each individually caught with WARN `Failed to
+/// demote a previously-default scenario; alphabetical tiebreaker will
+/// compensate {mountPointId, folderName, relativePath, error}` (L15). The
+/// deliberate no-transaction means a partial failure falls back to the
+/// alphabetical tiebreaker. Writes only when `updateFrontmatterInContent`
+/// changed the content.
 pub fn set_scenario_default_in_folder(
     mount: &Connection,
     mount_point_id: &str,
-    default_path: &str,
+    default_path: Option<&str>,
     folder_name: &str,
 ) -> Result<(), ScenarioWriteError> {
     let repo = DocMountDocumentsRepository::new(mount);
@@ -393,28 +446,23 @@ pub fn set_scenario_default_in_folder(
         ".md",
     )?;
 
-    // Step 1: set the chosen file's isDefault:true.
-    let mut chosen_found = false;
-    for doc in &docs {
-        if doc.relative_path == default_path {
-            let updated =
-                update_frontmatter_in_content(&doc.content, &one_bool("isDefault", true), false);
-            if updated != doc.content {
-                write_database_document(mount, mount_point_id, &doc.relative_path, &updated)?;
-            }
-            chosen_found = true;
-            break;
+    // Step 1: set the chosen file's isDefault:true (skipped when clearing).
+    if let Some(default_path) = default_path {
+        let Some(chosen) = docs.iter().find(|d| d.relative_path == default_path) else {
+            return Err(ScenarioWriteError::DefaultNotFound(
+                default_path.to_string(),
+            ));
+        };
+        let updated =
+            update_frontmatter_in_content(&chosen.content, &one_bool("isDefault", true), false);
+        if updated != chosen.content {
+            write_database_document(mount, mount_point_id, &chosen.relative_path, &updated)?;
         }
     }
-    if !chosen_found {
-        return Err(ScenarioWriteError::DefaultNotFound(
-            default_path.to_string(),
-        ));
-    }
 
-    // Step 2: demote any other file that had isDefault:true (each try/caught).
+    // Step 2: demote any other file that had isDefault:true (each caught).
     for doc in &docs {
-        if doc.relative_path == default_path {
+        if Some(doc.relative_path.as_str()) == default_path {
             continue;
         }
         let parsed = parse_frontmatter(&doc.content);
@@ -426,10 +474,17 @@ pub fn set_scenario_default_in_folder(
             let updated =
                 update_frontmatter_in_content(&doc.content, &one_bool("isDefault", false), false);
             if updated != doc.content {
-                // v4 swallows the demote failure (the alphabetical tiebreaker
-                // compensates; a soft warning surfaces on the next list).
-                let _ =
-                    write_database_document(mount, mount_point_id, &doc.relative_path, &updated);
+                if let Err(error) =
+                    write_database_document(mount, mount_point_id, &doc.relative_path, &updated)
+                {
+                    tracing::warn!(
+                        mountPointId = %mount_point_id,
+                        folderName = %folder_name,
+                        relativePath = %doc.relative_path,
+                        error = %error,
+                        "Failed to demote a previously-default scenario; alphabetical tiebreaker will compensate"
+                    );
+                }
             }
         }
     }

@@ -182657,3 +182657,56 @@ ruled one); `normalize` without the decode → 15 rows red.
 Regen (Node 24, from the pin): `cd $PIN && TZ=UTC npx tsx $V5W/harness/oracle/cases/scenario-pure.ts >
 /tmp/p4d295/out/oracle-scenario-pure.ndjson`; run `QT_ORACLE_SCENARIO_PURE=… cargo test -p quilltap-harness --test
 scenario_pure_equivalence`.
+
+### Unit 2 — the location, the catalogue, the raw finders (core 0.0.1300)
+
+- **L-2 raw finders** (fenced `// === P4.D295 … ===` appends): `db::projects::{find_all_raw, find_by_id_raw_or_none,
+  find_by_official_mount_point_id_raw}` + the shared `store_owner_*` helpers, the `db::groups` twins over them,
+  `characters_read::{find_by_document_mount_point_id_raw, find_all_raw_or_empty}`. Each is v4's base read as its callers
+  see it: `_findAll` = full scan, NO `ORDER BY` (rowid), a row `GroupSchema`/`ProjectSchema` refuses dropped after
+  `validateSafe`'s two lines (`zod_group_issues` — the row schemas are identical for both kinds), a failed read →
+  `Error finding all entities` + `[]`; `_findById` / `findOneByFilter` (`LIMIT 1`) → `Data validation failed` + the
+  fallback line + `None`. The character finders keep `find_by_id_raw_or_none`'s non-validating contract (their
+  sibling's).
+- **`crate::scenarios::location`** whole: `ScenarioScope`, `GENERAL_OWNER_NAME`, `ScenarioLocationError` (Display =
+  v4's three messages; `Uri` = V8's `URIError`; `Other` = anything v4 throws as a plain `Error`), `ScenarioLocation {
+  Store, Character }` (`list` / `read` / `id_for_path` / `parse`), `StoreScenarioLocation::{create, update, rename,
+  delete, set_default}`, `resolve_scenario_location` + `resolve_store_scenario_location`, `classify_scenario_mount`,
+  `ScenarioRefLookup`, `lookup_scenario_ref`, `parse_scenario_for_scope`, `CreateScenarioInput` /
+  `UpdateScenarioInput`, the rethrowing folder heal; L1–L11. Reads go through v4's fallback reads
+  (`document_by_mount_point_and_path_or_none`, `find_many_by_mount_points_in_folder_or_empty`).
+- **`crate::scenarios::everywhere::list_scenarios_everywhere`** (+ L12): General first, projects, groups (NOT
+  user-filtered, `name || 'Project'|'Group'`), the caller's live vaulted characters, each stable-sorted on
+  `locale_compare_base`; ONE folder query over the deduped mounts; empty shelves included; `scenarioId` on character
+  rows only.
+- **`db::scenarios`**: the pure `build_scenario_list(docs, parse, include_archived, &ScenarioListLogContext)` + L14
+  (`{scope, id, mountPointId, winner, offendersJson}`); L13 in `parse_scenario_doc` (the "no-op seam" comment was
+  wrong — v4 logs it); `set_scenario_default_in_folder(…, Option<&str>, …)` clears on `None` (Δ17) and logs L15 on a
+  demote failure. `list_scenarios_in_folder` / `read_scenario_by_path` stay as thin helpers over the new pieces for
+  the pre-location route callers — the routes unit deletes them.
+- **Differential: NEW `scenario_location_equivalence`** + `harness/oracle/cases/scenario-location.ts` (a tsx script,
+  not the order's `.test.ts` — no jest.setup mocks to `doMock` back) + the run-time builder
+  `fixtures/build-scenario-location-fixture.ts` / `scenario-location.json` (its pair under `/tmp`, rebuilt by the
+  recipe through v4's REAL repositories at the pin; never committed): 85 ops replayed IN ORDER on one copy — 17
+  resolves (probe / ensure / tombstone / other user / vaultless / missing / no id / `''` / the schema-refused nameless
+  project and unnamed group), 10 classifies, 19 lookups (bad path before any read, nested, empty, linked store,
+  arbitrary store, archived vault → L7 then L9, the four kinds ok, missing, a blank body → L13 then L11, `%20` both
+  tiers, `%E0` → `URIError`, `scenarios/A.md` → nested, a case-insensitive file), lists / reads / idForPath, the
+  catalogue (±archived, before and after the writes — the `"beta"`/`"Beta"` tie in rowid order), 22 store writes
+  (conflict, empty-after-sanitise, create-as-default, a whitespace body written then 404 — Δ12, archived kept on
+  update, same-name rename of a missing file → 404 — Δ11, rename conflict / same-name / move, delete, `setDefault(null)`
+  clears, `setDefault` unknown throws), ensure minting a store / healing a folder, and a DROPPED folder table (the heal
+  WARNs L2 then rethrows; a probe after it is untouched). Results, `doc_mount_points` counts, which mounts hold a
+  `Scenarios/` folder, and the L1–L15 captures — **85 / 85**. `EXCERPT_LONE_SURROGATE` covers the catalogue's
+  `Scenarios/long.md` too (v4's lone high surrogate at unit 239 ↔ v5 U+FFFD).
+- **Finding (recorded, NOT this lane's file):** the first run diverged on BARE's `ensure`: v4 ADOPTS the store still
+  linked to a project whose pointer is null (`ensureOfficialStore` step 2); v5 MINTS a new one —
+  `db/ensure_official_store.rs`'s module header records step 2 as a tracked deferral ("lands with the
+  startup-backfill slice"). Its reachability is unchanged by this lane (the pre-span routes called the same ensure),
+  so the fixture UNLINKS BARE's store to prove step 3 on both sides. **HANDOFF (unifier / the startup-backfill
+  owner):** step 2 is reachable through every scenario write route, both create hooks and the union on an instance
+  whose owner row lost its pointer but kept its link.
+- **Mutation proofs:** a probe that provisions (`if ensure || true`) → 151 mismatches; the raw finders in reverse
+  rowid order → the three catalogue rows red (the tie flips).
+- Regen (Node 24, from the pin): `/tmp/p4d295/bin/build-sl.sh` then `/tmp/p4d295/bin/regen-sl.sh` (= the header's
+  two commands with `/tmp/p4d295/out/` paths).

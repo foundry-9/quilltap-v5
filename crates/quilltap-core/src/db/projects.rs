@@ -843,3 +843,150 @@ mod three_state_tests {
         }
     }
 }
+
+// === P4.D295: the raw finders the scenario location reads (L-2) ===
+//
+// v4's scenario location and catalogue read projects and groups RAW (no store
+// overlay — only `id`, `name` and `officialMountPointId` are needed): its
+// `findByIdRaw` / `findAllRaw` / `findByOfficialMountPointIdRaw`. Each is v4's
+// base-repository read EXACTLY as its callers see it — a fallback `safeQuery`
+// over a row the store-backed `ProjectSchema` / `GroupSchema` validates (the
+// row keys are identical for both kinds, `zod_group_issues`):
+//
+// - `_findAll` (`base.repository.ts:263-278`): a full scan with NO `ORDER BY`
+//   (rowid order — the input order of the catalogue's stable name sort, so a
+//   case-insensitive tie keeps v4's order); a refused row is dropped after
+//   `validateSafe`'s two lines; a failed read logs `Error finding all entities`
+//   and answers `[]`.
+// - `_findById` (`:247-258`) and `findOneByFilter` (`:303-314`, `LIMIT 1`, no
+//   `ORDER BY`): a refused row logs `Data validation failed` and throws into
+//   the fallback, which logs `Error finding entity by ID` / `… by filter` and
+//   answers `null`.
+
+/// One slim store-owner row as better-sqlite3 hands it to v4's Zod (a NULL
+/// cell is an ABSENT key), refused with v4's `ZodError.message` when the row
+/// schema rejects it.
+fn validated_owner_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<Result<Map<String, Value>, String>> {
+    let mut obj = Map::new();
+    for (i, key) in [
+        "id",
+        "name",
+        "officialMountPointId",
+        "createdAt",
+        "updatedAt",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        if let Some(v) = super::groups::zod_row_cell(row.get_ref(i)?) {
+            obj.insert(key.to_string(), v);
+        }
+    }
+    let issues = crate::api::zod_issues::zod_group_issues(&obj);
+    if issues.is_empty() {
+        return Ok(Ok(obj));
+    }
+    Ok(Err(crate::api::zod_issues::zod_error_message(&issues)))
+}
+
+/// v4 `findAllRaw()` for a store-backed owner table (`projects` / `groups`).
+pub(crate) fn store_owner_find_all_raw(
+    main: &Connection,
+    collection: &'static str,
+) -> Vec<Map<String, Value>> {
+    let rows = super::fallback::find_all_or_empty(collection, || {
+        let mut stmt = main.prepare(&format!(
+            "SELECT id, name, officialMountPointId, createdAt, updatedAt FROM {collection}"
+        ))?;
+        let rows = stmt
+            .query_map([], validated_owner_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    });
+    rows.into_iter()
+        .filter_map(|row| match row {
+            Ok(obj) => Some(obj),
+            Err(zod) => {
+                super::fallback::log_safe_validation_drop(collection, &zod);
+                None
+            }
+        })
+        .collect()
+}
+
+/// One validated owner row by `WHERE <column> = ?1 LIMIT 1`; a refused row is
+/// `validate`'s line and an `Err` carrying the Zod message.
+fn store_owner_find_one(
+    main: &Connection,
+    collection: &'static str,
+    column: &str,
+    value: &str,
+) -> Result<Option<Map<String, Value>>, DbError> {
+    let row = main
+        .query_row(
+            &format!(
+                "SELECT id, name, officialMountPointId, createdAt, updatedAt \
+                 FROM {collection} WHERE {column} = ?1 LIMIT 1"
+            ),
+            rusqlite::params![value],
+            validated_owner_row,
+        )
+        .map(Some)
+        .or_else(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })?;
+    match row {
+        None => Ok(None),
+        Some(Ok(obj)) => Ok(Some(obj)),
+        Some(Err(zod)) => {
+            super::fallback::log_data_validation_failed(collection, &zod);
+            Err(DbError::Internal(zod))
+        }
+    }
+}
+
+/// v4 `findByIdRaw(id)` for a store-backed owner table.
+pub(crate) fn store_owner_find_by_id_raw(
+    main: &Connection,
+    collection: &'static str,
+    id: &str,
+) -> Option<Map<String, Value>> {
+    super::fallback::find_by_id_or_none(collection, id, || {
+        store_owner_find_one(main, collection, "id", id)
+    })
+}
+
+/// v4 `findByOfficialMountPointIdRaw(mountPointId)` for a store-backed owner
+/// table (`store-backed.repository.ts:~106` — `findOneByFilter`).
+pub(crate) fn store_owner_find_by_official_mount_point_id_raw(
+    main: &Connection,
+    collection: &'static str,
+    mount_point_id: &str,
+) -> Option<Map<String, Value>> {
+    super::fallback::find_one_by_filter_or_none(collection, || {
+        store_owner_find_one(main, collection, "officialMountPointId", mount_point_id)
+    })
+}
+
+/// v4 `projects.findAllRaw()` — see the region header.
+pub fn find_all_raw(main: &Connection) -> Vec<Map<String, Value>> {
+    store_owner_find_all_raw(main, "projects")
+}
+
+/// v4 `projects.findByIdRaw(id)` — see the region header.
+pub fn find_by_id_raw_or_none(main: &Connection, id: &str) -> Option<Map<String, Value>> {
+    store_owner_find_by_id_raw(main, "projects", id)
+}
+
+/// v4 `projects.findByOfficialMountPointIdRaw(mountPointId)` — see the region
+/// header. The scenario location classifies a mount as a project's with it.
+pub fn find_by_official_mount_point_id_raw(
+    main: &Connection,
+    mount_point_id: &str,
+) -> Option<Map<String, Value>> {
+    store_owner_find_by_official_mount_point_id_raw(main, "projects", mount_point_id)
+}
+// === end P4.D295 ===

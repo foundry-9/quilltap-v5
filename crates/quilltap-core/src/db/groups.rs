@@ -435,3 +435,27 @@ mod three_state_tests {
         );
     }
 }
+
+// === P4.D295: the raw finders the scenario location reads (L-2) ===
+// v4's `findAllRaw` / `findByIdRaw` / `findByOfficialMountPointIdRaw` for
+// groups — the shared store-owner reads in `super::projects` (the row schemas
+// are identical for both kinds; see that region's header).
+
+/// v4 `groups.findAllRaw()`.
+pub fn find_all_raw(main: &Connection) -> Vec<Map<String, Value>> {
+    super::projects::store_owner_find_all_raw(main, "groups")
+}
+
+/// v4 `groups.findByIdRaw(id)`.
+pub fn find_by_id_raw_or_none(main: &Connection, id: &str) -> Option<Map<String, Value>> {
+    super::projects::store_owner_find_by_id_raw(main, "groups", id)
+}
+
+/// v4 `groups.findByOfficialMountPointIdRaw(mountPointId)`.
+pub fn find_by_official_mount_point_id_raw(
+    main: &Connection,
+    mount_point_id: &str,
+) -> Option<Map<String, Value>> {
+    super::projects::store_owner_find_by_official_mount_point_id_raw(main, "groups", mount_point_id)
+}
+// === end P4.D295 ===

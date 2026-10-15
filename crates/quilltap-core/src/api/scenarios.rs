@@ -262,7 +262,7 @@ pub(crate) fn create_op(
     );
     write_database_document(mount, mp, &relative_path, &content)?;
     if fields.is_default == Some(true) {
-        set_scenario_default_in_folder(mount, mp, &relative_path, SCENARIOS_FOLDER)?;
+        set_scenario_default_in_folder(mount, mp, Some(&relative_path), SCENARIOS_FOLDER)?;
     }
 
     // ⚠ v4 `d25dacc1` quirk, reproduced: the three file-backed collection POSTs
@@ -329,7 +329,7 @@ pub(crate) fn update_op(
     );
     write_database_document(mount, mp, resolved_path, &content)?;
     if fields.is_default == Some(true) {
-        set_scenario_default_in_folder(mount, mp, resolved_path, SCENARIOS_FOLDER)?;
+        set_scenario_default_in_folder(mount, mp, Some(resolved_path), SCENARIOS_FOLDER)?;
     }
 
     let listed = list_scenarios_in_folder(mount, mp, SCENARIOS_FOLDER, include_archived)?;
