@@ -309,8 +309,6 @@ async function main(): Promise<void> {
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('background_jobs', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('embedding_status', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('memories', 'id')) }));
-  lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('vector_entries', 'id')) }));
-  lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('vector_indices', 'id')) }));
   lines.push(
     JSON.stringify({ kind: 'table', ...(await dumpTable('conversation_chunks', 'id')) })
   );

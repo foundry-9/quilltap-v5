@@ -14,8 +14,10 @@
 //! messages) through the ported handler + the ported claim/mark, asserts the
 //! processed (jobId, outcome, error) SEQUENCE element-for-element (pinning
 //! claim order, the permanent-vs-transient classifier split, and the DEAD
-//! transition), then diffs EIGHT tables — `background_jobs`,
-//! `embedding_status`, `memories`, `vector_entries`, `vector_indices`,
+//! transition), then diffs SEVEN tables — `background_jobs`,
+//! `embedding_status`, `memories` (P4.D292: the vector-mirror pair left the
+//! dump with the mirror, v4 `af48f6cc2` — the MEMORY vector lives on
+//! `memories.embedding` only),
 //! `conversation_chunks`, `help_docs` (main) and `doc_mount_chunks` (mount) —
 //! with minted timestamps placeholder-normalized and everything else EXACT.
 //!
@@ -111,7 +113,8 @@ struct FailingTextW {
 #[serde(rename_all = "camelCase")]
 struct RouteBodyW {
     character_id: String,
-    batch_size: Option<i64>,
+    // P4.D292: a corpus body's `batchSize` is parsed but never sent — the wire
+    // dropped it at `KEYSTONE` (see the route phase).
     confirm: Option<bool>,
 }
 
@@ -210,14 +213,6 @@ const TABLES: &[TableSpec] = &[
         &["entityType", "entityId", "profileId"],
     ),
     ("memories", "id", true, &["updatedAt"], &[]),
-    ("vector_entries", "id", true, &["createdAt"], &[]),
-    (
-        "vector_indices",
-        "id",
-        true,
-        &["createdAt", "updatedAt"],
-        &[],
-    ),
     ("conversation_chunks", "id", true, &["updatedAt"], &[]),
     ("help_docs", "id", true, &["updatedAt"], &[]),
     // P4.D77 — the section chunks the HELP_DOC job now embeds. `updatedAt` is
@@ -571,7 +566,14 @@ async fn embedding_generate_jobs_match_oracle() {
         let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
         let decoded = EmbeddingGeneratePayload::from_json(&payload);
         // v4 passes `job.userId` — the row's own value, not the corpus's.
-        let outcome = handle_embedding_generate(&db, &embedding, &job.user_id, &decoded).await;
+        // P4.D292: the job id, and the memory calendar's host rung pinned to the
+        // oracle's `TZ=UTC` (v4's process zone).
+        let ctx = quilltap_core::services::embedding_generate_job::EmbeddingGenerateContext {
+            job_id: &job.id,
+            host_zone_fallback: "UTC",
+            now_ms: quilltap_core::clock::now_unix_ms() as f64,
+        };
+        let outcome = handle_embedding_generate(&db, &embedding, &job.user_id, &decoded, ctx).await;
         let (outcome_str, error) = match outcome {
             Ok(()) => {
                 let id = job.id.clone();
@@ -627,7 +629,13 @@ async fn embedding_generate_jobs_match_oracle() {
                     &embedding,
                     &spec.user_id,
                     &case.body.character_id,
-                    case.body.batch_size,
+                    // P4.D292: the wire dropped `batchSize` at `KEYSTONE` (C2 —
+                    // v4 `af48f6cc2`; Zod strips the key), and the engine arm
+                    // passes `None`: a body's `batchSize` never reaches the
+                    // handler, so `gen-invalid-batch` answers v4's 200. (The
+                    // parameter itself leaves with the backfill re-point —
+                    // §S.5 (3); this argument goes with it.)
+                    None,
                 )
                 .await
             }
@@ -672,7 +680,7 @@ async fn embedding_generate_jobs_match_oracle() {
         call_diff.join("\n")
     );
 
-    // Dump + diff the eight tables (timestamps placeholdered, all else exact).
+    // Dump + diff the seven tables (timestamps placeholdered, all else exact).
     let mut got: Vec<Value> = TABLES
         .iter()
         .map(|(table, order_by, main, _, _)| {

@@ -26,11 +26,17 @@
 //!   - **The missing-entity handling is asymmetric.** MEMORY, HELP_DOC and
 //!     MOUNT_CHUNK mark the status row failed (`'<X> not found'`);
 //!     CONVERSATION_CHUNK just logs and returns with **no** `markAsFailed`.
-//!   - **MEMORY embeds the plain `` `${summary}\n\n${content}` `` concat** —
-//!     NOT the anchor-aware `build_memory_embedding_text` the gate's create
-//!     path uses. v4's handler predates the episodic anchors and was never
-//!     updated; the re-embed path therefore drops the anchor line, and v5
-//!     matches.
+//!   - **MEMORY embeds the canonical ANCHORED text** (v4 `c2795733f`, bug 204
+//!     — "an inline `summary\n\ncontent` here stripped date/place from every
+//!     row on each reindex"): [`embedding_text_for`] in the memory-calendar
+//!     zone ([`refresh_memory_time_zone`] — "the job child's zone cache starts
+//!     cold, so resolve it before building the text"), with
+//!     [`lexical_embedding_text_for`] handed over as `lexical_text` (v4
+//!     `4ae0c4ca6`) — what a BUILTIN profile embeds instead; a neural profile
+//!     embeds the anchored text. The oversize / empty guard reads the ANCHORED
+//!     text. The vector reaches the row through the ONE index writer
+//!     ([`crate::services::memory_index::upsert`], v4 `memoryIndex.upsert`) —
+//!     `memories.embedding` only, no mirror (v4 `af48f6cc2`). P4.D292.
 //!   - **`markAsEmbedded`/`markAsFailed` UPSERT** (v4 `a5d6cee5`, Bug 7 —
 //!     re-ported in P4.D25). They used to be find-then-update and returned
 //!     `null` silently when the triple had no row, which — once v4's
@@ -40,10 +46,9 @@
 //!
 //! ## v4 side-effects that map to no-ops in v5
 //!
-//!   - `getVectorStoreManager().unloadStore(characterId)` (v4 :182) — v4 caches
-//!     per-character vector stores in memory and must drop the cache after a
-//!     direct-to-DB write. v5 loads [`crate::db::vector_store`] stores fresh
-//!     per operation (no manager, no cache), so there is nothing to unload.
+//!   - v4's index cache (the job child buffers the row write and the parent
+//!     drops its cache for the character on commit) — v5 keeps no cache; the
+//!     row IS the index (the job child's plumbing is NO-PORT, R-AL).
 //!   - `invalidateMountPoint(chunk.mountPointId)` (v4 :446) — v4's mount-chunk
 //!     search reads an in-memory cache; v5's reads the DB directly (the
 //!     documented no-op seam, see `photos/save_image_to_album.rs`).
@@ -53,7 +58,11 @@ use serde_json::Value;
 use crate::db::embedding_status::EmbeddingStatusRepository;
 use crate::db::runtime::Db;
 use crate::jsstr::{js_trim, utf16_len};
+use crate::memory_embedding_text::{
+    embedding_text_for, lexical_embedding_text_for, AnchorEntities, EmbeddingTextSource,
+};
 use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
+use crate::services::memory_time_zone::refresh_memory_time_zone;
 
 /// v4 `EMBEDDING_MAX_CHARS` (`lib/embedding/embedding-service.ts:74`) — the
 /// oversize pre-flight cap, in JS string length (UTF-16 code units). The single
@@ -124,6 +133,33 @@ pub fn preflight_skip_reason(text: &str) -> Option<String> {
     ))
 }
 
+/// The fields a memory row (a `memories_read` JSON row) hands the embedded
+/// text builders — v4 passes the row itself as `EmbeddingTextSource`.
+pub(crate) fn embedding_text_source(memory: &Value) -> EmbeddingTextSource<'_> {
+    let str_of = |k: &str| memory.get(k).and_then(Value::as_str);
+    EmbeddingTextSource {
+        summary: str_of("summary").unwrap_or_default(),
+        content: str_of("content").unwrap_or_default(),
+        occurred_at: str_of("occurredAt"),
+        narrative_time: str_of("narrativeTime"),
+        entities: memory
+            .get("entities")
+            .and_then(Value::as_array)
+            .map_or(AnchorEntities::None, |a| AnchorEntities::Json(a)),
+    }
+}
+
+/// The job context a branch needs beyond its payload (P4.D292): v4's `job.id`
+/// (the MEMORY branch's lines carry it) and the host's zone NAME + wall clock
+/// for the memory-calendar refresh (core reads no ambient clock or zone — the
+/// P4.24 `LlmLogCleanupJobHandler` precedent).
+#[derive(Debug, Clone, Copy)]
+pub struct EmbeddingGenerateContext<'a> {
+    pub job_id: &'a str,
+    pub host_zone_fallback: &'a str,
+    pub now_ms: f64,
+}
+
 /// Handle an `EMBEDDING_GENERATE` job (v4 `handleEmbeddingGenerate`).
 ///
 /// `Ok(())` completes the job — including the guard-skip, permanent-error and
@@ -135,6 +171,7 @@ pub async fn handle_embedding_generate<E: EmbeddingProvider>(
     embedding: &E,
     user_id: &str,
     payload: &EmbeddingGeneratePayload,
+    ctx: EmbeddingGenerateContext<'_>,
 ) -> Result<(), String> {
     match payload.entity_type.as_deref() {
         Some("HELP_DOC") => help_doc_branch(db, embedding, user_id, payload).await,
@@ -142,7 +179,7 @@ pub async fn handle_embedding_generate<E: EmbeddingProvider>(
             conversation_chunk_branch(db, embedding, user_id, payload).await
         }
         Some("MOUNT_CHUNK") => mount_chunk_branch(db, embedding, user_id, payload).await,
-        Some("MEMORY") => memory_branch(db, embedding, user_id, payload).await,
+        Some("MEMORY") => memory_branch(db, embedding, user_id, payload, ctx).await,
         // v4: `throw new Error(`Unsupported entity type: ${payload.entityType}`)`
         // — an absent field renders as JS `undefined`.
         other => Err(format!(
@@ -283,6 +320,7 @@ async fn memory_branch<E: EmbeddingProvider>(
     embedding: &E,
     user_id: &str,
     payload: &EmbeddingGeneratePayload,
+    ctx: EmbeddingGenerateContext<'_>,
 ) -> Result<(), String> {
     let pid = payload.profile_id.clone().unwrap_or_default();
     let eid = payload.entity_id.clone();
@@ -292,7 +330,9 @@ async fn memory_branch<E: EmbeddingProvider>(
     let Some(memory) = memory else {
         tracing::warn!(
             target: "quilltap::jobs",
-            memory_id = %payload.entity_id,
+            context = "handleEmbeddingGenerate",
+            jobId = %ctx.job_id,
+            memoryId = %payload.entity_id,
             "[EmbeddingGenerate] Memory not found",
         );
         mark_failed(
@@ -308,24 +348,7 @@ async fn memory_branch<E: EmbeddingProvider>(
         return Ok(());
     };
 
-    let summary = memory
-        .get("summary")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let content = memory
-        .get("content")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let character_id = memory
-        .get("characterId")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    // v4 :142 — the plain concat, NOT build_memory_embedding_text (see the
-    // module doc).
-    let text = format!("{summary}\n\n{content}");
-
-    match memory_try(db, embedding, user_id, payload, &pid, &character_id, &text).await {
+    match memory_try(db, embedding, user_id, payload, &pid, &memory, ctx).await {
         Ok(()) => Ok(()),
         Err(msg) => catch_arm(db, "MEMORY", &payload.entity_id, &pid, msg, user_id).await,
     }
@@ -337,10 +360,25 @@ async fn memory_try<E: EmbeddingProvider>(
     user_id: &str,
     payload: &EmbeddingGeneratePayload,
     profile_id: &str,
-    character_id: &str,
-    text: &str,
+    memory: &Value,
+    ctx: EmbeddingGenerateContext<'_>,
 ) -> Result<(), String> {
-    if guard_skip(db, "MEMORY", &payload.entity_id, profile_id, text, user_id)
+    let str_of = |k: &str| memory.get(k).and_then(Value::as_str).unwrap_or_default();
+    let (memory_id, character_id) = (str_of("id").to_string(), str_of("characterId").to_string());
+    // v4 :144-158 — "The anchor date renders on the instance's memory calendar;
+    // the job child's zone cache starts cold, so resolve it before building the
+    // text."
+    let memory_time_zone = refresh_memory_time_zone(db, ctx.host_zone_fallback, ctx.now_ms);
+    let source = embedding_text_source(memory);
+    let text = embedding_text_for(&source, &memory_time_zone);
+    tracing::debug!(
+        target: "quilltap::jobs",
+        context = "handleEmbeddingGenerate",
+        memoryId = %memory_id,
+        textLength = utf16_len(&text),
+        "[EmbeddingGenerate] Built memory embedding text",
+    );
+    if guard_skip(db, "MEMORY", &payload.entity_id, profile_id, &text, user_id)
         .await?
         .is_some()
     {
@@ -348,46 +386,55 @@ async fn memory_try<E: EmbeddingProvider>(
     }
     let result = embedding
         .generate_embedding_for_user(
-            text,
+            &text,
             user_id,
             payload.profile_id.as_deref(),
-            // lexical_text: None until P4.D292 (EMBEDDING_GENERATE — v4 `embedding-generate.ts:168`) lands it (C1-10).
-            EmbeddingCallOptions::background(),
+            EmbeddingCallOptions {
+                lexical_text: Some(lexical_embedding_text_for(&source)),
+                ..EmbeddingCallOptions::background()
+            },
         )
         .await
         .map_err(|e| e.message)?;
 
-    // v4 :157 `updateForCharacter(characterId, id, { embedding })` — a `null`
-    // return (vanished / ownership mismatch) is silent in v4; ignore the flag.
-    let (vec, dims) = (result.embedding.clone(), result.dimensions as f64);
-    let (cid, mid) = (character_id.to_string(), payload.entity_id.clone());
+    // v4 :172-176 — "Row and index through the one writer": `embedding` only;
+    // the tier rides into the (v4-only) cache. A row the write does not find is
+    // silent here as in v4.
+    let tier = if str_of("tier") == "cold" {
+        crate::db::vector_store::Tier::Cold
+    } else {
+        crate::db::vector_store::Tier::Hot
+    };
+    let (vec, cid, mid) = (
+        result.embedding.clone(),
+        character_id.clone(),
+        memory_id.clone(),
+    );
     db.write(move |ws| {
-        let patch = crate::db::memories::MemUpdate {
-            embedding: Some(Some(vec.clone())),
-            ..Default::default()
-        };
-        crate::db::memories::MemoriesRepository::new(ws.main().connection())
-            .update_for_character(&cid, &mid, &patch)
-            .map(|_| ())
+        crate::services::memory_index::upsert(
+            ws.main().connection(),
+            &cid,
+            vec![crate::services::memory_index::MemoryIndexUpsert {
+                id: mid,
+                embedding: vec,
+                tier: Some(tier),
+                ..Default::default()
+            }],
+        )
+        .map(|_| ())
     })
     .await
     .map_err(db_str)?;
-
-    // P4.D288 (C1-3, mechanical): the vector-mirror write is gone with the
-    // mirror — the row update above is the index write (P4.D292 routes this
-    // branch through `services::memory_index`).
-    let _ = dims;
-
-    // v4 :182 `unloadStore(characterId)` — no-op in v5 (no cached store
-    // manager; see the module doc).
 
     mark_embedded(db, "MEMORY", &payload.entity_id, profile_id, user_id)
         .await
         .map_err(db_str)?;
     tracing::info!(
         target: "quilltap::jobs",
-        memory_id = %payload.entity_id,
-        character_id = %character_id,
+        context = "handleEmbeddingGenerate",
+        jobId = %ctx.job_id,
+        memoryId = %memory_id,
+        characterId = %character_id,
         dimensions = result.dimensions,
         "[EmbeddingGenerate] Embedding generated successfully",
     );
@@ -1205,7 +1252,17 @@ mod tests {
             "entityType": "HELP_DOC", "entityId": DOC, "profileId": "p"
         }));
         crate::test_support::captured_with(|| {
-            rt.block_on(handle_embedding_generate(db, embedding, "u", &payload))
+            rt.block_on(handle_embedding_generate(
+                db,
+                embedding,
+                "u",
+                &payload,
+                EmbeddingGenerateContext {
+                    job_id: "job",
+                    host_zone_fallback: "UTC",
+                    now_ms: 0.0,
+                },
+            ))
         })
     }
 

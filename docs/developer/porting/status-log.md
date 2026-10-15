@@ -181012,3 +181012,31 @@ This lane's half (the `builtinRefit` key) is written into the Rust comparand (fe
   {characters: 3, memories: 5}` (the vault-less character is the third), the pre-existing id kept with
   `textShapeVersion` 1.
 - Fixture invalidation: `/tmp/qt-refit-main.db` / `-mount.db` are rebuilt by this family's own recipe only.
+
+### Unit 4 — EMBEDDING_GENERATE's memory branch (core + host `spine.rs` P4.6BL region)
+
+- `services/embedding_generate_job.rs`: `handle_embedding_generate(db, embedding, user_id, payload, ctx:
+  EmbeddingGenerateContext { job_id, host_zone_fallback, now_ms })` (L-5); the MEMORY branch per v4 `:125-224` —
+  `refresh_memory_time_zone` → `embedding_text_for` (anchored) → DEBUG `Built memory embedding text` (UTF-16
+  `textLength`) → the guard on the ANCHORED text → `EmbeddingCallOptions { lexical_text: Some(lexical), ..background
+  }` → `memory_index::upsert` (tier from the row, `embedding` only) → mark + INFO; `pub(crate)
+  embedding_text_source(&Value)` (reused by the backfill). The memory branch's WARN / INFO now carry v4's
+  `context` / `jobId` / camelCase keys. **Recorded, not this lane's:** the SHARED `guard_skip` / `catch_arm` lines
+  (all four entity branches) still log snake_case keys without `context` / `jobId` — a pre-existing divergence
+  outside this order's line list (candidate follow-up).
+- `quilltap-host/src/spine.rs` (P4.6BL region + its registration row inside the same fence):
+  `EmbeddingGenerateJobHandler { wire, host_zone_fallback: self.tz }`, `now_unix_ms()` per job.
+- **`embedding_generate_jobs`** red-first (regen_failed: the case dumped `vector_entries`) → GREEN from the pin:
+  the case's two mirror dumps and the Rust table rows removed (seven tables now); the corpus's MEMORY permanent
+  failure re-keyed on the ANCHORED text `…\n(when: 2026-06-15)` (`_occurredAtNote` rewritten — the old note's
+  plain-vs-anchored premise retired with bug 204); the route phase passes `None` for `batch_size` (the wire
+  dropped it at `KEYSTONE`; **HANDOFF: the harness call `memory_generate_embeddings(…, None)` loses its last
+  argument with P4.D298's re-point** — see unit 6).
+- **NEW family `embedding_text_shape_equivalence`** (case `harness/oracle/cases/embedding-text-shape.test.ts`, jest,
+  /tmp mirror): six jobs on an instance calendar `Pacific/Auckland` (the anchored date crosses UTC midnight →
+  `when: 2026-06-16`): anchored with a non-BMP summary (`textLength` 163 UTF-16), anchor-free, cold, lexical
+  exactly at the 131,072 cap but anchored over it (guard-skipped, no call, status FAILED `Oversize: 131091 …`),
+  blank-but-anchored (embedded), missing. Calls (text / lexicalText / priority / profile) byte-compared, the
+  three owned lines whole, sibling tags present, vectors (hex) + status rows. GREEN. **Observation for P4.D288:**
+  `Upserted memory vectors` fires inside the writer closure (C1-3's `upsert(conn, …)`), so a caller-thread rig
+  cannot see it — exempted from this family's tag check, recorded.

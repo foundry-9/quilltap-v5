@@ -50,7 +50,7 @@
       "occurredAt": "2026-06-15T09:30:00.000Z"
     }
   ],
-  "_occurredAtNote": "mem3's occurredAt makes the anchor-aware embed text of the tier-2 sweep DIFFER from the handler's plain concat: the handler phase embeds the plain text (registered as a permanent failure), the route sweep embeds the anchored text (which succeeds) — a port that used the wrong builder on either side lands on the other text and diverges loudly.",
+  "_occurredAtNote": "mem3's occurredAt gives it an anchor line. P4.D292 (v4 c2795733f bug 204 + 4ae0c4ca6, pin 83334b9a5): the EMBEDDING_GENERATE handler now embeds the ANCHORED text ('...\\n(when: 2026-06-15)', the memory calendar in the oracle's TZ=UTC), so the permanent failure is keyed on the anchored text: a port that embedded the plain concat would find no failure there and diverge loudly. The route sweep's backfill embeds the same anchored text (so it fails there too).",
   "orphanVectorEntryId": "fe000000-0000-4000-8000-0000000000fe",
   "seedVectorEntryForMemoryId": "ae000000-0000-4000-8000-000000000002",
   "conversationChunks": [
@@ -111,7 +111,7 @@
   "oversizeMountChunkId": "dc000000-0000-4000-8000-000000000002",
   "failingTexts": [
     {
-      "text": "perm failure memory\n\nThis memory is deterministically unembeddable.",
+      "text": "perm failure memory\n\nThis memory is deterministically unembeddable.\n(when: 2026-06-15)",
       "message": "This model's maximum context length is 8192 tokens"
     },
     {

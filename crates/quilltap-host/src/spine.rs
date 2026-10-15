@@ -3396,6 +3396,9 @@ pub struct EmbeddingGenerateJobHandler {
     /// P4.71: carried solely so the embedding provider this handler builds gets
     /// the host-resolved container gateway, like its three siblings.
     pub wire: WireConfig,
+    /// P4.D292 (L-5): the host's zone NAME — the memory calendar's fallback
+    /// rung (v4 `refreshMemoryTimeZone`); the wall clock is read per job.
+    pub host_zone_fallback: String,
 }
 
 impl JobHandler for EmbeddingGenerateJobHandler {
@@ -3404,7 +3407,12 @@ impl JobHandler for EmbeddingGenerateJobHandler {
             let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
             let decoded = EmbeddingGeneratePayload::from_json(&payload);
             let embedding = self.wire.embedding(db);
-            match handle_embedding_generate(db, &embedding, &job.user_id, &decoded).await {
+            let ctx = quilltap_core::services::embedding_generate_job::EmbeddingGenerateContext {
+                job_id: &job.id,
+                host_zone_fallback: &self.host_zone_fallback,
+                now_ms: quilltap_core::clock::now_unix_ms() as f64,
+            };
+            match handle_embedding_generate(db, &embedding, &job.user_id, &decoded, ctx).await {
                 Ok(()) => JobOutcome::Completed(None),
                 Err(e) => JobOutcome::Failed(e),
             }
@@ -3974,7 +3982,10 @@ impl SpineFactory for ProductionSpineFactory {
             // === P4.6BL ===
             (
                 "EMBEDDING_GENERATE".to_string(),
-                Box::new(EmbeddingGenerateJobHandler { wire: wire.clone() }),
+                Box::new(EmbeddingGenerateJobHandler {
+                    wire: wire.clone(),
+                    host_zone_fallback: self.tz.clone(),
+                }),
             ),
             // === end P4.6BL ===
             // === P4.24 ===

@@ -84,6 +84,19 @@ New `services::admission` (v4 `lib/memory/admission/` at the `83334b9a5` pin): `
 
 New differential families from the pin: `admission_tier3_equivalence` (44 steps over UTC and Chicago legs, plus tier-1 content-key and key-scope rows) and `update_memory_tier2_equivalence` (12 edits plus the Commonplace mirror); the retired `memory_gate_tier3` family is deleted and its builder renamed `build-admission-fixture.ts`. Census rows: two admission publish sites; the activity-span row re-pointed to `admit_row`. One measured divergence is pinned both ways and flagged: `FIND_BY_IDS_UNVALIDATED` (v4's `findByIds` drops a schema-invalid row; v5's does not).
 
+#### 2026-10-15 — feat(embedding): P4.D292 unit 4 — EMBEDDING_GENERATE embeds the anchored memory text and hands BUILTIN the lexical text
+
+_Versions: core 0.0.1301, host 0.0.206._
+
+The EMBEDDING_GENERATE memory branch at the pin (v4 `c2795733f` bug 204, `4ae0c4ca6`, `af48f6cc2`).
+
+- The branch now embeds the canonical anchored text (`embedding_text_for`) in the memory-calendar zone, read through `refresh_memory_time_zone`. It passes `lexical_text` (`lexical_embedding_text_for`), which a BUILTIN profile embeds instead. The oversize and empty guard reads the anchored text. The module doc's claim that v4 "was never updated" was false and is gone.
+- The vector reaches the row through `memory_index::upsert`, writing `memories.embedding` only.
+- New DEBUG `[EmbeddingGenerate] Built memory embedding text {context, memoryId, textLength}`, with `textLength` in UTF-16 units. The success INFO and the missing-memory WARN now carry v4's `context` / `jobId` / camelCase keys.
+- `handle_embedding_generate` takes an `EmbeddingGenerateContext` (job id, host zone name, wall clock). The host's `EmbeddingGenerateJobHandler` supplies the host zone and reads the clock per job.
+- `embedding_generate_jobs` is green from the pin. Its vector-mirror dumps are gone. The permanent-failure memory is keyed on its anchored text. The route phase sends no `batchSize`, because the wire dropped it.
+- New family `embedding_text_shape_equivalence` (v4's real handler with a recording seam). It covers an anchored memory on a non-UTC instance calendar, an anchor-free one, a cold one, an oversize-only-when-anchored one, a blank-but-anchored one, and a missing one. It compares calls (text and `lexicalText`), lines, vectors and status rows.
+
 #### 2026-10-15 — feat(embedding): P4.D292 unit 3 — the EMBEDDING_REFIT handler: the corpus by memory rows, the text-shape stamp, v4's lines
 
 _Versions: core 0.0.1300._
