@@ -182379,3 +182379,15 @@ the wipe's truncate lands), so they land and go green together.
   `store_name_reconcile_equivalence` (both legs), `fallback_home_guard`, `zod_issues_home_guard`,
   `spelling_guard` — all GREEN. fmt + both clippies clean; core lib (backup / delete_all / zod_issues /
   carriers) 79/79.
+
+### Unit 3 — Tier 2 item 20: unit twins (core 0.0.1301)
+
+- `services::backup::collect::p4d293_tests` — v4 `compact-backup.test.ts`'s claim at the pin (only the four
+  derived collections cleared; the memory's embedding nulled; `vector_entries`, the legacy read, untouched) and
+  R-R's two `textShapeVersion` shapes + the NULL drop + the absent column. `services::delete_all::
+  p4d293_truncate_list_tests` — v4 `delete-service.test.ts`'s list. The adoption / cursor halves of
+  `restore-field-fidelity.test.ts` are covered by the differential rows (`restore_legacy_vectors_*`,
+  `restore_cursors_*`) and their mutation proofs; no separate unit twin (the orchestrator's phases run only
+  inside `restore_on_writer`).
+- **Backup mutation proof:** `messages` emitted before the cursor keys → `[backup_with_memory_carriers] chat
+  key-order tail differs`.

@@ -1250,3 +1250,158 @@ mod wardrobe_wear_collect_tests {
     }
 }
 // === end P4.D264 ===
+
+#[cfg(test)]
+mod p4d293_tests {
+    //! P4.D293 — Rust twins of v4's `compact-backup.test.ts` (what the
+    //! compact strip clears, at the pin) and of the `textShapeVersion`
+    //! read's two table shapes (R-R).
+    use super::*;
+    use serde_json::json;
+
+    fn every_collection(rows: Vec<Value>) -> BackupData {
+        BackupData {
+            characters: rows.clone(),
+            chats: rows.clone(),
+            tags: rows.clone(),
+            connection_profiles: rows.clone(),
+            image_profiles: rows.clone(),
+            embedding_profiles: rows.clone(),
+            memories: rows.clone(),
+            files: rows.clone(),
+            prompt_templates: rows.clone(),
+            roleplay_templates: rows.clone(),
+            provider_models: rows.clone(),
+            projects: rows.clone(),
+            groups: rows.clone(),
+            llm_logs: rows.clone(),
+            plugin_configs: rows.clone(),
+            chat_settings: rows.clone(),
+            folders: rows.clone(),
+            wardrobe_items: rows.clone(),
+            character_plugin_data: rows.clone(),
+            conversation_annotations: rows.clone(),
+            chat_documents: rows.clone(),
+            chat_informs: rows.clone(),
+            instance_settings: rows.clone(),
+            embedding_status: rows.clone(),
+            conversation_chunks: rows.clone(),
+            tfidf_vocabularies: rows.clone(),
+            vector_entries: rows.clone(),
+            doc_mount_points: rows.clone(),
+            doc_mount_folders: rows.clone(),
+            doc_mount_files: rows.clone(),
+            doc_mount_file_links: rows.clone(),
+            doc_mount_chunks: rows.clone(),
+            doc_mount_documents: rows.clone(),
+            doc_mount_blobs: rows.clone(),
+            project_doc_mount_links: rows.clone(),
+            group_doc_mount_links: rows.clone(),
+            group_character_members: rows.clone(),
+            text_replacement_rules: rows.clone(),
+            wardrobe_wear: rows.clone(),
+        }
+    }
+
+    /// v4 `compactBackupData` at the pin: memories keep every word with the
+    /// embedding nulled; ONLY the four derived collections are cleared (the
+    /// vector mirror is no longer a collection a backup carries — `vector_entries`
+    /// is the restore's legacy read, untouched here); everything else as it came.
+    #[test]
+    fn compact_clears_exactly_the_four_derived_collections() {
+        let rows = vec![json!({"id": "x", "embedding": [0.5]})];
+        let data = compact_backup_data(every_collection(rows.clone()));
+        assert_eq!(data.memories, vec![json!({"id": "x", "embedding": null})]);
+        for cleared in [
+            &data.conversation_chunks,
+            &data.tfidf_vocabularies,
+            &data.embedding_status,
+            &data.doc_mount_chunks,
+        ] {
+            assert!(cleared.is_empty());
+        }
+        for kept in [
+            &data.vector_entries,
+            &data.chats,
+            &data.doc_mount_points,
+            &data.wardrobe_wear,
+        ] {
+            assert_eq!(kept, &rows);
+        }
+    }
+
+    fn vocabulary_keys(ddl: &str, insert: &str) -> Vec<Value> {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(ddl).unwrap();
+        conn.execute_batch(insert).unwrap();
+        query_all(
+            &conn,
+            "tfidf_vocabularies",
+            &tfidf_vocabulary_fields(&conn).unwrap(),
+            "",
+            &[],
+        )
+        .unwrap()
+    }
+
+    const BASE: &str = r#""id" TEXT, "profileId" TEXT, "userId" TEXT, "vocabulary" TEXT, "idf" TEXT,
+        "avgDocLength" REAL, "vocabularySize" REAL, "includeBigrams" INTEGER, "fittedAt" TEXT"#;
+
+    /// R-R: generateDDL's shape (`REAL DEFAULT 0`, schema order) places the key
+    /// between `fittedAt` and `createdAt`; the migration's (`INTEGER DEFAULT 0`,
+    /// APPENDED) after `updatedAt`; a REAL `0.0` writes `0`; a NULL cell drops
+    /// the key; a table without the column carries none.
+    #[test]
+    fn text_shape_version_follows_the_table_column_order() {
+        let values = "VALUES ('v', 'p', 'u', '[]', '[]', 1, 1, 1, 'f', 'c', 'u2')";
+        let fresh = vocabulary_keys(
+            &format!(
+                r#"CREATE TABLE "tfidf_vocabularies" ({BASE}, "textShapeVersion" REAL DEFAULT 0, "createdAt" TEXT, "updatedAt" TEXT)"#
+            ),
+            &format!(
+                r#"INSERT INTO "tfidf_vocabularies" ("id","profileId","userId","vocabulary","idf","avgDocLength","vocabularySize","includeBigrams","fittedAt","createdAt","updatedAt") {values}"#
+            ),
+        );
+        let keys = |v: &Value| {
+            v.as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        assert_eq!(
+            keys(&fresh[0]),
+            "id,profileId,userId,vocabulary,idf,avgDocLength,vocabularySize,includeBigrams,fittedAt,textShapeVersion,createdAt,updatedAt"
+        );
+        assert_eq!(
+            serde_json::to_string(&fresh[0]["textShapeVersion"]).unwrap(),
+            "0"
+        );
+        let migrated = vocabulary_keys(
+            &format!(
+                r#"CREATE TABLE "tfidf_vocabularies" ({BASE}, "createdAt" TEXT, "updatedAt" TEXT);
+                ALTER TABLE "tfidf_vocabularies" ADD COLUMN "textShapeVersion" INTEGER DEFAULT 0"#
+            ),
+            &format!(
+                r#"INSERT INTO "tfidf_vocabularies" ("id","profileId","userId","vocabulary","idf","avgDocLength","vocabularySize","includeBigrams","fittedAt","createdAt","updatedAt") {values};
+                INSERT INTO "tfidf_vocabularies" VALUES ('n', 'p', 'u', '[]', '[]', 1, 1, 1, 'f', 'c', 'u2', NULL)"#
+            ),
+        );
+        assert!(keys(&migrated[0]).ends_with("createdAt,updatedAt,textShapeVersion"));
+        assert!(!migrated[1]
+            .as_object()
+            .unwrap()
+            .contains_key("textShapeVersion"));
+        let absent = vocabulary_keys(
+            &format!(
+                r#"CREATE TABLE "tfidf_vocabularies" ({BASE}, "createdAt" TEXT, "updatedAt" TEXT)"#
+            ),
+            &format!(r#"INSERT INTO "tfidf_vocabularies" {values}"#),
+        );
+        assert!(!absent[0]
+            .as_object()
+            .unwrap()
+            .contains_key("textShapeVersion"));
+    }
+}

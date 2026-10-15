@@ -357,6 +357,14 @@ Starts v4's Phase-E recall pipeline (`584d28164`) under `services/recall/`.
 
 New tier-1 family `recall_rank_equivalence` against v4's real `lib/memory/scoring/rank.ts` (142 rows: every multiplier, the gate and the cap, `extraFired`, the cross-project exclusion, ties and a NaN salience, R6's arithmetic). Inverting the sort or dropping `extraFired` turns it red.
 
+#### 2026-10-15 — test(core): P4.D293 unit 3 — unit twins of v4's compact-backup and delete-service checks
+
+_Versions: core 0.0.1301._
+
+- `collect.rs`: the compact strip clears exactly the four derived collections at the pin and leaves `vector_entries` alone; `textShapeVersion` follows the table's column order in both v4 shapes (fresh `REAL` between `fittedAt` and `createdAt`, migrated `INTEGER` last), a NULL cell drops the key, and a table without the column carries none.
+- `delete_all.rs`: the main truncate list is v4's at the pin (cursors after `chat_informs`, no vector tables).
+- Mutation proof recorded: emitting `messages` before the cursor keys turns `system_backup_equivalence`'s key-order check red.
+
 #### 2026-10-15 — feat(core): P4.D293 unit 2 — the restore carries cursors, scenario sources and the legacy settings; the wipe clears cursors and announces after commit
 
 _Versions: core 0.0.1300._

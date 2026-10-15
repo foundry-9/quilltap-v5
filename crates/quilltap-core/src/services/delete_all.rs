@@ -627,3 +627,27 @@ pub async fn delete_all_user_data(
 
     Ok(summary)
 }
+
+#[cfg(test)]
+mod p4d293_truncate_list_tests {
+    /// P4.D293 — the Rust twin of v4 `delete-service.test.ts`'s truncate list
+    /// at the pin (`delete-service.ts:34-60`): the extraction cursors right
+    /// after `chat_informs`, no vector table.
+    #[test]
+    fn the_main_truncate_list_is_v4s_at_the_pin() {
+        assert_eq!(
+            super::FORMAT3_MAIN_TABLES,
+            &[
+                "chat_documents",
+                "chat_informs",
+                "memory_extraction_cursors",
+                "conversation_chunks",
+                "tfidf_vocabularies",
+                "embedding_status",
+                "text_replacement_rules",
+                "wardrobe_wear_stats",
+            ]
+        );
+        assert_eq!(super::V5_EXTRA_MAIN_TABLES, &["conversation_annotations"]);
+    }
+}
