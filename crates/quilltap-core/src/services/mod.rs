@@ -98,6 +98,8 @@ pub mod delete_all;
 // === P4.6BL ===
 pub mod embedding_generate_job;
 // === end P4.6BL ===
+pub mod builtin_refit_policy; // P4.D292
+pub mod embedding_job_scheduler; // P4.D292 (R-Q)
 pub mod embedding_provider;
 pub mod embedding_reapply_profile;
 pub mod embedding_refit_job;

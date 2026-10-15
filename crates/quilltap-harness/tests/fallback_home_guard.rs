@@ -187,6 +187,11 @@ const HOME_MESSAGES: &[&str] = &[
     "Error finding members superseded by digests",
     "Error finding digest subjects",
     // === end P4.D288 ===
+    // === P4.D292 — the refit policy's reads + the scheduler's deletion
+    // cleanup (append-only) ===
+    "Error finding TF-IDF vocabulary by profile ID",
+    "Error deleting embedding status by entity",
+    // === end P4.D292 ===
 ];
 
 const HOME: &str = "db/fallback.rs";

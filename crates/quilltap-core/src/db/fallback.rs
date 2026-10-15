@@ -3326,3 +3326,51 @@ pub fn digest_subjects_or_empty<T>(
 }
 
 // === end P4.D288 ===
+
+// === P4.D292 — the refit policy's reads (append-only) ===
+
+/// v4 `TfidfVocabularyRepository.findByProfileId` (`tfidf-vocabulary.
+/// repository.ts:62-72`) as the refit policy reads it: ERROR `Error finding
+/// TF-IDF vocabulary by profile ID {collection, context, profileId, error}`,
+/// FALLBACK `None` (the vocabulary then reads `unfitted`); inside the strict
+/// scope the line gains `strictFailures=true` and the `Err` propagates.
+pub fn tfidf_vocabulary_by_profile_or_none<T>(
+    profile_id: &str,
+    read: impl FnOnce() -> Result<Option<T>, DbError>,
+) -> Result<Option<T>, DbError> {
+    read().or_else(|error| {
+        let strict = strict_repository_failures_active();
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "tfidf_vocabularies",
+            context = "TfidfVocabularyRepository.findByProfileId",
+            profileId = %profile_id,
+            error = %error_text(&error),
+            strictFailures = strict.then_some(true),
+            "Error finding TF-IDF vocabulary by profile ID"
+        );
+        if strict {
+            Err(error)
+        } else {
+            Ok(None)
+        }
+    })
+}
+
+/// v4 `EmbeddingStatusRepository.deleteByEntity` (`embedding-status.
+/// repository.ts:340-356`), a RETHROW `safeQuery`: ERROR `Error deleting
+/// embedding status by entity {collection, entityType, entityId, error}`
+/// before the error propagates (the scheduler's `handleEntityDeletion`).
+pub fn log_embedding_status_delete_failure(entity_type: &str, entity_id: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "embedding_status",
+        entityType = %entity_type,
+        entityId = %entity_id,
+        error = %error_text(error),
+        strictFailures = strict_repository_failures_active().then_some(true),
+        "Error deleting embedding status by entity"
+    );
+}
+
+// === end P4.D292 ===

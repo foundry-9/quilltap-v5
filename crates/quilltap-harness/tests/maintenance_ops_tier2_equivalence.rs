@@ -224,6 +224,12 @@ fn maintenance_ops_match_oracle() {
             "enqueued": summary.fold_other_catchup.enqueued,
             "deferred": summary.fold_other_catchup.deferred,
         },
+        // === P4.D292: step 10 (v4 `4ae0c4ca6`), the TF-IDF refit check — a
+        // neural / profile-less fixture, so `{ reason: null, enqueued: false }`
+        // (the BUILTIN drift row lives in `builtin_refit_policy_equivalence`).
+        // `foldEpisodeCatchup` (step 9, before this key) is P4.D296's. ===
+        "builtinRefit": summary.builtin_refit.to_json(),
+        // === end P4.D292 ===
         "failures": summary.failures,
     });
     let want_summary = oracle_line(&oracle_text, "summary");

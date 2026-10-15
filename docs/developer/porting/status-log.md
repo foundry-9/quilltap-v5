@@ -180916,3 +180916,68 @@ Lane `claude/p4.d290-admission-149cb8fc1`, worktree `.claude/worktrees/p4d290-ad
   the run: `admission_tier3_equivalence`, `update_memory_tier2_equivalence`, `anchor_gate_probe_tier3_equivalence`.
   `recipe_sweep.py --self-test` 0. (The families ran through their own env blocks, not the sweep driver — no
   sweep was started on the shared machine.)
+
+## P4.D292 — the embedding jobs + the BUILTIN TF-IDF refit policy (lane record, 2026-10-15)
+
+**Lane start.** Session started on `main` (`d1434189c`) in the main checkout; moved to the worktree
+`.claude/worktrees/p4d292` on branch `claude/p4.d292-embeddings-tfidf-refit-149cb8fc1`, cut from P4.D288's
+`KEYSTONE` = `149cb8fc1` (recorded in P4.D288's status header on its lane branch; `SCORING` `7e18b9cf7` is its
+ancestor). Pin `/tmp/qt-v4-pin-p4d292-83334b9a5` (HEAD `83334b9a5befca33…`, `package.json` `4.10.0-dev.176`).
+**§R.2 probe (observation):** branch `main`, tree CLEAN, `log 01f508d4e..main` = 15 commits (`a42c282b8` … `7458ff94e`,
+including `2432b9057 release: 4.10.0`, `37246654d dev: started 4.11.0 development`, `b82037d75` bug 248,
+`bbbcd2388` wardrobe copy-to-folder, `052659624`/`809e5104d` bug 247 filing); `1a2b2164c..bugfix` = `489b228b6
+bugfix: started 4.10.0 bug branch`. **v4 moved: `7458ff94e` observed at 2026-10-14 23:38 local** — out of scope
+by the pin rule. **The dependency trap fired:** the live tree's `@quilltap/plugin-utils` moved 2.6.3 → 2.7.1
+(`release: 4.10.0`), so the root `node_modules` symlink was replaced by `npm ci --offline --no-audit --no-fund` in
+the pin (§R.3's cure; `openai` 7.30.0, `plugin-utils` 2.6.3 under the pin).
+
+**C1 / C1-A spellings consumed (verified at the tip):** `memory_embedding_text::{embedding_text_for,
+lexical_embedding_text_for, EmbeddingTextSource, LEXICAL_TEXT_SHAPE_VERSION: i64 = 1}`,
+`embedding_scale::is_lexical_embedding_provider`, `services::memory_index::{upsert, search, entries, shape,
+IndexSearchOptions, MemoryIndexUpsert}`, `queue_service::enqueue_embedding_generate_many`,
+`BackgroundJobsRepository::find_active_by_type`, `embedding_profiles::find_instance_default`,
+`memories_read::count_corpus_since -> Result<(i64, i64)>`, `TvReadRow.text_shape_version: f64`,
+`EmbeddingCallOptions { priority, lexical_text }`.
+
+**L-2 / L-10 / L-11 measured at the `KEYSTONE` tip:** L-2 case (a) — `enqueue_embedding_generate_many` and
+`find_active_by_type` LANDED with real bodies (C1 artefacts; no signature change here). L-11 — all three reads
+LANDED with their fallback homes (`corpus_count_or_zero`, `active_jobs_by_type_or_empty`,
+`instance_default_profile_or_none`); no reads added by this lane. L-10 — the reconcile's two vector fields are GONE
+(`DimensionReconcileResult` = target / skipped / mismatched / reindexEnqueued; `host.rs` reads neither);
+EMBEDDING_GENERATE's mirror block is gone (the row write stays a direct `update_for_character`, not yet through
+`memory_index::upsert`); the BUILTIN `[Embedding] BUILTIN embed` DEBUG LANDED in `builtin_embedding.rs` (its pin is
+this lane's).
+
+**Red-first at `KEYSTONE`, from the pin** (`recipe_sweep.py --run-all`, `/tmp/p4d292/redfirst-sweep.json`):
+RED — `embedding_refit_tier3` (run_failed: `textShapeVersion` 0 vs v4's 1), `embedding_generate_jobs`,
+`embedding_remainder`, `embedding_reapply`, `character_optimizer_tier3` (each regen_failed: the CASE bodies — this
+lane's — still read / plant `vector_entries`, gone from the widened pairs); GREEN — `tfidf_vocabulary_tier2`,
+`tfidf_vocabulary_upsert_tier2`, `embedding_provider_tier3`, `embedding_status_tier2`. **`maintenance_ops_tier2`
+— STOP-AND-FLAG (this family only):** its shared builder `build-maintenance-ops-fixture.ts:146` plants a
+`MEMORY_HOUSEKEEPING` job that v4's `BackgroundJobSchema` now refuses (`Invalid option`), so the builder is DEAD at
+the pin — a builder P4.D288 was to re-aim at `KEYSTONE` (P4.D296's order lists it too) and neither lane may edit.
+This lane's half (the `builtinRefit` key) is written into the Rust comparand (fenced) and its BUILTIN proof lives in
+`builtin_refit_policy_equivalence` (Tier 1 #5); the family's regen waits on the builder.
+
+### Unit 1 — the refit policy, the debounce, the DATA tick's step 10
+
+- NEW `services/builtin_refit_policy.rs` (v4 `builtin-refit-policy.ts` whole) and NEW
+  `services/embedding_job_scheduler.rs` (`schedule_refit`, `fire_due_refits`, `next_deadline`, `schedule_notify`,
+  `pending_count`, `handle_entity_deletion`); step 10 + `BuiltinRefitSweep` + `builtinRefitJson` in
+  `scheduled_maintenance.rs` (fenced); two homes in `db/fallback.rs`'s P4.D292 region (+ `HOME_MESSAGES`).
+- **Finding (P4.D288's read):** `count_corpus_since(conn, Some(""))` counts `createdAt >= ''` (every row) where v4's
+  `since ? count : 0` answers 0 — caught red by `unfitted_empty_fitted_at`. Fixed at this lane's caller (the empty
+  `fittedAt` filtered to `None`). **HANDOFF: `crates/quilltap-core/src/db/memories_read.rs:1421`** — `Some(s) =>`
+  → `Some(s) if !s.is_empty() =>` in `count_corpus_since`'s `created_since` match (then the caller's filter is
+  redundant but harmless). On the failure path only, v5's ERROR then renders `since=null` where v4 renders `""`.
+- **Family `builtin_refit_policy_equivalence`** (case `harness/oracle/cases/builtin-refit-policy.ts`, tsx): (a) 315
+  tier-1 rows; (b) 23 planted scenarios — no default, neural default, unfitted (none / `''` / nothing-to-fit),
+  text-shape on BOTH storage classes, current at 1 on both, drift at the bar / one below / created AT `fittedAt`,
+  in-hand PENDING refit, PROCESSING reindex unforced (held) and forced (enqueues), forced held by a PENDING reindex,
+  forced on an empty corpus, a default owned by another user, and four failing reads (the vocabulary's home fires;
+  the three P4.D288 reads' own ERRORs pinned SILENT under their base fallbacks; the jobs-table failure reaches the
+  check's WARN); (c) 6 debounce scenarios under a virtual clock (v4's `setTimeout` / `clearTimeout` replaced before
+  import — jest fake timers' mechanism, in tsx); (d) 2 step-10 rows through v4's REAL `runScheduledMaintenance`.
+  Result objects byte-compared, lines whole per op (the silence legs), `background_jobs` masked. **4 / 4 green.**
+- Regen: the family's header recipe (outputs `/tmp/qt-builtin-refit-policy`, `/tmp/oracle-builtin-refit-policy.ndjson`;
+  this lane ran it into `/tmp/p4d292/brp`, `/tmp/p4d292/oracle-brp.ndjson`).

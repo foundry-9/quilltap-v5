@@ -28,6 +28,10 @@
 //!    whose source file is gone (v4 bug 43, `7bcd8515`) —
 //!    [`crate::services::file_storage::sweep_orphaned_thumbnails`], over the
 //!    injected [`crate::services::file_storage::StorageBackend`].
+//! 10. the Built-in (TF-IDF) vocabulary refit check (v4 `4ae0c4ca6`, P4.D292) —
+//!     [`crate::services::builtin_refit_policy::check_builtin_refit`]: "AUTO
+//!     memories never ask for a refit themselves, so the pass checks whether
+//!     the corpus has outgrown the vocabulary (no-op on neural defaults)."
 //!
 //! Each sweep runs in order and independently try/caught (a failure in one
 //! cannot abort the rest); `lastMaintenanceSweepAt` is recorded at the end
@@ -114,11 +118,34 @@ pub struct MaintenanceSweepSummary {
     /// v4 `foldOtherCatchup` (`d58548051`): the fold-grain OTHER idle
     /// catch-up sweep's `{ enqueued, deferred }`.
     pub fold_other_catchup: crate::services::fold_other_pass::FoldOtherCatchupSweepSummary,
+    // === P4.D292: the step-10 refit check's summary key ===
+    /// v4 `builtinRefit` (`4ae0c4ca6`): "Why the Built-in (TF-IDF)
+    /// vocabulary was refit this pass, if it was" — `{ reason, enqueued }`,
+    /// initialised `{ null, false }`.
+    pub builtin_refit: BuiltinRefitSweep,
+    // === end P4.D292 ===
     /// Sweeps that threw (and were swallowed so the rest could run): `jobs` /
     /// `assets` / `caches` / `orphan-store-children` / `orphans` / `terminals` /
     /// `orphan-thumbnails` / `fold-other-catchup` (v4's failure vocabulary).
     pub failures: Vec<String>,
 }
+
+// === P4.D292: the step-10 summary shape ===
+/// v4 `MaintenanceSweepSummary.builtinRefit` — `{ reason: string | null;
+/// enqueued: boolean }`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BuiltinRefitSweep {
+    pub reason: Option<&'static str>,
+    pub enqueued: bool,
+}
+
+impl BuiltinRefitSweep {
+    /// v4's `{ reason, enqueued }`.
+    pub fn to_json(self) -> serde_json::Value {
+        serde_json::json!({ "reason": self.reason, "enqueued": self.enqueued })
+    }
+}
+// === end P4.D292 ===
 
 /// v4 `orphanedStoreChildrenSwept` summary shape (bug 9): `{links, folders,
 /// documents}`.
@@ -204,6 +231,7 @@ pub async fn run_scheduled_maintenance(
         terminal_rows: 0,
         terminal_transcripts: 0,
         fold_other_catchup: Default::default(),
+        builtin_refit: BuiltinRefitSweep::default(), // P4.D292
         failures: Vec::new(),
     };
 
@@ -381,6 +409,20 @@ pub async fn run_scheduled_maintenance(
         }
     }
 
+    // === P4.D292: step 10, the Built-in (TF-IDF) vocabulary refit check ===
+    // v4 `scheduled-maintenance.ts:293-297`: "AUTO memories never ask for a
+    // refit themselves, so the pass checks whether the corpus has outgrown the
+    // vocabulary (no-op on neural defaults)." v4 wraps it in `runSweep` with
+    // the failure key `builtin-refit` and the WARN `TF-IDF refit check failed —
+    // continuing`, unreachable there and absent here: `check_builtin_refit`
+    // never fails (it answers its all-null struct after its own WARN).
+    let refit = crate::services::builtin_refit_policy::check_builtin_refit(db).await;
+    summary.builtin_refit = BuiltinRefitSweep {
+        reason: refit.reason.map(|r| r.as_str()),
+        enqueued: refit.enqueued,
+    };
+    // === end P4.D292 ===
+
     // Record the pass regardless of per-sweep failures ("last attempted pass").
     // A record failure is warned-and-swallowed in v4; same here.
     let stamp = iso_from_unix_ms(now_ms);
@@ -445,6 +487,7 @@ pub async fn run_scheduled_maintenance(
             "enqueued": summary.fold_other_catchup.enqueued,
             "deferred": summary.fold_other_catchup.deferred,
         })),
+        builtinRefitJson = %json(summary.builtin_refit.to_json()), // P4.D292
         failuresJson = %json(serde_json::json!(summary.failures)),
         "Scheduled maintenance pass complete",
     );
@@ -577,6 +620,19 @@ mod tests {
         assert!(done.contains("foldOtherCatchupJson="), "{done:?}");
         assert!(done.contains("failuresJson="), "{done:?}");
         assert!(!done.contains("assets_files_deleted"), "{done:?}");
+        // === P4.D292: step 10's key, after the fold catch-ups, before failures ===
+        // No `embedding_profiles` table here: the instance-default read's base
+        // fallback answers none, so the check is the all-false no-op.
+        let refit_at = done
+            .find(r#"builtinRefitJson={"reason":null,"enqueued":false}"#)
+            .expect("builtinRefitJson");
+        assert!(
+            done.find("foldOtherCatchupJson=").unwrap() < refit_at,
+            "{done:?}"
+        );
+        assert!(refit_at < done.find("failuresJson=").unwrap(), "{done:?}");
+        assert!(!has("TF-IDF refit check failed"), "{lines:?}");
+        // === end P4.D292 ===
 
         // And the failures the summary reports are the ones that were warned.
         assert!(summary.failures.contains(&"jobs".to_string()));

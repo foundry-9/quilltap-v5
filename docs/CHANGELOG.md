@@ -84,6 +84,19 @@ New `services::admission` (v4 `lib/memory/admission/` at the `83334b9a5` pin): `
 
 New differential families from the pin: `admission_tier3_equivalence` (44 steps over UTC and Chicago legs, plus tier-1 content-key and key-scope rows) and `update_memory_tier2_equivalence` (12 edits plus the Commonplace mirror); the retired `memory_gate_tier3` family is deleted and its builder renamed `build-admission-fixture.ts`. Census rows: two admission publish sites; the activity-span row re-pointed to `admit_row`. One measured divergence is pinned both ways and flagged: `FIND_BY_IDS_UNVALIDATED` (v4's `findByIds` drops a schema-invalid row; v5's does not).
 
+#### 2026-10-15 — feat(embedding): P4.D292 unit 1 — the BUILTIN TF-IDF refit policy, the refit debounce, and the DATA tick's step 10
+
+_Versions: core 0.0.1299._
+
+Ports v4's `builtin-refit-policy.ts` and `scheduleRefit` (v4 `4ae0c4ca6`, pin `83334b9a5`).
+
+- New `services::builtin_refit_policy`. It holds the pure rule (`unfitted`, then `text-shape` below `LEXICAL_TEXT_SHAPE_VERSION`, then `drift` at max(25, ceil(10%))) and the assessment. It also holds the in-hand check (a PENDING or PROCESSING refit or full reindex), the process-wide serialised `enqueue_refit_if_due`, and the never-failing `check_builtin_refit` over the instance default profile. All five v4 lines carry `module: 'embedding:builtin-refit-policy'`.
+- New `services::embedding_job_scheduler`. `schedule_refit` re-arms a 5 s deadline per user and profile and ORs the forced flag. `fire_due_refits` runs the due checks with v4's two INFOs and its ERROR. The host drives the cadence. `handle_entity_deletion` is v4's immediate `deleteByEntity`.
+- The daily DATA pass gains step 10 (the refit check) and `builtinRefitJson` on its end INFO.
+- Two fallback homes: `Error finding TF-IDF vocabulary by profile ID` and `Error deleting embedding status by entity`.
+- An empty `fittedAt` now counts no new memories, matching v4's `since ? … : 0`. The read itself is P4.D288's, so this is filtered at the caller and the body fix is handed off.
+- New family `builtin_refit_policy_equivalence` (v4's real code from the pin): 315 tier-1 rows, 23 planted scenarios across both `textShapeVersion` storage classes, 6 debounce scenarios under a virtual clock, and 2 step-10 rows through v4's real `runScheduledMaintenance`.
+
 #### 2026-10-14 — KEYSTONE: P4.D288 — the memory-refactor + scenarios round's schema keystone
 
 _Docs-only change._
