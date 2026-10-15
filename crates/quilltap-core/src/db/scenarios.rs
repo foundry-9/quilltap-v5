@@ -100,7 +100,8 @@ impl From<StoreError> for ScenarioWriteError {
 impl std::fmt::Display for ScenarioWriteError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ScenarioWriteError::Store(e) => write!(f, "{e}"),
+            // The BARE driver message (v4 renders `error.message`).
+            ScenarioWriteError::Store(e) => write!(f, "{}", store_error_text(e)),
             ScenarioWriteError::DefaultNotFound(p) => {
                 write!(f, "Cannot set default — scenario not found: {p}")
             }
@@ -296,6 +297,15 @@ pub fn build_scenario_list(
     }
 }
 
+/// A store failure's BARE message, as v4's lines render `error.message` — the
+/// driver's text without `DbError`'s `sqlite error: ` prefix.
+pub fn store_error_text(e: &StoreError) -> String {
+    match e {
+        StoreError::Db(db) => super::fallback::error_text(db),
+        StoreError::Store(store) => store.to_string(),
+    }
+}
+
 /// v4 `setScenarioDefaultInFolder(mp, defaultPath | null, folder)`
 /// (`scenarios-common.ts:249-291`): a **sequenced multi-file write with NO
 /// transaction** — (1) set `isDefault: true` on the chosen file (throw when
@@ -354,7 +364,7 @@ pub fn set_scenario_default_in_folder(
                         mountPointId = %mount_point_id,
                         folderName = %folder_name,
                         relativePath = %doc.relative_path,
-                        error = %error,
+                        error = %store_error_text(&error),
                         "Failed to demote a previously-default scenario; alphabetical tiebreaker will compensate"
                     );
                 }

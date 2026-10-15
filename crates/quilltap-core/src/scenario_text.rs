@@ -86,6 +86,61 @@ mod tests {
         );
     }
 
+    /// Rust twins of v4's `scenario-text.test.ts` `combineScenarioText` table
+    /// (`__tests__/unit/lib/chat/scenario-text.test.ts`, 8 cases).
+    #[test]
+    fn combine_scenario_text_matches_v4s_table() {
+        let c = combine_scenario_text;
+        assert_eq!(
+            c(Some("A tavern at dusk."), Some("It is raining.")).as_deref(),
+            Some("A tavern at dusk.\n\nIt is raining.")
+        );
+        for none in [None, Some("")] {
+            assert_eq!(
+                c(none, Some("It is raining.")).as_deref(),
+                Some("It is raining.")
+            );
+            assert_eq!(
+                c(Some("A tavern at dusk."), none).as_deref(),
+                Some("A tavern at dusk.")
+            );
+        }
+        assert_eq!(
+            c(Some("A tavern at dusk."), Some("   \n  ")).as_deref(),
+            Some("A tavern at dusk.")
+        );
+        assert_eq!(c(None, None), None);
+        assert_eq!(c(Some(""), Some("")), None);
+        assert_eq!(c(Some("   "), Some("   ")), None);
+        assert_eq!(
+            c(Some("A tavern at dusk.\n\n"), Some("It is raining.")).as_deref(),
+            Some("A tavern at dusk.\n\nIt is raining.")
+        );
+        assert_eq!(
+            c(Some("  Indented opening."), Some("Extra.")).as_deref(),
+            Some("  Indented opening.\n\nExtra.")
+        );
+        assert_eq!(
+            c(Some("Base."), Some("  padded notes  ")).as_deref(),
+            Some("Base.\n\npadded notes")
+        );
+    }
+
+    /// Rust twins of v4's `recoverPresetBody` table (3 cases).
+    #[test]
+    fn recover_preset_body_matches_v4s_table() {
+        let text = combine_scenario_text(Some("A rooftop."), Some("  Rain.  ")).unwrap();
+        assert_eq!(
+            recover_preset_body(Some(&text), Some("Rain.")).as_deref(),
+            Some("A rooftop.")
+        );
+        assert_eq!(
+            recover_preset_body(Some("A rooftop."), None).as_deref(),
+            Some("A rooftop.")
+        );
+        assert_eq!(recover_preset_body(Some("A rooftop."), Some("Rain.")), None);
+    }
+
     #[test]
     fn combine_trims_javascript_whitespace() {
         // U+FEFF is JS whitespace; U+0085 is not.

@@ -1595,6 +1595,48 @@ fn scenarios_routes_match_oracle() {
         ));
         ok("union_empty_group_name_dropped", &resp, false, &mut failed);
     }
+    {
+        let db = fresh_db(&spec, "p_demote_fail");
+        db.write_blocking(|w| {
+            w.mount_index().expect("mount writer").connection().execute_batch(
+                "CREATE TRIGGER \"qt_p4d295_demote_failure\" BEFORE INSERT ON \"doc_mount_documents\"
+                 WHEN NEW.\"content\" LIKE '%isDefault: false%'
+                 BEGIN SELECT RAISE(ABORT, 'planted demote failure'); END",
+            )?;
+            Ok(())
+        })
+        .expect("plant demote failure");
+        let resp = rt.block_on(projects::project_scenario_create(
+            &db,
+            IOTA,
+            json!({ "filename": "fresh", "isDefault": true, "body": "Fresh." }),
+            &spec.user_id,
+        ));
+        ok(
+            "project_create_default_demote_failure_logs",
+            &resp,
+            true,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "p_write_fail");
+        db.write_blocking(|w| {
+            w.mount_index().expect("mount writer").connection().execute_batch(
+                "CREATE TRIGGER \"qt_p4d295_write_failure\" BEFORE INSERT ON \"doc_mount_file_links\"
+                 BEGIN SELECT RAISE(ABORT, 'planted write failure'); END",
+            )?;
+            Ok(())
+        })
+        .expect("plant write failure");
+        let resp = rt.block_on(projects::project_scenario_create(
+            &db,
+            IOTA,
+            json!({ "filename": "fresh", "body": "Fresh." }),
+            &spec.user_id,
+        ));
+        err("project_create_write_failure_500", &resp, &mut failed);
+    }
     // --- the catalogue + the by-ref read ---
     {
         let db = fresh_db(&spec, "gen_everywhere");

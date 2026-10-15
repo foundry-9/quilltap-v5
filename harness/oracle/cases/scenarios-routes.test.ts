@@ -924,6 +924,28 @@ async function main(): Promise<void> {
       prep: () => mainExec('UPDATE "groups" SET "name" = ? WHERE "id" = ?', '', BEACON),
       run: () => groupsUnion(ARIA),
     },
+    {
+      // L15: a demote write that fails is WARNed and swallowed — the create
+      // still answers 201 (the alphabetical tiebreaker compensates).
+      name: 'project_create_default_demote_failure_logs',
+      prep: () =>
+        mountExec(
+          `CREATE TRIGGER "qt_p4d295_demote_failure" BEFORE INSERT ON "doc_mount_documents"
+           WHEN NEW."content" LIKE '%isDefault: false%'
+           BEGIN SELECT RAISE(ABORT, 'planted demote failure'); END`,
+        ),
+      run: () => projectCollection('POST', IOTA, { filename: 'fresh', isDefault: true, body: 'Fresh.' }),
+    },
+    {
+      // L18's create arm: the write itself fails — ERROR + 500.
+      name: 'project_create_write_failure_500',
+      prep: () =>
+        mountExec(
+          `CREATE TRIGGER "qt_p4d295_write_failure" BEFORE INSERT ON "doc_mount_file_links"
+           BEGIN SELECT RAISE(ABORT, 'planted write failure'); END`,
+        ),
+      run: () => projectCollection('POST', IOTA, { filename: 'fresh', body: 'Fresh.' }),
+    },
     // --- the catalogue + the by-ref read (`scenarios/route.ts:47-69`) ---
     { name: 'general_everywhere', run: () => generalCollection('GET', undefined, '?action=everywhere') },
     {

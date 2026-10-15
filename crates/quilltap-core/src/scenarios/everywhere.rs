@@ -252,3 +252,23 @@ pub fn list_scenarios_everywhere(
         })
         .collect())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// L19 (`[General v1] Failed to list scenarios everywhere`) is v4's catch
+    /// around `listScenariosEverywhere` — UNREACHABLE through v4's real code:
+    /// every read it makes is a fallback (`getGeneralMountPointId`'s setting
+    /// read, the three `findAllRaw`s, `findManyByMountPointsInFolder`), so a
+    /// broken database lists nothing rather than throwing. Pinned NEGATIVE: the
+    /// port's reads are the same fallbacks, so a table-less instance answers
+    /// `Ok([])` and the route's L19 arm stays dead in both stacks.
+    #[test]
+    fn a_broken_instance_lists_nothing_rather_than_throwing() {
+        let main = Connection::open_in_memory().unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        let got = list_scenarios_everywhere(&main, &mount, "u", false);
+        assert_eq!(got.expect("every read is a fallback"), Vec::<Value>::new());
+    }
+}

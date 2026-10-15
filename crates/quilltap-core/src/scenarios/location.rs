@@ -119,7 +119,7 @@ impl From<DbError> for ScenarioLocationError {
 }
 impl From<StoreError> for ScenarioLocationError {
     fn from(e: StoreError) -> Self {
-        ScenarioLocationError::Other(e.to_string())
+        ScenarioLocationError::Other(crate::db::scenarios::store_error_text(&e))
     }
 }
 impl From<ScenarioWriteError> for ScenarioLocationError {

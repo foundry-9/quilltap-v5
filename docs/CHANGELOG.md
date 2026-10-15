@@ -462,6 +462,19 @@ Re-vendors v4's `public/schemas/qtap-export.schema.json` at the `83334b9a5` pin 
 
 Re-dumps `schema-key-order.json` from v4's real schemas at the pin. `chat` goes from 102 to 103 keys (drops `otherExtractionWatermarkMessageId`, adds `scenarioSource` and `scenarioNotes` after `scenarioText`) and `memory` from 29 to 30 (`supersededAt` after `supersededById`). No other kind moved.
 
+#### 2026-10-15 — test(core): P4.D295 Tier 2 — table twins, the remaining scenario lines pinned, store errors rendered bare
+
+_Versions: core 0.0.1304._
+
+Tier 2 of the scenarios server lane.
+- Rust unit twins of v4's `scenario-text.test.ts` tables (`combineScenarioText` and `recoverPresetBody`), and of the `sameResolvedScenario` and `keepCurrentScene` cases.
+- `scenarios_routes_equivalence` grew from 97 to 99 rows:
+  - A failed demote write logs v4's `Failed to demote a previously-default scenario` WARN, and the create still answers 201.
+  - A failed create write logs `[Projects v1] Failed to create project scenario` and answers 500.
+- Store failures in those lines, and in location errors, now render the bare driver message instead of `DbError`'s `sqlite error:` prefix.
+- `[General v1] Failed to list scenarios everywhere` is pinned as unreachable: every catalogue read is a fallback, so a table-less instance lists nothing and nothing throws.
+- Measured: no v5 surface puts `scenarioSource` or `scenarioNotes` on a wire body where v4 does not. v4's create, PUT, merge and participant bodies are whole rows too, and the chat GET and the lists are projections in both.
+
 #### 2026-10-15 — fix(core): P4.D295 unit 5 — the vault Prompts and Scenarios reads sort by localeCompare
 
 _Versions: core 0.0.1303._

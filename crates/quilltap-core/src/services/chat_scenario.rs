@@ -711,6 +711,93 @@ mod tests {
         assert_eq!(source_label(&ValidatedScenarioBody::default()), "custom");
     }
 
+    fn src(path: &str, body: &str) -> ScenarioSource {
+        ScenarioSource {
+            mount_point_id: "11111111-1111-4111-8111-111111111111".into(),
+            path: path.into(),
+            body_sha256: hash_scenario_body(body),
+        }
+    }
+    fn recipe(
+        text: Option<&str>,
+        source: Option<ScenarioSource>,
+        notes: Option<&str>,
+    ) -> ResolvedScenario {
+        ResolvedScenario {
+            scenario_text: text.map(str::to_string),
+            scenario_source: source,
+            scenario_notes: notes.map(str::to_string),
+        }
+    }
+
+    /// Rust twins of v4's `sameResolvedScenario` cases
+    /// (`scenario-selection.test.ts:245-264`).
+    #[test]
+    fn same_resolved_scenario_matches_v4s_cases() {
+        use crate::services::scenario_selection::same_resolved_scenario as same;
+        let a = recipe(Some("Body"), Some(src("Scenarios/a.md", "Body")), None);
+        assert!(same(&a, &a.clone()));
+        assert!(
+            !same(&a, &recipe(Some("Body"), None, None)),
+            "a change of source alone"
+        );
+        assert!(
+            !same(
+                &a,
+                &recipe(Some("Body"), Some(src("Scenarios/a.md", "Body")), Some("n"))
+            ),
+            "a change of notes"
+        );
+    }
+
+    /// Rust twins of v4's "an ordinary save keeps the scene; only Reload takes
+    /// the revised copy" cases (`actions/scenario.test.ts:250-320`), at the
+    /// `keepCurrentScene` level (`reload` itself is the caller's gate).
+    #[test]
+    fn keep_current_scene_matches_v4s_cases() {
+        let stored = recipe(
+            Some("Old body.\n\nOld notes."),
+            Some(src("Scenarios/t.md", "Old body.")),
+            Some("Old notes."),
+        );
+        // The notes change while the file was revised: the stored body stays.
+        let next = recipe(
+            Some("New body.\n\nNew notes."),
+            Some(src("Scenarios/t.md", "New body.")),
+            Some("New notes."),
+        );
+        let kept = keep_current_scene(&next, &stored).expect("kept");
+        assert_eq!(
+            kept.scenario_text.as_deref(),
+            Some("Old body.\n\nNew notes.")
+        );
+        assert_eq!(kept.scenario_source, stored.scenario_source);
+        // Re-saving the same notes keeps the stored recipe exactly (a no-op).
+        let same_notes = recipe(
+            Some("New body.\n\nOld notes."),
+            Some(src("Scenarios/t.md", "New body.")),
+            Some("Old notes."),
+        );
+        assert_eq!(
+            keep_current_scene(&same_notes, &stored),
+            Some(stored.clone())
+        );
+        // A stored text that no longer matches its source hash falls back.
+        let edited = recipe(
+            Some("Hand edited.\n\nOld notes."),
+            Some(src("Scenarios/t.md", "Old body.")),
+            Some("Old notes."),
+        );
+        assert_eq!(keep_current_scene(&next, &edited), None);
+        // A different file is never kept.
+        let other = recipe(
+            Some("New body."),
+            Some(src("Scenarios/u.md", "New body.")),
+            None,
+        );
+        assert_eq!(keep_current_scene(&other, &stored), None);
+    }
+
     /// `reload` is `z.boolean().optional()` — NOT nullable; `scenarioRef` is
     /// `.nullish()`.
     #[test]

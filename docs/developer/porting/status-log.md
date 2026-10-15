@@ -182851,3 +182851,30 @@ scenario_pure_equivalence`.
   character drops on the rename plant). **Mutation proof:** reverting the Prompts sort ALONE reddens the
   `MixedCase` row (the promoted default flips).
 - **P4.D279's OPEN item (the vault Prompts / Scenarios read sort) is CLOSED by name.**
+
+### Tier 2 — twins, the remaining lines, the leak measurement (core 0.0.1304)
+
+- **Item 16 (table twins):** `scenario_text.rs` gains v4's `combineScenarioText` (8) + `recoverPresetBody` (3) tables;
+  `chat_scenario.rs` gains `sameResolvedScenario`'s three cases and four `keepCurrentScene` cases (kept with new
+  notes, same notes = the stored recipe, hash mismatch falls back, a different file). (The differential families
+  remain the proof — these are the unit-level twins the order asked for.)
+- **Item 13 (every line pinned) — the remaining arms:** `scenarios_routes_equivalence` 97 → 99 —
+  `project_create_default_demote_failure_logs` (a planted BEFORE INSERT trigger on `doc_mount_documents` — the
+  store is content-addressed, so a rewrite INSERTs; the first plant on UPDATE never fired in v4: L15, then 201 + L14)
+  and `project_create_write_failure_500` (a trigger on `doc_mount_file_links` INSERT: L18's create arm + 500).
+  `db::scenarios::store_error_text` renders a `StoreError` BARE (`DbError`'s Display carries `sqlite error: `) — used
+  by L15, `ScenarioWriteError`'s Display and the location's `From<StoreError>` (L16–L18's `error` field). **L19 is
+  UNREACHABLE through v4's real code** (every read in `listScenariosEverywhere` is a fallback) — pinned NEGATIVE by
+  `scenarios::everywhere::tests::a_broken_instance_lists_nothing_rather_than_throwing`; the v5 arm keeps v4's line.
+  **Line coverage, by family:** L1–L15 `scenario_location` (+ L13–L18 / L20 / L38 / the two `created` INFOs in
+  `scenarios_routes`); L16–L20 + L38 `scenarios_routes`; L21–L33 `chat_scenario_routes`; L2 → L37's boot half the
+  `builtin_mounts` unit tests (L37 itself is the host's — HANDOFF above). Silence legs: every family compares each
+  row's WHOLE line list, so a row with no lines (classify hits, the character lookups, `source_none`, the
+  refusals) pins silence.
+- **Item 17 (the whole-row leak measurement):** every v5 surface that serialises a `chats_read` row whole —
+  `api/salon.rs::chat_update` (PUT), `chat_create` (201 `{chat}`), `chat_merge` (`{success, merge, chat}`), the five
+  `api/chat_cast.rs` participant bodies, the help-chat and Brahma bodies — matches a v4 body that is ALSO a whole row
+  (`chats/route.ts:1524` `created({ chat: { ...chat, … } })`, `handlers/put.ts:63`, `actions/merge.ts:67`,
+  `actions/participants.ts:382/458/503/551/648`); the projected surfaces (`chat_get` — `scenarioText` only, as v4's
+  `handlers/get.ts`; the chat list, project / character lists, search, the autonomous-rooms DTO) omit both keys
+  on both sides. **No leak; no HANDOFF.** (The capstone already byte-matches the create body with the keys.)
