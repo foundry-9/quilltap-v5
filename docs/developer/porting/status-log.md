@@ -182552,3 +182552,28 @@ the wipe's truncate lands), so they land and go green together.
   - **Observed (not this lane's):** a v4 async tail — `execute_memories_builtin_profile`'s debounced
     `scheduleRefit` fired after jest teardown once (`ReferenceError … after the Jest environment has been torn
     down`), AFTER the oracle file was written; no state moved.
+- **Tier 2 (no crate bump):**
+  - **#16 mutation proofs** (each run against the committed unit-4 tree, reverted from git): M1 the reminted map
+    registered only on the first landed insert (no pre-registration) → `execute_duplicate_remint` +
+    `execute_message_insert_fails` red (the interlude memory resolves to the identity); M2 a GLOBAL message map
+    (lookup across every chat's map, the source chat ignored) → `execute_shared_message_ids` red; M3 `supersededAt`
+    kept without `supersededById` → `execute_chats_only_memories` red; M4 the inform `""` kept → 
+    `chat_informs_remap_equivalence` + `execute_inform_refusals` red; M5 the L-B issue order swapped (Concierge
+    first) → `execute_scenario_source_invalid` red (4 repository lines); unit 2's first-vs-last occurrence (4
+    tier-1 rows) and unit 3's keys-after-`with_tag_names` (3 export cases). **NOT proven — recorded:** the bug-240
+    cache "set before the read" (a THROWING local-character read leaves no cache entry): no corpus row makes the
+    character read throw (a throwing `characters` plant would sink every other phase of the import) — the rule is
+    implemented per L-H and reviewable at `memories.rs::resolve_memory_character`.
+  - **#17** `qtap_schema_validate_equivalence` +10 mutation rows (scenario pair ×6, cursor keys ×2,
+    `supersededAt` ×2) — verdicts + path sets EXACT, count deltas recorded in the header (chat rows 3/2 … 5/4;
+    `memory_superseded_at_bad_date` 4/1). The non-hex `bodySha256` is the two-surface row (Zod at create accepts —
+    `execute_scenario_source_invalid` LANDS that chat; the schema refuses).
+  - **#18** the combined Concierge + `scenarioSource` row lives in `execute_scenario_source_invalid` (unit 4) —
+    v4's ONE ZodError, scenario issues first, matched byte for byte.
+  - **#19 MEASURED, DIFFERENT, NOT a P4.D288 read-arm defect — FLAGGED for the human:** a chat whose stored
+    `scenarioSource` is a non-object TEXT cell (`'"Scenarios/Harbour.md"'`): v4's non-strict `findById` refuses the
+    row in Zod and answers `null`, so its `.qtap` export SKIPS the chat; v5's export runs inside the strict scope
+    (the human's 2026-10-02 ruling, a recorded divergence) and `stream_chats`' strict `chats_read::find_by_id`
+    surfaces the same ZodError — the export FAILS. C1-9's read arm is v4-faithful in BOTH modes (strict throws as
+    v4's strict throws; `find_by_id_or_none` falls back as v4's non-strict does). Pinned both ways as
+    `stream_chats_selected_one_scenario_text` (a NEW `…_scenario_text` copy); `system_export_equivalence` 64/64.

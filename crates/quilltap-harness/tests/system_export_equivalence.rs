@@ -71,6 +71,12 @@ fn fresh_db(tag: &str) -> ScratchDb {
         plant_memory_tiers_values(w.connection());
         // [P4.D294] the oracle's `plantThrowingCursors`, for the
         // `…_cursor_throw` cases.
+        // [P4.D294 Tier 2 #19] the oracle's `SCENARIO_TEXT_CELL_SQL`.
+        if tag.ends_with("_scenario_text") {
+            w.connection()
+                .execute_batch(SCENARIO_TEXT_CELL_SQL)
+                .expect("plant the scenario text cell");
+        }
         if tag.ends_with("_cursor_throw") {
             w.connection()
                 .execute_batch(&THROWING_CURSORS_SQL.join(";\n"))
@@ -152,6 +158,8 @@ fn system_export_matches_oracle() {
     let planted = fresh_db("reads_wardrobe");
     // [P4.D294] the `…_cursor_throw` cases read their own throwing copy.
     let throwing = fresh_db("reads_cursor_throw");
+    // [P4.D294 Tier 2 #19] …and the `…_scenario_text` case its own.
+    let scenario_text = fresh_db("reads_scenario_text");
     let mut failed: Vec<String> = Vec::new();
     let mut ran = 0usize;
     let mut wardrobe_cases = 0usize;
@@ -163,6 +171,8 @@ fn system_export_matches_oracle() {
             &planted
         } else if name.ends_with("_cursor_throw") {
             &throwing
+        } else if name.ends_with("_scenario_text") {
+            &scenario_text
         } else {
             &plain
         };
@@ -202,6 +212,29 @@ fn system_export_matches_oracle() {
                             diff_lines(name, &records, exp["lines"].as_array().unwrap())
                         {
                             failed.push(msg);
+                            continue;
+                        }
+                    }
+                    // [P4.D294 Tier 2 #19] A RECORDED consequence of the
+                    // strict-export ruling (`resolve_export_ids`' doc), pinned
+                    // BOTH WAYS: v4's non-strict `findById` refuses the row in
+                    // Zod and answers `null`, so its export SKIPS the chat (no
+                    // chat line); v5's strict read surfaces the same ZodError and
+                    // the export FAILS rather than drop a chat silently.
+                    Err(e) if name == "stream_chats_selected_one_scenario_text" => {
+                        let v4_skipped =
+                            !exp["lines"].as_array().unwrap().iter().any(|l| {
+                                l.as_str().is_some_and(|l| l.contains(r#""kind":"chat""#))
+                            });
+                        let text = e.to_string();
+                        if !v4_skipped
+                            || !text.contains("Invalid input: expected object, received string")
+                            || !text.contains("scenarioSource")
+                        {
+                            failed.push(format!(
+                                "{name}: the strict-export pin moved — v4 skipped the chat: \
+                                 {v4_skipped}; v5: {text}"
+                            ));
                             continue;
                         }
                     }
@@ -333,8 +366,9 @@ fn system_export_matches_oracle() {
         failed.join("\n\n")
     );
     // P4.D264: 57 + 4 = 61 (the three `…_wardrobe` streams + the preview).
-    // P4.D294: 61 + 2 = 63 (the two `…_cursor_throw` streams).
-    assert_eq!(ran, 63, "expected 63 cases to run, ran {ran}");
+    // P4.D294: 61 + 2 = 63 (the two `…_cursor_throw` streams) + 1 = 64 (the
+    // `…_scenario_text` stream, Tier 2 #19).
+    assert_eq!(ran, 64, "expected 64 cases to run, ran {ran}");
     assert_eq!(
         wardrobe_cases, 4,
         "the four P4.D264 wardrobe cases read the planted copy"
@@ -718,3 +752,9 @@ fn assert_cursor_logs(name: &str, oracle: &Value, v5: &[String], failed: &mut Ve
         failed.push(format!("{name}: silence leg broken — v5 logged {v5:?}"));
     }
 }
+
+/// [P4.D294 Tier 2 #19] The oracle's `SCENARIO_TEXT_CELL_SQL`: `CHAT_1`'s stored
+/// `scenarioSource` a non-object TEXT cell (valid JSON — a string). v4's chats
+/// read refuses the row (`ScenarioSourceSchema` wants an object), so its export
+/// SKIPS the chat; the byte diff pins that v5's does the same.
+const SCENARIO_TEXT_CELL_SQL: &str = r#"UPDATE "chats" SET "scenarioSource" = '"Scenarios/Harbour.md"' WHERE "id" = 'c1000000-0000-4000-8000-000000000001'"#;

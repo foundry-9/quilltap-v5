@@ -738,6 +738,156 @@
           ]
         }
       ]
+    },
+    {
+      "name": "chat_scenario_source_valid",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D294] v4 `545e299bb`: `$defs.ExportedChat.properties.scenarioSource` \u2014 a well-formed source adds no error (the seed's own verdict is unchanged).",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/scenarioSource",
+          "value": {
+            "mountPointId": "bd000000-0000-4000-8000-000000000001",
+            "path": "Scenarios/Harbour.md",
+            "bodySha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        },
+        {
+          "op": "set",
+          "path": "/data/chats/0/scenarioNotes",
+          "value": "Bring the lantern."
+        }
+      ]
+    },
+    {
+      "name": "chat_scenario_source_non_hex_sha",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D294, Tier 2 #17] 64 NON-hex characters: Zod accepts it at create (length only), the JSON schema's `^[0-9a-f]{64}$` refuses it here.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/scenarioSource",
+          "value": {
+            "mountPointId": "bd000000-0000-4000-8000-000000000001",
+            "path": "Scenarios/Harbour.md",
+            "bodySha256": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+          }
+        }
+      ]
+    },
+    {
+      "name": "chat_scenario_source_long_path",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D294] `path` `maxLength` 500.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/scenarioSource",
+          "value": {
+            "mountPointId": "bd000000-0000-4000-8000-000000000001",
+            "path": "ppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+            "bodySha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        }
+      ]
+    },
+    {
+      "name": "chat_scenario_source_not_object",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D294] `scenarioSource` is `[object, null]` \u2014 a JSON string is refused.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/scenarioSource",
+          "value": "{\"mountPointId\": \"bd000000-0000-4000-8000-000000000001\", \"path\": \"Scenarios/Harbour.md\", \"bodySha256\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}"
+        }
+      ]
+    },
+    {
+      "name": "chat_scenario_source_missing_key",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D294] all three keys are `required`.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/scenarioSource",
+          "value": {
+            "mountPointId": "bd000000-0000-4000-8000-000000000001",
+            "path": "Scenarios/Harbour.md"
+          }
+        }
+      ]
+    },
+    {
+      "name": "chat_scenario_notes_not_string",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D294] `scenarioNotes` is `[string, null]`.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/scenarioNotes",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "name": "chat_cursor_keys_not_string",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D294, Tier 2 #17] v4 `c2795733f` / `64743ee13`: the episode and turn cursor keys are `[string, null]`.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/episodeExtractionWatermarkMessageId",
+          "value": 5
+        },
+        {
+          "op": "set",
+          "path": "/data/chats/0/turnExtractionWatermarkMessageId",
+          "value": true
+        }
+      ]
+    },
+    {
+      "name": "chat_cursor_keys_null_valid",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D294] \u2026and null is allowed.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/episodeExtractionWatermarkMessageId",
+          "value": null
+        },
+        {
+          "op": "set",
+          "path": "/data/chats/0/turnExtractionWatermarkMessageId",
+          "value": null
+        }
+      ]
+    },
+    {
+      "name": "memory_superseded_at_bad_date",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D294, Tier 2 #17] v4 `c2795733f`: `Memory.supersededAt` is `anyOf [Timestamp, null]`.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/memories/0/supersededAt",
+          "value": "not-a-date"
+        }
+      ]
+    },
+    {
+      "name": "memory_superseded_at_null_valid",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D294] \u2026and null is allowed.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/memories/0/supersededAt",
+          "value": null
+        }
+      ]
     }
   ],
   "literals": [

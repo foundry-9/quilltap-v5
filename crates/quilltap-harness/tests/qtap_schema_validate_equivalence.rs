@@ -52,6 +52,20 @@
 //! `anyOf`'s two branch errors on the two nullable keys); the watermark rows
 //! 4/3 and 3/2.
 //!
+//! **[P4.D294] The scenario-pair, cursor-triple and `supersededAt` rows** (the
+//! schema re-vendored at `83334b9a5`, 105,310 B — `545e299bb`, `c2795733f`,
+//! `64743ee13`). Ten mutation rows: eight from `chats_all_memories`
+//! (`chat_scenario_source_{valid,non_hex_sha,long_path,not_object,
+//! missing_key}`, `chat_scenario_notes_not_string`,
+//! `chat_cursor_keys_{not_string,null_valid}`) and two from
+//! `characters_valid_rich` (`memory_superseded_at_{bad_date,null_valid}`).
+//! `chat_scenario_source_non_hex_sha` is Tier 2 #17's two-surface row: 64 NON-hex
+//! characters pass v4's Zod at create (`execute_scenario_source_invalid` lands
+//! that chat) but fail the schema's `^[0-9a-f]{64}$` here, on both engines.
+//! RECORDED count deltas, ajv vs the crate: the chat rows 3/2 … 5/4 (the seed's
+//! own `then` wrapper, one more each), `memory_superseded_at_bad_date` 4/1 (the
+//! wrapper plus `anyOf`'s two branch errors); the null rows add nothing.
+//!
 //! Regenerate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}

@@ -153,6 +153,8 @@ interface CaseSpec {
   wardrobe?: boolean;
   /** [P4.D294] Rebuild the cursor table to throw on read (`plantThrowingCursors`). */
   cursorThrow?: boolean;
+  /** [P4.D294 Tier 2 #19] `CHAT_1`'s stored `scenarioSource` a non-object TEXT cell. */
+  scenarioTextCell?: boolean;
 }
 
 function buildCases(spec: Spec): CaseSpec[] {
@@ -398,6 +400,17 @@ function buildCases(spec: Spec): CaseSpec[] {
     ),
   );
 
+  // 9. [P4.D294 Tier 2 #19] A non-object TEXT `scenarioSource` cell, exported.
+  cases.push({
+    ...streamCase('stream_chats_selected_one_scenario_text', {
+      type: 'chats',
+      scope: 'selected',
+      selectedIds: [CHAT_1],
+      includeMemories: false,
+    }),
+    scenarioTextCell: true,
+  });
+
   return cases;
 }
 
@@ -582,6 +595,13 @@ const THROWING_CURSORS_SQL = [
   `ALTER TABLE "memory_extraction_cursors" ADD COLUMN "messageId" TEXT AS (json("pass")) VIRTUAL`,
 ];
 
+/**
+ * [P4.D294 Tier 2 #19] `CHAT_1`'s stored `scenarioSource` a non-object TEXT
+ * cell (`"Scenarios/Harbour.md"` — valid JSON, a STRING): what v4's chats
+ * repository read and C1-9's `chats_read` each make of it, exported.
+ */
+const SCENARIO_TEXT_CELL_SQL = `UPDATE "chats" SET "scenarioSource" = '"Scenarios/Harbour.md"' WHERE "id" = 'c1000000-0000-4000-8000-000000000001'`;
+
 function plantThrowingCursors(db: { exec(sql: string): unknown }): void {
   for (const sql of THROWING_CURSORS_SQL) db.exec(sql);
 }
@@ -665,6 +685,10 @@ async function runCase(
   if (c.cursorThrow) {
     const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
     plantThrowingCursors(getRawDatabase()!);
+  }
+  if (c.scenarioTextCell) {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    getRawDatabase()!.exec(SCENARIO_TEXT_CELL_SQL);
   }
 
   try {

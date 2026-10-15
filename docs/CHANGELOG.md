@@ -403,6 +403,19 @@ v4 `af48f6cc2` (memory refactor Phase B) on the backup and restore carriers, at 
 - Restore: 22j is deleted. Phase 9 adopts an old archive's mirror vector onto a memory that arrived without one (last duplicate wins, counted only after a successful create) and logs `Restored memories`. The summary drops the two vector counts and gains restore-only `legacyVectorsAdopted` (preview 39 keys, restore 41). The archive reader ignores `vector-index-metas.json`; the new-account remap no longer touches it.
 - Harness: two new backup cases (`backup_with_memory_carriers`, `backup_cursor_read_fails`) and a per-case log comparison; the restore census goes from 80 to 79 lines in both lists; the two vector plants are removed; the oracle's restore target gets the cursor table in the migration shape from v4's real migration; the uuid-remap corpus is regenerated from the pin.
 
+#### 2026-10-15 — test(harness): P4.D294 Tier 2 — mutation proofs, the schema-validator rows, the non-object scenario cell on export
+
+_No crate versions bumped._
+
+- **Mutation proofs.** Each Tier 1 rule, inverted, turns at least one row red:
+  - registering a reminted chat's message map after the inserts: 2 `system_import_state` cases;
+  - a global message map in place of the per-chat one: `execute_shared_message_ids`;
+  - keeping `supersededAt` without `supersededById`: `execute_chats_only_memories`;
+  - keeping an inform's `""` pointer: `chat_informs_remap_equivalence` and `execute_inform_refusals`;
+  - the Concierge issues ordered before the scenario-source issues: `execute_scenario_source_invalid`.
+- **`qtap_schema_validate_equivalence`.** 10 new mutation rows for the re-vendored keys: the scenario pair, the cursor triple, and `Memory.supersededAt`. One row has 64 non-hex characters in `bodySha256`, which Zod accepts at create but the JSON schema refuses. Decisions and path sets match v4; the count deltas are recorded.
+- **`system_export_equivalence`.** A chat whose stored `scenarioSource` is a non-object text cell is skipped by v4's non-strict export and refused by v5's strict export. That follows the recorded 2026-10-02 strict-export ruling, and both sides are pinned.
+
 #### 2026-10-15 — fix(core): P4.D294 unit 4 — `.qtap` import: bug 228's reminted message ids, bug 240's local characters, the cursor and scenario carriers
 
 _Versions: core 0.0.1302._
