@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-15 — docs(porting): drift ledger records v4's 4.10.0 release, the 4.11-dev start, and seventeen commits past the `83334b9a5` pin — the TENTH D23 move among them
+
+_Docs-only change._
+
+`/unify`'s §2 probe failed at the start of the `83334b9a5` round's unification: v4 `main` is seventeen commits past the ledger's last check (`01f508d4e` → `362426c8f`, `4.11.0-dev.3`), the `release: 4.10.0` squash (`2432b9057`) and the `4.10.0` bug branch (`489b228b6`, zero unabsorbed content by content diff) exist, and the checkout is dirty with the human's in-flight Pascal wardrobe effects + a bug-249 fix. The §4 procedure ran for the seventeen (three parallel readers, from the hunks): eight NO-PORT? (the release squash, the merge back, the dev-start stamps, two CHANGELOG moves, the README + `docs/FEATURES.md` rewrite, three feature specs, bug 247's filing — OPEN, found by the v5 harness), seven PORT (one SPA class, plugin-utils 2.7.1's cache-hit exclusion on the openai-compatible flavor, the restore remapper's participant-id arrays, Tier R help / completion bytes, the About blurbs, bug 248, the styled-hair precedence note), two PORT-NEW + PORT (`bbbcd2388` wardrobe copy-to-folder, and `362426c8f` Pascal trigger phrases WITH the TENTH D23 move — `chat_settings.customToolTriggers`, `pascalMeta.invokedBy: 'trigger'`). All seventeen rows UNPROCESSED and past the round's pin; the regen rule stays PIN REQUIRED; the live-data note (a 4.11-dev v4 writes rows a `83334b9a5` v5 refuses) is recorded for the next round.
+
 #### 2026-10-14 — docs(commands): `/carryout` reads a stacking sha from the parent's lane branch, not main
 
 _Docs-only change._
