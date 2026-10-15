@@ -138,6 +138,20 @@ Deleted: housekeeping, its outcome cache, the consolidation triggers, the dedup 
 
 New differential families from the pin: `memory_maintenance_planning`, `memory_maintenance_tier2`, `memory_maintenance_consolidate_tier3`, `memory_maintenance_queue_tier2`, `memory_maintenance_routes`, `memory_graph_repair_tier2`, and the census `maintenance_commit_hook_unreachable_census` (R-L: the commit hook is unreachable at the pin, so it is not ported). Retired families: `memory_housekeeping_tier2`, `memory_watermark_tier3`, `consolidation_triggers_tier2`, `memory_dedup`, `consolidation_service_tier3`. Re-aimed: `memory_consolidation_routes`, `consolidation_tasks`, `system_body_guards`, `realtime_topics`, `system_jobs_collection`. Host: a new cadence test for the memory-maintenance startup tick. The `p4_d288_wire_contract` refusal rows for the three filled arms are retired, and `host_zone_sites_census` counts the `maintain` arm's display-zone read (8 → 9).
 
+#### 2026-10-15 — feat(search-replace): P4.D298 unit 15 — the memory arm through the edit chokepoint (bug 233)
+
+_Versions: core 0.0.1304._
+
+Search & replace's memory arm now follows v4's `83334b9a5` service (bug 233). Before, replaced text was never re-embedded.
+
+- New pure `plan_memory_replacement` (v4 `planMemoryReplacement`). The patch carries only the changed fields: content, summary, and the whole keyword list when any keyword matches. A row with no case-sensitive match is skipped.
+- Each planned row goes through `update_memory`, one at a time on the caller thread, so a text change is re-embedded with the write. `memoriesUpdated` counts the edits that landed.
+- A row whose new text cannot be embedded is left unchanged and reported in `errors`.
+- The service now logs v4's lines: `Executing search/replace`, `Replaced text in memory and re-embedded it`, the per-row WARN / skip DEBUG / ERROR, `Search/replace execution complete`, and the per-chat message ERROR.
+- The repository's `replace_in_memories` is deleted (v4 removed `replaceInMemories`). Both search-replace arms run on the optional embedding seam.
+
+`search_replace_equivalence` re-measures the execute rows (one `updatedAt` mint per touched row, the re-embedded vector) and adds `execute_memory_keyword_only`, `execute_memory_case_only_skipped`, `execute_memory_embedding_failed_left_unchanged`, the service lines on every row, and 11 tier-1 rows through v4's exported `planMemoryReplacement`. `memories_tier2_equivalence` mirrors the oracle's re-aim of the retired op over the repository primitives (compile-forced). The host-zone census counts the two new zone reads.
+
 #### 2026-10-15 — feat(memories-api): P4.D298 unit 14 — the item PUT through the edit chokepoint
 
 _Versions: core 0.0.1303._

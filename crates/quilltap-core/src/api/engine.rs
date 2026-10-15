@@ -1720,17 +1720,21 @@ impl CoreEngine {
                 ),
                 Err(r) => r,
             },
+            // P4.D298 (bug 233, L-2): the memory arm edits through
+            // `update_memory` on the OPTIONAL embedding seam.
             Request::SearchReplacePreview {
                 scope,
                 search_text,
                 replace_text,
                 include_messages,
                 include_memories,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_memory_embedding() {
+                Ok((db, provider)) => {
                     crate::services::search_replace::search_replace(
                         &db,
+                        provider.as_ref(),
                         SINGLE_USER_ID,
+                        crate::host_zone::zone_name(&self.inner.config.display_zone),
                         crate::services::search_replace::Action::Preview,
                         &scope,
                         &search_text,
@@ -1742,17 +1746,21 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // P4.D298 (bug 233, L-2): the memory arm edits through
+            // `update_memory` on the OPTIONAL embedding seam.
             Request::SearchReplaceExecute {
                 scope,
                 search_text,
                 replace_text,
                 include_messages,
                 include_memories,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_memory_embedding() {
+                Ok((db, provider)) => {
                     crate::services::search_replace::search_replace(
                         &db,
+                        provider.as_ref(),
                         SINGLE_USER_ID,
+                        crate::host_zone::zone_name(&self.inner.config.display_zone),
                         crate::services::search_replace::Action::Execute,
                         &scope,
                         &search_text,

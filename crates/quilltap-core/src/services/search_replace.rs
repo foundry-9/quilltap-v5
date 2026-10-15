@@ -7,31 +7,37 @@
 //! ## The search/replace case asymmetry (v4-faithful)
 //!
 //! The MEMORY count/find path matches case-INSENSITIVELY (v4's `$regex` with
-//! the `i` flag → the ported `LIKE`), while `replaceInMemories` replaces
-//! case-SENSITIVELY (`split(searchText).join(replaceText)`). A memory matching
-//! only in the wrong case is counted by preview and found by execute, but its
-//! replace is a no-op and it does NOT count toward `memoriesUpdated`. The
+//! the `i` flag → the ported `LIKE`), while the replace plan
+//! ([`plan_memory_replacement`]) matches case-SENSITIVELY (`includes`, then
+//! `split(searchText).join(replaceText)`). A memory matching only in the wrong
+//! case is counted by preview and found by execute, but it plans nothing, is
+//! skipped, and does NOT count toward `memoriesUpdated`. The
 //! MESSAGE path is case-sensitive on both sides (`content.includes`). The
 //! differential pins both.
 //!
-//! ## The embedding-regeneration branch is structurally unreachable — v4's own
+//! ## Every replaced memory goes through the edit chokepoint (bug 233)
 //!
-//! v4's execute calls `updateMemoryWithEmbedding(id, {content, summary})` with
-//! the values `replaceInMemories` JUST persisted, so its `contentChanged`
-//! comparison is always false and the embed never fires — the only observable
-//! effect is a second content/summary write (another `updatedAt` mint). The
-//! port reproduces exactly that; if the impossible branch is ever reached it
-//! logs a named warning (v4's embed-failure path is warn-and-continue, so the
-//! row outcome is identical).
+//! v4 `e0ac7493a` (P4.D298): "Each row goes through updateMemory, which embeds
+//! the new text before it writes and writes text and vector together, then
+//! invalidates the archive, publishes `memories` and re-mirrors a digest.
+//! Rewriting the rows first and re-embedding afterwards compared the new text
+//! with itself, so nothing was ever re-embedded (bug 233)." The plan
+//! ([`plan_memory_replacement`]) carries ONLY the fields that changed; the
+//! per-row [`update_memory`](crate::services::admission::update_memory) runs on
+//! the CALLER thread, one await per row (v4's sequential `for` + `await` —
+//! L-8), so its writes commit row by row and its lines are capturable. A row
+//! whose new text cannot be embedded is left UNCHANGED and reported in
+//! `errors`; `memoriesUpdated` counts the edits that landed.
 
 use serde_json::{json, Value};
 
 use crate::api::chat_outfits::is_zod_uuid;
 use crate::api::types::{ErrorKind, Response};
 use crate::db::chats_search::ChatSearchRepository;
-use crate::db::memories::MemUpdate;
 use crate::db::runtime::Db;
 use crate::db::{chats_read, memories_read};
+use crate::model::embedding::EmbeddingProvider;
+use crate::services::admission::{update_memory, MemoryEditPatch, UpdateMemoryResult};
 
 /// The two dispatched actions (v4's `withCollectionActionDispatch` arms).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -51,6 +57,52 @@ pub enum Action {
 enum Scope {
     Chat(String),
     Character(String),
+}
+
+impl Scope {
+    /// The Zod OUTPUT object (schema key order) — what v4's `Executing
+    /// search/replace` INFO logs as `scope`.
+    fn to_json(&self) -> Value {
+        match self {
+            Scope::Chat(id) => json!({ "type": "chat", "chatId": id }),
+            Scope::Character(id) => json!({ "type": "character", "characterId": id }),
+        }
+    }
+}
+
+/// v4 `planMemoryReplacement` (`search-replace-service.ts:25-41`): "The fields
+/// of one memory a search and replace would rewrite: content, summary and
+/// keywords. Null when the search text appears in none of them. Pure, so the
+/// replacement is computed from the row as read and the write can go through
+/// `updateMemory` with the old row as its baseline (bug 233)."
+///
+/// `text.split(s).join(r)` with a non-empty `s` is [`str::replace`] (left to
+/// right, non-overlapping); `includes` is case-SENSITIVE, so a row the
+/// case-insensitive find matched only in another case plans nothing.
+pub fn plan_memory_replacement(
+    content: &str,
+    summary: &str,
+    keywords: Option<&[String]>,
+    search_text: &str,
+    replace_text: &str,
+) -> Option<MemoryEditPatch> {
+    if search_text.is_empty() {
+        return None;
+    }
+    let replace = |t: &str| t.replace(search_text, replace_text);
+    let mut patch = MemoryEditPatch::default();
+    if content.contains(search_text) {
+        patch.content = Some(replace(content));
+    }
+    if summary.contains(search_text) {
+        patch.summary = Some(replace(summary));
+    }
+    if let Some(keywords) = keywords {
+        if keywords.iter().any(|k| k.contains(search_text)) {
+            patch.keywords = Some(keywords.iter().map(|k| replace(k)).collect());
+        }
+    }
+    (!patch.keys().is_empty()).then_some(patch)
 }
 
 /// v4 `searchReplaceSchema.safeParse` — failure → `badRequest('Invalid
@@ -127,11 +179,18 @@ fn memory_query_for_scope(scope: &Scope) -> (Option<String>, Option<String>) {
 }
 
 /// The dispatched entry point: both v4 handlers share the parse; `Action`
-/// selects `getSearchReplacePreview` or `executeSearchReplace`.
+/// selects `getSearchReplacePreview` or `executeSearchReplace`. `provider` is
+/// the OPTIONAL memory embedding seam (L-2): `None` drives the memory arm's
+/// edits with [`NoEmbeddingProvider`](crate::model::embedding::NoEmbeddingProvider),
+/// so a text-changing replace leaves each memory unchanged with v4's per-row
+/// error and a messages-only replace is untouched. `host_zone_fallback` is
+/// `update_memory`'s memory-calendar host zone.
 #[allow(clippy::too_many_arguments)]
-pub async fn search_replace(
+pub async fn search_replace<P: EmbeddingProvider + Sync>(
     db: &Db,
+    provider: Option<&P>,
     user_id: &str,
+    host_zone_fallback: &str,
     action: Action,
     scope: &Value,
     search_text: &str,
@@ -159,7 +218,9 @@ pub async fn search_replace(
         Action::Execute => {
             execute(
                 db,
+                provider,
                 user_id,
+                host_zone_fallback,
                 &scope,
                 search_text,
                 replace_text,
@@ -230,16 +291,27 @@ fn preview(
     }
 }
 
-/// v4 `executeSearchReplace`.
-async fn execute(
+/// v4 `executeSearchReplace` (`search-replace-service.ts:155-261`).
+#[allow(clippy::too_many_arguments)]
+async fn execute<P: EmbeddingProvider + Sync>(
     db: &Db,
+    provider: Option<&P>,
     user_id: &str,
+    host_zone_fallback: &str,
     scope: &Scope,
     search_text: &str,
     replace_text: &str,
     include_messages: bool,
     include_memories: bool,
 ) -> Response {
+    tracing::info!(
+        scopeJson = %scope.to_json(),
+        searchTextLength = crate::jsstr::utf16_len(search_text),
+        replaceTextLength = crate::jsstr::utf16_len(replace_text),
+        includeMessages = include_messages,
+        includeMemories = include_memories,
+        "Executing search/replace"
+    );
     let mut messages_updated: i64 = 0;
     let mut memories_updated: i64 = 0;
     let mut chats_affected: i64 = 0;
@@ -267,7 +339,14 @@ async fn execute(
                 }
                 Ok(_) => {}
                 // v4 catches per chat, logs, and pushes the error string.
-                Err(e) => errors.push(format!("Failed to update messages in chat {chat_id}: {e}")),
+                Err(e) => {
+                    let error_msg = format!(
+                        "Failed to update messages in chat {chat_id}: {}",
+                        crate::db::fallback::error_text(&e)
+                    );
+                    tracing::error!("{error_msg}");
+                    errors.push(error_msg);
+                }
             }
         }
     }
@@ -287,63 +366,102 @@ async fn execute(
             Ok(rows) => rows,
             Err(_) => return Response::error(ErrorKind::Internal, "Internal server error"),
         };
-        if !to_update.is_empty() {
-            let memory_ids: Vec<String> = to_update
-                .iter()
-                .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
-                .collect();
-            let st = search_text.to_string();
-            let rt = replace_text.to_string();
-            let updated = db
-                .write(move |w| {
-                    let repo = w.main().memories();
-                    let updated_ids = repo.replace_in_memories(&memory_ids, &st, &rt)?;
-                    // v4's per-memory `updateMemoryWithEmbedding(characterId, id,
-                    // {content, summary})` over the JUST-replaced values — the
-                    // second content/summary write; the embed branch is
-                    // structurally unreachable (module header).
-                    // v4 wraps each in try/catch (best-effort — a failure logs
-                    // and does NOT fail the request or shrink the count).
-                    for id in &updated_ids {
-                        let Ok(Some(row)) = memories_read::find_by_id(w.main().connection(), id)
-                        else {
-                            continue;
-                        };
-                        let character_id = row
-                            .get("characterId")
-                            .and_then(Value::as_str)
-                            .unwrap_or_default()
-                            .to_string();
-                        let patch = MemUpdate {
-                            content: row
-                                .get("content")
-                                .and_then(Value::as_str)
-                                .map(str::to_string),
-                            summary: row
-                                .get("summary")
-                                .and_then(Value::as_str)
-                                .map(str::to_string),
-                            ..Default::default()
-                        };
-                        if let Err(e) =
-                            w.main()
-                                .memories()
-                                .update_for_character(&character_id, id, &patch)
-                        {
-                            tracing::warn!(memory_id = %id, error = %e,
-                                "[SearchReplace] post-replace memory rewrite failed (best-effort)");
-                        }
-                    }
-                    Ok(updated_ids.len() as i64)
-                })
-                .await;
-            match updated {
-                Ok(n) => memories_updated = n,
-                Err(_) => return Response::error(ErrorKind::Internal, "Internal server error"),
+        for memory in &to_update {
+            let str_of = |k: &str| memory.get(k).and_then(Value::as_str).unwrap_or_default();
+            let (memory_id, memory_character) = (str_of("id"), str_of("characterId"));
+            let keywords: Option<Vec<String>> =
+                memory.get("keywords").and_then(Value::as_array).map(|a| {
+                    a.iter()
+                        .filter_map(|k| k.as_str().map(str::to_string))
+                        .collect()
+                });
+            let Some(patch) = plan_memory_replacement(
+                str_of("content"),
+                str_of("summary"),
+                keywords.as_deref(),
+                search_text,
+                replace_text,
+            ) else {
+                continue;
+            };
+            let fields = patch.keys();
+            let outcome = match provider {
+                Some(p) => {
+                    update_memory(
+                        db,
+                        p,
+                        memory_character,
+                        memory_id,
+                        patch,
+                        user_id,
+                        host_zone_fallback,
+                    )
+                    .await
+                }
+                None => {
+                    update_memory(
+                        db,
+                        &crate::model::embedding::NoEmbeddingProvider,
+                        memory_character,
+                        memory_id,
+                        patch,
+                        user_id,
+                        host_zone_fallback,
+                    )
+                    .await
+                }
+            };
+            match outcome {
+                Ok(UpdateMemoryResult::Ok { .. }) => {
+                    memories_updated += 1;
+                    tracing::debug!(
+                        memoryId = memory_id,
+                        characterId = memory_character,
+                        fieldsJson = %serde_json::to_string(&fields).unwrap_or_default(),
+                        "Replaced text in memory and re-embedded it"
+                    );
+                }
+                Ok(UpdateMemoryResult::EmbeddingFailed { message }) => {
+                    let error_msg = format!(
+                        "Memory {memory_id} left unchanged: its new text could not be embedded ({message})"
+                    );
+                    tracing::warn!(
+                        memoryId = memory_id,
+                        characterId = memory_character,
+                        "{error_msg}"
+                    );
+                    errors.push(error_msg);
+                }
+                Ok(other) => {
+                    let reason = match other {
+                        UpdateMemoryResult::NotFound => "not-found",
+                        _ => "invalid-related",
+                    };
+                    tracing::debug!(
+                        memoryId = memory_id,
+                        reason = reason,
+                        "Memory skipped during replace"
+                    );
+                }
+                Err(e) => {
+                    let error_msg = format!(
+                        "Failed to update memory {memory_id}: {}",
+                        crate::db::fallback::error_text(&e)
+                    );
+                    tracing::error!("{error_msg}");
+                    errors.push(error_msg);
+                }
             }
         }
     }
 
+    tracing::info!(
+        messagesUpdated = messages_updated,
+        memoriesUpdated = memories_updated,
+        chatsAffected = chats_affected,
+        errorsJson = %serde_json::to_string(&errors).unwrap_or_default(),
+        "Search/replace execution complete"
+    );
     Response::ChatDialog(json!({
         "messagesUpdated": messages_updated,
         "memoriesUpdated": memories_updated,

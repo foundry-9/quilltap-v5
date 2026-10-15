@@ -182043,3 +182043,47 @@ Versions at close: core 0.0.1300, host 0.0.205 (web unchanged — test-only edit
   (`fields: ['keywords', 'aboutCharacterId']`). The chokepoint's own lines (`memory:update-memory`) by
   PRESENCE on v4's side.
 - **Census:** `host_zone_sites_census` 9 → 10 (the PUT arm's `zone_name`).
+
+### Unit 15 — search-replace's memory arm through `update_memory` (bug 233)
+
+- **`services/search_replace.rs`:** NEW pure `plan_memory_replacement(content, summary, keywords, search,
+  replace) -> Option<MemoryEditPatch>` (v4 `planMemoryReplacement`, `:25-41` — empty search → none;
+  `includes` per field, case-SENSITIVE; the keywords array mapped WHOLE when any keyword matches; no change →
+  `None`); the execute memory arm loops the found rows on the CALLER thread (L-8), one `update_memory(…,
+  host_zone_fallback)` per planned row on the optional seam (`NoEmbeddingProvider` when `None`, L-2): `Ok` ⇒
+  `memoriesUpdated += 1` + DEBUG `Replaced text in memory and re-embedded it {memoryId, characterId,
+  fieldsJson}`; `EmbeddingFailed` ⇒ WARN whose MESSAGE is `Memory <id> left unchanged: its new text could not
+  be embedded (<msg>)` `{memoryId, characterId}` + the same string in `errors`; `NotFound` / `InvalidRelated` ⇒
+  DEBUG `Memory skipped during replace {memoryId, reason}`; a `DbError` ⇒ ERROR `Failed to update memory <id>:
+  <msg>` + `errors`. **Measured v5 logged neither INFO before:** now `Executing search/replace {scopeJson
+  (the Zod output object), searchTextLength, replaceTextLength (UTF-16), includeMessages, includeMemories}`
+  and `Search/replace execution complete {messagesUpdated, memoriesUpdated, chatsAffected, errorsJson}`, plus
+  v4's per-chat `Failed to update messages in chat <id>: <msg>` ERROR (bare SQLite text). The module header's
+  "structurally unreachable" section REWRITTEN; the case-asymmetry section stands (re-worded onto the plan).
+  Preview untouched.
+- **`db/memories.rs`:** `replace_in_memories` DELETED with its `LANE-REMOVE(P4.D298)` marker (and the
+  `memories_read` import it alone used). **LANE-REMOVE census: 34 → 33.**
+- **Engine:** both `SearchReplace*` arm bodies on `ready_db_and_memory_embedding()` with `zone_name(…)`
+  (§R.10(q)).
+- **`search_replace_equivalence`** (regen from the pin, 21 records): a `JestStubEmbedding` twin of
+  jest.setup's `generateEmbeddingForUser` stub (`[0.1, 0.2, 0.3]`, `TEST` — the chat-dialogs pair has NO
+  embedding profile, so v4's `updateMemory` embeds through the stub; the stored vector is v4's int8 shape
+  `0.0992…, 0.2008…, 0.3000…` on both sides); the existing execute rows re-measured (ONE `updatedAt` mint per
+  touched row; a text-changed row now carries the vector, a keyword-only edit none); NEW
+  `execute_memory_keyword_only` (`lantern-` → only `f4`'s keyword), `execute_memory_case_only_skipped`
+  (`LANTERN` — found, planned nothing, `memoriesUpdated 0`), `execute_memory_embedding_failed_left_unchanged`
+  (v4: the embedding service `jest.doMock`ed to reject — run LAST, the stub read with `requireMock` then the
+  registry reset before the override; v5: no provider; the two text rows UNCHANGED, the keyword-only row
+  edited, `errors` carrying both sentences, the provider message masked); the service lines compared IN ORDER
+  on every row (target stripped, `…Json` fields); tier-1 `plan_memory_replacement_rows` — 11 inputs through
+  v4's REAL exported `planMemoryReplacement` (empty search, content-only, summary-only, keyword-only, the
+  case-only miss, overlapping `aa` in `aaaa`, a replacement containing the search, an empty replacement,
+  absent keywords, astral emoji) GREEN. **Residue:** the STANDING `missing_action_recorded` red (§S.2 — v4
+  now answers `Unknown action: ` for a missing `?action=`), not this lane's.
+- **Compile-forced (P4.D288's family):** `memories_tier2_equivalence.rs`'s `ReplaceInMemories` op now runs
+  `REPLACE_IN_MEMORIES_OVER_PRIMITIVES` (the retired body over `memories_read::find_by_id` + the repository's
+  `update`) — the oracle's own re-aim, so the family stays a comparison; regenerated from the pin and green.
+- **Census:** `host_zone_sites_census` 10 → 12.
+- **Measured at the base, NOT this lane's:** `memory_retire_sole_deleter_guard` is RED at `ADMISSION`
+  (`services/admission/tests.rs`' trigger `DELETE`s counted as production) — P4.D290 fixed it on its lane tip
+  (`cdca0c8d8`), which this branch does not carry; green on the union.

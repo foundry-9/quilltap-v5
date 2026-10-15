@@ -5,8 +5,8 @@
 //!
 //! ## Minted values
 //!
-//! The execute path re-writes matched memories, minting `updatedAt` (twice —
-//! `replaceInMemories` + the post-replace rewrite). The differential compares
+//! The execute path re-writes matched memories through `update_memory`
+//! (P4.D298, bug 233), minting `updatedAt` ONCE per touched row. The differential compares
 //! WHICH rows were touched (the `updatedAt != seed` boolean must agree), then
 //! asserts v4's stamp is at-or-after the frozen base and v5's differs from the
 //! seed, and only then strips the key — the difference is proven, not
@@ -46,7 +46,7 @@ use std::path::PathBuf;
 
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::services::search_replace::{search_replace, Action};
+use quilltap_core::services::search_replace::{plan_memory_replacement, search_replace, Action};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -104,6 +104,132 @@ fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
     .expect("open db");
     (db, scratch)
 }
+
+// === P4.D298: bug 233's memory arm (append-only) ===
+/// The twin of jest.setup's embedding stub (`generateEmbeddingForUser` →
+/// `[0.1, 0.2, 0.3]`, model `test-model`, provider `TEST`), which the oracle's
+/// `updateMemory` embeds through — the chat-dialogs pair has no embedding
+/// profile, so v4's search-replace runs on it.
+struct JestStubEmbedding;
+impl quilltap_core::model::embedding::EmbeddingProvider for JestStubEmbedding {
+    async fn generate_embedding_for_user(
+        &self,
+        _text: &str,
+        _user_id: &str,
+        _profile_id: Option<&str>,
+        _opts: quilltap_core::model::embedding::EmbeddingCallOptions,
+    ) -> Result<
+        quilltap_core::model::embedding::EmbeddingResult,
+        quilltap_core::model::embedding::EmbeddingError,
+    > {
+        Ok(quilltap_core::model::embedding::EmbeddingResult {
+            embedding: vec![0.1, 0.2, 0.3],
+            model: "test-model".into(),
+            dimensions: 3,
+            provider: "TEST".into(),
+        })
+    }
+}
+
+/// The oracle case whose embedding service REJECTS; v5 drives it with no
+/// provider (`NoEmbeddingProvider`, L-2). The provider's message after `Could
+/// not embed the edited memory: ` is MASKED.
+const EMBEDDING_FAILS: &[&str] = &["execute_memory_embedding_failed_left_unchanged"];
+
+/// The service lines bug 233 moved or v5 never logged — the oracle's
+/// `isServiceLine` twin.
+fn is_service_message(message: &str) -> bool {
+    matches!(
+        message,
+        "Executing search/replace"
+            | "Search/replace execution complete"
+            | "Replaced text in memory and re-embedded it"
+            | "Memory skipped during replace"
+    ) || message.contains(" left unchanged: its new text could not be embedded (")
+        || message.starts_with("Failed to update memory ")
+        || message.starts_with("Failed to update messages in chat ")
+}
+
+/// `Could not embed the edited memory: <provider message>)` → masked.
+fn mask_provider_message(s: &str) -> String {
+    const PREFIX: &str = "Could not embed the edited memory: ";
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(i) = rest.find(PREFIX) {
+        out.push_str(&rest[..i + PREFIX.len()]);
+        out.push_str("<provider message>");
+        let after = &rest[i + PREFIX.len()..];
+        // The sentence's OWN closing paren — the provider message may carry
+        // parens of its own: the one followed by a field, a JSON quote, or the
+        // end of the text.
+        let end = [") memoryId=", ")\"", ")"]
+            .iter()
+            .filter_map(|pat| {
+                if *pat == ")" {
+                    after.ends_with(')').then(|| after.len() - 1)
+                } else {
+                    after.find(pat)
+                }
+            })
+            .min();
+        rest = match end {
+            Some(j) => &after[j..],
+            None => "",
+        };
+    }
+    out.push_str(rest);
+    out
+}
+
+/// v4 `{level, message, fields}` → `<LEVEL> <message> k=v …` (the target
+/// stripped; array / object fields as `…Json`, §R.5).
+fn render_v4_service_line(line: &Value) -> String {
+    let mut out = format!(
+        "{} {}",
+        line["level"].as_str().unwrap().to_uppercase(),
+        line["message"].as_str().unwrap()
+    );
+    if let Some(fields) = line["fields"].as_object() {
+        for (k, v) in fields {
+            match v {
+                Value::String(s) => out.push_str(&format!(" {k}={s}")),
+                Value::Object(_) | Value::Array(_) => {
+                    out.push_str(&format!(" {k}Json={}", serde_json::to_string(v).unwrap()))
+                }
+                other => out.push_str(&format!(" {k}={other}")),
+            }
+        }
+    }
+    mask_provider_message(&out)
+}
+
+/// v5's captured service lines (`<LEVEL> <target> <message> k=v …`) in the
+/// same rendering, the target stripped.
+fn v5_service_lines(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter_map(|l| {
+            let mut parts = l.splitn(3, ' ');
+            let level = parts.next()?;
+            let target = parts.next()?;
+            let rest = parts.next()?;
+            (target == "quilltap_core::services::search_replace"
+                && is_service_message(
+                    rest.split(" memoryId=")
+                        .next()
+                        .unwrap_or(rest)
+                        .split(" messagesUpdated=")
+                        .next()
+                        .unwrap_or(rest)
+                        .split(" scopeJson=")
+                        .next()
+                        .unwrap_or(rest),
+                ))
+            .then(|| mask_provider_message(&format!("{level} {rest}")))
+        })
+        .collect()
+}
+// === end ===
 
 /// P4.109's plant — byte-identical to the oracle case's.
 const POISON_SQL: &str = r#"ALTER TABLE "chat_messages" RENAME TO "chat_messages_p4105_poisoned""#;
@@ -519,6 +645,39 @@ fn search_replace_matches_oracle() {
             poison: true,
         },
         Case {
+            name: "execute_memory_keyword_only",
+            action: Action::Execute,
+            scope: chat_scope.clone(),
+            search: "lantern-",
+            replace: "lamp-",
+            include_messages: Some(false),
+            include_memories: None,
+            dump: true,
+            poison: false,
+        },
+        Case {
+            name: "execute_memory_case_only_skipped",
+            action: Action::Execute,
+            scope: chat_scope.clone(),
+            search: "LANTERN",
+            replace: "x",
+            include_messages: Some(false),
+            include_memories: None,
+            dump: true,
+            poison: false,
+        },
+        Case {
+            name: "execute_memory_embedding_failed_left_unchanged",
+            action: Action::Execute,
+            scope: chat_scope.clone(),
+            search: "lantern",
+            replace: "beacon",
+            include_messages: None,
+            include_memories: None,
+            dump: true,
+            poison: false,
+        },
+        Case {
             name: "execute_poisoned",
             action: Action::Execute,
             scope: chat_scope.clone(),
@@ -542,9 +701,12 @@ fn search_replace_matches_oracle() {
             .expect("plant the poison");
         }
         log_buf.lock().unwrap().clear();
+        let stub = JestStubEmbedding;
         let r = rt.block_on(search_replace(
             &db,
+            (!EMBEDDING_FAILS.contains(&c.name)).then_some(&stub),
             &spec.user_id,
+            "UTC",
             c.action,
             &c.scope,
             c.search,
@@ -561,7 +723,34 @@ fn search_replace_matches_oracle() {
         if c.poison {
             failed.extend(compare_poisoned_logs(c.name, want, &route_lines));
         }
-        let (status, body) = status_body(&r);
+        // P4.D298: the service lines, in order, against v4's.
+        if let Some(want_lines) = want["serviceLines"].as_array() {
+            let want_lines: Vec<String> = want_lines.iter().map(render_v4_service_line).collect();
+            let got_lines = v5_service_lines(&route_lines);
+            if got_lines != want_lines {
+                eprintln!(
+                    "[{}] SERVICE LINES:\n--- v4 ---\n{}\n--- v5 ---\n{}",
+                    c.name,
+                    want_lines.join("\n"),
+                    got_lines.join("\n")
+                );
+                failed.push(format!("{}_service_lines", c.name));
+            } else {
+                eprintln!("[{}] service lines OK ({}).", c.name, got_lines.len());
+            }
+        }
+        let (status, mut body) = status_body(&r);
+        let mut want = want.clone();
+        if EMBEDDING_FAILS.contains(&c.name) {
+            for errors in [&mut body["errors"], &mut want["body"]["errors"]] {
+                if let Some(a) = errors.as_array_mut() {
+                    for e in a.iter_mut() {
+                        *e = json!(mask_provider_message(e.as_str().unwrap_or("")));
+                    }
+                }
+            }
+        }
+        let want = &want;
         if u64::from(status) != want["status"].as_u64().unwrap_or(0) {
             eprintln!("[{}] STATUS {status} != {}", c.name, want["status"]);
             failed.push(format!("{}_status", c.name));
@@ -593,6 +782,62 @@ fn search_replace_matches_oracle() {
                 failed.push(format!("{}_tables", c.name));
             } else {
                 eprintln!("[{} tables] OK.", c.name);
+            }
+        }
+    }
+
+    // P4.D298: tier-1 — v4's REAL exported `planMemoryReplacement` over the
+    // oracle's rows, against `plan_memory_replacement` (the patch's keys in v4's
+    // order, `null` for no plan).
+    {
+        let name = "plan_memory_replacement_rows";
+        driven.insert(name.to_string());
+        match oracle.get(name).and_then(|r| r["rows"].as_array()) {
+            None => failed.push(format!("{name}_MISSING_FROM_ORACLE")),
+            Some(rows) => {
+                let mut bad = 0;
+                for row in rows {
+                    let m = &row["memory"];
+                    let keywords: Option<Vec<String>> = m["keywords"].as_array().map(|a| {
+                        a.iter()
+                            .filter_map(|k| k.as_str().map(str::to_string))
+                            .collect()
+                    });
+                    let plan = plan_memory_replacement(
+                        m["content"].as_str().unwrap(),
+                        m["summary"].as_str().unwrap(),
+                        keywords.as_deref(),
+                        row["search"].as_str().unwrap(),
+                        row["replace"].as_str().unwrap(),
+                    );
+                    let got = match plan {
+                        None => Value::Null,
+                        Some(p) => {
+                            let mut o = serde_json::Map::new();
+                            if let Some(c) = p.content {
+                                o.insert("content".into(), json!(c));
+                            }
+                            if let Some(s) = p.summary {
+                                o.insert("summary".into(), json!(s));
+                            }
+                            if let Some(k) = p.keywords {
+                                o.insert("keywords".into(), json!(k));
+                            }
+                            Value::Object(o)
+                        }
+                    };
+                    if serde_json::to_string(&got).unwrap()
+                        != serde_json::to_string(&row["plan"]).unwrap()
+                    {
+                        eprintln!("[{name}] {row}: v5 {got}");
+                        bad += 1;
+                    }
+                }
+                if bad > 0 || rows.len() < 11 {
+                    failed.push(name.to_string());
+                } else {
+                    eprintln!("[{name}] OK ({} rows).", rows.len());
+                }
             }
         }
     }

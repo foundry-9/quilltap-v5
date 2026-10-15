@@ -412,13 +412,49 @@ fn memories_tier2_matches_oracle() {
                     repo.update_access_time_bulk(character_id, ids)
                         .expect("updateAccessTimeBulk");
                 }
+                // P4.D298 (compile-forced): v4 deleted `replaceInMemories`
+                // (`e0ac7493a`) and v5 deleted `replace_in_memories` with it
+                // (bug 233 — search-replace edits through `update_memory`).
+                // REPLACE_IN_MEMORIES_OVER_PRIMITIVES, the oracle's twin: the
+                // retired body (`split(search).join(replace)` on content /
+                // summary / keywords, `update` only when something changed)
+                // over the REAL repository's `find_by_id` / `update`.
                 Op::ReplaceInMemories {
                     ids,
                     search,
                     replace,
                 } => {
-                    repo.replace_in_memories(ids, search, replace)
-                        .expect("replaceInMemories");
+                    for id in ids {
+                        let Some(m) =
+                            quilltap_core::db::memories_read::find_by_id(writer.connection(), id)
+                                .expect("findById")
+                        else {
+                            continue;
+                        };
+                        let text = |k: &str| m[k].as_str().unwrap_or_default().to_string();
+                        let (content, summary) = (text("content"), text("summary"));
+                        let keywords: Vec<String> = m["keywords"]
+                            .as_array()
+                            .map(|a| {
+                                a.iter()
+                                    .filter_map(|k| k.as_str().map(str::to_string))
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        let changed = content.contains(search.as_str())
+                            || summary.contains(search.as_str())
+                            || keywords.iter().any(|k| k.contains(search.as_str()));
+                        if changed {
+                            let rep = |t: &str| t.replace(search.as_str(), replace);
+                            let patch = quilltap_core::db::memories::MemUpdate {
+                                content: Some(rep(&content)),
+                                summary: Some(rep(&summary)),
+                                keywords: Some(keywords.iter().map(|k| rep(k)).collect()),
+                                ..Default::default()
+                            };
+                            repo.update(id, &patch).expect("update");
+                        }
+                    }
                 }
                 // P4.D288 (C1-7): the retired deleters RE-AIMED onto the pin's
                 // successors, the oracle's mapping (see its header).

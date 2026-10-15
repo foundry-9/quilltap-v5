@@ -42,7 +42,6 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 use serde_json::Value;
 
-use super::memories_read;
 use super::DbError;
 use crate::chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE};
 use crate::clock::now_iso;
@@ -902,75 +901,6 @@ impl<'c> MemoriesRepository<'c> {
             }
             Ok(changed)
         })
-    }
-
-    // LANE-REMOVE(P4.D298): v4 deleted replaceInMemories in e0ac7493a
-    /// `replaceInMemories` — for each id, literal substring replace across
-    /// content / summary / keywords (`split(search).join(replace)` = replace
-    /// ALL); only `update`s a memory if something changed. Returns the ids of
-    /// updated memories (in input order), for embedding regeneration.
-    pub fn replace_in_memories(
-        &self,
-        memory_ids: &[String],
-        search_text: &str,
-        replace_text: &str,
-    ) -> Result<Vec<String>, DbError> {
-        let mut updated: Vec<String> = Vec::new();
-        for id in memory_ids {
-            let memory = match memories_read::find_by_id(self.conn, id)? {
-                Some(m) => m,
-                None => continue,
-            };
-            let content = memory.get("content").and_then(|v| v.as_str()).unwrap_or("");
-            let summary = memory.get("summary").and_then(|v| v.as_str()).unwrap_or("");
-            let keywords: Vec<String> = memory
-                .get("keywords")
-                .and_then(|v| v.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default();
-
-            let mut changed = false;
-            let new_content = if content.contains(search_text) {
-                changed = true;
-                content.replace(search_text, replace_text)
-            } else {
-                content.to_string()
-            };
-            let new_summary = if summary.contains(search_text) {
-                changed = true;
-                summary.replace(search_text, replace_text)
-            } else {
-                summary.to_string()
-            };
-            let new_keywords: Vec<String> = keywords
-                .iter()
-                .map(|k| {
-                    if k.contains(search_text) {
-                        changed = true;
-                        k.replace(search_text, replace_text)
-                    } else {
-                        k.clone()
-                    }
-                })
-                .collect();
-
-            if changed {
-                let patch = MemUpdate {
-                    content: Some(new_content),
-                    summary: Some(new_summary),
-                    keywords: Some(new_keywords),
-                    ..Default::default()
-                };
-                if self.update(id, &patch)? {
-                    updated.push(id.clone());
-                }
-            }
-        }
-        Ok(updated)
     }
 
     /// The `characterId` of memory `id`, or `None` if no such row (v4's

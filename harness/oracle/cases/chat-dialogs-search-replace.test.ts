@@ -139,7 +139,29 @@ interface CaseSpec {
   dump?: boolean;
   /** P4.109 — rename `chat_messages` away (after the warm-up) before the call. */
   poison?: boolean;
+  /** P4.D298 — the embedding service REJECTS (the case runs LAST: a
+   *  `jest.doMock` outlives `jest.resetModules`, memory note
+   *  `jest-domock-survives-resetmodules`). Every other case embeds through
+   *  jest.setup's stub (`[0.1, 0.2, 0.3]`, provider `TEST`) — the Rust side's
+   *  canned twin. */
+  embeddingFails?: boolean;
 }
+
+// === P4.D298: the service's memory-arm lines (append-only) ===
+/** The service lines bug 233 moved or v5 never logged (`search-replace-
+ *  service.ts:155-261`); compared in order. */
+function isServiceLine(message: string): boolean {
+  return (
+    message === 'Executing search/replace' ||
+    message === 'Search/replace execution complete' ||
+    message === 'Replaced text in memory and re-embedded it' ||
+    message === 'Memory skipped during replace' ||
+    / left unchanged: its new text could not be embedded \(/.test(message) ||
+    message.startsWith('Failed to update memory ') ||
+    message.startsWith('Failed to update messages in chat ')
+  );
+}
+// === end ===
 
 async function runCase(
   spec: Spec,
@@ -149,6 +171,37 @@ async function runCase(
 ): Promise<Record<string, unknown>> {
   jest.resetModules();
   applyMocks(spec);
+  // === P4.D298: the embedding failure + the service-line capture (append-only) ===
+  if (c.embeddingFails) {
+    // jest.setup's stub module, read BEFORE the override (a `requireMock`
+    // inside the factory would recurse into itself).
+    const stub = jest.requireMock('@/lib/embedding/embedding-service') as Record<string, unknown>;
+    // `requireMock` cached the stub in this registry — clear it so the
+    // override below is what the service imports.
+    jest.resetModules();
+    applyMocks(spec);
+    jest.doMock('@/lib/embedding/embedding-service', () => ({
+      ...stub,
+      generateEmbeddingForUser: async () => {
+        throw new Error('planted embedding failure');
+      },
+    }));
+  }
+  process.env.LOG_LEVEL = 'debug';
+  const serviceLines: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+  {
+    const { logger } = await import('@/lib/logger');
+    const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+    internal.transports.splice(0, internal.transports.length, {
+      write: (d: unknown) => {
+        const data = d as { level: string; message: string; context?: Record<string, unknown> };
+        if (!isServiceLine(data.message)) return;
+        const { service: _s, environment: _e, ...fields } = (data.context ?? {}) as Record<string, unknown>;
+        serviceLines.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+      },
+    });
+  }
+  // === end ===
 
   const work = mkdtempSync(join(scratch, 'sr-'));
   const mainWork = join(work, 'main.db');
@@ -225,12 +278,14 @@ async function runCase(
         : await (resp as { json: () => Promise<unknown> }).json();
     const routeLogs = logs;
     logs = null; // the dump's own reads are not the route's lines
+    const serviceLinesOut = [...serviceLines];
     return {
       name: c.name,
       status: resp.status,
       body,
       ...(routeLogs ? { logs: routeLogs } : {}),
       ...(c.dump ? { tables: await readTables() } : {}),
+      serviceLines: serviceLinesOut,
     };
   } finally {
     global.Date = RealDate;
@@ -378,9 +433,72 @@ async function main(): Promise<void> {
       action: '',
       body: { scope: chatScope, searchText: 'x', replaceText: 'y' },
     },
+    // === P4.D298: bug 233's memory arm (append-only) ===
+    {
+      // The text appears ONLY in a keyword (`lantern-watch`): the patch is
+      // the keywords alone, the row re-embedded.
+      name: 'execute_memory_keyword_only',
+      action: 'execute',
+      body: { scope: chatScope, searchText: 'lantern-', replaceText: 'lamp-', includeMessages: false },
+      dump: true,
+    },
+    {
+      // Found case-INSENSITIVELY, planned case-SENSITIVELY: no row plans a
+      // change, every one is skipped and none counted.
+      name: 'execute_memory_case_only_skipped',
+      action: 'execute',
+      body: { scope: chatScope, searchText: 'LANTERN', replaceText: 'x', includeMessages: false },
+      dump: true,
+    },
+    {
+      // LAST (see `embeddingFails`): every planned row is left UNCHANGED and
+      // reported in `errors`.
+      name: 'execute_memory_embedding_failed_left_unchanged',
+      action: 'execute',
+      body: { scope: chatScope, searchText: 'lantern', replaceText: 'beacon' },
+      dump: true,
+      embeddingFails: true,
+    },
+    // === end ===
   ];
 
   const lines: string[] = [];
+  // === P4.D298: tier-1 rows through v4's REAL exported `planMemoryReplacement` ===
+  {
+    jest.resetModules();
+    applyMocks(spec);
+    const { planMemoryReplacement } = await import('@/lib/search-replace/search-replace-service');
+    const row = (content: string, summary: string, keywords: string[] | undefined) => ({
+      content,
+      summary,
+      keywords,
+    });
+    const inputs: Array<[ReturnType<typeof row>, string, string]> = [
+      [row('Laura keeps the key.', 'Laura hides it', ['Laura', 'key']), 'Laura', 'Lauren'],
+      [row('Laura keeps the key.', 'Laura hides it', ['Laura', 'key']), '', 'X'],
+      [row('only the content says lamp', 'nothing', []), 'lamp', 'lantern'],
+      [row('nothing', 'the summary says lamp', []), 'lamp', 'lantern'],
+      [row('nothing', 'nothing', ['lamp-post', 'oil']), 'lamp', 'torch'],
+      [row('LAMP lamp Lamp', 'Lamp', ['LAMP']), 'lamp', 'torch'],
+      [row('Lamp', 'LAMP', ['Lamp']), 'lamp', 'torch'],
+      [row('aaaa', 'aaa', ['aa']), 'aa', 'b'],
+      [row('lamp', 'lamp', ['lamp']), 'lamp', 'lamplamp'],
+      [row('lamp', 'lamp', undefined), 'lamp', ''],
+      [row('ünïcödé lamp 🪔', 'lamp 🪔', ['🪔']), '🪔', 'x'],
+    ];
+    lines.push(
+      JSON.stringify({
+        name: 'plan_memory_replacement_rows',
+        rows: inputs.map(([memory, search, replace]) => ({
+          memory,
+          search,
+          replace,
+          plan: planMemoryReplacement(memory as never, search, replace),
+        })),
+      }),
+    );
+  }
+  // === end ===
   for (const c of cases) {
     lines.push(JSON.stringify(await runCase(spec, c, scratch, fixtures)));
   }
