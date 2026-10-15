@@ -55,8 +55,10 @@ pub fn preview_restore(zip_path: &Path, temp_root: &Path) -> Result<RestoreSumma
         embedding_status: d.embedding_status.len(),
         conversation_chunks: d.conversation_chunks.len(),
         tfidf_vocabularies: d.tfidf_vocabularies.len(),
-        vector_index_metas: d.vector_index_metas.len(),
-        vector_entries: d.vector_entries.len(),
+        // P4.D293 (v4 `af48f6cc2`): the two vector counts are gone, and the
+        // preview never reports `legacyVectorsAdopted` (`preview.ts` — 39
+        // keys).
+        legacy_vectors_adopted: None,
         doc_mount_points: d.doc_mount_points.len(),
         doc_mount_folders: d.doc_mount_folders.len(),
         doc_mount_files: d.doc_mount_files.len(),

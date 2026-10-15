@@ -182213,3 +182213,80 @@ Versions at close: core 0.0.1300, host 0.0.205 (web unchanged — test-only edit
   release: 4.10.0`), `bugfix` `489b228b6` — out of scope, not ported.
 - **Versions at close:** core 0.0.1304 (harness frozen 0.0.1110; host / web / cli / tauri / SPA unchanged — the
   memories family is dispatch-only, measured: no `quilltap-web` file moved).
+
+## P4.D293 — the BACKUP + RESTORE carriers at `83334b9a5` — lane record (`claude/p4.d293-backup-restore-carriers-149cb8fc1`)
+
+- **Start.** The session opened on `main` (`d1434189c`) in the main checkout; the lane moved to a fresh worktree
+  `~/source/quilltap-v5/.claude/worktrees/p4d293-backup-restore` on branch
+  `claude/p4.d293-backup-restore-carriers-149cb8fc1`, cut from `KEYSTONE` = `149cb8fc1` (verified against P4.D288's
+  status header on `claude/p4-memory-scenarios-keystone-fd710c`). Target cloned from main's (`cp -cR`, 48 s);
+  `apps/web/dist` cloned from main's.
+- **§R.2 probe (an observation).** v4 `main` HEAD `7458ff94e`, tree clean — **v4 moved: 15 commits past the
+  ledger's `01f508d4e`, observed 2026-10-14 23:55** (incl. `2432b9057 release: 4.10.0`, `f573a7576` merge,
+  `37246654d dev: started 4.11.0`, `49f8906c3 Release checklist 10: backup/restore completeness; remap seat ids in
+  new-account restore` — a backup/restore hunk PAST the pin, out of scope, for `/driftcheck`). **`bugfix` moved
+  `1a2b2164c → 489b228b6`.** Pin unaffected.
+- **The pin.** `/tmp/qt-v4-pin-p4d293-83334b9a5` at `83334b9a5befca33…`, `4.10.0-dev.176`. The live tree's
+  dependencies HAD moved (`@quilltap/plugin-utils` 2.6.3 → 2.7.1 in the lockfile), so the root `node_modules` is the
+  pin's own `npm ci --offline` tree (§R.3's cure — `openai` 7.30.0, plugin-utils 2.6.3, `better-sqlite3` built);
+  `packages/quilltap/node_modules` + 15 plugin `node_modules` symlinked. Every regen writes under `/tmp/p4d293/`
+  through a lane-private `regen.sh` (the committed recipe headers stay canonical).
+- **Red-first on `KEYSTONE` (from the pin).** `system_backup_equivalence` RED — 22 diffs (six cases × the two
+  vector files in the tree, the manifest's two counts, the tf-idf `textShapeVersion` key); chats / memories /
+  chat-settings already byte-equal (C1-9's inheritance holds). `system_restore_state` + `system_restore_equivalence`
+  — oracle DEAD at the pin (`no such table: vector_entries`, the `restore_phase_warns_replace` plant).
+  `backup_uuid_remap_equivalence` — oracle DEAD (`archive is missing data/vector-index-metas.json`).
+  GREEN at `KEYSTONE`: `system_delete_data_equivalence` 9/9 (the truncate list moves nothing the fixture can see —
+  no cursor rows, no vector tables), `restore_vintage_state` 2/2, `system_restore_guards_equivalence` 17,
+  `backup_mount_index_coercion_equivalence` 20, `store_name_reconcile_equivalence` (both legs).
+- **L-12 / L-11 C1 presence:** `load_bundle_cursors` / `with_bundle_cursor_fields` / `take_bundle_cursors` /
+  `restore_bundle_cursors` present at `KEYSTONE` (`services/carriers/cursor_bundle.rs`); `ChatCreate` refuses a
+  schema-invalid `scenarioSource` with v4's ZodError bytes (`db/chats.rs` `scenario_source_refusal`) — measured
+  in unit 4.
+- **L-2 measurements.** (a) `PRAGMA foreign_key_list("memory_extraction_cursors")` → `chatId → chats.id ON DELETE
+  CASCADE` on a `provision_fresh_instance` target AND on the narrowed `system-data-main.db`; (b) `PRAGMA
+  foreign_keys` = 1 on the writer connection of both; (c) the v4 oracle TARGET (`system-restore.test.ts`) was built
+  by `initializeDatabase()` + a repository touch — generateDDL's BARE shape. **Fixed the preferred way:** the
+  target now runs v4's REAL `add-memory-extraction-cursors-v1` `run()` before the cursor repository is touched.
+  It cannot run before EVERY touch — its column probe throws `no such table: main.chats` on an absent `chats`
+  (measured) — so the chats repository alone is touched first, then the migration, then the loop. No
+  `CURSOR_TABLE_MIGRATION_SHAPE` carve is consumed.
+
+### Unit 1 — `af48f6cc2` on the carriers: no vector files, cursors + `textShapeVersion` on the backup, legacy adoption (core 0.0.1299)
+
+- **Backup** (`collect.rs`, `manifest.rs`, `staging.rs`, `mod.rs`): no vector read / files / counts;
+  `BackupData.vector_index_metas` DELETED, `vector_entries` kept as the legacy read (L-8); the compact clears
+  narrowed to v4's four. Cursors through C1-11 (`load_bundle_cursors` once, `with_bundle_cursor_fields` per chat,
+  BEFORE `messages`). **`textShapeVersion` — measured, not as the survey predicted:** v4's
+  `tfidfVocabularies.findAll()` answers RAW collection rows (no Zod parse), so the key sits at the TABLE's column
+  position — LAST on the narrowed fixture (the migration APPENDS it), between `fittedAt` and `createdAt` on a
+  fresh generateDDL table — and v4's row mapper turns a NULL cell into `undefined` (key dropped). Ported as a
+  column-order spec (`tfidf_vocabulary_fields`) with `F::NumOpt`. L-7's compact DEBUG ported (target
+  `quilltap::backup`, the backup module's precedent) and capture-pinned against v4's real `createBackup`.
+- **Restore**: `RestoreSummary` −2 / +`legacy_vectors_adopted: Option<usize>` (preview `None`, restore `Some`);
+  22j deleted; `archive.rs` ignores the metas file; phase 9's adoption (L-5) + `Restored memories` DEBUG with L-1's
+  named no-op comment at v4's `memoryIndex.reloadAll()`; the new-account remap drops the metas.
+- **Oracles.** `system-backup.test.ts`: NEW `backup_with_memory_carriers` (CHAT_1's three cursors through v4's
+  REAL `setCursor`; CHAT_2's scenario source / notes, MEM_3's `supersededAt`, the vocabulary's
+  `textShapeVersion = 1` by raw SQL both sides run verbatim) and Tier-2 `backup_cursor_read_fails`; every case
+  records `logs` (the compact DEBUG by bytes; the `[ExtractionCursors]` + repository read-failure lines by
+  PRESENCE — P4.D288's bytes). **Finding (the plant):** the order's VIRTUAL-column plant fails only v4 — v5's
+  repository NAMES its columns, so an EXTRA virtual column is never evaluated; a VIEW reads as "no table" to v5's
+  `schema_probe::table_exists` (`type = 'table'`). The plant that fails both: the table rebuilt without
+  `messageId`, then `messageId` ADDED as a VIRTUAL `json("pass")` column (SQLite evaluates a generated column on
+  INSERT, so it must be added after the rows). Both sides then log `Error finding all entities` (ERROR,
+  `malformed JSON`) and carry no cursor key — v4's `loadBundleCursors` WARN is unreachable through v4's real
+  code outside the strict scope (its `_findAll` is a fallback `safeQuery`), as v5's is. The Rust family adds a
+  chat key-order TAIL check (`chats.json` is otherwise compared as a canonical set — the overlay key-order
+  divergence): the cursor keys in v4's order, before `messages`, byte-compared.
+- `system-restore.test.ts` + `system_restore_state.rs`: the two vector plants DELETED (comments name
+  `af48f6cc2`); `RESTORE_TS_MESSAGES` 80 → 79 in BOTH lists (−`Failed to restore vector entries batch`,
+  −`Failed to restore vector index meta`, +`Restored memories`; header 50 / 7 / 20 / 2); L-2's target fix.
+  `backup-uuid-remap.test.ts`: `COLLECTIONS` drops `vectorIndexMetas`, `vector-entries.json` read optionally
+  (no pin backup writes it); `uuid-remap-corpus.json` REGENERATED from the pin (−78 / +7 lines).
+- **Families after the unit (from the pin):** `system_backup_equivalence` GREEN (8 cases, logs incl.);
+  `backup_uuid_remap_equivalence` GREEN (36 cases, 39 collections); `system_restore_equivalence` GREEN;
+  `system_restore_state` 3/4 — the remaining 96 diffs are exactly units 2–4's surfaces (45 cases ×
+  `instanceSettings` — e0ac7493a's derived `memoryMaintenance`; the memory-tiers archives' OTHER watermark landing
+  in the cursor table; `restore_memory_tiers_*`'s chat-column assertion). fmt + both clippies clean; core lib
+  `services::backup` 63/63.

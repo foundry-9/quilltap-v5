@@ -863,6 +863,19 @@ fn restore_on_writer(
     //    MemoriesRepository::create` has always taken `&CreateOptions`.
     {
         let repo = crate::db::memories::MemoriesRepository::new(main);
+        // P4.D293 (v4 `af48f6cc2`, `restore.ts:332-336`): "An archive written
+        // before Phase B of the memory refactor carries the retired vector
+        // mirror beside the rows. The row is the only copy now, so a memory
+        // that arrived without an embedding takes the mirror's." v4's `new
+        // Map(entries.map(e => [e.id, e.embedding]))` — a later duplicate id
+        // OVERWRITES an earlier one (L-5: last wins).
+        let mut legacy_vectors: std::collections::HashMap<&str, &Value> =
+            std::collections::HashMap::new();
+        for entry in &data.vector_entries {
+            if let Some(id) = entry.get("id").and_then(Value::as_str) {
+                legacy_vectors.insert(id, entry.get("embedding").unwrap_or(&Value::Null));
+            }
+        }
         for m in &data.memories {
             // v4 `:255-259`: `{ id, createdAt, updatedAt, ...memoryData }`, the
             // legacy `personaId` stripped, `create(clean, { id })`.
@@ -884,6 +897,19 @@ fn restore_on_writer(
                         .map_or(0, Vec::len),
                     "Decoded index-keyed memory embedding"
                 );
+            }
+            // v4 `:347-352`: "has an embedding" is a NON-EMPTY ARRAY after the
+            // decode — so an un-decoded `{}` (or `null`, or none) adopts — and
+            // the legacy vector must itself be a non-empty array. A legacy
+            // vector of another dimension restores as it is; step 25's
+            // reconcile is what notices it (L-5).
+            let non_empty_array =
+                |v: Option<&Value>| v.and_then(Value::as_array).is_some_and(|a| !a.is_empty());
+            let legacy = legacy_vectors.get(id_of(m).as_str()).copied();
+            let adopts_legacy_vector =
+                !non_empty_array(item.get("embedding")) && non_empty_array(legacy);
+            if let (true, Some(legacy)) = (adopts_legacy_vector, legacy) {
+                item.insert("embedding".into(), legacy.clone());
             }
             let item = Value::Object(item);
             let character_id = s(m, "characterId");
@@ -924,7 +950,11 @@ fn restore_on_writer(
                 })
             };
             // v4 `:279` counts a memory only once `create` returned
-            // (`memoriesRestored++`, bug 181's summary half).
+            // (`memoriesRestored++`, bug 181's summary half) — and an adopted
+            // legacy vector likewise only then (`:363`).
+            if adopts_legacy_vector && created.is_ok() {
+                c.legacy_vectors_adopted += 1;
+            }
             warn_row!(
                 w,
                 c.memories,
@@ -934,6 +964,18 @@ fn restore_on_writer(
                 memoryId = id_of(m),
             );
         }
+        // v4 `:369-376`: "The index is the rows just written; drop any
+        // cached copy so the next search reads them" — `memoryIndex.
+        // reloadAll()` has NO v5 twin: v5 keeps no in-process index cache
+        // (every search loads the rows), so there is nothing stale to drop
+        // (L-1, a recorded no-op — revisit only if an index cache arrives).
+        tracing::debug!(
+            target: "quilltap::restore",
+            total = data.memories.len(),
+            restored = c.memories,
+            legacyVectorsAdopted = c.legacy_vectors_adopted,
+            "Restored memories"
+        );
     }
 
     // ── 10. Prompt templates — id NOT preserved (v4 `:251`), userId retargeted ─
@@ -1763,14 +1805,9 @@ fn restore_on_writer(
         );
     }
 
-    // ── 22j. Vector index metas + entries — RETIRED (P4.D288, C1-3) ─────────
-    // The vector mirror died with v4 `af48f6cc2`: a memory's row is the only
-    // copy of its vector, so the archive's `vectorIndices` / `vectorEntries`
-    // land nowhere and both counts answer 0 (`c.vector_index_metas` /
-    // `c.vector_entries` stay at their default). HANDOFF: P4.D293 — v4
-    // `restore.ts:335-375` ADOPTS an older archive's legacy vectors onto their
-    // memory rows (`legacyVectorsAdopted`); that carrier is P4.D293's to port.
-    let _ = (&data.vector_index_metas, &data.vector_entries);
+    // ── 22j. DELETED (v4 `af48f6cc2`) — the vector mirror is retired: a
+    // memory's row is the only copy of its vector, so an old archive's
+    // `vectorEntries` are ADOPTED in phase 9 instead, and its metas ignored.
 
     // ── 22k. Conversation chunks ─────────────────────────────────────────────
     {
@@ -4313,8 +4350,8 @@ struct Counters {
     embedding_status: usize,
     conversation_chunks: usize,
     tfidf_vocabularies: usize,
-    vector_index_metas: usize,
-    vector_entries: usize,
+    /// v4 `legacyVectorsAdopted` (`restore.ts:336`, `af48f6cc2`).
+    legacy_vectors_adopted: usize,
     doc_mount_points: usize,
     doc_mount_folders: usize,
     doc_mount_files: usize,
@@ -4405,8 +4442,7 @@ impl Counters {
             embedding_status: self.embedding_status,
             conversation_chunks: self.conversation_chunks,
             tfidf_vocabularies: self.tfidf_vocabularies,
-            vector_index_metas: self.vector_index_metas,
-            vector_entries: self.vector_entries,
+            legacy_vectors_adopted: Some(self.legacy_vectors_adopted),
             doc_mount_points: self.doc_mount_points,
             doc_mount_folders: self.doc_mount_folders,
             doc_mount_files: self.doc_mount_files,
@@ -4568,7 +4604,6 @@ mod free_store_name_tests {
             embedding_status: Vec::new(),
             conversation_chunks: Vec::new(),
             tfidf_vocabularies: Vec::new(),
-            vector_index_metas: Vec::new(),
             vector_entries: Vec::new(),
             doc_mount_folders: Vec::new(),
             doc_mount_files: Vec::new(),

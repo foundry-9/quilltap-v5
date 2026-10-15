@@ -60,7 +60,7 @@ pub struct HostDirs {
 /// longer written — pre-rework presets fold into composite wardrobe items at
 /// restore time instead (`:609`).
 fn data_files(data: &BackupData, compact: bool) -> Vec<(&'static str, &Vec<Value>)> {
-    // v4 `7189a968`: a compact backup OMITS the six derived embedding data
+    // v4 `7189a968`: a compact backup OMITS the four derived embedding data
     // files outright rather than writing empty arrays — the restore reader
     // treats all of them as optional, so an absent file and an empty one
     // behave identically on the way back in, and the absent one is what makes
@@ -72,8 +72,6 @@ fn data_files(data: &BackupData, compact: bool) -> Vec<(&'static str, &Vec<Value
                 "embedding-status.json"
                     | "conversation-chunks.json"
                     | "tfidf-vocabularies.json"
-                    | "vector-index-metas.json"
-                    | "vector-entries.json"
                     | "doc-mount-chunks.json"
             )
     };
@@ -114,8 +112,8 @@ fn data_files(data: &BackupData, compact: bool) -> Vec<(&'static str, &Vec<Value
         ("embedding-status.json", &data.embedding_status),
         ("conversation-chunks.json", &data.conversation_chunks),
         ("tfidf-vocabularies.json", &data.tfidf_vocabularies),
-        ("vector-index-metas.json", &data.vector_index_metas),
-        ("vector-entries.json", &data.vector_entries),
+        // P4.D293 (v4 `af48f6cc2`): no `vector-index-metas.json` /
+        // `vector-entries.json` — "a memory's vector rides on its own row".
         ("doc-mount-points.json", &data.doc_mount_points),
         ("doc-mount-folders.json", &data.doc_mount_folders),
         ("doc-mount-files.json", &data.doc_mount_files),

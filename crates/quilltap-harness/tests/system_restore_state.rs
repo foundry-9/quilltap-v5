@@ -755,7 +755,6 @@ fn archive_literals(zip: &Path, temp_root: &Path) -> HashSet<String> {
         &d.embedding_status,
         &d.conversation_chunks,
         &d.tfidf_vocabularies,
-        &d.vector_index_metas,
         &d.vector_entries,
         &d.doc_mount_points,
         &d.doc_mount_folders,
@@ -1387,12 +1386,8 @@ const PHASE_WARNS_PLANT: &[(&str, &str, &str, &str)] = &[
         "characterName",
         "characterNamePlanted",
     ),
-    (
-        "quilltap.db",
-        "vector_entries",
-        "embedding",
-        "embeddingPlanted",
-    ),
+    // [P4.D293] the `vector_entries` rename DELETED: v4 `af48f6cc2` writes
+    // neither vector table (22j is gone), so the plant measured nothing.
     (
         "quilltap.db",
         "conversation_chunks",
@@ -1553,13 +1548,8 @@ fn plant_sql_in(name: &str) -> &'static [(&'static str, &'static str)] {
                 "quilltap.db",
                 "DELETE FROM \"instance_settings\" WHERE \"key\" = 'generalMountPointId'",
             ),
-            // `save_meta` pre-reads every named meta column (v4's lookup does
-            // not), so a rename would trip the read first.
-            (
-                "quilltap.db",
-                "CREATE TRIGGER \"planted_vector_meta_failure\" BEFORE INSERT ON \"vector_indices\" \
-                 BEGIN SELECT RAISE(ABORT, 'planted vector index meta failure'); END",
-            ),
+            // [P4.D293] the `vector_indices` trigger DELETED with v4
+            // `af48f6cc2`'s 22j.
         ],
         _ => &[],
     }
@@ -5786,7 +5776,9 @@ fn assert_claimed_store_warns(name: &str, lines: &[String], failures: &mut Vec<S
 /// All 80 sites at `01a83539d` (52 warn, 7 info, 19 debug, 2 error — each
 /// message distinct; P4.158's 63, + P4.D264's four for 22n-bis / 22f-ter, +
 /// P4.D258's `039f7017c` `Decoded index-keyed memory embedding` = 68 at
-/// `f5e953a3f`, + P4.D273's twelve from `ed8b15b50`), recorded
+/// `f5e953a3f`, + P4.D273's twelve from `ed8b15b50`; at `83334b9a5` 79 — 50
+/// warn, 7 info, 20 debug, 2 error: `af48f6cc2` −22j's two WARNs, +phase
+/// 9's `Restored memories`, P4.D293), recorded
 /// by the oracle on every case with every context key. v5 must log the same
 /// lines, in the same order, with the same fields (an Error recorded as its
 /// message; an object / array through the `…Json` file-layer convention).
@@ -5835,8 +5827,6 @@ const RESTORE_TS_MESSAGES: &[&str] = &[
     "Failed to restore tfidf vocabulary",
     "Failed to restore theme bundle",
     "Failed to restore themes-index.json",
-    "Failed to restore vector entries batch",
-    "Failed to restore vector index meta",
     "Failed to restore wardrobe item",
     // [P4.D264] v4 `3ee3b1342` / `7c8572869` — 22n-bis + 22f-ter.
     "Failed to restore wardrobe wear ledger",
@@ -5848,6 +5838,8 @@ const RESTORE_TS_MESSAGES: &[&str] = &[
     "Renamed connection profile on restore to avoid name collision",
     "Restore operation completed",
     "Restored chat informs",
+    // [P4.D293] v4 `af48f6cc2` — phase 9's post-loop DEBUG (80 → 79).
+    "Restored memories",
     "Restored npm plugin",
     "Restored npm plugins",
     "Restored text replacement rules",

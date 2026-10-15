@@ -122,6 +122,12 @@ pub fn create_backup(
     // error: …` Display — it is what `backup_create` logs (dogfood #137).
     let collected =
         collect_user_data(db, user_id).map_err(|e| crate::db::fallback::error_text(&e))?;
+    // P4.D293 (L-7, v4 `backup-service.ts:618-629`): the compact DEBUG's
+    // dropped counts are the COLLECTED rows', read before the strip.
+    let dropped = (
+        collected.conversation_chunks.len(),
+        collected.doc_mount_chunks.len(),
+    );
     let data = if compact {
         collect::compact_backup_data(collected)
     } else {
@@ -140,6 +146,16 @@ pub fn create_backup(
         counts,
         compact,
     );
+    if compact {
+        tracing::debug!(
+            target: "quilltap::backup",
+            userId = %user_id,
+            memories = data.memories.len(),
+            droppedConversationChunks = dropped.0,
+            droppedDocMountChunks = dropped.1,
+            "Compact backup — embeddings and derived tables omitted"
+        );
+    }
 
     // v4 `mkdtemp(path.join(os.tmpdir(), 'quilltap-backup-'))` (`:577`), then a
     // staging folder named `quilltap-backup-<ISO with [:.] → ->` inside it.

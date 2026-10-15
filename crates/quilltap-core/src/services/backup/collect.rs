@@ -115,7 +115,13 @@ pub struct BackupData {
     pub embedding_status: Vec<Value>,
     pub conversation_chunks: Vec<Value>,
     pub tfidf_vocabularies: Vec<Value>,
-    pub vector_index_metas: Vec<Value>,
+    /// P4.D293 (v4 `af48f6cc2`, `types.ts:63-73`): "Legacy only — older
+    /// backups carried the vector-index mirror's rows; never written." The
+    /// backup leaves it EMPTY and stages no file; the restore's archive reader
+    /// fills it from an old archive's optional `vector-entries.json`, and phase
+    /// 9 adopts a row's vector onto a memory that arrived without one
+    /// (`legacyVectorsAdopted`). The mirror's metas (`vectorIndexMetas`) went
+    /// with it — v4 reads that file no longer.
     pub vector_entries: Vec<Value>,
     pub doc_mount_points: Vec<Value>,
     pub doc_mount_folders: Vec<Value>,
@@ -329,6 +335,36 @@ const TFIDF_VOCABULARIES: &[(&str, F)] = &[
     ("updatedAt", F::Str),
 ];
 
+/// P4.D293 (v4 `4ae0c4ca6`, `embedding-job.types.ts:51-57`): the vocabulary's
+/// `textShapeVersion`, placed where the TABLE has the column. v4's
+/// `tfidfVocabularies.findAll()` (`backup-service.ts:272`) answers the RAW
+/// collection rows — no schema parse — so a row's keys follow the table's
+/// column order: a fresh instance's generateDDL shape (`REAL DEFAULT 0`) holds
+/// it between `fittedAt` and `createdAt`, a migrated one's (`INTEGER DEFAULT
+/// 0`, APPENDED by `add-tfidf-text-shape-version-v1`) after `updatedAt` (R-R —
+/// both shapes read; an INTEGER `0` and a REAL `0.0` both write `0`). A NULL
+/// cell is v4's `null → undefined`, so the key is left out (`F::NumOpt`), and
+/// a table without the column carries no key at all.
+fn tfidf_vocabulary_fields(conn: &rusqlite::Connection) -> Result<Vec<(&'static str, F)>, DbError> {
+    let mut fields = TFIDF_VOCABULARIES.to_vec();
+    if !table_exists(conn, "tfidf_vocabularies") {
+        return Ok(fields);
+    }
+    let mut stmt = conn.prepare("SELECT name FROM pragma_table_info('tfidf_vocabularies')")?;
+    let columns: Vec<String> = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<Result<_, _>>()?;
+    let at_of = |name: &str| columns.iter().position(|c| c == name);
+    if let Some(shape_at) = at_of("textShapeVersion") {
+        let slot = fields
+            .iter()
+            .position(|(name, _)| at_of(name).is_some_and(|at| at > shape_at))
+            .unwrap_or(fields.len());
+        fields.insert(slot, ("textShapeVersion", F::NumOpt));
+    }
+    Ok(fields)
+}
+
 const EMBEDDING_STATUS: &[(&str, F)] = &[
     ("id", F::Str),
     ("userId", F::Str),
@@ -338,15 +374,6 @@ const EMBEDDING_STATUS: &[(&str, F)] = &[
     ("status", F::Str),
     ("embeddedAt", F::StrOpt),
     ("error", F::StrOpt),
-    ("createdAt", F::Str),
-    ("updatedAt", F::Str),
-];
-
-const VECTOR_INDEX_METAS: &[(&str, F)] = &[
-    ("id", F::Str),
-    ("characterId", F::Str),
-    ("version", F::Num),
-    ("dimensions", F::Num),
     ("createdAt", F::Str),
     ("updatedAt", F::Str),
 ];
@@ -518,8 +545,6 @@ pub fn compact_backup_data(mut data: BackupData) -> BackupData {
     }
     // Wholly derived collections — regenerable from the content above.
     data.conversation_chunks = Vec::new();
-    data.vector_entries = Vec::new();
-    data.vector_index_metas = Vec::new();
     data.tfidf_vocabularies = Vec::new();
     data.embedding_status = Vec::new();
     data.doc_mount_chunks = Vec::new();
@@ -565,6 +590,15 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
         // Chats carry their message events inline (v4 `ChatWithMessages`), and
         // only `type === 'message'` events survive the filter (`:196`).
         let mut chats = if_table(main, "chats", || chats_read::find_all(main))?;
+        // P4.D293 (v4 `ac6348c5f` + `64743ee13`, `backup-service.ts:193-206`):
+        // "The fold passes' cursors for every chat, in one read", riding on
+        // each chat under their legacy field names — after every chat key,
+        // BEFORE `messages`, each only when set (C1-11's
+        // `with_bundle_cursor_fields`). A failed read falls back per chat
+        // with v4's WARNs and never fails the backup; an absent cursor table
+        // reads as none and creates nothing on the SOURCE (L-10 — v4's
+        // repository creates it lazily; the P4.D264 R-G precedent).
+        let bundle_cursors = crate::services::carriers::cursor_bundle::load_bundle_cursors(main);
         for chat in &mut chats {
             let id = chat
                 .get("id")
@@ -576,6 +610,11 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
                 .filter(|e| e.get("type").and_then(Value::as_str) == Some("message"))
                 .collect();
             if let Some(obj) = chat.as_object_mut() {
+                *obj = crate::services::carriers::cursor_bundle::with_bundle_cursor_fields(
+                    main,
+                    std::mem::take(obj),
+                    bundle_cursors.as_ref(),
+                );
                 obj.insert("messages".into(), Value::Array(messages));
             }
         }
@@ -644,33 +683,10 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
             conversation_chunks.extend(read_conversation_chunks(main, cid)?);
         }
 
-        // Vector indices, per character id that has one (`:251-265`).
-        let mut vector_index_metas = Vec::new();
-        let mut vector_entries = Vec::new();
-        // v4 `getAllCharacterIds()` — `SELECT characterId FROM vector_indices`,
-        // insertion order, no dedupe (the table is one row per character).
-        let character_ids_with_vectors: Vec<String> = if table_exists(main, "vector_indices") {
-            let mut stmt = main.prepare("SELECT characterId FROM vector_indices")?;
-            let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
-            let mut v = Vec::new();
-            for r in rows {
-                v.push(r?);
-            }
-            v
-        } else {
-            Vec::new()
-        };
-        for cid in &character_ids_with_vectors {
-            let cid_ref: &str = cid;
-            vector_index_metas.extend(query_all(
-                main,
-                "vector_indices",
-                VECTOR_INDEX_METAS,
-                "characterId = ?1",
-                &[&cid_ref],
-            )?);
-            vector_entries.extend(read_vector_entries(main, cid)?);
-        }
+        // P4.D293 (v4 `af48f6cc2`, `backup-service.ts:266-268`): "No vector
+        // index to dump: a memory's vector rides on its own row
+        // (`memories.embedding`, written above as number[]), and the in-process
+        // index is rebuilt from the rows on first use."
 
         let chat_settings = match if_table_opt(main, "chat_settings", || {
             crate::db::chat_settings::find_by_user_id(main, user_id)
@@ -729,9 +745,13 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
             instance_settings: read_instance_settings(main),
             embedding_status: query_all(main, "embedding_status", EMBEDDING_STATUS, "", &[])?,
             conversation_chunks,
-            tfidf_vocabularies: query_all(main, "tfidf_vocabularies", TFIDF_VOCABULARIES, "", &[])?,
-            vector_index_metas,
-            vector_entries,
+            tfidf_vocabularies: query_all(
+                main,
+                "tfidf_vocabularies",
+                &tfidf_vocabulary_fields(main)?,
+                "",
+                &[],
+            )?,
             text_replacement_rules: query_all(
                 main,
                 "text_replacement_rules",
@@ -839,8 +859,7 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
         embedding_status: main_side.embedding_status,
         conversation_chunks: main_side.conversation_chunks,
         tfidf_vocabularies: main_side.tfidf_vocabularies,
-        vector_index_metas: main_side.vector_index_metas,
-        vector_entries: main_side.vector_entries,
+        vector_entries: Vec::new(),
         doc_mount_points: mount.doc_mount_points,
         doc_mount_folders: mount.doc_mount_folders,
         doc_mount_files: mount.doc_mount_files,
@@ -883,8 +902,6 @@ struct MainSide {
     embedding_status: Vec<Value>,
     conversation_chunks: Vec<Value>,
     tfidf_vocabularies: Vec<Value>,
-    vector_index_metas: Vec<Value>,
-    vector_entries: Vec<Value>,
     text_replacement_rules: Vec<Value>,
     // === P4.D264 ===
     wardrobe_wear: Vec<Value>,
@@ -957,33 +974,6 @@ fn read_conversation_chunks(
         o.insert("embedding".into(), encode_embedding(r.get(6)?));
         o.insert("createdAt".into(), Value::String(r.get::<_, String>(7)?));
         o.insert("updatedAt".into(), Value::String(r.get::<_, String>(8)?));
-        Ok(Value::Object(o))
-    })?;
-    let mut out = Vec::new();
-    for r in rows {
-        out.push(r?);
-    }
-    Ok(out)
-}
-
-/// The `SerializedVectorEntry` shape v4 builds at `:260`. `Array.from(entry
-/// .embedding as Float32Array)` — never null here (the column is NOT NULL).
-fn read_vector_entries(
-    conn: &rusqlite::Connection,
-    character_id: &str,
-) -> Result<Vec<Value>, DbError> {
-    if !table_exists(conn, "vector_entries") {
-        return Ok(Vec::new());
-    }
-    let mut stmt = conn.prepare(
-        "SELECT id, characterId, embedding, createdAt FROM vector_entries WHERE characterId = ?1",
-    )?;
-    let rows = stmt.query_map([character_id], |r| {
-        let mut o = Map::new();
-        o.insert("id".into(), Value::String(r.get::<_, String>(0)?));
-        o.insert("characterId".into(), Value::String(r.get::<_, String>(1)?));
-        o.insert("embedding".into(), encode_embedding(r.get(2)?));
-        o.insert("createdAt".into(), Value::String(r.get::<_, String>(3)?));
         Ok(Value::Object(o))
     })?;
     let mut out = Vec::new();

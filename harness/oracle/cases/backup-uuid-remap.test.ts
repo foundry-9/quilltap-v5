@@ -99,7 +99,10 @@ const COLLECTIONS: ReadonlyArray<readonly [string, string]> = [
   ['embeddingStatus', 'embedding-status.json'],
   ['conversationChunks', 'conversation-chunks.json'],
   ['tfidfVocabularies', 'tfidf-vocabularies.json'],
-  ['vectorIndexMetas', 'vector-index-metas.json'],
+  // [P4.D293] v4 `af48f6cc2`: `remapBackupData` returns no `vectorIndexMetas`
+  // and no backup writes either vector file. `vectorEntries` stays — the
+  // LEGACY mirror rows an old archive carries are still remapped (so the
+  // restore's adoption matches the remapped memory id) — read optionally.
   ['vectorEntries', 'vector-entries.json'],
   ['docMountPoints', 'doc-mount-points.json'],
   ['docMountFolders', 'doc-mount-folders.json'],
@@ -117,6 +120,9 @@ const COLLECTIONS: ReadonlyArray<readonly [string, string]> = [
   // on every backup (`backup-service.ts:722`).
   ['wardrobeWear', 'wardrobe-wear.json'],
 ];
+
+/** [P4.D293] Files a pin backup no longer writes but the remap still reads. */
+const OPTIONAL_FILES = new Set(['vector-entries.json']);
 
 type Bag = Record<string, unknown[]>;
 
@@ -215,7 +221,13 @@ async function collectWide(
     const out: Bag = {};
     for (const [key, file] of COLLECTIONS) {
       const p = join(dataDir, file);
-      if (!existsSync(p)) throw new Error(`archive is missing data/${file}`);
+      if (!existsSync(p)) {
+        if (OPTIONAL_FILES.has(file)) {
+          out[key] = [];
+          continue;
+        }
+        throw new Error(`archive is missing data/${file}`);
+      }
       const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));
       if (!Array.isArray(parsed)) throw new Error(`data/${file} is not an array`);
       out[key] = parsed;
@@ -662,7 +674,6 @@ function edgeCases(): Case[] {
           { id: 'wi-1', characterId: 'shared-char', componentItemIds: ['wi-2'] },
           { id: 'wi-2', characterId: 'shared-char' },
         ],
-        vectorIndexMetas: [{ id: 'shared-char', characterId: 'shared-char' }],
         vectorEntries: [{ id: 'mem-1', characterId: 'shared-char', embedding: [0.5] }],
         embeddingStatus: [{ id: 'es-1', entityId: 'mem-1', profileId: 'ep-1' }],
         tfidfVocabularies: [{ id: 'tv-1', profileId: 'ep-1' }],

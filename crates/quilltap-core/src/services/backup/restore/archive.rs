@@ -182,7 +182,10 @@ fn parse_tree(root: &Path) -> Result<(BackupData, Value), String> {
     let embedding_status = opt("data/embedding-status.json")?;
     let conversation_chunks = opt("data/conversation-chunks.json")?;
     let tfidf_vocabularies = opt("data/tfidf-vocabularies.json")?;
-    let vector_index_metas = opt("data/vector-index-metas.json")?;
+    // P4.D293 (v4 `af48f6cc2`, `archive.ts:257-260`): "Legacy (pre-Phase-B
+    // archives): the retired vector mirror, read only to backfill a memory
+    // that arrived without an embedding. Its per-character metas file is
+    // ignored."
     let vector_entries = opt("data/vector-entries.json")?;
     let doc_mount_points = opt("data/doc-mount-points.json")?;
     let doc_mount_folders = opt("data/doc-mount-folders.json")?;
@@ -229,7 +232,6 @@ fn parse_tree(root: &Path) -> Result<(BackupData, Value), String> {
             embedding_status,
             conversation_chunks,
             tfidf_vocabularies,
-            vector_index_metas,
             vector_entries,
             doc_mount_points,
             doc_mount_folders,

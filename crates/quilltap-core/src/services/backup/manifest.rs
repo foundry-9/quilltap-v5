@@ -77,8 +77,8 @@ pub fn create_manifest(
     n(c, "embeddingStatus", data.embedding_status.len());
     n(c, "conversationChunks", data.conversation_chunks.len());
     n(c, "tfidfVocabularies", data.tfidf_vocabularies.len());
-    n(c, "vectorIndexMetas", data.vector_index_metas.len());
-    n(c, "vectorEntries", data.vector_entries.len());
+    // P4.D293 (v4 `af48f6cc2`, `backup-service.ts:484-485`): the two vector
+    // counts are gone — no backup carries the mirror any more.
     n(c, "docMountPoints", data.doc_mount_points.len());
     n(c, "docMountFolders", data.doc_mount_folders.len());
     n(c, "docMountFiles", data.doc_mount_files.len());

@@ -357,6 +357,19 @@ Starts v4's Phase-E recall pipeline (`584d28164`) under `services/recall/`.
 
 New tier-1 family `recall_rank_equivalence` against v4's real `lib/memory/scoring/rank.ts` (142 rows: every multiplier, the gate and the cap, `extraFired`, the cross-project exclusion, ties and a NaN salience, R6's arithmetic). Inverting the sort or dropping `extraFired` turns it red.
 
+#### 2026-10-15 — feat(core): P4.D293 unit 1 — backups stop carrying the vector mirror; old archives' vectors adopted on restore
+
+_Versions: core 0.0.1299._
+
+v4 `af48f6cc2` (memory refactor Phase B) on the backup and restore carriers, at the `83334b9a5` pin.
+
+- A backup writes neither `vector-index-metas.json` nor `vector-entries.json`, and the manifest drops both counts. `BackupData.vector_index_metas` is gone; `vector_entries` stays as the legacy read only.
+- Each backed-up chat carries its extraction cursors under the three legacy keys, after every chat key and before `messages`, through the C1-11 bundle helpers. A failed cursor read never fails the backup.
+- `tfidfVocabularies[*].textShapeVersion` is carried where the table has the column: v4 reads raw rows, so a migrated table puts it last and a fresh one between `fittedAt` and `createdAt`. A NULL cell drops the key.
+- The compact backup logs v4's `Compact backup — embeddings and derived tables omitted` DEBUG (a gap since the compact port).
+- Restore: 22j is deleted. Phase 9 adopts an old archive's mirror vector onto a memory that arrived without one (last duplicate wins, counted only after a successful create) and logs `Restored memories`. The summary drops the two vector counts and gains restore-only `legacyVectorsAdopted` (preview 39 keys, restore 41). The archive reader ignores `vector-index-metas.json`; the new-account remap no longer touches it.
+- Harness: two new backup cases (`backup_with_memory_carriers`, `backup_cursor_read_fails`) and a per-case log comparison; the restore census goes from 80 to 79 lines in both lists; the two vector plants are removed; the oracle's restore target gets the cursor table in the migration shape from v4's real migration; the uuid-remap corpus is regenerated from the pin.
+
 #### 2026-10-14 — KEYSTONE: P4.D288 — the memory-refactor + scenarios round's schema keystone
 
 _Docs-only change._

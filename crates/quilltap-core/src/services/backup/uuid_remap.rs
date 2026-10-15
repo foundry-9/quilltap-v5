@@ -349,13 +349,13 @@ pub fn remap_backup_data(
         chain(r, c, &["id", "chatId"], &["messageIds"])
     });
 
-    // Vector index meta — id and characterId share the same value by convention.
-    let vector_index_metas = each(&data.vector_index_metas, |m| {
-        r.remap_fields(m, &["id", "characterId"])
-    });
-
-    // Vector entries — id is typically the memory id (already remapped through
-    // the memory pass). characterId is also remapped.
+    // P4.D293 (v4 `af48f6cc2`): the vector-index metas are no longer
+    // remapped — no backup writes them and the restore ignores them.
+    //
+    // Vector entries (LEGACY, pre-Phase-B archives) — id is the memory id
+    // (already remapped through the memory pass), so the restore's adoption
+    // matches the REMAPPED memory (v4 `uuid-remap.ts:515-527`). characterId
+    // is also remapped.
     let vector_entries = each(&data.vector_entries, |e| {
         r.remap_fields(e, &["id", "characterId"])
     });
@@ -492,7 +492,6 @@ pub fn remap_backup_data(
         embedding_status,
         conversation_chunks,
         tfidf_vocabularies,
-        vector_index_metas,
         vector_entries,
         doc_mount_points,
         doc_mount_folders,

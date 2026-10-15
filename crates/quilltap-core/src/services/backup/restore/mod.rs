@@ -31,9 +31,10 @@ pub use archive::{cleanup_dir, parse_backup_zip, ExtractedBackup};
 pub use orchestrator::{restore, RestoreMode};
 pub use preview::preview_restore;
 
-/// v4 `RestoreSummary` (`lib/backup/types.ts`) — the **41-key** shape both
-/// `previewRestore` (`preview.ts:29-74`) and `restore` (`restore.ts:840-887`)
-/// answer with. Field ORDER here is v4's, and it is what reaches the wire.
+/// v4 `RestoreSummary` (`lib/backup/types.ts`) — the shape both
+/// `previewRestore` (`preview.ts`, **39 keys**) and `restore` (`restore.ts:
+/// 1356-1408`, **41 keys** — `legacyVectorsAdopted` and `embeddingReconcile`
+/// are restore-only) answer with. Field ORDER here is v4's, and it is what reaches the wire.
 ///
 /// The two functions fill it differently and deliberately: preview reports the
 /// archive's INPUT lengths throughout, while restore reports the actually-
@@ -71,8 +72,13 @@ pub struct RestoreSummary {
     pub embedding_status: usize,
     pub conversation_chunks: usize,
     pub tfidf_vocabularies: usize,
-    pub vector_index_metas: usize,
-    pub vector_entries: usize,
+    /// P4.D293 (v4 `af48f6cc2`, `types.ts:571-575`): how many memories that
+    /// arrived WITHOUT an embedding took an old archive's legacy mirror
+    /// vector (phase 9). Restore always sets it (`Some(0)` included); the
+    /// preview never does. Replaces the retired `vectorIndexMetas` /
+    /// `vectorEntries` counts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub legacy_vectors_adopted: Option<usize>,
     pub doc_mount_points: usize,
     pub doc_mount_folders: usize,
     pub doc_mount_files: usize,
@@ -86,7 +92,7 @@ pub struct RestoreSummary {
     pub text_replacement_rules: usize,
     /// P4.D264 (v4 `3ee3b1342`, `types.ts:616`): the wear-ledger rows written
     /// (all or nothing — v4's ONE `upsertRows`); the archive's row count in the
-    /// preview (`preview.ts:75`, the 42nd key).
+    /// preview (`preview.ts:75`).
     pub wardrobe_wear: usize,
     /// v4 `7189a968`: the post-restore embedding reconcile's outcome (step 25).
     /// Restore ALWAYS sets it; preview never does (the key is optional in v4's

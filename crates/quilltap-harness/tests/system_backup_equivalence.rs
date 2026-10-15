@@ -221,6 +221,135 @@ fn open_fixture(scratch: &Path) -> Db {
 const BLOB_PROFILE_ID: &str = "c0ffee00-0000-4000-8000-0000000000b2";
 
 /// P4.149: the oracle's `plantBlobProfile`, statement for statement.
+/// [P4.D293] The oracle's `CARRIER_CURSORS` / `CARRIER_PLANT_SQL`, cell for
+/// cell: CHAT_1's three cursors through C1-1's `set_cursor` (v4's REAL
+/// `setCursor` on the other side), then the three column plants verbatim.
+const CHAT_1: &str = "c1000000-0000-4000-8000-000000000001";
+const CARRIER_CURSORS: &[(&str, &str)] = &[
+    ("other-fold", "d1000000-0000-4000-8000-000000000001"),
+    ("episode-fold", "d1000000-0000-4000-8000-000000000002"),
+    ("turn", "d1000000-0000-4000-8000-0000000000ff"),
+];
+
+fn carrier_plant_sql() -> Vec<String> {
+    vec![
+        format!(
+            r#"UPDATE "chats" SET "scenarioSource" = '{{"mountPointId":"5ce00000-0000-4000-8000-000000000001","path":"Scenarios/The Road.md","bodySha256":"{}"}}', "scenarioNotes" = 'Notes for the road.' WHERE "id" = 'c1000000-0000-4000-8000-000000000002'"#,
+            "ab".repeat(32)
+        ),
+        r#"UPDATE "memories" SET "supersededAt" = '2026-03-04T00:00:00.000Z' WHERE "id" = 'ad000000-0000-4000-8000-000000000003'"#.to_string(),
+        r#"UPDATE "tfidf_vocabularies" SET "textShapeVersion" = 1"#.to_string(),
+    ]
+}
+
+fn set_cursors(db: &Db, cursors: &[(&str, &str)]) {
+    use quilltap_core::db::memory_extraction_cursors::{
+        ExtractionCursorPass, MemoryExtractionCursorsRepository,
+    };
+    let cursors: Vec<(String, String)> = cursors
+        .iter()
+        .map(|(p, m)| (p.to_string(), m.to_string()))
+        .collect();
+    db.write_blocking(move |w| {
+        let repo = MemoryExtractionCursorsRepository::new(w.main().connection());
+        for (pass, message_id) in &cursors {
+            let pass = ExtractionCursorPass::parse(pass).expect("a known pass");
+            repo.set_cursor(CHAT_1, pass, message_id)?;
+        }
+        Ok(())
+    })
+    .expect("plant the cursors");
+}
+
+fn plant_memory_carriers(db: &Db) {
+    set_cursors(db, CARRIER_CURSORS);
+    let sql = carrier_plant_sql();
+    db.write_blocking(move |w| {
+        let c = w.main().connection();
+        for statement in &sql {
+            assert_eq!(
+                c.execute(statement, [])?,
+                1,
+                "each plant moves one row: {statement}"
+            );
+        }
+        Ok(())
+    })
+    .expect("plant the carriers");
+}
+
+/// [P4.D293 Tier 2] the oracle's `THROWING_CURSORS_SQL`, verbatim: one
+/// cursor, then the table rebuilt with `messageId` a VIRTUAL `json("pass")`
+/// column, so every read that names it throws `malformed JSON` on BOTH sides
+/// (an extra virtual column fails only v4's `SELECT *` — v5's repository
+/// names its columns; a VIEW reads as no table to v5's probe).
+fn plant_throwing_cursors(db: &Db) {
+    set_cursors(db, &CARRIER_CURSORS[..1]);
+    db.write_blocking(|w| {
+        w.main().connection().execute_batch(
+            r#"ALTER TABLE "memory_extraction_cursors" RENAME TO "qt_cursors_old";
+               CREATE TABLE "memory_extraction_cursors" ("id" TEXT PRIMARY KEY, "chatId" TEXT NOT NULL, "pass" TEXT NOT NULL, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL);
+               INSERT INTO "memory_extraction_cursors" SELECT "id", "chatId", "pass", "createdAt", "updatedAt" FROM "qt_cursors_old";
+               DROP TABLE "qt_cursors_old";
+               ALTER TABLE "memory_extraction_cursors" ADD COLUMN "messageId" TEXT AS (json("pass")) VIRTUAL;"#,
+        )?;
+        Ok(())
+    })
+    .expect("plant the throwing cursor table");
+}
+
+/// [P4.D293] The oracle's `LOGGED` list. The compact DEBUG is this family's
+/// (L-7) and compared by bytes; the rest are the cursor-bundle / repository
+/// read-failure lines whose bytes P4.D288 pins (§R.5) — compared by PRESENCE
+/// (level + message) only.
+const LOGGED_BY_BYTES: &[&str] = &["Compact backup — embeddings and derived tables omitted"];
+const LOGGED_BY_PRESENCE: &[&str] = &[
+    "[ExtractionCursors] Could not read the cursor table for a bundle; reading per chat",
+    "[ExtractionCursors] Could not read a chat's cursors for a bundle; leaving them out",
+    "Error finding all entities",
+    "Error finding entities by filter",
+];
+
+/// An oracle log record (`{level, message, …fields}`) rendered as the capture
+/// renders a v5 line minus its target: `LEVEL message k=v …`; by-presence
+/// lines render as `LEVEL message` alone.
+fn render_oracle_log(rec: &Value) -> String {
+    let level = rec["level"].as_str().unwrap_or_default().to_uppercase();
+    let message = rec["message"].as_str().unwrap_or_default();
+    let mut out = format!("{level} {message}");
+    if LOGGED_BY_BYTES.contains(&message) {
+        for (k, v) in rec.as_object().into_iter().flatten() {
+            if k == "level" || k == "message" {
+                continue;
+            }
+            let v = match v {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            out.push_str(&format!(" {k}={v}"));
+        }
+    }
+    out
+}
+
+/// A captured v5 line in the same rendering, `None` when it is not one of the
+/// logged messages.
+fn render_v5_log(line: &str) -> Option<String> {
+    let mut parts = line.splitn(3, ' ');
+    let (level, _target, rest) = (parts.next()?, parts.next()?, parts.next()?);
+    if let Some(m) = LOGGED_BY_BYTES
+        .iter()
+        .find(|m| rest == **m || rest.starts_with(&format!("{m} ")))
+    {
+        let _ = m;
+        return Some(format!("{level} {rest}"));
+    }
+    LOGGED_BY_PRESENCE
+        .iter()
+        .find(|m| rest == **m || rest.starts_with(&format!("{m} ")))
+        .map(|m| format!("{level} {m}"))
+}
+
 fn plant_blob_profile(db: &Db) {
     db.write_blocking(|w| {
         let c = w.main().connection();
@@ -589,9 +718,11 @@ fn system_backup_equivalence() {
             || name == "backup_compact"
             || name == "backup_with_informs"
             || name == "backup_with_blob_profile"
-            || name == "backup_with_wardrobe_wear";
+            || name == "backup_with_wardrobe_wear"
+            || name == "backup_with_memory_carriers"
+            || name == "backup_cursor_read_fails";
         // [P4.D46] `backup_compact` runs the same projection with the compact
-        // flag: memory embeddings nulled, the six derived embedding data files
+        // flag: memory embeddings nulled, the four derived embedding data files
         // ABSENT from the tree (asserted below and by the oracle tree diff),
         // manifest.compact stamped.
         let compact = name == "backup_compact";
@@ -606,6 +737,12 @@ fn system_backup_equivalence() {
         }
         if name == "backup_with_wardrobe_wear" {
             plant_wardrobe_wear(&db);
+        }
+        if name == "backup_with_memory_carriers" {
+            plant_memory_carriers(&db);
+        }
+        if name == "backup_cursor_read_fails" {
+            plant_throwing_cursors(&db);
         }
 
         // The oracle seeds the user file's bytes into its data dir for the
@@ -658,8 +795,6 @@ fn system_backup_equivalence() {
                 "embedding-status.json",
                 "conversation-chunks.json",
                 "tfidf-vocabularies.json",
-                "vector-index-metas.json",
-                "vector-entries.json",
                 "doc-mount-chunks.json",
             ] {
                 assert!(
@@ -766,17 +901,94 @@ fn system_backup_equivalence() {
             copy_tree(&staging, &dest);
         }
 
-        // 0. The zip round-trip, on the full case only: `create_backup` collects,
+        // [P4.D293] Every case runs `create_backup` under the capture: its log
+        // lines (the compact DEBUG — L-7 — and the cursor-read failure lines)
+        // are compared with v4's, in order. The collect runs on the caller's
+        // thread (`read_main`), so the thread-scoped rig sees every line.
+        let host = TestBackupHost {
+            root: scratch.root.clone(),
+            files_root: files_root.clone(),
+            stored: std::sync::Mutex::new(None),
+        };
+        let (created, lines) = quilltap_core::test_support::captured_with(|| {
+            create_backup(&db, &host, USER, "2026-03-01T00:00:00.000Z", compact)
+        });
+        let created = created.expect("create_backup");
+        let got_logs: Vec<String> = lines.iter().filter_map(|l| render_v5_log(l)).collect();
+        let want_logs: Vec<String> = case["logs"]
+            .as_array()
+            .expect("the oracle records `logs` on every case")
+            .iter()
+            .map(render_oracle_log)
+            .collect();
+        if got_logs != want_logs {
+            failures.push(format!(
+                "[{name}] log lines differ\n  rust:   {got_logs:?}\n  oracle: {want_logs:?}"
+            ));
+        }
+
+        // [P4.D293] The chat key ORDER tail (`chats.json` is compared as a
+        // canonicalized set — see the module doc — so the cursor keys'
+        // placement needs its own check): each chat's keys from the first
+        // bundle cursor key (or `messages`) to the end, byte-compared through
+        // `serde_json::to_string` (memory note `serde-json-map-eq-ignores-
+        // order`): the three cursor keys in v4's order, BEFORE `messages`.
+        {
+            let tail = |text: &str| -> Vec<String> {
+                let chats: Vec<Value> = serde_json::from_str(text).expect("chats.json");
+                chats
+                    .iter()
+                    .map(|c| {
+                        let keys: Vec<&String> = c.as_object().unwrap().keys().collect();
+                        let from = keys
+                            .iter()
+                            .position(|k| {
+                                k.ends_with("ExtractionWatermarkMessageId") || *k == "messages"
+                            })
+                            .unwrap_or(keys.len());
+                        let mut t = serde_json::Map::new();
+                        for k in &keys[from..] {
+                            let v = if *k == "messages" {
+                                Value::Null
+                            } else {
+                                c[k.as_str()].clone()
+                            };
+                            t.insert((*k).clone(), v);
+                        }
+                        serde_json::to_string(&Value::Object(t)).unwrap()
+                    })
+                    .collect()
+            };
+            let v5_text = std::fs::read_to_string(staging.join("data/chats.json")).unwrap();
+            let v4_text = case["tree"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["path"] == "data/chats.json")
+                .and_then(|e| e["text"].as_str())
+                .unwrap_or("[]")
+                .to_string();
+            let (got_tail, want_tail) = (tail(&v5_text), tail(&v4_text));
+            if got_tail != want_tail {
+                failures.push(format!(
+                    "[{name}] chat key-order tail differs\n  rust:   {got_tail:?}\n  oracle: {want_tail:?}"
+                ));
+            }
+            if name == "backup_with_memory_carriers"
+                && !want_tail
+                    .iter()
+                    .any(|t| t.contains("turnExtractionWatermarkMessageId"))
+            {
+                failures.push(format!(
+                    "[{name}] non-vacuity: v4's archive carries no turn cursor"
+                ));
+            }
+        }
+
+        // 0. The zip round-trip, on the seeded cases: `create_backup` collects,
         //    stages, and zips; extracting the archive must reproduce the staged
         //    tree byte-for-byte, under a single `quilltap-backup-<stamp>` root.
         if seed_file_bytes {
-            let host = TestBackupHost {
-                root: scratch.root.clone(),
-                files_root: files_root.clone(),
-                stored: std::sync::Mutex::new(None),
-            };
-            let created = create_backup(&db, &host, USER, "2026-03-01T00:00:00.000Z", compact)
-                .expect("create_backup");
             assert!(
                 created
                     .zip_path

@@ -18,12 +18,13 @@
 //!    exactly what v4's three order traps (spread-then-`userId`, `delete` as a
 //!    shift-remove, the `remapFields`→`remapArrayFields` chain) are about. Each
 //!    collection is re-serialized on both sides and the strings compared.
-//! 2. **The key SET of the returned object.** v4 returns 40 collections plus
+//! 2. **The key SET of the returned object.** v4 returns 39 collections plus
 //!    `manifest: data.manifest`, which is `undefined` here (v5's `BackupData`
 //!    carries no manifest — that pass-through is the caller's business) and so
-//!    is dropped by `JSON.stringify`. 40 keys, no more (38 at P4.9G6; +1
+//!    is dropped by `JSON.stringify`. 39 keys, no more (38 at P4.9G6; +1
 //!    `chatInforms` at P4.D205; +1 `wardrobeWear` at P4.D264 — v4
-//!    `3ee3b1342`, ALWAYS present, `[]` when the archive has none).
+//!    `3ee3b1342`, ALWAYS present, `[]` when the archive has none; −1
+//!    `vectorIndexMetas` at P4.D293 — v4 `af48f6cc2`).
 //! 5. **The restore ORDER** (P4.D264 R-A, v4 `7c8572869` `restore.ts:98-104`).
 //!    A case flagged `restorePath` runs `planWardrobeImagePointerFixes` FIRST
 //!    on the original data with the SAME remapper, then `remapBackupData`, and
@@ -63,7 +64,8 @@ use sha2::{Digest, Sha256};
 /// and the ONLY keys it returns (`manifest` is `undefined` here and dropped).
 // P4.D205: 38 + 1 = 39 (`chatInforms`, v4 `e7d77bb60`).
 // P4.D264: 39 + 1 = 40 (`wardrobeWear`, v4 `3ee3b1342`, the LAST key).
-const COLLECTIONS: [&str; 40] = [
+// P4.D293: 40 - 1 = 39 (`vectorIndexMetas`, v4 `af48f6cc2`).
+const COLLECTIONS: [&str; 39] = [
     "characters",
     "chats",
     "tags",
@@ -92,7 +94,7 @@ const COLLECTIONS: [&str; 40] = [
     "embeddingStatus",
     "conversationChunks",
     "tfidfVocabularies",
-    "vectorIndexMetas",
+    // [P4.D293] `vectorIndexMetas` gone with v4 `af48f6cc2`; `vectorEntries` kept (legacy).
     "vectorEntries",
     "docMountPoints",
     "docMountFolders",
@@ -162,7 +164,6 @@ fn backup_data(data: &Map<String, Value>) -> BackupData {
         embedding_status: rows(data, "embeddingStatus"),
         conversation_chunks: rows(data, "conversationChunks"),
         tfidf_vocabularies: rows(data, "tfidfVocabularies"),
-        vector_index_metas: rows(data, "vectorIndexMetas"),
         vector_entries: rows(data, "vectorEntries"),
         doc_mount_points: rows(data, "docMountPoints"),
         doc_mount_folders: rows(data, "docMountFolders"),
@@ -211,7 +212,6 @@ fn produced(out: &BackupData, key: &str) -> Vec<Value> {
         "embeddingStatus" => out.embedding_status.clone(),
         "conversationChunks" => out.conversation_chunks.clone(),
         "tfidfVocabularies" => out.tfidf_vocabularies.clone(),
-        "vectorIndexMetas" => out.vector_index_metas.clone(),
         "vectorEntries" => out.vector_entries.clone(),
         "docMountPoints" => out.doc_mount_points.clone(),
         "docMountFolders" => out.doc_mount_folders.clone(),
@@ -353,7 +353,7 @@ fn backup_uuid_remap_equivalence() {
         }
         let out = remap_backup_data(&input, target, &mut remapper);
 
-        // 1. The oracle's returned object carries exactly the 40 collections.
+        // 1. The oracle's returned object carries exactly the 39 collections.
         let want_obj = expected["output"].as_object().expect("oracle output");
         let want_keys: Vec<&str> = want_obj.keys().map(String::as_str).collect();
         if want_keys != COLLECTIONS.to_vec() {
@@ -397,7 +397,7 @@ fn backup_uuid_remap_equivalence() {
 
         if diffs == 0 {
             println!(
-                "OK {name}: 40 collections byte-identical, {} ids remapped",
+                "OK {name}: 39 collections byte-identical, {} ids remapped",
                 remapper.size()
             );
         }

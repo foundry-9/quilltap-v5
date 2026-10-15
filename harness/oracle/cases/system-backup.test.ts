@@ -31,6 +31,23 @@
  *   `backup_missing_file` — nothing seeded: v4 warns and continues, so no
  *                           `files/` subtree exists at all (the warn-and-
  *                           continue arm, `backup-service.ts:647`).
+ *   `backup_with_memory_carriers` — [P4.D293] the `83334b9a5` carriers: three
+ *                           extraction cursors on CHAT_1 through v4's REAL
+ *                           `setCursor` (none on CHAT_2), a `scenarioSource` /
+ *                           `scenarioNotes` on CHAT_2, `supersededAt` on the
+ *                           cold member MEM_3, `textShapeVersion = 1` on the
+ *                           vocabulary.
+ *   `backup_cursor_read_fails` — [P4.D293 Tier 2, L-10] a PRESENT cursor table
+ *                           whose `SELECT *` throws (a VIRTUAL `json('not
+ *                           json')` column): the backup succeeds, no chat
+ *                           carries a cursor key.
+ *
+ * ── LOG LINES ([P4.D293]) ────────────────────────────────────────────────────
+ * Every case records the `LOGGED` messages (any level, before the level
+ * filter): the compact DEBUG (L-7, its fields) and the four
+ * `[ExtractionCursors]` bundle lines + the repository's read-failure lines,
+ * whose BYTES are P4.D288's (§R.5) — the Rust family asserts those by
+ * presence only.
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
@@ -164,6 +181,114 @@ interface CaseSpec {
    * counts it.
    */
   plantWardrobeWear?: boolean;
+  /** [P4.D293] the memory / scenario carriers plant (`plantMemoryCarriers`). */
+  plantMemoryCarriers?: boolean;
+  /** [P4.D293 Tier 2] a cursor table whose every `SELECT *` throws. */
+  plantThrowingCursors?: boolean;
+}
+
+/**
+ * [P4.D293] The lines a case records (any level, before the level filter —
+ * the system-restore oracle's `withLogs` recipe).
+ */
+const LOGGED = [
+  'Compact backup — embeddings and derived tables omitted',
+  "[ExtractionCursors] Could not read the cursor table for a bundle; reading per chat",
+  "[ExtractionCursors] Could not read a chat's cursors for a bundle; leaving them out",
+  'Error finding all entities',
+  'Error finding entities by filter',
+];
+
+function recordContext(line: Record<string, unknown>, context?: Record<string, unknown>): void {
+  for (const [key, v] of Object.entries(context ?? {})) {
+    if (v === undefined) continue;
+    line[key] = v instanceof Error ? v.message : v;
+  }
+}
+
+async function withLogs<T>(
+  body: () => Promise<T>,
+): Promise<{ out: T; logs: Array<Record<string, unknown>> }> {
+  const logs: Array<Record<string, unknown>> = [];
+  const wanted = new Set(LOGGED);
+  const { Logger } = await import('@/lib/logger');
+  const levels = ['error', 'warn', 'info', 'debug'] as const;
+  const originals = Object.fromEntries(levels.map((l) => [l, Logger.prototype[l]]));
+  for (const level of levels) {
+    const original = originals[level];
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (wanted.has(message)) {
+        const line: Record<string, unknown> = { level, message };
+        recordContext(line, context);
+        logs.push(line);
+      }
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+  try {
+    return { out: await body(), logs };
+  } finally {
+    for (const level of levels) Logger.prototype[level] = originals[level] as never;
+  }
+}
+
+/**
+ * [P4.D293] The carriers plant, on the per-run COPY. The cursors go through
+ * v4's REAL `setCursor` (the Rust family through C1-1's `set_cursor`); the
+ * three column plants are raw SQL both sides run verbatim (a repository
+ * update would stamp `updatedAt` with the wall clock).
+ */
+const CHAT_1 = 'c1000000-0000-4000-8000-000000000001';
+const CHAT_2 = 'c1000000-0000-4000-8000-000000000002';
+const CARRIER_CURSORS: Array<[string, string]> = [
+  ['other-fold', 'd1000000-0000-4000-8000-000000000001'],
+  ['episode-fold', 'd1000000-0000-4000-8000-000000000002'],
+  ['turn', 'd1000000-0000-4000-8000-0000000000ff'],
+];
+const CARRIER_PLANT_SQL = [
+  `UPDATE "chats" SET "scenarioSource" = '{"mountPointId":"5ce00000-0000-4000-8000-000000000001","path":"Scenarios/The Road.md","bodySha256":"${'ab'.repeat(32)}"}', "scenarioNotes" = 'Notes for the road.' WHERE "id" = '${CHAT_2}'`,
+  `UPDATE "memories" SET "supersededAt" = '2026-03-04T00:00:00.000Z' WHERE "id" = 'ad000000-0000-4000-8000-000000000003'`,
+  `UPDATE "tfidf_vocabularies" SET "textShapeVersion" = 1`,
+];
+
+async function plantMemoryCarriers(): Promise<void> {
+  const { rawQuery } = await import('@/lib/database/manager');
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const cursors = (getRepositories() as unknown as Record<string, any>).memoryExtractionCursors;
+  for (const [pass, messageId] of CARRIER_CURSORS) {
+    await cursors.setCursor(CHAT_1, pass, messageId);
+  }
+  for (const sql of CARRIER_PLANT_SQL) await rawQuery(sql);
+}
+
+/**
+ * [P4.D293 Tier 2] the throwing-table plant (memory note
+ * `v4-oracle-reinit-and-throwing-plants`): the table REBUILT with `messageId`
+ * itself a VIRTUAL `json("pass")` column (`other-fold` is not JSON), so every read that names it
+ * throws `malformed JSON` — v4's `SELECT *` and v5's named-column read alike.
+ * (An EXTRA virtual column fails only v4's `SELECT *`; a VIEW reads as no
+ * table to v5's probe — both measured, both rejected.)
+ */
+const THROWING_CURSORS_SQL = [
+  `ALTER TABLE "memory_extraction_cursors" RENAME TO "qt_cursors_old"`,
+  `CREATE TABLE "memory_extraction_cursors" ("id" TEXT PRIMARY KEY, "chatId" TEXT NOT NULL, "pass" TEXT NOT NULL, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL)`,
+  `INSERT INTO "memory_extraction_cursors" SELECT "id", "chatId", "pass", "createdAt", "updatedAt" FROM "qt_cursors_old"`,
+  `DROP TABLE "qt_cursors_old"`,
+  // Added AFTER the rows: SQLite evaluates a generated column on INSERT.
+  `ALTER TABLE "memory_extraction_cursors" ADD COLUMN "messageId" TEXT AS (json("pass")) VIRTUAL`,
+];
+
+async function plantThrowingCursors(): Promise<void> {
+  const { rawQuery } = await import('@/lib/database/manager');
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const cursors = (getRepositories() as unknown as Record<string, any>).memoryExtractionCursors;
+  await cursors.setCursor(CHAT_1, 'other-fold', CARRIER_CURSORS[0][1]);
+  for (const sql of THROWING_CURSORS_SQL) await rawQuery(sql);
 }
 
 /**
@@ -305,6 +430,10 @@ const CASES: CaseSpec[] = [
   // P4.D264 (v4 `3ee3b1342`): the wear ledger — the whole table in DDL key
   // order, the unattributed row included, and `counts.wardrobeWear: 2` LAST.
   { name: 'backup_with_wardrobe_wear', seedFileBytes: true, plantWardrobeWear: true },
+  // [P4.D293] the memory-refactor + scenarios carriers (see the header).
+  { name: 'backup_with_memory_carriers', seedFileBytes: true, plantMemoryCarriers: true },
+  // [P4.D293 Tier 2, L-10] a cursor read that throws never fails the backup.
+  { name: 'backup_cursor_read_fails', seedFileBytes: true, plantThrowingCursors: true },
 ];
 
 async function runCase(
@@ -346,13 +475,17 @@ async function runCase(
   if (c.plantInforms) await plantInforms(spec.userId);
   if (c.plantBlobProfile) await plantBlobProfile(spec.userId);
   if (c.plantWardrobeWear) await plantWardrobeWear();
+  if (c.plantMemoryCarriers) await plantMemoryCarriers();
+  if (c.plantThrowingCursors) await plantThrowingCursors();
 
   const extractDir = mkdtempSync(join(scratchRoot, 'ex-'));
   try {
     const { createBackup } = await import('@/lib/backup/backup-service');
-    const { zipPath, manifest } = await createBackup(
-      spec.userId,
-      c.compact ? { compact: true } : undefined,
+    const {
+      out: { zipPath, manifest },
+      logs,
+    } = await withLogs(() =>
+      createBackup(spec.userId, c.compact ? { compact: true } : undefined),
     );
 
     execFileSync('unzip', ['-q', '-o', zipPath, '-d', extractDir], { maxBuffer: 10 * 1024 * 1024 });
@@ -371,6 +504,7 @@ async function runCase(
       rootFolderPrefix: 'quilltap-backup-',
       manifest: { ...m, createdAt: '<normalized>', appVersion: '<normalized>' },
       tree: describeTree(rootPath),
+      logs,
     };
   } finally {
     await closeDatabase();

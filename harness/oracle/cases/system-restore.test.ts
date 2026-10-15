@@ -527,7 +527,9 @@ const RESTORE_CASES: Array<{
       ['main', 'folders', 'path', 'pathPlanted'],
       ['main', 'character_plugin_data', 'data', 'dataPlanted'],
       ['main', 'conversation_annotations', 'characterName', 'characterNamePlanted'],
-      ['main', 'vector_entries', 'embedding', 'embeddingPlanted'],
+      // [P4.D293] the `vector_entries` rename DELETED: v4 `af48f6cc2` writes
+      // neither vector table any more (22j is gone), so the plant measured
+      // nothing — and the tables do not exist on a pin target.
       ['main', 'conversation_chunks', 'participantNames', 'participantNamesPlanted'],
       ['main', 'tfidf_vocabularies', 'includeBigrams', 'includeBigramsPlanted'],
       ['main', 'embedding_status', 'embeddedAt', 'embeddedAtPlanted'],
@@ -565,13 +567,8 @@ const RESTORE_CASES: Array<{
       // target's wiped General store, whose internal statement order is not
       // this order's surface.
       ['main', `DELETE FROM "instance_settings" WHERE "key" = 'generalMountPointId'`],
-      // v5's `save_meta` pre-reads every named meta column (v4's
-      // `findMetaByCharacterId` does not), so a rename trips the read first.
-      [
-        'main',
-        `CREATE TRIGGER "planted_vector_meta_failure" BEFORE INSERT ON "vector_indices" ` +
-          `BEGIN SELECT RAISE(ABORT, 'planted vector index meta failure'); END`,
-      ],
+      // [P4.D293] the `vector_indices` trigger DELETED with v4 `af48f6cc2`'s
+      // 22j (see the rename list above).
     ],
   },
 
@@ -809,8 +806,10 @@ const REPO_LOG_MESSAGES = new Set([
  * info, +1 debug) and P4.D258 bug 181's `Decoded index-keyed memory
  * embedding` DEBUG (landed at the unification) — 68 at `f5e953a3f`; P4.D273
  * adds `ed8b15b50`'s twelve (bug 185's store binding + 23a's reconcile:
- * +6 warn, +1 info, +3 debug, +2 error). EVERY restore case records them, at
- * every level, so the census is compared across the whole corpus.
+ * +6 warn, +1 info, +3 debug, +2 error). [P4.D293] At `83334b9a5`: 79 (50
+ * warn, 7 info, 20 debug, 2 error) — `af48f6cc2` deletes 22j's two WARNs
+ * and adds phase 9's `Restored memories` DEBUG. EVERY restore case records
+ * them, at every level, so the census is compared across the whole corpus.
  */
 const RESTORE_TS_MESSAGES = [
   "All entities restored with preserved IDs - no reconciliation needed",
@@ -855,8 +854,6 @@ const RESTORE_TS_MESSAGES = [
   "Failed to restore tfidf vocabulary",
   "Failed to restore theme bundle",
   "Failed to restore themes-index.json",
-  "Failed to restore vector entries batch",
-  "Failed to restore vector index meta",
   "Failed to restore wardrobe item",
   // [P4.D264] v4 `3ee3b1342` / `7c8572869` — 22n-bis + 22f-ter (63 → 67).
   "Failed to restore wardrobe wear ledger",
@@ -868,6 +865,9 @@ const RESTORE_TS_MESSAGES = [
   "Renamed connection profile on restore to avoid name collision",
   "Restore operation completed",
   "Restored chat informs",
+  // [P4.D293] v4 `af48f6cc2` — phase 9's post-loop DEBUG (80 → 79: −the two
+  // 22j WARNs above, +this).
+  "Restored memories",
   "Restored npm plugin",
   "Restored npm plugins",
   "Restored text replacement rules",
@@ -1050,6 +1050,25 @@ async function runRestoreCase(
     await rawQuery(
       'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)',
     );
+
+    // [P4.D293 L-2] The cursor table in the MIGRATION shape (`UNIQUE
+    // ("chatId","pass")` + the `chats` CASCADE) — what every real v4 first
+    // boot leaves (v4 runs its migrations before any repository creates a
+    // table; §R.4(b)) and what every v5 instance carries (R-C). Without this
+    // the repository touch below creates generateDDL's BARE shape, which no
+    // real instance has. v4's REAL `add-memory-extraction-cursors-v1`, run on
+    // v4's own target before the touch (the P4.D145 precedent). Its column
+    // probe throws on an absent `chats` (`no such table: main.chats`,
+    // measured), so the chats repository alone is touched first; the
+    // migration then creates the table and copies nothing.
+    {
+      await (getRepositories() as unknown as Record<string, any>).chats.count();
+      const { addMemoryExtractionCursorsMigration } = await import(
+        '@/migrations/scripts/add-memory-extraction-cursors-v1'
+      );
+      const r = await addMemoryExtractionCursorsMigration.run();
+      if (!r.success) throw new Error(`cursor migration failed on target: ${r.message}`);
+    }
 
     // Touch every repo so the lazily-created tables all exist (the fresh-instance
     // recipe from `build-provision-oracle.ts`).
