@@ -277,6 +277,7 @@ where
         &BuildTurnTranscriptOptions {
             turn_opener_message_id: payload.turn_opener_message_id.clone(),
             extraction_anchor_message_id: payload.extraction_anchor_message_id.clone(),
+            extract_after_message_id: None,
             user_character_id: user_character.map(|c| json_str(c, "id")),
             user_character_name: user_character.map(|c| json_str(c, "name")),
             user_character_pronouns: user_character

@@ -1560,35 +1560,14 @@ pub(crate) async fn trigger_turn_memory_extraction(
         db.read_main(move |conn| chats_messages_read::get_messages(conn, &chat_id_owned))?;
 
     let turn_opener_message_id = super::turn_transcript::find_turn_opener_message_id(&messages);
-    let mut extraction_anchor_message_id: Option<String> = None;
-    if turn_opener_message_id.is_none() {
-        // v4: walk newest-first for the latest non-system non-silent ASSISTANT
-        // message with a participantId.
-        for m in messages.iter().rev() {
-            if m.get("type").and_then(Value::as_str) != Some("message") {
-                continue;
-            }
-            if m.get("role").and_then(Value::as_str) != Some("ASSISTANT") {
-                continue;
-            }
-            if super::turn_transcript::is_js_truthy(m.get("systemSender")) {
-                continue;
-            }
-            if super::turn_transcript::is_truthy_silent(m.get("isSilentMessage")) {
-                continue;
-            }
-            let Some(id) = m
-                .get("participantId")
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-            else {
-                continue;
-            };
-            extraction_anchor_message_id = m.get("id").and_then(Value::as_str).map(String::from);
-            let _ = id;
-            break;
-        }
-    }
+    // v4 `turnOpenerMessageId === null ? findAutonomousTurnAnchorMessageId(…)
+    // : null` — the inline walk hoisted onto the shared turn module
+    // (`ac6348c5f`; work order P4.D296 L-14 — behaviour unchanged).
+    let extraction_anchor_message_id = if turn_opener_message_id.is_none() {
+        super::turn_transcript::find_autonomous_turn_anchor_message_id(&messages)
+    } else {
+        None
+    };
 
     super::queue_service::enqueue_memory_extraction(
         db,

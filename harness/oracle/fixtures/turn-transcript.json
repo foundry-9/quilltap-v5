@@ -4,12 +4,20 @@
     "ca000000-0000-4000-8000-00000000000a": {
       "id": "ca000000-0000-4000-8000-00000000000a",
       "name": "Ada",
-      "pronouns": { "subject": "she", "object": "her", "possessive": "her" }
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "her"
+      }
     },
     "cb000000-0000-4000-8000-00000000000b": {
       "id": "cb000000-0000-4000-8000-00000000000b",
       "name": "Bram",
-      "pronouns": { "subject": "he", "object": "him", "possessive": "his" }
+      "pronouns": {
+        "subject": "he",
+        "object": "him",
+        "possessive": "his"
+      }
     },
     "cc000000-0000-4000-8000-00000000000c": {
       "id": "cc000000-0000-4000-8000-00000000000c",
@@ -18,189 +26,1463 @@
     }
   },
   "participants": [
-    { "id": "pu000000-0000-4000-8000-000000000001", "type": "USER", "controlledBy": "user" },
-    { "id": "pa000000-0000-4000-8000-00000000000a", "type": "CHARACTER", "controlledBy": "llm", "characterId": "ca000000-0000-4000-8000-00000000000a" },
-    { "id": "pb000000-0000-4000-8000-00000000000b", "type": "CHARACTER", "controlledBy": "llm", "characterId": "cb000000-0000-4000-8000-00000000000b" },
-    { "id": "pc000000-0000-4000-8000-00000000000c", "type": "CHARACTER", "controlledBy": "llm", "characterId": "cc000000-0000-4000-8000-00000000000c" },
-    { "id": "pd000000-0000-4000-8000-00000000000d", "type": "CHARACTER", "controlledBy": "user", "characterId": "cc000000-0000-4000-8000-00000000000c" },
-    { "id": "pe000000-0000-4000-8000-00000000000e", "type": "CHARACTER", "controlledBy": "llm" },
-    { "id": "pf000000-0000-4000-8000-00000000000f", "type": "CHARACTER", "controlledBy": "user", "characterId": "cd000000-0000-4000-8000-00000000000d" }
+    {
+      "id": "pu000000-0000-4000-8000-000000000001",
+      "type": "USER",
+      "controlledBy": "user"
+    },
+    {
+      "id": "pa000000-0000-4000-8000-00000000000a",
+      "type": "CHARACTER",
+      "controlledBy": "llm",
+      "characterId": "ca000000-0000-4000-8000-00000000000a"
+    },
+    {
+      "id": "pb000000-0000-4000-8000-00000000000b",
+      "type": "CHARACTER",
+      "controlledBy": "llm",
+      "characterId": "cb000000-0000-4000-8000-00000000000b"
+    },
+    {
+      "id": "pc000000-0000-4000-8000-00000000000c",
+      "type": "CHARACTER",
+      "controlledBy": "llm",
+      "characterId": "cc000000-0000-4000-8000-00000000000c"
+    },
+    {
+      "id": "pd000000-0000-4000-8000-00000000000d",
+      "type": "CHARACTER",
+      "controlledBy": "user",
+      "characterId": "cc000000-0000-4000-8000-00000000000c"
+    },
+    {
+      "id": "pe000000-0000-4000-8000-00000000000e",
+      "type": "CHARACTER",
+      "controlledBy": "llm"
+    },
+    {
+      "id": "pf000000-0000-4000-8000-00000000000f",
+      "type": "CHARACTER",
+      "controlledBy": "user",
+      "characterId": "cd000000-0000-4000-8000-00000000000d"
+    }
   ],
   "cases": [
     {
       "id": "simple",
       "messages": [
-        { "type": "message", "id": "m1", "role": "USER", "content": "hello there", "participantId": "pu000000-0000-4000-8000-000000000001", "createdAt": "2026-07-01T10:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "well met", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T10:00:05.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "hello there",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-01T10:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "well met",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T10:00:05.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": "m1", "userCharacterId": "u-1", "userCharacterName": "Charlie" }
+      "options": {
+        "turnOpenerMessageId": "m1",
+        "userCharacterId": "u-1",
+        "userCharacterName": "Charlie"
+      }
     },
     {
       "id": "multi_join",
       "messages": [
-        { "type": "message", "id": "m1", "role": "USER", "content": "everyone speak", "createdAt": "2026-07-01T11:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "Ada first", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T11:00:01.000Z" },
-        { "type": "message", "id": "m3", "role": "ASSISTANT", "content": "Bram next", "participantId": "pb000000-0000-4000-8000-00000000000b", "createdAt": "2026-07-01T11:00:02.000Z" },
-        { "type": "message", "id": "m4", "role": "ASSISTANT", "content": "Ada again", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T11:00:03.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "everyone speak",
+          "createdAt": "2026-07-01T11:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "Ada first",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T11:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "Bram next",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-01T11:00:02.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "ASSISTANT",
+          "content": "Ada again",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T11:00:03.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": "m1" }
+      "options": {
+        "turnOpenerMessageId": "m1"
+      }
     },
     {
       "id": "user_controlled_opener",
       "messages": [
-        { "type": "message", "id": "m1", "role": "USER", "content": "Quill strides in", "participantId": "pd000000-0000-4000-8000-00000000000d", "createdAt": "2026-07-01T12:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "Ada waves", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T12:00:01.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "Quill strides in",
+          "participantId": "pd000000-0000-4000-8000-00000000000d",
+          "createdAt": "2026-07-01T12:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "Ada waves",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T12:00:01.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": "m1", "userCharacterId": "cc000000-0000-4000-8000-00000000000c", "userCharacterName": "Quill", "userCharacterPronouns": null }
+      "options": {
+        "turnOpenerMessageId": "m1",
+        "userCharacterId": "cc000000-0000-4000-8000-00000000000c",
+        "userCharacterName": "Quill",
+        "userCharacterPronouns": null
+      }
     },
     {
       "id": "null_opener_scan_all",
       "messages": [
-        { "type": "message", "id": "m1", "role": "ASSISTANT", "content": "a greeting", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T13:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "another", "participantId": "pb000000-0000-4000-8000-00000000000b", "createdAt": "2026-07-01T13:00:01.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "ASSISTANT",
+          "content": "a greeting",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T13:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "another",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-01T13:00:01.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": null }
+      "options": {
+        "turnOpenerMessageId": null
+      }
     },
     {
       "id": "null_opener_breaks_on_user",
       "messages": [
-        { "type": "message", "id": "m1", "role": "ASSISTANT", "content": "collected", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T13:10:00.000Z" },
-        { "type": "message", "id": "m2", "role": "USER", "content": "stop here", "createdAt": "2026-07-01T13:10:01.000Z" },
-        { "type": "message", "id": "m3", "role": "ASSISTANT", "content": "not collected", "participantId": "pb000000-0000-4000-8000-00000000000b", "createdAt": "2026-07-01T13:10:02.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "ASSISTANT",
+          "content": "collected",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T13:10:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "USER",
+          "content": "stop here",
+          "createdAt": "2026-07-01T13:10:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "not collected",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-01T13:10:02.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": null }
+      "options": {
+        "turnOpenerMessageId": null
+      }
     },
     {
       "id": "opener_not_found",
       "messages": [
-        { "type": "message", "id": "m1", "role": "USER", "content": "real opener", "createdAt": "2026-07-01T14:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "reply", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T14:00:01.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "real opener",
+          "createdAt": "2026-07-01T14:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "reply",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T14:00:01.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": "missing-id" }
+      "options": {
+        "turnOpenerMessageId": "missing-id"
+      }
     },
     {
       "id": "opener_id_wrong_role",
       "messages": [
-        { "type": "message", "id": "m1", "role": "USER", "content": "opener", "createdAt": "2026-07-01T15:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "reply", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T15:00:01.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "opener",
+          "createdAt": "2026-07-01T15:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "reply",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T15:00:01.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": "m2" }
+      "options": {
+        "turnOpenerMessageId": "m2"
+      }
     },
     {
       "id": "skip_classes",
       "messages": [
-        { "type": "message", "id": "m1", "role": "USER", "content": "go", "createdAt": "2026-07-01T16:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "a whisper", "participantId": "pa000000-0000-4000-8000-00000000000a", "systemSender": "host", "createdAt": "2026-07-01T16:00:01.000Z" },
-        { "type": "message", "id": "m3", "role": "TOOL", "content": "tool output", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T16:00:02.000Z" },
-        { "type": "message", "id": "m4", "role": "ASSISTANT", "content": "silent aside", "participantId": "pa000000-0000-4000-8000-00000000000a", "isSilentMessage": true, "createdAt": "2026-07-01T16:00:03.000Z" },
-        { "type": "message", "id": "m5", "role": "ASSISTANT", "content": "no participant", "createdAt": "2026-07-01T16:00:04.000Z" },
-        { "type": "message", "id": "m6", "role": "ASSISTANT", "content": "unknown participant", "participantId": "px000000-0000-4000-8000-0000000000ff", "createdAt": "2026-07-01T16:00:05.000Z" },
-        { "type": "message", "id": "m7", "role": "ASSISTANT", "content": "user-typed participant", "participantId": "pu000000-0000-4000-8000-000000000001", "createdAt": "2026-07-01T16:00:06.000Z" },
-        { "type": "message", "id": "m8", "role": "ASSISTANT", "content": "characterless participant", "participantId": "pe000000-0000-4000-8000-00000000000e", "createdAt": "2026-07-01T16:00:07.000Z" },
-        { "type": "message", "id": "m9", "role": "ASSISTANT", "content": "character not hydrated", "participantId": "pf000000-0000-4000-8000-00000000000f", "createdAt": "2026-07-01T16:00:08.000Z" },
-        { "type": "event", "id": "m10", "role": "ASSISTANT", "content": "not a message row", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T16:00:09.000Z" },
-        { "type": "message", "id": "m11", "role": "ASSISTANT", "content": "collected at last", "participantId": "pa000000-0000-4000-8000-00000000000a", "isSilentMessage": false, "createdAt": "2026-07-01T16:00:10.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "go",
+          "createdAt": "2026-07-01T16:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "a whisper",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "systemSender": "host",
+          "createdAt": "2026-07-01T16:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "TOOL",
+          "content": "tool output",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T16:00:02.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "ASSISTANT",
+          "content": "silent aside",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "isSilentMessage": true,
+          "createdAt": "2026-07-01T16:00:03.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m5",
+          "role": "ASSISTANT",
+          "content": "no participant",
+          "createdAt": "2026-07-01T16:00:04.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m6",
+          "role": "ASSISTANT",
+          "content": "unknown participant",
+          "participantId": "px000000-0000-4000-8000-0000000000ff",
+          "createdAt": "2026-07-01T16:00:05.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m7",
+          "role": "ASSISTANT",
+          "content": "user-typed participant",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-01T16:00:06.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m8",
+          "role": "ASSISTANT",
+          "content": "characterless participant",
+          "participantId": "pe000000-0000-4000-8000-00000000000e",
+          "createdAt": "2026-07-01T16:00:07.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m9",
+          "role": "ASSISTANT",
+          "content": "character not hydrated",
+          "participantId": "pf000000-0000-4000-8000-00000000000f",
+          "createdAt": "2026-07-01T16:00:08.000Z"
+        },
+        {
+          "type": "event",
+          "id": "m10",
+          "role": "ASSISTANT",
+          "content": "not a message row",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T16:00:09.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m11",
+          "role": "ASSISTANT",
+          "content": "collected at last",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "isSilentMessage": false,
+          "createdAt": "2026-07-01T16:00:10.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": "m1" }
+      "options": {
+        "turnOpenerMessageId": "m1"
+      }
     },
     {
       "id": "break_on_user",
       "messages": [
-        { "type": "message", "id": "m1", "role": "USER", "content": "turn one", "createdAt": "2026-07-01T17:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "in turn", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T17:00:01.000Z" },
-        { "type": "message", "id": "m3", "role": "USER", "content": "turn two", "createdAt": "2026-07-01T17:00:02.000Z" },
-        { "type": "message", "id": "m4", "role": "ASSISTANT", "content": "out of turn", "participantId": "pb000000-0000-4000-8000-00000000000b", "createdAt": "2026-07-01T17:00:03.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "turn one",
+          "createdAt": "2026-07-01T17:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "in turn",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T17:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "USER",
+          "content": "turn two",
+          "createdAt": "2026-07-01T17:00:02.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "ASSISTANT",
+          "content": "out of turn",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-01T17:00:03.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": "m1" }
+      "options": {
+        "turnOpenerMessageId": "m1"
+      }
     },
     {
       "id": "no_break_on_system_user",
       "messages": [
-        { "type": "message", "id": "m1", "role": "USER", "content": "opener", "createdAt": "2026-07-01T18:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "first", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T18:00:01.000Z" },
-        { "type": "message", "id": "m3", "role": "USER", "content": "a librarian whisper", "systemSender": "librarian", "createdAt": "2026-07-01T18:00:02.000Z" },
-        { "type": "message", "id": "m4", "role": "ASSISTANT", "content": "second", "participantId": "pb000000-0000-4000-8000-00000000000b", "createdAt": "2026-07-01T18:00:03.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "opener",
+          "createdAt": "2026-07-01T18:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "first",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T18:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "USER",
+          "content": "a librarian whisper",
+          "systemSender": "librarian",
+          "createdAt": "2026-07-01T18:00:02.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "ASSISTANT",
+          "content": "second",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-01T18:00:03.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": "m1" }
+      "options": {
+        "turnOpenerMessageId": "m1"
+      }
     },
     {
       "id": "anchor_stop",
       "messages": [
-        { "type": "message", "id": "m1", "role": "ASSISTANT", "content": "speaker turn", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T19:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "later speaker", "participantId": "pb000000-0000-4000-8000-00000000000b", "createdAt": "2026-07-01T19:00:01.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "ASSISTANT",
+          "content": "speaker turn",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T19:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "later speaker",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-01T19:00:01.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": null, "extractionAnchorMessageId": "m1" }
+      "options": {
+        "turnOpenerMessageId": null,
+        "extractionAnchorMessageId": "m1"
+      }
     },
     {
       "id": "anchor_on_skipped_row",
       "messages": [
-        { "type": "message", "id": "m1", "role": "USER", "content": "opener", "createdAt": "2026-07-01T20:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "a silent anchor", "participantId": "pa000000-0000-4000-8000-00000000000a", "isSilentMessage": true, "createdAt": "2026-07-01T20:00:01.000Z" },
-        { "type": "message", "id": "m3", "role": "ASSISTANT", "content": "still collected", "participantId": "pb000000-0000-4000-8000-00000000000b", "createdAt": "2026-07-01T20:00:02.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "opener",
+          "createdAt": "2026-07-01T20:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "a silent anchor",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "isSilentMessage": true,
+          "createdAt": "2026-07-01T20:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "still collected",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-01T20:00:02.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": "m1", "extractionAnchorMessageId": "m2" }
+      "options": {
+        "turnOpenerMessageId": "m1",
+        "extractionAnchorMessageId": "m2"
+      }
     },
     {
       "id": "timestamp_fallbacks",
       "messages": [
-        { "type": "message", "id": "m1", "role": "USER", "content": "clocked opener", "createdAt": "2026-07-01T21:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "no clock", "participantId": "pa000000-0000-4000-8000-00000000000a" },
-        { "type": "message", "id": "m3", "role": "ASSISTANT", "content": "clocked", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T21:00:02.000Z" },
-        { "type": "message", "id": "m4", "role": "ASSISTANT", "content": "no clock again", "participantId": "pa000000-0000-4000-8000-00000000000a" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "clocked opener",
+          "createdAt": "2026-07-01T21:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "no clock",
+          "participantId": "pa000000-0000-4000-8000-00000000000a"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "clocked",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T21:00:02.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "ASSISTANT",
+          "content": "no clock again",
+          "participantId": "pa000000-0000-4000-8000-00000000000a"
+        }
       ],
-      "options": { "turnOpenerMessageId": "m1" }
+      "options": {
+        "turnOpenerMessageId": "m1"
+      }
     },
     {
       "id": "all_unclocked",
       "messages": [
-        { "type": "message", "id": "m1", "role": "ASSISTANT", "content": "no clocks anywhere", "participantId": "pc000000-0000-4000-8000-00000000000c" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "ASSISTANT",
+          "content": "no clocks anywhere",
+          "participantId": "pc000000-0000-4000-8000-00000000000c"
+        }
       ],
-      "options": { "turnOpenerMessageId": null }
+      "options": {
+        "turnOpenerMessageId": null
+      }
     },
     {
       "id": "empty_content_join",
       "messages": [
-        { "type": "message", "id": "m1", "role": "USER", "content": "go", "createdAt": "2026-07-01T22:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T22:00:01.000Z" },
-        { "type": "message", "id": "m3", "role": "ASSISTANT", "content": "found her voice", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T22:00:02.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "go",
+          "createdAt": "2026-07-01T22:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T22:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "found her voice",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T22:00:02.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": "m1" }
+      "options": {
+        "turnOpenerMessageId": "m1"
+      }
     },
     {
       "id": "user_controlled_opener_missing_char",
       "messages": [
-        { "type": "message", "id": "m1", "role": "USER", "content": "spoken by an unhydrated persona", "participantId": "pf000000-0000-4000-8000-00000000000f", "createdAt": "2026-07-01T23:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "a reply", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-01T23:00:01.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "spoken by an unhydrated persona",
+          "participantId": "pf000000-0000-4000-8000-00000000000f",
+          "createdAt": "2026-07-01T23:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "a reply",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T23:00:01.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": "m1" }
+      "options": {
+        "turnOpenerMessageId": "m1"
+      }
     },
     {
       "id": "pronouns_null_character",
       "messages": [
-        { "type": "message", "id": "m1", "role": "USER", "content": "hail Quill", "createdAt": "2026-07-02T00:00:00.000Z" },
-        { "type": "message", "id": "m2", "role": "ASSISTANT", "content": "Quill nods", "participantId": "pc000000-0000-4000-8000-00000000000c", "createdAt": "2026-07-02T00:00:01.000Z" }
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "hail Quill",
+          "createdAt": "2026-07-02T00:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "Quill nods",
+          "participantId": "pc000000-0000-4000-8000-00000000000c",
+          "createdAt": "2026-07-02T00:00:01.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": "m1", "userCharacterName": "Charlie", "userCharacterPronouns": { "subject": "they", "object": "them", "possessive": "their" } }
+      "options": {
+        "turnOpenerMessageId": "m1",
+        "userCharacterName": "Charlie",
+        "userCharacterPronouns": {
+          "subject": "they",
+          "object": "them",
+          "possessive": "their"
+        }
+      }
     },
     {
       "id": "inform_record_skipped",
       "_comment": "P4.106 item 4 — v4's Staff-skip test (turn-transcript.test.ts:179): the inform record wears systemSender, so an out-of-character note never becomes a memory.",
       "messages": [
-        { "type": "message", "id": "u-1", "role": "USER", "content": "hello", "createdAt": "2026-07-03T00:00:00.000Z" },
-        { "type": "message", "id": "a-inform", "role": "ASSISTANT", "content": "You notice the clock has stopped.", "participantId": "pa000000-0000-4000-8000-00000000000a", "systemSender": "host", "systemKind": "inform", "createdAt": "2026-07-03T00:00:01.000Z" },
-        { "type": "message", "id": "a-real", "role": "ASSISTANT", "content": "real reply", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-03T00:00:02.000Z" }
+        {
+          "type": "message",
+          "id": "u-1",
+          "role": "USER",
+          "content": "hello",
+          "createdAt": "2026-07-03T00:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "a-inform",
+          "role": "ASSISTANT",
+          "content": "You notice the clock has stopped.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "systemSender": "host",
+          "systemKind": "inform",
+          "createdAt": "2026-07-03T00:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "a-real",
+          "role": "ASSISTANT",
+          "content": "real reply",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-03T00:00:02.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": "u-1" }
+      "options": {
+        "turnOpenerMessageId": "u-1"
+      }
     },
     {
       "id": "inform_record_without_sender",
       "_comment": "P4.106 item 4 — the same record with the sender omitted: the transcript skips by systemSender ONLY (unlike isRecordOnlyMessage), so v4 records what it does here.",
       "messages": [
-        { "type": "message", "id": "u-1", "role": "USER", "content": "hello", "createdAt": "2026-07-03T00:00:00.000Z" },
-        { "type": "message", "id": "a-inform", "role": "ASSISTANT", "content": "You notice the clock has stopped.", "participantId": "pa000000-0000-4000-8000-00000000000a", "systemKind": "inform", "createdAt": "2026-07-03T00:00:01.000Z" },
-        { "type": "message", "id": "a-real", "role": "ASSISTANT", "content": "real reply", "participantId": "pa000000-0000-4000-8000-00000000000a", "createdAt": "2026-07-03T00:00:02.000Z" }
+        {
+          "type": "message",
+          "id": "u-1",
+          "role": "USER",
+          "content": "hello",
+          "createdAt": "2026-07-03T00:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "a-inform",
+          "role": "ASSISTANT",
+          "content": "You notice the clock has stopped.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "systemKind": "inform",
+          "createdAt": "2026-07-03T00:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "a-real",
+          "role": "ASSISTANT",
+          "content": "real reply",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-03T00:00:02.000Z"
+        }
       ],
-      "options": { "turnOpenerMessageId": "u-1" }
+      "options": {
+        "turnOpenerMessageId": "u-1"
+      }
+    },
+    {
+      "id": "bound_inside",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "who has the map?",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "I do.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "She lies.",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:03:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "ASSISTANT",
+          "content": "Do not.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:04:00.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": "m1",
+        "extractAfterMessageId": "m3"
+      }
+    },
+    {
+      "id": "bound_at_last_line",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "who has the map?",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "I do.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "She lies.",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:03:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "ASSISTANT",
+          "content": "Do not.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:04:00.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": "m1",
+        "extractAfterMessageId": "m4"
+      }
+    },
+    {
+      "id": "bound_outside_turn",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "who has the map?",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "I do.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "She lies.",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:03:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "ASSISTANT",
+          "content": "Do not.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:04:00.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": "m1",
+        "extractAfterMessageId": "m-old"
+      }
+    },
+    {
+      "id": "bound_on_opener_ignored",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "who has the map?",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "I do.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "She lies.",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:03:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "ASSISTANT",
+          "content": "Do not.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:04:00.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": "m1",
+        "extractAfterMessageId": "m1"
+      }
+    },
+    {
+      "id": "bound_empty_string",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "who has the map?",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "I do.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "She lies.",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:03:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "ASSISTANT",
+          "content": "Do not.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:04:00.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": "m1",
+        "extractAfterMessageId": ""
+      }
+    },
+    {
+      "id": "bound_null",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "who has the map?",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "I do.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "She lies.",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:03:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "ASSISTANT",
+          "content": "Do not.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:04:00.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": "m1",
+        "extractAfterMessageId": null
+      }
+    },
+    {
+      "id": "bound_user_controlled_opener_to_prior",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "I told her I wouldn't go.",
+          "participantId": "pd000000-0000-4000-8000-00000000000d",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "Then stay.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "Or come.",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:03:00.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": "m1",
+        "extractAfterMessageId": "m2",
+        "userCharacterId": "cc000000-0000-4000-8000-00000000000c",
+        "userCharacterName": "Quill"
+      }
+    },
+    {
+      "id": "no_bound_user_controlled_opener_material",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "I told her I wouldn't go.",
+          "participantId": "pd000000-0000-4000-8000-00000000000d",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "Then stay.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "Or come.",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:03:00.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": "m1",
+        "userCharacterId": "cc000000-0000-4000-8000-00000000000c",
+        "userCharacterName": "Quill"
+      }
+    },
+    {
+      "id": "ten_prior_capped_to_eight",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m0",
+          "role": "USER",
+          "content": "go on",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-02T10:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "ASSISTANT",
+          "content": "line 1",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "line 2",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "line 3",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:03:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "ASSISTANT",
+          "content": "line 4",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:04:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m5",
+          "role": "ASSISTANT",
+          "content": "line 5",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:05:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m6",
+          "role": "ASSISTANT",
+          "content": "line 6",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:06:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m7",
+          "role": "ASSISTANT",
+          "content": "line 7",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:07:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m8",
+          "role": "ASSISTANT",
+          "content": "line 8",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:08:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m9",
+          "role": "ASSISTANT",
+          "content": "line 9",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:09:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m10",
+          "role": "ASSISTANT",
+          "content": "line 10",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:10:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m11",
+          "role": "ASSISTANT",
+          "content": "line 11",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:11:00.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": "m0",
+        "extractAfterMessageId": "m10"
+      }
+    },
+    {
+      "id": "autonomous_anchor_and_bound",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "ASSISTANT",
+          "content": "line 1",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "line 2",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "line 3",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:03:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "ASSISTANT",
+          "content": "line 4",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:04:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m5",
+          "role": "ASSISTANT",
+          "content": "line 5",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:05:00.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": null,
+        "extractionAnchorMessageId": "m4",
+        "extractAfterMessageId": "m2"
+      }
+    },
+    {
+      "id": "plain_human_bound_inside",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "tell the tale",
+          "participantId": null,
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "Once.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "Ended.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:03:00.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": "m1",
+        "extractAfterMessageId": "m2"
+      }
     }
+  ],
+  "turnLists": [
+    {
+      "id": "tl_greeting_then_users",
+      "chatType": null,
+      "messages": [
+        {
+          "type": "message",
+          "id": "m0",
+          "role": "ASSISTANT",
+          "content": "Welcome.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "line 1",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "line 2",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "USER",
+          "content": "line 3",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-02T10:03:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "ASSISTANT",
+          "content": "line 4",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:04:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "tl_staff_only_before_user",
+      "chatType": "salon",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m0",
+          "role": "ASSISTANT",
+          "content": "[Host] hi",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:00:00.000Z",
+          "systemSender": "host"
+        },
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "line 1",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "line 2",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "tl_no_user_greeting_only",
+      "chatType": null,
+      "messages": [
+        {
+          "type": "message",
+          "id": "m0",
+          "role": "ASSISTANT",
+          "content": "Welcome.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "tl_empty",
+      "chatType": null,
+      "messages": []
+    },
+    {
+      "id": "tl_system_user_not_opener",
+      "chatType": null,
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "[sys]",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-02T10:01:00.000Z",
+          "systemSender": "lantern"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "line 2",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "tl_autonomous",
+      "chatType": "autonomous",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "ASSISTANT",
+          "content": "line 1",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m0",
+          "role": "ASSISTANT",
+          "content": "[Host] hi",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:00:00.000Z",
+          "systemSender": "host"
+        },
+        {
+          "type": "message",
+          "id": "m9",
+          "role": "ASSISTANT",
+          "content": "(silent)",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:09:00.000Z",
+          "isSilentMessage": true
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "line 2",
+          "participantId": null,
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m3",
+          "role": "ASSISTANT",
+          "content": "line 3",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:03:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m4",
+          "role": "USER",
+          "content": "line 4",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-02T10:04:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m5",
+          "role": "ASSISTANT",
+          "content": "line 5",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:05:00.000Z"
+        },
+        {
+          "type": "context-summary",
+          "id": "cs1"
+        }
+      ]
+    },
+    {
+      "id": "tl_autonomous_empty",
+      "chatType": "autonomous",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "line 1",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        }
+      ]
+    }
+  ],
+  "anchorCases": [
+    {
+      "id": "anchor_latest_skips_silent_staff",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "ASSISTANT",
+          "content": "line 1",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "line 2",
+          "participantId": "pb000000-0000-4000-8000-00000000000b",
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m9",
+          "role": "ASSISTANT",
+          "content": "(silent)",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:09:00.000Z",
+          "isSilentMessage": true
+        },
+        {
+          "type": "message",
+          "id": "m0",
+          "role": "ASSISTANT",
+          "content": "[Host] hi",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:00:00.000Z",
+          "systemSender": "host"
+        }
+      ]
+    },
+    {
+      "id": "anchor_none",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "USER",
+          "content": "line 1",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-02T10:01:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "m2",
+          "role": "ASSISTANT",
+          "content": "line 2",
+          "participantId": null,
+          "createdAt": "2026-07-02T10:02:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "anchor_silent_false_string",
+      "messages": [
+        {
+          "type": "message",
+          "id": "m1",
+          "role": "ASSISTANT",
+          "content": "line 1",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-02T10:01:00.000Z",
+          "isSilentMessage": false
+        }
+      ]
+    }
+  ],
+  "materialCases": [
+    "bound_inside",
+    "bound_user_controlled_opener_to_prior",
+    "simple",
+    "ten_prior_capped_to_eight"
   ]
 }

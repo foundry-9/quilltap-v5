@@ -153,6 +153,7 @@ impl TranscriptW {
                     last_message_created_at: s.last_message_created_at,
                 })
                 .collect(),
+            prior_slices: None,
             latest_assistant_message_id: self.latest_assistant_message_id,
             turn_timestamp: self.turn_timestamp,
         }

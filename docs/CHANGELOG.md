@@ -76,6 +76,16 @@ _Docs-only change._
 
 The stacking point P4.D296 / P4.D297 / P4.D298 branch from, with every C1-B signature as landed and the one departure.
 
+#### 2026-10-15 — feat(memory): P4.D296 Tier 1 #1–#4 — the pure extraction leaves (prompts, parse, window) and bug 245's turn transcript
+
+_Versions: core 0.0.1300._
+
+New `memory_extraction::{prompts, parse, window}` — the pure half of v4's one extraction pipeline (`lib/memory/extraction/` at the `83334b9a5` pin). Prompts: the SELF / OTHER / fold-OTHER / episode builders; the CLOCK renders its date and weekday on the memory calendar (bug 212) and drops the in-story line; the episode prompt loses its `participants` field. The prompt generator now reads v4's four prompt files; the regenerated SELF / OTHER / grain bodies came out byte-identical and the episode body lost exactly that one line (`prompt_text.rs` moved to `memory_extraction/prompts/`). Parse: `MemoryDraft`, `pass_cap`, the event slot, the three parsers (a `null` SELF element is skipped alone; a model's `0` importance stays `0`). Window: stretch / turn windows, `render_stretch`, `render_turn_context` with bug 245's EARLIER IN THIS TURN section, and the fold rules (`fold_pass_range` reads the gap before the window).
+
+`services::turn_transcript` now owns `TurnTranscript` / `TurnCharacterSlice` (re-exported from `memory_tasks` until its extraction half is deleted) and grows bug 245: the `extract_after_message_id` bound with up to 8 prior lines, a user-controlled opener moving to the prior slices, `list_extraction_turns`, `with_prior_as_material`, `find_autonomous_turn_anchor_message_id`, `load_chat_message_events`. The finalizer's turn-end trigger calls the hoisted anchor walk (behavior unchanged).
+
+Differentials from the pin: `memory_tasks_equivalence` rewritten over a new tsx case (`extraction-pure-tier1.ts`, 135 rows: clocks in five zones incl. a DST edge and the zone-fallback rows, all four builders, 42 `passCap` cells, 34 parse rows, every fold rule); `turn_transcript_equivalence` grown 19 → 30 builder cases plus 14 turn-list / anchor / material rows. The old `memory-tasks-tier1` case and fixture are removed (their v4 subject was deleted).
+
 #### 2026-10-14 — ADMISSION: P4.D290 — admission's stateful half over SCORING + KEYSTONE (one entry point, the lock, the idempotency ledger, the one combine's writes, the hand edit)
 
 _Versions: core 0.0.1299._

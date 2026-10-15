@@ -1,6 +1,9 @@
 //! Tier-1 differential test: the **per-turn transcript builder**
 //! (`quilltap_core::services::turn_transcript` — v4
-//! `lib/services/chat-message/turn-transcript.ts`, P4.6bj unit 1).
+//! `lib/services/chat-message/turn-transcript.ts`, P4.6bj unit 1; grown for
+//! bug 245 by P4.D296 Tier 1 #4 at pin `83334b9a5`: the
+//! `extractAfterMessageId` bound and its `priorSlices`, `listExtractionTurns`,
+//! `withPriorAsMaterial`, `findAutonomousTurnAnchorMessageId`).
 //!
 //! Both sides read the SAME committed corpus
 //! (`harness/oracle/fixtures/turn-transcript.json`); the oracle drives v4's
@@ -22,10 +25,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use quilltap_core::memory_format::Pronouns;
-use quilltap_core::memory_tasks::{TurnCharacterSlice, TurnTranscript};
 use quilltap_core::services::turn_transcript::{
-    build_turn_transcript, find_turn_opener_message_id, BuildTurnTranscriptOptions,
+    build_turn_transcript, find_autonomous_turn_anchor_message_id, find_turn_opener_message_id,
+    list_extraction_turns, with_prior_as_material, BuildTurnTranscriptOptions,
 };
+use quilltap_core::services::turn_transcript::{TurnCharacterSlice, TurnTranscript};
 use serde_json::{json, Map, Value};
 
 fn corpus_path() -> PathBuf {
@@ -123,6 +127,14 @@ fn transcript_to_value(t: &TurnTranscript, options: &Value) -> Value {
                 .collect::<Vec<_>>(),
         ),
     );
+    // v4 `...(priorSlices.length > 0 ? { priorSlices } : {})` — the key only
+    // when non-empty (bug 245).
+    if let Some(prior) = &t.prior_slices {
+        obj.insert(
+            "priorSlices".into(),
+            Value::from(prior.iter().map(slice_to_value).collect::<Vec<_>>()),
+        );
+    }
     obj.insert(
         "latestAssistantMessageId".into(),
         opt_str(t.latest_assistant_message_id.as_ref()),
@@ -139,10 +151,15 @@ fn turn_transcript_matches_oracle() {
     };
     let oracle_raw = std::fs::read_to_string(&oracle_path).expect("read oracle NDJSON");
     let mut oracle_rows: HashMap<String, Value> = HashMap::new();
+    let mut extra_rows: HashMap<String, Value> = HashMap::new();
     for line in oracle_raw.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).expect("oracle line JSON");
         let id = row["id"].as_str().expect("oracle row id").to_string();
-        oracle_rows.insert(id, row);
+        if row.get("kind").is_some() {
+            extra_rows.insert(id, row);
+        } else {
+            oracle_rows.insert(id, row);
+        }
     }
 
     let corpus: Value =
@@ -168,6 +185,13 @@ fn turn_transcript_matches_oracle() {
     // Collect EVERY divergence rather than stopping at the first, so a
     // mutation proof can name exactly the rows it reddens (P4.106).
     let mut failures: Vec<String> = Vec::new();
+    let mut built: HashMap<
+        String,
+        (
+            quilltap_core::services::turn_transcript::TurnTranscript,
+            Value,
+        ),
+    > = HashMap::new();
     for case in cases {
         let id = case["id"].as_str().expect("case id");
         let messages: Vec<Value> = case["messages"].as_array().expect("messages").clone();
@@ -179,6 +203,10 @@ fn turn_transcript_matches_oracle() {
                 .map(String::from),
             extraction_anchor_message_id: options_json
                 .get("extractionAnchorMessageId")
+                .and_then(Value::as_str)
+                .map(String::from),
+            extract_after_message_id: options_json
+                .get("extractAfterMessageId")
                 .and_then(Value::as_str)
                 .map(String::from),
             user_character_id: options_json
@@ -210,6 +238,7 @@ fn turn_transcript_matches_oracle() {
 
         let transcript = build_turn_transcript(&messages, &participants, &characters, &options);
         let got = transcript_to_value(&transcript, options_json);
+        built.insert(id.to_string(), (transcript.clone(), options_json.clone()));
         if got != want["transcript"] {
             failures.push(format!(
                 "{id}: transcript diverges\n got: {got:#}\nwant: {:#}",
@@ -217,11 +246,70 @@ fn turn_transcript_matches_oracle() {
             ));
         }
     }
+    // ---- listExtractionTurns / the anchor / withPriorAsMaterial -----------
+    let mut extras = 0usize;
+    let mut check_extra = |id: String, got: Value, failures: &mut Vec<String>| {
+        extras += 1;
+        match extra_rows.get(&id) {
+            None => failures.push(format!("{id}: missing from oracle — regenerate")),
+            Some(w) if w["out"] != got => failures.push(format!(
+                "{id} diverges\n got: {got:#}\nwant: {:#}",
+                w["out"]
+            )),
+            _ => {}
+        }
+    };
+    for t in corpus["turnLists"].as_array().expect("turnLists") {
+        let id = t["id"].as_str().unwrap().to_string();
+        let chat_type = t["chatType"].as_str();
+        let messages: Vec<Value> = t["messages"].as_array().unwrap().clone();
+        let autonomous = chat_type == Some("autonomous");
+        let got = Value::from(
+            list_extraction_turns(&messages, chat_type)
+                .iter()
+                .map(|l| {
+                    // v4's literals: an ordinary turn carries ONLY its opener
+                    // key; an autonomous one all three.
+                    if autonomous {
+                        json!({
+                            "turnOpenerMessageId": opt_str(l.turn_opener_message_id.as_ref()),
+                            "extractionAnchorMessageId": opt_str(l.extraction_anchor_message_id.as_ref()),
+                            "extractAfterMessageId": opt_str(l.extract_after_message_id.as_ref()),
+                        })
+                    } else {
+                        json!({ "turnOpenerMessageId": opt_str(l.turn_opener_message_id.as_ref()) })
+                    }
+                })
+                .collect::<Vec<_>>(),
+        );
+        check_extra(id, got, &mut failures);
+    }
+    for a in corpus["anchorCases"].as_array().expect("anchorCases") {
+        let id = a["id"].as_str().unwrap().to_string();
+        let messages: Vec<Value> = a["messages"].as_array().unwrap().clone();
+        let got = opt_str(find_autonomous_turn_anchor_message_id(&messages).as_ref());
+        check_extra(id, got, &mut failures);
+    }
+    for m in corpus["materialCases"].as_array().expect("materialCases") {
+        let case_id = m.as_str().unwrap();
+        let (t, options_json) = &built[case_id];
+        let got = transcript_to_value(&with_prior_as_material(t), options_json);
+        check_extra(format!("material_{case_id}"), got, &mut failures);
+    }
+    assert_eq!(
+        extras,
+        extra_rows.len(),
+        "oracle carries rows the corpus lacks — regenerate"
+    );
+
     assert!(
         failures.is_empty(),
         "{} divergence(s):\n{}",
         failures.len(),
         failures.join("\n")
     );
-    println!("turn_transcript: {} cases OK", cases.len());
+    println!(
+        "turn_transcript: {} cases + {extras} turn-list / anchor / material rows OK",
+        cases.len()
+    );
 }

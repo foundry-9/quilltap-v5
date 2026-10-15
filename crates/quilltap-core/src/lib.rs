@@ -208,6 +208,7 @@ pub mod llm_fallback;
 pub mod markdown;
 pub mod memory_candidate;
 pub mod memory_embedding_text;
+pub mod memory_extraction; // P4.D296
 pub mod memory_format;
 pub mod memory_gate;
 pub mod memory_injector;

@@ -185,6 +185,7 @@ where
             // `source_message_timestamp` below.
             last_message_created_at: None,
         }],
+        prior_slices: None,
         latest_assistant_message_id: Some(carina_message_id.clone()),
         turn_timestamp: None,
     };

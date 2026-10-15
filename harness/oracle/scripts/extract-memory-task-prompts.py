@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
-"""Mechanically extract v4's memory-tasks prompt text into the v5
-`memory_tasks/prompt_text.rs` generated module. No byte is transcribed by hand.
+"""Mechanically extract v4's memory-extraction prompt text into the v5
+`memory_extraction/prompts/prompt_text.rs` generated module. No byte is
+transcribed by hand.
 
-Usage: extract-memory-task-prompts.py <v4-memory-tasks.ts> <out.rs>
+Usage: extract-memory-task-prompts.py <v4>/lib/memory/extraction/prompts <out.rs>
+
+Since v4 `ac6348c5f` (memory refactor Phase D) the prompts live in four files
+under `lib/memory/extraction/prompts/` — `self.ts`, `other.ts`, `shared.ts`,
+`episode.ts` — with their bodies moved UNCHANGED from the retired
+`cheap-llm-tasks/memory-tasks.ts`. The script reads the four in that fixed
+order and concatenates them, so every marker below (each a unique
+declaration) still finds its literal (work order P4.D296 Tier 1 #1). A body
+that moved files, or a marker that appears twice, aborts the run.
 
 Emits the SELF / OTHER extraction bodies (`selfBodyForCap` /
 `otherBodyForCap`, the latter's leading `${grainBlock}` stripped), the constant
@@ -19,11 +28,17 @@ after substitution, aborts the run rather than guessing.
 """
 import re, sys
 
-src = open(sys.argv[1], encoding='utf-8').read()
+import os
+PROMPT_FILES = ('self.ts', 'other.ts', 'shared.ts', 'episode.ts')
+src = '\n'.join(
+    open(os.path.join(sys.argv[1], name), encoding='utf-8').read() for name in PROMPT_FILES
+)
 
 def template_after(marker):
     """Return the RAW source of the backtick template literal that starts right
     after `marker` (marker must end at the opening backtick's position - 1)."""
+    if src.count(marker) != 1:
+        raise SystemExit(f'marker {marker!r} found {src.count(marker)} times — teach the script')
     i = src.index(marker) + len(marker)
     assert src[i] == '`', repr(src[i-20:i+5])
     i += 1
@@ -120,7 +135,9 @@ def raw_rs(s):
     return f'r{hashes}"{s}"{hashes}'
 
 out = '''//! GENERATED — the verbatim prompt text of v4
-//! `lib/memory/cheap-llm-tasks/memory-tasks.ts`: the SELF / OTHER extraction
+//! `lib/memory/extraction/prompts/{self,other,shared,episode}.ts` (moved
+//! unchanged from `cheap-llm-tasks/memory-tasks.ts` by `ac6348c5f`; the
+//! episode prompt's `participants` line removed by `e0ac7493a`): the SELF / OTHER extraction
 //! bodies (`selfBodyForCap` / `otherBodyForCap`, with the constant
 //! `ORIENTING_CONTEXT_SKIP_BULLET` / `AGREEMENTS_INSTRUCTION_BLOCK` /
 //! `EVENT_INSTRUCTION_BLOCK` / `TAGS_INSTRUCTION_BLOCK` interpolations already
@@ -130,11 +147,11 @@ out = '''//! GENERATED — the verbatim prompt text of v4
 //! (the candidate cap / `FOLD_EPISODE_CAP`). Extracted mechanically by
 //! `harness/oracle/scripts/extract-memory-task-prompts.py` so no byte was
 //! transcribed by hand; the tier-1 differential (`memory_tasks_equivalence`)
-//! and the fold-episode families prove the bytes. Regenerate by re-running
-//! that script against the pinned v4 checkout if the upstream prompts change:
+//! proves the bytes. Regenerate by re-running that script against the pinned
+//! v4 checkout if the upstream prompts change:
 //!   python3 harness/oracle/scripts/extract-memory-task-prompts.py \\
-//!     <v4>/lib/memory/cheap-llm-tasks/memory-tasks.ts \\
-//!     crates/quilltap-core/src/memory_tasks/prompt_text.rs
+//!     <v4>/lib/memory/extraction/prompts \\
+//!     crates/quilltap-core/src/memory_extraction/prompts/prompt_text.rs
 
 '''
 for const_name, value in (

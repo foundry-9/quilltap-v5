@@ -1,632 +1,507 @@
-//! Tier-1 differential test: the memory-extraction pure leaves
-//! (`quilltap_core::memory_tasks` vs v4 `lib/memory/cheap-llm-tasks/
-//! memory-tasks.ts`) — the SELF/OTHER extraction prompt builders (preambles,
-//! orienting footer, turn-context renderer), the fold-grain OTHER builder
-//! (`extractOtherMemoriesFromFold`, `d58548051` — the GRAIN block, the dated
-//! 1,500-unit window render, the uncapped-by-tokens cap) and the candidate
-//! response parsers
-//! (fence stripping, targeting-tag validation, candidate shaping, caps). Exact
-//! string / structural equality against the v4 oracle (which drives v4's REAL
-//! extractors with only `executeCheapLLMTask` mocked, capturing the built
-//! messages and feeding the corpus response into the real parser).
+//! Tier-1 differential test: the pure leaves of v4's ONE memory-extraction
+//! pipeline — `quilltap_core::memory_extraction::{prompts, parse, window}`
+//! (v4 `lib/memory/extraction/{prompts/*,parse,window}.ts`, pin `83334b9a5`;
+//! work order P4.D296 Tier 1 #1–#3). The family keeps its pre-refactor name
+//! (the order's L-20); its old subject (`cheap-llm-tasks/memory-tasks.ts`)
+//! was deleted by `ac6348c5f`, so the case was rewritten.
 //!
-//! A divergence is collected per case (the failure names EVERY diverging case),
-//! and a second test, `memory_consent_heading_arms_and_no_filter_pin`, pins
-//! v4 `ca363178d`'s transcript-heading arms and the parser's deliberate
-//! refusal to filter invented assent straight off the corpus (no oracle
-//! needed, so it never SKIPs).
+//! Both sides read the SAME committed corpus
+//! (`harness/oracle/fixtures/extraction-pure-tier1.json`); the oracle drives
+//! v4's REAL builders / renderers / parsers / fold rules and records one
+//! `{ section, name, out }` row per op; this test drives the Rust port and
+//! compares every row, exact (strings byte-for-byte; drafts and fold results
+//! as JSON values).
 //!
-//! Generate the oracle output (jest — the seam needs `jest.mock`):
+//! The two `fallback_env_*` clock rows carry no `timeZone`: v4 renders them in
+//! `getMemoryTimeZone()`'s fallback (`QUILLTAP_TIMEZONE`, set per row). v5's
+//! clock REQUIRES its zone (core never reads an ambient zone — P4.D289
+//! LR-12); the caller resolves it through
+//! `services::memory_time_zone::cached_memory_time_zone(host_fallback)`, which
+//! with a cold cache answers the same host fallback — so those rows render
+//! with the zone that resolution yields, pinning that the two agree.
+//!
+//! Generate the oracle (from the v4 checkout, or a pin):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}
-//!   TMPO=/tmp/qt-memory-tasks-oracle
-//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
-//!   cp "$V5W/harness/oracle/cases/memory-tasks-tier1.test.ts" "$TMPO/cases/"
-//!   cp "$V5W/harness/oracle/fixtures/memory-tasks-tier1.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
-//!   QT_ORACLE_OUT=/tmp/oracle-memory-tasks.ndjson \
-//!     $N/npx jest --silent --roots "$PWD" --roots "$TMPO/cases" -- memory-tasks-tier1
+//!   $N/npx tsx $V5W/harness/oracle/cases/extraction-pure-tier1.ts > /tmp/oracle-extraction-pure.ndjson
 //! Run:
-//!   QT_ORACLE_MEMORY_TASKS=/tmp/oracle-memory-tasks.ndjson \
+//!   QT_ORACLE_EXTRACTION_PURE=/tmp/oracle-extraction-pure.ndjson \
 //!     cargo test -p quilltap-harness --test memory_tasks_equivalence
 
-use quilltap_core::memory_format::{format_name_with_pronouns, Pronouns};
-use quilltap_core::memory_tasks::{
-    build_fold_other_extraction_messages, build_other_extraction_messages,
-    build_self_extraction_messages, parse_memory_candidate_array,
-    parse_other_candidates_by_subject, resolve_max_memories, ExtractionClock, FoldOtherMessage,
-    OrientingContext, OtherSubjectInput, TurnCharacterSlice, TurnTranscript,
-    ORDERED_TURN_TRANSCRIPT_HEADING,
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+use quilltap_core::memory_extraction::parse::{
+    parse_episode_drafts, parse_other_drafts_by_subject, parse_self_drafts, pass_cap, MemoryDraft,
 };
-use serde::Deserialize;
+use quilltap_core::memory_extraction::prompts::episode::build_episode_fold_messages;
+use quilltap_core::memory_extraction::prompts::other::{
+    build_other_fold_messages, build_other_turn_messages, OtherPromptInput, OtherSubjectInput,
+};
+use quilltap_core::memory_extraction::prompts::self_turn::{
+    build_self_turn_messages, SelfTurnPromptInput,
+};
+use quilltap_core::memory_extraction::prompts::shared::{
+    render_clock_block, render_clock_stamp, ExtractionClock, OrientingContext,
+};
+use quilltap_core::memory_extraction::window::{
+    first_valid_iso, fold_pass_range, is_fold_eligible_message, message_id, messages_past_cursor,
+    render_stretch, render_turn_context, slice_fold_window, stretch_window, turn_window,
+    window_past_cursor, StretchMessage, TranscriptWindow,
+};
+use quilltap_core::memory_format::Pronouns;
+use quilltap_core::model::completion::CompletionMessage;
+use quilltap_core::services::memory_time_zone::{
+    cached_memory_time_zone, reset_memory_time_zone_cache_for_tests,
+};
+use quilltap_core::services::speaker_names::SpeakerNames;
+use quilltap_core::services::turn_transcript::{TurnCharacterSlice, TurnTranscript};
 use serde_json::{json, Value};
 
-#[derive(Deserialize)]
-struct PronounsW {
-    subject: String,
-    object: String,
-    possessive: String,
+fn corpus_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../harness/oracle/fixtures/extraction-pure-tier1.json")
 }
 
-impl PronounsW {
-    fn into_core(self) -> Pronouns {
-        Pronouns {
-            subject: self.subject,
-            object: self.object,
-            possessive: self.possessive,
-        }
+fn s(v: &Value, k: &str) -> Option<String> {
+    v.get(k).and_then(Value::as_str).map(String::from)
+}
+
+fn pronouns(v: Option<&Value>) -> Option<Pronouns> {
+    let p = v.filter(|p| !p.is_null())?;
+    Some(Pronouns {
+        subject: s(p, "subject")?,
+        object: s(p, "object")?,
+        possessive: s(p, "possessive")?,
+    })
+}
+
+fn slice(v: &Value) -> TurnCharacterSlice {
+    TurnCharacterSlice {
+        character_id: s(v, "characterId").unwrap_or_default(),
+        character_name: s(v, "characterName").unwrap_or_default(),
+        character_pronouns: pronouns(v.get("characterPronouns")),
+        text: s(v, "text").unwrap_or_default(),
+        contributing_message_ids: v["contributingMessageIds"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        is_user_controlled: v.get("isUserControlled").and_then(Value::as_bool) == Some(true),
+        last_message_created_at: s(v, "lastMessageCreatedAt"),
     }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SliceW {
-    character_id: String,
-    character_name: String,
-    #[serde(default)]
-    character_pronouns: Option<PronounsW>,
-    text: String,
-    contributing_message_ids: Vec<String>,
-    #[serde(default)]
-    is_user_controlled: bool,
-    #[serde(default)]
-    last_message_created_at: Option<String>,
+fn transcript(v: &Value) -> TurnTranscript {
+    TurnTranscript {
+        turn_opener_message_id: s(v, "turnOpenerMessageId"),
+        user_message: s(v, "userMessage"),
+        user_character_id: s(v, "userCharacterId"),
+        user_character_name: s(v, "userCharacterName"),
+        user_character_pronouns: pronouns(v.get("userCharacterPronouns")),
+        character_slices: v["characterSlices"]
+            .as_array()
+            .map(|a| a.iter().map(slice).collect())
+            .unwrap_or_default(),
+        prior_slices: v
+            .get("priorSlices")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().map(slice).collect()),
+        latest_assistant_message_id: s(v, "latestAssistantMessageId"),
+        turn_timestamp: s(v, "turnTimestamp"),
+    }
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TranscriptW {
-    #[serde(default)]
-    turn_opener_message_id: Option<String>,
-    #[serde(default)]
-    user_message: Option<String>,
-    #[serde(default)]
-    user_character_id: Option<String>,
-    #[serde(default)]
-    user_character_name: Option<String>,
-    #[serde(default)]
-    user_character_pronouns: Option<PronounsW>,
-    character_slices: Vec<SliceW>,
-    #[serde(default)]
-    latest_assistant_message_id: Option<String>,
-    #[serde(default)]
-    turn_timestamp: Option<String>,
+fn clock(v: &Value) -> ExtractionClock {
+    ExtractionClock {
+        now_iso: s(v, "nowIso").unwrap_or_default(),
+        timeline_mode: s(v, "timelineMode").unwrap_or_default(),
+        time_zone: s(v, "timeZone").expect("a zoned clock"),
+    }
 }
 
-impl TranscriptW {
-    fn into_core(self) -> TurnTranscript {
-        TurnTranscript {
-            turn_opener_message_id: self.turn_opener_message_id,
-            user_message: self.user_message,
-            user_character_id: self.user_character_id,
-            user_character_name: self.user_character_name,
-            user_character_pronouns: self.user_character_pronouns.map(PronounsW::into_core),
-            character_slices: self
-                .character_slices
-                .into_iter()
-                .map(|s| TurnCharacterSlice {
-                    character_id: s.character_id,
-                    character_name: s.character_name,
-                    character_pronouns: s.character_pronouns.map(PronounsW::into_core),
-                    text: s.text,
-                    contributing_message_ids: s.contributing_message_ids,
-                    is_user_controlled: s.is_user_controlled,
-                    last_message_created_at: s.last_message_created_at,
+fn orienting(v: Option<&Value>) -> Option<OrientingContext> {
+    let o = v.filter(|o| !o.is_null())?;
+    Some(OrientingContext {
+        project_description: s(o, "projectDescription"),
+        chat_context_summary: s(o, "chatContextSummary"),
+    })
+}
+
+fn subjects(v: &Value) -> Vec<OtherSubjectInput> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .map(|x| OtherSubjectInput {
+                    id: s(x, "id").unwrap_or_default(),
+                    name: s(x, "name").unwrap_or_default(),
+                    pronouns: pronouns(x.get("pronouns")),
+                    is_user: x["isUser"].as_bool().unwrap_or(false),
+                    canon_block: s(x, "canonBlock").unwrap_or_default(),
                 })
-                .collect(),
-            latest_assistant_message_id: self.latest_assistant_message_id,
-            turn_timestamp: self.turn_timestamp,
-        }
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SubjectW {
-    id: String,
-    name: String,
-    #[serde(default)]
-    pronouns: Option<PronounsW>,
-    is_user: bool,
-    canon_block: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OrientingW {
-    #[serde(default)]
-    project_description: Option<String>,
-    #[serde(default)]
-    chat_context_summary: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ClockW {
-    now_iso: String,
-    timeline_mode: String,
-    #[serde(default)]
-    narrative_now: Option<String>,
-}
-
-impl ClockW {
-    fn into_core(self) -> ExtractionClock {
-        ExtractionClock {
-            now_iso: self.now_iso,
-            timeline_mode: self.timeline_mode,
-            narrative_now: self.narrative_now,
-        }
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CaseW {
-    kind: String,
-    name: String,
-    /// Absent on the fold-other rows (they read a window, not a turn).
-    #[serde(default)]
-    transcript: Option<TranscriptW>,
-    /// fold-other (v4 `extractOtherMemoriesFromFold`) only.
-    #[serde(default)]
-    window_messages: Vec<FoldMessageW>,
-    #[serde(default)]
-    observer: Option<ObserverW>,
-    #[serde(default)]
-    per_subject_cap: Option<i64>,
-    #[serde(default)]
-    target_character_id: Option<String>,
-    #[serde(default)]
-    canon_block: Option<String>,
-    #[serde(default)]
-    observer_character_id: Option<String>,
-    #[serde(default)]
-    subjects: Vec<SubjectW>,
-    #[serde(default)]
-    resolved_max_tokens: Option<f64>,
-    in_autonomous_room: bool,
-    #[serde(default)]
-    orienting: Option<OrientingW>,
-    #[serde(default)]
-    clock: Option<ClockW>,
-    response_text: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct FoldMessageW {
-    speaker: String,
-    content: String,
-    #[serde(default)]
-    created_at: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ObserverW {
-    id: String,
-    name: String,
-    #[serde(default)]
-    pronouns: Option<PronounsW>,
-}
-
-#[derive(Deserialize)]
-struct OracleMessage {
-    role: String,
-    content: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OracleCall {
-    messages: Vec<OracleMessage>,
-    /// fold-other rows only: the executor's task type + attributed character.
-    #[serde(default)]
-    task_type: Option<String>,
-    #[serde(default)]
-    character_id: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OracleRow {
-    name: String,
-    calls: Vec<OracleCall>,
-    success: bool,
-    has_usage: bool,
-    result: Value,
-}
-
-fn corpus_cases() -> Vec<CaseW> {
-    let corpus_path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../harness/oracle/fixtures/memory-tasks-tier1.json"
-    );
-    let corpus_raw = std::fs::read_to_string(corpus_path).expect("read corpus fixture");
-    #[derive(Deserialize)]
-    struct Spec {
-        cases: Vec<CaseW>,
-    }
-    serde_json::from_str::<Spec>(&corpus_raw)
-        .expect("parse corpus")
-        .cases
-}
-
-fn subjects_core(subjects: Vec<SubjectW>) -> Vec<OtherSubjectInput> {
-    subjects
-        .into_iter()
-        .map(|s| OtherSubjectInput {
-            id: s.id,
-            name: s.name,
-            pronouns: s.pronouns.map(PronounsW::into_core),
-            is_user: s.is_user,
-            canon_block: s.canon_block,
-        })
-        .collect()
-}
-
-/// The user message (the rendered turn) of a corpus case's one call.
-fn built_messages(case: CaseW) -> Vec<(String, String)> {
-    let transcript = case.transcript.expect("a turn case").into_core();
-    let messages = match case.kind.as_str() {
-        "self" => build_self_extraction_messages(
-            &transcript,
-            case.target_character_id.as_deref().unwrap(),
-            case.canon_block.as_deref().unwrap(),
-            case.resolved_max_tokens,
-            case.in_autonomous_room,
-            None,
-            None,
-        ),
-        _ => build_other_extraction_messages(
-            &transcript,
-            case.observer_character_id.as_deref().unwrap(),
-            &subjects_core(case.subjects),
-            case.resolved_max_tokens,
-            case.in_autonomous_room,
-            None,
-            None,
-        ),
-    };
-    messages
-        .expect("the case makes a call")
-        .into_iter()
-        .map(|m| (m.role.as_str().to_string(), m.content))
-        .collect()
-}
-
-/// v4 `ca363178d` (memory consent, spec §8.2/§8.5), pinned on the Rust side
-/// without the oracle so it never SKIPs: the transcript heading's two arms and
-/// both disjuncts of the ordered one, and the parser's deliberate refusal to
-/// filter invented assent (v4 pins the same in its own
-/// `memory-consent-regression.test.ts`; the oracle case asserts it of v4's
-/// parse). No code-side consent filter exists on either side — the prompt is
-/// the control.
-#[test]
-fn memory_consent_heading_arms_and_no_filter_pin() {
-    let mut by_name: std::collections::HashMap<String, CaseW> = corpus_cases()
-        .into_iter()
-        .map(|c| (c.name.clone(), c))
-        .collect();
-    let mut user_of = |name: &str| -> String {
-        built_messages(by_name.remove(name).expect(name))
-            .into_iter()
-            .find(|(role, _)| role == "user")
-            .map(|(_, content)| content)
-            .expect("a user message")
-    };
-    let old_heading = "\n\nTURN TRANSCRIPT:\n\n";
-
-    // ORDERED by `user_message` (an empty opener is present — `!== null`).
-    assert!(user_of("self-empty-user-message").contains(ORDERED_TURN_TRANSCRIPT_HEADING));
-    // ORDERED purely by a user-controlled slice (`|| hasUserSlice`).
-    let a = user_of("self-user-slice-without-user-message");
-    assert!(a.contains(ORDERED_TURN_TRANSCRIPT_HEADING), "{a}");
-    assert!(!a.contains(old_heading));
-    // The roster's USER line keys on the NAME; the heading does not.
-    let b = user_of("self-user-name-without-message-or-slice");
-    assert!(b.contains("- USER: Charlie (the human participant)"), "{b}");
-    assert!(
-        b.contains(old_heading) && !b.contains(ORDERED_TURN_TRANSCRIPT_HEADING),
-        "{b}"
-    );
-    // No human line at all: the plain heading, byte-identical to before.
-    let greeting = user_of("self-greeting-no-user-null-item");
-    assert!(greeting.contains(old_heading) && !greeting.contains(ORDERED_TURN_TRANSCRIPT_HEADING));
-
-    // The proposal-no-reply turn: the user's stage direction opens it, the
-    // proposal closes it, under the ordered heading.
-    let proposal_line =
-        "Then here's my price: nothing fires without the household hearing it first.";
-    let other = user_of("other-proposal-no-reply-invented-assent");
-    assert!(other.contains(ORDERED_TURN_TRANSCRIPT_HEADING));
-    assert!(other.trim_end().ends_with(&format!("{proposal_line}\"\"")));
-    assert!(other.find("checks the load").unwrap() < other.find("Friday sets her mug").unwrap());
-
-    // Owen's own SELF pass carries the not-yet-responded preamble.
-    let cases = corpus_cases();
-    let self_case = cases
-        .into_iter()
-        .find(|c| c.name == "self-proposal-no-reply-user-controlled-invented-assent")
-        .unwrap();
-    let invented_reply = self_case.response_text.clone();
-    let system = built_messages(self_case)
-        .into_iter()
-        .find(|(role, _)| role == "system")
-        .unwrap()
-        .1;
-    assert!(system.contains("the SUBJECT has not yet responded"));
-
-    // §8.5: the parsers keep invented assent verbatim.
-    let invented = [
-        "Owen agreed that nothing fires without the household hearing it first",
-        "Owen accepted the new household rule",
-    ];
-    let self_parsed: Vec<String> = parse_memory_candidate_array(&invented_reply)
-        .into_iter()
-        .map(|c| c.content.expect("content"))
-        .collect();
-    assert_eq!(self_parsed, invented);
-    let other_case = corpus_cases()
-        .into_iter()
-        .find(|c| c.name == "other-proposal-no-reply-invented-assent")
-        .unwrap();
-    let subjects = subjects_core(other_case.subjects);
-    let buckets = parse_other_candidates_by_subject(
-        &other_case.response_text,
-        &subjects,
-        resolve_max_memories(other_case.resolved_max_tokens),
-    );
-    let about_owen: Vec<String> = buckets
-        .into_iter()
-        .find(|(id, _)| id == "char-owen")
-        .map(|(_, cs)| {
-            cs.into_iter()
-                .map(|c| c.content.expect("content"))
                 .collect()
         })
-        .unwrap();
-    assert_eq!(about_owen, invented);
+        .unwrap_or_default()
+}
+
+fn stretch(v: &Value) -> Vec<StretchMessage> {
+    v.as_array()
+        .map(|a| {
+            a.iter()
+                .map(|m| StretchMessage {
+                    speaker: s(m, "speaker").unwrap_or_default(),
+                    content: s(m, "content").unwrap_or_default(),
+                    created_at: s(m, "createdAt"),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn msgs_value(ms: Option<Vec<CompletionMessage>>) -> Value {
+    match ms {
+        None => Value::Null,
+        Some(ms) => Value::from(
+            ms.iter()
+                .map(|m| json!({ "role": m.role.as_str(), "content": m.content }))
+                .collect::<Vec<_>>(),
+        ),
+    }
+}
+
+/// `JSON.stringify` of a JS number: an integral value has no fraction.
+fn num(f: f64) -> Value {
+    if f.is_finite() && f.fract() == 0.0 {
+        Value::from(f as i64)
+    } else {
+        Value::from(f)
+    }
+}
+
+/// v4's `JSON.stringify(draft)` presence shape (undefined keys dropped).
+fn draft_value(d: &MemoryDraft) -> Value {
+    let mut o = serde_json::Map::new();
+    if let Some(c) = &d.content {
+        o.insert("content".into(), c.clone().into());
+    }
+    if let Some(c) = &d.summary {
+        o.insert("summary".into(), c.clone().into());
+    }
+    o.insert("keywords".into(), d.keywords.clone().into());
+    o.insert("importance".into(), num(d.importance));
+    o.insert(
+        "targeting".into(),
+        json!({
+            "temporal": d.targeting.temporal.as_str(),
+            "scope": d.targeting.scope.as_str(),
+            "context": d.targeting.context.as_str(),
+        }),
+    );
+    o.insert("kind".into(), d.kind.as_str().into());
+    if let Some(w) = &d.when {
+        o.insert("when".into(), w.clone().into());
+    }
+    if let Some(n) = &d.narrative_time {
+        o.insert("narrativeTime".into(), n.clone().into());
+    }
+    if let Some(e) = &d.entities {
+        o.insert("entities".into(), e.clone().into());
+    }
+    Value::Object(o)
+}
+
+fn ids(ms: &[Value]) -> Value {
+    Value::from(
+        ms.iter()
+            .map(|m| message_id(m).to_string())
+            .collect::<Vec<_>>(),
+    )
+}
+
+fn opt(v: Option<&str>) -> Value {
+    v.map(Value::from).unwrap_or(Value::Null)
+}
+
+fn arr(v: &Value) -> Vec<Value> {
+    v.as_array().cloned().unwrap_or_default()
 }
 
 #[test]
-fn memory_tasks_equivalence() {
-    let oracle_path = match std::env::var("QT_ORACLE_MEMORY_TASKS") {
-        Ok(p) => p,
-        Err(_) => {
-            eprintln!("QT_ORACLE_MEMORY_TASKS not set — skipping memory-tasks differential");
-            return;
-        }
+fn extraction_pure_leaves_match_oracle() {
+    let Ok(oracle_path) = std::env::var("QT_ORACLE_EXTRACTION_PURE") else {
+        eprintln!("QT_ORACLE_EXTRACTION_PURE not set — SKIP");
+        return;
     };
-    let oracle_raw = std::fs::read_to_string(&oracle_path).expect("read oracle NDJSON");
-    let oracle_rows: Vec<OracleRow> = oracle_raw
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).expect("parse oracle row"))
+    let raw = std::fs::read_to_string(&oracle_path).expect("read oracle NDJSON");
+    let mut want: HashMap<(String, String), Value> = HashMap::new();
+    for line in raw.lines().filter(|l| !l.trim().is_empty()) {
+        let row: Value = serde_json::from_str(line).expect("oracle line JSON");
+        let key = (
+            row["section"].as_str().unwrap().to_string(),
+            row["name"].as_str().unwrap().to_string(),
+        );
+        assert!(
+            want.insert(key, row["out"].clone()).is_none(),
+            "duplicate oracle row"
+        );
+    }
+    let corpus: Value =
+        serde_json::from_str(&std::fs::read_to_string(corpus_path()).expect("read corpus"))
+            .expect("corpus JSON");
+    let transcripts: HashMap<String, TurnTranscript> = corpus["transcripts"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .map(|(k, v)| (k.clone(), transcript(v)))
         .collect();
 
-    let corpus_path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../harness/oracle/fixtures/memory-tasks-tier1.json"
-    );
-    let corpus_raw = std::fs::read_to_string(corpus_path).expect("read corpus fixture");
-    #[derive(Deserialize)]
-    struct Spec {
-        cases: Vec<CaseW>,
+    let mut got: Vec<((String, String), Value)> = Vec::new();
+    let mut push = |section: &str, name: &str, out: Value| {
+        got.push(((section.to_string(), name.to_string()), out));
+    };
+
+    // ---- clocks ------------------------------------------------------------
+    for c in arr(&corpus["clocks"]) {
+        let name = c["name"].as_str().unwrap();
+        let mut ck_json = c["clock"].clone();
+        if let Some(env) = c.get("envZone").and_then(Value::as_str) {
+            // v4's zoneless clock reads `getMemoryTimeZone()`; v5's caller
+            // resolves the same value and passes it.
+            reset_memory_time_zone_cache_for_tests();
+            ck_json["timeZone"] = Value::from(cached_memory_time_zone(env));
+        }
+        let ck = clock(&ck_json);
+        push(
+            "clocks",
+            name,
+            json!({ "stamp": render_clock_stamp(&ck), "block": render_clock_block(Some(&ck)) }),
+        );
     }
-    let spec: Spec = serde_json::from_str(&corpus_raw).expect("parse corpus");
+    push(
+        "clocks",
+        "no_clock",
+        json!({ "stamp": null, "block": render_clock_block(None) }),
+    );
+
+    // ---- prompts -----------------------------------------------------------
+    for p in arr(&corpus["prompts"]) {
+        let name = p["name"].as_str().unwrap();
+        let ck = p.get("clock").filter(|c| !c.is_null()).map(clock);
+        let or = orienting(p.get("orienting"));
+        let cap = p["cap"].as_u64().unwrap_or(0) as usize;
+        let auto = p["inAutonomousRoom"].as_bool().unwrap_or(false);
+        let out = match p["op"].as_str().unwrap() {
+            "self" => build_self_turn_messages(&SelfTurnPromptInput {
+                transcript: &transcripts[p["transcript"].as_str().unwrap()],
+                holder_id: p["holderId"].as_str().unwrap(),
+                canon_block: p["canonBlock"].as_str().unwrap(),
+                cap,
+                in_autonomous_room: auto,
+                orienting: or.as_ref(),
+                clock: ck.as_ref(),
+            }),
+            op @ ("other-turn" | "other-fold") => {
+                let subs = subjects(&p["subjects"]);
+                let obs_pronouns = pronouns(p["observer"].get("pronouns"));
+                let input = OtherPromptInput {
+                    observer_name: p["observer"]["name"].as_str().unwrap(),
+                    observer_pronouns: obs_pronouns.as_ref(),
+                    subjects: &subs,
+                    cap,
+                    in_autonomous_room: auto,
+                    orienting: or.as_ref(),
+                    clock: ck.as_ref(),
+                };
+                Some(if op == "other-turn" {
+                    build_other_turn_messages(
+                        &input,
+                        &transcripts[p["transcript"].as_str().unwrap()],
+                    )
+                } else {
+                    build_other_fold_messages(&input, &stretch(&p["stretch"]))
+                })
+            }
+            _ => Some(build_episode_fold_messages(
+                &stretch(&p["stretch"]),
+                ck.as_ref().expect("episode clock"),
+            )),
+        };
+        push("prompts", name, msgs_value(out));
+    }
+
+    // ---- passCap -----------------------------------------------------------
+    for r in arr(&corpus["passCap"]) {
+        let base = r["base"].as_f64().unwrap();
+        let max = r["maxTokens"].as_f64();
+        let name = format!(
+            "base_{}_max_{}",
+            num_label(&r["base"]),
+            r.get("maxTokens")
+                .filter(|m| !m.is_null())
+                .map(num_label)
+                .unwrap_or_else(|| "null".to_string())
+        );
+        push("passCap", &name, Value::from(pass_cap(base, max) as u64));
+    }
+
+    // ---- parse -------------------------------------------------------------
+    for p in arr(&corpus["parse"]) {
+        let name = p["name"].as_str().unwrap();
+        let raw = p["raw"].as_str().unwrap();
+        let cap = p["cap"].as_u64().unwrap() as usize;
+        let out = match p["op"].as_str().unwrap() {
+            "self" => Value::from(
+                parse_self_drafts(raw, cap)
+                    .iter()
+                    .map(draft_value)
+                    .collect::<Vec<_>>(),
+            ),
+            "episode" => Value::from(
+                parse_episode_drafts(raw, cap)
+                    .iter()
+                    .map(draft_value)
+                    .collect::<Vec<_>>(),
+            ),
+            _ => {
+                let ids: Vec<String> = arr(&p["subjectIds"])
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(String::from)
+                    .collect();
+                Value::from(
+                    parse_other_drafts_by_subject(raw, &ids, cap)
+                        .into_iter()
+                        .map(|(id, ds)| json!([id, ds.iter().map(draft_value).collect::<Vec<_>>()]))
+                        .collect::<Vec<_>>(),
+                )
+            }
+        };
+        push("parse", name, out);
+    }
+
+    // ---- window ------------------------------------------------------------
+    let no_names = SpeakerNames::default();
+    for w in arr(&corpus["window"]) {
+        let name = w["name"].as_str().unwrap();
+        let cursor = w.get("cursor").and_then(Value::as_str);
+        let out = match w["op"].as_str().unwrap() {
+            "firstValidIso" => {
+                let isos: Vec<Option<String>> = arr(&w["isos"])
+                    .iter()
+                    .map(|v| v.as_str().map(String::from))
+                    .collect();
+                let refs: Vec<Option<&str>> = isos.iter().map(|o| o.as_deref()).collect();
+                opt(first_valid_iso(&refs).as_deref())
+            }
+            "eligible" => Value::from(
+                arr(&w["messages"])
+                    .iter()
+                    .map(is_fold_eligible_message)
+                    .collect::<Vec<_>>(),
+            ),
+            "pastCursor" => ids(&messages_past_cursor(&arr(&w["messages"]), cursor)),
+            "windowPastCursor" => {
+                let r = window_past_cursor(&arr(&w["window"]), &arr(&w["all"]), cursor);
+                json!({ "window": ids(&r.window), "applied": r.applied })
+            }
+            "slice" => Value::from(
+                slice_fold_window(
+                    &arr(&w["eligible"]),
+                    w["max"].as_f64().unwrap(),
+                    w.get("final").and_then(Value::as_str),
+                )
+                .iter()
+                .map(|s| {
+                    json!({
+                        "messages": ids(&s.messages),
+                        "coverThroughMessageId": opt(s.cover_through_message_id.as_deref()),
+                    })
+                })
+                .collect::<Vec<_>>(),
+            ),
+            "range" => {
+                let r = fold_pass_range(&arr(&w["window"]), &arr(&w["all"]), cursor);
+                json!({ "messages": ids(&r.messages), "applied": r.applied, "gap": r.gap })
+            }
+            "stretchWindow" => {
+                let sw = stretch_window(
+                    arr(&w["messages"]),
+                    &no_names,
+                    w.get("cover").and_then(Value::as_str).map(String::from),
+                    w["nowMs"].as_f64().unwrap(),
+                );
+                json!({
+                    "messages": ids(&sw.messages),
+                    "rendered": sw.rendered.iter().map(|r| json!({
+                        "speaker": r.speaker, "content": r.content, "createdAt": opt(r.created_at.as_deref()),
+                    })).collect::<Vec<_>>(),
+                    "nowIso": sw.now_iso,
+                    "startIso": sw.start_iso,
+                    "coverThroughMessageId": opt(sw.cover_through_message_id.as_deref()),
+                })
+            }
+            "turnWindow" => {
+                let t = transcripts[w["transcript"].as_str().unwrap()].clone();
+                match turn_window(t, w["nowMs"].as_f64().unwrap()) {
+                    TranscriptWindow::Turn { now_iso, .. } => json!({ "nowIso": now_iso }),
+                    TranscriptWindow::Stretch(_) => unreachable!(),
+                }
+            }
+            other => panic!("unknown window op {other}"),
+        };
+        push("window", name, out);
+    }
+
+    // ---- render ------------------------------------------------------------
+    for r in arr(&corpus["render"]) {
+        let name = r["name"].as_str().unwrap();
+        let out = if r["op"] == "stretch" {
+            render_stretch(&stretch(&r["stretch"]))
+        } else {
+            render_turn_context(&transcripts[r["transcript"].as_str().unwrap()])
+        };
+        push("render", name, Value::from(out));
+    }
 
     assert_eq!(
-        spec.cases.len(),
-        oracle_rows.len(),
-        "corpus/oracle case-count mismatch — regenerate the oracle NDJSON"
+        got.len(),
+        want.len(),
+        "row-count mismatch (Rust {} vs oracle {}) — regenerate the oracle",
+        got.len(),
+        want.len()
     );
-
-    // Every case runs; a divergence is collected rather than aborting the
-    // family, so a red run names EVERY diverging case (the red-first counts and
-    // the mutation proofs' "this case and nothing else" read off this list).
-    let mut failed: Vec<String> = Vec::new();
-    for (case, oracle) in spec.cases.into_iter().zip(oracle_rows) {
-        assert_eq!(case.name, oracle.name, "case order mismatch");
-        let case_name = case.name.clone();
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-            check_case(case, oracle)
-        }));
-        if outcome.is_err() {
-            failed.push(case_name);
+    let mut failures: Vec<String> = Vec::new();
+    for (key, out) in &got {
+        match want.get(key) {
+            None => failures.push(format!("{key:?}: missing from oracle")),
+            Some(w) if w != out => {
+                failures.push(format!("{key:?} diverges\n got: {out:#}\nwant: {w:#}"))
+            }
+            _ => {}
         }
     }
     assert!(
-        failed.is_empty(),
-        "{} case(s) diverge from the oracle: {failed:?}",
-        failed.len()
+        failures.is_empty(),
+        "{} divergence(s):\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+    println!(
+        "memory_tasks (extraction pure leaves): {} rows OK",
+        got.len()
     );
 }
 
-/// One corpus case against its oracle row; panics on the first divergence.
-fn check_case(case: CaseW, oracle: OracleRow) {
-    {
-        let name = &case.name;
-
-        let transcript = case.transcript.map(TranscriptW::into_core);
-        let orienting = case.orienting.map(|o| OrientingContext {
-            project_description: o.project_description,
-            chat_context_summary: o.chat_context_summary,
-        });
-        let clock = case.clock.map(ClockW::into_core);
-
-        let (messages, result): (Option<Vec<_>>, Value) = match case.kind.as_str() {
-            "self" => {
-                let messages = build_self_extraction_messages(
-                    transcript.as_ref().expect("transcript"),
-                    case.target_character_id
-                        .as_deref()
-                        .expect("targetCharacterId"),
-                    case.canon_block.as_deref().expect("canonBlock"),
-                    case.resolved_max_tokens,
-                    case.in_autonomous_room,
-                    orienting.as_ref(),
-                    clock.as_ref(),
-                );
-                let result = match &messages {
-                    // The call was made — the real parser consumes the canned
-                    // response.
-                    Some(_) => {
-                        serde_json::to_value(parse_memory_candidate_array(&case.response_text))
-                            .unwrap()
-                    }
-                    // v4's early return: no slice for the target → `[]`.
-                    None => json!([]),
-                };
-                (messages, result)
-            }
-            "other" => {
-                let subjects: Vec<OtherSubjectInput> = case
-                    .subjects
-                    .into_iter()
-                    .map(|s| OtherSubjectInput {
-                        id: s.id,
-                        name: s.name,
-                        pronouns: s.pronouns.map(PronounsW::into_core),
-                        is_user: s.is_user,
-                        canon_block: s.canon_block,
-                    })
-                    .collect();
-                let messages = build_other_extraction_messages(
-                    transcript.as_ref().expect("transcript"),
-                    case.observer_character_id
-                        .as_deref()
-                        .expect("observerCharacterId"),
-                    &subjects,
-                    case.resolved_max_tokens,
-                    case.in_autonomous_room,
-                    orienting.as_ref(),
-                    clock.as_ref(),
-                );
-                let buckets = match &messages {
-                    Some(_) => {
-                        let cap = resolve_max_memories(case.resolved_max_tokens);
-                        parse_other_candidates_by_subject(&case.response_text, &subjects, cap)
-                    }
-                    // v4's early return: an empty bucket per subject, no call.
-                    None => subjects
-                        .iter()
-                        .map(|s| (s.id.clone(), Vec::new()))
-                        .collect(),
-                };
-                let mut obj = serde_json::Map::new();
-                for (id, candidates) in buckets {
-                    obj.insert(id, serde_json::to_value(candidates).unwrap());
-                }
-                (messages, Value::Object(obj))
-            }
-            "fold-other" => {
-                let subjects = subjects_core(case.subjects);
-                let observer = case.observer.expect("observer");
-                let window: Vec<FoldOtherMessage> = case
-                    .window_messages
-                    .into_iter()
-                    .map(|m| FoldOtherMessage {
-                        speaker: m.speaker,
-                        content: m.content,
-                        created_at: m.created_at,
-                    })
-                    .collect();
-                let per_subject_cap = case.per_subject_cap.expect("perSubjectCap");
-                let pronouns = observer.pronouns.map(PronounsW::into_core);
-                let messages = build_fold_other_extraction_messages(
-                    &window,
-                    &format_name_with_pronouns(&observer.name, pronouns.as_ref()),
-                    &subjects,
-                    per_subject_cap,
-                    case.in_autonomous_room,
-                    orienting.as_ref(),
-                    clock.as_ref(),
-                );
-                // The executor arguments the Rust wrapper
-                // (`extract_other_memories_from_fold`) passes: the per-turn
-                // task type and the observer's id.
-                for call in &oracle.calls {
-                    assert_eq!(
-                        call.task_type.as_deref(),
-                        Some("memory-extraction-other"),
-                        "{name}: task type"
-                    );
-                    assert_eq!(
-                        call.character_id.as_deref(),
-                        Some(observer.id.as_str()),
-                        "{name}: attributed character"
-                    );
-                }
-                let buckets = match &messages {
-                    Some(_) => parse_other_candidates_by_subject(
-                        &case.response_text,
-                        &subjects,
-                        per_subject_cap.max(1),
-                    ),
-                    None => subjects
-                        .iter()
-                        .map(|s| (s.id.clone(), Vec::new()))
-                        .collect(),
-                };
-                let mut obj = serde_json::Map::new();
-                for (id, candidates) in buckets {
-                    obj.insert(id, serde_json::to_value(candidates).unwrap());
-                }
-                (messages, Value::Object(obj))
-            }
-            other => panic!("unknown case kind {other}"),
-        };
-
-        // The mocked executor always succeeds, and usage is present exactly
-        // when a call was made (the early returns carry `usage: undefined`).
-        assert!(oracle.success, "{name}: oracle reported failure");
-        assert_eq!(
-            oracle.has_usage,
-            messages.is_some(),
-            "{name}: usage-presence (call-made) mismatch"
-        );
-
-        // Calls: zero (early return) or one, with byte-exact messages.
-        let rust_calls: Vec<Vec<(String, String)>> = messages
-            .into_iter()
-            .map(|msgs| {
-                msgs.into_iter()
-                    .map(|m| (m.role.as_str().to_string(), m.content))
-                    .collect()
-            })
-            .collect();
-        let oracle_calls: Vec<Vec<(String, String)>> = oracle
-            .calls
-            .into_iter()
-            .map(|c| {
-                c.messages
-                    .into_iter()
-                    .map(|m| (m.role, m.content))
-                    .collect()
-            })
-            .collect();
-        assert_eq!(
-            rust_calls.len(),
-            oracle_calls.len(),
-            "{name}: call-count mismatch"
-        );
-        for (ci, (rust_msgs, oracle_msgs)) in rust_calls.iter().zip(&oracle_calls).enumerate() {
-            assert_eq!(
-                rust_msgs.len(),
-                oracle_msgs.len(),
-                "{name}: call {ci} message-count mismatch"
-            );
-            for (mi, ((r_role, r_content), (o_role, o_content))) in
-                rust_msgs.iter().zip(oracle_msgs).enumerate()
-            {
-                assert_eq!(r_role, o_role, "{name}: call {ci} message {mi} role");
-                assert_eq!(
-                    r_content, o_content,
-                    "{name}: call {ci} message {mi} content diverges"
-                );
-            }
-        }
-
-        assert_eq!(result, oracle.result, "{name}: parsed result diverges");
+/// v4's template-literal rendering of a corpus number (`${7.9}`, `${-1}`).
+fn num_label(v: &Value) -> String {
+    match v.as_f64() {
+        Some(f) if f.fract() == 0.0 => format!("{}", f as i64),
+        Some(f) => format!("{f}"),
+        None => "undefined".to_string(),
     }
 }

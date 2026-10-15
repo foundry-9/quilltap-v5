@@ -15,7 +15,7 @@
 //! The big prompt bodies live in the generated [`prompt_text`] submodule
 //! (extracted mechanically from the v4 source, never hand-transcribed).
 
-mod prompt_text;
+use crate::memory_extraction::prompts::prompt_text;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -363,50 +363,10 @@ pub fn get_other_memory_extraction_prompt(
     )
 }
 
-/// One character's joined contribution to a turn (v4 `TurnCharacterSlice`).
-/// `is_user_controlled` is `?? false` at every v4 use site, so the optional
-/// boolean collapses to a plain `bool`.
-#[derive(Clone, Debug, Default)]
-pub struct TurnCharacterSlice {
-    pub character_id: String,
-    pub character_name: String,
-    pub character_pronouns: Option<Pronouns>,
-    /// Joined text from every assistant message this character contributed
-    /// during the turn, in chronological order.
-    pub text: String,
-    /// Every assistant message ID that contributed to this slice.
-    pub contributing_message_ids: Vec<String>,
-    /// True when this slice's text was authored by the human driving a
-    /// user-controlled character.
-    pub is_user_controlled: bool,
-    /// `createdAt` of the slice's LAST contributing message — the wall-clock
-    /// anchor the processor stamps `occurredAt` from (episodic spine).
-    pub last_message_created_at: Option<String>,
-}
-
-/// The joined per-turn transcript (v4 `TurnTranscript`). `user_message` is
-/// `string | null` in v4 — `None` here means null (an empty string is a real,
-/// present opener).
-#[derive(Clone, Debug, Default)]
-pub struct TurnTranscript {
-    /// ID of the USER message that opened the turn, or `None` for
-    /// greeting/continue turns with no fresh user input.
-    pub turn_opener_message_id: Option<String>,
-    /// Verbatim user-message text, or `None` when the turn has no user opener.
-    pub user_message: Option<String>,
-    pub user_character_id: Option<String>,
-    pub user_character_name: Option<String>,
-    pub user_character_pronouns: Option<Pronouns>,
-    /// ASSISTANT participants that spoke during the turn, ordered by first
-    /// contribution.
-    pub character_slices: Vec<TurnCharacterSlice>,
-    /// The most recent ASSISTANT message ID in the turn — used as
-    /// sourceMessageId on derived memories.
-    pub latest_assistant_message_id: Option<String>,
-    /// `createdAt` of the turn's newest message (v4 `turnTimestamp`) — the
-    /// extraction clock's fallback anchor when no slice timestamp is available.
-    pub turn_timestamp: Option<String>,
-}
+// The turn-transcript structs moved to their v4 home (`turn-transcript.ts`)
+// — work order P4.D296 L-11; this re-export lives until the extraction half of
+// this module is deleted.
+pub use crate::services::turn_transcript::{TurnCharacterSlice, TurnTranscript};
 
 /// The transcript heading when the turn carries a human line (v4
 /// `ORDERED_TURN_TRANSCRIPT_HEADING`, spec §8.2) — see [`render_turn_context`].

@@ -1,5 +1,7 @@
 //! GENERATED — the verbatim prompt text of v4
-//! `lib/memory/cheap-llm-tasks/memory-tasks.ts`: the SELF / OTHER extraction
+//! `lib/memory/extraction/prompts/{self,other,shared,episode}.ts` (moved
+//! unchanged from `cheap-llm-tasks/memory-tasks.ts` by `ac6348c5f`; the
+//! episode prompt's `participants` line removed by `e0ac7493a`): the SELF / OTHER extraction
 //! bodies (`selfBodyForCap` / `otherBodyForCap`, with the constant
 //! `ORIENTING_CONTEXT_SKIP_BULLET` / `AGREEMENTS_INSTRUCTION_BLOCK` /
 //! `EVENT_INSTRUCTION_BLOCK` / `TAGS_INSTRUCTION_BLOCK` interpolations already
@@ -9,11 +11,11 @@
 //! (the candidate cap / `FOLD_EPISODE_CAP`). Extracted mechanically by
 //! `harness/oracle/scripts/extract-memory-task-prompts.py` so no byte was
 //! transcribed by hand; the tier-1 differential (`memory_tasks_equivalence`)
-//! and the fold-episode families prove the bytes. Regenerate by re-running
-//! that script against the pinned v4 checkout if the upstream prompts change:
+//! proves the bytes. Regenerate by re-running that script against the pinned
+//! v4 checkout if the upstream prompts change:
 //!   python3 harness/oracle/scripts/extract-memory-task-prompts.py \
-//!     <v4>/lib/memory/cheap-llm-tasks/memory-tasks.ts \
-//!     crates/quilltap-core/src/memory_tasks/prompt_text.rs
+//!     <v4>/lib/memory/extraction/prompts \
+//!     crates/quilltap-core/src/memory_extraction/prompts/prompt_text.rs
 
 pub(crate) const SELF_BODY_BEFORE_CAP: &str = r####"You produce memory entries that the subject would retain about themselves
 after this exchange.
@@ -396,7 +398,6 @@ For each episode:
   narrativeTime the in-story time phrase, only when the story runs on a
                 fictional timeline ("the third night at sea")
   entities      2–6 proper nouns: places, people, named things
-  participants  names of those involved
   importance    0.20–1.00 (0.9 = a day the participants will retell for
                 years; 0.5 = a pleasant but ordinary outing)
 

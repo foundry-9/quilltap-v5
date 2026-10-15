@@ -181416,3 +181416,30 @@ lantern_suparna` and `mail_carina_tools` MEASURED green.
 **Lane status: LANE COMPLETE for Tier 1** (items 1–21, with the classified reds above). Tier 2: item 25
 measured; items 22 (except the tool-only proof), 23 and 24 OPEN. Tier 3: recorded as ordered (#26 / #31
 HANDOFF to §S.5; #27 P4.D298; #28 P4.D299; #29 tracked; #30 faithful; #32 P4.D303).
+
+
+### P4.D296 — memory extraction (lane in progress) — Tier 1 #1–#4 (2026-10-15)
+
+Branch `claude/p4.d296-extraction-e43551bf5` (worktree `.claude/worktrees/p4d296-extraction`), cut at `ADMISSION`
+`e43551bf5` (verified against P4.D290's lane-branch status header). The session started on `main` at `d1434189c`
+and moved to the worktree before the first edit. Pin `/tmp/qt-v4-pin-p4d296-83334b9a5` (`83334b9a5…`, package
+`4.10.0-dev.176`); v4's live deps had moved (`@quilltap/plugin-utils` 2.6.3 → 2.7.1), so the pin got its own
+`npm ci --offline` tree (openai 7.30.0, plugin-utils 2.6.3). **v4 moved:** `7458ff94e` (main, 17 commits past the
+pin incl. `release: 4.10.0` `2432b9057`) and `489b228b6` (bugfix) observed 2026-10-15 ~14:35Z; tree clean.
+
+**Red-first at `ADMISSION` (regen from the pin):** `memory_tasks`, `memory_processor_tier3`, `fold_episode_tier3`,
+`fold_other_pass_tier3` IMPORT-DEAD at the CASE (deleted v4 modules); `memory_pipeline_jobs_tier3` and
+`carina_memory_extraction_tier3` builders LOAD, the cases die on `no such table: vector_indices` (their
+comparands); `turn_transcript` GREEN (19, as predicted). No builder is IMPORT-DEAD (no STOP).
+
+**Landed (one commit):** `memory_extraction::{prompts, parse, window}`; the prompt generator re-pointed at the four
+pin files (free self-check: SELF / OTHER / grain byte-identical, episode body minus the `participants` line);
+L-11 (structs moved to `services::turn_transcript`, `prior_slices: Option<…>`); bug 245's builder half, the turn
+list, `with_prior_as_material`, the anchor fn, `load_chat_message_events`; L-14's hoist. The clock's zone is
+REQUIRED in v5 (P4.D289 LR-12's principle); the two `fallback_env_*` rows pin that v4's zoneless clock reads the
+same zone v5's caller resolves (`cached_memory_time_zone(host_fallback)`, cold cache). L-5 pinned by
+`ctx_prior_plain_human`. Mutation check: the episode importance default and the EARLIER section each turn named
+rows red (7). Families: `memory_tasks_equivalence` 135 rows OK; `turn_transcript_equivalence` 30 + 14 OK;
+`cargo test -p quilltap-core --lib` 3,646 / 0. **Regen recipes:** `memory_tasks` — `cd <pin> && npx tsx
+$V5W/harness/oracle/cases/extraction-pure-tier1.ts > /tmp/oracle-extraction-pure.ndjson`, run with
+`QT_ORACLE_EXTRACTION_PURE`; `turn_transcript` — unchanged recipe (`QT_ORACLE_TURN_TRANSCRIPT`).
