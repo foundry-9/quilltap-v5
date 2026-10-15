@@ -403,6 +403,14 @@ v4 `af48f6cc2` (memory refactor Phase B) on the backup and restore carriers, at 
 - Restore: 22j is deleted. Phase 9 adopts an old archive's mirror vector onto a memory that arrived without one (last duplicate wins, counted only after a successful create) and logs `Restored memories`. The summary drops the two vector counts and gains restore-only `legacyVectorsAdopted` (preview 39 keys, restore 41). The archive reader ignores `vector-index-metas.json`; the new-account remap no longer touches it.
 - Harness: two new backup cases (`backup_with_memory_carriers`, `backup_cursor_read_fails`) and a per-case log comparison; the restore census goes from 80 to 79 lines in both lists; the two vector plants are removed; the oracle's restore target gets the cursor table in the migration shape from v4's real migration; the uuid-remap corpus is regenerated from the pin.
 
+#### 2026-10-15 — feat(core): P4.D294 unit 3 — the `.qtap` export carries a chat's extraction cursors
+
+_Versions: core 0.0.1301._
+
+A chat exported to `.qtap` now carries its extraction cursors under the three legacy keys (`otherExtractionWatermarkMessageId`, `episodeExtractionWatermarkMessageId`, `turnExtractionWatermarkMessageId`), as v4 does at `83334b9a5`. A multi-chat export reads the cursor table once; a single chat reads its own. The keys go after every schema key and before `_tagNames` / `_participantInfo`, and a pass with no cursor is left out.
+
+The `system_export_equivalence` plants move off the dropped chat column: `CHAT_1` gets three cursor rows, a chosen scenario and notes, and `MEM_3` a `supersededAt`. Two new cases export over a cursor table that throws on read. The bytes match v4. v4 logs nothing there, because its reads fall back to empty outside a strict scope. v5 runs the export strict (a recorded divergence), so its bundle WARNs fire. Both log sets are pinned, and every other case is a silence leg.
+
 #### 2026-10-15 — feat(core): P4.D294 unit 2 — `message_id_remap`: bug 228's remint of a fresh-id chat's message ids
 
 _Versions: core 0.0.1300._

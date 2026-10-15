@@ -69,6 +69,13 @@ fn fresh_db(tag: &str) -> ScratchDb {
         // pair P4.D265 widened in place), then the tier cells planted.
         quilltap_core::test_support::ensure_memory_tiers_columns(w.connection());
         plant_memory_tiers_values(w.connection());
+        // [P4.D294] the oracle's `plantThrowingCursors`, for the
+        // `…_cursor_throw` cases.
+        if tag.ends_with("_cursor_throw") {
+            w.connection()
+                .execute_batch(&THROWING_CURSORS_SQL.join(";\n"))
+                .expect("plant the throwing cursor table");
+        }
         // [P4.D264] the oracle's `plantWardrobe`, for the `…_wardrobe` cases.
         if tag.ends_with("_wardrobe") {
             let m = quilltap_core::db::Writer::open_writable(&mount, TEST_PEPPER).unwrap();
@@ -143,6 +150,8 @@ fn system_export_matches_oracle() {
     let plain = fresh_db("reads");
     // [P4.D264] the `…_wardrobe` cases read their own planted copy.
     let planted = fresh_db("reads_wardrobe");
+    // [P4.D294] the `…_cursor_throw` cases read their own throwing copy.
+    let throwing = fresh_db("reads_cursor_throw");
     let mut failed: Vec<String> = Vec::new();
     let mut ran = 0usize;
     let mut wardrobe_cases = 0usize;
@@ -152,6 +161,8 @@ fn system_export_matches_oracle() {
         let db = if name.ends_with("_wardrobe") {
             wardrobe_cases += 1;
             &planted
+        } else if name.ends_with("_cursor_throw") {
+            &throwing
         } else {
             &plain
         };
@@ -165,8 +176,10 @@ fn system_export_matches_oracle() {
                     .map(|l| serde_json::from_str::<Value>(l.as_str().unwrap()).unwrap())
                     .collect();
                 let created_at = oracle_created_at(&exp_lines);
-                let got = db
-                    .read_main(|main| {
+                // [P4.D294] captured: the `[ExtractionCursors]` lines (the
+                // reads run on this thread — `with_conn`).
+                let (got, lines) = quilltap_core::test_support::captured_with(|| {
+                    db.read_main(|main| {
                         db.read_mount_index(|mount| {
                             Ok(qtap_export::stream_export_records(
                                 main,
@@ -180,7 +193,9 @@ fn system_export_matches_oracle() {
                             ))
                         })
                     })
-                    .expect("read");
+                    .expect("read")
+                });
+                assert_cursor_logs(name, exp, &v5_cursor_lines(&lines), &mut failed);
                 match got {
                     Ok(records) => {
                         if let Some(msg) =
@@ -318,7 +333,8 @@ fn system_export_matches_oracle() {
         failed.join("\n\n")
     );
     // P4.D264: 57 + 4 = 61 (the three `…_wardrobe` streams + the preview).
-    assert_eq!(ran, 61, "expected 61 cases to run, ran {ran}");
+    // P4.D294: 61 + 2 = 63 (the two `…_cursor_throw` streams).
+    assert_eq!(ran, 63, "expected 63 cases to run, ran {ran}");
     assert_eq!(
         wardrobe_cases, 4,
         "the four P4.D264 wardrobe cases read the planted copy"
@@ -379,6 +395,46 @@ fn system_export_matches_oracle() {
         }
     }
     assert!(memory_lines > 0, "no memory lines streamed at all");
+
+    // [P4.D294] Non-vacuity of the cursor carriage: the byte diff above only
+    // asks something if v4's own lines CARRY the keys — the one-chat export
+    // (a per-chat read) and the all-chats export (one preloaded read) each put
+    // CHAT_1's three cursor keys after every schema key, before `_tagNames`,
+    // and the throwing copy's exports carry none.
+    let chat_1_line = |case: &str| -> String {
+        oracle[case]["lines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|l| {
+                l.contains(r#""kind":"chat""#)
+                    && l.contains(r#""id":"c1000000-0000-4000-8000-000000000001""#)
+            })
+            .unwrap_or_else(|| panic!("{case}: no CHAT_1 line"))
+            .to_string()
+    };
+    let tail = r#""otherExtractionWatermarkMessageId":"d1000000-0000-4000-8000-000000000001","episodeExtractionWatermarkMessageId":"d1000000-0000-4000-8000-000000000002","turnExtractionWatermarkMessageId":"d1000000-0000-4000-8000-000000000001","_tagNames""#;
+    for case in ["stream_chats_selected_one", "stream_chats_all"] {
+        assert!(
+            chat_1_line(case).contains(tail),
+            "{case}: v4's CHAT_1 line lacks the cursor tail"
+        );
+    }
+    for case in [
+        "stream_chats_all_cursor_throw",
+        "stream_chats_selected_cursor_throw",
+    ] {
+        assert!(
+            !chat_1_line(case).contains("ExtractionWatermarkMessageId"),
+            "{case}: the throwing copy must export no cursor key"
+        );
+    }
+    let scenario = r#""projectId":"a3000000-0000-4000-8000-000000000001","scenarioSource":{"mountPointId":"e2000000-0000-4000-8000-0000000000f3","path":"Scenarios/Harbour.md","bodySha256":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},"scenarioNotes":"Bring the lantern.","totalPromptTokens""#;
+    assert!(
+        chat_1_line("stream_chats_selected_one").contains(scenario),
+        "v4's CHAT_1 line carries the scenario pair in its schema slot"
+    );
 }
 
 /// Replace the vault-minted default `physicalDescription` timestamps (see the
@@ -543,14 +599,21 @@ const WEAR_PLANT_SQL: &str = "INSERT INTO \"wardrobe_wear_stats\" (\"id\", \"ite
 
 /// [P4.D272] The oracle's `MEMORY_TIERS_PLANT_SQL`, statement for statement:
 /// `MEM_1` a CONSOLIDATED hot digest of `MEM_3`, `MEM_3` its cold superseded
-/// member, `CHAT_1`'s OTHER-extraction watermark at `MSG_11`, and raw rows for
+/// member (with its cold clock), `CHAT_1`'s three extraction-cursor rows and
+/// its chosen scenario (P4.D294), and raw rows for
 /// the two new instance settings (Tier 2 item 13). Every export line otherwise
 /// carries the tier columns at their defaults — the same bytes whether the
 /// key order (`schema-key-order.json`) is right or not.
-const MEMORY_TIERS_PLANT_SQL: [&str; 5] = [
+const MEMORY_TIERS_PLANT_SQL: [&str; 9] = [
     "UPDATE \"memories\" SET \"source\" = 'CONSOLIDATED', \"tier\" = 'hot', \"consolidatedFrom\" = '[\"ad000000-0000-4000-8000-000000000003\"]', \"consolidatedAt\" = '2026-01-01T00:00:00.000Z' WHERE \"id\" = 'ad000000-0000-4000-8000-000000000001'",
     "UPDATE \"memories\" SET \"tier\" = 'cold', \"supersededById\" = 'ad000000-0000-4000-8000-000000000001', \"consolidatedAt\" = '2026-01-01T00:00:00.000Z' WHERE \"id\" = 'ad000000-0000-4000-8000-000000000003'",
-    "UPDATE \"chats\" SET \"otherExtractionWatermarkMessageId\" = 'd1000000-0000-4000-8000-000000000001' WHERE \"id\" = 'c1000000-0000-4000-8000-000000000001'",
+    // [P4.D294] `CHAT_1`'s three cursor ROWS (`ac6348c5f` moved them off the
+    // chat row), its chosen scenario (`545e299bb`), `MEM_3`'s cold clock.
+    "INSERT INTO \"memory_extraction_cursors\" (\"id\", \"chatId\", \"pass\", \"messageId\", \"createdAt\", \"updatedAt\") VALUES ('c1000000-0000-4000-8000-000000000001:other-fold', 'c1000000-0000-4000-8000-000000000001', 'other-fold', 'd1000000-0000-4000-8000-000000000001', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+    "INSERT INTO \"memory_extraction_cursors\" (\"id\", \"chatId\", \"pass\", \"messageId\", \"createdAt\", \"updatedAt\") VALUES ('c1000000-0000-4000-8000-000000000001:episode-fold', 'c1000000-0000-4000-8000-000000000001', 'episode-fold', 'd1000000-0000-4000-8000-000000000002', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+    "INSERT INTO \"memory_extraction_cursors\" (\"id\", \"chatId\", \"pass\", \"messageId\", \"createdAt\", \"updatedAt\") VALUES ('c1000000-0000-4000-8000-000000000001:turn', 'c1000000-0000-4000-8000-000000000001', 'turn', 'd1000000-0000-4000-8000-000000000001', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+    "UPDATE \"chats\" SET \"scenarioSource\" = '{\"mountPointId\":\"e2000000-0000-4000-8000-0000000000f3\",\"path\":\"Scenarios/Harbour.md\",\"bodySha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}', \"scenarioNotes\" = 'Bring the lantern.' WHERE \"id\" = 'c1000000-0000-4000-8000-000000000001'",
+    "UPDATE \"memories\" SET \"supersededAt\" = '2026-01-02T00:00:00.000Z' WHERE \"id\" = 'ad000000-0000-4000-8000-000000000003'",
     "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('memoryConsolidation', '{\"enabled\":true,\"watermark\":25}')",
     "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('memoryExtractionMode', '{\"otherPass\":\"fold\"}')",
 ];
@@ -563,5 +626,95 @@ fn plant_memory_tiers_values(conn: &rusqlite::Connection) {
             touched, 1,
             "the memory-tier plant must touch one row: {sql}"
         );
+    }
+}
+
+// === P4.D294 (append-only) ===
+
+/// [P4.D294] The oracle's `THROWING_CURSORS_SQL`, statement for statement
+/// (P4.D293's recipe — memory note `throwing-plant-must-fail-both-reads`): the
+/// cursor table rebuilt with `messageId` a VIRTUAL `json("pass")` column added
+/// AFTER the rows, so every read naming it throws `malformed JSON` — for the
+/// chats that HAVE rows (`CHAT_1`'s three).
+const THROWING_CURSORS_SQL: [&str; 5] = [
+    r#"ALTER TABLE "memory_extraction_cursors" RENAME TO "qt_cursors_old""#,
+    r#"CREATE TABLE "memory_extraction_cursors" ("id" TEXT PRIMARY KEY, "chatId" TEXT NOT NULL, "pass" TEXT NOT NULL, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL)"#,
+    r#"INSERT INTO "memory_extraction_cursors" SELECT "id", "chatId", "pass", "createdAt", "updatedAt" FROM "qt_cursors_old""#,
+    r#"DROP TABLE "qt_cursors_old""#,
+    r#"ALTER TABLE "memory_extraction_cursors" ADD COLUMN "messageId" TEXT AS (json("pass")) VIRTUAL"#,
+];
+
+/// v5's `[ExtractionCursors]` lines from a captured stream, as `(level,
+/// message, chatId)` — the bundle helpers' WARNs / DEBUG and the cursor
+/// repository's own lines (P4.D288's — matched by TAG only, never by bytes,
+/// §R.5's ownership rule).
+fn v5_cursor_lines(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|l| l.contains("[ExtractionCursors]"))
+        .cloned()
+        .collect()
+}
+
+/// [P4.D294] The bundle-cursor read arms, pinned BOTH WAYS against the
+/// recorded strict-scope divergence (`resolve_export_ids`' doc — the human's
+/// 2026-10-02 ruling: v5 runs the export inside the strict-repository scope,
+/// v4 non-strict). v4's two bundle reads sit on FALLBACK base reads, so its
+/// export answers "no cursors" SILENTLY; v5's strict reads fail and its
+/// bundle WARNs fire. Both export the same bytes (the diff above). So:
+///
+/// - v4 logs NO `[ExtractionCursors]` line on any case (a v4 move that starts
+///   logging trips this);
+/// - v5 logs NONE on every case but the two `…_cursor_throw` ones;
+/// - `stream_chats_all_cursor_throw` (a multi-chat export): the table WARN
+///   once, then the per-chat WARN for `CHAT_1` only (the one chat with rows —
+///   a chat with no rows reads none and cannot throw);
+/// - `stream_chats_selected_cursor_throw` (one chat): the per-chat WARN for
+///   `CHAT_1` and NO table WARN (one chat never preloads, v4 `:349`).
+fn assert_cursor_logs(name: &str, oracle: &Value, v5: &[String], failed: &mut Vec<String>) {
+    const CHAT_1: &str = "c1000000-0000-4000-8000-000000000001";
+    const TABLE_WARN: &str =
+        "[ExtractionCursors] Could not read the cursor table for a bundle; reading per chat";
+    const CHAT_WARN: &str =
+        "[ExtractionCursors] Could not read a chat's cursors for a bundle; leaving them out";
+    let v4_lines = oracle["cursorLogs"].as_array().cloned().unwrap_or_default();
+    if oracle.get("cursorLogs").is_none() || !v4_lines.is_empty() {
+        failed.push(format!(
+            "{name}: v4's `cursorLogs` must be present and EMPTY (its bundle reads fall back \
+             silently outside a strict scope); got {:?}",
+            oracle.get("cursorLogs")
+        ));
+    }
+    let warns = |needle: &str| {
+        v5.iter()
+            .filter(|l| l.starts_with("WARN") && l.contains(needle))
+            .collect::<Vec<_>>()
+    };
+    let (table, chat) = (warns(TABLE_WARN), warns(CHAT_WARN));
+    let want = match name {
+        "stream_chats_all_cursor_throw" => (1, 1),
+        "stream_chats_selected_cursor_throw" => (0, 1),
+        _ => (0, 0),
+    };
+    if (table.len(), chat.len()) != want {
+        failed.push(format!(
+            "{name}: v5 bundle WARNs (table, per-chat) = ({}, {}), want {want:?}: {v5:?}",
+            table.len(),
+            chat.len()
+        ));
+    }
+    for line in chat {
+        if !line.contains(&format!("chatId={CHAT_1}"))
+            || !line.contains("error=malformed JSON")
+            || !line.contains("module=memory:extraction:cursor-bundle")
+        {
+            failed.push(format!(
+                "{name}: the per-chat WARN must carry CHAT_1, the bare error and v4's module \
+                 binding: {line}"
+            ));
+        }
+    }
+    if want == (0, 0) && !v5.is_empty() {
+        failed.push(format!("{name}: silence leg broken — v5 logged {v5:?}"));
     }
 }

@@ -151,6 +151,8 @@ interface CaseSpec {
   run: () => Promise<Record<string, unknown>>;
   /** [P4.D264] Plant the wardrobe carriers' material first (`plantWardrobe`). */
   wardrobe?: boolean;
+  /** [P4.D294] Rebuild the cursor table to throw on read (`plantThrowingCursors`). */
+  cursorThrow?: boolean;
 }
 
 function buildCases(spec: Spec): CaseSpec[] {
@@ -158,8 +160,11 @@ function buildCases(spec: Spec): CaseSpec[] {
     name,
     run: async () => {
       const { createNdjsonStream } = await import('@/lib/export/ndjson-writer');
-      const lines = await drain(createNdjsonStream(spec.userId, options as never));
-      return { kind: 'ndjson', options, lines };
+      // [P4.D294] the `[ExtractionCursors]` lines, a silence leg on every case.
+      const { out: lines, cursorLogs } = await withCursorLogs(() =>
+        drain(createNdjsonStream(spec.userId, options as never)),
+      );
+      return { kind: 'ndjson', options, lines, cursorLogs };
     },
   });
 
@@ -373,6 +378,26 @@ function buildCases(spec: Spec): CaseSpec[] {
     ),
   );
 
+  // 8. [P4.D294] The bundle-cursor read arms, over the throwing cursor table
+  //    (`plantThrowingCursors`): a multi-chat export (v4 `loadBundleCursors`,
+  //    then `withBundleCursorFields` per chat when the one read fails) and a
+  //    one-chat export (the per-chat read alone). Name suffix `_cursor_throw`
+  //    — the Rust side reads its own planted copy.
+  const cursorThrow = (c: CaseSpec): CaseSpec => ({ ...c, cursorThrow: true });
+  cases.push(
+    cursorThrow(streamCase('stream_chats_all_cursor_throw', { type: 'chats', scope: 'all', includeMemories: false })),
+  );
+  cases.push(
+    cursorThrow(
+      streamCase('stream_chats_selected_cursor_throw', {
+        type: 'chats',
+        scope: 'selected',
+        selectedIds: [CHAT_1],
+        includeMemories: false,
+      }),
+    ),
+  );
+
   return cases;
 }
 
@@ -505,7 +530,9 @@ async function plantWardrobe(): Promise<void> {
  * migration (the Rust twin `plant_memory_tiers_values` runs these SAME
  * statements, byte for byte — `MEMORY_TIERS_PLANT_SQL`): `MEM_1` becomes a
  * CONSOLIDATED hot digest of `MEM_3`, `MEM_3` its cold superseded member,
- * `CHAT_1` carries `MSG_11` as its OTHER-extraction watermark, and the two
+ * `CHAT_1` carries three extraction-cursor rows (P4.D294 — the chat column
+ * they replaced is gone at `83334b9a5`), a chosen scenario, and `MEM_3` a
+ * cold-retention clock; and the two
  * new instance settings get raw rows (Tier 2 item 13 — they travel raw:
  * `NON_PORTABLE_INSTANCE_SETTING_KEYS` does not name them). Without it every
  * export line carries the columns at their defaults, the same bytes whether
@@ -514,7 +541,15 @@ async function plantWardrobe(): Promise<void> {
 const MEMORY_TIERS_PLANT_SQL: string[] = [
   "UPDATE \"memories\" SET \"source\" = 'CONSOLIDATED', \"tier\" = 'hot', \"consolidatedFrom\" = '[\"ad000000-0000-4000-8000-000000000003\"]', \"consolidatedAt\" = '2026-01-01T00:00:00.000Z' WHERE \"id\" = 'ad000000-0000-4000-8000-000000000001'",
   "UPDATE \"memories\" SET \"tier\" = 'cold', \"supersededById\" = 'ad000000-0000-4000-8000-000000000001', \"consolidatedAt\" = '2026-01-01T00:00:00.000Z' WHERE \"id\" = 'ad000000-0000-4000-8000-000000000003'",
-  "UPDATE \"chats\" SET \"otherExtractionWatermarkMessageId\" = 'd1000000-0000-4000-8000-000000000001' WHERE \"id\" = 'c1000000-0000-4000-8000-000000000001'",
+  // [P4.D294] `ac6348c5f` moved the cursors off the chat row: `CHAT_1`'s
+  // three cursor ROWS (the bundle carries them back on the chat under the
+  // legacy keys, appended after every schema key), its chosen scenario
+  // (`545e299bb`'s pair), and `MEM_3`'s cold-retention clock (`c2795733f`).
+  "INSERT INTO \"memory_extraction_cursors\" (\"id\", \"chatId\", \"pass\", \"messageId\", \"createdAt\", \"updatedAt\") VALUES ('c1000000-0000-4000-8000-000000000001:other-fold', 'c1000000-0000-4000-8000-000000000001', 'other-fold', 'd1000000-0000-4000-8000-000000000001', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+  "INSERT INTO \"memory_extraction_cursors\" (\"id\", \"chatId\", \"pass\", \"messageId\", \"createdAt\", \"updatedAt\") VALUES ('c1000000-0000-4000-8000-000000000001:episode-fold', 'c1000000-0000-4000-8000-000000000001', 'episode-fold', 'd1000000-0000-4000-8000-000000000002', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+  "INSERT INTO \"memory_extraction_cursors\" (\"id\", \"chatId\", \"pass\", \"messageId\", \"createdAt\", \"updatedAt\") VALUES ('c1000000-0000-4000-8000-000000000001:turn', 'c1000000-0000-4000-8000-000000000001', 'turn', 'd1000000-0000-4000-8000-000000000001', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+  "UPDATE \"chats\" SET \"scenarioSource\" = '{\"mountPointId\":\"e2000000-0000-4000-8000-0000000000f3\",\"path\":\"Scenarios/Harbour.md\",\"bodySha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}', \"scenarioNotes\" = 'Bring the lantern.' WHERE \"id\" = 'c1000000-0000-4000-8000-000000000001'",
+  "UPDATE \"memories\" SET \"supersededAt\" = '2026-01-02T00:00:00.000Z' WHERE \"id\" = 'ad000000-0000-4000-8000-000000000003'",
   "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('memoryConsolidation', '{\"enabled\":true,\"watermark\":25}')",
   "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('memoryExtractionMode', '{\"otherPass\":\"fold\"}')",
 ];
@@ -523,6 +558,72 @@ function plantMemoryTiersValues(db: { prepare(sql: string): { run(...a: unknown[
   for (const sql of MEMORY_TIERS_PLANT_SQL) {
     const { changes } = db.prepare(sql).run() as { changes: number };
     if (changes !== 1) throw new Error(`plantMemoryTiersValues: ${changes} rows for ${sql}`);
+  }
+}
+
+/**
+ * [P4.D294] The throwing cursor table (memory note
+ * `throwing-plant-must-fail-both-reads`, P4.D293's recipe): rebuilt with
+ * `messageId` itself a VIRTUAL `json("pass")` column, so every read that names
+ * it throws `malformed JSON` on both sides — but only for chats that HAVE rows
+ * (`CHAT_1`'s three). v4's two bundle reads sit on FALLBACK base reads
+ * (`findByFilter` / `_findAll`), so its export — which runs non-strict —
+ * answers "no cursors" with no `[ExtractionCursors]` WARN; v5 runs the export
+ * inside the strict-repository scope (the human's 2026-10-02 ruling, a
+ * recorded divergence), so its reads fail and the WARNs fire. The NDJSON bytes
+ * are the same either way; the Rust side pins both log sets.
+ */
+const THROWING_CURSORS_SQL = [
+  `ALTER TABLE "memory_extraction_cursors" RENAME TO "qt_cursors_old"`,
+  `CREATE TABLE "memory_extraction_cursors" ("id" TEXT PRIMARY KEY, "chatId" TEXT NOT NULL, "pass" TEXT NOT NULL, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL)`,
+  `INSERT INTO "memory_extraction_cursors" SELECT "id", "chatId", "pass", "createdAt", "updatedAt" FROM "qt_cursors_old"`,
+  `DROP TABLE "qt_cursors_old"`,
+  // Added AFTER the rows: SQLite evaluates a generated column on INSERT.
+  `ALTER TABLE "memory_extraction_cursors" ADD COLUMN "messageId" TEXT AS (json("pass")) VIRTUAL`,
+];
+
+function plantThrowingCursors(db: { exec(sql: string): unknown }): void {
+  for (const sql of THROWING_CURSORS_SQL) db.exec(sql);
+}
+
+/**
+ * [P4.D294] Every `[ExtractionCursors]` line v4 logs during a case, as
+ * `"<level> <message> k=v …"` (`module` dropped; an Error as its message) —
+ * `cursorLogs` on every stream case, so a case where none fires is a silence
+ * leg. The singleton and every child logger share the prototype.
+ */
+async function withCursorLogs<T>(body: () => Promise<T>): Promise<{ out: T; cursorLogs: string[] }> {
+  const { Logger } = await import('@/lib/logger');
+  const cursorLogs: string[] = [];
+  const originals = {
+    error: Logger.prototype.error,
+    warn: Logger.prototype.warn,
+    info: Logger.prototype.info,
+    debug: Logger.prototype.debug,
+  };
+  for (const level of ['error', 'warn', 'info', 'debug'] as const) {
+    const original = originals[level];
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (typeof message === 'string' && message.startsWith('[ExtractionCursors]')) {
+        let line = `${level} ${message}`;
+        for (const [k, v] of Object.entries(context ?? {})) {
+          if (k === 'module' || v === undefined) continue;
+          line += ` ${k}=${v instanceof Error ? v.message : String(v)}`;
+        }
+        cursorLogs.push(line);
+      }
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+  try {
+    return { out: await body(), cursorLogs };
+  } finally {
+    Object.assign(Logger.prototype, originals);
   }
 }
 
@@ -561,6 +662,10 @@ async function runCase(
     plantMemoryTiersValues(getRawDatabase()!);
   }
   if (c.wardrobe) await plantWardrobe();
+  if (c.cursorThrow) {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    plantThrowingCursors(getRawDatabase()!);
+  }
 
   try {
     const out = await c.run();

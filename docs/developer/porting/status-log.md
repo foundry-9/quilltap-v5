@@ -182479,3 +182479,22 @@ the wipe's truncate lands), so they land and go green together.
   Regen: `cd "$PIN" && $N/npx tsx "$V5W/harness/oracle/cases/message-id-remap.ts" >
   /tmp/oracle-message-id-remap.ndjson`; `QT_ORACLE_MESSAGE_ID_REMAP=… cargo test -p quilltap-harness --test
   message_id_remap_equivalence`.
+- **Unit 3 (core 0.0.1301) — the export's cursor keys (L-J):** `records.rs::stream_chats` reads C1-11's
+  `load_bundle_cursors` once when `ids.len() > 1` and passes it to `with_bundle_cursor_fields` per chat (None →
+  the per-chat read); the keys are inserted into the chat map BEFORE `with_tag_names`, so `key_order::reorder`
+  appends them after every schema key and before `_tagNames` / `_participantInfo` (the two ephemeral keys are now
+  dropped from the source map first — same bytes). **Case bodies (§R.10(p)):** `MEMORY_TIERS_PLANT_SQL`'s dead chat
+  UPDATE replaced by three `memory_extraction_cursors` INSERTs for `CHAT_1` + a `scenarioSource` / `scenarioNotes`
+  UPDATE on `CHAT_1` + `MEM_3`'s `supersededAt` (byte-identical both sides); two NEW `…_cursor_throw` cases over
+  P4.D293's throwing-table recipe; every stream case records v4's `[ExtractionCursors]` lines (`cursorLogs`).
+  **MEASURED — the order's L-J expectation ("both sides") is false for the export:** v4's `findAllByChat` /
+  `findByChatId` RETHROW, but over FALLBACK base reads (`_findAll` / `findByFilter`), so v4's NON-strict export
+  answers "no cursors" with NO `[ExtractionCursors]` line; v5 runs the export inside the strict scope (the
+  2026-10-02 recorded divergence, `resolve_export_ids`' doc), so its reads fail and C1-11's WARNs fire. Same NDJSON
+  bytes. Pinned both ways in `assert_cursor_logs` (v4 silent on all 63; v5: table WARN + `CHAT_1`'s per-chat WARN
+  on the multi-chat throw, the per-chat WARN alone on the one-chat throw — a chat with no rows cannot throw — and
+  silence on the other 61). The WARN bytes are P4.D288's (C1-11): asserted by tag + `chatId` / bare `error` /
+  `module` binding only. `system_export_equivalence` **63/63 green from the pin**, plus non-vacuity asserts (v4's
+  `CHAT_1` line carries the cursor tail before `_tagNames` on the one-chat AND the all-chats export, none on the
+  throwing copy, the scenario pair after `projectId`). Mutation: cursor keys inserted after `with_tag_names` → 3
+  cases red.

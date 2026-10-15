@@ -214,6 +214,15 @@ pub(super) fn stream_chats(
         Vec::new()
     };
 
+    // v4 `ac6348c5f` (`:349`): "The fold passes' cursors for every exported
+    // chat, in one read" — only for a multi-chat export; one chat reads its
+    // own (the same bytes, a different WARN on failure).
+    let bundle_cursors = if ids.len() > 1 {
+        crate::services::carriers::cursor_bundle::load_bundle_cursors(main)
+    } else {
+        None
+    };
+
     for id in ids {
         let Some(chat) = chats_read::find_by_id(main, id)? else {
             continue;
@@ -258,9 +267,24 @@ pub(super) fn stream_chats(
 
         // Ephemeral per-chat UX state that must not ride a portable .qtap file
         // (v4 :233-237) — dropped before the spread.
+        let mut chat = chat;
+        if let Some(obj) = chat.as_object_mut() {
+            obj.shift_remove("commonplaceRecallHistory");
+            obj.shift_remove("commonplaceSceneCache");
+        }
+        // "The fold passes' cursors ride on the chat under their legacy field
+        // names" (`withBundleCursorFields(chatForExport, bundleCursors)`,
+        // `:381-385`). Inserted BEFORE the key-order pass so they land after
+        // every schema key (`key_order::reorder` appends non-template keys in
+        // insertion order) and before `_tagNames` / `_participantInfo`.
+        let chat = Value::Object(
+            crate::services::carriers::cursor_bundle::with_bundle_cursor_fields(
+                main,
+                chat.as_object().cloned().unwrap_or_default(),
+                bundle_cursors.as_ref(),
+            ),
+        );
         let mut record = with_tag_names("chat", &chat, tag_names);
-        record.shift_remove("commonplaceRecallHistory");
-        record.shift_remove("commonplaceSceneCache");
         // v4's `_tagNames` spread lands BEFORE `_participantInfo`; the removals
         // above happen on the source object, so re-assert the order by rebuilding
         // with `_tagNames` first (already inserted by `with_tag_names`).
