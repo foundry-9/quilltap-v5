@@ -51,12 +51,14 @@ use crate::api::types::{ErrorKind, Response};
 use crate::db::chats::ChatUpdate;
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, DbError};
+use crate::scenario_text::{combine_scenario_text, recover_preset_body};
 use crate::services::chat_participants::compile_all_stacks_best_effort;
 use crate::services::host_notifications::{
     post_host_scenario_revision_announcement, HostScenarioRevisionAnnouncement,
 };
 use crate::services::scenario_selection::{
-    resolve_scenario_selection, ResolveScenarioSelectionOptions, ScenarioSelectionFields,
+    hash_scenario_body, resolve_scenario_selection, ResolveScenarioSelectionOptions,
+    ResolvedScenario, ScenarioSelectionFields,
 };
 
 /// v4's `logTag` for this route.
@@ -198,6 +200,44 @@ fn find_character_owning_scenario(
         }
     }
     None
+}
+
+/// v4 `keepCurrentScene(next, chat)` (`actions/scenario.ts:83-96`).
+///
+/// An ordinary save keeps the scene the chat has. When the request resolves to
+/// the chat's own source file but that file has been revised since it was
+/// picked, the chat's stored preset body (verified against the source's hash)
+/// is kept, with the request's notes beneath it; only "Reload from source"
+/// (`reload: true`) pulls the revised copy in. Returns `None` when there is
+/// nothing to keep — a different file, an unchanged one, or a stored body that
+/// no longer matches its hash — and the resolved recipe stands.
+///
+/// `current` is the chat's stored recipe (`scenarioText`, `scenarioSource`,
+/// `scenarioNotes`) — the three fields v4 reads off the chat.
+pub fn keep_current_scene(
+    next: &ResolvedScenario,
+    current: &ResolvedScenario,
+) -> Option<ResolvedScenario> {
+    let stored = current.scenario_source.as_ref()?;
+    let incoming = next.scenario_source.as_ref()?;
+    if stored.mount_point_id != incoming.mount_point_id || stored.path != incoming.path {
+        return None;
+    }
+    if stored.body_sha256 == incoming.body_sha256 {
+        return None;
+    }
+    let body = recover_preset_body(
+        current.scenario_text.as_deref(),
+        current.scenario_notes.as_deref(),
+    )?;
+    if hash_scenario_body(&body) != stored.body_sha256 {
+        return None;
+    }
+    Some(ResolvedScenario {
+        scenario_text: combine_scenario_text(Some(&body), next.scenario_notes.as_deref()),
+        scenario_source: Some(stored.clone()),
+        scenario_notes: next.scenario_notes.clone(),
+    })
 }
 
 /// v4 `handleSetScenario` — change (or clear) the chat's scenario.

@@ -182599,3 +182599,61 @@ the wipe's truncate lands), so they land and go green together.
   character (memories attach) and one where it is archived (not revived); an `instance-settings` round trip.
 - **Versions at close:** core 0.0.1302 (from 0.0.1298 at `KEYSTONE`); host / web / cli / SPA / tauri unchanged;
   harness frozen 0.0.1110.
+
+## P4.D295 — scenarios from anywhere, the SERVER half (lane, 2026-10-15)
+
+**Lane start.** The session opened on `main` (`d1434189c`) in the main checkout; the lane moved to
+`.claude/worktrees/p4d295-scenarios-server`, branch `claude/p4.d295-scenarios-from-anywhere-server-149cb8fc1`, cut
+from P4.D288's `KEYSTONE` = `149cb8fc1` (read from P4.D288's status header on its lane branch
+`claude/p4-memory-scenarios-keystone-fd710c`). Warm target cloned from main's (`cp -cR`, 56 s).
+
+**§R.2 probe (observation, 2026-10-15 12:45 UTC).** v4 checkout on `main`, tree CLEAN; `83334b9a5..main` = 17
+commits — **v4 moved: `7417e9a1b` … `7458ff94e` observed at 2026-10-15 12:45 UTC** (Release checklists 5–13,
+bug 247's filing, bug 248, `release: 4.10.0` = `2432b9057`, the merge back, `4.11.0` dev start, a wardrobe hair-slot
+fix); `1a2b2164c..bugfix` = 1 (`489b228b6` bugfix branch start). Out of scope by the pin rule. **The dependency
+trap fired:** the live tree's `@quilltap/plugin-utils` moved 2.6.3 → 2.7.1 with the release, so the pin's root
+`node_modules` is a REAL `npm ci --offline` from the pin's own lockfile (§R.3's cure; 2.6.3 verified, `openai`
+7.30.0). Pin `/tmp/qt-v4-pin-p4d295-83334b9a5` = `83334b9a5befca33…`, `package.json` `4.10.0-dev.176`.
+
+**Red-first on the `KEYSTONE` tip, oracles from the pin** (every regen hand-run with outputs under `/tmp/p4d295/`,
+never the shared `/tmp` recipe paths):
+- `scenario_resolvers_equivalence` — **IMPORT-DEAD** (the case dies at load: `ERR_MODULE_NOT_FOUND '@/lib'`, its
+  `general-` / `project-scenarios` imports deleted at `545e299bb`).
+- `scenarios_routes_equivalence` — **GREEN 66 / 66** (the survey's prediction: the committed corpus never reaches
+  Δ11–13).
+- `chat_scenario_routes_equivalence` — **RED 31 of 54 rows**: 19 `resolver_*` BODY rows (v4's resolver now
+  answers the recipe object and takes `userId` / `characterId`), 11 `verb_*` `tables` rows (the row dumps gain
+  `scenarioSource` / `scenarioNotes`), and `verb_noop_same_general_preset` BODY (the BY-DESIGN flip to
+  `changed: true`).
+- `chat_create_capstone_equivalence` — **GREEN 141 rows** (the created-row dump never sees the two keys — null
+  both sides).
+- `vault_read_overlay_equivalence` — **GREEN** (one oracle row; no mixed-case row yet — it is added red-first in
+  the vault-sort unit).
+- The three NEW verbs (`scenarioEverywhere`, `scenarioReadByRef`, `chatGetScenarioSource`) answer `KEYSTONE`'s
+  agreed `not_available` refusal (`api/engine.rs:5617-5625`).
+
+### Unit 1 — the pure half (core 0.0.1299)
+
+`scenarios/{mod,decode_uri,location,everywhere}.rs` NEW (`pub mod scenarios;` one-line append in `lib.rs`, §R.10(s)):
+`js_decode_uri_component` (V8's `Decode`, L-6 — `doc_edit/qtap_uri.rs`'s private twin NOT edited, the fold
+recorded), `normalize_scenario_path` (decode → `db::scenarios::resolve_scenario_path`; the outer `Err` is V8's
+`URIError`, which v4 THROWS — R-Z), `character_scenario_id_for_path`, `scenario_excerpt`; in
+`services::scenario_selection` the `ResolvedScenario` recipe + `hash_scenario_body` (L-11, `sha2` + `hex`) +
+`same_resolved_scenario`; `services::chat_scenario::keep_current_scene(next, current)` (`current` = the chat's
+stored recipe); `scenario_text::recover_preset_body` NEW, and `combine_scenario_text` moved onto JS `trim` /
+`trimEnd` — **a v5 defect found by the new family's `combine` rows**: Rust's `trim` keeps U+FEFF and strips U+0085,
+the opposite of v4 (`Body﻿` combined to `Body﻿` where v4 writes `Body`).
+
+**Differential:** NEW `scenario_pure_equivalence` + `harness/oracle/cases/scenario-pure.ts` (tier 1, no DB): 188
+rows from v4's REAL `decodeURIComponent` / `normalizeScenarioPath` / `characterScenarioIdForPath` /
+`scenarioExcerpt` / `hashScenarioBody` / `sameResolvedScenario` / `combineScenarioText` / `recoverPresetBody` /
+`keepCurrentScene` (the route module imports cleanly under tsx) — **188 / 188**, per-kind floors pinned. The
+excerpt rows compare UTF-16 units (`excerptUnits`) under **`EXCERPT_LONE_SURROGATE`** (R-AA): ONE row
+(`emoji_straddles_239_240`) — v4 leaves a lone high surrogate at unit 239, v5 U+FFFD there, every other unit
+identical; both ways (a named row must still show v4's lone surrogate, an unnamed one must be unit-identical).
+**Mutation proofs:** `combine` on Rust `trim_end` → 2 rows red; the excerpt cut in chars → 3 rows red (incl. the
+ruled one); `normalize` without the decode → 15 rows red.
+
+Regen (Node 24, from the pin): `cd $PIN && TZ=UTC npx tsx $V5W/harness/oracle/cases/scenario-pure.ts >
+/tmp/p4d295/out/oracle-scenario-pure.ndjson`; run `QT_ORACLE_SCENARIO_PURE=… cargo test -p quilltap-harness --test
+scenario_pure_equivalence`.

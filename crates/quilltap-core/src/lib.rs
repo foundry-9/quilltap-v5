@@ -251,6 +251,7 @@ pub mod reinforcement_footnotes;
 pub mod rng_patterns;
 pub mod sampling_params;
 pub mod scenario_text;
+pub mod scenarios; // P4.D295 — scenarios from anywhere (v4 lib/scenarios/**)
 pub mod scriptorium;
 pub mod select_speaker;
 pub mod semver;

@@ -480,6 +480,7 @@ pub fn build_scenario_file_content(
 }
 
 /// A resolved scenario path, or v4's rejection message.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScenarioPathResolution {
     Ok(String),
     Err(String),

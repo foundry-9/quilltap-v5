@@ -462,6 +462,19 @@ Re-vendors v4's `public/schemas/qtap-export.schema.json` at the `83334b9a5` pin 
 
 Re-dumps `schema-key-order.json` from v4's real schemas at the pin. `chat` goes from 102 to 103 keys (drops `otherExtractionWatermarkMessageId`, adds `scenarioSource` and `scenarioNotes` after `scenarioText`) and `memory` from 29 to 30 (`supersededAt` after `supersededById`). No other kind moved.
 
+#### 2026-10-15 — feat(core): P4.D295 unit 1 — the scenario slice's pure half, tier-1 against v4
+
+_Versions: core 0.0.1299._
+
+The pure functions v4's scenarios-from-anywhere slice (`545e299bb`, pin `83334b9a5`) rests on, each exact against v4's real export in the new family `scenario_pure_equivalence` (188 rows):
+- `scenarios::decode_uri::js_decode_uri_component` — V8's `decodeURIComponent`, accept-or-throw (`URIError: URI malformed`).
+- `scenarios::location::normalize_scenario_path` (decode, then the `Scenarios/<file>.md` rules) and `character_scenario_id_for_path`.
+- `scenarios::everywhere::scenario_excerpt` — the 240-unit excerpt with JavaScript's whitespace class. A cut that splits a surrogate pair leaves U+FFFD where v4 leaves a lone surrogate: the ruled table `EXCERPT_LONE_SURROGATE` (R-AA), checked both ways.
+- `hash_scenario_body`, `same_resolved_scenario` and the `ResolvedScenario` recipe in `services::scenario_selection`; `keep_current_scene` in `services::chat_scenario`.
+- `scenario_text::recover_preset_body` (new) and `combine_scenario_text`, which now trims JavaScript whitespace. It had used Rust's `trim`, which keeps U+FEFF and strips U+0085, the opposite of v4.
+
+Three mutations (Rust trim in `combine`, a char-count excerpt cut, no decode) each turn rows red.
+
 #### 2026-10-14 — KEYSTONE: P4.D288 — the memory-refactor + scenarios round's schema keystone
 
 _Docs-only change._

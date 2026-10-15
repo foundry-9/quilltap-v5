@@ -44,8 +44,46 @@
 use rusqlite::Connection;
 use serde_json::Value;
 
+use crate::db::chats::ScenarioSource;
 use crate::db::{groups, projects, scenarios, DbError};
 use crate::scenario_text::combine_scenario_text;
+
+/// v4 `ResolvedScenario` (`scenario-selection.ts:77-81`): the RECIPE that lands
+/// on the chat — `scenarioText` (the one thing the prompt reads),
+/// `scenarioSource` (which file the preset came from and the hash of its body)
+/// and `scenarioNotes`. Callers write all three together and nothing else
+/// writes them.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ResolvedScenario {
+    pub scenario_text: Option<String>,
+    pub scenario_source: Option<ScenarioSource>,
+    pub scenario_notes: Option<String>,
+}
+
+/// v4 `hashScenarioBody(body)` (`scenario-selection.ts:92-94`): lowercase hex
+/// SHA-256 of the body's UTF-8 bytes — the `bodySha256` of a source. The body
+/// is the PARSED one (trimmed; frontmatter and, for a character file, the
+/// `# heading` title line removed), as the location's `read` returns it (L-11).
+pub fn hash_scenario_body(body: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(body.as_bytes()))
+}
+
+/// v4 `sameResolvedScenario(a, b)` (`scenario-selection.ts:97-104`): true when
+/// two recipes would leave a chat byte-identical — text and notes `===`, and
+/// the sources both absent or equal on `mountPointId`, `path` and `bodySha256`.
+pub fn same_resolved_scenario(a: &ResolvedScenario, b: &ResolvedScenario) -> bool {
+    let same_source = match (&a.scenario_source, &b.scenario_source) {
+        (None, None) => true,
+        (Some(sa), Some(sb)) => {
+            sa.mount_point_id == sb.mount_point_id
+                && sa.path == sb.path
+                && sa.body_sha256 == sb.body_sha256
+        }
+        _ => false,
+    };
+    a.scenario_text == b.scenario_text && a.scenario_notes == b.scenario_notes && same_source
+}
 
 /// v4's default `logTag`. Both real call sites override it with `"[Chats v1]"`,
 /// but the default is v4's and is reachable through [`resolve_scenario_selection`]'s
