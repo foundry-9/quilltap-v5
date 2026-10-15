@@ -2765,19 +2765,19 @@ impl CoreEngine {
                 include_archived,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::groups::group_scenario_list(&db, &group_id, include_archived).await
+                    super::groups::group_scenario_list(&db, &group_id, include_archived, SINGLE_USER_ID).await
                 }
                 Err(r) => r,
             },
             Request::GroupScenarioCreate { group_id, scenario } => match self.ready_db() {
-                Ok(db) => super::groups::group_scenario_create(&db, &group_id, scenario).await,
+                Ok(db) => super::groups::group_scenario_create(&db, &group_id, scenario, SINGLE_USER_ID).await,
                 Err(r) => r,
             },
             Request::GroupScenarioGet {
                 group_id,
                 scenario_path,
             } => match self.ready_db() {
-                Ok(db) => super::groups::group_scenario_get(&db, &group_id, &scenario_path).await,
+                Ok(db) => super::groups::group_scenario_get(&db, &group_id, &scenario_path, SINGLE_USER_ID).await,
                 Err(r) => r,
             },
             Request::GroupScenarioUpdate {
@@ -2793,6 +2793,7 @@ impl CoreEngine {
                         &scenario_path,
                         scenario,
                         include_archived,
+                        SINGLE_USER_ID,
                     )
                     .await
                 }
@@ -2811,6 +2812,7 @@ impl CoreEngine {
                         &scenario_path,
                         &new_filename,
                         include_archived,
+                        SINGLE_USER_ID,
                     )
                     .await
                 }
@@ -2827,6 +2829,7 @@ impl CoreEngine {
                         &group_id,
                         &scenario_path,
                         include_archived,
+                        SINGLE_USER_ID,
                     )
                     .await
                 }
@@ -2837,7 +2840,7 @@ impl CoreEngine {
                 include_archived,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::groups::group_scenarios_union(&db, character_ids, include_archived).await
+                    super::groups::group_scenarios_union(&db, character_ids, include_archived, SINGLE_USER_ID).await
                 }
                 Err(r) => r,
             },
@@ -2888,15 +2891,15 @@ impl CoreEngine {
 
             // --- General (instance-wide) scenarios (P4.6n) -------------------
             Request::ScenarioList { include_archived } => match self.ready_db() {
-                Ok(db) => super::scenarios::scenario_list(&db, include_archived).await,
+                Ok(db) => super::scenarios::scenario_list(&db, include_archived, SINGLE_USER_ID).await,
                 Err(r) => r,
             },
             Request::ScenarioCreate { scenario } => match self.ready_db() {
-                Ok(db) => super::scenarios::scenario_create(&db, scenario).await,
+                Ok(db) => super::scenarios::scenario_create(&db, scenario, SINGLE_USER_ID).await,
                 Err(r) => r,
             },
             Request::ScenarioGet { scenario_path } => match self.ready_db() {
-                Ok(db) => super::scenarios::scenario_get(&db, scenario_path).await,
+                Ok(db) => super::scenarios::scenario_get(&db, scenario_path, SINGLE_USER_ID).await,
                 Err(r) => r,
             },
             Request::ScenarioUpdate {
@@ -2910,6 +2913,7 @@ impl CoreEngine {
                         scenario_path,
                         scenario,
                         include_archived,
+                        SINGLE_USER_ID,
                     )
                     .await
                 }
@@ -2926,6 +2930,7 @@ impl CoreEngine {
                         scenario_path,
                         new_filename,
                         include_archived,
+                        SINGLE_USER_ID,
                     )
                     .await
                 }
@@ -2936,7 +2941,7 @@ impl CoreEngine {
                 include_archived,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::scenarios::scenario_delete(&db, scenario_path, include_archived).await
+                    super::scenarios::scenario_delete(&db, scenario_path, include_archived, SINGLE_USER_ID).await
                 }
                 Err(r) => r,
             },
@@ -3611,7 +3616,7 @@ impl CoreEngine {
                 include_archived,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::projects::project_scenario_list(&db, &project_id, include_archived).await
+                    super::projects::project_scenario_list(&db, &project_id, include_archived, SINGLE_USER_ID).await
                 }
                 Err(r) => r,
             },
@@ -3620,7 +3625,7 @@ impl CoreEngine {
                 scenario,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::projects::project_scenario_create(&db, &project_id, scenario).await
+                    super::projects::project_scenario_create(&db, &project_id, scenario, SINGLE_USER_ID).await
                 }
                 Err(r) => r,
             },
@@ -3629,7 +3634,7 @@ impl CoreEngine {
                 scenario_path,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::projects::project_scenario_get(&db, &project_id, &scenario_path).await
+                    super::projects::project_scenario_get(&db, &project_id, &scenario_path, SINGLE_USER_ID).await
                 }
                 Err(r) => r,
             },
@@ -3646,6 +3651,7 @@ impl CoreEngine {
                         &scenario_path,
                         scenario,
                         include_archived,
+                        SINGLE_USER_ID,
                     )
                     .await
                 }
@@ -3664,6 +3670,7 @@ impl CoreEngine {
                         &scenario_path,
                         &new_filename,
                         include_archived,
+                        SINGLE_USER_ID,
                     )
                     .await
                 }
@@ -3680,6 +3687,7 @@ impl CoreEngine {
                         &project_id,
                         &scenario_path,
                         include_archived,
+                        SINGLE_USER_ID,
                     )
                     .await
                 }
@@ -5666,13 +5674,24 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::ScenarioEverywhere { include_archived: _ } => {
-                p4d288_not_yet_available("everywhere", "P4.D295")
-            }
+            // P4.D295: the catalogue and the by-ref read (v4 `scenarios/route.ts:47-69`).
+            Request::ScenarioEverywhere { include_archived } => match self.ready_db() {
+                Ok(db) => {
+                    super::scenarios::scenario_everywhere(&db, include_archived, SINGLE_USER_ID)
+                        .await
+                }
+                Err(r) => r,
+            },
             Request::ScenarioReadByRef {
-                mount_point_id: _,
-                path: _,
-            } => p4d288_not_yet_available("read", "P4.D295"),
+                mount_point_id,
+                path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::scenarios::scenario_read_by_ref(&db, mount_point_id, path, SINGLE_USER_ID)
+                        .await
+                }
+                Err(r) => r,
+            },
             Request::ChatGetScenarioSource { chat_id: _ } => {
                 p4d288_not_yet_available("scenario-source", "P4.D295")
             }

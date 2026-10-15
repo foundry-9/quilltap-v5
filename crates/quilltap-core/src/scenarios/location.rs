@@ -947,3 +947,104 @@ pub fn lookup_scenario_ref(
 
 /// v4's refusal reason for a mount that holds no scenarios.
 pub const NOT_A_SCENARIO_STORE: &str = "That store does not hold scenarios";
+
+#[cfg(test)]
+mod fallback_read_tests {
+    use super::*;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A provisioned instance's mount index with `Scenarios/a.md` written into a
+    /// database store, then `doc_mount_documents.content` renamed (the column
+    /// only the documents read names).
+    fn planted(dir: &tempfile::TempDir) -> (crate::db::Writer, String) {
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        let mp: String = w
+            .connection()
+            .query_row(
+                "SELECT id FROM doc_mount_points WHERE mountType = 'database' LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        DocMountFileLinksRepository::new(w.connection())
+            .write_database_document(&mp, "Scenarios/a.md", "---\nname: A\n---\nbody")
+            .unwrap();
+        w.connection()
+            .execute_batch("ALTER TABLE doc_mount_documents RENAME COLUMN content TO content_x")
+            .unwrap();
+        (w, mp)
+    }
+
+    fn line(mp: &str, path: &str) -> String {
+        format!("ERROR quilltap::db Error finding document by mount point and path collection=doc_mount_documents mountPointId={mp} relativePath={path} error=no such column: d.content")
+    }
+
+    /// P4.142 G2 (re-homed by P4.D295 onto the store location — the writes
+    /// moved here from `api::scenarios`): the scenario writes' lookups are
+    /// v4's FALLBACKS. A failed read is the not-found arm (update / rename →
+    /// `NotFound`), and for the create's conflict check "no conflict", so the
+    /// write itself is what fails next — after v4's repository line, never the
+    /// read's own `Err`.
+    #[test]
+    fn the_scenario_lookups_fall_back_as_v4() {
+        let dir = tempfile::tempdir().unwrap();
+        let (w, mp) = planted(&dir);
+        let conn = w.connection();
+        let store = StoreScenarioLocation {
+            scope: ScenarioScope::Project,
+            id: Some("p".into()),
+            mount_point_id: mp.clone(),
+            owner_name: "P".into(),
+        };
+
+        let (got, lines) = crate::test_support::captured_with(|| {
+            store.update(
+                conn,
+                "Scenarios/a.md",
+                &UpdateScenarioInput {
+                    name: Some("B".into()),
+                    body: "b".into(),
+                    ..Default::default()
+                },
+            )
+        });
+        assert!(
+            matches!(got, Err(ScenarioLocationError::NotFound(_))),
+            "{got:?} {lines:#?}"
+        );
+        assert_eq!(lines, vec![line(&mp, "Scenarios/a.md")]);
+
+        let (got, lines) =
+            crate::test_support::captured_with(|| store.rename(conn, "Scenarios/a.md", "b"));
+        assert!(
+            matches!(got, Err(ScenarioLocationError::NotFound(_))),
+            "{got:?}"
+        );
+        assert_eq!(lines, vec![line(&mp, "Scenarios/a.md")]);
+
+        let (got, lines) = crate::test_support::captured_with(|| {
+            store.create(
+                conn,
+                &CreateScenarioInput {
+                    filename: "c".into(),
+                    name: Some("C".into()),
+                    body: "c".into(),
+                    ..Default::default()
+                },
+            )
+        });
+        assert!(
+            !matches!(got, Err(ScenarioLocationError::Conflict(_))),
+            "a failed conflict read must not read as a conflict: {got:?}"
+        );
+        assert_eq!(
+            lines.first(),
+            Some(&line(&mp, "Scenarios/c.md")),
+            "{lines:#?}"
+        );
+    }
+}

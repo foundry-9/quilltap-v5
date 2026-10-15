@@ -75,10 +75,6 @@ const MOUNTS: &[MountSpec] = &[
     },
 ];
 
-/// v4 `GENERAL_SCENARIOS_FOLDER` — the folder `ensure_general_scenarios_folder`
-/// re-creates at startup.
-const GENERAL_SCENARIOS_FOLDER: &str = "Scenarios";
-
 /// How [`ensure_builtin_mounts_with`] answers a failure in one of the five
 /// sub-steps whose v4 home is NOT a migration (P4.134, dogfood #134(b)): the
 /// three case repairs and the link-group column (v4's lazy repository
@@ -447,36 +443,34 @@ fn insert_mount_row(
     Ok(())
 }
 
-/// v4 `ensureGeneralScenariosFolder()` (`lib/mount-index/general-scenarios.ts:44`)
-/// — the runtime re-ensure of the Quilltap General `Scenarios/` folder at startup.
-/// A no-op (returns without error) when the General store is not yet provisioned,
-/// matching v4's degrade-gracefully-during-the-race behavior.
+/// v4 `instrumentation.ts:809-819` (`545e299bb`): the startup heal of the
+/// Quilltap General `Scenarios/` folder is `resolveScenarioLocation('general',
+/// null, …, { ensure: true })` — the scenario location's General arm
+/// ([`crate::scenarios::location`]). A no-op when the General store is not yet
+/// provisioned (the location answers `None` during the race).
 ///
-/// P4.134: v4's function catches its own `ensureFolderPath` throw and logs WARN
-/// `[GeneralScenarios] Failed to ensure Scenarios folder` `{mountPointId, error}`
-/// (`:52-59`), so a damaged folder table never reaches `instrumentation.ts`'s
-/// own WARN (`Error ensuring general scenarios folder, continuing startup`,
-/// which the host keeps for the residual). The pointer read is already v4's
-/// fallback `readSetting` (infallible here too), so the `Result` can no longer
-/// be `Err` — unreachable in BOTH stacks; kept as the shape of v4's catch, which
-/// the host's residual WARN mirrors as dead code on both sides.
+/// v4 DELETED `ensureGeneralScenariosFolder` and its swallowing WARN
+/// `[GeneralScenarios] Failed to ensure Scenarios folder` with the span: a
+/// folder failure now logs the location's WARN `[ScenarioLocation] Failed to
+/// ensure Scenarios folder {mountPointId, error}` (L2) and RETHROWS, so it
+/// reaches the host's `Error ensuring general scenarios folder, continuing
+/// startup` (L37) — the residual arm P4.134 kept as dead code is LIVE (L-7;
+/// no host edit — the location error maps to [`DbError::Internal`] carrying
+/// the bare message the host's `error_text` renders).
 pub fn ensure_general_scenarios_folder(
     main: &Connection,
     mount_index: &Connection,
 ) -> Result<(), DbError> {
-    let Some(mount_point_id) = instance_settings::get_general_mount_point_id(main)? else {
-        return Ok(());
-    };
-    if let Err(error) = DocMountFileLinksRepository::new(mount_index)
-        .ensure_folder_path(&mount_point_id, GENERAL_SCENARIOS_FOLDER)
-    {
-        tracing::warn!(
-            mountPointId = %mount_point_id,
-            error = %crate::db::fallback::error_text(&error),
-            "[GeneralScenarios] Failed to ensure Scenarios folder",
-        );
-    }
-    Ok(())
+    crate::scenarios::location::resolve_scenario_location(
+        main,
+        mount_index,
+        crate::scenarios::location::ScenarioScope::General,
+        None,
+        crate::api::SINGLE_USER_ID,
+        true,
+    )
+    .map(|_| ())
+    .map_err(|e| DbError::Internal(e.to_string()))
 }
 
 #[cfg(test)]
@@ -850,14 +844,14 @@ mod tests {
         );
     }
 
-    /// P4.134: v4's `ensureGeneralScenariosFolder` catches its own
-    /// `ensureFolderPath` throw — WARN `[GeneralScenarios] Failed to ensure
-    /// Scenarios folder` `{mountPointId, error}` (`general-scenarios.ts:52-59`)
-    /// — and answers; the bare driver message, never `sqlite error: `. Not
-    /// plantable through a real boot: the store provisions run the same
-    /// `ensure_folder_path` first and stay fatal.
+    /// L-7 (P4.D295, v4 `545e299bb`): the General heal is the scenario
+    /// location's `ensure`, so a folder failure logs the location's WARN
+    /// `[ScenarioLocation] Failed to ensure Scenarios folder {mountPointId,
+    /// error}` (L2 — the bare driver message, never `sqlite error: `) and the
+    /// error PROPAGATES to the host's `Error ensuring general scenarios folder,
+    /// continuing startup` (L37). v4's `[GeneralScenarios]` WARN is gone.
     #[test]
-    fn a_failed_scenarios_folder_logs_v4s_own_warn_and_answers() {
+    fn a_failed_scenarios_folder_logs_the_locations_warn_and_rethrows() {
         let main = Connection::open_in_memory().unwrap();
         main.execute_batch(
             "CREATE TABLE instance_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);\
@@ -870,14 +864,43 @@ mod tests {
             .unwrap();
         let (result, lines) =
             crate::test_support::captured_with(|| ensure_general_scenarios_folder(&main, &mount));
-        result.unwrap();
-        assert_eq!(lines.len(), 1, "{lines:?}");
+        let warns: Vec<&String> = lines.iter().filter(|l| l.starts_with("WARN ")).collect();
+        assert_eq!(warns.len(), 1, "{lines:?}");
         assert!(
-            lines[0].starts_with(
-                "WARN quilltap_core::services::builtin_mounts [GeneralScenarios] Failed to ensure Scenarios folder mountPointId=gen-1 error=no such column: "
+            warns[0].starts_with(
+                "WARN quilltap_core::scenarios::location [ScenarioLocation] Failed to ensure Scenarios folder mountPointId=gen-1 error=no such column: "
             ),
             "{}",
-            lines[0]
+            warns[0]
+        );
+        let err = result.expect_err("the heal's failure propagates");
+        assert!(
+            crate::db::fallback::error_text(&err).starts_with("no such column: "),
+            "the host renders the bare message: {err}"
+        );
+        assert!(
+            lines.iter().all(|l| !l.contains("[GeneralScenarios]")),
+            "v4 deleted the swallowing WARN: {lines:?}"
+        );
+    }
+
+    /// The silence leg: a healthy heal logs no WARN and answers `Ok`; an
+    /// unprovisioned General is a quiet no-op (only the location's DEBUG).
+    #[test]
+    fn the_general_heal_is_quiet_when_it_succeeds_or_has_no_store() {
+        let main = Connection::open_in_memory().unwrap();
+        main.execute_batch(
+            "CREATE TABLE instance_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        )
+        .unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        let (result, lines) =
+            crate::test_support::captured_with(|| ensure_general_scenarios_folder(&main, &mount));
+        result.unwrap();
+        assert!(lines.iter().all(|l| !l.starts_with("WARN ")), "{lines:?}");
+        assert!(
+            lines.iter().any(|l| l.contains("[ScenarioLocation] Resolved scenario location scope=general id=null ensure=true found=false mountPointId=null")),
+            "{lines:?}"
         );
     }
 

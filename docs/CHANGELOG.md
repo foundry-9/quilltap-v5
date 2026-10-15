@@ -462,6 +462,22 @@ Re-vendors v4's `public/schemas/qtap-export.schema.json` at the `83334b9a5` pin 
 
 Re-dumps `schema-key-order.json` from v4's real schemas at the pin. `chat` goes from 102 to 103 keys (drops `otherExtractionWatermarkMessageId`, adds `scenarioSource` and `scenarioNotes` after `scenarioText`) and `memory` from 29 to 30 (`supersededAt` after `supersededById`). No other kind moved.
 
+#### 2026-10-15 — feat(core): P4.D295 unit 3 — the scenario routes on one factory, the catalogue and by-ref read verbs, the union, the create hooks and the General heal
+
+_Versions: core 0.0.1301._
+
+The General, project and group scenario routes now run on one factory over the scenario location, as v4's `scenario-item-route-factory.ts` does.
+- A GET never heals the `Scenarios/` folder; writes heal it, and group writes also heal `Knowledge/`. A write never mints a store.
+- Owner checks read the raw row. The collection create parses the body before the owner check, so an invalid body for a missing project is now a 400.
+- A write whose file parses to nothing is written and then answers 404. A same-name rename of a missing file is a 404. An empty `newFilename` gets Zod's 400.
+- The factory's INFO and ERROR lines are logged for all three families (General with `ownerId: null`); v5 had never logged them.
+- `scenarioEverywhere` and `scenarioReadByRef` now answer instead of the keystone's refusal. A malformed `%` in a read path is v4's 500 `Internal server error`.
+- The group union resolves each group through the location and logs v4's per-group skip WARN; it used to swallow failures silently.
+- The project and group create hooks ensure their folders through the location after the `created` INFO, logging the location's WARN and then the route's WARN on failure. The group route now logs `[Groups v1] Group created`, which v5 had never logged.
+- The General boot heal is the location's `ensure`. A folder failure now reaches the host's `Error ensuring general scenarios folder, continuing startup`; v4's deleted `[GeneralScenarios]` WARN is gone.
+
+The route handlers take the caller's `user_id` (the engine passes `SINGLE_USER_ID`). `scenarios_routes_equivalence` grew from 66 to 97 rows. It now compares bodies in key order, and every row's scenario lines through a global capture. The `doc_mount_fallback_sites_census` is re-measured (converted rows 92 to 89). Two mutations turn rows red: a GET that heals, and no decode in the location.
+
 #### 2026-10-15 — feat(core): P4.D295 unit 2 — the scenario location, the catalogue and their raw finders
 
 _Versions: core 0.0.1300._

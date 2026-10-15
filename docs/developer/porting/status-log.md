@@ -182710,3 +182710,64 @@ scenario_pure_equivalence`.
   rowid order → the three catalogue rows red (the tie flips).
 - Regen (Node 24, from the pin): `/tmp/p4d295/bin/build-sl.sh` then `/tmp/p4d295/bin/regen-sl.sh` (= the header's
   two commands with `/tmp/p4d295/out/` paths).
+
+### Unit 3 — the six route families on the factory, the two new verbs, the union, the hooks, the heal (core 0.0.1301)
+
+- **`api/scenarios.rs` REWRITTEN** as v4's factory: `ScenarioRouteConfig {scope, owner_label, log_tag, log_id_key,
+  ensure_knowledge, wrap}` (`GENERAL` here; `PROJECT_SCENARIO_ROUTES` in `api/projects.rs`, `GROUP_SCENARIO_ROUTES`
+  in `api/groups.rs` — the six families are thin configs), `item_{get,update,rename,delete}` over `load_location`
+  (probe; a write that found a store re-resolves with `ensure` + the group's `Knowledge/`; the three 404 remedies)
+  and `collection_{list,create}` over `ensure_location` (raw owner 404 → ensure → General's empty 200 / 400, else 500
+  `Failed to ensure <owner> document store`); `scenario_error_response`; L16 INFO / L17–L18 ERROR through an
+  `owner_line!` macro (a tracing field NAME must be static, so the `logIdKey` is matched). The body Zod floors stay
+  the existing `collect_bag_issues` (its sentences beyond the custom empty-body message are still approximations — a
+  pre-existing gap, not this round's; the new Δ13 row uses the measured custom message); NEW `rename_issues` ports
+  `renameScenarioSchema` (an empty `newFilename` was a v5 `Filename` 400 with a v5 sentence — now Zod's `Too small:
+  expected string to have >=1 characters`). DIED: `create_op` / `get_op` / `update_op` / `rename_op` / `delete_op`
+  / `list_body` / `ensure_scenarios_folder` / `general_mount_id` / the three family store resolvers
+  (`ensure_*_scenarios_store`, `load_*_scenarios_store`); `db::scenarios::{list_scenarios_in_folder,
+  read_scenario_by_path}` (the transitional helpers of unit 2).
+- **`user_id` threaded** (v4's L16 logs the session user): every scenario route fn takes it; the engine's 19
+  scenario arms pass `SINGLE_USER_ID` (one argument each — the scenario arms' bodies; no variant touched), the
+  harness passes the fixture's user.
+- **C2 arms filled:** `ScenarioEverywhere` → `scenario_everywhere` (`{sources}`; L19 + 500 `Failed to list
+  scenarios`), `ScenarioReadByRef` → `scenario_read_by_ref` (400 `mountPointId and path are required` / 400
+  `Invalid scenario ref: …` / 404 / `{scenario, owner}`; v4 has NO try/catch there — the malformed-`%` throw is v4's
+  middleware **500 `Internal server error`, measured** by the new `general_read_malformed_percent` row).
+- **The union** resolves each group with `ensure` (L1 per group), skips a group with no location or an empty list,
+  logs **L20** on any throw (v5 swallowed silently before), names the group with the location's `name || 'Group'`
+  (unreachable through real repositories: v4's row schema refuses an empty name, so the group is DROPPED — the
+  `union_empty_group_name_dropped` row).
+- **Create hooks:** the project / group ensure moved OUT of the create's writer closure into a second writer turn
+  after the `created` INFO, so the lines keep v4's order (INFO, L1 / L2, L38); the group route now logs v4's
+  `[Groups v1] Group created` (never ported before — the hook follows it) and its hook WARNs L38 (silent before);
+  the `Knowledge/` ensure targets the ROW's store, as v4's does.
+- **The General heal (L-7):** `builtin_mounts::ensure_general_scenarios_folder` = `resolve_scenario_location(General,
+  None, ensure)`, its `Result<(), DbError>` signature kept, the location error mapped to `DbError::Internal(<bare
+  message>)` so `host.rs`'s existing arm (v4's L37) is LIVE with NO host edit; `[GeneralScenarios] Failed to ensure
+  Scenarios folder` DELETED; its capture test rewritten to L2 + the propagated `Err` + a silence leg.
+  **HANDOFF (unifier, §S.5 item 7):** `crates/quilltap-host/src/host.rs:1927-1929`'s comment ("The folder failure is
+  logged INSIDE (v4's `[GeneralScenarios]` catch); this arm is v4's `instrumentation.ts:766-776` WARN for anything
+  else") is stale — the arm is now the folder failure's L37 (v4 `instrumentation.ts:809-819`), after the location's
+  L2; and a host-side capture row for L2 → L37 is owed (no `quilltap-host` bump from this lane).
+- **P4.142 G2 tests re-homed** into `scenarios/location.rs` (`fallback_read_tests`) — the store writes' lookups are
+  still v4's fallbacks (update / rename → NotFound, the create's failed conflict read → no conflict).
+- **Differential: `scenarios_routes_equivalence` 66 → 97 rows**, now (a) bodies compared in KEY ORDER (the old
+  comparator sorted keys — order-blind), (b) every row's scenario lines (L1–L6, L13–L20, L38, `Project created` /
+  `Group created`) through a GLOBAL capture (the handlers run on the writer thread), (c) the case logs at DEBUG. NEW
+  rows: Δ12 (a whitespace body WRITTEN then 404, the file bytes pinned), Δ13 (invalid body for a missing project →
+  400; a valid one → 404), Δ11 (same-name rename of a missing file → 404; of an existing one logs `Renamed`), an
+  empty `newFilename`, GET never heals / PUT heals `Scenarios/` / group PUT heals `Knowledge/` / group GET never
+  heals it (folder state pinned), L-6's `a%20b.md` read once-decoded, `%E0.md` GET / PUT → L17 + 500, a collection
+  list whose heal fails (L2 then L18), the union's L20 per group, an empty group name dropped, the catalogue ±archived,
+  the by-ref read's ten arms (incl. a character owner and the malformed-`%` 500), the four create-hook rows (L2 then
+  L38 under a planted folder-insert trigger; minted ids masked). **L-6 on a log field:** v4's L17 logs its route
+  param — the HTTP-ENCODED string the oracle hands it — where v5 logs the logical dispatch path; the two `%E0` rows
+  compare v5's `scenarioPath` through `encodeURIComponent` (`ENCODED_PARAM_ROWS`).
+- **Census:** `doc_mount_fallback_sites_census` re-measured — `api/scenarios.rs`'s four and `db/scenarios.rs`'s
+  `list_scenarios_in_folder` rows gone, `scenarios::location::folder_docs` + `scenarios::everywhere::
+  list_scenarios_everywhere` added (both `converted`); `converted` 92 → 89. (Re-measured again LAST.)
+- **HANDOFF (unifier):** the dispatch census's scenario `note` strings cite pre-span v4 lines (P4.D288's file) —
+  re-cite at the union.
+- **Mutation proofs:** a GET that heals → 9 rows red (the GET lines + the folder pins); no decode in the location →
+  7 rows red (the `%` rows).

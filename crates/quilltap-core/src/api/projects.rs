@@ -16,14 +16,10 @@ use super::SINGLE_USER_ID;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::document_store_overlay::OverlayError;
-use crate::db::ensure_official_store::ensure_official_store;
 use crate::db::files::{FileUpdate, FilesRepository};
 use crate::db::project_doc_mount_links::ProjectDocMountLinksRepository;
 use crate::db::project_store_naming::pick_primary_project_store;
-use crate::db::projects::{
-    find_official_mount_point_id_raw, ProjectCreateInput, ProjectCreateOptions, ProjectEntity,
-    ProjectsRepository,
-};
+use crate::db::projects::{ProjectCreateInput, ProjectCreateOptions, ProjectsRepository};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, tags, DbError};
 use crate::services::character_enrichment::enrich_with_default_image;
@@ -267,50 +263,68 @@ pub async fn project_create(db: &Db, body: Value) -> Response {
     };
     let out = with_both_conns(db, move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
-        let project = repo
-            .create(&input, &ProjectCreateOptions::default())
-            .map_err(overlay_to_db)?;
-        // Best-effort Scenarios/ folder ensure (v4 non-fatal try/catch; projects
-        // ensure only Scenarios/, no Knowledge/). [P4.148] Its failure is
-        // RETURNED rather than dropped, so the WARN below lands after the INFO
-        // in v4's order without moving the ensure out of the writer.
-        let ensure_error = project
-            .get("officialMountPointId")
-            .and_then(Value::as_str)
-            .and_then(|mp| {
-                crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount)
-                    .ensure_folder_path(mp, "Scenarios")
-                    .err()
-            });
-        Ok((project, ensure_error))
+        repo.create(&input, &ProjectCreateOptions::default())
+            .map_err(overlay_to_db)
     })
     .await;
-    match out {
-        Ok((project, ensure_error)) => {
-            // v4 `projects/route.ts:82-85`: `logger.info('[Projects v1] Project
-            // created', { projectId: project.id, name: project.name })` — after
-            // the create, before the best-effort Scenarios/ ensure's own catch.
-            let project_id = project.get("id").and_then(Value::as_str).unwrap_or("");
-            let project_name = project.get("name").and_then(Value::as_str).unwrap_or("");
-            tracing::info!(
+    let project = match out {
+        Ok(project) => project,
+        Err(e) => return db_error_response(e),
+    };
+    // v4 `projects/route.ts:82-85`: `logger.info('[Projects v1] Project
+    // created', { projectId: project.id, name: project.name })` — after the
+    // create, before the Scenarios/ ensure below.
+    let project_id = project
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let project_name = project.get("name").and_then(Value::as_str).unwrap_or("");
+    tracing::info!(
+        projectId = %project_id,
+        name = %project_name,
+        "[Projects v1] Project created"
+    );
+    // v4 `projects/route.ts:85-99` (`545e299bb`): when the row has an official
+    // store, ensure its `Scenarios/` folder through the scenario location
+    // (L1; a folder failure logs the location's L2 and RETHROWS), caught here
+    // as WARN `[Projects v1] Failed to ensure project Scenarios folder on
+    // create` (L38). Non-fatal — the project is created either way. A second
+    // writer turn so the lines keep v4's order (INFO, then L1 / L2, then L38).
+    if project
+        .get("officialMountPointId")
+        .and_then(Value::as_str)
+        .is_some_and(|m| !m.is_empty())
+    {
+        let pid = project_id.clone();
+        // A project location never reads the user (only a character one does).
+        let user = super::engine::SINGLE_USER_ID.to_string();
+        let ensured = with_both_conns(db, move |main, mount| {
+            Ok(crate::scenarios::location::resolve_store_scenario_location(
+                main,
+                mount,
+                crate::scenarios::location::ScenarioScope::Project,
+                Some(&pid),
+                &user,
+                true,
+            )
+            .map(|_| ()))
+        })
+        .await;
+        let failure = match ensured {
+            Ok(Ok(())) => None,
+            Ok(Err(e)) => Some(e.to_string()),
+            Err(e) => Some(crate::db::fallback::error_text(&e)),
+        };
+        if let Some(error) = failure {
+            tracing::warn!(
                 projectId = %project_id,
-                name = %project_name,
-                "[Projects v1] Project created"
+                error = %error,
+                "[Projects v1] Failed to ensure project Scenarios folder on create"
             );
-            // v4 `projects/route.ts:95-99`: the ensure's catch, AFTER the INFO —
-            // `logger.warn('[Projects v1] Failed to ensure project Scenarios
-            // folder on create', { projectId, error: ensureError.message })`.
-            if let Some(e) = ensure_error {
-                tracing::warn!(
-                    projectId = %project_id,
-                    error = %crate::db::fallback::error_text(&e),
-                    "[Projects v1] Failed to ensure project Scenarios folder on create"
-                );
-            }
-            Response::Project(json!({ "project": project }))
         }
-        Err(e) => db_error_response(e),
     }
+    Response::Project(json!({ "project": project }))
 }
 
 // ===========================================================================
@@ -1510,117 +1524,72 @@ pub async fn project_wardrobe_delete(db: &Db, project_id: &str, item_id: &str) -
 
 // ===========================================================================
 // Scenarios (v4 projects/[id]/scenarios/route.ts + [scenarioPath]/route.ts) —
-// P4.6n. Mirrors the groups family, but ensures ONLY `Scenarios/` (no Knowledge)
-// and the projects-side store resolvers. The mount-scoped CRUD is shared in
-// [`super::scenarios`]. There is no projects participant-union.
+// thin configs over the ONE scenario route factory ([`super::scenarios`],
+// v4 `scenario-item-route-factory.ts`, `545e299bb`). There is no projects
+// participant-union.
 // ===========================================================================
 
-const PROJECT_SCENARIOS_FOLDER: &str = "Scenarios";
-
-/// Ensure a project's official store + the Scenarios/ folder (v4 the collection
-/// routes' `ensureProjectOfficialStore` + `ensureProjectScenariosFolder`). Returns
-/// the mount id, or an early Response.
-fn ensure_project_scenarios_store(
-    main: &rusqlite::Connection,
-    mount: &rusqlite::Connection,
-    project_id: &str,
-) -> Result<Result<String, Response>, DbError> {
-    let repo = ProjectsRepository::new(main, mount);
-    let Some(project) = repo.find_by_id(project_id).map_err(overlay_to_db)? else {
-        return Ok(Err(not_found("Project")));
+/// v4 the project scenario routes' factory config: `'Project'`,
+/// `'[Projects v1]'`, `'projectId'`, no `afterEnsure`.
+pub const PROJECT_SCENARIO_ROUTES: scenarios_api::ScenarioRouteConfig =
+    scenarios_api::ScenarioRouteConfig {
+        scope: crate::scenarios::location::ScenarioScope::Project,
+        owner_label: "Project",
+        log_tag: "[Projects v1]",
+        log_id_key: scenarios_api::OwnerLogKey::ProjectId,
+        ensure_knowledge: false,
+        wrap: Response::Project,
     };
-    let name = project.get("name").and_then(Value::as_str).unwrap_or("");
-    let Some(ensured) = ensure_official_store::<ProjectEntity>(main, mount, project_id, name)?
-    else {
-        return Ok(Err(internal("Failed to ensure project document store")));
-    };
-    let _ = DocMountFileLinksRepository::new(mount)
-        .ensure_folder_path(&ensured.mount_point_id, PROJECT_SCENARIOS_FOLDER);
-    Ok(Ok(ensured.mount_point_id))
-}
-
-/// v4 `loadProjectAndStore` — the RAW official-store pointer (404 when null) + the
-/// Scenarios/ folder ensure. Used by the [scenarioPath] item routes.
-fn load_project_scenarios_store(
-    main: &rusqlite::Connection,
-    mount: &rusqlite::Connection,
-    project_id: &str,
-) -> Result<Result<String, Response>, DbError> {
-    let Some(fk) = find_official_mount_point_id_raw(main, project_id)? else {
-        return Ok(Err(not_found("Project")));
-    };
-    let Some(mp) = fk else {
-        return Ok(Err(not_found(
-            "Project has no official document store yet — restart the server or call GET /scenarios first",
-        )));
-    };
-    let _ =
-        DocMountFileLinksRepository::new(mount).ensure_folder_path(&mp, PROJECT_SCENARIOS_FOLDER);
-    Ok(Ok(mp))
-}
 
 /// v4 `GET /api/v1/projects/[id]/scenarios`.
-pub async fn project_scenario_list(db: &Db, project_id: &str, include_archived: bool) -> Response {
-    let pid = project_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let mp = match ensure_project_scenarios_store(main, mount, &pid)? {
-            Ok(mp) => mp,
-            Err(r) => return Ok(Err(r)),
-        };
-        Ok(Ok(scenarios_api::list_body(mount, &mp, include_archived)?))
-    })
-    .await;
-    match out {
-        Ok(Ok(body)) => Response::Project(body),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+pub async fn project_scenario_list(
+    db: &Db,
+    project_id: &str,
+    include_archived: bool,
+    user_id: &str,
+) -> Response {
+    scenarios_api::collection_list(
+        db,
+        PROJECT_SCENARIO_ROUTES,
+        Some(project_id.to_string()),
+        include_archived,
+        user_id.to_string(),
+    )
+    .await
 }
 
 /// v4 `POST /api/v1/projects/[id]/scenarios`.
-pub async fn project_scenario_create(db: &Db, project_id: &str, bag: Value) -> Response {
-    let pid = project_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let mp = match ensure_project_scenarios_store(main, mount, &pid)? {
-            Ok(mp) => mp,
-            Err(r) => return Ok(Err(r)),
-        };
-        Ok(match scenarios_api::create_op(mount, &mp, &bag) {
-            Ok(inner) => inner,
-            Err(e) => Err(scenarios_api::write_err(e)),
-        })
-    })
-    .await;
-    match out {
-        Ok(Ok(body)) => Response::Project(body),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+pub async fn project_scenario_create(
+    db: &Db,
+    project_id: &str,
+    bag: Value,
+    user_id: &str,
+) -> Response {
+    scenarios_api::collection_create(
+        db,
+        PROJECT_SCENARIO_ROUTES,
+        Some(project_id.to_string()),
+        bag,
+        user_id.to_string(),
+    )
+    .await
 }
 
 /// v4 `GET /api/v1/projects/[id]/scenarios/[scenarioPath]`.
-pub async fn project_scenario_get(db: &Db, project_id: &str, scenario_path: &str) -> Response {
-    let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
-        Ok(p) => p,
-        Err(r) => return r,
-    };
-    let pid = project_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let mp = match load_project_scenarios_store(main, mount, &pid)? {
-            Ok(mp) => mp,
-            Err(r) => return Ok(Err(r)),
-        };
-        Ok(match scenarios_api::get_op(mount, &mp, &resolved) {
-            Ok(inner) => inner,
-            Err(e) => Err(scenarios_api::write_err(e)),
-        })
-    })
-    .await;
-    match out {
-        Ok(Ok(body)) => Response::Project(body),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+pub async fn project_scenario_get(
+    db: &Db,
+    project_id: &str,
+    scenario_path: &str,
+    user_id: &str,
+) -> Response {
+    scenarios_api::item_get(
+        db,
+        PROJECT_SCENARIO_ROUTES,
+        Some(project_id.to_string()),
+        scenario_path.to_string(),
+        user_id.to_string(),
+    )
+    .await
 }
 
 /// v4 `PUT /api/v1/projects/[id]/scenarios/[scenarioPath]`.
@@ -1630,30 +1599,18 @@ pub async fn project_scenario_update(
     scenario_path: &str,
     bag: Value,
     include_archived: bool,
+    user_id: &str,
 ) -> Response {
-    let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
-        Ok(p) => p,
-        Err(r) => return r,
-    };
-    let pid = project_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let mp = match load_project_scenarios_store(main, mount, &pid)? {
-            Ok(mp) => mp,
-            Err(r) => return Ok(Err(r)),
-        };
-        Ok(
-            match scenarios_api::update_op(mount, &mp, &resolved, &bag, include_archived) {
-                Ok(inner) => inner,
-                Err(e) => Err(scenarios_api::write_err(e)),
-            },
-        )
-    })
-    .await;
-    match out {
-        Ok(Ok(body)) => Response::Project(body),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    scenarios_api::item_update(
+        db,
+        PROJECT_SCENARIO_ROUTES,
+        Some(project_id.to_string()),
+        scenario_path.to_string(),
+        bag,
+        include_archived,
+        user_id.to_string(),
+    )
+    .await
 }
 
 /// v4 `POST /api/v1/projects/[id]/scenarios/[scenarioPath]?action=rename`.
@@ -1663,31 +1620,18 @@ pub async fn project_scenario_rename(
     scenario_path: &str,
     new_filename: &str,
     include_archived: bool,
+    user_id: &str,
 ) -> Response {
-    let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
-        Ok(p) => p,
-        Err(r) => return r,
-    };
-    let pid = project_id.to_string();
-    let nf = new_filename.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let mp = match load_project_scenarios_store(main, mount, &pid)? {
-            Ok(mp) => mp,
-            Err(r) => return Ok(Err(r)),
-        };
-        Ok(
-            match scenarios_api::rename_op(mount, &mp, &resolved, &nf, include_archived) {
-                Ok(inner) => inner,
-                Err(e) => Err(scenarios_api::write_err(e)),
-            },
-        )
-    })
-    .await;
-    match out {
-        Ok(Ok(body)) => Response::Project(body),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    scenarios_api::item_rename(
+        db,
+        PROJECT_SCENARIO_ROUTES,
+        Some(project_id.to_string()),
+        scenario_path.to_string(),
+        new_filename.to_string(),
+        include_archived,
+        user_id.to_string(),
+    )
+    .await
 }
 
 /// v4 `DELETE /api/v1/projects/[id]/scenarios/[scenarioPath]`.
@@ -1696,30 +1640,17 @@ pub async fn project_scenario_delete(
     project_id: &str,
     scenario_path: &str,
     include_archived: bool,
+    user_id: &str,
 ) -> Response {
-    let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
-        Ok(p) => p,
-        Err(r) => return r,
-    };
-    let pid = project_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let mp = match load_project_scenarios_store(main, mount, &pid)? {
-            Ok(mp) => mp,
-            Err(r) => return Ok(Err(r)),
-        };
-        Ok(
-            match scenarios_api::delete_op(mount, &mp, &resolved, include_archived) {
-                Ok(inner) => inner,
-                Err(e) => Err(scenarios_api::write_err(e)),
-            },
-        )
-    })
-    .await;
-    match out {
-        Ok(Ok(body)) => Response::Project(body),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    scenarios_api::item_delete(
+        db,
+        PROJECT_SCENARIO_ROUTES,
+        Some(project_id.to_string()),
+        scenario_path.to_string(),
+        include_archived,
+        user_id.to_string(),
+    )
+    .await
 }
 
 // ===========================================================================

@@ -621,10 +621,6 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/api/mount_points.rs", "mount_point_list", "count_embedded_by_mount_point_ids_or_empty", "converted"),
     ("quilltap-core/src/api/mount_points.rs", "mount_point_get", "count_nonempty_embeddings_by_mount_point_id_or_zero", "converted"),
     ("quilltap-core/src/api/projects.rs", "project_file_list", "find_by_mount_point_id", "converted"),
-    ("quilltap-core/src/api/scenarios.rs", "create_op", "find_by_mount_point_and_path_or_none", "converted"),
-    ("quilltap-core/src/api/scenarios.rs", "update_op", "find_by_mount_point_and_path_or_none", "converted"),
-    ("quilltap-core/src/api/scenarios.rs", "rename_op", "find_by_mount_point_and_path_or_none", "converted"),
-    ("quilltap-core/src/api/scenarios.rs", "rename_op", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/db/character_vault.rs", "ensure_character_metadata_file", "find_by_mount_point_and_path", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/db/character_vault.rs", "backfill_character_vault_managed_files", "find_by_mount_point_and_path", "no-v4-counterpart"),
     ("quilltap-core/src/db/database_store.rs", "read_database_document", "find_content_and_mtime_by_mount_point_and_path_or_none", "converted"),
@@ -668,7 +664,6 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/db/doc_mount_folders.rs", "find_by_mount_point_id_or_empty", "find_by_mount_point_id", "internal"),
     ("quilltap-core/src/db/document_store_overlay.rs", "load_store_files", "find_many_by_mount_points_and_path_or_empty", "converted"),
     ("quilltap-core/src/db/document_store_overlay.rs", "read_properties", "find_by_mount_point_and_path", "strict-by-ruling(write-path)"),
-    ("quilltap-core/src/db/scenarios.rs", "list_scenarios_in_folder", "find_many_by_mount_points_in_folder_or_empty", "converted"),
     ("quilltap-core/src/db/scenarios.rs", "set_scenario_default_in_folder", "find_many_by_mount_points_in_folder_or_empty", "converted"),
     ("quilltap-core/src/db/vault_character_update.rs", "read_current_properties", "find_by_mount_point_and_path", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "load_vault_file_maps", "find_many_by_mount_points_and_path_or_empty", "converted"),
@@ -696,6 +691,8 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/photos/save_image_to_album.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/photos/user_gallery_service.rs", "list_user_gallery", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/photos/user_gallery_service.rs", "remove_from_user_gallery", "delete_with_gc", "strict-by-ruling(write-path)"),
+    ("quilltap-core/src/scenarios/everywhere.rs", "list_scenarios_everywhere", "find_many_by_mount_points_in_folder_or_empty", "converted"),
+    ("quilltap-core/src/scenarios/location.rs", "folder_docs", "find_many_by_mount_points_in_folder_or_empty", "converted"),
     ("quilltap-core/src/services/aesthetics.rs", "read_store_file_internal", "find_by_mount_point_and_path", "swallowed-by-other-means"),
     ("quilltap-core/src/services/backup/restore/orchestrator.rs", "backfill_official_store", "find_by_mount_point_and_path", "no-v4-counterpart"),
     ("quilltap-core/src/services/canon_loaders.rs", "read_vault_text_file_conn", "find_by_mount_point_and_path", "swallowed-by-other-means"),
@@ -917,6 +914,16 @@ fn the_class_counts_are_pinned() {
 // (`find_many_by_mount_points_in_folder_opts_or_empty` ×2) — every one v4's
 // fallback `safeQuery` read, so every one a twin. The projection's listing is
 // re-spelled onto the `_opts` twin too.
+// **P4.D295 (−3 converted): 92 → 89** — the scenario routes moved onto the
+// scenario location (v4 `545e299bb`): `api/scenarios.rs`'s four
+// `find_by_mount_point_and_path_or_none` rows (`create_op` / `update_op` /
+// `rename_op` ×2) and `db/scenarios.rs`'s `list_scenarios_in_folder` row went
+// with their fns; the location's ONE folder read (`scenarios::location::
+// folder_docs`) and the catalogue's ONE multi-mount folder read
+// (`scenarios::everywhere::list_scenarios_everywhere`) are v4's fallback reads,
+// so twins. (The location's `find_doc` reads `find_with_link_by_mount_point_
+// and_path` inside `document_by_mount_point_and_path_or_none` — a home's
+// closure, which the scanner does not count.)
 const COUNTS: (
     usize,
     usize,
@@ -927,7 +934,7 @@ const COUNTS: (
     usize,
     usize,
     usize,
-) = (92, 14, 19, 1, 13, 5, 1, 20, 5);
+) = (89, 14, 19, 1, 13, 5, 1, 20, 5);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
 /// the fold-episode pass's two memory reads (then `services/fold_episode_pass.rs`

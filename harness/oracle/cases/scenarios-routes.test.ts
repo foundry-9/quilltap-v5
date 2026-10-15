@@ -16,6 +16,16 @@
  * REAL modules (past jest.setup) + the real cipher binding — the exact mold of
  * groups-routes.test.ts.
  *
+ * P4.D295 (v4 `545e299bb` at the `83334b9a5` pin): every case also records the
+ * scenario lines it logged (`lines` — the location's, the factory's L16–L18,
+ * the catalogue's L12 / L19, the union's L20, the create hooks' L38 and the
+ * `Project created` / `Group created` INFOs), rendered `LEVEL message k=v`
+ * (an array / object field as `kJson`, the logger's error argument as
+ * `error=<message>`), and the P4.D295 rows add the location's route edges
+ * (Δ10–Δ13), the `%` rows of L-6 / R-Z, the catalogue and the by-ref read, the
+ * union's per-group WARN and both create hooks. Minted ids in a create hook's
+ * lines are masked to `<id>` / `<mount>`.
+ *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-gp-oracle
@@ -61,6 +71,109 @@ function mockRequest(url: string, body?: unknown): unknown {
     headers: new Headers({ 'Content-Type': 'application/json' }),
     json: jest.fn().mockResolvedValue(body ?? {}),
   };
+}
+
+/** [P4.D295] The scenario lines a case logs (see the header). */
+const LINE_PREFIXES = [
+  '[ScenarioLocation] ',
+  '[ScenariosEverywhere] ',
+  '[General v1] ',
+  '[Projects v1] ',
+  '[Groups v1] ',
+  'Scenario file body is empty; skipping',
+  'Scenarios: multiple isDefault: true entries',
+  'Failed to demote a previously-default scenario',
+];
+let capturedLines: string[] = [];
+
+function renderField(k: string, v: unknown): string {
+  if (v === null || v === undefined) return ` ${k}=null`;
+  if (Array.isArray(v) || typeof v === 'object') return ` ${k}Json=${JSON.stringify(v)}`;
+  return ` ${k}=${String(v)}`;
+}
+
+async function installCapture(): Promise<void> {
+  capturedLines = [];
+  const { logger } = await import('@/lib/logger');
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as {
+        level: string;
+        message: string;
+        context?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!LINE_PREFIXES.some((p) => data.message.startsWith(p))) return;
+      const { service: _s, environment: _e, ...fields } = data.context ?? {};
+      let line = `${data.level.toUpperCase()} ${data.message}`;
+      for (const [k, v] of Object.entries(fields)) line += renderField(k, v);
+      if (data.error) line += ` error=${data.error.message}`;
+      capturedLines.push(line);
+    },
+  });
+}
+
+/** [P4.D295] A raw mount-index statement on the fresh per-case copy. */
+async function mountExec(sql: string, ...args: unknown[]): Promise<void> {
+  const { getRawMountIndexDatabase } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
+  const midb = getRawMountIndexDatabase() as unknown as {
+    prepare: (s: string) => { run: (...a: unknown[]) => unknown };
+    exec: (s: string) => unknown;
+  };
+  if (args.length === 0) midb.exec(sql);
+  else midb.prepare(sql).run(...args);
+}
+async function mainExec(sql: string, ...args: unknown[]): Promise<void> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const main = getRawDatabase() as unknown as {
+    prepare: (s: string) => { run: (...a: unknown[]) => unknown };
+  };
+  main.prepare(sql).run(...args);
+}
+/** Drop a store's `<folder>/` row so a probe can be seen NOT to heal it. */
+function dropFolder(scope: 'group' | 'project' | 'general' | 'beacon', folder: string) {
+  return async () => {
+    const mp = await scopeMount(scope);
+    await mountExec(
+      'DELETE FROM "doc_mount_folders" WHERE "mountPointId" = ? AND LOWER("path") = ?',
+      mp,
+      folder.toLowerCase(),
+    );
+  };
+}
+/** Make any NEW `Scenarios/` folder row fail to insert — the heal's failure. */
+const plantFolderFailure = () =>
+  mountExec(
+    `CREATE TRIGGER "qt_p4d295_folder_failure" BEFORE INSERT ON "doc_mount_folders"
+     WHEN LOWER(NEW."path") = 'scenarios'
+     BEGIN SELECT RAISE(ABORT, 'planted folder failure'); END`,
+  );
+async function folderState(scope: 'group' | 'project' | 'general' | 'beacon') {
+  const mp = await scopeMount(scope);
+  const { getRawMountIndexDatabase } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
+  const midb = getRawMountIndexDatabase() as unknown as {
+    prepare: (s: string) => { get: (...a: unknown[]) => { n: number } };
+  };
+  const has = (f: string) =>
+    midb
+      .prepare('SELECT COUNT(*) AS n FROM "doc_mount_folders" WHERE "mountPointId" = ? AND LOWER("path") = ?')
+      .get(mp, f).n > 0;
+  return { scenarios: has('scenarios'), knowledge: has('knowledge') };
+}
+/** ARIA's vault mount (the character `?action=read` row). */
+async function ariaVault(): Promise<string> {
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const row = (await getRepositories().characters.findByIdRaw(ARIA)) as {
+    characterDocumentMountPointId?: string | null;
+  } | null;
+  const mp = row?.characterDocumentMountPointId;
+  if (!mp) throw new Error('ARIA has no vault');
+  return mp;
 }
 
 function applyMocks(spec: Spec): void {
@@ -110,6 +223,12 @@ interface CaseSpec {
    *  so a write is proven through the file BYTES (frontmatter key order
    *  included), not just the response body. `null` when the file is gone. */
   readBack?: { scope: 'group' | 'project' | 'general' | 'beacon'; file: string };
+  /** [P4.D295] After `run`, emit which of `Scenarios/` / `Knowledge/` the
+   *  scope's store holds — a probe must not heal, a write must. */
+  folderAfter?: 'group' | 'project' | 'general' | 'beacon';
+  /** [P4.D295] Mask the created entity's minted ids in the lines (a create
+   *  hook) — `<entity>.id` → `<id>`, `.officialMountPointId` → `<mount>`. */
+  maskEntity?: 'project' | 'group';
 }
 
 /** [P4.D120] The mount id behind each scenario scope, resolved at run time. */
@@ -206,12 +325,25 @@ async function runCase(
   await initializeDatabase();
   try {
     if (c.prep) await c.prep();
+    await installCapture();
     const out = await c.run();
+    let lines = capturedLines;
+    if (c.maskEntity) {
+      const ent = (out.body as Record<string, Record<string, string | null>> | null)?.[c.maskEntity];
+      for (const [value, token] of [
+        [ent?.id, '<id>'],
+        [ent?.officialMountPointId, '<mount>'],
+      ] as Array<[string | null | undefined, string]>) {
+        if (value) lines = lines.map((l) => l.split(value).join(token));
+      }
+    }
     const payload: Record<string, unknown> = {
       name: c.name,
       status: out.status,
       body: out.body,
+      lines,
     };
+    if (c.folderAfter) payload.folders = await folderState(c.folderAfter);
     if (c.readBack) {
       payload.fileBytes = await readScenarioBytes(c.readBack.scope, c.readBack.file);
     }
@@ -277,6 +409,16 @@ async function projectItem(
   const ctx = { params: Promise.resolve({ id, scenarioPath }) };
   return respond(await route[method](req, ctx));
 }
+async function projectsRoot(body: unknown) {
+  const route = await loadRoute('@/app/api/v1/projects/route');
+  const req = mockRequest(`${B}/projects`, body);
+  return respond(await route.POST(req));
+}
+async function groupsRoot(body: unknown) {
+  const route = await loadRoute('@/app/api/v1/groups/route');
+  const req = mockRequest(`${B}/groups`, body);
+  return respond(await route.POST(req));
+}
 async function generalCollection(method: 'GET' | 'POST', body?: unknown, query = '') {
   const route = await loadRoute('@/app/api/v1/scenarios/route');
   const req = mockRequest(`${B}/scenarios${query}`, body);
@@ -316,7 +458,12 @@ async function main(): Promise<void> {
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  // [P4.D295] DEBUG: the location's L1 and its write lines are DEBUG.
+  process.env.LOG_LEVEL = 'debug';
+
+  const MISSING_PROJECT = 'a3000000-0000-4000-8000-0000000000ff';
+  const readQuery = (mp: string | null, path: string | null) =>
+    `?action=read${mp === null ? '' : `&mountPointId=${mp}`}${path === null ? '' : `&path=${encodeURIComponent(path)}`}`;
 
   const cases: CaseSpec[] = [
     // --- Groups: reads ---
@@ -671,6 +818,185 @@ async function main(): Promise<void> {
       name: 'general_get_unprov',
       prep: unprovisionGeneral,
       run: () => generalItem('GET', 'aurora.md'),
+    },
+    // ── P4.D295 (v4 `545e299bb`): the location's route edges ────────────────
+    {
+      // Δ12: `body.min(1)` passes a whitespace-only body; the file is WRITTEN,
+      // then the re-read parses to nothing → 404 `Scenario not found`.
+      name: 'project_create_whitespace_body_written_then_404',
+      run: () => projectCollection('POST', IOTA, { filename: 'ws', body: '   ' }),
+      readBack: { scope: 'project', file: 'ws.md' },
+    },
+    {
+      // Δ13: the collection create parses the body FIRST — an invalid body for
+      // a missing project is 400, not 404.
+      name: 'project_create_invalid_body_missing_project_is_400',
+      run: () => projectCollection('POST', MISSING_PROJECT, { filename: 'x', body: '' }),
+    },
+    {
+      name: 'project_create_valid_body_missing_project_is_404',
+      run: () => projectCollection('POST', MISSING_PROJECT, { filename: 'x', body: 'y' }),
+    },
+    {
+      // Δ11: a same-name rename of a MISSING file is 404 (it used to answer 200).
+      name: 'project_rename_same_name_missing_is_404',
+      run: () => projectItem('POST', IOTA, 'ghost.md', { newFilename: 'ghost' }, '?action=rename'),
+    },
+    {
+      // The same-name rename of an EXISTING file now logs `Renamed`.
+      name: 'project_rename_same_name_existing_logs',
+      run: () => projectItem('POST', IOTA, 'opening.md', { newFilename: 'opening' }, '?action=rename'),
+    },
+    {
+      name: 'project_rename_empty_new_filename_is_400',
+      run: () => projectItem('POST', IOTA, 'opening.md', { newFilename: '' }, '?action=rename'),
+    },
+    {
+      // A GET is a probe: a store whose `Scenarios/` row is gone is NOT healed.
+      name: 'project_get_no_folder_never_heals',
+      prep: dropFolder('project', 'Scenarios'),
+      run: () => projectItem('GET', IOTA, 'opening.md'),
+      folderAfter: 'project',
+    },
+    {
+      // ...and a write heals it.
+      name: 'project_put_heals_folder',
+      prep: dropFolder('project', 'Scenarios'),
+      run: () => projectItem('PUT', IOTA, 'opening.md', { name: 'Opening', body: 'Healed.' }),
+      folderAfter: 'project',
+    },
+    {
+      // The group's `afterEnsure` heals `Knowledge/` on a write.
+      name: 'group_put_heals_knowledge',
+      prep: dropFolder('group', 'Knowledge'),
+      run: () => groupItem('PUT', GAMMA, 'prologue.md', { name: 'Prologue', body: 'Again.' }),
+      folderAfter: 'group',
+    },
+    {
+      // ...but never on a GET.
+      name: 'group_get_never_heals_knowledge',
+      prep: dropFolder('group', 'Knowledge'),
+      run: () => groupItem('GET', GAMMA, 'prologue.md'),
+      folderAfter: 'group',
+    },
+    {
+      // L-6: v4 decodes the route segment (here the HTTP encoding of the
+      // dispatch string `a%20b.md`) and the location decodes again — v5's
+      // single inner decode reads the same `Scenarios/a b.md`.
+      name: 'project_get_percent_decoded_once',
+      prep: () => seedScenario('project', 'a b.md', '---\nname: Spaced\n---\n\nA spaced file.'),
+      run: () => projectItem('GET', IOTA, encodeURIComponent('a%20b.md')),
+    },
+    {
+      // R-Z: a malformed escape THROWS inside the location's read — the GET's
+      // catch logs L17 and answers 500.
+      name: 'project_get_malformed_percent_500',
+      run: () => projectItem('GET', IOTA, encodeURIComponent('%E0.md')),
+    },
+    {
+      name: 'project_put_malformed_percent_500',
+      run: () => projectItem('PUT', IOTA, encodeURIComponent('%E0.md'), { body: 'x' }),
+    },
+    {
+      // The collection ensure's folder heal fails: the location's L2, then L18.
+      name: 'project_list_folder_failure_500',
+      prep: async () => {
+        await dropFolder('project', 'Scenarios')();
+        await plantFolderFailure();
+      },
+      run: () => projectCollection('GET', IOTA),
+    },
+    {
+      // The union: a group whose folder heal fails is skipped with L20.
+      name: 'union_folder_failure_skips_with_warn',
+      prep: async () => {
+        await dropFolder('group', 'Scenarios')();
+        await dropFolder('beacon', 'Scenarios')();
+        await plantFolderFailure();
+      },
+      run: () => groupsUnion(ARIA),
+    },
+    {
+      // An empty group name: v4's row schema refuses it, so the raw read drops
+      // the group and the union skips it (`name || 'Group'` is unreachable
+      // through the real repositories).
+      name: 'union_empty_group_name_dropped',
+      prep: () => mainExec('UPDATE "groups" SET "name" = ? WHERE "id" = ?', '', BEACON),
+      run: () => groupsUnion(ARIA),
+    },
+    // --- the catalogue + the by-ref read (`scenarios/route.ts:47-69`) ---
+    { name: 'general_everywhere', run: () => generalCollection('GET', undefined, '?action=everywhere') },
+    {
+      name: 'general_everywhere_archived',
+      prep: () => seedScenario('project', 'mothballed.md', ARCHIVED_FILE),
+      run: () => generalCollection('GET', undefined, '?action=everywhere&includeArchived=true'),
+    },
+    {
+      name: 'general_read_missing_mount_point_id',
+      run: () => generalCollection('GET', undefined, readQuery(null, 'Scenarios/aurora.md')),
+    },
+    {
+      name: 'general_read_missing_path',
+      run: async () => generalCollection('GET', undefined, readQuery(await scopeMount('general'), null)),
+    },
+    {
+      name: 'general_read_refused_bad_path',
+      run: async () => generalCollection('GET', undefined, readQuery(await scopeMount('general'), '../x.md')),
+    },
+    {
+      name: 'general_read_refused_not_an_owner',
+      run: () => generalCollection('GET', undefined, readQuery('a9000000-0000-4000-8000-0000000000ff', 'Scenarios/x.md')),
+    },
+    {
+      name: 'general_read_missing_file',
+      run: async () => generalCollection('GET', undefined, readQuery(await scopeMount('general'), 'Scenarios/ghost.md')),
+    },
+    {
+      name: 'general_read_ok_general_bare_name',
+      run: async () => generalCollection('GET', undefined, readQuery(await scopeMount('general'), 'aurora')),
+    },
+    {
+      name: 'general_read_ok_project',
+      run: async () => generalCollection('GET', undefined, readQuery(await scopeMount('project'), 'Scenarios/opening.md')),
+    },
+    {
+      name: 'general_read_ok_character',
+      prep: async () => {
+        const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+        await writeDatabaseDocument(await ariaVault(), 'Scenarios/Arrival.md', '# The Arrival\n\nDawn at the station.');
+      },
+      run: async () => generalCollection('GET', undefined, readQuery(await ariaVault(), 'Scenarios/Arrival.md')),
+    },
+    {
+      // R-Z: no try/catch on `?action=read` — a malformed escape is the
+      // middleware's 500.
+      name: 'general_read_malformed_percent',
+      run: async () => generalCollection('GET', undefined, readQuery(await scopeMount('general'), 'Scenarios/%E0.md')),
+    },
+    // --- the create hooks (`projects/route.ts:85-99`, `groups/route.ts:100-115`) ---
+    {
+      name: 'project_create_hook',
+      run: () => projectsRoot({ name: 'Hooked' }),
+      maskEntity: 'project',
+    },
+    {
+      // The hook's folder heal fails: the create still succeeds; the
+      // location's L2, then the route's L38.
+      name: 'project_create_hook_folder_failure',
+      prep: plantFolderFailure,
+      run: () => projectsRoot({ name: 'Hooked' }),
+      maskEntity: 'project',
+    },
+    {
+      name: 'group_create_hook',
+      run: () => groupsRoot({ name: 'Hooked' }),
+      maskEntity: 'group',
+    },
+    {
+      name: 'group_create_hook_folder_failure',
+      prep: plantFolderFailure,
+      run: () => groupsRoot({ name: 'Hooked' }),
+      maskEntity: 'group',
     },
   ];
 

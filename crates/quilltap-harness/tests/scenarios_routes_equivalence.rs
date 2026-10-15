@@ -31,7 +31,6 @@ const BOGUS: &str = "a1000000-0000-4000-8000-0000000000ff";
 #[serde(rename_all = "camelCase")]
 struct Spec {
     test_pepper_base64: String,
-    #[allow(dead_code)]
     user_id: String,
 }
 
@@ -66,21 +65,6 @@ fn canon_numbers(v: &mut Value) {
         _ => {}
     }
 }
-fn sorted(v: &Value) -> Value {
-    match v {
-        Value::Array(a) => Value::Array(a.iter().map(sorted).collect()),
-        Value::Object(o) => {
-            let mut keys: Vec<&String> = o.keys().collect();
-            keys.sort();
-            let mut m = serde_json::Map::new();
-            for k in keys {
-                m.insert(k.clone(), sorted(&o[k]));
-            }
-            Value::Object(m)
-        }
-        _ => v.clone(),
-    }
-}
 /// Blank the mint-time document timestamps on any scenario object (create/update
 /// rewrite files → fresh wall-clock ts that differ v4-vs-v5).
 fn blank_ts(v: &mut Value) {
@@ -103,7 +87,9 @@ fn norm(v: &Value, blank: bool) -> String {
     if blank {
         blank_ts(&mut v);
     }
-    serde_json::to_string_pretty(&sorted(&v)).unwrap()
+    // P4.D295: bodies compare in KEY ORDER (v4's object-literal order is part
+    // of the wire contract; `serde_json` map equality would be order-blind).
+    serde_json::to_string_pretty(&v).unwrap()
 }
 fn first_diff(got: &str, want: &str) -> String {
     let g: Vec<&str> = got.lines().collect();
@@ -172,6 +158,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> ScratchDb {
         &spec.test_pepper_base64,
     )
     .expect("open db");
+    // Nothing the open logs belongs to the case.
+    let _ = take_lines();
     ScratchDb { db, _dir: scratch }
 }
 
@@ -186,6 +174,107 @@ fn unprovision_general(db: &Db) {
         Ok(())
     })
     .expect("unprovision general");
+}
+
+/// [P4.D295] The scenario lines a case logs — the v4 case captures the same
+/// set (see its header).
+const LINE_PREFIXES: &[&str] = &[
+    "[ScenarioLocation] ",
+    "[ScenariosEverywhere] ",
+    "[General v1] ",
+    "[Projects v1] ",
+    "[Groups v1] ",
+    "Scenario file body is empty; skipping",
+    "Scenarios: multiple isDefault: true entries",
+    "Failed to demote a previously-default scenario",
+];
+
+/// The rows whose v4 route param the oracle HTTP-ENCODES (L-6: v4's factory
+/// decodes the route segment once more than v5's dispatch path needs). Their
+/// L17 `scenarioPath` field is v4's raw route param — the ENCODED string —
+/// where v5 logs the logical path, so the comparison encodes v5's field.
+const ENCODED_PARAM_ROWS: &[&str] = &[
+    "project_get_malformed_percent_500",
+    "project_put_malformed_percent_500",
+];
+
+/// A PROCESS-GLOBAL capture (the `system_restore_state` precedent): every
+/// handler here runs inside `with_both_conns`, on the WRITER thread, where a
+/// thread-scoped subscriber sees nothing. Installed once per binary.
+fn global_capture() -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
+    static BUF: std::sync::OnceLock<std::sync::Arc<std::sync::Mutex<Vec<String>>>> =
+        std::sync::OnceLock::new();
+    BUF.get_or_init(|| {
+        use tracing_subscriber::layer::SubscriberExt;
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry()
+            .with(quilltap_core::test_support::CaptureLayer(buf.clone()));
+        tracing::subscriber::set_global_default(subscriber).expect("one global capture per binary");
+        buf
+    })
+    .clone()
+}
+
+/// The scenario lines logged since the last call, `LEVEL message k=v` (the
+/// v5 target dropped), and the buffer cleared.
+fn take_lines() -> Vec<String> {
+    let buf = global_capture();
+    let mut b = buf.lock().unwrap();
+    let out = b
+        .iter()
+        .filter_map(|l| {
+            let (level, rest) = l.split_once(' ')?;
+            let (_target, rest) = rest.split_once(' ')?;
+            LINE_PREFIXES
+                .iter()
+                .any(|p| rest.starts_with(p))
+                .then(|| format!("{level} {rest}"))
+        })
+        .collect();
+    b.clear();
+    out
+}
+
+/// JavaScript `encodeURIComponent`.
+fn js_encode_uri_component(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+/// Replace a created entity's minted ids in its lines (the create hooks).
+fn mask_entity(lines: Vec<String>, entity: &Value) -> Vec<String> {
+    let mut out = lines;
+    for (key, token) in [("id", "<id>"), ("officialMountPointId", "<mount>")] {
+        if let Some(v) = entity.get(key).and_then(Value::as_str) {
+            out = out.into_iter().map(|l| l.replace(v, token)).collect();
+        }
+    }
+    out
+}
+
+/// Which of `Scenarios/` / `Knowledge/` a store holds — the v4 case's
+/// `folders`.
+fn folder_state(db: &Db, mp: &str) -> Value {
+    let mp = mp.to_string();
+    db.read_mount_index(move |conn| {
+        let has = |f: &str| -> rusqlite::Result<bool> {
+            conn.query_row(
+                "SELECT COUNT(*) FROM doc_mount_folders WHERE mountPointId = ?1 AND LOWER(path) = ?2",
+                rusqlite::params![mp, f],
+                |r| r.get::<_, i64>(0),
+            )
+            .map(|n| n > 0)
+        };
+        Ok(json!({ "scenarios": has("scenarios")?, "knowledge": has("knowledge")? }))
+    })
+    .expect("folder state")
 }
 
 #[test]
@@ -211,8 +300,43 @@ fn scenarios_routes_match_oracle() {
         .unwrap();
     let mut failed: Vec<String> = Vec::new();
 
+    // [P4.D295] Every case's scenario lines, in order, against v4's.
+    let lines_check = |name: &str, got: Vec<String>, failed: &mut Vec<String>| {
+        let want: Vec<String> = oracle[name]["lines"]
+            .as_array()
+            .unwrap_or_else(|| panic!("[{name}] the oracle row carries no `lines`"))
+            .iter()
+            .map(|l| l.as_str().unwrap().to_string())
+            .collect();
+        let got: Vec<String> = if ENCODED_PARAM_ROWS.contains(&name) {
+            got.into_iter()
+                .map(|l| match l.split_once(" scenarioPath=") {
+                    Some((head, rest)) => {
+                        let (path, tail) = rest.split_once(" error=").unwrap_or((rest, ""));
+                        let tail = if tail.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" error={tail}")
+                        };
+                        format!(
+                            "{head} scenarioPath={}{tail}",
+                            js_encode_uri_component(path)
+                        )
+                    }
+                    None => l,
+                })
+                .collect()
+        } else {
+            got
+        };
+        if got != want {
+            eprintln!("[{name}] LINES MISMATCH:\n  v4: {want:#?}\n  v5: {got:#?}");
+            failed.push(format!("{name}(lines)"));
+        }
+    };
     // Success case: compare response_data (optionally ts-blanked) to oracle body.
     let ok = |name: &str, resp: &Response, blank: bool, failed: &mut Vec<String>| {
+        lines_check(name, take_lines(), failed);
         if let Response::Error(e) = resp {
             eprintln!(
                 "[{name}] expected success, got error {:?}: {}",
@@ -235,6 +359,7 @@ fn scenarios_routes_match_oracle() {
     };
     // Error case: compare the Error kind's HTTP status + message.
     let err = |name: &str, resp: &Response, failed: &mut Vec<String>| {
+        lines_check(name, take_lines(), failed);
         let want = &oracle[name];
         let want_status = want["status"].as_i64().unwrap();
         let want_msg = want["body"]["error"].as_str().unwrap_or("");
@@ -266,7 +391,12 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "g_list");
         ok(
             "group_list",
-            &rt.block_on(groups::group_scenario_list(&db, GAMMA, false)),
+            &rt.block_on(groups::group_scenario_list(
+                &db,
+                GAMMA,
+                false,
+                &spec.user_id,
+            )),
             false,
             &mut failed,
         );
@@ -275,7 +405,12 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "g_get");
         ok(
             "group_get",
-            &rt.block_on(groups::group_scenario_get(&db, GAMMA, "prologue.md")),
+            &rt.block_on(groups::group_scenario_get(
+                &db,
+                GAMMA,
+                "prologue.md",
+                &spec.user_id,
+            )),
             false,
             &mut failed,
         );
@@ -284,7 +419,12 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "g_get_miss");
         err(
             "group_get_missing",
-            &rt.block_on(groups::group_scenario_get(&db, GAMMA, "ghost.md")),
+            &rt.block_on(groups::group_scenario_get(
+                &db,
+                GAMMA,
+                "ghost.md",
+                &spec.user_id,
+            )),
             &mut failed,
         );
     }
@@ -292,7 +432,12 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "g_get_nest");
         err(
             "group_get_nested",
-            &rt.block_on(groups::group_scenario_get(&db, GAMMA, "sub/deep.md")),
+            &rt.block_on(groups::group_scenario_get(
+                &db,
+                GAMMA,
+                "sub/deep.md",
+                &spec.user_id,
+            )),
             &mut failed,
         );
     }
@@ -303,6 +448,7 @@ fn scenarios_routes_match_oracle() {
             &db,
             GAMMA,
             json!({ "filename": "Fresh: Take", "name": "Fresh Take", "isDefault": true, "body": "Anew." }),
+            &spec.user_id,
         ));
         ok("group_create", &resp, true, &mut failed);
     }
@@ -312,6 +458,7 @@ fn scenarios_routes_match_oracle() {
             &db,
             GAMMA,
             json!({ "filename": "prologue", "body": "dup" }),
+            &spec.user_id,
         ));
         err("group_create_collision", &resp, &mut failed);
     }
@@ -324,6 +471,7 @@ fn scenarios_routes_match_oracle() {
             "interlude.md",
             json!({ "name": "Interlude II", "body": "Changed." }),
             false,
+            &spec.user_id,
         ));
         ok("group_update", &resp, true, &mut failed);
     }
@@ -335,6 +483,7 @@ fn scenarios_routes_match_oracle() {
             "interlude.md",
             json!({ "body": "" }),
             false,
+            &spec.user_id,
         ));
         err("group_update_emptybody", &resp, &mut failed);
     }
@@ -346,6 +495,7 @@ fn scenarios_routes_match_oracle() {
             "ghost.md",
             json!({ "body": "x" }),
             false,
+            &spec.user_id,
         ));
         err("group_update_missing", &resp, &mut failed);
     }
@@ -358,6 +508,7 @@ fn scenarios_routes_match_oracle() {
             "interlude.md",
             "interlude-2",
             false,
+            &spec.user_id,
         ));
         ok("group_rename", &resp, false, &mut failed);
     }
@@ -369,6 +520,7 @@ fn scenarios_routes_match_oracle() {
             "interlude.md",
             "interlude",
             false,
+            &spec.user_id,
         ));
         ok("group_rename_noop", &resp, false, &mut failed);
     }
@@ -380,6 +532,7 @@ fn scenarios_routes_match_oracle() {
             "interlude.md",
             "prologue",
             false,
+            &spec.user_id,
         ));
         err("group_rename_conflict", &resp, &mut failed);
     }
@@ -391,12 +544,19 @@ fn scenarios_routes_match_oracle() {
             GAMMA,
             "interlude.md",
             false,
+            &spec.user_id,
         ));
         ok("group_delete", &resp, false, &mut failed);
     }
     {
         let db = fresh_db(&spec, "g_delete_miss");
-        let resp = rt.block_on(groups::group_scenario_delete(&db, GAMMA, "ghost.md", false));
+        let resp = rt.block_on(groups::group_scenario_delete(
+            &db,
+            GAMMA,
+            "ghost.md",
+            false,
+            &spec.user_id,
+        ));
         err("group_delete_missing", &resp, &mut failed);
     }
     // --- Participant-union ---
@@ -406,6 +566,7 @@ fn scenarios_routes_match_oracle() {
             &db,
             vec![ARIA.to_string()],
             false,
+            &spec.user_id,
         ));
         ok("union_aria", &resp, false, &mut failed);
     }
@@ -415,12 +576,18 @@ fn scenarios_routes_match_oracle() {
             &db,
             vec![BRAM.to_string()],
             false,
+            &spec.user_id,
         ));
         ok("union_bram", &resp, false, &mut failed);
     }
     {
         let db = fresh_db(&spec, "u_empty");
-        let resp = rt.block_on(groups::group_scenarios_union(&db, vec![], false));
+        let resp = rt.block_on(groups::group_scenarios_union(
+            &db,
+            vec![],
+            false,
+            &spec.user_id,
+        ));
         ok("union_empty", &resp, false, &mut failed);
     }
     {
@@ -429,6 +596,7 @@ fn scenarios_routes_match_oracle() {
             &db,
             vec![BOGUS.to_string()],
             false,
+            &spec.user_id,
         ));
         ok("union_unknown", &resp, false, &mut failed);
     }
@@ -438,7 +606,12 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "p_list");
         ok(
             "project_list",
-            &rt.block_on(projects::project_scenario_list(&db, IOTA, false)),
+            &rt.block_on(projects::project_scenario_list(
+                &db,
+                IOTA,
+                false,
+                &spec.user_id,
+            )),
             false,
             &mut failed,
         );
@@ -447,7 +620,12 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "p_get");
         ok(
             "project_get",
-            &rt.block_on(projects::project_scenario_get(&db, IOTA, "opening.md")),
+            &rt.block_on(projects::project_scenario_get(
+                &db,
+                IOTA,
+                "opening.md",
+                &spec.user_id,
+            )),
             false,
             &mut failed,
         );
@@ -456,7 +634,12 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "p_get_miss");
         err(
             "project_get_missing",
-            &rt.block_on(projects::project_scenario_get(&db, IOTA, "ghost.md")),
+            &rt.block_on(projects::project_scenario_get(
+                &db,
+                IOTA,
+                "ghost.md",
+                &spec.user_id,
+            )),
             &mut failed,
         );
     }
@@ -464,7 +647,12 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "p_get_nest");
         err(
             "project_get_nested",
-            &rt.block_on(projects::project_scenario_get(&db, IOTA, "sub/deep.md")),
+            &rt.block_on(projects::project_scenario_get(
+                &db,
+                IOTA,
+                "sub/deep.md",
+                &spec.user_id,
+            )),
             &mut failed,
         );
     }
@@ -474,6 +662,7 @@ fn scenarios_routes_match_oracle() {
             &db,
             IOTA,
             json!({ "filename": "Act Two", "description": "The middle", "isDefault": true, "body": "It deepens." }),
+            &spec.user_id,
         ));
         ok("project_create", &resp, true, &mut failed);
     }
@@ -483,6 +672,7 @@ fn scenarios_routes_match_oracle() {
             &db,
             IOTA,
             json!({ "filename": "opening", "body": "dup" }),
+            &spec.user_id,
         ));
         err("project_create_collision", &resp, &mut failed);
     }
@@ -494,6 +684,7 @@ fn scenarios_routes_match_oracle() {
             "climax.md",
             json!({ "name": "Climax!", "body": "Peak." }),
             false,
+            &spec.user_id,
         ));
         ok("project_update", &resp, true, &mut failed);
     }
@@ -505,6 +696,7 @@ fn scenarios_routes_match_oracle() {
             "climax.md",
             json!({ "body": "" }),
             false,
+            &spec.user_id,
         ));
         err("project_update_emptybody", &resp, &mut failed);
     }
@@ -516,6 +708,7 @@ fn scenarios_routes_match_oracle() {
             "climax.md",
             "climax-2",
             false,
+            &spec.user_id,
         ));
         ok("project_rename", &resp, false, &mut failed);
     }
@@ -527,6 +720,7 @@ fn scenarios_routes_match_oracle() {
             "climax.md",
             "opening",
             false,
+            &spec.user_id,
         ));
         err("project_rename_conflict", &resp, &mut failed);
     }
@@ -537,13 +731,18 @@ fn scenarios_routes_match_oracle() {
             IOTA,
             "climax.md",
             false,
+            &spec.user_id,
         ));
         ok("project_delete", &resp, false, &mut failed);
     }
     {
         let db = fresh_db(&spec, "p_delete_miss");
         let resp = rt.block_on(projects::project_scenario_delete(
-            &db, IOTA, "ghost.md", false,
+            &db,
+            IOTA,
+            "ghost.md",
+            false,
+            &spec.user_id,
         ));
         err("project_delete_missing", &resp, &mut failed);
     }
@@ -553,7 +752,7 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "gen_list");
         ok(
             "general_list",
-            &rt.block_on(scenarios::scenario_list(&db, false)),
+            &rt.block_on(scenarios::scenario_list(&db, false, &spec.user_id)),
             false,
             &mut failed,
         );
@@ -562,7 +761,11 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "gen_get");
         ok(
             "general_get",
-            &rt.block_on(scenarios::scenario_get(&db, "aurora.md".into())),
+            &rt.block_on(scenarios::scenario_get(
+                &db,
+                "aurora.md".into(),
+                &spec.user_id,
+            )),
             false,
             &mut failed,
         );
@@ -571,7 +774,11 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "gen_get_miss");
         err(
             "general_get_missing",
-            &rt.block_on(scenarios::scenario_get(&db, "ghost.md".into())),
+            &rt.block_on(scenarios::scenario_get(
+                &db,
+                "ghost.md".into(),
+                &spec.user_id,
+            )),
             &mut failed,
         );
     }
@@ -580,6 +787,7 @@ fn scenarios_routes_match_oracle() {
         let resp = rt.block_on(scenarios::scenario_create(
             &db,
             json!({ "filename": "Twilight", "isDefault": true, "body": "Between." }),
+            &spec.user_id,
         ));
         ok("general_create", &resp, true, &mut failed);
     }
@@ -588,6 +796,7 @@ fn scenarios_routes_match_oracle() {
         let resp = rt.block_on(scenarios::scenario_create(
             &db,
             json!({ "filename": "aurora", "body": "dup" }),
+            &spec.user_id,
         ));
         err("general_create_collision", &resp, &mut failed);
     }
@@ -598,6 +807,7 @@ fn scenarios_routes_match_oracle() {
             "aurora.md".into(),
             json!({ "name": "Aurora II", "body": "Brighter." }),
             false,
+            &spec.user_id,
         ));
         ok("general_update", &resp, true, &mut failed);
     }
@@ -608,12 +818,18 @@ fn scenarios_routes_match_oracle() {
             "dusk.md".into(),
             "evening".into(),
             false,
+            &spec.user_id,
         ));
         ok("general_rename", &resp, false, &mut failed);
     }
     {
         let db = fresh_db(&spec, "gen_delete");
-        let resp = rt.block_on(scenarios::scenario_delete(&db, "dusk.md".into(), false));
+        let resp = rt.block_on(scenarios::scenario_delete(
+            &db,
+            "dusk.md".into(),
+            false,
+            &spec.user_id,
+        ));
         ok("general_delete", &resp, false, &mut failed);
     }
     // --- General: pre-provision race arms ---
@@ -622,7 +838,7 @@ fn scenarios_routes_match_oracle() {
         unprovision_general(&db);
         ok(
             "general_list_unprov",
-            &rt.block_on(scenarios::scenario_list(&db, false)),
+            &rt.block_on(scenarios::scenario_list(&db, false, &spec.user_id)),
             false,
             &mut failed,
         );
@@ -633,13 +849,18 @@ fn scenarios_routes_match_oracle() {
         let resp = rt.block_on(scenarios::scenario_create(
             &db,
             json!({ "filename": "x", "body": "y" }),
+            &spec.user_id,
         ));
         err("general_create_unprov", &resp, &mut failed);
     }
     {
         let db = fresh_db(&spec, "gen_get_unprov");
         unprovision_general(&db);
-        let resp = rt.block_on(scenarios::scenario_get(&db, "aurora.md".into()));
+        let resp = rt.block_on(scenarios::scenario_get(
+            &db,
+            "aurora.md".into(),
+            &spec.user_id,
+        ));
         err("general_get_unprov", &resp, &mut failed);
     }
 
@@ -762,7 +983,7 @@ fn scenarios_routes_match_oracle() {
         seed_scenario(&db, seed.0, seed.1, seed.2);
         ok(
             name,
-            &rt.block_on(groups::group_scenario_list(&db, GAMMA, include_archived)),
+            &rt.block_on(groups::group_scenario_list(&db, GAMMA, include_archived, &spec.user_id)),
             true,
             &mut failed,
         );
@@ -776,6 +997,7 @@ fn scenarios_routes_match_oracle() {
                 "filename": "Put Away", "name": "Put Away",
                 "description": "Filed for later.", "archived": true, "body": "Stored."
             }),
+            &spec.user_id,
         ));
         ok(
             "group_create_archived_writes_the_flag",
@@ -801,6 +1023,7 @@ fn scenarios_routes_match_oracle() {
             &db,
             GAMMA,
             json!({ "filename": "Still Here", "body": "Active." }),
+            &spec.user_id,
         ));
         ok(
             "group_create_active_ignores_the_query_flag",
@@ -818,6 +1041,7 @@ fn scenarios_routes_match_oracle() {
             "mothballed.md",
             json!({ "name": "Mothballed", "body": "Edited while archived." }),
             true,
+            &spec.user_id,
         ));
         ok(
             "group_update_omitting_archived_preserves_it",
@@ -842,6 +1066,7 @@ fn scenarios_routes_match_oracle() {
             "mothballed.md",
             json!({ "name": "Mothballed", "archived": false, "body": "Back in play." }),
             false,
+            &spec.user_id,
         ));
         ok(
             "group_update_restoring_deletes_the_key",
@@ -865,6 +1090,7 @@ fn scenarios_routes_match_oracle() {
             "interlude.md",
             json!({ "name": "Interlude", "archived": true, "body": "Put away." }),
             false,
+            &spec.user_id,
         ));
         ok(
             "group_update_archiving_an_active_scenario",
@@ -888,6 +1114,7 @@ fn scenarios_routes_match_oracle() {
             GAMMA,
             "interlude.md",
             true,
+            &spec.user_id,
         ));
         ok(
             "group_delete_fresh_list_honours_the_flag",
@@ -905,6 +1132,7 @@ fn scenarios_routes_match_oracle() {
             "interlude.md",
             "interlude-3",
             true,
+            &spec.user_id,
         ));
         ok(
             "group_rename_fresh_list_honours_the_flag",
@@ -925,6 +1153,7 @@ fn scenarios_routes_match_oracle() {
                 &db,
                 vec![ARIA.to_string()],
                 include_archived,
+                &spec.user_id,
             )),
             true,
             &mut failed,
@@ -938,7 +1167,12 @@ fn scenarios_routes_match_oracle() {
         seed_scenario(&db, "project", "mothballed.md", ARCHIVED_FILE);
         ok(
             name,
-            &rt.block_on(projects::project_scenario_list(&db, IOTA, include_archived)),
+            &rt.block_on(projects::project_scenario_list(
+                &db,
+                IOTA,
+                include_archived,
+                &spec.user_id,
+            )),
             true,
             &mut failed,
         );
@@ -952,6 +1186,7 @@ fn scenarios_routes_match_oracle() {
             "mothballed.md",
             json!({ "name": "Mothballed", "body": "Edited while archived." }),
             true,
+            &spec.user_id,
         ));
         ok(
             "project_update_omitting_archived_preserves_it",
@@ -975,7 +1210,11 @@ fn scenarios_routes_match_oracle() {
         seed_scenario(&db, "general", "mothballed.md", ARCHIVED_FILE);
         ok(
             name,
-            &rt.block_on(scenarios::scenario_list(&db, include_archived)),
+            &rt.block_on(scenarios::scenario_list(
+                &db,
+                include_archived,
+                &spec.user_id,
+            )),
             true,
             &mut failed,
         );
@@ -985,6 +1224,7 @@ fn scenarios_routes_match_oracle() {
         let resp = rt.block_on(scenarios::scenario_create(
             &db,
             json!({ "filename": "Put Away", "name": "Put Away", "archived": true, "body": "Stored." }),
+            &spec.user_id,
         ));
         ok(
             "general_create_archived_writes_the_flag",
@@ -1008,6 +1248,7 @@ fn scenarios_routes_match_oracle() {
             "mothballed.md".into(),
             json!({ "name": "Mothballed", "body": "Edited while archived." }),
             true,
+            &spec.user_id,
         ));
         ok(
             "general_update_omitting_archived_preserves_it",
@@ -1035,6 +1276,7 @@ fn scenarios_routes_match_oracle() {
             "mothballed.md".into(),
             json!({ "name": "Mothballed", "body": "Never lands.", "archived": null }),
             false,
+            &spec.user_id,
         ));
         err("general_update_null_archived_refuses", &resp, &mut failed);
         bytes_match(
@@ -1053,6 +1295,7 @@ fn scenarios_routes_match_oracle() {
             "mothballed.md".into(),
             json!({ "name": "Mothballed", "body": "Never lands.", "archived": "yes" }),
             false,
+            &spec.user_id,
         ));
         err("general_update_string_archived_refuses", &resp, &mut failed);
         bytes_match(
@@ -1062,6 +1305,455 @@ fn scenarios_routes_match_oracle() {
             "mothballed.md",
             &mut failed,
         );
+    }
+
+    // ── P4.D295 (v4 `545e299bb`): the location's route edges ───────────────
+    let raw_mount = |db: &Db, sql: &'static str, args: Vec<String>| {
+        db.write_blocking(move |w| {
+            let conn = w.mount_index().expect("mount writer").connection();
+            conn.execute(sql, rusqlite::params_from_iter(args.iter()))?;
+            Ok(())
+        })
+        .expect("raw mount statement");
+    };
+    let drop_folder = |db: &Db, scope: &str, folder: &str| {
+        let mp = scope_mount(db, scope);
+        raw_mount(
+            db,
+            "DELETE FROM \"doc_mount_folders\" WHERE \"mountPointId\" = ?1 AND LOWER(\"path\") = ?2",
+            vec![mp, folder.to_lowercase()],
+        );
+    };
+    let plant_folder_failure =
+        |db: &Db| {
+            db.write_blocking(|w| {
+                w.mount_index().expect("mount writer").connection().execute_batch(
+                "CREATE TRIGGER \"qt_p4d295_folder_failure\" BEFORE INSERT ON \"doc_mount_folders\"
+                 WHEN LOWER(NEW.\"path\") = 'scenarios'
+                 BEGIN SELECT RAISE(ABORT, 'planted folder failure'); END",
+            )?;
+                Ok(())
+            })
+            .expect("plant folder failure");
+        };
+    let folders_match = |name: &str, db: &Db, scope: &str, failed: &mut Vec<String>| {
+        let got = folder_state(db, &scope_mount(db, scope));
+        if got != oracle[name]["folders"] {
+            eprintln!(
+                "[{name}] FOLDERS MISMATCH: v4 {} v5 {got}",
+                oracle[name]["folders"]
+            );
+            failed.push(format!("{name}(folders)"));
+        }
+    };
+    const MISSING_PROJECT: &str = "a3000000-0000-4000-8000-0000000000ff";
+    {
+        let db = fresh_db(&spec, "p_ws_body");
+        let resp = rt.block_on(projects::project_scenario_create(
+            &db,
+            IOTA,
+            json!({ "filename": "ws", "body": "   " }),
+            &spec.user_id,
+        ));
+        err(
+            "project_create_whitespace_body_written_then_404",
+            &resp,
+            &mut failed,
+        );
+        bytes_match(
+            "project_create_whitespace_body_written_then_404",
+            &db,
+            "project",
+            "ws.md",
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "p_bad_body_missing");
+        let resp = rt.block_on(projects::project_scenario_create(
+            &db,
+            MISSING_PROJECT,
+            json!({ "filename": "x", "body": "" }),
+            &spec.user_id,
+        ));
+        err(
+            "project_create_invalid_body_missing_project_is_400",
+            &resp,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "p_ok_body_missing");
+        let resp = rt.block_on(projects::project_scenario_create(
+            &db,
+            MISSING_PROJECT,
+            json!({ "filename": "x", "body": "y" }),
+            &spec.user_id,
+        ));
+        err(
+            "project_create_valid_body_missing_project_is_404",
+            &resp,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "p_rename_same_missing");
+        let resp = rt.block_on(projects::project_scenario_rename(
+            &db,
+            IOTA,
+            "ghost.md",
+            "ghost",
+            false,
+            &spec.user_id,
+        ));
+        err(
+            "project_rename_same_name_missing_is_404",
+            &resp,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "p_rename_same_existing");
+        let resp = rt.block_on(projects::project_scenario_rename(
+            &db,
+            IOTA,
+            "opening.md",
+            "opening",
+            false,
+            &spec.user_id,
+        ));
+        ok(
+            "project_rename_same_name_existing_logs",
+            &resp,
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "p_rename_empty");
+        let resp = rt.block_on(projects::project_scenario_rename(
+            &db,
+            IOTA,
+            "opening.md",
+            "",
+            false,
+            &spec.user_id,
+        ));
+        err(
+            "project_rename_empty_new_filename_is_400",
+            &resp,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "p_get_no_folder");
+        drop_folder(&db, "project", "Scenarios");
+        let resp = rt.block_on(projects::project_scenario_get(
+            &db,
+            IOTA,
+            "opening.md",
+            &spec.user_id,
+        ));
+        ok(
+            "project_get_no_folder_never_heals",
+            &resp,
+            false,
+            &mut failed,
+        );
+        folders_match(
+            "project_get_no_folder_never_heals",
+            &db,
+            "project",
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "p_put_heals");
+        drop_folder(&db, "project", "Scenarios");
+        let resp = rt.block_on(projects::project_scenario_update(
+            &db,
+            IOTA,
+            "opening.md",
+            json!({ "name": "Opening", "body": "Healed." }),
+            false,
+            &spec.user_id,
+        ));
+        ok("project_put_heals_folder", &resp, true, &mut failed);
+        folders_match("project_put_heals_folder", &db, "project", &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "g_put_knowledge");
+        drop_folder(&db, "group", "Knowledge");
+        let resp = rt.block_on(groups::group_scenario_update(
+            &db,
+            GAMMA,
+            "prologue.md",
+            json!({ "name": "Prologue", "body": "Again." }),
+            false,
+            &spec.user_id,
+        ));
+        ok("group_put_heals_knowledge", &resp, true, &mut failed);
+        folders_match("group_put_heals_knowledge", &db, "group", &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "g_get_knowledge");
+        drop_folder(&db, "group", "Knowledge");
+        let resp = rt.block_on(groups::group_scenario_get(
+            &db,
+            GAMMA,
+            "prologue.md",
+            &spec.user_id,
+        ));
+        ok("group_get_never_heals_knowledge", &resp, false, &mut failed);
+        folders_match("group_get_never_heals_knowledge", &db, "group", &mut failed);
+    }
+    {
+        // L-6: the dispatch string `a%20b.md` — v5 decodes it once, inside the
+        // location; v4 got its HTTP encoding as the route param.
+        let db = fresh_db(&spec, "p_get_pct");
+        seed_scenario(
+            &db,
+            "project",
+            "a b.md",
+            "---\nname: Spaced\n---\n\nA spaced file.",
+        );
+        let resp = rt.block_on(projects::project_scenario_get(
+            &db,
+            IOTA,
+            "a%20b.md",
+            &spec.user_id,
+        ));
+        ok("project_get_percent_decoded_once", &resp, true, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "p_get_bad_pct");
+        let resp = rt.block_on(projects::project_scenario_get(
+            &db,
+            IOTA,
+            "%E0.md",
+            &spec.user_id,
+        ));
+        err("project_get_malformed_percent_500", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "p_put_bad_pct");
+        let resp = rt.block_on(projects::project_scenario_update(
+            &db,
+            IOTA,
+            "%E0.md",
+            json!({ "body": "x" }),
+            false,
+            &spec.user_id,
+        ));
+        err("project_put_malformed_percent_500", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "p_list_folder_fail");
+        drop_folder(&db, "project", "Scenarios");
+        plant_folder_failure(&db);
+        let resp = rt.block_on(projects::project_scenario_list(
+            &db,
+            IOTA,
+            false,
+            &spec.user_id,
+        ));
+        err("project_list_folder_failure_500", &resp, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "u_folder_fail");
+        drop_folder(&db, "group", "Scenarios");
+        drop_folder(&db, "beacon", "Scenarios");
+        plant_folder_failure(&db);
+        let resp = rt.block_on(groups::group_scenarios_union(
+            &db,
+            vec![ARIA.to_string()],
+            false,
+            &spec.user_id,
+        ));
+        ok(
+            "union_folder_failure_skips_with_warn",
+            &resp,
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "u_empty_name");
+        db.write_blocking(|w| {
+            w.main().connection().execute(
+                "UPDATE \"groups\" SET \"name\" = '' WHERE \"id\" = ?1",
+                [BEACON],
+            )?;
+            Ok(())
+        })
+        .expect("blank the group name");
+        let resp = rt.block_on(groups::group_scenarios_union(
+            &db,
+            vec![ARIA.to_string()],
+            false,
+            &spec.user_id,
+        ));
+        ok("union_empty_group_name_dropped", &resp, false, &mut failed);
+    }
+    // --- the catalogue + the by-ref read ---
+    {
+        let db = fresh_db(&spec, "gen_everywhere");
+        let resp = rt.block_on(scenarios::scenario_everywhere(&db, false, &spec.user_id));
+        ok("general_everywhere", &resp, false, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "gen_everywhere_arch");
+        seed_scenario(&db, "project", "mothballed.md", ARCHIVED_FILE);
+        let resp = rt.block_on(scenarios::scenario_everywhere(&db, true, &spec.user_id));
+        ok("general_everywhere_archived", &resp, true, &mut failed);
+    }
+    let general_mp = |db: &Db| scope_mount(db, "general");
+    let read = |db: &Db, mp: Option<String>, path: Option<&str>| {
+        rt.block_on(scenarios::scenario_read_by_ref(
+            db,
+            mp,
+            path.map(str::to_string),
+            &spec.user_id,
+        ))
+    };
+    {
+        let db = fresh_db(&spec, "read_no_mp");
+        err(
+            "general_read_missing_mount_point_id",
+            &read(&db, None, Some("Scenarios/aurora.md")),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "read_no_path");
+        err(
+            "general_read_missing_path",
+            &read(&db, Some(general_mp(&db)), None),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "read_bad_path");
+        err(
+            "general_read_refused_bad_path",
+            &read(&db, Some(general_mp(&db)), Some("../x.md")),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "read_not_owner");
+        err(
+            "general_read_refused_not_an_owner",
+            &read(
+                &db,
+                Some("a9000000-0000-4000-8000-0000000000ff".into()),
+                Some("Scenarios/x.md"),
+            ),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "read_missing");
+        err(
+            "general_read_missing_file",
+            &read(&db, Some(general_mp(&db)), Some("Scenarios/ghost.md")),
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "read_general");
+        ok(
+            "general_read_ok_general_bare_name",
+            &read(&db, Some(general_mp(&db)), Some("aurora")),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "read_project");
+        ok(
+            "general_read_ok_project",
+            &read(
+                &db,
+                Some(scope_mount(&db, "project")),
+                Some("Scenarios/opening.md"),
+            ),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "read_character");
+        let vault: String = db
+            .read_main(|c| {
+                Ok(c.query_row(
+                    "SELECT characterDocumentMountPointId FROM characters WHERE id = ?1",
+                    [ARIA],
+                    |r| r.get::<_, String>(0),
+                )?)
+            })
+            .expect("ARIA's vault");
+        {
+            let vault = vault.clone();
+            db.write_blocking(move |w| {
+                w.mount_index()
+                    .expect("mount writer")
+                    .doc_mount_file_links()
+                    .write_database_document(
+                        &vault,
+                        "Scenarios/Arrival.md",
+                        "# The Arrival\n\nDawn at the station.",
+                    )?;
+                Ok(())
+            })
+            .expect("seed ARIA's vault");
+        }
+        let _ = take_lines();
+        ok(
+            "general_read_ok_character",
+            &read(&db, Some(vault), Some("Scenarios/Arrival.md")),
+            true,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "read_bad_pct");
+        err(
+            "general_read_malformed_percent",
+            &read(&db, Some(general_mp(&db)), Some("Scenarios/%E0.md")),
+            &mut failed,
+        );
+    }
+    // --- the create hooks: the status, and the lines with the minted ids masked ---
+    for (name, kind, planted) in [
+        ("project_create_hook", "project", false),
+        ("project_create_hook_folder_failure", "project", true),
+        ("group_create_hook", "group", false),
+        ("group_create_hook_folder_failure", "group", true),
+    ] {
+        let db = fresh_db(&spec, name);
+        if planted {
+            plant_folder_failure(&db);
+        }
+        let resp = if kind == "project" {
+            rt.block_on(projects::project_create(&db, json!({ "name": "Hooked" })))
+        } else {
+            rt.block_on(groups::group_create(
+                &db,
+                "Hooked".to_string(),
+                None,
+                None,
+                None,
+                None,
+            ))
+        };
+        let data = response_data(&resp);
+        let lines = mask_entity(take_lines(), &data[kind]);
+        if matches!(resp, Response::Error(_)) || oracle[name]["status"] != 201 {
+            eprintln!("[{name}] expected a created {kind}: {resp:?}");
+            failed.push(name.to_string());
+        }
+        lines_check(name, lines, &mut failed);
     }
 
     assert!(failed.is_empty(), "scenarios-routes FAILED: {failed:?}");

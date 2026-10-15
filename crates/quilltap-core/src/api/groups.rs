@@ -20,16 +20,11 @@
 use serde_json::{json, Map, Value};
 
 use crate::collation::locale_compare;
-use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::document_store_overlay::OverlayError;
-use crate::db::ensure_official_store::ensure_official_store;
 use crate::db::group_character_members::GroupCharacterMembersRepository;
 use crate::db::group_doc_mount_links::GroupDocMountLinksRepository;
-use crate::db::groups::{
-    find_name_and_official_mount_point_id_raw, GroupCreateInput, GroupCreateOptions, GroupEntity,
-    GroupProperties, GroupsRepository,
-};
+use crate::db::groups::{GroupCreateInput, GroupCreateOptions, GroupProperties, GroupsRepository};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, DbError};
 use crate::services::image_job_common::with_both_conns;
@@ -42,9 +37,6 @@ use super::wardrobe_route_factory::GROUP_WARDROBE;
 // Shared helpers
 // ===========================================================================
 
-fn internal(e: impl std::fmt::Display) -> Response {
-    Response::error(ErrorKind::Internal, e.to_string())
-}
 fn not_found(resource: &str) -> Response {
     Response::error(ErrorKind::NotFound, format!("{resource} not found"))
 }
@@ -309,23 +301,69 @@ pub async fn group_create(
     };
     let out = with_both_conns(db, move |main, mount| {
         let repo = GroupsRepository::new(main, mount);
-        let group = repo
-            .create_with_properties(&input, &properties, &GroupCreateOptions::default())
-            .map_err(overlay_to_db)?;
-        // Best-effort Scenarios/ + Knowledge/ folder ensure (v4 non-fatal try/catch
-        // in the POST handler; the GET /scenarios path also ensures them).
-        if let Some(mp) = group.get("officialMountPointId").and_then(Value::as_str) {
-            let links = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount);
-            let _ = links.ensure_folder_path(mp, "Scenarios");
-            let _ = links.ensure_folder_path(mp, "Knowledge");
-        }
-        Ok(group)
+        repo.create_with_properties(&input, &properties, &GroupCreateOptions::default())
+            .map_err(overlay_to_db)
     })
     .await;
-    match out {
-        Ok(group) => Response::Group(json!({ "group": group })),
-        Err(e) => db_error_response(e),
+    let group = match out {
+        Ok(group) => group,
+        Err(e) => return db_error_response(e),
+    };
+    // v4 `groups/route.ts:95-98`: `logger.info('[Groups v1] Group created',
+    // { groupId: group.id, name: group.name })` — v5 never logged it before
+    // P4.D295 (the create hook below follows it).
+    let group_id = group
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let group_name = group.get("name").and_then(Value::as_str).unwrap_or("");
+    tracing::info!(groupId = %group_id, name = %group_name, "[Groups v1] Group created");
+    // v4 `groups/route.ts:100-115` (`545e299bb`): when the row has an official
+    // store, ensure `Scenarios/` through the scenario location (L1; a folder
+    // failure logs the location's L2 and RETHROWS) and `Knowledge/` in the
+    // ROW's store, caught as WARN `[Groups v1] Failed to ensure group
+    // Scenarios/Knowledge folders on create` (L38). Non-fatal. A second writer
+    // turn so the lines keep v4's order (INFO, then L1 / L2, then L38) — before
+    // P4.D295 the ensure ran inside the create's closure and dropped both
+    // errors silently.
+    if let Some(official) = group
+        .get("officialMountPointId")
+        .and_then(Value::as_str)
+        .filter(|m| !m.is_empty())
+        .map(str::to_string)
+    {
+        let gid = group_id.clone();
+        let ensured = with_both_conns(db, move |main, mount| {
+            let attempt = || -> Result<(), crate::scenarios::location::ScenarioLocationError> {
+                crate::scenarios::location::resolve_store_scenario_location(
+                    main,
+                    mount,
+                    crate::scenarios::location::ScenarioScope::Group,
+                    Some(&gid),
+                    // A group location never reads the user.
+                    super::engine::SINGLE_USER_ID,
+                    true,
+                )?;
+                scenarios_api::ensure_group_knowledge_folder(mount, &official)
+            };
+            Ok(attempt())
+        })
+        .await;
+        let failure = match ensured {
+            Ok(Ok(())) => None,
+            Ok(Err(e)) => Some(e.to_string()),
+            Err(e) => Some(crate::db::fallback::error_text(&e)),
+        };
+        if let Some(error) = failure {
+            tracing::warn!(
+                groupId = %group_id,
+                error = %error,
+                "[Groups v1] Failed to ensure group Scenarios/Knowledge folders on create"
+            );
+        }
     }
+    Response::Group(json!({ "group": group }))
 }
 
 // ===========================================================================
@@ -600,117 +638,68 @@ pub async fn group_mount_point_unlink(db: &Db, group_id: &str, mount_point_id: &
 
 // ===========================================================================
 // Scenarios (v4 groups/[id]/scenarios/route.ts + [scenarioPath]/route.ts,
-// groups/scenarios/route.ts) — P4.6n. The mount-scoped CRUD is shared in
-// [`super::scenarios`]; here we resolve the group's official store (the two
-// folder quirks: groups ensure BOTH Scenarios/ AND Knowledge/).
+// groups/scenarios/route.ts) — thin configs over the ONE scenario route
+// factory ([`super::scenarios`], v4 `scenario-item-route-factory.ts`,
+// `545e299bb`); the group tier's `afterEnsure` heals `Knowledge/` beside
+// `Scenarios/` on every write and every collection call.
 // ===========================================================================
 
-const GROUP_SCENARIOS_FOLDER: &str = "Scenarios";
-const GROUP_KNOWLEDGE_FOLDER: &str = "Knowledge";
-
-/// Ensure a group's official store + the Scenarios/ + Knowledge/ folders (v4 the
-/// collection routes' `ensureGroupOfficialStore` + folder ensures). Returns the
-/// mount id, or an early Response.
-fn ensure_group_scenarios_store(
-    main: &rusqlite::Connection,
-    mount: &rusqlite::Connection,
-    group_id: &str,
-) -> Result<Result<String, Response>, DbError> {
-    let Some((name, _fk)) = find_name_and_official_mount_point_id_raw(main, group_id)? else {
-        return Ok(Err(not_found("Group")));
+/// v4 the group scenario routes' factory config: `'Group'`, `'[Groups v1]'`,
+/// `'groupId'`, `afterEnsure: ensureGroupKnowledgeFolder`.
+pub const GROUP_SCENARIO_ROUTES: scenarios_api::ScenarioRouteConfig =
+    scenarios_api::ScenarioRouteConfig {
+        scope: crate::scenarios::location::ScenarioScope::Group,
+        owner_label: "Group",
+        log_tag: "[Groups v1]",
+        log_id_key: scenarios_api::OwnerLogKey::GroupId,
+        ensure_knowledge: true,
+        wrap: Response::Group,
     };
-    let Some(ensured) = ensure_official_store::<GroupEntity>(main, mount, group_id, &name)? else {
-        return Ok(Err(internal("Failed to ensure group document store")));
-    };
-    let links = DocMountFileLinksRepository::new(mount);
-    let _ = links.ensure_folder_path(&ensured.mount_point_id, GROUP_SCENARIOS_FOLDER);
-    let _ = links.ensure_folder_path(&ensured.mount_point_id, GROUP_KNOWLEDGE_FOLDER);
-    Ok(Ok(ensured.mount_point_id))
-}
-
-/// v4 `loadGroupAndStore` — the RAW official-store pointer (404 when null) + the
-/// Scenarios/ + Knowledge/ folder ensure. Used by the [scenarioPath] item routes.
-fn load_group_scenarios_store(
-    main: &rusqlite::Connection,
-    mount: &rusqlite::Connection,
-    group_id: &str,
-) -> Result<Result<String, Response>, DbError> {
-    let Some((_name, fk)) = find_name_and_official_mount_point_id_raw(main, group_id)? else {
-        return Ok(Err(not_found("Group")));
-    };
-    let Some(mp) = fk else {
-        return Ok(Err(not_found(
-            "Group has no official document store yet — restart the server or call GET /scenarios first",
-        )));
-    };
-    let links = DocMountFileLinksRepository::new(mount);
-    let _ = links.ensure_folder_path(&mp, GROUP_SCENARIOS_FOLDER);
-    let _ = links.ensure_folder_path(&mp, GROUP_KNOWLEDGE_FOLDER);
-    Ok(Ok(mp))
-}
 
 /// v4 `GET /api/v1/groups/[id]/scenarios`.
-pub async fn group_scenario_list(db: &Db, group_id: &str, include_archived: bool) -> Response {
-    let gid = group_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let mp = match ensure_group_scenarios_store(main, mount, &gid)? {
-            Ok(mp) => mp,
-            Err(r) => return Ok(Err(r)),
-        };
-        Ok(Ok(scenarios_api::list_body(mount, &mp, include_archived)?))
-    })
-    .await;
-    match out {
-        Ok(Ok(body)) => Response::Group(body),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+pub async fn group_scenario_list(
+    db: &Db,
+    group_id: &str,
+    include_archived: bool,
+    user_id: &str,
+) -> Response {
+    scenarios_api::collection_list(
+        db,
+        GROUP_SCENARIO_ROUTES,
+        Some(group_id.to_string()),
+        include_archived,
+        user_id.to_string(),
+    )
+    .await
 }
 
 /// v4 `POST /api/v1/groups/[id]/scenarios`.
-pub async fn group_scenario_create(db: &Db, group_id: &str, bag: Value) -> Response {
-    let gid = group_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let mp = match ensure_group_scenarios_store(main, mount, &gid)? {
-            Ok(mp) => mp,
-            Err(r) => return Ok(Err(r)),
-        };
-        Ok(match scenarios_api::create_op(mount, &mp, &bag) {
-            Ok(inner) => inner,
-            Err(e) => Err(scenarios_api::write_err(e)),
-        })
-    })
-    .await;
-    match out {
-        Ok(Ok(body)) => Response::Group(body),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+pub async fn group_scenario_create(db: &Db, group_id: &str, bag: Value, user_id: &str) -> Response {
+    scenarios_api::collection_create(
+        db,
+        GROUP_SCENARIO_ROUTES,
+        Some(group_id.to_string()),
+        bag,
+        user_id.to_string(),
+    )
+    .await
 }
 
 /// v4 `GET /api/v1/groups/[id]/scenarios/[scenarioPath]`.
-pub async fn group_scenario_get(db: &Db, group_id: &str, scenario_path: &str) -> Response {
-    let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
-        Ok(p) => p,
-        Err(r) => return r,
-    };
-    let gid = group_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let mp = match load_group_scenarios_store(main, mount, &gid)? {
-            Ok(mp) => mp,
-            Err(r) => return Ok(Err(r)),
-        };
-        Ok(match scenarios_api::get_op(mount, &mp, &resolved) {
-            Ok(inner) => inner,
-            Err(e) => Err(scenarios_api::write_err(e)),
-        })
-    })
-    .await;
-    match out {
-        Ok(Ok(body)) => Response::Group(body),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+pub async fn group_scenario_get(
+    db: &Db,
+    group_id: &str,
+    scenario_path: &str,
+    user_id: &str,
+) -> Response {
+    scenarios_api::item_get(
+        db,
+        GROUP_SCENARIO_ROUTES,
+        Some(group_id.to_string()),
+        scenario_path.to_string(),
+        user_id.to_string(),
+    )
+    .await
 }
 
 /// v4 `PUT /api/v1/groups/[id]/scenarios/[scenarioPath]`.
@@ -720,30 +709,18 @@ pub async fn group_scenario_update(
     scenario_path: &str,
     bag: Value,
     include_archived: bool,
+    user_id: &str,
 ) -> Response {
-    let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
-        Ok(p) => p,
-        Err(r) => return r,
-    };
-    let gid = group_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let mp = match load_group_scenarios_store(main, mount, &gid)? {
-            Ok(mp) => mp,
-            Err(r) => return Ok(Err(r)),
-        };
-        Ok(
-            match scenarios_api::update_op(mount, &mp, &resolved, &bag, include_archived) {
-                Ok(inner) => inner,
-                Err(e) => Err(scenarios_api::write_err(e)),
-            },
-        )
-    })
-    .await;
-    match out {
-        Ok(Ok(body)) => Response::Group(body),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    scenarios_api::item_update(
+        db,
+        GROUP_SCENARIO_ROUTES,
+        Some(group_id.to_string()),
+        scenario_path.to_string(),
+        bag,
+        include_archived,
+        user_id.to_string(),
+    )
+    .await
 }
 
 /// v4 `POST /api/v1/groups/[id]/scenarios/[scenarioPath]?action=rename`.
@@ -753,31 +730,18 @@ pub async fn group_scenario_rename(
     scenario_path: &str,
     new_filename: &str,
     include_archived: bool,
+    user_id: &str,
 ) -> Response {
-    let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
-        Ok(p) => p,
-        Err(r) => return r,
-    };
-    let gid = group_id.to_string();
-    let nf = new_filename.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let mp = match load_group_scenarios_store(main, mount, &gid)? {
-            Ok(mp) => mp,
-            Err(r) => return Ok(Err(r)),
-        };
-        Ok(
-            match scenarios_api::rename_op(mount, &mp, &resolved, &nf, include_archived) {
-                Ok(inner) => inner,
-                Err(e) => Err(scenarios_api::write_err(e)),
-            },
-        )
-    })
-    .await;
-    match out {
-        Ok(Ok(body)) => Response::Group(body),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    scenarios_api::item_rename(
+        db,
+        GROUP_SCENARIO_ROUTES,
+        Some(group_id.to_string()),
+        scenario_path.to_string(),
+        new_filename.to_string(),
+        include_archived,
+        user_id.to_string(),
+    )
+    .await
 }
 
 /// v4 `DELETE /api/v1/groups/[id]/scenarios/[scenarioPath]`.
@@ -786,42 +750,36 @@ pub async fn group_scenario_delete(
     group_id: &str,
     scenario_path: &str,
     include_archived: bool,
+    user_id: &str,
 ) -> Response {
-    let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
-        Ok(p) => p,
-        Err(r) => return r,
-    };
-    let gid = group_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let mp = match load_group_scenarios_store(main, mount, &gid)? {
-            Ok(mp) => mp,
-            Err(r) => return Ok(Err(r)),
-        };
-        Ok(
-            match scenarios_api::delete_op(mount, &mp, &resolved, include_archived) {
-                Ok(inner) => inner,
-                Err(e) => Err(scenarios_api::write_err(e)),
-            },
-        )
-    })
-    .await;
-    match out {
-        Ok(Ok(body)) => Response::Group(body),
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    scenarios_api::item_delete(
+        db,
+        GROUP_SCENARIO_ROUTES,
+        Some(group_id.to_string()),
+        scenario_path.to_string(),
+        include_archived,
+        user_id.to_string(),
+    )
+    .await
 }
 
-/// v4 `GET /api/v1/groups/scenarios?characterIds=` — the participant-union. For
-/// every group that ANY supplied (user-owned) character is a member of, that
-/// group's Scenarios entries, grouped under the group name and sorted by name
-/// (ICU4X en-US). Zero-scenario groups are skipped; per-group failures are
-/// caught + skipped (not fatal). The ONE sanctioned exception to Groups'
-/// per-responding-character isolation — chat-creation menu only.
+/// v4 `GET /api/v1/groups/scenarios?characterIds=` (`groups/scenarios/route.ts:
+/// 28-99`) — the participant-union. For every group that ANY supplied
+/// (user-owned) character is a member of: resolve the group's scenario
+/// location with `ensure` (L1; heals `Scenarios/`, and a folder failure
+/// RETHROWS), skip a group with no location or an empty list, else
+/// `{groupId, groupName: <the location's owner name — name || 'Group'>,
+/// mountPointId, scenarios, warnings}`. Any per-group throw logs WARN `[Groups
+/// v1] Failed to load scenarios for a group; skipping {groupId, error}` (L20 —
+/// v5 swallowed it silently before P4.D295) and skips. Sorted by `groupName`
+/// (bare `localeCompare` → ICU4X en-US). The ONE sanctioned exception to
+/// Groups' per-responding-character isolation — a chat-creation menu only. No
+/// `Knowledge/` ensure on this route (v4 has none).
 pub async fn group_scenarios_union(
     db: &Db,
     character_ids: Vec<String>,
     include_archived: bool,
+    user_id: &str,
 ) -> Response {
     // Trim/drop empties (the query is comma-split upstream, but be faithful).
     let requested: Vec<String> = character_ids
@@ -832,6 +790,7 @@ pub async fn group_scenarios_union(
     if requested.is_empty() {
         return Response::Group(json!({ "groupScenarios": [] }));
     }
+    let user_id = user_id.to_string();
 
     let out = with_both_conns(db, move |main, mount| {
         // Only trust character ids the caller can access (user-scoped find →
@@ -860,37 +819,41 @@ pub async fn group_scenarios_union(
 
         let mut entries: Vec<Value> = Vec::new();
         for gid in &group_ids {
-            // findByIdRaw + ensureGroupOfficialStore + ensureScenariosFolder +
-            // listGroupScenarios; per-group failure caught + skipped.
-            let group_entry: Result<Option<Value>, DbError> = (|| {
-                let Some((name, _fk)) = find_name_and_official_mount_point_id_raw(main, gid)? else {
-                    return Ok(None);
-                };
-                let Some(ensured) = ensure_official_store::<GroupEntity>(main, mount, gid, &name)?
+            let entry = (|| -> Result<Option<Value>, crate::scenarios::location::ScenarioLocationError> {
+                let Some(location) = crate::scenarios::location::resolve_store_scenario_location(
+                    main,
+                    mount,
+                    crate::scenarios::location::ScenarioScope::Group,
+                    Some(gid),
+                    &user_id,
+                    true,
+                )?
                 else {
                     return Ok(None);
                 };
-                scenarios_api::ensure_scenarios_folder(mount, &ensured.mount_point_id);
-                let listed = crate::db::scenarios::list_scenarios_in_folder(
-                    mount,
-                    &ensured.mount_point_id,
-                    GROUP_SCENARIOS_FOLDER,
-                    include_archived,
-                )?;
+                let Some(location_id) = location.id().map(str::to_string) else {
+                    return Ok(None);
+                };
+                let listed = location.list(mount, include_archived)?;
                 if listed.scenarios.is_empty() {
                     return Ok(None);
                 }
                 Ok(Some(json!({
-                    "groupId": gid,
-                    "groupName": name,
-                    "mountPointId": ensured.mount_point_id,
+                    "groupId": location_id,
+                    "groupName": location.owner_name(),
+                    "mountPointId": location.mount_point_id(),
                     "scenarios": serde_json::to_value(&listed.scenarios).unwrap_or_else(|_| json!([])),
                     "warnings": listed.warnings,
                 })))
             })();
-            // v4 catches + logs per-group failures, not fatal.
-            if let Ok(Some(entry)) = group_entry {
-                entries.push(entry);
+            match entry {
+                Ok(Some(e)) => entries.push(e),
+                Ok(None) => {}
+                Err(error) => tracing::warn!(
+                    groupId = %gid,
+                    error = %error,
+                    "[Groups v1] Failed to load scenarios for a group; skipping"
+                ),
             }
         }
 

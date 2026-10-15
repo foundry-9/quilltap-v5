@@ -383,46 +383,6 @@ pub fn build_scenario_list(
     }
 }
 
-/// The store-tier `list` over one mount (pre-location callers; the route
-/// families move onto [`crate::scenarios::location`] in P4.D295's routes unit,
-/// which deletes this).
-pub fn list_scenarios_in_folder(
-    mount: &Connection,
-    mount_point_id: &str,
-    folder_name: &str,
-    include_archived: bool,
-) -> Result<ListScenariosResult, DbError> {
-    let docs = DocMountDocumentsRepository::new(mount)
-        .find_many_by_mount_points_in_folder_or_empty(
-            &[mount_point_id.to_string()],
-            folder_name,
-            ".md",
-        )?;
-    Ok(build_scenario_list(
-        docs,
-        parse_scenario_doc,
-        include_archived,
-        &ScenarioListLogContext {
-            scope: String::new(),
-            id: None,
-            mount_point_id: mount_point_id.to_string(),
-        },
-    ))
-}
-
-/// One store-tier scenario by path (pre-location callers; deleted with
-/// [`list_scenarios_in_folder`]).
-pub fn read_scenario_by_path(
-    mount: &Connection,
-    mount_point_id: &str,
-    relative_path: &str,
-) -> Result<Option<ParsedScenario>, DbError> {
-    let repo = DocMountDocumentsRepository::new(mount);
-    Ok(repo
-        .find_with_link_by_mount_point_and_path(mount_point_id, relative_path)?
-        .and_then(|d| parse_scenario_doc(&d)))
-}
-
 /// v4 `setScenarioDefaultInFolder(mp, defaultPath | null, folder)`
 /// (`scenarios-common.ts:249-291`): a **sequenced multi-file write with NO
 /// transaction** — (1) set `isDefault: true` on the chosen file (throw when
