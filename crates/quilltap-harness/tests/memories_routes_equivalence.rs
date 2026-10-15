@@ -2780,5 +2780,29 @@ fn memories_routes_match_oracle() {
     }
     // === end ===
 
+    // === P4.D298: the search rows' §S.5 (4) residue (append-only) ===
+    // The pre-P4.D298 search rows run the base's `memory_service` search (the
+    // `LANE-REMOVE(P4.D291)` shim on the union); v4's route at the pin runs
+    // the recall search (`lib/memory/recall/search`) — P4.D291's port, which
+    // the unifier re-points this route onto (§S.5 (4)). Both ways: each label
+    // must be RED on this branch; one that passes means the residue closed
+    // and the row belongs back in the strict set.
+    const SEARCH_ROWS_RESIDUE: &[&str] =
+        &["search", "search_min_importance", "search_include_cold"];
+    for label in SEARCH_ROWS_RESIDUE {
+        if failed.iter().any(|f| f == label) {
+            failed.retain(|f| f != label);
+            eprintln!(
+                "[{label}] RESIDUE (§S.5 (4) — P4.D291's recall search, lands at the unification)."
+            );
+        } else {
+            eprintln!(
+                "[{label}] the §S.5 (4) residue CLOSED — move the row back to the strict set"
+            );
+            failed.push(format!("{label}:residue-closed"));
+        }
+    }
+    // === end ===
+
     assert!(failed.is_empty(), "mismatched cases: {failed:?}");
 }

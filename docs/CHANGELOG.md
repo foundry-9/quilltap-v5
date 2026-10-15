@@ -138,6 +138,12 @@ Deleted: housekeeping, its outcome cache, the consolidation triggers, the dedup 
 
 New differential families from the pin: `memory_maintenance_planning`, `memory_maintenance_tier2`, `memory_maintenance_consolidate_tier3`, `memory_maintenance_queue_tier2`, `memory_maintenance_routes`, `memory_graph_repair_tier2`, and the census `maintenance_commit_hook_unreachable_census` (R-L: the commit hook is unreachable at the pin, so it is not ported). Retired families: `memory_housekeeping_tier2`, `memory_watermark_tier3`, `consolidation_triggers_tier2`, `memory_dedup`, `consolidation_service_tier3`. Re-aimed: `memory_consolidation_routes`, `consolidation_tasks`, `system_body_guards`, `realtime_topics`, `system_jobs_collection`. Host: a new cadence test for the memory-maintenance startup tick. The `p4_d288_wire_contract` refusal rows for the three filled arms are retired, and `host_zone_sites_census` counts the `maintain` arm's display-zone read (8 → 9).
 
+#### 2026-10-15 — test(harness): P4.D298 — the memories search rows carried as §S.5 (4) residue
+
+_No crate versions bumped._
+
+`memories_routes_equivalence`'s three pre-existing search rows (`search`, `search_min_importance`, `search_include_cold`) run the base's old memory search, while v4's route runs the recall search that P4.D291 ports and the unifier re-points (§S.5 (4)). They are now carried both ways: each must stay red on this branch, and one that passes fails loudly so it moves back to the strict set.
+
 #### 2026-10-15 — feat(search-replace): P4.D298 unit 15 — the memory arm through the edit chokepoint (bug 233)
 
 _Versions: core 0.0.1304._
