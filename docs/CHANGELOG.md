@@ -403,6 +403,14 @@ v4 `af48f6cc2` (memory refactor Phase B) on the backup and restore carriers, at 
 - Restore: 22j is deleted. Phase 9 adopts an old archive's mirror vector onto a memory that arrived without one (last duplicate wins, counted only after a successful create) and logs `Restored memories`. The summary drops the two vector counts and gains restore-only `legacyVectorsAdopted` (preview 39 keys, restore 41). The archive reader ignores `vector-index-metas.json`; the new-account remap no longer touches it.
 - Harness: two new backup cases (`backup_with_memory_carriers`, `backup_cursor_read_fails`) and a per-case log comparison; the restore census goes from 80 to 79 lines in both lists; the two vector plants are removed; the oracle's restore target gets the cursor table in the migration shape from v4's real migration; the uuid-remap corpus is regenerated from the pin.
 
+#### 2026-10-15 — feat(core): P4.D294 unit 2 — `message_id_remap`: bug 228's remint of a fresh-id chat's message ids
+
+_Versions: core 0.0.1300._
+
+Ports v4's `lib/import/quilltap-import/message-id-remap.ts` at the `83334b9a5` pin as `services/quilltap_import/message_id_remap.rs`. `remint_chat_message_ids` gives every message of a chat imported under a fresh id a fresh id (a repeated source id maps to its first occurrence), rewrites `swipe-<id>` group keys, remaps the summary anchors or clears the summary with its anchors and fold cursor, remaps the three extraction-cursor keys, and re-points or drops Courier checkpoints. `remap_imported_message_id` resolves a sidecar's message reference against its source chat. Nothing calls it yet; the import wiring is the next unit.
+
+New tier-1 differential `message_id_remap_equivalence` over a 34-row corpus (`harness/oracle/fixtures/message-id-remap.json`, driven through v4's real module by `harness/oracle/cases/message-id-remap.ts` with a counter minter): equal on every row, including V8's integer-key ordering of checkpoint objects.
+
 #### 2026-10-15 — feat(core): P4.D294 unit 1 — the `.qtap` export schema re-vendored at `83334b9a5` and the key-order table re-dumped
 
 _Versions: core 0.0.1299._

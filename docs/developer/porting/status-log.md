@@ -182466,3 +182466,16 @@ the wipe's truncate lands), so they land and go green together.
 - **Unit 1 (core 0.0.1299):** the export schema re-vendored (105,310 bytes, md5 equal to the pin); the key-order
   table re-dumped from the pin — exactly `chat` 102 → 103 and `memory` 29 → 30. `qtap_schema_embed_guard` 2/2 and
   `qtap_schema_validate_equivalence` green from the pin.
+- **Unit 2 (core 0.0.1300) — `message_id_remap.rs` (L-F):** the twin of v4's `message-id-remap.ts` with its module
+  doc carried verbatim. **Departure from L-F's spelling:** `RemintedChatMessages.id_map` is an insertion-ordered
+  `Vec<(String, String)>`, not a `HashMap` — v4's `Map` iterates in insertion order and the tier-1 family compares
+  the entries in that order. Red-first: the harness test failed to compile (`unresolved import …
+  message_id_remap`) before the module was declared. NEW tier-1 `message_id_remap_equivalence` ← NEW
+  `harness/oracle/cases/message-id-remap.ts` over NEW `harness/oracle/fixtures/message-id-remap.json` (27 remint
+  rows — the six `remintChatMessageIds` jest cases + the order's additions, incl. V8 integer-key order in a
+  checkpoint object — and 7 remap rows): **34/34 equal** from the pin. Mutation: first-occurrence → last-occurrence
+  mapping turns 4 rows red. Recorded edges v4's types rule out (not chased): a truthy non-string message `id`, a
+  truthy non-string `swipeGroupId` (v4's `startsWith` throws), a non-object message.
+  Regen: `cd "$PIN" && $N/npx tsx "$V5W/harness/oracle/cases/message-id-remap.ts" >
+  /tmp/oracle-message-id-remap.ndjson`; `QT_ORACLE_MESSAGE_ID_REMAP=… cargo test -p quilltap-harness --test
+  message_id_remap_equivalence`.

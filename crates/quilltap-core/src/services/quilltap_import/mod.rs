@@ -30,6 +30,8 @@ mod entities;
 mod files;
 mod legacy_presets;
 mod memories;
+// P4.D294 (bug 228): the remint of a fresh-id chat's message ids.
+pub mod message_id_remap;
 // P4.D264 (v4 `3ee3b1342` / `7c8572869`): phase 7e and the post-reconcile
 // picture re-mint.
 pub mod ndjson;

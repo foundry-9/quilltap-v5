@@ -1,0 +1,605 @@
+{
+  "_comment": "P4.D294 \u2014 the message-id-remap corpus (v4 8050958be bug 228, widened c2795733f / ac6348c5f / 64743ee13). remint rows replay remintChatMessageIds with a per-row counter minter (m-1, m-2, \u2026); remap rows replay remapImportedMessageId over idMaps.messages built from `maps` (sourceChatId \u2192 {source \u2192 new}).",
+  "remint": [
+    {
+      "label": "jest_keeps_an_opaque_swipe_group_key",
+      "chat": {},
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x",
+          "swipeGroupId": "swipe-3"
+        }
+      ]
+    },
+    {
+      "label": "jest_repeated_id_maps_references_to_the_first",
+      "chat": {
+        "summaryAnchorMessageIds": [
+          "d1000000-0000-4000-8000-000000000001"
+        ]
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000001",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        },
+        {
+          "id": "d1000000-0000-4000-8000-000000000001",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "jest_bare_swipe_group_key_equal_to_a_message_id",
+      "chat": {},
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x",
+          "swipeGroupId": "d1000000-0000-4000-8000-000000000002"
+        }
+      ]
+    },
+    {
+      "label": "jest_courier_checkpoints_as_a_json_string",
+      "chat": {
+        "courierCheckpoints": "{\"c\":{\"lastResolvedMessageId\":\"d1000000-0000-4000-8000-000000000003\",\"resolvedAt\":\"x\"}}"
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000003",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "jest_courier_checkpoints_unreadable",
+      "chat": {
+        "courierCheckpoints": "not json"
+      },
+      "messages": []
+    },
+    {
+      "label": "jest_unresolvable_watermarks_and_checkpoints",
+      "chat": {
+        "otherExtractionWatermarkMessageId": "gone",
+        "episodeExtractionWatermarkMessageId": "gone",
+        "turnExtractionWatermarkMessageId": "gone",
+        "courierCheckpoints": {
+          "c": {
+            "lastResolvedMessageId": "gone",
+            "resolvedAt": "x"
+          }
+        }
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000001",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "an_idless_message_still_gets_an_id",
+      "chat": {
+        "summaryAnchorMessageIds": [
+          "d1000000-0000-4000-8000-000000000002"
+        ]
+      },
+      "messages": [
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        },
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "swipe_prefixed_ids_rewritten_others_kept",
+      "chat": {},
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        },
+        {
+          "id": "d1000000-0000-4000-8000-000000000003",
+          "type": "message",
+          "role": "USER",
+          "content": "x",
+          "swipeGroupId": "swipe-d1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "d1000000-0000-4000-8000-000000000004",
+          "type": "message",
+          "role": "USER",
+          "content": "x",
+          "swipeGroupId": "swipe-d1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "d1000000-0000-4000-8000-000000000001",
+          "type": "message",
+          "role": "USER",
+          "content": "x",
+          "swipeGroupId": "swipe-3"
+        },
+        {
+          "id": "x9",
+          "type": "message",
+          "role": "USER",
+          "content": "x",
+          "swipeGroupId": "swipe-gone"
+        },
+        {
+          "id": "x10",
+          "type": "message",
+          "role": "USER",
+          "content": "x",
+          "swipeGroupId": ""
+        }
+      ]
+    },
+    {
+      "label": "anchors_all_resolve_keep_the_summary",
+      "chat": {
+        "contextSummary": "So far.",
+        "summaryAnchorMessageIds": [
+          "d1000000-0000-4000-8000-000000000001",
+          "d1000000-0000-4000-8000-000000000002"
+        ],
+        "lastSummaryTurn": 4
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000001",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        },
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "one_anchor_unresolved_clears_the_three_keys",
+      "chat": {
+        "title": "T",
+        "contextSummary": "So far.",
+        "summaryAnchorMessageIds": [
+          "d1000000-0000-4000-8000-000000000001",
+          "gone",
+          "gone2"
+        ],
+        "lastSummaryTurn": 4
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000001",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "unresolved_anchor_without_summary_keys_still_writes_them",
+      "chat": {
+        "summaryAnchorMessageIds": [
+          "gone"
+        ]
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000001",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "anchors_not_an_array_ignored",
+      "chat": {
+        "summaryAnchorMessageIds": "nope"
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000001",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "anchor_non_string_is_unresolved",
+      "chat": {
+        "summaryAnchorMessageIds": [
+          "d1000000-0000-4000-8000-000000000001",
+          7
+        ]
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000001",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "empty_anchor_array_kept_empty",
+      "chat": {
+        "summaryAnchorMessageIds": []
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000001",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "cursors_resolved_unresolved_absent",
+      "chat": {
+        "otherExtractionWatermarkMessageId": "d1000000-0000-4000-8000-000000000001",
+        "episodeExtractionWatermarkMessageId": "gone"
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000001",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        },
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "cursors_empty_null_and_falsy_are_skipped",
+      "chat": {
+        "otherExtractionWatermarkMessageId": "",
+        "episodeExtractionWatermarkMessageId": null,
+        "turnExtractionWatermarkMessageId": 0
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000001",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "cursor_truthy_non_string_is_dropped",
+      "chat": {
+        "turnExtractionWatermarkMessageId": 5,
+        "otherExtractionWatermarkMessageId": "d1000000-0000-4000-8000-000000000002"
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "courier_object_mixed_entries",
+      "chat": {
+        "courierCheckpoints": {
+          "k1": {
+            "lastResolvedMessageId": "d1000000-0000-4000-8000-000000000002",
+            "resolvedAt": "r1",
+            "extra": 1
+          },
+          "k2": "not an object",
+          "k3": "{\"lastResolvedMessageId\": \"d1000000-0000-4000-8000-000000000003\", \"resolvedAt\": \"r3\"}",
+          "k4": {
+            "lastResolvedMessageId": "gone"
+          },
+          "k5": {
+            "lastResolvedMessageId": 9
+          },
+          "k6": [
+            1,
+            2
+          ],
+          "k7": null
+        }
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        },
+        {
+          "id": "d1000000-0000-4000-8000-000000000003",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "courier_all_dropped_is_null",
+      "chat": {
+        "courierCheckpoints": {
+          "k": {
+            "lastResolvedMessageId": "gone"
+          }
+        }
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "courier_empty_object_is_null",
+      "chat": {
+        "courierCheckpoints": {}
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "courier_array_is_unreadable",
+      "chat": {
+        "courierCheckpoints": [
+          {
+            "lastResolvedMessageId": "d1000000-0000-4000-8000-000000000002"
+          }
+        ]
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "courier_empty_string_is_unreadable",
+      "chat": {
+        "courierCheckpoints": ""
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "courier_null_is_left_absent",
+      "chat": {
+        "courierCheckpoints": null
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "courier_json_string_of_a_string",
+      "chat": {
+        "courierCheckpoints": "\"{\\\"k\\\":1}\""
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "courier_integer_like_keys_in_v8_order",
+      "chat": {
+        "courierCheckpoints": {
+          "b": {
+            "lastResolvedMessageId": "d1000000-0000-4000-8000-000000000002"
+          },
+          "10": {
+            "lastResolvedMessageId": "d1000000-0000-4000-8000-000000000002"
+          },
+          "2": {
+            "lastResolvedMessageId": "d1000000-0000-4000-8000-000000000003",
+            "z": 1,
+            "1": 0
+          }
+        }
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        },
+        {
+          "id": "d1000000-0000-4000-8000-000000000003",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "everything_at_once",
+      "chat": {
+        "contextSummary": "S",
+        "summaryAnchorMessageIds": [
+          "d1000000-0000-4000-8000-000000000001",
+          "d1000000-0000-4000-8000-000000000002"
+        ],
+        "lastSummaryTurn": 2,
+        "otherExtractionWatermarkMessageId": "d1000000-0000-4000-8000-000000000002",
+        "episodeExtractionWatermarkMessageId": "d1000000-0000-4000-8000-000000000001",
+        "turnExtractionWatermarkMessageId": "d1000000-0000-4000-8000-000000000003",
+        "courierCheckpoints": {
+          "c": {
+            "lastResolvedMessageId": "d1000000-0000-4000-8000-000000000003"
+          }
+        }
+      },
+      "messages": [
+        {
+          "id": "d1000000-0000-4000-8000-000000000001",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        },
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x",
+          "swipeGroupId": "swipe-d1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "d1000000-0000-4000-8000-000000000003",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        },
+        {
+          "id": "d1000000-0000-4000-8000-000000000002",
+          "type": "message",
+          "role": "USER",
+          "content": "x"
+        }
+      ]
+    },
+    {
+      "label": "no_messages_no_refs",
+      "chat": {
+        "title": "Empty"
+      },
+      "messages": []
+    }
+  ],
+  "remap": [
+    {
+      "label": "no_per_chat_map_keeps_the_id",
+      "maps": {},
+      "sourceChatId": "chat-1",
+      "messageId": "d1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "label": "a_hit_is_the_new_id",
+      "maps": {
+        "chat-1": {
+          "d1000000-0000-4000-8000-000000000001": "new-1"
+        }
+      },
+      "sourceChatId": "chat-1",
+      "messageId": "d1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "label": "a_miss_is_null",
+      "maps": {
+        "chat-1": {
+          "d1000000-0000-4000-8000-000000000001": "new-1"
+        }
+      },
+      "sourceChatId": "chat-1",
+      "messageId": "d1000000-0000-4000-8000-000000000002"
+    },
+    {
+      "label": "an_empty_map_is_null_not_identity",
+      "maps": {
+        "chat-1": {}
+      },
+      "sourceChatId": "chat-1",
+      "messageId": "d1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "label": "a_null_source_chat_keeps_the_id",
+      "maps": {
+        "chat-1": {
+          "d1000000-0000-4000-8000-000000000001": "new-1"
+        }
+      },
+      "sourceChatId": null,
+      "messageId": "d1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "label": "an_empty_source_chat_keeps_the_id",
+      "maps": {
+        "": {
+          "d1000000-0000-4000-8000-000000000001": "new-1"
+        }
+      },
+      "sourceChatId": "",
+      "messageId": "d1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "label": "another_chats_map_is_not_consulted",
+      "maps": {
+        "chat-2": {
+          "d1000000-0000-4000-8000-000000000001": "new-2"
+        }
+      },
+      "sourceChatId": "chat-1",
+      "messageId": "d1000000-0000-4000-8000-000000000001"
+    }
+  ]
+}
