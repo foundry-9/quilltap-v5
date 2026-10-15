@@ -19,11 +19,13 @@
 //!
 //! ## Scopes
 //!
-//!   - `all` (the default when the payload omits `scope`): wipe and re-embed
+//!   - `all` (the default when the payload omits `scope`): re-embed
 //!     everything. Cancels in-flight `EMBEDDING_GENERATE` jobs, resets every
-//!     `embedding_status` row for the profile, deletes each character's vector
-//!     index (so a dimension change can take), and clears every help-doc
-//!     embedding first.
+//!     `embedding_status` row for the profile, and clears every help-doc
+//!     embedding first. It clears NOTHING for memories (v4 `af48f6cc2`): "the
+//!     memory index is the rows themselves, and each EMBEDDING_GENERATE
+//!     rewrites its row's vector through `memoryIndex` … A search mid-reindex
+//!     scores the vectors that match the query's length and skips the rest."
 //!   - `mismatched-dim`: re-embed only rows whose stored vector length differs
 //!     from the profile's target dim (`truncateToDimensions ?? dimensions`).
 //!     Deletes nothing and cancels nothing. A BUILTIN profile has neither field
@@ -81,10 +83,9 @@
 //!   - `invalidateAll()` on the mount-chunk cache (v4 :103-104): v4's mount-chunk
 //!     search reads an in-memory cache; v5's reads the DB directly (the standing
 //!     documented no-op, see `embedding_generate_job`'s header).
-//!   - `vectorStoreManager.deleteStore(id)` drops an in-memory store AND calls
-//!     `deleteByCharacterId`; v5 has no store cache, so only the DB half
-//!     ([`crate::db::vector_indices::VectorIndicesRepository::delete_by_character_id`])
-//!     is needed — and it already existed.
+//!   - The pre-span `all` scope's per-character `vectorStoreManager.
+//!     deleteStore` is GONE in v4 (`af48f6cc2` — the vector mirror retired);
+//!     nothing replaces it.
 //!
 //! ## The help-doc file walk is a host seam
 //!
@@ -291,8 +292,12 @@ pub async fn handle_embedding_reindex_all(
         .read_main(|conn| Ok(memories_read::find_distinct_character_ids(conn)))
         .unwrap_or_default();
 
-    // P4.D288 (C1-3, mechanical): the `all` scope's per-character mirror purge
-    // is gone with the mirror (v4's `all` reindex clears nothing — P4.D292).
+    // v4 :240-244 — "Nothing to clear: the memory index is the rows
+    // themselves, and each EMBEDDING_GENERATE rewrites its row's vector through
+    // `memoryIndex`; the parent drops a character's cache as each of those
+    // batches commits. Until then the cache matches the rows. A search
+    // mid-reindex scores the vectors that match the query's length and skips
+    // the rest." (v5 keeps no cache — the rows ARE the index.)
 
     let failed_memory_ids = failed_ids_for(db, partial, "MEMORY", &payload.profile_id);
     for character_id in &character_ids {

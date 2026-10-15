@@ -181049,3 +181049,27 @@ This lane's half (the `builtinRefit` key) is written into the Rust comparand (fe
   the Rust side passes `lexical_text` and compares the DEBUG whole per case (the silence leg on the other 12).
   Measured non-vacuous: v4 `textChars 81 / lexicalChars 47`; the BUILTIN vector has no `salon` dimension (the
   anchor's `place: Salon`, in the fitted vocabulary). 14 / 14 GREEN from the pin.
+
+### Unit 6 — reindex / reapply / reconcile (L-10's remainder)
+
+- `embedding_reapply_profile.rs`: `MAIN_DB_TABLES: [&str; 4]` (v4 `reapply-profile.ts:48`); module doc (the
+  `reloadAll` WARN `[ReapplyProfile] Failed to drop the memory index caches` — unreachable, no cache; NO-PORT,
+  Tier 3 #21). `embedding_reindex_job.rs`: the `all` scope doc + v4 `:240-244`'s comment in place of KEYSTONE's
+  mechanical note; the `deleteStore` / `db::vector_indices` doc retired. `embedding_dimension_reconcile.rs`: all six
+  lines carry `module=service` first (v4 `createServiceLogger`) with camelCase keys and bare error text.
+  KEYSTONE had already landed the narrowing (fields, arms, INFO gating, host keys, the unit tests' leftover-mirror
+  rewrite) — measured, nothing to STOP on.
+- **`embedding_reapply`** red-first (regen_failed: the case's `MAIN_TABLES` read `vector_entries`) → GREEN from the
+  pin (`perTable` now v4's four rows).
+- **`embedding_remainder`** red-first (regen_failed) → the case's two mirror dumps + sort keys gone, the Rust table
+  list seven, v4's reconcile result KEY SET asserted. From the pin: phases 1 (render reconcile), 2 (render), 2b
+  (dimension reconcile ×6), 3 (reindex ×N) GREEN; phase 4 RED — **P4.D296's residue by row** (two queue-memories
+  status bodies: `No messages found …` and the no-profile 400's new sentence; six `MEMORY_EXTRACTION` payloads
+  gaining `backfill` / `extractAfterMessageId`). Proven by a scratch run (not committed) that skipped phase 4's
+  asserts and filtered `MEMORY_EXTRACTION` rows: every table (chats 13, chunks 11, jobs 93, status 8, memories 7,
+  help_docs 9, help_doc_chunks 9) equal.
+- **NEW family `embedding_dimension_reconcile_equivalence`** (case `harness/oracle/cases/embedding-dimension-
+  reconcile.ts`, tsx): 8 scenarios — clean (DEBUG only), mixed (NULL / 8-dim / FAILED / orphan memories, an
+  orphan-chat chunk, NULL help doc, an enabled + a disabled mount → INFO + the reindex row), truncate over
+  dimensions, already-queued (dedupe INFO, `reindexEnqueued false`), BUILTIN / no-default (silent), no-fixed-dim
+  (WARN), absent tables (zero). Result byte-compared, lines whole, jobs masked. GREEN.

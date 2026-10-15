@@ -4,9 +4,10 @@
 //! BLOBs to match the active profile's Matryoshka `truncateToDimensions` + L2
 //! normalization — a pure-local slice+renormalise, no provider call.
 //!
-//! Tables walked (v4's allowlist): `memories`, `vector_entries`,
-//! `conversation_chunks`, `help_docs` (main DB) + `doc_mount_chunks` (mount
-//! index). The whole pass runs inside ONE `db.write` closure on the writer's
+//! Tables walked (v4's allowlist): `memories`, `conversation_chunks`,
+//! `help_docs`, `help_doc_chunks` (main DB) + `doc_mount_chunks` (mount
+//! index) — `vector_entries` left the list with the vector mirror (v4
+//! `af48f6cc2`, P4.D292); each walk is `table_exists`-guarded. The whole pass runs inside ONE `db.write` closure on the writer's
 //! connections (both partitions), sequentially, so it needs no path storage on
 //! [`Db`] — each connection self-reports its file via `pragma_database_list` for
 //! the `VACUUM INTO` backup.
@@ -24,8 +25,11 @@
 //!     skipped, never written.
 //!   - Reads/computes happen before the UPDATEs; each table's writes run in a
 //!     transaction. Post-write `VACUUM` is non-fatal.
-//!   - v4's `invalidateMountChunkCacheAll` / `unloadAll` are documented no-ops in
-//!     v5 (no in-memory vector stores / mount-chunk cache), per the P4.d27 bank.
+//!   - v4's `invalidateMountChunkCacheAll` and its post-pass `memoryIndex.
+//!     reloadAll()` (WARN `[ReapplyProfile] Failed to drop the memory index
+//!     caches` on a throw) are documented no-ops in v5 — no in-memory vector
+//!     store or mount-chunk cache exists to drop, so the WARN is unreachable
+//!     (NO-PORT, recorded by P4.D292).
 //!
 //! ⚠ CRYPTO PATH: `VACUUM INTO` produces an encrypted backup (the destination
 //! inherits the source connection's SQLite3MC key context). The differential
@@ -45,13 +49,14 @@ const FLUSH_BATCH: usize = 500;
 /// v4 `ZERO_MAG` — post-slice magnitudes below this are degenerate.
 const ZERO_MAG: f64 = 1e-10;
 
-/// v4 `MAIN_DB_TABLES` (grown 4 → 5 at v4 `24633026`: a reapply that re-fit
-/// every help doc but left its section vectors at the old dimension would make
-/// the chunks permanently unscoreable — `scoreSections` skips a dimension
-/// mismatch outright).
-const MAIN_DB_TABLES: [&str; 5] = [
+/// v4 `MAIN_DB_TABLES` (`reapply-profile.ts:48` at the `83334b9a5` pin): grown
+/// 4 → 5 at v4 `24633026` (`help_doc_chunks` — a reapply that re-fit every help
+/// doc but left its section vectors at the old dimension would make the chunks
+/// permanently unscoreable — `scoreSections` skips a dimension mismatch
+/// outright), then 5 → 4 at `af48f6cc2` (`vector_entries` retired with the
+/// mirror; P4.D292).
+const MAIN_DB_TABLES: [&str; 4] = [
     "memories",
-    "vector_entries",
     "conversation_chunks",
     "help_docs",
     "help_doc_chunks",

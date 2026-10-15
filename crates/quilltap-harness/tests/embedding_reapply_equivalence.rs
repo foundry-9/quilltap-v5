@@ -123,7 +123,8 @@ fn embedding_reapply_matches_oracle() {
     let want_tables = &oracle["tables"];
     for t in [
         "memories",
-        "vector_entries",
+        // P4.D292 (v4 `af48f6cc2`): `vector_entries` left v4's
+        // `MAIN_DB_TABLES` with the vector mirror (5 → 4).
         "conversation_chunks",
         "help_docs",
         // P4.D77 — the fifth main table (v4 `24633026`). Its one seeded chunk

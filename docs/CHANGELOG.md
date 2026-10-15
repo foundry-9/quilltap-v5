@@ -84,6 +84,19 @@ New `services::admission` (v4 `lib/memory/admission/` at the `83334b9a5` pin): `
 
 New differential families from the pin: `admission_tier3_equivalence` (44 steps over UTC and Chicago legs, plus tier-1 content-key and key-scope rows) and `update_memory_tier2_equivalence` (12 edits plus the Commonplace mirror); the retired `memory_gate_tier3` family is deleted and its builder renamed `build-admission-fixture.ts`. Census rows: two admission publish sites; the activity-span row re-pointed to `admit_row`. One measured divergence is pinned both ways and flagged: `FIND_BY_IDS_UNVALIDATED` (v4's `findByIds` drops a schema-invalid row; v5's does not).
 
+#### 2026-10-15 — feat(embedding): P4.D292 unit 6 — the reindex, reapply and dimension reconcile narrowed to the rows
+
+_Versions: core 0.0.1302._
+
+v4 `af48f6cc2`'s embedding-job half on the three passes KEYSTONE had already narrowed mechanically.
+
+- The reapply walks v4's four main tables (`memories`, `conversation_chunks`, `help_docs`, `help_doc_chunks`). `vector_entries` is gone. The memory-index cache-drop WARN is a documented no-op, since v5 has no cache.
+- The `all` reindex carries v4's "nothing to clear" doc. The stale mirror and `deleteStore` docs are gone.
+- The dimension reconcile's six lines carry v4's service-logger binding `module=service` and camelCase keys. The INFO still fires only when something is non-conforming.
+- `embedding_reapply` is green from the pin with the four-table list.
+- `embedding_remainder` passes the reconcile's narrowed key set. Its own phases are green from the pin. Its queue-memories rows are P4.D296's residue.
+- New family `embedding_dimension_reconcile_equivalence`: 8 scenarios through v4's real `reconcileEmbeddingDimensions`. They compare results byte for byte, lines whole, and the jobs.
+
 #### 2026-10-15 — test(harness): P4.D292 unit 5 — embedding_provider_tier3 pins BUILTIN's lexical text and its DEBUG
 
 _No crate versions bumped._

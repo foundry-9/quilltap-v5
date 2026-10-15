@@ -5,9 +5,10 @@
 //! Both sides copy the same committed two-DB fixture
 //! (`crates/quilltap-web/tests/fixtures/embedding-remainder-{main,mount}.db`),
 //! run the same corpus phases in the same order with state accumulating, and
-//! then diff EIGHT tables: `chats`, `conversation_chunks`, `background_jobs`,
-//! `embedding_status`, `memories`, `help_docs`, `vector_entries` and
-//! `vector_indices`.
+//! then diff SEVEN tables: `chats`, `conversation_chunks`, `background_jobs`,
+//! `embedding_status`, `memories`, `help_docs` and `help_doc_chunks`
+//! (P4.D292: the `vector_entries` / `vector_indices` mirror left the pair and
+//! the dump with v4 `af48f6cc2`).
 //!
 //! ## P4.D25 — the reconcile's FAILED-status exclusion (+ its retired stale gate)
 //!
@@ -73,10 +74,9 @@
 //!
 //! v4's NEW startup self-heal runs as its own phase, six cases deep, each with a
 //! one-UPDATE prelude choosing which profile is `isDefault`. It sits between the
-//! renders and the reindexes, and the placement is load-bearing: run it AFTER the
-//! reindex phase and its DELETE and meta-snap arms both report zero, because full
-//! scope has already emptied `vector_entries` and `vector_indices`. Two arms would
-//! have been silently uncovered. The last case restores the corpus's BUILTIN
+//! renders and the reindexes (the placement once kept its two vector-mirror arms
+//! live; P4.D292 — both arms and both result keys left with the mirror, v4
+//! `af48f6cc2`, so the key set is now asserted against v4's narrowed result). The last case restores the corpus's BUILTIN
 //! default so the phases after it see the state they were written against.
 //!
 //! Every counter is asserted non-zero SOMEWHERE in the sequence (a corpus where
@@ -283,8 +283,6 @@ const TABLES: &[(&str, bool, &[&str], bool)] = &[
     // minted-label pass below rewrites it to `<helpdoc:path>` BEFORE the sort,
     // so the order is stable on both sides.
     ("help_doc_chunks", true, &["docId", "chunkIndex"], false),
-    ("vector_entries", true, &["characterId", "id"], false),
-    ("vector_indices", true, &["characterId"], false),
 ];
 
 fn spec_path() -> PathBuf {
@@ -475,6 +473,25 @@ async fn embedding_remainder_matches_oracle() {
             )),
             // P4.d27 — `{kind:'dimReconcile', name, ...result}`.
             Some("dimReconcile") => {
+                // P4.D292: v4's result KEY SET at the pin — the two mirror keys
+                // (`vectorEntriesDeleted`, `vectorIndexMetaFixed`) are gone.
+                let keys: Vec<&str> = v
+                    .as_object()
+                    .unwrap()
+                    .keys()
+                    .map(String::as_str)
+                    .filter(|k| *k != "kind" && *k != "name")
+                    .collect();
+                assert_eq!(
+                    keys,
+                    [
+                        "targetDimensions",
+                        "skippedReason",
+                        "mismatched",
+                        "reindexEnqueued"
+                    ],
+                    "v4's EmbeddingDimensionReconcileResult key set moved"
+                );
                 let m = &v["mismatched"];
                 oracle_dim.push((
                     v["name"].as_str().unwrap().to_string(),
@@ -724,9 +741,8 @@ async fn embedding_remainder_matches_oracle() {
     );
 
     // ── Phase 2b: the boot DIMENSION reconcile (P4.d27). Runs where boot runs it
-    // relative to the render reconcile, and BEFORE the reindex phase — after it,
-    // `vector_entries` and `vector_indices` are empty (full scope wipes both) and
-    // the DELETE and meta-snap arms would both read zero.
+    // relative to the render reconcile, and BEFORE the reindex phase (the
+    // order v4's oracle records).
     //
     // Like the render reconcile this is a BOOT pass on the writer connection, so
     // it needs a blocking thread; the mount-index connection is handed in from the

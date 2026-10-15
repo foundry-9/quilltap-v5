@@ -68,8 +68,9 @@ function applyMocks(): void {
   });
 }
 
-// P4.D77 (v4 `24633026`) — `help_doc_chunks` joined MAIN_DB_TABLES (4 -> 5).
-const MAIN_TABLES = ['memories', 'vector_entries', 'conversation_chunks', 'help_docs', 'help_doc_chunks'];
+// P4.D77 (v4 `24633026`) — `help_doc_chunks` joined MAIN_DB_TABLES (4 -> 5);
+// P4.D292 (v4 `af48f6cc2`) — `vector_entries` left it with the mirror (5 -> 4).
+const MAIN_TABLES = ['memories', 'conversation_chunks', 'help_docs', 'help_doc_chunks'];
 
 async function dumpTables(): Promise<unknown> {
   const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');

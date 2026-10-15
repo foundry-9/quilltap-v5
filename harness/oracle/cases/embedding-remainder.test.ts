@@ -37,10 +37,10 @@
  *   2b. DIMENSION RECONCILE (P4.d27) — v4's REAL `reconcileEmbeddingDimensions()`
  *      once per corpus `dimensionReconcileCases` entry, recorded as
  *      `{kind:'dimReconcile', name, ...result}`. It runs HERE — after the renders,
- *      before the reindexes — for a reason the first attempt found the hard way:
- *      run after the reindex phase, its DELETE and meta-snap arms both report
- *      zero, because full-scope reindex has already emptied `vector_entries` and
- *      `vector_indices`. Two arms would have been silently uncovered.
+ *      before the reindexes (where it first ran to keep its two vector-mirror
+ *      arms live — P4.D292: both arms and both result keys LEFT with the
+ *      mirror, v4 `af48f6cc2`; the mirror tables are gone from the pair and
+ *      from this dump).
  *      Each case's prelude rewrites which profile is `isDefault` (one UPDATE of
  *      harness scaffolding, identical on both sides); the LAST case restores the
  *      corpus's BUILTIN default so the phases after it see the state they were
@@ -132,8 +132,6 @@ const SORT_KEYS: Record<string, string[]> = {
   help_docs: ['path'],
   // P4.D77 — the full-scope reindex now clears section vectors too.
   help_doc_chunks: ['docId', 'chunkIndex'],
-  vector_entries: ['characterId', 'id'],
-  vector_indices: ['characterId'],
 };
 
 function canonValue(v: unknown): unknown {
@@ -383,8 +381,6 @@ async function main(): Promise<void> {
     'memories',
     'help_docs',
     'help_doc_chunks',
-    'vector_entries',
-    'vector_indices',
   ]) {
     lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable(table)) }));
   }

@@ -75,6 +75,12 @@
 use rusqlite::{params, Connection};
 use serde_json::json;
 
+/// v4 `createServiceLogger('Startup:EmbeddingDimReconcile')` — a child logger
+/// binding `module: 'service'` (its `service` name is the logger's own, not a
+/// line field). P4.D292: every line here carries it first, with v4's camelCase
+/// keys.
+const SERVICE_MODULE: &str = "service";
+
 use crate::db::background_jobs::CreateOptions;
 use crate::db::background_jobs::{BackgroundJobsRepository, BjCreate};
 use crate::db::DbError;
@@ -261,7 +267,8 @@ pub fn reconcile_embedding_dimensions(
         Err(e) => {
             tracing::error!(
                 target: "quilltap::boot",
-                error = %e,
+                module = SERVICE_MODULE,
+                error = %crate::db::fallback::error_text(&e),
                 "Embedding dimension reconcile failed",
             );
             DimensionReconcileResult::default()
@@ -295,7 +302,8 @@ fn run_reconcile(
     let Some(target_dim) = target_dim.filter(|d| *d > 0) else {
         tracing::warn!(
             target: "quilltap::boot",
-            profile_id = %profile.id,
+            module = SERVICE_MODULE,
+            profileId = %profile.id,
             provider = %profile.provider,
             "Default embedding profile has no fixed dimension; cannot enforce conformance",
         );
@@ -354,22 +362,27 @@ fn run_reconcile(
     // line otherwise. (The healthy outcome must still say something at debug —
     // that is the dogfood-finding shape the render reconcile's gate had.)
     if touched_anything {
+        // v4 `{ profileId, targetDimensions, ...result.mismatched,
+        // reindexEnqueued }` — the two vector keys gone (`af48f6cc2`); fired
+        // only on `totalMismatched > 0` (P4.D292: v4's camelCase keys).
         tracing::info!(
             target: "quilltap::boot",
-            profile_id = %profile.id,
-            target_dimensions = target_dim,
+            module = SERVICE_MODULE,
+            profileId = %profile.id,
+            targetDimensions = target_dim,
             memories = result.mismatched.memories,
-            conversation_chunks = result.mismatched.conversation_chunks,
-            help_docs = result.mismatched.help_docs,
-            mount_chunks = result.mismatched.mount_chunks,
-            reindex_enqueued = result.reindex_enqueued,
+            conversationChunks = result.mismatched.conversation_chunks,
+            helpDocs = result.mismatched.help_docs,
+            mountChunks = result.mismatched.mount_chunks,
+            reindexEnqueued = result.reindex_enqueued,
             "Embedding dimension reconcile found non-conforming vectors",
         );
     } else {
         tracing::debug!(
             target: "quilltap::boot",
-            profile_id = %profile.id,
-            target_dimensions = target_dim,
+            module = SERVICE_MODULE,
+            profileId = %profile.id,
+            targetDimensions = target_dim,
             "Embedding dimension reconcile: corpus conforms",
         );
     }
@@ -474,7 +487,8 @@ fn count_nonconforming_mount_chunks(
         Err(e) => {
             tracing::warn!(
                 target: "quilltap::boot",
-                error = %e,
+                module = SERVICE_MODULE,
+                error = %crate::db::fallback::error_text(&e),
                 "Mount-chunk dimension check skipped",
             );
             0
@@ -502,6 +516,7 @@ fn enqueue_mismatched_reindex(
     {
         tracing::info!(
             target: "quilltap::boot",
+            module = SERVICE_MODULE,
             "Mismatched-dim reindex already queued; not enqueueing another",
         );
         return Ok(false);
