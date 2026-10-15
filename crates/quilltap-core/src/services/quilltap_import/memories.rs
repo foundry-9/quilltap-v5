@@ -204,9 +204,11 @@ fn remapped_link_list(
     }
 }
 
-/// The five consolidation fields of v4's payload literal (`:516-528`), in its
+/// The six consolidation fields of v4's payload literal (`:570-577`), in its
 /// evaluation order, written over the spread: `relatedMemoryIds`, `tier ??
-/// 'hot'`, `supersededById` (truthy → remapped, else `null`),
+/// 'hot'`, `supersededById` (truthy → remapped, else `null`), `supersededAt`
+/// (P4.D294, `c2795733f` bug 225 — "the cold-retention clock travels with the
+/// link": `supersededById` truthy → `supersededAt ?? null`, else `null`),
 /// `consolidatedFrom`, `consolidatedAt ?? null`.
 fn insert_consolidation_fields(
     memory: &Value,
@@ -221,9 +223,15 @@ fn insert_consolidation_fields(
         ids,
     )?;
     let tier = present("tier").unwrap_or_else(|| Value::String("hot".into()));
+    let has_superseded_by = crate::api::system_qtap::js_truthy(memory.get("supersededById"));
     let superseded_by = match memory.get("supersededById") {
-        Some(raw) if crate::api::system_qtap::js_truthy(Some(raw)) => ids.remap_ref(raw),
+        Some(raw) if has_superseded_by => ids.remap_ref(raw),
         _ => Value::Null,
+    };
+    let superseded_at = if has_superseded_by {
+        present("supersededAt").unwrap_or(Value::Null)
+    } else {
+        Value::Null
     };
     let consolidated_from = remapped_link_list(
         memory,
@@ -235,6 +243,7 @@ fn insert_consolidation_fields(
     payload.insert("relatedMemoryIds".into(), related);
     payload.insert("tier".into(), tier);
     payload.insert("supersededById".into(), superseded_by);
+    payload.insert("supersededAt".into(), superseded_at);
     payload.insert("consolidatedFrom".into(), consolidated_from);
     payload.insert("consolidatedAt".into(), consolidated_at);
     Ok(())
@@ -254,6 +263,41 @@ pub(super) fn import_memories(
     let repo = MemoriesRepository::new(main);
     let memory_ids = MemoryIdMap::mint(memories, options);
 
+    // "Characters the bundle does not carry resolve to the instance's own row
+    // of that id when one exists and is not an archived tombstone (bug 240)."
+    // v4 `resolveMemoryCharacter` (`import-entities.ts:488-503`): the bundle
+    // map first; else ONE raw read per id per import — "a character whose
+    // vault is unreadable still owns its memories" — cached only once the read
+    // RETURNS (a throw is that memory's failure and leaves no entry, so the
+    // next memory naming the id reads again). Usable iff found and not
+    // `archivedAt`; found-but-archived logs its DEBUG once per id.
+    let mut local_characters: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
+    let mut resolve_memory_character = |id: &str| -> Result<Option<String>, String> {
+        if let Some(mapped) = id_maps.characters.get(id).filter(|m| !m.is_empty()) {
+            return Ok(Some(mapped.to_string()));
+        }
+        if !local_characters.contains_key(id) {
+            let local = crate::db::fallback::find_by_id_strict_aware("characters", id, || {
+                crate::db::characters_read::find_by_id_raw(main, id)
+            })
+            .map_err(|e| super::item_error_text(&e))?;
+            let usable = local
+                .as_ref()
+                .filter(|row| !crate::api::system_qtap::js_truthy(row.get("archivedAt")))
+                .and_then(|row| row.get("id").and_then(Value::as_str))
+                .map(str::to_string);
+            if local.is_some() && usable.is_none() {
+                tracing::debug!(
+                    characterId = %id,
+                    "Memory names an archived local character; not reviving it"
+                );
+            }
+            local_characters.insert(id.to_string(), usable);
+        }
+        Ok(local_characters.get(id).cloned().flatten())
+    };
+
     for (index, memory) in memories.iter().enumerate() {
         // Skip-if-present rehydrate (spec §6/F4, `01e481f6`): the memory is
         // already back — a partial restore being re-run. The surviving row
@@ -265,19 +309,37 @@ pub(super) fn import_memories(
             continue;
         }
 
-        // Remap character ID (required — a memory with no destination character is
-        // dropped with a warning).
+        // A failure before the create (the character reads' throw) is the
+        // item's catch: v4's warning + WARN, `skipped++`.
+        let fail = |text: String, warnings: &mut Vec<String>, skipped: &mut u32| {
+            warnings.push(format!("Failed to import memory: {text}"));
+            tracing::warn!(memoryId = super::id_field(memory), error = %text, "Failed to import memory");
+            *skipped += 1;
+        };
+
+        // "Remap character ID: a character in the bundle, else one this
+        // instance already holds (a chats-only export carries its memories but
+        // not its cast — bug 240)." Required — a memory with no destination
+        // character is dropped with a warning.
         let source_character_id = memory
             .get("characterId")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        let Some(new_character_id) = id_maps.characters.get(source_character_id) else {
-            warnings.push(format!(
-                "Memory references non-existent character {source_character_id}"
-            ));
-            skipped += 1;
-            continue;
+        let new_character_id = match resolve_memory_character(source_character_id) {
+            Err(text) => {
+                fail(text, warnings, &mut skipped);
+                continue;
+            }
+            Ok(Some(id)) => id,
+            Ok(None) => {
+                warnings.push(format!(
+                    "Memory references non-existent character {source_character_id}"
+                ));
+                skipped += 1;
+                continue;
+            }
         };
+        let new_character_id = new_character_id.as_str();
 
         // v4 builds the create payload from the RAW item (`import-entities.ts:
         // 459-498`): the item minus `id` / `createdAt` / `updatedAt` /
@@ -303,11 +365,25 @@ pub(super) fn import_memories(
             "characterId".into(),
             Value::String(new_character_id.to_string()),
         );
-        for (k, map) in [
-            ("aboutCharacterId", &id_maps.characters),
-            ("chatId", &id_maps.chats),
-            ("projectId", &id_maps.projects),
-        ] {
+        // "Remap aboutCharacterId if present (Characters Not Personas: who the
+        // memory is about)" — through the same resolver since bug 240, `||
+        // null`; a falsy value rides through as it came.
+        if let Some(raw) = memory.get("aboutCharacterId") {
+            let about = if crate::api::system_qtap::js_truthy(Some(raw)) {
+                match raw.as_str().map(&mut resolve_memory_character) {
+                    Some(Err(text)) => {
+                        fail(text, warnings, &mut skipped);
+                        continue;
+                    }
+                    Some(Ok(Some(id))) => Value::String(id),
+                    Some(Ok(None)) | None => Value::Null,
+                }
+            } else {
+                raw.clone()
+            };
+            payload.insert("aboutCharacterId".into(), about);
+        }
+        for (k, map) in [("chatId", &id_maps.chats), ("projectId", &id_maps.projects)] {
             if let Some(v) = remap(k, map) {
                 payload.insert(k.into(), v);
             }
@@ -336,6 +412,33 @@ pub(super) fn import_memories(
             }
             _ => None,
         };
+
+        // "Follows its message when the chat import reminted message ids"
+        // (`:583-585`, bug 228): a truthy `sourceMessageId` through the
+        // memory's SOURCE `chatId`'s map — `null` when reminted but never
+        // landed; a falsy one rides through as it came. (A truthy non-string
+        // names no message: `null` under a reminted chat, kept otherwise.)
+        if let Some(raw) = memory.get("sourceMessageId") {
+            if crate::api::system_qtap::js_truthy(Some(raw)) {
+                let source_chat_id = memory.get("chatId").and_then(Value::as_str);
+                let remapped = match raw.as_str() {
+                    Some(id) => super::message_id_remap::remap_imported_message_id(
+                        &id_maps.messages,
+                        source_chat_id,
+                        id,
+                    )
+                    .map_or(Value::Null, Value::String),
+                    None if source_chat_id
+                        .filter(|c| !c.is_empty())
+                        .is_some_and(|c| id_maps.messages.contains_key(c)) =>
+                    {
+                        Value::Null
+                    }
+                    None => raw.clone(),
+                };
+                payload.insert("sourceMessageId".into(), remapped);
+            }
+        }
 
         // `:509` / `:512` — the pre-minted id, ALWAYS the create's id.
         let new_id = memory_ids.new_id(memory, index, options);

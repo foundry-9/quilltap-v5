@@ -15,6 +15,13 @@
  * Each row emits v4's whole result — `ok`, the `reason` sentence with its ids
  * interpolated, the remapped `data`, and the cleared flag.
  *
+ * P4.D294 (v4 `8050958be`, bug 228): the two message pointers resolve through
+ * `remapImportedMessageId`, which reads `idMaps.messages` for every row with a
+ * truthy pointer — so the maps carry a `messages` member, built from the
+ * row's optional `messageMaps` (source chat id → {source message id → the
+ * reminted id}; absent = an empty `Map`, the identity). Without it the pin's
+ * code throws a `TypeError` on the first such row.
+ *
  * Run from a v4 checkout pinned at the target under Node 24:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -31,6 +38,8 @@ interface Case {
   inform: Record<string, unknown>;
   /** Source chat id → destination chat id. */
   chatMap: Record<string, string>;
+  /** [P4.D294] Source chat id → (source message id → reminted id). */
+  messageMaps?: Record<string, Record<string, string>>;
   knownParticipantIds: string[];
   knownMessageIds: string[];
 }
@@ -51,7 +60,12 @@ async function main(): Promise<void> {
 
   const out: string[] = [];
   for (const c of spec.cases) {
-    const idMaps = { chats: new Map(Object.entries(c.chatMap)) } as never;
+    const idMaps = {
+      chats: new Map(Object.entries(c.chatMap)),
+      messages: new Map(
+        Object.entries(c.messageMaps ?? {}).map(([chat, m]) => [chat, new Map(Object.entries(m))]),
+      ),
+    } as never;
     const known = {
       participantIds: new Set(c.knownParticipantIds),
       messageIds: new Set(c.knownMessageIds),

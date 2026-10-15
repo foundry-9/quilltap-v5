@@ -10,16 +10,22 @@
 //! reads here, so nothing in this module reaches `executeImport`'s outer catch
 //! except through the repositories' own errors at non-per-item points.
 //!
-//! The `duplicate` arm for roleplay templates, projects, groups and chats
-//! reproduces v4's phantom-id quirk (`import-entities.ts:138-139` and friends):
-//! a `randomUUID()` goes INTO the id map and the row is created under a
+//! The `duplicate` arm for roleplay templates, projects and groups reproduces
+//! v4's phantom-id quirk (`import-entities.ts:151`, `:216`, `:283`): a
+//! `randomUUID()` goes INTO the id map and the row is created under a
 //! DIFFERENT freshly-minted id. Tags are the exception — their map records the
-//! REAL created id (`:58`).
+//! REAL created id (`:58`) — and so, since v4 `8050958be` (bug 228), are chats:
+//! `importChats` has ONE create path and maps every created chat to its REAL
+//! id, so a duplicated chat is reconciled (participants, tags, project,
+//! scenario source) like any other.
 
 use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use super::message_id_remap::{
+    mint_message_id, remint_chat_message_ids, MessageIdMaps, RemintedChatMessages,
+};
 use super::{ConflictStrategy, IdMap, ImportOptions};
 use crate::db::chats::{ChatCreate, ChatsRepository};
 use crate::db::chats_messages::{ChatEventInput, ChatMessagesRepository};
@@ -782,18 +788,113 @@ fn create_group(
 // Chats (with messages)
 // ===========================================================================
 
-/// v4 `importChats` (`import-entities.ts:297`). The exported chat is the full
-/// hydrated `ChatMetadata` (minus the two ephemeral caches the export drops)
-/// plus a `messages` array; `create` re-materializes the Zod defaults via
-/// [`ChatCreate`]'s serde defaults. Message ids/timestamps come from the
-/// payload (`addMessage` preserves them), which is what keeps
-/// `conversationAnnotations.sourceMessageId` valid without a message id map.
+/// v4 `addImportedMessages` (`import-entities.ts:328-369`, bug 228): "Insert a
+/// chat's bundle messages, under the reminted ids when `reminted` is given, or
+/// under their source ids otherwise. For a reminted chat each source → new
+/// pair is recorded in `idMaps.messages` only once its insert succeeds, so a
+/// sidecar can never be pointed at a message that is not here. Returns the
+/// count inserted."
+///
+/// The per-chat `landed` map is registered BEFORE the first insert, so a chat
+/// whose every insert fails still has an (empty) map and every sidecar
+/// pointing into it resolves to `null`, never to the identity. `landed`
+/// follows the first LANDED occurrence of a source id (the patch — anchors,
+/// cursors, swipes — follows the remint's first occurrence).
+///
+/// Both of v5's message-failure arms carry v4's per-message warning AND the
+/// NEW `Failed to import chat message` WARN (L-C): the repository insert error
+/// and the `ChatEventInput` serde refusal — the latter IS v4's `addMessage`
+/// validation throw, which lands in the same catch. `messageId` is the
+/// INSERTED id (the reminted one when reminting), absent when the message
+/// carries none.
+#[allow(clippy::too_many_arguments)]
+fn add_imported_messages(
+    messages_repo: &ChatMessagesRepository,
+    new_chat_id: &str,
+    source_chat_id: &str,
+    title: &str,
+    source_messages: &[Value],
+    reminted: Option<&RemintedChatMessages>,
+    message_maps: &mut MessageIdMaps,
+    warnings: &mut Vec<String>,
+) -> u32 {
+    let to_insert: &[Value] = reminted.map_or(source_messages, |r| r.messages.as_slice());
+    // `if (landed) idMaps.messages.set(chat.id, landed)` — BEFORE any insert.
+    if reminted.is_some() {
+        message_maps.insert(source_chat_id.to_string(), std::collections::HashMap::new());
+    }
+    tracing::debug!(
+        sourceChatId = %source_chat_id,
+        newChatId = %new_chat_id,
+        messageCount = to_insert.len(),
+        remintedMessageIds = reminted.is_some(),
+        droppedMessageRefs = reminted.map_or(0, |r| r.dropped_refs),
+        summaryCleared = reminted.is_some_and(|r| r.summary_cleared),
+        "Importing chat messages"
+    );
+
+    let mut added = 0u32;
+    for (index, message) in to_insert.iter().enumerate() {
+        let inserted_id = message.get("id").and_then(Value::as_str);
+        let out = serde_json::from_value::<ChatEventInput>(message.clone())
+            .map_err(|e| super::serde_error_text(&e))
+            .and_then(|event| {
+                messages_repo
+                    .add_message(new_chat_id, &event)
+                    .map_err(|e| super::item_error_text(&e))
+            });
+        match out {
+            Ok(()) => {
+                added += 1;
+                let source_id = source_messages
+                    .get(index)
+                    .and_then(|m| m.get("id"))
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.is_empty());
+                if let (true, Some(source_id), Some(new_id)) =
+                    (reminted.is_some(), source_id, inserted_id)
+                {
+                    let landed = message_maps.entry(source_chat_id.to_string()).or_default();
+                    if !landed.contains_key(source_id) {
+                        landed.insert(source_id.to_string(), new_id.to_string());
+                    }
+                }
+            }
+            Err(text) => {
+                warnings.push(format!(
+                    "Failed to import message in chat \"{title}\": {text}"
+                ));
+                tracing::warn!(
+                    newChatId = %new_chat_id,
+                    messageId = inserted_id.map(tracing::field::display),
+                    error = %text,
+                    "Failed to import chat message"
+                );
+            }
+        }
+    }
+    added
+}
+
+/// v4 `importChats` (`import-entities.ts:371-450`) — ONE create path since
+/// `8050958be` (bug 228). The exported chat is the full hydrated
+/// `ChatMetadata` (minus the two ephemeral caches the export drops) plus a
+/// `messages` array; `create` re-materializes the Zod defaults via
+/// [`ChatCreate`]'s serde defaults.
+///
+/// "Only a chat that keeps its source id keeps its message ids. A chat created
+/// under a fresh id gets fresh message ids too: `chat_messages.id` is global,
+/// so the duplicate's original — or an earlier import of the same bundle —
+/// already holds them (bug 228)." Every arm that creates maps the source id to
+/// the REAL created id (the old phantom is gone for chats); the bundle's
+/// extraction cursors are restored after the create, before the messages.
 pub(super) fn import_chats(
     main: &Connection,
     user_id: &str,
     items: &[Value],
     options: &ImportOptions,
     id_map: &mut IdMap,
+    message_maps: &mut MessageIdMaps,
     warnings: &mut Vec<String>,
 ) -> Result<Counts, DbError> {
     let mut imported = 0u32;
@@ -812,7 +913,6 @@ pub(super) fn import_chats(
         let out: Result<(), String> = (|| {
             let existing =
                 chats_read::find_by_id(main, &source_id).map_err(|e| super::item_error_text(&e))?;
-            let mut title_override: Option<String> = None;
             if existing.is_some() {
                 match options.conflict_strategy {
                     ConflictStrategy::Skip => {
@@ -826,54 +926,56 @@ pub(super) fn import_chats(
                         repo.delete(&source_id)
                             .map_err(|e| super::item_error_text(&e))?;
                     }
-                    ConflictStrategy::Duplicate => {
-                        // Phantom-map quirk: the map records this minted id, the
-                        // row is created under another (see the module header).
-                        let phantom = uuid::Uuid::new_v4().to_string();
-                        id_map.set(source_id.clone(), phantom);
-                        title_override = Some(format!("{title} (imported)"));
-                    }
+                    ConflictStrategy::Duplicate => {}
                 }
             }
 
-            // v4 forks only the non-duplicate create: the `duplicate` arm
-            // renames and mints, and its map entry is a phantom anyway.
-            let create_source_id = if title_override.is_some() {
-                DUPLICATE_MINTS
-            } else {
+            // "Duplicate creates a copy beside the original under a fresh id;
+            // every other strategy reaching here inserts the bundle's chat."
+            let is_duplicate =
+                existing.is_some() && options.conflict_strategy == ConflictStrategy::Duplicate;
+            let keeps_source_ids = options.preserve_ids && !is_duplicate;
+
+            let source_messages: Vec<Value> = raw
+                .get("messages")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let chat_obj = raw.as_object().cloned().unwrap_or_default();
+            let reminted = (!keeps_source_ids)
+                .then(|| remint_chat_message_ids(&chat_obj, &source_messages, mint_message_id));
+            let title_override = is_duplicate.then(|| format!("{title} (imported)"));
+            let create_source_id = if keeps_source_ids {
                 source_id.as_str()
+            } else {
+                DUPLICATE_MINTS
             };
-            let new_chat_id = create_chat(
+            let (new_chat_id, cursors) = create_chat(
                 &repo,
                 user_id,
                 raw,
-                title_override.clone(),
+                reminted.as_ref().map(|r| &r.chat_patch),
+                title_override,
                 options,
                 create_source_id,
             )?;
-            // The non-duplicate paths record the REAL created id.
-            if title_override.is_none() {
-                id_map.set(source_id.clone(), new_chat_id.clone());
-            }
+            id_map.set(source_id.clone(), new_chat_id.clone());
+            crate::services::carriers::cursor_bundle::restore_bundle_cursors(
+                main,
+                &new_chat_id,
+                &cursors,
+            );
 
-            // Add messages (per-message try → warning + continue).
-            if let Some(events) = raw.get("messages").and_then(Value::as_array) {
-                for message in events {
-                    match serde_json::from_value::<ChatEventInput>(message.clone()) {
-                        Ok(event) => match messages_repo.add_message(&new_chat_id, &event) {
-                            Ok(()) => messages += 1,
-                            Err(e) => warnings.push(format!(
-                                "Failed to import message in chat \"{title}\": {}",
-                                super::item_error_text(&e)
-                            )),
-                        },
-                        Err(e) => warnings.push(format!(
-                            "Failed to import message in chat \"{title}\": {}",
-                            super::serde_error_text(&e)
-                        )),
-                    }
-                }
-            }
+            messages += add_imported_messages(
+                &messages_repo,
+                &new_chat_id,
+                &source_id,
+                &title,
+                &source_messages,
+                reminted.as_ref(),
+                message_maps,
+                warnings,
+            );
             imported += 1;
             Ok(())
         })();
@@ -890,43 +992,91 @@ pub(super) fn import_chats(
     })
 }
 
+/// v4's `ChatMetadataSchema` refusal of a bundle chat at `repos.chats.create`
+/// (L-B), in the schema's DECLARATION order: `scenarioSource`
+/// (`ScenarioSourceSchema.nullable().optional()`, `chat.types.ts:926` — a
+/// non-object, a JSON STRING included, a non-RFC `mountPointId`, a `path` of 0
+/// or > 500 UTF-16 units, a `bodySha256` not exactly 64 units; `null` passes)
+/// BEFORE the three Concierge enums (`:1008-1012`, P4.124). ONE ZodError
+/// message over both, or `None`.
+fn chat_create_zod_error(chat: &Value) -> Option<String> {
+    let mut issues: Vec<Value> = Vec::new();
+    if let Some(source) = chat.get("scenarioSource").filter(|v| !v.is_null()) {
+        let prefix = [Value::String("scenarioSource".into())];
+        issues.extend(
+            crate::api::zod_issues::zod_scenario_source_issues(source, &prefix)
+                .iter()
+                .filter_map(|issue| serde_json::to_value(issue).ok()),
+        );
+    }
+    if let Some(message) =
+        crate::services::dangerous_content::chat_override::concierge_columns_zod_error(chat)
+    {
+        // The Concierge refusal's own issues (its message IS `issues` as v4's
+        // `JSON.stringify(issues, null, 2)`), appended after the source's.
+        issues.extend(serde_json::from_str::<Vec<Value>>(&message).unwrap_or_default());
+    }
+    (!issues.is_empty())
+        .then(|| serde_json::to_string_pretty(&issues).unwrap_or_else(|_| "Invalid input".into()))
+}
+
+/// The create half of [`import_chats`] (v4 `:403-428`): the bundle chat with
+/// the remint's `chat_patch` spread over it (`{...chatData, ...chatPatch}`),
+/// the bundle cursors TAKEN off it (`takeBundleCursors`), the Concierge state
+/// derived and the scenario-seeded summary stripped, validated, decoded and
+/// created — under `source_id` when it keeps its id, else a fresh one. Returns
+/// the created id and the taken cursors.
 fn create_chat(
     repo: &ChatsRepository,
     user_id: &str,
     raw: &Value,
+    chat_patch: Option<&serde_json::Map<String, Value>>,
     title_override: Option<String>,
     options: &ImportOptions,
     source_id: &str,
-) -> Result<String, String> {
+) -> Result<
+    (
+        String,
+        crate::db::memory_extraction_cursors::ExtractionCursorMap,
+    ),
+    String,
+> {
     // v4 strips id/userId/messages/createdAt/updatedAt and re-injects the
     // importing user's id (the user-scoped repo). serde ignores the stripped
     // keys that aren't ChatCreate fields; userId must be overridden explicitly.
     let mut obj = raw.as_object().cloned().unwrap_or_default();
     obj.insert("userId".to_string(), Value::String(user_id.to_string()));
-    if let Some(t) = title_override {
-        obj.insert("title".to_string(), Value::String(t));
-    }
     obj.remove("id");
     obj.remove("messages");
     obj.remove("createdAt");
     obj.remove("updatedAt");
+    // `{ ...chatData, ...reminted.chatPatch }` — an existing key overwritten
+    // in place, a new one appended.
+    for (k, v) in chat_patch.into_iter().flatten() {
+        obj.insert(k.clone(), v.clone());
+    }
+    // "The fold passes' cursors travel on the chat under their legacy names
+    // (already remapped to the new message ids); they are written once the
+    // chat exists." (`takeBundleCursors` — the keys are deleted either way.)
+    let cursors = crate::services::carriers::cursor_bundle::take_bundle_cursors(&mut obj);
+    if let Some(t) = title_override {
+        obj.insert("title".to_string(), Value::String(t));
+    }
     // v4 `4d370a90f` (#75): a bundle from before the three Concierge states
     // carries only the legacy pair; derive the state so the chat keeps its
-    // behaviour (`withConciergeModeFromLegacy(stripScenarioSeededSummary(…))` at
-    // both of v4's `importChats` create sites — the one fork here covers both,
-    // as for the strip below). The derive reads only the Concierge keys and the
-    // strip only the summary pair, so applying it to the bundle's JSON before
-    // the typed decode is v4's composition exactly.
+    // behaviour (`withConciergeModeFromLegacy(stripScenarioSeededSummary(…))`).
+    // The derive reads only the Concierge keys and the strip only the summary
+    // pair, so applying it to the bundle's JSON before the typed decode is
+    // v4's composition exactly.
     let obj = crate::services::dangerous_content::chat_override::with_concierge_mode_from_legacy(
         Value::Object(obj),
     );
-    // v4's `repos.chats.create` validates the three Concierge enums (P4.124):
-    // an out-of-enum value fails the chat with the ZodError message.
-    // A refused create is v4's `validate` throw inside `_create`: the three
+    // v4's `repos.chats.create` validates the row against
+    // `ChatMetadataSchema` (the three Concierge enums — P4.124; the bundle's
+    // `scenarioSource` — L-B): a refusal fails the chat with the ZodError
+    // message. It is v4's `validate` throw inside `_create`: the three
     // repository ERRORs precede the caller's `Failed to import chat` WARN.
-    if let Some(zod) =
-        crate::services::dangerous_content::chat_override::concierge_columns_zod_error(&obj)
-    {
+    if let Some(zod) = chat_create_zod_error(&obj) {
         crate::services::dangerous_content::chat_override::log_chat_create_validation_failure(&zod);
         return Err(zod);
     }
@@ -939,11 +1089,6 @@ fn create_chat(
     // `contextSummary` as well as `scenarioText`; the boot heal that cleared
     // those rows has long since run in this instance, so the import is the only
     // thing standing between a stale bundle and the bug coming back.
-    //
-    // v4 strips at BOTH of its `repos.chats.create` sites in `importChats` (the
-    // duplicate-rename create and the preserve-ids create). v5 forked those two
-    // into ONE `create_chat` under the `DUPLICATE_MINTS` sentinel, so this one
-    // call covers both.
     crate::services::scenario_seeded_summary::strip_scenario_seeded_summary(&mut create);
     let (id, now) = mint_or_preserve(options, source_id);
     repo.create(
@@ -966,7 +1111,7 @@ fn create_chat(
         crate::db::fallback::log_chat_create_wrap_failure(&e);
         super::item_error_text(&e)
     })?;
-    Ok(id)
+    Ok((id, cursors))
 }
 
 #[cfg(test)]
@@ -1009,10 +1154,12 @@ mod rendered_markdown_strip_tests {
             "u1",
             &raw,
             None,
+            None,
             &ImportOptions::seed_defaults(),
             "src-chat",
         )
-        .expect("the chat imports");
+        .expect("the chat imports")
+        .0;
         let stored: Option<String> = conn
             .query_row(
                 "SELECT \"renderedMarkdown\" FROM \"chats\" WHERE id = ?1",
@@ -1060,6 +1207,7 @@ mod rendered_markdown_strip_tests {
                 "u1",
                 &raw,
                 None,
+                None,
                 &ImportOptions::seed_defaults(),
                 "src-chat",
             )
@@ -1095,6 +1243,7 @@ mod rendered_markdown_strip_tests {
                 &repo,
                 "u1",
                 &ok,
+                None,
                 None,
                 &ImportOptions::seed_defaults(),
                 "src-chat",

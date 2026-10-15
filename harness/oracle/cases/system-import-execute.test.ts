@@ -1942,7 +1942,9 @@ function chatWatermarkPayload(base: { manifest: unknown; data: Record<string, un
  * them (`execute.ts:774` → a bare `_create`): built from the planted
  * chats-informs export's first pending, seated row, one bad field per item —
  * `batchId: "not-a-uuid"`, `contentMarkdown` ABSENT, `consumedAt: "now"`,
- * `recordMessageId: ""` (falsy, so the remap neither drops nor clears it) —
+ * `recordMessageId: ""` (falsy, so the remap neither drops nor clears it — and
+ * since `8050958be`, bug 228, writes it `null`, so this row now LANDS; the
+ * flip is BY DESIGN, P4.D294) —
  * plus `permanent: "yes"` (normalized `=== true` by the remap, so it LANDS as
  * a one-shot) and the sound row itself. The chats ride along so `skip` maps
  * them to the target's own.
@@ -2360,6 +2362,266 @@ function conciergeBogusPayload(
   return p;
 }
 
+// === P4.D294 (append-only) — bug 228 / bug 240 / the cursor + scenario carriers ===
+
+const P4D294_CHAT_1 = 'c1000000-0000-4000-8000-000000000001';
+const P4D294_MSG_1 = 'd1000000-0000-4000-8000-000000000001';
+const P4D294_MSG_2 = 'd1000000-0000-4000-8000-000000000002';
+/** A regenerate-swipe of MSG_2 (`swipe-<MSG_2>`, what regenerate writes). */
+const P4D294_MSG_3 = 'd1000000-0000-4000-8000-0000000002e3';
+/** A SillyTavern-style message: its group key `swipe-3` names no message. */
+const P4D294_MSG_4 = 'd1000000-0000-4000-8000-0000000002e4';
+/** An anchor / cursor naming no message in the bundle. */
+const P4D294_MSG_GONE = 'd1000000-0000-4000-8000-0000000002ff';
+const P4D294_LORIAN = 'a1000000-0000-4000-8000-000000000001';
+const P4D294_RIYA = 'a1000000-0000-4000-8000-000000000002';
+const P4D294_FIELD_LIBRARY = 'bd000000-0000-4000-8000-000000000001';
+const P4D294_SHA = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
+type Bundle = { manifest: unknown; data: Record<string, unknown[]> };
+type Row = Record<string, unknown>;
+
+interface RemintOpts {
+  /** The message every sidecar names (default MSG_2). */
+  sidecar?: string;
+  /** Override the three cursor keys (`undefined` = the default trio). */
+  cursors?: Record<string, unknown>;
+  anchors?: unknown;
+  courier?: unknown;
+  memories?: Bundle;
+  files?: Bundle;
+}
+
+/**
+ * [P4.D294 Tier 1 #10] Bug 228's bundle, grown from the chats + informs
+ * export: `CHAT_1` carries four messages — MSG_2 and its regenerate swipe
+ * MSG_3 under `swipe-<MSG_2>`, MSG_4 under SillyTavern's opaque `swipe-3` —
+ * a running summary anchored at MSG_1 / MSG_2, the three extraction-cursor
+ * keys (other → MSG_1, episode → MSG_2, turn → MSG_4), a Courier checkpoint
+ * at MSG_2, an inform recording `sidecar` and one consumed by MSG_4, the
+ * annotation at `sidecar`, and optionally a memory sourced at `sidecar` and
+ * a file linked to `[CHAT_1, sidecar]`.
+ */
+function remintBundle(base: Bundle, o: RemintOpts = {}): Bundle {
+  const p = JSON.parse(JSON.stringify(base)) as Bundle;
+  const sidecar = o.sidecar ?? P4D294_MSG_2;
+  const chat = (p.data.chats as Row[]).find((c) => c.id === P4D294_CHAT_1);
+  if (!chat) throw new Error('remint bundle: CHAT_1 is not in the chats export');
+  const [m1, m2] = chat.messages as Row[];
+  if (!m1 || !m2) throw new Error('remint bundle: CHAT_1 needs its two messages');
+  m2.swipeGroupId = `swipe-${P4D294_MSG_2}`;
+  const m3 = { ...m2, id: P4D294_MSG_3, content: 'A second take on the lesson.', swipeIndex: 1 };
+  const m4 = { ...m1, id: P4D294_MSG_4, content: 'An imported aside.', swipeGroupId: 'swipe-3' };
+  chat.messages = [m1, m2, m3, m4];
+  chat.contextSummary = 'So far, a lesson in lift.';
+  chat.summaryAnchorMessageIds = o.anchors ?? [P4D294_MSG_1, P4D294_MSG_2];
+  chat.lastSummaryTurn = 2;
+  Object.assign(
+    chat,
+    o.cursors ?? {
+      otherExtractionWatermarkMessageId: P4D294_MSG_1,
+      episodeExtractionWatermarkMessageId: P4D294_MSG_2,
+      turnExtractionWatermarkMessageId: P4D294_MSG_4,
+    },
+  );
+  chat.courierCheckpoints = o.courier ?? {
+    [P4D294_LORIAN]: { lastResolvedMessageId: P4D294_MSG_2, resolvedAt: '2026-01-04T00:00:00.000Z' },
+  };
+  for (const inform of (p.data.chatInforms ?? []) as Row[]) {
+    if (inform.id === '1d000011-0000-4000-8000-000000000001') inform.recordMessageId = sidecar;
+    if (inform.id === '1d000012-0000-4000-8000-000000000002') inform.consumedByMessageId = P4D294_MSG_4;
+  }
+  for (const a of (p.data.conversationAnnotations ?? []) as Row[]) {
+    if (a.chatId === P4D294_CHAT_1) a.sourceMessageId = sidecar;
+  }
+  if (o.memories) {
+    const template = (o.memories.data.memories as Row[]).find(
+      (m) => m.id === 'ad000000-0000-4000-8000-000000000002',
+    );
+    if (!template) throw new Error('remint bundle: the memory template is gone');
+    p.data.memories = [
+      {
+        ...template,
+        id: 'ad000000-0000-4000-8000-0000000002e1',
+        characterId: P4D294_LORIAN,
+        chatId: P4D294_CHAT_1,
+        sourceMessageId: sidecar,
+        summary: 'Remembered from the lesson',
+      },
+      // CHAT_2 has no messages: its reminted map is registered EMPTY before
+      // any insert, so a pointer into it resolves to null — never the identity.
+      {
+        ...template,
+        id: 'ad000000-0000-4000-8000-0000000002e2',
+        characterId: P4D294_LORIAN,
+        chatId: 'c1000000-0000-4000-8000-000000000002',
+        sourceMessageId: P4D294_MSG_GONE,
+        summary: 'Remembered from the interlude',
+      },
+    ];
+  }
+  if (o.files) {
+    const file = (o.files.data.files as Row[]).find((f) => f.id === 'f0000003-0000-4000-8000-000000000003');
+    if (!file) throw new Error('remint bundle: the linked file is gone');
+    p.data.files = [{ ...file, linkedTo: [P4D294_CHAT_1, sidecar] }];
+    p.data.folders = (o.files.data.folders ?? []) as unknown[];
+  }
+  return p;
+}
+
+/** The (rewritten) id of the bundle chat titled `title`. */
+function chatByTitle(p: Bundle, title: string): Row {
+  const chat = (p.data.chats as Row[]).find((c) => c.title === title);
+  if (!chat) throw new Error(`no bundle chat titled ${title}`);
+  return chat;
+}
+
+/**
+ * [P4.D294 Tier 1 #10] Two bundle chats SHARING source message ids (a
+ * cross-instance bundle plus a clone of its first chat under a fresh chat
+ * id), each with an annotation at the same source message — every sidecar
+ * must follow ITS chat's remint.
+ */
+function sharedMessageIdsBundle(base: Bundle): Bundle {
+  const p = rewriteIds(remintBundle(base)) as Bundle;
+  const chat = chatByTitle(p, 'A Lesson in Lift');
+  const clone = { ...JSON.parse(JSON.stringify(chat)), id: 'cc000000-0000-4000-8000-0000000002c2', title: 'A Lesson Retold' };
+  (p.data.chats as Row[]).push(clone);
+  const annotation = ((p.data.conversationAnnotations ?? []) as Row[]).find((a) => a.chatId === chat.id);
+  if (!annotation) throw new Error('shared ids bundle: the annotation is gone');
+  (p.data.conversationAnnotations as Row[]).push({
+    ...annotation,
+    id: 'cc000000-0000-4000-8000-0000000002a2',
+    chatId: clone.id,
+    content: 'The same margin, retold.',
+  });
+  return p;
+}
+
+/**
+ * [P4.D294 Tier 1 #13 + Tier 2 #18] A cross-instance chats bundle whose
+ * chats carry the scenario pair; `sources` names one `scenarioSource` per
+ * chat (the first chat takes `sources[0]`; each further one is a clone of
+ * the second chat under a fresh id). `extra` patches each chat.
+ */
+function scenarioBundle(base: Bundle, sources: Array<{ source: unknown; extra?: Row }>): Bundle {
+  const p = rewriteIds(base, [P4D294_FIELD_LIBRARY, 'bd000000-0000-4000-8000-0000000000ff']) as Bundle;
+  const chats = p.data.chats as Row[];
+  const second = chats[1];
+  const out: Row[] = [];
+  sources.forEach((s, i) => {
+    const chat =
+      i === 0
+        ? chats[0]
+        : { ...JSON.parse(JSON.stringify(second)), id: `cc000000-0000-4000-8000-0000000003${String(i).padStart(2, '0')}`, title: `Scenario Chat ${i}` };
+    chat.scenarioText = 'The harbour at dusk.';
+    chat.scenarioSource = s.source;
+    chat.scenarioNotes = 'Bring the lantern.';
+    Object.assign(chat, s.extra ?? {});
+    out.push(chat);
+  });
+  p.data.chats = out;
+  // Informs / annotations / documents of the dropped chats would only add
+  // noise; this bundle is about the chat rows.
+  p.data.chatInforms = [];
+  p.data.conversationAnnotations = [];
+  p.data.chatDocuments = [];
+  return p;
+}
+
+const P4D294_SOURCE = (mountPointId: string) => ({
+  mountPointId,
+  path: 'Scenarios/Harbour.md',
+  bodySha256: P4D294_SHA,
+});
+
+/**
+ * [P4.D294 Tier 1 #8, bug 240] A chats-only bundle's memories: no character
+ * travels, so each `characterId` / truthy `aboutCharacterId` resolves to the
+ * instance's own non-archived row (Riya is archived by the case's plant —
+ * refused, its DEBUG once however many memories name her).
+ */
+function chatsOnlyMemoriesBundle(base: Bundle, memories: Bundle): Bundle {
+  const p = JSON.parse(JSON.stringify(base)) as Bundle;
+  const template = (memories.data.memories as Row[]).find(
+    (m) => m.id === 'ad000000-0000-4000-8000-000000000002',
+  );
+  if (!template) throw new Error('chats-only memories: the template is gone');
+  const UNKNOWN = 'a1000000-0000-4000-8000-0000000002fe';
+  const mem = (n: number, patch: Row): Row => ({
+    ...template,
+    id: `ad000000-0000-4000-8000-0000000002${String(n).padStart(2, '0')}`,
+    summary: `Chats-only memory ${n}`,
+    chatId: null,
+    aboutCharacterId: null,
+    sourceMessageId: null,
+    ...patch,
+  });
+  p.data.memories = [
+    mem(1, { characterId: P4D294_LORIAN, aboutCharacterId: P4D294_RIYA }),
+    mem(2, { characterId: P4D294_RIYA }),
+    mem(3, { characterId: UNKNOWN }),
+    // `supersededAt` travels only beside a truthy `supersededById` (bug 225):
+    // kept on 4, written null on 5.
+    mem(4, {
+      characterId: P4D294_LORIAN,
+      aboutCharacterId: UNKNOWN,
+      supersededById: 'ad000000-0000-4000-8000-000000000205',
+      supersededAt: '2026-01-06T00:00:00.000Z',
+    }),
+    mem(5, {
+      characterId: P4D294_LORIAN,
+      aboutCharacterId: P4D294_LORIAN,
+      supersededById: null,
+      supersededAt: '2026-01-07T00:00:00.000Z',
+    }),
+    mem(6, { characterId: P4D294_LORIAN, chatId: P4D294_CHAT_1, sourceMessageId: P4D294_MSG_2 }),
+  ];
+  return p;
+}
+
+/** [P4.D294 Tier 1 #11, L-A] An `instance-settings` bundle written RAW. */
+function instanceSettingsRawBundle(): { manifest: unknown; data: Record<string, unknown> } {
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'instance-settings',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '4.10.0-dev.176',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [] },
+      counts: {},
+    },
+    data: {
+      instanceSettings: [
+        { key: 'memoryExtractionConcurrency', value: '3' },
+        {
+          key: 'memoryMaintenance',
+          value:
+            '{"enabled":true,"perCharacterCap":2000,"perCharacterCapOverrides":{"a1000000-0000-4000-8000-0000000002aa":500}}',
+        },
+      ],
+    },
+  };
+}
+
+/** [P4.D294] The case plants (`plant-sql` — the Rust side runs the same SQL). */
+const P4D294_CURSOR_ROWS_SQL = [
+  `INSERT INTO "memory_extraction_cursors" ("id", "chatId", "pass", "messageId", "createdAt", "updatedAt") VALUES ('${P4D294_CHAT_1}:other-fold', '${P4D294_CHAT_1}', 'other-fold', '${P4D294_MSG_1}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+  `INSERT INTO "memory_extraction_cursors" ("id", "chatId", "pass", "messageId", "createdAt", "updatedAt") VALUES ('${P4D294_CHAT_1}:turn', '${P4D294_CHAT_1}', 'turn', '${P4D294_MSG_2}', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+];
+const P4D294_REFUSE_MESSAGE_SQL = [
+  `CREATE TRIGGER qt_p4d294_refuse_message BEFORE INSERT ON chat_messages WHEN NEW."swipeGroupId" = 'swipe-3' BEGIN SELECT RAISE(ABORT, 'planted: message insert refused'); END`,
+];
+const P4D294_REFUSE_EPISODE_CURSOR_SQL = [
+  `CREATE TRIGGER qt_p4d294_refuse_cursor BEFORE INSERT ON memory_extraction_cursors WHEN NEW."pass" = 'episode-fold' BEGIN SELECT RAISE(ABORT, 'planted: cursor refused'); END`,
+];
+const P4D294_ARCHIVE_RIYA_SQL = [
+  `UPDATE "characters" SET "archivedAt" = '2026-01-05T00:00:00.000Z' WHERE "id" = '${P4D294_RIYA}'`,
+];
+
+// === end P4.D294 ===
+
 /**
  * [P4.143 Tier 2 item 10] The messages a refused chat create logs: v4's THREE
  * repository ERRORs (`base.repository.ts` `validate`, `_create`'s rethrowing
@@ -2499,11 +2761,50 @@ const WARDROBE_LOG_MESSAGES = new Set([
  */
 const MEMORY_LOG_MESSAGES = new Set(['Imported memory']);
 
+/**
+ * [P4.D294] The carriers' lines — bug 228's per-chat DEBUG and per-message
+ * WARN, bug 240's archived-character DEBUG, the scenario re-point DEBUG —
+ * recorded at their own level as `"<level> <message> k=v …"` (`module`
+ * dropped), plus the C1-11 `[ExtractionCursors]` restore lines as `"<level>
+ * <message>"` ALONE (P4.D288 owns their bytes — §R.5's tag rule):
+ * `carrierLogs` on every execute case, so a case where none fires is a
+ * silence leg.
+ */
+const CARRIER_LOG_MESSAGES = new Set([
+  'Importing chat messages',
+  'Failed to import chat message',
+  'Memory names an archived local character; not reviving it',
+  'Remapped chat scenario source',
+]);
+const CARRIER_TAG_ONLY = [
+  '[ExtractionCursors] Could not restore a bundled cursor; the pass will re-read',
+  '[ExtractionCursors] Restored bundled cursors',
+];
+
+function carrierLine(level: string, message: string, context?: Record<string, unknown>): string | null {
+  if (CARRIER_TAG_ONLY.includes(message)) return `${level} ${message}`;
+  if (!CARRIER_LOG_MESSAGES.has(message)) return null;
+  let line = `${level} ${message}`;
+  for (const [k, v] of Object.entries(context ?? {})) {
+    if (k === 'module' || v === undefined) continue;
+    line += ` ${k}=${v instanceof Error ? v.message : String(v)}`;
+  }
+  return line;
+}
+
 async function withImportWarns<T>(
   body: () => Promise<T>,
-): Promise<{ out: T; importWarns: string[]; wardrobeLogs: string[]; memoryLogs: string[] }> {
+): Promise<{
+  out: T;
+  importWarns: string[];
+  wardrobeLogs: string[];
+  memoryLogs: string[];
+  carrierLogs: string[];
+}> {
   const { Logger } = await import('@/lib/logger');
   const importWarns: string[] = [];
+  // [P4.D294] the carriers' lines, every level they log at.
+  const carrierLogs: string[] = [];
   // [P4.D264] the info / debug half, for `WARDROBE_LOG_MESSAGES` only.
   const wardrobeLogs: string[] = [];
   // [P4.D272] …and for `MEMORY_LOG_MESSAGES`.
@@ -2517,6 +2818,8 @@ async function withImportWarns<T>(
       context?: Record<string, unknown>,
       ...rest: unknown[]
     ) {
+      const carrier = carrierLine(level, message, context);
+      if (carrier) carrierLogs.push(carrier);
       const sink = WARDROBE_LOG_MESSAGES.has(message)
         ? wardrobeLogs
         : MEMORY_LOG_MESSAGES.has(message)
@@ -2540,6 +2843,8 @@ async function withImportWarns<T>(
     context?: Record<string, unknown>,
     ...rest: unknown[]
   ) {
+    const carrier = carrierLine('warn', message, context);
+    if (carrier) carrierLogs.push(carrier);
     if (IMPORT_WARN_MESSAGES.has(message)) {
       let line = message;
       for (const [k, v] of Object.entries(context ?? {})) {
@@ -2551,7 +2856,7 @@ async function withImportWarns<T>(
     return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
   } as never;
   try {
-    return { out: await body(), importWarns, wardrobeLogs, memoryLogs };
+    return { out: await body(), importWarns, wardrobeLogs, memoryLogs, carrierLogs };
   } finally {
     Logger.prototype.warn = original;
     Logger.prototype.info = quiet.info;
@@ -2579,11 +2884,13 @@ function executeCase(
         importWarns,
         wardrobeLogs,
         memoryLogs,
+        carrierLogs,
       } = await withImportWarns(async () =>
         recordRepoLogs ? await withRepoLogs(run) : { out: await run(), repoLogs: undefined },
       );
       await settle();
       return {
+        carrierLogs,
         kind: 'execute',
         exportData,
         options,
@@ -2692,10 +2999,17 @@ function executeTwiceCase(
       const exportData = await payload(spec);
       const preState = dumpAll();
       const { executeImport } = await import('@/lib/import/quilltap-import/execute');
-      const result = await executeImport(spec.userId, exportData as never, options as never);
-      const result2 = await executeImport(spec.userId, exportData as never, options as never);
+      // [P4.D294] the carriers' lines across BOTH runs.
+      const {
+        out: [result, result2],
+        carrierLogs,
+      } = await withImportWarns(async () => [
+        await executeImport(spec.userId, exportData as never, options as never),
+        await executeImport(spec.userId, exportData as never, options as never),
+      ]);
       await settle();
       return {
+        carrierLogs,
         kind: 'execute_twice',
         exportData,
         options,
@@ -2807,11 +3121,15 @@ function executePreppedCase(
     | 'refuse-chat-inserts'
     | 'refuse-idless-inserts'
     | 'wear-ledger'
-    | 'wear-ledger-live',
+    | 'wear-ledger-live'
+    | 'plant-sql',
   payload: (spec: Spec) => Promise<unknown> | unknown,
   options: Record<string, unknown>,
   // [P4.148] Record the repository lines too (`withRepoLogs`).
   recordRepoLogs = false,
+  // [P4.D294] `plant-sql`: these statements on the main DB, emitted as
+  // `prepSql` so the Rust side runs the SAME bytes.
+  prepSql: string[] = [],
 ) {
   return {
     name,
@@ -2871,6 +3189,8 @@ function executePreppedCase(
         );
         for (const statement of WARDROBE_WEAR_STATS_DDL) db.exec(statement);
         if (prep === 'wear-ledger-live') db.exec(WEAR_LIVE_ROWS_SQL);
+      } else if (prep === 'plant-sql') {
+        for (const sql of prepSql) db.exec(sql);
       } else if (prep === 'refuse-idless-inserts') {
         // [P4.155 R-E] Every `memories` / `prompt_templates` INSERT fails AFTER
         // the row validated, so each item lands in its importer's per-item
@@ -2897,11 +3217,14 @@ function executePreppedCase(
         importWarns,
         wardrobeLogs,
         memoryLogs,
+        carrierLogs,
       } = await withImportWarns(async () =>
         recordRepoLogs ? await withRepoLogs(run) : { out: await run(), repoLogs: undefined },
       );
       await settle();
       return {
+        carrierLogs,
+        ...(prep === 'plant-sql' ? { prepSql } : {}),
         importWarns,
         wardrobeLogs,
         memoryLogs,
@@ -3646,6 +3969,194 @@ async function main(): Promise<void> {
       { dumpState: true },
     ),
     multipartBadOptionsCase(),
+    // ── P4.D294 (v4 `8050958be` bug 228, `93c5af6ad` bug 240, `ac6348c5f` /
+    // `64743ee13` the cursor carriage, `545e299bb` the scenario pair) ──────
+    // Bug 228: a `duplicate` beside its original — every message lands under
+    // fresh ids, `swipe-<id>` rewritten, `swipe-3` kept, anchors / cursors /
+    // checkpoint / informs / annotation / memory / file link follow, and the
+    // duplicate is RECONCILED (its map entry is real now).
+    executeCase(
+      'execute_duplicate_remint',
+      () => remintBundle(chatsInformsPayload, { memories: mergedPayload, files: filesPayload }),
+      { conflictStrategy: 'duplicate', includeMemories: true, includeRelatedEntities: false },
+    ),
+    // The same cross-instance bundle twice without preserveIds: no UNIQUE
+    // collision, two full transcripts.
+    executeTwiceCase('execute_twice_fresh_ids', () => rewriteIds(remintBundle(chatsInformsPayload)), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    // Two bundle chats sharing source message ids — per-chat keying.
+    executeCase('execute_shared_message_ids', () => sharedMessageIdsBundle(chatsInformsPayload), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    // One message refused (`swipe-3`): the WARN carries the REMINTED id; the
+    // sidecars naming MSG_4 land null / dropped / cleared.
+    executePreppedCase(
+      'execute_message_insert_fails',
+      'plant-sql',
+      () => remintBundle(chatsInformsPayload, { sidecar: P4D294_MSG_4, memories: mergedPayload }),
+      { conflictStrategy: 'duplicate', includeMemories: true, includeRelatedEntities: false },
+      false,
+      P4D294_REFUSE_MESSAGE_SQL,
+    ),
+    // An anchor naming no bundle message: summary + anchors + lastSummaryTurn
+    // cleared together.
+    executeCase(
+      'execute_summary_unresolved_anchor',
+      () => remintBundle(chatsInformsPayload, { anchors: [P4D294_MSG_1, P4D294_MSG_GONE] }),
+      { conflictStrategy: 'duplicate', includeMemories: false, includeRelatedEntities: false },
+    ),
+    // Courier checkpoints carried as a JSON string with an unreadable entry
+    // and an unmapped one.
+    executeCase(
+      'execute_courier_checkpoints',
+      () =>
+        remintBundle(chatsInformsPayload, {
+          courier: JSON.stringify({
+            [P4D294_LORIAN]: { lastResolvedMessageId: P4D294_MSG_3, resolvedAt: '2026-01-04T00:00:00.000Z' },
+            [P4D294_RIYA]: 'not an object',
+            other: { lastResolvedMessageId: P4D294_MSG_GONE },
+          }),
+        }),
+      { conflictStrategy: 'duplicate', includeMemories: false, includeRelatedEntities: false },
+    ),
+    // preserveIds keeps the message ids (and the cursors) verbatim.
+    executeCase(
+      'execute_preserve_ids_keeps_messages',
+      () => rewriteIds(remintBundle(chatsInformsPayload)),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false, preserveIds: true },
+    ),
+    // Tier 1 #9 — the cursor table on import: (a) reminted (an unresolvable
+    // key writes no row), (b) verbatim under preserveIds (a key naming a
+    // message the bundle lacks is STILL written), (c) `overwrite` onto a
+    // target holding cursor rows (the delete cascades them), (d) blank keys,
+    // and the restore's WARN arm (one pass refused).
+    executeCase(
+      'execute_cursor_bundle_fresh',
+      () =>
+        rewriteIds(
+          remintBundle(chatsInformsPayload, {
+            cursors: {
+              otherExtractionWatermarkMessageId: P4D294_MSG_1,
+              episodeExtractionWatermarkMessageId: P4D294_MSG_GONE,
+              turnExtractionWatermarkMessageId: P4D294_MSG_4,
+            },
+          }),
+        ),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+    ),
+    executeCase(
+      'execute_cursor_bundle_preserve',
+      () =>
+        rewriteIds(
+          remintBundle(chatsInformsPayload, {
+            cursors: {
+              otherExtractionWatermarkMessageId: P4D294_MSG_1,
+              episodeExtractionWatermarkMessageId: P4D294_MSG_GONE,
+              turnExtractionWatermarkMessageId: P4D294_MSG_4,
+            },
+          }),
+        ),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false, preserveIds: true },
+    ),
+    executePreppedCase(
+      'execute_cursor_bundle_overwrite',
+      'plant-sql',
+      () => remintBundle(chatsInformsPayload),
+      { conflictStrategy: 'overwrite', includeMemories: false, includeRelatedEntities: false },
+      false,
+      P4D294_CURSOR_ROWS_SQL,
+    ),
+    executeCase(
+      'execute_cursor_bundle_blank',
+      () =>
+        rewriteIds(
+          remintBundle(chatsInformsPayload, {
+            cursors: {
+              otherExtractionWatermarkMessageId: '',
+              episodeExtractionWatermarkMessageId: null,
+            },
+          }),
+        ),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+    ),
+    executePreppedCase(
+      'execute_cursor_bundle_refused',
+      'plant-sql',
+      () => rewriteIds(remintBundle(chatsInformsPayload)),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      false,
+      P4D294_REFUSE_EPISODE_CURSOR_SQL,
+    ),
+    // Tier 1 #8 — bug 240 + `supersededAt` (the tier rows cover the latter).
+    executePreppedCase(
+      'execute_chats_only_memories',
+      'plant-sql',
+      () => chatsOnlyMemoriesBundle(chatsInformsPayload, mergedPayload),
+      { conflictStrategy: 'skip', includeMemories: true, includeRelatedEntities: false },
+      true,
+      P4D294_ARCHIVE_RIYA_SQL,
+    ),
+    // Tier 1 #11 — L-A: the `instance-settings` import writes raw.
+    executeCase('execute_instance_settings_raw', () => instanceSettingsRawBundle(), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    // Tier 1 #13 — the scenario source: carried at create, re-pointed in the
+    // reconcile (mapped / local / dropped), refused at create when malformed.
+    executeCase(
+      'execute_scenario_source_mapped',
+      () => {
+        const p = JSON.parse(JSON.stringify(mergedPayload)) as Bundle;
+        const chat = (p.data.chats as Row[]).find((c) => c.id === P4D294_CHAT_1);
+        if (!chat) throw new Error('scenario mapped: CHAT_1 is gone');
+        chat.scenarioText = 'The harbour at dusk.';
+        chat.scenarioSource = P4D294_SOURCE(P4D294_FIELD_LIBRARY);
+        chat.scenarioNotes = 'Bring the lantern.';
+        return p;
+      },
+      { conflictStrategy: 'duplicate', includeMemories: false, includeRelatedEntities: false },
+    ),
+    executeCase(
+      'execute_scenario_source_local',
+      () => scenarioBundle(chatsInformsPayload, [{ source: P4D294_SOURCE(P4D294_FIELD_LIBRARY) }]),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+    ),
+    executeCase(
+      'execute_scenario_source_dropped',
+      () =>
+        scenarioBundle(chatsInformsPayload, [
+          { source: P4D294_SOURCE('bd000000-0000-4000-8000-0000000000ff') },
+        ]),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+    ),
+    executeCase(
+      'execute_scenario_source_invalid',
+      () =>
+        scenarioBundle(chatsInformsPayload, [
+          { source: { ...P4D294_SOURCE(P4D294_FIELD_LIBRARY), bodySha256: 'abc' } },
+          { source: JSON.stringify(P4D294_SOURCE(P4D294_FIELD_LIBRARY)) },
+          { source: { ...P4D294_SOURCE(P4D294_FIELD_LIBRARY), mountPointId: 'not-a-uuid' } },
+          { source: null },
+          // Tier 2 #18: a Concierge enum AND a bad source in one chat — ONE
+          // ZodError, issues in `ChatMetadataSchema` declaration order.
+          {
+            source: { ...P4D294_SOURCE(P4D294_FIELD_LIBRARY), path: '' },
+            extra: { conciergeMode: 'bogus' },
+          },
+          // Tier 2 #17's create half: 64 NON-hex characters pass Zod (length
+          // only); an over-long path does not.
+          { source: { ...P4D294_SOURCE(P4D294_FIELD_LIBRARY), bodySha256: 'z'.repeat(64) } },
+          { source: { ...P4D294_SOURCE(P4D294_FIELD_LIBRARY), path: 'p'.repeat(501) } },
+        ]),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      true,
+    ),
   ];
 
   const outLines: string[] = [

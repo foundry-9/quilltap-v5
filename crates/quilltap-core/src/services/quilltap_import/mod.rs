@@ -360,6 +360,12 @@ pub(crate) struct IdMaps {
     /// re-creating them. Always empty under `refuse-on-collision`, where the
     /// preflight guarantees no claimed id exists at all.
     pub preserve_ids_skips: std::collections::HashSet<String>,
+    /// P4.D294 (v4 `8050958be`, bug 228, `types.ts:240`): "Source chat id →
+    /// (source message id → the id the chat import minted for it). Present
+    /// only for chats created under a fresh id … an entry is recorded only
+    /// once its message has actually been inserted." Sidecars resolve through
+    /// [`message_id_remap::remap_imported_message_id`].
+    pub messages: message_id_remap::MessageIdMaps,
 }
 
 /// The id a `preserveIds` create should claim, or a fresh one — v4's
@@ -1263,28 +1269,32 @@ fn enqueue_imported_memory_embeddings(
     };
     // ⚠ DEFERRED LOUDLY — v4's BUILTIN follow-up (`scheduleRefit`).
     //
-    // v4 additionally calls `scheduleRefit(userId, profile.id)` for a BUILTIN
-    // default (`lib/embedding/embedding-job-scheduler.ts:32`): a corpus-derived
-    // TF-IDF vocabulary just grew, so a refit-with-reindex is queued. That
-    // helper is a **5-second debounced in-process `setTimeout`**, which is a
-    // host-cadence seam under this port's locked job-runner rule (timers are
-    // the host's), and v5 has no refit scheduler at all — its only
-    // `EMBEDDING_REFIT` enqueue is the async `queue_service::
-    // enqueue_embedding_refit(&Db, …)`, unreachable from inside the
-    // `Db::write` closure this runs in. Nothing is stubbed: the per-row
-    // enqueues below run for BUILTIN exactly as v4's now do, so imported rows
-    // are embedded; only the vocabulary refit that would improve those vectors
-    // is missing, and the boot reconcile remains the backstop.
+    // After the per-row enqueues v4 calls `scheduleRefit(userId, profile.id,
+    // { force: true })` for a BUILTIN default (`execute.ts:402-415`, `4ae0c4ca6`):
+    // "BUILTIN TF-IDF vocabularies are corpus-derived and the corpus just grew:
+    // schedule the debounced refit-with-reindex. Forced, because imported rows
+    // keep their original `createdAt`, so the drift count that gates a manual
+    // edit's refit cannot see them." A throw is v4's WARN `Failed to schedule
+    // vocabulary refit after import {userId, profileId, error}`, never the
+    // import's failure. That helper is a 5-second debounce driven by the host
+    // (R-Q — P4.D292's `services::embedding_job_scheduler::schedule_refit(db,
+    // user_id, Some(profile_id), true, now_ms)`), an ASYNC call on `&Db` that
+    // cannot run inside the `Db::write` closure this runs in. So the call is a
+    // HANDOFF (L-E, §S.5 (2)): it lands in `api/system_qtap.rs` after the
+    // import's `db.write` returns. Nothing is stubbed: the per-row enqueues
+    // below run for BUILTIN exactly as v4's do, so imported rows are embedded;
+    // only the vocabulary refit that would improve those vectors waits for the
+    // handoff, and the boot refit check (PHASE 3.8) remains the backstop.
     //
     // The differential cannot see it either way — v4's debounce means the job
     // row does not exist when `executeImport` returns and the state is dumped.
-    // Recorded in the P4.D62 lane record; the wire belongs with a host-side
-    // refit scheduler.
+    // Recorded in the P4.D62 and P4.D294 lane records.
     if provider == "BUILTIN" {
         tracing::debug!(
             profile_id = %profile_id,
-            "Imported memories embed under the BUILTIN default; the debounced \
-             vocabulary refit v4 schedules here is not ported (P4.D62 deferral)"
+            "Imported memories embed under the BUILTIN default; the forced \
+             vocabulary refit v4 schedules here is not ported (P4.D62 deferral, \
+             the P4.D294 handoff)"
         );
     }
 
@@ -1513,16 +1523,24 @@ fn import_body(
 
     // 7. Chats.
     if let Some(items) = non_empty_array(data, "chats") {
-        let c =
-            entities::import_chats(main, user_id, items, options, &mut id_maps.chats, warnings)?;
+        let c = entities::import_chats(
+            main,
+            user_id,
+            items,
+            options,
+            &mut id_maps.chats,
+            &mut id_maps.messages,
+            warnings,
+        )?;
         imported.chats = c.imported;
         imported.messages = c.messages;
         skipped.chats = c.skipped;
     }
 
     // 7a. Conversation annotations attached to imported chats. Remap chatId
-    // through the chats map; sourceMessageId stays as-is because the message
-    // import preserves message ids.
+    // through the chats map; a truthy `sourceMessageId` follows its message
+    // when the chat import reminted message ids (v4 `8050958be`, bug 228,
+    // `execute.ts:668-674` — `null` when that message never landed).
     if let Some(items) = non_empty_array(data, "conversationAnnotations") {
         let repo =
             crate::db::conversation_annotations::ConversationAnnotationsRepository::new(main);
@@ -1545,10 +1563,17 @@ fn import_body(
                         .get("messageIndex")
                         .and_then(Value::as_f64)
                         .unwrap_or_default(),
-                    source_message_id: annotation
+                    source_message_id: match annotation
                         .get("sourceMessageId")
                         .and_then(Value::as_str)
-                        .map(|s| s.to_string()),
+                    {
+                        Some(id) if !id.is_empty() => message_id_remap::remap_imported_message_id(
+                            &id_maps.messages,
+                            Some(source_chat_id),
+                            id,
+                        ),
+                        other => other.map(str::to_string),
+                    },
                     character_name: annotation
                         .get("characterName")
                         .and_then(Value::as_str)
@@ -1717,7 +1742,13 @@ fn import_body(
                 });
 
             let inform_id = inform.get("id").and_then(Value::as_str).unwrap_or("");
-            match reconcile::remap_chat_inform(inform, &remapped_chat_id, &known.0, &known.1) {
+            match reconcile::remap_chat_inform(
+                inform,
+                &remapped_chat_id,
+                &id_maps.messages,
+                &known.0,
+                &known.1,
+            ) {
                 reconcile::ChatInformRemap::Dropped { reason } => {
                     informs_dropped += 1;
                     warnings.push(format!("Dropped an imported inform: {reason}"));
@@ -1751,12 +1782,9 @@ fn import_body(
                     // missing `contentMarkdown` as `""` and a `""`
                     // `recordMessageId` as it came). A refusal logs v4's two
                     // lines and NO WARN; the warning + `informsDropped++` are
-                    // the importer's catch (`execute.ts:776-783`).
-                    let input = reconcile::remapped_chat_inform_input(
-                        inform,
-                        &remapped_chat_id,
-                        consumed_by_message_id_cleared,
-                    );
+                    // the importer's catch (`execute.ts:776-783`). The two
+                    // message pointers are the REMAPPED ones (bug 228).
+                    let input = reconcile::remapped_chat_inform_input(inform, &data);
                     let created = match reconcile::parse_create_chat_inform(&input, Some(&data.id))
                     {
                         Err(zod) => {

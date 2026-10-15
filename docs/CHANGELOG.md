@@ -403,6 +403,22 @@ v4 `af48f6cc2` (memory refactor Phase B) on the backup and restore carriers, at 
 - Restore: 22j is deleted. Phase 9 adopts an old archive's mirror vector onto a memory that arrived without one (last duplicate wins, counted only after a successful create) and logs `Restored memories`. The summary drops the two vector counts and gains restore-only `legacyVectorsAdopted` (preview 39 keys, restore 41). The archive reader ignores `vector-index-metas.json`; the new-account remap no longer touches it.
 - Harness: two new backup cases (`backup_with_memory_carriers`, `backup_cursor_read_fails`) and a per-case log comparison; the restore census goes from 80 to 79 lines in both lists; the two vector plants are removed; the oracle's restore target gets the cursor table in the migration shape from v4's real migration; the uuid-remap corpus is regenerated from the pin.
 
+#### 2026-10-15 — fix(core): P4.D294 unit 4 — `.qtap` import: bug 228's reminted message ids, bug 240's local characters, the cursor and scenario carriers
+
+_Versions: core 0.0.1302._
+
+Ports the `.qtap` import halves of v4 `8050958be` (bug 228), `93c5af6ad` (bug 240), `ac6348c5f` / `64743ee13` / `c2795733f` (the extraction cursors and `supersededAt`) and `545e299bb` (the scenario pair) at the `83334b9a5` pin.
+
+- **Bug 228.** Chat import has one create path. A chat created under a fresh id (a `duplicate` beside its original, or any import without `preserveIds`) gets fresh message ids. Swipe groups, summary anchors, cursors and Courier checkpoints follow the new ids. A duplicated chat now maps to its real id, so it is reconciled like any other chat. Re-importing the same bundle no longer collides on message ids.
+- **Sidecars.** Annotations, informs, memories and file links follow their reminted messages. Each resolves only to a message that actually landed, and a pointer to one that didn't is `null`. An inform pointer of `""` is now written `null`, as v4 does.
+- **Logs.** New DEBUG `Importing chat messages` and WARN `Failed to import chat message`.
+- **Cursors.** A bundle's cursor keys are taken off the chat and written to `memory_extraction_cursors` after the chat exists.
+- **Bug 240.** A chats-only bundle's memories (`characterId` and `aboutCharacterId`) attach to an existing local character. An archived one is not revived, and its DEBUG logs once.
+- **`supersededAt`.** Memories carry it only beside a truthy `supersededById`.
+- **Scenario source.** A malformed bundle `scenarioSource` fails its chat with v4's ZodError, one message together with the Concierge enums. The reconcile re-points the source at the imported store, keeps it when the store is already local, or drops it with a DEBUG.
+
+`system_import_state` grows 18 cases (65 → 83) and records the new lines on every case. `chat_informs_remap_equivalence` grows the message maps and 6 rows (15 → 21). Both are green from the pin.
+
 #### 2026-10-15 — feat(core): P4.D294 unit 3 — the `.qtap` export carries a chat's extraction cursors
 
 _Versions: core 0.0.1301._

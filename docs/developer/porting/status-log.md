@@ -182498,3 +182498,57 @@ the wipe's truncate lands), so they land and go green together.
   `CHAT_1` line carries the cursor tail before `_tagNames` on the one-chat AND the all-chats export, none on the
   throwing copy, the scenario pair after `projectId`). Mutation: cursor keys inserted after `with_tag_names` → 3
   cases red.
+- **Unit 4 (core 0.0.1302) — the import (Tier 1 #5, #6, #8–#11, #13, #14):**
+  - `entities.rs`: ONE create path (`keeps_source_ids = preserve_ids && !is_duplicate`; the remint over the bundle
+    JSON → the patch spread → `take_bundle_cursors` → the Concierge derive → L-B's validation → the typed decode →
+    the bug-158 strip; create under the source id only when keeping; `id_map.set(source, REAL id)` on every arm —
+    the chat phantom RETIRED, `DUPLICATE_MINTS` kept for templates / projects / groups, header rewritten — L-G);
+    `restore_bundle_cursors` after create; NEW `add_imported_messages` with the per-chat map registered BEFORE the
+    first insert and filled on success only (first LANDED occurrence), the DEBUG `Importing chat messages` and the
+    WARN `Failed to import chat message` on BOTH v5 arms (L-C).
+  - **L-B:** `chat_create_zod_error` — the `scenarioSource` issues (`zod_scenario_source_issues`) BEFORE the
+    Concierge enum issues, ONE ZodError (scenarioSource is declared at `chat.types.ts:926`, the Concierge trio at
+    `:1008-1012`); the measured combined row (`path: ""` + `conciergeMode: "bogus"`) matches v4's bytes. C1-9's
+    repository-side refusal stays as the second line of defence (never reached from the import).
+  - `IdMaps.messages: MessageIdMaps` threaded into the chats call; annotations (truthy `sourceMessageId` only,
+    keyed by the SOURCE chat id), informs (L-I — `remap_chat_inform` now takes `&MessageIdMaps` and reads the
+    SOURCE chat id off the row itself, as v4's `inform.chatId`; a falsy pointer → `null` in both fields; the
+    refusal names the SOURCE id; `remapped_chat_inform_input` takes the remapped `ChatInformCreate`), memories
+    (`sourceMessageId` keyed by the memory's SOURCE `chatId`), file `linkedTo` (`source_chat_ids` → the reminted map
+    first).
+  - `memories.rs`: `supersededAt` after `supersededById` (truthy → `?? null`, else `null`); bug 240's resolver (L-H —
+    the bundle map, else ONE strict `find_by_id_strict_aware("characters", …)` raw read per id, cached only once it
+    returns; `archivedAt` truthy → the DEBUG once and refused) for `characterId` AND a truthy `aboutCharacterId`.
+  - `reconcile.rs`: the scenario re-point after the `projectId` arm (`id_maps.mount_points` with `??` semantics,
+    else the target's `doc_mount_points` through the mount connection — `find_by_id_strict_aware`), C1-11
+    `remap_scenario_source`, `ChatUpdate.scenario_source`, the DEBUG with `toMountPointId=null` rendered as
+    `log_field_text` renders a null. **Tier 3 #21 NOT triggered:** P4.D288's extended
+    `chat_update_surface_cannot_reach_scenario_text` allowlist already names `services/quilltap_import/
+    reconcile.rs`.
+  - **L-E:** the P4.D62 deferral's prose rewritten for v4's `{ force: true }` call (`execute.ts:402-415`) and its
+    reason; its DEBUG now names the handoff. **HANDOFF (§S.5 (2)) — `api/system_qtap.rs`, after the import's
+    `db.write` returns (`:320`):** when the import created memories and the user's default embedding profile is
+    BUILTIN, ONE call `crate::services::embedding_job_scheduler::schedule_refit(&db, user_id, Some(&profile_id),
+    true, now_ms)` (P4.D292's recorded spelling), its `Err` logged as WARN `Failed to schedule vocabulary refit
+    after import {userId, profileId, error}` and never failing the import.
+  - **Corpus (case bodies, §R.10(p)):** `system-import-execute.test.ts` + twin — 18 NEW cases (bug 228's seven:
+    `execute_duplicate_remint`, `execute_twice_fresh_ids`, `execute_shared_message_ids`,
+    `execute_message_insert_fails`, `execute_summary_unresolved_anchor`, `execute_courier_checkpoints`,
+    `execute_preserve_ids_keeps_messages`; the cursor table's five: `execute_cursor_bundle_{fresh,preserve,
+    overwrite,blank,refused}` — R-C measured: an `overwrite` cascades the old chat's cursor rows on both sides;
+    bug 240 + `supersededAt`: `execute_chats_only_memories`; L-A: `execute_instance_settings_raw` (both keys
+    land raw, the override unremapped — CONVERGED, no code change); the scenario source's four:
+    `execute_scenario_source_{mapped,local,dropped,invalid}` — the invalid row carries Tier 2 #17's create half
+    (64 NON-hex characters pass Zod; a 501-unit path does not) and #18's combined row); a generic `plant-sql`
+    prep (the SQL travels in the oracle row as `prepSql`); `carrierLogs` on every execute case (silence legs;
+    the C1-11 restore lines by TAG only — P4.D288 owns their bytes); per-case oracle non-vacuity asserts;
+    `assert_chat_watermark_lands` re-pointed at the cursor table; the duplicate phantom pin re-aimed (a duplicated
+    chat's memory FK now RESOLVES); `execute_inform_refusals` 2 → 3 imported (the `""` row lands — §R.4(l), BY
+    DESIGN). `chat-informs-remap.ts` grows `messageMaps` (RUNTIME-DEAD → live) + 6 rows.
+  - **Families from the pin:** `system_import_state` **83/83** (from 95 failure lines over 8 cases red-first);
+    `chat_informs_remap_equivalence` **21/21**; still green: `system_import_equivalence`, `qtap_import_equivalence`,
+    `wardrobe_wear_import_remap_equivalence` (no moved row — no wear row names a duplicated chat in its corpus),
+    `ai_import_assembly_equivalence`, `import_warning_text_guard`, `qtap_import_guards_equivalence` (web).
+  - **Observed (not this lane's):** a v4 async tail — `execute_memories_builtin_profile`'s debounced
+    `scheduleRefit` fired after jest teardown once (`ReferenceError … after the Jest environment has been torn
+    down`), AFTER the oracle file was written; no state moved.

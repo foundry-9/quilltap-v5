@@ -1640,9 +1640,12 @@ fn run_store_identity_case(name: &str, case: &Value, user_id: &str, failures: &m
     }
 }
 
-/// The `duplicate`-arm phantom pin: every non-literal chat/project FK a memory
-/// row carries must dangle (no chats/projects row has that id) — v4's
-/// phantom-map quirk observed end-to-end.
+/// The `duplicate`-arm phantom pin: every non-literal PROJECT FK a memory row
+/// carries must dangle (no projects row has that id) — v4's phantom-map quirk
+/// observed end-to-end. Since v4 `8050958be` (bug 228, P4.D294) a duplicated
+/// CHAT maps to its REAL id, so every non-literal memory `chatId` must
+/// RESOLVE to a real chats row instead (the phantom retired for chats only —
+/// templates / projects / groups keep theirs, `import-entities.ts:151/216/283`).
 fn assert_phantom_dangles(
     name: &str,
     literals: &HashSet<String>,
@@ -1662,30 +1665,39 @@ fn assert_phantom_dangles(
     };
     let chat_ids = ids_of("chats");
     let project_ids = ids_of("projects");
-    let mut phantom_fks = 0usize;
+    let mut real_chat_fks = 0usize;
     for row in state
         .get("main")
         .and_then(|t| t.get("memories"))
         .unwrap_or(&empty)
     {
-        for (col, targets) in [("chatId", &chat_ids), ("projectId", &project_ids)] {
-            if let Some(fk) = row.get(col).and_then(Value::as_str) {
-                if !literals.contains(fk) {
-                    phantom_fks += 1;
-                    if targets.contains(fk) {
-                        failures.push(format!(
-                            "[{name}] memories.{col} minted FK {fk} RESOLVES to a real row — \
-                             v4's phantom duplicate-map quirk is not being reproduced"
-                        ));
-                    }
+        if let Some(fk) = row.get("chatId").and_then(Value::as_str) {
+            if !literals.contains(fk) {
+                real_chat_fks += 1;
+                if !chat_ids.contains(fk) {
+                    failures.push(format!(
+                        "[{name}] memories.chatId minted FK {fk} DANGLES — since bug 228 a \
+                         duplicated chat maps to its REAL id"
+                    ));
                 }
             }
         }
+        if let Some(fk) = row.get("projectId").and_then(Value::as_str) {
+            if !literals.contains(fk) && project_ids.contains(fk) {
+                failures.push(format!(
+                    "[{name}] memories.projectId minted FK {fk} RESOLVES to a real row — \
+                     v4's phantom duplicate-map quirk is not being reproduced"
+                ));
+            }
+        }
     }
-    if phantom_fks == 0 {
+    // The fixture's memories carry no `projectId`, so the project leg is
+    // checked when present and never counted; the chat leg — the one bug 228
+    // moved — must be exercised.
+    if real_chat_fks == 0 {
         failures.push(format!(
-            "[{name}] expected at least one phantom memory FK in the duplicate case — the \
-             quirk pin never exercised"
+            "[{name}] expected at least one duplicated-chat FK on a memory in the duplicate \
+             case — the pin never exercised"
         ));
     }
 }
@@ -1788,7 +1800,25 @@ fn system_import_execute_state_equivalence() {
     // …+ P4.D272's `execute_memory_tiers{,_preserve}` and
     // `execute_chat_watermark` (61 + 3 = 64).
     // …+ P4.D284's `execute_wardrobe_folders` (64 + 1 = 65).
-    assert_eq!(ran, 65, "expected 65 cases, ran {ran}");
+    // …+ P4.D294's eighteen carrier arms (bug 228's seven, the cursor table's
+    // five, bug 240's one, L-A's one, the scenario source's four) (65 + 18 =
+    // 83).
+    assert_eq!(ran, 83, "expected 83 cases, ran {ran}");
+    // [P4.D294] Non-vacuity of the carrier-line compare: every execute case
+    // compared it, and each message fired somewhere.
+    assert!(
+        CARRIER_LOG_CASES.load(Ordering::SeqCst) >= 18,
+        "the carriers' lines were compared on too few cases"
+    );
+    {
+        let fired = CARRIER_LOGS_FIRED.lock().unwrap();
+        for m in CARRIER_LOG_MESSAGES.iter().chain(CARRIER_TAG_ONLY.iter()) {
+            assert!(
+                fired.get(*m).copied().unwrap_or(0) > 0,
+                "`{m}` never fired in the oracle — its compare is vacuous"
+            );
+        }
+    }
     // [P4.D284] Non-vacuity: v4 (`4a38222e6`) filed the twelve-item bundle
     // through the writer's `safeFolder` — the whole-state diff above compares
     // v5's store with it, so the oracle must actually carry the filed paths, the
@@ -2108,11 +2138,15 @@ fn system_import_execute_state_equivalence() {
             .iter()
             .find(|c| c["name"] == "execute_inform_refusals")
             .expect("the oracle is missing `execute_inform_refusals` — regenerate it");
+        // [P4.D294, §R.4(l)] THREE since `8050958be` (bug 228): the remap now
+        // writes a FALSY `recordMessageId` (`""`) as `null`, which the schema
+        // accepts — so item 4 LANDS where it used to be refused. BY DESIGN;
+        // never "fix" it back.
         assert_eq!(
             case["result"]["imported"]["chatInforms"].as_i64(),
-            Some(2),
-            "execute_inform_refusals: v4 lands the normalized `permanent: \"yes\"` row and \
-             the sound one"
+            Some(3),
+            "execute_inform_refusals: v4 lands the normalized `permanent: \"yes\"` row, \
+             the `\"\"`-pointer row (written null) and the sound one"
         );
         let tails: Vec<&str> = case["result"]["warnings"]
             .as_array()
@@ -2121,7 +2155,7 @@ fn system_import_execute_state_equivalence() {
             .filter_map(Value::as_str)
             .filter_map(|w| w.strip_prefix("Failed to import inform: "))
             .collect();
-        assert_eq!(tails.len(), 4, "one warning per refused inform: {tails:?}");
+        assert_eq!(tails.len(), 3, "one warning per refused inform: {tails:?}");
         assert!(tails.iter().all(|t| is_zod_error_message(t)));
         let messages: Vec<&str> = case["repoLogs"]
             .as_array()
@@ -2134,7 +2168,7 @@ fn system_import_execute_state_equivalence() {
             ["Data validation failed", "Error creating entity"]
                 .iter()
                 .cycle()
-                .take(8)
+                .take(6)
                 .copied()
                 .collect::<Vec<_>>(),
             "execute_inform_refusals: v4's two lines per refusal and NO WARN (R-D)"
@@ -2490,9 +2524,11 @@ fn system_import_execute_state_equivalence() {
     // the preserve arm (44).
     // [P4.D284] + `execute_wardrobe_folders` (52): R-M's three
     // `Failed to import wardrobe item` lines (47).
+    // [P4.D294] + the seventeen single-run carrier arms (69; the twice arm
+    // records only `carrierLogs`); none fires one of these WARNs (47).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        52,
+        69,
         "cases comparing the import WARNs"
     );
     assert_eq!(
@@ -2504,9 +2540,10 @@ fn system_import_execute_state_equivalence() {
     // (the skip arm's INFO + DEBUG, the overwrite and duplicate INFOs, the
     // pictures arm's ledger INFO + picture INFO). [P4.D272] 48 → 51 cases.
     // [P4.D284] 51 → 52 (`execute_wardrobe_folders` fires none — a silence leg).
+    // [P4.D294] 52 → 69 (the carrier arms fire none).
     assert_eq!(
         WARDROBE_LOG_CASES.load(Ordering::SeqCst),
-        52,
+        69,
         "cases comparing the wardrobe carriers' import lines"
     );
     assert_eq!(
@@ -2519,23 +2556,30 @@ fn system_import_execute_state_equivalence() {
     // seven merged-payload arms and `execute_memory_refusals`, two on
     // `execute_legacy_folds`, eight each on the two tiers arms.
     // [P4.D284] 51 → 52 (`execute_wardrobe_folders` imports no memory).
+    // [P4.D294] 52 → 69 cases; 39 → 47 lines (two each on
+    // `execute_duplicate_remint` and `execute_message_insert_fails` — the
+    // lesson memory and the empty-map interlude memory — and four on
+    // `execute_chats_only_memories`, bug 240's local characters).
     assert_eq!(
         MEMORY_LOG_CASES.load(Ordering::SeqCst),
-        52,
+        69,
         "cases comparing the `Imported memory` lines"
     );
     assert_eq!(
         MEMORY_LOGS_FIRED.load(Ordering::SeqCst),
-        39,
+        47,
         "v4 `Imported memory` lines fired"
     );
     // [P4.155 R-A] …+ the two property-refusal arms (5).
     // [P4.161] …+ the memory and inform refusal arms (7), + Tier 2's
     // prompt-template arm (8).
     // [P4.D272] …+ the two memory-tiers arms (13).
+    // [P4.D294] …+ `execute_chats_only_memories` (silent) and
+    // `execute_scenario_source_invalid` (five refused chats × v4's three
+    // repository ERRORs + the WARN — L-B) (15).
     assert_eq!(
         REPO_LOG_CASES.load(Ordering::SeqCst),
-        13,
+        15,
         "cases that compared a refused create's repository lines"
     );
     assert_eq!(
@@ -2905,6 +2949,22 @@ fn run_execute_case(
                     .execute_batch(WEAR_LIVE_ROWS_SQL)
                     .expect("prep: the live wear rows");
             }
+            // [P4.D294] The oracle's `plant-sql` prep: the SAME statements,
+            // carried in the oracle row as `prepSql`.
+            "plant-sql" => {
+                let sql: Vec<&str> = case["prepSql"]
+                    .as_array()
+                    .expect("a plant-sql case carries prepSql")
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect();
+                assert!(!sql.is_empty(), "[{name}] plant-sql with no statements");
+                for statement in sql {
+                    conn.connection()
+                        .execute_batch(statement)
+                        .unwrap_or_else(|e| panic!("[{name}] prep: {statement}: {e}"));
+                }
+            }
             other => panic!("[{name}] unknown prep {other}"),
         }
     }
@@ -2951,8 +3011,13 @@ fn run_execute_case(
     let capture_wardrobe_logs = case.get("wardrobeLogs").is_some();
     // [P4.D272] …and `importMemories`' per-row DEBUG.
     let capture_memory_logs = case.get("memoryLogs").is_some();
-    let capture =
-        capture_repo_logs || capture_import_warns || capture_wardrobe_logs || capture_memory_logs;
+    // [P4.D294] …and the carriers' lines.
+    let capture_carrier_logs = case.get("carrierLogs").is_some();
+    let capture = capture_repo_logs
+        || capture_import_warns
+        || capture_wardrobe_logs
+        || capture_memory_logs
+        || capture_carrier_logs;
     let db = open_db(&scratch);
     let (results, repo_lines) = db
         .write_blocking(move |ws| {
@@ -3095,6 +3160,30 @@ fn run_execute_case(
         MEMORY_LOG_CASES.fetch_add(1, Ordering::SeqCst);
         MEMORY_LOGS_FIRED.fetch_add(want_raw.len(), Ordering::SeqCst);
     }
+    if capture_carrier_logs {
+        let want: Vec<String> = case["carrierLogs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|w| w.as_str().map(str::to_string))
+            .collect();
+        let got = mask_minted_ids(&v5_carrier_logs(&repo_lines), &literals);
+        let want_masked = mask_minted_ids(&want, &literals);
+        if got != want_masked {
+            failures.push(format!(
+                "[{name}] the carriers' import lines differ\n  rust:   {got:#?}\n  oracle: {want_masked:#?}"
+            ));
+        }
+        CARRIER_LOG_CASES.fetch_add(1, Ordering::SeqCst);
+        for line in &want {
+            *CARRIER_LOGS_FIRED
+                .lock()
+                .unwrap()
+                .entry(carrier_line_message(line))
+                .or_default() += 1;
+        }
+        assert_carrier_case(name, case, &want_state, &want_pre, failures);
+    }
     if name == "execute_memory_tiers" {
         assert_memory_tier_links(name, &case["result"], &want_state, failures);
     }
@@ -3221,7 +3310,11 @@ fn assert_memory_tier_links(
 
 /// [P4.D272 Tier 2 item 12] Non-vacuity on the ORACLE row of
 /// `execute_chat_watermark`: a chat the import created carries a watermark,
-/// and it names a message of THAT chat.
+/// and it names a message of THAT chat. [P4.D294] Since `ac6348c5f` the
+/// bundle's legacy watermark key lands as a `memory_extraction_cursors` ROW
+/// (`"<newChatId>:other-fold"`), written after the chat exists and REMINTED
+/// with the chat's messages (bug 228) — so the row must name a message of the
+/// created chat.
 fn assert_chat_watermark_lands(
     name: &str,
     pre: &StateDump,
@@ -3236,17 +3329,25 @@ fn assert_chat_watermark_lands(
     };
     let before = table(pre, "chats");
     let messages = table(state, "chat_messages");
+    let cursors = table(state, "memory_extraction_cursors");
     let landed = table(state, "chats")
         .into_iter()
         .filter(|c| !before.contains(c))
         .any(|c| {
-            c["otherExtractionWatermarkMessageId"]
-                .as_str()
-                .is_some_and(|w| {
-                    messages
-                        .iter()
-                        .any(|m| m["id"].as_str() == Some(w) && m["chatId"] == c["id"])
-                })
+            cursors.iter().any(|row| {
+                row["chatId"] == c["id"]
+                    && row["pass"] == "other-fold"
+                    && row["id"].as_str()
+                        == c["id"]
+                            .as_str()
+                            .map(|id| format!("{id}:other-fold"))
+                            .as_deref()
+                    && row["messageId"].as_str().is_some_and(|w| {
+                        messages
+                            .iter()
+                            .any(|m| m["id"].as_str() == Some(w) && m["chatId"] == c["id"])
+                    })
+            })
         });
     if !landed {
         failures.push(format!(
@@ -3425,4 +3526,322 @@ fn plant_p4d171_values(conn: &rusqlite::Connection) {
         ],
     )
     .expect("plant the route trail");
+}
+
+// === P4.D294 (append-only) — the carriers' lines + the bug-228 corpus ===
+
+/// [P4.D294] The oracle's `CARRIER_LOG_MESSAGES` — compared with their fields.
+const CARRIER_LOG_MESSAGES: [&str; 4] = [
+    "Importing chat messages",
+    "Failed to import chat message",
+    "Memory names an archived local character; not reviving it",
+    "Remapped chat scenario source",
+];
+
+/// [P4.D294] The oracle's `CARRIER_TAG_ONLY` — C1-11's restore lines,
+/// compared as `<level> <message>` ALONE (P4.D288 owns their bytes).
+const CARRIER_TAG_ONLY: [&str; 2] = [
+    "[ExtractionCursors] Could not restore a bundled cursor; the pass will re-read",
+    "[ExtractionCursors] Restored bundled cursors",
+];
+
+/// v5's captured carrier lines in the oracle's string shape (lower-case
+/// level, target dropped; the tag-only lines cut to their message).
+fn v5_carrier_logs(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter_map(|l| {
+            let (level, rest) = l.split_once(' ')?;
+            let (_target, rest) = rest.split_once(' ')?;
+            let level = level.to_lowercase();
+            if let Some(m) = CARRIER_TAG_ONLY
+                .iter()
+                .find(|m| rest == **m || rest.starts_with(&format!("{m} ")))
+            {
+                return Some(format!("{level} {m}"));
+            }
+            CARRIER_LOG_MESSAGES
+                .iter()
+                .any(|m| rest == *m || rest.starts_with(&format!("{m} ")))
+                .then(|| format!("{level} {rest}"))
+        })
+        .collect()
+}
+
+/// Every UUID in `lines` that is not a literal of the case (the pre-import
+/// fixture or the payload) → `<minted-N>`, numbered in first-encounter order
+/// over the whole list — so the two engines' minted chat / message ids pair
+/// up by position, never by value.
+fn mask_minted_ids(lines: &[String], literals: &HashSet<String>) -> Vec<String> {
+    let re = regex::Regex::new(
+        "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+    )
+    .unwrap();
+    let mut labels: Vec<String> = Vec::new();
+    lines
+        .iter()
+        .map(|line| {
+            re.replace_all(line, |c: &regex::Captures| {
+                let id = c[0].to_string();
+                if literals.contains(&id) {
+                    return id;
+                }
+                let n = labels.iter().position(|l| *l == id).unwrap_or_else(|| {
+                    labels.push(id.clone());
+                    labels.len() - 1
+                });
+                format!("<minted-{n}>")
+            })
+            .into_owned()
+        })
+        .collect()
+}
+
+/// The message of one carrier line (`<level> <message> [k=v …]`).
+fn carrier_line_message(line: &str) -> String {
+    let rest = line.split_once(' ').map_or(line, |(_, r)| r);
+    CARRIER_LOG_MESSAGES
+        .iter()
+        .chain(CARRIER_TAG_ONLY.iter())
+        .find(|m| rest == **m || rest.starts_with(&format!("{m} ")))
+        .map_or_else(|| rest.to_string(), |m| m.to_string())
+}
+
+/// [P4.D294] How many cases compared `carrierLogs`, and how many v4 lines of
+/// each message fired across them (non-vacuity, asserted after the run).
+static CARRIER_LOG_CASES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static CARRIER_LOGS_FIRED: std::sync::Mutex<BTreeMap<String, usize>> =
+    std::sync::Mutex::new(BTreeMap::new());
+
+/// The rows of `table` in `partition` the import CREATED (not in `pre`).
+fn created_rows(pre: &StateDump, state: &StateDump, partition: &str, table: &str) -> Vec<Value> {
+    let rows = |d: &StateDump| -> Vec<Value> {
+        d.get(partition)
+            .and_then(|t| t.get(table))
+            .cloned()
+            .unwrap_or_default()
+    };
+    let before = rows(pre);
+    rows(state)
+        .into_iter()
+        .filter(|r| !before.contains(r))
+        .collect()
+}
+
+/// [P4.D294] Non-vacuity on the ORACLE row of each new bug-228 / bug-240 /
+/// carrier case: the whole-state equality only asks something if v4 really
+/// did what the row is about.
+fn assert_carrier_case(
+    name: &str,
+    case: &Value,
+    state: &StateDump,
+    pre: &StateDump,
+    failures: &mut Vec<String>,
+) {
+    let lines: Vec<&str> = case["carrierLogs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    let fired = |m: &str| {
+        lines
+            .iter()
+            .filter(|l| carrier_line_message(l) == m)
+            .count()
+    };
+    let mut check = |ok: bool, what: &str| {
+        if !ok {
+            failures.push(format!("[{name}] oracle non-vacuity: {what}"));
+        }
+    };
+    let new_chats = created_rows(pre, state, "main", "chats");
+    let messages = created_rows(pre, state, "main", "chat_messages");
+    let messages_of = |chat: &Value| -> Vec<&Value> {
+        messages
+            .iter()
+            .filter(|m| m["chatId"] == chat["id"])
+            .collect()
+    };
+    let lesson = new_chats.iter().find(|c| {
+        c["title"]
+            .as_str()
+            .is_some_and(|t| t.starts_with("A Lesson in Lift"))
+    });
+    match name {
+        "execute_duplicate_remint" => {
+            let Some(chat) = lesson else {
+                return check(false, "the duplicate of CHAT_1 was created");
+            };
+            let own = messages_of(chat);
+            let own_ids: Vec<&str> = own.iter().filter_map(|m| m["id"].as_str()).collect();
+            check(own.len() == 4, "the duplicate holds all four messages");
+            check(
+                own.iter().any(|m| {
+                    m["swipeGroupId"].as_str().is_some_and(|g| {
+                        g.strip_prefix("swipe-")
+                            .is_some_and(|id| own_ids.contains(&id))
+                    })
+                }) && own.iter().any(|m| m["swipeGroupId"] == "swipe-3"),
+                "`swipe-<id>` rewritten onto the duplicate's own message, `swipe-3` kept",
+            );
+            let cursors = created_rows(pre, state, "main", "memory_extraction_cursors");
+            check(
+                cursors.iter().filter(|c| c["chatId"] == chat["id"]).count() == 3
+                    && cursors.iter().all(|c| {
+                        c["messageId"]
+                            .as_str()
+                            .is_some_and(|m| own_ids.contains(&m))
+                    }),
+                "three cursor rows, each naming a message of the duplicate",
+            );
+            let memories = created_rows(pre, state, "main", "memories");
+            check(
+                memories.iter().any(|m| {
+                    m["chatId"] == chat["id"]
+                        && m["sourceMessageId"]
+                            .as_str()
+                            .is_some_and(|s| own_ids.contains(&s))
+                }),
+                "the memory follows its message into the duplicate",
+            );
+            check(
+                memories.iter().any(|m| {
+                    m["summary"] == "Remembered from the interlude"
+                        && m["sourceMessageId"].is_null()
+                }),
+                "a pointer into a reminted chat whose map is EMPTY resolves to null, never \
+                 the identity (the map is registered before the first insert)",
+            );
+            let annotations = created_rows(pre, state, "main", "conversation_annotations");
+            check(
+                annotations.iter().any(|a| {
+                    a["chatId"] == chat["id"]
+                        && a["sourceMessageId"]
+                            .as_str()
+                            .is_some_and(|s| own_ids.contains(&s))
+                }),
+                "the annotation follows its message into the duplicate",
+            );
+            let files = created_rows(pre, state, "main", "files");
+            check(
+                files.iter().any(|f| {
+                    f["linkedTo"].as_str().is_some_and(|l| {
+                        l.contains(chat["id"].as_str().unwrap_or("?"))
+                            && own_ids.iter().any(|id| l.contains(id))
+                    })
+                }),
+                "the file link follows the chat AND its message",
+            );
+            check(
+                chat["projectId"].is_string() && chat["tags"].as_str() != Some("[]"),
+                "the duplicate was RECONCILED (project + tags kept)",
+            );
+        }
+        "execute_twice_fresh_ids" => check(
+            new_chats
+                .iter()
+                .filter(|c| c["title"] == "A Lesson in Lift")
+                .filter(|c| messages_of(c).len() == 4)
+                .count()
+                == 2,
+            "two full transcripts, no UNIQUE collision",
+        ),
+        "execute_shared_message_ids" => {
+            let annotations = created_rows(pre, state, "main", "conversation_annotations");
+            let per_chat_ok = new_chats
+                .iter()
+                .filter(|c| messages_of(c).len() == 4)
+                .all(|c| {
+                    let own: Vec<&str> = messages_of(c)
+                        .iter()
+                        .filter_map(|m| m["id"].as_str())
+                        .collect();
+                    annotations
+                        .iter()
+                        .filter(|a| a["chatId"] == c["id"])
+                        .all(|a| {
+                            a["sourceMessageId"]
+                                .as_str()
+                                .is_some_and(|s| own.contains(&s))
+                        })
+                });
+            check(
+                per_chat_ok,
+                "each chat's annotation names a message of ITS chat",
+            );
+        }
+        "execute_message_insert_fails" => {
+            check(
+                fired("Failed to import chat message") == 1,
+                "one message WARN fired",
+            );
+            let memories = created_rows(pre, state, "main", "memories");
+            check(
+                memories.iter().all(|m| m["sourceMessageId"].is_null()),
+                "the memory sourced at the refused message lands with `sourceMessageId: null`",
+            );
+        }
+        "execute_summary_unresolved_anchor" => check(
+            lesson.is_some_and(|c| {
+                c["contextSummary"].is_null()
+                    && c["summaryAnchorMessageIds"] == "[]"
+                    && c["lastSummaryTurn"] == 0
+            }),
+            "the summary, its anchors and its fold cursor cleared together",
+        ),
+        "execute_cursor_bundle_fresh" => check(
+            created_rows(pre, state, "main", "memory_extraction_cursors").len() == 2,
+            "two reminted cursor rows (the unresolvable episode key wrote none)",
+        ),
+        "execute_cursor_bundle_preserve" => check(
+            created_rows(pre, state, "main", "memory_extraction_cursors").len() == 3,
+            "three verbatim cursor rows (a key naming an absent message is still written)",
+        ),
+        "execute_cursor_bundle_blank" => check(
+            created_rows(pre, state, "main", "memory_extraction_cursors").is_empty(),
+            "blank keys write no row",
+        ),
+        "execute_cursor_bundle_overwrite" => {
+            let cursors = state
+                .get("main")
+                .and_then(|t| t.get("memory_extraction_cursors"))
+                .cloned()
+                .unwrap_or_default();
+            check(
+                !cursors
+                    .iter()
+                    .any(|c| c["chatId"] == "c1000000-0000-4000-8000-000000000001"),
+                "the overwritten chat's planted cursor rows cascaded away",
+            );
+        }
+        "execute_cursor_bundle_refused" => check(
+            fired("[ExtractionCursors] Could not restore a bundled cursor; the pass will re-read")
+                == 1,
+            "the refused pass's WARN fired once",
+        ),
+        "execute_chats_only_memories" => {
+            check(
+                fired("Memory names an archived local character; not reviving it") == 1,
+                "the archived-character DEBUG fired ONCE for two memories naming her",
+            );
+            let memories = created_rows(pre, state, "main", "memories");
+            let by = |summary: &str| memories.iter().find(|m| m["summary"] == summary);
+            check(
+                by("Chats-only memory 4").is_some_and(|m| m["supersededAt"].is_string())
+                    && by("Chats-only memory 5").is_some_and(|m| m["supersededAt"].is_null()),
+                "`supersededAt` kept beside a truthy `supersededById`, written null without one",
+            );
+        }
+        "execute_scenario_source_mapped" | "execute_scenario_source_dropped" => check(
+            fired("Remapped chat scenario source") == 1,
+            "the scenario source was re-pointed / dropped",
+        ),
+        "execute_scenario_source_local" => check(
+            fired("Remapped chat scenario source") == 0
+                && lesson.is_none_or(|c| c["scenarioSource"].is_string()),
+            "a source whose store lives here is kept, silently",
+        ),
+        _ => {}
+    }
 }

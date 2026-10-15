@@ -294,6 +294,8 @@ fn remap_linked_to(
 ) -> Result<(Vec<String>, usize), DbError> {
     let mut kept: Vec<String> = Vec::new();
     let mut resolved_chat_ids: Vec<String> = Vec::new();
+    // "Source ids of the imported chats named in this array" (v4 `8050958be`).
+    let mut source_chat_ids: Vec<&str> = Vec::new();
     let mut unresolved: Vec<String> = Vec::new();
     let mut dropped = 0usize;
 
@@ -306,8 +308,9 @@ fn remap_linked_to(
             .or_else(|| id_maps.groups.get(id));
         if let Some(mapped) = mapped {
             kept.push(mapped.to_string());
-            if id_maps.chats.get(id).is_some() {
+            if id_maps.chats.get(id).is_some_and(|c| !c.is_empty()) {
                 resolved_chat_ids.push(mapped.to_string());
+                source_chat_ids.push(id);
             }
             continue;
         }
@@ -335,6 +338,19 @@ fn remap_linked_to(
     }
 
     for id in unresolved {
+        // "A message reminted with its chat (bug 228) resolves through that
+        // chat's own map, which holds only messages whose insert succeeded."
+        let reminted = source_chat_ids.iter().find_map(|chat_id| {
+            id_maps
+                .messages
+                .get(*chat_id)
+                .and_then(|m| m.get(&id))
+                .filter(|new_id| !new_id.is_empty())
+        });
+        if let Some(reminted) = reminted {
+            kept.push(reminted.clone());
+            continue;
+        }
         let mut matched = false;
         for chat_id in &resolved_chat_ids {
             if !message_id_cache.iter().any(|(k, _)| k == chat_id) {

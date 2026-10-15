@@ -439,6 +439,60 @@ pub(super) fn reconcile_relationships(
                 has_updates = true;
             }
 
+            // v4 `545e299bb` (`reconcile.ts:424-444`): "Re-point the scenario
+            // source at the imported copy of its store. A source whose mount
+            // did not come across (and is not already in this instance) is
+            // dropped rather than left dangling." The id map first (`??` —
+            // an entry is taken as it stands), else the TARGET's own mount
+            // point of that id, else nothing; then C1-11's remap. Runs after
+            // phase 7c, so the mount-point map is populated.
+            if let Some(source) = chat
+                .get("scenarioSource")
+                .filter(|v| crate::api::system_qtap::js_truthy(Some(v)))
+            {
+                let source_mount = source
+                    .get("mountPointId")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                let mapped = match id_maps.mount_points.get(&source_mount) {
+                    Some(m) => Some(m.to_string()),
+                    None => {
+                        let repo =
+                            crate::db::doc_mount_points::DocMountPointsRepository::new(mount);
+                        crate::db::fallback::find_by_id_strict_aware(
+                            "doc_mount_points",
+                            &source_mount,
+                            || repo.exists(&source_mount).map(|found| found.then_some(())),
+                        )
+                        .map_err(|e| super::item_error_text(&e))?
+                        .map(|()| source_mount.clone())
+                    }
+                };
+                let remapped =
+                    crate::services::carriers::scenario_source_remap::remap_scenario_source(
+                        source,
+                        |_| mapped.clone(),
+                    );
+                if remapped
+                    .as_ref()
+                    .is_none_or(|r| r.mount_point_id != source_mount)
+                {
+                    tracing::debug!(
+                        chatId = %new_id,
+                        fromMountPointId = %source_mount,
+                        // `remapped?.mountPointId ?? null` — a `null` renders as
+                        // `log_field_text` renders one.
+                        toMountPointId = %remapped
+                            .as_ref()
+                            .map_or("null", |r| r.mount_point_id.as_str()),
+                        "Remapped chat scenario source"
+                    );
+                    patch.scenario_source = Some(remapped);
+                    has_updates = true;
+                }
+            }
+
             if has_updates {
                 // v4's `chats.update` preserves `updatedAt` unless the caller
                 // passes one — reconcile does not.
@@ -964,9 +1018,12 @@ pub enum ChatInformRemap {
 ///   row, so `chats.create` preserves their ids verbatim — but a chat the
 ///   conflict strategy skipped, or one whose roster was edited in the
 ///   destination, may not have the seat at all.
-/// - `recordMessageId` and `consumedByMessageId` are message ids, which
-///   `addMessage` also preserves verbatim — but a message import that warned and
-///   continued leaves a hole.
+/// - `recordMessageId` and `consumedByMessageId` are message ids. Since v4
+///   `8050958be` (bug 228) they resolve through
+///   [`remap_imported_message_id`](super::message_id_remap::remap_imported_message_id),
+///   keyed by the row's SOURCE `chatId` — the identity unless the chat was
+///   created under a fresh id and its messages reminted — and a message
+///   import that warned and continued leaves a hole either way.
 ///
 /// A row whose seat or whose Host record is missing is **dropped**: an inform
 /// aimed at nobody would sit pending forever, and a record pointer into empty
@@ -979,12 +1036,15 @@ pub enum ChatInformRemap {
 /// preserves `{id: inform.id}`.)
 /// `remapped_chat_id` is the DESTINATION chat id — the caller has already run
 /// `id_maps.chats` over the row's source `chatId` (it needs the result anyway,
-/// to look up the known sets). Taking it as a parameter keeps this function a
-/// pure decision over explicit inputs, which is what lets the differential drive
-/// it directly.
+/// to look up the known sets). Taking it, the message maps and the known sets
+/// as parameters keeps this function a pure decision over explicit inputs,
+/// which is what lets the differential drive it directly. (v4's signature
+/// keeps `idMaps`; the body reads `idMaps.chats` and `idMaps.messages` — the
+/// SOURCE chat id is the row's own `chatId`, as in v4.)
 pub fn remap_chat_inform(
     inform: &serde_json::Value,
     remapped_chat_id: &str,
+    message_maps: &super::message_id_remap::MessageIdMaps,
     known_participant_ids: &std::collections::HashSet<String>,
     known_message_ids: &std::collections::HashSet<String>,
 ) -> ChatInformRemap {
@@ -1003,25 +1063,48 @@ pub fn remap_chat_inform(
         };
     }
 
-    // JS truthiness, both guards: v4 writes `if (recordMessageId && !known…)`
-    // and `Boolean(consumedByMessageId && !known…)` (`reconcile.ts:75-86`), and
-    // an EMPTY STRING is falsy — so a row carrying `""` is neither dropped nor
-    // cleared, and the `""` passes through to the destination row unchanged.
-    // The `.filter` is on the GUARD only, never on the stored value.
-    let record_message_id = s("recordMessageId");
-    if let Some(rid) = record_message_id.as_deref().filter(|r| !r.is_empty()) {
-        if !known_message_ids.contains(rid) {
+    // "`null` back from the remap means the chat was reminted and this message
+    // never landed — treated exactly like a pointer the destination lacks."
+    // JS truthiness on the SOURCE pointer: a falsy one (`""`, `null`, absent)
+    // is written `null` (bug 228's side change — `(pre)` an `""` rode through
+    // as `""`), and neither guard fires. A truthy NON-string pointer can name
+    // no message (v4 compares it against a set of strings), so it drops /
+    // clears, and the reason renders it as JS `String()` would.
+    let source_chat_id = s("chatId");
+    let remap = |k: &str| -> (Option<String>, Option<String>) {
+        let source = inform.get(k);
+        if !crate::api::system_qtap::js_truthy(source) {
+            return (None, None);
+        }
+        let source = source.unwrap_or(&serde_json::Value::Null);
+        let shown = crate::pascal::js_value::to_js_string(source);
+        let mapped = source.as_str().and_then(|id| {
+            super::message_id_remap::remap_imported_message_id(
+                message_maps,
+                source_chat_id.as_deref(),
+                id,
+            )
+        });
+        (Some(shown), mapped)
+    };
+
+    let (source_record_id, record_message_id) = remap("recordMessageId");
+    if let Some(source_record_id) = &source_record_id {
+        if record_message_id
+            .as_ref()
+            .is_none_or(|m| !known_message_ids.contains(m))
+        {
             return ChatInformRemap::Dropped {
-                reason: format!("record message {rid} is missing from chat {chat_id}"),
+                reason: format!("record message {source_record_id} is missing from chat {chat_id}"),
             };
         }
     }
 
-    let consumed_by = s("consumedByMessageId");
-    let cleared = consumed_by
-        .as_deref()
-        .filter(|m| !m.is_empty())
-        .is_some_and(|m| !known_message_ids.contains(m));
+    let (source_consumed_by, consumed_by_message_id) = remap("consumedByMessageId");
+    let cleared = source_consumed_by.is_some()
+        && consumed_by_message_id
+            .as_ref()
+            .is_none_or(|m| !known_message_ids.contains(m));
 
     let now = crate::clock::now_iso();
     ChatInformRemap::Ok {
@@ -1039,49 +1122,53 @@ pub fn remap_chat_inform(
             created_at: now.clone(),
             updated_at: now,
             consumed_at: s("consumedAt"),
-            consumed_by_message_id: if cleared { None } else { consumed_by },
+            consumed_by_message_id: if cleared {
+                None
+            } else {
+                consumed_by_message_id
+            },
         }),
         consumed_by_message_id_cleared: cleared,
     }
 }
 
-/// v4's `result.data` for a kept row (`reconcile.ts:89-102`) built from the
+/// v4's `result.data` for a kept row (`reconcile.ts:98-111`) built from the
 /// RAW item, as the schema will meet it: `batchId`, `participantId` and
-/// `contentMarkdown` exactly as they came (an absent key stays absent), the
-/// two message ids and `consumedAt` `?? null`, `permanent === true`, and the
-/// cleared `consumedByMessageId` nulled. [`remap_chat_inform`]'s typed
-/// `ChatInformCreate` reads each key `as_str`, which turns a non-string or a
-/// missing `contentMarkdown` into `""`; this is what P4.161's whole-row parse
-/// validates instead (§S.2).
+/// `contentMarkdown` exactly as they came (an absent key stays absent),
+/// `consumedAt` `?? null`, `permanent === true`, and the two message ids as
+/// [`remap_chat_inform`] REMAPPED them (`data.record_message_id` /
+/// `data.consumed_by_message_id` — `null` for a falsy source pointer and for
+/// a cleared `consumedByMessageId`; P4.D294, bug 228). [`remap_chat_inform`]'s
+/// typed `ChatInformCreate` reads the other keys `as_str`, which turns a
+/// non-string or a missing `contentMarkdown` into `""`; this is what P4.161's
+/// whole-row parse validates instead (§S.2).
 pub fn remapped_chat_inform_input(
     inform: &serde_json::Value,
-    remapped_chat_id: &str,
-    consumed_by_message_id_cleared: bool,
+    data: &crate::db::chat_informs::ChatInformCreate,
 ) -> serde_json::Value {
     use serde_json::Value;
-    let mut data = serde_json::Map::new();
-    data.insert("chatId".into(), Value::String(remapped_chat_id.into()));
+    let opt = |v: &Option<String>| v.clone().map_or(Value::Null, Value::String);
+    let mut out = serde_json::Map::new();
+    out.insert("chatId".into(), Value::String(data.chat_id.clone()));
     for k in ["batchId", "participantId", "contentMarkdown"] {
         if let Some(v) = inform.get(k) {
-            data.insert(k.into(), v.clone());
+            out.insert(k.into(), v.clone());
         }
     }
-    let or_null = |k: &str| inform.get(k).cloned().unwrap_or(Value::Null);
-    data.insert("recordMessageId".into(), or_null("recordMessageId"));
-    data.insert(
+    out.insert("recordMessageId".into(), opt(&data.record_message_id));
+    out.insert(
         "permanent".into(),
         Value::Bool(inform.get("permanent") == Some(&Value::Bool(true))),
     );
-    data.insert("consumedAt".into(), or_null("consumedAt"));
-    data.insert(
-        "consumedByMessageId".into(),
-        if consumed_by_message_id_cleared {
-            Value::Null
-        } else {
-            or_null("consumedByMessageId")
-        },
+    out.insert(
+        "consumedAt".into(),
+        inform.get("consumedAt").cloned().unwrap_or(Value::Null),
     );
-    Value::Object(data)
+    out.insert(
+        "consumedByMessageId".into(),
+        opt(&data.consumed_by_message_id),
+    );
+    Value::Object(out)
 }
 
 /// v4's `_create` validation of a chat inform (`base.repository.ts:350-368`

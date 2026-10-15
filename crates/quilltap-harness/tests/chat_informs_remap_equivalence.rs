@@ -19,6 +19,12 @@
 //! `Omit<ChatInform, 'id' | 'createdAt' | 'updatedAt'>`), and the port's minted
 //! values are asserted to be present and fresh instead.
 //!
+//! **P4.D294 (v4 `8050958be`, bug 228)**: the two message pointers resolve
+//! through the reminted chat's message map (each corpus row's optional
+//! `messageMaps`); a FALSY pointer (`""`) is now written `null` — the
+//! `""` rows' expected `data` FLIPPED at the pin BY DESIGN (never revert it);
+//! a refusal names the SOURCE message id.
+//!
 //! **P4.D249 (v4 `52d6e7ecd`)**: `data.permanent` is compared too — v4 writes
 //! `inform.permanent === true`, so only a JSON `true` survives (absent, `false`,
 //! `"true"` and `1` all import as a one-shot). Red-first from the oracle at both
@@ -36,6 +42,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use quilltap_core::services::quilltap_import::message_id_remap::MessageIdMaps;
 use quilltap_core::services::quilltap_import::reconcile::{remap_chat_inform, ChatInformRemap};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -51,6 +58,10 @@ struct Case {
     inform: Value,
     #[serde(rename = "chatMap")]
     chat_map: std::collections::HashMap<String, String>,
+    /// [P4.D294] source chat id → (source message id → reminted id) — v4's
+    /// `idMaps.messages`; absent = empty (the identity).
+    #[serde(rename = "messageMaps", default)]
+    message_maps: MessageIdMaps,
     #[serde(rename = "knownParticipantIds")]
     known_participant_ids: Vec<String>,
     #[serde(rename = "knownMessageIds")]
@@ -108,7 +119,13 @@ fn chat_informs_remap_matches_oracle() {
 
         let participants: HashSet<String> = case.known_participant_ids.iter().cloned().collect();
         let messages: HashSet<String> = case.known_message_ids.iter().cloned().collect();
-        let got = remap_chat_inform(&case.inform, &remapped_chat_id, &participants, &messages);
+        let got = remap_chat_inform(
+            &case.inform,
+            &remapped_chat_id,
+            &case.message_maps,
+            &participants,
+            &messages,
+        );
 
         let w = &want["result"];
         match got {
