@@ -144,6 +144,7 @@ pub mod memory_gate;
 pub mod memory_index; // P4.D288 (C1-3)
 pub mod memory_processor;
 pub mod memory_recap;
+pub mod memory_regenerate_job;
 pub mod memory_retire; // P4.D288 (C1-7)
 pub mod memory_service;
 pub mod memory_subject;

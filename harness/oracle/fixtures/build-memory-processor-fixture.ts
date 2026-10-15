@@ -63,6 +63,8 @@ interface ChatSpec {
   messageCount?: number;
   /** Seat status overrides (`isParticipantPresent` reads them). */
   statuses?: Record<string, string>;
+  /** P4.D296 R-V: further row fields written through `chats.update` (e.g. `conciergeMode`). */
+  row?: Record<string, unknown>;
   participants: Array<{ id: string; characterId: string; controlledBy: string; connectionProfileId?: string }>;
   messages: Array<{ id: string; role: string; content: string; participantId: string | null; createdAt: string }>;
 }
@@ -72,6 +74,8 @@ interface SeedMemory {
   /** P4.D296: a per-turn fragment the episode pass links (`findByCharacterAndSourceMessageIds`). */
   sourceMessageId?: string;
   chatId?: string;
+  /** P4.D296 R-V: `MANUAL` rows survive a chat wipe (default `AUTO`). */
+  source?: string;
   content: string;
   summary: string;
   vector: number[] | null;
@@ -244,7 +248,7 @@ async function main(): Promise<void> {
         tags: [],
         importance: 0.5,
         embedding: seed.vector ? new Float32Array(seed.vector) : null,
-        source: 'AUTO',
+        source: seed.source ?? 'AUTO',
         witnessedContext: null,
         sourceMessageId: seed.sourceMessageId ?? null,
         lastAccessedAt: null,
@@ -322,6 +326,7 @@ async function main(): Promise<void> {
     if (chat.summaryAnchorMessageIds) rowExtras.summaryAnchorMessageIds = chat.summaryAnchorMessageIds;
     if (chat.lastMessageAt) rowExtras.lastMessageAt = chat.lastMessageAt;
     if (chat.messageCount !== undefined) rowExtras.messageCount = chat.messageCount;
+    Object.assign(rowExtras, chat.row ?? {});
     if (Object.keys(rowExtras).length > 0) await repos.chats.update(chat.id, rowExtras as never);
   }
   if ((spec.chats ?? []).length > 0) {

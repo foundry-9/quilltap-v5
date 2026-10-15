@@ -1,0 +1,555 @@
+{
+ "testPepperBase64": "dGVzdC1wZXBwZXItZm9yLWZpeHR1cmVzLW9ubHkxMjM0NTY3OA==",
+ "userId": "a0000000-0000-4000-8000-0000000000e1",
+ "seedTimestamp": "2026-07-01T00:00:00.000Z",
+ "futureTimestamp": "2026-07-01T00:00:00.000Z",
+ "connectionProfiles": [
+  {
+   "id": "9c000000-0000-4000-8000-000000000001",
+   "name": "Current",
+   "provider": "ANTHROPIC",
+   "modelName": "claude-sonnet-4-5",
+   "isCheap": false,
+   "isDangerousCompatible": false
+  },
+  {
+   "id": "9c000000-0000-4000-8000-000000000002",
+   "name": "Cheap",
+   "provider": "OPENAI",
+   "modelName": "gpt-4o-mini",
+   "isCheap": true,
+   "isDangerousCompatible": false
+  }
+ ],
+ "chatSettings": {
+  "cheapLLMSettings": {
+   "strategy": "PROVIDER_CHEAPEST",
+   "fallbackToLocal": false
+  }
+ },
+ "characters": [
+  {
+   "id": "aa000000-0000-4000-8000-0000000000a1",
+   "name": "Ada",
+   "controlledBy": "llm",
+   "identity": "Ada captains the Gull.",
+   "othersFiles": []
+  },
+  {
+   "id": "bb000000-0000-4000-8000-0000000000b2",
+   "name": "Bram",
+   "controlledBy": "llm",
+   "identity": "Bram is the quartermaster.",
+   "othersFiles": []
+  },
+  {
+   "id": "cc000000-0000-4000-8000-0000000000c3",
+   "name": "Quill",
+   "controlledBy": "user",
+   "identity": "Quill is a scribe.",
+   "othersFiles": []
+  }
+ ],
+ "seedMemories": [],
+ "chats": [
+  {
+   "id": "9a000001-0000-4000-8000-000000000001",
+   "participants": [
+    {
+     "id": "5a000000-0000-4000-8000-00000000000a",
+     "characterId": "aa000000-0000-4000-8000-0000000000a1",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5b000000-0000-4000-8000-00000000000b",
+     "characterId": "bb000000-0000-4000-8000-0000000000b2",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5c000000-0000-4000-8000-00000000000c",
+     "characterId": "cc000000-0000-4000-8000-0000000000c3",
+     "controlledBy": "user"
+    }
+   ],
+   "messages": [
+    {
+     "id": "9e100001-0000-4000-8000-000000000001",
+     "role": "ASSISTANT",
+     "content": "Welcome aboard the Gull.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:01:00.000Z"
+    },
+    {
+     "id": "9e100002-0000-4000-8000-000000000002",
+     "role": "USER",
+     "content": "Where are we bound?",
+     "participantId": "5c000000-0000-4000-8000-00000000000c",
+     "createdAt": "2026-07-14T08:02:00.000Z"
+    },
+    {
+     "id": "9e100003-0000-4000-8000-000000000003",
+     "role": "ASSISTANT",
+     "content": "North, past the reef.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:03:00.000Z"
+    },
+    {
+     "id": "9e100004-0000-4000-8000-000000000004",
+     "role": "USER",
+     "content": "And Bram?",
+     "participantId": "5c000000-0000-4000-8000-00000000000c",
+     "createdAt": "2026-07-14T08:04:00.000Z"
+    },
+    {
+     "id": "9e100005-0000-4000-8000-000000000005",
+     "role": "ASSISTANT",
+     "content": "Below, counting the barrels.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:05:00.000Z"
+    }
+   ]
+  },
+  {
+   "id": "9a000002-0000-4000-8000-000000000002",
+   "participants": [
+    {
+     "id": "5a000000-0000-4000-8000-00000000000a",
+     "characterId": "aa000000-0000-4000-8000-0000000000a1",
+     "controlledBy": "llm"
+    },
+    {
+     "id": "5c000000-0000-4000-8000-00000000000c",
+     "characterId": "cc000000-0000-4000-8000-0000000000c3",
+     "controlledBy": "user"
+    }
+   ],
+   "messages": [
+    {
+     "id": "9e200001-0000-4000-8000-000000000001",
+     "role": "USER",
+     "content": "Morning.",
+     "participantId": "5c000000-0000-4000-8000-00000000000c",
+     "createdAt": "2026-07-14T08:01:00.000Z"
+    },
+    {
+     "id": "9e200002-0000-4000-8000-000000000002",
+     "role": "ASSISTANT",
+     "content": "Morning, Quill.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:02:00.000Z"
+    }
+   ]
+  },
+  {
+   "id": "9a000004-0000-4000-8000-000000000004",
+   "chatType": "autonomous",
+   "participants": [
+    {
+     "id": "5a000000-0000-4000-8000-00000000000a",
+     "characterId": "aa000000-0000-4000-8000-0000000000a1",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5b000000-0000-4000-8000-00000000000b",
+     "characterId": "bb000000-0000-4000-8000-0000000000b2",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5c000000-0000-4000-8000-00000000000c",
+     "characterId": "cc000000-0000-4000-8000-0000000000c3",
+     "controlledBy": "user"
+    }
+   ],
+   "messages": [
+    {
+     "id": "9e400001-0000-4000-8000-000000000001",
+     "role": "ASSISTANT",
+     "content": "The tide turns.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:01:00.000Z"
+    },
+    {
+     "id": "9e400002-0000-4000-8000-000000000002",
+     "role": "ASSISTANT",
+     "content": "Then we sail.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:02:00.000Z"
+    },
+    {
+     "id": "9e400003-0000-4000-8000-000000000003",
+     "role": "ASSISTANT",
+     "content": "At dawn.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:03:00.000Z"
+    }
+   ]
+  },
+  {
+   "id": "9a000005-0000-4000-8000-000000000005",
+   "chatType": "autonomous",
+   "participants": [
+    {
+     "id": "5a000000-0000-4000-8000-00000000000a",
+     "characterId": "aa000000-0000-4000-8000-0000000000a1",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5b000000-0000-4000-8000-00000000000b",
+     "characterId": "bb000000-0000-4000-8000-0000000000b2",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5c000000-0000-4000-8000-00000000000c",
+     "characterId": "cc000000-0000-4000-8000-0000000000c3",
+     "controlledBy": "user"
+    }
+   ],
+   "messages": [
+    {
+     "id": "9e500001-0000-4000-8000-000000000001",
+     "role": "USER",
+     "content": "Is anyone here?",
+     "participantId": "5c000000-0000-4000-8000-00000000000c",
+     "createdAt": "2026-07-14T08:01:00.000Z"
+    }
+   ]
+  },
+  {
+   "id": "9a000006-0000-4000-8000-000000000006",
+   "participants": [
+    {
+     "id": "5a000000-0000-4000-8000-00000000000a",
+     "characterId": "aa000000-0000-4000-8000-0000000000a1",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5b000000-0000-4000-8000-00000000000b",
+     "characterId": "bb000000-0000-4000-8000-0000000000b2",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5c000000-0000-4000-8000-00000000000c",
+     "characterId": "cc000000-0000-4000-8000-0000000000c3",
+     "controlledBy": "user"
+    }
+   ],
+   "messages": []
+  }
+ ],
+ "embeddingDims": 16,
+ "completionRules": [],
+ "ops": [
+  {
+   "name": "first_turn_job",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000001-0000-4000-8000-000000000001",
+    "turnOpenerMessageId": "9e100002-0000-4000-8000-000000000002",
+    "extractionAnchorMessageId": null,
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "same_turn_dedupes",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000001-0000-4000-8000-000000000001",
+    "turnOpenerMessageId": "9e100002-0000-4000-8000-000000000002",
+    "extractionAnchorMessageId": null,
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "other_opener_is_new",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000001-0000-4000-8000-000000000001",
+    "turnOpenerMessageId": "9e100004-0000-4000-8000-000000000004",
+    "extractionAnchorMessageId": null,
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "anchor_differs_is_new",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000001-0000-4000-8000-000000000001",
+    "turnOpenerMessageId": "9e100002-0000-4000-8000-000000000002",
+    "extractionAnchorMessageId": "9e100003-0000-4000-8000-000000000003",
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "explicit_turn_pass_dedupes_the_default",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000001-0000-4000-8000-000000000001",
+    "turnOpenerMessageId": "9e100002-0000-4000-8000-000000000002",
+    "extractionAnchorMessageId": null,
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001",
+    "pass": "turn"
+   }
+  },
+  {
+   "name": "extract_after_is_not_a_term",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000001-0000-4000-8000-000000000001",
+    "turnOpenerMessageId": "9e100002-0000-4000-8000-000000000002",
+    "extractionAnchorMessageId": null,
+    "extractAfterMessageId": "9e100001-0000-4000-8000-000000000001",
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "backfill_is_not_a_term",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000001-0000-4000-8000-000000000001",
+    "turnOpenerMessageId": "9e100002-0000-4000-8000-000000000002",
+    "extractionAnchorMessageId": null,
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001",
+    "backfill": true
+   }
+  },
+  {
+   "name": "fold_pass_is_new",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000001-0000-4000-8000-000000000001",
+    "turnOpenerMessageId": null,
+    "extractionAnchorMessageId": "9e100005-0000-4000-8000-000000000005",
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001",
+    "pass": "other-fold"
+   }
+  },
+  {
+   "name": "fold_cursor_is_a_term",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000001-0000-4000-8000-000000000001",
+    "turnOpenerMessageId": null,
+    "extractionAnchorMessageId": null,
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001",
+    "pass": "other-fold",
+    "cursor": "9e100003-0000-4000-8000-000000000003"
+   }
+  },
+  {
+   "name": "fold_same_cursor_dedupes",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000001-0000-4000-8000-000000000001",
+    "turnOpenerMessageId": null,
+    "extractionAnchorMessageId": null,
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001",
+    "pass": "other-fold",
+    "cursor": "9e100003-0000-4000-8000-000000000003",
+    "ignoreIdle": true
+   }
+  },
+  {
+   "name": "plant_legacy_fold_job",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000001-0000-4000-8000-000000000001",
+    "turnOpenerMessageId": null,
+    "extractionAnchorMessageId": "9e100004-0000-4000-8000-000000000004",
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001",
+    "pass": "other-fold"
+   },
+   "options": {
+    "skipDedupCheck": true
+   },
+   "rewritePayload": "{\"chatId\":\"9a000001-0000-4000-8000-000000000001\",\"turnOpenerMessageId\":null,\"extractionAnchorMessageId\":\"9e100004-0000-4000-8000-000000000004\",\"connectionProfileId\":\"9c000000-0000-4000-8000-000000000001\",\"foldOtherCatchup\":true}"
+  },
+  {
+   "name": "legacy_flag_is_the_same_pass",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000001-0000-4000-8000-000000000001",
+    "turnOpenerMessageId": null,
+    "extractionAnchorMessageId": "9e100004-0000-4000-8000-000000000004",
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001",
+    "pass": "other-fold"
+   }
+  },
+  {
+   "name": "unknown_pass_compares_raw",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000001-0000-4000-8000-000000000001",
+    "turnOpenerMessageId": null,
+    "extractionAnchorMessageId": "9e100005-0000-4000-8000-000000000005",
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001",
+    "pass": "bogus"
+   }
+  },
+  {
+   "name": "skip_dedup_check_always_new",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000001-0000-4000-8000-000000000001",
+    "turnOpenerMessageId": "9e100002-0000-4000-8000-000000000002",
+    "extractionAnchorMessageId": null,
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+   },
+   "options": {
+    "skipDedupCheck": true
+   }
+  },
+  {
+   "name": "plant_absent_opener",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000003-0000-4000-8000-000000000003",
+    "turnOpenerMessageId": null,
+    "extractionAnchorMessageId": "9e300009-0000-4000-8000-000000000009",
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+   },
+   "options": {
+    "skipDedupCheck": true
+   },
+   "stripKey": "turnOpenerMessageId"
+  },
+  {
+   "name": "absent_opener_never_matches_null",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000003-0000-4000-8000-000000000003",
+    "turnOpenerMessageId": null,
+    "extractionAnchorMessageId": "9e300009-0000-4000-8000-000000000009",
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "plant_absent_anchor",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000003-0000-4000-8000-000000000003",
+    "turnOpenerMessageId": "9e300001-0000-4000-8000-000000000001",
+    "extractionAnchorMessageId": null,
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+   },
+   "options": {
+    "skipDedupCheck": true
+   },
+   "stripKey": "extractionAnchorMessageId"
+  },
+  {
+   "name": "absent_anchor_matches_null",
+   "kind": "enqueue",
+   "payload": {
+    "chatId": "9a000003-0000-4000-8000-000000000003",
+    "turnOpenerMessageId": "9e300001-0000-4000-8000-000000000001",
+    "extractionAnchorMessageId": null,
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "batch_bytes",
+   "kind": "batch",
+   "chatId": "9a000003-0000-4000-8000-000000000003",
+   "entries": [
+    {
+     "turnOpenerMessageId": "9e300001-0000-4000-8000-000000000001",
+     "extractionAnchorMessageId": null
+    },
+    {
+     "turnOpenerMessageId": null,
+     "extractionAnchorMessageId": "9e300004-0000-4000-8000-000000000004",
+     "extractAfterMessageId": "9e300003-0000-4000-8000-000000000003"
+    }
+   ],
+   "priority": 2
+  },
+  {
+   "name": "batch_empty",
+   "kind": "batch",
+   "chatId": "9a000003-0000-4000-8000-000000000003",
+   "entries": [],
+   "priority": 0
+  },
+  {
+   "name": "qm_seat_profile_with_greeting",
+   "kind": "queueMemories",
+   "chatId": "9a000001-0000-4000-8000-000000000001"
+  },
+  {
+   "name": "qm_second_press_stacks",
+   "kind": "queueMemories",
+   "chatId": "9a000001-0000-4000-8000-000000000001"
+  },
+  {
+   "name": "qm_default_cheap_profile",
+   "kind": "queueMemories",
+   "chatId": "9a000002-0000-4000-8000-000000000002",
+   "plants": {
+    "cheapLLMSettings": {
+     "strategy": "PROVIDER_CHEAPEST",
+     "fallbackToLocal": false,
+     "defaultCheapProfileId": "9c000000-0000-4000-8000-000000000002"
+    }
+   }
+  },
+  {
+   "name": "qm_user_defined_profile",
+   "kind": "queueMemories",
+   "chatId": "9a000002-0000-4000-8000-000000000002",
+   "plants": {
+    "cheapLLMSettings": {
+     "strategy": "USER_DEFINED",
+     "fallbackToLocal": false,
+     "userDefinedProfileId": "9c000000-0000-4000-8000-000000000002"
+    }
+   }
+  },
+  {
+   "name": "qm_user_defined_needs_the_strategy",
+   "kind": "queueMemories",
+   "chatId": "9a000002-0000-4000-8000-000000000002",
+   "plants": {
+    "cheapLLMSettings": {
+     "strategy": "PROVIDER_CHEAPEST",
+     "fallbackToLocal": false,
+     "userDefinedProfileId": "9c000000-0000-4000-8000-000000000002"
+    }
+   }
+  },
+  {
+   "name": "qm_missing_profile_400",
+   "kind": "queueMemories",
+   "chatId": "9a000002-0000-4000-8000-000000000002",
+   "plants": {
+    "cheapLLMSettings": {
+     "strategy": "PROVIDER_CHEAPEST",
+     "fallbackToLocal": false,
+     "defaultCheapProfileId": "9c000000-0000-4000-8000-0000000000ff"
+    }
+   }
+  },
+  {
+   "name": "qm_autonomous_bounds",
+   "kind": "queueMemories",
+   "chatId": "9a000004-0000-4000-8000-000000000004"
+  },
+  {
+   "name": "qm_autonomous_empty_400",
+   "kind": "queueMemories",
+   "chatId": "9a000005-0000-4000-8000-000000000005"
+  },
+  {
+   "name": "qm_salon_empty_400",
+   "kind": "queueMemories",
+   "chatId": "9a000006-0000-4000-8000-000000000006"
+  }
+ ]
+}

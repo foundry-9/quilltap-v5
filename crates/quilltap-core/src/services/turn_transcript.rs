@@ -237,8 +237,9 @@ pub fn list_extraction_turns(
 /// `user_character_*` options, which is exactly what this returns.
 ///
 /// v5 has ONE caller where v4 has two: the second is v4's streaming
-/// extract-memories DRY RUN (`?action=extract-memories`), a standing v5
-/// deferral, so the queue-memories verb v5 does port never needed it.
+/// extraction DRY RUN (`?action=extract-memories-dry-run`,
+/// `handleExtractMemoriesDryRun` at the `83334b9a5` pin), deferred to Tier 3 by
+/// P4.D296's R-W — its loud refusal stands; no wire variant is added.
 pub fn resolve_user_character_participant<'a>(
     participants: &[Value],
     participant_characters: &'a std::collections::HashMap<String, Value>,

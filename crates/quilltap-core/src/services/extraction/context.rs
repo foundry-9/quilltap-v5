@@ -372,11 +372,13 @@ pub fn build_extraction_context(
     let chat = match opts.chat.take() {
         Some(c) => c,
         None => {
-            let id = chat_id.to_string();
-            db.read_main(move |c| chats_read::find_by_id(c, &id))?
-                .ok_or_else(|| {
-                    ExtractionContextError::NoChat(format!("Chat not found: {chat_id}"))
-                })?
+            // v4 `repos.chats.findById` is a FALLBACK read (a failure logs and
+            // answers `null`), so a failed read is the missing-chat error.
+            crate::db::fallback::find_by_id_or_none("chats", chat_id, || {
+                let id = chat_id.to_string();
+                db.read_main(move |c| chats_read::find_by_id(c, &id))
+            })
+            .ok_or_else(|| ExtractionContextError::NoChat(format!("Chat not found: {chat_id}")))?
         }
     };
 
@@ -388,7 +390,13 @@ pub fn build_extraction_context(
                 .clone()
                 .or_else(|| pick_extraction_connection_profile_id(&chat));
             match profile_id {
-                Some(id) => db.read_main(move |c| connection_profiles::find_by_id(c, &id))?,
+                // v4 `repos.connections.findById` falls back to `null`.
+                Some(id) => {
+                    crate::db::fallback::find_by_id_or_none("connection_profiles", &id, || {
+                        let pid = id.clone();
+                        db.read_main(move |c| connection_profiles::find_by_id(c, &pid))
+                    })
+                }
                 None => None,
             }
         }
@@ -400,12 +408,29 @@ pub fn build_extraction_context(
     })?;
 
     // v4 `Promise.all([chatSettings, connections, resolveMemorySettings,
-    // refreshMemoryTimeZone])`.
+    // refreshMemoryTimeZone])` — every one a read that DEGRADES (L-17,
+    // measured through v4's real build at the pin: a throwing `chat_settings`
+    // / `connection_profiles` / `characters` / `chats` read never fails it):
+    // `chatSettings.findByUserId` logs `Error finding chat settings by user ID`
+    // and answers `null`, `connections.findByUserId` is `findByFilter`'s `[]`.
     let uid = user_id.to_string();
-    let chat_settings_row = db.read_main(move |c| chat_settings::find_by_user_id(c, &uid))?;
+    let chat_settings_row = db
+        .read_main(move |c| chat_settings::find_by_user_id(c, &uid))
+        .unwrap_or_else(|error| {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "chat_settings",
+                userId = %user_id,
+                error = %error_text(&error),
+                "Error finding chat settings by user ID"
+            );
+            None
+        });
     let uid = user_id.to_string();
     let available_profiles =
-        db.read_main(move |c| connection_profiles::find_by_user_id(c, &uid))?;
+        crate::db::fallback::find_by_filter_or_empty("connection_profiles", || {
+            db.read_main(move |c| connection_profiles::find_by_user_id(c, &uid))
+        });
     let uid = user_id.to_string();
     let settings = db.read_main(move |c| Ok(resolve_memory_settings(c, Some(&uid))))?;
     let now_ms = opts

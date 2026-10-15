@@ -24,11 +24,10 @@
 //!   3. the only production callers of the repository's write verbs
 //!      (`set_cursor`, `set_cursor_raw`, `clear_for_chat`) outside the
 //!      repository are the pipeline's `CursorStore`
-//!      (`services/extraction/cursors.rs`) and the carriers
-//!      (`services/carriers/cursor_bundle.rs`).
-//!
-//! The regenerate handlers (`MEMORY_REGENERATE_CHAT` / `_ALL`, v4's
-//! `clearForChat` callers) join row 3 when they land. Standing on the shared
+//!      (`services/extraction/cursors.rs`), the carriers
+//!      (`services/carriers/cursor_bundle.rs`) and the chat regenerate's wipe
+//!      (`services/memory_regenerate_job.rs`, v4 `memory-regenerate-chat.ts`'s
+//!      `clearForChat`). Standing on the shared
 //! source-census lexer (`source_census`).
 //!
 //! Run standalone:
@@ -125,7 +124,7 @@ fn outside_the_repository_three_files_name_the_table_constant() {
 }
 
 #[test]
-fn only_the_cursor_store_and_the_carriers_call_the_write_verbs() {
+fn only_the_cursor_store_the_carriers_and_the_regenerate_call_the_write_verbs() {
     let mut callers: Vec<String> = Vec::new();
     for (file, zone) in production_files() {
         if file.ends_with("db/memory_extraction_cursors.rs") {
@@ -143,6 +142,7 @@ fn only_the_cursor_store_and_the_carriers_call_the_write_verbs() {
         vec![
             "quilltap-core/src/services/carriers/cursor_bundle.rs .set_cursor(".to_string(),
             "quilltap-core/src/services/extraction/cursors.rs .set_cursor_raw(".to_string(),
+            "quilltap-core/src/services/memory_regenerate_job.rs .clear_for_chat(".to_string(),
         ],
         "a new production caller writes extraction cursors — classify it (v4's \
          `setCursor` / `clearForChat` callers are the cursor store, the carriers \

@@ -155,6 +155,10 @@ use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::memory_extraction_job::{
     handle_memory_extraction, MemoryExtractionPayload,
 };
+use quilltap_core::services::memory_regenerate_job::{
+    handle_memory_regenerate_all, handle_memory_regenerate_chat, MemoryRegenerateAllPayload,
+    MemoryRegenerateChatPayload,
+};
 use quilltap_core::services::message_finalizer::{
     AcOnAffirming, AnswerConfirmationRunner, CostEstimate, CostTrackArgs, CostTracker,
     FinalizerConfirmationRun, RealAnswerConfirmation, RealAsyncCompression,
@@ -3331,6 +3335,53 @@ impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for MemoryExtractionJo
     }
 }
 
+/// `MEMORY_REGENERATE_CHAT` — a payload decode around the differential-verified
+/// [`handle_memory_regenerate_chat`] (v4 `memory-regenerate-chat.ts`; P4.D296
+/// R-V). No model call: the rebuild is the extraction jobs it enqueues.
+pub struct MemoryRegenerateChatJobHandler;
+
+impl JobHandler for MemoryRegenerateChatJobHandler {
+    fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
+        Box::pin(async move {
+            let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
+            match handle_memory_regenerate_chat(
+                db,
+                &job.id,
+                &job.user_id,
+                &MemoryRegenerateChatPayload::decode(&payload),
+            )
+            .await
+            {
+                Ok(()) => JobOutcome::Completed(None),
+                Err(e) => JobOutcome::Failed(e),
+            }
+        })
+    }
+}
+
+/// `MEMORY_REGENERATE_ALL` — the fan-out ([`handle_memory_regenerate_all`], v4
+/// `memory-regenerate-all.ts`; P4.D296 R-V).
+pub struct MemoryRegenerateAllJobHandler;
+
+impl JobHandler for MemoryRegenerateAllJobHandler {
+    fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
+        Box::pin(async move {
+            let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
+            match handle_memory_regenerate_all(
+                db,
+                &job.id,
+                &job.user_id,
+                &MemoryRegenerateAllPayload::decode(&payload),
+            )
+            .await
+            {
+                Ok(()) => JobOutcome::Completed(None),
+                Err(e) => JobOutcome::Failed(e),
+            }
+        })
+    }
+}
+
 // === end P4.D296 ===
 
 /// `CONTEXT_SUMMARY` (P4.6bj) — a payload decode around the
@@ -3948,6 +3999,16 @@ impl SpineFactory for ProductionSpineFactory {
                     pricing: Arc::clone(&self.pricing),
                     tz: self.tz.clone(),
                 }),
+            ),
+            // P4.D296 R-V: the regenerate wipe + rebuild and its fan-out (until
+            // now the runner's loud "not yet available" fallback answered).
+            (
+                "MEMORY_REGENERATE_CHAT".to_string(),
+                Box::new(MemoryRegenerateChatJobHandler),
+            ),
+            (
+                "MEMORY_REGENERATE_ALL".to_string(),
+                Box::new(MemoryRegenerateAllJobHandler),
             ),
             (
                 "CONTEXT_SUMMARY".to_string(),

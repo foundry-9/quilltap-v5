@@ -224,6 +224,13 @@ fn maintenance_ops_match_oracle() {
             "enqueued": summary.fold_other_catchup.enqueued,
             "deferred": summary.fold_other_catchup.deferred,
         },
+        // P4.D296 (v4 `ac6348c5f`, bug 232): sweep 9, the episode idle
+        // catch-up — v4's summary carries it after `foldOtherCatchup`; the
+        // fixture's chats sit outside the window, so `{0, 0}` as sweep 8.
+        "foldEpisodeCatchup": {
+            "enqueued": summary.fold_episode_catchup.enqueued,
+            "deferred": summary.fold_episode_catchup.deferred,
+        },
         // === P4.D292: step 10 (v4 `4ae0c4ca6`), the TF-IDF refit check — a
         // neural / profile-less fixture, so `{ reason: null, enqueued: false }`
         // (the BUILTIN drift row lives in `builtin_refit_policy_equivalence`).

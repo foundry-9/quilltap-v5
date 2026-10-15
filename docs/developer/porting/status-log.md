@@ -181545,3 +181545,63 @@ expectation. (The cursor whole-map read was already v4's shape: `findAllByChat`'
 **L-21 — MEASURED no-op:** no v5 production code registers or dispatches an `INTER_CHARACTER_MEMORY` handler (the
 only production mentions are P4.D288's `retired_job_rows_purge.rs` purge and its `p4d288_span.rs` caller; the
 `build_context.rs` hits are the unrelated inter-character MEMORY block); the six list sites are P4.D288's census.
+
+**P4.D296 Tier 1 #15 + Tier 2 R-V + L-17 (2026-10-15, core 0.0.1303, host 0.0.206):** NEW
+`services/memory_regenerate_job.rs` (`handle_memory_regenerate_chat` / `handle_memory_regenerate_all`, v4
+`memory-regenerate-chat.ts` / `memory-regenerate-all.ts` — the wipe through C1-7 `retire_chat_memories` + the
+announcement after the commit, C1-1 `clear_for_chat` + its DEBUG, one `skip_dedup_check` backfill turn job per
+`list_extraction_turns` turn, the catch-ups with the `regenerate:<jobId>` anchor, the orphan arm, the profile throw
+BEFORE any wipe; the fan-out's one in-flight snapshot, `should_use_uncensored_route` routing,
+`find_distinct_chat_ids` orphans, the two ERROR lines, the INFO); `enqueue_memory_regenerate_chat` in the queue region
+(dedupe by chat, `maxAttempts` 1, its WARN); both host wrappers + registration rows in the fenced spine region. R-V
+LANDED: the LIVE enqueue that died on the runner's loud fallback (`api/memories.rs` `memory_regenerate_all` →
+`enqueue_memory_regenerate_all`) now runs.
+**L-17 — MEASURED, then a port defect fixed:** the fold hook's ONE ERROR wraps `buildExtractionContext` (chat +
+profile handed in) and two `runFoldPass` calls that catch their own failures. A scratch jest measurement through v4's
+REAL build at the pin planted a throwing read (a VIRTUAL `json('not json')` column) on each table the build reads:
+`chat_settings`, `connection_profiles`, `characters`, `chats` each threw `malformed JSON` on a probe and the build
+NEVER threw (an empty `instance_settings` and the absent project are not read) → the ERROR is UNREACHABLE outside the
+strict scope. v5's first cut `?`-propagated the chat-settings and profile-list reads and the chat / profile by-id
+reads, so a failed read failed every unit's extraction where v4 degrades — fixed in `context.rs` (v4's
+`Error finding chat settings by user ID` → none; `find_by_filter_or_empty("connection_profiles")`; the by-id reads
+through `find_by_id_or_none` around the whole `read_main` → v4's missing-chat / missing-profile errors). Pinned
+NEGATIVE with its v5 home by NEW `extraction_context_degrade` (four tables renamed away on a copy of the turn fixture:
+the hook's build succeeds with an empty cast and v4's degrade lines; the by-id build answers `Chat not found`; the fold
+ERROR never fires). Mutation: the pre-fix `context.rs` → red.
+**L-2 — MEASURED (the writer read):** v5's Salon spine (`orchestrator.rs:1814`) stamps `participantId` on a USER row
+only when the human drives a seat (the participant resolver's user participant); a plain human with no seat writes
+none, so that row is not episode-eligible (`is_fold_eligible_message`), as v4's writer does. The provisioned-instance
+turn is a 💸 dogfood row.
+**#15 / #14's enqueue half — NEW `extraction_enqueue_tier2`** (case `extraction-enqueue-tier2.test.ts` over v4's real
+`enqueueMemoryExtraction` / `enqueueMemoryExtractionBatch` / `handleQueueMemories`; spec from
+`gen-extraction-enqueue-spec.py`; the shared builder). 29 ops: the five terms and what is not a term
+(`extractAfterMessageId`, `backfill`, `ignoreIdle`), an explicit `turn` deduping the default, a legacy
+`foldOtherCatchup` row (planted by rewriting a pending payload — no v5 writer emits it) deduping `other-fold`, `bogus`
+compared raw, `skipDedupCheck`, L-6's absent keys planted both ways by the same `json_remove` SQL (an absent opener
+never matches `null`; an absent anchor does), the batch bytes (priority, conditional `extractAfterMessageId`,
+`backfill: true`) and an empty batch, and `queue-memories` whole (the seat profile with a greeting turn, a second press
+stacking, the default cheap profile, USER_DEFINED and its strategy gate, a missing profile's WARN + 400, the
+autonomous bounds, both empty-chat 400s). Payload BYTES, the whole `background_jobs` table and the captured lines
+compared. Mutation: the strict opener loosened → `absent_opener_never_matches_null` red.
+**Deviation (recorded):** the order put the queue-memories rows in `embedding_remainder_equivalence`'s Phase 4 (P4.D292's
+family, mine by row). On this branch that family's oracle dies at the pin in P4.D292's own phases (`no such table:
+vector_entries` — the vector-table retirement P4.D292 repairs), so its Phase 4 cannot be regenerated here without
+editing P4.D292's family. The rows are covered whole in `extraction_enqueue_tier2` (which I own) instead; the
+unchanged Phase 4 rows are re-run on the union (HANDOFF to the unifier).
+**R-V's family — NEW `memory_regenerate_jobs_tier3`** (case `memory-regenerate-jobs-tier3.test.ts`; spec from
+`gen-memory-regenerate-spec.py`; the shared builder grown with a seed memory's `source` and a chat's extra row fields).
+7 ops: the wipe + rebuild (all three cursors cleared, the MANUAL row spared, three turn jobs then two catch-ups), the
+autonomous bounds, turn mode's episode-only catch-up, the profile throw with nothing wiped, the orphan arm, the fan-out
+(an in-flight wipe skipped, the Unmoderated chat on the dangerous profile, an orphan chat id) and a second fan-out
+skipping every in-flight wipe. Mutation: the mode ignored → `regen_turn_mode_only_episode` red. (The order also named
+`memory_pipeline_jobs_tier3`'s regenerate rows; that family has none — the new family carries them.)
+R-W: the dry-run deferral comment in `turn_transcript.rs` re-pointed at the pin's `extract-memories-dry-run` action;
+the dry-run action and the CLI's `memory-diff` keep their existing loud refusals (untouched).
+- **FLAGGED — `maintenance_ops_tier2`'s builder is dead at the pin** (`build-maintenance-ops-fixture.ts:146` seeds
+  `type: 'MEMORY_HOUSEKEEPING'` jobs; v4's job-type enum at `83334b9a5` refuses it — `ZodError: Invalid option` — the
+  P4.D288 retirement). The builder is not this lane's (the family is P4.D297's but for the sweep half), so it is NOT
+  re-typed here (the order's STOP-and-flag rule for a dead builder). The sweep half's comparand gains v4's
+  `foldEpisodeCatchup` key after `foldOtherCatchup`; it is green ON THE UNION once the builder's job type is moved
+  (HANDOFF to the unifier / P4.D297). Meanwhile the sweep itself is differential-proven by `fold_other_pass_tier3`'s
+  four real-`enqueueFoldCatchups` ops and the tick by `scheduled_maintenance`'s unit test.
+- `memory_extraction_cursors_writers_census` row 3 gains the regenerate wipe (`memory_regenerate_job.rs .clear_for_chat(`) — red in the final gate, classified, green by name.

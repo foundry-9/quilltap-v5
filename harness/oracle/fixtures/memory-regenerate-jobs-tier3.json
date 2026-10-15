@@ -1,0 +1,383 @@
+{
+ "testPepperBase64": "dGVzdC1wZXBwZXItZm9yLWZpeHR1cmVzLW9ubHkxMjM0NTY3OA==",
+ "userId": "a0000000-0000-4000-8000-0000000000e1",
+ "seedTimestamp": "2026-07-01T00:00:00.000Z",
+ "futureTimestamp": "2026-07-01T00:00:00.000Z",
+ "connectionProfiles": [
+  {
+   "id": "9c000000-0000-4000-8000-000000000001",
+   "name": "Standard",
+   "provider": "ANTHROPIC",
+   "modelName": "claude-sonnet-4-5",
+   "isCheap": false,
+   "isDangerousCompatible": false
+  },
+  {
+   "id": "9c000000-0000-4000-8000-000000000002",
+   "name": "Dangerous",
+   "provider": "OPENAI",
+   "modelName": "gpt-4o-mini",
+   "isCheap": true,
+   "isDangerousCompatible": true
+  }
+ ],
+ "chatSettings": {
+  "cheapLLMSettings": {
+   "strategy": "PROVIDER_CHEAPEST",
+   "fallbackToLocal": false
+  }
+ },
+ "characters": [
+  {
+   "id": "aa000000-0000-4000-8000-0000000000a1",
+   "name": "Ada",
+   "controlledBy": "llm",
+   "identity": "Ada captains the Gull.",
+   "othersFiles": []
+  },
+  {
+   "id": "bb000000-0000-4000-8000-0000000000b2",
+   "name": "Bram",
+   "controlledBy": "llm",
+   "identity": "Bram is the quartermaster.",
+   "othersFiles": []
+  },
+  {
+   "id": "cc000000-0000-4000-8000-0000000000c3",
+   "name": "Quill",
+   "controlledBy": "user",
+   "identity": "Quill is a scribe.",
+   "othersFiles": []
+  }
+ ],
+ "seedMemories": [
+  {
+   "id": "5eed0001-0000-4000-8000-000000000001",
+   "characterId": "aa000000-0000-4000-8000-0000000000a1",
+   "chatId": "7a000001-0000-4000-8000-000000000001",
+   "content": "Ada set the course north.",
+   "summary": "ada set the course north.",
+   "vector": null,
+   "createdAt": "seed"
+  },
+  {
+   "id": "5eed0002-0000-4000-8000-000000000002",
+   "characterId": "aa000000-0000-4000-8000-0000000000a1",
+   "chatId": "7a000001-0000-4000-8000-000000000001",
+   "content": "Ada keeps a private log.",
+   "summary": "ada keeps a private log.",
+   "vector": null,
+   "createdAt": "seed",
+   "source": "MANUAL"
+  },
+  {
+   "id": "5eed0003-0000-4000-8000-000000000003",
+   "characterId": "bb000000-0000-4000-8000-0000000000b2",
+   "chatId": "7a000001-0000-4000-8000-000000000001",
+   "content": "Bram counted the barrels.",
+   "summary": "bram counted the barrels.",
+   "vector": null,
+   "createdAt": "seed"
+  },
+  {
+   "id": "5eed0004-0000-4000-8000-000000000004",
+   "characterId": "aa000000-0000-4000-8000-0000000000a1",
+   "chatId": "7a000002-0000-4000-8000-000000000002",
+   "content": "Ada watched the tide.",
+   "summary": "ada watched the tide.",
+   "vector": null,
+   "createdAt": "seed"
+  },
+  {
+   "id": "5eed0005-0000-4000-8000-000000000005",
+   "characterId": "bb000000-0000-4000-8000-0000000000b2",
+   "chatId": "7a000009-0000-4000-8000-000000000009",
+   "content": "Bram remembers a harbour that no longer exists.",
+   "summary": "bram remembers a harbour that ",
+   "vector": null,
+   "createdAt": "seed"
+  },
+  {
+   "id": "5eed0006-0000-4000-8000-000000000006",
+   "characterId": "aa000000-0000-4000-8000-0000000000a1",
+   "chatId": "7a000003-0000-4000-8000-000000000003",
+   "content": "Ada greeted Quill.",
+   "summary": "ada greeted quill.",
+   "vector": null,
+   "createdAt": "seed"
+  },
+  {
+   "id": "5eed0007-0000-4000-8000-000000000007",
+   "characterId": "aa000000-0000-4000-8000-0000000000a1",
+   "chatId": "7a000008-0000-4000-8000-000000000008",
+   "content": "Ada recalls a chat long deleted.",
+   "summary": "ada recalls a chat long delete",
+   "vector": null,
+   "createdAt": "seed"
+  }
+ ],
+ "chats": [
+  {
+   "id": "7a000001-0000-4000-8000-000000000001",
+   "participants": [
+    {
+     "id": "5a000000-0000-4000-8000-00000000000a",
+     "characterId": "aa000000-0000-4000-8000-0000000000a1",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5b000000-0000-4000-8000-00000000000b",
+     "characterId": "bb000000-0000-4000-8000-0000000000b2",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5c000000-0000-4000-8000-00000000000c",
+     "characterId": "cc000000-0000-4000-8000-0000000000c3",
+     "controlledBy": "user"
+    }
+   ],
+   "messages": [
+    {
+     "id": "7e100001-0000-4000-8000-000000000001",
+     "role": "ASSISTANT",
+     "content": "Welcome aboard.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:01:00.000Z"
+    },
+    {
+     "id": "7e100002-0000-4000-8000-000000000002",
+     "role": "USER",
+     "content": "Where to?",
+     "participantId": "5c000000-0000-4000-8000-00000000000c",
+     "createdAt": "2026-07-14T08:02:00.000Z"
+    },
+    {
+     "id": "7e100003-0000-4000-8000-000000000003",
+     "role": "ASSISTANT",
+     "content": "North.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:03:00.000Z"
+    },
+    {
+     "id": "7e100004-0000-4000-8000-000000000004",
+     "role": "USER",
+     "content": "And Bram?",
+     "participantId": "5c000000-0000-4000-8000-00000000000c",
+     "createdAt": "2026-07-14T08:04:00.000Z"
+    },
+    {
+     "id": "7e100005-0000-4000-8000-000000000005",
+     "role": "ASSISTANT",
+     "content": "Below decks.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:05:00.000Z"
+    }
+   ]
+  },
+  {
+   "id": "7a000002-0000-4000-8000-000000000002",
+   "chatType": "autonomous",
+   "participants": [
+    {
+     "id": "5a000000-0000-4000-8000-00000000000a",
+     "characterId": "aa000000-0000-4000-8000-0000000000a1",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5b000000-0000-4000-8000-00000000000b",
+     "characterId": "bb000000-0000-4000-8000-0000000000b2",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5c000000-0000-4000-8000-00000000000c",
+     "characterId": "cc000000-0000-4000-8000-0000000000c3",
+     "controlledBy": "user"
+    }
+   ],
+   "messages": [
+    {
+     "id": "7e200001-0000-4000-8000-000000000001",
+     "role": "ASSISTANT",
+     "content": "The tide turns.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:01:00.000Z"
+    },
+    {
+     "id": "7e200002-0000-4000-8000-000000000002",
+     "role": "ASSISTANT",
+     "content": "Then we sail.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:02:00.000Z"
+    },
+    {
+     "id": "7e200003-0000-4000-8000-000000000003",
+     "role": "ASSISTANT",
+     "content": "At dawn.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:03:00.000Z"
+    }
+   ]
+  },
+  {
+   "id": "7a000003-0000-4000-8000-000000000003",
+   "participants": [
+    {
+     "id": "5a000000-0000-4000-8000-00000000000a",
+     "characterId": "aa000000-0000-4000-8000-0000000000a1",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5b000000-0000-4000-8000-00000000000b",
+     "characterId": "bb000000-0000-4000-8000-0000000000b2",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5c000000-0000-4000-8000-00000000000c",
+     "characterId": "cc000000-0000-4000-8000-0000000000c3",
+     "controlledBy": "user"
+    }
+   ],
+   "messages": [
+    {
+     "id": "7e300001-0000-4000-8000-000000000001",
+     "role": "USER",
+     "content": "Morning.",
+     "participantId": "5c000000-0000-4000-8000-00000000000c",
+     "createdAt": "2026-07-14T08:01:00.000Z"
+    },
+    {
+     "id": "7e300002-0000-4000-8000-000000000002",
+     "role": "ASSISTANT",
+     "content": "Morning, Quill.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:02:00.000Z"
+    }
+   ]
+  },
+  {
+   "id": "7a000004-0000-4000-8000-000000000004",
+   "participants": [
+    {
+     "id": "5a000000-0000-4000-8000-00000000000a",
+     "characterId": "aa000000-0000-4000-8000-0000000000a1",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5b000000-0000-4000-8000-00000000000b",
+     "characterId": "bb000000-0000-4000-8000-0000000000b2",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5c000000-0000-4000-8000-00000000000c",
+     "characterId": "cc000000-0000-4000-8000-0000000000c3",
+     "controlledBy": "user"
+    }
+   ],
+   "messages": [
+    {
+     "id": "7e400001-0000-4000-8000-000000000001",
+     "role": "USER",
+     "content": "Is it safe?",
+     "participantId": "5c000000-0000-4000-8000-00000000000c",
+     "createdAt": "2026-07-14T08:01:00.000Z"
+    },
+    {
+     "id": "7e400002-0000-4000-8000-000000000002",
+     "role": "ASSISTANT",
+     "content": "Nothing aboard is safe.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:02:00.000Z"
+    }
+   ],
+   "row": {
+    "conciergeMode": "unmoderated"
+   }
+  }
+ ],
+ "embeddingDims": 16,
+ "completionRules": [],
+ "ops": [
+  {
+   "name": "regen_chat_wipes_and_rebuilds",
+   "kind": "chat",
+   "payload": {
+    "chatId": "7a000001-0000-4000-8000-000000000001",
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+   },
+   "plants": {
+    "cursor": {
+     "chatId": "7a000001-0000-4000-8000-000000000001",
+     "turn": "7e100003-0000-4000-8000-000000000003",
+     "other-fold": "7e100005-0000-4000-8000-000000000005",
+     "episode-fold": "7e100005-0000-4000-8000-000000000005"
+    }
+   }
+  },
+  {
+   "name": "regen_autonomous_bounds",
+   "kind": "chat",
+   "payload": {
+    "chatId": "7a000002-0000-4000-8000-000000000002",
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "regen_turn_mode_only_episode",
+   "kind": "chat",
+   "payload": {
+    "chatId": "7a000003-0000-4000-8000-000000000003",
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+   },
+   "plants": {
+    "mode": {
+     "otherPass": "turn",
+     "perTurnOtherFloor": 0.75,
+     "foldCandidatesPerSubject": 3
+    }
+   }
+  },
+  {
+   "name": "regen_profile_gone_throws_before_wiping",
+   "kind": "chat",
+   "payload": {
+    "chatId": "7a000004-0000-4000-8000-000000000004",
+    "connectionProfileId": "9c000000-0000-4000-8000-0000000000ff"
+   }
+  },
+  {
+   "name": "regen_orphan_chat",
+   "kind": "chat",
+   "payload": {
+    "chatId": "7a000009-0000-4000-8000-000000000009",
+    "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "fan_out",
+   "kind": "all",
+   "payload": {
+    "standardProfileId": "9c000000-0000-4000-8000-000000000001",
+    "dangerousProfileId": "9c000000-0000-4000-8000-000000000002"
+   },
+   "plants": {
+    "inFlightWipe": "7a000003-0000-4000-8000-000000000003"
+   }
+  },
+  {
+   "name": "fan_out_again_skips_every_in_flight_wipe",
+   "kind": "all",
+   "payload": {
+    "standardProfileId": "9c000000-0000-4000-8000-000000000001",
+    "dangerousProfileId": "9c000000-0000-4000-8000-000000000002"
+   }
+  }
+ ]
+}

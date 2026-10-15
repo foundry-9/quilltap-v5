@@ -76,6 +76,18 @@ _Docs-only change._
 
 The stacking point P4.D296 / P4.D297 / P4.D298 branch from, with every C1-B signature as landed and the one departure.
 
+#### 2026-10-15 — feat(memory): P4.D296 Tier 1 #15 + Tier 2 — the enqueue surface proven, the regenerate handlers, the context build degrading as v4's does
+
+_Versions: core 0.0.1303, host 0.0.206._
+
+`MEMORY_REGENERATE_CHAT` and `MEMORY_REGENERATE_ALL` now have handlers (`services::memory_regenerate_job`), registered in the host spine; until now both job types died on the runner's "recognized but not yet available" fallback, so the memories page's Regenerate-all button queued a job that always failed. The chat handler wipes the chat's memories (manual rows, cold rows and digests with a surviving member are spared), clears its extraction cursors, enqueues one backfill turn job per turn (an autonomous room's turns bounded by the previous anchor), then the fold catch-ups (only `episode-fold` in turn mode) anchored at `regenerate:<jobId>`. A chat that is gone has its orphan memories wiped; a missing connection profile fails the job before anything is wiped. The fan-out enqueues one wipe per chat against one snapshot of in-flight wipes, routes Unmoderated chats through the dangerous-compatible profile, and wipes orphan chat ids. `enqueue_memory_regenerate_chat` dedupes by chat with one attempt.
+
+The extraction context build now degrades on a failed read as v4's does: the user's chat settings (logs `Error finding chat settings by user ID`, reads as none), the profile list (empty), the chat and the profile by id (the missing-chat / missing-profile errors). Before, any of those failures failed the whole unit of work's extraction.
+
+New families: `extraction_enqueue_tier2` (the five-term dedupe and what is not a term, `skipDedupCheck`, L-6's absent keys planted both ways, a legacy `foldOtherCatchup` row, the batch bytes, and `queue-memories` whole — the three profile arms, the greeting turn, the autonomous bounds, both empty-chat refusals), `memory_regenerate_jobs_tier3` (the wipe and rebuild, the bounds, turn mode, the profile throw, the orphan arm, two fan-outs), and `extraction_context_degrade` (L-17: v4's fold ERROR is unreachable outside the strict scope — measured through v4's real build — and v5's build degrades on the same failed reads).
+
+`memory_extraction_cursors_writers_census` classifies the regenerate wipe's `clear_for_chat`.
+
 #### 2026-10-15 — feat(memory): P4.D296 Tier 1 #11–#14, #16, #17 — the fold runner, the catch-ups and their sweep, the job handlers on the one pipeline, the one fold seam
 
 _Versions: core 0.0.1302, host 0.0.205._

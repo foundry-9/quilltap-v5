@@ -935,6 +935,52 @@ pub async fn enqueue_memory_extraction_batch(
     Ok(ids)
 }
 
+/// v4 `enqueueMemoryRegenerateChat` (`queue-service.ts:847-877`, P4.D296 R-V)
+/// — deduped by chat against the user's pending / processing
+/// `MEMORY_REGENERATE_CHAT` jobs (a failed look-up WARNs and enqueues anyway),
+/// `maxAttempts` 1.
+pub async fn enqueue_memory_regenerate_chat(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    connection_profile_id: &str,
+) -> Result<String, DbError> {
+    let uid = user_id.to_string();
+    let in_flight = db.read_main(|conn| {
+        let repo = crate::db::background_jobs::BackgroundJobsRepository::new(conn);
+        let mut jobs = repo.find_by_user_id(&uid, Some("PENDING"))?;
+        jobs.extend(repo.find_by_user_id(&uid, Some("PROCESSING"))?);
+        Ok(jobs)
+    });
+    match in_flight {
+        Ok(jobs) => {
+            let existing = jobs.iter().find(|j| {
+                j.job_type == "MEMORY_REGENERATE_CHAT"
+                    && serde_json::from_str::<Value>(&j.payload)
+                        .ok()
+                        .and_then(|p| p.get("chatId").and_then(Value::as_str).map(str::to_string))
+                        .as_deref()
+                        == Some(chat_id)
+            });
+            if let Some(existing) = existing {
+                return Ok(existing.id.clone());
+            }
+        }
+        Err(error) => tracing::warn!(
+            error = %crate::db::fallback::error_text(&error),
+            "[MemoryRegenerateChat] Failed to check for existing jobs during enqueue"
+        ),
+    }
+    enqueue_job(
+        db,
+        user_id,
+        "MEMORY_REGENERATE_CHAT",
+        serde_json::json!({ "chatId": chat_id, "connectionProfileId": connection_profile_id }),
+        1.0,
+    )
+    .await
+}
+
 // === end P4.D296 ===
 
 /// v4 `enqueueCarinaMemoryExtraction` (`lib/background-jobs/queue-service.ts`):
