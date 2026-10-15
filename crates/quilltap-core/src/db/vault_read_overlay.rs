@@ -376,9 +376,15 @@ pub fn hydrate_one(character: &Value, maps: &VaultFileMaps) -> Result<Value, Vau
         out.insert("physicalDescription".into(), Value::Object(patched));
     }
 
-    // Prompts/*.md → systemPrompts (sorted, parsed, default-normalized).
+    // Prompts/*.md → systemPrompts (sorted, parsed, default-normalized). v4
+    // sorts `a.relativePath.localeCompare(b.relativePath)` (`read-overlay.ts:
+    // 274-277`) — the ICU4X en-US port, NOT code units: a mixed-case folder
+    // (`Prompts/a.md` vs `Prompts/B.md`) orders differently, and with no prompt
+    // marked default the order decides which one `normalize_prompt_defaults`
+    // promotes (P4.D279's OPEN item, closed by P4.D295 — Δ42).
     let mut prompt_docs = maps.prompts(&mount_id);
-    prompt_docs.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    prompt_docs
+        .sort_by(|a, b| crate::collation::locale_compare(&a.relative_path, &b.relative_path));
     let mut prompts: Vec<CharacterSystemPrompt> = prompt_docs
         .iter()
         .filter_map(|d| parse_prompt_file(&vault_doc(d)))
@@ -389,9 +395,11 @@ pub fn hydrate_one(character: &Value, maps: &VaultFileMaps) -> Result<Value, Vau
         serde_json::to_value(&prompts).expect("serialize systemPrompts"),
     );
 
-    // Scenarios/*.md → scenarios (sorted, parsed).
+    // Scenarios/*.md → scenarios (sorted, parsed) — `localeCompare`, as the
+    // prompts above (`read-overlay.ts:305-308`).
     let mut scenario_docs = maps.scenarios(&mount_id);
-    scenario_docs.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    scenario_docs
+        .sort_by(|a, b| crate::collation::locale_compare(&a.relative_path, &b.relative_path));
     let scenarios: Vec<CharacterScenario> = scenario_docs
         .iter()
         .filter_map(|d| parse_scenario_file(&vault_doc(d)))

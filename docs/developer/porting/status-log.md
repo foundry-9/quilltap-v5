@@ -182837,3 +182837,17 @@ scenario_pure_equivalence`.
     fixture's ownerless "project" store REFUSED) — **18 / 18**.
 - **Mutation proofs:** the `textChanged` gate removed → the provenance-only / notes-only / flipped-noop rows' tables
   + `export_after_noop` red (a Host bubble appears); `keep_current_scene` ignored → the two kept-scene rows red.
+
+### Unit 5 — the vault Prompts / Scenarios sort, P4.D279's OPEN item CLOSED (core 0.0.1303)
+
+- `db/vault_read_overlay.rs`'s two sorts (Prompts `:381`, Scenarios `:394`) moved from `a.relative_path.cmp(&b…)`
+  (code units) onto `collation::locale_compare` — v4 `read-overlay.ts:274-277` / `:305-308` (`localeCompare`).
+  Survey correction 8 holds: v4's sync-back `vault-readers.ts` sorts have no v5 twin, so only these two move. The
+  character LOCATION's list and the catalogue already sort through `build_scenario_list`'s `locale_compare`.
+- **Red-first:** `vault_read_overlay_equivalence` gained Vault G + the `MixedCase` character (`Prompts/a-lower.md` +
+  `Prompts/B-upper.md` with NO default, `Scenarios/a-quest.md` + `Scenarios/B-voyage.md`) in
+  `fixtures/vault-read-overlay-tier2.json`; on the unit-4 tip v5 hydrated `B Upper` first (and promoted it) where v4
+  has `A Lower` — RED; after the fix **green**. The plant arm's shape floor 9+2+6+1 → 9+2+7+1 (one more vaulted
+  character drops on the rename plant). **Mutation proof:** reverting the Prompts sort ALONE reddens the
+  `MixedCase` row (the promoted default flips).
+- **P4.D279's OPEN item (the vault Prompts / Scenarios read sort) is CLOSED by name.**

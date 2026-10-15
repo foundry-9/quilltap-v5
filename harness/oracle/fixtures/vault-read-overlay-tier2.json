@@ -14,7 +14,8 @@
     "physical MINT (no existing physicalDescription); empty identity.md -> null + prompt",
     "promote-first (no default); prompt keep-non-first-default.",
     "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one every tier-2",
-    "fixture uses; it decrypts nothing real."
+    "fixture uses; it decrypts nothing real.",
+    "P4.D295 (v4 read-overlay.ts:274-277 / :305-308, Δ42): Vault G holds a mixed-case Prompts/ (no default — the promoted prompt is the FIRST by v4's localeCompare) and a mixed-case Scenarios/, so a code-unit sort flips both orders."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "mintCharacterIds": ["c0000001-0000-4000-8000-000000000004"],
@@ -24,7 +25,8 @@
     { "id": "5700000e-0000-4000-8000-0000000000b3", "name": "Vault C" },
     { "id": "5700000e-0000-4000-8000-0000000000b4", "name": "Vault D" },
     { "id": "5700000e-0000-4000-8000-0000000000b5", "name": "Vault E" },
-    { "id": "5700000e-0000-4000-8000-0000000000b6", "name": "Vault F" }
+    { "id": "5700000e-0000-4000-8000-0000000000b6", "name": "Vault F" },
+    { "id": "5700000e-0000-4000-8000-0000000000b7", "name": "Vault G" }
   ],
   "files": [
     { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "properties.json", "content": "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Al\",\"Ada\"],\"title\":\"The Hero\",\"firstMessage\":\"Hello there\",\"talkativeness\":0.7}" },
@@ -56,7 +58,12 @@
 
     { "mountPointId": "5700000e-0000-4000-8000-0000000000b6", "relativePath": "properties.json", "content": "{\"pronouns\":null,\"aliases\":[],\"title\":null,\"firstMessage\":null,\"talkativeness\":0.5}" },
     { "mountPointId": "5700000e-0000-4000-8000-0000000000b6", "relativePath": "Prompts/m-alpha.md", "content": "---\nname: M Alpha\n---\nAlpha body" },
-    { "mountPointId": "5700000e-0000-4000-8000-0000000000b6", "relativePath": "Prompts/m-beta.md", "content": "---\nname: M Beta\nisDefault: true\n---\nBeta body" }
+    { "mountPointId": "5700000e-0000-4000-8000-0000000000b6", "relativePath": "Prompts/m-beta.md", "content": "---\nname: M Beta\nisDefault: true\n---\nBeta body" },
+    {"mountPointId": "5700000e-0000-4000-8000-0000000000b7", "relativePath": "properties.json", "content": "{\"pronouns\":null,\"aliases\":[],\"title\":null,\"firstMessage\":null,\"talkativeness\":0.5}"},
+    {"mountPointId": "5700000e-0000-4000-8000-0000000000b7", "relativePath": "Prompts/a-lower.md", "content": "---\nname: A Lower\n---\nLower-case first by locale"},
+    {"mountPointId": "5700000e-0000-4000-8000-0000000000b7", "relativePath": "Prompts/B-upper.md", "content": "---\nname: B Upper\n---\nUpper-case first by code unit"},
+    {"mountPointId": "5700000e-0000-4000-8000-0000000000b7", "relativePath": "Scenarios/a-quest.md", "content": "# A Quest\n\nThe lower-case quest."},
+    {"mountPointId": "5700000e-0000-4000-8000-0000000000b7", "relativePath": "Scenarios/B-voyage.md", "content": "# B Voyage\n\nThe upper-case voyage."}
   ],
   "characters": [
     {
@@ -149,6 +156,13 @@
       "id": "c0000001-0000-4000-8000-000000000006",
       "name": "KeepDefault",
       "characterDocumentMountPointId": "5700000e-0000-4000-8000-0000000000b6",
+      "systemPrompts": [],
+      "scenarios": []
+    },
+    {
+      "id": "c0000001-0000-4000-8000-000000000007",
+      "name": "MixedCase",
+      "characterDocumentMountPointId": "5700000e-0000-4000-8000-0000000000b7",
       "systemPrompts": [],
       "scenarios": []
     }

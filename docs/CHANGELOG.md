@@ -462,6 +462,14 @@ Re-vendors v4's `public/schemas/qtap-export.schema.json` at the `83334b9a5` pin 
 
 Re-dumps `schema-key-order.json` from v4's real schemas at the pin. `chat` goes from 102 to 103 keys (drops `otherExtractionWatermarkMessageId`, adds `scenarioSource` and `scenarioNotes` after `scenarioText`) and `memory` from 29 to 30 (`supersededAt` after `supersededById`). No other kind moved.
 
+#### 2026-10-15 — fix(core): P4.D295 unit 5 — the vault Prompts and Scenarios reads sort by localeCompare
+
+_Versions: core 0.0.1303._
+
+`vault_read_overlay` sorted a character vault's `Prompts/` and `Scenarios/` files by code unit. v4 sorts them with `localeCompare`. In a mixed-case folder (`a.md` next to `B.md`), the order of `character.systemPrompts` and `character.scenarios` flipped. When no prompt was marked default, that also changed which prompt was promoted to default. Both sorts now use `collation::locale_compare`, closing P4.D279's open item.
+
+`vault_read_overlay_equivalence` gains Vault G, which has a mixed-case `Prompts/` with no default and a mixed-case `Scenarios/`. The old sort fails on it, and so does reverting only the prompts sort.
+
 #### 2026-10-15 — feat(core): P4.D295 unit 4 — the scenario recipe: the resolver, chat create's scenarioRef, ?action=scenario and ?action=scenario-source
 
 _Versions: core 0.0.1302._

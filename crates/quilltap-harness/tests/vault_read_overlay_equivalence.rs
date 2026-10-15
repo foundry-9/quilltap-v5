@@ -336,8 +336,10 @@ fn vault_read_overlay_matches_oracle() {
     );
     assert_eq!(
         want_lines.len(),
-        9 + 2 + 6 + 1,
-        "the oracle's plant must hold 9 path + 2 folder + 6 drops + 1 WARN: {want_lines:#?}"
+        // P4.D295 added Vault G's character (the mixed-case Δ42 rows): seven
+        // vaulted characters drop on the plant, not six.
+        9 + 2 + 7 + 1,
+        "the oracle's plant must hold 9 path + 2 folder + 7 drops + 1 WARN: {want_lines:#?}"
     );
 
     let ada: Value = spec
