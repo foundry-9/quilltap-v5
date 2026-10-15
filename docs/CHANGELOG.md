@@ -357,6 +357,17 @@ Starts v4's Phase-E recall pipeline (`584d28164`) under `services/recall/`.
 
 New tier-1 family `recall_rank_equivalence` against v4's real `lib/memory/scoring/rank.ts` (142 rows: every multiplier, the gate and the cap, `extraFired`, the cross-project exclusion, ties and a NaN salience, R6's arithmetic). Inverting the sort or dropping `extraFired` turns it red.
 
+#### 2026-10-15 — docs(porting): P4.D293 lane close — the backup / restore carriers
+
+_Docs-only change._
+
+The work order's status header reads LANE COMPLETE and the lane record in `status-log.md` is closed.
+
+The gate:
+- fmt is clean, and clippy is clean with both feature sets.
+- The workspace suite (781 binaries) passed 5,165 tests and failed 4, with no skips. All four failures are the by-design reds `KEYSTONE` already carried: the CLI differential, the embedded `.qtap` schema guard, and the two lane-remove census tests.
+- All nine of the lane's families pass from the pin.
+
 #### 2026-10-15 — test(core): P4.D293 unit 3 — unit twins of v4's compact-backup and delete-service checks
 
 _Versions: core 0.0.1301._

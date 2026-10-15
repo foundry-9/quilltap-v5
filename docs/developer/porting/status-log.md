@@ -182391,3 +182391,52 @@ the wipe's truncate lands), so they land and go green together.
   inside `restore_on_writer`).
 - **Backup mutation proof:** `messages` emitted before the cursor keys → `[backup_with_memory_carriers] chat
   key-order tail differs`.
+
+### Lane close (P4.D293)
+
+- **Gate (2026-10-15, final tree `644b7a142`):** `cargo fmt --all --check` clean; `cargo clippy --workspace
+  --all-targets -- -D warnings` AND `--features quilltap-core/native-transport` clean; `cargo test --workspace
+  --no-fail-fast` (`CARGO_INCREMENTAL=0`, the lane's env block — the eight fresh NDJSONs from the pin + the
+  store-name dirs, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin) **781 binaries / 5,165 passed / 4 failed / 3
+  ignored, zero SKIP**. The four reds are `KEYSTONE`'s by-design set, none this lane's: `cli_differential` (Tier
+  R — P4.D290 / P4.D299, green only on the union), `qtap_schema_embed_guard` (P4.D294's re-vendor),
+  `no_memory_lane_remove_markers_left` + `no_source_outside_the_scoring_module_names_the_floored_weight` (the
+  LANE-REMOVE census, RED by design until §S.5). `recipe_sweep.py --self-test` exits 0.
+- **My families by name, from the pin (each NDJSON fresh, non-empty, `grep -c` on the moved bytes —
+  `legacyVectorsAdopted` 61, `textShapeVersion` 55, `Restored memories` 61, the `turn` pass 2, in the restore
+  NDJSON):** `system_backup_equivalence` (8 cases), `system_restore_state` (61 + 7),
+  `system_restore_equivalence`, `restore_vintage_state` (9), `backup_uuid_remap_equivalence` (41),
+  `system_delete_data_equivalence` (11 + the chokepoint), `system_restore_guards_equivalence` (17),
+  `backup_mount_index_coercion_equivalence` (20), `store_name_reconcile_equivalence` (both legs) — all GREEN;
+  censuses `fallback_home_guard`, `zod_issues_home_guard`, `spelling_guard` GREEN.
+- **Regen recipes (lane-private, `/tmp/p4d293/regen.sh <backup|restore|delete|uuid|guards|coerce>` +
+  `/tmp/p4d293/snr.sh`):** each is the committed recipe header with every output under `/tmp/p4d293/` and the
+  pin at `/tmp/qt-v4-pin-p4d293-83334b9a5`; the committed headers are UNCHANGED (canonical). The uuid-remap
+  corpus regen writes `harness/oracle/fixtures/uuid-remap-corpus.json` (`QT_CORPUS_OUT`), as its header does.
+  The derived archives: `python3 harness/oracle/fixtures/derive-restore-archive-{legacy-vectors,cursors,
+  scenario-source,legacy-settings}.py` from the repo root.
+- **Fixtures changed:** `harness/oracle/fixtures/uuid-remap-corpus.json` (regenerated — the only reader is
+  `backup_uuid_remap_equivalence`); NEW `restore-archive-{legacy-vectors,cursors,scenario-source,
+  legacy-settings,legacy-settings-own,legacy-settings-null}.zip` (read only by `system_restore_state` /
+  `system_restore_equivalence` and the vintage survey). No committed archive or `*-main.db` pair touched.
+- **Ruled tables:** none new. The four new `new-account` cases join `PHASE_ORDER_RESIDUAL` and `V5_STATS_GAP` as
+  further shapes of `restore-archive.zip` (recorded at each entry). `CURSOR_TABLE_MIGRATION_SHAPE` NOT consumed
+  (L-2's preferred fix landed on the oracle target).
+- **For the human (candidate v4 filings, v5 mirrors):** (1) R-AE — a `new-account` restore keeps per-character
+  cap overrides keyed by the archive's character ids; (2) a BLANK bundle cursor key in a `new-account` restore is
+  minted by `remapFields` and written as a cursor naming no message.
+- **v4 moved (§R.2):** `7458ff94e` on `main` (15 commits past the ledger's `01f508d4e`, incl. `release: 4.10.0`
+  and `49f8906c3`'s backup/restore completeness — PAST the pin, for `/driftcheck`) and `bugfix` `489b228b6`,
+  both observed 2026-10-14 23:55; the live tree's `@quilltap/plugin-utils` moved 2.6.3 → 2.7.1 (the pin got its own
+  `npm ci --offline`).
+- **💸 for the dogfood pass:** the order's five rows stand as written (a full backup of the post-migration Friday
+  copy — no `vector-*.json`, cursor keys per chat; a `replace` restore of it — cursors / `scenarioSource` /
+  `supersededAt` / `textShapeVersion` identical, the SPA's memory surfaces refreshing after the after-commit
+  announce; a `new-account` restore into a fresh `setup` instance; an OLD 1.28 GB archive —
+  `legacyVectorsAdopted`, the derived `memoryMaintenance`, the OTHER watermark as an `other-fold` cursor; Delete
+  All on a planted clone), plus: a real archive whose chat-settings carry `autoHousekeepingSettings` restored
+  `new-account` — the derived row's override keys name the ARCHIVE's character ids (R-AE).
+- **Versions at close:** core 0.0.1301 (KEYSTONE 0.0.1298 + 3), host 0.0.204, web 0.0.240, cli 0.0.32, tauri
+  0.0.9, SPA 0.5.846 (no SPA change); harness frozen 0.0.1110.
+- **Cleanup:** the pin worktree removed, the lane's `target/` deleted, `/tmp/p4d293/` removed; nothing pushed to
+  `main`.
