@@ -1515,13 +1515,15 @@ fn embedding_missing(memory: &Value) -> bool {
     }
 }
 
-/// v4 `generateMissingEmbeddings(characterId, { userId, batchSize })` — embed
-/// every memory that lacks an embedding, updating the row AND the in-memory
-/// vector store (flushed every `batch_size` successes and once at the end).
-/// A per-memory failure (embed OR write) is counted and the sweep continues
-/// (v4's catch → `failed++`). Uses the anchor-aware
-/// [`crate::episodic::build_memory_embedding_text`] — unlike the
-/// EMBEDDING_GENERATE handler's plain concat, and exactly like v4.
+/// The PRE-SPAN `generateMissingEmbeddings(characterId, { userId, batchSize })`,
+/// kept WHOLE for its one remaining caller (`api/memories.rs`'s `embeddings`
+/// arm, P4.D298's file) until the union re-points it onto
+/// [`crate::services::memory_index_backfill::generate_missing_embeddings`]
+/// (P4.D292's port of v4 `index-store/backfill.ts` — anchored text in the
+/// memory-calendar zone, `lexical_text`, the tier, v4's WARN / DEBUG, no
+/// `batch_size`). Not a thin forward: this signature carries no host zone, and
+/// core reads none ambiently (HANDOFF recorded in P4.D292's lane record).
+// LANE-REMOVE(P4.D298): v4 deleted generateMissingEmbeddings from memory-service.ts in 584d28164
 pub async fn generate_missing_embeddings<P: EmbeddingProvider>(
     db: &Db,
     provider: &P,
@@ -1611,22 +1613,18 @@ pub async fn generate_missing_embeddings<P: EmbeddingProvider>(
     Ok(result)
 }
 
-/// v4 `rebuildVectorIndex(characterId)` — P4.D288 (C1-3, mechanical): "the
-/// rows are the index (`memories.embedding` + `memories.tier`); the in-process
-/// store is only a cache of them". Rebuilding reads the rows again — `indexed`
-/// is how many vectors the loaded index holds, `failed` how many of the
-/// character's rows have none (those need `generate-embeddings`). Nothing is
-/// written. (The pin's `[Memory] Rebuilt vector index from memory rows` DEBUG
-/// and the backfill pair's new home are P4.D292's —
-/// `services/memory_index_backfill.rs`.)
+/// A thin forward onto P4.D292's
+/// [`crate::services::memory_index_backfill::rebuild_vector_index`] (v4
+/// `index-store/backfill.ts:85-101`) for `api/memories.rs`'s `rebuild-index`
+/// arm (P4.D298's file) until the union re-points the call.
+// LANE-REMOVE(P4.D298): v4 deleted rebuildVectorIndex from memory-service.ts in 584d28164
 pub async fn rebuild_vector_index(
     db: &Db,
     character_id: &str,
 ) -> Result<RebuildVectorIndexResult, DbError> {
-    let cid = character_id.to_string();
-    db.read_main(move |c| {
-        let indexed = CharacterVectorStore::load(c, &cid).size();
-        let failed = memories_read::count_without_embedding(c, Some(&cid))? as usize;
-        Ok(RebuildVectorIndexResult { indexed, failed })
+    let r = crate::services::memory_index_backfill::rebuild_vector_index(db, character_id).await?;
+    Ok(RebuildVectorIndexResult {
+        indexed: r.indexed,
+        failed: r.failed,
     })
 }

@@ -84,6 +84,17 @@ New `services::admission` (v4 `lib/memory/admission/` at the `83334b9a5` pin): `
 
 New differential families from the pin: `admission_tier3_equivalence` (44 steps over UTC and Chicago legs, plus tier-1 content-key and key-scope rows) and `update_memory_tier2_equivalence` (12 edits plus the Commonplace mirror); the retired `memory_gate_tier3` family is deleted and its builder renamed `build-admission-fixture.ts`. Census rows: two admission publish sites; the activity-span row re-pointed to `admit_row`. One measured divergence is pinned both ways and flagged: `FIND_BY_IDS_UNVALIDATED` (v4's `findByIds` drops a schema-invalid row; v5's does not).
 
+#### 2026-10-15 — feat(memory): P4.D292 unit 7 — the index-store backfill pair moves to `memory_index_backfill`
+
+_Versions: core 0.0.1303._
+
+The backfill pair of v4 `index-store/backfill.ts` (moved by `584d28164`, rows-as-index since `af48f6cc2`).
+
+- New `services::memory_index_backfill::generate_missing_embeddings(db, provider, character_id, user_id, profile_id, host_zone_fallback, now_ms)`. It covers NULL and zero-length rows, uses anchored text in the memory-calendar zone with `lexical_text`, and keeps the tier through `memory_index::upsert`. It has no `batch_size`. A failure WARN carries the id in its message and v4's `String(error)`, and the pass ends with v4's DEBUG.
+- New `rebuild_vector_index`, which is a read: `indexed` is the decodable rows and `failed` is the `IS NULL` rows. It logs the `coldIndexed` DEBUG.
+- `memory_service.rs`'s two functions are now LANE-REMOVE shims (P4.D298 re-points `api/memories.rs`). The rebuild forwards. The generate keeps its old body because its signature carries no host zone.
+- New family `memory_index_backfill_equivalence` covers the pair and `enqueue_embedding_generate_many` (P4.D288's) through v4's real code. It compares results, seam calls, lines, vectors and job rows.
+
 #### 2026-10-15 — feat(embedding): P4.D292 unit 6 — the reindex, reapply and dimension reconcile narrowed to the rows
 
 _Versions: core 0.0.1302._

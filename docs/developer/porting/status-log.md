@@ -181073,3 +181073,28 @@ This lane's half (the `builtinRefit` key) is written into the Rust comparand (fe
   orphan-chat chunk, NULL help doc, an enabled + a disabled mount → INFO + the reindex row), truncate over
   dimensions, already-queued (dedupe INFO, `reindexEnqueued false`), BUILTIN / no-default (silent), no-fixed-dim
   (WARN), absent tables (zero). Result byte-compared, lines whole, jobs masked. GREEN.
+
+### Unit 7 — the backfill pair (L-3, L-6) + the many-enqueue's differential (L-2 case (a))
+
+- NEW `services/memory_index_backfill.rs`: `generate_missing_embeddings(db, provider, character_id, user_id,
+  embedding_profile_id, host_zone_fallback, now_ms)` and `rebuild_vector_index(db, character_id)` (+ the two result
+  structs), per v4 `backfill.ts:29-101`. L-6 fixed in passing: the WARN carries the id IN the message (v5 dropped
+  it) with v4's `String(error)` (`EmbeddingError: …` when the seam error carries a provider, `Error: …` otherwise).
+- `memory_service.rs`'s two fns → `// LANE-REMOVE(P4.D298): v4 deleted … from memory-service.ts in 584d28164`
+  shims (the rebuild a thin forward; the generate kept WHOLE — its signature carries no host zone and core reads
+  none ambiently). Counted by `no_memory_lane_remove_markers_left` (RED by design until §S.5).
+- **HANDOFF: `crates/quilltap-core/src/api/memories.rs`** (P4.D298's file; §S.5 (3)):
+  (1) `memory_generate_embeddings(db, provider, user_id, character_id, batch_size: Option<i64>)` → drop
+  `batch_size` and its `1..=50` check (v4 `route.ts:150-152` — Zod strips the key), add `host_zone_fallback: &str,
+  now_ms: i64`, and call `crate::services::memory_index_backfill::generate_missing_embeddings(db, provider,
+  character_id, user_id, None, host_zone_fallback, now_ms)`; the engine arm (`api/engine.rs`
+  `Request::MemoryGenerateEmbeddings`) passes `crate::host_zone::zone_name(&self.inner.config.display_zone)` and
+  `crate::clock::now_unix_ms()`; (2) `memory_rebuild_index` calls
+  `crate::services::memory_index_backfill::rebuild_vector_index(db, character_id)`; (3) then DELETE the two shims and
+  their result structs from `memory_service.rs`; (4) `embedding_generate_jobs_equivalence.rs`'s route phase drops
+  its `None` argument with (1).
+- **NEW family `memory_index_backfill_equivalence`** (case `harness/oracle/cases/memory-index-backfill.test.ts`, jest,
+  /tmp mirror; instance calendar `Asia/Kolkata`): generate (6 calls incl. the zero-length-blob row and an anchored
+  one, 2 failures, the tier kept), rebuild ×2 (`indexed 6 / failed 2` with `coldIndexed 2`; `0 / 1`), many-enqueue
+  ×3 (empty → `[]`, no line; 7 requested → 4 queued / 3 already, priority 10 MEMORY + CONVERSATION_CHUNK, 0 HELP_DOC
+  + MOUNT_CHUNK; again → the DEBUG, 0). GREEN — the two many-enqueue line pins (§R.5, P4.D288's bodies) live here.
