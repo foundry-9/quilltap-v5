@@ -40,7 +40,25 @@ interface CharacterSpec {
   manifesto?: string;
   personality?: string;
   controlledBy: string;
+  pronouns?: { subject: string; object: string; possessive: string };
   othersFiles: Array<{ path: string; content: string }>;
+}
+// P4.D296: the extraction-turn family reads chats from the DB (v4's
+// `buildExtractionContext` + `runTurnExtraction`), so the seed grows the
+// profiles, the chat-settings row and the chats with stamped messages.
+interface ProfileSpec {
+  id: string;
+  name: string;
+  provider: string;
+  modelName: string;
+  isCheap: boolean;
+  isDangerousCompatible: boolean;
+}
+interface ChatSpec {
+  id: string;
+  chatType?: string;
+  participants: Array<{ id: string; characterId: string; controlledBy: string; connectionProfileId?: string }>;
+  messages: Array<{ id: string; role: string; content: string; participantId: string | null; createdAt: string }>;
 }
 interface SeedMemory {
   id: string;
@@ -57,6 +75,9 @@ interface Spec {
   futureTimestamp: string;
   characters: CharacterSpec[];
   seedMemories: SeedMemory[];
+  connectionProfiles?: ProfileSpec[];
+  chatSettings?: { cheapLLMSettings: Record<string, unknown> };
+  chats?: ChatSpec[];
 }
 
 async function main(): Promise<void> {
@@ -161,6 +182,7 @@ async function main(): Promise<void> {
         manifesto: c.manifesto ?? null,
         personality: c.personality ?? null,
         controlledBy: c.controlledBy,
+        pronouns: c.pronouns ?? null,
       } as never,
       { id: c.id }
     );
@@ -226,12 +248,86 @@ async function main(): Promise<void> {
     if (seed.vector) seededVectors++;
   }
 
+  // P4.D296: profiles, the chat-settings row, the chats with pinned ids and
+  // stamped messages (every window anchors to these — no Date pinning).
+  for (const p of spec.connectionProfiles ?? []) {
+    await repos.connections.create(
+      {
+        userId: spec.userId,
+        name: p.name,
+        provider: p.provider,
+        modelName: p.modelName,
+        isCheap: p.isCheap,
+        isDangerousCompatible: p.isDangerousCompatible,
+      } as never,
+      { id: p.id }
+    );
+  }
+  if (spec.chatSettings) {
+    await repos.chatSettings.create(
+      { userId: spec.userId, cheapLLMSettings: spec.chatSettings.cheapLLMSettings } as never,
+      {
+        id: '5e000000-0000-4000-8000-00000000c5e7',
+        createdAt: spec.seedTimestamp,
+        updatedAt: spec.seedTimestamp,
+      }
+    );
+  }
+  for (const chat of spec.chats ?? []) {
+    await repos.chats.create(
+      {
+        userId: spec.userId,
+        title: `Fixture ${chat.id}`,
+        chatType: chat.chatType ?? undefined,
+        participants: chat.participants.map((p) => ({
+          id: p.id,
+          type: 'CHARACTER',
+          characterId: p.characterId,
+          controlledBy: p.controlledBy,
+          connectionProfileId: p.connectionProfileId ?? null,
+          createdAt: spec.seedTimestamp,
+          updatedAt: spec.seedTimestamp,
+        })),
+      } as never,
+      { id: chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
+    );
+    for (const m of chat.messages) {
+      await repos.chats.addMessage(chat.id, {
+        type: 'message',
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        opaqueContent: m.content,
+        attachments: [],
+        createdAt: m.createdAt,
+        participantId: m.participantId,
+        systemSender: null,
+        systemKind: null,
+        targetParticipantIds: null,
+      } as never);
+    }
+  }
+  if ((spec.chats ?? []).length > 0) {
+    // The lazily created tables the extraction path reads: the cursor table
+    // (its repository's own DDL, through a real write then a clear) and
+    // `instance_settings` (fresh_schema.json's DDL — v4 creates it only on a
+    // migrated instance; memory note `builder-fixtures-lack-instance-settings`).
+    const first = spec.chats![0].id;
+    await repos.memoryExtractionCursors.setCursor(first, 'turn', spec.chats![0].messages[0].id);
+    await repos.memoryExtractionCursors.clearForChat(first);
+    // `memories` too (its repository's own DDL through a real read): the Rust
+    // writer expects the table a booted instance carries.
+    await repos.memories.findById('00000000-0000-4000-8000-000000000000');
+    const { rawQuery } = await import('@/lib/database/manager');
+    await rawQuery('CREATE TABLE IF NOT EXISTS "instance_settings" (\n  "key" TEXT PRIMARY KEY,\n  "value" TEXT NOT NULL\n)');
+  }
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
   process.stderr.write(
     `built memory-processor fixture: ${outMain} + ${outMount} ` +
       `(${spec.characters.length} characters, ${othersFiles} canon files, ` +
-      `${seededMemories} seed memories, ${seededVectors} vectors)\n`
+      `${seededMemories} seed memories, ${seededVectors} vectors, ${(spec.chats ?? []).length} chats)\n`
   );
   process.exit(0);
 }

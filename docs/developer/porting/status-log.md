@@ -181443,3 +181443,22 @@ rows red (7). Families: `memory_tasks_equivalence` 135 rows OK; `turn_transcript
 `cargo test -p quilltap-core --lib` 3,646 / 0. **Regen recipes:** `memory_tasks` — `cd <pin> && npx tsx
 $V5W/harness/oracle/cases/extraction-pure-tier1.ts > /tmp/oracle-extraction-pure.ndjson`, run with
 `QT_ORACLE_EXTRACTION_PURE`; `turn_transcript` — unchanged recipe (`QT_ORACLE_TURN_TRANSCRIPT`).
+
+**P4.D296 Tier 1 #5–#10 (2026-10-15, core 0.0.1301):** `services::extraction::{context, route, rate_limit,
+cursors, run, passes::{self_turn, other_turn, subjects, other_fold, episode_fold}, turn}` + L-9's move
+(`services/canon_loaders.rs`, `memory_processor` re-exports under ONE `LANE-REMOVE(P4.D296)` marker). C1-B consumed
+as landed (`admit_candidate`, `AdmitOptions` incl. `key_scope` / `host_zone_fallback` / `dry_run_book: Option<&mut>`,
+`count_recent_admissions(id, since, now)`, `link_both_ways`); C1-1 through the raw arm (`find_cursor_raw` /
+`set_cursor_raw`, L-4); C1-5 `resolve_memory_settings(main, Some(user))`. The Concierge read is infallible in v5
+(`resolve_concierge_settings`), so v4's `[Memory] Could not resolve the Concierge policy…` WARN has no v5 home
+(recorded; not measured through v4 — v4's `resolveConciergeSettings` reads through `readConciergeSettings`).
+**Family:** `memory_processor_tier3_equivalence` REWRITTEN (case + spec + grown builder
+`build-memory-processor-fixture.ts`: profiles, chat settings, two chats with stamped messages, the cursor /
+`instance_settings` / `memories` tables). 11 ops green: results byte-for-byte (debug lines; minted ids + their 8-char
+prefixes tokenised per side), cursors, captured `[Memory]` / `[ExtractionCursors] Advanced` / `[MemorySettings]` /
+`[MemoryCalendar]` / `[Canon]` lines (`Cursor set` filtered — P4.D288's writer-thread line), `memories`. Mutations:
+forward-only cursor (2 rows red), backfill-disables-limiter (the `backfill_ignores_limits` row red). Not covered
+here (recorded): an Unmoderated chat's `isDangerousChat` (the route carries it; no corpus row yet), the project
+description (Carina's family carries it), `llm_logs`. **Regen:** builder → case per the recipe header
+(`QT_FIXTURE_PROCESSOR_MAIN/_MOUNT`, `QT_ORACLE_PROCESSOR`); outputs staged under `/tmp/p4d296/`.
+`canon_commonplace_tier2` re-run from the pin: green.

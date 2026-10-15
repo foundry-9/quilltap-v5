@@ -181,6 +181,8 @@ pub mod queue_service;
 // ── P4.9G4 ──
 pub mod qtap_export;
 // ── end P4.9G4 ──
+pub mod canon_loaders; // P4.D296 (L-9)
+pub mod extraction; // P4.D296
 pub mod quilltap_import;
 pub mod recall;
 pub mod recall_replay;

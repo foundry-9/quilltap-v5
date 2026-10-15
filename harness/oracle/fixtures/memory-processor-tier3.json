@@ -1,1120 +1,425 @@
 {
-  "_comment": "Tier-3 (mocked-completion + mocked-embedding) corpus for the memory processor (v4 processTurnForMemory). The COMPLETION call is pinned by rules keyed on (pass, CONTEXT-footer label, model, autonomous-clause presence): the jest oracle's createLLMProvider mock resolves each real call to a rule, RECORDS the exact (provider|model|temperature|messages) canned key it answered, and the Rust side replays those recorded entries through CannedCompletionProvider — so a prompt/selection/temperature divergence surfaces as a canned-miss, byte-exact. The EMBEDDING call is pinned by exact `summary\\n\\ncontent` text, as in the memory-gate corpus. Vector geometry: 13-dim unit basis vectors; each seed is s*e_k + sqrt(1-s^2)*e_spare so dot(candidate e_k, seed) == s exactly.",
-  "_safety": "testPepperBase64 is the same THROWAWAY key the other fixtures use — never a real pepper.",
-  "_profileIdNote": "Connection-profile ids MUST be well-formed UUIDs. Since v4 0cde7fbc, `LLMLogSchema.connectionProfileId` is `UUIDSchema.nullable().optional()` and the cheap-LLM execution path stamps `selection.connectionProfileId` onto every row, so placeholder ids like the old 'p-cur'/'p-cheap'/'p-unc'/'p-epi' make v4's repository REFUSE every llm_logs create (Zod 'Invalid UUID', swallowed by logLLMCall's catch). The oracle then finds no llm_logs table at all — the P4.40 escalation. Keep these UUID-shaped.",
-  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
-  "userId": "00000000-0000-4000-8000-0000000000ee",
-  "seedTimestamp": "2020-01-01T00:00:00.000Z",
-  "futureTimestamp": "2099-01-01T00:00:00.000Z",
-  "characters": [
-    {
-      "id": "aa000000-0000-4000-8000-00000000a21a",
-      "name": "Aria",
-      "identity": "Aria is a clockwork soprano with a copper larynx.",
-      "description": "A brass songbird of the old opera.",
-      "manifesto": "Sing true, wind daily.",
-      "personality": "Precise, warm, faintly theatrical.",
-      "controlledBy": "llm",
-      "othersFiles": [
-        {
-          "path": "Others/Charlie.md",
-          "content": "Charlie keeps the workshop ledger and hates loud noises."
-        }
-      ]
-    },
-    {
-      "id": "bb000000-0000-4000-8000-00000000b4a3",
-      "name": "Bram",
-      "description": "A ponderous automaton of the old school; keeps bees.",
-      "controlledBy": "llm",
-      "othersFiles": []
-    },
-    {
-      "id": "cc000000-0000-4000-8000-00000000ca55",
-      "name": "Cass",
-      "identity": "Cass maps the underrails.",
-      "controlledBy": "llm",
-      "othersFiles": []
-    },
-    {
-      "id": "dd000000-0000-4000-8000-00000000c4a5",
-      "name": "Charlie",
-      "controlledBy": "user",
-      "othersFiles": []
-    }
-  ],
-  "seedMemories": [
-    {
-      "id": "a1000000-0000-4000-8000-0000000000a1",
-      "characterId": "aa000000-0000-4000-8000-00000000a21a",
-      "content": "Aria fears the third balcony draft.",
-      "summary": "seed balcony draft",
-      "vector": [
-        0.95,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.3122499,
-        0.0,
-        0.0,
-        0.0,
-        0.0
-      ],
-      "createdAt": "seed"
-    },
-    {
-      "id": "a2000000-0000-4000-8000-0000000000a2",
-      "characterId": "aa000000-0000-4000-8000-00000000a21a",
-      "content": "Aria oils her hinges before every performance.",
-      "summary": "seed hinge oiling",
-      "vector": [
-        0.0,
-        0.75,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.6614378,
-        0.0,
-        0.0,
-        0.0
-      ],
-      "createdAt": "seed"
-    },
-    {
-      "id": "b1000000-0000-4000-8000-0000000000b1",
-      "characterId": "bb000000-0000-4000-8000-00000000b4a3",
-      "content": "Bram tends the rooftop hives at dawn.",
-      "summary": "seed rooftop hives",
-      "vector": [
-        0.0,
-        0.0,
-        0.87,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.0,
-        0.4930517,
-        0.0,
-        0.0
-      ],
-      "createdAt": "seed"
-    },
-    {
-      "id": "b2000000-0000-4000-8000-0000000000b2",
-      "characterId": "bb000000-0000-4000-8000-00000000b4a3",
-      "content": "bram rate ballast one",
-      "summary": "ballast",
-      "vector": null,
-      "createdAt": "future"
-    },
-    {
-      "id": "b3000000-0000-4000-8000-0000000000b3",
-      "characterId": "bb000000-0000-4000-8000-00000000b4a3",
-      "content": "bram rate ballast two",
-      "summary": "ballast",
-      "vector": null,
-      "createdAt": "future"
-    },
-    {
-      "id": "c1000000-0000-4000-8000-0000000000c1",
-      "characterId": "cc000000-0000-4000-8000-00000000ca55",
-      "content": "cass rate ballast one",
-      "summary": "ballast",
-      "vector": null,
-      "createdAt": "future"
-    },
-    {
-      "id": "c2000000-0000-4000-8000-0000000000c2",
-      "characterId": "cc000000-0000-4000-8000-00000000ca55",
-      "content": "cass rate ballast two",
-      "summary": "ballast",
-      "vector": null,
-      "createdAt": "future"
-    },
-    {
-      "id": "c3000000-0000-4000-8000-0000000000c3",
-      "characterId": "cc000000-0000-4000-8000-00000000ca55",
-      "content": "cass rate ballast three",
-      "summary": "ballast",
-      "vector": null,
-      "createdAt": "future"
-    },
-    {
-      "id": "c4000000-0000-4000-8000-0000000000c4",
-      "characterId": "cc000000-0000-4000-8000-00000000ca55",
-      "content": "cass rate ballast four",
-      "summary": "ballast",
-      "vector": null,
-      "createdAt": "future"
-    }
-  ],
-  "profiles": [
-    {
-      "id": "bb000000-0000-4000-8000-00000000c001",
-      "provider": "ANTHROPIC",
-      "modelName": "claude-benchmark-large",
-      "baseUrl": null,
-      "isCheap": false,
-      "isDangerousCompatible": false,
-      "parameters": null,
-      "maxTokens": 16000,
-      "modelClass": null
-    },
-    {
-      "id": "bb000000-0000-4000-8000-00000000c002",
-      "provider": "OPENAI",
-      "modelName": "gpt-4o-mini",
-      "baseUrl": null,
-      "isCheap": true,
-      "isDangerousCompatible": false,
-      "parameters": {
-        "reasoning_effort": "low"
-      },
-      "maxTokens": null,
-      "modelClass": null
-    },
-    {
-      "id": "bb000000-0000-4000-8000-00000000c003",
-      "provider": "OLLAMA",
-      "modelName": "dolphin-mixtral",
-      "baseUrl": null,
-      "isCheap": false,
-      "isDangerousCompatible": true,
-      "parameters": null,
-      "maxTokens": null,
-      "modelClass": null
-    },
-    {
-      "id": "bb000000-0000-4000-8000-00000000c004",
-      "provider": "OPENAI",
-      "modelName": "gpt-epi-mini",
-      "baseUrl": null,
-      "isCheap": true,
-      "isDangerousCompatible": false,
-      "parameters": null,
-      "maxTokens": null,
-      "modelClass": null
-    },
-    {
-      "id": "bb000000-0000-4000-8000-00000000c005",
-      "provider": "OPENAI",
-      "modelName": "gpt-lost-mini",
-      "baseUrl": null,
-      "isCheap": true,
-      "isDangerousCompatible": false,
-      "parameters": null,
-      "maxTokens": null,
-      "modelClass": null,
-      "$comment": "P4.D136 (v4 a1d88aa3a, bug 107): its own model so the timing-out rules below cannot reach any other call."
-    }
-  ],
-  "currentProfileId": "bb000000-0000-4000-8000-00000000c001",
-  "cannedEmbeddings": {
-    "reorganize ledger by wing\n\nI decided to reorganize the workshop ledger by wing.\n(when: 2023-05-05)": [
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0
-    ],
-    "fears third balcony draft\n\nI fear the draft on the third balcony.\n(when: 2023-05-05)": [
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0
-    ],
-    "tuned hinge ritual\n\nI tuned my hinge oiling ritual to the evening bell.\n(when: 2023-05-05)": [
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0
-    ],
-    "trusts the hives\n\nBram trusts the rooftop hives at dawn.\n(when: 2023-05-05)": [
-      0.0,
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0
-    ],
-    "retuned overture\n\nAria retuned the overture to mask the balcony draft.\n(when: 2023-05-05)": [
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0
-    ],
-    "wired a new bell\n\nBram wired a new bell to the workshop door.\n(when: 2023-05-05)": [
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0
-    ],
-    "reorganized ledger despite noise\n\nCharlie reorganized the ledger despite the workshop noise.\n(when: 2023-05-05)": [
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0
-    ],
-    "hives left unguarded\n\nThe hives were left unguarded at dusk.\n(when: 2023-05-05)": [
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0
-    ]
+ "testPepperBase64": "dGVzdC1wZXBwZXItZm9yLWZpeHR1cmVzLW9ubHkxMjM0NTY3OA==",
+ "userId": "a0000000-0000-4000-8000-0000000000e1",
+ "seedTimestamp": "2026-07-01T00:00:00.000Z",
+ "futureTimestamp": "2026-07-01T00:00:00.000Z",
+ "connectionProfiles": [
+  {
+   "id": "9c000000-0000-4000-8000-000000000001",
+   "name": "Current",
+   "provider": "ANTHROPIC",
+   "modelName": "claude-sonnet-4-5",
+   "isCheap": false,
+   "isDangerousCompatible": false
   },
-  "cannedFailures": [
-    "sang to the bees\n\nAria sang to the bees to calm them."
-  ],
-  "completionRules": [
+  {
+   "id": "9c000000-0000-4000-8000-000000000002",
+   "name": "Cheap",
+   "provider": "OPENAI",
+   "modelName": "gpt-4o-mini",
+   "isCheap": true,
+   "isDangerousCompatible": false
+  },
+  {
+   "id": "9c000000-0000-4000-8000-000000000003",
+   "name": "Default cheap",
+   "provider": "GOOGLE",
+   "modelName": "gemini-2.5-flash",
+   "isCheap": false,
+   "isDangerousCompatible": false
+  }
+ ],
+ "chatSettings": {
+  "cheapLLMSettings": {
+   "strategy": "PROVIDER_CHEAPEST",
+   "fallbackToLocal": false
+  }
+ },
+ "characters": [
+  {
+   "id": "aa000000-0000-4000-8000-0000000000a1",
+   "name": "Ada",
+   "controlledBy": "llm",
+   "identity": "Ada captains the Gull.",
+   "pronouns": {
+    "subject": "she",
+    "object": "her",
+    "possessive": "her"
+   },
+   "othersFiles": []
+  },
+  {
+   "id": "bb000000-0000-4000-8000-0000000000b2",
+   "name": "Bram",
+   "controlledBy": "llm",
+   "identity": "Bram is the Gull's quartermaster.",
+   "pronouns": {
+    "subject": "he",
+    "object": "him",
+    "possessive": "his"
+   },
+   "othersFiles": []
+  },
+  {
+   "id": "cc000000-0000-4000-8000-0000000000c3",
+   "name": "Quill",
+   "controlledBy": "user",
+   "identity": "Quill is a scribe.",
+   "othersFiles": []
+  }
+ ],
+ "seedMemories": [],
+ "chats": [
+  {
+   "id": "c4a00000-0000-4000-8000-00000000000a",
+   "participants": [
     {
-      "pass": "self",
-      "label": "Charlie (he/him/his)",
-      "model": "gpt-4o-mini",
-      "response": "[{\"content\": \"I decided to reorganize the workshop ledger by wing.\", \"summary\": \"reorganize ledger by wing\", \"keywords\": [\"ledger\", \"organization\"], \"importance\": 0.6, \"temporal\": \"future\", \"scope\": \"narrow\", \"context\": \"information\"}]",
-      "usage": {
-        "promptTokens": 120,
-        "completionTokens": 30,
-        "totalTokens": 150
-      }
+     "id": "5a000000-0000-4000-8000-00000000000a",
+     "characterId": "aa000000-0000-4000-8000-0000000000a1",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
     },
     {
-      "pass": "self",
-      "label": "Aria (she/her/her)",
-      "model": "gpt-4o-mini",
-      "response": "[{\"content\": \"I fear the draft on the third balcony.\", \"summary\": \"fears third balcony draft\", \"keywords\": [\"draft\", \"fear\"], \"importance\": 0.4, \"temporal\": \"present\", \"scope\": \"wide\", \"context\": \"trivia\"}, {\"content\": \"I tuned my hinge oiling ritual to the evening bell.\", \"summary\": \"tuned hinge ritual\", \"keywords\": [\"hinges\", \"ritual\"], \"importance\": 0.7, \"temporal\": \"present\", \"scope\": \"wide\", \"context\": \"mannerisms\"}]",
-      "usage": {
-        "promptTokens": 200,
-        "completionTokens": 50,
-        "totalTokens": 250
-      }
+     "id": "5b000000-0000-4000-8000-00000000000b",
+     "characterId": "bb000000-0000-4000-8000-0000000000b2",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
     },
     {
-      "pass": "self",
-      "label": "Bram",
-      "model": "gpt-4o-mini",
-      "response": "[{\"content\": \"bram noted the weather was mild.\", \"summary\": \"noted mild weather\", \"keywords\": [\"weather\"], \"importance\": 0.3, \"temporal\": \"moment\", \"scope\": \"narrow\", \"context\": \"trivia\"}, {\"content\": \"Bram trusts the rooftop hives at dawn.\", \"summary\": \"trusts the hives\", \"keywords\": [\"hives\", \"trust\"], \"importance\": 0.9, \"temporal\": \"present\", \"scope\": \"wide\", \"context\": \"philosophy\"}]",
-      "usage": {
-        "promptTokens": 180,
-        "completionTokens": 40,
-        "totalTokens": 220
-      }
-    },
-    {
-      "pass": "other",
-      "label": "Charlie (he/him/his)",
-      "model": "gpt-4o-mini",
-      "response": "[{\"subjectIndex\": 1, \"content\": \"Aria retuned the overture to mask the balcony draft.\", \"summary\": \"retuned overture\", \"keywords\": [\"overture\", \"retuned\"], \"importance\": 0.65, \"temporal\": \"moment\", \"scope\": \"narrow\", \"context\": \"information\"}, {\"subjectIndex\": 2, \"content\": \"Bram wired a new bell to the workshop door.\", \"summary\": \"wired a new bell\", \"keywords\": [\"bell\", \"workshop\"], \"importance\": 0.6, \"temporal\": \"present\", \"scope\": \"narrow\", \"context\": \"information\"}]",
-      "usage": {
-        "promptTokens": 300,
-        "completionTokens": 60,
-        "totalTokens": 360
-      }
-    },
-    {
-      "pass": "other",
-      "label": "Aria (she/her/her)",
-      "model": "gpt-4o-mini",
-      "response": "[{\"subjectIndex\": 1, \"content\": \"Charlie reorganized the ledger despite the workshop noise.\", \"summary\": \"reorganized ledger despite noise\", \"keywords\": [\"ledger\", \"noise\"], \"importance\": 0.8, \"temporal\": \"moment\", \"scope\": \"narrow\", \"context\": \"information\"}, {\"subjectIndex\": 2, \"content\": \"The hives were left unguarded at dusk.\", \"summary\": \"hives left unguarded\", \"keywords\": [\"hives\", \"unguarded\"], \"importance\": 0.5, \"temporal\": \"moment\", \"scope\": \"narrow\", \"context\": \"information\"}]",
-      "usage": {
-        "promptTokens": 310,
-        "completionTokens": 62,
-        "totalTokens": 372
-      }
-    },
-    {
-      "pass": "other",
-      "label": "Bram",
-      "model": "gpt-4o-mini",
-      "response": "",
-      "usage": {
-        "promptTokens": 90,
-        "completionTokens": 0,
-        "totalTokens": 90
-      }
-    },
-    {
-      "pass": "other",
-      "label": "Bram",
-      "model": "dolphin-mixtral",
-      "autonomous": false,
-      "response": "[{\"subjectIndex\": 2, \"content\": \"Aria sang to the bees to calm them.\", \"summary\": \"sang to the bees\", \"keywords\": [\"bees\", \"song\"], \"importance\": 0.6, \"temporal\": \"moment\", \"scope\": \"wide\", \"context\": \"banter\"}]",
-      "usage": {
-        "promptTokens": 150,
-        "completionTokens": 20,
-        "totalTokens": 170
-      }
-    },
-    {
-      "pass": "self",
-      "label": "Aria (she/her/her)",
-      "model": "dolphin-mixtral",
-      "response": "[{\"content\": \"I confessed the boiler frightens me.\", \"summary\": \"confessed boiler fear\", \"keywords\": [\"boiler\", \"fear\"], \"importance\": 0.7, \"temporal\": \"present\", \"scope\": \"wide\", \"context\": \"relationships\"}]",
-      "usage": {
-        "promptTokens": 140,
-        "completionTokens": 25,
-        "totalTokens": 165
-      }
-    },
-    {
-      "pass": "self",
-      "label": "Bram",
-      "model": "dolphin-mixtral",
-      "response": "[{\"content\": \"Bram resolved to move the hives indoors.\", \"summary\": \"resolved to move hives\", \"keywords\": [\"hives\"], \"importance\": 0.8, \"temporal\": \"future\", \"scope\": \"narrow\", \"context\": \"information\"}]",
-      "usage": {
-        "promptTokens": 130,
-        "completionTokens": 22,
-        "totalTokens": 152
-      }
-    },
-    {
-      "pass": "other",
-      "label": "Aria (she/her/her)",
-      "model": "dolphin-mixtral",
-      "response": "[{\"subjectIndex\": 1, \"content\": \"Bram promised Aria the first honey of the season.\", \"summary\": \"promised first honey\", \"keywords\": [\"honey\", \"promise\"], \"importance\": 0.6, \"temporal\": \"future\", \"scope\": \"wide\", \"context\": \"relationships\"}]",
-      "usage": {
-        "promptTokens": 160,
-        "completionTokens": 28,
-        "totalTokens": 188
-      }
-    },
-    {
-      "pass": "other",
-      "label": "Bram",
-      "model": "dolphin-mixtral",
-      "autonomous": true,
-      "response": "[]",
-      "usage": {
-        "promptTokens": 110,
-        "completionTokens": 2,
-        "totalTokens": 112
-      }
-    },
-    {
-      "pass": "self",
-      "label": "Aria (she/her/her)",
-      "model": "gpt-epi-mini",
-      "response": "[{\"content\": \"I walked the Lighthouse Point jetty last week.\", \"summary\": \"walked the jetty\", \"keywords\": [\"jetty\"], \"importance\": 0.7, \"temporal\": \"past\", \"scope\": \"narrow\", \"context\": \"information\", \"kind\": \"episodic\", \"when\": \"last week\", \"entities\": [\"Lighthouse Point\"]}, {\"content\": \"I sang at the Long Gallery on 2023-05-01.\", \"summary\": \"sang at the long gallery\", \"keywords\": [\"gallery\"], \"importance\": 0.8, \"kind\": \"episodic\", \"when\": \"2023-05-01\", \"entities\": [\"Long Gallery\"]}, {\"content\": \"I first met the beekeeper some time ago.\", \"summary\": \"met the beekeeper\", \"keywords\": [\"beekeeper\"], \"importance\": 0.6, \"kind\": \"episodic\", \"when\": \"some time ago\", \"entities\": [\"Bram\"]}]",
-      "usage": {
-        "promptTokens": 130,
-        "completionTokens": 60,
-        "totalTokens": 190
-      }
-    },
-    {
-      "pass": "self",
-      "label": "Bram",
-      "model": "gpt-epi-mini",
-      "response": "[{\"content\": \"I keep the hives shuttered after dusk.\", \"summary\": \"shutters the hives\", \"keywords\": [\"hives\"], \"importance\": 0.5}]",
-      "usage": {
-        "promptTokens": 120,
-        "completionTokens": 20,
-        "totalTokens": 140
-      }
-    },
-    {
-      "pass": "other",
-      "label": "Aria (she/her/her)",
-      "model": "gpt-epi-mini",
-      "response": "[{\"subjectIndex\": 1, \"content\": \"Bram carried the smoker up the stair yesterday.\", \"summary\": \"carried the smoker\", \"keywords\": [\"smoker\"], \"importance\": 0.55, \"kind\": \"episodic\", \"when\": \"yesterday\", \"entities\": [\"Bram\"]}]",
-      "usage": {
-        "promptTokens": 140,
-        "completionTokens": 30,
-        "totalTokens": 170
-      }
-    },
-    {
-      "pass": "other",
-      "label": "Bram",
-      "model": "gpt-epi-mini",
-      "response": "[{\"subjectIndex\": 1, \"content\": \"Aria hummed while the boiler cooled.\", \"summary\": \"hummed by the boiler\", \"keywords\": [\"boiler\"], \"importance\": 0.4}]",
-      "usage": {
-        "promptTokens": 135,
-        "completionTokens": 25,
-        "totalTokens": 160
-      }
-    },
-    {
-      "pass": "self",
-      "label": "Aria (she/her/her)",
-      "model": "gpt-lost-mini",
-      "response": "[{\"content\": \"I walked the Lighthouse Point jetty last week.\", \"summary\": \"walked the jetty\", \"keywords\": [\"jetty\"], \"importance\": 0.7, \"temporal\": \"past\", \"scope\": \"narrow\", \"context\": \"information\", \"kind\": \"episodic\", \"when\": \"last week\", \"entities\": [\"Lighthouse Point\"]}, {\"content\": \"I sang at the Long Gallery on 2023-05-01.\", \"summary\": \"sang at the long gallery\", \"keywords\": [\"gallery\"], \"importance\": 0.8, \"kind\": \"episodic\", \"when\": \"2023-05-01\", \"entities\": [\"Long Gallery\"]}, {\"content\": \"I first met the beekeeper some time ago.\", \"summary\": \"met the beekeeper\", \"keywords\": [\"beekeeper\"], \"importance\": 0.6, \"kind\": \"episodic\", \"when\": \"some time ago\", \"entities\": [\"Bram\"]}]",
-      "usage": {
-        "promptTokens": 130,
-        "completionTokens": 60,
-        "totalTokens": 190
-      },
-      "error": "Request timed out."
-    },
-    {
-      "pass": "self",
-      "label": "Bram",
-      "model": "gpt-lost-mini",
-      "response": "[{\"content\": \"I keep the hives shuttered after dusk.\", \"summary\": \"shutters the hives\", \"keywords\": [\"hives\"], \"importance\": 0.5}]",
-      "usage": {
-        "promptTokens": 120,
-        "completionTokens": 20,
-        "totalTokens": 140
-      }
-    },
-    {
-      "pass": "other",
-      "label": "Aria (she/her/her)",
-      "model": "gpt-lost-mini",
-      "response": "[{\"subjectIndex\": 1, \"content\": \"Bram carried the smoker up the stair yesterday.\", \"summary\": \"carried the smoker\", \"keywords\": [\"smoker\"], \"importance\": 0.55, \"kind\": \"episodic\", \"when\": \"yesterday\", \"entities\": [\"Bram\"]}]",
-      "usage": {
-        "promptTokens": 140,
-        "completionTokens": 30,
-        "totalTokens": 170
-      }
-    },
-    {
-      "pass": "other",
-      "label": "Bram",
-      "model": "gpt-lost-mini",
-      "response": "[{\"subjectIndex\": 1, \"content\": \"Aria hummed while the boiler cooled.\", \"summary\": \"hummed by the boiler\", \"keywords\": [\"boiler\"], \"importance\": 0.4}]",
-      "usage": {
-        "promptTokens": 135,
-        "completionTokens": 25,
-        "totalTokens": 160
-      },
-      "error": "Request timed out."
+     "id": "5c000000-0000-4000-8000-00000000000c",
+     "characterId": "cc000000-0000-4000-8000-0000000000c3",
+     "controlledBy": "user"
     }
-  ],
-  "calls": [
+   ],
+   "messages": [
     {
-      "name": "main_turn",
-      "chatId": "1c000000-0000-4000-8000-00000000c4a7",
-      "projectId": "1d000000-0000-4000-8000-00000000d123",
-      "projectDescription": "The Clockwork Opera restoration.",
-      "chatContextSummary": null,
-      "cheapLLMSettings": {
-        "strategy": "PROVIDER_CHEAPEST",
-        "fallbackToLocal": false
-      },
-      "concierge": {
-        "enabled": true,
-        "uncensoredTextProfileId": "bb000000-0000-4000-8000-00000000c003"
-      },
-      "conciergeMode": "moderated",
-      "isDangerousChat": false,
-      "memoryExtractionLimits": {
-        "enabled": true,
-        "maxPerHour": 4,
-        "softStartFraction": 0.5,
-        "softFloor": 0.55
-      },
-      "sourceMessageTimestamp": "2023-05-05T12:00:00.000Z",
-      "dryRun": false,
-      "inAutonomousRoom": false,
-      "participantIds": [
-        "dd000000-0000-4000-8000-00000000c4a5",
-        "aa000000-0000-4000-8000-00000000a21a",
-        "bb000000-0000-4000-8000-00000000b4a3",
-        "cc000000-0000-4000-8000-00000000ca55"
-      ],
-      "transcript": {
-        "turnOpenerMessageId": "1a000000-0000-4000-8000-00000000aaa1",
-        "userMessage": "Report, everyone. What changed today?",
-        "userCharacterId": "dd000000-0000-4000-8000-00000000c4a5",
-        "userCharacterName": "Charlie",
-        "userCharacterPronouns": {
-          "subject": "he",
-          "object": "him",
-          "possessive": "his"
-        },
-        "characterSlices": [
-          {
-            "characterId": "dd000000-0000-4000-8000-00000000c4a5",
-            "characterName": "Charlie",
-            "characterPronouns": {
-              "subject": "he",
-              "object": "him",
-              "possessive": "his"
-            },
-            "text": "Report, everyone. What changed today?",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa1"
-            ],
-            "isUserControlled": true
-          },
-          {
-            "characterId": "aa000000-0000-4000-8000-00000000a21a",
-            "characterName": "Aria",
-            "characterPronouns": {
-              "subject": "she",
-              "object": "her",
-              "possessive": "her"
-            },
-            "text": "I retuned the overture and fought the balcony draft.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa2"
-            ]
-          },
-          {
-            "characterId": "bb000000-0000-4000-8000-00000000b4a3",
-            "characterName": "Bram",
-            "text": "The hives held. I wired a bell to the door.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa3",
-              "1a000000-0000-4000-8000-00000000aaa4"
-            ]
-          },
-          {
-            "characterId": "cc000000-0000-4000-8000-00000000ca55",
-            "characterName": "Cass",
-            "text": "The underrails are quiet.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa5"
-            ]
-          }
-        ],
-        "latestAssistantMessageId": "1a000000-0000-4000-8000-00000000aaa5"
-      }
+     "id": "ea000001-0000-4000-8000-000000000001",
+     "role": "USER",
+     "content": "I told her we sail at dawn, whatever the harbourmaster says.",
+     "participantId": "5c000000-0000-4000-8000-00000000000c",
+     "createdAt": "2026-07-14T09:01:00.000Z"
     },
     {
-      "name": "autonomous_dry_run",
-      "chatId": "1c000000-0000-4000-8000-00000000c4a8",
-      "projectId": null,
-      "projectDescription": "   ",
-      "chatContextSummary": "Aria and Bram plot in the night salon.",
-      "cheapLLMSettings": {
-        "strategy": "PROVIDER_CHEAPEST",
-        "fallbackToLocal": false
-      },
-      "concierge": {
-        "enabled": true,
-        "uncensoredTextProfileId": "bb000000-0000-4000-8000-00000000c003"
-      },
-      "conciergeMode": "unmoderated",
-      "isDangerousChat": true,
-      "memoryExtractionLimits": null,
-      "sourceMessageTimestamp": null,
-      "dryRun": true,
-      "inAutonomousRoom": true,
-      "participantIds": [
-        "aa000000-0000-4000-8000-00000000a21a",
-        "bb000000-0000-4000-8000-00000000b4a3"
-      ],
-      "transcript": {
-        "turnOpenerMessageId": null,
-        "userMessage": null,
-        "turnTimestamp": "2023-05-06T21:15:00.000Z",
-        "characterSlices": [
-          {
-            "characterId": "aa000000-0000-4000-8000-00000000a21a",
-            "characterName": "Aria",
-            "characterPronouns": {
-              "subject": "she",
-              "object": "her",
-              "possessive": "her"
-            },
-            "text": "The boiler again. I hate that I fear it.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa6"
-            ]
-          },
-          {
-            "characterId": "bb000000-0000-4000-8000-00000000b4a3",
-            "characterName": "Bram",
-            "text": "Then the hives come indoors, and you get first honey.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa7"
-            ]
-          }
-        ],
-        "latestAssistantMessageId": "1a000000-0000-4000-8000-00000000aaa7"
-      }
+     "id": "ea000002-0000-4000-8000-000000000002",
+     "role": "ASSISTANT",
+     "content": "Then I will ready the Gull tonight and post the watch myself.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:02:00.000Z"
     },
     {
-      "name": "empty_turn",
-      "chatId": "1c000000-0000-4000-8000-00000000c4a8",
-      "projectId": null,
-      "projectDescription": null,
-      "chatContextSummary": null,
-      "cheapLLMSettings": {
-        "strategy": "PROVIDER_CHEAPEST",
-        "fallbackToLocal": false
-      },
-      "concierge": null,
-      "isDangerousChat": false,
-      "memoryExtractionLimits": null,
-      "sourceMessageTimestamp": null,
-      "dryRun": false,
-      "inAutonomousRoom": false,
-      "participantIds": [],
-      "transcript": {
-        "turnOpenerMessageId": null,
-        "userMessage": "hello?",
-        "characterSlices": [],
-        "latestAssistantMessageId": null
-      }
+     "id": "ea000003-0000-4000-8000-000000000003",
+     "role": "ASSISTANT",
+     "content": "I will bargain with the harbourmaster for the berth fee.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:03:00.000Z"
     },
     {
-      "name": "episodic_when_phrases_dry_run",
-      "chatId": "1c000000-0000-4000-8000-00000000c4a7",
-      "projectId": null,
-      "projectDescription": null,
-      "chatContextSummary": null,
-      "cheapLLMSettings": {
-        "strategy": "USER_DEFINED",
-        "userDefinedProfileId": "bb000000-0000-4000-8000-00000000c004",
-        "fallbackToLocal": false
-      },
-      "concierge": null,
-      "isDangerousChat": false,
-      "memoryExtractionLimits": null,
-      "sourceMessageTimestamp": null,
-      "timelineMode": "narrative",
-      "dryRun": true,
-      "inAutonomousRoom": false,
-      "participantIds": [
-        "aa000000-0000-4000-8000-00000000a21a",
-        "bb000000-0000-4000-8000-00000000b4a3"
-      ],
-      "transcript": {
-        "turnOpenerMessageId": null,
-        "userMessage": null,
-        "turnTimestamp": "2023-05-09T08:00:00.000Z",
-        "characterSlices": [
-          {
-            "characterId": "aa000000-0000-4000-8000-00000000a21a",
-            "characterName": "Aria",
-            "characterPronouns": {
-              "subject": "she",
-              "object": "her",
-              "possessive": "her"
-            },
-            "text": "The jetty, the gallery, the beekeeper — they all come back tonight.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aab1"
-            ],
-            "lastMessageCreatedAt": "2023-05-08T10:00:00.000Z"
-          },
-          {
-            "characterId": "bb000000-0000-4000-8000-00000000b4a3",
-            "characterName": "Bram",
-            "text": "And the hives stay shuttered regardless.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aab2"
-            ]
-          }
-        ],
-        "latestAssistantMessageId": "1a000000-0000-4000-8000-00000000aab2"
-      }
+     "id": "ea000004-0000-4000-8000-000000000004",
+     "role": "ASSISTANT",
+     "content": "And I will chart the reef passage before the tide turns.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:04:00.000Z"
     },
     {
-      "name": "self_pass_times_out",
-      "chatId": "1c000000-0000-4000-8000-00000000c4a7",
-      "projectId": null,
-      "projectDescription": null,
-      "chatContextSummary": null,
-      "cheapLLMSettings": {
-        "strategy": "USER_DEFINED",
-        "userDefinedProfileId": "bb000000-0000-4000-8000-00000000c005",
-        "fallbackToLocal": false
-      },
-      "concierge": null,
-      "isDangerousChat": false,
-      "memoryExtractionLimits": null,
-      "sourceMessageTimestamp": null,
-      "timelineMode": "narrative",
-      "dryRun": true,
-      "inAutonomousRoom": false,
-      "participantIds": [
-        "aa000000-0000-4000-8000-00000000a21a",
-        "bb000000-0000-4000-8000-00000000b4a3"
-      ],
-      "transcript": {
-        "turnOpenerMessageId": null,
-        "userMessage": null,
-        "turnTimestamp": "2023-05-09T08:00:00.000Z",
-        "characterSlices": [
-          {
-            "characterId": "aa000000-0000-4000-8000-00000000a21a",
-            "characterName": "Aria",
-            "characterPronouns": {
-              "subject": "she",
-              "object": "her",
-              "possessive": "her"
-            },
-            "text": "The jetty, the gallery, the beekeeper — they all come back tonight.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aab1"
-            ],
-            "lastMessageCreatedAt": "2023-05-08T10:00:00.000Z"
-          },
-          {
-            "characterId": "bb000000-0000-4000-8000-00000000b4a3",
-            "characterName": "Bram",
-            "text": "And the hives stay shuttered regardless.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aab2"
-            ]
-          }
-        ],
-        "latestAssistantMessageId": "1a000000-0000-4000-8000-00000000aab2"
-      },
-      "$comment": "P4.D136 (v4 a1d88aa3a, bug 107): Aria's SELF extraction pass TIMES OUT while every other pass answers. Aria's SELF pass AND Bram's OTHER pass both time out, so the result must carry passesLostToTimeout: 2 and BOTH SELF debug lines (v4 pushes the new LOST line and then falls through to the existing `failed` line), while `success` stays true — which is exactly the shape that used to report a clean finish over a hole in the data. dryRun so no memory rows are written and the existing table comparands are untouched. The OTHER arm is the other half: v4 REWROTE its existing sentence to interpolate `was LOST to a timeout` in place of `failed`, one line rather than the SELF arm's two."
+     "id": "ea000005-0000-4000-8000-000000000005",
+     "role": "USER",
+     "content": "Good. Bram, keep the brass sextant safe.",
+     "participantId": "5c000000-0000-4000-8000-00000000000c",
+     "createdAt": "2026-07-14T09:05:00.000Z"
     },
     {
-      "name": "mode_turn",
-      "chatId": "1c000000-0000-4000-8000-00000000c4a7",
-      "projectId": "1d000000-0000-4000-8000-00000000d123",
-      "projectDescription": "The Clockwork Opera restoration.",
-      "chatContextSummary": null,
-      "cheapLLMSettings": {
-        "strategy": "PROVIDER_CHEAPEST",
-        "fallbackToLocal": false
-      },
-      "concierge": {
-        "enabled": true,
-        "uncensoredTextProfileId": "bb000000-0000-4000-8000-00000000c003"
-      },
-      "conciergeMode": "moderated",
-      "isDangerousChat": false,
-      "memoryExtractionLimits": {
-        "enabled": true,
-        "maxPerHour": 4,
-        "softStartFraction": 0.5,
-        "softFloor": 0.55
-      },
-      "sourceMessageTimestamp": "2023-05-05T12:00:00.000Z",
-      "dryRun": false,
-      "inAutonomousRoom": false,
-      "participantIds": [
-        "dd000000-0000-4000-8000-00000000c4a5",
-        "aa000000-0000-4000-8000-00000000a21a",
-        "bb000000-0000-4000-8000-00000000b4a3",
-        "cc000000-0000-4000-8000-00000000ca55"
-      ],
-      "transcript": {
-        "turnOpenerMessageId": "1a000000-0000-4000-8000-00000000aaa1",
-        "userMessage": "Report, everyone. What changed today?",
-        "userCharacterId": "dd000000-0000-4000-8000-00000000c4a5",
-        "userCharacterName": "Charlie",
-        "userCharacterPronouns": {
-          "subject": "he",
-          "object": "him",
-          "possessive": "his"
-        },
-        "characterSlices": [
-          {
-            "characterId": "dd000000-0000-4000-8000-00000000c4a5",
-            "characterName": "Charlie",
-            "characterPronouns": {
-              "subject": "he",
-              "object": "him",
-              "possessive": "his"
-            },
-            "text": "Report, everyone. What changed today?",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa1"
-            ],
-            "isUserControlled": true
-          },
-          {
-            "characterId": "aa000000-0000-4000-8000-00000000a21a",
-            "characterName": "Aria",
-            "characterPronouns": {
-              "subject": "she",
-              "object": "her",
-              "possessive": "her"
-            },
-            "text": "I retuned the overture and fought the balcony draft.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa2"
-            ]
-          },
-          {
-            "characterId": "bb000000-0000-4000-8000-00000000b4a3",
-            "characterName": "Bram",
-            "text": "The hives held. I wired a bell to the door.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa3",
-              "1a000000-0000-4000-8000-00000000aaa4"
-            ]
-          },
-          {
-            "characterId": "cc000000-0000-4000-8000-00000000ca55",
-            "characterName": "Cass",
-            "text": "The underrails are quiet.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa5"
-            ]
-          }
-        ],
-        "latestAssistantMessageId": "1a000000-0000-4000-8000-00000000aaa5"
-      },
-      "memoryExtractionMode": {
-        "otherPass": "turn"
-      }
-    },
-    {
-      "name": "mode_fold",
-      "chatId": "1c000000-0000-4000-8000-00000000c4a7",
-      "projectId": "1d000000-0000-4000-8000-00000000d123",
-      "projectDescription": "The Clockwork Opera restoration.",
-      "chatContextSummary": null,
-      "cheapLLMSettings": {
-        "strategy": "PROVIDER_CHEAPEST",
-        "fallbackToLocal": false
-      },
-      "concierge": {
-        "enabled": true,
-        "uncensoredTextProfileId": "bb000000-0000-4000-8000-00000000c003"
-      },
-      "conciergeMode": "moderated",
-      "isDangerousChat": false,
-      "memoryExtractionLimits": {
-        "enabled": true,
-        "maxPerHour": 4,
-        "softStartFraction": 0.5,
-        "softFloor": 0.55
-      },
-      "sourceMessageTimestamp": "2023-05-05T12:00:00.000Z",
-      "dryRun": false,
-      "inAutonomousRoom": false,
-      "participantIds": [
-        "dd000000-0000-4000-8000-00000000c4a5",
-        "aa000000-0000-4000-8000-00000000a21a",
-        "bb000000-0000-4000-8000-00000000b4a3",
-        "cc000000-0000-4000-8000-00000000ca55"
-      ],
-      "transcript": {
-        "turnOpenerMessageId": "1a000000-0000-4000-8000-00000000aaa1",
-        "userMessage": "Report, everyone. What changed today?",
-        "userCharacterId": "dd000000-0000-4000-8000-00000000c4a5",
-        "userCharacterName": "Charlie",
-        "userCharacterPronouns": {
-          "subject": "he",
-          "object": "him",
-          "possessive": "his"
-        },
-        "characterSlices": [
-          {
-            "characterId": "dd000000-0000-4000-8000-00000000c4a5",
-            "characterName": "Charlie",
-            "characterPronouns": {
-              "subject": "he",
-              "object": "him",
-              "possessive": "his"
-            },
-            "text": "Report, everyone. What changed today?",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa1"
-            ],
-            "isUserControlled": true
-          },
-          {
-            "characterId": "aa000000-0000-4000-8000-00000000a21a",
-            "characterName": "Aria",
-            "characterPronouns": {
-              "subject": "she",
-              "object": "her",
-              "possessive": "her"
-            },
-            "text": "I retuned the overture and fought the balcony draft.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa2"
-            ]
-          },
-          {
-            "characterId": "bb000000-0000-4000-8000-00000000b4a3",
-            "characterName": "Bram",
-            "text": "The hives held. I wired a bell to the door.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa3",
-              "1a000000-0000-4000-8000-00000000aaa4"
-            ]
-          },
-          {
-            "characterId": "cc000000-0000-4000-8000-00000000ca55",
-            "characterName": "Cass",
-            "text": "The underrails are quiet.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa5"
-            ]
-          }
-        ],
-        "latestAssistantMessageId": "1a000000-0000-4000-8000-00000000aaa5"
-      },
-      "memoryExtractionMode": {
-        "otherPass": "fold"
-      }
-    },
-    {
-      "name": "mode_hybrid_floor_half",
-      "chatId": "1c000000-0000-4000-8000-00000000c4a7",
-      "projectId": "1d000000-0000-4000-8000-00000000d123",
-      "projectDescription": "The Clockwork Opera restoration.",
-      "chatContextSummary": null,
-      "cheapLLMSettings": {
-        "strategy": "PROVIDER_CHEAPEST",
-        "fallbackToLocal": false
-      },
-      "concierge": {
-        "enabled": true,
-        "uncensoredTextProfileId": "bb000000-0000-4000-8000-00000000c003"
-      },
-      "conciergeMode": "moderated",
-      "isDangerousChat": false,
-      "memoryExtractionLimits": {
-        "enabled": true,
-        "maxPerHour": 4,
-        "softStartFraction": 0.5,
-        "softFloor": 0.55
-      },
-      "sourceMessageTimestamp": "2023-05-05T12:00:00.000Z",
-      "dryRun": false,
-      "inAutonomousRoom": false,
-      "participantIds": [
-        "dd000000-0000-4000-8000-00000000c4a5",
-        "aa000000-0000-4000-8000-00000000a21a",
-        "bb000000-0000-4000-8000-00000000b4a3",
-        "cc000000-0000-4000-8000-00000000ca55"
-      ],
-      "transcript": {
-        "turnOpenerMessageId": "1a000000-0000-4000-8000-00000000aaa1",
-        "userMessage": "Report, everyone. What changed today?",
-        "userCharacterId": "dd000000-0000-4000-8000-00000000c4a5",
-        "userCharacterName": "Charlie",
-        "userCharacterPronouns": {
-          "subject": "he",
-          "object": "him",
-          "possessive": "his"
-        },
-        "characterSlices": [
-          {
-            "characterId": "dd000000-0000-4000-8000-00000000c4a5",
-            "characterName": "Charlie",
-            "characterPronouns": {
-              "subject": "he",
-              "object": "him",
-              "possessive": "his"
-            },
-            "text": "Report, everyone. What changed today?",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa1"
-            ],
-            "isUserControlled": true
-          },
-          {
-            "characterId": "aa000000-0000-4000-8000-00000000a21a",
-            "characterName": "Aria",
-            "characterPronouns": {
-              "subject": "she",
-              "object": "her",
-              "possessive": "her"
-            },
-            "text": "I retuned the overture and fought the balcony draft.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa2"
-            ]
-          },
-          {
-            "characterId": "bb000000-0000-4000-8000-00000000b4a3",
-            "characterName": "Bram",
-            "text": "The hives held. I wired a bell to the door.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa3",
-              "1a000000-0000-4000-8000-00000000aaa4"
-            ]
-          },
-          {
-            "characterId": "cc000000-0000-4000-8000-00000000ca55",
-            "characterName": "Cass",
-            "text": "The underrails are quiet.",
-            "contributingMessageIds": [
-              "1a000000-0000-4000-8000-00000000aaa5"
-            ]
-          }
-        ],
-        "latestAssistantMessageId": "1a000000-0000-4000-8000-00000000aaa5"
-      },
-      "memoryExtractionMode": {
-        "perTurnOtherFloor": 0.5
-      }
+     "id": "ea000006-0000-4000-8000-000000000006",
+     "role": "ASSISTANT",
+     "content": "It never leaves my coat until we reach Lighthouse Point.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:06:00.000Z"
     }
-  ],
-  "_memoryExtractionModeNote": "P4.D270 R-E: every call without `memoryExtractionMode` runs row-less (v4's default `hybrid`, read through the REAL getter on both sides). A call WITH it plants the patch through each side's REAL setter (v4 `setMemoryExtractionModeSettings`, v5 `set_memory_extraction_mode_settings`) before the call and deletes the row after it. `mode_turn` is the pre-round behaviour; `mode_fold` runs no per-turn OTHER call; `mode_hybrid_floor_half` proves the floor is read, not hard-coded."
+   ]
+  },
+  {
+   "id": "c4b00000-0000-4000-8000-00000000000b",
+   "chatType": "autonomous",
+   "participants": [
+    {
+     "id": "5a000000-0000-4000-8000-00000000000a",
+     "characterId": "aa000000-0000-4000-8000-0000000000a1",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5b000000-0000-4000-8000-00000000000b",
+     "characterId": "bb000000-0000-4000-8000-0000000000b2",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    }
+   ],
+   "messages": [
+    {
+     "id": "eb000001-0000-4000-8000-000000000001",
+     "role": "ASSISTANT",
+     "content": "The lamps are lit along the quay.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:01:00.000Z"
+    },
+    {
+     "id": "eb000002-0000-4000-8000-000000000002",
+     "role": "ASSISTANT",
+     "content": "I counted nine ships in the harbour tonight.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:02:00.000Z"
+    },
+    {
+     "id": "eb000003-0000-4000-8000-000000000003",
+     "role": "ASSISTANT",
+     "content": "Nine? I counted ten, with the black brig.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:03:00.000Z"
+    }
+   ]
+  }
+ ],
+ "embeddingDims": 16,
+ "completionRules": [
+  {
+   "pass": "self",
+   "label": "Ada (she/her/her)",
+   "contains": "reef passage",
+   "response": "[{\"content\": \"I promised to chart the reef passage before the tide turned.\", \"summary\": \"promised to chart the reef\", \"keywords\": [\"voyage\"], \"importance\": 0.8, \"temporal\": \"future\", \"scope\": \"narrow\", \"context\": \"history\"}, {\"content\": \"I chose to post the watch myself.\", \"summary\": \"posted the watch myself\", \"keywords\": [\"voyage\"], \"importance\": 0.55, \"temporal\": \"future\", \"scope\": \"narrow\", \"context\": \"history\"}]",
+   "usage": {
+    "promptTokens": 900,
+    "completionTokens": 60,
+    "totalTokens": 960
+   }
+  },
+  {
+   "pass": "self",
+   "label": "Bram (he/him/his)",
+   "contains": "berth fee",
+   "response": "[{\"content\": \"I took on bargaining for the berth fee.\", \"summary\": \"bargained for the berth\", \"keywords\": [\"voyage\"], \"importance\": 0.72, \"temporal\": \"future\", \"scope\": \"narrow\", \"context\": \"history\", \"kind\": \"episodic\", \"when\": \"2026-07-14\", \"entities\": [\"harbourmaster\"]}]",
+   "usage": {
+    "promptTokens": 880,
+    "completionTokens": 50,
+    "totalTokens": 930
+   }
+  },
+  {
+   "pass": "self",
+   "label": "Quill",
+   "response": "[{\"content\": \"I insisted we sail at dawn whatever the harbourmaster said.\", \"summary\": \"insisted on a dawn sailing\", \"keywords\": [\"voyage\"], \"importance\": 0.9, \"temporal\": \"future\", \"scope\": \"narrow\", \"context\": \"history\"}]",
+   "usage": {
+    "promptTokens": 870,
+    "completionTokens": 40,
+    "totalTokens": 910
+   }
+  },
+  {
+   "pass": "self",
+   "label": "Bram (he/him/his)",
+   "contains": "sextant",
+   "response": "[{\"content\": \"I swore to keep the brass sextant in my coat.\", \"summary\": \"kept the sextant safe\", \"keywords\": [\"voyage\"], \"importance\": 0.0, \"temporal\": \"future\", \"scope\": \"narrow\", \"context\": \"history\"}]",
+   "usage": {
+    "promptTokens": 800,
+    "completionTokens": 30,
+    "totalTokens": 830
+   }
+  },
+  {
+   "pass": "self",
+   "label": "Ada (she/her/her)",
+   "contains": "black brig",
+   "response": "[{\"content\": \"I disputed the ship count, insisting on ten.\", \"summary\": \"disputed the ship count\", \"keywords\": [\"voyage\"], \"importance\": 0.6, \"temporal\": \"future\", \"scope\": \"narrow\", \"context\": \"history\"}]",
+   "usage": {
+    "promptTokens": 600,
+    "completionTokens": 20,
+    "totalTokens": 620
+   }
+  },
+  {
+   "pass": "self",
+   "label": "Bram (he/him/his)",
+   "contains": "nine ships",
+   "response": "[]",
+   "usage": {
+    "promptTokens": 600,
+    "completionTokens": 2,
+    "totalTokens": 602
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Ada (she/her/her)",
+   "response": "[{\"subjectIndex\": 1, \"content\": \"Bram took the berth bargaining on himself.\", \"summary\": \"bram took the bargaining\", \"importance\": 0.8}, {\"subjectIndex\": 2, \"content\": \"Quill wanted a dawn sailing regardless of the harbourmaster.\", \"summary\": \"quill wants dawn sailing\", \"importance\": 0.6}]",
+   "usage": {
+    "promptTokens": 1000,
+    "completionTokens": 80,
+    "totalTokens": 1080
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Bram (he/him/his)",
+   "response": "[{\"subjectIndex\": 1, \"content\": \"Ada means to chart the reef passage herself.\", \"summary\": \"ada charts the reef\", \"importance\": 0.9}, {\"subjectIndex\": 2, \"content\": \"Quill trusts me with the sextant.\", \"summary\": \"quill trusts me\", \"importance\": 0.77}]",
+   "usage": {
+    "promptTokens": 990,
+    "completionTokens": 70,
+    "totalTokens": 1060
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Quill",
+   "response": "[{\"subjectIndex\": 1, \"content\": \"Ada readied the Gull without being asked.\", \"summary\": \"ada readied the gull\", \"importance\": 0.85}]",
+   "usage": {
+    "promptTokens": 950,
+    "completionTokens": 40,
+    "totalTokens": 990
+   }
+  }
+ ],
+ "ops": [
+  {
+   "name": "turn3_full_admission_throw",
+   "chatId": "c4a00000-0000-4000-8000-00000000000a",
+   "plants": {
+    "failContent": "I took on bargaining for the berth fee."
+   },
+   "locator": {
+    "turnOpenerMessageId": "ea000001-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "turn3_reclose_same_turn",
+   "chatId": "c4a00000-0000-4000-8000-00000000000a",
+   "locator": {
+    "turnOpenerMessageId": "ea000001-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "turn3_reopen_mid_turn",
+   "chatId": "c4a00000-0000-4000-8000-00000000000a",
+   "plants": {
+    "cursor": "ea000002-0000-4000-8000-000000000002"
+   },
+   "locator": {
+    "turnOpenerMessageId": "ea000001-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "turn2_foreign_cursor_zero_importance",
+   "chatId": "c4a00000-0000-4000-8000-00000000000a",
+   "plants": {
+    "cursor": "ea000003-0000-4000-8000-000000000003"
+   },
+   "locator": {
+    "turnOpenerMessageId": "ea000005-0000-4000-8000-000000000005"
+   }
+  },
+  {
+   "name": "turn1_backfill_forward_only",
+   "chatId": "c4a00000-0000-4000-8000-00000000000a",
+   "opts": {
+    "backfill": true
+   },
+   "locator": {
+    "turnOpenerMessageId": "ea000001-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "autonomous_bound",
+   "chatId": "c4b00000-0000-4000-8000-00000000000b",
+   "locator": {
+    "turnOpenerMessageId": null,
+    "extractionAnchorMessageId": "eb000003-0000-4000-8000-000000000003",
+    "extractAfterMessageId": "eb000002-0000-4000-8000-000000000002"
+   }
+  },
+  {
+   "name": "mode_fold",
+   "chatId": "c4a00000-0000-4000-8000-00000000000a",
+   "plants": {
+    "cursor": null,
+    "mode": {
+     "otherPass": "fold",
+     "perTurnOtherFloor": 0.75,
+     "foldCandidatesPerSubject": 3
+    }
+   },
+   "locator": {
+    "turnOpenerMessageId": "ea000001-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "mode_turn_default_cheap",
+   "chatId": "c4a00000-0000-4000-8000-00000000000a",
+   "plants": {
+    "cursor": null,
+    "mode": {
+     "otherPass": "turn",
+     "perTurnOtherFloor": 0.75,
+     "foldCandidatesPerSubject": 3
+    },
+    "cheapLLMSettings": {
+     "strategy": "PROVIDER_CHEAPEST",
+     "fallbackToLocal": false,
+     "defaultCheapProfileId": "9c000000-0000-4000-8000-000000000003"
+    }
+   },
+   "locator": {
+    "turnOpenerMessageId": "ea000001-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "throttle_and_skip",
+   "chatId": "c4a00000-0000-4000-8000-00000000000a",
+   "plants": {
+    "cursor": null,
+    "limits": {
+     "enabled": true,
+     "maxPerHour": 4,
+     "softStartFraction": 0.5,
+     "softFloor": 0.7
+    },
+    "ledger": {
+     "aa000000-0000-4000-8000-0000000000a1": 4,
+     "bb000000-0000-4000-8000-0000000000b2": 2
+    }
+   },
+   "locator": {
+    "turnOpenerMessageId": "ea000001-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "backfill_ignores_limits",
+   "chatId": "c4a00000-0000-4000-8000-00000000000a",
+   "opts": {
+    "backfill": true
+   },
+   "plants": {
+    "cursor": null,
+    "limits": {
+     "enabled": true,
+     "maxPerHour": 4,
+     "softStartFraction": 0.5,
+     "softFloor": 0.7
+    }
+   },
+   "locator": {
+    "turnOpenerMessageId": "ea000001-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "timeout_self_dry_run",
+   "chatId": "c4b00000-0000-4000-8000-00000000000b",
+   "opts": {
+    "dryRun": true
+   },
+   "plants": {
+    "failLabel": "Ada (she/her/her)"
+   },
+   "locator": {
+    "turnOpenerMessageId": null,
+    "extractionAnchorMessageId": "eb000003-0000-4000-8000-000000000003"
+   }
+  }
+ ]
 }

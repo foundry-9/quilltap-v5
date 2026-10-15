@@ -76,6 +76,16 @@ _Docs-only change._
 
 The stacking point P4.D296 / P4.D297 / P4.D298 branch from, with every C1-B signature as landed and the one departure.
 
+#### 2026-10-15 — feat(memory): P4.D296 Tier 1 #5–#10 — the extraction pipeline: one context, the route, the live rate limit, the cursor store, the pass runner into admission, the four passes, the turn grain
+
+_Versions: core 0.0.1301._
+
+New `services::extraction` (v4 `lib/memory/extraction/` at the `83334b9a5` pin). `build_extraction_context` builds everything a unit of work's passes share once: the chat, the cast (hydrated once), the user character, the project description, the speaker names, the memory settings façade, the memory-calendar zone, memoised canon, the route, the rate limiter, the cursors, and the messages (read lazily). A missing chat-settings row no longer fails extraction. `resolve_extraction_route` honours the default cheap profile and carries the Concierge fallback with `is_dangerous_chat` onto every pass. The rate limiter reads admission's process-global ledger once per character per unit and decides per holder per call; backfill disables it. `CursorStore` reads and advances `memory_extraction_cursors` (raw pass strings, so an unknown pass writes its own row as v4 does). `run_pass` is the one route into `admit_candidate`: a failed admission costs that candidate alone, with v4's WARN and debug line. The SELF / OTHER / fold-OTHER / episode passes follow bug 245's observer rules, keep rate-limited characters as subjects, date a fold-OTHER draft at the observer's last line (bug 238), and link only inserted episodes to their fragments. `run_turn_extraction` reads past the `turn` cursor and advances it forward-only; `run_carina_extraction` runs SELF with the `carina` provenance.
+
+The canon loaders moved to `services::canon_loaders`; `memory_processor` re-exports them for two outside callers (LANE-REMOVE).
+
+`memory_processor_tier3_equivalence` is rewritten as the turn-grain tier-3 over v4's real `buildExtractionContext` + `runTurnExtraction`: 11 ops (a fresh three-speaker turn with one admission throwing, a same-turn re-close with nothing new, a mid-turn reopen, a foreign cursor, a forward-only backfill, an autonomous room's bound, fold / turn modes, the default cheap profile, throttle + skip, backfill ignoring the limits, a timed-out SELF call in a dry run). Results, debug lines, cursors, captured lines and the `memories` table match the oracle; the forward-only cursor and backfill-disables-the-limiter rules each turn named rows red when inverted.
+
 #### 2026-10-15 — feat(memory): P4.D296 Tier 1 #1–#4 — the pure extraction leaves (prompts, parse, window) and bug 245's turn transcript
 
 _Versions: core 0.0.1300._

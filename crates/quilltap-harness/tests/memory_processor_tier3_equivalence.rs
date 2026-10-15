@@ -1,37 +1,38 @@
-//! Tier-3 differential test: the **memory processor**
-//! (`quilltap_core::services::memory_processor` — v4 `processTurnForMemory`),
-//! the model-dependent per-turn extraction service, verified tier-3 → tier-2.
+//! Tier-3 differential test: the extraction **turn grain** —
+//! `quilltap_core::services::extraction::{context, route, rate_limit, cursors,
+//! run, passes, turn}` against v4's ONE pipeline at the `83334b9a5` pin (work
+//! order P4.D296 Tier 1 #5–#11). The family keeps its pre-refactor name (the
+//! order's L-20); its old subject (`processTurnForMemory`) was deleted by
+//! `ac6348c5f`.
 //!
-//! Both sides pin BOTH model calls identically: the completion by exact call
-//! key (the jest oracle resolves each real call to a corpus rule and RECORDS
-//! the exact `provider|model|temperature|messages` entry it answered; this
-//! test replays those recorded entries through `CannedCompletionProvider`, so
-//! a prompt/selection/temperature divergence surfaces as a canned-miss), and
-//! the embedding by exact `${summary}\n\n${content}` text (as in the
-//! memory-gate differential). Then:
+//! Both sides start from the SAME fixture pair (the grown
+//! `build-memory-processor-fixture.ts`: three characters, three profiles, a
+//! chat-settings row, a three-seat chat and an autonomous room with stamped
+//! messages, the cursor and `instance_settings` tables) and run the SAME op
+//! list: plant (the `turn` cursor, the limits / mode rows, the cheap-LLM
+//! block, the rate ledger), `build_extraction_context` +
+//! `run_turn_extraction`. The model calls are pinned by exact call key (the
+//! oracle RECORDS every `provider|model|temperature|messages` entry it
+//! answered, incl. the one timed-out call; this test replays exactly those,
+//! so any prompt / selection divergence is a canned-miss), the embeddings by
+//! exact text (the oracle records each text's vector). Then per op:
 //!
-//!   1. each call's `TurnMemoryProcessingResult` is compared structurally
-//!      (debug logs byte-for-byte — they carry the rate-limit, canon-source,
-//!      throttle, and gate-outcome attributions; minted created-memory ids
-//!      tokenized on both sides);
-//!   2. the three affected tables (`memories`, `vector_indices`,
-//!      `vector_entries`) are diffed in the shared-cross-table id-map remap
-//!      form (as the memory-gate test).
+//!   1. the turn result — calls, timeouts, failures, every admitted
+//!      candidate (the whole `MemoryCandidate` + its anchors + the action
+//!      kind), created / reinforced ids, usage, the debug lines BYTE-FOR-BYTE
+//!      (minted memory ids tokenised by row content on each side), the source
+//!      message, `hadContributions`;
+//!   2. the cursor table after the op;
+//!   3. the captured lines (`[Memory]`, `[ExtractionCursors] Advanced`,
+//!      `[MemorySettings]`, `[MemoryCalendar]`, `[Canon]` — the latter three
+//!      are sibling lanes' lines, compared whole here because they ride the
+//!      same unit of work). `[ExtractionCursors] Cursor set` is P4.D288's line
+//!      emitted on the WRITER thread, invisible to this thread-scoped capture
+//!      (memory note `capture-rig-writer-thread`): filtered from the v4 side.
 //!
-//! P4.D270 (v4 `d58548051`): the per-turn OTHER pass reads the REAL
-//! `memoryExtractionMode` on both sides. Every pre-round call runs row-less
-//! (`hybrid` — sub-0.75 OTHER candidates dropped with the persisted `Hybrid
-//! floor dropped …` debug-log line, BEFORE the throttle); three calls over the
-//! `main_turn` shape plant a patch: `mode_turn` (the pre-round output),
-//! `mode_fold` (no per-turn OTHER call, the fold-only debug-log line) and
-//! `mode_hybrid_floor_half` (a 0.5 floor — the value is read, not hard-coded).
+//! and, after the last op, the `memories` table.
 //!
-//! Also the first differential to exercise the gate's now-ported
-//! `applyNamePresenceCheck` lookup branch: one OTHER candidate deliberately
-//! fails the subject-name presence check and lands with `aboutCharacterId`
-//! flipped to the observer.
-//!
-//! Generate the fixtures + oracle output (Node 24, from the v4 checkout):
+//! Generate (Node 24, from the v4 checkout or the lane's pin):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   TMPO=/tmp/qt-memory-processor-oracle
 //!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
@@ -44,740 +45,471 @@
 //!   QT_FIXTURE_PROCESSOR_MAIN=/tmp/qt-memory-processor-main.db \
 //!   QT_FIXTURE_PROCESSOR_MOUNT=/tmp/qt-memory-processor-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-memory-processor.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- "memory-processor-tier3\\.test\\.ts$"
+//!     $N/npx jest --silent --watchman=false --testTimeout=180000 --roots "$PWD" --roots "$TMPO/cases" -- "memory-processor-tier3\\.test\\.ts$"
 //! Run:
 //!   QT_ORACLE_PROCESSOR=/tmp/oracle-memory-processor.ndjson \
 //!   QT_FIXTURE_PROCESSOR_MAIN=/tmp/qt-memory-processor-main.db \
 //!   QT_FIXTURE_PROCESSOR_MOUNT=/tmp/qt-memory-processor-mount.db \
 //!     cargo test -p quilltap-harness --test memory_processor_tier3_equivalence
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 
-use quilltap_core::cheap_llm::CheapLlmProfile;
-use quilltap_core::db::characters_read;
 use quilltap_core::db::dump_table_json_conn;
-use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::jsstr::utf16_len;
-use quilltap_core::memory_format::Pronouns;
-use quilltap_core::memory_tasks::{TurnCharacterSlice, TurnTranscript};
+use quilltap_core::db::memory_extraction_cursors::ExtractionCursorPass;
+use quilltap_core::db::runtime::Db;
 use quilltap_core::model::completion::{
     CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
 };
-use quilltap_core::model::embedding::CannedEmbeddingProvider;
-use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
-use quilltap_core::services::dangerous_content::resolver::resolve_stored_concierge_settings;
-use quilltap_core::services::llm_logging::LogContext;
-use quilltap_core::services::memory_processor::{
-    process_turn_for_memory, CheapLlmSettings, MemoryExtractionLimits, TurnMemoryExtractionContext,
+use quilltap_core::model::embedding::{CannedEmbeddingProvider, EmbeddingResult};
+use quilltap_core::services::admission::{
+    record_admission_insert, reset_admission_state_for_tests, reset_rate_ledger_for_tests,
 };
-use serde::Deserialize;
-use serde_json::Value;
+use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use quilltap_core::services::extraction::context::{
+    build_extraction_context, BuildExtractionContextOptions,
+};
+use quilltap_core::services::extraction::run::ExtractionDeps;
+use quilltap_core::services::extraction::turn::{run_turn_extraction, TurnLocator};
+use quilltap_core::services::memory_time_zone::reset_memory_time_zone_cache_for_tests;
+use serde_json::{json, Value};
 
-mod common;
+#[path = "admission_support/mod.rs"]
+mod admission_support;
+use admission_support::{minted_ids, oracle_lines, planted_stamps, render, render_v4, same, Norm};
 
-// ---------------------------------------------------------------------------
-// Spec structures (harness/oracle/fixtures/memory-processor-tier3.json).
-// ---------------------------------------------------------------------------
-
-#[derive(Deserialize)]
-struct PronounsW {
-    subject: String,
-    object: String,
-    possessive: String,
-}
-
-impl PronounsW {
-    fn into_core(self) -> Pronouns {
-        Pronouns {
-            subject: self.subject,
-            object: self.object,
-            possessive: self.possessive,
-        }
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SliceW {
-    character_id: String,
-    character_name: String,
-    #[serde(default)]
-    character_pronouns: Option<PronounsW>,
-    text: String,
-    contributing_message_ids: Vec<String>,
-    #[serde(default)]
-    is_user_controlled: bool,
-    #[serde(default)]
-    last_message_created_at: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct TranscriptW {
-    #[serde(default)]
-    turn_opener_message_id: Option<String>,
-    #[serde(default)]
-    user_message: Option<String>,
-    #[serde(default)]
-    user_character_id: Option<String>,
-    #[serde(default)]
-    user_character_name: Option<String>,
-    #[serde(default)]
-    user_character_pronouns: Option<PronounsW>,
-    character_slices: Vec<SliceW>,
-    #[serde(default)]
-    latest_assistant_message_id: Option<String>,
-    #[serde(default)]
-    turn_timestamp: Option<String>,
-}
-
-impl TranscriptW {
-    fn into_core(self) -> TurnTranscript {
-        TurnTranscript {
-            turn_opener_message_id: self.turn_opener_message_id,
-            user_message: self.user_message,
-            user_character_id: self.user_character_id,
-            user_character_name: self.user_character_name,
-            user_character_pronouns: self.user_character_pronouns.map(PronounsW::into_core),
-            character_slices: self
-                .character_slices
-                .into_iter()
-                .map(|s| TurnCharacterSlice {
-                    character_id: s.character_id,
-                    character_name: s.character_name,
-                    character_pronouns: s.character_pronouns.map(PronounsW::into_core),
-                    text: s.text,
-                    contributing_message_ids: s.contributing_message_ids,
-                    is_user_controlled: s.is_user_controlled,
-                    last_message_created_at: s.last_message_created_at,
-                })
-                .collect(),
-            prior_slices: None,
-            latest_assistant_message_id: self.latest_assistant_message_id,
-            turn_timestamp: self.turn_timestamp,
-        }
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ProfileW {
-    id: String,
-    provider: String,
-    model_name: String,
-    #[serde(default)]
-    base_url: Option<String>,
-    is_cheap: bool,
-    is_dangerous_compatible: bool,
-    #[serde(default)]
-    parameters: Option<Value>,
-    #[serde(default)]
-    max_tokens: Option<f64>,
-    #[serde(default)]
-    max_context: Option<f64>,
-    #[serde(default)]
-    model_class: Option<String>,
-}
-
-impl ProfileW {
-    fn into_core(self) -> CheapLlmProfile {
-        CheapLlmProfile {
-            id: self.id,
-            provider: self.provider,
-            model_name: self.model_name,
-            base_url: self.base_url,
-            is_cheap: self.is_cheap,
-            is_dangerous_compatible: self.is_dangerous_compatible,
-            parameters: self.parameters,
-            max_tokens: self.max_tokens,
-            max_context: self.max_context,
-            model_class: self.model_class,
-        }
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LimitsW {
-    enabled: bool,
-    max_per_hour: f64,
-    soft_start_fraction: f64,
-    soft_floor: f64,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SettingsW {
-    strategy: String,
-    #[serde(default)]
-    user_defined_profile_id: Option<String>,
-    fallback_to_local: bool,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CallW {
-    name: String,
-    chat_id: String,
-    #[serde(default)]
-    project_id: Option<String>,
-    #[serde(default)]
-    project_description: Option<String>,
-    #[serde(default)]
-    chat_context_summary: Option<String>,
-    #[serde(rename = "cheapLLMSettings")]
-    cheap_llm_settings: SettingsW,
-    /// v4 `3b463d6b1` (#76): the stored `conciergeSettings` the policy
-    /// resolves from WITH a chat in `concierge_mode`; null = no policy.
-    #[serde(default)]
-    concierge: Option<serde_json::Value>,
-    #[serde(default)]
-    concierge_mode: Option<String>,
-    is_dangerous_chat: bool,
-    #[serde(default)]
-    memory_extraction_limits: Option<LimitsW>,
-    #[serde(default)]
-    source_message_timestamp: Option<String>,
-    #[serde(default)]
-    timeline_mode: Option<String>,
-    dry_run: bool,
-    in_autonomous_room: bool,
-    participant_ids: Vec<String>,
-    transcript: TranscriptW,
-    /// P4.D270 R-E: a `memoryExtractionMode` patch planted through the REAL
-    /// setter before the call and deleted after it (absent → no row → v4's
-    /// default `hybrid` on both sides).
-    #[serde(default)]
-    memory_extraction_mode: Option<serde_json::Value>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Spec {
-    test_pepper_base64: String,
-    user_id: String,
-    profiles: Vec<ProfileW>,
-    current_profile_id: String,
-    canned_embeddings: HashMap<String, Vec<f32>>,
-    canned_failures: Vec<String>,
-    calls: Vec<CallW>,
-}
-
-// ---------------------------------------------------------------------------
-// Oracle rows.
-// ---------------------------------------------------------------------------
-
-#[derive(Deserialize)]
-struct CannedMessageW {
-    role: String,
-    content: String,
-}
-
-#[derive(Deserialize)]
-struct CannedUsageW {
-    #[serde(rename = "promptTokens")]
-    prompt_tokens: i64,
-    #[serde(rename = "completionTokens")]
-    completion_tokens: i64,
-    #[serde(rename = "totalTokens")]
-    total_tokens: i64,
-}
-
-#[derive(Deserialize)]
-struct CannedRowW {
-    provider: String,
-    model: String,
-    temperature: Option<f64>,
-    messages: Vec<CannedMessageW>,
-    response: String,
-    usage: CannedUsageW,
-    /// P4.D136 (v4 `a1d88aa3a`, bug 107): the rule THREW instead of answering.
-    /// Registered as a canned FAILURE so v5's cheap task sees the same error —
-    /// and, because the map is stateless, so does the same-route retry.
-    #[serde(default)]
-    failure: Option<String>,
-}
-
-fn spec_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
+fn spec_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../harness/oracle/fixtures/memory-processor-tier3.json")
 }
 
-// ---------------------------------------------------------------------------
-// Table normalization — the memory-gate shared-cross-table id-map remap form.
-// ---------------------------------------------------------------------------
-
-struct TableSpec {
-    table: &'static str,
-    order_by: &'static str,
-    id_columns: &'static [&'static str],
-    id_array_columns: &'static [&'static str],
-    ts_columns: &'static [&'static str],
-}
-
-const TABLES: &[TableSpec] = &[
-    TableSpec {
-        table: "memories",
-        order_by: "content",
-        id_columns: &["id"],
-        id_array_columns: &["relatedMemoryIds"],
-        ts_columns: &[
-            "createdAt",
-            "updatedAt",
-            "lastReinforcedAt",
-            "lastAccessedAt",
-        ],
-    },
-    TableSpec {
-        table: "vector_entries",
-        order_by: "embedding",
-        id_columns: &["id"],
-        id_array_columns: &[],
-        ts_columns: &["createdAt"],
-    },
-    TableSpec {
-        table: "vector_indices",
-        order_by: "id",
-        // id == characterId (pinned) — left literal.
-        id_columns: &[],
-        id_array_columns: &[],
-        ts_columns: &["createdAt", "updatedAt"],
-    },
+const PREFIXES: &[&str] = &[
+    "[Memory]",
+    "[ExtractionCursors]",
+    "[MemorySettings]",
+    "[MemoryCalendar]",
+    "[Canon]",
 ];
 
-fn token_for(id_map: &mut HashMap<String, String>, raw: &str) -> String {
-    let next = format!("ID_{}", id_map.len());
-    id_map.entry(raw.to_string()).or_insert(next).clone()
-}
-
-fn normalize_table(dump: &mut Value, spec: &TableSpec, id_map: &mut HashMap<String, String>) {
-    let rows = dump
-        .get_mut("rows")
-        .and_then(Value::as_array_mut)
-        .unwrap_or_else(|| panic!("{}: dump has no rows array", spec.table));
-
-    for row in rows.iter_mut() {
-        let obj = row
-            .as_object_mut()
-            .unwrap_or_else(|| panic!("{}: row is not an object", spec.table));
-
-        for col in spec.id_columns {
-            if let Some(Value::String(raw)) = obj.get(*col) {
-                let token = token_for(id_map, raw);
-                obj.insert((*col).to_string(), Value::String(token));
-            }
-        }
-
-        for col in spec.id_array_columns {
-            if let Some(Value::String(raw)) = obj.get(*col) {
-                if let Ok(Value::Array(items)) = serde_json::from_str::<Value>(raw) {
-                    let mapped: Vec<Value> = items
-                        .iter()
-                        .map(|v| match v.as_str() {
-                            Some(s) => Value::String(token_for(id_map, s)),
-                            None => v.clone(),
-                        })
-                        .collect();
-                    let re = serde_json::to_string(&Value::Array(mapped)).unwrap();
-                    obj.insert((*col).to_string(), Value::String(re));
-                }
-            }
-        }
-
-        for col in spec.ts_columns {
-            if obj.get(*col).map(|v| !v.is_null()).unwrap_or(false) {
-                obj.insert((*col).to_string(), Value::String("<ts>".to_string()));
-            }
-        }
-    }
-}
-
-fn normalize_all(dumps: &mut [Value]) {
-    let mut id_map: HashMap<String, String> = HashMap::new();
-    for (i, spec) in TABLES.iter().enumerate() {
-        normalize_table(&mut dumps[i], spec, &mut id_map);
-    }
-}
-
-/// Tokenize the minted created-memory ids inside a result object (both sides),
-/// leaving the pinned reinforced ids literal.
-/// A v5-only failed-call row: `response.error` set with an empty `content`
-/// (`cheap_llm_exec::log_failed_call`'s shape). Success rows always log
-/// `error: null`.
-fn is_v5_failed_call_row(row: &Value) -> bool {
-    let Some(raw) = row.get("response").and_then(Value::as_str) else {
-        return false;
-    };
-    let Ok(parsed) = serde_json::from_str::<Value>(raw) else {
-        return false;
-    };
-    parsed.get("error").map(|e| !e.is_null()).unwrap_or(false)
-}
-
-fn normalize_result(result: &mut Value, minted: &mut HashMap<String, String>) {
-    if let Some(Value::Array(ids)) = result.get_mut("createdMemoryIds") {
-        for (i, id) in ids.iter_mut().enumerate() {
-            // P4.D270: a later call over the same transcript (the R-E mode
-            // calls re-run `main_turn`'s) is absorbed into a row an EARLIER
-            // call minted, and its debug line names that id — so each side
-            // keeps its minted ids, in order, and later lines read the token.
-            if let Some(raw) = id.as_str() {
-                let token = format!("MINTED_{}", minted.len());
-                minted.entry(raw.to_string()).or_insert(token);
-            }
-            *id = Value::String(format!("CREATED_{i}"));
-        }
-    }
-    if let Some(Value::Array(lines)) = result.get_mut("debugLogs") {
-        for line in lines.iter_mut() {
-            if let Some(text) = line.as_str() {
-                let mut text = text.to_string();
-                for (raw, token) in minted.iter() {
-                    text = text.replace(raw.as_str(), token);
-                }
-                *line = Value::String(text);
-            }
-        }
-    }
-}
-
-#[tokio::test]
-async fn memory_processor_tier3_matches_oracle() {
-    // P4.133 (dogfood #133; pre-written for the unifier — P4.D242 owns this
-    // family's run this round): the oracle mocks
-    // `getApiKeyForCheapLLMSelection` to a constant; the twin (v5 now resolves
-    // the cheap selection's own key — and the Concierge classifier's — and
-    // refuses without one).
-    let _canned_key = quilltap_core::test_support::CannedCheapLlmKey::install("test-key");
-    let oracle_path = match std::env::var("QT_ORACLE_PROCESSOR") {
-        Ok(p) => p,
-        Err(_) => {
-            eprintln!("SKIP: set QT_ORACLE_PROCESSOR to the oracle NDJSON (see header).");
-            return;
-        }
-    };
-    let fixture_main = match std::env::var("QT_FIXTURE_PROCESSOR_MAIN") {
-        Ok(p) => p,
-        Err(_) => {
-            eprintln!("SKIP: set QT_FIXTURE_PROCESSOR_MAIN to the seed main .db (see header).");
-            return;
-        }
-    };
-    let fixture_mount = match std::env::var("QT_FIXTURE_PROCESSOR_MOUNT") {
-        Ok(p) => p,
-        Err(_) => {
-            eprintln!("SKIP: set QT_FIXTURE_PROCESSOR_MOUNT to the seed mount .db (see header).");
-            return;
-        }
-    };
-
-    let spec: Spec = serde_json::from_str(
-        &std::fs::read_to_string(spec_path()).unwrap_or_else(|e| panic!("read spec: {e}")),
-    )
-    .expect("parse spec");
-    let oracle_text =
-        std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
-
-    let mut oracle_results: Vec<(String, Value)> = Vec::new();
-    let mut oracle_canned: Vec<CannedRowW> = Vec::new();
-    let mut oracle_tables: HashMap<String, Value> = HashMap::new();
-    let mut oracle_llm_logs: Option<Vec<Value>> = None;
-    for line in oracle_text.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let v: Value = serde_json::from_str(line).expect("parse oracle line");
-        match v.get("kind").and_then(Value::as_str) {
-            Some("result") => {
-                oracle_results.push((v["call"].as_str().unwrap().to_string(), v["result"].clone()))
-            }
-            Some("canned") => {
-                oracle_canned.push(serde_json::from_value(v).expect("parse canned row"))
-            }
-            Some("table") => {
-                oracle_tables.insert(v["table"].as_str().unwrap().to_string(), v);
-            }
-            Some("llmlogs") => oracle_llm_logs = Some(common::oracle_llm_logs(&v)),
-            other => panic!("unknown oracle row kind {other:?}"),
-        }
-    }
-
-    // Fresh copies so the shared seed fixtures stay pristine.
-    let work_main_scratch = tempfile::Builder::new()
-        .prefix("qt-memproc-main-rust-")
-        .tempdir()
-        .expect("tempdir");
-    let work_main = work_main_scratch.path().join("work_main.db");
-    let work_mount_scratch = tempfile::Builder::new()
-        .prefix("qt-memproc-mount-rust-")
-        .tempdir()
-        .expect("tempdir");
-    let work_mount = work_mount_scratch.path().join("work_mount.db");
-    std::fs::copy(&fixture_main, &work_main).unwrap_or_else(|e| panic!("copy main: {e}"));
-    std::fs::copy(&fixture_mount, &work_mount).unwrap_or_else(|e| panic!("copy mount: {e}"));
-
-    // The completion provider replays EXACTLY the entries the oracle recorded —
-    // an input the oracle never sent is a surfaced canned-miss, not an answer.
+fn completion_from(oracle: &[Value]) -> CannedCompletionProvider {
     let mut completion = CannedCompletionProvider::new();
-    for row in &oracle_canned {
-        let messages: Vec<CompletionMessage> = row
-            .messages
+    for row in oracle.iter().filter(|l| l["kind"] == "canned") {
+        let messages: Vec<CompletionMessage> = row["messages"]
+            .as_array()
+            .unwrap()
             .iter()
             .map(|m| CompletionMessage {
-                role: CompletionRole::from_v4_wire(m.role.as_str())
-                    .unwrap_or_else(|| panic!("unexpected role {}", m.role.as_str())),
-                content: m.content.clone(),
+                role: CompletionRole::from_v4_wire(m["role"].as_str().unwrap()).unwrap(),
+                content: m["content"].as_str().unwrap().to_string(),
             })
             .collect();
-        completion = match &row.failure {
-            Some(message) => completion.with_failure(
-                &row.provider,
-                &row.model,
-                row.temperature,
-                &messages,
-                message.clone(),
-            ),
+        let (provider, model) = (
+            row["provider"].as_str().unwrap(),
+            row["model"].as_str().unwrap(),
+        );
+        let temperature = row["temperature"].as_f64();
+        completion = match row["failure"].as_str() {
+            Some(message) => {
+                completion.with_failure(provider, model, temperature, &messages, message)
+            }
             None => completion.with_response(
-                &row.provider,
-                &row.model,
-                row.temperature,
+                provider,
+                model,
+                temperature,
                 &messages,
-                row.response.clone(),
+                row["response"].as_str().unwrap(),
                 Some(CompletionUsage {
-                    prompt_tokens: row.usage.prompt_tokens,
-                    completion_tokens: row.usage.completion_tokens,
-                    total_tokens: row.usage.total_tokens,
+                    prompt_tokens: row["usage"]["promptTokens"].as_i64().unwrap(),
+                    completion_tokens: row["usage"]["completionTokens"].as_i64().unwrap(),
+                    total_tokens: row["usage"]["totalTokens"].as_i64().unwrap(),
                 }),
             ),
         };
     }
+    completion
+}
 
-    // The same canned embeddings both sides inject. The failure message mirrors
-    // the oracle's text-length-parameterized message (the gate's retry reason
-    // reaches the debug logs), so it must match per failing input — the corpus
-    // carries exactly one.
-    let mut embedding = CannedEmbeddingProvider::new();
-    for (text, vec) in &spec.canned_embeddings {
-        embedding = embedding.with_vector(text.clone(), vec.clone());
+fn embedding_from(oracle: &[Value]) -> CannedEmbeddingProvider {
+    let mut provider = CannedEmbeddingProvider::new();
+    for line in oracle.iter().filter(|l| l["kind"] == "embedding") {
+        let embedding: Vec<f32> = line["embedding"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_f64().unwrap() as f32)
+            .collect();
+        provider = provider.with_result(
+            line["text"].as_str().unwrap(),
+            EmbeddingResult {
+                dimensions: embedding.len(),
+                embedding,
+                model: "canned".into(),
+                provider: "canned".into(),
+            },
+        );
     }
-    for text in &spec.canned_failures {
-        embedding = embedding
-            .with_failure(text.clone())
-            .with_failure_message(format!(
-                "canned failure for input ({} chars)",
-                utf16_len(text)
-            ));
-    }
+    provider
+}
 
-    // W4.10b: a fresh llm-logs partition for the MEMORY_EXTRACTION rows the SELF/
-    // OTHER extraction cheap calls write.
-    let work_ll = work_main.with_file_name(format!("qt-memproc-ll-{}.db", std::process::id()));
-    common::materialize_llm_logs(&work_ll, &spec.test_pepper_base64);
+fn s(v: &Value, k: &str) -> Option<String> {
+    v.get(k).and_then(Value::as_str).map(str::to_string)
+}
 
-    let db = Db::open(
-        DbPaths {
-            main: work_main.clone(),
-            mount_index: Some(work_mount.clone()),
-            llm_logs: Some(work_ll.clone()),
+async fn exec(db: &Db, sql: String, args: Vec<String>) {
+    db.write(move |w| {
+        w.main()
+            .connection()
+            .execute(&sql, rusqlite::params_from_iter(args.iter()))
+            .map_err(quilltap_core::db::DbError::from)
+    })
+    .await
+    .expect("plant");
+}
+
+/// The Rust result in the oracle's shape.
+fn result_value(r: &quilltap_core::services::extraction::turn::TurnExtractionResult) -> Value {
+    let p = &r.result;
+    json!({
+        "pass": p.pass.as_str(),
+        "calls": p.calls,
+        "timedOut": p.timed_out,
+        "failed": p.failed,
+        "admitted": p.admitted.iter().map(|a| json!({
+            "candidate": serde_json::to_value(&a.candidate).unwrap(),
+            "occurredAt": a.occurred_at,
+            "narrativeTime": a.narrative_time,
+            "holderName": a.holder_name,
+            "aboutName": a.about_name,
+            "action": a.outcome.action.kind().as_str(),
+        })).collect::<Vec<_>>(),
+        "createdIds": p.created_ids,
+        "reinforcedIds": p.reinforced_ids,
+        "usage": {
+            "promptTokens": p.usage.prompt_tokens,
+            "completionTokens": p.usage.completion_tokens,
+            "totalTokens": p.usage.total_tokens,
         },
-        &spec.test_pepper_base64,
-    )
-    .unwrap_or_else(|e| panic!("open fixture copies: {e}"));
+        "debugLogs": p.debug_logs,
+        "rateDeferred": p.rate_deferred,
+        "sourceMessageId": r.source_message_id,
+        "hadContributions": r.had_contributions,
+    })
+}
 
-    let profiles: Vec<CheapLlmProfile> =
-        spec.profiles.into_iter().map(ProfileW::into_core).collect();
-    let current_profile = profiles
-        .iter()
-        .find(|p| p.id == spec.current_profile_id)
-        .expect("current profile in spec")
-        .clone();
+fn cursors_of(db: &Db) -> Value {
+    db.read_main(|c| {
+        let mut stmt = c.prepare(
+            r#"SELECT "id", "chatId", "pass", "messageId" FROM "memory_extraction_cursors" ORDER BY "id""#,
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(json!({
+                    "id": r.get::<_, String>(0)?,
+                    "chatId": r.get::<_, String>(1)?,
+                    "pass": r.get::<_, String>(2)?,
+                    "messageId": r.get::<_, String>(3)?,
+                }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Value::from(rows))
+    })
+    .unwrap()
+}
 
+#[tokio::test(flavor = "current_thread")]
+async fn extraction_turn_tier3_matches_oracle() {
+    let env = |k: &str| std::env::var(k).ok();
+    let (Some(oracle_path), Some(main), Some(mount)) = (
+        env("QT_ORACLE_PROCESSOR"),
+        env("QT_FIXTURE_PROCESSOR_MAIN"),
+        env("QT_FIXTURE_PROCESSOR_MOUNT"),
+    ) else {
+        eprintln!(
+            "SKIP: set QT_ORACLE_PROCESSOR / QT_FIXTURE_PROCESSOR_MAIN / _MOUNT (see header)."
+        );
+        return;
+    };
+    let spec: Value =
+        serde_json::from_str(&std::fs::read_to_string(spec_path()).expect("read spec")).unwrap();
+    let oracle = oracle_lines(&oracle_path);
+    let want_ops: Vec<&Value> = oracle.iter().filter(|l| l["kind"] == "op").collect();
     assert_eq!(
-        spec.calls.len(),
-        oracle_results.len(),
-        "call-count mismatch — regenerate the oracle NDJSON"
+        want_ops.len(),
+        spec["ops"].as_array().unwrap().len(),
+        "op-count mismatch — regenerate the oracle"
     );
 
-    let mut got_minted: HashMap<String, String> = HashMap::new();
-    let mut want_minted: HashMap<String, String> = HashMap::new();
-    for (call, (oracle_name, oracle_result)) in spec.calls.into_iter().zip(oracle_results) {
-        assert_eq!(call.name, oracle_name, "call order mismatch");
-        let name = call.name.clone();
+    let dir = tempfile::Builder::new()
+        .prefix("qt-extraction-turn-rust-")
+        .tempdir()
+        .unwrap();
+    let paths = admission_support::copy_pair(&main, &mount, dir.path());
+    let db =
+        Db::open(paths, spec["testPepperBase64"].as_str().unwrap()).expect("open fixture copy");
+    // The builder's fresh tables predate three migration-only column pairs
+    // the v5 chat reads name (the repaired-at-boot idiom).
+    db.write(|w| {
+        let conn = w.main().connection();
+        quilltap_core::test_support::ensure_p4d171_columns(conn);
+        quilltap_core::test_support::ensure_p4d182_columns(conn);
+        quilltap_core::test_support::ensure_p4d225_columns(conn);
+        Ok(())
+    })
+    .await
+    .unwrap();
 
-        // Hydrated participant characters (v4 `repos.characters.findByIds`).
-        let mut participant_characters: HashMap<String, Value> = HashMap::new();
-        if !call.participant_ids.is_empty() {
-            let ids = call.participant_ids.clone();
-            let chars = db
-                .read_main(|main| {
-                    db.read_mount_index(|mount| characters_read::find_by_ids(main, mount, &ids))
-                })
-                .unwrap_or_else(|e| panic!("{name}: findByIds: {e:?}"));
-            for c in chars {
-                let id = c["id"].as_str().unwrap().to_string();
-                participant_characters.insert(id, c);
+    let completion = completion_from(&oracle);
+    let embedding = embedding_from(&oracle);
+    let executor = CheapLlmTaskExecutor::new();
+    let deps = ExtractionDeps {
+        completion: &completion,
+        embedding: &embedding,
+        executor: &executor,
+    };
+
+    use tracing_subscriber::layer::SubscriberExt;
+    let logs = Arc::new(Mutex::new(Vec::new()));
+    let subscriber = tracing_subscriber::registry().with(admission_support::Capture {
+        lines: logs.clone(),
+        owned: &[],
+        prefixes: PREFIXES,
+    });
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    reset_admission_state_for_tests();
+    reset_rate_ledger_for_tests();
+    reset_memory_time_zone_cache_for_tests();
+
+    let user_id = spec["userId"].as_str().unwrap().to_string();
+    let base_cheap = serde_json::to_string(&spec["chatSettings"]["cheapLLMSettings"]).unwrap();
+    let mut got_ops: Vec<(String, Value, Value, Vec<String>)> = Vec::new();
+    for op in spec["ops"].as_array().unwrap() {
+        let name = op["name"].as_str().unwrap().to_string();
+        let chat_id = op["chatId"].as_str().unwrap().to_string();
+        let empty = json!({});
+        let plants = op.get("plants").unwrap_or(&empty);
+        let opts = op.get("opts").unwrap_or(&empty);
+        if let Some(cursor) = plants.get("cursor") {
+            match cursor.as_str() {
+                None => {
+                    exec(
+                        &db,
+                        r#"DELETE FROM "memory_extraction_cursors" WHERE "chatId" = ?1 AND "pass" = 'turn'"#.into(),
+                        vec![chat_id.clone()],
+                    )
+                    .await
+                }
+                Some(m) => {
+                    let (c, m) = (chat_id.clone(), m.to_string());
+                    db.write(move |w| {
+                        w.main()
+                            .memory_extraction_cursors()
+                            .set_cursor(&c, ExtractionCursorPass::Turn, &m)
+                    })
+                    .await
+                    .unwrap();
+                }
+            }
+        }
+        for (key, field) in [
+            ("memoryExtractionLimits", "limits"),
+            ("memoryExtractionMode", "mode"),
+        ] {
+            if let Some(v) = plants.get(field) {
+                exec(
+                    &db,
+                    r#"INSERT INTO "instance_settings" ("key", "value") VALUES (?1, ?2)"#.into(),
+                    vec![key.into(), serde_json::to_string(v).unwrap()],
+                )
+                .await;
+            }
+        }
+        if let Some(v) = plants.get("cheapLLMSettings") {
+            exec(
+                &db,
+                r#"UPDATE "chat_settings" SET "cheapLLMSettings" = ?1"#.into(),
+                vec![serde_json::to_string(v).unwrap()],
+            )
+            .await;
+        }
+        if let Some(ledger) = plants.get("ledger").and_then(Value::as_object) {
+            for (character_id, n) in ledger {
+                for _ in 0..n.as_u64().unwrap() {
+                    record_admission_insert(
+                        character_id,
+                        quilltap_core::clock::now_unix_ms() as f64,
+                    );
+                }
             }
         }
 
-        // Per-call executor with logging: the SELF/OTHER extraction cheap calls
-        // write MEMORY_EXTRACTION rows carrying this call's chatId + the extracted
-        // characterId (passed per-execute-call); v4's memory extraction sends no
-        // messageId. The corpus has no temperature rejection, so a fresh executor
-        // per call is equivalent to v4's module-global no-temp cache.
-        let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
-            db: db.clone(),
-            user_id: spec.user_id.clone(),
-            chat_id: Some(call.chat_id.clone()),
-            message_id: None,
-            ctx: LogContext::none(),
-        });
+        if let Some(content) = plants.get("failContent").and_then(Value::as_str) {
+            exec(
+                &db,
+                format!(
+                    r#"CREATE TRIGGER "qt_fail_admission" BEFORE INSERT ON "memories" WHEN NEW."content" = '{content}' BEGIN SELECT RAISE(ABORT, 'planted admission failure'); END"#
+                ),
+                vec![],
+            )
+            .await;
+        }
 
-        let ctx = TurnMemoryExtractionContext {
-            transcript: call.transcript.into_core(),
-            participant_characters,
-            chat_id: call.chat_id,
-            project_id: call.project_id,
-            project_description: call.project_description,
-            chat_context_summary: call.chat_context_summary,
-            user_id: spec.user_id.clone(),
-            connection_profile: current_profile.clone(),
-            cheap_llm_settings: CheapLlmSettings {
-                strategy: call.cheap_llm_settings.strategy,
-                user_defined_profile_id: call.cheap_llm_settings.user_defined_profile_id,
-                fallback_to_local: call.cheap_llm_settings.fallback_to_local,
-            },
-            available_profiles: Some(profiles.clone()),
-            concierge_policy: call.concierge.as_ref().map(|stored| {
-                let chat = serde_json::json!({
-                    "conciergeMode": call.concierge_mode.as_deref().unwrap_or("moderated")
-                });
-                resolve_stored_concierge_settings(Some(stored), Some(&chat))
-            }),
-            is_dangerous_chat: call.is_dangerous_chat,
-            memory_extraction_limits: call.memory_extraction_limits.map(|l| {
-                MemoryExtractionLimits {
-                    enabled: l.enabled,
-                    max_per_hour: l.max_per_hour,
-                    soft_start_fraction: l.soft_start_fraction,
-                    soft_floor: l.soft_floor,
-                }
-            }),
-            source_message_timestamp: call.source_message_timestamp,
-            timeline_mode: call.timeline_mode,
-            dry_run: call.dry_run,
-            in_autonomous_room: call.in_autonomous_room,
-            registry_cheapest_for_current: None,
+        logs.lock().unwrap().clear();
+        let locator = TurnLocator {
+            turn_opener_message_id: s(&op["locator"], "turnOpenerMessageId"),
+            extraction_anchor_message_id: s(&op["locator"], "extractionAnchorMessageId"),
+            extract_after_message_id: s(&op["locator"], "extractAfterMessageId"),
         };
+        let result = match build_extraction_context(
+            &db,
+            &chat_id,
+            &user_id,
+            BuildExtractionContextOptions {
+                dry_run: opts["dryRun"].as_bool() == Some(true),
+                backfill: opts["backfill"].as_bool() == Some(true),
+                host_zone_fallback: "UTC".into(),
+                ..Default::default()
+            },
+        ) {
+            Ok(ctx) => match run_turn_extraction(&deps, &ctx, &locator).await {
+                Ok(r) => result_value(&r),
+                Err(e) => json!({ "error": quilltap_core::db::fallback::error_text(&e) }),
+            },
+            Err(e) => json!({ "error": e.message() }),
+        };
+        let captured = logs.lock().unwrap().clone();
+        if plants.get("failContent").is_some() {
+            exec(&db, r#"DROP TRIGGER "qt_fail_admission""#.into(), vec![]).await;
+        }
 
-        let mode_patch = call.memory_extraction_mode.clone();
-        if let Some(patch) = mode_patch.clone() {
-            db.write(move |w| {
-                // The builder-built fixture has no `instance_settings` table
-                // (measured); the plant creates it with `fresh_schema.json`'s
-                // DDL, as the oracle does.
-                w.main().connection().execute_batch(
-                    "CREATE TABLE IF NOT EXISTS \"instance_settings\" (\n  \"key\" TEXT PRIMARY KEY,\n  \"value\" TEXT NOT NULL\n)",
-                )?;
-                quilltap_core::db::instance_settings::set_memory_extraction_mode_settings(
-                    w.main().connection(),
-                    &patch,
-                )
-                .map(|_| ())
-            })
-            .await
-            .unwrap_or_else(|e| panic!("{name}: plant memoryExtractionMode: {e:?}"));
+        for key in ["memoryExtractionLimits", "memoryExtractionMode"] {
+            exec(
+                &db,
+                r#"DELETE FROM "instance_settings" WHERE "key" = ?1"#.into(),
+                vec![key.into()],
+            )
+            .await;
         }
-        let result = process_turn_for_memory(&db, &completion, &embedding, &executor, &ctx).await;
-        if mode_patch.is_some() {
-            db.write(|w| {
-                w.main()
-                    .connection()
-                    .execute(
-                        "DELETE FROM \"instance_settings\" WHERE \"key\" = 'memoryExtractionMode'",
-                        [],
-                    )
-                    .map(|_| ())
-                    .map_err(Into::into)
-            })
-            .await
-            .unwrap_or_else(|e| panic!("{name}: unplant memoryExtractionMode: {e:?}"));
+        if plants.get("cheapLLMSettings").is_some() {
+            exec(
+                &db,
+                r#"UPDATE "chat_settings" SET "cheapLLMSettings" = ?1"#.into(),
+                vec![base_cheap.clone()],
+            )
+            .await;
         }
-        let mut got = serde_json::to_value(&result).expect("serialize result");
-        let mut want = oracle_result;
-        normalize_result(&mut got, &mut got_minted);
-        normalize_result(&mut want, &mut want_minted);
-        assert_eq!(got, want, "{name}: result object diverges");
+        got_ops.push((name, result, cursors_of(&db), captured));
     }
 
-    // W4.10b: the MEMORY_EXTRACTION rows the extraction cheap calls wrote.
-    // The RULED failed-call divergence, subtracted by name (P4.13 unit 6, ruled
-    // 2026-07-23; `cheap_llm_exec::log_failed_call`): v4 logs NOTHING when a
-    // cheap-LLM call fails, v5 logs an error row so the failure is visible to an
-    // operator with no console. It had never been REACHABLE from this family
-    // until P4.D136 added a timing-out pass — which produces exactly two such
-    // rows (the attempt and its same-route retry). They are dropped here rather
-    // than masked field-by-field, because the row's whole existence is the
-    // divergence; every other row still compares byte-for-byte, and the
-    // assertion below still counts them.
-    //
-    // FOUR rows: the corpus times out Aria's SELF pass and Bram's OTHER pass,
-    // and each spends an attempt AND its same-route retry. The count is a real
-    // pin — it fired the moment the second timing-out rule was added.
-    let all_logs = common::dump_llm_logs(&db);
-    let v5_only_error_rows = all_logs.iter().filter(|r| is_v5_failed_call_row(r)).count();
-    let got_logs: Vec<Value> = all_logs
-        .into_iter()
-        .filter(|r| !is_v5_failed_call_row(r))
-        .collect();
-    assert_eq!(
-        v5_only_error_rows, 4,
-        "the ruled failed-call divergence must produce exactly the four rows the \
-         two timing-out passes earn (each attempt + its retry); a different count \
-         means either the retry stopped happening or the ruling moved"
-    );
-
-    // Dump + diff the three tables in the shared-id-map remap form.
-    let mut got: Vec<Value> = TABLES
+    // ---- normalisation: minted ids tokenised per side by row content ------
+    let mut seeded: HashSet<String> = HashSet::new();
+    for m in spec["seedMemories"].as_array().unwrap() {
+        seeded.insert(m["id"].as_str().unwrap().to_string());
+    }
+    let mut planted: HashSet<String> = HashSet::new();
+    planted_stamps(&spec, &mut planted);
+    let got_dump = db
+        .read_main(|c| dump_table_json_conn(c, "memories", "content"))
+        .unwrap();
+    let want_dump = oracle
         .iter()
-        .map(|t| {
-            db.read_main(|conn| dump_table_json_conn(conn, t.table, t.order_by))
-                .unwrap_or_else(|e| panic!("dump {}: {e:?}", t.table))
-        })
-        .collect();
-    drop(db);
+        .find(|l| l["kind"] == "table" && l["table"] == "memories")
+        .expect("oracle memories dump")
+        .clone();
+    // describeAdmission's neighbour notes print `id.slice(0, 8)`: tokenise the
+    // prefixes too, after the whole ids (memory note `unify-review-finding-shapes`
+    // — prefix pins).
+    let with_prefixes = |mut minted: Vec<(String, String)>| {
+        let prefixes: Vec<(String, String)> = minted
+            .iter()
+            .map(|(raw, token)| (raw[..8].to_string(), format!("{token}#8")))
+            .collect();
+        minted.extend(prefixes);
+        minted
+    };
+    let got_norm = Norm {
+        minted: with_prefixes(minted_ids(&got_dump, &seeded)),
+        planted: planted.clone(),
+    };
+    let want_norm = Norm {
+        minted: with_prefixes(minted_ids(&want_dump, &seeded)),
+        planted: planted.clone(),
+    };
 
-    let want_logs = oracle_llm_logs.expect("oracle emitted no llmlogs row");
-    assert_eq!(
-        got_logs,
-        want_logs,
-        "llm_logs MEMORY_EXTRACTION rows diverge (got {} vs oracle {})",
-        got_logs.len(),
-        want_logs.len()
-    );
-
-    let mut want: Vec<Value> = TABLES
-        .iter()
-        .map(|t| {
-            let mut v = oracle_tables
-                .remove(t.table)
-                .unwrap_or_else(|| panic!("oracle missing table {}", t.table));
-            // Drop the envelope key so the shapes align with the Rust dump.
-            v.as_object_mut().unwrap().remove("kind");
-            v
-        })
-        .collect();
-
-    normalize_all(&mut got);
-    normalize_all(&mut want);
-
-    for (i, t) in TABLES.iter().enumerate() {
+    let mut failures: Vec<String> = Vec::new();
+    for ((name, result, cursors, captured), want) in got_ops.iter().zip(&want_ops) {
         assert_eq!(
-            got[i]["columns"], want[i]["columns"],
-            "{} column set / order",
-            t.table
+            want["op"].as_str(),
+            Some(name.as_str()),
+            "op order mismatch"
         );
-        assert_eq!(got[i]["rows"], want[i]["rows"], "{} rows diverge", t.table);
+        let g = got_norm.value(result, None);
+        let w = want_norm.value(&want["result"], None);
+        if !same(&g, &w) {
+            failures.push(format!(
+                "{name}: result diverges\n  rust:   {g:#}\n  oracle: {w:#}"
+            ));
+        }
+        if cursors != &want["cursors"] {
+            failures.push(format!(
+                "{name}: cursors diverge\n  rust:   {cursors}\n  oracle: {}",
+                want["cursors"]
+            ));
+        }
+        let want_lines: Vec<String> = want["lines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|l| l["message"] != "[ExtractionCursors] Cursor set")
+            .map(|l| want_norm.ids(&render_v4(l)))
+            .collect();
+        let got_lines: Vec<String> = captured.iter().map(|l| got_norm.ids(l)).collect();
+        if got_lines != want_lines {
+            failures.push(format!(
+                "{name}: captured lines diverge\n  rust:\n    {}\n  oracle:\n    {}",
+                got_lines.join("\n    "),
+                want_lines.join("\n    ")
+            ));
+        }
     }
+
+    let rows_got: Vec<Value> = got_dump["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| got_norm.row(r))
+        .collect();
+    let rows_want: Vec<Value> = want_dump["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| want_norm.row(r))
+        .collect();
+    if rows_got.len() != rows_want.len() {
+        failures.push(format!(
+            "memories: row count {} vs oracle {}",
+            rows_got.len(),
+            rows_want.len()
+        ));
+    } else {
+        for (g, w) in rows_got.iter().zip(&rows_want) {
+            if !same(g, w) {
+                failures.push(format!(
+                    "memories row diverges\n  rust:   {g}\n  oracle: {w}"
+                ));
+            }
+        }
+    }
+    let _ = render; // the shared renderer is the capture layer's
+    assert!(
+        failures.is_empty(),
+        "{} divergence(s):\n{}",
+        failures.len(),
+        failures.join("\n\n")
+    );
+    eprintln!(
+        "OK: extraction turn tier-3 matched the oracle ({} ops, {} memories).",
+        got_ops.len(),
+        rows_got.len()
+    );
 }
