@@ -56,7 +56,20 @@ mod common;
 /// which importers file at the same path. `$defs.WardrobeItem` stays
 /// `additionalProperties: true`, so the move tightens a PRESENT `folder` only
 /// (a non-string or an over-long one).
-const VENDORED_BYTES: usize = 103_075;
+/// P4.D294: 105,310 at v4 `83334b9a5` — three key groups, none of them
+/// loosening anything: the scenario pair on `ExportedChat` after
+/// `scenarioText` (`545e299bb` — `scenarioSource`, an object-or-null
+/// requiring `mountPointId` (uuid format) / `path` (`maxLength` 500) /
+/// `bodySha256` (`^[0-9a-f]{64}$`), and `scenarioNotes`, a string-or-null);
+/// the extraction-cursor triple on `ExportedChat`
+/// (`otherExtractionWatermarkMessageId` re-described as the bundle carriage
+/// of the `memory_extraction_cursors` row, `episodeExtractionWatermarkMessageId`
+/// from `c2795733f` / `ac6348c5f` and `turnExtractionWatermarkMessageId` from
+/// `64743ee13`, each a string-or-null); and `Memory.supersededAt` after
+/// `supersededById` (`c2795733f`, a Timestamp-or-null — bug 225's cold
+/// retention clock). Both `$defs` stay `additionalProperties: true`, so every
+/// move tightens a PRESENT key only.
+const VENDORED_BYTES: usize = 105_310;
 
 #[test]
 fn the_embedded_schema_is_self_consistent() {

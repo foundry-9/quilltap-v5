@@ -182440,3 +182440,29 @@ the wipe's truncate lands), so they land and go green together.
   0.0.9, SPA 0.5.846 (no SPA change); harness frozen 0.0.1110.
 - **Cleanup:** the pin worktree removed, the lane's `target/` deleted, `/tmp/p4d293/` removed; nothing pushed to
   `main`.
+
+### P4.D294 — the `.qtap` carriers at `83334b9a5` (lane record)
+
+- **Venue:** session started on `main` (`d1434189c`); moved to `.claude/worktrees/p4d294-qtap-carriers`, branch
+  `claude/p4.d294-qtap-carriers-149cb8fc1`, cut from `KEYSTONE` = `149cb8fc1` (read from P4.D288's status header on
+  `claude/p4-memory-scenarios-keystone-fd710c`). Target cloned from main's (`cp -cR`).
+- **Pin:** `/tmp/qt-v4-pin-p4d294-83334b9a5` (HEAD `83334b9a5…`, `package.json` `4.10.0-dev.176`). The live tree's
+  `@quilltap/plugin-utils` had MOVED (2.6.3 → 2.7.1), so the pin got its own `npm ci --offline` instead of the root
+  `node_modules` symlink (`openai` 7.30.0, `better-sqlite3` 3.53.2 verified under the pin).
+- **Freshness probe (§R.2, an observation):** v4 moved — `main` at `7458ff94e` (15 commits past `01f508d4e`, incl.
+  `2432b9057 release: 4.10.0` and the 4.11.0 dev start), `bugfix` at `489b228b6`; observed 2026-10-15 07:43 CDT;
+  tree CLEAN. Out of scope by the pin rule; recorded for `/driftcheck`.
+- **Red-first on `KEYSTONE`, from the pin:** `system_export_equivalence` — the REGEN dies in the plant (`no such
+  column: otherExtractionWatermarkMessageId`); `system_import_state` — 95 failure lines over 8 cases
+  (`execute_overwrite_all` 19, `execute_duplicate_all` 22, `execute_cross_instance_skip` 19, `route_replace_remap`
+  19, `execute_chats_informs_duplicate` 6, `execute_chats_informs_cross_instance` 2, `execute_chat_watermark` 4,
+  `execute_inform_refusals` 4 — the `""` flip; the post-loop pre-assert reads 3 imported informs vs the pinned 2);
+  `chat_informs_remap_equivalence` — RUNTIME-DEAD (`TypeError: Cannot read properties of undefined (reading
+  'get')`); `qtap_schema_embed_guard` — 1 red; GREEN: `system_import_equivalence`, `qtap_import_equivalence`,
+  `qtap_schema_validate_equivalence`, `wardrobe_wear_import_remap_equivalence`, `ai_import_assembly_equivalence`.
+- **L-K:** P4.D288 re-chained `applyMemoryTiersMigration` (`chain: true` by default — the episode watermark and the
+  cursor migration follow, dropping the re-added column), so the three case bodies KEEP the call (and the Rust
+  twins keep `ensure_memory_tiers_columns`).
+- **Unit 1 (core 0.0.1299):** the export schema re-vendored (105,310 bytes, md5 equal to the pin); the key-order
+  table re-dumped from the pin — exactly `chat` 102 → 103 and `memory` 29 → 30. `qtap_schema_embed_guard` 2/2 and
+  `qtap_schema_validate_equivalence` green from the pin.

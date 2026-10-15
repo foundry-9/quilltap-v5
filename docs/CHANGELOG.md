@@ -403,6 +403,14 @@ v4 `af48f6cc2` (memory refactor Phase B) on the backup and restore carriers, at 
 - Restore: 22j is deleted. Phase 9 adopts an old archive's mirror vector onto a memory that arrived without one (last duplicate wins, counted only after a successful create) and logs `Restored memories`. The summary drops the two vector counts and gains restore-only `legacyVectorsAdopted` (preview 39 keys, restore 41). The archive reader ignores `vector-index-metas.json`; the new-account remap no longer touches it.
 - Harness: two new backup cases (`backup_with_memory_carriers`, `backup_cursor_read_fails`) and a per-case log comparison; the restore census goes from 80 to 79 lines in both lists; the two vector plants are removed; the oracle's restore target gets the cursor table in the migration shape from v4's real migration; the uuid-remap corpus is regenerated from the pin.
 
+#### 2026-10-15 — feat(core): P4.D294 unit 1 — the `.qtap` export schema re-vendored at `83334b9a5` and the key-order table re-dumped
+
+_Versions: core 0.0.1299._
+
+Re-vendors v4's `public/schemas/qtap-export.schema.json` at the `83334b9a5` pin byte for byte (103,075 → 105,310 bytes, md5 equal). It adds the chat's `scenarioSource` / `scenarioNotes` pair, the three extraction-cursor keys on a bundled chat, and `Memory.supersededAt`. Both `$defs` stay `additionalProperties: true`, so only present keys are tightened. The size pins in `qtap_schema_embed_guard` and `generators/qtap_schema.rs` move together.
+
+Re-dumps `schema-key-order.json` from v4's real schemas at the pin. `chat` goes from 102 to 103 keys (drops `otherExtractionWatermarkMessageId`, adds `scenarioSource` and `scenarioNotes` after `scenarioText`) and `memory` from 29 to 30 (`supersededAt` after `supersededById`). No other kind moved.
+
 #### 2026-10-14 — KEYSTONE: P4.D288 — the memory-refactor + scenarios round's schema keystone
 
 _Docs-only change._

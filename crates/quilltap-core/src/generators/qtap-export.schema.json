@@ -541,6 +541,20 @@
           "type": ["string", "null"],
           "description": "The resolved scenario content persisted on this chat at creation time"
         },
+        "scenarioSource": {
+          "type": ["object", "null"],
+          "description": "Where the preset under scenarioText was read from: the scenario file's store (mountPointId, remapped with the document stores on import; dropped to null when that store did not come across), its path, and the SHA-256 of its body at pick time. Null for a custom scene and for chats from before sources were recorded.",
+          "required": ["mountPointId", "path", "bodySha256"],
+          "properties": {
+            "mountPointId": { "type": "string", "format": "uuid" },
+            "path": { "type": "string", "maxLength": 500, "description": "Scenarios/<file>.md inside that store" },
+            "bodySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        },
+        "scenarioNotes": {
+          "type": ["string", "null"],
+          "description": "The free-text notes layered beneath the preset in scenarioText (so a reload from source keeps them)"
+        },
         "coreWhisperEnabled": {
           "type": ["boolean", "null"],
           "description": "Per-chat override of the global coreWhisper.enabled setting (Aurora's Core whisper). Null = inherit. Resolution: chat > character > global."
@@ -552,7 +566,15 @@
         },
         "otherExtractionWatermarkMessageId": {
           "type": ["string", "null"],
-          "description": "Message id up to which the other-subject (fold) extraction pass has covered this chat. Absent/null = never. A message-id reference, remapped with the messages."
+          "description": "The other-fold extraction pass's cursor: the message id it has read this chat up to. Absent/null = never. Stored in memory_extraction_cursors, carried on the chat under this name. A message-id reference, remapped with the messages."
+        },
+        "episodeExtractionWatermarkMessageId": {
+          "type": ["string", "null"],
+          "description": "The episode-fold extraction pass's cursor: the message id it has read this chat up to. Absent/null = never. Stored in memory_extraction_cursors, carried on the chat under this name. A message-id reference, remapped with the messages."
+        },
+        "turnExtractionWatermarkMessageId": {
+          "type": ["string", "null"],
+          "description": "The per-turn extraction's cursor: the last assistant message a committed turn extraction covered, so a turn reopened by a skip, nudge or continue (or an autonomous room's next speaker) is read only past it. Absent/null = never. Stored in memory_extraction_cursors, carried on the chat under this name. A message-id reference, remapped with the messages."
         },
         "timelineMode": {
           "type": ["string", "null"],
@@ -997,6 +1019,10 @@
         "supersededById": {
           "anyOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }],
           "description": "Memory id of the CONSOLIDATED digest that replaced this cold row. Null/absent when not superseded. Remapped with the memory ids on import."
+        },
+        "supersededAt": {
+          "anyOf": [{ "$ref": "#/$defs/Timestamp" }, { "type": "null" }],
+          "description": "When this row went cold under its digest; set and cleared with supersededById. Cold retention ages superseded rows by it. Null/absent when not superseded (older bundles: retention falls back to updatedAt)."
         },
         "consolidatedFrom": {
           "type": "array",

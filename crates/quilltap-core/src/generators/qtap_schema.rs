@@ -188,7 +188,11 @@ mod tests {
         // P4.D284: 103,075 at v4 `4a38222e6` (`$defs.WardrobeItem.folder`, a
         // string of at most 900 characters, between `archivedAt` and
         // `createdAt`).
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 103_075);
+        // P4.D294: 105,310 at v4 `83334b9a5` (`ExportedChat.scenarioSource` /
+        // `scenarioNotes` after `scenarioText`; the cursor triple
+        // `other` / `episode` / `turnExtractionWatermarkMessageId`;
+        // `Memory.supersededAt` after `supersededById`).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 105_310);
     }
 
     /// The export with one memory of `minimal_characters_export`'s character.

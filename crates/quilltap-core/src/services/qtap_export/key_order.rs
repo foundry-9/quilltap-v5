@@ -18,11 +18,15 @@
 //!
 //! The table is a byte-exact dump of v4's real schemas — regenerate it with
 //! `harness/oracle/fixtures/dump-export-key-order.ts` (recipe in that file's
-//! header) whenever a v4 schema drifts. Last regenerated at v4 `01a83539d`
-//! (P4.D272, `d58548051`): `memory` gained `tier` / `supersededById` /
-//! `consolidatedFrom` / `consolidatedAt` after `reinforcedImportance` (25 → 29)
-//! and `chat` gained `otherExtractionWatermarkMessageId` after `timelineMode`
-//! (101 → 102) — exactly five lines; the other ten kinds did not move.
+//! header) whenever a v4 schema drifts. Last regenerated at v4 `83334b9a5`
+//! (P4.D294): `chat` lost `otherExtractionWatermarkMessageId` (`ac6348c5f` —
+//! the cursors moved to `memory_extraction_cursors`; a bundle still CARRIES
+//! the three cursor keys, but as non-template keys the writer appends after
+//! every schema key) and gained `scenarioSource` / `scenarioNotes` after
+//! `scenarioText` (`545e299bb`), 102 → 103; `memory` gained `supersededAt`
+//! after `supersededById` (`c2795733f`, bug 225), 29 → 30 — exactly four
+//! lines; the other ten kinds did not move. (Before: v4 `01a83539d`, P4.D272 —
+//! `memory` 25 → 29, `chat` 101 → 102.)
 
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
