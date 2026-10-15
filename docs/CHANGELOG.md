@@ -138,6 +138,12 @@ Deleted: housekeeping, its outcome cache, the consolidation triggers, the dedup 
 
 New differential families from the pin: `memory_maintenance_planning`, `memory_maintenance_tier2`, `memory_maintenance_consolidate_tier3`, `memory_maintenance_queue_tier2`, `memory_maintenance_routes`, `memory_graph_repair_tier2`, and the census `maintenance_commit_hook_unreachable_census` (R-L: the commit hook is unreachable at the pin, so it is not ported). Retired families: `memory_housekeeping_tier2`, `memory_watermark_tier3`, `consolidation_triggers_tier2`, `memory_dedup`, `consolidation_service_tier3`. Re-aimed: `memory_consolidation_routes`, `consolidation_tasks`, `system_body_guards`, `realtime_topics`, `system_jobs_collection`. Host: a new cadence test for the memory-maintenance startup tick. The `p4_d288_wire_contract` refusal rows for the three filled arms are retired, and `host_zone_sites_census` counts the `maintain` arm's display-zone read (8 → 9).
 
+#### 2026-10-15 — docs(porting): P4.D298 lane close — the Memories API record, HANDOFFs, gate
+
+_Docs-only change._
+
+P4.D298's lane record gains its close: the Tier 2 / 3 accounting, eight mutation proofs, the workspace gate (782 binaries, 6 classified reds), the §S.5 (2) / (3) / (4) HANDOFF hunks, the findings for P4.D288 / P4.D290, and the dogfood list. The order's status header reads LANE COMPLETE.
+
 #### 2026-10-15 — test(harness): P4.D298 — the memories search rows carried as §S.5 (4) residue
 
 _No crate versions bumped._

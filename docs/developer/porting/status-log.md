@@ -182087,3 +182087,129 @@ Versions at close: core 0.0.1300, host 0.0.205 (web unchanged — test-only edit
 - **Measured at the base, NOT this lane's:** `memory_retire_sole_deleter_guard` is RED at `ADMISSION`
   (`services/admission/tests.rs`' trigger `DELETE`s counted as production) — P4.D290 fixed it on its lane tip
   (`cdca0c8d8`), which this branch does not carry; green on the union.
+
+### Lane close — Tier 2 / 3, the gate, the HANDOFFs, the 💸 rows
+
+- **Tier 2 #19 (pre-existing line gaps):** the limits / recall INFOs, regenerate-all's two INFOs, the backfill
+  INFO and the cascade INFO landed (units 2–12, each captured on the caller thread with its silence leg). `[Memories
+  API] Error listing memories` — NOT ported: v5's list answers a read failure as `internal(e)` through its own
+  arms and no corpus row reaches v4's outer catch (`route.ts:245`); recorded, not pinned (a candidate for the
+  follow-ups round).
+- **Tier 2 #20 (v4 jest mirrors):** `memories-manual-create.test.ts`'s behaviours are the create rows (MANUAL
+  forced, `source` / `skipGate` stripped + the DEBUG, the 404 order, the project derivation, `{memory, action}`
+  201/200, the trim, the 502 and the no-row write); `memories-edit-embedding-failure.test.ts` is
+  `update_text_no_profile_502`; the yours-only rows of `memories-consolidation-actions.test.ts` are
+  `RETIRED_MEMORY_VERB_UNKNOWN_VARIANT`, the list `tier` / `source` rows (P4.D269's, green), the counts rows and
+  `extraction_limits_patch_keeps_soft_floor`; `search-replace-memories.test.ts` is the 11 `plan_memory_replacement_
+  rows` + the three new execute rows. Mirrored as differential rows through v4's REAL route code, not copied as
+  mocked unit tests.
+- **Tier 2 #21 — mutation proofs (each inverted rule RED on its row, the tree restored after each):** the PUT
+  validating before its 404s → `update_bad_body_missing_memory_404`; `str` instead of `js_trim` →
+  `create_manual_trims`; the counts sort's second key dropped → `character_counts_breakdown`; the legacy list
+  reading raw `importance` → `list_min_importance_reinforced_legacy`; the replace plan writing an unchanged field
+  → `execute_chat_scope`; `sparedCount` forced 0 → `delete_by_chat_spares_manual_cold_digest`; the `retired == 0`
+  404 removed → `delete_race_retired_zero`; the GET stamping `lastAccessedAt` again → `get_does_not_stamp`. 8 / 8.
+  (`keep_manual` is P4.D288's retire path; the default `minImportance` row is §S.5 (4) residue — not mutated.)
+- **Tier 3:** #22 `MemorySearch`'s refuse-before-validate unchanged (still `ready_memory_embedding()`); #23 no
+  extraction dry-run variant; #24 queue-memories / the maintenance verbs / the two config halves untouched; #25 a v4
+  CLI on a v5 REST `/memories` path still 404s (no REST family) — all recorded, none touched. Also deferred (unit
+  13): `create_project_explicit_wins` (no project store in the committed pair).
+- **History hygiene:** three intermediate commits had a `Cargo.lock` core line one version behind their
+  `Cargo.toml`; fixed with a non-interactive `git rebase e43551bf5 --exec` (content otherwise unchanged — the old
+  and new tips differ only by the residue commit).
+- **Gate (CARGO_INCREMENTAL=0, from the pin's oracles frozen under `/tmp/p4d298/gate/`):** `cargo fmt --all
+  --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean AND with `--features
+  quilltap-core/native-transport` (with `apps/web/dist` cloned from main — no SPA file in this lane);
+  `cargo test --workspace --no-fail-fast`: **782 binaries, 5,191 passed / 6 failed / 3 ignored**, zero `SKIP:` for
+  this lane's families (memories_routes, search_replace, settings_routes, memory_settings_schemas,
+  message_reattribute, chat_admin_routes, salon_mutations, memories_tier2, embedding_generate_jobs all RAN). The six
+  reds, each classified: `cli_differential` (P4.D299, union-only); `memory_retire_sole_deleter_guard` (RED at
+  `ADMISSION`, P4.D290's tests module — fixed on its tip `cdca0c8d8`); `no_memory_lane_remove_markers_left` ×2 (by
+  design — 33 markers; the scoring-chokepoint half's 44 offenders unchanged from P4.D288's count, none in this
+  lane's files); `qtap_schema_embed_guard` (P4.D294); `search_replace_matches_oracle` (ONLY the standing
+  `missing_action_recorded`, §S.2). `recipe_sweep.py --self-test` exit 0. The five shared families regenerated from
+  the pin and green: `settings_routes` (222 records — the chat-settings READ body already lost
+  `autoHousekeepingSettings` / `memoryExtractionLimits` at `KEYSTONE`), `memory_settings_schemas` (140 — the
+  extraction-limits patch rows were P4.D288's, present), `message_reattribute` (5), `chat_admin_routes` (61),
+  `salon_mutations` (36).
+- **LANE-REMOVE census:** 34 at the base → 33 (`replace_in_memories` gone; no P4.D290 shim was this lane's last
+  caller).
+- **Named tables / residue this lane adds (the unifier's list):** §R.7 `RETIRED_MEMORY_VERB_UNKNOWN_VARIANT`
+  (15 rows), §R.7 `MEMORY_BAD_GATEWAY_AS_INTERNAL` (2 rows); measured both-ways `CASCADE_VECTORS_REMOVED`,
+  `OFFSET_OCCURRED_AT_ROW_SCHEMA`, `ADMISSION_SINGLE_TERM_LINK`; residues that FAIL when they close:
+  `CREATE_KEY_ORDER_RESIDUE` (P4.D290), `S5_RESIDUE` (`search_min_importance_default` §S.5 (4) + P4.D288's reader;
+  `list_min_importance_reinforced_paginated` P4.D288), `SEARCH_ROWS_RESIDUE` (§S.5 (4)).
+### HANDOFFs (the unifier lands each; this lane landed nothing at the sites beyond v4's comments)
+
+- **§S.5 (2) — refit / entity deletion (P4.D292's `services/embedding_job_scheduler.rs`; its lane record's
+  HANDOFFs 2–4 are the same hunks):** in `crates/quilltap-core/src/api/memories.rs`:
+  - `memory_create`, after the `Manual memory create resolved` DEBUG (v4 `route.ts:627-633`):
+    `if let Err(e) = crate::services::embedding_job_scheduler::schedule_refit(db, user_id, None, false,
+    crate::clock::now_unix_ms()).await { tracing::warn!(error = %crate::db::fallback::error_text(&e),
+    "[Memories API] Failed to schedule refit"); }` — replacing the v4-comment block.
+  - `memory_update`, after the `Memory updated` DEBUG (v4 `[id]/route.ts:132-138`): the same call + WARN
+    `tracing::warn!(memoryId = memory_id, error = %…, "[Memories API v1] Failed to schedule refit after update")`.
+  - `memory_delete`, after the `retired == 0` 404 and BEFORE the `Memory deleted` INFO (v4 `[id]/route.ts:167-182`,
+    v4's order): `handle_entity_deletion(db, "MEMORY", memory_id)` + WARN `[Memories API v1] Failed to handle entity
+    deletion {memoryId, error}`, then the refit call + WARN `[Memories API v1] Failed to schedule refit after delete
+    {memoryId, error}`. (WARN homes only where the fns return a `Result` — P4.D292's record says they do.)
+- **§S.5 (3) — the embeddings pair (P4.D292's `services/memory_index_backfill.rs`; its HANDOFF 6 / unit 7):**
+  `memory_generate_embeddings(db, provider, user_id, character_id)` (this lane already dropped `batch_size` and the
+  1..50 check) gains `host_zone_fallback: &str, now_ms: i64` and calls
+  `crate::services::memory_index_backfill::generate_missing_embeddings(db, provider, character_id, user_id, None,
+  host_zone_fallback, now_ms)` — `GENERATE_EMBEDDINGS_SWEEP_BATCH` DELETED with it; the engine arm passes
+  `crate::host_zone::zone_name(&self.inner.config.display_zone)` and `crate::clock::now_unix_ms()`;
+  `memory_rebuild_index` calls `crate::services::memory_index_backfill::rebuild_vector_index(db, character_id)`; then
+  the two `LANE-REMOVE(P4.D298)` shims in `memory_service.rs` are deleted. The harness's
+  `embedding_generate_jobs_equivalence.rs` route call already lost its batch argument on this branch (compile-forced
+  here) — the union takes ONE copy. Rows that measure it: `embeddings_batchsize_ignored_{999,string,zero}` (green
+  here on the old service — 4 missing rows < its old batch of 10) and `rebuild_index_failed_counts_unembedded`
+  (ALREADY green here — `KEYSTONE`'s rebuild already answers `countWithoutEmbedding`).
+- **§S.5 (4) — the search route (P4.D291's `services::recall::search::search_memories`; its HANDOFF (a)):**
+  `memory_search`'s ONE call `search_memories_semantic(db, provider, &bag.character_id, &bag.query, &options, None)`
+  → `crate::services::recall::search::search_memories(db, provider, &bag.character_id, &bag.query,
+  &SearchMemoriesOptions { search: RecallSearchOptions { limit: bag.limit, min_score: bag.min_score,
+  min_importance: Some(bag.min_importance.unwrap_or(TOOL_MIN_IMPORTANCE)), source: bag.source, include_cold: true,
+  .. }, user_id, embedding_profile_id: None, window: None, anchors: vec![], probes: None, embedding_memo: None })`,
+  each candidate rendered `{...memory, score, usedEmbedding, tagDetails}` as today; then the
+  `LANE-REMOVE(P4.D291)` shim deleted. Rows that flip: `search`, `search_min_importance`, `search_include_cold`
+  (the family's `SEARCH_ROWS_RESIDUE`) and `search_min_importance_default` (`S5_RESIDUE`) — EACH fails loudly when
+  it closes, so move them to the strict set as they go green. `search_min_importance_default` ALSO needs the
+  P4.D288 reader fix below.
+- **To P4.D288 (findings — its files):** (a) `db/memories_read.rs:540` `" AND importance >= ?"` →
+  `" AND reinforcedImportance >= ?"` (v4 `memories.repository.ts:258-259`), and `:632` likewise (v4 `:341`) — row
+  `list_min_importance_reinforced_paginated` (`S5_RESIDUE`); (b) `memories_read`'s row reader
+  (`num(&mut m, "reinforcedImportance", 22)`) fails `Invalid column type Null` on a NULL `reinforcedImportance`
+  where v4's `MemorySchema` defaults it to `0.5` — row `search_min_importance_default`; (c) `CASCADE_VECTORS_REMOVED`
+  — v4's message-cascade retire reports `vectorsRemoved: 0` with the holder's index loaded (size 46), v5's 2; to
+  classify; (d) `api/types.rs` variant docs: `MemoryCreate` ("the gate-driven create; 201 `{memory}`. Embedding
+  failure → server-error (no row)" → "the manual create through admission; `{memory, action}` (201 ⇔ `insert` /
+  `insert-linked`); `embedding-failed` → `Internal` + `details.status: 502`"), `MemoryUpdate` ("`{memory}` (NO
+  re-embed)" → "`{memory}` through `update_memory` (re-embeds changed text)"), `MemoryCharacterCounts` (the four
+  cap keys + the two-key sort).
+- **To P4.D290 (findings — its frozen C1-B files):** (a) `services/admission/apply.rs:43-51` `without_embedding`:
+  `m.remove("embedding")` → `m.shift_remove("embedding")` (the swap-remove reorder; `CREATE_KEY_ORDER_RESIDUE`);
+  (b) `OFFSET_OCCURRED_AT_ROW_SCHEMA` — v4's repository `create` refuses an offset `occurredAt` through
+  `MemorySchema`'s `Z`-only `TimestampSchema` (400); v5's insert path validates no row schema (201) — a human ruling:
+  port the row validation at the insert, or record it; (c) `ADMISSION_SINGLE_TERM_LINK` — the one-shared-term row v4
+  inserts (`bestCosine: 0`) and v5 links (with P4.D292 — the BUILTIN vector).
+- **From P4.D290 (its Tier-2 HANDOFF (2), needs its post-`ADMISSION` commit `cdca0c8d8`):** in
+  `memory_anchor_gate_probe`, call `run_anchor_gate_probe_in_zone(db, provider, &input, host_zone_fallback)` with
+  the engine's `zone_name(&self.inner.config.display_zone)` threaded through the handler and the
+  `MemoryAnchorGateProbe` arm (one more `display_zone` read for `host_zone_sites_census`: 12 → 13). Not landable on
+  this branch (the fn does not exist at `ADMISSION`).
+- **Oracle regen recipes (lane-private outputs; committed headers left canonical):** memories-routes /
+  memories-config — `/tmp/p4d298/regen-mem.sh routes|config <tag>` (the header's recipe with every output under
+  `/tmp/p4d298/`, run from the pin, `--testTimeout=600000`); search-replace — `/tmp/p4d298/regen-sr.sh <tag>` (`TZ=UTC`);
+  the five shared families + memories_tier2 — `/tmp/p4d298/families.sh` and the `memories_tier2` header recipe
+  with `/tmp/p4d298/` paths. No committed fixture changed; no other family's oracle is invalidated.
+- **💸 for the dogfood pass:** the order's list stands — a manual memory on a real character (201 `insert`, then
+  the same text 200 `absorb`/`reinforce`), a blank-after-trim summary refused, a text edit re-embedded then found
+  by search, an importance-only edit, the item delete scrubbing its neighbours' links, **a Friday-copy chat wipe
+  sparing a MANUAL, a cold and a living digest row (`sparedCount` 3)**, the counts card by `demotable`, a backfill
+  run twice (the second `enqueued: 0`), regenerate-all with a stale `INTER_CHARACTER_MEMORY` row, a keyword rename
+  through search-replace then found by search. Plus: an offset `occurredAt` create (v4 400 / v5 201 until ruled).
+- **v4 moved (observed 2026-10-15 15:23 CDT):** `main` `01f508d4e..936a34720` (16 commits incl. `2432b9057
+  release: 4.10.0`), `bugfix` `489b228b6` — out of scope, not ported.
+- **Versions at close:** core 0.0.1304 (harness frozen 0.0.1110; host / web / cli / tauri / SPA unchanged — the
+  memories family is dispatch-only, measured: no `quilltap-web` file moved).
