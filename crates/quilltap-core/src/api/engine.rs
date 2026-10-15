@@ -3777,9 +3777,20 @@ impl CoreEngine {
                 Ok(db) => super::memories::memory_character_counts(&db, SINGLE_USER_ID),
                 Err(r) => r,
             },
-            Request::MemoryCreate { memory } => match self.ready_memory_embedding() {
+            // P4.D298 (R-I, L-2): the OPTIONAL embedding seam — an unassembled
+            // engine answers v4's validate → 404s → 502 order through
+            // admission's own `embedding-failed` arm.
+            Request::MemoryCreate { memory } => match self.ready_db_and_memory_embedding() {
                 Ok((db, provider)) => {
-                    super::memories::memory_create(&db, &provider, SINGLE_USER_ID, memory).await
+                    super::memories::memory_create(
+                        &db,
+                        provider.as_ref(),
+                        SINGLE_USER_ID,
+                        wall_clock_ms(),
+                        crate::host_zone::zone_name(&self.inner.config.display_zone),
+                        memory,
+                    )
+                    .await
                 }
                 Err(r) => r,
             },

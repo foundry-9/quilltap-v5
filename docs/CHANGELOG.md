@@ -138,6 +138,20 @@ Deleted: housekeeping, its outcome cache, the consolidation triggers, the dedup 
 
 New differential families from the pin: `memory_maintenance_planning`, `memory_maintenance_tier2`, `memory_maintenance_consolidate_tier3`, `memory_maintenance_queue_tier2`, `memory_maintenance_routes`, `memory_graph_repair_tier2`, and the census `maintenance_commit_hook_unreachable_census` (R-L: the commit hook is unreachable at the pin, so it is not ported). Retired families: `memory_housekeeping_tier2`, `memory_watermark_tier3`, `consolidation_triggers_tier2`, `memory_dedup`, `consolidation_service_tier3`. Re-aimed: `memory_consolidation_routes`, `consolidation_tasks`, `system_body_guards`, `realtime_topics`, `system_jobs_collection`. Host: a new cadence test for the memory-maintenance startup tick. The `p4_d288_wire_contract` refusal rows for the three filled arms are retired, and `host_zone_sites_census` counts the `maintain` arm's display-zone read (8 → 9).
 
+#### 2026-10-15 — feat(memories-api): P4.D298 unit 13 — the manual create through admission
+
+_Versions: core 0.0.1302._
+
+The manual memory create (POST `/memories`, no action) now follows v4's `83334b9a5` route:
+
+- A Zod-faithful parser for `createMemorySchema`: `content` / `summary` trimmed with JavaScript's trim, `projectId` / `kind` / `occurredAt` (`z.iso.datetime({ offset: true })`) / `entities` (≤ 12) accepted, `source` / `skipGate` stripped (bug 218). Refusals answer the family's 400 `Validation error`.
+- v4's order: the `source` / `skipGate` DEBUG, then character → project → chat 404s (the project derived from the chat when none is named), then the candidate through the shared candidate parser, then `admit_candidate`.
+- Reasons: `empty` → 400, `embedding-failed` → v4's 502 carried as `Internal` + `details.status: 502`, anything else → 500 `The memory was not saved.`; success answers `{memory, action}` with v4's resolved DEBUG.
+- The engine arm runs on the optional embedding seam: with no provider, admission answers through its own `embedding-failed` arm.
+- New `z.iso.datetime({ offset: true })` home in `api/zod_issues.rs`.
+
+`memories_routes_equivalence` re-pins the create rows from the pin (19 rows, the 15 offset-datetime rows, the `MEMORY_BAD_GATEWAY_AS_INTERNAL` table) and carries three measured items both ways: the response row's key order (P4.D290's `without_embedding` uses a swap-remove), an offset `occurredAt` that v4's row schema refuses on insert, and a single-term TF-IDF link v4 does not make. The host-zone census counts the new zone read.
+
 #### 2026-10-15 — feat(memories-api): P4.D298 units 11–12 — the re-attribution / cascade lines and the retired-verb table
 
 _Versions: core 0.0.1301._

@@ -125,6 +125,10 @@ function applyMocks(spec: Spec, pinClock: boolean): void {
 
 interface CaseSpec {
   name: string;
+  /** P4.D298: the embedding service REJECTS for this case (re-registered as
+   *  the real module by `applyMocks` for every other case — memory note
+   *  `jest-domock-survives-resetmodules`). */
+  embeddingFails?: boolean;
   /** Pin `new Date()`/`Date.now()` to FIXED_NOW (search recency determinism). */
   clock?: boolean;
   run: (mods: Record<string, unknown>) => Promise<{ status: number; body: unknown; tables?: unknown }>;
@@ -205,6 +209,14 @@ async function runCase(
     renderMarkdownToHtml: async () => null,
     canPreRenderMessage: () => false,
   }));
+  if (c.embeddingFails) {
+    jest.doMock('@/lib/embedding/embedding-service', () => ({
+      ...jest.requireActual('@/lib/embedding/embedding-service'),
+      generateEmbeddingForUser: async () => {
+        throw new Error('planted embedding failure');
+      },
+    }));
+  }
   const logs = await installLogCapture();
   // === end ===
   // Register the provider plugins (incl. the BUILTIN embeddings provider) so the
@@ -377,6 +389,30 @@ const P4D298_NULL_REINFORCED_PLANT = [
  *  re-attribution catches' ERRORs. */
 const P4D298_RETIRE_FAILS_PLANT = [
   "CREATE TRIGGER qt_p4d298_retire_fails BEFORE DELETE ON memories BEGIN SELECT RAISE(ABORT, 'planted retire failure'); END",
+];
+
+/** The chat the derived-project create names carries a project id. */
+const P4D298_CHAT_PROJECT_PLANT = [
+  "UPDATE chats SET projectId = 'b7000000-0000-4000-8000-000000000001' WHERE id = 'c1000000-0000-4000-8000-000000000001'",
+];
+
+/** `z.iso.datetime({ offset: true })` — the tier-1 rows (L-6). */
+const P4D298_OFFSET_DATETIMES = [
+  '2026-03-01T10:00:00Z',
+  '2026-03-01T10:00:00+05:30',
+  '2026-03-01T10:00:00-08:00',
+  '2026-03-01T10:00:00-0800',
+  '2026-03-01T10:00:00+05',
+  '2026-03-01T10:00Z',
+  '2026-03-01T10:00:00.123456789+00:00',
+  '2026-03-01T10:00:00.Z',
+  '2024-02-29T00:00:00Z',
+  '2023-02-29T00:00:00Z',
+  '2026-03-01T24:00:00Z',
+  '2026-03-01T10:00:00z',
+  '2026-03-01 10:00:00Z',
+  '2026-03-01T10:00:00+24:00',
+  '+002026-03-01T10:00:00Z',
 ];
 
 /** A delete the trigger swallows: the row survives, so `retired === 0`. */
@@ -724,6 +760,88 @@ async function main(): Promise<void> {
         );
       },
     },
+    // --- The manual create through admission (bug 218 / 236, R-I, L-1, L-6, L-7).
+    ...((): CaseSpec[] => {
+      const create = (name: string, body: unknown, extra: Partial<CaseSpec> = {}, plant?: string[]): CaseSpec => ({
+        name,
+        ...extra,
+        run: async () => {
+          if (plant) await plantSql(plant);
+          const before = ((await dumpAllMemories()) as unknown[]).length;
+          const out = await respond(
+            await (await loadRoute('@/app/api/v1/memories/route')).POST(mockRequest(B, body)),
+          );
+          const after = ((await dumpAllMemories()) as unknown[]).length;
+          return { ...out, tables: { rowsBefore: before, rowsAfter: after } };
+        },
+      });
+      const base = {
+        characterId: MNEMO,
+        content: 'The tide clock above the chandlery runs nine minutes fast.',
+        summary: 'The chandlery tide clock runs fast.',
+      };
+      return [
+        create('create_manual_trims', {
+          characterId: MNEMO,
+          content: '\u00a0  The lamp oil sits under the third stair. \n',
+          // U+FEFF is JS whitespace (trimmed); U+0085 is not (kept) — L-7.
+          summary: '\ufeffLamp oil under the third stair.\u0085',
+          keywords: ['lamp', 'oil'],
+        }),
+        create('create_manual_trims_no_keywords', {
+          characterId: MNEMO,
+          content: '\u00a0  The lamp oil sits under the third stair. \n',
+          summary: '\ufeffLamp oil under the third stair.\u0085',
+        }),
+        // MEASURED divergence witness (admission / the BUILTIN vector — not this
+        // lane's code): the one vocabulary term this text shares with `f1` is
+        // "kept"; v4's admission scores every neighbour 0 and inserts, v5's
+        // links `f1`. The Rust side pins it as `ADMISSION_SINGLE_TERM_LINK`.
+        create('create_plain_lamp_text', {
+          characterId: MNEMO,
+          content: 'The lamp oil is kept under the third stair.',
+          summary: 'Lamp oil under the third stair.',
+        }),
+        create('create_blank_after_trim', { characterId: MNEMO, content: '   \t', summary: 'x' }),
+        create(
+          'create_project_derived_from_chat',
+          { ...base, chatId: CHAT_SALON },
+          {},
+          P4D298_CHAT_PROJECT_PLANT,
+        ),
+        create('create_missing_project_404', { ...base, projectId: MISSING }),
+        create('create_missing_chat_404', { ...base, chatId: MISSING }),
+        create('create_missing_character_first_404', { ...base, characterId: MISSING, chatId: MISSING }),
+        create('create_kind_occurred_entities', {
+          ...base,
+          kind: 'episodic',
+          occurredAt: '2026-03-01T10:00:00.000Z',
+          entities: ['Alden', 'harbor'],
+        }),
+        // MEASURED: the route's `z.iso.datetime({ offset: true })` admits an
+        // offset, but the memory ROW schema's `TimestampSchema` (`Z` only)
+        // throws inside the create — the middleware's 400.
+        create('create_offset_occurred_at_row_refusal', {
+          ...base,
+          occurredAt: '2026-03-01T10:00:00+05:30',
+        }),
+        create('create_bad_offset_400', { ...base, occurredAt: '2026-03-01T10:00:00-0800' }),
+        create('create_source_skipgate_stripped', { ...base, source: 'AUTO', skipGate: true }),
+        create('create_source_null_logged', { ...base, source: null }),
+        create('create_source_manual_silent', { ...base, source: 'MANUAL' }),
+        // A MANUAL twin of the fixture's MANUAL `a1` — reinforced, 200.
+        create('create_reinforce_200', {
+          characterId: MNEMO,
+          content: 'Alden the lighthouse keeper trusts only the harbor master.',
+          summary: 'Alden trusts the harbor master.',
+        }),
+        create('create_embedding_failed_502', base, { embeddingFails: true }),
+        create('create_entities_over_cap_400', {
+          ...base,
+          entities: Array.from({ length: 13 }, (_, i) => `entity-${i}`),
+        }),
+      ];
+    })(),
     // The three re-attribution / cascade lines (af48f6cc2) over this fixture's
     // swipe pair `d…02` / `d…03`, which sourced `f0` / `f1`.
     {
@@ -790,7 +908,17 @@ async function main(): Promise<void> {
     // === end ===
   ];
 
-  const lines: string[] = [];
+  // === P4.D298: the tier-1 offset-datetime rows (L-6) — v4's zod at the pin ===
+  // The pin's OWN zod (resolved from the v4 checkout — this case is staged in a
+  // /tmp mirror outside v4's node_modules resolution).
+  const { z } = require(require('node:path').join(process.cwd(), 'node_modules/zod')) as typeof import('zod');
+  const offsetSchema = z.iso.datetime({ offset: true });
+  const offsetRows = P4D298_OFFSET_DATETIMES.map((input) => ({
+    input,
+    ok: offsetSchema.safeParse(input).success,
+  }));
+  // === end ===
+  const lines: string[] = [JSON.stringify({ name: 'iso_datetime_offset_rows', rows: offsetRows })];
   for (const c of cases) {
     const rec = await runCase(spec, c, scratch, fixtures);
     lines.push(JSON.stringify(rec));

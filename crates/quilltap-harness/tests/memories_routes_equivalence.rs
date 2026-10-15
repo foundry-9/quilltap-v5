@@ -534,6 +534,67 @@ const RETIRED_MEMORY_VERB_UNKNOWN_VARIANT: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// §R.7 `MEMORY_BAD_GATEWAY_AS_INTERNAL` (R-H, L-5): v4's two 502s — the
+/// manual create's `embedding-failed` and the edit whose new text cannot be
+/// embedded — answer `ErrorKind::Internal` with v4's message and `details:
+/// {"status": 502}` (no new `ErrorKind`; a dispatch / Tauri caller sees 500).
+/// Pinned both ways: v4 must answer 502 with the message, v5 `Internal` + the
+/// carrier with the same message.
+const MEMORY_BAD_GATEWAY_AS_INTERNAL: &[&str] =
+    &["create_embedding_failed_502", "update_text_no_profile_502"];
+
+/// RESIDUE (P4.D290 — a HANDOFF): admission's `without_embedding`
+/// (`services/admission/apply.rs:43-51`) drops the vector with serde_json's
+/// `Map::remove`, which under `preserve_order` is a `swap_remove` — the row's
+/// LAST key moves into `embedding`'s slot (`updatedAt`, or
+/// `lastReinforcedAt` on a fold). v4's `withoutEmbedding` keeps
+/// `MemorySchema` order. The hunk: `m.remove("embedding")` →
+/// `m.shift_remove("embedding")`. Until it lands, the create rows compare
+/// their VALUES strictly (keys sorted) and their key ORDER here, both ways: a
+/// row whose order already matches fails loudly ("residue closed").
+const CREATE_KEY_ORDER_RESIDUE: &str =
+    "P4.D290 — `without_embedding`'s swap_remove (HANDOFF: shift_remove)";
+
+/// §R.7-style named table `OFFSET_OCCURRED_AT_ROW_SCHEMA` (MEASURED; a
+/// finding, not this lane's code): v4's route schema admits an offset
+/// `occurredAt` (`z.iso.datetime({ offset: true })`), but its memories
+/// repository `create` validates `MemorySchema`, whose `TimestampSchema` is
+/// `Z`-only — the ZodError surfaces as the middleware's 400 `Validation
+/// error` and no row is written. v5's insert path (P4.D290's `insert_row` over
+/// P4.D288's `MemCreate`) validates no row schema and inserts it (201). Pinned
+/// both ways: `(row, v4 status, v5 action)`.
+const OFFSET_OCCURRED_AT_ROW_SCHEMA: &[(&str, u64, &str)] = &[(
+    "create_offset_occurred_at_row_refusal",
+    400,
+    "insert-linked",
+)];
+
+/// A MEASURED admission divergence (P4.D290's decision over P4.D292's BUILTIN
+/// vector — a FINDING, not this lane's code): `create_plain_lamp_text` ("The
+/// lamp oil is kept under the third stair.") shares exactly one vocabulary
+/// term with the fixture's AUTO row `f1` ("kept" — in the stored
+/// vocabulary). v4's admission logs `Memory admitted {neighbours: 5,
+/// bestCosine: 0, thresholdScale: 'tfidf'}` and INSERTS; v5's links `f1`
+/// (`insert-linked`, the TF-IDF related band ≥ 0.20). Pinned both ways:
+/// `(row, v4 action, v5 action)`.
+const ADMISSION_SINGLE_TERM_LINK: &[(&str, &str, &str)] =
+    &[("create_plain_lamp_text", "insert", "insert-linked")];
+
+/// The keys a create / edit mints (masked to `<minted>` on both sides).
+const MINTED_MEMORY_KEYS: &[&str] = &["id", "createdAt", "updatedAt", "lastReinforcedAt"];
+
+fn mask_minted_memory(body: &mut Value) {
+    if let Some(m) = body.get_mut("memory").and_then(Value::as_object_mut) {
+        for k in MINTED_MEMORY_KEYS {
+            if m.get(*k).is_some_and(|v| !v.is_null()) {
+                m.insert((*k).to_string(), json!("<minted>"));
+            }
+        }
+        // An insert-linked row's links name the NEW row's minted id on the
+        // neighbour — and the new row's own list names baked ids only.
+    }
+}
+
 /// `<LEVEL> <target> <rest>` → `<LEVEL> <rest>` (the three lines live in three
 /// modules; v4 has none).
 fn without_target(line: &str) -> String {
@@ -914,15 +975,6 @@ fn memories_routes_match_oracle() {
         .unwrap()
     };
 
-    // Create/update blank the minted/regenerated fields (id + timestamps +
-    // embedding — the vector fidelity is proven by the search + W4.7e2 seams).
-    let create_blank = [
-        "id",
-        "createdAt",
-        "updatedAt",
-        "lastReinforcedAt",
-        "embedding",
-    ];
     let check_blanked = |name: &str, got: &Response, keys: &[&str], failed: &mut Vec<String>| {
         let want = &oracle[name]["body"];
         let got = response_data(got);
@@ -962,46 +1014,8 @@ fn memories_routes_match_oracle() {
         }
     };
 
-    // --- Create (gate) ---
-    {
-        let db = fresh_db(&spec, "ci");
-        let p = provider(&db);
-        let resp = rt.block_on(memories::memory_create(
-            &db,
-            &p,
-            &uid,
-            json!({
-                "characterId": MNEMO,
-                "content": "The clocktower chimes thirteen times on the winter solstice.",
-                "summary": "The clocktower chimes thirteen at solstice.",
-                "keywords": ["clocktower", "solstice"],
-                "importance": 0.55,
-                "source": "MANUAL",
-            }),
-        ));
-        check_blanked("create_insert", &resp, &create_blank, &mut failed);
-    }
-    {
-        let db = fresh_db(&spec, "cnd");
-        let p = provider(&db);
-        let resp = rt.block_on(memories::memory_create(
-            &db,
-            &p,
-            &uid,
-            json!({
-                "characterId": MNEMO,
-                "content": "Mnemo always double-checks the barometer before hoisting the mainsail.",
-                "summary": "Mnemo checks the barometer before the mainsail.",
-                "source": "AUTO",
-            }),
-        ));
-        check_blanked("create_near_duplicate", &resp, &create_blank, &mut failed);
-        check_tables(
-            "create_near_duplicate",
-            &dump_rows(&db, &["b2000000-0000-4000-8000-0000000000d0"]),
-            &mut failed,
-        );
-    }
+    // --- Create — P4.D298 re-pinned these rows below (`{memory, action}`,
+    // admission, the route's lines); the gate-era checks left with the gate.
     // --- Update (no re-embed) ---
     {
         let db = fresh_db(&spec, "up");
@@ -1853,6 +1867,376 @@ fn memories_routes_match_oracle() {
                     failed.push(name.to_string());
                 }
             }
+        }
+
+        // --- L-6: `z.iso.datetime({ offset: true })`, tier-1 against the pin's zod.
+        {
+            let rows = oracle["iso_datetime_offset_rows"]["rows"]
+                .as_array()
+                .unwrap();
+            let mut bad = Vec::new();
+            for row in rows {
+                let input = row["input"].as_str().unwrap();
+                let want = row["ok"].as_bool().unwrap();
+                let got = quilltap_core::api::zod_issues::zod_iso_datetime_offset_ok(input);
+                if got != want {
+                    bad.push(format!("{input}: v5 {got} / v4 {want}"));
+                }
+            }
+            if rows.len() < 15 || !bad.is_empty() {
+                eprintln!("[iso_datetime_offset_rows] MISMATCH: {bad:?}");
+                failed.push("iso_datetime_offset_rows".into());
+            } else {
+                eprintln!("[iso_datetime_offset_rows] OK ({} rows).", rows.len());
+            }
+        }
+
+        // --- The manual create through admission (bug 218 / 236). Bodies by
+        // bytes with the minted keys masked; refusals as status + `error` (L-1:
+        // v4's `details` are the recorded no-details class); the route's lines
+        // with the minted `memoryId` masked; the row count around the call.
+        let create_cases: Vec<(&str, Value, Option<&'static [&'static str]>, bool)> = vec![
+            (
+                "create_insert",
+                json!({
+                    "characterId": MNEMO,
+                    "content": "The clocktower chimes thirteen times on the winter solstice.",
+                    "summary": "The clocktower chimes thirteen at solstice.",
+                    "keywords": ["clocktower", "solstice"],
+                    "importance": 0.55,
+                    "source": "MANUAL",
+                }),
+                None,
+                true,
+            ),
+            (
+                "create_near_duplicate",
+                json!({
+                    "characterId": MNEMO,
+                    "content": "Mnemo always double-checks the barometer before hoisting the mainsail.",
+                    "summary": "Mnemo checks the barometer before the mainsail.",
+                    "source": "AUTO",
+                }),
+                None,
+                true,
+            ),
+            (
+                "create_manual_trims",
+                json!({
+                    "characterId": MNEMO,
+                    "content": "\u{a0}  The lamp oil sits under the third stair. \n",
+                    "summary": "\u{feff}Lamp oil under the third stair.\u{85}",
+                    "keywords": ["lamp", "oil"],
+                }),
+                None,
+                true,
+            ),
+            (
+                "create_manual_trims_no_keywords",
+                json!({
+                    "characterId": MNEMO,
+                    "content": "\u{a0}  The lamp oil sits under the third stair. \n",
+                    "summary": "\u{feff}Lamp oil under the third stair.\u{85}",
+                }),
+                None,
+                true,
+            ),
+            (
+                "create_plain_lamp_text",
+                json!({
+                    "characterId": MNEMO,
+                    "content": "The lamp oil is kept under the third stair.",
+                    "summary": "Lamp oil under the third stair.",
+                }),
+                None,
+                true,
+            ),
+            (
+                "create_blank_after_trim",
+                json!({ "characterId": MNEMO, "content": "   \t", "summary": "x" }),
+                None,
+                true,
+            ),
+        ];
+        let base = json!({
+            "characterId": MNEMO,
+            "content": "The tide clock above the chandlery runs nine minutes fast.",
+            "summary": "The chandlery tide clock runs fast.",
+        });
+        let with = |extra: Value| -> Value {
+            let mut b = base.clone();
+            for (k, v) in extra.as_object().unwrap() {
+                b[k] = v.clone();
+            }
+            b
+        };
+        const CHAT_PROJECT_PLANT: &[&str] = &[
+            "UPDATE chats SET projectId = 'b7000000-0000-4000-8000-000000000001' WHERE id = 'c1000000-0000-4000-8000-000000000001'",
+        ];
+        let mut create_cases = create_cases;
+        create_cases.extend([
+            (
+                "create_project_derived_from_chat",
+                with(json!({ "chatId": CHAT_SALON })),
+                Some(CHAT_PROJECT_PLANT),
+                true,
+            ),
+            (
+                "create_missing_project_404",
+                with(json!({ "projectId": MISSING })),
+                None,
+                true,
+            ),
+            (
+                "create_missing_chat_404",
+                with(json!({ "chatId": MISSING })),
+                None,
+                true,
+            ),
+            (
+                "create_missing_character_first_404",
+                with(json!({ "characterId": MISSING, "chatId": MISSING })),
+                None,
+                true,
+            ),
+            (
+                "create_kind_occurred_entities",
+                with(json!({
+                    "kind": "episodic",
+                    "occurredAt": "2026-03-01T10:00:00.000Z",
+                    "entities": ["Alden", "harbor"],
+                })),
+                None,
+                true,
+            ),
+            (
+                "create_offset_occurred_at_row_refusal",
+                with(json!({ "occurredAt": "2026-03-01T10:00:00+05:30" })),
+                None,
+                true,
+            ),
+            (
+                "create_bad_offset_400",
+                with(json!({ "occurredAt": "2026-03-01T10:00:00-0800" })),
+                None,
+                true,
+            ),
+            (
+                "create_source_skipgate_stripped",
+                with(json!({ "source": "AUTO", "skipGate": true })),
+                None,
+                true,
+            ),
+            (
+                "create_source_null_logged",
+                with(json!({ "source": null })),
+                None,
+                true,
+            ),
+            (
+                "create_source_manual_silent",
+                with(json!({ "source": "MANUAL" })),
+                None,
+                true,
+            ),
+            (
+                "create_reinforce_200",
+                json!({
+                    "characterId": MNEMO,
+                    "content": "Alden the lighthouse keeper trusts only the harbor master.",
+                    "summary": "Alden trusts the harbor master.",
+                }),
+                None,
+                true,
+            ),
+            ("create_embedding_failed_502", base.clone(), None, false),
+            (
+                "create_entities_over_cap_400",
+                with(json!({
+                    "entities": (0..13).map(|i| format!("entity-{i}")).collect::<Vec<_>>(),
+                })),
+                None,
+                true,
+            ),
+        ]);
+        let mut order_residue: Vec<(&str, bool)> = Vec::new();
+        for (name, body, plant_sql, with_provider) in create_cases {
+            let db = fresh_db(&spec, &format!("{name}-d298"));
+            if let Some(sql) = plant_sql {
+                plant(&rt, &db, sql);
+            }
+            let count = |db: &Db| {
+                db.read_main(|c| {
+                    c.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get::<_, i64>(0))
+                        .map_err(Into::into)
+                })
+                .unwrap()
+            };
+            let before = count(&db);
+            let p = provider(&db);
+            let (resp, lines) = global_capture::capture(|| {
+                rt.block_on(memories::memory_create(
+                    &db,
+                    with_provider.then_some(&p),
+                    &uid,
+                    FIXED_NOW_MS,
+                    "UTC",
+                    body,
+                ))
+            });
+            let after = count(&db);
+            let rec = &oracle[name];
+            let mut bad = Vec::new();
+            let want_status = rec["status"].as_u64().unwrap();
+            if let Some((_, v4_action, v5_action)) = ADMISSION_SINGLE_TERM_LINK
+                .iter()
+                .find(|(n, _, _)| *n == name)
+            {
+                let got_action = response_data(&resp)["action"].clone();
+                if rec["body"]["action"] == json!(v4_action) && got_action == json!(v5_action) {
+                    eprintln!(
+                        "[{name}] ADMISSION_SINGLE_TERM_LINK holds (v4 {v4_action}, v5 {v5_action})."
+                    );
+                } else {
+                    eprintln!(
+                        "[{name}] ADMISSION_SINGLE_TERM_LINK moved: v4 {}, v5 {got_action}",
+                        rec["body"]["action"]
+                    );
+                    failed.push(format!("{name}:single-term-link"));
+                }
+                continue;
+            }
+            if let Some((_, v4_status, v5_action)) = OFFSET_OCCURRED_AT_ROW_SCHEMA
+                .iter()
+                .find(|(n, _, _)| *n == name)
+            {
+                let got_action = response_data(&resp)["action"].clone();
+                if want_status == *v4_status && got_action == json!(v5_action) {
+                    eprintln!(
+                        "[{name}] OFFSET_OCCURRED_AT_ROW_SCHEMA holds (v4 {v4_status}, v5 {v5_action})."
+                    );
+                } else {
+                    eprintln!(
+                        "[{name}] OFFSET_OCCURRED_AT_ROW_SCHEMA moved: v4 {want_status}, v5 {got_action}"
+                    );
+                    failed.push(format!("{name}:offset-row-schema"));
+                }
+                continue;
+            }
+            // Status + body (the L-5 carrier for the 502; L-1 for the 400s).
+            match &resp {
+                Response::Error(e) => {
+                    let bgw = MEMORY_BAD_GATEWAY_AS_INTERNAL.contains(&name);
+                    let carried = e.kind == ErrorKind::Internal
+                        && e.details.as_deref() == Some(&json!({ "status": 502 }));
+                    if bgw {
+                        if want_status != 502 || !carried {
+                            bad.push(format!(
+                                "MEMORY_BAD_GATEWAY_AS_INTERNAL moved: v4 {want_status}, v5 {:?} {:?}",
+                                e.kind, e.details
+                            ));
+                        }
+                    } else if u64::from(status_of(e.kind)) != want_status {
+                        bad.push(format!("status {:?} vs {want_status}", e.kind));
+                    }
+                    if rec["body"]["error"].as_str() != Some(e.message.as_str()) {
+                        bad.push(format!("error {:?} vs {}", e.message, rec["body"]["error"]));
+                    }
+                }
+                other => {
+                    let mut got = response_data(other);
+                    let mut want = rec["body"].clone();
+                    mask_minted_memory(&mut got);
+                    mask_minted_memory(&mut want);
+                    canon_numbers(&mut got);
+                    canon_numbers(&mut want);
+                    let (g, w) = (norm(&got), norm(&want));
+                    let order_matches = serde_json::to_string(&got).unwrap()
+                        == serde_json::to_string(&want).unwrap();
+                    order_residue.push((name, order_matches));
+                    if want_status != 200 && want_status != 201 {
+                        bad.push(format!("v5 answered 200, v4 {want_status}"));
+                    }
+                    // 201 ⇔ an insert (`admissionInserted`): the split rides `action`.
+                    let inserted =
+                        matches!(got["action"].as_str(), Some("insert" | "insert-linked"));
+                    if (want_status == 201) != inserted {
+                        bad.push(format!(
+                            "201/200 split: v4 {want_status}, action {}",
+                            got["action"]
+                        ));
+                    }
+                    if g != w {
+                        let keys = |v: &Value| -> Vec<String> {
+                            v["memory"]
+                                .as_object()
+                                .map(|o| o.keys().cloned().collect())
+                                .unwrap_or_default()
+                        };
+                        bad.push(format!(
+                            "body (keys sorted):\n{}  keys v5: {:?}\n  keys v4: {:?}",
+                            first_diff(&g, &w),
+                            keys(&got),
+                            keys(&want)
+                        ));
+                    }
+                }
+            }
+            let want_lines: Vec<String> = rec["logs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|l| mask_field(&render_v4_line(l), "memoryId"))
+                .collect();
+            let got_lines: Vec<String> = own_v5_lines(&lines)
+                .iter()
+                .map(|l| mask_field(l, "memoryId"))
+                .collect();
+            if got_lines != want_lines {
+                bad.push(format!(
+                    "lines:\n--- v4 ---\n{}\n--- v5 ---\n{}",
+                    want_lines.join("\n"),
+                    got_lines.join("\n")
+                ));
+            }
+            let want_rows = (
+                rec["tables"]["rowsBefore"].as_i64(),
+                rec["tables"]["rowsAfter"].as_i64(),
+            );
+            if let (Some(wb), Some(wa)) = want_rows {
+                // The oracle counts AFTER its plant; the row delta is the comparand.
+                if after - before != wa - wb {
+                    bad.push(format!(
+                        "rows written: v5 {} / v4 {}",
+                        after - before,
+                        wa - wb
+                    ));
+                }
+            }
+            if bad.is_empty() {
+                eprintln!("[{name}] OK (P4.D298).");
+            } else {
+                eprintln!("[{name}] MISMATCH (P4.D298):\n{}", bad.join("\n"));
+                failed.push(format!("{name}:d298"));
+            }
+        }
+
+        // The key-order residue, both ways (every 200 create row).
+        let closed: Vec<&str> = order_residue
+            .iter()
+            .filter(|(_, ok)| *ok)
+            .map(|(n, _)| *n)
+            .collect();
+        if closed.is_empty() {
+            eprintln!(
+                "[create key order] RESIDUE ({CREATE_KEY_ORDER_RESIDUE}) on {} rows.",
+                order_residue.len()
+            );
+        } else {
+            eprintln!(
+                "[create key order] the residue CLOSED for {closed:?} — compare the create bodies by bytes"
+            );
+            failed.push("create_key_order:residue-closed".into());
         }
 
         // --- §R.7 `RETIRED_MEMORY_VERB_UNKNOWN_VARIANT` (both halves).

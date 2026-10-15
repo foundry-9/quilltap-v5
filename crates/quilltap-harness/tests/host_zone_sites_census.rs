@@ -233,8 +233,10 @@ const VALUE_SITES: &[(&str, &str, usize, &str)] = &[
         "`CoreConfig.display_zone` — the Compose reply preface, the Salon-load \
          whispers (`salon::chat_get`), the markdown export's zone-less offsets \
          (P4.140 item (g)), the five autonomous-room routes' cron NAME \
-         (`host_zone::zone_name` of it — the tick's own derivation), and the \
-         `maintain` dry run's memory-calendar fallback NAME (P4.D297)",
+         (`host_zone::zone_name` of it — the tick's own derivation), the \
+         `maintain` dry run's memory-calendar fallback NAME (P4.D297), and \
+         P4.D298's manual memory create (the memory calendar's host fallback, \
+         `zone_name` of it, handed to admission as a VALUE)",
     ),
     (
         "services/conversation_render_job.rs",

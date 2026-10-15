@@ -2019,6 +2019,60 @@ pub fn zod_scenario_source_issues(value: &Value, prefix: &[Value]) -> Vec<ZodIss
 
 // === end P4.D288 ===
 
+// === P4.D298: z.iso.datetime({ offset: true }) (append-only) ===
+
+/// v4 zod **4.6.5**'s `z.iso.datetime({ offset: true })` — the ONE home of
+/// that check beside the no-option [`ZOD_ISO_DATETIME_PATTERN`] (L-6). Its
+/// only user at the `83334b9a5` pin is the manual create's `occurredAt`
+/// (`app/api/v1/memories/route.ts:113`; `git grep 'datetime({ offset: true'` →
+/// one hit). Transcribed from the compiled `pattern` of a live
+/// `z.iso.datetime({ offset: true })` under the pin's zod (the P4.113 recipe:
+/// JS `\d` → ASCII `[0-9]`). It differs from the no-option pattern in the zone
+/// group alone: `Z` OR a `±HH:MM` offset — the colon required (`-0800` and
+/// `+05` FAIL), the seconds required, the fraction any length ≥ 1.
+pub const ZOD_ISO_DATETIME_OFFSET_PATTERN: &str = r"^(?:(?:[0-9][0-9][2468][048]|[0-9][0-9][13579][26]|[0-9][0-9]0[48]|[02468][048]00|[13579][26]00)-02-29|[0-9]{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12][0-9]|3[01])|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)|(?:02)-(?:0[1-9]|1[0-9]|2[0-8])))T(?:(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]+)?(?:Z|([+-](?:[01][0-9]|2[0-3]):[0-5][0-9])))$";
+
+/// The same pattern as zod ECHOES it in an `invalid_format` issue (JS form,
+/// slashes included) — measured at the pin.
+pub const ZOD_ISO_DATETIME_OFFSET_JS_PATTERN: &str = r"/^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$/";
+
+static ZOD_ISO_DATETIME_OFFSET_RE: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(ZOD_ISO_DATETIME_OFFSET_PATTERN).unwrap());
+
+/// `true` when `s` passes v4's `z.iso.datetime({ offset: true })`.
+pub fn zod_iso_datetime_offset_ok(s: &str) -> bool {
+    ZOD_ISO_DATETIME_OFFSET_RE.is_match(s)
+}
+
+/// A `z.iso.datetime({ offset: true })` miss (the string type check passed).
+pub fn invalid_datetime_offset(path: Vec<Value>) -> ZodIssue {
+    ZodIssue::InvalidFormat {
+        origin: "string",
+        code: "invalid_format",
+        format: "datetime",
+        pattern: ZOD_ISO_DATETIME_OFFSET_JS_PATTERN,
+        path,
+        message: "Invalid ISO datetime".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod p4d298_datetime_offset_tests {
+    use super::*;
+
+    /// The JS-form and matcher constants are ONE pattern (`\d` ⇔ `[0-9]`,
+    /// the slashes stripped).
+    #[test]
+    fn offset_js_pattern_is_the_matcher_in_js_form() {
+        let js = ZOD_ISO_DATETIME_OFFSET_JS_PATTERN
+            .trim_start_matches('/')
+            .trim_end_matches('/')
+            .replace(r"\d", "[0-9]");
+        assert_eq!(js, ZOD_ISO_DATETIME_OFFSET_PATTERN);
+    }
+}
+// === end P4.D298 ===
+
 #[cfg(test)]
 mod tests {
     /// P4.124: v4 `GroupSchema` — each shape the order named, both edges (the

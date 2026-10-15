@@ -33,10 +33,8 @@ use crate::memory_scoring::{filter_importance, TOOL_MIN_IMPORTANCE};
 use crate::model::embedding::EmbeddingProvider;
 // P4.56: the shared "render a JSON number the JS way" walk (an integer-valued
 // float collapses, exactly as `JSON.stringify` writes it).
+use crate::admission::AdmissionAction;
 use crate::model::tool_wire::normalize_js_numbers;
-use crate::services::memory_gate::{
-    create_memory_with_gate, CreateMemoryOptions, GateAction, MemoryServiceOptions,
-};
 use crate::services::memory_retire::{
     announce_retirement, retire_chat_memories, retire_memories, RetireOptions, RetireReason,
 };
@@ -487,107 +485,492 @@ pub fn memory_character_counts(db: &Db, user_id: &str) -> Response {
 // Create (v4 POST /api/v1/memories, no action)
 // ===========================================================================
 
-/// v4 `createMemorySchema` — the create body (Zod prefaults inlined as serde
-/// defaults). Nullable-optional uuids collapse null/absent → `None`.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CreateBag {
+/// v4 `createMemorySchema`'s OUTPUT (`route.ts:94-116`): `content` / `summary`
+/// TRIMMED (a Zod transform — the stored value is the trimmed one, bug 236),
+/// the prefaults applied, an absent nullable key and an explicit `null` both
+/// `None` (v4 reads every one through `?? null`).
+struct ManualCreate {
     character_id: String,
     content: String,
     summary: String,
-    #[serde(default)]
     keywords: Vec<String>,
-    #[serde(default)]
     tags: Vec<String>,
-    #[serde(default = "default_importance")]
     importance: f64,
-    #[serde(default)]
     about_character_id: Option<String>,
-    #[serde(default)]
     chat_id: Option<String>,
-    #[serde(default = "default_source")]
-    source: String,
-    #[serde(default)]
+    project_id: Option<String>,
     source_message_id: Option<String>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    skip_gate: Option<bool>,
-}
-fn default_importance() -> f64 {
-    0.5
-}
-fn default_source() -> String {
-    "MANUAL".to_string()
+    kind: Option<String>,
+    occurred_at: Option<String>,
+    entities: Option<Vec<String>>,
 }
 
-/// v4 `handleCreateMemory` → `createMemoryWithEmbedding` (the gate). 201 `{memory}`.
-/// SKIP_EMBEDDING_FAILED → serverError (no row). `skipGate` is accepted but has
-/// NO direct-create path (v5's gate port always runs the gate — a documented
-/// P4.6s divergence; distinctive content INSERTs either way).
+/// v4's `MemoryKindEnum` (`lib/schemas/memory.types.ts`), in schema order.
+const MEMORY_KINDS: [&str; 2] = ["semantic", "episodic"];
+
+/// `z.string().trim().min(1, msg)` at `k` — JavaScript's trim (L-7:
+/// [`crate::jsstr::js_trim`], never `str::trim`, which differs on U+FEFF and
+/// U+0085), then the length in UTF-16 units.
+fn trimmed_min1(
+    obj: &Map<String, Value>,
+    k: &str,
+    msg: &str,
+    issues: &mut Vec<ZodIssue>,
+) -> Option<String> {
+    match obj.get(k) {
+        Some(Value::String(s)) => {
+            let t = crate::jsstr::js_trim(s);
+            if t.is_empty() {
+                issues.push(ZodIssue::too_small_string_message(
+                    json!(1),
+                    vec![zod_key(k)],
+                    msg,
+                ));
+            }
+            Some(t.to_string())
+        }
+        other => {
+            issues.push(ZodIssue::invalid_type("string", vec![zod_key(k)], other));
+            None
+        }
+    }
+}
+
+/// `z.uuid().nullable().optional()` at `k`: absent / `null` → `None`.
+fn nullable_uuid(obj: &Map<String, Value>, k: &str, issues: &mut Vec<ZodIssue>) -> Option<String> {
+    match obj.get(k) {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) if zod_uuid_ok(s) => Some(s.clone()),
+        Some(Value::String(_)) => {
+            issues.push(ZodIssue::invalid_uuid(vec![zod_key(k)]));
+            None
+        }
+        Some(other) => {
+            issues.push(ZodIssue::invalid_type(
+                "string",
+                vec![zod_key(k)],
+                Some(other),
+            ));
+            None
+        }
+    }
+}
+
+/// `z.array(item)` at `k` (absent → `None`): each element through `item`.
+fn array_of(
+    obj: &Map<String, Value>,
+    k: &str,
+    issues: &mut Vec<ZodIssue>,
+    mut item: impl FnMut(&Value, Vec<Value>, &mut Vec<ZodIssue>) -> Option<String>,
+) -> Option<Vec<String>> {
+    match obj.get(k) {
+        None => None,
+        Some(Value::Array(a)) => Some(
+            a.iter()
+                .enumerate()
+                .filter_map(|(i, v)| item(v, vec![zod_key(k), json!(i)], issues))
+                .collect(),
+        ),
+        Some(other) => {
+            issues.push(ZodIssue::invalid_type(
+                "array",
+                vec![zod_key(k)],
+                Some(other),
+            ));
+            None
+        }
+    }
+}
+
+/// v4 `createMemorySchema.safeParse(body)` — Zod-faithful over the dispatch
+/// bag: the issues in schema order (the `parse_search_bag` shape; L-1 keeps the
+/// house envelope, so the switch to v4's `details` is one line), unknown keys
+/// — `source` and `skipGate` among them (bug 218) — stripped.
+fn parse_create_bag(bag: &Value) -> Result<ManualCreate, Vec<ZodIssue>> {
+    let Some(obj) = bag.as_object() else {
+        return Err(vec![ZodIssue::invalid_type("object", vec![], Some(bag))]);
+    };
+    let mut issues = Vec::new();
+    let with_message = |mut issue: ZodIssue, text: &str| {
+        if let ZodIssue::InvalidType { message, .. } | ZodIssue::InvalidFormat { message, .. } =
+            &mut issue
+        {
+            *message = text.to_string();
+        }
+        issue
+    };
+    let character_id = match obj.get("characterId") {
+        Some(Value::String(s)) if zod_uuid_ok(s) => Some(s.clone()),
+        Some(Value::String(_)) => {
+            issues.push(with_message(
+                ZodIssue::invalid_uuid(vec![zod_key("characterId")]),
+                "Character ID is required",
+            ));
+            None
+        }
+        other => {
+            issues.push(with_message(
+                ZodIssue::invalid_type("string", vec![zod_key("characterId")], other),
+                "Character ID is required",
+            ));
+            None
+        }
+    };
+    let content = trimmed_min1(obj, "content", "Memory content is required", &mut issues);
+    let summary = trimmed_min1(obj, "summary", "Memory summary is required", &mut issues);
+    let keywords = array_of(obj, "keywords", &mut issues, |v, path, issues| match v {
+        Value::String(s) => Some(s.clone()),
+        other => {
+            issues.push(ZodIssue::invalid_type("string", path, Some(other)));
+            None
+        }
+    });
+    let tags = array_of(obj, "tags", &mut issues, |v, path, issues| match v {
+        Value::String(s) if zod_uuid_ok(s) => Some(s.clone()),
+        Value::String(_) => {
+            issues.push(ZodIssue::invalid_uuid(path));
+            None
+        }
+        other => {
+            issues.push(ZodIssue::invalid_type("string", path, Some(other)));
+            None
+        }
+    });
+    let importance = if obj.contains_key("importance") {
+        zod_bounded_number(obj, "importance", 0.0, 1.0, &mut issues)
+    } else {
+        Some(0.5)
+    };
+    let about_character_id = nullable_uuid(obj, "aboutCharacterId", &mut issues);
+    let chat_id = nullable_uuid(obj, "chatId", &mut issues);
+    let project_id = nullable_uuid(obj, "projectId", &mut issues);
+    let source_message_id = nullable_uuid(obj, "sourceMessageId", &mut issues);
+    let kind = match obj.get("kind") {
+        None => None,
+        Some(Value::String(s)) if MEMORY_KINDS.contains(&s.as_str()) => Some(s.clone()),
+        Some(_) => {
+            issues.push(ZodIssue::invalid_value(
+                &MEMORY_KINDS,
+                vec![zod_key("kind")],
+            ));
+            None
+        }
+    };
+    let occurred_at = match obj.get("occurredAt") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) if super::zod_issues::zod_iso_datetime_offset_ok(s) => {
+            Some(s.clone())
+        }
+        Some(Value::String(_)) => {
+            issues.push(super::zod_issues::invalid_datetime_offset(vec![zod_key(
+                "occurredAt",
+            )]));
+            None
+        }
+        Some(other) => {
+            issues.push(ZodIssue::invalid_type(
+                "string",
+                vec![zod_key("occurredAt")],
+                Some(other),
+            ));
+            None
+        }
+    };
+    // `z.array(z.string().min(1)).max(MEMORY_ENTITY_CAP)`.
+    let entities = array_of(obj, "entities", &mut issues, |v, path, issues| match v {
+        Value::String(s) => {
+            if s.is_empty() {
+                issues.push(ZodIssue::too_small_string(json!(1), path));
+            }
+            Some(s.clone())
+        }
+        other => {
+            issues.push(ZodIssue::invalid_type("string", path, Some(other)));
+            None
+        }
+    });
+    if let Some(Value::Array(a)) = obj.get("entities") {
+        if a.len() > crate::memory_candidate::MEMORY_ENTITY_CAP {
+            issues.push(ZodIssue::too_big_array(
+                json!(crate::memory_candidate::MEMORY_ENTITY_CAP),
+                vec![zod_key("entities")],
+            ));
+        }
+    }
+    if !issues.is_empty() {
+        return Err(issues);
+    }
+    Ok(ManualCreate {
+        character_id: character_id.unwrap_or_default(),
+        content: content.unwrap_or_default(),
+        summary: summary.unwrap_or_default(),
+        keywords: keywords.unwrap_or_default(),
+        tags: tags.unwrap_or_default(),
+        importance: importance.unwrap_or(0.5),
+        about_character_id,
+        chat_id,
+        project_id,
+        source_message_id,
+        kind,
+        occurred_at,
+        entities,
+    })
+}
+
+/// A v4 context value as the file layer renders it: a string bare, anything
+/// else as its JSON text (`null`, `true`, `5`).
+fn field_text(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// The project a manual memory belongs to (v4 `route.ts:532-541`): an explicit
+/// `projectId` must exist — `Err` carries the refusal (404 `Project not found`,
+/// or the house 503 for a project whose document store is unavailable).
+fn find_project(db: &Db, project_id: &str) -> Result<Option<String>, Response> {
+    use crate::db::document_store_overlay::OverlayError;
+    let read = db.read_main(|main| {
+        Ok(db.read_mount_index(|mount| {
+            Ok(crate::db::projects::ProjectsRepository::new(main, mount).find_by_id(project_id))
+        }))
+    });
+    let found = match read {
+        Ok(Ok(Ok(found))) => found,
+        Ok(Ok(Err(unavailable @ OverlayError::Unavailable { .. }))) => {
+            return Err(super::types::db_error_response(unavailable.into_db()))
+        }
+        // v4's `_findById` is a fallback read: a failed query logs and reads
+        // as absent.
+        Ok(Ok(Err(OverlayError::Db(e)))) | Ok(Err(e)) | Err(e) => {
+            crate::db::fallback::find_by_id_or_none("projects", project_id, || Err(e))
+        }
+    };
+    Ok(found.and_then(|p| p.get("id").and_then(Value::as_str).map(str::to_string)))
+}
+
+/// v4 `handleCreateMemory` (`route.ts:506-638`) — the manual create through
+/// admission. The order is load-bearing (R-I): Zod → the `source` / `skipGate`
+/// DEBUG → character 404 → project 404 → chat 404 (the project derived from
+/// the chat when none was named) → the candidate → `admit_candidate` → the
+/// reason arms. "Every manual write goes through the gate (decision 13):
+/// source forced to MANUAL, provenance stamped 'manual'. A hand-written memory
+/// carries no targeting tags (it reads as the defaults) and its event time is
+/// given, not phrased."
+///
+/// `provider` is the OPTIONAL embedding seam (L-2): `None` drives admission
+/// with [`NoEmbeddingProvider`](crate::model::embedding::NoEmbeddingProvider)
+/// — v4's no-profile state — so an unassembled engine answers v4's order and
+/// its 502 through admission's own `embedding-failed` arm. `now_ms` is the
+/// candidate's `anchorTimeMs` (v4 `Date.now()`); `host_zone_fallback` the
+/// memory calendar's host zone.
+///
+/// Success is `{memory, action}` — the 201-vs-200 split rides `action`
+/// (`insert` / `insert-linked` → v4's 201; the dispatch edge has no status).
+/// The 502 is `Internal` + `details.status: 502` (R-H, L-5).
 pub async fn memory_create<P: EmbeddingProvider + Sync>(
     db: &Db,
-    provider: &P,
+    provider: Option<&P>,
     user_id: &str,
+    now_ms: f64,
+    host_zone_fallback: &str,
     bag: Value,
 ) -> Response {
-    let bag: CreateBag = match serde_json::from_value(bag) {
-        Ok(b) => b,
-        Err(e) => return bad_request(format!("Invalid memory body: {e}")),
+    let data = match parse_create_bag(&bag) {
+        Ok(d) => d,
+        Err(_issues) => return bad_request("Validation error"),
     };
-    match character_exists(db, &bag.character_id) {
+    // v4 `route.ts:517-523`: the client's `source` / `skipGate` are stripped by
+    // Zod; their presence is narrated. An absent value is omitted (§R.5) —
+    // `source: null` is present.
+    if let Some(obj) = bag.as_object() {
+        let source = obj.get("source");
+        let skip_gate = obj.get("skipGate");
+        if skip_gate.is_some() || source.is_some_and(|s| s != "MANUAL") {
+            let cid = data.character_id.as_str();
+            const MSG: &str =
+                "[Memories API] Ignoring client-supplied source/skipGate on manual create";
+            match (source.map(field_text), skip_gate.map(field_text)) {
+                (Some(s), Some(k)) => {
+                    tracing::debug!(characterId = cid, source = %s, skipGate = %k, "{MSG}")
+                }
+                (Some(s), None) => tracing::debug!(characterId = cid, source = %s, "{MSG}"),
+                (None, Some(k)) => tracing::debug!(characterId = cid, skipGate = %k, "{MSG}"),
+                (None, None) => {}
+            }
+        }
+    }
+    match character_exists(db, &data.character_id) {
         Ok(true) => {}
         Ok(false) => return not_found("Character"),
         Err(e) => return internal(e),
     }
-    let data = CreateMemoryOptions {
-        character_id: bag.character_id,
-        content: bag.content,
-        summary: bag.summary,
-        keywords: bag.keywords,
-        tags: bag.tags,
-        importance: Some(bag.importance),
-        about_character_id: bag.about_character_id,
-        chat_id: bag.chat_id,
-        project_id: None,
-        source: Some(bag.source),
-        source_message_id: bag.source_message_id,
-        source_message_timestamp: None,
-        witnessed_context: None,
-        // Episodic spine: v4's route createMemorySchema does NOT accept the
-        // episodic fields (8bf3cb5f), so a route create lands with the
-        // defaults — occurredAt/narrativeTime NULL, entities [], kind
-        // 'semantic'. Extraction-path stamping is the processor's job.
-        occurred_at: None,
+    // "Resolve the project: an explicit one must exist; otherwise the source
+    // chat's project (if any) is the memory's, as it is for extracted rows."
+    let mut project_id: Option<String> = None;
+    if let Some(pid) = &data.project_id {
+        match find_project(db, pid) {
+            Ok(Some(id)) => project_id = Some(id),
+            Ok(None) => return not_found("Project"),
+            Err(refusal) => return refusal,
+        }
+    }
+    if let Some(chat_id) = &data.chat_id {
+        let cid = chat_id.clone();
+        let chat = match db.read_main(move |main| chats_read::find_by_id(main, &cid)) {
+            Ok(c) => c,
+            Err(e) => return internal(e),
+        };
+        let Some(chat) = chat else {
+            return not_found("Chat");
+        };
+        if project_id.is_none() {
+            project_id = chat
+                .get("projectId")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+        }
+    }
+
+    // The candidate, in v4's literal order (`route.ts:555-574`).
+    let candidate_json = json!({
+        "content": data.content,
+        "summary": data.summary,
+        "keywords": data.keywords,
+        "targeting": null,
+        "importance": data.importance,
+        "kind": data.kind.as_deref().unwrap_or("semantic"),
+        "when": null,
+        "entities": data.entities.clone().unwrap_or_default(),
+        "tags": data.tags,
+        "subject": {
+            "holderId": data.character_id,
+            "aboutId": data.about_character_id,
+        },
+        "provenance": {
+            "source": "MANUAL",
+            "witnessedContext": "manual",
+            "chatId": data.chat_id,
+            "projectId": project_id,
+            "sourceMessageId": data.source_message_id,
+            "anchorTimeMs": now_ms,
+            "pass": "manual",
+        },
+    });
+    let candidate = match crate::memory_candidate::parse_memory_candidate(&candidate_json) {
+        Ok(c) => c,
+        Err(issues) => {
+            // "The request schema should already have refused anything the
+            // candidate refuses; a gap between the two is still the client's
+            // 400, never a 500." `issues` is the COUNT.
+            tracing::debug!(
+                characterId = %data.character_id,
+                issues = issues.len(),
+                "[Memories API] Manual memory refused by the candidate schema"
+            );
+            return bad_request("Validation error");
+        }
+    };
+    // "A hand-written memory never folds into an extracted row (it is inserted
+    // and linked instead); folded into a MANUAL row or a digest, it raises that
+    // row's importance to the one asked for."
+    let resolved = crate::memory_candidate::ResolvedCandidateTime {
+        occurred_at: data.occurred_at.clone(),
         narrative_time: None,
-        entities: Vec::new(),
-        kind: None,
+        source_message_timestamp: None,
     };
-    let opts = MemoryServiceOptions {
-        user_id: user_id.to_string(),
-        embedding_profile_id: None,
+    let opts = || crate::services::admission::AdmitOptions {
+        user_id,
+        dry_run: false,
+        backfill: false,
+        dry_run_book: None,
+        key_scope: None,
+        host_zone_fallback,
     };
-    let outcome = match create_memory_with_gate(db, provider, &data, &opts).await {
+    let outcome = match provider {
+        Some(p) => {
+            crate::services::admission::admit_candidate(db, p, &candidate, &resolved, opts()).await
+        }
+        None => {
+            crate::services::admission::admit_candidate(
+                db,
+                &crate::model::embedding::NoEmbeddingProvider,
+                &candidate,
+                &resolved,
+                opts(),
+            )
+            .await
+        }
+    };
+    let outcome = match outcome {
         Ok(o) => o,
         Err(e) => return internal(e),
     };
-    // SKIP_EMBEDDING_FAILED → no row written → serverError (v4 parity).
-    if matches!(outcome.action, GateAction::SkipEmbeddingFailed) {
-        return Response::error(
-            ErrorKind::Internal,
-            "Failed to generate embedding for memory — no row was created. Check the configured embedding profile.",
+
+    let Some(memory) = outcome.memory else {
+        // "Nothing was written. Say why: only an embedding failure is the
+        // provider's fault (bug 236)."
+        let reason = match &outcome.action {
+            AdmissionAction::Reject { reason } => reason.as_str(),
+            _ => "unknown",
+        };
+        tracing::debug!(
+            characterId = %data.character_id,
+            reason = reason,
+            "[Memories API] Manual memory not admitted"
         );
-    }
-    let Some(memory_id) = outcome.memory_id else {
-        return internal("memory gate returned no memory id");
+        return match reason {
+            "empty" => bad_request("Memory content and summary must not be blank."),
+            // "A memory without an embedding would be invisible to every future
+            // admission, so none was kept. The edit route answers the same way."
+            "embedding-failed" => bad_gateway(
+                "The memory was not saved because its text could not be embedded. Check the configured embedding profile.",
+            ),
+            _ => Response::error(ErrorKind::Internal, "The memory was not saved."),
+        };
     };
-    // v4 echoes the gate outcome's memory (the created/reinforced row).
-    let reread: Result<Option<Value>, DbError> =
-        db.read_main(move |main| memories_read::find_by_id(main, &memory_id));
-    match reread {
-        Ok(Some(memory)) => Response::Memory(json!({ "memory": memory })),
-        Ok(None) => internal("created memory not found on re-read"),
-        Err(e) => internal(e),
+
+    let inserted = crate::admission::admission_inserted(&outcome.action);
+    let action = outcome.action.kind().as_str();
+    let memory_id = memory
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let project_text = project_id
+        .as_deref()
+        .map(str::to_string)
+        .unwrap_or_else(|| "null".to_string());
+    tracing::debug!(
+        characterId = %data.character_id,
+        memoryId = %memory_id,
+        action = action,
+        inserted = inserted,
+        projectId = %project_text,
+        "[Memories API] Manual memory create resolved"
+    );
+
+    // v4: "Schedule vocabulary refit for BUILTIN profiles (debounced). This
+    // runs in the background and doesn't block the response" —
+    // `scheduleRefit(user.id)`, WARN `[Memories API] Failed to schedule refit`
+    // `{error}` on a rejection. P4.D292's (R-Q); the call here lands with
+    // §S.5 (2).
+
+    // "201 only when a row was created; a reinforcement or near-duplicate
+    // absorption returns 200 with the existing row, and `action` says which."
+    Response::Memory(json!({ "memory": memory, "action": action }))
+}
+
+/// §R.7 `MEMORY_BAD_GATEWAY_AS_INTERNAL` (R-H, L-5): v4's 502 carried as
+/// `Internal` with v4's message and `details: { "status": 502 }` — built by
+/// MUTATING a constructed error, never a `CoreError` literal (§R.10(a)).
+fn bad_gateway(message: impl Into<String>) -> Response {
+    let mut r = Response::error(ErrorKind::Internal, message);
+    if let Response::Error(e) = &mut r {
+        e.details = Some(Box::new(json!({ "status": 502 })));
     }
+    r
 }
 
 // ===========================================================================

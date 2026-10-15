@@ -181947,3 +181947,73 @@ Versions at close: core 0.0.1300, host 0.0.205 (web unchanged — test-only edit
   <verb>` + a non-empty `availableActions` without the verb; v5's half: `serde_json::from_value::<Request>`
   fails `unknown variant \`<type>\`` for `memoryHousekeepPreview` / `memoryHousekeep` / `memoryHousekeepSweep` /
   `memoryHousekeepingConfigGet` / `Set` / `memoryExtractionConcurrencyGet` / `Set`. 15 / 15 hold.
+
+### Unit 13 — the manual create through admission (rebased: none needed — the lane cut from `ADMISSION`)
+
+- **Handler** (`api/memories.rs::memory_create(db, provider: Option<&P>, user_id, now_ms, host_zone_fallback,
+  bag)`): `parse_create_bag` (Zod-faithful `createMemorySchema`, issues in schema order, the house 400 per L-1;
+  `content` / `summary` through `jsstr::js_trim` per L-7) → the DEBUG `Ignoring client-supplied
+  source/skipGate on manual create` (`{characterId, source?, skipGate?}` — an absent value OMITTED, `source:
+  null` present, rendered as JSON) → character 404 → `ProjectsRepository::find_by_id` (404 `Project not
+  found`; a store-unavailable overlay error → the house 503; a failed query → v4's fallback read → 404) →
+  `chats_read::find_by_id` (404 `Chat not found`; `projectId = chat.projectId ?? null` when none named) → the
+  candidate JSON in v4's literal order through `parse_memory_candidate` (refused ⇒ DEBUG `{characterId, issues:
+  <COUNT>}` + 400) → `admit_candidate(db, provider | NoEmbeddingProvider, …, ResolvedCandidateTime {
+  occurred_at, narrative_time: None, source_message_timestamp: None }, AdmitOptions { user_id, dry_run: false,
+  backfill: false, dry_run_book: None, key_scope: None, host_zone_fallback })` (P4.D290's recorded spellings)
+  → no memory ⇒ DEBUG `Manual memory not admitted {characterId, reason}` + `empty` 400 / `embedding-failed`
+  502 (L-5's `bad_gateway`: `Response::error(Internal, …)` then `details = {"status": 502}` by mutation) /
+  500 → else DEBUG `Manual memory create resolved {characterId, memoryId, action, inserted, projectId}` →
+  v4's refit comment (§S.5 (2)) → `{memory, action}`. The arm moved to `ready_db_and_memory_embedding()`
+  (L-2) with `wall_clock_ms()` and `zone_name(display_zone)`. `CreateBag` / `default_source` /
+  `create_memory_with_gate` call / the gate import RETIRED.
+- **L-6:** `ZOD_ISO_DATETIME_OFFSET_PATTERN` + `_JS_PATTERN` + `zod_iso_datetime_offset_ok` +
+  `invalid_datetime_offset` in `api/zod_issues.rs`'s fenced `// === P4.D298: z.iso.datetime({ offset: true })
+  (append-only) ===` region (the compiled pattern from the pin's zod 4.6.5, a unit test pinning the two
+  constants as one pattern). Tier-1 row set `iso_datetime_offset_rows` (15 inputs through the pin's REAL zod
+  — `Z`, `+05:30`, `-08:00`, `-0800`, `+05`, no seconds, a 9-digit fraction, `.Z`, both leap days, `24:00`,
+  `z`, a space, `+24:00`, an expanded year) GREEN. **Measured (the probe ran inside v4's jest):** the route's
+  `createMemorySchema` admits `+05:30`, but v4's memories repository `create` then validates `MemorySchema`,
+  whose `TimestampSchema` is `Z`-only — the ZodError surfaces as the middleware's 400 and nothing is written.
+- **LANE-REMOVE census:** 34 before / 34 after — `create_memory_with_gate` and its types still have
+  P4.D296 / P4.D297 callers (`memory_processor.rs`, `fold_episode_pass.rs`, `memory_watermark_tier3`), so this
+  lane deletes no shim.
+- **Rows (`memories_routes_equivalence`, all from the pin):** `create_insert`, `create_near_duplicate`
+  (re-measured: v4 sends `source: 'AUTO'` → stripped + the DEBUG; the MANUAL candidate is `insert-linked` to
+  `d0`, NOT absorbed — a MANUAL never folds into an AUTO row), `create_manual_trims` (U+00A0 / U+FEFF trimmed,
+  U+0085 KEPT), `create_manual_trims_no_keywords`, `create_blank_after_trim` (Zod's 400), `create_project_
+  derived_from_chat` (a planted `chats.projectId`), `create_missing_project_404`, `create_missing_chat_404`,
+  `create_missing_character_first_404` (the order), `create_kind_occurred_entities`, `create_bad_offset_400`,
+  `create_source_skipgate_stripped` / `_null_logged` / `_manual_silent` (the DEBUG's three shapes),
+  `create_reinforce_200` (a MANUAL twin of MANUAL `a1` → `absorb`, 200), `create_embedding_failed_502` (v4:
+  `jest.doMock` of the embedding service rejecting, re-registered real for every other case; v5: no provider →
+  `NoEmbeddingProvider`; no row written on either side), `create_entities_over_cap_400`. Bodies compared by
+  VALUE (keys sorted) with `id` / `createdAt` / `updatedAt` / `lastReinforcedAt` masked, the 201/200 split
+  checked against `action`, the route's lines (`memoryId` masked), the row delta. All GREEN.
+- **Not run:** `create_project_explicit_wins` — the committed memories pair has no `projects` table / store
+  (projects are store-backed), so no project can exist on either side without a fixture-builder change
+  (P4.D288's pair, §R.3). The explicit-project arm is covered by `create_missing_project_404` (the lookup)
+  and the derived arm; deferred, recorded.
+- **§R.7 `MEMORY_BAD_GATEWAY_AS_INTERNAL` (L-5):** v4 502 + message ⇔ v5 `Internal` + `details.status == 502`
+  + the same message — pinned for `create_embedding_failed_502` (the PUT row joins in unit 14).
+- **Three MEASURED both-ways tables (findings for the unifier — none is this lane's code):**
+  - `CREATE_KEY_ORDER_RESIDUE` — **HANDOFF (P4.D290, `services/admission/apply.rs:43-51`):**
+    `without_embedding` drops the vector with serde_json's `Map::remove`, a `swap_remove` under
+    `preserve_order`, so the LAST key lands in `embedding`'s slot (`updatedAt` on an insert, `lastReinforcedAt`
+    on a fold); v4's row is `MemorySchema` order. Hunk: `m.remove("embedding")` → `m.shift_remove("embedding")`.
+    The create rows compare values strictly and carry the order as a residue that FAILS when it closes.
+  - `OFFSET_OCCURRED_AT_ROW_SCHEMA` — v4 400 (the repository's `MemorySchema` refuses an offset
+    `occurredAt`), v5 201 `insert-linked` (no row-schema validation on P4.D290's `insert_row` / P4.D288's
+    `MemCreate`). For the human: port v4's row validation at the insert, or rule it.
+  - `ADMISSION_SINGLE_TERM_LINK` — "The lamp oil is kept under the third stair." shares exactly one
+    vocabulary term ("kept") with AUTO `f1`; v4 logs `Memory admitted {neighbours: 5, bestCosine: 0,
+    thresholdScale: 'tfidf'}` and inserts, v5 links `f1`. An admission / BUILTIN-vector divergence (P4.D290 /
+    P4.D292). The L-7 trim rows were reworded ("sits" — no vocabulary overlap) so the trim itself is proven.
+- **Census:** `host_zone_sites_census` `api/engine.rs` `&self.inner.config.display_zone` 8 → 9 (the create
+  arm's `zone_name`).
+- **HANDOFF (variant docs, P4.D288's — §R.10(a)):** `api/types.rs` `MemoryCreate`'s doc still reads "the
+  gate-driven create; 201 `{memory}`. Embedding failure → server-error (no row)" → "the manual create through
+  admission; `{memory, action}` (201 ⇔ `insert` / `insert-linked`); `embedding-failed` → `Internal` +
+  `details.status: 502`"; `MemoryCharacterCounts`' "`{success, characters: [{id, name, memoryCount}]}`
+  (memoryCount desc)" → "`{…, hotTotal, demotable, protected, cold}` sorted `demotable` desc then
+  `memoryCount` desc".
