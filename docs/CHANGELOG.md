@@ -84,6 +84,18 @@ New `services::admission` (v4 `lib/memory/admission/` at the `83334b9a5` pin): `
 
 New differential families from the pin: `admission_tier3_equivalence` (44 steps over UTC and Chicago legs, plus tier-1 content-key and key-scope rows) and `update_memory_tier2_equivalence` (12 edits plus the Commonplace mirror); the retired `memory_gate_tier3` family is deleted and its builder renamed `build-admission-fixture.ts`. Census rows: two admission publish sites; the activity-span row re-pointed to `admit_row`. One measured divergence is pinned both ways and flagged: `FIND_BY_IDS_UNVALIDATED` (v4's `findByIds` drops a schema-invalid row; v5's does not).
 
+#### 2026-10-15 — feat(embedding): P4.D292 unit 3 — the EMBEDDING_REFIT handler: the corpus by memory rows, the text-shape stamp, v4's lines
+
+_Versions: core 0.0.1300._
+
+Ports `embedding-refit.ts` at the pin (v4 `4ae0c4ca6`).
+
+- The corpus is now every memory row, enumerated by `findDistinctCharacterIds` in v4's order. The old characters read and its mount-index requirement are gone. A character with no vault is now fitted.
+- Each document is `lexical_embedding_text_for`. The fitted row is stamped `textShapeVersion = 1` (`LEXICAL_TEXT_SHAPE_VERSION`), which is what clears the refit policy's `text-shape` reason.
+- The handler takes the job id and logs v4's lines: start, the non-BUILTIN WARN, corpus gathered, no memories, fitted and saved (`avgDocLength` as `toFixed(2)`), and reindex enqueued.
+- The help-docs read is v4's base `_findAll` fallback. Its WARN fires only inside the strict scope, as in v4.
+- `embedding_refit_tier3`: the seed grew a vault-less character's memory and a version-0 vocabulary row that the refit upserts in place. The case captures the lines and runs three more arms (non-BUILTIN, missing profile, empty corpus). It is green from the pin.
+
 #### 2026-10-15 — feat(host): P4.D292 unit 2 — boot PHASE 3.8 (the TF-IDF refit check) and the refit debounce driver
 
 _Versions: host 0.0.205._

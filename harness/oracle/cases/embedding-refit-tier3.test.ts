@@ -105,7 +105,7 @@ async function main(): Promise<void> {
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  process.env.LOG_LEVEL = 'debug';
 
   jest.resetModules();
   jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
@@ -121,6 +121,29 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/background-jobs/processor', () => {
     const actual = jest.requireActual('@/lib/background-jobs/processor');
     return { __esModule: true, ...actual, ensureProcessorRunning: () => undefined };
+  });
+
+  // P4.D292: the handler's nine lines (v5 emitted none before the lane).
+  const CAPTURED = new Set([
+    '[EmbeddingRefit] Starting vocabulary refit',
+    '[EmbeddingRefit] Profile is not BUILTIN, skipping refit',
+    '[EmbeddingRefit] Corpus gathered',
+    '[EmbeddingRefit] No memories found, skipping refit',
+    '[EmbeddingRefit] Failed to load help docs for corpus, continuing without them',
+    '[EmbeddingRefit] Vocabulary fitted and saved',
+    '[EmbeddingRefit] Enqueued reindex job',
+  ]);
+  const captured: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+  const { logger } = await import('@/lib/logger');
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as { level: string; message: string; context?: Record<string, unknown>; error?: { message?: string } };
+      if (!CAPTURED.has(data.message)) return;
+      const { service: _s, environment: _e, ...fields } = data.context ?? {};
+      if (data.error?.message !== undefined) fields.error = data.error.message;
+      captured.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+    },
   });
 
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
@@ -179,6 +202,29 @@ async function main(): Promise<void> {
         ...(await dumpMain('background_jobs', 'type')),
       })
     );
+    lines.push(JSON.stringify({ case: 'embedding-refit-tier3', kind: 'lines', lines: captured.splice(0) }));
+
+    // P4.D292: the handler's other reachable arms, AFTER the dumps (they write
+    // nothing the dumps compare): a non-BUILTIN profile (WARN, no fit), a
+    // missing profile (the throw), an empty corpus (INFO, no fit).
+    const arms: Array<Record<string, unknown>> = [];
+    const arm = async (name: string, profileId: string) => {
+      let error: string | null = null;
+      try {
+        await handleEmbeddingRefit({ ...job, id: `job-refit-${name}`, payload: { profileId, triggerReindex: true } } as never);
+      } catch (e) {
+        error = e instanceof Error ? e.message : String(e);
+      }
+      arms.push({ name, profileId, error, lines: captured.splice(0) });
+    };
+    await rawQuery(
+      `INSERT INTO "embedding_profiles" ("id","userId","name","provider","modelName","isDefault","createdAt","updatedAt") VALUES ('e2920000-0000-4000-8000-0000000000e2','${spec.userId}','OpenAI','OPENAI','text-embedding-3-small',0,'2020-01-01T00:00:00.000Z','2020-01-01T00:00:00.000Z')`,
+    );
+    await arm('not-builtin', 'e2920000-0000-4000-8000-0000000000e2');
+    await arm('missing', 'e2920000-0000-4000-8000-0000000000ee');
+    await rawQuery('DELETE FROM "memories"');
+    await arm('no-memories', spec.profileId);
+    lines.push(JSON.stringify({ case: 'embedding-refit-tier3', kind: 'arms', arms }));
   } finally {
     global.Date = RealDate;
     await new Promise((resolve) => setTimeout(resolve, 50));

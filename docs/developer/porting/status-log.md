@@ -180993,3 +180993,22 @@ This lane's half (the `builtinRefit` key) is written into the Rust comparand (fe
   `reason=unfitted source=check`, `Host::start` returning before the row lands; then `schedule_refit` on the live
   host fires ≥ 5 s later through the driver (`pending_count` back to 0). `cargo test -p quilltap-host` green whole
   (no boot-order pin disturbed).
+
+### Unit 3 — the EMBEDDING_REFIT handler
+
+- `services/embedding_refit_job.rs`: `handle_embedding_refit(db, job_id, user_id, payload, now_iso)` (the `job_id` is
+  new; `EmbeddingRefitHandler` passes `job.id`); corpus = `find_distinct_character_ids` → `find_by_character_id`
+  per id in that order (the `characters_read::find_by_user_id` read and the mount-index requirement DELETED);
+  documents `lexical_embedding_text_for`; `text_shape_version = LEXICAL_TEXT_SHAPE_VERSION`; v4's lines (8 of the
+  nine — `Failed to get TF-IDF state after fitting` is the `Err` message, no line). The help-docs read goes through
+  `fallback::find_all_strict_aware("help_docs", …)` — v4's base `_findAll` FALLBACK — so the handler's WARN is
+  strict-scope-only, as in v4 (two core unit tests pin both legs). The module doc's "debounce is host-timing (not
+  ported)" premise retired.
+- **`embedding_refit_tier3`** red-first → GREEN from the pin (`recipe_sweep.py --run`): the seed GREW
+  (`embedding-refit-tier3.json` `vaultlessMemories` + `preexistingVocabulary`; builder lines for both — the
+  pre-existing row needed `avgDocLength` / `vocabularySize` > 0 for v4's schema), the case captures the lines
+  (`LOG_LEVEL=debug`) and runs three more arms after its dumps (non-BUILTIN WARN, missing-profile throw, empty
+  corpus INFO); recipe header gained `--testTimeout=180000`. Measured non-vacuous: v4's `Corpus gathered
+  {characters: 3, memories: 5}` (the vault-less character is the third), the pre-existing id kept with
+  `textShapeVersion` 1.
+- Fixture invalidation: `/tmp/qt-refit-main.db` / `-mount.db` are rebuilt by this family's own recipe only.

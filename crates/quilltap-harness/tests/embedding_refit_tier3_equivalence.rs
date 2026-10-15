@@ -14,6 +14,12 @@
 //! profileId, the job's type/status/payload/priority/attempts/maxAttempts/…) is
 //! byte-exact. Corpus/vocabulary order is mathematically irrelevant to the output.
 //!
+//! P4.D292 (v4 `4ae0c4ca6`, pin `83334b9a5`): the corpus is enumerated by
+//! `memories.findDistinctCharacterIds` (the seed grew a vault-less
+//! character's memories, fitted now and missed before), the fitted row is
+//! stamped `textShapeVersion = 1` (the seed grew a version-0 row the refit
+//! upserts IN PLACE), and the handler's lines are captured and compared whole.
+//!
 //! Also runs the W4.8 runner-registration E2E: register the real
 //! `EmbeddingRefitHandler`, enqueue an `EMBEDDING_REFIT` job, pump the runner, and
 //! confirm the vocabulary row lands (dispatch → handle → markCompleted).
@@ -29,7 +35,7 @@
 //!     $N/npx tsx $V5/harness/oracle/fixtures/build-embedding-refit-fixture.ts
 //!   QT_FIXTURE_REFIT_MAIN=/tmp/qt-refit-main.db QT_FIXTURE_REFIT_MOUNT=/tmp/qt-refit-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-refit.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/harness/oracle/cases" -- embedding-refit-tier3
+//!     $N/npx jest --silent --watchman=false --testTimeout=180000 --roots "$PWD" --roots "$TMPO/harness/oracle/cases" -- embedding-refit-tier3
 //! Run:
 //!   QT_ORACLE_REFIT=/tmp/oracle-refit.ndjson \
 //!   QT_FIXTURE_REFIT_MAIN=/tmp/qt-refit-main.db QT_FIXTURE_REFIT_MOUNT=/tmp/qt-refit-mount.db \
@@ -43,6 +49,7 @@ use quilltap_core::services::embedding_refit_job::{
     handle_embedding_refit, EmbeddingRefitHandler, EmbeddingRefitPayload,
 };
 use quilltap_core::services::job_runner::{HandlerRegistry, JobRunner};
+use quilltap_core::test_support::global_capture;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -103,6 +110,43 @@ fn normalize(dump: &mut Value, table: &str) -> Vec<Vec<f64>> {
         }
     }
     idfs
+}
+
+/// v4's captured lines as `LEVEL message k=v …` (P4.D292).
+fn render_want(lines: &Value) -> Vec<String> {
+    lines
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| {
+            let mut out = format!(
+                "{} {}",
+                l["level"].as_str().unwrap().to_uppercase(),
+                l["message"].as_str().unwrap()
+            );
+            for (k, v) in l["fields"].as_object().unwrap() {
+                match v {
+                    Value::String(s) => out.push_str(&format!(" {k}={s}")),
+                    other => out.push_str(&format!(" {k}={other}")),
+                }
+            }
+            out
+        })
+        .collect()
+}
+
+/// v5's `[EmbeddingRefit]` lines minus their target (P4.D292).
+fn render_got(lines: Vec<String>) -> Vec<String> {
+    lines
+        .into_iter()
+        .filter(|l| l.contains("[EmbeddingRefit]"))
+        .map(|l| {
+            let mut parts = l.splitn(3, ' ');
+            let level = parts.next().unwrap().to_string();
+            let _target = parts.next();
+            format!("{level} {}", parts.next().unwrap_or_default())
+        })
+        .collect()
 }
 
 /// Strip the oracle's extra `case` field so the shape matches the Rust dump.
@@ -204,9 +248,82 @@ async fn embedding_refit_tier3_matches_oracle() {
         profile_id: spec.profile_id.clone(),
         trigger_reindex: true,
     };
-    handle_embedding_refit(&db, &spec.user_id, &payload, FROZEN_ISO)
-        .await
-        .expect("refit handler");
+    // P4.D292: the job id is v4's case's (`job-refit-0001`) — every line carries it.
+    global_capture::install();
+    let (outcome, lines) = global_capture::capture_async(handle_embedding_refit(
+        &db,
+        "job-refit-0001",
+        &spec.user_id,
+        &payload,
+        FROZEN_ISO,
+    ))
+    .await;
+    outcome.expect("refit handler");
+
+    // P4.D292: v4's nine lines (those this corpus reaches), whole and in order.
+    let want_lines = render_want(
+        &oracle_text
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .find(|v| v.get("kind").and_then(Value::as_str) == Some("lines"))
+            .expect("the oracle's lines record")["lines"],
+    );
+    let got_lines = render_got(lines);
+    assert_eq!(got_lines, want_lines, "the handler's lines diverged");
+
+    // P4.D292: the other reachable arms, in v4's order on the same DB, after the
+    // dumps above (the case runs them after its dumps too).
+    let arms = oracle_text
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .find(|v| v.get("kind").and_then(Value::as_str) == Some("arms"))
+        .expect("the oracle's arms record");
+    for arm in arms["arms"].as_array().unwrap() {
+        let name = arm["name"].as_str().unwrap();
+        if name == "not-builtin" {
+            db.write(|ws| {
+                ws.main().connection().execute_batch(
+                    r#"INSERT INTO "embedding_profiles" ("id","userId","name","provider","modelName","isDefault","createdAt","updatedAt") VALUES ('e2920000-0000-4000-8000-0000000000e2','a0000000-0000-4000-8000-000000000abc','OpenAI','OPENAI','text-embedding-3-small',0,'2020-01-01T00:00:00.000Z','2020-01-01T00:00:00.000Z')"#,
+                )?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        }
+        if name == "no-memories" {
+            db.write(|ws| {
+                Ok(ws
+                    .main()
+                    .connection()
+                    .execute_batch(r#"DELETE FROM "memories""#)?)
+            })
+            .await
+            .unwrap();
+        }
+        let payload = EmbeddingRefitPayload {
+            profile_id: arm["profileId"].as_str().unwrap().to_string(),
+            trigger_reindex: true,
+        };
+        let job_id = format!("job-refit-{name}");
+        let (outcome, lines) = global_capture::capture_async(handle_embedding_refit(
+            &db,
+            &job_id,
+            &spec.user_id,
+            &payload,
+            FROZEN_ISO,
+        ))
+        .await;
+        assert_eq!(
+            outcome.err().as_deref(),
+            arm["error"].as_str(),
+            "{name}: the outcome"
+        );
+        assert_eq!(
+            render_got(lines),
+            render_want(&arm["lines"]),
+            "{name}: the arm's lines diverged"
+        );
+    }
 
     for table in ["tfidf_vocabularies", "background_jobs"] {
         let order_by = if table == "tfidf_vocabularies" {

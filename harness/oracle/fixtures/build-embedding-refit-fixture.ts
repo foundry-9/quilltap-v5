@@ -32,6 +32,8 @@ interface Spec {
   profileId: string;
   characters: Array<Record<string, unknown>>;
   memories: Array<{ character: string; summary: string; content: string }>;
+  vaultlessMemories: Array<{ characterId: string; summary: string; content: string }>;
+  preexistingVocabulary: { id: string; fittedAt: string; createdAt: string };
   helpDocs: Array<{ title: string; path: string; url: string; content: string }>;
 }
 
@@ -162,6 +164,31 @@ async function main(): Promise<void> {
     } as never);
   }
 
+  // P4.D292: memories of a character with NO row and NO vault — enumerated by
+  // `findDistinctCharacterIds` at the pin, missed by the pre-span characters read.
+  for (const m of spec.vaultlessMemories) {
+    await repos.memories.create({
+      characterId: m.characterId,
+      aboutCharacterId: null,
+      chatId: null,
+      projectId: null,
+      content: m.content,
+      summary: m.summary,
+      keywords: [],
+      tags: [],
+      importance: 0.5,
+      embedding: null,
+      source: 'AUTO',
+      witnessedContext: null,
+      sourceMessageId: null,
+      lastAccessedAt: null,
+      reinforcementCount: 1,
+      lastReinforcedAt: null,
+      relatedMemoryIds: [],
+      reinforcedImportance: 0.5,
+    } as never);
+  }
+
   // Help docs.
   for (const d of spec.helpDocs) {
     await repos.helpDocs.create({
@@ -201,12 +228,33 @@ async function main(): Promise<void> {
   await ensureCollection('background_jobs', BackgroundJobSchema);
   await ensureCollection('tfidf_vocabularies', TfidfVocabularySchema);
 
+  // P4.D292: a vocabulary fitted on the anchored text shape (textShapeVersion
+  // omitted → v4's Zod default 0) — the refit upserts it in place and stamps 1.
+  await repos.tfidfVocabularies.create(
+    {
+      profileId: spec.profileId,
+      userId: spec.userId,
+      vocabulary: '[["lantern",0]]',
+      idf: '[1.5]',
+      avgDocLength: 3.5,
+      vocabularySize: 1,
+      includeBigrams: true,
+      fittedAt: spec.preexistingVocabulary.fittedAt,
+    } as never,
+    {
+      id: spec.preexistingVocabulary.id,
+      createdAt: spec.preexistingVocabulary.createdAt,
+      updatedAt: spec.preexistingVocabulary.createdAt,
+    }
+  );
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
   process.stderr.write(
     `built embedding-refit fixture: main=${mainOut} mount=${mountOut} ` +
-      `(${spec.characters.length} chars, ${spec.memories.length} memories, ${spec.helpDocs.length} help docs)\n`
+      `(${spec.characters.length} chars, ${spec.memories.length + spec.vaultlessMemories.length} memories, ` +
+      `${spec.helpDocs.length} help docs, 1 pre-existing vocabulary)\n`
   );
   process.exit(0);
 }

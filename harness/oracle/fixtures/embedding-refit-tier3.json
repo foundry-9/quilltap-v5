@@ -27,7 +27,14 @@
     "counts, sum/count avg), so cross-side iteration order cannot diverge the output.",
     "",
     "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (shared with the other",
-    "tier-2 fixtures); it protects nothing real."
+    "tier-2 fixtures); it protects nothing real.",
+    "",
+    "P4.D292 (v4 `4ae0c4ca6`, pin `83334b9a5`) GREW the seed: `vaultlessMemories` are",
+    "memories whose characterId has NO character row and NO vault — v4 now enumerates",
+    "the corpus by `memories.findDistinctCharacterIds`, so they are fitted (the pre-span",
+    "characters read missed them); `preexistingVocabulary` is a row at textShapeVersion",
+    "0 (the anchored shape) that the refit upserts IN PLACE and stamps to",
+    "LEXICAL_TEXT_SHAPE_VERSION (1). The case also captures the handler's nine lines."
   ],
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "frozenDate": "2026-07-07T12:00:00.000Z",
@@ -43,7 +50,11 @@
       "title": "the diviner",
       "firstMessage": "Mind the gears, traveller.",
       "talkativeness": 0.6,
-      "pronouns": { "subject": "she", "object": "her", "possessive": "hers" },
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "hers"
+      },
       "controlledBy": "llm"
     },
     {
@@ -55,7 +66,11 @@
       "title": "the cartographer",
       "firstMessage": "Ah, another crossroads.",
       "talkativeness": 0.5,
-      "pronouns": { "subject": "he", "object": "him", "possessive": "his" },
+      "pronouns": {
+        "subject": "he",
+        "object": "him",
+        "possessive": "his"
+      },
       "controlledBy": "llm"
     }
   ],
@@ -88,5 +103,17 @@
       "url": "/help/salon",
       "content": "The Salon lets characters converse. Add participants and begin the conversation to explore the story together."
     }
-  ]
+  ],
+  "vaultlessMemories": [
+    {
+      "characterId": "e2920000-0000-4000-8000-0000000000d9",
+      "summary": "The lighthouse keeper logs every ship.",
+      "content": "Each night the keeper records the passing ships and the colour of their lanterns."
+    }
+  ],
+  "preexistingVocabulary": {
+    "id": "e2920000-0000-4000-8000-0000000000d1",
+    "fittedAt": "2020-01-01T00:00:00.000Z",
+    "createdAt": "2020-01-01T00:00:00.000Z"
+  }
 }
