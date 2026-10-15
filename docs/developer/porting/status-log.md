@@ -181137,3 +181137,80 @@ This lane's half (the `builtinRefit` key) is written into the Rust comparand (fe
   5. `crates/quilltap-core/src/services/embedding_refit_job.rs:172` — `let mut vectorizer = TfIdfVectorizer::new(true);`
      (no `getTfIdfVectorizer` dynamic import — its ERROR / throw NO-PORT too).
   Plus the behavioural probe above. 💸 dogfood: the same on a fresh `setup` instance by hand.
+
+### Mutation proofs (Tier 2 #18) — `/tmp/p4d292/mutate.py`, each applied, its families run, reverted by `git checkout`
+
+Baseline green. **18 / 20 RED by named row:** M1 empty `fittedAt` not falsy (105 tier-1 rows + `unfitted_empty_fitted_at`);
+M2 `<` → `<=` text-shape (21 tier-1 rows, `current_*_one`); M3 drift `>=` → `>` (14 tier-1, `drift_exactly_at_the_bar`);
+M4 no nothing-to-fit hold (`unfitted_nothing_to_fit`); M5 forced held by PROCESSING (`forced_past_processing_reindex`);
+M6 check ignores the provider (`neural_default`, `maintenance_neural_default`); M7 no debounce re-arm
+(`three_calls_collapse_to_one_check`); M8 unforced clears forced (`forced_then_unforced_stays_forced`); M9 scheduler
+takes a neural profile (`neural_and_missing_profiles_schedule_nothing`); M10 step 10 drops the result
+(`maintenance_builtin_drift`); M11 refit stamps 0 (`embedding_refit_tier3` dump); M12 refit corpus skips the
+vault-less character (the `Corpus gathered` line + dump); M13 EMBEDDING_GENERATE plain concat (`embedding_generate_jobs`
+sequence — the anchored permanent failure no longer fires); M14 no `lexical_text` (`embedding_text_shape` job calls);
+M15 reconcile INFO on a clean corpus (`clean_corpus_debug_only`); M16 backfill WARN without the id; M17 rebuild
+`failed = 0`; M19 optimizer without the salience sort (`character_optimizer_tier3`). **2 EQUIVALENT mutants, recorded:**
+M18 (the backfill's `Object(o) => o.is_empty()` arm → `false`): a zero-length blob hydrates as a NULL embedding through
+`memories_read`, so the `_ => true` arm already carries it — the zero-length row stays covered (it IS backfilled in the
+family); M20 (optimizer `hot_only: false`): the tier filter after the semantic branch drops the cold row too (v4 has both
+filters); the hot filter is observable only when cold rows crowd the top 500 — not reachable on this corpus.
+
+### Lane close
+
+- **HANDOFFs (every one):**
+  1. `crates/quilltap-core/src/db/memories_read.rs:1421` (P4.D288) — `count_corpus_since`'s `Some(s) =>` →
+     `Some(s) if !s.is_empty() =>` (unit 1).
+  2. `crates/quilltap-core/src/api/memories.rs` (P4.D298; §S.5 (2)) — manual create, after the admission write
+     (v4 `route.ts:627-633`): `if let Err(e) = crate::services::embedding_job_scheduler::schedule_refit(db, user_id,
+     None, false, crate::clock::now_unix_ms()).await { tracing::warn!(error = %crate::db::fallback::error_text(&e),
+     "[Memories API] Failed to schedule refit"); }`; the doc comments at `:594` / `:659` ("host-timing seam") retired.
+  3. Same file, item PUT after the update (v4 `[id]/route.ts:131-137`): the same call + WARN `[Memories API v1] Failed
+     to schedule refit after update {memoryId, error}`.
+  4. Same file, item DELETE after the retire (v4 `[id]/route.ts:167-181`, in v4's order): `handle_entity_deletion(db,
+     "MEMORY", memory_id)` + WARN `[Memories API v1] Failed to handle entity deletion {memoryId, error}`, then the
+     refit call + WARN `[Memories API v1] Failed to schedule refit after delete {memoryId, error}` (L-12, Tier 2 #16).
+  5. `crates/quilltap-core/src/api/system_qtap.rs` (the import's async caller, AFTER `execute_import`'s `Db::write`
+     returns; §S.5 (2)) + `services/quilltap_import/mod.rs:1262-1285` (P4.D294's — the P4.D62 deferral comment and its
+     DEBUG deleted): when the import wrote memories and the user's default profile (`find_default(user)`) is BUILTIN —
+     `schedule_refit(db, user_id, Some(&profile.id), true, now)` + WARN `Failed to schedule vocabulary refit after
+     import {userId, profileId, error}` (v4 `execute.ts:403-415`).
+  6. `api/memories.rs` (P4.D298; §S.5 (3)) — the backfill pair re-point, the two shims' deletion, and the harness
+     route call (unit 7's record).
+- **Ruled / recorded divergences:** none new. Observations: the shared `guard_skip` / `catch_arm` lines of
+  `embedding_generate_job.rs` keep snake_case keys without `context` / `jobId` (pre-existing, all four branches;
+  candidate follow-up); `enqueue_embedding_generate_many` has no `options` parameter (v4's
+  `priority` / `maxAttempts` / `scheduledAt` overrides — no caller at the pin passes them; C1 frozen);
+  `Upserted memory vectors` fires inside the writer closure (P4.D288's, unit 4).
+- **STOP-and-flag (one family):** `maintenance_ops_tier2` — its shared builder is dead at the pin (unit 0's record);
+  this lane's `builtinRefit` comparand is written, the regen waits on P4.D288 / the unifier re-aiming
+  `build-maintenance-ops-fixture.ts:146` off the retired `MEMORY_HOUSEKEEPING` type.
+- **Tier 3 (recorded, no code):** #20 the debounce without a host (CLI direct mode, unit tests) never fires — v4's
+  `setTimeout` dies with its process the same way; #21 NO-PORTs for P4.D303: bug 243 (evidence above), bug 235's
+  `processSingleton` (the debounce table, the forced flags, `refitChain` — Rust statics are process-wide), the
+  `getTfIdfVectorizer` dynamic import + its ERROR / throw, `instrumentation.ts`'s `Failed to import the TF-IDF refit
+  check` WARN, the job child's `memoryIndex.reload` / `indexInserted` plumbing, the reapply's `Failed to drop the
+  memory index caches` WARN; #22 the anchor probe's neural path is P4.D290's (not measured here).
+- **§R.13(e) by name from the pin:** GREEN — `embedding_refit_tier3`, `embedding_generate_jobs`, `embedding_reapply`,
+  `tfidf_vocabulary_tier2`, `tfidf_vocabulary_upsert_tier2`, `embedding_provider_tier3`, `embedding_status_tier2`,
+  `character_optimizer_tier3`, NEW `builtin_refit_policy_equivalence`, `embedding_text_shape_equivalence`,
+  `embedding_dimension_reconcile_equivalence`, `memory_index_backfill_equivalence`, `lexical_text_writers_guard`;
+  `embedding_remainder` green bar P4.D296's queue-memories rows (by row); `maintenance_ops_tier2` STOPPED (builder).
+- **Gate** (`CARGO_INCREMENTAL=0`, `QT_V4_CHECKOUT` / `QT_V4_ROOT` = the pin): `cargo fmt --all --check` clean;
+  clippy `--workspace --all-targets -D warnings` AND `--features quilltap-core/native-transport` clean;
+  `cargo test --workspace --no-fail-fast` — **788 binaries / 5,178 passed / 4 failed / 3 ignored, zero `SKIP:`**; the
+  four reds are exactly the red-by-design set (`cli_differential` → P4.D299; `qtap_schema_embed_guard` → P4.D294;
+  `no_memory_lane_remove_markers_left` ×2 — now also counting this lane's two `LANE-REMOVE(P4.D298)` shims); the two
+  `TZ=UTC` families run apart: `embedding_generate_jobs` ok, `embedding_remainder` red only on P4.D296's rows;
+  `recipe_sweep.py --self-test` exit 0. (Per-commit gates were fmt + clippy + the touched crates' tests + the unit's
+  families; the full workspace gate ran once at close.)
+- **💸 for the dogfood pass:** the order's list stands — first boot of a Friday copy (read the default embedding
+  provider FIRST: BUILTIN at `textShapeVersion` 0 → ONE `text-shape` refit + full reindex; at 1 → `Assessed …
+  reason=null`, no job; neural → nothing); a manual create on BUILTIN after the union's HANDOFFs (the debounce DEBUG,
+  then `Refit not needed` 5 s later; a burst of 30 → ONE `drift` refit); a `.qtap` import → a FORCED refit 5 s later; a
+  neural EMBEDDING_GENERATE on an anchored memory (the `Built memory embedding text` length > lexical); the DATA pass's
+  `builtinRefitJson`; the bug-243 probe on a fresh `setup` instance; the character optimizer on a character with cold
+  digests.
+- **v4 moved:** `7458ff94e` (15 commits past `01f508d4e`, incl. `2432b9057 release: 4.10.0`) observed 2026-10-14
+  23:38 local; bugfix `489b228b6`. Not ported (the pin rule).
+- **Versions at close:** core 0.0.1304, host 0.0.206 (harness frozen 0.0.1110; web / cli / tauri / SPA untouched).

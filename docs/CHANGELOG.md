@@ -84,6 +84,14 @@ New `services::admission` (v4 `lib/memory/admission/` at the `83334b9a5` pin): `
 
 New differential families from the pin: `admission_tier3_equivalence` (44 steps over UTC and Chicago legs, plus tier-1 content-key and key-scope rows) and `update_memory_tier2_equivalence` (12 edits plus the Commonplace mirror); the retired `memory_gate_tier3` family is deleted and its builder renamed `build-admission-fixture.ts`. Census rows: two admission publish sites; the activity-span row re-pointed to `admit_row`. One measured divergence is pinned both ways and flagged: `FIND_BY_IDS_UNVALIDATED` (v4's `findByIds` drops a schema-invalid row; v5's does not).
 
+#### 2026-10-15 — docs(porting): P4.D292 lane close — the lane record, the mutation table, the HANDOFFs
+
+_Docs-only change._
+
+- P4.D292's lane record in `status-log.md` covers 18 of 20 mutations red, plus the two equivalent mutants and why they're equivalent.
+- It also records every HANDOFF hunk, the bug-243 NO-PORT evidence, the `maintenance_ops_tier2` builder flag, and the gate: 788 binaries, 5,178 passed, 4 red-by-design failures, zero skips.
+- The order's status header now reads LANE COMPLETE.
+
 #### 2026-10-15 — test: P4.D292 Tier 2 — the lexical-text writers guard and the bug-243 boot probe
 
 _No crate versions bumped._
