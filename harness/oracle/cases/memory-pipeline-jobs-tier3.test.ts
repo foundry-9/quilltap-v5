@@ -29,8 +29,8 @@
  *     points at a fresh scratch DB. The rows land as `{kind:"llmlogs"}` and the
  *     Rust side diffs them against a per-case `with_logging` executor (the
  *     spine's per-job construction).
- *   - `getMemoryExtractionLimits` → the corpus limits (the Rust port injects the
- *     same value).
+ *   - (P4.D296) the corpus limits ride the fixture's `instance_settings` row,
+ *     read by both sides' settings resolver — no mock.
  *   - `estimateMessageCost` → `{ cost: null }` (matching the Rust side's canned
  *     `None` — the pricing cascade is host-resolved and separately verified).
  *   - `ensureProcessorRunning` → no-op (the chained CHAT_DANGER_CLASSIFICATION
@@ -280,14 +280,8 @@ async function main(): Promise<void> {
       },
     };
   });
-  jest.doMock('@/lib/instance-settings', () => {
-    const actual = jest.requireActual('@/lib/instance-settings');
-    return {
-      __esModule: true,
-      ...actual,
-      getMemoryExtractionLimits: async () => spec.memoryExtractionLimits,
-    };
-  });
+  // P4.D296: no limits mock — the fixture's `instance_settings` row carries the
+  // corpus limits, which both sides' settings resolver reads.
   jest.doMock('@/lib/services/cost-estimation.service', () => {
     const actual = jest.requireActual('@/lib/services/cost-estimation.service');
     return {
@@ -342,10 +336,7 @@ async function main(): Promise<void> {
   const { setMemoryExtractionModeSettings } = await import('@/lib/instance-settings');
   for (const call of spec.csCases) {
     if (call.memoryExtractionMode) {
-      // The builder-built fixture has no `instance_settings` table (measured:
-      // v4's `writeSetting` throws `no such table`); the plant creates it with
-      // `fresh_schema.json`'s DDL — the Rust side does the same.
-      await rawQuery('CREATE TABLE IF NOT EXISTS "instance_settings" (\n  "key" TEXT PRIMARY KEY,\n  "value" TEXT NOT NULL\n)');
+      // The builder creates `instance_settings` (P4.D296).
       await setMemoryExtractionModeSettings(call.memoryExtractionMode as never);
     }
     const job = {
@@ -387,10 +378,9 @@ async function main(): Promise<void> {
   };
 
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('memories', 'content')) }));
-  lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('vector_indices', 'id')) }));
-  lines.push(
-    JSON.stringify({ kind: 'table', ...(await dumpTable('vector_entries', 'embedding')) })
-  );
+  // P4.D296: no `vector_indices` / `vector_entries` — at the pin a memory's
+  // vector rides in its own row (`memories.embedding`, admission's `apply.ts`),
+  // so the `memories` dump carries it.
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_messages', 'content')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chats', 'id')) }));
   lines.push(

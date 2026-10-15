@@ -69,10 +69,9 @@ use serde_json::{json, Value};
 use crate::chat_predicates::is_help_like_chat_type;
 use crate::cheap_llm::{
     get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, CheapLlmConfig,
-    CheapLlmProfile, CheapLlmSelection, UncensoredFallbackOptions,
+    CheapLlmProfile, CheapLlmSelection,
 };
 use crate::clock::now_iso;
-use crate::context_budget::resolve_max_tokens;
 use crate::context_summary::{
     calculate_interchange_count, evaluate_summarization_gate, partition_messages_into_turns,
     should_check_title_at_interchange, FoldedTurn, InterchangeMessage, PartitionInputMessage,
@@ -97,13 +96,7 @@ use crate::services::conversation_summary_vault_bridge::{
     compute_conversation_stats, write_conversation_summary_to_vaults, WriteConversationSummaryInput,
 };
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
-use crate::services::dangerous_content::resolver::{
-    resolve_concierge_settings, ResolvedConciergePolicy,
-};
-use crate::services::fold_episode_pass::{
-    run_fold_episode_pass, FoldWindowMessage, RunFoldEpisodePassInput,
-};
-use crate::services::fold_other_pass::RunFoldOtherPassInput;
+use crate::services::dangerous_content::resolver::ResolvedConciergePolicy;
 use crate::services::queue_service;
 
 use std::collections::HashMap;
@@ -258,111 +251,125 @@ pub trait ContextSummarySeams {
         provider: Option<&str>,
         model: Option<&str>,
     ) -> impl std::future::Future<Output = ()> + Send;
-    /// `runFoldEpisodePass` — the fold-time episode consolidation (episodic
-    /// spine). A seam rather than an inline call because the pass writes through
-    /// the memory gate and therefore needs an [`EmbeddingProvider`], which the
-    /// fold itself does not carry.
-    fn run_fold_episode_pass(
+    /// v4 `context-summary.ts:552-574` — BOTH fold memory passes (the episode
+    /// pass, then the fold-grain OTHER pass) on ONE extraction context. A seam
+    /// rather than an inline call because the passes admit through admission
+    /// and therefore need an [`EmbeddingProvider`], which the fold itself does
+    /// not carry. Best-effort: never fails the fold.
+    fn run_fold_memory_passes(
         &self,
-        input: RunFoldEpisodePassInput,
-        selection: CheapLlmSelection,
-    ) -> impl std::future::Future<Output = ()> + Send;
-    /// `runFoldOtherPass` (v4 `d58548051`) — the fold-grain OTHER pass over
-    /// the same just-folded window, after the episode pass. A seam for the
-    /// same reason (it writes through the gate). v4 wraps the call in a
-    /// `try` whose catch logs `[Context Summary] Fold OTHER pass failed:` —
-    /// unreachable (the pass never throws, and the two reads before it are a
-    /// fallback read and a pure resolver; P4.D270 R-G), so no seam has a
-    /// failure arm.
-    fn run_fold_other_pass(
-        &self,
-        input: FoldOtherHookInput,
-        selection: CheapLlmSelection,
+        input: FoldMemoryPassesInput,
     ) -> impl std::future::Future<Output = ()> + Send;
 }
 
-/// What the fold hands the fold-grain OTHER pass (v4 `context-summary.ts:
-/// 569-594`): the folded window's RAW rows (incl. `type` / `systemSender`, so
-/// the pass's eligibility filter reads what v4's reads), the chat row the fold
-/// already holds (the Concierge resolution reads it), and the fold's fresh
-/// summary as the orienting context. No project description and no
-/// cover-through id — v4 passes neither from the fold.
+/// What the fold hands its memory passes (v4 `context-summary.ts:552-574`):
+/// the chat row the fold already holds, the transcript it already read (the
+/// cursors are placed against it), the folded turns' RAW rows (the passes'
+/// eligibility filter reads `type` / `systemSender` as v4's does), the unit's
+/// connection profile, and the fold's fresh summary as the orienting context
+/// (`chatContextSummary: newSummary`). The passes resolve their OWN cheap-LLM
+/// route from the context (the default cheap profile honoured — L-1), never
+/// the summary's selection.
 #[derive(Clone, Debug)]
-pub struct FoldOtherHookInput {
+pub struct FoldMemoryPassesInput {
     pub chat_id: String,
     pub user_id: String,
     pub chat: Value,
+    pub fold_transcript: Vec<Value>,
     pub window_messages: Vec<Value>,
-    /// v4 `resolveMaxTokens(connectionProfile)`.
-    pub cheap_max_tokens: i64,
-    pub available_profiles: Vec<CheapLlmProfile>,
-    /// v4 `chat.timelineMode ?? 'realtime'`.
-    pub timeline_mode: String,
-    pub project_id: Option<String>,
-    pub in_autonomous_room: bool,
-    /// The fold's `newSummary`.
-    pub chat_context_summary: Option<String>,
+    pub connection_profile: Value,
+    pub chat_context_summary: String,
 }
 
-/// The LIVE fold hook both real seams share: resolve the chat's Concierge
-/// policy (v4 `resolveConciergeSettings(chatSettings.findByUserId(userId),
-/// chat)` — resolved ALWAYS, not only for an unmoderated chat), build the
-/// uncensored fallback (v4 `availableProfiles ? {…} : undefined` — the list is
-/// always an array, so always set), and run the pass. The result is discarded,
-/// and its usage is NOT folded into the summary's cost event (v4's isn't).
-async fn run_fold_other_hook<C: CompletionProvider, E: EmbeddingProvider>(
+/// The LIVE fold hook every real seam shares: ONE `build_extraction_context`
+/// (v4 `buildExtractionContext(chatId, userId, { chat, messages:
+/// foldTranscript, connectionProfile, chatContextSummary: newSummary })`),
+/// then `run_fold_pass('episode-fold')`, then `run_fold_pass('other-fold')`.
+/// The passes never fail; a context build that does logs v4's ONE ERROR
+/// `[Context Summary] Fold memory passes failed:` `{chatId}` + the error.
+/// Not a backfill — the rate limit applies to the fold. `key_scope` is the
+/// running job attempt's (L-16; `None` on the request path).
+async fn run_fold_memory_passes_live<C, E>(
     db: &Db,
     completion: &C,
     embedding: &E,
     executor: &CheapLlmTaskExecutor,
-    input: FoldOtherHookInput,
-    selection: CheapLlmSelection,
-) {
-    // v4 `findByUserId` is a FALLBACK `safeQuery`: a failed read logs its
-    // ERROR and answers `null` — it never aborts the hook.
-    let chat_settings =
-        match db.read_main(|c| crate::db::chat_settings::find_by_user_id(c, &input.user_id)) {
-            Ok(row) => row,
-            Err(e) => {
-                tracing::error!(
-                    target: "quilltap::db",
-                    collection = "chat_settings",
-                    userId = %input.user_id,
-                    error = %crate::db::fallback::error_text(&e),
-                    "Error finding chat settings by user ID"
-                );
-                None
-            }
-        };
-    let policy = resolve_concierge_settings(chat_settings.as_ref(), Some(&input.chat));
-    let fallback = UncensoredFallbackOptions {
-        concierge_policy: &policy,
-        available_profiles: &input.available_profiles,
-        is_dangerous_chat: None,
+    input: FoldMemoryPassesInput,
+    host_zone_fallback: &str,
+    key_scope: Option<crate::services::admission::AdmissionKeyScope>,
+) where
+    C: CompletionProvider,
+    E: EmbeddingProvider + Sync,
+{
+    use crate::services::extraction::context::{
+        build_extraction_context, BuildExtractionContextOptions,
     };
-    let _ = crate::services::fold_other_pass::run_fold_other_pass(
+    use crate::services::extraction::fold::{run_fold_pass, RunFoldInput};
+    let built = build_extraction_context(
         db,
+        &input.chat_id,
+        &input.user_id,
+        BuildExtractionContextOptions {
+            chat: Some(input.chat),
+            messages: Some(input.fold_transcript),
+            connection_profile: Some(input.connection_profile),
+            chat_context_summary: Some(Some(input.chat_context_summary)),
+            key_scope,
+            host_zone_fallback: host_zone_fallback.to_string(),
+            ..Default::default()
+        },
+    );
+    let ctx = match built {
+        Ok(ctx) => ctx,
+        Err(e) => {
+            tracing::error!(
+                chatId = %input.chat_id,
+                error = %e.message(),
+                "[Context Summary] Fold memory passes failed:"
+            );
+            return;
+        }
+    };
+    let deps = crate::services::extraction::run::ExtractionDeps {
         completion,
         embedding,
         executor,
-        &selection,
-        Some(&fallback),
-        &RunFoldOtherPassInput {
-            chat_id: input.chat_id,
-            user_id: input.user_id,
+    };
+    // Episodic spine: 0–2 dated episode records over the folded window, linked
+    // to the window's per-turn fragments.
+    run_fold_pass(
+        &deps,
+        &ctx,
+        crate::services::extraction::fold::EPISODE_FOLD_PASS,
+        RunFoldInput {
+            window_messages: input.window_messages.clone(),
+            ..Default::default()
+        },
+    )
+    .await;
+    // What each present character took away about the others across the
+    // folded window, each thread stated once ('fold' and 'hybrid' modes).
+    run_fold_pass(
+        &deps,
+        &ctx,
+        crate::services::extraction::fold::OTHER_FOLD_PASS,
+        RunFoldInput {
             window_messages: input.window_messages,
-            cheap_max_tokens: Some(input.cheap_max_tokens),
-            timeline_mode: input.timeline_mode,
-            project_id: input.project_id,
-            in_autonomous_room: input.in_autonomous_room,
-            project_description: None,
-            chat_context_summary: input.chat_context_summary,
-            cover_through_message_id: None,
-            dry_run: false,
+            ..Default::default()
         },
     )
     .await;
 }
+
+/// The memory-calendar host fallback of the in-loop fold
+/// ([`FoldEpisodePassSeams`]): its four constructors (the orchestrator, the
+/// Courier, the help chat and the enclave step — files outside this lane)
+/// carry no host zone yet, so the memory zone there is the instance zone,
+/// else UTC (v4 falls back to `QUILLTAP_TIMEZONE`, then the system zone).
+/// RECORDED DIVERGENCE + HANDOFF (work order P4.D296 lane record): give
+/// `FoldEpisodePassSeams` the host's calendar name and pass it from the four
+/// constructors.
+const IN_LOOP_FOLD_ZONE_FALLBACK: &str = "UTC";
 
 /// The default no-op seams (matches the oracle's mocks).
 #[derive(Clone, Copy, Debug, Default)]
@@ -387,14 +394,7 @@ impl ContextSummarySeams for NoopSeams {
         _model: Option<&str>,
     ) {
     }
-    async fn run_fold_episode_pass(
-        &self,
-        _input: RunFoldEpisodePassInput,
-        _selection: CheapLlmSelection,
-    ) {
-    }
-    async fn run_fold_other_pass(&self, _input: FoldOtherHookInput, _selection: CheapLlmSelection) {
-    }
+    async fn run_fold_memory_passes(&self, _input: FoldMemoryPassesInput) {}
 }
 
 /// The in-loop summary-check seams (the orchestrator's `run_summary_check`):
@@ -437,33 +437,17 @@ impl<C: CompletionProvider + Sync, E: EmbeddingProvider + Sync> ContextSummarySe
         _model: Option<&str>,
     ) {
     }
-    async fn run_fold_episode_pass(
-        &self,
-        input: RunFoldEpisodePassInput,
-        selection: CheapLlmSelection,
-    ) {
-        // Best-effort, as in v4 — the pass swallows its own failures.
-        let _ = run_fold_episode_pass(
-            self.db,
-            self.completion,
-            self.embedding,
-            self.executor,
-            &selection,
-            &input,
-        )
-        .await;
-    }
-
-    async fn run_fold_other_pass(&self, input: FoldOtherHookInput, selection: CheapLlmSelection) {
-        // v4 `runFoldOtherPass` — LIVE (the summary-check oracles do not mock
-        // it). Best-effort — the pass swallows its own failures.
-        run_fold_other_hook(
+    async fn run_fold_memory_passes(&self, input: FoldMemoryPassesInput) {
+        // LIVE (the summary-check oracles do not mock the fold passes). The
+        // request path is no job: no idempotency scope.
+        run_fold_memory_passes_live(
             self.db,
             self.completion,
             self.embedding,
             self.executor,
             input,
-            selection,
+            IN_LOOP_FOLD_ZONE_FALLBACK,
+            None,
         )
         .await;
     }
@@ -487,6 +471,12 @@ pub struct RealContextSummarySeams<'a, C: CompletionProvider, E: EmbeddingProvid
     /// same cheap-LLM path the fold itself used).
     pub completion: &'a C,
     pub executor: &'a CheapLlmTaskExecutor,
+    /// The host's calendar NAME — the memory calendar's fallback zone.
+    pub host_zone_fallback: String,
+    /// The running `CONTEXT_SUMMARY` job's id: the fold passes' admissions
+    /// carry one idempotency scope for the attempt (L-16 — v4 mints
+    /// `jobId:contentKey:n` inside its job child). `None` outside a job.
+    pub job_id: Option<String>,
 }
 
 impl<C: CompletionProvider + Sync, E: EmbeddingProvider + Sync> ContextSummarySeams
@@ -568,39 +558,53 @@ impl<C: CompletionProvider + Sync, E: EmbeddingProvider + Sync> ContextSummarySe
         .await;
     }
 
-    async fn run_fold_episode_pass(
-        &self,
-        input: RunFoldEpisodePassInput,
-        selection: CheapLlmSelection,
-    ) {
-        // v4 `runFoldEpisodePass`: over the just-folded window, ask the cheap
-        // LLM for 0–2 consolidated episode records and write them as dated
-        // `kind: 'episodic'` memories linked to the window's per-turn
-        // fragments. Best-effort — the pass swallows its own failures.
-        let _ = run_fold_episode_pass(
-            self.db,
-            self.completion,
-            self.embedding,
-            self.executor,
-            &selection,
-            &input,
-        )
-        .await;
-    }
-
-    async fn run_fold_other_pass(&self, input: FoldOtherHookInput, selection: CheapLlmSelection) {
-        // v4 `runFoldOtherPass` — LIVE (the summary-check oracles do not mock
-        // it). Best-effort — the pass swallows its own failures.
-        run_fold_other_hook(
+    async fn run_fold_memory_passes(&self, input: FoldMemoryPassesInput) {
+        run_fold_memory_passes_live(
             self.db,
             self.completion,
             self.embedding,
             self.executor,
             input,
-            selection,
+            &self.host_zone_fallback,
+            self.job_id
+                .as_deref()
+                .map(crate::services::admission::AdmissionKeyScope::new),
         )
         .await;
     }
+}
+
+/// The unit's connection profile as the row the extraction context takes (v4
+/// passes the fold's `connectionProfile` object itself). Only the fields the
+/// cheap-LLM route and the output budget read are carried.
+fn profile_value_of(p: &CheapLlmProfile) -> Value {
+    let mut m = serde_json::Map::new();
+    m.insert("id".into(), Value::from(p.id.clone()));
+    m.insert("provider".into(), Value::from(p.provider.clone()));
+    m.insert("modelName".into(), Value::from(p.model_name.clone()));
+    m.insert("isCheap".into(), Value::Bool(p.is_cheap));
+    m.insert(
+        "isDangerousCompatible".into(),
+        Value::Bool(p.is_dangerous_compatible),
+    );
+    // An absent field stays ABSENT (a `null` would read back as a present
+    // `parameters`).
+    if let Some(v) = &p.base_url {
+        m.insert("baseUrl".into(), Value::from(v.clone()));
+    }
+    if let Some(v) = &p.parameters {
+        m.insert("parameters".into(), v.clone());
+    }
+    if let Some(v) = p.max_tokens {
+        m.insert("maxTokens".into(), Value::from(v));
+    }
+    if let Some(v) = p.max_context {
+        m.insert("maxContext".into(), Value::from(v));
+    }
+    if let Some(v) = &p.model_class {
+        m.insert("modelClass".into(), Value::from(v.clone()));
+    }
+    Value::Object(m)
 }
 
 fn to_cheap_llm_config(settings: &CheapLlmSettings) -> CheapLlmConfig {
@@ -1002,102 +1006,33 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
         })
         .await;
 
-    // Episodic spine: fold-time episode pass. Over the just-folded window, ask
-    // the cheap LLM for 0–2 consolidated episode records and write them as
-    // dated `kind: 'episodic'` memories linked to the window's per-turn
-    // fragments. Piggybacks the fold cadence — no new trigger. Best-effort:
-    // a failed episode pass never fails the fold.
-    {
-        let window_messages: Vec<FoldWindowMessage> = turns_to_fold
-            .iter()
-            .flat_map(|t| t.ids.iter())
-            .filter_map(|id| rows_by_id.get(id.as_str()).copied())
-            .map(|m| FoldWindowMessage {
-                id: m
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-                role: m
-                    .get("role")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-                content: m.get("content").and_then(Value::as_str).map(str::to_string),
-                participant_id: m
-                    .get("participantId")
-                    .and_then(Value::as_str)
-                    .map(str::to_string),
-                created_at: m
-                    .get("createdAt")
-                    .and_then(Value::as_str)
-                    .map(str::to_string),
-            })
-            .collect();
-        seams
-            .run_fold_episode_pass(
-                RunFoldEpisodePassInput {
-                    chat_id: chat_id.clone(),
-                    user_id: options.user_id.clone(),
-                    window_messages,
-                    // v4 `chat.timelineMode ?? 'realtime'`.
-                    timeline_mode: chat
-                        .get("timelineMode")
-                        .and_then(Value::as_str)
-                        .unwrap_or("realtime")
-                        .to_string(),
-                    project_id: chat
-                        .get("projectId")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                    in_autonomous_room: chat_type.as_deref() == Some("autonomous"),
-                },
-                selection.clone(),
-            )
-            .await;
-    }
-
-    // Fold-grain OTHER pass: what each present character took away about the
-    // others across the folded window, one candidate set per (observer,
-    // subject), each thread stated once. Runs in 'fold' and 'hybrid' modes
-    // (the pass checks), advances the chat's OTHER watermark, and inherits the
-    // Concierge policy exactly as the per-turn pass does. Best-effort. Help
-    // chats fold too — v4 has no help-chat gate here (only the idle catch-up
-    // SELECTION skips them).
-    {
-        let window_messages: Vec<Value> = turns_to_fold
-            .iter()
-            .flat_map(|t| t.ids.iter())
-            .filter_map(|id| rows_by_id.get(id.as_str()).map(|m| (*m).clone()))
-            .collect();
-        seams
-            .run_fold_other_pass(
-                FoldOtherHookInput {
-                    chat_id: chat_id.clone(),
-                    user_id: options.user_id.clone(),
-                    chat: chat.clone(),
-                    window_messages,
-                    cheap_max_tokens: resolve_max_tokens(
-                        options.connection_profile.max_tokens.map(|v| v as i64),
-                        options.connection_profile.model_class.as_deref(),
-                    ),
-                    available_profiles: options.available_profiles.clone(),
-                    timeline_mode: chat
-                        .get("timelineMode")
-                        .and_then(Value::as_str)
-                        .unwrap_or("realtime")
-                        .to_string(),
-                    project_id: chat
-                        .get("projectId")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                    in_autonomous_room: chat_type.as_deref() == Some("autonomous"),
-                    chat_context_summary: Some(new_summary.clone()),
-                },
-                selection.clone(),
-            )
-            .await;
-    }
+    // Both fold memory passes — the episode pass and the fold-grain OTHER pass
+    // — run on one extraction context: the chat, its cast, the project, the
+    // Concierge-resolved cheap LLM and its uncensored fallback (bug 213), all
+    // read once. Each reads from its own cursor through the end of the folded
+    // window, so a hard rebuild's turns-1..N window only reads what that pass
+    // has not (bug 207). The transcript this fold already read places the
+    // cursors. Best-effort: a failed memory pass never fails the fold. Help
+    // chats fold too — v4 has no help-chat gate here.
+    seams
+        .run_fold_memory_passes(FoldMemoryPassesInput {
+            chat_id: chat_id.clone(),
+            user_id: options.user_id.clone(),
+            chat: chat.clone(),
+            fold_transcript: all_messages
+                .iter()
+                .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
+                .cloned()
+                .collect(),
+            window_messages: turns_to_fold
+                .iter()
+                .flat_map(|t| t.ids.iter())
+                .filter_map(|id| rows_by_id.get(id.as_str()).map(|m| (*m).clone()))
+                .collect(),
+            connection_profile: profile_value_of(&options.connection_profile),
+            chat_context_summary: new_summary.clone(),
+        })
+        .await;
 
     if let Some(u) = usage {
         if u.prompt_tokens > 0 || u.completion_tokens > 0 {

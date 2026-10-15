@@ -153,9 +153,8 @@ use quilltap_core::services::llm_log_cleanup_job::{handle_llm_log_cleanup, LlmLo
 // === end P4.24 ===
 use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::memory_extraction_job::{
-    handle_memory_extraction, limits_from_value, MemoryExtractionPayload,
+    handle_memory_extraction, MemoryExtractionPayload,
 };
-use quilltap_core::services::memory_processor::MemoryExtractionLimits;
 use quilltap_core::services::message_finalizer::{
     AcOnAffirming, AnswerConfirmationRunner, CostEstimate, CostTrackArgs, CostTracker,
     FinalizerConfirmationRun, RealAnswerConfirmation, RealAsyncCompression,
@@ -3221,13 +3220,16 @@ impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for TitleUpdateJobHand
     }
 }
 
+// === P4.D296: extraction job wrappers ===
+
 /// `CARINA_MEMORY_EXTRACTION` — a payload decode around the
-/// differential-verified [`handle_carina_memory_extraction`].
-/// `memory_extraction_limits: None` keeps the service defaults (the
-/// instance-settings reader is a tracked deferral there).
+/// differential-verified [`handle_carina_memory_extraction`] (v4's 74-line
+/// handler on the ONE extraction pipeline). `tz` is the host's calendar NAME
+/// — the memory calendar's fallback zone.
 pub struct CarinaMemoryExtractionHandler<PF: PricingFetch + Send + Sync + 'static> {
     pub wire: WireConfig,
     pub pricing: Arc<PricingFetcher<PF>>,
+    pub tz: String,
 }
 
 impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for CarinaMemoryExtractionHandler<PF> {
@@ -3266,50 +3268,36 @@ impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for CarinaMemoryExtrac
                 &embedding,
                 &executor,
                 &cost,
+                &job.id,
                 &job.user_id,
                 &cpayload,
-                // v4 `getMemoryExtractionLimits()` — the instance-settings read
-                // (P4.6bj closed the reader deferral; a read failure keeps the
-                // service defaults, as before).
-                read_memory_extraction_limits(db),
+                &self.tz,
             )
             .await
             {
                 Ok(()) => JobOutcome::Completed(None),
-                Err(e) => JobOutcome::Failed(e.to_string()),
+                Err(e) => JobOutcome::Failed(e),
             }
         })
     }
 }
 
-/// v4 `getMemoryExtractionLimits()` — the instance-settings read + parse the
-/// extraction handlers resolve above the core seam. `None` on a read failure
-/// (the service falls back to its defaults).
-fn read_memory_extraction_limits(db: &Db) -> Option<MemoryExtractionLimits> {
-    db.read_main(quilltap_core::db::instance_settings::get_memory_extraction_limits)
-        .ok()
-        .map(|v| limits_from_value(&v))
-}
-
-/// `MEMORY_EXTRACTION` (P4.6bj) — a payload decode around the
-/// differential-verified
-/// [`handle_memory_extraction`](quilltap_core::services::memory_extraction_job::handle_memory_extraction).
-/// The finalizer enqueues one per closed turn; before this registration the
-/// whole episodic-campaign extraction pipeline was verified but DORMANT (every
-/// job died on the runner's loud fallback).
+/// `MEMORY_EXTRACTION` — a payload decode around the differential-verified
+/// [`handle_memory_extraction`](quilltap_core::services::memory_extraction_job::handle_memory_extraction):
+/// a closed turn past the chat's `turn` cursor, or (any other grain) a fold
+/// pass's idle catch-up. The extraction limits and mode are the context's
+/// (the keystone's settings façade); the host no longer reads them.
 pub struct MemoryExtractionJobHandler<PF: PricingFetch + Send + Sync + 'static> {
     pub wire: WireConfig,
     pub pricing: Arc<PricingFetcher<PF>>,
+    pub tz: String,
 }
 
 impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for MemoryExtractionJobHandler<PF> {
     fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
         Box::pin(async move {
             let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
-            let mut decoded = MemoryExtractionPayload::decode(&payload);
-            // P4.D270 R-H: the catch-up lines carry the job's id (v4 passes
-            // `job.id` into `processMemoryExtraction`).
-            decoded.job_id = Some(job.id.clone());
+            let decoded = MemoryExtractionPayload::decode(&payload);
             let completion = self.wire.completion(db);
             let embedding = self.wire.embedding(db);
             let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
@@ -3329,9 +3317,10 @@ impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for MemoryExtractionJo
                 &embedding,
                 &executor,
                 &cost,
+                &job.id,
                 &job.user_id,
                 &decoded,
-                read_memory_extraction_limits(db),
+                &self.tz,
             )
             .await
             {
@@ -3342,6 +3331,8 @@ impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for MemoryExtractionJo
     }
 }
 
+// === end P4.D296 ===
+
 /// `CONTEXT_SUMMARY` (P4.6bj) — a payload decode around the
 /// differential-verified
 /// [`handle_context_summary`](quilltap_core::services::context_summary_job::handle_context_summary).
@@ -3351,6 +3342,9 @@ impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for MemoryExtractionJo
 /// classification.
 pub struct ContextSummaryJobHandler {
     pub wire: WireConfig,
+    /// P4.D296: the host's calendar NAME (the fold memory passes' memory-zone
+    /// fallback).
+    pub tz: String,
 }
 
 impl JobHandler for ContextSummaryJobHandler {
@@ -3374,6 +3368,10 @@ impl JobHandler for ContextSummaryJobHandler {
                 &executor,
                 &job.user_id,
                 &decoded,
+                // P4.D296 (L-16): the fold memory passes' idempotency scope and
+                // the memory calendar's host fallback.
+                &job.id,
+                &self.tz,
             )
             .await
             {
@@ -3940,6 +3938,7 @@ impl SpineFactory for ProductionSpineFactory {
                 Box::new(CarinaMemoryExtractionHandler {
                     wire: wire.clone(),
                     pricing: Arc::clone(&self.pricing),
+                    tz: self.tz.clone(),
                 }),
             ),
             (
@@ -3947,11 +3946,15 @@ impl SpineFactory for ProductionSpineFactory {
                 Box::new(MemoryExtractionJobHandler {
                     wire: wire.clone(),
                     pricing: Arc::clone(&self.pricing),
+                    tz: self.tz.clone(),
                 }),
             ),
             (
                 "CONTEXT_SUMMARY".to_string(),
-                Box::new(ContextSummaryJobHandler { wire: wire.clone() }),
+                Box::new(ContextSummaryJobHandler {
+                    wire: wire.clone(),
+                    tz: self.tz.clone(),
+                }),
             ),
             (
                 "CHARACTER_AVATAR_GENERATION".to_string(),

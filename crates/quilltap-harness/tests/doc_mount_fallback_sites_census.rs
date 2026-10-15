@@ -698,6 +698,7 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/photos/user_gallery_service.rs", "remove_from_user_gallery", "delete_with_gc", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/services/aesthetics.rs", "read_store_file_internal", "find_by_mount_point_and_path", "swallowed-by-other-means"),
     ("quilltap-core/src/services/backup/restore/orchestrator.rs", "backfill_official_store", "find_by_mount_point_and_path", "no-v4-counterpart"),
+    ("quilltap-core/src/services/canon_loaders.rs", "read_vault_text_file_conn", "find_by_mount_point_and_path", "swallowed-by-other-means"),
     ("quilltap-core/src/services/character_archive/service.rs", "prune_vault", "find_by_mount_point_id", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/services/character_archive/service.rs", "prune_vault", "find_ids_by_link_id_or_empty", "converted"),
     ("quilltap-core/src/services/character_archive/service.rs", "prune_vault", "delete_with_gc", "strict-by-ruling(write-path)"),
@@ -717,7 +718,6 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/services/image_job_storage.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/services/knowledge_injector.rs", "retrieve_knowledge_for_turn", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/services/librarian_notifications.rs", "document_hidden_from_characters", "find_by_mount_point_and_path_or_none", "converted"),
-    ("quilltap-core/src/services/memory_processor.rs", "read_vault_text_file_conn", "find_by_mount_point_and_path", "swallowed-by-other-means"),
     ("quilltap-core/src/services/mount_index/embedding_scheduler.rs", "enqueue_embedding_jobs_for_mount_point", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/services/mount_index/embedding_scheduler.rs", "enqueue_embedding_jobs_for_mount_point", "find_rows_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/services/mount_index/file_ops.rs", "source_exists_or_throw", "find_by_mount_point_and_path_or_none", "converted"),
@@ -887,7 +887,8 @@ fn the_class_counts_are_pinned() {
 ///   importer's strict reads were `get_messages_strict`, P4.109.)
 /// - **swallowed-by-other-means 13** = `.ok().flatten()` / a `match` arm /
 ///   `.unwrap_or_else` / `let Ok … else` at the site: `api/characters` 1,
-///   `chat_gallery` 1, `aesthetics` 1, `memory_processor` 1, `file_ops::link_file`
+///   `chat_gallery` 1, `aesthetics` 1, `canon_loaders` 1 (P4.D296 — moved verbatim
+///   out of `memory_processor`), `file_ops::link_file`
 ///   1, `doc_edit/blob` 1, `doc_edit/shared` 5, `tools/photo` 2.
 /// - **no-v4-counterpart 5** = `write_database_document`'s stored-mtime
 ///   re-read, P4.158's two preserve-arm backfill reads (`character_vault::
@@ -929,27 +930,23 @@ const COUNTS: (
 ) = (92, 14, 19, 1, 13, 5, 1, 20, 5);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
-/// the fold-episode pass's two memory reads (`services/fold_episode_pass.rs` —
-/// the per-turn fragment read `memories_read::find_by_character_and_source_
+/// the fold-episode pass's two memory reads (then `services/fold_episode_pass.rs`
+/// — the per-turn fragment read `memories_read::find_by_character_and_source_
 /// message_ids` and the `memories_read::find_by_id` behind it), which P4.144
 /// converted (a twin in `db/memories_read.rs`) and P4.149 finished: both homes
 /// now wrap the WHOLE `read_main` (`find_by_filter_or_empty` / `find_by_id_or_
-/// none`), so a pool-checkout failure logs v4's line too. Not document-store
-/// reads; listed so the conversion list says where they went.
-/// The guard below asserts ONLY that each file exists — never its call text —
-/// so P4.144's conversion cannot redden this census on the union.
-const HANDED: &[(&str, &str, &str)] = &[
-    (
-        "quilltap-core/src/services/fold_episode_pass.rs",
-        "memories_read::find_by_character_and_source_message_ids",
-        "handed(P4.144)",
-    ),
-    (
-        "quilltap-core/src/services/fold_episode_pass.rs",
-        "memories_read::find_by_id",
-        "handed(P4.144)",
-    ),
-];
+/// none`), so a pool-checkout failure logs v4's line too. P4.D296 deleted that
+/// file with v4's `ac6348c5f`: the fragment read lives in the ONE pipeline's
+/// episode pass (`services/extraction/passes/episode_fold.rs`, the `_or_empty`
+/// twin), and the by-id read is gone — the links write through admission's
+/// `link_both_ways`, which reads each row inside its writer closure. Not
+/// document-store reads; listed so the conversion list says where they went.
+/// The guard below asserts ONLY that each file exists — never its call text.
+const HANDED: &[(&str, &str, &str)] = &[(
+    "quilltap-core/src/services/extraction/passes/episode_fold.rs",
+    "memories_read::find_by_character_and_source_message_ids_or_empty",
+    "handed(P4.144)",
+)];
 
 #[test]
 fn the_handed_rows_name_files_that_exist() {

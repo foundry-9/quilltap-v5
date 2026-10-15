@@ -14,12 +14,15 @@
 //! RECORDS the exact `provider|model|temperature|messages` entry it answered; this
 //! test replays those through `CannedCompletionProvider`, so a
 //! prompt/selection/temperature divergence surfaces as a canned-miss), and the
-//! embedding by exact `${summary}\n\n${content}` text. The instance-settings
-//! `getMemoryExtractionLimits` read is injected here as the corpus limits (the
-//! oracle mocks it to the same value); the pricing `estimateMessageCost` seam is a
+//! embedding by the exact text the oracle RECORDED (P4.D296: at the `83334b9a5`
+//! pin admission embeds `summary\n\ncontent` plus the anchor line; the corpus
+//! vectors are keyed by that base). The corpus limits ride the fixture's
+//! `instance_settings` row, read by both sides' settings resolver (P4.D296 —
+//! the retired injected limits); the pricing `estimateMessageCost` seam is a
 //! canned `MessageCostEstimator` matching the oracle's canned cost.
 //!
-//! Then the five affected tables (`memories`, `vector_entries`, `vector_indices`,
+//! Then the three affected tables (`memories` — the vector rides in the row at
+//! the pin, so the old `vector_entries` / `vector_indices` comparands are gone —
 //! `chat_messages`, `chats`) are diffed in the shared-cross-table id-map remap form
 //! (minted ids tokenized by first appearance, minted timestamps placeholdered).
 //! The corpus banks the SELF-only outcome: a fresh INSERT, a near-duplicate
@@ -59,22 +62,12 @@ use quilltap_core::services::carina_memory_extraction::{
 };
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::cost_estimation::MessageCostEstimator;
-use quilltap_core::services::memory_processor::MemoryExtractionLimits;
 use serde::Deserialize;
 use serde_json::Value;
 
 // ---------------------------------------------------------------------------
 // Spec structures (harness/oracle/fixtures/carina-memory-extraction-tier3.json).
 // ---------------------------------------------------------------------------
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LimitsW {
-    enabled: bool,
-    max_per_hour: f64,
-    soft_start_fraction: f64,
-    soft_floor: f64,
-}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -92,8 +85,6 @@ struct Spec {
     user_id: String,
     connection_profile_id: String,
     estimated_cost_usd: f64,
-    memory_extraction_limits: LimitsW,
-    canned_embeddings: HashMap<String, Vec<f32>>,
     cases: Vec<CaseW>,
 }
 
@@ -176,21 +167,6 @@ const TABLES: &[TableSpec] = &[
             "lastReinforcedAt",
             "lastAccessedAt",
         ],
-    },
-    TableSpec {
-        table: "vector_entries",
-        order_by: "embedding",
-        id_columns: &["id"],
-        id_array_columns: &[],
-        ts_columns: &["createdAt"],
-    },
-    TableSpec {
-        table: "vector_indices",
-        order_by: "id",
-        // id == characterId (pinned) — left literal.
-        id_columns: &[],
-        id_array_columns: &[],
-        ts_columns: &["createdAt", "updatedAt"],
     },
     TableSpec {
         table: "chat_messages",
@@ -301,6 +277,7 @@ async fn carina_memory_extraction_tier3_matches_oracle() {
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
     let mut oracle_ran = 0usize;
+    let mut oracle_embeddings: Vec<(String, Vec<f32>)> = Vec::new();
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -312,6 +289,10 @@ async fn carina_memory_extraction_tier3_matches_oracle() {
             Some("canned") => {
                 oracle_canned.push(serde_json::from_value(v).expect("parse canned row"))
             }
+            Some("cannedEmbedding") => oracle_embeddings.push((
+                v["text"].as_str().unwrap().to_string(),
+                serde_json::from_value(v["vector"].clone()).expect("parse vector"),
+            )),
             Some("table") => {
                 oracle_tables.insert(v["table"].as_str().unwrap().to_string(), v);
             }
@@ -362,7 +343,7 @@ async fn carina_memory_extraction_tier3_matches_oracle() {
     }
 
     let mut embedding = CannedEmbeddingProvider::new();
-    for (text, vec) in &spec.canned_embeddings {
+    for (text, vec) in &oracle_embeddings {
         embedding = embedding.with_vector(text.clone(), vec.clone());
     }
 
@@ -378,12 +359,6 @@ async fn carina_memory_extraction_tier3_matches_oracle() {
 
     let executor = CheapLlmTaskExecutor::new();
     let cost = CannedCost(spec.estimated_cost_usd);
-    let limits = MemoryExtractionLimits {
-        enabled: spec.memory_extraction_limits.enabled,
-        max_per_hour: spec.memory_extraction_limits.max_per_hour,
-        soft_start_fraction: spec.memory_extraction_limits.soft_start_fraction,
-        soft_floor: spec.memory_extraction_limits.soft_floor,
-    };
 
     for case in &spec.cases {
         let payload = CarinaMemoryExtractionPayload {
@@ -398,15 +373,16 @@ async fn carina_memory_extraction_tier3_matches_oracle() {
             &embedding,
             &executor,
             &cost,
+            &format!("job-{}", case.name),
             &spec.user_id,
             &payload,
-            Some(limits.clone()),
+            "UTC",
         )
         .await
         .unwrap_or_else(|e| panic!("{}: handler failed: {e}", case.name));
     }
 
-    // Dump + diff the five tables in the shared-id-map remap form.
+    // Dump + diff the three tables in the shared-id-map remap form.
     let mut got: Vec<Value> = TABLES
         .iter()
         .map(|t| {

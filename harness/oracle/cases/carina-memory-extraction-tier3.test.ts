@@ -17,12 +17,14 @@
  *     through `CannedCompletionProvider`, so a prompt/selection/temperature
  *     divergence surfaces as a canned-miss. Only SELF passes occur (the synthetic
  *     transcript carries no user-controlled character → OTHER self-skips).
- *   - `generateEmbeddingForUser` — the corpus's canned vectors keyed by the exact
- *     `${summary}\n\n${content}` text (as in the memory-gate oracle).
+ *   - `generateEmbeddingForUser` — the corpus's canned vectors keyed by the
+ *     `${summary}\n\n${content}` base of the embedded text (P4.D296: v4 now
+ *     appends the anchor line); each exact text is RECORDED (`kind:
+ *     "cannedEmbedding"`) and the Rust side replays exactly those.
  *   - `getApiKeyForCheapLLMSelection` → a constant (key management is host-side).
  *   - `logLLMCall` → no-op.
- *   - `getMemoryExtractionLimits` (@/lib/instance-settings) → the corpus limits
- *     (v4's instance-settings read; the Rust port injects the same value).
+ *   - (P4.D296) the corpus limits ride the fixture's `instance_settings` row,
+ *     read by both sides' settings resolver — no mock.
  *   - `estimateMessageCost` (@/lib/services/cost-estimation.service) → a canned
  *     cost, so the `MEMORY_EXTRACTION` system event + the chats cost aggregate
  *     match the Rust `CarinaCostEstimator`.
@@ -141,6 +143,7 @@ async function main(): Promise<void> {
 
   // Recorded canned-completion entries, deduped by the exact call key. The key
   // format MUST match `quilltap_core::model::completion::canned_completion_key`.
+  const embeddingRecorded = new Map<string, number[]>();
   const cannedRecorded = new Map<
     string,
     {
@@ -177,7 +180,12 @@ async function main(): Promise<void> {
       __esModule: true,
       ...actual,
       generateEmbeddingForUser: async (text: string) => {
-        const vec = spec.cannedEmbeddings[text];
+        // P4.D296: at the pin admission embeds `summary\n\ncontent` plus a
+        // trailing anchor line (`embeddingTextFor`): the corpus vector is keyed
+        // by the base, and the exact text is RECORDED for the Rust replay.
+        const key = Object.keys(spec.cannedEmbeddings).find((k) => text === k || text.startsWith(`${k}\n`));
+        const vec = key === undefined ? undefined : spec.cannedEmbeddings[key];
+        if (vec) embeddingRecorded.set(text, vec);
         if (!vec) {
           throw new EmbeddingError(
             `no canned embedding registered for input (${text.length} chars)`
@@ -250,14 +258,8 @@ async function main(): Promise<void> {
       logLLMCall: async () => undefined,
     };
   });
-  jest.doMock('@/lib/instance-settings', () => {
-    const actual = jest.requireActual('@/lib/instance-settings');
-    return {
-      __esModule: true,
-      ...actual,
-      getMemoryExtractionLimits: async () => spec.memoryExtractionLimits,
-    };
-  });
+  // P4.D296: no limits mock — the fixture's `instance_settings` row carries the
+  // corpus limits, which both sides' settings resolver reads.
   jest.doMock('@/lib/services/cost-estimation.service', () => {
     const actual = jest.requireActual('@/lib/services/cost-estimation.service');
     return {
@@ -304,6 +306,9 @@ async function main(): Promise<void> {
   for (const entry of cannedRecorded.values()) {
     lines.push(JSON.stringify({ kind: 'canned', ...entry }));
   }
+  for (const [text, vector] of embeddingRecorded) {
+    lines.push(JSON.stringify({ kind: 'cannedEmbedding', text, vector }));
+  }
 
   const dumpTable = async (table: string, orderBy: string) => {
     const columns = (
@@ -314,10 +319,9 @@ async function main(): Promise<void> {
   };
 
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('memories', 'content')) }));
-  lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('vector_indices', 'id')) }));
-  lines.push(
-    JSON.stringify({ kind: 'table', ...(await dumpTable('vector_entries', 'embedding')) })
-  );
+  // P4.D296: no `vector_indices` / `vector_entries` — at the pin a memory's
+  // vector rides in its own row (`memories.embedding`), so the `memories` dump
+  // carries it.
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_messages', 'content')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chats', 'id')) }));
 

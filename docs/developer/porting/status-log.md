@@ -181462,3 +181462,86 @@ here (recorded): an Unmoderated chat's `isDangerousChat` (the route carries it; 
 description (Carina's family carries it), `llm_logs`. **Regen:** builder → case per the recipe header
 (`QT_FIXTURE_PROCESSOR_MAIN/_MOUNT`, `QT_ORACLE_PROCESSOR`); outputs staged under `/tmp/p4d296/`.
 `canon_commonplace_tier2` re-run from the pin: green.
+
+**P4.D296 Tier 1 #11–#14, #16, #17 (2026-10-15, core 0.0.1302, host 0.0.205):** `services::extraction::{fold,
+catchup, fold_catchup}`; `services/memory_extraction_job.rs` (the payload with L-4's raw `PassOf`, the pass branch,
+the continuation, `finish_extraction_job`, `extraction_context_for_job`); `services/carina_memory_extraction.rs` (v4's
+short shape); the fenced queue region (`MemoryExtractionEnqueue` grown, the strict five-term dedupe, the batch with
+`backfill: true`); the `queue-memories` region (the code — its `embedding_remainder` rows are OPEN, next commit); data-
+tick steps 8–9 over ONE shared chat list + cursor read (`foldEpisodeCatchupJson` after `foldOtherCatchupJson`); the ONE
+fold seam (`ContextSummarySeams::run_fold_memory_passes(FoldMemoryPassesInput)`, episode then OTHER, the ONE ERROR
+line); `spine.rs`'s fenced extraction wrappers (job id + `self.tz` threaded; `read_memory_extraction_limits` /
+`limits_from_value` deleted). DELETED: `services/fold_other_pass.rs`, `services/fold_episode_pass.rs`,
+`cheap_llm::resolve_cheap_llm_profile_id`, `build-fold-episode-fixture.ts`, `build-fold-other-pass-fixture.ts`
+(no remaining reader), `other_extraction_watermark_writers_census.rs` (retired, #17). One mechanical edit outside
+Ownership forced by the grown batch entry: `realtime/publish_sites.rs`'s test literal gains
+`extract_after_message_id: None`.
+
+**Families (all green by name, from the pin `83334b9a5`, outputs under `/tmp/p4d296/`):**
+- `fold_episode_tier3_equivalence` REWRITTEN (case `fold-episode-tier3.test.ts` over v4's real
+  `buildExtractionContext` + `runFoldPass`; spec from `harness/oracle/scripts/gen-fold-episode-spec.py`; the shared
+  builder under `QT_FIXTURE_SPEC=fold-episode-tier3.json`). 15 ops: 60 / 60 / 30 over two runs (`maxSlices` 2), the
+  reinforce (absorb) on run 2, `behind-cursor`, three slices with two episodes not linked to each other, a timeout on
+  slice 2 stopping the OTHER run with the cursor at slice 1's end, the gap read on resume, `mode-turn`,
+  `empty-window`, `nothing-to-observe` advancing, a partially capped holder set, a rate-deferred slice, a partially
+  present holder set, `nobody-present`, a dry run reading every slice, `bogus` running the episode branch. Canned
+  calls are recorded PER OP (a slice timed out in one op is the same call key when a later op re-reads it — the first
+  regen's single recorder replayed the timeout into the resume op). Mutations: slice size 60 → 59 (29 divergences),
+  the timeout stop disabled (17) — both red.
+- `fold_other_pass_tier3_equivalence` REWRITTEN as the catch-up family (case `fold-other-pass-tier3.test.ts`; spec from
+  `gen-fold-other-pass-spec.py`, replacing the stale generator). 22 ops: both selections (incl. limit 1 → three counted
+  deferred without a read, as v4 does; `otherPass: turn`), four sweeps (bug 232's in-flight guard; a cap of 0 → the
+  INFO line), five catch-ups (`never-folded`, `not-idle`, `ignoreIdle`, both `behind-cursor`s), nine handler jobs (the
+  continuation and the continuation job; legacy `foldEpisodeCatchup` and `foldOtherCatchup` + `foldOtherIgnoreIdle`;
+  an active chat; a timeout failing the job with v4's `CheapLLMTaskLostError` text; `bogus` twice; a missing chat).
+  `background_jobs` payload BYTES compared. Mutations: the in-flight guard off (`sweep_other_in_flight` red), the
+  continuation off (10 divergences) — both red.
+- **`UNKNOWN_PASS_CURSOR_ROW` (L-4, both ways) — MEASURED:** v4's real handler with `pass: "bogus"` run twice on a
+  folded chat: the first run reads the folded history through the episode branch and writes the raw
+  `<chatId>:bogus` row (`pass = 'bogus'`); the second reads that row and skips `behind-cursor`. v4's own
+  `findByChatId` / `findAllByChat` DROP the row (they map the three known passes only). v5 writes the same row and its
+  `find_by_chat_id` / `find_all_by_chat` drop it the same way. Pinned in `fold_other_pass_tier3_equivalence`: the row
+  must exist on both sides, and neither side's whole-map read may carry a `bogus` key.
+- `memory_pipeline_jobs_tier3_equivalence` REPAIRED for the pin: the `vector_indices` / `vector_entries` comparands
+  dropped on both sides (at the pin a memory's vector rides in `memories.embedding`; the case died on `no such table`),
+  the limits mock retired for an `instance_settings` row the builder plants (both sides' settings resolver reads it),
+  the cursor table materialised, the handlers called with job ids and the zone, minted ids' 8-char prefixes tokenised
+  (admission's neighbour notes). The fold-episode non-vacuity guard re-aimed: `cs_fold`'s only seat names an
+  unprovisioned character, so at the pin the hook's ONE context has an empty cast and the episode pass skips before any
+  call (both sides — the consumption set proves it); the guard now requires the SELF extraction and the summary fold
+  calls. `fold_episode_tier3` owns the episode call.
+- `carina_memory_extraction_tier3_equivalence` REPAIRED: the vector-table comparands dropped, the limits mock retired
+  (builder plants the row + cursor table), embeddings replayed by the exact text v4 RECORDED (at the pin admission
+  embeds `summary\n\ncontent` plus an anchor line — the corpus keys every draft missed). Green: a fresh insert, two
+  reinforcements, three skips, the cost events. **Correction to the #5–#10 record:** it said the project description
+  is carried by "Carina's family" — it is not; every Carina corpus chat has `projectId: null`. Bug 222's project on
+  Carina's unit (and the `pass: carina` provenance column) are NOT covered by a differential row yet — OPEN.
+- `context_summary_service_tier3_equivalence` — my rows green: the `RealContextSummarySeams` literal gains
+  `host_zone_fallback` + `job_id: None`; the shared builder materialises `connection_profiles` (v4 creates it on first
+  read; v5's ONE extraction context read it and the fold passes failed with `no such table`), the cursor table and
+  `instance_settings`. The ruled `STORED_BYTE_DIVERGENCES` re-measured 5 → 4 (every row still decodes identically).
+- Censuses: `doc_mount_fallback_sites_census` (the canon loader row moved to `canon_loaders.rs`; the HANDED row now
+  names `extraction/passes/episode_fold.rs`, the by-id read gone into admission's `link_both_ways`);
+  `get_messages_caller_census` (four fallback sites folded into `turn_transcript::load_chat_message_events`: 82 / 52 →
+  79 / 50); NEW `memory_extraction_cursors_writers_census` (measured: SQL writes by name only in the repository + the
+  boot ensure; the constant named outside the repository by the ensure and two `table_exists` read probes; the write
+  verbs called only by `CursorStore` and the carriers).
+- Base residue, NOT this lane (unchanged since `ADMISSION` `e43551bf5`): `memory_retire_sole_deleter_guard` counts
+  `services/admission/tests.rs` (an out-of-line test module counted as production — P4.D290's file);
+  `qtap_schema_embed_guard` compares against the LIVE v4 checkout (HEAD `7458ff94e`, past the pin).
+
+**HANDOFF:** `FoldEpisodePassSeams` (the in-loop summary check's seams, constructed at `orchestrator.rs`,
+`courier_transport.rs`, `enclave/step.rs`, `help_chat/summary_check.rs`) runs the fold memory passes with
+`IN_LOOP_FOLD_ZONE_FALLBACK = "UTC"` and no job id — thread the host's zone (outside this lane's Ownership).
+
+**Port defect caught by the gate (fixed red-first):** the catch-up selection and the data tick's shared read read the
+chat list through `chats_read::find_all`, which PROPAGATES a failed query; v4's `chats.findAll()` is `_findAll` —
+`safeQuery(…, 'Error finding all entities', {}, [])`, so a failed read logs and answers `[]`. The existing unit test
+`scheduled_maintenance::tests::full_pass_records_stamp_and_isolates_failures` (no `chats` table) went red with two
+extra failures (`fold-other-catchup`, `fold-episode-catchup`); both reads now go through
+`fallback::find_all_or_empty("chats", …)` around the WHOLE `read_main`, and the test passes with its original
+expectation. (The cursor whole-map read was already v4's shape: `findAllByChat`'s inner `_findAll` answers `[]`.)
+
+**L-21 — MEASURED no-op:** no v5 production code registers or dispatches an `INTER_CHARACTER_MEMORY` handler (the
+only production mentions are P4.D288's `retired_job_rows_purge.rs` purge and its `p4d288_span.rs` caller; the
+`build_context.rs` hits are the unrelated inter-character MEMORY block); the six list sites are P4.D288's census.

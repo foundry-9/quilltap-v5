@@ -1,213 +1,90 @@
 #!/usr/bin/env python3
-"""Generate `harness/oracle/fixtures/fold-other-pass-tier3.json` — the corpus of
-the `fold_other_pass_tier3` family (P4.D270, v4 `d58548051` at pin `01a83539d`).
+"""Generate harness/oracle/fixtures/fold-other-pass-tier3.json (work order P4.D296).
 
-Usage: gen-fold-other-pass-spec.py harness/oracle/fixtures/fold-other-pass-tier3.json
-
-The chats, completion rules and ops are built here rather than by hand: ids are
-UUID-shaped by construction, every completion response names its subject (the
-gate's name-presence check), and the catch-up chats' `lastMessageAt` values are
-computed against the corpus's FIXED `now`. Regenerate the builder's fixture and
-the oracle after any change (the family header's recipe).
+The spec the shared `build-memory-processor-fixture.ts` builds from (with
+`QT_FIXTURE_SPEC=fold-other-pass-tier3.json` when it is not the default) and the oracle case reads.
+Run: python3 harness/oracle/scripts/gen-fold-other-pass-spec.py — then rebuild the fixture pair and
+regenerate the oracle (the Rust family's header has the recipe).
 """
-import json, collections
-O=collections.OrderedDict
-USER='00000000-0000-4000-8000-0000000000ee'
-PROF='e0000000-0000-4000-8000-0000000000c0'
-CHEAP='e0000000-0000-4000-8000-0000000000c1'
-C=O(ada='fa000000-0000-4000-8000-00000000000a', bram='fb000000-0000-4000-8000-00000000000b',
-    cass='fc000000-0000-4000-8000-00000000000c', dov='fd000000-0000-4000-8000-00000000000d',
-    eve='fe000000-0000-4000-8000-00000000000e', fay='ff000000-0000-4000-8000-00000000000f')
-NAMES=dict(ada='Ada',bram='Bram',cass='Cass',dov='Dov',eve='Eve',fay='Fay')
-PRON=dict(ada=('she','her','her'),bram=('he','him','his'),cass=('they','them','their'),dov=('he','him','his'),eve=('she','her','her'),fay=('she','her','her'))
-def chat_id(n): return f'c{n:07x}-0000-4000-8000-000000000000'
-def seat_id(n,s): return f'b{n:03x}{s:04x}-0000-4000-8000-000000000000'
-def msg_id(n,m): return f'e{n:03x}{m:04x}-0000-4000-8000-{n:04x}{m:08x}'
-FIXED_NOW='2026-09-01T12:00:00.000Z'
-OLD='2026-01-05T10:00:00.000Z'
-def ts(base_min, i):
-    h=10+(base_min+i)//60; mm=(base_min+i)%60
-    return f'2026-01-05T{h:02d}:{mm:02d}:00.000Z'
-chats=[]
-def mk_chat(n, seats, script, chat_type=None, timeline=None, last=OLD, count=None, watermark=None, tag=None, extra_msgs=None):
-    # seats: list of (key, controlledBy, profile or None)
-    parts=[]
-    for i,(k,cb,prof) in enumerate(seats):
-        p=O(id=seat_id(n,i+1),characterId=C[k],controlledBy=cb)
-        if prof: p['connectionProfileId']=prof
-        parts.append(p)
-    msgs=[]
-    for i,row in enumerate(script):
-        k=row[0]; text=row[1]; over=row[2] if len(row)>2 else {}
-        seat=next((p for p,(kk,_,_) in zip(parts,seats) if kk==k),None)
-        m=O(id=msg_id(n,i+1), role=('USER' if (seat and next(cb for kk,cb,_ in seats if kk==k)=='user') else 'ASSISTANT'),
-            content=text, participantId=(seat['id'] if seat else None), createdAt=ts(n,i))
-        m.update(over)
-        msgs.append(m)
-    c=O(id=chat_id(n), title=f'Fold OTHER chat {n}', participants=parts, messages=msgs)
-    if chat_type: c['chatType']=chat_type
-    if timeline: c['timelineMode']=timeline
-    c['lastMessageAt']=last
-    c['messageCount']=count if count is not None else len(msgs)
-    if watermark: c['otherExtractionWatermarkMessageId']=watermark
-    if tag: c['contextSummary']=f'[op:{tag}] The household has been talking for a while.'
-    chats.append(c)
-    return c
-AB=[('ada','llm',PROF),('bram','llm',None)]
-def alt(n,count,a='ada',b='bram'):
-    return [((a if i%2==0 else b), f'Line {i+1} of chat {n}: the plan for the harbor festival moves on.') for i in range(count)]
-# --- direct-pass chats ---
-mk_chat(1, AB, alt(1,4))
-mk_chat(2, AB+[('cass','user',None)], alt(2,6))
-mk_chat(3, AB, alt(3,4))
-mk_chat(4, AB, alt(4,6), watermark=msg_id(4,3))
-mk_chat(5, AB, alt(5,4), watermark='e0ffffff-0000-4000-8000-0000ffffffff')
-mk_chat(6, AB+[('cass','user',None)], [
-  ('ada','Ada opens the ledger and reads the harbor tally aloud.'),
-  ('bram','Bram says the tally is short by three crates.'),
-  ('ada','The Lantern notes the hour.', {'systemSender':'lantern'}),
-  ('none','A line with no seat attached.', {'role':'USER'}),
-  ('bram','Bram promises to recount the crates at dawn.'),
-  ('none','{"tool":"tally","result":3}', {'role':'TOOL'}),
-])
-mk_chat(7, AB, alt(7,70))
-mk_chat(8, [('ada','llm',PROF)], alt(8,2,'ada','ada'))
-mk_chat(9, [('eve','llm',PROF),('ada','llm',None)], alt(9,4,'eve','ada'))
-mk_chat(10, [('fay','llm',PROF),('ada','llm',None)], alt(10,4,'fay','ada'))
-mk_chat(11, AB, alt(11,4))
-mk_chat(12, AB, alt(12,4))
-mk_chat(13, [('dov','llm',PROF),('ada','llm',None)], alt(13,4,'dov','ada'))
-mk_chat(14, AB, alt(14,4), chat_type='autonomous')
-mk_chat(15, AB, alt(15,4), timeline='narrative')
-mk_chat(16, AB, alt(16,4))
-mk_chat(17, AB, alt(17,4), chat_type='help')
-# --- catch-up chats (relative to FIXED_NOW = 2026-09-01T12:00Z) ---
-def rel(hours=0, days=0):
-    import datetime
-    t=datetime.datetime(2026,9,1,12,0,0)-datetime.timedelta(hours=hours,days=days)
-    return t.strftime('%Y-%m-%dT%H:%M:%S.000Z')
-mk_chat(20, AB, alt(20,4), last=rel(hours=3), tag='c20')
-mk_chat(21, AB, alt(21,4), last=rel(hours=1), tag='c21')
-mk_chat(22, AB, alt(22,4), last=rel(days=31), tag='c22')
-mk_chat(23, AB, alt(23,4), last=rel(hours=2), tag='c23')
-mk_chat(24, AB, alt(24,4), chat_type='help', last=rel(hours=3), tag='c24')
-mk_chat(25, AB, alt(25,1), last=rel(hours=3), count=1, tag='c25')
-mk_chat(26, AB, alt(26,4), last=rel(hours=3), watermark=msg_id(26,4), tag='c26')
-mk_chat(27, [('ada','llm',None),('bram','llm',None)], alt(27,4), last=rel(hours=3), tag='c27')
-mk_chat(28, [('cass','user',CHEAP),('ada','llm',None),('bram','llm',None)], alt(28,4), last=rel(hours=5), tag='c28')
-mk_chat(29, [('cass','user',CHEAP),('ada','llm',PROF),('bram','llm',None)], alt(29,4), last=rel(hours=4), tag='c29')
-mk_chat(30, AB, alt(30,4), last=rel(days=40), tag='c30')
-# --- completion rules: per (op tag, observer) ---
-def subjects_for(chat, observer_key, user_key=None):
-    return None
-rules=[]
-def candidates(op, obs, subj_names, narrative=False, lows=True):
-    out=[]
-    for i,s in enumerate(subj_names, start=1):
-        base=[(0.9,'semantic'),(0.6,'semantic')]+([(0.4,'semantic')] if lows else [])+[(0.5,'episodic')]
-        for j,(imp,kind) in enumerate(base):
-            c=O(subjectIndex=i, content=f'[{op}] {obs} noticed that {s} handled the harbor task {j+1}.', summary=f'{op} {s} task {j+1}', keywords=['harbor',op], importance=imp)
-            if kind=='episodic':
-                c['kind']='episodic'; c['entities']=['Harbor Gate']
-                if narrative: c['when']='the third evening of the festival'
-            out.append(c)
-    return json.dumps(out)
-USAGE=O(promptTokens=200,completionTokens=40,totalTokens=240)
-def rule(op, obs, subjects, error=None, narrative=False, lows=True):
-    r=O(op=op, observer=obs, response=candidates(op,obs,subjects,narrative,lows), usage=USAGE)
-    if error: r['error']=error
-    rules.append(r)
-for op,pairs in [
-  ('turn_mode',[]),
-  ('hybrid_two',[('Ada',['Bram','Cass']),('Bram',['Ada','Cass'])]),
-  ('fold_cap1',[('Ada',['Bram']),('Bram',['Ada'])]),
-  ('wm_mid',[('Ada',['Bram']),('Bram',['Ada'])]),
-  ('wm_vanished',[('Ada',['Bram']),('Bram',['Ada'])]),
-  ('ineligible',[('Ada',['Bram','Cass']),('Bram',['Ada','Cass'])]),
-  ('window70',[('Ada',['Bram']),('Bram',['Ada'])]),
-  ('rate_limited',[('Ada',['Eve'])]),
-  ('throttled',[('Fay',['Ada']),('Ada',['Fay'])]),
-  ('vault_canon',[('Dov',['Ada']),('Ada',['Dov'])]),
-  ('autonomous',[('Ada',['Bram']),('Bram',['Ada'])]),
-  ('help_chat',[('Ada',['Bram']),('Bram',['Ada'])]),
-  ('c20',[('Ada',['Bram']),('Bram',['Ada'])]),
-  ('c28',[('Ada',['Bram','Cass']),('Bram',['Ada','Cass'])]),
-  ('c29',[('Ada',['Bram','Cass']),('Bram',['Ada','Cass'])]),
-]:
-    for obs,subs in pairs: rule(op,obs,subs)
-rule('timeout','Ada',['Bram']); rule('timeout','Bram',['Ada'],error='Request timed out.')
-rule('refused','Ada',['Bram'],error='The model declined to answer.'); rule('refused','Bram',['Ada'])
-rule('narrative','Ada',['Bram'],narrative=True); rule('narrative','Bram',['Ada'],narrative=True)
-rule('gate_fail','Ada',['Bram']); rule('gate_fail','Bram',['Ada'])
-rule('c30','Ada',['Bram']); rule('c30','Bram',['Ada'],error='Request timed out.')
-LIMITS=O(enabled=True,maxPerHour=4,softStartFraction=0.5,softFloor=0.55)
-def pass_op(name, chat_n, tag, **kw):
-    o=O(op='pass', name=name, chatId=chat_id(chat_n), tag=tag)
-    o.update(kw); return o
-ops=[
- pass_op('turn_mode',1,'turn_mode',mode=O(otherPass='turn')),
- pass_op('hybrid_two_observers_silent_user',2,'hybrid_two'),
- pass_op('fold_mode_cap1',3,'fold_cap1',mode=O(otherPass='fold',foldCandidatesPerSubject=1)),
- pass_op('behind_watermark',2,'hybrid_two'),
- pass_op('watermark_mid_window',4,'wm_mid'),
- pass_op('vanished_watermark',5,'wm_vanished'),
- pass_op('ineligible_rows_trailing',6,'ineligible'),
- pass_op('window_70_trimmed',7,'window70'),
- pass_op('nothing_to_observe',8,'nothing'),
- pass_op('rate_limited_observer',9,'rate_limited',limits=LIMITS),
- pass_op('throttled_observer',10,'throttled',limits=LIMITS),
- pass_op('observer_timeout',11,'timeout'),
- pass_op('observer_refused',12,'refused'),
- pass_op('vault_canon',13,'vault_canon'),
- pass_op('autonomous_room',14,'autonomous',inAutonomousRoom=True),
- pass_op('narrative_timeline',15,'narrative',timelineMode='narrative'),
- pass_op('gate_write_failure',16,'gate_fail'),
- pass_op('help_chat',17,'help_chat'),
- O(op='find',name='find_all',limit=50),
- O(op='find',name='find_limit_1',limit=1),
- O(op='find',name='find_turn_mode',limit=50,mode=O(otherPass='turn')),
- O(op='enqueue',name='enqueue_beside_per_turn_job',limit=None,priorTurnJob=O(chatId=chat_id(20),lastMessageId=msg_id(20,4),connectionProfileId=PROF)),
- O(op='enqueue',name='enqueue_again_dedupes',limit=None),
- O(op='enqueue',name='enqueue_capped',limit=1),
- O(op='handler',name='handler_covered',chatId=chat_id(20),foldOtherCatchup=True),
- O(op='handler',name='handler_truthy_yes',chatId=chat_id(28),foldOtherCatchup='yes'),
- O(op='handler',name='handler_ignore_idle_active',chatId=chat_id(29),foldOtherCatchup=True,foldOtherIgnoreIdle=True,plantLastMessageAtNow=True),
- O(op='handler',name='handler_not_idle',chatId=chat_id(23),foldOtherCatchup=True,plantLastMessageAtNow=True),
- O(op='handler',name='handler_missing_chat',chatId='c0ffffff-0000-4000-8000-000000000000',foldOtherCatchup=True),
- O(op='handler',name='handler_timeout',chatId=chat_id(30),foldOtherCatchup=True),
+import os
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'fixtures', 'fold-other-pass-tier3.json')
+import json
+U='a0000000-0000-4000-8000-0000000000e1'
+ADA='aa000000-0000-4000-8000-0000000000a1'; BRAM='bb000000-0000-4000-8000-0000000000b2'
+P_CUR='9c000000-0000-4000-8000-000000000001'; P_CHEAP='9c000000-0000-4000-8000-000000000002'
+PA='5a000000-0000-4000-8000-00000000000a'; PB='5b000000-0000-4000-8000-00000000000b'
+def cid(n): return f"c{n}000000-0000-4000-8000-0000000000c{n}"
+K={n:cid(n) for n in range(1,9)}
+def mid(n,i): return f"e{n}{i:06d}-0000-4000-8000-{i:012d}"
+def ts(i):
+    h,mn=divmod(i,60); return f"2026-07-14T{4+h:02d}:{mn:02d}:00.000Z"
+def msgs(n,count,tag):
+    return [{"id":mid(n,i),"role":"ASSISTANT","content":f"{tag}{i:03d} aboard the Gull, stop {i}.","participantId":PA if i%2 else PB,"createdAt":ts(i)} for i in range(1,count+1)]
+seats=[{"id":PA,"characterId":ADA,"controlledBy":"llm","connectionProfileId":P_CUR},{"id":PB,"characterId":BRAM,"controlledBy":"llm","connectionProfileId":P_CUR}]
+noprof=[{"id":PA,"characterId":ADA,"controlledBy":"llm"},{"id":PB,"characterId":BRAM,"controlledBy":"llm"}]
+M={1:msgs(1,300,'K'),2:msgs(2,10,'B'),3:msgs(3,6,'C'),4:msgs(4,6,'H'),5:msgs(5,1,'S'),6:msgs(6,6,'O'),7:msgs(7,6,'N'),8:msgs(8,6,'D')}
+ids=lambda n:[m['id'] for m in M[n]]
+chats=[
+ {"id":K[1],"participants":seats,"messages":M[1],"lastMessageAt":"2026-07-14T11:00:00.000Z","messageCount":300,"summaryAnchorMessageIds":ids(1)[:130]},
+ {"id":K[2],"participants":seats,"messages":M[2],"lastMessageAt":"2026-07-14T10:00:00.000Z","messageCount":10},
+ {"id":K[3],"participants":seats,"messages":M[3],"lastMessageAt":"2026-07-14T13:30:00.000Z","messageCount":6,"summaryAnchorMessageIds":ids(3)[:4]},
+ {"id":K[4],"chatType":"help","participants":seats,"messages":M[4],"lastMessageAt":"2026-07-14T09:00:00.000Z","messageCount":6,"summaryAnchorMessageIds":ids(4)[:4]},
+ {"id":K[5],"participants":seats,"messages":M[5],"lastMessageAt":"2026-07-14T09:00:00.000Z","messageCount":1},
+ {"id":K[6],"participants":seats,"messages":M[6],"lastMessageAt":"2026-06-01T09:00:00.000Z","messageCount":6,"summaryAnchorMessageIds":ids(6)[:4]},
+ {"id":K[7],"participants":noprof,"messages":M[7],"lastMessageAt":"2026-07-14T08:00:00.000Z","messageCount":6,"summaryAnchorMessageIds":ids(7)[:4]},
+ {"id":K[8],"participants":seats,"messages":M[8],"lastMessageAt":"2026-07-14T07:00:00.000Z","messageCount":6,"summaryAnchorMessageIds":ids(8)[:4]},
 ]
-spec=O()
-spec['_comment']=('Tier-3 corpus for the fold-grain OTHER pass (P4.D270, v4 `d58548051` lib/memory/fold-other-pass.ts + '
- 'maintenance/fold-other-catchup.ts + the MEMORY_EXTRACTION handler branch, pin `01a83539d`). Consumed by '
- 'build-fold-other-pass-fixture.ts (the seed), fold-other-pass-tier3.test.ts (v4 REAL code) and '
- 'fold_other_pass_tier3_equivalence.rs. GENERATED by harness/oracle/scripts/gen-fold-other-pass-spec.py — edit the generator, not the JSON, '
- 'when the ops move. Completion calls classify by the GRAIN block and are keyed by the `[op:<tag>]` the '
- 'orienting chat summary carries and the OBSERVER label; embeddings are record-and-replay (one-hot per '
- 'distinct text, in first-seen order).')
-spec['_safety']='testPepperBase64 is the same THROWAWAY key the other fixtures use — never a real pepper.'
-spec['testPepperBase64']='ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk='
-spec['userId']=USER
-spec['seedTimestamp']='2020-01-01T00:00:00.000Z'
-spec['futureTimestamp']='2099-01-01T00:00:00.000Z'
-spec['fixedNow']=FIXED_NOW
-spec['connectionProfileId']=PROF
-spec['chatSettings']=O(cheapLLMSettings=O(strategy='PROVIDER_CHEAPEST',fallbackToLocal=False),dangerMode='AUTO_ROUTE')
-spec['connectionProfiles']=[O(id=PROF,name='Current Anthropic',provider='ANTHROPIC',modelName='claude-benchmark-large',isCheap=False,isDangerousCompatible=False),
-                            O(id=CHEAP,name='Cheap OpenAI',provider='OPENAI',modelName='gpt-4o-mini',isCheap=True,isDangerousCompatible=False)]
-chars=[]
-for k,cid in C.items():
-    c=O(id=cid,name=NAMES[k],controlledBy=('user' if k=='cass' else 'llm'),identity=f'{NAMES[k]} keeps the harbor books.',pronouns=O(subject=PRON[k][0],object=PRON[k][1],possessive=PRON[k][2]))
-    c['files']=[]
-    if k=='dov':
-        c['files']=[O(path='Others/Ada.md',content='Ada is the harbormaster\'s most reliable clerk.'),
-                    O(path='Commonplace/Ada.md',content='---\ntype: commonplace-digest\nsubjectCharacterId: "%s"\nupdatedAt: "2026-08-01T00:00:00.000Z"\n---\n# Ada\n\n- Ada counts every crate twice.\n' % C['ada'])]
-    chars.append(c)
-spec['characters']=chars
-spec['ballast']=[O(characterId=C['eve'],count=4),O(characterId=C['fay'],count=2)]
-spec['plants']=[O(name='qt_fop_gate_fail',content=f'[gate_fail] Ada noticed that Bram handled the harbor task 1.',characterId=C['ada'],message='planted gate write failure')]
-spec['chats']=chats
-spec['completionRules']=rules
-spec['ops']=ops
-import sys
-open(sys.argv[1],'w').write(json.dumps(spec,indent=2,ensure_ascii=False)+'\n')
-print(len(chats),'chats',len(rules),'rules',len(ops),'ops')
+Z={"promptTokens":0,"completionTokens":0,"totalTokens":0}
+def ep(n,summary,imp=0.7):
+    return {"narrative":n,"summary":summary,"when":"2026-07-14","entities":["Gull"],"importance":imp}
+rules=[
+ {"pass":"episode","contains":"K030 ","response":json.dumps([ep("On July 14th Ada and Bram set out aboard the Gull.","set out aboard the gull")]),"usage":Z},
+ {"pass":"episode","response":"[]","usage":Z},
+ {"pass":"other","label":"Ada (she/her/her)","response":json.dumps([{"subjectIndex":1,"content":"Bram keeps the ship's ledger.","summary":"bram keeps the ledger","importance":0.7}]),"usage":Z},
+ {"pass":"other","label":"Bram (he/him/his)","response":"[]","usage":Z},
+]
+N="2026-07-14T14:00:00.000Z"
+job=lambda **kw:{"turnOpenerMessageId":None,"extractionAnchorMessageId":None,"connectionProfileId":P_CUR,**kw}
+ops=[
+ {"name":"sel_other","kind":"select","pass":"other-fold","now":N,"plants":{"cursors":{K[8]:{"other-fold":ids(8)[-1],"episode-fold":ids(8)[3]}}}},
+ {"name":"sel_episode","kind":"select","pass":"episode-fold","now":N},
+ {"name":"sel_other_limit_one","kind":"select","pass":"other-fold","now":N,"limit":1},
+ {"name":"sel_other_mode_turn","kind":"select","pass":"other-fold","now":N,"plants":{"mode":{"otherPass":"turn","perTurnOtherFloor":0.75,"foldCandidatesPerSubject":3}}},
+ {"name":"sweep_other","kind":"sweep","pass":"other-fold","now":N},
+ {"name":"sweep_other_in_flight","kind":"sweep","pass":"other-fold","now":N},
+ {"name":"sweep_episode_capped","kind":"sweep","pass":"episode-fold","now":N,"limit":0},
+ {"name":"sweep_episode","kind":"sweep","pass":"episode-fold","now":N},
+ {"name":"catchup_never_folded","kind":"catchup","chatId":K[2],"pass":"episode-fold","now":N},
+ {"name":"catchup_not_idle","kind":"catchup","chatId":K[3],"pass":"other-fold","now":N},
+ {"name":"catchup_other_ignore_idle","kind":"catchup","chatId":K[3],"pass":"other-fold","now":N,"ignoreIdle":True},
+ {"name":"catchup_other_behind_cursor","kind":"catchup","chatId":K[3],"pass":"other-fold","now":N,"ignoreIdle":True},
+ {"name":"catchup_episode_behind_cursor","kind":"catchup","chatId":K[8],"pass":"episode-fold","now":N},
+ {"name":"handler_other_continues","kind":"handler","chatId":K[1],"payload":job(chatId=K[1],**{"pass":"other-fold"})},
+ {"name":"handler_other_continuation","kind":"handler","chatId":K[1],"payload":job(chatId=K[1],**{"pass":"other-fold","cursor":ids(1)[239]})},
+ {"name":"handler_episode_legacy_flag","kind":"handler","chatId":K[1],"payload":job(chatId=K[1],foldEpisodeCatchup=True)},
+ {"name":"handler_not_idle","kind":"handler","chatId":K[3],"plants":{"lastMessageAtNow":True,"cursors":{K[3]:{"other-fold":None}}},"payload":job(chatId=K[3],**{"pass":"other-fold"})},
+ {"name":"handler_legacy_ignore_idle","kind":"handler","chatId":K[3],"plants":{"lastMessageAtNow":True},"payload":job(chatId=K[3],foldOtherCatchup=True,foldOtherIgnoreIdle=True)},
+ {"name":"handler_timeout_fails_the_job","kind":"handler","chatId":K[2],"plants":{"failContains":"B005 "},"payload":job(chatId=K[2],**{"pass":"other-fold"})},
+ {"name":"handler_bogus_first","kind":"handler","chatId":K[1],"payload":job(chatId=K[1],**{"pass":"bogus"})},
+ {"name":"handler_bogus_second","kind":"handler","chatId":K[1],"payload":job(chatId=K[1],**{"pass":"bogus"})},
+ {"name":"handler_no_chat","kind":"handler","chatId":"c9000000-0000-4000-8000-0000000000c9","payload":job(chatId="c9000000-0000-4000-8000-0000000000c9",**{"pass":"other-fold"})},
+]
+spec={
+ "testPepperBase64":"dGVzdC1wZXBwZXItZm9yLWZpeHR1cmVzLW9ubHkxMjM0NTY3OA==",
+ "userId":U,"seedTimestamp":"2026-07-01T00:00:00.000Z","futureTimestamp":"2026-07-01T00:00:00.000Z",
+ "connectionProfiles":[
+   {"id":P_CUR,"name":"Current","provider":"ANTHROPIC","modelName":"claude-sonnet-4-5","isCheap":False,"isDangerousCompatible":False},
+   {"id":P_CHEAP,"name":"Cheap","provider":"OPENAI","modelName":"gpt-4o-mini","isCheap":True,"isDangerousCompatible":False}],
+ "chatSettings":{"cheapLLMSettings":{"strategy":"PROVIDER_CHEAPEST","fallbackToLocal":False}},
+ "characters":[
+   {"id":ADA,"name":"Ada","controlledBy":"llm","identity":"Ada captains the Gull.","pronouns":{"subject":"she","object":"her","possessive":"her"},"othersFiles":[]},
+   {"id":BRAM,"name":"Bram","controlledBy":"llm","identity":"Bram is the quartermaster.","pronouns":{"subject":"he","object":"him","possessive":"his"},"othersFiles":[]}],
+ "seedMemories":[],
+ "chats":chats,
+ "embeddingDims":16,
+ "completionRules":rules,
+ "unknownPassChatId":K[1],
+ "ops":ops,
+}
+json.dump(spec,open(OUT,'w'),indent=1,ensure_ascii=False)
+print(len(ops))

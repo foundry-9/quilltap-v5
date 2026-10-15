@@ -10,8 +10,9 @@
 //! through the ported handlers — the extraction path through
 //! `build_turn_transcript` + `process_turn_for_memory`, the summary path
 //! through `generate_context_summary_with_seams(RealContextSummarySeams)` —
-//! then diffs six tables (`memories`, `vector_indices`, `vector_entries`,
-//! `chat_messages`, `chats`, `background_jobs`) in the shared-cross-table
+//! then diffs four tables (`memories` — at the `83334b9a5` pin the vector rides
+//! in the row, so the old `vector_indices` / `vector_entries` comparands are
+//! gone — `chat_messages`, `chats`, `background_jobs`) in the shared-cross-table
 //! minted-values remap form, and asserts each case's thrown-error string
 //! matches the oracle's.
 //!
@@ -67,7 +68,6 @@ use quilltap_core::services::llm_logging::LogContext;
 use quilltap_core::services::memory_extraction_job::{
     handle_memory_extraction, MemoryExtractionPayload,
 };
-use quilltap_core::services::memory_processor::MemoryExtractionLimits;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -76,15 +76,6 @@ mod common;
 // ---------------------------------------------------------------------------
 // Spec structures (harness/oracle/fixtures/memory-pipeline-jobs-tier3.json).
 // ---------------------------------------------------------------------------
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct LimitsW {
-    enabled: bool,
-    max_per_hour: f64,
-    soft_start_fraction: f64,
-    soft_floor: f64,
-}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -113,7 +104,6 @@ struct Spec {
     test_pepper_base64: String,
     user_id: String,
     connection_profile_id: String,
-    memory_extraction_limits: LimitsW,
     me_cases: Vec<MeCaseW>,
     cs_cases: Vec<CsCaseW>,
 }
@@ -235,22 +225,6 @@ const TABLES: &[TableSpec] = &[
         text_id_columns: &[],
     },
     TableSpec {
-        table: "vector_entries",
-        order_by: "embedding",
-        id_columns: &["id"],
-        id_array_columns: &[],
-        ts_columns: &["createdAt"],
-        text_id_columns: &[],
-    },
-    TableSpec {
-        table: "vector_indices",
-        order_by: "id",
-        id_columns: &[],
-        id_array_columns: &[],
-        ts_columns: &["createdAt", "updatedAt"],
-        text_id_columns: &[],
-    },
-    TableSpec {
         table: "chat_messages",
         order_by: "content",
         // Seeded message ids are pinned (tokenized consistently both sides);
@@ -287,7 +261,10 @@ fn token_for(id_map: &mut HashMap<String, String>, raw: &str) -> String {
 
 /// Replace every UUID-shaped substring that is already in the shared id map
 /// with its token (embedded minted ids in free-text cells). Unknown UUIDs stay
-/// literal — pinned ids are identical on both sides.
+/// literal — pinned ids are identical on both sides. P4.D296: admission's
+/// neighbour notes print `id.slice(0, 8)`, so a standalone 8-hex run that
+/// prefixes a mapped id becomes `<token>#8` (memory note
+/// `unify-review-finding-shapes` — prefix pins).
 fn replace_mapped_uuids(raw: &str, id_map: &HashMap<String, String>) -> String {
     let bytes = raw.as_bytes();
     let mut out = String::with_capacity(raw.len());
@@ -303,6 +280,13 @@ fn replace_mapped_uuids(raw: &str, id_map: &HashMap<String, String>) -> String {
             if cand.len() == 36 {
                 if let Some(token) = id_map.get(cand) {
                     out.push_str(token);
+                    i = j;
+                    continue;
+                }
+            }
+            if cand.len() == 8 {
+                if let Some((_, token)) = id_map.iter().find(|(id, _)| id.starts_with(cand)) {
+                    out.push_str(&format!("{token}#8"));
                     i = j;
                     continue;
                 }
@@ -607,12 +591,8 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
         })
     };
     let cost = NullCost;
-    let limits = MemoryExtractionLimits {
-        enabled: spec.memory_extraction_limits.enabled,
-        max_per_hour: spec.memory_extraction_limits.max_per_hour,
-        soft_start_fraction: spec.memory_extraction_limits.soft_start_fraction,
-        soft_floor: spec.memory_extraction_limits.soft_floor,
-    };
+    // P4.D296: the corpus limits ride the fixture's `instance_settings` row
+    // (the builder plants it), read by both sides' settings resolver.
 
     let assert_case_error = |name: &str, got: Option<String>| {
         let want = oracle_errors
@@ -622,15 +602,13 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
     };
 
     for case in &spec.me_cases {
-        let payload = MemoryExtractionPayload {
-            chat_id: case.chat_id.clone(),
-            turn_opener_message_id: case.turn_opener_message_id.clone(),
-            extraction_anchor_message_id: case.extraction_anchor_message_id.clone(),
-            connection_profile_id: spec.connection_profile_id.clone(),
-            // P4.D270: per-turn jobs (no `foldOtherCatchup`); the host fills
-            // `job_id` (a HANDOFF until unification), so these run without one.
-            ..Default::default()
-        };
+        // v4's job payload bytes (the oracle's `job.payload`).
+        let payload = MemoryExtractionPayload::decode(&serde_json::json!({
+            "chatId": case.chat_id,
+            "turnOpenerMessageId": case.turn_opener_message_id,
+            "extractionAnchorMessageId": case.extraction_anchor_message_id,
+            "connectionProfileId": spec.connection_profile_id,
+        }));
         let executor = executor_for(&case.chat_id);
         let got = handle_memory_extraction(
             &db,
@@ -638,9 +616,10 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
             &embedding,
             &executor,
             &cost,
+            &format!("job-{}", case.name),
             &spec.user_id,
             &payload,
-            Some(limits.clone()),
+            "UTC",
         )
         .await
         .err();
@@ -656,12 +635,7 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
         let executor = executor_for(&case.chat_id);
         if let Some(patch) = case.memory_extraction_mode.clone() {
             db.write(move |w| {
-                // The builder-built fixture has no `instance_settings` table
-                // (measured); the plant creates it with `fresh_schema.json`'s
-                // DDL, as the oracle does.
-                w.main().connection().execute_batch(
-                    "CREATE TABLE IF NOT EXISTS \"instance_settings\" (\n  \"key\" TEXT PRIMARY KEY,\n  \"value\" TEXT NOT NULL\n)",
-                )?;
+                // The builder creates `instance_settings` (P4.D296).
                 quilltap_core::db::instance_settings::set_memory_extraction_mode_settings(
                     w.main().connection(),
                     &patch,
@@ -678,6 +652,8 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
             &executor,
             &spec.user_id,
             &payload,
+            &format!("job-{}", case.name),
+            "UTC",
         )
         .await
         .err();
@@ -703,17 +679,28 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
     // call (the fold-episode pass above all) shows.
     let got_keys = completion.hit.lock().unwrap().clone();
     // Non-vacuity (found at unification): two EMPTY sets are equal, so a regen
-    // that recorded no canned call, or no fold-episode call, would pass
-    // silently. The order's target is the episode pass, so at least one
-    // recorded key must carry its system prompt.
-    assert!(
-        want_keys
-            .iter()
-            .any(|k| k.contains("You are consolidating a batch")),
-        "the oracle recorded no fold-episode call ({} keys) — the consumption \
-         assert below would measure nothing for the pass it exists to see",
-        want_keys.len()
-    );
+    // that recorded no canned call would pass silently. Each handler's own
+    // call must be in the set: the SELF extraction (MEMORY_EXTRACTION) and the
+    // summary fold (CONTEXT_SUMMARY). P4.D296: the fold-episode pass no longer
+    // calls here — at the `83334b9a5` pin the context-summary hook builds ONE
+    // extraction context, and `cs_fold`'s only seat names an unprovisioned
+    // character, so the episode pass meets an empty cast and skips before any
+    // call (v4 and v5 alike, the consumption set below proves it);
+    // `fold_episode_tier3` owns the episode call now.
+    for (needle, what) in [
+        (
+            "You produce memory entries that the subject",
+            "SELF extraction",
+        ),
+        ("You are updating an existing summary", "summary fold"),
+    ] {
+        assert!(
+            want_keys.iter().any(|k| k.contains(needle)),
+            "the oracle recorded no {what} call ({} keys) — the consumption \
+             assert below would measure nothing for it",
+            want_keys.len()
+        );
+    }
     let never_built: Vec<&String> = want_keys.difference(&got_keys).collect();
     let never_sent_by_v4: Vec<&String> = got_keys.difference(&want_keys).collect();
     assert!(

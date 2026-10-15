@@ -1575,28 +1575,72 @@ pub async fn memory_rebuild_index(db: &Db, character_id: &str, confirm: bool) ->
     }))
 }
 
-// === P4.6BM: the per-chat `?action=queue-memories` action ===
+// === P4.D296: queue-memories (owned) ===
 
-/// v4 `handleQueueMemories` (`app/api/v1/chats/[id]/actions/memories.ts:85-166`)
-/// — queue one per-turn `MEMORY_EXTRACTION` job for every turn in a chat.
+/// v4 `resolveExtractionProfileId(chat, ctx)` (`app/api/v1/chats/[id]/actions/
+/// memories.ts:36-54`, pin `83334b9a5`) — the connection profile a chat's
+/// extraction runs against, the same one the live pipeline uses: an LLM
+/// seat's profile, else any seat's ([`pick_extraction_connection_profile_id`]).
+/// A chat with no seat profile falls back to the user's configured cheap
+/// profile — `defaultCheapProfileId`, else (`strategy === 'USER_DEFINED'`)
+/// `userDefinedProfileId` — each only when that profile exists AND belongs to
+/// the user. `None` when neither exists.
+fn resolve_extraction_profile_id(
+    db: &Db,
+    user_id: &str,
+    chat: &Value,
+) -> Result<Option<String>, DbError> {
+    if let Some(seat) = pick_extraction_connection_profile_id(chat) {
+        return Ok(Some(seat));
+    }
+    let uid = user_id.to_string();
+    db.read_main(move |conn| {
+        let settings = crate::db::chat_settings::find_by_user_id(conn, &uid)?;
+        let cheap = settings.as_ref().and_then(|s| s.get("cheapLLMSettings"));
+        let str_of = |k: &str| {
+            cheap
+                .and_then(|c| c.get(k))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        };
+        let user_defined = (str_of("strategy").as_deref() == Some("USER_DEFINED"))
+            .then(|| str_of("userDefinedProfileId"))
+            .flatten();
+        for id in [str_of("defaultCheapProfileId"), user_defined]
+            .into_iter()
+            .flatten()
+        {
+            if id.is_empty() {
+                continue;
+            }
+            let profile = crate::db::connection_profiles::find_by_id(conn, &id)?;
+            if profile
+                .as_ref()
+                .and_then(|p| p.get("userId"))
+                .and_then(Value::as_str)
+                == Some(uid.as_str())
+            {
+                return Ok(Some(id));
+            }
+        }
+        Ok(None)
+    })
+}
+
+/// v4 `handleQueueMemories` (`actions/memories.ts:65-113`) — queue one
+/// `MEMORY_EXTRACTION` job for every turn of a chat, as extraction addresses
+/// them ([`list_extraction_turns`]: an ordinary chat's greeting turn, then
+/// one per non-staff USER message; an autonomous room's one per closing
+/// ASSISTANT line, each bounded by the previous anchor — bug 245). Every job
+/// is a `backfill` (the rate limit does not apply to a rebuild of history).
 ///
-/// The two branches are v4's, and they are NOT symmetric:
-///
-///   - **autonomous** chats have no USER role in history, so one job is queued
-///     per non-system, non-silent ASSISTANT message that HAS a `participantId`,
-///     with that message as the `extractionAnchorMessageId` (the anchor keeps
-///     each job's dedupe key distinct, and each job's transcript walks from the
-///     start of history through it).
-///   - **every other** chat type queues one job per non-system USER message,
-///     which OPENS the turn the handler then walks forward from.
-///
-/// Error arms (both 400, both byte-matched): no cheap LLM configured, and an
-/// empty batch with a branch-specific message.
-///
-/// The legacy `characterId` / `characterName` / `messagePairs` request fields are
-/// still accepted by v4's Zod schema and ignored by the handler (per-turn jobs
-/// cover the whole turn), so v5's `ChatQueueMemories { chat_id }` variant is the
-/// whole live surface.
+/// Error arms (both 400, byte-matched): no connection profile (WARN `[Chats
+/// v1] No connection profile for memory extraction {userId, chatId}`), and an
+/// empty turn list with v4's branch-specific sentence. The legacy
+/// `characterId` / `characterName` / `messagePairs` request fields are still
+/// accepted by v4's schema and ignored by the handler (per-turn jobs cover
+/// the whole turn), so v5's `ChatQueueMemories { chat_id }` is the whole live
+/// surface.
 pub async fn chat_queue_memories(db: &Db, user_id: &str, chat_id: &str) -> Response {
     // The chat itself (v4's route wrapper resolves it before dispatching).
     let cid = chat_id.to_string();
@@ -1605,95 +1649,49 @@ pub async fn chat_queue_memories(db: &Db, user_id: &str, chat_id: &str) -> Respo
         Ok(None) => return not_found("Chat"),
         Err(e) => return internal(e),
     };
-
-    // v4 `resolveCheapLLMProfileId` — the narrow two-branch resolver, shared
-    // with any future caller (`cheap_llm::resolve_cheap_llm_profile_id`).
-    let uid = user_id.to_string();
-    let resolved: Result<Option<String>, DbError> = db.read_main(move |conn| {
-        let settings = crate::db::chat_settings::find_by_user_id(conn, &uid)?;
-        let mut lookup = |id: &str| -> Option<String> {
-            crate::db::connection_profiles::find_by_id(conn, id)
-                .ok()
-                .flatten()
-                .and_then(|p| p.get("userId").and_then(Value::as_str).map(str::to_string))
-        };
-        Ok(crate::cheap_llm::resolve_cheap_llm_profile_id(
-            settings.as_ref(),
-            &uid,
-            &mut lookup,
-        ))
-    });
-    let connection_profile_id = match resolved {
+    let connection_profile_id = match resolve_extraction_profile_id(db, user_id, &chat) {
         Ok(Some(id)) => id,
         Ok(None) => {
+            tracing::warn!(
+                userId = %user_id,
+                chatId = %chat_id,
+                "[Chats v1] No connection profile for memory extraction"
+            );
             return bad_request(
-                "No valid cheap LLM configured. Please set a cheap LLM profile in settings.",
-            )
+                "No connection profile available for memory extraction. Give a seat a profile or set a cheap LLM profile in settings.",
+            );
         }
         Err(e) => return internal(e),
     };
 
-    let cid = chat_id.to_string();
-    let messages =
-        match db.read_main(move |conn| crate::db::chats_messages_read::get_messages(conn, &cid)) {
-            Ok(m) => m,
-            Err(e) => return internal(e),
-        };
-    let is_autonomous = chat.get("chatType").and_then(Value::as_str) == Some("autonomous");
-
-    let str_field = |m: &Value, k: &str| m.get(k).and_then(Value::as_str).map(str::to_string);
-    let truthy = |m: &Value, k: &str| match m.get(k) {
-        Some(Value::Bool(b)) => *b,
-        Some(Value::String(s)) => !s.is_empty(),
-        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0),
-        _ => false,
+    let messages = match load_chat_message_events(db, chat_id) {
+        Ok(m) => m,
+        Err(e) => return internal(e),
     };
-
-    let mut entries: Vec<MemoryExtractionBatchEntry> = Vec::new();
-    for m in &messages {
-        if m.get("type").and_then(Value::as_str) != Some("message") {
-            continue;
-        }
-        if is_autonomous {
-            if m.get("role").and_then(Value::as_str) != Some("ASSISTANT")
-                || truthy(m, "systemSender")
-                || truthy(m, "isSilentMessage")
-            {
-                continue;
-            }
-            // v4 `if (!event.participantId) continue` — absent OR empty.
-            let Some(id) = str_field(m, "id") else {
-                continue;
-            };
-            if str_field(m, "participantId").is_none_or(|p| p.is_empty()) {
-                continue;
-            }
-            entries.push(MemoryExtractionBatchEntry {
-                turn_opener_message_id: None,
-                extraction_anchor_message_id: Some(id),
-            });
-        } else {
-            if m.get("role").and_then(Value::as_str) != Some("USER") || truthy(m, "systemSender") {
-                continue;
-            }
-            let Some(id) = str_field(m, "id") else {
-                continue;
-            };
-            entries.push(MemoryExtractionBatchEntry {
-                turn_opener_message_id: Some(id),
-                extraction_anchor_message_id: None,
-            });
-        }
-    }
-
-    if entries.is_empty() {
+    let chat_type = chat.get("chatType").and_then(Value::as_str);
+    let is_autonomous = chat_type == Some("autonomous");
+    let turns = list_extraction_turns(&messages, chat_type);
+    if turns.is_empty() {
         return bad_request(if is_autonomous {
             "No assistant messages found in this chat — nothing to extract memories from."
         } else {
-            "No user messages found in this chat — nothing to extract memories from."
+            "No messages found in this chat — nothing to extract memories from."
         });
     }
-
+    tracing::info!(
+        chatId = %chat_id,
+        chatType = %chat_type.unwrap_or("null"),
+        turnCount = turns.len(),
+        "[Chats v1] Queueing per-turn memory extraction jobs"
+    );
+    let entries: Vec<MemoryExtractionBatchEntry> = turns
+        .iter()
+        .map(|t| MemoryExtractionBatchEntry {
+            turn_opener_message_id: t.turn_opener_message_id.clone(),
+            extraction_anchor_message_id: t.extraction_anchor_message_id.clone(),
+            extract_after_message_id: t.extract_after_message_id.clone(),
+        })
+        .collect();
     let job_ids = match enqueue_memory_extraction_batch(
         db,
         user_id,
@@ -1708,16 +1706,18 @@ pub async fn chat_queue_memories(db: &Db, user_id: &str, chat_id: &str) -> Respo
         Ok(ids) => ids,
         Err(e) => return internal(e),
     };
-
     Response::Memory(json!({
         "success": true,
         "jobCount": job_ids.len(),
         "chatId": chat_id,
-        "turnCount": entries.len(),
+        "turnCount": turns.len(),
     }))
 }
 
-// === end P4.6BM ===
+use crate::services::extraction::context::pick_extraction_connection_profile_id;
+use crate::services::turn_transcript::{list_extraction_turns, load_chat_message_events};
+
+// === end P4.D296 ===
 
 // === P4.D269: anchor-gate probe (append-only) ===
 

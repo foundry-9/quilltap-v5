@@ -381,6 +381,20 @@ async function main(): Promise<void> {
   // the provisioning chunks too is harmless.
   midb.prepare('UPDATE doc_mount_chunks SET embedding = ?').run(cannedEmbeddingBuffer());
 
+  // P4.D296: the fold memory passes build ONE extraction context, which reads
+  // three tables v4 creates on demand (or only on a migrated instance) and the
+  // Rust port does not: `connection_profiles` (its repository's DDL through a
+  // real read — the route's profile list), the cursor table (a real write then
+  // a clear), and `instance_settings` (fresh_schema.json's DDL; memory note
+  // `builder-fixtures-lack-instance-settings`).
+  await repos.connections.findById('00000000-0000-4000-8000-000000000000');
+  await repos.memoryExtractionCursors.setCursor(FRAGMENT_CHAT_ID, 'turn', FRAGMENT_SOURCE_MESSAGE_ID);
+  await repos.memoryExtractionCursors.clearForChat(FRAGMENT_CHAT_ID);
+  {
+    const { rawQuery } = await import('@/lib/database/manager');
+    await rawQuery('CREATE TABLE IF NOT EXISTS "instance_settings" (\n  "key" TEXT PRIMARY KEY,\n  "value" TEXT NOT NULL\n)');
+  }
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
   process.stderr.write(

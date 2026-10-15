@@ -269,6 +269,19 @@ async function main(): Promise<void> {
   const mainDb = getRawDatabase();
   if (!mainDb) throw new Error('main DB handle unavailable');
   mainDb.prepare('DELETE FROM "background_jobs" WHERE "id" = ?').run(throwawayJobId);
+  // P4.D296: the tables the ONE extraction pipeline reads that v4 creates only
+  // lazily or on a migrated instance — the cursor table (its repository's own
+  // DDL, through a real write then a clear) and `instance_settings`
+  // (fresh_schema.json's DDL; memory note `builder-fixtures-lack-instance-
+  // settings`) carrying the corpus limits row both sides' settings resolver
+  // reads (the retired `getMemoryExtractionLimits` mock / injected limits).
+  const firstChat = spec.chats[0];
+  await repos.memoryExtractionCursors.setCursor(firstChat.id, 'turn', firstChat.messages[0].id);
+  await repos.memoryExtractionCursors.clearForChat(firstChat.id);
+  mainDb.exec('CREATE TABLE IF NOT EXISTS "instance_settings" (\n  "key" TEXT PRIMARY KEY,\n  "value" TEXT NOT NULL\n)');
+  mainDb
+    .prepare('INSERT INTO "instance_settings" ("key", "value") VALUES (?, ?)')
+    .run('memoryExtractionLimits', JSON.stringify(spec.memoryExtractionLimits));
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

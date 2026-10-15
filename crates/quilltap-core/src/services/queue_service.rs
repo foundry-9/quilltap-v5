@@ -687,102 +687,155 @@ pub fn pass_of(payload: &Value) -> Result<MemoryExtractionPass, Value> {
 
 // === end P4.D288 ===
 
-/// One `MEMORY_EXTRACTION` enqueue (v4 `MemoryExtractionPayload` as the
-/// enqueue side writes it). `fold_other_catchup` is v4 `d58548051`'s idle
-/// catch-up flag (the daily sweep's); v4's `foldOtherIgnoreIdle` and
-/// `skipDedupCheck` are set ONLY by the regenerate rebuild, which is DEFERRED
-/// with v5's `MEMORY_REGENERATE_CHAT` handler (P4.D270 R-I — no field without
-/// a caller).
-#[derive(Clone, Copy, Debug)]
+// === P4.D296: memory extraction enqueue ===
+
+/// One `MEMORY_EXTRACTION` enqueue — v4 `MemoryExtractionPayload` as its five
+/// writers build it (`ac6348c5f` + bug 245's `extractAfterMessageId`; pin
+/// `83334b9a5`). Every writer's object literal shares ONE key order, so
+/// [`MemoryExtractionEnqueue::to_payload`] writes each caller's stored bytes:
+/// `{chatId, turnOpenerMessageId, extractionAnchorMessageId[,
+/// extractAfterMessageId], connectionProfileId[, pass][, cursor][, ignoreIdle:
+/// true][, backfill: true]}` — the opener and anchor always materialized
+/// (`null` included), the rest only when set:
+///
+///  - the turn-end trigger `{chatId, turnOpenerMessageId,
+///    extractionAnchorMessageId, connectionProfileId}`;
+///  - the sweep `{…, extractionAnchorMessageId: <anchor>, connectionProfileId,
+///    pass}`;
+///  - a catch-up's continuation `{…, extractionAnchorMessageId: null,
+///    connectionProfileId, pass, cursor[, ignoreIdle][, backfill]}`;
+///  - the regenerate's turn `{…[, extractAfterMessageId], connectionProfileId,
+///    backfill}` and catch-up `{…, extractionAnchorMessageId:
+///    "regenerate:<jobId>", connectionProfileId, pass, ignoreIdle, backfill}`.
+#[derive(Clone, Copy, Debug, Default)]
 pub struct MemoryExtractionEnqueue<'a> {
     pub chat_id: &'a str,
     pub turn_opener_message_id: Option<&'a str>,
     pub extraction_anchor_message_id: Option<&'a str>,
+    /// Bug 245 — written only when set (v4 `...(x ? { x } : {})`).
+    pub extract_after_message_id: Option<&'a str>,
     pub connection_profile_id: &'a str,
-    pub fold_other_catchup: bool,
+    /// The grain — RAW (L-4): a catch-up continues with the payload's own
+    /// string.
+    pub pass: Option<&'a str>,
+    pub cursor: Option<&'a str>,
+    pub ignore_idle: bool,
+    pub backfill: bool,
+    /// v4 `options.skipDedupCheck` — the regenerate's.
+    pub skip_dedup_check: bool,
 }
 
-/// v4 `enqueueMemoryExtraction` (`lib/background-jobs/queue-service.ts`): enqueue
-/// a `MEMORY_EXTRACTION` job, deduping on the
-/// `(chatId, turnOpenerMessageId, extractionAnchorMessageId, foldOtherCatchup)`
-/// key. If a PENDING or PROCESSING `MEMORY_EXTRACTION` job with a matching key
-/// already exists (across the user's jobs), this is a no-op returning the
-/// existing id — so the first character to finalize in a multi-character turn
-/// creates the job and later finalizes fold into it. A `null` opener/anchor
-/// dedupe on `(chatId, null, null)`. The catch-up term (v4 `d58548051`) is
-/// `(existing.foldOtherCatchup ?? false) === (payload.foldOtherCatchup ??
-/// false)`, a STRICT compare: a stored `true` matches a catch-up, an absent or
-/// `null` key matches a per-turn job, and any other stored value matches
-/// neither — so a per-turn job and a catch-up on the same `(chat, null,
-/// anchor)` triple both enqueue. A dedupe-lookup failure falls through and
-/// enqueues anyway (v4 warns). `max_attempts` is v4's default 3 (no caller
-/// passes options).
-///
-/// The payload written is v4's object literal in its key order — `{ chatId,
-/// turnOpenerMessageId, extractionAnchorMessageId, connectionProfileId }`
-/// (nulls materialized), with `"foldOtherCatchup": true` APPENDED only for a
-/// catch-up (a per-turn payload carries no such key — absent, not `false`).
+impl MemoryExtractionEnqueue<'_> {
+    /// The stored payload, in v4's key order.
+    pub fn to_payload(&self) -> Value {
+        let mut m = serde_json::Map::new();
+        m.insert("chatId".into(), Value::from(self.chat_id));
+        m.insert(
+            "turnOpenerMessageId".into(),
+            self.turn_opener_message_id.map_or(Value::Null, Value::from),
+        );
+        m.insert(
+            "extractionAnchorMessageId".into(),
+            self.extraction_anchor_message_id
+                .map_or(Value::Null, Value::from),
+        );
+        if let Some(after) = self.extract_after_message_id.filter(|a| !a.is_empty()) {
+            m.insert("extractAfterMessageId".into(), Value::from(after));
+        }
+        m.insert(
+            "connectionProfileId".into(),
+            Value::from(self.connection_profile_id),
+        );
+        if let Some(pass) = self.pass {
+            m.insert("pass".into(), Value::from(pass));
+        }
+        if let Some(cursor) = self.cursor {
+            m.insert("cursor".into(), Value::from(cursor));
+        }
+        if self.ignore_idle {
+            m.insert("ignoreIdle".into(), Value::Bool(true));
+        }
+        if self.backfill {
+            m.insert("backfill".into(), Value::Bool(true));
+        }
+        Value::Object(m)
+    }
+}
+
+/// `x ?? null` over a payload key (absent and `null` alike).
+fn or_null(v: Option<&Value>) -> Value {
+    match v {
+        None => Value::Null,
+        Some(v) => v.clone(),
+    }
+}
+
+/// v4 `enqueueMemoryExtraction`'s dedupe match (`queue-service.ts:567-574`):
+/// `chatId ===`, `turnOpenerMessageId ===` (STRICT — a stored ABSENT key
+/// never equals an incoming `null`; L-6, where pre-round v5 collapsed both),
+/// `(anchor ?? null) ===`, `memoryExtractionPassOf ===` (raw values compared
+/// as v4 compares them), `(cursor ?? null) ===`.
+pub fn memory_extraction_dedupe_matches(existing: &Value, incoming: &Value) -> bool {
+    existing.get("chatId").is_some()
+        && existing.get("chatId") == incoming.get("chatId")
+        && match (
+            existing.get("turnOpenerMessageId"),
+            incoming.get("turnOpenerMessageId"),
+        ) {
+            (Some(a), Some(b)) => a == b,
+            // `undefined === undefined` — never reached by a v4 writer.
+            (None, None) => true,
+            _ => false,
+        }
+        && or_null(existing.get("extractionAnchorMessageId"))
+            == or_null(incoming.get("extractionAnchorMessageId"))
+        && pass_of(existing) == pass_of(incoming)
+        && or_null(existing.get("cursor")) == or_null(incoming.get("cursor"))
+}
+
+/// v4 `enqueueMemoryExtraction(userId, payload, options?)`: with
+/// `skip_dedup_check` straight to `enqueueJob`; else a PENDING / PROCESSING
+/// `MEMORY_EXTRACTION` of the user matching
+/// [`memory_extraction_dedupe_matches`] is returned instead. A lookup failure
+/// WARNs `[MemoryExtraction] Failed to check for existing jobs during
+/// enqueue` and enqueues anyway. `maxAttempts` is v4's default 3.
 pub async fn enqueue_memory_extraction_with(
     db: &Db,
     user_id: &str,
     job: &MemoryExtractionEnqueue<'_>,
 ) -> Result<String, DbError> {
-    let uid = user_id.to_string();
-    let in_flight = db.read_main(|conn| {
-        let repo = crate::db::background_jobs::BackgroundJobsRepository::new(conn);
-        let mut jobs = repo.find_by_user_id(&uid, Some("PENDING"))?;
-        jobs.extend(repo.find_by_user_id(&uid, Some("PROCESSING"))?);
-        Ok(jobs)
-    });
-    if let Ok(jobs) = in_flight {
-        // v4 treats a missing/undefined anchor as `null` before comparing.
-        let incoming_anchor = job.extraction_anchor_message_id;
-        let existing = jobs.iter().find(|j| {
-            if j.job_type != "MEMORY_EXTRACTION" {
-                return false;
-            }
-            let payload: Option<Value> = serde_json::from_str::<Value>(&j.payload).ok();
-            let Some(p) = payload else {
-                return false;
-            };
-            // `p.get(k)` returns None for an absent key; a stored JSON `null`
-            // reads as `Some(Value::Null)`. Both collapse to Rust `None` via
-            // `and_then(as_str)`, matching v4's `?? null` normalization.
-            let job_chat = p.get("chatId").and_then(Value::as_str);
-            let job_opener = p.get("turnOpenerMessageId").and_then(Value::as_str);
-            let job_anchor = p.get("extractionAnchorMessageId").and_then(Value::as_str);
-            // `(existing.foldOtherCatchup ?? false) === incoming`: a stored
-            // non-boolean never equals.
-            let catchup_matches = match p.get("foldOtherCatchup") {
-                None | Some(Value::Null) => !job.fold_other_catchup,
-                Some(Value::Bool(b)) => *b == job.fold_other_catchup,
-                Some(_) => false,
-            };
-            job_chat == Some(job.chat_id)
-                && job_opener == job.turn_opener_message_id
-                && job_anchor == incoming_anchor
-                && catchup_matches
+    let payload = job.to_payload();
+    if !job.skip_dedup_check {
+        let uid = user_id.to_string();
+        let in_flight = db.read_main(|conn| {
+            let repo = crate::db::background_jobs::BackgroundJobsRepository::new(conn);
+            let mut jobs = repo.find_by_user_id(&uid, Some("PENDING"))?;
+            jobs.extend(repo.find_by_user_id(&uid, Some("PROCESSING"))?);
+            Ok(jobs)
         });
-        if let Some(existing) = existing {
-            return Ok(existing.id.clone());
+        match in_flight {
+            Ok(jobs) => {
+                let existing = jobs.iter().find(|j| {
+                    j.job_type == "MEMORY_EXTRACTION"
+                        && serde_json::from_str::<Value>(&j.payload)
+                            .is_ok_and(|p| memory_extraction_dedupe_matches(&p, &payload))
+                });
+                if let Some(existing) = existing {
+                    return Ok(existing.id.clone());
+                }
+            }
+            Err(error) => tracing::warn!(
+                error = %crate::db::fallback::error_text(&error),
+                "[MemoryExtraction] Failed to check for existing jobs during enqueue"
+            ),
         }
-    }
-
-    // v4's payload object literal materializes every key (nulls included).
-    let mut payload = serde_json::json!({
-        "chatId": job.chat_id,
-        "turnOpenerMessageId": job.turn_opener_message_id,
-        "extractionAnchorMessageId": job.extraction_anchor_message_id,
-        "connectionProfileId": job.connection_profile_id,
-    });
-    if job.fold_other_catchup {
-        payload["foldOtherCatchup"] = Value::Bool(true);
     }
     enqueue_job(db, user_id, "MEMORY_EXTRACTION", payload, 3.0).await
 }
 
-/// The per-turn enqueue ([`enqueue_memory_extraction_with`] without the
-/// catch-up flag) — the finalizer's `trigger_turn_memory_extraction` call.
+/// The turn-end trigger's enqueue (`{chatId, turnOpenerMessageId,
+/// extractionAnchorMessageId, connectionProfileId}`, deduped) — the
+/// finalizer's `trigger_turn_memory_extraction` call.
 pub async fn enqueue_memory_extraction(
     db: &Db,
     user_id: &str,
@@ -799,37 +852,30 @@ pub async fn enqueue_memory_extraction(
             turn_opener_message_id,
             extraction_anchor_message_id,
             connection_profile_id,
-            fold_other_catchup: false,
+            ..Default::default()
         },
     )
     .await
 }
 
-// === P4.6BM ===
-
-/// One entry of v4's `MemoryExtractionBatchEntry` union, in the only shape the
-/// `queue-memories` action builds (the bare-string / null legacy arms are not
-/// modeled — no caller uses them).
-#[derive(Debug, Clone)]
+/// One entry of v4's `MemoryExtractionBatchEntry` union in its object arm
+/// (`{turnOpenerMessageId, extractionAnchorMessageId?, extractAfterMessageId?}`
+/// — the bare-string / null legacy arms have no caller).
+#[derive(Debug, Clone, Default)]
 pub struct MemoryExtractionBatchEntry {
     pub turn_opener_message_id: Option<String>,
     pub extraction_anchor_message_id: Option<String>,
+    /// Bug 245 — an autonomous room's previous anchor.
+    pub extract_after_message_id: Option<String>,
 }
 
 /// v4 `enqueueMemoryExtractionBatch` — ONE batch insert of `MEMORY_EXTRACTION`
-/// jobs, one per entry. Returns the minted ids in input order; an empty input
-/// inserts nothing.
-///
-/// **No dedupe, deliberately.** Unlike the single-job
-/// [`enqueue_memory_extraction`] — which dedupes on the
-/// `(chatId, turnOpenerMessageId, extractionAnchorMessageId)` triple — the batch
-/// helper goes straight to `createBatch`, so a second press of "queue memories"
-/// stacks a second full set. That is v4's behavior and the reason the action's
-/// caller clears prior jobs first.
-///
-/// The payload materializes all four keys including nulls (v4's object literal),
-/// so the stored bytes match. `priority` is the caller's (`0` from the action);
-/// `maxAttempts` is v4's default 3.
+/// jobs, one per entry; returns the minted ids in input order; an empty input
+/// inserts nothing. No dedupe (a second "queue memories" stacks a second set;
+/// the action clears prior jobs first). Every batch rebuilds history, so each
+/// payload carries `backfill: true` (`{chatId, turnOpenerMessageId,
+/// extractionAnchorMessageId[, extractAfterMessageId], connectionProfileId,
+/// backfill}`). INFO `Memory extraction batch enqueued {chatId, jobCount}`.
 pub async fn enqueue_memory_extraction_batch(
     db: &Db,
     user_id: &str,
@@ -848,12 +894,16 @@ pub async fn enqueue_memory_extraction_batch(
             user_id: user_id.to_string(),
             job_type: "MEMORY_EXTRACTION".to_string(),
             status: Some("PENDING".to_string()),
-            payload: serde_json::json!({
-                "chatId": chat_id,
-                "turnOpenerMessageId": e.turn_opener_message_id,
-                "extractionAnchorMessageId": e.extraction_anchor_message_id,
-                "connectionProfileId": connection_profile_id,
-            }),
+            payload: MemoryExtractionEnqueue {
+                chat_id,
+                turn_opener_message_id: e.turn_opener_message_id.as_deref(),
+                extraction_anchor_message_id: e.extraction_anchor_message_id.as_deref(),
+                extract_after_message_id: e.extract_after_message_id.as_deref(),
+                connection_profile_id,
+                backfill: true,
+                ..Default::default()
+            }
+            .to_payload(),
             priority,
             attempts: 0.0,
             max_attempts: 3.0,
@@ -873,15 +923,19 @@ pub async fn enqueue_memory_extraction_batch(
             .map(|_| ())
     })
     .await?;
+    tracing::info!(
+        chatId = %chat_id,
+        jobCount = ids.len(),
+        "Memory extraction batch enqueued"
+    );
     // v4 fires the processor only when something was actually enqueued — and
-    // publishes under the same guard (`queue-service.ts:1094`, `f3892158d`).
-    // The empty case returned early above, so reaching here means jobs landed.
+    // publishes under the same guard. The empty case returned early above.
     publish_realtime(RealtimeTopic::Jobs, None);
     ensure_processor_running();
     Ok(ids)
 }
 
-// === end P4.6BM ===
+// === end P4.D296 ===
 
 /// v4 `enqueueCarinaMemoryExtraction` (`lib/background-jobs/queue-service.ts`):
 /// enqueue a `CARINA_MEMORY_EXTRACTION` job for a posted Carina reference answer,

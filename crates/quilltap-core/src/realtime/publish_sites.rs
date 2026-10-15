@@ -359,10 +359,12 @@ mod tests {
             queue_service::MemoryExtractionBatchEntry {
                 turn_opener_message_id: Some("m-1".into()),
                 extraction_anchor_message_id: None,
+                extract_after_message_id: None,
             },
             queue_service::MemoryExtractionBatchEntry {
                 turn_opener_message_id: Some("m-2".into()),
                 extraction_anchor_message_id: None,
+                extract_after_message_id: None,
             },
         ];
         queue_service::enqueue_memory_extraction_batch(&db, "u1", "c-1", "cp-1", &entries, 0.0)

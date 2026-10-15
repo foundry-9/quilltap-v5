@@ -71,6 +71,7 @@ impl ContextSummaryPayload {
 }
 
 /// v4 `handleContextSummary`. `Err(message)` is v4's `throw`.
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_context_summary<C, E>(
     db: &Db,
     completion: &C,
@@ -78,6 +79,8 @@ pub async fn handle_context_summary<C, E>(
     executor: &CheapLlmTaskExecutor,
     user_id: &str,
     payload: &ContextSummaryPayload,
+    job_id: &str,
+    host_zone_fallback: &str,
 ) -> Result<Option<SummaryGenerationResult>, String>
 where
     C: CompletionProvider + Sync,
@@ -141,11 +144,16 @@ where
             .map(|f| f as i64),
     };
 
+    // The fold memory passes admit inside this job: one idempotency scope for
+    // the attempt (L-16 — v4 mints `jobId:contentKey:n` in its job child), and
+    // the host's calendar name as the memory zone's fallback (P4.D296).
     let seams = RealContextSummarySeams {
         db,
         embedding,
         completion,
         executor,
+        host_zone_fallback: host_zone_fallback.to_string(),
+        job_id: Some(job_id.to_string()),
     };
     let result =
         generate_context_summary_with_seams(db, completion, executor, &options, &seams).await;

@@ -57,12 +57,21 @@ interface ProfileSpec {
 interface ChatSpec {
   id: string;
   chatType?: string;
+  /** Written after the messages (the fold catch-ups read them off the row). */
+  summaryAnchorMessageIds?: string[];
+  lastMessageAt?: string;
+  messageCount?: number;
+  /** Seat status overrides (`isParticipantPresent` reads them). */
+  statuses?: Record<string, string>;
   participants: Array<{ id: string; characterId: string; controlledBy: string; connectionProfileId?: string }>;
   messages: Array<{ id: string; role: string; content: string; participantId: string | null; createdAt: string }>;
 }
 interface SeedMemory {
   id: string;
   characterId: string;
+  /** P4.D296: a per-turn fragment the episode pass links (`findByCharacterAndSourceMessageIds`). */
+  sourceMessageId?: string;
+  chatId?: string;
   content: string;
   summary: string;
   vector: number[] | null;
@@ -82,8 +91,10 @@ interface Spec {
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
+  // P4.D296: the extraction families share this builder; each names its own
+  // spec (default: the turn grain's).
   const spec = JSON.parse(
-    readFileSync(join(here, 'memory-processor-tier3.json'), 'utf8')
+    readFileSync(join(here, process.env.QT_FIXTURE_SPEC ?? 'memory-processor-tier3.json'), 'utf8')
   ) as Spec;
 
   const outMain = process.env.QT_FIXTURE_OUT;
@@ -225,7 +236,7 @@ async function main(): Promise<void> {
       {
         characterId: seed.characterId,
         aboutCharacterId: null,
-        chatId: null,
+        chatId: seed.chatId ?? null,
         projectId: null,
         content: seed.content,
         summary: seed.summary,
@@ -235,7 +246,7 @@ async function main(): Promise<void> {
         embedding: seed.vector ? new Float32Array(seed.vector) : null,
         source: 'AUTO',
         witnessedContext: null,
-        sourceMessageId: null,
+        sourceMessageId: seed.sourceMessageId ?? null,
         lastAccessedAt: null,
         reinforcementCount: 1,
         lastReinforcedAt: null,
@@ -285,6 +296,7 @@ async function main(): Promise<void> {
           characterId: p.characterId,
           controlledBy: p.controlledBy,
           connectionProfileId: p.connectionProfileId ?? null,
+          ...(chat.statuses?.[p.id] ? { status: chat.statuses[p.id] } : {}),
           createdAt: spec.seedTimestamp,
           updatedAt: spec.seedTimestamp,
         })),
@@ -306,6 +318,11 @@ async function main(): Promise<void> {
         targetParticipantIds: null,
       } as never);
     }
+    const rowExtras: Record<string, unknown> = {};
+    if (chat.summaryAnchorMessageIds) rowExtras.summaryAnchorMessageIds = chat.summaryAnchorMessageIds;
+    if (chat.lastMessageAt) rowExtras.lastMessageAt = chat.lastMessageAt;
+    if (chat.messageCount !== undefined) rowExtras.messageCount = chat.messageCount;
+    if (Object.keys(rowExtras).length > 0) await repos.chats.update(chat.id, rowExtras as never);
   }
   if ((spec.chats ?? []).length > 0) {
     // The lazily created tables the extraction path reads: the cursor table
@@ -320,6 +337,11 @@ async function main(): Promise<void> {
     await repos.memories.findById('00000000-0000-4000-8000-000000000000');
     const { rawQuery } = await import('@/lib/database/manager');
     await rawQuery('CREATE TABLE IF NOT EXISTS "instance_settings" (\n  "key" TEXT PRIMARY KEY,\n  "value" TEXT NOT NULL\n)');
+    // `background_jobs` (v4 creates it on the first enqueue): a real enqueue,
+    // then the row deleted — v4's exact DDL, zero rows.
+    const { enqueueJob } = await import('@/lib/background-jobs/queue-service');
+    const throwaway = await enqueueJob(spec.userId, 'LLM_LOG_CLEANUP' as never, {} as never);
+    await rawQuery('DELETE FROM "background_jobs" WHERE "id" = ?', [throwaway]);
   }
 
   closeMountIndexSQLiteClient();

@@ -1,760 +1,519 @@
-//! Tier-3 differential test: the **fold-time episode pass**
-//! (`quilltap_core::services::fold_episode_pass` — v4 `runFoldEpisodePass`),
-//! the episodic spine's creation-side keystone, verified tier-3 → tier-2.
+//! Tier-3 differential test: the extraction **fold runner** —
+//! `quilltap_core::services::extraction::fold::run_fold_pass` over BOTH fold
+//! passes (`episode-fold`, `other-fold`) against v4's `runFoldPass`
+//! (`lib/memory/extraction/fold.ts`) at the `83334b9a5` pin (work order
+//! P4.D296 Tier 1 #12). The family keeps its pre-refactor name (L-20); its old
+//! subject (`fold-episode-pass.ts`) was deleted by `ac6348c5f`.
 //!
-//! Both sides pin BOTH model calls identically: the completion by exact call
-//! key (the jest oracle RECORDS the exact `provider|model|temperature|messages`
-//! entry it answered; this test replays those recorded entries through
-//! `CannedCompletionProvider`, so a prompt-byte divergence surfaces as a
-//! canned-miss), and the embedding by the exact `buildMemoryEmbeddingText`
-//! text. Then the per-run `FoldEpisodePassResult` is compared field-for-field
-//! and the three affected tables (`memories`, `vector_entries`,
-//! `vector_indices`) are diffed in the shared-cross-table id-map remap form.
+//! Both sides start from the SAME fixture pair (the shared
+//! `build-memory-processor-fixture.ts` under `QT_FIXTURE_SPEC=
+//! fold-episode-tier3.json`: a 300-message two-seat chat, a chat whose second
+//! character is absent and whose user is a character, a chat whose only
+//! character was removed, three seeded episode fragments) and run the SAME op
+//! list: plant (any pass's cursor, the limits / mode rows, the rate ledger, a
+//! `failContains` marker that times out every call carrying it),
+//! `build_extraction_context` + `run_fold_pass` over a window cut from the
+//! chat's message events (or a raw window). Model calls are pinned by exact
+//! recorded call key, embeddings by exact text. Per op: the fold result (the
+//! pass result whole + `skippedReason` / `slices` / `slicesDeferred` /
+//! `cursorAdvancedTo`), the cursor table, the captured lines (writer-thread
+//! `[ExtractionCursors] Cursor set` filtered, as the turn family); after the
+//! last op the `memories` table (incl. `relatedMemoryIds` — the fragment
+//! links).
 //!
-//! The corpus covers: the 0–2 episode cap (a third episode is dropped), the
-//! summary fallback to `narrative.slice(0, 60)`, the entities coercion, the
-//! importance clamp, the `when`-phrase resolution vs the window-start fallback,
-//! narrative-mode `narrativeTime`, per-present-character writes (active AND
-//! silent; the absent participant gets nothing), fragment linking in both
-//! directions, an unstamped trailing message, an unknown participantId (the
-//! `Character` speaker fallback), and an empty-episode run that must write
-//! nothing.
-//!
-//! P4.D212 (bug 161, v4 `e7821606f`): the pass now resolves speakers through
-//! the SHARED `services::speaker_names` (v4 deleted its private loop). The one
-//! behaviour delta is an EMPTY-NAME character — the old gate was `if
-//! (character)` (an empty label), the shared one `if (character?.name)` (the
-//! `Character` fallback). The `episode_pass` window carries a line from an
-//! ABSENT seat on such a character (`Dell`, blanked by the builder — absent,
-//! so the pass writes it no memory): v4 at the baseline pin renders `: Dell
-//! hums…`, v4 at `e7821606f` and the port `Character: Dell hums…`. Measured
-//! red-first by restoring `main`'s pre-port `fold_episode_pass.rs` whole (the
-//! canned key misses, 0 episodes). ⚠ The line lives in `episode_pass`, not
-//! `no_episodes`: there a miss and a hit both write nothing, and the arm was
-//! invisible (the first placement survived the pre-port file). Dropping the
-//! resolver's empty-name filter ALONE stays green here — v4's `speakerLabel`
-//! also falls through on an empty resolved name, so the label is guarded
-//! twice; `speaker_names_equivalence` and the context-summary debug line's
-//! `resolvedCount` are what see the map. The rest of the corpus is neutral
-//! across the two pins.
-//!
-//! P4.144: the pass's own LOG LINES are a comparand. v4's three reachable
-//! `[FoldEpisodePass]` lines — `Episode extraction failed` (WARN, the
-//! `!success` arm only), `Failed to write episode for character` (WARN, the
-//! per-character catch — which sits OUTSIDE both link loops, so a failed write
-//! skips the rest of that character), and `Episode pass complete` (INFO, after
-//! the episode loop) — are captured by the oracle from v4's OWN logger
-//! (`Logger.prototype` wrapped in the same `resetModules` generation) as
-//! `{kind:'logs', run, lines:[{level, message, context}]}`. This side runs each
-//! pass under `global_capture::capture_async`, keeps the lines containing
-//! `[FoldEpisodePass]`, and compares each against the oracle's line rendered
-//! the way the capture renders it — level, the default module target,
-//! message, then every context field in v4's ORDER (`key=value`, strings
-//! unquoted) — so a swapped field, a wrong level, a `sqlite error:` prefix or
-//! an extra/missing line each reds. Three runs exist for this, each over a NEW
-//! chat with Aria + Bram present: `episode_fail` (the completion THROWS —
-//! registered here through `with_failure` from the oracle's `fail` row),
-//! `episode_write_fail` (a BEFORE INSERT trigger plant aborts Aria's episode)
-//! and `episode_link_fail` (a BEFORE UPDATE plant that fires only when
-//! `relatedMemoryIds` CHANGES aborts Aria's episode LINK update — her two
-//! window fragments must stay unlinked — and a third plant refuses Bram's one
-//! fragment BACK-link, so both link-write sites reach the catch and
-//! `fragmentsLinked` must count neither; v4 at the pin: `memoriesWritten: 2,
-//! fragmentsLinked: 0`, two WARNs then the INFO). Measured red-first on
-//! unported `main` against the fresh oracle: 4 of 5 runs carry lines (every
-//! run but the `no_episodes` silence leg); with the line assert disabled,
-//! `main` also reds `episode_link_fail`'s result (`fragmentsLinked` 3 against
-//! v4's 0 — its `let _ =` link writes kept linking Aria's two fragments and
-//! counted Bram's refused back-link) and the `memories` table. The one
-//! `#[test]` fail-fasts on `episode_pass`.
-//!
-//! P4.156 (R-E): a sixth run, `chat_read_fail`, renames `chats.id` for that
-//! run only (applied before the pass, restored after, on both sides): v4's
-//! `chats.findById` is the fallback `_findById` — `Error finding entity by ID
-//! {collection: chats, id}` and `null` — so the pass returns its empty result
-//! before the episode call. Mutation-proven (the read put back to a silent
-//! `.ok().flatten()` reds this run's lines). The pass's OTHER two reads (the
-//! fragment `findByCharacterAndSourceMessageIds`, the episode re-read) cannot
-//! be reached by a plant: each runs between two of the pass's own `memories`
-//! writes, and every column their SELECTs name is one the gate's INSERT names
-//! too, so any rename / trigger fails the WRITE first (measured; recorded in
-//! the lane record). P4.156 (R-G): the five memories wrap lines are folded onto
-//! `db::fallback` homes with bytes unchanged — this family is their pin
-//! (a field swap in `log_memory_create_failure` reds `episode_write_fail`).
-//! v4's quoted-identifier SQLite text is mapped onto v5's
-//! ([`normalize_v4_sqlite`], `common`).
-//!
-//! Generate the fixtures + oracle output (Node 24, from the v4 checkout — the
-//! CASES run from a `/tmp` mirror because jest ignores `.claude/` paths):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; W=<v5 worktree> ; M=/tmp/qt-d14-oracle
-//!   rm -rf $M && mkdir -p $M && cp -R $W/harness/oracle/* $M/
+//! Generate (Node 24, from the v4 checkout or the lane's pin):
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-fold-episode-oracle
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   cp "$V5W/harness/oracle/cases/fold-episode-tier3.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/fixtures/fold-episode-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
-//!   QT_FIXTURE_OUT=/tmp/qt-fold-episode-main.db \
+//!   QT_FIXTURE_SPEC=fold-episode-tier3.json QT_FIXTURE_OUT=/tmp/qt-fold-episode-main.db \
 //!   QT_FIXTURE_MOUNT_OUT=/tmp/qt-fold-episode-mount.db \
-//!     $N/npx tsx $W/harness/oracle/fixtures/build-fold-episode-fixture.ts
+//!     $N/npx tsx $V5W/harness/oracle/fixtures/build-memory-processor-fixture.ts
 //!   QT_FIXTURE_FOLD_EPISODE_MAIN=/tmp/qt-fold-episode-main.db \
 //!   QT_FIXTURE_FOLD_EPISODE_MOUNT=/tmp/qt-fold-episode-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-fold-episode.ndjson \
-//!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
-//!       --roots "$PWD" --roots "$M/cases" -- fold-episode-tier3
+//!     $N/npx jest --silent --watchman=false --testTimeout=180000 --roots "$PWD" --roots "$TMPO/cases" -- "fold-episode-tier3\\.test\\.ts$"
 //! Run:
 //!   QT_ORACLE_FOLD_EPISODE=/tmp/oracle-fold-episode.ndjson \
 //!   QT_FIXTURE_FOLD_EPISODE_MAIN=/tmp/qt-fold-episode-main.db \
 //!   QT_FIXTURE_FOLD_EPISODE_MOUNT=/tmp/qt-fold-episode-mount.db \
 //!     cargo test -p quilltap-harness --test fold_episode_tier3_equivalence
 
-mod common;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 
-use common::normalize_v4_sqlite;
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-
-use quilltap_core::cheap_llm::CheapLlmSelection;
 use quilltap_core::db::dump_table_json_conn;
-use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::db::memory_extraction_cursors::ExtractionCursorPass;
+use quilltap_core::db::runtime::Db;
 use quilltap_core::model::completion::{
     CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
 };
-use quilltap_core::model::embedding::CannedEmbeddingProvider;
-use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
-use quilltap_core::services::fold_episode_pass::{
-    run_fold_episode_pass, FoldWindowMessage, RunFoldEpisodePassInput,
+use quilltap_core::model::embedding::{CannedEmbeddingProvider, EmbeddingResult};
+use quilltap_core::services::admission::{
+    record_admission_insert, reset_admission_state_for_tests, reset_rate_ledger_for_tests,
 };
-use serde::Deserialize;
+use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use quilltap_core::services::extraction::context::{
+    build_extraction_context, BuildExtractionContextOptions,
+};
+use quilltap_core::services::extraction::fold::{run_fold_pass, FoldResult, RunFoldInput};
+use quilltap_core::services::extraction::run::ExtractionDeps;
+use quilltap_core::services::memory_time_zone::reset_memory_time_zone_cache_for_tests;
+use quilltap_core::services::turn_transcript::load_chat_message_events;
 use serde_json::{json, Value};
 
-// ---------------------------------------------------------------------------
-// Spec structures (harness/oracle/fixtures/fold-episode-tier3.json).
-// ---------------------------------------------------------------------------
+#[path = "admission_support/mod.rs"]
+mod admission_support;
+use admission_support::{minted_ids, oracle_lines, planted_stamps, render, render_v4, same, Norm};
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WindowMessageW {
-    id: String,
-    role: String,
-    content: Option<String>,
-    participant_id: Option<String>,
-    created_at: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RunW {
-    name: String,
-    /// P4.144: the completion THROWS this (the oracle records it on the canned
-    /// row too; only the canned row is read here).
-    #[allow(dead_code)]
-    fail: Option<String>,
-    chat_id: String,
-    timeline_mode: String,
-    project_id: Option<String>,
-    in_autonomous_room: bool,
-    window_messages: Vec<WindowMessageW>,
-    /// P4.156 (R-E): a main-db column renamed for this run only.
-    #[serde(default)]
-    rename_main_column: Option<RenameW>,
-}
-
-#[derive(Deserialize)]
-struct RenameW {
-    table: String,
-    from: String,
-    to: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ProfileW {
-    id: String,
-    provider: String,
-    model_name: String,
-    base_url: Option<String>,
-    is_local: bool,
-    parameters: Option<Value>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Spec {
-    test_pepper_base64: String,
-    user_id: String,
-    runs: Vec<RunW>,
-    profile: ProfileW,
-    canned_embeddings: HashMap<String, Vec<f32>>,
-    canned_failures: Vec<String>,
-}
-
-#[derive(Deserialize)]
-struct CannedMessageW {
-    role: String,
-    content: String,
-}
-
-#[derive(Deserialize)]
-struct CannedUsageW {
-    #[serde(rename = "promptTokens")]
-    prompt_tokens: i64,
-    #[serde(rename = "completionTokens")]
-    completion_tokens: i64,
-    #[serde(rename = "totalTokens")]
-    total_tokens: i64,
-}
-
-#[derive(Deserialize)]
-struct CannedRowW {
-    provider: String,
-    model: String,
-    temperature: Option<f64>,
-    messages: Vec<CannedMessageW>,
-    response: String,
-    usage: CannedUsageW,
-    /// P4.144: a failing call key — register a failure, not a response.
-    fail: Option<String>,
-}
-
-// ---------------------------------------------------------------------------
-// P4.144: the `[FoldEpisodePass]` log-line comparand.
-// ---------------------------------------------------------------------------
-
-const LINE_MARK: &str = "[FoldEpisodePass]";
-const PASS_TARGET: &str = "quilltap_core::services::fold_episode_pass";
-
-/// P4.149 (item 7): the memory REPOSITORY's lines the pass reaches — the
-/// oracle's `DB_MESSAGES`, byte-identical — compared beside the pass's own.
-/// They fire inside `db.write`, on the WRITER thread, which the thread-scoped
-/// rigs cannot see; this binary holds ONE test, so [`all_threads`] captures
-/// every thread's events while armed.
-const DB_MESSAGES: &[&str] = &[
-    "Error creating entity",
-    "Error creating memory",
-    "Error updating entity",
-    "Error updating memory",
-    "Error updating memory for character",
-    "Error deleting entity",
-    "Error deleting memory",
-    "Error deleting memory for character",
-    "Memory not found for update",
-    "Memory not found for deletion",
-    "Memory does not belong to character",
-    "Error finding entity by ID",
-    "Error finding entities by filter",
-];
-const DB_TARGET: &str = "quilltap::db";
-
-/// P4.149: a process-global capture of EVERY thread's events while armed,
-/// rendered by core's `FieldVisitor` (the `captured` line shape). Safe only
-/// because this test binary holds a single test — nothing else runs while a
-/// pass is armed.
-mod all_threads {
-    use std::sync::Mutex;
-
-    static BUF: Mutex<Option<Vec<String>>> = Mutex::new(None);
-
-    struct Layer;
-
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Layer {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _ctx: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            let mut guard = BUF.lock().unwrap();
-            let Some(buf) = guard.as_mut() else { return };
-            let meta = event.metadata();
-            let mut visitor = quilltap_core::test_support::FieldVisitor(format!(
-                "{} {}",
-                meta.level(),
-                meta.target()
-            ));
-            event.record(&mut visitor);
-            buf.push(visitor.0);
-        }
-    }
-
-    pub fn install() {
-        use tracing_subscriber::layer::SubscriberExt;
-        tracing::subscriber::set_global_default(tracing_subscriber::registry().with(Layer))
-            .expect("this binary's one global subscriber");
-    }
-
-    pub async fn capture<T>(f: impl std::future::Future<Output = T>) -> (T, Vec<String>) {
-        *BUF.lock().unwrap() = Some(Vec::new());
-        let out = f.await;
-        let lines = BUF.lock().unwrap().take().expect("armed");
-        (out, lines)
-    }
-}
-
-/// A v4 repository line rendered under `quilltap::db`, every UUID that is not
-/// a committed spec value replaced by `<id>` (the episode rows are minted per
-/// side).
-fn render_db_line(line: &Value, known: &str) -> String {
-    let level = line["level"].as_str().expect("level").to_uppercase();
-    let message = line["message"].as_str().expect("message");
-    let mut out = format!("{level} {DB_TARGET} {message}");
-    if let Some(ctx) = line["context"].as_object() {
-        for (k, v) in ctx {
-            let rendered = match v {
-                Value::String(s) if k == "error" => normalize_v4_sqlite(s),
-                Value::String(s) => s.clone(),
-                other => other.to_string(),
-            };
-            out.push_str(&format!(" {k}={rendered}"));
-        }
-    }
-    mask_minted_ids(&out, known)
-}
-
-/// Replace every 36-char UUID in `line` that does not occur in `known` (the
-/// spec text) with `<id>`.
-fn mask_minted_ids(line: &str, known: &str) -> String {
-    let bytes = line.as_bytes();
-    let mut out = String::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        if i + 36 <= bytes.len() && line.is_char_boundary(i) && line.is_char_boundary(i + 36) {
-            let cand = &line[i..i + 36];
-            let is_uuid = cand.bytes().enumerate().all(|(j, c)| match j {
-                8 | 13 | 18 | 23 => c == b'-',
-                _ => c.is_ascii_hexdigit(),
-            });
-            if is_uuid {
-                out.push_str(if known.contains(cand) { cand } else { "<id>" });
-                i += 36;
-                continue;
-            }
-        }
-        let ch = line[i..].chars().next().unwrap();
-        out.push(ch);
-        i += ch.len_utf8();
-    }
-    out
-}
-
-/// One oracle line rendered as `global_capture` renders a v5 event: `<LEVEL>
-/// <target> <message>` then ` key=value` per context field in v4's key order
-/// (the oracle's JSON keeps insertion order; `serde_json`'s `preserve_order`
-/// keeps it here). Strings render unquoted (the `%` sigil), numbers bare.
-fn render_oracle_line(line: &Value) -> String {
-    let level = line["level"]
-        .as_str()
-        .expect("oracle log level")
-        .to_uppercase();
-    let message = line["message"].as_str().expect("oracle log message");
-    let mut out = format!("{level} {PASS_TARGET} {message}");
-    if let Some(ctx) = line["context"].as_object() {
-        for (k, v) in ctx {
-            let rendered = match v {
-                Value::String(s) => s.clone(),
-                other => other.to_string(),
-            };
-            out.push_str(&format!(" {k}={rendered}"));
-        }
-    }
-    out
-}
-
-fn spec_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
+fn spec_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../harness/oracle/fixtures/fold-episode-tier3.json")
 }
 
-// ---------------------------------------------------------------------------
-// Table normalization — the memory-gate shared-cross-table id-map remap form.
-// ---------------------------------------------------------------------------
-
-struct TableSpec {
-    table: &'static str,
-    order_by: &'static str,
-    id_columns: &'static [&'static str],
-    id_array_columns: &'static [&'static str],
-    ts_columns: &'static [&'static str],
-}
-
-const TABLES: &[TableSpec] = &[
-    TableSpec {
-        table: "memories",
-        order_by: "content",
-        id_columns: &["id"],
-        id_array_columns: &["relatedMemoryIds"],
-        ts_columns: &[
-            "createdAt",
-            "updatedAt",
-            "lastReinforcedAt",
-            "lastAccessedAt",
-        ],
-    },
-    TableSpec {
-        table: "vector_entries",
-        order_by: "embedding",
-        id_columns: &["id"],
-        id_array_columns: &[],
-        ts_columns: &["createdAt"],
-    },
-    TableSpec {
-        table: "vector_indices",
-        order_by: "id",
-        // id == characterId (pinned) — left literal.
-        id_columns: &[],
-        id_array_columns: &[],
-        ts_columns: &["createdAt", "updatedAt"],
-    },
+const PREFIXES: &[&str] = &[
+    "[Memory]",
+    "[ExtractionCursors]",
+    "[MemorySettings]",
+    "[MemoryCalendar]",
+    "[Canon]",
 ];
 
-fn token_for(id_map: &mut HashMap<String, String>, raw: &str) -> String {
-    let next = format!("ID_{}", id_map.len());
-    id_map.entry(raw.to_string()).or_insert(next).clone()
+/// The op's recorded calls (op-scoped: a slice timed out in one op is the
+/// same call key when a later op re-reads it and succeeds).
+fn completion_from(oracle: &[Value], op: &str) -> CannedCompletionProvider {
+    let mut completion = CannedCompletionProvider::new();
+    for row in oracle
+        .iter()
+        .filter(|l| l["kind"] == "canned" && l["op"] == op)
+    {
+        let messages: Vec<CompletionMessage> = row["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| CompletionMessage {
+                role: CompletionRole::from_v4_wire(m["role"].as_str().unwrap()).unwrap(),
+                content: m["content"].as_str().unwrap().to_string(),
+            })
+            .collect();
+        let (provider, model) = (
+            row["provider"].as_str().unwrap(),
+            row["model"].as_str().unwrap(),
+        );
+        let temperature = row["temperature"].as_f64();
+        completion = match row["failure"].as_str() {
+            Some(message) => {
+                completion.with_failure(provider, model, temperature, &messages, message)
+            }
+            None => completion.with_response(
+                provider,
+                model,
+                temperature,
+                &messages,
+                row["response"].as_str().unwrap(),
+                Some(CompletionUsage {
+                    prompt_tokens: row["usage"]["promptTokens"].as_i64().unwrap(),
+                    completion_tokens: row["usage"]["completionTokens"].as_i64().unwrap(),
+                    total_tokens: row["usage"]["totalTokens"].as_i64().unwrap(),
+                }),
+            ),
+        };
+    }
+    completion
 }
 
-fn normalize_table(dump: &mut Value, spec: &TableSpec, id_map: &mut HashMap<String, String>) {
-    let rows = dump
-        .get_mut("rows")
-        .and_then(Value::as_array_mut)
-        .unwrap_or_else(|| panic!("{}: dump has no rows array", spec.table));
+fn embedding_from(oracle: &[Value]) -> CannedEmbeddingProvider {
+    let mut provider = CannedEmbeddingProvider::new();
+    for line in oracle.iter().filter(|l| l["kind"] == "embedding") {
+        let embedding: Vec<f32> = line["embedding"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_f64().unwrap() as f32)
+            .collect();
+        provider = provider.with_result(
+            line["text"].as_str().unwrap(),
+            EmbeddingResult {
+                dimensions: embedding.len(),
+                embedding,
+                model: "canned".into(),
+                provider: "canned".into(),
+            },
+        );
+    }
+    provider
+}
 
-    for row in rows.iter_mut() {
-        let obj = row
-            .as_object_mut()
-            .unwrap_or_else(|| panic!("{}: row is not an object", spec.table));
+fn s(v: &Value, k: &str) -> Option<String> {
+    v.get(k).and_then(Value::as_str).map(str::to_string)
+}
 
-        for col in spec.id_columns {
-            if let Some(Value::String(raw)) = obj.get(*col) {
-                let token = token_for(id_map, raw);
-                obj.insert((*col).to_string(), Value::String(token));
-            }
-        }
-        for col in spec.id_array_columns {
-            if let Some(Value::String(raw)) = obj.get(*col) {
-                if let Ok(Value::Array(items)) = serde_json::from_str::<Value>(raw) {
-                    let mapped: Vec<Value> = items
-                        .iter()
-                        .map(|v| match v.as_str() {
-                            Some(s) => Value::String(token_for(id_map, s)),
-                            None => v.clone(),
+async fn exec(db: &Db, sql: String, args: Vec<String>) {
+    db.write(move |w| {
+        w.main()
+            .connection()
+            .execute(&sql, rusqlite::params_from_iter(args.iter()))
+            .map_err(quilltap_core::db::DbError::from)
+    })
+    .await
+    .expect("plant");
+}
+
+/// The Rust result in the oracle's shape.
+fn result_value(r: &FoldResult) -> Value {
+    let p = &r.result;
+    json!({
+        "pass": r.pass,
+        "calls": p.calls,
+        "timedOut": p.timed_out,
+        "failed": p.failed,
+        "admitted": p.admitted.iter().map(|a| json!({
+            "candidate": serde_json::to_value(&a.candidate).unwrap(),
+            "occurredAt": a.occurred_at,
+            "narrativeTime": a.narrative_time,
+            "holderName": a.holder_name,
+            "aboutName": a.about_name,
+            "action": a.outcome.action.kind().as_str(),
+        })).collect::<Vec<_>>(),
+        "createdIds": p.created_ids,
+        "reinforcedIds": p.reinforced_ids,
+        "usage": {
+            "promptTokens": p.usage.prompt_tokens,
+            "completionTokens": p.usage.completion_tokens,
+            "totalTokens": p.usage.total_tokens,
+        },
+        "debugLogs": p.debug_logs,
+        "rateDeferred": p.rate_deferred,
+        "skippedReason": r.skipped_reason.map(|s| s.as_str()),
+        "slices": r.slices,
+        "slicesDeferred": r.slices_deferred,
+        "cursorAdvancedTo": r.cursor_advanced_to,
+    })
+}
+
+fn cursors_of(db: &Db) -> Value {
+    db.read_main(|c| {
+        let mut stmt = c.prepare(
+            r#"SELECT "id", "chatId", "pass", "messageId" FROM "memory_extraction_cursors" ORDER BY "id""#,
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(json!({
+                    "id": r.get::<_, String>(0)?,
+                    "chatId": r.get::<_, String>(1)?,
+                    "pass": r.get::<_, String>(2)?,
+                    "messageId": r.get::<_, String>(3)?,
+                }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Value::from(rows))
+    })
+    .unwrap()
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn extraction_fold_tier3_matches_oracle() {
+    let env = |k: &str| std::env::var(k).ok();
+    let (Some(oracle_path), Some(main), Some(mount)) = (
+        env("QT_ORACLE_FOLD_EPISODE"),
+        env("QT_FIXTURE_FOLD_EPISODE_MAIN"),
+        env("QT_FIXTURE_FOLD_EPISODE_MOUNT"),
+    ) else {
+        eprintln!(
+            "SKIP: set QT_ORACLE_FOLD_EPISODE / QT_FIXTURE_FOLD_EPISODE_MAIN / _MOUNT (see header)."
+        );
+        return;
+    };
+    let spec: Value =
+        serde_json::from_str(&std::fs::read_to_string(spec_path()).expect("read spec")).unwrap();
+    let oracle = oracle_lines(&oracle_path);
+    let want_ops: Vec<&Value> = oracle.iter().filter(|l| l["kind"] == "op").collect();
+    assert_eq!(
+        want_ops.len(),
+        spec["ops"].as_array().unwrap().len(),
+        "op-count mismatch — regenerate the oracle"
+    );
+
+    let dir = tempfile::Builder::new()
+        .prefix("qt-extraction-fold-rust-")
+        .tempdir()
+        .unwrap();
+    let paths = admission_support::copy_pair(&main, &mount, dir.path());
+    let db =
+        Db::open(paths, spec["testPepperBase64"].as_str().unwrap()).expect("open fixture copy");
+    // The builder's fresh tables predate three migration-only column pairs
+    // the v5 chat reads name (the repaired-at-boot idiom).
+    db.write(|w| {
+        let conn = w.main().connection();
+        quilltap_core::test_support::ensure_p4d171_columns(conn);
+        quilltap_core::test_support::ensure_p4d182_columns(conn);
+        quilltap_core::test_support::ensure_p4d225_columns(conn);
+        Ok(())
+    })
+    .await
+    .unwrap();
+
+    let embedding = embedding_from(&oracle);
+    let executor = CheapLlmTaskExecutor::new();
+
+    use tracing_subscriber::layer::SubscriberExt;
+    let logs = Arc::new(Mutex::new(Vec::new()));
+    let subscriber = tracing_subscriber::registry().with(admission_support::Capture {
+        lines: logs.clone(),
+        owned: &[],
+        prefixes: PREFIXES,
+    });
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    reset_admission_state_for_tests();
+    reset_rate_ledger_for_tests();
+    reset_memory_time_zone_cache_for_tests();
+
+    let user_id = spec["userId"].as_str().unwrap().to_string();
+    let base_cheap = serde_json::to_string(&spec["chatSettings"]["cheapLLMSettings"]).unwrap();
+    let mut got_ops: Vec<(String, Value, Value, Vec<String>)> = Vec::new();
+    for op in spec["ops"].as_array().unwrap() {
+        let name = op["name"].as_str().unwrap().to_string();
+        let chat_id = op["chatId"].as_str().unwrap().to_string();
+        let empty = json!({});
+        let plants = op.get("plants").unwrap_or(&empty);
+        let opts = op.get("opts").unwrap_or(&empty);
+        if let Some(cursors) = plants.get("cursor").and_then(Value::as_object) {
+            for (pass, message_id) in cursors {
+                match message_id.as_str() {
+                    None => {
+                        exec(
+                            &db,
+                            r#"DELETE FROM "memory_extraction_cursors" WHERE "chatId" = ?1 AND "pass" = ?2"#.into(),
+                            vec![chat_id.clone(), pass.clone()],
+                        )
+                        .await
+                    }
+                    Some(m) => {
+                        let (c, m) = (chat_id.clone(), m.to_string());
+                        let pass = ExtractionCursorPass::parse(pass).expect("cursor pass");
+                        db.write(move |w| {
+                            w.main().memory_extraction_cursors().set_cursor(&c, pass, &m)
                         })
-                        .collect();
-                    let re = serde_json::to_string(&Value::Array(mapped)).unwrap();
-                    obj.insert((*col).to_string(), Value::String(re));
+                        .await
+                        .unwrap();
+                    }
                 }
             }
         }
-        for col in spec.ts_columns {
-            if obj.get(*col).map(|v| !v.is_null()).unwrap_or(false) {
-                obj.insert((*col).to_string(), Value::String("<ts>".to_string()));
+        for (key, field) in [
+            ("memoryExtractionLimits", "limits"),
+            ("memoryExtractionMode", "mode"),
+        ] {
+            if let Some(v) = plants.get(field) {
+                exec(
+                    &db,
+                    r#"INSERT INTO "instance_settings" ("key", "value") VALUES (?1, ?2)"#.into(),
+                    vec![key.into(), serde_json::to_string(v).unwrap()],
+                )
+                .await;
             }
         }
-    }
-}
-
-fn normalize_all(dumps: &mut [Value]) {
-    let mut id_map: HashMap<String, String> = HashMap::new();
-    for (i, spec) in TABLES.iter().enumerate() {
-        normalize_table(&mut dumps[i], spec, &mut id_map);
-    }
-}
-
-#[tokio::test]
-async fn fold_episode_tier3_matches_oracle() {
-    let oracle_path = match std::env::var("QT_ORACLE_FOLD_EPISODE") {
-        Ok(p) => p,
-        Err(_) => {
-            eprintln!("SKIP: set QT_ORACLE_FOLD_EPISODE to the oracle NDJSON (see header).");
-            return;
+        if let Some(v) = plants.get("cheapLLMSettings") {
+            exec(
+                &db,
+                r#"UPDATE "chat_settings" SET "cheapLLMSettings" = ?1"#.into(),
+                vec![serde_json::to_string(v).unwrap()],
+            )
+            .await;
         }
-    };
-    let fixture_main = match std::env::var("QT_FIXTURE_FOLD_EPISODE_MAIN") {
-        Ok(p) => p,
-        Err(_) => {
-            eprintln!("SKIP: set QT_FIXTURE_FOLD_EPISODE_MAIN to the seed main .db (see header).");
-            return;
-        }
-    };
-    let fixture_mount = match std::env::var("QT_FIXTURE_FOLD_EPISODE_MOUNT") {
-        Ok(p) => p,
-        Err(_) => {
-            eprintln!(
-                "SKIP: set QT_FIXTURE_FOLD_EPISODE_MOUNT to the seed mount .db (see header)."
-            );
-            return;
-        }
-    };
-
-    let spec: Spec = serde_json::from_str(
-        &std::fs::read_to_string(spec_path()).unwrap_or_else(|e| panic!("read spec: {e}")),
-    )
-    .expect("parse spec");
-    let oracle_text =
-        std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
-
-    let mut oracle_results: Vec<(String, Value)> = Vec::new();
-    // P4.149: the spec's text — every UUID in it is a committed value; any
-    // other UUID in a compared line was minted at run time (masked `<id>`).
-    let spec_text = std::fs::read_to_string(spec_path()).expect("spec text");
-    let mut oracle_logs: HashMap<String, Vec<String>> = HashMap::new();
-    let mut oracle_canned: Vec<CannedRowW> = Vec::new();
-    let mut oracle_tables: HashMap<String, Value> = HashMap::new();
-    for line in oracle_text.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let v: Value = serde_json::from_str(line).expect("parse oracle line");
-        match v.get("kind").and_then(Value::as_str) {
-            Some("result") => {
-                oracle_results.push((v["run"].as_str().unwrap().to_string(), v["result"].clone()))
+        if let Some(ledger) = plants.get("ledger").and_then(Value::as_object) {
+            for (character_id, n) in ledger {
+                for _ in 0..n.as_u64().unwrap() {
+                    record_admission_insert(
+                        character_id,
+                        quilltap_core::clock::now_unix_ms() as f64,
+                    );
+                }
             }
-            Some("logs") => {
-                let rendered = v["lines"]
-                    .as_array()
-                    .expect("oracle logs row has a lines array")
-                    .iter()
-                    .map(|l| {
-                        if l["message"]
-                            .as_str()
-                            .is_some_and(|m| m.starts_with(LINE_MARK))
-                        {
-                            mask_minted_ids(&render_oracle_line(l), &spec_text)
-                        } else {
-                            render_db_line(l, &spec_text)
-                        }
-                    })
-                    .collect();
-                oracle_logs.insert(v["run"].as_str().unwrap().to_string(), rendered);
-            }
-            Some("canned") => {
-                oracle_canned.push(serde_json::from_value(v).expect("parse canned row"))
-            }
-            Some("table") => {
-                oracle_tables.insert(v["table"].as_str().unwrap().to_string(), v);
-            }
-            other => panic!("unknown oracle row kind {other:?}"),
         }
-    }
-    assert_eq!(
-        spec.runs.len(),
-        oracle_results.len(),
-        "run-count mismatch — regenerate the oracle NDJSON"
-    );
 
-    let work_main_dir = tempfile::Builder::new()
-        .prefix("qt-fold-episode-main-rust-")
-        .tempdir()
-        .expect("tempdir");
-    let work_main = work_main_dir.path().join("fold-episode-main-rust.db");
-    let work_mount_dir = tempfile::Builder::new()
-        .prefix("qt-fold-episode-mount-rust-")
-        .tempdir()
-        .expect("tempdir");
-    let work_mount = work_mount_dir.path().join("fold-episode-mount-rust.db");
-    std::fs::copy(&fixture_main, &work_main).unwrap_or_else(|e| panic!("copy main: {e}"));
-    std::fs::copy(&fixture_mount, &work_mount).unwrap_or_else(|e| panic!("copy mount: {e}"));
-
-    // The completion provider replays EXACTLY the entries the oracle recorded.
-    let mut completion = CannedCompletionProvider::new();
-    for row in &oracle_canned {
-        let messages: Vec<CompletionMessage> = row
-            .messages
-            .iter()
-            .map(|m| CompletionMessage {
-                role: CompletionRole::from_v4_wire(m.role.as_str())
-                    .unwrap_or_else(|| panic!("unexpected role {}", m.role.as_str())),
-                content: m.content.clone(),
-            })
-            .collect();
-        if let Some(fail) = &row.fail {
-            completion = completion.with_failure(
-                &row.provider,
-                &row.model,
-                row.temperature,
-                &messages,
-                fail,
-            );
-            continue;
-        }
-        completion = completion.with_response(
-            &row.provider,
-            &row.model,
-            row.temperature,
-            &messages,
-            row.response.clone(),
-            Some(CompletionUsage {
-                prompt_tokens: row.usage.prompt_tokens,
-                completion_tokens: row.usage.completion_tokens,
-                total_tokens: row.usage.total_tokens,
-            }),
-        );
-    }
-
-    let mut embedding = CannedEmbeddingProvider::new();
-    for (text, vec) in &spec.canned_embeddings {
-        embedding = embedding.with_vector(text.clone(), vec.clone());
-    }
-    for text in &spec.canned_failures {
-        embedding = embedding.with_failure(text.clone());
-    }
-
-    let db = Db::open(
-        DbPaths {
-            main: work_main.clone(),
-            mount_index: Some(work_mount.clone()),
-            llm_logs: None,
-        },
-        &spec.test_pepper_base64,
-    )
-    .unwrap_or_else(|e| panic!("open fixture copies: {e}"));
-
-    let selection = CheapLlmSelection {
-        provider: spec.profile.provider.clone(),
-        model_name: spec.profile.model_name.clone(),
-        base_url: spec.profile.base_url.clone(),
-        connection_profile_id: Some(spec.profile.id.clone()),
-        is_local: spec.profile.is_local,
-        profile_parameters: spec.profile.parameters.clone(),
-    };
-    // No llm-logs partition here: v4's `executeCheapLLMTask` logging is the
-    // pre-existing `cheap_llm_exec` deferral, and the oracle's fold pass writes
-    // no llm_logs rows this test diffs.
-    let executor = CheapLlmTaskExecutor::new();
-    // Before the first callsite is reached (P4.149: the all-threads rig).
-    all_threads::install();
-
-    for (run, (oracle_name, oracle_result)) in spec.runs.iter().zip(oracle_results) {
-        assert_eq!(run.name, oracle_name, "run order mismatch");
-        let input = RunFoldEpisodePassInput {
-            chat_id: run.chat_id.clone(),
-            user_id: spec.user_id.clone(),
-            window_messages: run
-                .window_messages
-                .iter()
-                .map(|m| FoldWindowMessage {
-                    id: m.id.clone(),
-                    role: m.role.clone(),
-                    content: m.content.clone(),
-                    participant_id: m.participant_id.clone(),
-                    created_at: m.created_at.clone(),
-                })
-                .collect(),
-            timeline_mode: run.timeline_mode.clone(),
-            project_id: run.project_id.clone(),
-            in_autonomous_room: run.in_autonomous_room,
+        let completion = completion_from(&oracle, &name);
+        let deps = ExtractionDeps {
+            completion: &completion,
+            embedding: &embedding,
+            executor: &executor,
         };
-        if let Some(r) = &run.rename_main_column {
-            let sql = format!(
-                r#"ALTER TABLE "{}" RENAME COLUMN "{}" TO "{}""#,
-                r.table, r.from, r.to
-            );
-            db.write(move |w| Ok(w.main().connection().execute_batch(&sql)?))
-                .await
-                .expect("plant the renamed column");
-        }
-        let (result, captured) = all_threads::capture(run_fold_episode_pass(
+        logs.lock().unwrap().clear();
+        let window: Vec<Value> = match op.get("windowRaw") {
+            Some(raw) => raw.as_array().unwrap().clone(),
+            None => {
+                let all = load_chat_message_events(&db, &chat_id).expect("message events");
+                let (a, b) = (
+                    op["window"][0].as_u64().unwrap() as usize,
+                    op["window"][1].as_u64().unwrap() as usize,
+                );
+                all[a.min(all.len())..b.min(all.len())].to_vec()
+            }
+        };
+        let max_slices = match &op["maxSlices"] {
+            Value::String(s) if s == "Infinity" => Some(f64::INFINITY),
+            v => v.as_f64(),
+        };
+        let result = match build_extraction_context(
             &db,
-            &completion,
-            &embedding,
-            &executor,
-            &selection,
-            &input,
-        ))
-        .await;
-        let got = json!({
-            "episodesExtracted": result.episodes_extracted,
-            "memoriesWritten": result.memories_written,
-            "fragmentsLinked": result.fragments_linked,
-        });
-        assert_eq!(got, oracle_result, "{}: result object diverges", run.name);
-
-        let is_db_line = |l: &str| {
-            l.split_once(' ')
-                .map(|(_, rest)| rest)
-                .and_then(|rest| rest.strip_prefix(DB_TARGET))
-                .and_then(|rest| rest.strip_prefix(' '))
-                .is_some_and(|msg| {
-                    DB_MESSAGES.iter().any(|m| {
-                        msg.strip_prefix(m)
-                            .is_some_and(|tail| tail.is_empty() || tail.starts_with(' '))
-                    })
-                })
+            &chat_id,
+            &user_id,
+            BuildExtractionContextOptions {
+                dry_run: opts["dryRun"].as_bool() == Some(true),
+                backfill: opts["backfill"].as_bool() == Some(true),
+                host_zone_fallback: "UTC".into(),
+                ..Default::default()
+            },
+        ) {
+            Ok(ctx) => {
+                let r = run_fold_pass(
+                    &deps,
+                    &ctx,
+                    op["pass"].as_str().unwrap(),
+                    RunFoldInput {
+                        window_messages: window,
+                        cover_through_message_id: s(op, "coverThrough"),
+                        max_slices,
+                    },
+                )
+                .await;
+                result_value(&r)
+            }
+            Err(e) => json!({ "error": e.message() }),
         };
-        let got_lines: Vec<String> = captured
-            .into_iter()
-            .filter(|l| {
-                (l.starts_with("ERROR ") || l.starts_with("WARN ") || l.contains(LINE_MARK))
-                    && (l.contains(LINE_MARK) || is_db_line(l))
-            })
-            .map(|l| mask_minted_ids(&l, &spec_text))
+        let captured = logs.lock().unwrap().clone();
+
+        for key in ["memoryExtractionLimits", "memoryExtractionMode"] {
+            exec(
+                &db,
+                r#"DELETE FROM "instance_settings" WHERE "key" = ?1"#.into(),
+                vec![key.into()],
+            )
+            .await;
+        }
+        if plants.get("cheapLLMSettings").is_some() {
+            exec(
+                &db,
+                r#"UPDATE "chat_settings" SET "cheapLLMSettings" = ?1"#.into(),
+                vec![base_cheap.clone()],
+            )
+            .await;
+        }
+        got_ops.push((name, result, cursors_of(&db), captured));
+    }
+
+    // ---- normalisation: minted ids tokenised per side by row content ------
+    let mut seeded: HashSet<String> = HashSet::new();
+    for m in spec["seedMemories"].as_array().unwrap() {
+        seeded.insert(m["id"].as_str().unwrap().to_string());
+    }
+    let mut planted: HashSet<String> = HashSet::new();
+    planted_stamps(&spec, &mut planted);
+    let got_dump = db
+        .read_main(|c| dump_table_json_conn(c, "memories", "content"))
+        .unwrap();
+    let want_dump = oracle
+        .iter()
+        .find(|l| l["kind"] == "table" && l["table"] == "memories")
+        .expect("oracle memories dump")
+        .clone();
+    // describeAdmission's neighbour notes print `id.slice(0, 8)`: tokenise the
+    // prefixes too, after the whole ids (memory note `unify-review-finding-shapes`
+    // — prefix pins).
+    let with_prefixes = |mut minted: Vec<(String, String)>| {
+        let prefixes: Vec<(String, String)> = minted
+            .iter()
+            .map(|(raw, token)| (raw[..8].to_string(), format!("{token}#8")))
             .collect();
-        let want_lines = oracle_logs
-            .get(&run.name)
-            .unwrap_or_else(|| panic!("{}: oracle ndjson has no logs row", run.name));
+        minted.extend(prefixes);
+        minted
+    };
+    let got_norm = Norm {
+        minted: with_prefixes(minted_ids(&got_dump, &seeded)),
+        planted: planted.clone(),
+    };
+    let want_norm = Norm {
+        minted: with_prefixes(minted_ids(&want_dump, &seeded)),
+        planted: planted.clone(),
+    };
+
+    let mut failures: Vec<String> = Vec::new();
+    for ((name, result, cursors, captured), want) in got_ops.iter().zip(&want_ops) {
         assert_eq!(
-            &got_lines, want_lines,
-            "{}: the [FoldEpisodePass] lines diverge (level, target, message, field order)",
-            run.name
+            want["op"].as_str(),
+            Some(name.as_str()),
+            "op order mismatch"
         );
-        if let Some(r) = &run.rename_main_column {
-            let sql = format!(
-                r#"ALTER TABLE "{}" RENAME COLUMN "{}" TO "{}""#,
-                r.table, r.to, r.from
-            );
-            db.write(move |w| Ok(w.main().connection().execute_batch(&sql)?))
-                .await
-                .expect("restore the renamed column");
+        let g = got_norm.value(result, None);
+        let w = want_norm.value(&want["result"], None);
+        if !same(&g, &w) {
+            failures.push(format!(
+                "{name}: result diverges\n  rust:   {g:#}\n  oracle: {w:#}"
+            ));
+        }
+        if cursors != &want["cursors"] {
+            failures.push(format!(
+                "{name}: cursors diverge\n  rust:   {cursors}\n  oracle: {}",
+                want["cursors"]
+            ));
+        }
+        let want_lines: Vec<String> = want["lines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|l| l["message"] != "[ExtractionCursors] Cursor set")
+            .map(|l| want_norm.ids(&render_v4(l)))
+            .collect();
+        let got_lines: Vec<String> = captured.iter().map(|l| got_norm.ids(l)).collect();
+        if got_lines != want_lines {
+            failures.push(format!(
+                "{name}: captured lines diverge\n  rust:\n    {}\n  oracle:\n    {}",
+                got_lines.join("\n    "),
+                want_lines.join("\n    ")
+            ));
         }
     }
-    assert_eq!(
-        oracle_logs.len(),
-        spec.runs.len(),
-        "one logs row per run — regenerate the oracle NDJSON"
-    );
 
-    let mut got: Vec<Value> = TABLES
+    let rows_got: Vec<Value> = got_dump["rows"]
+        .as_array()
+        .unwrap()
         .iter()
-        .map(|t| {
-            db.read_main(|conn| dump_table_json_conn(conn, t.table, t.order_by))
-                .unwrap_or_else(|e| panic!("dump {}: {e:?}", t.table))
-        })
+        .map(|r| got_norm.row(r))
         .collect();
-    drop(db);
-
-    let mut want: Vec<Value> = TABLES
+    let rows_want: Vec<Value> = want_dump["rows"]
+        .as_array()
+        .unwrap()
         .iter()
-        .map(|t| {
-            oracle_tables
-                .get(t.table)
-                .unwrap_or_else(|| panic!("oracle ndjson missing table {}", t.table))
-                .clone()
-        })
+        .map(|r| want_norm.row(r))
         .collect();
-
-    normalize_all(&mut got);
-    normalize_all(&mut want);
-
-    for (i, t) in TABLES.iter().enumerate() {
-        assert_eq!(
-            got[i]["columns"], want[i]["columns"],
-            "{} column set / order",
-            t.table
-        );
-        assert_eq!(
-            got[i]["rows"], want[i]["rows"],
-            "{} row state diverged\n  rust:   {}\n  oracle: {}",
-            t.table, got[i]["rows"], want[i]["rows"]
-        );
+    if rows_got.len() != rows_want.len() {
+        failures.push(format!(
+            "memories: row count {} vs oracle {}",
+            rows_got.len(),
+            rows_want.len()
+        ));
+    } else {
+        for (g, w) in rows_got.iter().zip(&rows_want) {
+            if !same(g, w) {
+                failures.push(format!(
+                    "memories row diverges\n  rust:   {g}\n  oracle: {w}"
+                ));
+            }
+        }
     }
-
-    // Sanity: the 7 seeded fragments + 1 embedded Bug-26 seed + 4
-    // `episode_pass` episode memories (2 episodes × 2 present characters; the
-    // absent participant gets none) + 1 `episode_write_fail` episode (Bram's;
-    // Aria's INSERT is planted away) + 2 `episode_link_fail` episodes (both
-    // written; Aria's LINK update is planted away) = 15, and 8 vector entries
-    // (one per episode write plus the embedded seed's — the fragments were
-    // seeded without).
-    let mem_rows = got[0]["rows"].as_array().expect("memory rows");
-    assert_eq!(mem_rows.len(), 15, "expected 15 memory rows");
-    let entry_rows = got[1]["rows"].as_array().expect("entry rows");
-    assert_eq!(entry_rows.len(), 8, "expected 8 vector entries");
-
+    let _ = render; // the shared renderer is the capture layer's
+    assert!(
+        failures.is_empty(),
+        "{} divergence(s):\n{}",
+        failures.len(),
+        failures.join("\n\n")
+    );
     eprintln!(
-        "OK: fold-episode tier-3 matched oracle (results + [FoldEpisodePass] lines + 3 tables)."
+        "OK: extraction fold tier-3 matched the oracle ({} ops, {} memories).",
+        got_ops.len(),
+        rows_got.len()
     );
 }

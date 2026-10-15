@@ -628,8 +628,11 @@ fn seed_ids_of(dump: &Value) -> Vec<String> {
 /// identical text. Here: the fold-grain OTHER calls' MEMORY_EXTRACTION
 /// `request` cells. A converged codec trips it (retire the pin); a corpus
 /// change trips it (re-measure, confirm every moved row still decodes
-/// identically, update the number).
-const STORED_BYTE_DIVERGENCES: usize = 5;
+/// identically, update the number). P4.D296 re-measured 5 → 4 after the fold
+/// hook moved onto ONE extraction context and v4's `83334b9a5` prompts (the
+/// logged requests changed); every row still decodes identically (asserted
+/// above).
+const STORED_BYTE_DIVERGENCES: usize = 4;
 
 /// A dumped compressed BLOB cell (hex) → the text it stores.
 fn decoded_cell(v: &Value) -> Option<String> {
@@ -883,6 +886,11 @@ async fn context_summary_service_tier3_matches_oracle() {
                     // path the fold itself used.
                     completion: &completion,
                     executor: &executor,
+                    // P4.D296: the fold memory passes' ONE extraction context —
+                    // the generate ops run outside any job (no key scope), and
+                    // the oracle pins the zone to UTC.
+                    host_zone_fallback: "UTC".into(),
+                    job_id: None,
                 };
                 let (r, lines) = capture_lines(generate_context_summary_with_seams(
                     &db,

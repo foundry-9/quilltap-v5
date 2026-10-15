@@ -115,9 +115,12 @@ pub struct MaintenanceSweepSummary {
     /// Terminal-session rows reaped / transcript files removed.
     pub terminal_rows: usize,
     pub terminal_transcripts: usize,
-    /// v4 `foldOtherCatchup` (`d58548051`): the fold-grain OTHER idle
+    /// v4 `foldOtherCatchup`: the fold-grain OTHER idle catch-up sweep's
+    /// `{ enqueued, deferred }`.
+    pub fold_other_catchup: crate::services::extraction::fold_catchup::FoldCatchupSweepSummary,
+    /// v4 `foldEpisodeCatchup` (`ac6348c5f`, bug 232): the episode idle
     /// catch-up sweep's `{ enqueued, deferred }`.
-    pub fold_other_catchup: crate::services::fold_other_pass::FoldOtherCatchupSweepSummary,
+    pub fold_episode_catchup: crate::services::extraction::fold_catchup::FoldCatchupSweepSummary,
     // === P4.D292: the step-10 refit check's summary key ===
     /// v4 `builtinRefit` (`4ae0c4ca6`): "Why the Built-in (TF-IDF)
     /// vocabulary was refit this pass, if it was" — `{ reason, enqueued }`,
@@ -126,7 +129,8 @@ pub struct MaintenanceSweepSummary {
     // === end P4.D292 ===
     /// Sweeps that threw (and were swallowed so the rest could run): `jobs` /
     /// `assets` / `caches` / `orphan-store-children` / `orphans` / `terminals` /
-    /// `orphan-thumbnails` / `fold-other-catchup` (v4's failure vocabulary).
+    /// `orphan-thumbnails` / `fold-other-catchup` / `fold-episode-catchup` (v4's
+    /// failure vocabulary).
     pub failures: Vec<String>,
 }
 
@@ -231,6 +235,7 @@ pub async fn run_scheduled_maintenance(
         terminal_rows: 0,
         terminal_transcripts: 0,
         fold_other_catchup: Default::default(),
+        fold_episode_catchup: Default::default(),
         builtin_refit: BuiltinRefitSweep::default(), // P4.D292
         failures: Vec::new(),
     };
@@ -392,22 +397,80 @@ pub async fn run_scheduled_maintenance(
         }
     }
 
-    // 8. Fold-grain OTHER catch-up (v4 `d58548051`, `scheduled-maintenance.ts:
-    // 256-260`), LAST: chats idle past two hours whose tail the fold-grain
-    // OTHER pass has not covered get one MEMORY_EXTRACTION catch-up job each.
-    // `now_ms` is the pass's one anchor (v4 passes no `now`, so its sweep reads
-    // the wall clock — the same instant).
-    match crate::services::fold_other_pass::enqueue_fold_other_catchups(db, now_ms, None).await {
-        Ok(r) => summary.fold_other_catchup = r,
-        Err(e) => {
-            tracing::warn!(
-                target: "quilltap::maintenance",
-                error = %e,
-                "Fold-grain OTHER catch-up failed — continuing",
-            );
-            summary.failures.push("fold-other-catchup".to_string());
+    // === P4.D296: fold catch-ups (steps 8–9) ===
+    // v4 `scheduled-maintenance.ts:267-291`. Steps 8 and 9 select from the
+    // same chat list and cursor table; read each once for both. ONE `try`
+    // spans BOTH reads: a cursor-read failure after a good chat read leaves
+    // the chats SET and the cursors unset, and each step then reads only its
+    // own cursors. `now_ms` is the pass's one anchor (v4 passes no `now`, so
+    // its sweep reads the wall clock — the same instant).
+    let mut catchup_chats: Option<Vec<serde_json::Value>> = None;
+    let mut catchup_cursors: Option<
+        Vec<(
+            String,
+            crate::db::memory_extraction_cursors::ExtractionCursorMap,
+        )>,
+    > = None;
+    let shared = (|| -> Result<(), crate::db::DbError> {
+        // v4 `repos.chats.findAll()` falls back to `[]` (`_findAll`'s
+        // `safeQuery`), so only the cursor read can reach the WARN below.
+        catchup_chats = Some(crate::db::fallback::find_all_or_empty("chats", || {
+            db.read_main(crate::db::chats_read::find_all)
+        }));
+        catchup_cursors = Some(db.read_main(|c| {
+            crate::db::memory_extraction_cursors::MemoryExtractionCursorsRepository::new(c)
+                .find_all_by_chat()
+        })?);
+        Ok(())
+    })();
+    if let Err(e) = shared {
+        tracing::warn!(
+            target: "quilltap::maintenance",
+            error = %crate::db::fallback::error_text(&e),
+            "Could not list chats for the fold catch-ups; each will read its own",
+        );
+    }
+    for (pass, failure, warn) in [
+        (
+            "other-fold",
+            "fold-other-catchup",
+            "Fold-grain OTHER catch-up failed — continuing",
+        ),
+        (
+            "episode-fold",
+            "fold-episode-catchup",
+            "Fold episode catch-up failed — continuing",
+        ),
+    ] {
+        // 8. Fold-grain OTHER catch-up: a MEMORY_EXTRACTION job for each chat
+        //    idle > 2 h whose tail is past its other-fold cursor.
+        // 9. Fold episode catch-up: one for each chat idle > 2 h whose
+        //    episode-fold cursor is behind its fold boundary, so a capped
+        //    backlog drains without waiting for more folds (bug 232).
+        match crate::services::extraction::fold_catchup::enqueue_fold_catchups(
+            db,
+            pass,
+            Some(now_ms as f64),
+            None,
+            catchup_chats.as_deref(),
+            catchup_cursors.as_deref(),
+        )
+        .await
+        {
+            Ok(r) if pass == "other-fold" => summary.fold_other_catchup = r,
+            Ok(r) => summary.fold_episode_catchup = r,
+            Err(e) => {
+                tracing::warn!(
+                    target: "quilltap::maintenance",
+                    error = %crate::db::fallback::error_text(&e),
+                    "{}",
+                    warn,
+                );
+                summary.failures.push(failure.to_string());
+            }
         }
     }
+    // === end P4.D296 ===
 
     // === P4.D292: step 10, the Built-in (TF-IDF) vocabulary refit check ===
     // v4 `scheduled-maintenance.ts:293-297`: "AUTO memories never ask for a
@@ -486,6 +549,10 @@ pub async fn run_scheduled_maintenance(
         foldOtherCatchupJson = %json(serde_json::json!({
             "enqueued": summary.fold_other_catchup.enqueued,
             "deferred": summary.fold_other_catchup.deferred,
+        })),
+        foldEpisodeCatchupJson = %json(serde_json::json!({
+            "enqueued": summary.fold_episode_catchup.enqueued,
+            "deferred": summary.fold_episode_catchup.deferred,
         })),
         builtinRefitJson = %json(summary.builtin_refit.to_json()), // P4.D292
         failuresJson = %json(serde_json::json!(summary.failures)),

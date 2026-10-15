@@ -75,7 +75,6 @@ const CENSUS: &[(&str, &str, Variant)] = &[
     ("api/help_chats.rs", "help_chat_messages", F),
     ("api/llm_logs.rs", "non_empty", F),
     ("api/memories.rs", "memory_by_message", F),
-    ("api/memories.rs", "chat_queue_memories", F),
     // `message_edit` re-reads the edited row: v4's counterpart is
     // `updateMessage`'s own `findOne` inside a FALLBACK `safeQuery` (`null` →
     // 404), so the swallowing variant gives v4's 404 where strict would give a
@@ -182,11 +181,6 @@ const CENSUS: &[(&str, &str, Variant)] = &[
         "collect_fold_whisper_conversation_ids",
         F,
     ),
-    (
-        "services/carina_memory_extraction.rs",
-        "handle_carina_memory_extraction",
-        F,
-    ),
     ("services/carina_query.rs", "load_prior_carina_exchanges", F),
     (
         "services/cascade_delete.rs",
@@ -267,14 +261,8 @@ const CENSUS: &[(&str, &str, Variant)] = &[
     // `type === 'message'` rows through v4's `repos.chats.getMessages` — the
     // FALLBACK read (a failed query is `[]`): the watermark filter, the idle
     // catch-up's inspection and its window all go through this one helper.
-    ("services/fold_other_pass.rs", "chat_message_events", F),
     ("services/help_chat/orchestrator.rs", "message_count", S),
     ("services/markdown_transcript.rs", "chat_export_markdown", F),
-    (
-        "services/memory_extraction_job.rs",
-        "handle_memory_extraction",
-        F,
-    ),
     (
         "services/message_finalizer.rs",
         "finalize_message_response",
@@ -323,6 +311,11 @@ const CENSUS: &[(&str, &str, Variant)] = &[
     ("services/title_update_job.rs", "handle_title_update", F),
     ("services/turn_orchestrator.rs", "should_chain_next", F),
     ("services/turn_orchestrator.rs", "handle_turn_action", F),
+    // P4.D296: the ONE extraction pipeline's message read (v4
+    // `loadChatMessageEvents` → `repos.chats.getMessages`, a fallback read);
+    // the handlers, the Carina path, the fold catch-up and `queue-memories`
+    // all read through it now.
+    ("services/turn_transcript.rs", "load_chat_message_events", F),
     ("tools/generate_image.rs", "gather_db_context", F),
 ];
 
@@ -500,8 +493,12 @@ fn every_get_messages_call_site_has_chosen_its_variant() {
     // existing file (`api/chat_media.rs`'s picture retry): 81 and 51.
     // P4.D270 added ONE fallback call site in ONE new file
     // (`services/fold_other_pass.rs`'s `chat_message_events`): 82 and 52.
-    assert_eq!((swallowing, strict), (82, 7), "census totals");
-    assert_eq!(file_count, 52, "census files");
+    // P4.D296 folded FOUR fallback sites (`chat_queue_memories`, the two job
+    // handlers, the fold catch-up's `chat_message_events` — its file deleted
+    // with v4's `ac6348c5f`) into ONE (`turn_transcript::load_chat_message_
+    // events`), and three files left the census while one joined: 79 and 50.
+    assert_eq!((swallowing, strict), (79, 7), "census totals");
+    assert_eq!(file_count, 50, "census files");
 }
 
 /// The scanner itself: comments skipped, definitions are declarations not

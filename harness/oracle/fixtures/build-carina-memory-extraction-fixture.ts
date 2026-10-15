@@ -292,6 +292,24 @@ async function main(): Promise<void> {
     } as never);
   }
 
+  // P4.D296: the tables the ONE extraction pipeline reads that v4 creates only
+  // lazily or on a migrated instance — the cursor table (its repository's own
+  // DDL, through a real write then a clear) and `instance_settings`
+  // (fresh_schema.json's DDL; memory note `builder-fixtures-lack-instance-
+  // settings`) carrying the corpus limits row both sides' settings resolver
+  // reads (the retired `getMemoryExtractionLimits` mock / injected limits).
+  {
+    const first = spec.carinaMessages[0];
+    await repos.memoryExtractionCursors.setCursor(first.chatId, 'turn', first.id);
+    await repos.memoryExtractionCursors.clearForChat(first.chatId);
+    const { rawQuery } = await import('@/lib/database/manager');
+    await rawQuery('CREATE TABLE IF NOT EXISTS "instance_settings" (\n  "key" TEXT PRIMARY KEY,\n  "value" TEXT NOT NULL\n)');
+    await rawQuery('INSERT INTO "instance_settings" ("key", "value") VALUES (?, ?)', [
+      'memoryExtractionLimits',
+      JSON.stringify(spec.memoryExtractionLimits),
+    ]);
+  }
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
   process.stderr.write(

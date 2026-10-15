@@ -1,53 +1,40 @@
 /**
  * @jest-environment node
  *
- * Tier-3 (mocked cheap-LLM + record-and-replay embedding) ORACLE for the
- * fold-grain OTHER pass (P4.D270 — v4 `d58548051`, pin `01a83539d`):
- * `runFoldOtherPass`, `findFoldOtherCatchupCandidates` (lib/memory/
- * fold-other-pass.ts), `enqueueFoldOtherCatchups` (lib/background-jobs/
- * maintenance/fold-other-catchup.ts) and `handleMemoryExtraction`'s
- * `foldOtherCatchup` branch (→ `runFoldOtherCatchup`), all v4's REAL code over
- * the REAL fixture pair `build-fold-other-pass-fixture.ts` bakes.
+ * Tier-3 (mocked-completion + mocked-embedding) ORACLE for the fold
+ * CATCH-UPS at the `83334b9a5` pin (work order P4.D296 Tier 1 #13–#14):
+ * `findFoldCatchupCandidates` + `runFoldCatchup` (`lib/memory/extraction/
+ * catchup.ts`), the data tick's `enqueueFoldCatchups` (`lib/background-jobs/
+ * maintenance/fold-catchup.ts`, bug 232's in-flight guard) and
+ * `handleMemoryExtraction`'s pass branch (`lib/background-jobs/handlers/
+ * memory-extraction.ts` — the continuation, the legacy `foldOtherCatchup` /
+ * `foldEpisodeCatchup` / `foldOtherIgnoreIdle` keys, a timeout failing the
+ * job, a missing chat, and L-4's unknown `bogus` pass run TWICE, with v4's
+ * own `findByChatId` / `findAllByChat` over the raw row it writes —
+ * `UNKNOWN_PASS_CURSOR_ROW`). Rewrites the IMPORT-DEAD case of the same name
+ * (its subject, `fold-other-pass.ts`, was deleted by `ac6348c5f`); the Rust
+ * family keeps its name, `fold_other_pass_tier3_equivalence` (L-20).
  *
- * Mocked (the seams the Rust port injects) — nothing else:
- *   - `createLLMProvider` — every call must carry the GRAIN block (anything
- *     else is an unrecognized prompt and throws); the rule is the one whose
- *     `op` matches the `[op:<tag>]` the orienting chat summary carries and
- *     whose `observer` prefixes the `OBSERVER:` label. The exact
- *     `provider|model|temperature|messages` key is RECORDED (`kind:"canned"`)
- *     for the Rust side's `CannedCompletionProvider`; a rule with `error`
- *     records then THROWS (a `Request timed out.` error is a timeout).
- *   - `generateEmbeddingForUser` — record-and-replay: the n-th DISTINCT text
- *     embeds to the one-hot e_n (dim 256), recorded as `kind:"cannedEmbedding"`.
- *   - `getApiKeyForCheapLLMSelection` → a constant; `ensureProcessorRunning` →
- *     no-op, and v4's job host is held off before any import (memory note
- *     `v4-oracle-job-host-and-log-capture` §1), so the PENDING rows the
- *     enqueue ops write stay PENDING and the dedupe reads them.
- *   - `logLLMCall` stays jest.setup's global mock: this family writes ZERO
- *     `llm_logs` rows (`memory_pipeline_jobs_tier3` compares the fold OTHER
- *     call's rows end to end).
- * `@/lib/instance-settings` is NOT mocked: the mode, the limits and the
- * fold cap are read by v4's REAL getters; the per-op plants go through v4's
- * REAL setters and are deleted after the op.
+ * Seams pinned as the fold family's (`fold-episode-tier3.test.ts`): the
+ * completion by rule, the exact call keys RECORDED per op; embeddings by a
+ * deterministic per-text vector, RECORDED; the API key; the maintenance
+ * watermark; v4's job host held off (memory note
+ * `v4-oracle-job-host-and-log-capture`) and `ensureProcessorRunning` a no-op.
+ * Every rule's usage is zero, so no cost event is booked here (the pipeline
+ * family compares it).
  *
- * Log lines: `Logger.prototype.{error,warn,info,debug}` is wrapped (the
- * fold-episode family's idiom — above `log()`'s level filter, and a child
- * logger's bound `module` never reaches the wrapped call's context): every
- * `[FoldOtherPass]` / `[FoldOtherCatchup]` / `[MemoryExtraction] Fold-grain…` /
- * `[Canon]` line and the sweep's four lines land per op as `kind:"logs"`.
- *
- * Run from the v4 server checkout under Node 24 (jest ignores .claude/ paths —
- * mirror the cases to /tmp):
+ * Run from the v4 checkout (or the lane's pin) under Node 24:
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
- *   TMPO=/tmp/qt-fop-oracle
+ *   TMPO=/tmp/qt-fold-catchup-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/fold-other-pass-tier3.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/fold-other-pass-tier3.json" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
- *   QT_FIXTURE_OUT=/tmp/qt-fop-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-fop-mount.db \
- *     $N/npx tsx $V5W/harness/oracle/fixtures/build-fold-other-pass-fixture.ts
- *   TZ=UTC QT_FIXTURE_FOP_MAIN=/tmp/qt-fop-main.db QT_FIXTURE_FOP_MOUNT=/tmp/qt-fop-mount.db \
- *   QT_ORACLE_OUT=/tmp/oracle-fold-other-pass.ndjson \
+ *   QT_FIXTURE_SPEC=fold-other-pass-tier3.json QT_FIXTURE_OUT=/tmp/qt-fold-catchup-main.db \
+ *   QT_FIXTURE_MOUNT_OUT=/tmp/qt-fold-catchup-mount.db \
+ *     $N/npx tsx $V5W/harness/oracle/fixtures/build-memory-processor-fixture.ts
+ *   QT_FIXTURE_FOLD_CATCHUP_MAIN=/tmp/qt-fold-catchup-main.db QT_FIXTURE_FOLD_CATCHUP_MOUNT=/tmp/qt-fold-catchup-mount.db \
+ *   QT_ORACLE_OUT=/tmp/oracle-fold-catchup.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=180000 --roots "$PWD" --roots "$TMPO/cases" -- "fold-other-pass-tier3\\.test\\.ts$"
  */
 
@@ -57,6 +44,8 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
+type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
 function canonValue(v: unknown): unknown {
   if (v === null || v === undefined) return null;
   if (typeof Buffer !== 'undefined' && Buffer.isBuffer(v)) return v.toString('hex');
@@ -64,46 +53,46 @@ function canonValue(v: unknown): unknown {
   return v;
 }
 
-interface Rule {
-  op: string;
-  observer: string;
-  response: string;
-  error?: string;
-  usage: { promptTokens: number; completionTokens: number; totalTokens: number };
-}
-interface OpSpec {
-  op: 'pass' | 'find' | 'enqueue' | 'handler';
-  name: string;
-  chatId?: string;
-  tag?: string;
-  mode?: Record<string, unknown>;
-  limits?: Record<string, unknown>;
-  inAutonomousRoom?: boolean;
-  timelineMode?: 'realtime' | 'narrative';
-  limit?: number | null;
-  priorTurnJob?: { chatId: string; lastMessageId: string; connectionProfileId: string };
-  foldOtherCatchup?: unknown;
-  foldOtherIgnoreIdle?: boolean;
-  plantLastMessageAtNow?: boolean;
-}
-interface Spec {
-  testPepperBase64: string;
-  userId: string;
-  fixedNow: string;
-  connectionProfileId: string;
-  chatSettings: { cheapLLMSettings: { strategy: string; fallbackToLocal: boolean } };
-  completionRules: Rule[];
-  ops: OpSpec[];
+/** Deterministic unit vector for a text (FNV-1a over UTF-16 code units + xorshift) — the admission rig's. */
+function hashVector(text: string, dims: number): number[] {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  const out: number[] = [];
+  let x = h || 1;
+  for (let i = 0; i < dims; i++) {
+    x ^= x << 13; x >>>= 0;
+    x ^= x >>> 17;
+    x ^= x << 5; x >>>= 0;
+    out.push((x % 2000) / 1000 - 1);
+  }
+  const norm = Math.sqrt(out.reduce((s, y) => s + y * y, 0)) || 1;
+  return out.map((y) => y / norm);
 }
 
-const EMBED_DIM = 256;
-const CAPTURED_PREFIXES = ['[FoldOtherPass]', '[FoldOtherCatchup]', '[MemoryExtraction] Fold-grain', '[Canon]'];
-const CAPTURED_SWEEP = new Set([
-  'Enqueued fold-grain OTHER catch-up',
-  'Failed to enqueue fold-grain OTHER catch-up',
-  'Fold-grain OTHER catch-up capped; remaining chats wait for the next sweep',
-  'Fold-grain OTHER catch-up sweep done',
-]);
+const CAPTURED_PREFIXES = [
+  '[Memory]',
+  '[ExtractionCursors]',
+  '[MemorySettings]',
+  '[MemoryCalendar]',
+  '[Canon]',
+  '[FoldCatchup]',
+  '[MemoryExtraction]',
+  // `maintenance.fold-catchup`'s child-logger lines carry no prefix.
+  'Enqueued fold catch-up',
+  'Catch-up already queued',
+  'Fold catch-up capped',
+  'Fold catch-up sweep done',
+  'Could not read in-flight jobs',
+  'Failed to enqueue fold catch-up',
+];
+
+function ownContext(ctx: Record<string, unknown> | undefined): Record<string, unknown> {
+  const { service: _s, environment: _e, ...rest } = ctx ?? {};
+  return rest;
+}
 
 async function main(): Promise<void> {
   // Hold v4's job host off BEFORE any import (memory note
@@ -117,69 +106,57 @@ async function main(): Promise<void> {
     signalHandlersInstalled: false,
     invalidationListeners: new Set(),
   };
-
   const here = dirname(fileURLToPath(import.meta.url));
-  const spec = JSON.parse(
-    fs.readFileSync(join(here, '..', 'fixtures', 'fold-other-pass-tier3.json'), 'utf8')
-  ) as Spec;
-
-  const fixtureMain = process.env.QT_FIXTURE_FOP_MAIN;
-  const fixtureMount = process.env.QT_FIXTURE_FOP_MOUNT;
+  const spec = JSON.parse(fs.readFileSync(join(here, '..', 'fixtures', 'fold-other-pass-tier3.json'), 'utf8')) as Json;
+  const fixtureMain = process.env.QT_FIXTURE_FOLD_CATCHUP_MAIN;
+  const fixtureMount = process.env.QT_FIXTURE_FOLD_CATCHUP_MOUNT;
   if (!fixtureMain || !existsSync(fixtureMain) || !fixtureMount || !existsSync(fixtureMount)) {
-    throw new Error('QT_FIXTURE_FOP_MAIN / QT_FIXTURE_FOP_MOUNT must point at the seed fixtures');
+    throw new Error('QT_FIXTURE_FOLD_CATCHUP_MAIN / _MOUNT must point at the seed fixtures');
   }
   const outPath = process.env.QT_ORACLE_OUT;
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 
-  const scratch = mkdtempSync(join(tmpdir(), 'qt-fop-oracle-'));
+  const scratch = mkdtempSync(join(tmpdir(), 'qt-extraction-catchup-oracle-'));
   scratchDirs.push(scratch);
   mkdirSync(join(scratch, 'data'), { recursive: true });
-  const workMain = join(scratch, 'fop-main.db');
-  const workMount = join(scratch, 'fop-mount.db');
+  const workMain = join(scratch, 'main.db');
+  const workMount = join(scratch, 'mount.db');
   copyFileSync(fixtureMain, workMain);
   copyFileSync(fixtureMount, workMount);
 
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = workMain;
   process.env.SQLITE_MOUNT_INDEX_PATH = workMount;
-  process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'fop-llm-logs.db');
+  // A scratch llm-logs DB for the un-mocked `logLLMCall` (never the live one).
+  process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'llm-logs.db');
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
+  delete process.env.QUILLTAP_JOB_CHILD;
+  delete process.env.QUILLTAP_TIMEZONE;
   process.env.LOG_LEVEL = 'error';
 
-  const cannedRecorded = new Map<string, Record<string, unknown>>();
-  const embeddingOrder: string[] = [];
-  const unrecognized: string[] = [];
+  const cannedRecorded = new Map<string, Json>();
+  const embeddings = new Map<string, number[]>();
+  let failContains: string | null = null;
+  let currentOp: string | null = null;
 
   jest.resetModules();
-  const cipherDriverPath = require('node:path').join(
-    process.cwd(),
-    'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'
-  );
+  const cipherDriverPath = require('node:path').join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers');
   jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
   jest.doMock('@/lib/database/manager', () => jest.requireActual('@/lib/database/manager'));
-  jest.doMock('@/lib/database/repositories', () =>
-    jest.requireActual('@/lib/database/repositories')
-  );
+  jest.doMock('@/lib/database/repositories', () => jest.requireActual('@/lib/database/repositories'));
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
-  jest.doMock('@/lib/embedding/vector-store', () =>
-    jest.requireActual('@/lib/embedding/vector-store')
-  );
+  jest.doMock('@/lib/embedding/vector-store', () => jest.requireActual('@/lib/embedding/vector-store'));
   jest.doMock('@/lib/embedding/embedding-service', () => {
     const actual = jest.requireActual('@/lib/embedding/embedding-service');
     return {
       __esModule: true,
       ...actual,
       generateEmbeddingForUser: async (text: string) => {
-        let idx = embeddingOrder.indexOf(text);
-        if (idx === -1) {
-          embeddingOrder.push(text);
-          idx = embeddingOrder.length - 1;
-        }
-        if (idx >= EMBED_DIM) throw new Error('fold-other-pass oracle: raise EMBED_DIM');
-        const vec = new Array(EMBED_DIM).fill(0);
-        vec[idx] = 1;
-        return { embedding: new Float32Array(vec), model: 'canned', dimensions: EMBED_DIM, provider: 'canned' };
+        const vec = hashVector(text, spec.embeddingDims);
+        const f32 = new Float32Array(vec);
+        embeddings.set(text, Array.from(f32));
+        return { embedding: f32, model: 'canned', dimensions: f32.length, provider: 'canned' };
       },
     };
   });
@@ -188,37 +165,42 @@ async function main(): Promise<void> {
     return {
       __esModule: true,
       ...actual,
-      createLLMProvider: async (provider: string, _baseUrl?: string) => ({
-        sendMessage: async (
-          params: { messages: Array<{ role: string; content: string }>; model: string; temperature?: number },
-          _apiKey: string
-        ) => {
+      createLLMProvider: async (provider: string) => ({
+        sendMessage: async (params: { messages: Array<{ role: string; content: string }>; model: string; temperature?: number }) => {
           const messages = params.messages.map((m) => ({ role: m.role, content: m.content }));
           const system = messages.find((m) => m.role === 'system')?.content ?? '';
-          if (!system.includes('GRAIN — READ THIS FIRST')) {
-            unrecognized.push(system.slice(0, 120));
-            throw new Error('canned completion: unrecognized system prompt');
+          const user = messages.find((m) => m.role === 'user')?.content ?? '';
+          let pass: string;
+          let label: string | null = null;
+          if (system.startsWith('You are consolidating a batch')) {
+            pass = 'episode';
+          } else {
+            const m = system.match(/\nCONTEXT\n(SUBJECT|OBSERVER): ([^\n]*)\n/);
+            if (!m) throw new Error('canned completion: no CONTEXT footer label in system prompt');
+            pass = m[1] === 'SUBJECT' ? 'self' : 'other';
+            label = m[2];
           }
-          const tag = system.match(/\[op:([a-z0-9_]+)\]/)?.[1];
-          const observer = system.match(/\nOBSERVER: ([^\n]*)\n/)?.[1] ?? '';
-          const rule = spec.completionRules.find((r) => r.op === tag && observer.startsWith(r.observer));
-          if (!rule) {
-            unrecognized.push(`no rule for op=${tag} observer=${observer}`);
-            throw new Error(`no completion rule for op=${tag} observer=${observer}`);
-          }
-          const key = `${provider}|${params.model}|${params.temperature ?? '-'}|${JSON.stringify(messages)}`;
+          const rule = (spec.completionRules as Json[]).find(
+            (r) => r.pass === pass && (r.label === undefined || r.label === label) && (r.contains === undefined || user.includes(r.contains)),
+          );
+          if (!rule) throw new Error(`no completion rule for pass=${pass} label=${label}`);
+          const failing = failContains !== null && user.includes(failContains);
+          // Op-scoped: a slice that timed out in one op is the SAME call key
+          // when a later op re-reads it and succeeds.
+          const key = `${currentOp}|${provider}|${params.model}|${params.temperature ?? '-'}|${JSON.stringify(messages)}`;
           if (!cannedRecorded.has(key)) {
             cannedRecorded.set(key, {
+              op: currentOp,
               provider,
               model: params.model,
               temperature: params.temperature ?? null,
               messages,
               response: rule.response,
               usage: rule.usage,
-              ...(rule.error ? { fail: rule.error } : {}),
+              failure: failing ? 'Request timed out.' : null,
             });
           }
-          if (rule.error) throw new Error(rule.error);
+          if (failing) throw new Error('Request timed out.');
           return { content: rule.response, finishReason: 'stop', usage: rule.usage };
         },
       }),
@@ -228,179 +210,168 @@ async function main(): Promise<void> {
     const actual = jest.requireActual('@/lib/services/api-key.service');
     return { __esModule: true, ...actual, getApiKeyForCheapLLMSelection: async () => 'test-key' };
   });
+  jest.doMock('@/lib/services/llm-logging.service', () => jest.requireActual('@/lib/services/llm-logging.service'));
   jest.doMock('@/lib/background-jobs/processor', () => {
     const actual = jest.requireActual('@/lib/background-jobs/processor');
     return { __esModule: true, ...actual, ensureProcessorRunning: () => undefined };
   });
+  jest.doMock('@/lib/memory/maintenance/triggers', () => ({
+    __esModule: true,
+    maybeEnqueueMaintenance: async () => [],
+  }));
 
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
-  const { closeMountIndexSQLiteClient } = await import(
-    '@/lib/database/backends/sqlite/mount-index-client'
-  );
+  const { closeMountIndexSQLiteClient } = await import('@/lib/database/backends/sqlite/mount-index-client');
   const { getRepositories } = await import('@/lib/repositories/factory');
-  const { runFoldOtherPass, findFoldOtherCatchupCandidates } = await import(
-    '@/lib/memory/fold-other-pass'
-  );
-  const { enqueueFoldOtherCatchups } = await import(
-    '@/lib/background-jobs/maintenance/fold-other-catchup'
-  );
-  const { enqueueMemoryExtraction } = await import('@/lib/background-jobs/queue-service');
+  const { buildExtractionContext, findFoldCatchupCandidates, runFoldCatchup } = await import('@/lib/memory/extraction');
+  const { enqueueFoldCatchups } = await import('@/lib/background-jobs/maintenance/fold-catchup');
   const { handleMemoryExtraction } = await import('@/lib/background-jobs/handlers/memory-extraction');
-  const { setMemoryExtractionModeSettings, setMemoryExtractionLimits } = await import(
-    '@/lib/instance-settings'
-  );
-  const { getCheapLLMProvider } = await import('@/lib/llm/cheap-llm');
-  const { resolveMaxTokens } = await import('@/lib/llm/model-context-data');
+  const admit = await import('@/lib/memory/admission/admit');
+  const { resetRateLedgerForTests } = await import('@/lib/memory/admission/rate-ledger');
+  const { memoryIndex } = await import('@/lib/memory/index-store');
+  const { resetMemoryTimeZoneCacheForTests } = await import('@/lib/memory/time/calendar');
   const { Logger } = await import('@/lib/logger');
 
-  let sink: Array<{ level: string; message: string; context: unknown }> | null = null;
+  let sink: Json[] | null = null;
   for (const level of ['error', 'warn', 'info', 'debug'] as const) {
-    const original = (Logger.prototype as unknown as Record<string, (...a: unknown[]) => void>)[level];
-    (Logger.prototype as unknown as Record<string, unknown>)[level] = function (
-      this: unknown,
-      message: string,
-      context?: Record<string, unknown>,
-      ...rest: unknown[]
-    ) {
-      if (
-        sink &&
-        typeof message === 'string' &&
-        (CAPTURED_PREFIXES.some((p) => message.startsWith(p)) || CAPTURED_SWEEP.has(message))
-      ) {
-        sink.push({ level, message, context: JSON.parse(JSON.stringify(context ?? {})) });
+    const proto = Logger.prototype as unknown as Record<string, (...a: unknown[]) => void>;
+    const original = proto[level];
+    proto[level] = function (this: { context?: Record<string, unknown> }, message: string, context?: Record<string, unknown>, ...rest: unknown[]) {
+      const merged = { ...ownContext(this.context), ...(context ?? {}) };
+      if (sink && typeof message === 'string' && CAPTURED_PREFIXES.some((p) => message.startsWith(p))) {
+        sink.push({ level, message, context: JSON.parse(JSON.stringify(merged)) });
       }
       return original.call(this, message, context, ...rest);
     };
   }
+  const idx = memoryIndex as unknown as Record<string, (...a: unknown[]) => unknown>;
+  for (const method of ['search', 'shape', 'entries']) {
+    const original = idx[method].bind(memoryIndex);
+    idx[method] = (...a: unknown[]) => {
+      memoryIndex.reloadAll();
+      return original(...a);
+    };
+  }
 
   await initializeDatabase();
+  admit.resetAdmissionStateForTests();
+  resetRateLedgerForTests();
+  resetMemoryTimeZoneCacheForTests();
   const repos = getRepositories();
-
-  const availableProfiles = await repos.connections.findByUserId(spec.userId);
-  const currentProfile = availableProfiles.find((p) => p.id === spec.connectionProfileId)!;
-  const selection = getCheapLLMProvider(
-    currentProfile,
-    {
-      strategy: spec.chatSettings.cheapLLMSettings.strategy as never,
-      fallbackToLocal: spec.chatSettings.cheapLLMSettings.fallbackToLocal,
-    },
-    availableProfiles,
-    false
-  );
-  const now = Date.parse(spec.fixedNow);
-
+  const userId = spec.userId as string;
   const lines: string[] = [];
-  for (const op of spec.ops) {
-    if (op.mode) await setMemoryExtractionModeSettings(op.mode as never);
-    if (op.limits) await setMemoryExtractionLimits(op.limits as never);
-    sink = [];
-    let result: unknown = null;
-    let error: string | null = null;
-    try {
-      if (op.op === 'pass') {
-        const window = (await repos.chats.getMessages(op.chatId!)).filter((m) => m.type === 'message');
-        result = await runFoldOtherPass({
-          chatId: op.chatId!,
-          userId: spec.userId,
-          windowMessages: window as never,
-          cheapLLM: selection,
-          cheapMaxTokens: resolveMaxTokens(currentProfile),
-          timelineMode: op.timelineMode ?? 'realtime',
-          projectId: null,
-          inAutonomousRoom: op.inAutonomousRoom ?? false,
-          projectDescription: null,
-          chatContextSummary: `[op:${op.tag}] The household is planning the harbor festival.`,
-        });
-      } else if (op.op === 'find') {
-        result = await findFoldOtherCatchupCandidates({ now, limit: op.limit ?? undefined });
-      } else if (op.op === 'enqueue') {
-        if (op.priorTurnJob) {
-          await enqueueMemoryExtraction(spec.userId, {
-            chatId: op.priorTurnJob.chatId,
-            turnOpenerMessageId: null,
-            extractionAnchorMessageId: op.priorTurnJob.lastMessageId,
-            connectionProfileId: op.priorTurnJob.connectionProfileId,
-          });
-        }
-        result = await enqueueFoldOtherCatchups({ now, limit: op.limit ?? undefined });
-      } else {
-        if (op.plantLastMessageAtNow) {
-          await rawQuery(`UPDATE "chats" SET "lastMessageAt" = ? WHERE "id" = ?`, [
-            new Date().toISOString(),
-            op.chatId!,
-          ]);
-        }
-        const job = {
-          id: `job-${op.name}`,
-          userId: spec.userId,
-          type: 'MEMORY_EXTRACTION',
-          payload: {
-            chatId: op.chatId,
-            turnOpenerMessageId: null,
-            extractionAnchorMessageId: null,
-            connectionProfileId: spec.connectionProfileId,
-            foldOtherCatchup: op.foldOtherCatchup,
-            ...(op.foldOtherIgnoreIdle !== undefined ? { foldOtherIgnoreIdle: op.foldOtherIgnoreIdle } : {}),
-          },
-        };
-        await handleMemoryExtraction(job as never);
-      }
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-    }
-    // Let the gate's fire-and-forget housekeeping probes settle.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    if (op.mode) await rawQuery(`DELETE FROM "instance_settings" WHERE "key" = 'memoryExtractionMode'`);
-    if (op.limits) await rawQuery(`DELETE FROM "instance_settings" WHERE "key" = 'memoryExtractionLimits'`);
-    lines.push(JSON.stringify({ kind: 'result', op: op.name, result, error }));
-    lines.push(JSON.stringify({ kind: 'logs', op: op.name, lines: sink }));
-    sink = null;
-  }
 
-  if (unrecognized.length > 0) {
-    // Loud: an unanswered call is a corpus gap, not v4 behaviour under test.
-    throw new Error(`unanswered completion call(s): ${JSON.stringify(unrecognized)}`);
-  }
-
-  for (const entry of cannedRecorded.values()) {
-    lines.push(JSON.stringify({ kind: 'canned', ...entry }));
-  }
-  embeddingOrder.forEach((text, idx) => {
-    lines.push(JSON.stringify({ kind: 'cannedEmbedding', text, index: idx, dim: EMBED_DIM }));
+  const foldResultOf = (r: Json): Json => ({
+    pass: r.pass,
+    calls: r.calls,
+    timedOut: r.timedOut,
+    failed: r.failed,
+    admitted: r.admitted.length,
+    createdIds: r.createdIds,
+    reinforcedIds: r.reinforcedIds,
+    debugLogs: r.debugLogs,
+    rateDeferred: r.rateDeferred,
+    skippedReason: r.skippedReason ?? null,
+    slices: r.slices,
+    slicesDeferred: r.slicesDeferred,
+    cursorAdvancedTo: r.cursorAdvancedTo,
   });
+  const jobsDump = async (): Promise<Json[]> =>
+    (await rawQuery(
+      `SELECT "type", "payload", "status", "priority", "maxAttempts", "attempts" FROM "background_jobs" ORDER BY "payload", "status"`,
+    )) as Json[];
 
-  const dump = async (sql: string) =>
-    ((await rawQuery(sql)) as Array<Record<string, unknown>>).map((r) => {
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(r)) out[k] = canonValue(v);
-      return out;
-    });
-  lines.push(JSON.stringify({ kind: 'table', table: 'memories', rows: await dump('SELECT * FROM memories ORDER BY content, characterId') }));
-  lines.push(
-    JSON.stringify({
-      kind: 'table',
-      table: 'chats',
-      rows: await dump(
-        'SELECT id, "otherExtractionWatermarkMessageId", "updatedAt", "lastMessageAt", "messageCount" FROM chats ORDER BY id'
-      ),
-    })
-  );
-  lines.push(
-    JSON.stringify({
-      kind: 'table',
-      table: 'background_jobs',
-      rows: await dump('SELECT type, payload, status, "maxAttempts", "attempts" FROM background_jobs ORDER BY payload, status'),
-    })
-  );
+  for (const op of spec.ops as Json[]) {
+    const plants = op.plants ?? {};
+    for (const [chatId, byPass] of Object.entries((plants.cursors ?? {}) as Record<string, Record<string, string | null>>)) {
+      for (const [pass, messageId] of Object.entries(byPass)) {
+        if (messageId === null) {
+          await rawQuery(`DELETE FROM "memory_extraction_cursors" WHERE "chatId" = ? AND "pass" = ?`, [chatId, pass]);
+        } else {
+          await repos.memoryExtractionCursors.setCursor(chatId, pass as never, messageId);
+        }
+      }
+    }
+    if (plants.mode) {
+      await rawQuery(`INSERT INTO "instance_settings" ("key", "value") VALUES ('memoryExtractionMode', ?)`, [JSON.stringify(plants.mode)]);
+    }
+    if (plants.lastMessageAtNow) {
+      await rawQuery(`UPDATE "chats" SET "lastMessageAt" = ? WHERE "id" = ?`, [new Date().toISOString(), op.chatId]);
+    }
+    failContains = plants.failContains ?? null;
+    currentOp = op.name;
+    const now = op.now ? Date.parse(op.now) : undefined;
+
+    sink = [];
+    let result: Json;
+    try {
+      if (op.kind === 'select') {
+        const sel = await findFoldCatchupCandidates(op.pass, { now, ...(op.limit !== undefined ? { limit: op.limit } : {}) });
+        result = { candidates: sel.candidates, deferred: sel.deferred };
+      } else if (op.kind === 'sweep') {
+        const summary = await enqueueFoldCatchups(op.pass, { now, ...(op.limit !== undefined ? { limit: op.limit } : {}) });
+        result = { summary, jobs: await jobsDump() };
+      } else if (op.kind === 'catchup') {
+        const ctx = await buildExtractionContext(op.chatId, userId, {});
+        const r = await runFoldCatchup(ctx, op.pass, { now, ...(op.ignoreIdle ? { ignoreIdle: true } : {}) });
+        result = foldResultOf(r);
+      } else {
+        const job = { id: `job-${op.name}`, userId, type: 'MEMORY_EXTRACTION', payload: op.payload };
+        let error: string | null = null;
+        try {
+          await handleMemoryExtraction(job as never);
+        } catch (e) {
+          error = e instanceof Error ? e.message : String(e);
+        }
+        result = { error, jobs: await jobsDump() };
+      }
+    } catch (error) {
+      result = { error: error instanceof Error ? error.message : String(error) };
+    }
+    const captured = sink;
+    sink = null;
+
+    failContains = null;
+    if (plants.mode) await rawQuery(`DELETE FROM "instance_settings" WHERE "key" = 'memoryExtractionMode'`);
+
+    const cursors = (await rawQuery(`SELECT "id", "chatId", "pass", "messageId" FROM "memory_extraction_cursors" ORDER BY "id"`)) as Json[];
+    lines.push(JSON.stringify({ kind: 'op', op: op.name, result, cursors, lines: captured }));
+  }
+
+  // UNKNOWN_PASS_CURSOR_ROW (L-4): what v4's own reads do with the raw
+  // `<chatId>:bogus` row the unknown pass wrote.
+  {
+    const chatId = spec.unknownPassChatId as string;
+    const byChat = await repos.memoryExtractionCursors.findByChatId(chatId);
+    const all = await repos.memoryExtractionCursors.findAllByChat();
+    lines.push(
+      JSON.stringify({
+        kind: 'unknown-pass',
+        findByChatId: byChat,
+        findAllByChat: Object.fromEntries([...all.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))),
+      }),
+    );
+  }
+
+  for (const entry of cannedRecorded.values()) lines.push(JSON.stringify({ kind: 'canned', ...entry }));
+  for (const [text, embedding] of embeddings) lines.push(JSON.stringify({ kind: 'embedding', text, embedding }));
+
+  const columns = ((await rawQuery(`PRAGMA table_info(memories)`)) as Array<{ name: string }>).map((c) => c.name);
+  const rawRows = (await rawQuery(`SELECT * FROM memories ORDER BY "content"`)) as Json[];
+  const rows = rawRows.map((r) => {
+    const out: Json = {};
+    for (const col of columns) out[col] = canonValue(r[col]);
+    return out;
+  });
+  lines.push(JSON.stringify({ kind: 'table', table: 'memories', columns, rows }));
 
   closeMountIndexSQLiteClient();
   await closeDatabase();
-
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
-  process.stderr.write(`fold-other-pass oracle wrote ${outPath}\n`);
+  process.stderr.write(`extraction-catchup oracle wrote ${outPath}\n`);
 }
 
-test('fold-other-pass tier-3 oracle', async () => {
+test('extraction catch-up tier-3 oracle', async () => {
   await main();
 });
 

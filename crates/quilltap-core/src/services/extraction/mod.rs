@@ -3,11 +3,15 @@
 //! from `64743ee13`; pin `83334b9a5`): the per-unit context ([`context`]),
 //! the cheap-LLM route ([`route`]), the live rate limiter ([`rate_limit`]),
 //! the cursor store ([`cursors`]), the one pass runner into admission
-//! ([`run`]), the four passes ([`passes`]), and the turn grain ([`turn`]).
+//! ([`run`]), the four passes ([`passes`]), the turn grain ([`turn`]), the
+//! fold runner ([`fold`]) and the idle catch-ups ([`catchup`]).
 //! The pure leaves live in [`crate::memory_extraction`] (work order P4.D296).
 
+pub mod catchup;
 pub mod context;
 pub mod cursors;
+pub mod fold;
+pub mod fold_catchup;
 pub mod passes;
 pub mod rate_limit;
 pub mod route;

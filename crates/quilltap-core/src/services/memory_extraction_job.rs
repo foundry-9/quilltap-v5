@@ -1,88 +1,116 @@
-//! The `MEMORY_EXTRACTION` job handler (v4
-//! `lib/background-jobs/handlers/memory-extraction.ts`) — per turn.
+//! The `MEMORY_EXTRACTION` job handler — port of v4
+//! `lib/background-jobs/handlers/memory-extraction.ts` (`ac6348c5f`, memory
+//! refactor Phase D; bug 245's `extractAfterMessageId`; pin `83334b9a5`), on
+//! the ONE extraction pipeline (`crate::services::extraction`).
 //!
-//! Reads a turn-keyed payload (`chatId` + `turnOpenerMessageId`), rebuilds the
-//! [`TurnTranscript`](crate::memory_tasks::TurnTranscript) from current chat
-//! state, and runs the per-turn memory extraction pipeline
-//! ([`process_turn_for_memory`]). This replaced v4's prior
-//! per-assistant-message handler, which fired once for every character
-//! response and re-extracted the same user message N times in multi-character
-//! turns.
-//!
-//! The finalizer's `trigger_turn_memory_extraction` enqueues one of these on
-//! every closed turn; before P4.6bj the jobs died on the runner's "recognized
-//! but not yet available" loud fallback — the whole episodic-campaign
-//! extraction pipeline was verified but dormant.
+//! A payload's grain ([`MemoryExtractionPayload::pass_of`]) picks the branch:
+//!  - `turn` (the default) runs the turn passes over the turn the opener /
+//!    anchor locate ([`run_turn_extraction`]), past the chat's `turn` cursor;
+//!  - any other grain is a fold pass's idle catch-up over the chat's backlog
+//!    past that pass's cursor ([`run_fold_catchup`]) — enqueued by the daily
+//!    sweep, a regenerate, or a catch-up job that left slices unread (it
+//!    enqueues its own continuation, keyed on the cursor it advanced to).
 //!
 //! ## Failure shape (v4's exactly)
 //!
-//! A missing connection profile / chat-settings row THROWS (`Err` → the job
-//! FAILS and the runner's backoff retries); a missing chat and an
-//! empty-slices turn are logged skips (`Ok(())` → COMPLETED). The debug-log
-//! persist and the token-tracking event each swallow their own failures.
+//! A missing connection profile THROWS (`Err` → the job FAILS and the
+//! runner's backoff retries); a pass lost to a cheap-LLM timeout throws v4's
+//! `CheapLLMTaskLostError` text; a missing chat and a turn with no new line
+//! are logged skips (`Ok(())` → COMPLETED). The chat-settings row is
+//! OPTIONAL (pre-refactor v5 threw `Chat settings not found for user`).
 //!
 //! ## Model boundary (tier-3 seams)
 //!
 //! [`CompletionProvider`] + [`EmbeddingProvider`] via the ported
 //! [`CheapLlmTaskExecutor`]; the cost figure behind the MEMORY_EXTRACTION
-//! system event rides [`MessageCostEstimator`]. `memory_extraction_limits` is
-//! v4's `getMemoryExtractionLimits()` instance-settings read, resolved by the
-//! caller (the host reads [`crate::db::instance_settings`]; the differential
-//! injects the corpus limits — the `carina_memory_extraction` precedent).
+//! system event rides [`MessageCostEstimator`]. The extraction limits and
+//! mode are the context's (the keystone's settings façade) — the host no
+//! longer reads them (L-13).
 
-use serde_json::{json, Value};
+use serde_json::Value;
 
+use crate::db::connection_profiles;
+use crate::db::fallback::error_text;
 use crate::db::runtime::Db;
-use crate::db::{chat_settings, chats_read, connection_profiles};
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
-use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use crate::services::admission::AdmissionKeyScope;
+use crate::services::cheap_llm_exec::{cheap_llm_task_lost_message, CheapLlmTaskExecutor};
 use crate::services::cost_estimation::MessageCostEstimator;
 use crate::services::cost_events::{create_memory_extraction_event, TokenUsage};
-use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
-use crate::services::dangerous_content::resolver::resolve_concierge_settings;
-use crate::services::fold_other_pass::{run_fold_other_catchup, RunFoldOtherCatchupInput};
-use crate::services::memory_processor::{
-    process_turn_for_memory, CheapLlmSettings, MemoryExtractionLimits, TurnMemoryExtractionContext,
+use crate::services::extraction::catchup::{run_fold_catchup, RunFoldCatchupOptions};
+use crate::services::extraction::context::{
+    build_extraction_context, BuildExtractionContextOptions, ExtractionContext,
+    ExtractionContextError,
 };
-use crate::services::turn_transcript::{
-    build_turn_transcript, resolve_user_character_participant, BuildTurnTranscriptOptions,
+use crate::services::extraction::run::{ExtractionDeps, PassResult};
+use crate::services::extraction::turn::{run_turn_extraction, TurnLocator};
+use crate::services::queue_service::{
+    enqueue_memory_extraction_with, MemoryExtractionEnqueue, MemoryExtractionPass,
 };
 
-/// The `MEMORY_EXTRACTION` job payload (v4 `MemoryExtractionPayload`).
+/// JS `String(value)` for a raw pass value (a string as itself; anything
+/// else as JS renders it in a template literal).
+fn js_string(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => {
+            crate::pascal::js_value::number_to_string(n.as_f64().unwrap_or(f64::NAN))
+        }
+        Value::Bool(b) => b.to_string(),
+        Value::Null => "null".to_string(),
+        Value::Array(a) => a.iter().map(js_string).collect::<Vec<_>>().join(","),
+        Value::Object(_) => "[object Object]".to_string(),
+    }
+}
+
+/// A payload's grain (work order P4.D296 L-4): v4's `memoryExtractionPassOf`
+/// lets any TRUTHY `pass` through unvalidated, so an unknown one is carried
+/// raw — it takes the EPISODE branch (v4 `catchup.ts` tests only
+/// `'other-fold'`), labels every line with its own string, and reads /
+/// writes its own `<chatId>:<pass>` cursor row (`UNKNOWN_PASS_CURSOR_ROW`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PassOf {
+    Known(MemoryExtractionPass),
+    Unknown(String),
+}
+
+impl PassOf {
+    /// The pass string the lines, the labels and the cursor carry.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Known(p) => p.as_str(),
+            Self::Unknown(s) => s,
+        }
+    }
+
+    pub fn is_turn(&self) -> bool {
+        matches!(self, Self::Known(MemoryExtractionPass::Turn))
+    }
+}
+
+/// The `MEMORY_EXTRACTION` job payload (v4 `MemoryExtractionPayload`). The
+/// raw JSON is kept: the grain is decided over it exactly as v4's
+/// `memoryExtractionPassOf` reads it.
 #[derive(Clone, Debug, Default)]
 pub struct MemoryExtractionPayload {
+    pub raw: Value,
     pub chat_id: String,
-    /// `None` for greeting/continue turns with no fresh user input.
+    /// `None` for greeting / continue turns with no fresh user input.
     pub turn_opener_message_id: Option<String>,
     /// The autonomous-turn terminal anchor (see the transcript builder).
     pub extraction_anchor_message_id: Option<String>,
+    /// Bug 245 — a regenerate's bound for an autonomous room.
+    pub extract_after_message_id: Option<String>,
     pub connection_profile_id: String,
-    /// v4 `foldOtherCatchup?` (`d58548051`): an idle catch-up for the
-    /// fold-grain OTHER pass (the daily sweep enqueues it) — not a turn at all.
-    /// Read JS-TRUTHY, as v4's `if (payload.foldOtherCatchup)` reads it: `true`,
-    /// a non-empty string, a non-zero number all enter the branch.
-    pub fold_other_catchup: bool,
-    /// v4 `foldOtherIgnoreIdle?` — read STRICTLY (`=== true`). Only v4's
-    /// regenerate rebuild sets it (deferred in v5 with that handler), but a
-    /// job row v4 wrote on a shared instance can carry it.
-    pub fold_other_ignore_idle: bool,
-    /// The job's id, for v4's `jobId` log field. The host fills it after
-    /// [`MemoryExtractionPayload::decode`] (which leaves it `None` — the
-    /// payload carries no id); an absent id is OMITTED from the lines, never
-    /// rendered `=` or `null`.
-    pub job_id: Option<String>,
-}
-
-/// JS truthiness of a payload value (`if (payload.foldOtherCatchup)`).
-fn js_truthy(v: Option<&Value>) -> bool {
-    match v {
-        None | Some(Value::Null) => false,
-        Some(Value::Bool(b)) => *b,
-        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0 && !f.is_nan()),
-        Some(Value::String(s)) => !s.is_empty(),
-        Some(_) => true,
-    }
+    /// Catch-ups: the cursor the job was enqueued at (a dedupe term only).
+    pub cursor: Option<String>,
+    /// `ignoreIdle === true`.
+    pub ignore_idle: bool,
+    /// `backfill === true` — a rebuild of history: no rate limit, no ledger.
+    pub backfill: bool,
+    /// The deprecated pre-Phase-D `foldOtherIgnoreIdle === true`.
+    pub legacy_fold_other_ignore_idle: bool,
 }
 
 impl MemoryExtractionPayload {
@@ -94,385 +122,119 @@ impl MemoryExtractionPayload {
                 .map(str::to_string)
                 .unwrap_or_default()
         };
-        let opt = |k: &str| {
-            payload
-                .get(k)
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-        };
+        // v4 `?? null` reads — an empty string is a value, as v4's is.
+        let opt = |k: &str| payload.get(k).and_then(Value::as_str).map(str::to_string);
         Self {
+            raw: payload.clone(),
             chat_id: s("chatId"),
             turn_opener_message_id: opt("turnOpenerMessageId"),
             extraction_anchor_message_id: opt("extractionAnchorMessageId"),
+            extract_after_message_id: opt("extractAfterMessageId"),
             connection_profile_id: s("connectionProfileId"),
-            fold_other_catchup: js_truthy(payload.get("foldOtherCatchup")),
-            fold_other_ignore_idle: payload.get("foldOtherIgnoreIdle") == Some(&Value::Bool(true)),
-            job_id: None,
+            cursor: opt("cursor"),
+            ignore_idle: payload.get("ignoreIdle") == Some(&Value::Bool(true)),
+            backfill: payload.get("backfill") == Some(&Value::Bool(true)),
+            legacy_fold_other_ignore_idle: payload.get("foldOtherIgnoreIdle")
+                == Some(&Value::Bool(true)),
+        }
+    }
+
+    /// v4 `memoryExtractionPassOf(payload)` — the keystone's `pass_of`
+    /// (truthy `pass` first, then the episode legacy flag BEFORE the other).
+    pub fn pass_of(&self) -> PassOf {
+        match crate::services::queue_service::pass_of(&self.raw) {
+            Ok(p) => PassOf::Known(p),
+            Err(raw) => PassOf::Unknown(js_string(&raw)),
         }
     }
 }
 
-/// v4 `handleMemoryExtraction`. `Err(message)` is v4's `throw` (the runner
-/// records it as `lastError` and the ported backoff decides retry-vs-dead).
+/// The debug-log write's merge (L-12): v4 writes `withRecallLines(existing,
+/// lines)` — the turn's recall record (`[Recall]` / `[Recall:ring]` lines,
+/// written by the finalizer) kept FIRST, this job's lines replacing any
+/// earlier extraction's. That helper is P4.D291's port (`recall/deliver.ts:
+/// 195-198`), not under this lane's base, so this ONE call site keeps
+/// pre-round v5's write (the job's lines alone) until the unifier re-points
+/// it. HANDOFF: services/memory_extraction_job.rs finish_extraction_job —
+/// call P4.D291's with_recall_lines (its recorded spelling); append, recall
+/// record first (§S.5 named handoff (5)).
+fn debug_memory_logs_for(_existing: Option<&Value>, lines: &[String]) -> Vec<String> {
+    lines.to_vec()
+}
+
+/// What every extraction job does after its passes (v4
+/// `finishExtractionJob`): fail for a retry when a pass was lost to a
+/// timeout, keep the debug lines on the message they describe, and book the
+/// cheap-LLM tokens on the unit's profile.
 #[allow(clippy::too_many_arguments)]
-pub async fn handle_memory_extraction<C, E, K>(
-    db: &Db,
-    completion: &C,
-    embedding: &E,
-    executor: &CheapLlmTaskExecutor,
+pub async fn finish_extraction_job<K: MessageCostEstimator>(
     cost: &K,
+    job_id: &str,
     user_id: &str,
-    payload: &MemoryExtractionPayload,
-    memory_extraction_limits: Option<MemoryExtractionLimits>,
-) -> Result<(), String>
-where
-    C: CompletionProvider,
-    E: EmbeddingProvider,
-    K: MessageCostEstimator,
-{
-    // ── The two throwing reads ──
-    let pid = payload.connection_profile_id.clone();
-    let connection_profile = db
-        .read_main(move |c| connection_profiles::find_by_id(c, &pid))
-        .map_err(|e| format!("{e:?}"))?
-        .ok_or_else(|| {
-            format!(
-                "Connection profile not found: {}",
-                payload.connection_profile_id
-            )
-        })?;
-
-    let uid = user_id.to_string();
-    let chat_settings = db
-        .read_main(move |c| chat_settings::find_by_user_id(c, &uid))
-        .map_err(|e| format!("{e:?}"))?
-        .ok_or_else(|| format!("Chat settings not found for user: {user_id}"))?;
-
-    // ── Idle catch-up for the fold-grain OTHER pass (enqueued by the daily
-    //    maintenance sweep): not a turn at all, so it never builds a
-    //    transcript. v4 `d58548051`, `memory-extraction.ts:44-72`. ──
-    if payload.fold_other_catchup {
-        let uid = user_id.to_string();
-        let available_profiles = db
-            .read_main(move |c| connection_profiles::find_by_user_id(c, &uid))
-            .map_err(|e| format!("{e:?}"))?;
-        let cheap_llm_settings = cheap_settings_from(&chat_settings);
-        let catchup = run_fold_other_catchup(
-            db,
-            completion,
-            embedding,
-            executor,
-            &RunFoldOtherCatchupInput {
-                chat_id: &payload.chat_id,
-                user_id,
-                connection_profile: &connection_profile,
-                cheap_llm_settings: &cheap_llm_settings,
-                available_profiles: &available_profiles,
-                ignore_idle: payload.fold_other_ignore_idle,
-                now_ms: None,
-            },
-        )
-        .await
-        .map_err(|e| format!("{e:?}"))?;
-        let watermark = catchup.watermark_advanced_to.as_deref().unwrap_or("null");
-        let skipped = catchup.skipped_reason.unwrap_or("null");
-        match payload.job_id.as_deref() {
-            Some(job_id) => tracing::info!(
-                jobId = %job_id,
-                chatId = %payload.chat_id,
-                skippedReason = %skipped,
-                observers = catchup.observers,
-                created = catchup.memories_written,
-                reinforced = catchup.memories_reinforced,
-                watermarkAdvancedTo = %watermark,
-                "[MemoryExtraction] Fold-grain OTHER catch-up processed"
-            ),
-            None => tracing::info!(
-                chatId = %payload.chat_id,
-                skippedReason = %skipped,
-                observers = catchup.observers,
-                created = catchup.memories_written,
-                reinforced = catchup.memories_reinforced,
-                watermarkAdvancedTo = %watermark,
-                "[MemoryExtraction] Fold-grain OTHER catch-up processed"
-            ),
-        }
-        // A pass lost to a timeout never happened and the watermark did not
-        // move: fail the job so it retries (bug 107), rather than reporting a
-        // clean finish over the hole.
-        if catchup.passes_lost_to_timeout > 0 {
-            return Err(
-                crate::services::cheap_llm_exec::cheap_llm_task_lost_message(
-                    "fold-other-catchup",
-                    Some(&format!(
-                        "{} pass(es) timed out",
-                        catchup.passes_lost_to_timeout
-                    )),
-                ),
-            );
-        }
-        return Ok(());
-    }
-
-    // ── Chat missing at job execution → logged skip (v4 warns + returns) ──
-    let cid = payload.chat_id.clone();
-    let Some(chat) = db
-        .read_main(move |c| chats_read::find_by_id(c, &cid))
-        .map_err(|e| format!("{e:?}"))?
-    else {
-        return Ok(());
-    };
-
-    let cid = payload.chat_id.clone();
-    let all_raw_messages = db
-        .read_main(move |c| crate::db::chats_messages_read::get_messages(c, &cid))
-        .map_err(|e| format!("{e:?}"))?;
-    // v4 filters to `type === 'message'` up front (the builder re-checks).
-    let message_events: Vec<Value> = all_raw_messages
-        .iter()
-        .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
-        .cloned()
-        .collect();
-
-    // ── Hydrate every CHARACTER participant's character row ──
-    let participants: Vec<Value> = chat
-        .get("participants")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let mut participant_characters: std::collections::HashMap<String, Value> =
-        std::collections::HashMap::new();
-    for p in &participants {
-        if p.get("type").and_then(Value::as_str) != Some("CHARACTER") {
-            continue;
-        }
-        let Some(char_id) = p
-            .get("characterId")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-        else {
-            continue;
-        };
-        let cid = char_id.to_string();
-        if participant_characters.contains_key(&cid) {
-            continue;
-        }
-        let lookup = cid.clone();
-        if let Ok(Some(character)) = db.read_main(|main| {
-            db.read_mount_index(|mount| {
-                crate::db::characters_read::find_by_id(main, mount, &lookup)
-            })
-        }) {
-            participant_characters.insert(cid, character);
-        }
-    }
-
-    let user_character = resolve_user_character_participant(&participants, &participant_characters);
-
-    let transcript = build_turn_transcript(
-        &message_events,
-        &participants,
-        &participant_characters,
-        &BuildTurnTranscriptOptions {
-            turn_opener_message_id: payload.turn_opener_message_id.clone(),
-            extraction_anchor_message_id: payload.extraction_anchor_message_id.clone(),
-            extract_after_message_id: None,
-            user_character_id: user_character.map(|c| json_str(c, "id")),
-            user_character_name: user_character.map(|c| json_str(c, "name")),
-            user_character_pronouns: user_character
-                .and_then(crate::services::turn_transcript::pronouns_from_character),
-        },
-    );
-
-    // Turn has no character contributions → logged skip (v4 returns).
-    if transcript.character_slices.is_empty() {
-        return Ok(());
-    }
-
-    let uid = user_id.to_string();
-    let available_profiles = db
-        .read_main(move |c| connection_profiles::find_by_user_id(c, &uid))
-        .unwrap_or_default();
-
-    // v4 `3b463d6b1`: `resolveConciergeSettings(chatSettings, chat)`.
-    let concierge_policy = resolve_concierge_settings(Some(&chat_settings), Some(&chat));
-
-    // Orienting context (background only, never a memory source): the
-    // project's description lets the extractor judge a memory's scope; the
-    // rolling chat summary frames its temporal hinge. The project lookup is
-    // guarded — a broken project store must not sink the whole extraction.
-    let chat_context_summary = chat
-        .get("contextSummary")
-        .and_then(Value::as_str)
-        .map(str::to_string);
-    let project_id = chat
-        .get("projectId")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string);
-    let mut project_description: Option<String> = None;
-    if let Some(pid) = &project_id {
-        let lookup = pid.clone();
-        let read = db.read_main(|main| {
-            db.read_mount_index(|mount| {
-                let repo = crate::db::projects::ProjectsRepository::new(main, mount);
-                match repo.find_by_id(&lookup) {
-                    Ok(p) => Ok(p),
-                    // Degrade to no project description (v4's catch → debug log).
-                    Err(_) => Ok(None),
-                }
-            })
-        });
-        if let Ok(Some(project)) = read {
-            project_description = project
-                .get("description")
-                .and_then(Value::as_str)
-                .map(str::to_string);
-        }
-    }
-
-    // Anchor derived memories to the historical chat timestamp rather than
-    // letting createdAt default to "now" — a regenerate sweep over an old chat
-    // must not mint memories that look freshly minted (wrong for chronology,
-    // recency, and the age-decayed housekeeping signals). Latest assistant
-    // message in the turn → the user turn opener → the chat's own createdAt.
-    let find_created_at = |id: &str| -> Option<String> {
-        message_events
-            .iter()
-            .find(|m| m.get("id").and_then(Value::as_str) == Some(id))
-            .and_then(|m| m.get("createdAt").and_then(Value::as_str))
-            .map(str::to_string)
-    };
-    let mut source_message_timestamp: Option<String> = transcript
-        .latest_assistant_message_id
-        .as_deref()
-        .and_then(find_created_at);
-    if source_message_timestamp.is_none() {
-        if let Some(opener) = &payload.turn_opener_message_id {
-            source_message_timestamp = find_created_at(opener);
-        }
-    }
-    if source_message_timestamp.is_none() {
-        source_message_timestamp = chat
-            .get("createdAt")
-            .and_then(Value::as_str)
-            .map(str::to_string);
-    }
-
-    let ctx = TurnMemoryExtractionContext {
-        transcript,
-        participant_characters,
-        chat_id: payload.chat_id.clone(),
-        project_id,
-        project_description,
-        chat_context_summary,
-        user_id: user_id.to_string(),
-        connection_profile: crate::services::image_job_common::cheap_llm_profile_from_value(
-            &connection_profile,
-        ),
-        cheap_llm_settings: cheap_settings_from(&chat_settings),
-        available_profiles: Some(
-            available_profiles
-                .iter()
-                .map(crate::services::image_job_common::cheap_llm_profile_from_value)
-                .collect(),
-        ),
-        concierge_policy: Some(concierge_policy),
-        is_dangerous_chat: should_use_uncensored_route(Some(&chat)),
-        memory_extraction_limits,
-        source_message_timestamp,
-        // Episodic spine: which clock the chat's story runs on (drives the
-        // extraction CLOCK block and narrativeTime capture).
-        timeline_mode: chat
-            .get("timelineMode")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        dry_run: false,
-        // 4.6 Private Character Rooms: autonomous-source attribution — the
-        // prompts get the user-absence clause and the resulting memory rows
-        // carry `witnessedContext = 'autonomous_room'`.
-        in_autonomous_room: chat.get("chatType").and_then(Value::as_str) == Some("autonomous"),
-        registry_cheapest_for_current: None,
-    };
-
-    let result = process_turn_for_memory(db, completion, embedding, executor, &ctx).await;
-
-    // A pass lost to a timeout is work that never happened, and nothing
-    // downstream re-queues it. Fail the job rather than let it report a clean
-    // finish over the hole (v4 `a1d88aa3a`, bug 107). A refusal or an
-    // unparseable answer would fail identically on every retry and keeps the
-    // old log-and-move-on behaviour.
-    //
-    // Placed BEFORE the debug-log write, as v4 places it: v4's note in
-    // `BACKGROUND_JOBS_CHILD.md` is that the debug logs describing the timeout
-    // never reach the message, because they are child writes discarded on the
-    // throw. v5 has no child and applies as it goes, so the ORDER is what
-    // reproduces that outcome here.
-    //
-    // ⚠ RECORDED MECHANISM DIVERGENCE (measured, P4.D136). v4's retry is
-    // ATOMIC: `handleChildJobResult` only calls `applyWritesAtomically` when
-    // `msg.ok`, so a turn that lost one character's pass discards the others
-    // too and the re-run is duplicate-free. v5's writer applies as it goes, so
-    // the successful passes SURVIVE and the re-run repeats them. The outcome is
-    // the same because the repeat is idempotent — v4's own handler-audit table
-    // answers "Idempotent under retry? Yes (memories upserted by content hash)"
-    // — so v5 needs no buffering to be correct here; it reaches v4's guarantee
-    // by a different route, and pays less for it (the passes that DID succeed
-    // are not thrown away).
-    if result.passes_lost_to_timeout > 0 {
-        // v4's keys in v4's order (P4.D270 R-H moved this line: it gained
-        // `jobId`, so §R.5's camelCase applies to the whole line). `jobId` is
-        // the host's to fill (`payload.job_id`); absent, it is omitted.
-        let error = result.error.as_deref().unwrap_or("");
-        match payload.job_id.as_deref() {
-            Some(job_id) => tracing::error!(
-                jobId = %job_id,
-                chatId = %payload.chat_id,
-                passesLostToTimeout = result.passes_lost_to_timeout,
-                error = %error,
-                "[MemoryExtraction] Extraction passes lost to a cheap-LLM timeout; failing the job for retry"
-            ),
-            None => tracing::error!(
-                chatId = %payload.chat_id,
-                passesLostToTimeout = result.passes_lost_to_timeout,
-                error = %error,
-                "[MemoryExtraction] Extraction passes lost to a cheap-LLM timeout; failing the job for retry"
-            ),
-        }
-        return Err(
-            crate::services::cheap_llm_exec::cheap_llm_task_lost_message(
-                "memory-extraction",
-                result.error.as_deref(),
-            ),
+    ctx: &ExtractionContext,
+    result: &PassResult,
+    task_label: &str,
+    debug_message_id: Option<&str>,
+) -> Result<(), String> {
+    if result.timed_out > 0 {
+        tracing::error!(
+            jobId = %job_id,
+            chatId = %ctx.chat_id,
+            task = %task_label,
+            passesLostToTimeout = result.timed_out,
+            "[MemoryExtraction] Extraction passes lost to a cheap-LLM timeout; failing the job for retry"
         );
+        return Err(cheap_llm_task_lost_message(
+            task_label,
+            Some(&format!("{} pass(es) timed out", result.timed_out)),
+        ));
     }
-    // v4 logs the success/failure shape either way; the job itself COMPLETES.
 
-    // Persist debug logs onto the latest assistant message of the turn so the
-    // operator can pop the debug panel and see what the per-turn pass did
-    // (best-effort, v4 catches).
-    if !result.debug_logs.is_empty() {
-        if let Some(source_id) = &result.source_message_id {
-            let chat_id = payload.chat_id.clone();
-            let source_id = source_id.clone();
-            let updates = json!({ "debugMemoryLogs": result.debug_logs.clone() });
-            let _ = db
-                .write(move |writers| {
-                    writers
-                        .main()
-                        .chat_messages()
-                        .update_message(&chat_id, &source_id, &updates)
-                })
-                .await;
+    if let Some(message_id) = debug_message_id.filter(|m| !m.is_empty()) {
+        if !result.debug_logs.is_empty() {
+            let stored = async {
+                let existing = ctx
+                    .messages()?
+                    .iter()
+                    .find(|m| m.get("id").and_then(Value::as_str) == Some(message_id))
+                    .and_then(|m| m.get("debugMemoryLogs"))
+                    .cloned();
+                let updates = serde_json::json!({
+                    "debugMemoryLogs": debug_memory_logs_for(existing.as_ref(), &result.debug_logs),
+                });
+                let (chat_id, message_id) = (ctx.chat_id.clone(), message_id.to_string());
+                ctx.db
+                    .write(move |w| {
+                        w.main()
+                            .chat_messages()
+                            .update_message(&chat_id, &message_id, &updates)
+                    })
+                    .await
+            }
+            .await;
+            if let Err(error) = stored {
+                tracing::warn!(
+                    jobId = %job_id,
+                    error = %error_text(&error),
+                    "[MemoryExtraction] Failed to store debug logs"
+                );
+            }
         }
     }
 
-    // Token-tracking event mirroring the prior per-message behaviour
-    // (best-effort, v4 catches; gated on nonzero usage).
+    // v4 `if (promptTokens || completionTokens)`. The estimator and the event
+    // writer are infallible seams in v5, so v4's `[MemoryExtraction] Failed to
+    // emit token tracking event` WARN has no v5 home (recorded).
     if result.usage.prompt_tokens != 0 || result.usage.completion_tokens != 0 {
-        let provider = json_str(&connection_profile, "provider");
-        let model = json_str(&connection_profile, "modelName");
+        let profile = &ctx.route.connection_profile;
+        let field = |k: &str| {
+            profile
+                .get(k)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
+        let (provider, model) = (field("provider"), field("modelName"));
         let estimated = cost
             .estimate(
                 &provider,
@@ -483,8 +245,8 @@ where
             )
             .await;
         let _ = create_memory_extraction_event(
-            db,
-            &payload.chat_id,
+            &ctx.db,
+            &ctx.chat_id,
             Some(TokenUsage {
                 prompt_tokens: Some(result.usage.prompt_tokens as f64),
                 completion_tokens: Some(result.usage.completion_tokens as f64),
@@ -496,49 +258,225 @@ where
         )
         .await;
     }
-
     Ok(())
 }
 
-/// The memory-processor `CheapLlmSettings` off `chatSettings.cheapLLMSettings`
-/// (v4 maps exactly `strategy` / `userDefinedProfileId` / `fallbackToLocal` —
-/// the `carina_memory_extraction` twin).
-pub(crate) fn cheap_settings_from(chat_settings: &Value) -> CheapLlmSettings {
-    let cheap = chat_settings.get("cheapLLMSettings");
-    CheapLlmSettings {
-        strategy: cheap
-            .and_then(|c| c.get("strategy"))
-            .and_then(Value::as_str)
-            .unwrap_or("PROVIDER_CHEAPEST")
-            .to_string(),
-        user_defined_profile_id: cheap
-            .and_then(|c| c.get("userDefinedProfileId"))
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        fallback_to_local: cheap
-            .and_then(|c| c.get("fallbackToLocal"))
-            .and_then(Value::as_bool)
-            .unwrap_or(true),
+/// What an extraction job adds to its context (v4 `extractionContextForJob`'s
+/// `extra`).
+#[derive(Default)]
+pub struct JobContextExtra {
+    pub extra_character_ids: Vec<String>,
+    pub backfill: bool,
+}
+
+/// The context for an extraction job, or `None` when the chat is gone
+/// (nothing to do) — v4 `extractionContextForJob`. A missing connection
+/// profile is a job failure (`Connection profile not found: <id>`); every
+/// other context error rethrows. The attempt's idempotency scope (L-16)
+/// rides the context into every admission.
+pub fn extraction_context_for_job(
+    db: &Db,
+    job_id: &str,
+    user_id: &str,
+    chat_id: &str,
+    connection_profile_id: &str,
+    extra: JobContextExtra,
+    host_zone_fallback: &str,
+) -> Result<Option<ExtractionContext>, String> {
+    let pid = connection_profile_id.to_string();
+    let profile = db
+        .read_main(move |c| connection_profiles::find_by_id(c, &pid))
+        .map_err(|e| error_text(&e))?
+        .ok_or_else(|| format!("Connection profile not found: {connection_profile_id}"))?;
+    match build_extraction_context(
+        db,
+        chat_id,
+        user_id,
+        BuildExtractionContextOptions {
+            connection_profile: Some(profile),
+            extra_character_ids: extra.extra_character_ids,
+            backfill: extra.backfill,
+            key_scope: Some(AdmissionKeyScope::new(job_id)),
+            host_zone_fallback: host_zone_fallback.to_string(),
+            ..Default::default()
+        },
+    ) {
+        Ok(ctx) => Ok(Some(ctx)),
+        Err(ExtractionContextError::NoChat(_)) => {
+            tracing::warn!(
+                jobId = %job_id,
+                chatId = %chat_id,
+                "[MemoryExtraction] Chat not found at job execution; skipping"
+            );
+            Ok(None)
+        }
+        Err(e) => Err(e.message()),
     }
 }
 
-fn json_str(v: &Value, key: &str) -> String {
-    v.get(key)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
-}
+/// v4 `handleMemoryExtraction(job)`. `Err(message)` is v4's `throw` (the
+/// runner records it as `lastError` and the ported backoff decides
+/// retry-vs-dead).
+#[allow(clippy::too_many_arguments)]
+pub async fn handle_memory_extraction<C, E, K>(
+    db: &Db,
+    completion: &C,
+    embedding: &E,
+    executor: &CheapLlmTaskExecutor,
+    cost: &K,
+    job_id: &str,
+    user_id: &str,
+    payload: &MemoryExtractionPayload,
+    host_zone_fallback: &str,
+) -> Result<(), String>
+where
+    C: CompletionProvider,
+    E: EmbeddingProvider + Sync,
+    K: MessageCostEstimator,
+{
+    let pass = payload.pass_of();
+    let Some(ctx) = extraction_context_for_job(
+        db,
+        job_id,
+        user_id,
+        &payload.chat_id,
+        &payload.connection_profile_id,
+        JobContextExtra {
+            backfill: payload.backfill,
+            ..Default::default()
+        },
+        host_zone_fallback,
+    )?
+    else {
+        return Ok(());
+    };
+    let deps = ExtractionDeps {
+        completion,
+        embedding,
+        executor,
+    };
 
-/// Parse the `getMemoryExtractionLimits` instance-settings object into the
-/// processor's limits shape (documented defaults on missing keys).
-pub fn limits_from_value(v: &Value) -> MemoryExtractionLimits {
-    MemoryExtractionLimits {
-        enabled: v.get("enabled").and_then(Value::as_bool).unwrap_or(false),
-        max_per_hour: v.get("maxPerHour").and_then(Value::as_f64).unwrap_or(20.0),
-        soft_start_fraction: v
-            .get("softStartFraction")
-            .and_then(Value::as_f64)
-            .unwrap_or(0.7),
-        soft_floor: v.get("softFloor").and_then(Value::as_f64).unwrap_or(0.7),
+    if !pass.is_turn() {
+        let ignore_idle = payload.ignore_idle || payload.legacy_fold_other_ignore_idle;
+        let result = run_fold_catchup(
+            &deps,
+            &ctx,
+            pass.as_str(),
+            RunFoldCatchupOptions {
+                ignore_idle,
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| error_text(&e))?;
+        let skipped = result.skipped_reason.map(|r| r.as_str()).unwrap_or("null");
+        let advanced = result.cursor_advanced_to.as_deref().unwrap_or("null");
+        tracing::info!(
+            jobId = %job_id,
+            chatId = %payload.chat_id,
+            pass = %pass.as_str(),
+            skippedReason = %skipped,
+            slices = result.slices,
+            created = result.result.created_ids.len(),
+            reinforced = result.result.reinforced_ids.len(),
+            cursorAdvancedTo = %advanced,
+            slicesDeferred = result.slices_deferred,
+            "[MemoryExtraction] Fold catch-up processed"
+        );
+        finish_extraction_job(
+            cost,
+            job_id,
+            user_id,
+            &ctx,
+            &result.result,
+            &format!("{}-catchup", pass.as_str()),
+            None,
+        )
+        .await?;
+        // The rest of a long backlog is the next job's, keyed on the cursor
+        // this one advanced to so successive steps never dedupe into each
+        // other. A slice deferred by the rate limit waits for the next fold or
+        // sweep, not a successor that would meet the same cap at once.
+        if let Some(from) = result.cursor_advanced_to.as_deref() {
+            if result.slices_deferred > 0
+                && result.skipped_reason
+                    != Some(crate::services::extraction::fold::FoldSkipReason::RateLimited)
+            {
+                enqueue_memory_extraction_with(
+                    db,
+                    user_id,
+                    &MemoryExtractionEnqueue {
+                        chat_id: &payload.chat_id,
+                        turn_opener_message_id: None,
+                        extraction_anchor_message_id: None,
+                        connection_profile_id: &payload.connection_profile_id,
+                        pass: Some(pass.as_str()),
+                        cursor: Some(from),
+                        ignore_idle,
+                        backfill: payload.backfill,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .map_err(|e| error_text(&e))?;
+                tracing::debug!(
+                    jobId = %job_id,
+                    chatId = %payload.chat_id,
+                    pass = %pass.as_str(),
+                    from = %from,
+                    slicesDeferred = result.slices_deferred,
+                    "[MemoryExtraction] Fold catch-up continues in a follow-up job"
+                );
+            }
+        }
+        return Ok(());
     }
+
+    let result = run_turn_extraction(
+        &deps,
+        &ctx,
+        &TurnLocator {
+            turn_opener_message_id: payload.turn_opener_message_id.clone(),
+            extraction_anchor_message_id: payload.extraction_anchor_message_id.clone(),
+            extract_after_message_id: payload.extract_after_message_id.clone(),
+        },
+    )
+    .await
+    .map_err(|e| error_text(&e))?;
+    let opener = payload.turn_opener_message_id.as_deref().unwrap_or("null");
+    if !result.had_contributions {
+        tracing::info!(
+            jobId = %job_id,
+            chatId = %payload.chat_id,
+            turnOpenerMessageId = %opener,
+            "[MemoryExtraction] Turn has no character contributions; skipping"
+        );
+        return Ok(());
+    }
+    let anchor = payload
+        .extraction_anchor_message_id
+        .as_deref()
+        .unwrap_or("null");
+    tracing::info!(
+        jobId = %job_id,
+        chatId = %payload.chat_id,
+        turnOpenerMessageId = %opener,
+        extractionAnchorMessageId = %anchor,
+        candidates = result.result.admitted.len(),
+        created = result.result.created_ids.len(),
+        reinforced = result.result.reinforced_ids.len(),
+        "[MemoryExtraction] Turn processed"
+    );
+    // The debug lines go on the turn's latest assistant message, where the
+    // debug panel shows what the turn's extraction did.
+    finish_extraction_job(
+        cost,
+        job_id,
+        user_id,
+        &ctx,
+        &result.result,
+        "memory-extraction",
+        result.source_message_id.as_deref(),
+    )
+    .await
 }

@@ -1,464 +1,2647 @@
 {
-  "_comment": "Tier-3 (mocked cheap-LLM + mocked-embedding) corpus for the fold-time episode pass (v4 runFoldEpisodePass, lib/memory/fold-episode-pass.ts). The COMPLETION call is pinned by recording the exact (provider|model|temperature|messages) key the oracle answered and replaying it through CannedCompletionProvider on the Rust side — so a prompt-byte divergence surfaces as a canned-miss. The EMBEDDING call is pinned by exact buildMemoryEmbeddingText text, as in the memory-gate corpus. Two runs: `episode_pass` (a narrative-timeline window with two present characters, one absent participant, and per-character fragment memories to link) and `no_episodes` (the model returns [] — the pass must write nothing). P4.144 adds three LOG-LINE runs (each over a NEW chat with TWO present characters, Aria + Bram): `episode_fail` (the completion THROWS — v4's `[FoldEpisodePass] Episode extraction failed` WARN), `episode_write_fail` (a BEFORE INSERT trigger plant aborts Aria's episode — `Failed to write episode for character` for Aria, Bram's written, then `Episode pass complete`), and `episode_link_fail` (a BEFORE UPDATE trigger plant aborts Aria's episode LINK update — v4's catch sits outside both link loops, so Aria's window fragments are NOT back-linked). The plants live in `plants` and are created by the builder in the /tmp pair only. A third plant fails Bram's fragment BACK-link in `episode_link_fail`, so both link-write sites reach the catch.",
-  "_safety": "testPepperBase64 is the same THROWAWAY key the other fixtures use — never a real pepper.",
-  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
-  "userId": "00000000-0000-4000-8000-0000000000ee",
-  "seedTimestamp": "2026-07-01T00:00:00.000Z",
-  "characters": [
-    {
-      "id": "aa000000-0000-4000-8000-0000000000a1",
-      "name": "Aria",
-      "identity": "Aria is a clockwork soprano with a copper larynx.",
-      "controlledBy": "llm"
-    },
-    {
-      "id": "bb000000-0000-4000-8000-0000000000b1",
-      "name": "Bram",
-      "identity": "Bram keeps the rooftop hives.",
-      "controlledBy": "llm"
-    },
-    {
-      "id": "cc000000-0000-4000-8000-0000000000c1",
-      "name": "Cass",
-      "identity": "Cass is elsewhere.",
-      "controlledBy": "llm"
-    },
-    {
-      "id": "dd000000-0000-4000-8000-0000000000d1",
-      "name": "Dell",
-      "identity": "Dell's name was lost in the ledger.",
-      "controlledBy": "llm",
-      "emptyName": true,
-      "comment": "P4.D212 (bug 161): created as 'Dell' through v4's REAL repo, then blanked to name '' by a direct UPDATE. Pre-fix, both v4's private loop (`if (character)`) and v5's pushed the EMPTY name and rendered ': …'; the shared resolver's `if (character?.name)` gate drops it, so the line renders 'Character: …'. Its seat is ABSENT in the outing chat, so the pass writes it no memory; the line sits in `episode_pass`'s window, where a prompt-key miss changes the written episodes (in `no_episodes` a miss and a hit both write nothing, so the arm would be invisible there)."
-    }
-  ],
-  "chats": [
-    {
-      "id": "1c000000-0000-4000-8000-00000000c0e1",
-      "title": "The Lighthouse Point outing",
-      "participants": [
-        {
-          "id": "9a000000-0000-4000-8000-0000000000a1",
-          "characterId": "aa000000-0000-4000-8000-0000000000a1",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "9b000000-0000-4000-8000-0000000000b1",
-          "characterId": "bb000000-0000-4000-8000-0000000000b1",
-          "controlledBy": "llm",
-          "status": "silent"
-        },
-        {
-          "id": "9c000000-0000-4000-8000-0000000000c1",
-          "characterId": "cc000000-0000-4000-8000-0000000000c1",
-          "controlledBy": "llm",
-          "status": "absent"
-        },
-        {
-          "id": "9d000000-0000-4000-8000-0000000000d1",
-          "characterId": "dd000000-0000-4000-8000-0000000000d1",
-          "controlledBy": "llm",
-          "status": "absent"
-        }
-      ]
-    },
-    {
-      "id": "1c000000-0000-4000-8000-00000000c0e2",
-      "title": "The quiet evening",
-      "participants": [
-        {
-          "id": "9a000000-0000-4000-8000-0000000000a2",
-          "characterId": "aa000000-0000-4000-8000-0000000000a1",
-          "controlledBy": "llm",
-          "status": "active"
-        }
-      ]
-    },
-    {
-      "id": "1c000000-0000-4000-8000-00000000c0e3",
-      "title": "The boiler-room afternoon",
-      "participants": [
-        {
-          "id": "9a000000-0000-4000-8000-0000000000a3",
-          "characterId": "aa000000-0000-4000-8000-0000000000a1",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "9b000000-0000-4000-8000-0000000000b3",
-          "characterId": "bb000000-0000-4000-8000-0000000000b1",
-          "controlledBy": "llm",
-          "status": "active"
-        }
-      ]
-    },
-    {
-      "id": "1c000000-0000-4000-8000-00000000c0e4",
-      "title": "The Brassworks fair",
-      "participants": [
-        {
-          "id": "9a000000-0000-4000-8000-0000000000a4",
-          "characterId": "aa000000-0000-4000-8000-0000000000a1",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "9b000000-0000-4000-8000-0000000000b4",
-          "characterId": "bb000000-0000-4000-8000-0000000000b1",
-          "controlledBy": "llm",
-          "status": "active"
-        }
-      ]
-    },
-    {
-      "id": "1c000000-0000-4000-8000-00000000c0e5",
-      "title": "The copper observatory",
-      "participants": [
-        {
-          "id": "9a000000-0000-4000-8000-0000000000a5",
-          "characterId": "aa000000-0000-4000-8000-0000000000a1",
-          "controlledBy": "llm",
-          "status": "active"
-        },
-        {
-          "id": "9b000000-0000-4000-8000-0000000000b5",
-          "characterId": "bb000000-0000-4000-8000-0000000000b1",
-          "controlledBy": "llm",
-          "status": "active"
-        }
-      ]
-    }
-  ],
-  "seedMemories": [
-    {
-      "id": "f1000000-0000-4000-8000-0000000000f1",
-      "characterId": "aa000000-0000-4000-8000-0000000000a1",
-      "content": "I noticed the brass sextant in the shop window.",
-      "summary": "noticed the sextant",
-      "sourceMessageId": "e1000000-0000-4000-8000-0000000000e2"
-    },
-    {
-      "id": "f2000000-0000-4000-8000-0000000000f2",
-      "characterId": "aa000000-0000-4000-8000-0000000000a1",
-      "content": "I resolved to buy the sextant before the tide turned.",
-      "summary": "resolved to buy the sextant",
-      "sourceMessageId": "e1000000-0000-4000-8000-0000000000e3"
-    },
-    {
-      "id": "f3000000-0000-4000-8000-0000000000f3",
-      "characterId": "bb000000-0000-4000-8000-0000000000b1",
-      "content": "Bram counted seventeen gulls on the jetty rail.",
-      "summary": "counted the gulls",
-      "sourceMessageId": "e1000000-0000-4000-8000-0000000000e3"
-    },
-    {
-      "id": "f4000000-0000-4000-8000-0000000000f4",
-      "characterId": "aa000000-0000-4000-8000-0000000000a1",
-      "content": "I dislike the smell of low tide.",
-      "summary": "dislikes low tide",
-      "sourceMessageId": "e9000000-0000-4000-8000-0000000000e9"
-    },
-    {
-      "id": "f5000000-0000-4000-8000-0000000000f5",
-      "characterId": "aa000000-0000-4000-8000-0000000000a1",
-      "content": "On an earlier voyage Aria and Bram first sighted Lighthouse Point from the water.",
-      "summary": "An earlier sighting of Lighthouse Point.",
-      "sourceMessageId": "e9000000-0000-4000-8000-0000000000e0",
-      "comment": "Bug 26: an EMBEDDED Aria memory (+ vector entry) in the INSERT_RELATED band ([0.70,0.85)) with candidate #1's [1,0,0,0] embedding (dot 0.78). Not a window fragment. The gate links it; the fold pass must PRESERVE that link, not clobber it.",
-      "embedding": [
-        0.78,
-        -0.589586,
-        0.131019,
-        0.163774
-      ]
-    },
-    {
-      "id": "f6000000-0000-4000-8000-0000000000f6",
-      "characterId": "aa000000-0000-4000-8000-0000000000a1",
-      "content": "Aria polished the observatory lens until it sang.",
-      "summary": "polished the lens",
-      "sourceMessageId": "e5000000-0000-4000-8000-0000000000e2"
-    },
-    {
-      "id": "f7000000-0000-4000-8000-0000000000f7",
-      "characterId": "aa000000-0000-4000-8000-0000000000a1",
-      "content": "Aria wound the orrery's mainspring by hand.",
-      "summary": "wound the orrery",
-      "sourceMessageId": "e5000000-0000-4000-8000-0000000000e3"
-    },
-    {
-      "id": "f8000000-0000-4000-8000-0000000000f8",
-      "characterId": "bb000000-0000-4000-8000-0000000000b1",
-      "content": "Bram logged the comet's tail in chalk on the dome wall.",
-      "summary": "logged the comet",
-      "sourceMessageId": "e5000000-0000-4000-8000-0000000000e3"
-    }
-  ],
-  "runs": [
-    {
-      "name": "episode_pass",
-      "chatId": "1c000000-0000-4000-8000-00000000c0e1",
-      "timelineMode": "narrative",
-      "projectId": null,
-      "inAutonomousRoom": false,
-      "episodeResponse": "```json\n[{\"narrative\": \"On July 14th, Aria and Bram visited Lighthouse Point and bought the brass sextant from the chandler by the jetty. They stayed until the tide turned.\", \"summary\": \"visited lighthouse point\", \"when\": \"2026-07-14\", \"narrativeTime\": \"the third day ashore\", \"entities\": [\"Lighthouse Point\", \"  \", \"the chandler\", 7], \"participants\": [\"Aria\", \"Bram\"], \"importance\": 0.85}, {\"narrative\": \"Later the same afternoon they watched the gulls quarrel over the jetty rail.\", \"summary\": \"   \", \"importance\": 4}, {\"narrative\": \"A third episode beyond the cap.\", \"summary\": \"dropped by the cap\"}]\n```",
-      "usage": {
-        "promptTokens": 420,
-        "completionTokens": 90,
-        "totalTokens": 510
-      },
-      "windowMessages": [
-        {
-          "id": "e1000000-0000-4000-8000-0000000000e1",
-          "role": "USER",
-          "content": "Shall we walk out to the point?",
-          "participantId": null,
-          "createdAt": "2026-07-14T09:00:00.000Z"
-        },
-        {
-          "id": "e1000000-0000-4000-8000-0000000000e2",
-          "role": "ASSISTANT",
-          "content": "There is a brass sextant in the chandler's window.",
-          "participantId": "9a000000-0000-4000-8000-0000000000a1",
-          "createdAt": "2026-07-14T09:05:00.000Z"
-        },
-        {
-          "id": "e1000000-0000-4000-8000-0000000000e3",
-          "role": "ASSISTANT",
-          "content": "Seventeen gulls, and every one of them a critic.",
-          "participantId": "9b000000-0000-4000-8000-0000000000b1",
-          "createdAt": "2026-07-14T09:20:00.000Z"
-        },
-        {
-          "id": "e2000000-0000-4000-8000-0000000000d1",
-          "role": "ASSISTANT",
-          "content": "Dell hums something with no words.",
-          "participantId": "9d000000-0000-4000-8000-0000000000d1",
-          "createdAt": "2026-07-14T09:20:00.000Z"
-        },
-        {
-          "id": "e1000000-0000-4000-8000-0000000000e4",
-          "role": "ASSISTANT",
-          "content": "An unstamped aside from an unknown participant.",
-          "participantId": "9z000000-0000-4000-8000-0000000000z9",
-          "createdAt": null
-        }
-      ]
-    },
-    {
-      "name": "no_episodes",
-      "chatId": "1c000000-0000-4000-8000-00000000c0e2",
-      "timelineMode": "realtime",
-      "projectId": null,
-      "inAutonomousRoom": true,
-      "episodeResponse": "[]",
-      "usage": {
-        "promptTokens": 120,
-        "completionTokens": 2,
-        "totalTokens": 122
-      },
-      "windowMessages": [
-        {
-          "id": "e2000000-0000-4000-8000-0000000000e1",
-          "role": "USER",
-          "content": "Nothing happened today.",
-          "participantId": null,
-          "createdAt": "2026-07-15T20:00:00.000Z"
-        }
-      ]
-    },
-    {
-      "name": "episode_fail",
-      "chatId": "1c000000-0000-4000-8000-00000000c0e3",
-      "timelineMode": "realtime",
-      "projectId": null,
-      "inAutonomousRoom": false,
-      "fail": "the cheap model's boiler burst mid-sentence",
-      "episodeResponse": "",
-      "usage": {
-        "promptTokens": 0,
-        "completionTokens": 0,
-        "totalTokens": 0
-      },
-      "windowMessages": [
-        {
-          "id": "e3000000-0000-4000-8000-0000000000e1",
-          "role": "USER",
-          "content": "Mind the pressure gauge.",
-          "participantId": null,
-          "createdAt": "2026-07-16T14:00:00.000Z"
-        },
-        {
-          "id": "e3000000-0000-4000-8000-0000000000e2",
-          "role": "ASSISTANT",
-          "content": "The needle is dancing again.",
-          "participantId": "9a000000-0000-4000-8000-0000000000a3",
-          "createdAt": "2026-07-16T14:02:00.000Z"
-        }
-      ]
-    },
-    {
-      "name": "episode_write_fail",
-      "chatId": "1c000000-0000-4000-8000-00000000c0e4",
-      "timelineMode": "realtime",
-      "projectId": null,
-      "inAutonomousRoom": false,
-      "episodeResponse": "[{\"narrative\": \"At the Brassworks fair Aria and Bram rode the steam carousel twice.\", \"summary\": \"rode the steam carousel\", \"entities\": [\"Brassworks fair\"], \"importance\": 0.7}]",
-      "usage": {
-        "promptTokens": 200,
-        "completionTokens": 40,
-        "totalTokens": 240
-      },
-      "windowMessages": [
-        {
-          "id": "e4000000-0000-4000-8000-0000000000e1",
-          "role": "USER",
-          "content": "Shall we ride it again?",
-          "participantId": null,
-          "createdAt": "2026-07-17T15:00:00.000Z"
-        },
-        {
-          "id": "e4000000-0000-4000-8000-0000000000e2",
-          "role": "ASSISTANT",
-          "content": "Twice is tradition, Bram.",
-          "participantId": "9a000000-0000-4000-8000-0000000000a4",
-          "createdAt": "2026-07-17T15:03:00.000Z"
-        },
-        {
-          "id": "e4000000-0000-4000-8000-0000000000e3",
-          "role": "ASSISTANT",
-          "content": "Then twice it is.",
-          "participantId": "9b000000-0000-4000-8000-0000000000b4",
-          "createdAt": "2026-07-17T15:05:00.000Z"
-        }
-      ]
-    },
-    {
-      "name": "episode_link_fail",
-      "chatId": "1c000000-0000-4000-8000-00000000c0e5",
-      "timelineMode": "realtime",
-      "projectId": null,
-      "inAutonomousRoom": false,
-      "episodeResponse": "[{\"narrative\": \"In the copper observatory Aria and Bram charted the comet's return.\", \"summary\": \"charted the comet\", \"entities\": [\"copper observatory\"], \"importance\": 0.75}]",
-      "usage": {
-        "promptTokens": 210,
-        "completionTokens": 42,
-        "totalTokens": 252
-      },
-      "windowMessages": [
-        {
-          "id": "e5000000-0000-4000-8000-0000000000e1",
-          "role": "USER",
-          "content": "Is it back yet?",
-          "participantId": null,
-          "createdAt": "2026-07-18T22:00:00.000Z"
-        },
-        {
-          "id": "e5000000-0000-4000-8000-0000000000e2",
-          "role": "ASSISTANT",
-          "content": "The lens is ready.",
-          "participantId": "9a000000-0000-4000-8000-0000000000a5",
-          "createdAt": "2026-07-18T22:04:00.000Z"
-        },
-        {
-          "id": "e5000000-0000-4000-8000-0000000000e3",
-          "role": "ASSISTANT",
-          "content": "There — the tail, low over the river.",
-          "participantId": "9b000000-0000-4000-8000-0000000000b5",
-          "createdAt": "2026-07-18T22:09:00.000Z"
-        }
-      ]
-    },
-    {
-      "name": "chat_read_fail",
-      "_comment": "P4.156 (R-E): the pass's FIRST read fails — `chats.id` renamed for this run only (applied before it, restored after, on both sides). v4's `repos.chats.findById` is `_findById`, a fallback: `Error finding entity by ID {collection: chats, id}` and `null`, so the pass returns its empty result before the episode call (no canned key is recorded).",
-      "renameMainColumn": {
-        "table": "chats",
-        "from": "id",
-        "to": "id_x"
-      },
-      "chatId": "1c000000-0000-4000-8000-00000000c0e1",
-      "timelineMode": "realtime",
-      "projectId": null,
-      "inAutonomousRoom": false,
-      "episodeResponse": "[]",
-      "usage": {
-        "promptTokens": 1,
-        "completionTokens": 1,
-        "totalTokens": 2
-      },
-      "windowMessages": [
-        {
-          "id": "e6000000-0000-4000-8000-0000000000f1",
-          "role": "USER",
-          "content": "The lamps flicker in the Salon.",
-          "participantId": null,
-          "createdAt": "2026-07-15T21:00:00.000Z"
-        }
-      ]
-    }
-  ],
-  "profile": {
-    "id": "p-cheap",
-    "provider": "OPENAI",
-    "modelName": "gpt-4o-mini",
-    "baseUrl": null,
-    "isLocal": false,
-    "parameters": null
+ "testPepperBase64": "dGVzdC1wZXBwZXItZm9yLWZpeHR1cmVzLW9ubHkxMjM0NTY3OA==",
+ "userId": "a0000000-0000-4000-8000-0000000000e1",
+ "seedTimestamp": "2026-07-01T00:00:00.000Z",
+ "futureTimestamp": "2026-07-01T00:00:00.000Z",
+ "connectionProfiles": [
+  {
+   "id": "9c000000-0000-4000-8000-000000000001",
+   "name": "Current",
+   "provider": "ANTHROPIC",
+   "modelName": "claude-sonnet-4-5",
+   "isCheap": false,
+   "isDangerousCompatible": false
   },
-  "cannedEmbeddings": {
-    "visited lighthouse point\n\nOn July 14th, Aria and Bram visited Lighthouse Point and bought the brass sextant from the chandler by the jetty. They stayed until the tide turned.\n(when: 2026-07-14 · story time: the third day ashore · place: Lighthouse Point, the chandler)": [
-      1,
-      0,
-      0,
-      0
-    ],
-    "Later the same afternoon they watched the gulls quarrel over\n\nLater the same afternoon they watched the gulls quarrel over the jetty rail.\n(when: 2026-07-14)": [
-      0,
-      1,
-      0,
-      0
-    ],
-    "rode the steam carousel\n\nAt the Brassworks fair Aria and Bram rode the steam carousel twice.\n(when: 2026-07-17 · place: Brassworks fair)": [
-      0,
-      0,
-      1,
-      0
-    ],
-    "charted the comet\n\nIn the copper observatory Aria and Bram charted the comet's return.\n(when: 2026-07-18 · place: copper observatory)": [
-      0,
-      0,
-      0,
-      1
-    ]
+  {
+   "id": "9c000000-0000-4000-8000-000000000002",
+   "name": "Cheap",
+   "provider": "OPENAI",
+   "modelName": "gpt-4o-mini",
+   "isCheap": true,
+   "isDangerousCompatible": false
+  }
+ ],
+ "chatSettings": {
+  "cheapLLMSettings": {
+   "strategy": "PROVIDER_CHEAPEST",
+   "fallbackToLocal": false
+  }
+ },
+ "characters": [
+  {
+   "id": "aa000000-0000-4000-8000-0000000000a1",
+   "name": "Ada",
+   "controlledBy": "llm",
+   "identity": "Ada captains the Gull.",
+   "pronouns": {
+    "subject": "she",
+    "object": "her",
+    "possessive": "her"
+   },
+   "othersFiles": []
   },
-  "cannedFailures": [],
-  "plants": [
+  {
+   "id": "bb000000-0000-4000-8000-0000000000b2",
+   "name": "Bram",
+   "controlledBy": "llm",
+   "identity": "Bram is the quartermaster.",
+   "pronouns": {
+    "subject": "he",
+    "object": "him",
+    "possessive": "his"
+   },
+   "othersFiles": []
+  },
+  {
+   "id": "cc000000-0000-4000-8000-0000000000c3",
+   "name": "Quill",
+   "controlledBy": "user",
+   "identity": "Quill is a scribe.",
+   "othersFiles": []
+  }
+ ],
+ "seedMemories": [
+  {
+   "id": "5eed0001-0000-4000-8000-000000000001",
+   "characterId": "aa000000-0000-4000-8000-0000000000a1",
+   "chatId": "f1000000-0000-4000-8000-0000000000f1",
+   "content": "Ada noted the first stop.",
+   "summary": "noted the first stop",
+   "vector": null,
+   "createdAt": "seed",
+   "sourceMessageId": "d1000001-0000-4000-8000-000000000001"
+  },
+  {
+   "id": "5eed0002-0000-4000-8000-000000000002",
+   "characterId": "aa000000-0000-4000-8000-0000000000a1",
+   "chatId": "f1000000-0000-4000-8000-0000000000f1",
+   "content": "Ada noted the fifth stop.",
+   "summary": "noted the fifth stop",
+   "vector": null,
+   "createdAt": "seed",
+   "sourceMessageId": "d1000005-0000-4000-8000-000000000005"
+  },
+  {
+   "id": "5eed0003-0000-4000-8000-000000000003",
+   "characterId": "bb000000-0000-4000-8000-0000000000b2",
+   "chatId": "f1000000-0000-4000-8000-0000000000f1",
+   "content": "Bram noted the second stop.",
+   "summary": "noted the second stop",
+   "vector": null,
+   "createdAt": "seed",
+   "sourceMessageId": "d1000002-0000-4000-8000-000000000002"
+  }
+ ],
+ "chats": [
+  {
+   "id": "f1000000-0000-4000-8000-0000000000f1",
+   "participants": [
     {
-      "name": "qt_plant_episode_write",
-      "event": "INSERT",
-      "content": "At the Brassworks fair Aria and Bram rode the steam carousel twice.",
-      "characterId": "aa000000-0000-4000-8000-0000000000a1",
-      "message": "planted episode write failure"
+     "id": "5a000000-0000-4000-8000-00000000000a",
+     "characterId": "aa000000-0000-4000-8000-0000000000a1",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
     },
     {
-      "name": "qt_plant_episode_link",
-      "event": "UPDATE",
-      "content": "In the copper observatory Aria and Bram charted the comet's return.",
-      "characterId": "aa000000-0000-4000-8000-0000000000a1",
-      "message": "planted episode link failure",
-      "extraCondition": "NEW.relatedMemoryIds IS NOT OLD.relatedMemoryIds",
-      "comment": "P4.144: v4's INSERT path is `create` THEN an `updateForCharacter({ embedding })` (memory-service.ts:595-606), so a trigger on content + character alone fires INSIDE the gate (measured: memoriesWritten 1, the create-path arm again). Requiring the link column to CHANGE leaves the embedding update alone and aborts the episode's own LINK update (fold-episode-pass.ts:176-180) — the arm v4's catch placement turns into 'skip the rest of that character'."
-    },
-    {
-      "name": "qt_plant_fragment_backlink",
-      "event": "UPDATE",
-      "content": "Bram logged the comet's tail in chalk on the dome wall.",
-      "characterId": "bb000000-0000-4000-8000-0000000000b1",
-      "message": "planted fragment back-link failure",
-      "extraCondition": "NEW.relatedMemoryIds IS NOT OLD.relatedMemoryIds",
-      "comment": "P4.144: Bram's one window fragment in `episode_link_fail` refuses its BACK-link (the second `updateForCharacter` site, fold-episode-pass.ts:194-197), so the per-character catch is exercised on BOTH link writes: Bram's episode links the fragment, the fragment's back-link fails, and `fragmentsLinked` must not count it (v5's pre-port `let _ =` counted it)."
+     "id": "5b000000-0000-4000-8000-00000000000b",
+     "characterId": "bb000000-0000-4000-8000-0000000000b2",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
     }
-  ]
+   ],
+   "messages": [
+    {
+     "id": "d1000001-0000-4000-8000-000000000001",
+     "role": "ASSISTANT",
+     "content": "L001 the voyage continues at stop 1.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:01:00.000Z"
+    },
+    {
+     "id": "d1000002-0000-4000-8000-000000000002",
+     "role": "ASSISTANT",
+     "content": "L002 the voyage continues at stop 2.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:02:00.000Z"
+    },
+    {
+     "id": "d1000003-0000-4000-8000-000000000003",
+     "role": "ASSISTANT",
+     "content": "L003 the voyage continues at stop 3.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:03:00.000Z"
+    },
+    {
+     "id": "d1000004-0000-4000-8000-000000000004",
+     "role": "ASSISTANT",
+     "content": "L004 the voyage continues at stop 4.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:04:00.000Z"
+    },
+    {
+     "id": "d1000005-0000-4000-8000-000000000005",
+     "role": "ASSISTANT",
+     "content": "L005 the voyage continues at stop 5.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:05:00.000Z"
+    },
+    {
+     "id": "d1000006-0000-4000-8000-000000000006",
+     "role": "ASSISTANT",
+     "content": "L006 the voyage continues at stop 6.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:06:00.000Z"
+    },
+    {
+     "id": "d1000007-0000-4000-8000-000000000007",
+     "role": "ASSISTANT",
+     "content": "L007 the voyage continues at stop 7.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:07:00.000Z"
+    },
+    {
+     "id": "d1000008-0000-4000-8000-000000000008",
+     "role": "ASSISTANT",
+     "content": "L008 the voyage continues at stop 8.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:08:00.000Z"
+    },
+    {
+     "id": "d1000009-0000-4000-8000-000000000009",
+     "role": "ASSISTANT",
+     "content": "L009 the voyage continues at stop 9.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:09:00.000Z"
+    },
+    {
+     "id": "d1000010-0000-4000-8000-000000000010",
+     "role": "ASSISTANT",
+     "content": "   ",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:10:00.000Z"
+    },
+    {
+     "id": "d1000011-0000-4000-8000-000000000011",
+     "role": "ASSISTANT",
+     "content": "L011 the voyage continues at stop 11.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:11:00.000Z"
+    },
+    {
+     "id": "d1000012-0000-4000-8000-000000000012",
+     "role": "ASSISTANT",
+     "content": "L012 the voyage continues at stop 12.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:12:00.000Z"
+    },
+    {
+     "id": "d1000013-0000-4000-8000-000000000013",
+     "role": "ASSISTANT",
+     "content": "L013 the voyage continues at stop 13.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:13:00.000Z"
+    },
+    {
+     "id": "d1000014-0000-4000-8000-000000000014",
+     "role": "ASSISTANT",
+     "content": "L014 the voyage continues at stop 14.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:14:00.000Z"
+    },
+    {
+     "id": "d1000015-0000-4000-8000-000000000015",
+     "role": "ASSISTANT",
+     "content": "L015 the voyage continues at stop 15.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:15:00.000Z"
+    },
+    {
+     "id": "d1000016-0000-4000-8000-000000000016",
+     "role": "ASSISTANT",
+     "content": "L016 the voyage continues at stop 16.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:16:00.000Z"
+    },
+    {
+     "id": "d1000017-0000-4000-8000-000000000017",
+     "role": "ASSISTANT",
+     "content": "L017 the voyage continues at stop 17.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:17:00.000Z"
+    },
+    {
+     "id": "d1000018-0000-4000-8000-000000000018",
+     "role": "ASSISTANT",
+     "content": "L018 the voyage continues at stop 18.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:18:00.000Z"
+    },
+    {
+     "id": "d1000019-0000-4000-8000-000000000019",
+     "role": "ASSISTANT",
+     "content": "L019 the voyage continues at stop 19.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:19:00.000Z"
+    },
+    {
+     "id": "d1000020-0000-4000-8000-000000000020",
+     "role": "USER",
+     "content": "L020 a line without a seat",
+     "participantId": null,
+     "createdAt": "2026-07-14T08:20:00.000Z"
+    },
+    {
+     "id": "d1000021-0000-4000-8000-000000000021",
+     "role": "ASSISTANT",
+     "content": "L021 the voyage continues at stop 21.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:21:00.000Z"
+    },
+    {
+     "id": "d1000022-0000-4000-8000-000000000022",
+     "role": "ASSISTANT",
+     "content": "L022 the voyage continues at stop 22.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:22:00.000Z"
+    },
+    {
+     "id": "d1000023-0000-4000-8000-000000000023",
+     "role": "ASSISTANT",
+     "content": "L023 the voyage continues at stop 23.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:23:00.000Z"
+    },
+    {
+     "id": "d1000024-0000-4000-8000-000000000024",
+     "role": "ASSISTANT",
+     "content": "L024 the voyage continues at stop 24.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:24:00.000Z"
+    },
+    {
+     "id": "d1000025-0000-4000-8000-000000000025",
+     "role": "ASSISTANT",
+     "content": "L025 the voyage continues at stop 25.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:25:00.000Z"
+    },
+    {
+     "id": "d1000026-0000-4000-8000-000000000026",
+     "role": "ASSISTANT",
+     "content": "L026 the voyage continues at stop 26.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:26:00.000Z"
+    },
+    {
+     "id": "d1000027-0000-4000-8000-000000000027",
+     "role": "ASSISTANT",
+     "content": "L027 the voyage continues at stop 27.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:27:00.000Z"
+    },
+    {
+     "id": "d1000028-0000-4000-8000-000000000028",
+     "role": "ASSISTANT",
+     "content": "L028 the voyage continues at stop 28.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:28:00.000Z"
+    },
+    {
+     "id": "d1000029-0000-4000-8000-000000000029",
+     "role": "ASSISTANT",
+     "content": "L029 the voyage continues at stop 29.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:29:00.000Z"
+    },
+    {
+     "id": "d1000030-0000-4000-8000-000000000030",
+     "role": "ASSISTANT",
+     "content": "L030 the voyage continues at stop 30.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:30:00.000Z"
+    },
+    {
+     "id": "d1000031-0000-4000-8000-000000000031",
+     "role": "ASSISTANT",
+     "content": "L031 the voyage continues at stop 31.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:31:00.000Z"
+    },
+    {
+     "id": "d1000032-0000-4000-8000-000000000032",
+     "role": "ASSISTANT",
+     "content": "L032 the voyage continues at stop 32.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:32:00.000Z"
+    },
+    {
+     "id": "d1000033-0000-4000-8000-000000000033",
+     "role": "ASSISTANT",
+     "content": "L033 the voyage continues at stop 33.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:33:00.000Z"
+    },
+    {
+     "id": "d1000034-0000-4000-8000-000000000034",
+     "role": "ASSISTANT",
+     "content": "L034 the voyage continues at stop 34.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:34:00.000Z"
+    },
+    {
+     "id": "d1000035-0000-4000-8000-000000000035",
+     "role": "ASSISTANT",
+     "content": "L035 the voyage continues at stop 35.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:35:00.000Z"
+    },
+    {
+     "id": "d1000036-0000-4000-8000-000000000036",
+     "role": "ASSISTANT",
+     "content": "L036 the voyage continues at stop 36.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:36:00.000Z"
+    },
+    {
+     "id": "d1000037-0000-4000-8000-000000000037",
+     "role": "ASSISTANT",
+     "content": "L037 the voyage continues at stop 37.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:37:00.000Z"
+    },
+    {
+     "id": "d1000038-0000-4000-8000-000000000038",
+     "role": "ASSISTANT",
+     "content": "L038 the voyage continues at stop 38.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:38:00.000Z"
+    },
+    {
+     "id": "d1000039-0000-4000-8000-000000000039",
+     "role": "ASSISTANT",
+     "content": "L039 the voyage continues at stop 39.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:39:00.000Z"
+    },
+    {
+     "id": "d1000040-0000-4000-8000-000000000040",
+     "role": "ASSISTANT",
+     "content": "L040 the voyage continues at stop 40.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:40:00.000Z"
+    },
+    {
+     "id": "d1000041-0000-4000-8000-000000000041",
+     "role": "ASSISTANT",
+     "content": "L041 the voyage continues at stop 41.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:41:00.000Z"
+    },
+    {
+     "id": "d1000042-0000-4000-8000-000000000042",
+     "role": "ASSISTANT",
+     "content": "L042 the voyage continues at stop 42.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:42:00.000Z"
+    },
+    {
+     "id": "d1000043-0000-4000-8000-000000000043",
+     "role": "ASSISTANT",
+     "content": "L043 the voyage continues at stop 43.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:43:00.000Z"
+    },
+    {
+     "id": "d1000044-0000-4000-8000-000000000044",
+     "role": "ASSISTANT",
+     "content": "L044 the voyage continues at stop 44.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:44:00.000Z"
+    },
+    {
+     "id": "d1000045-0000-4000-8000-000000000045",
+     "role": "ASSISTANT",
+     "content": "L045 the voyage continues at stop 45.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:45:00.000Z"
+    },
+    {
+     "id": "d1000046-0000-4000-8000-000000000046",
+     "role": "ASSISTANT",
+     "content": "L046 the voyage continues at stop 46.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:46:00.000Z"
+    },
+    {
+     "id": "d1000047-0000-4000-8000-000000000047",
+     "role": "ASSISTANT",
+     "content": "L047 the voyage continues at stop 47.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:47:00.000Z"
+    },
+    {
+     "id": "d1000048-0000-4000-8000-000000000048",
+     "role": "ASSISTANT",
+     "content": "L048 the voyage continues at stop 48.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:48:00.000Z"
+    },
+    {
+     "id": "d1000049-0000-4000-8000-000000000049",
+     "role": "ASSISTANT",
+     "content": "L049 the voyage continues at stop 49.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:49:00.000Z"
+    },
+    {
+     "id": "d1000050-0000-4000-8000-000000000050",
+     "role": "ASSISTANT",
+     "content": "L050 the voyage continues at stop 50.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:50:00.000Z"
+    },
+    {
+     "id": "d1000051-0000-4000-8000-000000000051",
+     "role": "ASSISTANT",
+     "content": "L051 the voyage continues at stop 51.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:51:00.000Z"
+    },
+    {
+     "id": "d1000052-0000-4000-8000-000000000052",
+     "role": "ASSISTANT",
+     "content": "L052 the voyage continues at stop 52.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:52:00.000Z"
+    },
+    {
+     "id": "d1000053-0000-4000-8000-000000000053",
+     "role": "ASSISTANT",
+     "content": "L053 the voyage continues at stop 53.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:53:00.000Z"
+    },
+    {
+     "id": "d1000054-0000-4000-8000-000000000054",
+     "role": "ASSISTANT",
+     "content": "L054 the voyage continues at stop 54.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:54:00.000Z"
+    },
+    {
+     "id": "d1000055-0000-4000-8000-000000000055",
+     "role": "ASSISTANT",
+     "content": "L055 the voyage continues at stop 55.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:55:00.000Z"
+    },
+    {
+     "id": "d1000056-0000-4000-8000-000000000056",
+     "role": "ASSISTANT",
+     "content": "L056 the voyage continues at stop 56.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:56:00.000Z"
+    },
+    {
+     "id": "d1000057-0000-4000-8000-000000000057",
+     "role": "ASSISTANT",
+     "content": "L057 the voyage continues at stop 57.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:57:00.000Z"
+    },
+    {
+     "id": "d1000058-0000-4000-8000-000000000058",
+     "role": "ASSISTANT",
+     "content": "L058 the voyage continues at stop 58.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T08:58:00.000Z"
+    },
+    {
+     "id": "d1000059-0000-4000-8000-000000000059",
+     "role": "ASSISTANT",
+     "content": "L059 the voyage continues at stop 59.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:59:00.000Z"
+    },
+    {
+     "id": "d1000060-0000-4000-8000-000000000060",
+     "role": "ASSISTANT",
+     "content": "L060 the voyage continues at stop 60.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:00:00.000Z"
+    },
+    {
+     "id": "d1000061-0000-4000-8000-000000000061",
+     "role": "ASSISTANT",
+     "content": "L061 the voyage continues at stop 61.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:01:00.000Z"
+    },
+    {
+     "id": "d1000062-0000-4000-8000-000000000062",
+     "role": "ASSISTANT",
+     "content": "L062 the voyage continues at stop 62.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:02:00.000Z"
+    },
+    {
+     "id": "d1000063-0000-4000-8000-000000000063",
+     "role": "ASSISTANT",
+     "content": "L063 the voyage continues at stop 63.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:03:00.000Z"
+    },
+    {
+     "id": "d1000064-0000-4000-8000-000000000064",
+     "role": "ASSISTANT",
+     "content": "L064 the voyage continues at stop 64.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:04:00.000Z"
+    },
+    {
+     "id": "d1000065-0000-4000-8000-000000000065",
+     "role": "ASSISTANT",
+     "content": "L065 the voyage continues at stop 65.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:05:00.000Z"
+    },
+    {
+     "id": "d1000066-0000-4000-8000-000000000066",
+     "role": "ASSISTANT",
+     "content": "L066 the voyage continues at stop 66.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:06:00.000Z"
+    },
+    {
+     "id": "d1000067-0000-4000-8000-000000000067",
+     "role": "ASSISTANT",
+     "content": "L067 the voyage continues at stop 67.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:07:00.000Z"
+    },
+    {
+     "id": "d1000068-0000-4000-8000-000000000068",
+     "role": "ASSISTANT",
+     "content": "L068 the voyage continues at stop 68.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:08:00.000Z"
+    },
+    {
+     "id": "d1000069-0000-4000-8000-000000000069",
+     "role": "ASSISTANT",
+     "content": "L069 the voyage continues at stop 69.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:09:00.000Z"
+    },
+    {
+     "id": "d1000070-0000-4000-8000-000000000070",
+     "role": "ASSISTANT",
+     "content": "L070 the voyage continues at stop 70.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:10:00.000Z"
+    },
+    {
+     "id": "d1000071-0000-4000-8000-000000000071",
+     "role": "ASSISTANT",
+     "content": "L071 the voyage continues at stop 71.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:11:00.000Z"
+    },
+    {
+     "id": "d1000072-0000-4000-8000-000000000072",
+     "role": "ASSISTANT",
+     "content": "L072 the voyage continues at stop 72.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:12:00.000Z"
+    },
+    {
+     "id": "d1000073-0000-4000-8000-000000000073",
+     "role": "ASSISTANT",
+     "content": "L073 the voyage continues at stop 73.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:13:00.000Z"
+    },
+    {
+     "id": "d1000074-0000-4000-8000-000000000074",
+     "role": "ASSISTANT",
+     "content": "L074 the voyage continues at stop 74.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:14:00.000Z"
+    },
+    {
+     "id": "d1000075-0000-4000-8000-000000000075",
+     "role": "ASSISTANT",
+     "content": "L075 the voyage continues at stop 75.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:15:00.000Z"
+    },
+    {
+     "id": "d1000076-0000-4000-8000-000000000076",
+     "role": "ASSISTANT",
+     "content": "L076 the voyage continues at stop 76.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:16:00.000Z"
+    },
+    {
+     "id": "d1000077-0000-4000-8000-000000000077",
+     "role": "ASSISTANT",
+     "content": "L077 the voyage continues at stop 77.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:17:00.000Z"
+    },
+    {
+     "id": "d1000078-0000-4000-8000-000000000078",
+     "role": "ASSISTANT",
+     "content": "L078 the voyage continues at stop 78.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:18:00.000Z"
+    },
+    {
+     "id": "d1000079-0000-4000-8000-000000000079",
+     "role": "ASSISTANT",
+     "content": "L079 the voyage continues at stop 79.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:19:00.000Z"
+    },
+    {
+     "id": "d1000080-0000-4000-8000-000000000080",
+     "role": "ASSISTANT",
+     "content": "L080 the voyage continues at stop 80.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:20:00.000Z"
+    },
+    {
+     "id": "d1000081-0000-4000-8000-000000000081",
+     "role": "ASSISTANT",
+     "content": "L081 the voyage continues at stop 81.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:21:00.000Z"
+    },
+    {
+     "id": "d1000082-0000-4000-8000-000000000082",
+     "role": "ASSISTANT",
+     "content": "L082 the voyage continues at stop 82.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:22:00.000Z"
+    },
+    {
+     "id": "d1000083-0000-4000-8000-000000000083",
+     "role": "ASSISTANT",
+     "content": "L083 the voyage continues at stop 83.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:23:00.000Z"
+    },
+    {
+     "id": "d1000084-0000-4000-8000-000000000084",
+     "role": "ASSISTANT",
+     "content": "L084 the voyage continues at stop 84.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:24:00.000Z"
+    },
+    {
+     "id": "d1000085-0000-4000-8000-000000000085",
+     "role": "ASSISTANT",
+     "content": "L085 the voyage continues at stop 85.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:25:00.000Z"
+    },
+    {
+     "id": "d1000086-0000-4000-8000-000000000086",
+     "role": "ASSISTANT",
+     "content": "L086 the voyage continues at stop 86.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:26:00.000Z"
+    },
+    {
+     "id": "d1000087-0000-4000-8000-000000000087",
+     "role": "ASSISTANT",
+     "content": "L087 the voyage continues at stop 87.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:27:00.000Z"
+    },
+    {
+     "id": "d1000088-0000-4000-8000-000000000088",
+     "role": "ASSISTANT",
+     "content": "L088 the voyage continues at stop 88.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:28:00.000Z"
+    },
+    {
+     "id": "d1000089-0000-4000-8000-000000000089",
+     "role": "ASSISTANT",
+     "content": "L089 the voyage continues at stop 89.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:29:00.000Z"
+    },
+    {
+     "id": "d1000090-0000-4000-8000-000000000090",
+     "role": "ASSISTANT",
+     "content": "L090 the voyage continues at stop 90.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:30:00.000Z"
+    },
+    {
+     "id": "d1000091-0000-4000-8000-000000000091",
+     "role": "ASSISTANT",
+     "content": "L091 the voyage continues at stop 91.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:31:00.000Z"
+    },
+    {
+     "id": "d1000092-0000-4000-8000-000000000092",
+     "role": "ASSISTANT",
+     "content": "L092 the voyage continues at stop 92.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:32:00.000Z"
+    },
+    {
+     "id": "d1000093-0000-4000-8000-000000000093",
+     "role": "ASSISTANT",
+     "content": "L093 the voyage continues at stop 93.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:33:00.000Z"
+    },
+    {
+     "id": "d1000094-0000-4000-8000-000000000094",
+     "role": "ASSISTANT",
+     "content": "L094 the voyage continues at stop 94.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:34:00.000Z"
+    },
+    {
+     "id": "d1000095-0000-4000-8000-000000000095",
+     "role": "ASSISTANT",
+     "content": "L095 the voyage continues at stop 95.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:35:00.000Z"
+    },
+    {
+     "id": "d1000096-0000-4000-8000-000000000096",
+     "role": "ASSISTANT",
+     "content": "L096 the voyage continues at stop 96.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:36:00.000Z"
+    },
+    {
+     "id": "d1000097-0000-4000-8000-000000000097",
+     "role": "ASSISTANT",
+     "content": "L097 the voyage continues at stop 97.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:37:00.000Z"
+    },
+    {
+     "id": "d1000098-0000-4000-8000-000000000098",
+     "role": "ASSISTANT",
+     "content": "L098 the voyage continues at stop 98.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:38:00.000Z"
+    },
+    {
+     "id": "d1000099-0000-4000-8000-000000000099",
+     "role": "ASSISTANT",
+     "content": "L099 the voyage continues at stop 99.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:39:00.000Z"
+    },
+    {
+     "id": "d1000100-0000-4000-8000-000000000100",
+     "role": "ASSISTANT",
+     "content": "L100 the voyage continues at stop 100.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:40:00.000Z"
+    },
+    {
+     "id": "d1000101-0000-4000-8000-000000000101",
+     "role": "ASSISTANT",
+     "content": "L101 the voyage continues at stop 101.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:41:00.000Z"
+    },
+    {
+     "id": "d1000102-0000-4000-8000-000000000102",
+     "role": "ASSISTANT",
+     "content": "L102 the voyage continues at stop 102.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:42:00.000Z"
+    },
+    {
+     "id": "d1000103-0000-4000-8000-000000000103",
+     "role": "ASSISTANT",
+     "content": "L103 the voyage continues at stop 103.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:43:00.000Z"
+    },
+    {
+     "id": "d1000104-0000-4000-8000-000000000104",
+     "role": "ASSISTANT",
+     "content": "L104 the voyage continues at stop 104.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:44:00.000Z"
+    },
+    {
+     "id": "d1000105-0000-4000-8000-000000000105",
+     "role": "ASSISTANT",
+     "content": "L105 the voyage continues at stop 105.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:45:00.000Z"
+    },
+    {
+     "id": "d1000106-0000-4000-8000-000000000106",
+     "role": "ASSISTANT",
+     "content": "L106 the voyage continues at stop 106.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:46:00.000Z"
+    },
+    {
+     "id": "d1000107-0000-4000-8000-000000000107",
+     "role": "ASSISTANT",
+     "content": "L107 the voyage continues at stop 107.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:47:00.000Z"
+    },
+    {
+     "id": "d1000108-0000-4000-8000-000000000108",
+     "role": "ASSISTANT",
+     "content": "L108 the voyage continues at stop 108.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:48:00.000Z"
+    },
+    {
+     "id": "d1000109-0000-4000-8000-000000000109",
+     "role": "ASSISTANT",
+     "content": "L109 the voyage continues at stop 109.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:49:00.000Z"
+    },
+    {
+     "id": "d1000110-0000-4000-8000-000000000110",
+     "role": "ASSISTANT",
+     "content": "L110 the voyage continues at stop 110.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:50:00.000Z"
+    },
+    {
+     "id": "d1000111-0000-4000-8000-000000000111",
+     "role": "ASSISTANT",
+     "content": "L111 the voyage continues at stop 111.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:51:00.000Z"
+    },
+    {
+     "id": "d1000112-0000-4000-8000-000000000112",
+     "role": "ASSISTANT",
+     "content": "L112 the voyage continues at stop 112.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:52:00.000Z"
+    },
+    {
+     "id": "d1000113-0000-4000-8000-000000000113",
+     "role": "ASSISTANT",
+     "content": "L113 the voyage continues at stop 113.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:53:00.000Z"
+    },
+    {
+     "id": "d1000114-0000-4000-8000-000000000114",
+     "role": "ASSISTANT",
+     "content": "L114 the voyage continues at stop 114.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:54:00.000Z"
+    },
+    {
+     "id": "d1000115-0000-4000-8000-000000000115",
+     "role": "ASSISTANT",
+     "content": "L115 the voyage continues at stop 115.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:55:00.000Z"
+    },
+    {
+     "id": "d1000116-0000-4000-8000-000000000116",
+     "role": "ASSISTANT",
+     "content": "L116 the voyage continues at stop 116.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:56:00.000Z"
+    },
+    {
+     "id": "d1000117-0000-4000-8000-000000000117",
+     "role": "ASSISTANT",
+     "content": "L117 the voyage continues at stop 117.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:57:00.000Z"
+    },
+    {
+     "id": "d1000118-0000-4000-8000-000000000118",
+     "role": "ASSISTANT",
+     "content": "L118 the voyage continues at stop 118.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T09:58:00.000Z"
+    },
+    {
+     "id": "d1000119-0000-4000-8000-000000000119",
+     "role": "ASSISTANT",
+     "content": "L119 the voyage continues at stop 119.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T09:59:00.000Z"
+    },
+    {
+     "id": "d1000120-0000-4000-8000-000000000120",
+     "role": "ASSISTANT",
+     "content": "L120 the voyage continues at stop 120.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:00:00.000Z"
+    },
+    {
+     "id": "d1000121-0000-4000-8000-000000000121",
+     "role": "ASSISTANT",
+     "content": "L121 the voyage continues at stop 121.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:01:00.000Z"
+    },
+    {
+     "id": "d1000122-0000-4000-8000-000000000122",
+     "role": "ASSISTANT",
+     "content": "L122 the voyage continues at stop 122.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:02:00.000Z"
+    },
+    {
+     "id": "d1000123-0000-4000-8000-000000000123",
+     "role": "ASSISTANT",
+     "content": "L123 the voyage continues at stop 123.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:03:00.000Z"
+    },
+    {
+     "id": "d1000124-0000-4000-8000-000000000124",
+     "role": "ASSISTANT",
+     "content": "L124 the voyage continues at stop 124.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:04:00.000Z"
+    },
+    {
+     "id": "d1000125-0000-4000-8000-000000000125",
+     "role": "ASSISTANT",
+     "content": "L125 the voyage continues at stop 125.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:05:00.000Z"
+    },
+    {
+     "id": "d1000126-0000-4000-8000-000000000126",
+     "role": "ASSISTANT",
+     "content": "L126 the voyage continues at stop 126.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:06:00.000Z"
+    },
+    {
+     "id": "d1000127-0000-4000-8000-000000000127",
+     "role": "ASSISTANT",
+     "content": "L127 the voyage continues at stop 127.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:07:00.000Z"
+    },
+    {
+     "id": "d1000128-0000-4000-8000-000000000128",
+     "role": "ASSISTANT",
+     "content": "L128 the voyage continues at stop 128.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:08:00.000Z"
+    },
+    {
+     "id": "d1000129-0000-4000-8000-000000000129",
+     "role": "ASSISTANT",
+     "content": "L129 the voyage continues at stop 129.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:09:00.000Z"
+    },
+    {
+     "id": "d1000130-0000-4000-8000-000000000130",
+     "role": "ASSISTANT",
+     "content": "L130 the voyage continues at stop 130.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:10:00.000Z"
+    },
+    {
+     "id": "d1000131-0000-4000-8000-000000000131",
+     "role": "ASSISTANT",
+     "content": "L131 the voyage continues at stop 131.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:11:00.000Z"
+    },
+    {
+     "id": "d1000132-0000-4000-8000-000000000132",
+     "role": "ASSISTANT",
+     "content": "L132 the voyage continues at stop 132.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:12:00.000Z"
+    },
+    {
+     "id": "d1000133-0000-4000-8000-000000000133",
+     "role": "ASSISTANT",
+     "content": "L133 the voyage continues at stop 133.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:13:00.000Z"
+    },
+    {
+     "id": "d1000134-0000-4000-8000-000000000134",
+     "role": "ASSISTANT",
+     "content": "L134 the voyage continues at stop 134.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:14:00.000Z"
+    },
+    {
+     "id": "d1000135-0000-4000-8000-000000000135",
+     "role": "ASSISTANT",
+     "content": "L135 the voyage continues at stop 135.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:15:00.000Z"
+    },
+    {
+     "id": "d1000136-0000-4000-8000-000000000136",
+     "role": "ASSISTANT",
+     "content": "L136 the voyage continues at stop 136.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:16:00.000Z"
+    },
+    {
+     "id": "d1000137-0000-4000-8000-000000000137",
+     "role": "ASSISTANT",
+     "content": "L137 the voyage continues at stop 137.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:17:00.000Z"
+    },
+    {
+     "id": "d1000138-0000-4000-8000-000000000138",
+     "role": "ASSISTANT",
+     "content": "L138 the voyage continues at stop 138.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:18:00.000Z"
+    },
+    {
+     "id": "d1000139-0000-4000-8000-000000000139",
+     "role": "ASSISTANT",
+     "content": "L139 the voyage continues at stop 139.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:19:00.000Z"
+    },
+    {
+     "id": "d1000140-0000-4000-8000-000000000140",
+     "role": "ASSISTANT",
+     "content": "L140 the voyage continues at stop 140.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:20:00.000Z"
+    },
+    {
+     "id": "d1000141-0000-4000-8000-000000000141",
+     "role": "ASSISTANT",
+     "content": "L141 the voyage continues at stop 141.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:21:00.000Z"
+    },
+    {
+     "id": "d1000142-0000-4000-8000-000000000142",
+     "role": "ASSISTANT",
+     "content": "L142 the voyage continues at stop 142.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:22:00.000Z"
+    },
+    {
+     "id": "d1000143-0000-4000-8000-000000000143",
+     "role": "ASSISTANT",
+     "content": "L143 the voyage continues at stop 143.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:23:00.000Z"
+    },
+    {
+     "id": "d1000144-0000-4000-8000-000000000144",
+     "role": "ASSISTANT",
+     "content": "L144 the voyage continues at stop 144.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:24:00.000Z"
+    },
+    {
+     "id": "d1000145-0000-4000-8000-000000000145",
+     "role": "ASSISTANT",
+     "content": "L145 the voyage continues at stop 145.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:25:00.000Z"
+    },
+    {
+     "id": "d1000146-0000-4000-8000-000000000146",
+     "role": "ASSISTANT",
+     "content": "L146 the voyage continues at stop 146.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:26:00.000Z"
+    },
+    {
+     "id": "d1000147-0000-4000-8000-000000000147",
+     "role": "ASSISTANT",
+     "content": "L147 the voyage continues at stop 147.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:27:00.000Z"
+    },
+    {
+     "id": "d1000148-0000-4000-8000-000000000148",
+     "role": "ASSISTANT",
+     "content": "L148 the voyage continues at stop 148.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:28:00.000Z"
+    },
+    {
+     "id": "d1000149-0000-4000-8000-000000000149",
+     "role": "ASSISTANT",
+     "content": "L149 the voyage continues at stop 149.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:29:00.000Z"
+    },
+    {
+     "id": "d1000150-0000-4000-8000-000000000150",
+     "role": "ASSISTANT",
+     "content": "L150 the voyage continues at stop 150.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:30:00.000Z"
+    },
+    {
+     "id": "d1000151-0000-4000-8000-000000000151",
+     "role": "ASSISTANT",
+     "content": "L151 the voyage continues at stop 151.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:31:00.000Z"
+    },
+    {
+     "id": "d1000152-0000-4000-8000-000000000152",
+     "role": "ASSISTANT",
+     "content": "L152 the voyage continues at stop 152.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:32:00.000Z"
+    },
+    {
+     "id": "d1000153-0000-4000-8000-000000000153",
+     "role": "ASSISTANT",
+     "content": "L153 the voyage continues at stop 153.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:33:00.000Z"
+    },
+    {
+     "id": "d1000154-0000-4000-8000-000000000154",
+     "role": "ASSISTANT",
+     "content": "L154 the voyage continues at stop 154.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:34:00.000Z"
+    },
+    {
+     "id": "d1000155-0000-4000-8000-000000000155",
+     "role": "ASSISTANT",
+     "content": "L155 the voyage continues at stop 155.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:35:00.000Z"
+    },
+    {
+     "id": "d1000156-0000-4000-8000-000000000156",
+     "role": "ASSISTANT",
+     "content": "L156 the voyage continues at stop 156.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:36:00.000Z"
+    },
+    {
+     "id": "d1000157-0000-4000-8000-000000000157",
+     "role": "ASSISTANT",
+     "content": "L157 the voyage continues at stop 157.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:37:00.000Z"
+    },
+    {
+     "id": "d1000158-0000-4000-8000-000000000158",
+     "role": "ASSISTANT",
+     "content": "L158 the voyage continues at stop 158.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:38:00.000Z"
+    },
+    {
+     "id": "d1000159-0000-4000-8000-000000000159",
+     "role": "ASSISTANT",
+     "content": "L159 the voyage continues at stop 159.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:39:00.000Z"
+    },
+    {
+     "id": "d1000160-0000-4000-8000-000000000160",
+     "role": "ASSISTANT",
+     "content": "L160 the voyage continues at stop 160.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:40:00.000Z"
+    },
+    {
+     "id": "d1000161-0000-4000-8000-000000000161",
+     "role": "ASSISTANT",
+     "content": "L161 the voyage continues at stop 161.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:41:00.000Z"
+    },
+    {
+     "id": "d1000162-0000-4000-8000-000000000162",
+     "role": "ASSISTANT",
+     "content": "L162 the voyage continues at stop 162.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:42:00.000Z"
+    },
+    {
+     "id": "d1000163-0000-4000-8000-000000000163",
+     "role": "ASSISTANT",
+     "content": "L163 the voyage continues at stop 163.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:43:00.000Z"
+    },
+    {
+     "id": "d1000164-0000-4000-8000-000000000164",
+     "role": "ASSISTANT",
+     "content": "L164 the voyage continues at stop 164.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:44:00.000Z"
+    },
+    {
+     "id": "d1000165-0000-4000-8000-000000000165",
+     "role": "ASSISTANT",
+     "content": "L165 the voyage continues at stop 165.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:45:00.000Z"
+    },
+    {
+     "id": "d1000166-0000-4000-8000-000000000166",
+     "role": "ASSISTANT",
+     "content": "L166 the voyage continues at stop 166.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:46:00.000Z"
+    },
+    {
+     "id": "d1000167-0000-4000-8000-000000000167",
+     "role": "ASSISTANT",
+     "content": "L167 the voyage continues at stop 167.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:47:00.000Z"
+    },
+    {
+     "id": "d1000168-0000-4000-8000-000000000168",
+     "role": "ASSISTANT",
+     "content": "L168 the voyage continues at stop 168.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:48:00.000Z"
+    },
+    {
+     "id": "d1000169-0000-4000-8000-000000000169",
+     "role": "ASSISTANT",
+     "content": "L169 the voyage continues at stop 169.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:49:00.000Z"
+    },
+    {
+     "id": "d1000170-0000-4000-8000-000000000170",
+     "role": "ASSISTANT",
+     "content": "L170 the voyage continues at stop 170.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:50:00.000Z"
+    },
+    {
+     "id": "d1000171-0000-4000-8000-000000000171",
+     "role": "ASSISTANT",
+     "content": "L171 the voyage continues at stop 171.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:51:00.000Z"
+    },
+    {
+     "id": "d1000172-0000-4000-8000-000000000172",
+     "role": "ASSISTANT",
+     "content": "L172 the voyage continues at stop 172.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:52:00.000Z"
+    },
+    {
+     "id": "d1000173-0000-4000-8000-000000000173",
+     "role": "ASSISTANT",
+     "content": "L173 the voyage continues at stop 173.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:53:00.000Z"
+    },
+    {
+     "id": "d1000174-0000-4000-8000-000000000174",
+     "role": "ASSISTANT",
+     "content": "L174 the voyage continues at stop 174.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:54:00.000Z"
+    },
+    {
+     "id": "d1000175-0000-4000-8000-000000000175",
+     "role": "ASSISTANT",
+     "content": "L175 the voyage continues at stop 175.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:55:00.000Z"
+    },
+    {
+     "id": "d1000176-0000-4000-8000-000000000176",
+     "role": "ASSISTANT",
+     "content": "L176 the voyage continues at stop 176.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:56:00.000Z"
+    },
+    {
+     "id": "d1000177-0000-4000-8000-000000000177",
+     "role": "ASSISTANT",
+     "content": "L177 the voyage continues at stop 177.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:57:00.000Z"
+    },
+    {
+     "id": "d1000178-0000-4000-8000-000000000178",
+     "role": "ASSISTANT",
+     "content": "L178 the voyage continues at stop 178.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T10:58:00.000Z"
+    },
+    {
+     "id": "d1000179-0000-4000-8000-000000000179",
+     "role": "ASSISTANT",
+     "content": "L179 the voyage continues at stop 179.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T10:59:00.000Z"
+    },
+    {
+     "id": "d1000180-0000-4000-8000-000000000180",
+     "role": "ASSISTANT",
+     "content": "L180 the voyage continues at stop 180.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:00:00.000Z"
+    },
+    {
+     "id": "d1000181-0000-4000-8000-000000000181",
+     "role": "ASSISTANT",
+     "content": "L181 the voyage continues at stop 181.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:01:00.000Z"
+    },
+    {
+     "id": "d1000182-0000-4000-8000-000000000182",
+     "role": "ASSISTANT",
+     "content": "L182 the voyage continues at stop 182.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:02:00.000Z"
+    },
+    {
+     "id": "d1000183-0000-4000-8000-000000000183",
+     "role": "ASSISTANT",
+     "content": "L183 the voyage continues at stop 183.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:03:00.000Z"
+    },
+    {
+     "id": "d1000184-0000-4000-8000-000000000184",
+     "role": "ASSISTANT",
+     "content": "L184 the voyage continues at stop 184.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:04:00.000Z"
+    },
+    {
+     "id": "d1000185-0000-4000-8000-000000000185",
+     "role": "ASSISTANT",
+     "content": "L185 the voyage continues at stop 185.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:05:00.000Z"
+    },
+    {
+     "id": "d1000186-0000-4000-8000-000000000186",
+     "role": "ASSISTANT",
+     "content": "L186 the voyage continues at stop 186.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:06:00.000Z"
+    },
+    {
+     "id": "d1000187-0000-4000-8000-000000000187",
+     "role": "ASSISTANT",
+     "content": "L187 the voyage continues at stop 187.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:07:00.000Z"
+    },
+    {
+     "id": "d1000188-0000-4000-8000-000000000188",
+     "role": "ASSISTANT",
+     "content": "L188 the voyage continues at stop 188.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:08:00.000Z"
+    },
+    {
+     "id": "d1000189-0000-4000-8000-000000000189",
+     "role": "ASSISTANT",
+     "content": "L189 the voyage continues at stop 189.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:09:00.000Z"
+    },
+    {
+     "id": "d1000190-0000-4000-8000-000000000190",
+     "role": "ASSISTANT",
+     "content": "L190 the voyage continues at stop 190.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:10:00.000Z"
+    },
+    {
+     "id": "d1000191-0000-4000-8000-000000000191",
+     "role": "ASSISTANT",
+     "content": "L191 the voyage continues at stop 191.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:11:00.000Z"
+    },
+    {
+     "id": "d1000192-0000-4000-8000-000000000192",
+     "role": "ASSISTANT",
+     "content": "L192 the voyage continues at stop 192.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:12:00.000Z"
+    },
+    {
+     "id": "d1000193-0000-4000-8000-000000000193",
+     "role": "ASSISTANT",
+     "content": "L193 the voyage continues at stop 193.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:13:00.000Z"
+    },
+    {
+     "id": "d1000194-0000-4000-8000-000000000194",
+     "role": "ASSISTANT",
+     "content": "L194 the voyage continues at stop 194.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:14:00.000Z"
+    },
+    {
+     "id": "d1000195-0000-4000-8000-000000000195",
+     "role": "ASSISTANT",
+     "content": "L195 the voyage continues at stop 195.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:15:00.000Z"
+    },
+    {
+     "id": "d1000196-0000-4000-8000-000000000196",
+     "role": "ASSISTANT",
+     "content": "L196 the voyage continues at stop 196.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:16:00.000Z"
+    },
+    {
+     "id": "d1000197-0000-4000-8000-000000000197",
+     "role": "ASSISTANT",
+     "content": "L197 the voyage continues at stop 197.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:17:00.000Z"
+    },
+    {
+     "id": "d1000198-0000-4000-8000-000000000198",
+     "role": "ASSISTANT",
+     "content": "L198 the voyage continues at stop 198.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:18:00.000Z"
+    },
+    {
+     "id": "d1000199-0000-4000-8000-000000000199",
+     "role": "ASSISTANT",
+     "content": "L199 the voyage continues at stop 199.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:19:00.000Z"
+    },
+    {
+     "id": "d1000200-0000-4000-8000-000000000200",
+     "role": "ASSISTANT",
+     "content": "L200 the voyage continues at stop 200.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:20:00.000Z"
+    },
+    {
+     "id": "d1000201-0000-4000-8000-000000000201",
+     "role": "ASSISTANT",
+     "content": "L201 the voyage continues at stop 201.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:21:00.000Z"
+    },
+    {
+     "id": "d1000202-0000-4000-8000-000000000202",
+     "role": "ASSISTANT",
+     "content": "L202 the voyage continues at stop 202.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:22:00.000Z"
+    },
+    {
+     "id": "d1000203-0000-4000-8000-000000000203",
+     "role": "ASSISTANT",
+     "content": "L203 the voyage continues at stop 203.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:23:00.000Z"
+    },
+    {
+     "id": "d1000204-0000-4000-8000-000000000204",
+     "role": "ASSISTANT",
+     "content": "L204 the voyage continues at stop 204.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:24:00.000Z"
+    },
+    {
+     "id": "d1000205-0000-4000-8000-000000000205",
+     "role": "ASSISTANT",
+     "content": "L205 the voyage continues at stop 205.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:25:00.000Z"
+    },
+    {
+     "id": "d1000206-0000-4000-8000-000000000206",
+     "role": "ASSISTANT",
+     "content": "L206 the voyage continues at stop 206.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:26:00.000Z"
+    },
+    {
+     "id": "d1000207-0000-4000-8000-000000000207",
+     "role": "ASSISTANT",
+     "content": "L207 the voyage continues at stop 207.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:27:00.000Z"
+    },
+    {
+     "id": "d1000208-0000-4000-8000-000000000208",
+     "role": "ASSISTANT",
+     "content": "L208 the voyage continues at stop 208.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:28:00.000Z"
+    },
+    {
+     "id": "d1000209-0000-4000-8000-000000000209",
+     "role": "ASSISTANT",
+     "content": "L209 the voyage continues at stop 209.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:29:00.000Z"
+    },
+    {
+     "id": "d1000210-0000-4000-8000-000000000210",
+     "role": "ASSISTANT",
+     "content": "L210 the voyage continues at stop 210.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:30:00.000Z"
+    },
+    {
+     "id": "d1000211-0000-4000-8000-000000000211",
+     "role": "ASSISTANT",
+     "content": "L211 the voyage continues at stop 211.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:31:00.000Z"
+    },
+    {
+     "id": "d1000212-0000-4000-8000-000000000212",
+     "role": "ASSISTANT",
+     "content": "L212 the voyage continues at stop 212.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:32:00.000Z"
+    },
+    {
+     "id": "d1000213-0000-4000-8000-000000000213",
+     "role": "ASSISTANT",
+     "content": "L213 the voyage continues at stop 213.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:33:00.000Z"
+    },
+    {
+     "id": "d1000214-0000-4000-8000-000000000214",
+     "role": "ASSISTANT",
+     "content": "L214 the voyage continues at stop 214.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:34:00.000Z"
+    },
+    {
+     "id": "d1000215-0000-4000-8000-000000000215",
+     "role": "ASSISTANT",
+     "content": "L215 the voyage continues at stop 215.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:35:00.000Z"
+    },
+    {
+     "id": "d1000216-0000-4000-8000-000000000216",
+     "role": "ASSISTANT",
+     "content": "L216 the voyage continues at stop 216.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:36:00.000Z"
+    },
+    {
+     "id": "d1000217-0000-4000-8000-000000000217",
+     "role": "ASSISTANT",
+     "content": "L217 the voyage continues at stop 217.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:37:00.000Z"
+    },
+    {
+     "id": "d1000218-0000-4000-8000-000000000218",
+     "role": "ASSISTANT",
+     "content": "L218 the voyage continues at stop 218.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:38:00.000Z"
+    },
+    {
+     "id": "d1000219-0000-4000-8000-000000000219",
+     "role": "ASSISTANT",
+     "content": "L219 the voyage continues at stop 219.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:39:00.000Z"
+    },
+    {
+     "id": "d1000220-0000-4000-8000-000000000220",
+     "role": "ASSISTANT",
+     "content": "L220 the voyage continues at stop 220.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:40:00.000Z"
+    },
+    {
+     "id": "d1000221-0000-4000-8000-000000000221",
+     "role": "ASSISTANT",
+     "content": "L221 the voyage continues at stop 221.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:41:00.000Z"
+    },
+    {
+     "id": "d1000222-0000-4000-8000-000000000222",
+     "role": "ASSISTANT",
+     "content": "L222 the voyage continues at stop 222.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:42:00.000Z"
+    },
+    {
+     "id": "d1000223-0000-4000-8000-000000000223",
+     "role": "ASSISTANT",
+     "content": "L223 the voyage continues at stop 223.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:43:00.000Z"
+    },
+    {
+     "id": "d1000224-0000-4000-8000-000000000224",
+     "role": "ASSISTANT",
+     "content": "L224 the voyage continues at stop 224.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:44:00.000Z"
+    },
+    {
+     "id": "d1000225-0000-4000-8000-000000000225",
+     "role": "ASSISTANT",
+     "content": "L225 the voyage continues at stop 225.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:45:00.000Z"
+    },
+    {
+     "id": "d1000226-0000-4000-8000-000000000226",
+     "role": "ASSISTANT",
+     "content": "L226 the voyage continues at stop 226.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:46:00.000Z"
+    },
+    {
+     "id": "d1000227-0000-4000-8000-000000000227",
+     "role": "ASSISTANT",
+     "content": "L227 the voyage continues at stop 227.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:47:00.000Z"
+    },
+    {
+     "id": "d1000228-0000-4000-8000-000000000228",
+     "role": "ASSISTANT",
+     "content": "L228 the voyage continues at stop 228.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:48:00.000Z"
+    },
+    {
+     "id": "d1000229-0000-4000-8000-000000000229",
+     "role": "ASSISTANT",
+     "content": "L229 the voyage continues at stop 229.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:49:00.000Z"
+    },
+    {
+     "id": "d1000230-0000-4000-8000-000000000230",
+     "role": "ASSISTANT",
+     "content": "L230 the voyage continues at stop 230.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:50:00.000Z"
+    },
+    {
+     "id": "d1000231-0000-4000-8000-000000000231",
+     "role": "ASSISTANT",
+     "content": "L231 the voyage continues at stop 231.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:51:00.000Z"
+    },
+    {
+     "id": "d1000232-0000-4000-8000-000000000232",
+     "role": "ASSISTANT",
+     "content": "L232 the voyage continues at stop 232.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:52:00.000Z"
+    },
+    {
+     "id": "d1000233-0000-4000-8000-000000000233",
+     "role": "ASSISTANT",
+     "content": "L233 the voyage continues at stop 233.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:53:00.000Z"
+    },
+    {
+     "id": "d1000234-0000-4000-8000-000000000234",
+     "role": "ASSISTANT",
+     "content": "L234 the voyage continues at stop 234.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:54:00.000Z"
+    },
+    {
+     "id": "d1000235-0000-4000-8000-000000000235",
+     "role": "ASSISTANT",
+     "content": "L235 the voyage continues at stop 235.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:55:00.000Z"
+    },
+    {
+     "id": "d1000236-0000-4000-8000-000000000236",
+     "role": "ASSISTANT",
+     "content": "L236 the voyage continues at stop 236.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:56:00.000Z"
+    },
+    {
+     "id": "d1000237-0000-4000-8000-000000000237",
+     "role": "ASSISTANT",
+     "content": "L237 the voyage continues at stop 237.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:57:00.000Z"
+    },
+    {
+     "id": "d1000238-0000-4000-8000-000000000238",
+     "role": "ASSISTANT",
+     "content": "L238 the voyage continues at stop 238.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T11:58:00.000Z"
+    },
+    {
+     "id": "d1000239-0000-4000-8000-000000000239",
+     "role": "ASSISTANT",
+     "content": "L239 the voyage continues at stop 239.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T11:59:00.000Z"
+    },
+    {
+     "id": "d1000240-0000-4000-8000-000000000240",
+     "role": "ASSISTANT",
+     "content": "L240 the voyage continues at stop 240.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:00:00.000Z"
+    },
+    {
+     "id": "d1000241-0000-4000-8000-000000000241",
+     "role": "ASSISTANT",
+     "content": "L241 the voyage continues at stop 241.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:01:00.000Z"
+    },
+    {
+     "id": "d1000242-0000-4000-8000-000000000242",
+     "role": "ASSISTANT",
+     "content": "L242 the voyage continues at stop 242.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:02:00.000Z"
+    },
+    {
+     "id": "d1000243-0000-4000-8000-000000000243",
+     "role": "ASSISTANT",
+     "content": "L243 the voyage continues at stop 243.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:03:00.000Z"
+    },
+    {
+     "id": "d1000244-0000-4000-8000-000000000244",
+     "role": "ASSISTANT",
+     "content": "L244 the voyage continues at stop 244.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:04:00.000Z"
+    },
+    {
+     "id": "d1000245-0000-4000-8000-000000000245",
+     "role": "ASSISTANT",
+     "content": "L245 the voyage continues at stop 245.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:05:00.000Z"
+    },
+    {
+     "id": "d1000246-0000-4000-8000-000000000246",
+     "role": "ASSISTANT",
+     "content": "L246 the voyage continues at stop 246.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:06:00.000Z"
+    },
+    {
+     "id": "d1000247-0000-4000-8000-000000000247",
+     "role": "ASSISTANT",
+     "content": "L247 the voyage continues at stop 247.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:07:00.000Z"
+    },
+    {
+     "id": "d1000248-0000-4000-8000-000000000248",
+     "role": "ASSISTANT",
+     "content": "L248 the voyage continues at stop 248.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:08:00.000Z"
+    },
+    {
+     "id": "d1000249-0000-4000-8000-000000000249",
+     "role": "ASSISTANT",
+     "content": "L249 the voyage continues at stop 249.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:09:00.000Z"
+    },
+    {
+     "id": "d1000250-0000-4000-8000-000000000250",
+     "role": "ASSISTANT",
+     "content": "L250 the voyage continues at stop 250.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:10:00.000Z"
+    },
+    {
+     "id": "d1000251-0000-4000-8000-000000000251",
+     "role": "ASSISTANT",
+     "content": "L251 the voyage continues at stop 251.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:11:00.000Z"
+    },
+    {
+     "id": "d1000252-0000-4000-8000-000000000252",
+     "role": "ASSISTANT",
+     "content": "L252 the voyage continues at stop 252.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:12:00.000Z"
+    },
+    {
+     "id": "d1000253-0000-4000-8000-000000000253",
+     "role": "ASSISTANT",
+     "content": "L253 the voyage continues at stop 253.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:13:00.000Z"
+    },
+    {
+     "id": "d1000254-0000-4000-8000-000000000254",
+     "role": "ASSISTANT",
+     "content": "L254 the voyage continues at stop 254.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:14:00.000Z"
+    },
+    {
+     "id": "d1000255-0000-4000-8000-000000000255",
+     "role": "ASSISTANT",
+     "content": "L255 the voyage continues at stop 255.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:15:00.000Z"
+    },
+    {
+     "id": "d1000256-0000-4000-8000-000000000256",
+     "role": "ASSISTANT",
+     "content": "L256 the voyage continues at stop 256.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:16:00.000Z"
+    },
+    {
+     "id": "d1000257-0000-4000-8000-000000000257",
+     "role": "ASSISTANT",
+     "content": "L257 the voyage continues at stop 257.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:17:00.000Z"
+    },
+    {
+     "id": "d1000258-0000-4000-8000-000000000258",
+     "role": "ASSISTANT",
+     "content": "L258 the voyage continues at stop 258.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:18:00.000Z"
+    },
+    {
+     "id": "d1000259-0000-4000-8000-000000000259",
+     "role": "ASSISTANT",
+     "content": "L259 the voyage continues at stop 259.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:19:00.000Z"
+    },
+    {
+     "id": "d1000260-0000-4000-8000-000000000260",
+     "role": "ASSISTANT",
+     "content": "L260 the voyage continues at stop 260.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:20:00.000Z"
+    },
+    {
+     "id": "d1000261-0000-4000-8000-000000000261",
+     "role": "ASSISTANT",
+     "content": "L261 the voyage continues at stop 261.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:21:00.000Z"
+    },
+    {
+     "id": "d1000262-0000-4000-8000-000000000262",
+     "role": "ASSISTANT",
+     "content": "L262 the voyage continues at stop 262.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:22:00.000Z"
+    },
+    {
+     "id": "d1000263-0000-4000-8000-000000000263",
+     "role": "ASSISTANT",
+     "content": "L263 the voyage continues at stop 263.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:23:00.000Z"
+    },
+    {
+     "id": "d1000264-0000-4000-8000-000000000264",
+     "role": "ASSISTANT",
+     "content": "L264 the voyage continues at stop 264.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:24:00.000Z"
+    },
+    {
+     "id": "d1000265-0000-4000-8000-000000000265",
+     "role": "ASSISTANT",
+     "content": "L265 the voyage continues at stop 265.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:25:00.000Z"
+    },
+    {
+     "id": "d1000266-0000-4000-8000-000000000266",
+     "role": "ASSISTANT",
+     "content": "L266 the voyage continues at stop 266.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:26:00.000Z"
+    },
+    {
+     "id": "d1000267-0000-4000-8000-000000000267",
+     "role": "ASSISTANT",
+     "content": "L267 the voyage continues at stop 267.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:27:00.000Z"
+    },
+    {
+     "id": "d1000268-0000-4000-8000-000000000268",
+     "role": "ASSISTANT",
+     "content": "L268 the voyage continues at stop 268.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:28:00.000Z"
+    },
+    {
+     "id": "d1000269-0000-4000-8000-000000000269",
+     "role": "ASSISTANT",
+     "content": "L269 the voyage continues at stop 269.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:29:00.000Z"
+    },
+    {
+     "id": "d1000270-0000-4000-8000-000000000270",
+     "role": "ASSISTANT",
+     "content": "L270 the voyage continues at stop 270.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:30:00.000Z"
+    },
+    {
+     "id": "d1000271-0000-4000-8000-000000000271",
+     "role": "ASSISTANT",
+     "content": "L271 the voyage continues at stop 271.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:31:00.000Z"
+    },
+    {
+     "id": "d1000272-0000-4000-8000-000000000272",
+     "role": "ASSISTANT",
+     "content": "L272 the voyage continues at stop 272.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:32:00.000Z"
+    },
+    {
+     "id": "d1000273-0000-4000-8000-000000000273",
+     "role": "ASSISTANT",
+     "content": "L273 the voyage continues at stop 273.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:33:00.000Z"
+    },
+    {
+     "id": "d1000274-0000-4000-8000-000000000274",
+     "role": "ASSISTANT",
+     "content": "L274 the voyage continues at stop 274.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:34:00.000Z"
+    },
+    {
+     "id": "d1000275-0000-4000-8000-000000000275",
+     "role": "ASSISTANT",
+     "content": "L275 the voyage continues at stop 275.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:35:00.000Z"
+    },
+    {
+     "id": "d1000276-0000-4000-8000-000000000276",
+     "role": "ASSISTANT",
+     "content": "L276 the voyage continues at stop 276.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:36:00.000Z"
+    },
+    {
+     "id": "d1000277-0000-4000-8000-000000000277",
+     "role": "ASSISTANT",
+     "content": "L277 the voyage continues at stop 277.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:37:00.000Z"
+    },
+    {
+     "id": "d1000278-0000-4000-8000-000000000278",
+     "role": "ASSISTANT",
+     "content": "L278 the voyage continues at stop 278.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:38:00.000Z"
+    },
+    {
+     "id": "d1000279-0000-4000-8000-000000000279",
+     "role": "ASSISTANT",
+     "content": "L279 the voyage continues at stop 279.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:39:00.000Z"
+    },
+    {
+     "id": "d1000280-0000-4000-8000-000000000280",
+     "role": "ASSISTANT",
+     "content": "L280 the voyage continues at stop 280.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:40:00.000Z"
+    },
+    {
+     "id": "d1000281-0000-4000-8000-000000000281",
+     "role": "ASSISTANT",
+     "content": "L281 the voyage continues at stop 281.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:41:00.000Z"
+    },
+    {
+     "id": "d1000282-0000-4000-8000-000000000282",
+     "role": "ASSISTANT",
+     "content": "L282 the voyage continues at stop 282.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:42:00.000Z"
+    },
+    {
+     "id": "d1000283-0000-4000-8000-000000000283",
+     "role": "ASSISTANT",
+     "content": "L283 the voyage continues at stop 283.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:43:00.000Z"
+    },
+    {
+     "id": "d1000284-0000-4000-8000-000000000284",
+     "role": "ASSISTANT",
+     "content": "L284 the voyage continues at stop 284.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:44:00.000Z"
+    },
+    {
+     "id": "d1000285-0000-4000-8000-000000000285",
+     "role": "ASSISTANT",
+     "content": "L285 the voyage continues at stop 285.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:45:00.000Z"
+    },
+    {
+     "id": "d1000286-0000-4000-8000-000000000286",
+     "role": "ASSISTANT",
+     "content": "L286 the voyage continues at stop 286.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:46:00.000Z"
+    },
+    {
+     "id": "d1000287-0000-4000-8000-000000000287",
+     "role": "ASSISTANT",
+     "content": "L287 the voyage continues at stop 287.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:47:00.000Z"
+    },
+    {
+     "id": "d1000288-0000-4000-8000-000000000288",
+     "role": "ASSISTANT",
+     "content": "L288 the voyage continues at stop 288.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:48:00.000Z"
+    },
+    {
+     "id": "d1000289-0000-4000-8000-000000000289",
+     "role": "ASSISTANT",
+     "content": "L289 the voyage continues at stop 289.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:49:00.000Z"
+    },
+    {
+     "id": "d1000290-0000-4000-8000-000000000290",
+     "role": "ASSISTANT",
+     "content": "L290 the voyage continues at stop 290.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:50:00.000Z"
+    },
+    {
+     "id": "d1000291-0000-4000-8000-000000000291",
+     "role": "ASSISTANT",
+     "content": "L291 the voyage continues at stop 291.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:51:00.000Z"
+    },
+    {
+     "id": "d1000292-0000-4000-8000-000000000292",
+     "role": "ASSISTANT",
+     "content": "L292 the voyage continues at stop 292.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:52:00.000Z"
+    },
+    {
+     "id": "d1000293-0000-4000-8000-000000000293",
+     "role": "ASSISTANT",
+     "content": "L293 the voyage continues at stop 293.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:53:00.000Z"
+    },
+    {
+     "id": "d1000294-0000-4000-8000-000000000294",
+     "role": "ASSISTANT",
+     "content": "L294 the voyage continues at stop 294.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:54:00.000Z"
+    },
+    {
+     "id": "d1000295-0000-4000-8000-000000000295",
+     "role": "ASSISTANT",
+     "content": "L295 the voyage continues at stop 295.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:55:00.000Z"
+    },
+    {
+     "id": "d1000296-0000-4000-8000-000000000296",
+     "role": "ASSISTANT",
+     "content": "L296 the voyage continues at stop 296.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:56:00.000Z"
+    },
+    {
+     "id": "d1000297-0000-4000-8000-000000000297",
+     "role": "ASSISTANT",
+     "content": "L297 the voyage continues at stop 297.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:57:00.000Z"
+    },
+    {
+     "id": "d1000298-0000-4000-8000-000000000298",
+     "role": "ASSISTANT",
+     "content": "L298 the voyage continues at stop 298.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T12:58:00.000Z"
+    },
+    {
+     "id": "d1000299-0000-4000-8000-000000000299",
+     "role": "ASSISTANT",
+     "content": "L299 the voyage continues at stop 299.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T12:59:00.000Z"
+    },
+    {
+     "id": "d1000300-0000-4000-8000-000000000300",
+     "role": "ASSISTANT",
+     "content": "L300 the voyage continues at stop 300.",
+     "participantId": "5b000000-0000-4000-8000-00000000000b",
+     "createdAt": "2026-07-14T13:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "id": "f2000000-0000-4000-8000-0000000000f2",
+   "participants": [
+    {
+     "id": "5a000000-0000-4000-8000-00000000000a",
+     "characterId": "aa000000-0000-4000-8000-0000000000a1",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5b000000-0000-4000-8000-00000000000b",
+     "characterId": "bb000000-0000-4000-8000-0000000000b2",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "5c000000-0000-4000-8000-00000000000c",
+     "characterId": "cc000000-0000-4000-8000-0000000000c3",
+     "controlledBy": "user"
+    }
+   ],
+   "statuses": {
+    "5b000000-0000-4000-8000-00000000000b": "absent"
+   },
+   "messages": [
+    {
+     "id": "d2000001-0000-4000-8000-000000000001",
+     "role": "ASSISTANT",
+     "content": "P001 at the harbour with Quill.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:01:00.000Z"
+    },
+    {
+     "id": "d2000002-0000-4000-8000-000000000002",
+     "role": "ASSISTANT",
+     "content": "P002 at the harbour with Quill.",
+     "participantId": "5c000000-0000-4000-8000-00000000000c",
+     "createdAt": "2026-07-14T08:02:00.000Z"
+    },
+    {
+     "id": "d2000003-0000-4000-8000-000000000003",
+     "role": "ASSISTANT",
+     "content": "P003 at the harbour with Quill.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:03:00.000Z"
+    },
+    {
+     "id": "d2000004-0000-4000-8000-000000000004",
+     "role": "ASSISTANT",
+     "content": "P004 at the harbour with Quill.",
+     "participantId": "5c000000-0000-4000-8000-00000000000c",
+     "createdAt": "2026-07-14T08:04:00.000Z"
+    },
+    {
+     "id": "d2000005-0000-4000-8000-000000000005",
+     "role": "ASSISTANT",
+     "content": "P005 at the harbour with Quill.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:05:00.000Z"
+    },
+    {
+     "id": "d2000006-0000-4000-8000-000000000006",
+     "role": "ASSISTANT",
+     "content": "P006 at the harbour with Quill.",
+     "participantId": "5c000000-0000-4000-8000-00000000000c",
+     "createdAt": "2026-07-14T08:06:00.000Z"
+    },
+    {
+     "id": "d2000007-0000-4000-8000-000000000007",
+     "role": "ASSISTANT",
+     "content": "P007 at the harbour with Quill.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:07:00.000Z"
+    },
+    {
+     "id": "d2000008-0000-4000-8000-000000000008",
+     "role": "ASSISTANT",
+     "content": "P008 at the harbour with Quill.",
+     "participantId": "5c000000-0000-4000-8000-00000000000c",
+     "createdAt": "2026-07-14T08:08:00.000Z"
+    }
+   ]
+  },
+  {
+   "id": "f3000000-0000-4000-8000-0000000000f3",
+   "participants": [
+    {
+     "id": "5a000000-0000-4000-8000-00000000000a",
+     "characterId": "aa000000-0000-4000-8000-0000000000a1",
+     "controlledBy": "llm",
+     "connectionProfileId": "9c000000-0000-4000-8000-000000000001"
+    }
+   ],
+   "statuses": {
+    "5a000000-0000-4000-8000-00000000000a": "removed"
+   },
+   "messages": [
+    {
+     "id": "d3000001-0000-4000-8000-000000000001",
+     "role": "ASSISTANT",
+     "content": "Q001 nobody is here.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:01:00.000Z"
+    },
+    {
+     "id": "d3000002-0000-4000-8000-000000000002",
+     "role": "ASSISTANT",
+     "content": "Q002 nobody is here.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:02:00.000Z"
+    },
+    {
+     "id": "d3000003-0000-4000-8000-000000000003",
+     "role": "ASSISTANT",
+     "content": "Q003 nobody is here.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:03:00.000Z"
+    },
+    {
+     "id": "d3000004-0000-4000-8000-000000000004",
+     "role": "ASSISTANT",
+     "content": "Q004 nobody is here.",
+     "participantId": "5a000000-0000-4000-8000-00000000000a",
+     "createdAt": "2026-07-14T08:04:00.000Z"
+    }
+   ]
+  }
+ ],
+ "embeddingDims": 16,
+ "completionRules": [
+  {
+   "pass": "episode",
+   "contains": "L030 ",
+   "response": "[{\"narrative\": \"On July 14th Ada and Bram began the voyage aboard the Gull.\", \"summary\": \"began the voyage\", \"when\": \"2026-07-14\", \"entities\": [\"Gull\", \"Lighthouse Point\"], \"importance\": 0.7}, {\"narrative\": \"On July 14th Bram stowed the brass sextant at Lighthouse Point.\", \"summary\": \"stowed the sextant\", \"when\": \"2026-07-14\", \"entities\": [\"Gull\", \"Lighthouse Point\"], \"importance\": 0.55}]",
+   "usage": {
+    "promptTokens": 3000,
+    "completionTokens": 90,
+    "totalTokens": 3090
+   }
+  },
+  {
+   "pass": "episode",
+   "contains": "L090 ",
+   "response": "[{\"narrative\": \"On July 14th the Gull rounded the reef by noon.\", \"summary\": \"rounded the reef\", \"when\": \"2026-07-14\", \"entities\": [\"Gull\", \"Lighthouse Point\"], \"importance\": 0.7}]",
+   "usage": {
+    "promptTokens": 3000,
+    "completionTokens": 40,
+    "totalTokens": 3040
+   }
+  },
+  {
+   "pass": "episode",
+   "contains": "L130 ",
+   "response": "[{\"narrative\": \"On July 14th Ada and Bram began the voyage aboard the Gull.\", \"summary\": \"began the voyage\", \"when\": \"2026-07-14\", \"entities\": [\"Gull\", \"Lighthouse Point\"], \"importance\": 0.7}]",
+   "usage": {
+    "promptTokens": 3000,
+    "completionTokens": 40,
+    "totalTokens": 3040
+   }
+  },
+  {
+   "pass": "episode",
+   "contains": "L280 ",
+   "response": "[{\"narrative\": \"On July 14th the Gull dropped anchor in the cove at nightfall.\", \"summary\": \"dropped anchor in the cove\", \"when\": \"2026-07-14\", \"entities\": [\"Gull\", \"Lighthouse Point\"], \"importance\": 0.6}]",
+   "usage": {
+    "promptTokens": 3000,
+    "completionTokens": 40,
+    "totalTokens": 3040
+   }
+  },
+  {
+   "pass": "episode",
+   "contains": "L230 ",
+   "response": "[{\"narrative\": \"On July 14th the crew sighted Lighthouse Point at dusk.\", \"summary\": \"sighted the lighthouse\", \"when\": \"2026-07-14\", \"entities\": [\"Gull\", \"Lighthouse Point\"], \"importance\": 0.9}]",
+   "usage": {
+    "promptTokens": 2000,
+    "completionTokens": 40,
+    "totalTokens": 2040
+   }
+  },
+  {
+   "pass": "episode",
+   "contains": "P001 ",
+   "response": "[{\"narrative\": \"On July 14th Ada met Quill at the harbour.\", \"summary\": \"met quill at the harbour\", \"when\": \"2026-07-14\", \"entities\": [\"Gull\", \"Lighthouse Point\"], \"importance\": 0.7}]",
+   "usage": {
+    "promptTokens": 500,
+    "completionTokens": 30,
+    "totalTokens": 530
+   }
+  },
+  {
+   "pass": "episode",
+   "response": "[]",
+   "usage": {
+    "promptTokens": 100,
+    "completionTokens": 2,
+    "totalTokens": 102
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Ada (she/her/her)",
+   "contains": "L030 ",
+   "response": "[{\"subjectIndex\": 1, \"content\": \"Bram steered the reef passage well.\", \"summary\": \"bram steered the reef\", \"importance\": 0.8}]",
+   "usage": {
+    "promptTokens": 2500,
+    "completionTokens": 40,
+    "totalTokens": 2540
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Ada (she/her/her)",
+   "response": "[{\"subjectIndex\": 1, \"content\": \"Bram kept a steady watch all day.\", \"summary\": \"bram kept watch\", \"importance\": 0.7}, {\"subjectIndex\": 1, \"content\": \"Bram hums sea shanties.\", \"summary\": \"bram hums shanties\", \"importance\": 0.5}]",
+   "usage": {
+    "promptTokens": 2500,
+    "completionTokens": 50,
+    "totalTokens": 2550
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Bram (he/him/his)",
+   "response": "[{\"subjectIndex\": 1, \"content\": \"Ada charted every stop of the voyage.\", \"summary\": \"ada charted the voyage\", \"importance\": 0.75}]",
+   "usage": {
+    "promptTokens": 2500,
+    "completionTokens": 40,
+    "totalTokens": 2540
+   }
+  },
+  {
+   "pass": "other",
+   "label": "Quill",
+   "response": "[]",
+   "usage": {
+    "promptTokens": 200,
+    "completionTokens": 2,
+    "totalTokens": 202
+   }
+  }
+ ],
+ "ops": [
+  {
+   "name": "ep_run1_two_slices_of_three",
+   "chatId": "f1000000-0000-4000-8000-0000000000f1",
+   "pass": "episode-fold",
+   "window": [
+    0,
+    150
+   ],
+   "maxSlices": 2
+  },
+  {
+   "name": "ep_run2_reads_the_rest",
+   "chatId": "f1000000-0000-4000-8000-0000000000f1",
+   "pass": "episode-fold",
+   "window": [
+    0,
+    150
+   ],
+   "maxSlices": 2
+  },
+  {
+   "name": "ep_behind_cursor",
+   "chatId": "f1000000-0000-4000-8000-0000000000f1",
+   "pass": "episode-fold",
+   "window": [
+    0,
+    150
+   ]
+  },
+  {
+   "name": "ep_reinforce_not_linked_two_slices",
+   "chatId": "f1000000-0000-4000-8000-0000000000f1",
+   "pass": "episode-fold",
+   "window": [
+    150,
+    300
+   ],
+   "plants": {
+    "cursor": {
+     "episode-fold": "d1000150-0000-4000-8000-000000000150"
+    }
+   }
+  },
+  {
+   "name": "other_timeout_on_slice_2",
+   "chatId": "f1000000-0000-4000-8000-0000000000f1",
+   "pass": "other-fold",
+   "window": [
+    0,
+    300
+   ],
+   "plants": {
+    "failContains": "L090 "
+   }
+  },
+  {
+   "name": "other_resume_reads_the_gap",
+   "chatId": "f1000000-0000-4000-8000-0000000000f1",
+   "pass": "other-fold",
+   "window": [
+    290,
+    300
+   ],
+   "maxSlices": 1
+  },
+  {
+   "name": "other_mode_turn",
+   "chatId": "f1000000-0000-4000-8000-0000000000f1",
+   "pass": "other-fold",
+   "window": [
+    0,
+    10
+   ],
+   "plants": {
+    "mode": {
+     "otherPass": "turn",
+     "perTurnOtherFloor": 0.75,
+     "foldCandidatesPerSubject": 3
+    }
+   }
+  },
+  {
+   "name": "empty_window",
+   "chatId": "f1000000-0000-4000-8000-0000000000f1",
+   "pass": "episode-fold",
+   "window": [
+    0,
+    0
+   ]
+  },
+  {
+   "name": "nothing_to_observe_advances",
+   "chatId": "f2000000-0000-4000-8000-0000000000f2",
+   "pass": "other-fold",
+   "windowIds": [],
+   "windowRaw": [
+    {
+     "type": "message",
+     "id": "aa00ff01-0000-4000-8000-000000000001",
+     "role": "ASSISTANT",
+     "content": "[Host] note",
+     "participantId": null,
+     "systemSender": "host",
+     "createdAt": "2026-07-14T09:00:00.000Z"
+    }
+   ]
+  },
+  {
+   "name": "ep_partially_capped_holders",
+   "chatId": "f2000000-0000-4000-8000-0000000000f2",
+   "pass": "episode-fold",
+   "window": [
+    0,
+    8
+   ],
+   "plants": {
+    "limits": {
+     "enabled": true,
+     "maxPerHour": 1,
+     "softStartFraction": 0.5,
+     "softFloor": 0.7
+    }
+   }
+  },
+  {
+   "name": "ep_rate_deferred_every_holder_capped",
+   "chatId": "f2000000-0000-4000-8000-0000000000f2",
+   "pass": "episode-fold",
+   "window": [
+    0,
+    8
+   ],
+   "plants": {
+    "cursor": {
+     "episode-fold": null
+    },
+    "limits": {
+     "enabled": true,
+     "maxPerHour": 1,
+     "softStartFraction": 0.5,
+     "softFloor": 0.7
+    }
+   }
+  },
+  {
+   "name": "ep_partially_present_holders",
+   "chatId": "f2000000-0000-4000-8000-0000000000f2",
+   "pass": "episode-fold",
+   "window": [
+    0,
+    8
+   ],
+   "plants": {
+    "cursor": {
+     "episode-fold": null
+    }
+   }
+  },
+  {
+   "name": "ep_nobody_present",
+   "chatId": "f3000000-0000-4000-8000-0000000000f3",
+   "pass": "episode-fold",
+   "window": [
+    0,
+    4
+   ]
+  },
+  {
+   "name": "ep_dry_run_reads_all",
+   "chatId": "f1000000-0000-4000-8000-0000000000f1",
+   "pass": "episode-fold",
+   "window": [
+    0,
+    300
+   ],
+   "opts": {
+    "dryRun": true
+   },
+   "maxSlices": "Infinity"
+  },
+  {
+   "name": "bogus_pass_runs_the_episode_branch",
+   "chatId": "f2000000-0000-4000-8000-0000000000f2",
+   "pass": "bogus",
+   "window": [
+    0,
+    8
+   ]
+  }
+ ]
 }

@@ -107,8 +107,6 @@ pub mod fallback_repos;
 pub mod file_fallback;
 pub mod file_storage;
 pub mod first_message_context;
-pub mod fold_episode_pass;
-pub mod fold_other_pass;
 pub mod frozen_archive;
 pub mod memory_index_backfill; // P4.D292 (L-3)
                                // === P4.9K0 ===

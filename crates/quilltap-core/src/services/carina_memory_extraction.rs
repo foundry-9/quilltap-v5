@@ -1,47 +1,35 @@
-//! The Carina memory-extraction job handler (W4.5) — v4
-//! `lib/background-jobs/handlers/carina-memory-extraction.ts`.
+//! The Carina memory-extraction job handler — port of v4
+//! `lib/background-jobs/handlers/carina-memory-extraction.ts` (`ac6348c5f`,
+//! memory refactor Phase D; bug 222's project from `c2795733f`; pin
+//! `83334b9a5`), on the ONE extraction pipeline.
 //!
 //! A Carina answer is posted as a `systemSender: 'carina'` message, which the
-//! per-turn transcript builder deliberately skips — and the answerer is frequently
-//! not even a participant in the chat. So the ordinary `MEMORY_EXTRACTION` path can
-//! never see it. This handler is the dedicated route: it loads the posted carina
-//! message, reconstructs a one-slice `TurnTranscript` (the question opens the turn,
-//! the answer is the answerer's sole contribution), and runs the standard per-turn
-//! extractor. With no user-controlled character in the synthetic transcript, the
-//! OTHER pass finds no subjects and self-skips, so only SELF memories form.
-//!
-//! Ported as a service function; the job-RUNNER dispatch row is W4.8's. The
-//! model boundaries are the same [`CompletionProvider`]/[`EmbeddingProvider`]/
-//! [`CheapLlmTaskExecutor`] the processor consumes. The instance-settings
-//! `getMemoryExtractionLimits` read and the pricing `estimateMessageCost` call are
-//! injected (the limits as an input, the cost as the shared
-//! [`MessageCostEstimator`] seam) — the ported [`process_turn_for_memory`] is the
-//! substance.
-//!
-//! [`CompletionProvider`]: crate::model::completion::CompletionProvider
-//! [`EmbeddingProvider`]: crate::model::embedding::EmbeddingProvider
-//! [`CheapLlmTaskExecutor`]: crate::services::cheap_llm_exec::CheapLlmTaskExecutor
+//! per-turn transcript builder deliberately skips — and the answerer is
+//! frequently not even a participant in the chat. So the ordinary
+//! `MEMORY_EXTRACTION` path can never see it. This handler is the dedicated
+//! route: it builds the unit's context with the answerer added
+//! (`extra_character_ids`), finds the posted message, and runs the SELF pass
+//! over the one-slice transcript (`run_carina_extraction` — the question
+//! opens it, the answer is the answerer's sole contribution) with the
+//! `carina` provenance. The context carries the chat's project id and
+//! description and the rolling summary to every unit — Carina's included
+//! (bug 222; pre-refactor v5 passed none).
 
-use std::collections::HashMap;
-
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::db::runtime::Db;
-use crate::db::{chat_settings, chats_read, connection_profiles};
-use crate::memory_format::Pronouns;
-use crate::memory_tasks::{TurnCharacterSlice, TurnTranscript};
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::cost_estimation::MessageCostEstimator;
-use crate::services::cost_events::{create_memory_extraction_event, TokenUsage};
-use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
-use crate::services::dangerous_content::resolver::resolve_concierge_settings;
-use crate::services::memory_processor::{
-    process_turn_for_memory, CheapLlmSettings, MemoryExtractionLimits, TurnMemoryExtractionContext,
+use crate::services::extraction::run::ExtractionDeps;
+use crate::services::extraction::turn::run_carina_extraction;
+use crate::services::memory_extraction_job::{
+    extraction_context_for_job, finish_extraction_job, JobContextExtra,
 };
 
-/// The `CARINA_MEMORY_EXTRACTION` job payload (v4 `CarinaMemoryExtractionPayload`).
+/// The `CARINA_MEMORY_EXTRACTION` job payload (v4
+/// `CarinaMemoryExtractionPayload`).
 #[derive(Debug, Clone)]
 pub struct CarinaMemoryExtractionPayload {
     pub chat_id: String,
@@ -50,14 +38,10 @@ pub struct CarinaMemoryExtractionPayload {
     pub connection_profile_id: String,
 }
 
-/// v4 `handleCarinaMemoryExtraction`. Loads the posted carina message, builds the
-/// SELF-only synthetic transcript, runs [`process_turn_for_memory`], then persists
-/// the debug logs onto the carina message and emits the token-tracking event.
-///
-/// `memory_extraction_limits` is v4's `getMemoryExtractionLimits()` (an
-/// instance-settings read), injected here (the reader is not yet ported). Missing
-/// profile / chat-settings mirror v4's `throw`; a missing chat / answerer / carina
-/// message / empty answer is a logged skip (`Ok(())`).
+/// v4 `handleCarinaMemoryExtraction(job)`. A missing connection profile
+/// throws (`Connection profile not found: <id>`, the shared context
+/// builder's); a missing chat, answerer or message, and an empty answer, are
+/// logged skips (`Ok(())`).
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_carina_memory_extraction<C, E, K>(
     db: &Db,
@@ -65,322 +49,95 @@ pub async fn handle_carina_memory_extraction<C, E, K>(
     embedding: &E,
     executor: &CheapLlmTaskExecutor,
     cost: &K,
+    job_id: &str,
     user_id: &str,
     payload: &CarinaMemoryExtractionPayload,
-    memory_extraction_limits: Option<MemoryExtractionLimits>,
-) -> Result<(), CarinaExtractionError>
+    host_zone_fallback: &str,
+) -> Result<(), String>
 where
     C: CompletionProvider,
-    E: EmbeddingProvider,
+    E: EmbeddingProvider + Sync,
     K: MessageCostEstimator,
 {
-    // Connection profile + chat settings are hard errors (v4 throws).
-    let pid = payload.connection_profile_id.clone();
-    let connection_profile = db
-        .read_main(move |c| connection_profiles::find_by_id(c, &pid))
-        .map_err(|e| CarinaExtractionError(format!("{e:?}")))?
-        .ok_or_else(|| {
-            CarinaExtractionError(format!(
-                "Connection profile not found: {}",
-                payload.connection_profile_id
-            ))
-        })?;
-
-    let uid = user_id.to_string();
-    let chat_settings = db
-        .read_main(move |c| chat_settings::find_by_user_id(c, &uid))
-        .map_err(|e| CarinaExtractionError(format!("{e:?}")))?
-        .ok_or_else(|| {
-            CarinaExtractionError(format!("Chat settings not found for user: {user_id}"))
-        })?;
-
-    // Chat / answerer / carina message missing → logged skip (v4 returns).
-    let cid = payload.chat_id.clone();
-    let Some(chat) = db
-        .read_main(move |c| chats_read::find_by_id(c, &cid))
-        .map_err(|e| CarinaExtractionError(format!("{e:?}")))?
-    else {
-        return Ok(());
-    };
-
-    let aid = payload.answerer_id.clone();
-    let Some(answerer) = db
-        .read_main(|main| {
-            db.read_mount_index(|mount| crate::db::characters_read::find_by_id(main, mount, &aid))
-        })
-        .map_err(|e| CarinaExtractionError(format!("{e:?}")))?
-    else {
-        return Ok(());
-    };
-
-    // Locate the posted carina message.
-    let cid = payload.chat_id.clone();
-    let all = db
-        .read_main(move |c| crate::db::chats_messages_read::get_messages(c, &cid))
-        .map_err(|e| CarinaExtractionError(format!("{e:?}")))?;
-    let carina_message = all.iter().find(|m| {
-        m.get("type").and_then(Value::as_str) == Some("message")
-            && m.get("id").and_then(Value::as_str) == Some(payload.carina_message_id.as_str())
-    });
-    let Some(carina_message) = carina_message else {
-        return Ok(());
-    };
-
-    let question = carina_message
-        .get("carinaMeta")
-        .and_then(|m| m.get("question"))
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    let answer = carina_message
-        .get("content")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    if answer.is_empty() {
-        return Ok(());
-    }
-    let carina_message_id = carina_message
-        .get("id")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-
-    // Synthetic one-slice transcript: the question opens the turn, the answer is
-    // the answerer's only contribution. No user-controlled character, so the OTHER
-    // pass finds no subjects and only SELF memories form.
-    let answerer_id = answerer
-        .get("id")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let answerer_name = answerer
-        .get("name")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let answerer_pronouns = pronouns_from_value(&answerer);
-
-    let transcript = TurnTranscript {
-        turn_opener_message_id: None,
-        user_message: if question.is_empty() {
-            None
-        } else {
-            Some(question)
+    let Some(mut ctx) = extraction_context_for_job(
+        db,
+        job_id,
+        user_id,
+        &payload.chat_id,
+        &payload.connection_profile_id,
+        JobContextExtra {
+            extra_character_ids: vec![payload.answerer_id.clone()],
+            ..Default::default()
         },
-        user_character_id: None,
-        user_character_name: None,
-        user_character_pronouns: None,
-        character_slices: vec![TurnCharacterSlice {
-            character_id: answerer_id.clone(),
-            character_name: answerer_name,
-            character_pronouns: answerer_pronouns,
-            text: answer,
-            contributing_message_ids: vec![carina_message_id.clone()],
-            is_user_controlled: false,
-            // v4's Carina transcript sets no per-slice timestamp (the whole
-            // file is zero-diff at 8bf3cb5f) — the anchor comes from
-            // `source_message_timestamp` below.
-            last_message_created_at: None,
-        }],
-        prior_slices: None,
-        latest_assistant_message_id: Some(carina_message_id.clone()),
-        turn_timestamp: None,
+        host_zone_fallback,
+    )?
+    else {
+        return Ok(());
     };
 
-    let mut participant_characters: HashMap<String, Value> = HashMap::new();
-    participant_characters.insert(answerer_id.clone(), answerer.clone());
-
-    let uid = user_id.to_string();
-    let available_profiles = db
-        .read_main(move |c| connection_profiles::find_by_user_id(c, &uid))
-        .unwrap_or_default();
-
-    // The Concierge policy, resolved against the chat (v4 `3b463d6b1`:
-    // `resolveConciergeSettings(chatSettings, chat)`).
-    let concierge_policy = resolve_concierge_settings(Some(&chat_settings), Some(&chat));
-
-    // Anchor derived memories to the carina message's own timestamp (v4).
-    let source_message_timestamp = carina_message
-        .get("createdAt")
-        .and_then(Value::as_str)
-        .or_else(|| chat.get("createdAt").and_then(Value::as_str))
-        .map(str::to_string);
-
-    let ctx = TurnMemoryExtractionContext {
-        transcript,
-        participant_characters,
-        chat_id: payload.chat_id.clone(),
-        project_id: None,
-        project_description: None,
-        chat_context_summary: None,
-        user_id: user_id.to_string(),
-        connection_profile: crate::services::image_job_common::cheap_llm_profile_from_value(
-            &connection_profile,
-        ),
-        cheap_llm_settings: cheap_settings_from(&chat_settings),
-        available_profiles: Some(
-            available_profiles
-                .iter()
-                .map(crate::services::image_job_common::cheap_llm_profile_from_value)
-                .collect(),
-        ),
-        concierge_policy: Some(concierge_policy),
-        is_dangerous_chat: should_use_uncensored_route(Some(&chat)),
-        memory_extraction_limits,
-        source_message_timestamp,
-        // v4's Carina path passes no `timelineMode` — the processor defaults
-        // to 'realtime'.
-        timeline_mode: None,
-        dry_run: false,
-        // A Carina answerer in an autonomous room earns the same user-absence
-        // provenance as any other extraction there.
-        in_autonomous_room: chat.get("chatType").and_then(Value::as_str) == Some("autonomous"),
-        registry_cheapest_for_current: None,
-    };
-
-    let result = process_turn_for_memory(db, completion, embedding, executor, &ctx).await;
-
-    // A pass lost to a timeout is work that never happened, and nothing
-    // downstream re-queues it. Fail the job rather than let it report a clean
-    // finish over the hole (v4 `a1d88aa3a`, bug 107). A refusal or an
-    // unparseable answer would fail identically on every retry and keeps the
-    // old log-and-move-on behaviour.
-    //
-    // Placed BEFORE the debug-log write, as v4 places it: v4's note in
-    // `BACKGROUND_JOBS_CHILD.md` is that the debug logs describing the timeout
-    // never reach the message, because they are child writes discarded on the
-    // throw. v5 has no child and applies as it goes, so the ORDER is what
-    // reproduces that outcome here.
-    //
-    // ⚠ RECORDED MECHANISM DIVERGENCE (measured, P4.D136). v4's retry is
-    // ATOMIC: `handleChildJobResult` only calls `applyWritesAtomically` when
-    // `msg.ok`, so a turn that lost one character's pass discards the others
-    // too and the re-run is duplicate-free. v5's writer applies as it goes, so
-    // the successful passes SURVIVE and the re-run repeats them. The outcome is
-    // the same because the repeat is idempotent — v4's own handler-audit table
-    // answers "Idempotent under retry? Yes (memories upserted by content hash)"
-    // — so v5 needs no buffering to be correct here; it reaches v4's guarantee
-    // by a different route, and pays less for it (the passes that DID succeed
-    // are not thrown away).
-    if result.passes_lost_to_timeout > 0 {
-        // v4 also carries `jobId`. v5's core handler takes a payload, not the
-        // job — the host wrapper owns the job row — so the field has no source
-        // here; the chat id and the count are what v5 can name.
-        tracing::error!(
-            chat_id = %payload.chat_id,
-            passes_lost_to_timeout = result.passes_lost_to_timeout,
-            error = result.error.as_deref().unwrap_or(""),
-            "[CarinaMemoryExtraction] Extraction passes lost to a cheap-LLM timeout; failing the job for retry"
+    if ctx.cast_get(&payload.answerer_id).is_none() {
+        tracing::warn!(
+            jobId = %job_id,
+            chatId = %payload.chat_id,
+            answererId = %payload.answerer_id,
+            "[CarinaMemoryExtraction] Answerer character not found; skipping"
         );
-        return Err(CarinaExtractionError(
-            crate::services::cheap_llm_exec::cheap_llm_task_lost_message(
-                "carina-memory-extraction",
-                result.error.as_deref(),
-            ),
-        ));
+        return Ok(());
     }
 
-    // Persist debug logs onto the carina message (best-effort).
-    if !result.debug_logs.is_empty() {
-        if let Some(source_id) = &result.source_message_id {
-            let chat_id = payload.chat_id.clone();
-            let source_id = source_id.clone();
-            let updates = json!({ "debugMemoryLogs": result.debug_logs.clone() });
-            let _ = db
-                .write(move |writers| {
-                    writers
-                        .main()
-                        .chat_messages()
-                        .update_message(&chat_id, &source_id, &updates)
-                })
-                .await;
-        }
-    }
+    let carina_message: Option<Value> = ctx
+        .messages()
+        .map_err(|e| crate::db::fallback::error_text(&e))?
+        .iter()
+        .find(|m| m.get("id").and_then(Value::as_str) == Some(payload.carina_message_id.as_str()))
+        .cloned();
+    let Some(carina_message) = carina_message else {
+        tracing::warn!(
+            jobId = %job_id,
+            chatId = %payload.chat_id,
+            carinaMessageId = %payload.carina_message_id,
+            "[CarinaMemoryExtraction] Carina message not found; skipping"
+        );
+        return Ok(());
+    };
 
-    // Token-tracking event mirroring the per-turn extractor (best-effort).
-    if result.usage.prompt_tokens != 0 || result.usage.completion_tokens != 0 {
-        let provider = connection_profile
-            .get("provider")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        let model = connection_profile
-            .get("modelName")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        let estimated = cost
-            .estimate(
-                &provider,
-                &model,
-                result.usage.prompt_tokens,
-                result.usage.completion_tokens,
-                user_id,
-            )
-            .await;
-        let _ = create_memory_extraction_event(
-            db,
-            &payload.chat_id,
-            Some(TokenUsage {
-                prompt_tokens: Some(result.usage.prompt_tokens as f64),
-                completion_tokens: Some(result.usage.completion_tokens as f64),
-                total_tokens: Some(result.usage.total_tokens as f64),
-            }),
-            Some(provider),
-            Some(model),
-            estimated,
-        )
-        .await;
-    }
+    let deps = ExtractionDeps {
+        completion,
+        embedding,
+        executor,
+    };
+    let Some(result) =
+        run_carina_extraction(&deps, &mut ctx, &carina_message, &payload.answerer_id).await
+    else {
+        tracing::info!(
+            jobId = %job_id,
+            chatId = %payload.chat_id,
+            carinaMessageId = %payload.carina_message_id,
+            "[CarinaMemoryExtraction] Carina message has no answer text; skipping"
+        );
+        return Ok(());
+    };
 
-    Ok(())
-}
-
-/// A hard failure (v4's `throw`) — a missing connection profile or chat settings.
-/// Skips (missing chat / answerer / message / empty answer) return `Ok(())`.
-#[derive(Debug, Clone)]
-pub struct CarinaExtractionError(pub String);
-
-impl std::fmt::Display for CarinaExtractionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-impl std::error::Error for CarinaExtractionError {}
-
-// ===========================================================================
-// Small conversions
-// ===========================================================================
-
-fn pronouns_from_value(c: &Value) -> Option<Pronouns> {
-    let p = c.get("pronouns")?;
-    Some(Pronouns {
-        subject: p.get("subject").and_then(Value::as_str)?.to_string(),
-        object: p.get("object").and_then(Value::as_str)?.to_string(),
-        possessive: p.get("possessive").and_then(Value::as_str)?.to_string(),
-    })
-}
-
-/// Build the memory-processor `CheapLlmSettings` from `chatSettings.cheapLLMSettings`
-/// (v4 maps exactly `strategy` / `userDefinedProfileId` / `fallbackToLocal`).
-fn cheap_settings_from(chat_settings: &Value) -> CheapLlmSettings {
-    let cheap = chat_settings.get("cheapLLMSettings");
-    CheapLlmSettings {
-        strategy: cheap
-            .and_then(|c| c.get("strategy"))
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string(),
-        user_defined_profile_id: cheap
-            .and_then(|c| c.get("userDefinedProfileId"))
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        fallback_to_local: cheap
-            .and_then(|c| c.get("fallbackToLocal"))
-            .and_then(Value::as_bool)
-            .unwrap_or(false),
-    }
+    let project = ctx.project_id.as_deref().unwrap_or("null");
+    tracing::info!(
+        jobId = %job_id,
+        chatId = %payload.chat_id,
+        carinaMessageId = %payload.carina_message_id,
+        answererId = %payload.answerer_id,
+        projectId = %project,
+        created = result.result.created_ids.len(),
+        reinforced = result.result.reinforced_ids.len(),
+        "[CarinaMemoryExtraction] Reference answer processed"
+    );
+    // The debug lines go on the carina message itself.
+    finish_extraction_job(
+        cost,
+        job_id,
+        user_id,
+        &ctx,
+        &result.result,
+        "carina-memory-extraction",
+        result.source_message_id.as_deref(),
+    )
+    .await
 }
