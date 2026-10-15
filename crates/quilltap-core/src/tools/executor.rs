@@ -1020,6 +1020,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             project_id: ctx.project_id.clone(),
             operator_surface: ctx.operator_surface,
             mount_pool: ctx.mount_pool.clone(),
+            memory_zone_fallback: crate::host_zone::zone_name(&self.display_zone).to_string(),
         };
         let out = search::execute_search_scriptorium(
             &self.db,

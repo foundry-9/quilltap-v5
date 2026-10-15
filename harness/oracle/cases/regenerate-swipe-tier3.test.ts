@@ -433,7 +433,10 @@ async function main(): Promise<void> {
 
   // P4.106 item 3: `chat_informs` — a swipe NEVER consumes, so every planted
   // row must come back exactly as planted.
-  for (const table of ['chats', 'chat_messages', 'memories', 'vector_indices', 'vector_entries', 'chat_informs']) {
+  // P4.D291: `vector_indices` / `vector_entries` are gone at the pin (P4.D288,
+  // v4 `af48f6cc2` — `memories.embedding` is the index), so `memories` carries
+  // the cascade's survivors and their vectors alone.
+  for (const table of ['chats', 'chat_messages', 'memories', 'chat_informs']) {
     lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable(table)) }));
   }
 

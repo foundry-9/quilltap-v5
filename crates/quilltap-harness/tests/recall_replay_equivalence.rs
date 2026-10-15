@@ -124,7 +124,11 @@ struct OracleRow {
 /// The lines this family pins (v4's exact messages), each with the v5 target
 /// that stands for v4's logger (R-M: the RecallReplay service logger's
 /// `{service, module}` context is the target).
-const PINNED_LINES: [(&str, &str); 8] = [
+///
+/// P4.D291 (v4 `584d28164`): Phase E's search no longer logs the TF-IDF
+/// gate-off or the R6 reservation lines (both RETIRED at the pin, in v4 and
+/// v5), so they left this list — the anchors line is the search's one.
+const PINNED_LINES: [(&str, &str); 6] = [
     ("[Chats v1] Recall replay requested", "quilltap::chats"),
     ("[Chats v1] Recall replay failed", "quilltap::chats"),
     (
@@ -134,14 +138,9 @@ const PINNED_LINES: [(&str, &str); 8] = [
     ("Recall replay corpus cutoff", "quilltap::recall_replay"),
     ("Recall replay complete", "quilltap::recall_replay"),
     (
-        "[Memory] TF-IDF embeddings: recall boost gate off",
-        "quilltap::memories",
-    ),
-    (
         "[Memory] Specific entity anchors chosen",
         "quilltap::memories",
     ),
-    ("[Memory] Background reservation (R6)", "quilltap::memories"),
 ];
 
 /// v4's captured line as v5's capture rig renders it: `LEVEL target message

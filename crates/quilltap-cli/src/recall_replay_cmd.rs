@@ -6,6 +6,15 @@
 //! `--tuning-file`, `--signals-from`, `--as-of`, the `Harness` and `Tuning`
 //! header lines, `, head N` in each path title, and the 400 `details` lines.
 //!
+// === P4.D291: recall-replay rendering ===
+//! P4.D291 grew it to v4 `83334b9a5`'s Phase E shape: the `Ring` header line
+//! (the anti-repetition ring in force at the turn, and where it was read
+//! from), the `TEXT FALLBACK` table (what the new path returns with no usable
+//! vector) and the `STAGE TRACE` (query → gather → hydrate → score → select →
+//! assemble: what the archive removed, what the budget cut, what the
+//! inter-character section took).
+// === end P4.D291 ===
+//!
 //! Like v4's, this is a thin HTTP wrapper over the running server — v4 POSTs
 //! `/api/v1/chats/<id>?action=recall-replay`; v5 POSTs the same verb through
 //! its own dispatch endpoint (`/api/dispatch`, `chatRecallReplay`). The
@@ -265,6 +274,50 @@ fn print_path(label: &str, rows: &[serde_json::Value], head_size: Option<&Value>
         ));
     }
 }
+
+// === P4.D291: recall-replay rendering ===
+/// One `detail` value as v4's template literal renders it: an object or array
+/// through `JSON.stringify`, anything else through `${v}` (`String(v)`).
+fn trace_value(v: &Value) -> String {
+    match v {
+        Value::Object(_) | Value::Array(_) => {
+            serde_json::to_string(&nodefmt::js_faithful_json(v)).unwrap_or_default()
+        }
+        other => nodefmt::js_string(Some(other)),
+    }
+}
+
+/// v4 `printTrace(trace)` — one line per stage entry: the stage padded to 9,
+/// the dimmed `(label) ` when the entry carries one, then `k=v` pairs.
+fn print_trace(trace: Option<&Value>) {
+    let Some(entries) = trace.and_then(Value::as_array).filter(|a| !a.is_empty()) else {
+        return;
+    };
+    out::log(&format!("\n{BOLD}STAGE TRACE{RESET}"));
+    for entry in entries {
+        let label = match entry.get("label") {
+            Some(l) if nodefmt::js_truthy(Some(l)) => {
+                format!("{DIM}({}){RESET} ", nodefmt::js_string(Some(l)))
+            }
+            _ => String::new(),
+        };
+        let detail = entry
+            .get("detail")
+            .and_then(Value::as_object)
+            .map(|d| {
+                d.iter()
+                    .map(|(k, v)| format!("{k}={}", trace_value(v)))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            })
+            .unwrap_or_default();
+        out::log(&format!(
+            "  {CYAN}{}{RESET}{label}{detail}",
+            pad_end(&nodefmt::js_string(entry.get("stage")), 9)
+        ));
+    }
+}
+// === end P4.D291 ===
 
 /// v4 `readJson(text, what)`: `JSON.parse` or the RED refusal carrying V8's
 /// message (`jsstr::v8_json_parse_message`; where V8 would ACCEPT what serde
@@ -604,6 +657,24 @@ pub fn run(args: &[String]) {
     out::log(&format!(
         "{BOLD}Tuning{RESET}    {tuning} {DIM}(new path only){RESET}"
     ));
+    // === P4.D291: recall-replay rendering ===
+    if nodefmt::js_truthy(result.get("ringSource")) {
+        let source = if result.get("ringSource") == Some(&Value::String("debug-log".to_string())) {
+            format!("{DIM}as of the turn, from its recall records{RESET}")
+        } else {
+            format!("{YELLOW}the chat's current ring (no recall records that early){RESET}")
+        };
+        // `(result.ring || []).length` — a non-array ring has no `length` in
+        // corpus; the server always sends an array.
+        let ring_len = result
+            .get("ring")
+            .and_then(serde_json::Value::as_array)
+            .map_or(0, Vec::len);
+        out::log(&format!(
+            "{BOLD}Ring{RESET}      {ring_len} recently whispered · {source}"
+        ));
+    }
+    // === end P4.D291 ===
 
     let rows = |k: &str| {
         result
@@ -622,6 +693,19 @@ pub fn run(args: &[String]) {
         &rows("newPath"),
         result.get("newHeadSize"),
     );
+    // === P4.D291: recall-replay rendering ===
+    if let Some(fallback) = result
+        .get("fallbackPath")
+        .and_then(serde_json::Value::as_array)
+    {
+        print_path(
+            "TEXT FALLBACK (what the new path returns with no usable vector)",
+            fallback,
+            result.get("newHeadSize"),
+        );
+    }
+    print_trace(result.get("trace"));
+    // === end P4.D291 ===
     out::log("");
     out::exit(0);
 }

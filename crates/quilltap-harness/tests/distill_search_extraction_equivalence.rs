@@ -187,7 +187,7 @@ fn run_leg(zone: &str, oracle_path: &str) -> Vec<(String, Value)> {
         let clock = ExtractionClock {
             now_iso: case.clock.now_iso.clone(),
             timeline_mode: case.clock.timeline_mode.clone(),
-            local_tz: Some(zone.to_string()),
+            time_zone: Some(zone.to_string()),
         };
         let messages = build_distill_messages(&recent, &case.character_name, Some(&clock));
 
@@ -209,7 +209,7 @@ fn run_leg(zone: &str, oracle_path: &str) -> Vec<(String, Value)> {
         // reference from the same window, parse, merge inside the success arm.
         let day_reference = resolve_distill_day_reference(&recent, Some(&clock));
         let parsed = merge_day_reference(
-            parse_extraction(&case.response_text),
+            parse_extraction(&case.response_text, zone),
             day_reference.as_ref(),
         );
         let got = parsed.signals_json();

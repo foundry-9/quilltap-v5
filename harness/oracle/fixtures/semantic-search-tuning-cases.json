@@ -1,5 +1,5 @@
 {
-  "$comment": "P4.D267 semantic_search_tuning_tier3_equivalence corpus. embed: text \u2192 {vector, provider} or {throw:true} (scripted on both sides). memo:true calls share ONE memo within the case. recallContext.tuningInput is validated + resolved on each side; arrays stand for v4 Sets.",
+  "$comment": "P4.D267 semantic_search_tuning_tier3_equivalence corpus. embed: text → {vector, provider} or {throw:true} (scripted on both sides). memo:true calls share ONE memo within the case. recallContext.tuningInput is validated + resolved on each side; arrays stand for v4 Sets. P4.D291: options renamed onto v4 searchMemories (anchors, excludeIds, nowMs, window, probes, literalPhrase); bug-214 + hybrid rows appended.",
   "$nowMs": 1791460800000,
   "userId": "a2000000-0000-4000-8000-000000000001",
   "cases": [
@@ -33,7 +33,7 @@
           }
         }
       ],
-      "$comment": "R1 at the cap14 defaults on a neural label: the stacked low-cosine row is stripped (gate\u00d70.00); R4 logs counted/chosen as []"
+      "$comment": "R1 at the cap14 defaults on a neural label: the stacked low-cosine row is stripped (gate×0.00); R4 logs counted/chosen as []"
     },
     {
       "name": "defaults_builtin",
@@ -65,7 +65,7 @@
           }
         }
       ],
-      "$comment": "TF-IDF label, no explicit tuning: the gate-off DEBUG, no gate\u00d7, the 1.4 cap kept"
+      "$comment": "TF-IDF label, no explicit tuning: the gate-off DEBUG, no gate×, the 1.4 cap kept"
     },
     {
       "name": "builtin_explicit_tuning",
@@ -158,7 +158,7 @@
               "currentProjectId": null,
               "scopePolicy": "down-weight"
             },
-            "excludeMemoryIds": [
+            "excludeIds": [
               "e2000000-0000-4000-8000-000000000001",
               "e2000000-0000-4000-8000-000000000005",
               "e2000000-0000-4000-8000-000000000003"
@@ -189,10 +189,10 @@
               "currentProjectId": null,
               "scopePolicy": "down-weight"
             },
-            "entityAnchors": [
+            "anchors": [
               "Tessarium"
             ],
-            "excludeMemoryIds": [
+            "excludeIds": [
               "e2000000-0000-4000-8000-000000000008"
             ]
           }
@@ -220,7 +220,7 @@
               "currentProjectId": null,
               "scopePolicy": "down-weight"
             },
-            "weightClockMs": 1775001600000
+            "nowMs": 1775001600000
           }
         },
         {
@@ -261,7 +261,7 @@
                 ""
               ]
             },
-            "entityAnchors": [
+            "anchors": [
               "Amy",
               "Steinway",
               "Tessarium",
@@ -297,7 +297,7 @@
                 "anchorMinHits": 2
               }
             },
-            "entityAnchors": [
+            "anchors": [
               "X",
               "Tessarium",
               "Tessarium",
@@ -335,7 +335,7 @@
                 "specificAnchors": false
               }
             },
-            "entityAnchors": [
+            "anchors": [
               "X",
               "Amy",
               "Steinway",
@@ -364,7 +364,7 @@
           "query": "q",
           "options": {
             "limit": 10,
-            "entityAnchors": [
+            "anchors": [
               "X",
               "Amy",
               "Steinway",
@@ -394,7 +394,7 @@
           "options": {
             "limit": 4,
             "headSize": 3,
-            "occurredWithin": {
+            "window": {
               "from": "2026-10-06T00:00:00.000Z",
               "to": "2026-10-06T23:59:59.000Z"
             },
@@ -430,7 +430,7 @@
           "options": {
             "limit": 4,
             "headSize": 3,
-            "occurredWithin": {
+            "window": {
               "from": "2026-10-06T00:00:00.000Z",
               "to": "2026-10-06T23:59:59.000Z"
             },
@@ -464,7 +464,7 @@
           "options": {
             "limit": 4,
             "headSize": 3,
-            "occurredWithin": {
+            "window": {
               "from": "2026-10-06T00:00:00.000Z",
               "to": "2026-10-06T23:59:59.000Z"
             },
@@ -510,7 +510,7 @@
               "currentProjectId": null,
               "scopePolicy": "down-weight"
             },
-            "extraProbes": [
+            "probes": [
               "p"
             ]
           },
@@ -525,7 +525,7 @@
               "currentProjectId": null,
               "scopePolicy": "down-weight"
             },
-            "extraProbes": [
+            "probes": [
               "p"
             ]
           },
@@ -561,7 +561,7 @@
               "currentProjectId": null,
               "scopePolicy": "down-weight"
             },
-            "extraProbes": [
+            "probes": [
               "p"
             ]
           }
@@ -575,7 +575,7 @@
               "currentProjectId": null,
               "scopePolicy": "down-weight"
             },
-            "extraProbes": [
+            "probes": [
               "p"
             ]
           }
@@ -599,7 +599,7 @@
           "query": "Lighthouse",
           "options": {
             "limit": 10,
-            "applyLiteralPhraseBoost": true,
+            "literalPhrase": true,
             "recallContext": {
               "currentProjectId": null,
               "scopePolicy": "down-weight",
@@ -627,7 +627,7 @@
           "query": "Lighthouse",
           "options": {
             "limit": 10,
-            "applyLiteralPhraseBoost": true,
+            "literalPhrase": true,
             "recallContext": {
               "currentProjectId": null,
               "scopePolicy": "down-weight",
@@ -655,14 +655,14 @@
           "query": "Lighthouse",
           "options": {
             "limit": 10,
-            "applyLiteralPhraseBoost": true,
+            "literalPhrase": true,
             "recallContext": {
               "currentProjectId": null,
               "scopePolicy": "down-weight",
               "expandRelated": true
             },
             "includeCold": true,
-            "excludeMemoryIds": [
+            "excludeIds": [
               "e2000000-0000-4000-8000-000000000021"
             ]
           }
@@ -686,7 +686,7 @@
           "query": "Lighthouse",
           "options": {
             "limit": 10,
-            "applyLiteralPhraseBoost": true
+            "literalPhrase": true
           }
         }
       ],
@@ -721,16 +721,16 @@
               "scopePolicy": "down-weight",
               "expandRelated": true
             },
-            "entityAnchors": [
+            "anchors": [
               "Tessarium"
             ],
-            "extraProbes": [
+            "probes": [
               "p"
             ]
           }
         }
       ],
-      "$comment": "entity and probe hits below the neural floor dropped; related\u2197 exempt"
+      "$comment": "entity and probe hits below the neural floor dropped; related↗ exempt"
     },
     {
       "name": "text_fallback_hot",
@@ -749,7 +749,7 @@
               "currentProjectId": null,
               "scopePolicy": "down-weight"
             },
-            "weightClockMs": 1775001600000
+            "nowMs": 1775001600000
           }
         }
       ],
@@ -835,7 +835,7 @@
               "currentProjectId": null,
               "scopePolicy": "down-weight"
             },
-            "extraProbes": [
+            "probes": [
               "boom"
             ]
           }
@@ -869,6 +869,166 @@
         }
       ],
       "$comment": "fresh48 at 1.15 under the defaults"
+    },
+    {
+      "name": "text_window_tool_path",
+      "embed": {
+        "note": {
+          "throw": true
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000002",
+          "query": "note",
+          "options": {
+            "limit": 10,
+            "window": {
+              "from": "2026-10-06T00:00:00.000Z",
+              "to": "2026-10-06T23:59:59.000Z"
+            }
+          }
+        }
+      ],
+      "$comment": "bug 214: the text fallback hard-filters to the window on the tool path (no recall context)"
+    },
+    {
+      "name": "text_exclude",
+      "embed": {
+        "note": {
+          "throw": true
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000002",
+          "query": "note",
+          "options": {
+            "limit": 10,
+            "excludeIds": [
+              "e2000000-0000-4000-8000-000000000015",
+              "e2000000-0000-4000-8000-000000000019"
+            ]
+          }
+        }
+      ],
+      "$comment": "bug 214: excludeIds drop rows the text strategy found (hydrate applies the filter)"
+    },
+    {
+      "name": "text_soft_window_multipliers",
+      "embed": {
+        "note": {
+          "throw": true
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000002",
+          "query": "note",
+          "options": {
+            "limit": 10,
+            "window": {
+              "from": "2026-10-06T00:00:00.000Z",
+              "to": "2026-10-06T23:59:59.000Z"
+            },
+            "recallContext": {
+              "currentProjectId": null,
+              "scopePolicy": "down-weight",
+              "turnContext": "information"
+            }
+          }
+        }
+      ],
+      "$comment": "bug 214: the multipliers apply to text scores (R1 off), the starved window a soft boost"
+    },
+    {
+      "name": "text_now_ms",
+      "embed": {
+        "note": {
+          "throw": true
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000002",
+          "query": "note",
+          "options": {
+            "limit": 10,
+            "nowMs": 1800000000000
+          }
+        }
+      ],
+      "$comment": "bug 214: salience on the given clock, not the wall clock"
+    },
+    {
+      "name": "text_probes_anchors",
+      "embed": {
+        "harbor bell": {
+          "throw": true
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "harbor bell",
+          "options": {
+            "limit": 10,
+            "probes": [
+              "rope tar"
+            ],
+            "anchors": [
+              "Tessarium"
+            ]
+          }
+        }
+      ],
+      "$comment": "bug 214: the probes and anchors widen the text pool; each row scores its best match over query + probes"
+    },
+    {
+      "name": "literal_short_query_skipped",
+      "embed": {
+        "Amy": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "Amy",
+          "options": {
+            "limit": 10,
+            "literalPhrase": true
+          }
+        }
+      ],
+      "$comment": "hybrid: a trimmed query under 8 characters takes no literal step"
+    },
+    {
+      "name": "literal_phrase_in_top_k",
+      "embed": {
+        "the Tessarium vault": {
+          "vector": [
+            1,
+            0
+          ],
+          "provider": "OPENAI"
+        }
+      },
+      "calls": [
+        {
+          "characterId": "c2000000-0000-4000-8000-000000000001",
+          "query": "the Tessarium vault",
+          "options": {
+            "limit": 10,
+            "literalPhrase": true
+          }
+        }
+      ],
+      "$comment": "hybrid: a top-K row whose body holds the phrase takes the boost; a direct hit below the floor still faces it"
     }
   ],
   "reserve": [

@@ -1,0 +1,536 @@
+{
+  "$comment": "P4.D291 recall_assemble_tier3 \u2014 the corpus of v4 __tests__/unit/lib/memory/recall/assemble-deliver.test.ts over a REAL archive: the digest about Iris and the 27 newest importance-0.9 rows fill the 28-row archive (memoryBudget 2000); the head corpus (fillers, the rows about Iris, the recap-only row) sits below it in salience. Every embedding is [c, sqrt(1-c^2)], so a query [1, 0] scores c. Built by build-recall-assemble-fixture.ts.",
+  "testPepperBase64": "b3JhY2xlLXRlc3QtcGVwcGVyLTMyLWJ5dGVzLWxvbmch",
+  "userId": "00000000-0000-4000-8000-0000000000aa",
+  "$nowMs": 1781654400000,
+  "lyra": "c3000000-0000-4000-8000-000000000001",
+  "iris": "c3000000-0000-4000-8000-000000000002",
+  "characters": [
+    {
+      "id": "c3000000-0000-4000-8000-000000000001",
+      "name": "Lyra"
+    },
+    {
+      "id": "c3000000-0000-4000-8000-000000000002",
+      "name": "Iris"
+    }
+  ],
+  "memories": [
+    {
+      "id": "e3000000-0000-4000-8000-000000000001",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.8,
+      "content": "Lyra keeps the brass ledger in the tower",
+      "summary": "Lyra keeps the brass ledger",
+      "importance": 0.9,
+      "createdAt": "2026-06-16T00:00:00.000Z",
+      "embedding": [
+        0.8,
+        0.5999999999999999
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000100",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.02,
+      "content": "ballast 0 kept close (content)",
+      "summary": "ballast 0 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T00:00:00.000Z",
+      "embedding": [
+        0.02,
+        0.999799979995999
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000101",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.021,
+      "content": "ballast 1 kept close (content)",
+      "summary": "ballast 1 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T01:00:00.000Z",
+      "embedding": [
+        0.021,
+        0.9997794756845131
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000102",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.022,
+      "content": "ballast 2 kept close (content)",
+      "summary": "ballast 2 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T02:00:00.000Z",
+      "embedding": [
+        0.022,
+        0.9997579707109115
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000103",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.023,
+      "content": "ballast 3 kept close (content)",
+      "summary": "ballast 3 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T03:00:00.000Z",
+      "embedding": [
+        0.023,
+        0.9997354650106197
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000104",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.024,
+      "content": "ballast 4 kept close (content)",
+      "summary": "ballast 4 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T04:00:00.000Z",
+      "embedding": [
+        0.024,
+        0.9997119585160518
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000105",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.025,
+      "content": "ballast 5 kept close (content)",
+      "summary": "ballast 5 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T05:00:00.000Z",
+      "embedding": [
+        0.025,
+        0.9996874511566103
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000106",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.026,
+      "content": "ballast 6 kept close (content)",
+      "summary": "ballast 6 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T06:00:00.000Z",
+      "embedding": [
+        0.026,
+        0.9996619428586846
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000107",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.027,
+      "content": "ballast 7 kept close (content)",
+      "summary": "ballast 7 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T07:00:00.000Z",
+      "embedding": [
+        0.027,
+        0.9996354335456502
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000108",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.028,
+      "content": "ballast 8 kept close (content)",
+      "summary": "ballast 8 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T08:00:00.000Z",
+      "embedding": [
+        0.028,
+        0.9996079231378671
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000109",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.029,
+      "content": "ballast 9 kept close (content)",
+      "summary": "ballast 9 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T09:00:00.000Z",
+      "embedding": [
+        0.029,
+        0.999579411552679
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000110",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.03,
+      "content": "ballast 10 kept close (content)",
+      "summary": "ballast 10 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T10:00:00.000Z",
+      "embedding": [
+        0.03,
+        0.9995498987044118
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000111",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.031,
+      "content": "ballast 11 kept close (content)",
+      "summary": "ballast 11 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T11:00:00.000Z",
+      "embedding": [
+        0.031,
+        0.9995193845043727
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000112",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.032,
+      "content": "ballast 12 kept close (content)",
+      "summary": "ballast 12 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T12:00:00.000Z",
+      "embedding": [
+        0.032,
+        0.9994878688608482
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000113",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.033,
+      "content": "ballast 13 kept close (content)",
+      "summary": "ballast 13 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T13:00:00.000Z",
+      "embedding": [
+        0.033,
+        0.9994553516791033
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000114",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.034,
+      "content": "ballast 14 kept close (content)",
+      "summary": "ballast 14 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T14:00:00.000Z",
+      "embedding": [
+        0.034,
+        0.9994218328613799
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000115",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.035,
+      "content": "ballast 15 kept close (content)",
+      "summary": "ballast 15 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T15:00:00.000Z",
+      "embedding": [
+        0.035,
+        0.9993873123068954
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000116",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.036,
+      "content": "ballast 16 kept close (content)",
+      "summary": "ballast 16 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T16:00:00.000Z",
+      "embedding": [
+        0.036,
+        0.9993517899118408
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000117",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.037,
+      "content": "ballast 17 kept close (content)",
+      "summary": "ballast 17 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T17:00:00.000Z",
+      "embedding": [
+        0.037,
+        0.9993152655693798
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000118",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.038,
+      "content": "ballast 18 kept close (content)",
+      "summary": "ballast 18 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T18:00:00.000Z",
+      "embedding": [
+        0.038,
+        0.9992777391696465
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000119",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.039,
+      "content": "ballast 19 kept close (content)",
+      "summary": "ballast 19 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T19:00:00.000Z",
+      "embedding": [
+        0.039,
+        0.9992392105997442
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000120",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.04,
+      "content": "ballast 20 kept close (content)",
+      "summary": "ballast 20 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T20:00:00.000Z",
+      "embedding": [
+        0.04,
+        0.9991996797437437
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000121",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.041,
+      "content": "ballast 21 kept close (content)",
+      "summary": "ballast 21 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T21:00:00.000Z",
+      "embedding": [
+        0.041,
+        0.9991591464826812
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000122",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.042,
+      "content": "ballast 22 kept close (content)",
+      "summary": "ballast 22 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T22:00:00.000Z",
+      "embedding": [
+        0.042,
+        0.9991176106945568
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000123",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.043,
+      "content": "ballast 23 kept close (content)",
+      "summary": "ballast 23 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T23:00:00.000Z",
+      "embedding": [
+        0.043,
+        0.9990750722543327
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000124",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.044,
+      "content": "ballast 24 kept close (content)",
+      "summary": "ballast 24 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T00:00:00.000Z",
+      "embedding": [
+        0.044,
+        0.9990315310339308
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000125",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.045,
+      "content": "ballast 25 kept close (content)",
+      "summary": "ballast 25 kept close",
+      "importance": 0.9,
+      "createdAt": "2026-06-15T01:00:00.000Z",
+      "embedding": [
+        0.045,
+        0.9989869869022319
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000002",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.3,
+      "content": "Lyra and Iris crossed the Shivering Bridge",
+      "summary": "Lyra and Iris crossed the Shivering Bridge",
+      "importance": 0.6,
+      "createdAt": "2026-06-12T00:00:00.000Z",
+      "embedding": [
+        0.3,
+        0.9539392014169457
+      ],
+      "source": "CONSOLIDATED",
+      "aboutCharacterId": "c3000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000010",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.79,
+      "content": "filler 0 remembered (content)",
+      "summary": "filler 0 remembered",
+      "importance": 0.6,
+      "createdAt": "2026-06-12T00:00:00.000Z",
+      "embedding": [
+        0.79,
+        0.6131068422387732
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000011",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.78,
+      "content": "filler 1 remembered (content)",
+      "summary": "filler 1 remembered",
+      "importance": 0.6,
+      "createdAt": "2026-06-12T00:00:00.000Z",
+      "embedding": [
+        0.78,
+        0.6257795138864806
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000012",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.77,
+      "content": "filler 2 remembered (content)",
+      "summary": "filler 2 remembered",
+      "importance": 0.6,
+      "createdAt": "2026-06-12T00:00:00.000Z",
+      "embedding": [
+        0.77,
+        0.6380438856379709
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000013",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.76,
+      "content": "filler 3 remembered (content)",
+      "summary": "filler 3 remembered",
+      "importance": 0.6,
+      "createdAt": "2026-06-12T00:00:00.000Z",
+      "embedding": [
+        0.76,
+        0.6499230723708769
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000014",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.75,
+      "content": "filler 4 remembered (content)",
+      "summary": "filler 4 remembered",
+      "importance": 0.6,
+      "createdAt": "2026-06-12T00:00:00.000Z",
+      "embedding": [
+        0.75,
+        0.6614378277661477
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000015",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.74,
+      "content": "filler 5 remembered (content)",
+      "summary": "filler 5 remembered",
+      "importance": 0.6,
+      "createdAt": "2026-06-12T00:00:00.000Z",
+      "embedding": [
+        0.74,
+        0.6726068688320095
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000016",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.73,
+      "content": "filler 6 remembered (content)",
+      "summary": "filler 6 remembered",
+      "importance": 0.6,
+      "createdAt": "2026-06-12T00:00:00.000Z",
+      "embedding": [
+        0.73,
+        0.6834471449936711
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000017",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.72,
+      "content": "filler 7 remembered (content)",
+      "summary": "filler 7 remembered",
+      "importance": 0.6,
+      "createdAt": "2026-06-12T00:00:00.000Z",
+      "embedding": [
+        0.72,
+        0.6939740629158989
+      ]
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000020",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.5,
+      "content": "Iris told Lyra the lighthouse secret",
+      "summary": "iris secret",
+      "importance": 0.6,
+      "createdAt": "2026-06-12T00:00:00.000Z",
+      "embedding": [
+        0.5,
+        0.8660254037844386
+      ],
+      "aboutCharacterId": "c3000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000021",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.1,
+      "content": "Iris hums when she is nervous",
+      "summary": "iris hums",
+      "importance": 0.6,
+      "createdAt": "2026-06-12T00:00:00.000Z",
+      "embedding": [
+        0.1,
+        0.99498743710662
+      ],
+      "aboutCharacterId": "c3000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e3000000-0000-4000-8000-000000000022",
+      "characterId": "c3000000-0000-4000-8000-000000000001",
+      "cosine": 0.9,
+      "content": "the recap narrates this",
+      "summary": "the recap narrates this",
+      "importance": 0.6,
+      "createdAt": "2026-06-12T00:00:00.000Z",
+      "embedding": [
+        0.9,
+        0.4358898943540673
+      ]
+    }
+  ],
+  "chat": {
+    "id": "a3000000-0000-4000-8000-000000000001",
+    "title": "The Lighthouse Watch",
+    "seedTimestamp": "2026-06-10T00:00:00.000Z"
+  }
+}

@@ -16,15 +16,17 @@
 //!      (`aboutCharacterId` null/absent) memories;
 //!   3. **only when semantic returned nothing AND we're still short**, a text
 //!      `searchByContent` on just the name;
-//!   4. sort the collected map by importance desc, take `memoriesPerParticipant`
-//!      (default 5).
+//!   4. sort the collected map by SALIENCE desc (reinforced importance × time
+//!      decay, at one `now`), take `memoriesPerParticipant` (default 5), and
+//!      stamp exactly those accessed — the greeting is composed from them.
 //!
 //! Every per-participant load is wrapped so one participant's failure never aborts
-//! the others (v4 logs + continues); the semantic / text sub-steps swallow their own
-//! errors the same way.
+//! the others (v4 logs ERROR + continues); the semantic / text sub-steps WARN and
+//! carry on the same way.
 //!
-//! Composes the ported [`crate::services::memory_service::search_memories_semantic`]
-//! + the memories reads + the [`EmbeddingProvider`] seam.
+//! Composes the recall pipeline's one-shot [`search_memories`] (v4 Phase E:
+//! `lib/memory/recall/search.ts`) + its one access stamp ([`stamp_accessed`]) +
+//! the memories reads + the [`EmbeddingProvider`] seam.
 
 use serde_json::Value;
 
@@ -32,7 +34,13 @@ use crate::db::runtime::Db;
 use crate::db::{characters_read, memories_read, DbError};
 use crate::model::embedding::EmbeddingProvider;
 
-use super::memory_service::{search_memories_semantic, SemanticSearchOptions};
+use super::recall::deliver::stamp_accessed;
+use super::recall::rank::salience_of;
+use super::recall::search::{search_memories, RecallSearchOptions, SearchMemoriesOptions};
+use crate::memory_scoring::js_sort::js_array_sort_by;
+
+/// The greeting's log target (v4's `[FirstMessageContext]` lines).
+const LOG_TARGET: &str = "quilltap::first_message_context";
 
 /// Info about one participant (v4 `ParticipantInfo`).
 #[derive(Debug, Clone)]
@@ -128,7 +136,14 @@ pub async fn load_participant_memories<P: EmbeddingProvider>(
         .await
         {
             Ok(mut mems) => all.append(&mut mems),
-            Err(_) => { /* logged + continue in v4 */ }
+            Err(error) => tracing::error!(
+                target: LOG_TARGET,
+                speakingCharacterId = %speaking_character_id,
+                participantId = %participant.character_id,
+                participantName = %participant.name,
+                error = %crate::db::fallback::error_text(&error),
+                "[FirstMessageContext] Failed to load memories for participant"
+            ),
         }
     }
     Ok(all)
@@ -150,6 +165,10 @@ async fn load_for_participant<P: EmbeddingProvider>(
     // The dedup map preserves insertion order (v4's `Map`); we mirror that with a
     // Vec of (id, ParticipantMemory) + a membership check.
     let mut memory_map: Vec<(String, ParticipantMemory)> = Vec::new();
+    // Salience of each chosen memory: the order the greeting reads them in —
+    // computed at ONE `now` for the whole participant (v4 `salienceById`).
+    let mut salience_by_id: std::collections::HashMap<String, f64> =
+        std::collections::HashMap::new();
 
     // 1. Recent inter-character memories (up to 3). Hot tier only (v4's JS
     // `m.tier !== 'cold'`); consolidated digests lead — a stable partition that
@@ -173,6 +192,7 @@ async fn load_for_participant<P: EmbeddingProvider>(
     for memory in recent.iter().take(recent_count) {
         let Some(id) = mem_id(memory) else { continue };
         if !map_has(&memory_map, &id) {
+            salience_by_id.insert(id.clone(), salience_of(memory, now_ms));
             memory_map.push((id, participant_memory(participant, memory)));
         }
     }
@@ -183,40 +203,51 @@ async fn load_for_participant<P: EmbeddingProvider>(
         _ => participant.name.clone(),
     };
     let mut semantic_worked = false;
-    // v4 wraps the semantic call in try/catch; `search_memories_semantic` already
-    // fails soft internally (falling back to text), but a hard DbError here is
-    // swallowed to match v4's `catch`.
-    let semantic = search_memories_semantic(
+    // v4 wraps the semantic call in try/catch; `search_memories` already
+    // falls back to text internally, so only a failure of that fallback too
+    // reaches the WARN.
+    let semantic = search_memories(
         db,
         provider,
         speaking_character_id,
         &search_query,
-        &SemanticSearchOptions {
+        &SearchMemoriesOptions {
+            search: RecallSearchOptions {
+                limit: Some(SEMANTIC_LIMIT),
+                min_score: Some(SEMANTIC_MIN_SCORE),
+                now_ms,
+                ..Default::default()
+            },
             user_id: user_id.to_string(),
             embedding_profile_id: embedding_profile_id.map(str::to_string),
-            limit: Some(SEMANTIC_LIMIT),
-            min_score: Some(SEMANTIC_MIN_SCORE),
-            now_ms,
             ..Default::default()
         },
-        None,
     )
     .await;
-    if let Ok(results) = semantic {
-        for r in &results {
-            let about = r.memory.get("aboutCharacterId");
-            let is_about_participant =
-                about.and_then(Value::as_str) == Some(participant.character_id.as_str());
-            // aboutCharacterId null OR absent → general memory.
-            let is_general = about.map(Value::is_null).unwrap_or(true);
-            let Some(id) = mem_id(&r.memory) else {
-                continue;
-            };
-            if (is_about_participant || is_general) && !map_has(&memory_map, &id) {
-                memory_map.push((id, participant_memory(participant, &r.memory)));
+    match semantic {
+        Ok(results) => {
+            for r in &results {
+                let about = r.memory.get("aboutCharacterId");
+                let is_about_participant =
+                    about.and_then(Value::as_str) == Some(participant.character_id.as_str());
+                // aboutCharacterId null OR absent → general memory.
+                let is_general = about.map(Value::is_null).unwrap_or(true);
+                let Some(id) = mem_id(&r.memory) else {
+                    continue;
+                };
+                if (is_about_participant || is_general) && !map_has(&memory_map, &id) {
+                    salience_by_id.insert(id.clone(), salience_of(&r.memory, now_ms));
+                    memory_map.push((id, participant_memory(participant, &r.memory)));
+                }
             }
+            semantic_worked = !results.is_empty();
         }
-        semantic_worked = !results.is_empty();
+        Err(error) => tracing::warn!(
+            target: LOG_TARGET,
+            participantName = %participant.name,
+            error = %crate::db::fallback::error_text(&error),
+            "[FirstMessageContext] Semantic search failed for participant"
+        ),
     }
 
     // 3. Text fallback — only when still short AND semantic found nothing.
@@ -226,39 +257,49 @@ async fn load_for_participant<P: EmbeddingProvider>(
             let name = participant.name.clone();
             db.read_main(move |conn| memories_read::search_by_content(conn, &cid, &name))
         };
-        if let Ok(text_results) = text {
-            for memory in &text_results {
-                // v4: `if (memory.tier === 'cold') continue` — BEFORE the dedup
-                // and the `>= limit` break.
-                if crate::memory_injector::memory_is_cold(memory) {
-                    continue;
-                }
-                let Some(id) = mem_id(memory) else { continue };
-                if !map_has(&memory_map, &id) {
-                    memory_map.push((id, participant_memory(participant, memory)));
-                }
-                if memory_map.len() >= limit {
-                    break;
+        match text {
+            Ok(text_results) => {
+                for memory in &text_results {
+                    // v4: `if (memory.tier === 'cold') continue` — BEFORE the dedup
+                    // and the `>= limit` break.
+                    if crate::memory_injector::memory_is_cold(memory) {
+                        continue;
+                    }
+                    let Some(id) = mem_id(memory) else { continue };
+                    if !map_has(&memory_map, &id) {
+                        salience_by_id.insert(id.clone(), salience_of(memory, now_ms));
+                        memory_map.push((id, participant_memory(participant, memory)));
+                    }
+                    if memory_map.len() >= limit {
+                        break;
+                    }
                 }
             }
+            Err(error) => tracing::warn!(
+                target: LOG_TARGET,
+                participantName = %participant.name,
+                error = %crate::db::fallback::error_text(&error),
+                "[FirstMessageContext] Text search fallback failed"
+            ),
         }
     }
 
-    // 4. Sort by importance desc, take top N. v4's `.sort((a,b) => b.importance -
-    // a.importance)` is stable — keep insertion order among ties. The (id,
-    // memory) pairs ride through the sort so the stamp sees the selected ids.
+    // 4. Sort by salience (reinforced importance × time decay) and take top N
+    // — V8's comparator sort over `(salience(b) ?? 0) - (salience(a) ?? 0)`, so
+    // a NaN salience (a row without a number importance) lands where V8 puts
+    // it. The (id, memory) pairs ride through the sort so the stamp sees the
+    // selected ids.
     let mut selected = memory_map;
-    selected.sort_by(|a, b| {
-        b.1.importance
-            .partial_cmp(&a.1.importance)
-            .unwrap_or(std::cmp::Ordering::Equal)
+    js_array_sort_by(&mut selected, |a, b| {
+        salience_by_id.get(&b.0).copied().unwrap_or(0.0)
+            - salience_by_id.get(&a.0).copied().unwrap_or(0.0)
     });
     selected.truncate(limit);
 
     // The greeting is composed from exactly these — they count as accessed
-    // (v4 `3f7320138` F6; awaited inline, P4.D268 R-D).
+    // (v4 `stampAccessed`, the recall pipeline's one `lastAccessedAt` writer).
     let ids: Vec<String> = selected.iter().map(|(id, _)| id.clone()).collect();
-    crate::services::memory_access::mark_memories_accessed(db, speaking_character_id, &ids).await;
+    stamp_accessed(db, speaking_character_id, &ids).await;
 
     Ok(selected.into_iter().map(|(_, m)| m).collect())
 }

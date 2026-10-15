@@ -13,10 +13,13 @@
 //! profile; the canned distill text runs through each side's REAL parse. Floats
 //! compare at 1e-12. Elowen is the searched character (7 memories); Pip has none
 //! (the search-empty-signals-flow arm). The whole outcome is diffed:
-//! `distillPrompt` (the verbatim messages handed to the cheap LLM),
-//! `preSearchedMemories` (id/order + score/effectiveWeight/rawWeight/
-//! recallAdjustment — the recall-context multipliers prove the assembled search
-//! invocation transitively) and `recallSignals` (the parsed distill).
+//! `distillPrompt` (the verbatim messages handed to the cheap LLM) and, since
+//! P4.D291 (v4 Phase E, `584d28164`), `preRecall` — the query summarised (text,
+//! the parsed signals, the ONE embedding's vector + provider, each probe and
+//! whether it embedded, anchors, window, `retrospective`), the candidates and
+//! the ranked rows (id/order + score/salience/recallAdjustment — the
+//! recall-context multipliers prove the assembled search invocation
+//! transitively) and the search's stage trace.
 //!
 //! ## The uncensored reroute — the P4.D141 blind spot, CLOSED (P4.68)
 //!
@@ -118,8 +121,8 @@ use quilltap_core::model::wire::CannedWireTransport;
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::dangerous_content::resolver::resolve_stored_concierge_settings;
 use quilltap_core::services::embedding_provider::ApiEmbeddingProvider;
-use quilltap_core::services::memory_service::SemanticSearchResult;
 use quilltap_core::services::pre_compute::{proactive_recall_task, ProactiveRecallInput};
+use quilltap_core::services::recall::RecallCandidate;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
@@ -186,17 +189,11 @@ struct OracleRow {
     /// when the task bailed before distilling.
     #[serde(rename = "distillPrompt")]
     distill_prompt: Value,
-    #[serde(rename = "preSearchedMemories")]
-    pre_searched_memories: Value,
-    #[serde(rename = "recallSignals")]
-    recall_signals: Value,
-    /// P4.D95 (v4 `870a57fa`): `{query, embedding}` the proactive search
-    /// embedded, or `null`. A stale (pre-`870a57fa`) NDJSON has no such key —
-    /// `#[serde(default)]` would then silently compare `null` against the Rust
-    /// side's real vector, so the field is REQUIRED and a stale oracle fails to
-    /// parse by name.
-    #[serde(rename = "queryEmbedding")]
-    query_embedding: Value,
+    /// P4.D291: `{query, candidates, ranked, trace}` or `null`. REQUIRED — a
+    /// stale (pre-Phase-E) NDJSON has no such key and must fail to parse by
+    /// name rather than compare `null` against the Rust side's real recall.
+    #[serde(rename = "preRecall")]
+    pre_recall: Value,
     /// P4.68: `{provider, modelName, baseUrl}` the cheap-LLM executor ran with,
     /// or `null` when no distill happened. REQUIRED for the same reason
     /// `queryEmbedding` is — a stale NDJSON must fail to parse by name rather
@@ -269,8 +266,8 @@ fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
 }
 
-/// Normalize v5's `SemanticSearchResult` list to the oracle's emitted shape.
-fn normalize_memories(results: &[SemanticSearchResult]) -> Value {
+/// Normalize v5's `RecallCandidate` list to the oracle's emitted shape.
+fn normalize_memories(results: &[RecallCandidate]) -> Value {
     Value::Array(
         results
             .iter()
@@ -288,8 +285,7 @@ fn normalize_memories(results: &[SemanticSearchResult]) -> Value {
                     "id": r.memory.get("id").cloned().unwrap_or(Value::Null),
                     "score": r.score,
                     "usedEmbedding": r.used_embedding,
-                    "effectiveWeight": r.effective_weight,
-                    "rawWeight": r.raw_weight,
+                    "salience": r.salience,
                     "recallAdjustment": recall_adjustment,
                 })
             })
@@ -490,12 +486,6 @@ async fn precompute_matches_oracle() {
         let outcome =
             proactive_recall_task(&db, &embedding, &completion, &executor, &input, &mut emit).await;
 
-        // Reparse the memories through serde so both sides share the same
-        // float-parse canonicalization (the build-context precedent).
-        let (mems, sigs, qemb) = match outcome {
-            Some(o) => (o.memories, o.signals, o.query_embedding),
-            None => (None, None, None),
-        };
         let mut got = Map::new();
         got.insert(
             "distillPrompt".to_string(),
@@ -509,28 +499,37 @@ async fn precompute_matches_oracle() {
                 None => Value::Null,
             },
         );
+        // Reparse through serde so both sides share the same float-parse
+        // canonicalization (the build-context precedent).
+        let reparse = |v: Value| -> Value {
+            serde_json::from_str(&serde_json::to_string(&v).unwrap()).unwrap()
+        };
         got.insert(
-            "preSearchedMemories".to_string(),
-            match &mems {
-                Some(v) => {
-                    let text = serde_json::to_string(&normalize_memories(v)).unwrap();
-                    serde_json::from_str(&text).unwrap()
+            "preRecall".to_string(),
+            match &outcome {
+                Some(pre) => {
+                    let q = &pre.query;
+                    reparse(json!({
+                        "query": {
+                            "text": q.text,
+                            "signals": q.signals.as_ref().map_or(Value::Null, |s| s.signals_json()),
+                            "embedding": q.embedding.as_ref().map_or(Value::Null, |e| json!({
+                                "vector": e.embedding.iter().map(|f| *f as f64).collect::<Vec<_>>(),
+                                "provider": e.provider,
+                            })),
+                            "probes": q.probes.iter().map(|p| json!({
+                                "text": p.text,
+                                "embedded": p.embedding.is_some(),
+                            })).collect::<Vec<_>>(),
+                            "anchors": q.anchors,
+                            "window": q.window.as_ref().map_or(Value::Null, |w| json!({ "from": w.from, "to": w.to })),
+                            "retrospective": q.retrospective,
+                        },
+                        "candidates": normalize_memories(&pre.candidates),
+                        "ranked": pre.ranked.as_deref().map_or(Value::Null, normalize_memories),
+                        "trace": serde_json::to_value(&pre.trace).unwrap(),
+                    }))
                 }
-                None => Value::Null,
-            },
-        );
-        got.insert(
-            "recallSignals".to_string(),
-            match &sigs {
-                Some(s) => s.signals_json(),
-                None => Value::Null,
-            },
-        );
-        // P4.D95: the captured query vector (v4 `preSearchedQueryEmbedding`).
-        got.insert(
-            "queryEmbedding".to_string(),
-            match &qemb {
-                Some(q) => json!({ "query": q.query, "embedding": q.embedding }),
                 None => Value::Null,
             },
         );
@@ -554,21 +553,19 @@ async fn precompute_matches_oracle() {
 
         let want = json!({
             "distillPrompt": oracle.distill_prompt,
-            "preSearchedMemories": oracle.pre_searched_memories,
-            "recallSignals": oracle.recall_signals,
-            "queryEmbedding": oracle.query_embedding,
+            "preRecall": oracle.pre_recall,
             "cheapSelectionUsed": oracle.cheap_selection_used,
         });
 
         // === P4.D268: pool-size rows (append-only) ===
-        // The pool rows compare `preSearchedMemories` by LENGTH + the SORTED id
-        // set — insensitive to P4.D267's ranking (R-G / R-E); every other field
-        // is compared whole as for any case.
+        // The pool rows compare `preRecall.candidates` (and `ranked`) by LENGTH
+        // + the SORTED id set — insensitive to P4.D267's ranking (R-G / R-E);
+        // every other field is compared whole as for any case.
         if name.starts_with("p4d268-pool") {
             let ids = |v: &Value| -> Vec<String> {
                 let mut ids: Vec<String> = v
                     .as_array()
-                    .unwrap_or_else(|| panic!("{name}: preSearchedMemories is not a list: {v}"))
+                    .unwrap_or_else(|| panic!("{name}: candidates is not a list: {v}"))
                     .iter()
                     .map(|m| m["id"].as_str().expect("memory id").to_string())
                     .collect();
@@ -576,22 +573,25 @@ async fn precompute_matches_oracle() {
                 ids
             };
             let (got_ids, want_ids) = (
-                ids(&got["preSearchedMemories"]),
-                ids(&want["preSearchedMemories"]),
+                ids(&got["preRecall"]["candidates"]),
+                ids(&want["preRecall"]["candidates"]),
             );
             assert!(
                 want_ids.len() > 10,
                 "{name}: the pool must exceed the retired 10-cap: {want_ids:?}"
             );
+            assert_eq!(got_ids.len(), want_ids.len(), "{name}: candidates length");
+            assert_eq!(got_ids, want_ids, "{name}: candidates id set");
             assert_eq!(
-                got_ids.len(),
-                want_ids.len(),
-                "{name}: preSearchedMemories length"
+                ids(&got["preRecall"]["ranked"]),
+                ids(&want["preRecall"]["ranked"]),
+                "{name}: ranked id set"
             );
-            assert_eq!(got_ids, want_ids, "{name}: preSearchedMemories id set");
             let strip = |v: &Value| {
                 let mut v = v.clone();
-                v.as_object_mut().unwrap().remove("preSearchedMemories");
+                let pre = v["preRecall"].as_object_mut().unwrap();
+                pre.remove("candidates");
+                pre.remove("ranked");
                 v
             };
             assert_value_eq(&strip(&got), &strip(&want), "", name);

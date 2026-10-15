@@ -663,7 +663,7 @@ pub(crate) struct TurnToolContextArgs<'a> {
 /// `{ semantic: builtContext.debugMemories, interCharacter:
 /// builtContext.debugInterCharacterMemories, recap: builtContext.debugMemoryRecap }`);
 /// the `self_inventory` builder (`builders.ts:318–329`) then keeps only
-/// `{summary, importance, score, effectiveWeight}` per semantic entry and
+/// `{summary, importance, score, salience}` per semantic entry and
 /// `{aboutCharacterName, summary, importance}` per inter-character entry, which is
 /// exactly the [`LoadedSemanticMemory`] / [`LoadedInterCharacterMemory`] shape — so
 /// the narrowing happens here. An empty slate still yields a PRESENT context (v4
@@ -687,10 +687,7 @@ fn loaded_memories_from_debug(
                 .to_string(),
             importance: m.get("importance").and_then(Value::as_f64).unwrap_or(0.0),
             score: m.get("score").and_then(Value::as_f64).unwrap_or(0.0),
-            effective_weight: m
-                .get("effectiveWeight")
-                .and_then(Value::as_f64)
-                .unwrap_or(0.0),
+            salience: m.get("salience").and_then(Value::as_f64).unwrap_or(0.0),
         })
         .collect();
     let inter_character = inter_character
@@ -2364,7 +2361,7 @@ where
         )
         .filter(|name| !name.is_empty())
         .collect();
-    let (pre_searched_memories, recall_signals, pre_searched_query_embedding) = {
+    let pre_recall = {
         // The two status frames (`recalling_keywords`, `recalling_memories`) v4 emits
         // from inside `proactiveRecallTask`; the closure stamps the character name/id.
         let mut emit_status = |stage: &str, message: String| {
@@ -2394,7 +2391,7 @@ where
             now_ms: input.clock.now_ms,
             server_tz: input.server_tz.as_deref(),
         };
-        match crate::services::pre_compute::proactive_recall_task(
+        crate::services::pre_compute::proactive_recall_task(
             db,
             deps.embedding,
             deps.completion,
@@ -2403,10 +2400,6 @@ where
             &mut emit_status,
         )
         .await
-        {
-            Some(outcome) => (outcome.memories, outcome.signals, outcome.query_embedding),
-            None => (None, None, None),
-        }
     };
 
     // --- Build context (orchestrator.service.ts:908–1010) ---
@@ -2483,13 +2476,13 @@ where
         // (v4 orchestrator.service.ts:1030 threads `turnSkip` through
         // `buildMessageContext` into buildContext).
         turn_skip: turn_skip.clone(),
-        // Proactive memory recall results (v4 orchestrator.service.ts:1075-1076 pass
-        // `preSearchedMemories` / `recallSignals` into `buildMessageContext`, P4.19).
-        pre_searched_memories,
-        recall_signals,
-        // v4 `870a57fa` threads the proactive search's vector on to buildContext
-        // so the per-turn conversation-summary list can reuse it.
-        pre_searched_query_embedding,
+        // The proactive pass's recall (v4 `preRecall`, `584d28164`): its query,
+        // distilled and embedded once, and what that query found — reused, never
+        // re-distilled or re-embedded.
+        pre_recall,
+        // v4 `provider: connectionProfile.provider` — the recall renderers'
+        // token rate (R-T).
+        provider: json_str(&effective_profile_row, "provider"),
     });
 
     // v4 `buildMessageContext` (context-builder.service.ts): the wrapper that runs
@@ -2811,6 +2804,9 @@ where
         // partial IS a persisted turn, so the rows it carried are spent.
         built_context.inform_row_ids.clone(),
         // === end P4.D205 ===
+        // v4 `mailAlertsOwed: builtContext.mailAlertsOwed` (bug 227): a
+        // preserved partial delivered this turn's letters too.
+        built_context.mail_alerts_owed.clone(),
     );
 
     let previous_response_id =
@@ -3480,6 +3476,7 @@ where
                         attachment_results: streaming_state.attachment_results.clone(),
                         provider: effective_profile.provider.clone(),
                         model_name: effective_profile.model_name.clone(),
+                        mail_alerts_owed: built_context.mail_alerts_owed.clone(),
                     },
                 )
                 .await;
@@ -3568,6 +3565,10 @@ where
                 // the finalizer to consume against the persisted message.
                 inform_row_ids: built_context.inform_row_ids.clone(),
                 // === end P4.D205 ===
+                // The turn's recall record (v4 `builtContext.recallDebugLog`)
+                // and its announced letters (bug 227).
+                recall_debug_log: built_context.recall_debug_log.clone(),
+                mail_alerts_owed: built_context.mail_alerts_owed.clone(),
                 chat: finalizer_chat,
                 character: finalizer_character,
                 character_participant: finalizer_participant,
@@ -3677,6 +3678,7 @@ where
             whisper,
             tool_messages,
             generated_image_paths,
+            built_context.mail_alerts_owed.as_ref(),
         )
         .await?;
 
@@ -3840,6 +3842,9 @@ struct HandleTurnSkipParams<'a> {
     attachment_results: Option<Value>,
     provider: String,
     model_name: String,
+    /// This turn's announced letters: a deliberate pass still read them (v4
+    /// `mailAlertsOwed`, bug 227).
+    mail_alerts_owed: Option<crate::post_office::mailbox::MailAlertsOwed>,
 }
 
 /// "Nothing to add" turn-skipping — the skip path (v4 `handleTurnSkip`).
@@ -3854,6 +3859,16 @@ async fn handle_turn_skip(
     sink: &(impl EventSink + Sync),
     params: HandleTurnSkipParams<'_>,
 ) -> Result<ProcessMessageResult, DbError> {
+    // A pass is an answer: the character read its mail and chose to say
+    // nothing. Mark the letters so the next turn does not announce them again.
+    crate::post_office::mailbox::mark_mail_alerts_delivered(
+        db,
+        params.mail_alerts_owed.as_ref(),
+        params.chat_id,
+        crate::post_office::mailbox::MailAlertsVia::TurnSkip,
+    )
+    .await;
+
     // Post the Host announcement (errors swallowed by the writer contract).
     let host_message = crate::services::host_notifications::post_host_turn_pass_announcement(
         db,
@@ -3964,32 +3979,48 @@ async fn persist_tools_only(
     whisper: ToolWhisperContext,
     tool_messages: Vec<ToolMessage>,
     generated_image_paths: Vec<GeneratedImage>,
+    mail_alerts_owed: Option<&crate::post_office::mailbox::MailAlertsOwed>,
 ) -> Result<SaveToolMessagesResult, DbError> {
-    let chat_id = chat_id.to_string();
+    let chat_id_owned = chat_id.to_string();
     let user_id = user_id.to_string();
     let character_id = character_id.to_string();
     let participant_id = participant_id.to_string();
+    let result = db
+        .write(move |writers| {
+            save_tool_messages(
+                writers.main(),
+                &chat_id_owned,
+                &user_id,
+                &tool_messages,
+                &generated_image_paths,
+                Some(&character_id),
+                Some(&participant_id),
+                Some(&whisper),
+            )
+        })
+        .await?;
+    // The model read this turn's mail and acted (tools ran); the turn is kept
+    // (v4 `orchestrator.service.ts:1798`, bug 227 — between the tool save and
+    // the `updatedAt` bump).
+    crate::post_office::mailbox::mark_mail_alerts_delivered(
+        db,
+        mail_alerts_owed,
+        chat_id,
+        crate::post_office::mailbox::MailAlertsVia::ToolOnly,
+    )
+    .await;
+    // v4: `await repos.chats.update(chatId, { updatedAt: new Date()... })`.
+    let chat_id_owned = chat_id.to_string();
     db.write(move |writers| {
-        let w = writers.main();
-        let result = save_tool_messages(
-            w,
-            &chat_id,
-            &user_id,
-            &tool_messages,
-            &generated_image_paths,
-            Some(&character_id),
-            Some(&participant_id),
-            Some(&whisper),
-        )?;
-        // v4: `await repos.chats.update(chatId, { updatedAt: new Date()... })`.
         let update = crate::db::chats::ChatUpdate {
             updated_at: Some(crate::clock::now_iso()),
             ..Default::default()
         };
-        w.chats().update(&chat_id, &update)?;
-        Ok(result)
+        writers.main().chats().update(&chat_id_owned, &update)?;
+        Ok(())
     })
-    .await
+    .await?;
+    Ok(result)
 }
 
 /// Build the summary service's [`context_summary::CheapLlmSettings`] from the
@@ -4476,20 +4507,13 @@ pub(crate) struct BuildContextArgs<'a> {
     /// control (v4 `turnSkip`, b90cd1f5). `None` for the sibling entry points
     /// (regenerate-swipe) that never offer the pass.
     pub turn_skip: Option<build_context::TurnSkip>,
-    /// The proactive pre-compute distill's semantic-search results (v4
-    /// `preSearchedMemories`, P4.19). When non-empty, buildContext takes the
-    /// `'pre-searched'` memory path and skips its own fallback distill. `None` for
-    /// the sibling entry points (regenerate-swipe) that don't run the proactive task.
-    pub pre_searched_memories: Option<Vec<crate::services::memory_service::SemanticSearchResult>>,
-    /// The proactive pre-compute distill's turn-level recall signals (v4
-    /// `recallSignals`, P4.19), seeding the retrospective cadence on both memory
-    /// paths. `None` for the sibling entry points.
-    pub recall_signals: Option<crate::services::memory_recap::distill::DistilledSearch>,
-    /// The query text + vector the proactive memory search embedded (v4
-    /// `preSearchedQueryEmbedding`, `870a57fa`). Reused — never re-embedded — by
-    /// the per-turn conversation-summary list when the pre-searched memories are
-    /// the ones this turn uses. `None` for the sibling entry points.
-    pub pre_searched_query_embedding: Option<crate::services::memory_service::SearchQueryEmbedding>,
+    /// The proactive pass's recall (v4 `preRecall`, `584d28164`): its query and
+    /// what that query found. `None` for the sibling entry points
+    /// (regenerate-swipe) that don't run the proactive task.
+    pub pre_recall: Option<crate::services::recall::assemble::PreRecall>,
+    /// The effective connection profile's provider (v4 `provider:
+    /// connectionProfile.provider`) — the recall renderers' token rate.
+    pub provider: Option<String>,
     // === P4.D205 (v4 `e7d77bb60`) ===
     /// Swipe re-apply (v4 `regenerate-swipe.service.ts:146-155`). `None` on
     /// every ordinary turn; the swipe path supplies the target message plus its
@@ -4591,8 +4615,10 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         roleplay_template: args.roleplay_template.clone(),
         embedding_profile_id: None,
         skip_memories: false,
-        // v4 `buildMessageContext` passes `minMemoryImportance: 0.5`.
-        min_memory_importance: 0.5,
+        // v4 `buildMessageContext` passes `minMemoryImportance:
+        // RECALL_MIN_IMPORTANCE` (`context-builder.service.ts:1084`, `e0ac7493a`
+        // — 0.5 before Phase A).
+        min_memory_importance: crate::memory_scoring::RECALL_MIN_IMPORTANCE,
         responding_participant,
         all_participants,
         participant_characters,
@@ -4627,9 +4653,8 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         minutes_since_last_timestamp_announcement: None,
         autonomous_context_cap: args.autonomous_context_cap,
         turn_skip: args.turn_skip,
-        pre_searched_memories: args.pre_searched_memories,
-        recall_signals: args.recall_signals,
-        pre_searched_query_embedding: args.pre_searched_query_embedding,
+        pre_recall: args.pre_recall,
+        provider: args.provider,
     }
 }
 
@@ -5421,7 +5446,7 @@ mod tests {
             "summary": "winter ledger",
             "importance": 0.8,
             "score": 0.5,
-            "effectiveWeight": 0.4,
+            "salience": 0.4,
             // extra keys v4 carries through JSON.stringify but the builder drops:
             "memoryId": "m-1",
             "recallFired": true,
@@ -5441,7 +5466,7 @@ mod tests {
         assert_eq!(loaded.semantic[0].summary, "winter ledger");
         assert!((loaded.semantic[0].importance - 0.8).abs() < 1e-12);
         assert!((loaded.semantic[0].score - 0.5).abs() < 1e-12);
-        assert!((loaded.semantic[0].effective_weight - 0.4).abs() < 1e-12);
+        assert!((loaded.semantic[0].salience - 0.4).abs() < 1e-12);
         assert_eq!(loaded.inter_character.len(), 1);
         assert_eq!(loaded.inter_character[0].about_character_name, "Jeeves");
         assert_eq!(loaded.recap.as_deref(), Some("mid-way through the ledgers"));
@@ -5466,7 +5491,7 @@ mod tests {
                 summary: "a memory".to_string(),
                 importance: 0.7,
                 score: 0.3,
-                effective_weight: 0.2,
+                salience: 0.2,
             }],
             inter_character: Vec::new(),
             recap: Some("recap".to_string()),
@@ -5552,5 +5577,102 @@ mod tests {
         // never a panic.
         let nameless = serde_json::json!({ "id": "cp-2", "provider": "OPENAI", "modelName": "m" });
         assert_eq!(to_effective_profile(&nameless).name, "");
+    }
+}
+
+#[cfg(test)]
+mod tool_only_mail_mark_tests {
+    //! P4.D291 (bug 227, v4 `69d38dd60`): the `tool-only` delivery site.
+    //! `orchestrator_tier3` pins the finalizer / preserved-partial / turn-skip
+    //! marks through in-case letter plants, but v4's canned streams cannot
+    //! reach the tool-only branch (an empty reply sends the turn down the
+    //! empty-response recovery before any tool runs), so the branch's mark is
+    //! pinned here: `persist_tools_only` flips the turn's owed letters with
+    //! `via=tool-only`, on the caller thread, before the chat's `updatedAt`
+    //! bump.
+    use super::*;
+    use crate::db::runtime::{Db, DbPaths};
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    #[tokio::test]
+    async fn a_tool_only_turn_marks_its_letters_with_the_tool_only_via() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER)
+            .expect("provision a fresh instance");
+        let db = Db::open(
+            DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let vault = "a0000000-0000-4000-8000-0000000000aa".to_string();
+        let v = vault.clone();
+        let path = db
+            .write(move |w| {
+                let mount = w.mount_index().expect("mount present").connection();
+                mount
+                    .execute(
+                        "INSERT INTO doc_mount_points (id, name, mountType, createdAt, updatedAt) \
+                         VALUES (?1, 'Vault', 'database', '2026-01-01T00:00:00.000Z', \
+                         '2026-01-01T00:00:00.000Z')",
+                        [&v],
+                    )
+                    .map_err(DbError::from)?;
+                crate::post_office::mailbox::deliver_letter(
+                    mount,
+                    &crate::post_office::mailbox::DeliverLetterParams {
+                        recipient_vault_id: &v,
+                        from_name: "Jeeves",
+                        from_character_id: "c0000000-0000-4000-8000-0000000000bb",
+                        sent_at: "2026-01-02T01:00:00.000Z",
+                        body: "Tools ran on this one.",
+                        in_reply_to: None,
+                    },
+                )
+            })
+            .await
+            .unwrap();
+        let owed = crate::post_office::mailbox::MailAlertsOwed {
+            vault_id: vault.clone(),
+            paths: vec![path.clone()],
+        };
+        let (_, lines) = crate::test_support::global_capture::capture_async(persist_tools_only(
+            &db,
+            "chat-without-a-row",
+            "user-1",
+            "char-1",
+            "part-1",
+            ToolWhisperContext {
+                user_participant_id: None,
+                allow_cross_character_vault_reads: false,
+            },
+            Vec::new(),
+            Vec::new(),
+            Some(&owed),
+        ))
+        .await;
+        let marks: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains(" markMailAlertsDelivered "))
+            .collect();
+        assert_eq!(
+            marks,
+            vec![&format!(
+                "DEBUG quilltap::post_office::mailbox markMailAlertsDelivered \
+                 chatId=chat-without-a-row vaultId={vault} via=tool-only requested=1 marked=1"
+            )],
+            "{lines:#?}"
+        );
+        let v = vault.clone();
+        let unalerted = db
+            .read_mount_index(move |c| crate::post_office::mailbox::collect_unalerted_mail(c, &v))
+            .unwrap();
+        assert!(unalerted.is_empty(), "the letter is alerted: {unalerted:?}");
     }
 }

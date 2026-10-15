@@ -2565,7 +2565,14 @@
    "streamLabel": "single_basic",
    "cheapLLMSettings": false,
    "summaryCheck": false,
-   "respondingParticipant": null
+   "respondingParticipant": null,
+   "letter": {
+    "characterId": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+    "fromName": "Jeeves",
+    "fromCharacterId": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+    "sentAt": "2026-01-02T01:00:00.000Z",
+    "body": "The finalizer marks this one."
+   }
   },
   {
    "name": "continue_mode",
@@ -2586,7 +2593,14 @@
    "continueMode": false,
    "streamLabel": "empty_retry",
    "cheapLLMSettings": false,
-   "summaryCheck": false
+   "summaryCheck": false,
+   "letter": {
+    "characterId": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+    "fromName": "Jeeves",
+    "fromCharacterId": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+    "sentAt": "2026-01-02T01:00:00.000Z",
+    "body": "Nothing reached the model; this one waits."
+   }
   },
   {
    "name": "mid_stream_error",
@@ -2843,7 +2857,14 @@
    "streamLabel": "skip_fire",
    "cheapLLMSettings": false,
    "summaryCheck": false,
-   "respondingParticipant": "5f0a0001-0000-4000-8000-0000000000a1"
+   "respondingParticipant": "5f0a0001-0000-4000-8000-0000000000a1",
+   "letter": {
+    "characterId": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+    "fromName": "Jeeves",
+    "fromCharacterId": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+    "sentAt": "2026-01-02T01:00:00.000Z",
+    "body": "A pass still delivered this one."
+   }
   },
   {
    "name": "sentinel_prose",
@@ -3273,7 +3294,14 @@
    "streamLabel": "inform_consumed_by_preserved_partial",
    "cheapLLMSettings": false,
    "summaryCheck": false,
-   "expectThrow": true
+   "expectThrow": true,
+   "letter": {
+    "characterId": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+    "fromName": "Jeeves",
+    "fromCharacterId": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+    "sentAt": "2026-01-02T01:00:00.000Z",
+    "body": "A preserved partial delivered this one."
+   }
   },
   {
    "name": "inform_already_consumed_is_left_alone",

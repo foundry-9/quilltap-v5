@@ -4,8 +4,9 @@
  * Tier-3 ORACLE for the proactive pre-compute distill (P4.19): drives v4's REAL
  * `runPreContextPreCompute` (`lib/services/chat-message/pre-compute.service.ts`,
  * which runs the REAL `proactiveRecallTask` → the REAL
- * `extractMemorySearchKeywords` parse → the REAL `searchMemoriesSemantic`) over a
- * fresh copy of the committed episodic-recall fixture per case.
+ * `extractMemorySearchKeywords` parse → the REAL recall pipeline's
+ * `buildRecallQuery` + `searchRecall` — v4 Phase E, `584d28164`) over a fresh
+ * copy of the committed episodic-recall fixture per case.
  *
  * ONLY the cheap-LLM executor is mocked (`executeCheapLLMTask` — the corpus row's
  * canned distill text feeds v4's REAL parse callback; a `fail` row returns
@@ -16,11 +17,13 @@
  * distill TODAY line; the Rust side passes the same value as `now_ms`).
  *
  * Emits one NDJSON line per case:
- * `{ name, distillPrompt, preSearchedMemories, recallSignals }`.
- * `preSearchedMemories` is `null` (v4 undefined) or the ordered list of
- * `{ id, score, usedEmbedding, effectiveWeight, rawWeight, recallAdjustment }`;
- * `recallSignals` is `null` or v4's `MemorySearchExtraction` JSON. The search
- * path's `lastAccessedAt` bump never reaches the emitted shape.
+ * `{ name, distillPrompt, cheapSelectionUsed, preRecall }`. `preRecall` is
+ * `null` (v4 undefined) or `{ query, candidates, ranked, trace }` (P4.D291):
+ * the query summarised (`text`, the `signals` as v4 parsed them, the
+ * embedding's vector + provider or `null`, each probe's text and whether it
+ * embedded, the anchors, the window, `retrospective`), the candidates and the
+ * ranked rows as `{ id, score, usedEmbedding, salience, recallAdjustment }`,
+ * and the search's stage trace. Search stamps nothing.
  *
  * `distillPrompt` (P4.20) is the verbatim `LLMMessage[]` v4 handed the cheap-LLM
  * executor — `null` when the task bailed before distilling. Without it this
@@ -82,8 +85,7 @@ function normalizeMemories(pre: unknown): unknown {
     id: r.memory?.id ?? null,
     score: r.score,
     usedEmbedding: r.usedEmbedding,
-    effectiveWeight: r.effectiveWeight,
-    rawWeight: r.rawWeight,
+    salience: r.salience,
     recallAdjustment: r.recallAdjustment
       ? {
           multiplier: r.recallAdjustment.multiplier,
@@ -213,6 +215,12 @@ async function main(): Promise<void> {
     {
       const { rawQuery } = await import('@/lib/database/manager');
       for (const sql of (c as { plantSql?: string[] }).plantSql ?? []) await rawQuery(sql);
+      // P4.D291: v4's vector-store manager is a PROCESS singleton (bug 235) —
+      // it survives `jest.resetModules`, so an earlier case's cached vectors
+      // would hide this case's raw-SQL plants (production writes go through
+      // `memoryIndex.upsert`, which keeps the cache right). Drop it so the
+      // search loads this copy's rows, as v5's store-over-rows read does.
+      (await import('@/lib/memory/index-store')).memoryIndex.reloadAll();
     }
     // === end ===
     const { initializePlugins } = await import('@/lib/startup/plugin-initialization');
@@ -266,16 +274,27 @@ async function main(): Promise<void> {
         name: c.name,
         distillPrompt,
         cheapSelectionUsed,
-        preSearchedMemories: normalizeMemories(result.preSearchedMemories),
-        recallSignals: result.recallSignals ?? null,
-        // P4.D95 (v4 `870a57fa`): the vector the proactive search embedded,
-        // handed out through `captureQueryEmbedding`. It must survive BOTH
-        // return paths — the success slice AND the memories-`undefined`
-        // fall-through — and be absent when the task never embedded at all.
-        queryEmbedding: result.preSearchedQueryEmbedding
+        // P4.D291 (v4 `584d28164`): the proactive recall — the query it
+        // distilled and embedded ONCE, and what that query found.
+        preRecall: result.preRecall
           ? {
-              query: result.preSearchedQueryEmbedding.query,
-              embedding: Array.from(result.preSearchedQueryEmbedding.embedding),
+              query: {
+                text: result.preRecall.query.text,
+                signals: result.preRecall.query.signals ?? null,
+                embedding: result.preRecall.query.embedding
+                  ? {
+                      vector: Array.from(result.preRecall.query.embedding.embedding),
+                      provider: result.preRecall.query.embedding.provider,
+                    }
+                  : null,
+                probes: result.preRecall.query.probes.map((p: any) => ({ text: p.text, embedded: !!p.embedding })),
+                anchors: result.preRecall.query.anchors,
+                window: result.preRecall.query.window ?? null,
+                retrospective: result.preRecall.query.retrospective,
+              },
+              candidates: normalizeMemories(result.preRecall.candidates),
+              ranked: result.preRecall.ranked ? normalizeMemories(result.preRecall.ranked) : null,
+              trace: result.preRecall.trace ?? [],
             }
           : null,
       }),

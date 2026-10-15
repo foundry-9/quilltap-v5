@@ -175,8 +175,9 @@ pub struct LoadedSemanticMemory {
     pub summary: String,
     pub importance: f64,
     pub score: f64,
-    #[serde(rename = "effectiveWeight")]
-    pub effective_weight: f64,
+    /// `reinforcedImportance × decay` (v4 `salience`, in place of the retired
+    /// floored weight); an archive row reads `0`.
+    pub salience: f64,
 }
 
 /// One inter-character memory in [`LoadedMemoriesContext`] (v4 `interCharacter[]`

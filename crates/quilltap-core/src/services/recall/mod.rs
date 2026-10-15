@@ -14,9 +14,19 @@
 //!
 //! Search stamps nothing; `deliver` is the ONE writer of `lastAccessedAt`.
 
+pub mod assemble;
 pub mod context;
+pub mod deliver;
+pub mod gather;
+pub mod hydrate;
+pub mod query;
 pub mod rank;
+pub mod render;
+pub mod score;
+pub mod search;
+pub mod select;
 pub mod types;
 
 pub use context::RecallContextInput;
+pub use query::RecallQuery;
 pub use types::{RecallCandidate, RecallPool, RecallTrace, RecallTraceEntry, RenderedLine};

@@ -302,8 +302,9 @@ async fn first_message_context_matches_oracle() {
         // Compare only the payload fields (strip the label).
         let mut want_payload = want.clone();
         want_payload.as_object_mut().unwrap().remove("label");
-        // P4.D268 (v4 `3f7320138` F6): the delivery stamp — `[Memory] Marking
-        // memories accessed {characterId, count}` per stamped participant, in
+        // P4.D268 (v4 `3f7320138` F6): the delivery stamp — since P4.D291 (v4
+        // `584d28164`) recall's ONE writer, `[Recall] Stamping delivered
+        // memories accessed {characterId, count}`, per stamped participant, in
         // order — compared beside the payload.
         let want_access = want_payload
             .as_object_mut()
@@ -311,7 +312,7 @@ async fn first_message_context_matches_oracle() {
             .remove("accessLog")
             .unwrap_or_else(|| panic!("case {}: no accessLog — regenerate the oracle", c.label));
         assert_eq!(got, want_payload, "case {} diverged", c.label);
-        const MSG: &str = "[Memory] Marking memories accessed";
+        const MSG: &str = "[Recall] Stamping delivered memories accessed";
         let got_access: Vec<String> = lines.iter().filter(|l| l.contains(MSG)).cloned().collect();
         let want_access: Vec<String> = want_access
             .as_array()
@@ -323,7 +324,7 @@ async fn first_message_context_matches_oracle() {
                 let keys: Vec<&str> = f.as_object().unwrap().keys().map(String::as_str).collect();
                 assert_eq!(keys, ["characterId", "count"], "v4's key order moved");
                 format!(
-                    "DEBUG quilltap::memories {MSG} characterId={} count={}",
+                    "DEBUG quilltap::recall {MSG} characterId={} count={}",
                     f["characterId"].as_str().unwrap(),
                     f["count"]
                 )

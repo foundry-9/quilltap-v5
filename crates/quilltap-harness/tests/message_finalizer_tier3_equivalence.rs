@@ -838,6 +838,9 @@ fn message_finalizer_tier3_matches_oracle() {
         let confirmation = NoAnswerConfirmation;
 
         let opts = FinalizeOptions {
+            // P4.D291: no recall record and no letters owed on this corpus.
+            recall_debug_log: None,
+            mail_alerts_owed: None,
             // P4.D205: this corpus plants no informs, so the finalizer's
             // consumption block is skipped — the neutrality leg for it.
             inform_row_ids: Vec::new(),

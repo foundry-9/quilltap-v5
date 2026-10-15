@@ -47,8 +47,19 @@
 //! inform block as a trailing context section` debug lines; the Rust side
 //! captures `build_context`'s own through `global_capture` and compares level,
 //! target, message, key order and values (`rowIds` parsed from `rowIdsJson`),
-//! with every block-less op the silence leg. The Suparṇā-mail-vs-inform order
-//! stays a MEASURED GAP (no op carries unalerted mail; see `build_context.rs`).
+//! with every block-less op the silence leg.
+//!
+//! P4.D291 (v4 `584d28164` + bug 227 `69d38dd60` + bug 199 `124c8aca3`): the
+//! recall is ONE assemble; ops carry `preRecall` (the query built by the REAL
+//! `build_recall_query`) in place of the retired pre-searched options; a
+//! `letter` op delivers mail into the responder's vault through the REAL
+//! mailbox (new-message, continue, swipe-skipped, and a chained turn pinning
+//! recall → mail → inform in the ONE trailing order — the Suparṇā-mail-vs-
+//! inform gap this header once recorded is CLOSED); every op compares the ids
+//! delivery STAMPED and the letter the build left unalerted (it flips nothing);
+//! the delivery lines are Phase E's (`Recall assembled` with `durationMs`
+//! masked, the one writer's stamp, `[Recall] Delivered`), and `BuiltContext`
+//! carries `mailAlertsOwed` and `recallDebugLog` whole.
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout). `TZ=UTC` is
 //! REQUIRED on BOTH stages — this is a distill-transitive family (the P4.d26
@@ -93,7 +104,6 @@ use quilltap_core::services::build_context::{
 };
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::memory_recap::distill::{DistillTimeRange, DistilledSearch};
-use quilltap_core::services::memory_service::SemanticSearchResult;
 use quilltap_core::system_prompt::{Character as SysChar, UserCharacter};
 use quilltap_core::test_support::global_capture;
 use serde::Deserialize;
@@ -177,22 +187,19 @@ struct SpecOp {
     /// compression call — proven by the completion provider recording no compression key).
     #[serde(default)]
     cached_compression: Option<SpecCachedCompression>,
-    /// P4.19: the proactive pre-compute distill's outcome. When present, buildContext
-    /// takes the 'pre-searched' memory path (these become the dynamic head; the
-    /// fallback distill is skipped) and `recall_signals` seeds the retro head sizing.
+    /// P4.19 / P4.D291 (v4 `584d28164`): the proactive pre-compute's outcome as
+    /// `BuildContextInput::pre_recall` — the query built by the REAL
+    /// `build_recall_query` from these signals (its embedding from the canned
+    /// table), the candidates synthesized from real memory rows with the spec's
+    /// score + salience. buildContext's recall then takes the 'pre-searched'
+    /// path and skips its own distillation.
     #[serde(default)]
-    pre_searched_memories: Vec<SpecPreSearched>,
-    #[serde(default)]
-    recall_signals: Option<SpecRecallSignals>,
+    pre_recall: Option<SpecPreRecall>,
     /// P4.D95 (v4 `870a57fa`): the instance-wide recall setting this op runs
     /// under. Written through the REAL setter before EVERY op (absent = `false`)
     /// so the row can never leak between ops — they share one database copy.
     #[serde(default)]
     per_turn_conversation_summaries: bool,
-    /// P4.D95: `options.preSearchedQueryEmbedding` — the vector the proactive
-    /// recall already embedded, for the pre-searched memory path.
-    #[serde(default)]
-    pre_searched_query_embedding: Option<SpecQueryEmbedding>,
     /// P4.D95: run the REAL memory recap (the cadence's stand-down arm).
     #[serde(default)]
     generate_memory_recap: bool,
@@ -204,6 +211,10 @@ struct SpecOp {
     /// P4.D268: raw SQL planted before the op, identically on both sides.
     #[serde(default)]
     plant_sql: Vec<String>,
+    /// P4.D291 (bug 227): a letter delivered into the responder's vault through
+    /// the REAL mailbox before the op, discarded after it.
+    #[serde(default)]
+    letter: Option<SpecLetter>,
     /// P4.D268: raw SQL run after the op's dumps (a plant never leaks forward).
     #[serde(default)]
     unplant_sql: Vec<String>,
@@ -211,18 +222,26 @@ struct SpecOp {
 
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct SpecQueryEmbedding {
-    query: String,
-    embedding: Vec<f32>,
+struct SpecLetter {
+    from_name: String,
+    from_character_id: String,
+    sent_at: String,
+    body: String,
 }
 
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct SpecPreSearched {
+struct SpecPreRecall {
+    signals: SpecRecallSignals,
+    candidates: Vec<SpecCandidate>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SpecCandidate {
     id: String,
     score: f64,
-    effective_weight: f64,
-    raw_weight: f64,
+    salience: f64,
 }
 
 #[derive(Deserialize, Clone)]
@@ -236,6 +255,8 @@ struct SpecRecallSignals {
     time_range: Option<SpecTimeRange>,
     #[serde(default)]
     entities: Vec<String>,
+    #[serde(default)]
+    paraphrase: Option<String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -567,6 +588,8 @@ async fn build_context_tier3_matches_oracle() {
                     serde_json::json!({
                         "whispers": v["whispers"].clone(),
                         "recallHistory": v["recallHistory"].clone(),
+                        "stamped": v["stamped"].clone(),
+                        "unalertedMail": v["unalertedMail"].clone(),
                     }),
                 );
             }
@@ -862,6 +885,66 @@ async fn build_context_tier3_matches_oracle() {
             None => (None, None),
         };
 
+        // P4.D291: the op's pre-computed recall (v4 `options.preRecall`).
+        let pre_recall = match &op.pre_recall {
+            None => None,
+            Some(spec_pre) => {
+                let sig = &spec_pre.signals;
+                let signals = DistilledSearch {
+                    keywords: sig.keywords.clone(),
+                    paraphrase: sig.paraphrase.clone(),
+                    retrospective: sig.retrospective,
+                    time_range: sig.time_range.as_ref().map(|t| DistillTimeRange {
+                        from: t.from.clone(),
+                        to: t.to.clone(),
+                    }),
+                    entities: sig.entities.clone(),
+                    ..Default::default()
+                };
+                let mut trace = Vec::new();
+                let query = quilltap_core::services::recall::query::build_recall_query(
+                    &embedding,
+                    quilltap_core::services::recall::query::BuildRecallQueryInput {
+                        signals: Some(signals),
+                        ..quilltap_core::services::recall::query::BuildRecallQueryInput::plain(
+                            &spec.user_id,
+                            None,
+                            op.new_user_message.as_deref().unwrap_or(""),
+                        )
+                    },
+                    &mut trace,
+                )
+                .await;
+                let ids: Vec<String> = spec_pre.candidates.iter().map(|m| m.id.clone()).collect();
+                let rows = db
+                    .read_main(|c| memories_read::find_by_ids(c, &ids))
+                    .expect("read pre-recall memories");
+                let by_id: std::collections::HashMap<String, Value> = rows
+                    .into_iter()
+                    .filter_map(|r| {
+                        r.get("id")
+                            .and_then(Value::as_str)
+                            .map(|id| (id.to_string(), r.clone()))
+                    })
+                    .collect();
+                Some(quilltap_core::services::recall::assemble::PreRecall {
+                    query,
+                    candidates: spec_pre
+                        .candidates
+                        .iter()
+                        .map(|m| quilltap_core::services::recall::RecallCandidate {
+                            memory: by_id.get(&m.id).cloned().expect("pre-recall memory row"),
+                            score: m.score,
+                            used_embedding: true,
+                            salience: m.salience,
+                            recall_adjustment: None,
+                        })
+                        .collect(),
+                    ranked: None,
+                    trace: Vec::new(),
+                })
+            }
+        };
         let mut input = BuildContextInput {
             // P4.D205 / P4.106 item 1: absent = a fresh turn (the PENDING set);
             // the swipe op passes the target + its group (the CONSUMED set). The
@@ -954,63 +1037,12 @@ async fn build_context_tier3_matches_oracle() {
             now_ms: FIXED_NOW_MS,
             local_offset_minutes: 0,
             minutes_since_last_timestamp_announcement: None,
-            // P4.19: the proactive pre-compute outcome. Synthesize the
-            // SemanticSearchResults from real memory rows (identical JSON both
-            // sides) with the spec's scores/weights; recall_signals carries the
-            // parsed distill (only `retrospective` + episodic fields are read).
-            pre_searched_memories: if op.pre_searched_memories.is_empty() {
-                None
-            } else {
-                let ids: Vec<String> = op
-                    .pre_searched_memories
-                    .iter()
-                    .map(|m| m.id.clone())
-                    .collect();
-                let rows = db
-                    .read_main(|c| memories_read::find_by_ids(c, &ids))
-                    .expect("read pre-searched memories");
-                let by_id: std::collections::HashMap<String, Value> = rows
-                    .into_iter()
-                    .filter_map(|r| {
-                        r.get("id")
-                            .and_then(Value::as_str)
-                            .map(|id| (id.to_string(), r.clone()))
-                    })
-                    .collect();
-                Some(
-                    op.pre_searched_memories
-                        .iter()
-                        .map(|m| SemanticSearchResult {
-                            memory: by_id.get(&m.id).cloned().expect("pre-searched memory row"),
-                            score: m.score,
-                            used_embedding: true,
-                            effective_weight: m.effective_weight,
-                            raw_weight: m.raw_weight,
-                            recall_adjustment: None,
-                        })
-                        .collect(),
-                )
-            },
+            pre_recall: pre_recall.clone(),
+            provider: None,
             human_turn_message_ids: op
                 .human_turn_message_ids
                 .as_ref()
                 .map(|v| v.iter().cloned().collect()),
-            pre_searched_query_embedding: op.pre_searched_query_embedding.as_ref().map(|q| {
-                quilltap_core::services::memory_service::SearchQueryEmbedding {
-                    query: q.query.clone(),
-                    embedding: q.embedding.clone(),
-                }
-            }),
-            recall_signals: op.recall_signals.as_ref().map(|s| DistilledSearch {
-                keywords: s.keywords.clone(),
-                retrospective: s.retrospective,
-                time_range: s.time_range.as_ref().map(|t| DistillTimeRange {
-                    from: t.from.clone(),
-                    to: t.to.clone(),
-                }),
-                entities: s.entities.clone(),
-                ..Default::default()
-            }),
         };
 
         // P4.D50: seed `instance_settings['taboo']` for THIS op through the real
@@ -1122,6 +1154,46 @@ async fn build_context_tier3_matches_oracle() {
                         .map(str::to_string)
                 });
         }
+        // P4.D291: the op's letter, through the REAL mailbox (the oracle's
+        // `deliverLetter`), into the responder's vault.
+        let letter_at: Option<(String, String)> = match &op.letter {
+            None => None,
+            Some(l) => {
+                let cid = op.character_id.clone();
+                let vault = db
+                    .read_main(|main| {
+                        db.read_mount_index(|mount| {
+                            quilltap_core::db::characters_read::find_by_id(main, mount, &cid)
+                        })
+                    })
+                    .expect("read the responder")
+                    .and_then(|c| {
+                        c.get("characterDocumentMountPointId")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                    })
+                    .unwrap_or_else(|| panic!("{}: the responder has no vault", op.name));
+                let l = l.clone();
+                let v = vault.clone();
+                let path = db
+                    .write(move |w| {
+                        quilltap_core::post_office::mailbox::deliver_letter(
+                            w.mount_index().expect("mount present").connection(),
+                            &quilltap_core::post_office::mailbox::DeliverLetterParams {
+                                recipient_vault_id: &v,
+                                from_name: &l.from_name,
+                                from_character_id: &l.from_character_id,
+                                sent_at: &l.sent_at,
+                                body: &l.body,
+                                in_reply_to: None,
+                            },
+                        )
+                    })
+                    .await
+                    .unwrap_or_else(|e| panic!("{}: deliver the letter: {e}", op.name));
+                Some((vault, path))
+            }
+        };
         inform_read_counter::reset();
         // P4.D268: the archive cache is process-global and every op shares one
         // chat — reset it per op, as the oracle does.
@@ -1242,9 +1314,60 @@ async fn build_context_tier3_matches_oracle() {
             .expect("read chat")
             .and_then(|c| c.get("commonplaceRecallHistory").cloned())
             .unwrap_or(Value::Null);
+        // P4.D291: the ids delivery stamped this op (reset after, as the oracle
+        // does), and the letter the build left unalerted (bug 227).
+        let stamped: Vec<String> = db
+            .read_main(|c| {
+                let mut st = c.prepare(
+                    "SELECT \"id\" FROM \"memories\" WHERE \"lastAccessedAt\" IS NOT NULL ORDER BY \"id\"",
+                )?;
+                let rows = st.query_map([], |r| r.get::<_, String>(0))?;
+                Ok(rows.collect::<Result<Vec<_>, _>>()?)
+            })
+            .expect("read stamped ids");
+        db.write(|w| {
+            w.main()
+                .connection()
+                .execute(
+                    "UPDATE \"memories\" SET \"lastAccessedAt\" = NULL WHERE \"lastAccessedAt\" IS NOT NULL",
+                    [],
+                )
+                .map(|_| ())
+                .map_err(Into::into)
+        })
+        .await
+        .expect("reset the stamps");
+        let unalerted_mail: Value = match &letter_at {
+            None => Value::Null,
+            Some((vault, path)) => {
+                let v = vault.clone();
+                let paths: Vec<Value> = db
+                    .read_mount_index(move |c| {
+                        quilltap_core::post_office::mailbox::collect_unalerted_mail(c, &v)
+                    })
+                    .expect("collect the unalerted mail")
+                    .into_iter()
+                    .map(|l| Value::String(l.path))
+                    .collect();
+                let (v, p) = (vault.clone(), path.clone());
+                db.write(move |w| {
+                    quilltap_core::post_office::mailbox::discard_letter(
+                        w.mount_index().expect("mount present").connection(),
+                        &v,
+                        &p,
+                    )
+                    .map(|_| ())
+                })
+                .await
+                .expect("discard the letter");
+                Value::Array(paths)
+            }
+        };
         let got_side = serde_json::json!({
             "whispers": Value::Array(got_whispers),
             "recallHistory": got_history,
+            "stamped": stamped,
+            "unalertedMail": unalerted_mail,
         });
         assert_eq!(
             &got_side,
@@ -1355,12 +1478,19 @@ fn assert_inform_delivery_lines(op: &str, lines: &[String], want: &Value) {
 }
 
 /// P4.D268: the delivery lines this family compares — v4's own messages.
-const DELIVERY_MESSAGES: [&str; 4] = [
+/// P4.D291 (v4 `584d28164`): the pools line and the old stamp are RETIRED; the
+/// assemble's `[ContextManager] Recall assembled`, recall's ONE writer's stamp
+/// and `[Recall] Delivered` replace them.
+const DELIVERY_MESSAGES: [&str; 5] = [
     "[FrozenArchive] Composed archive",
     "[FrozenArchive] Computed archive",
-    "[ContextManager] Memory pools sized",
-    "[Memory] Marking memories accessed",
+    "[ContextManager] Recall assembled",
+    "[Recall] Stamping delivered memories accessed",
+    "[Recall] Delivered",
 ];
+
+/// A wall-clock field neither side can reproduce (R-L9): masked, never compared.
+const MASKED_FIELDS: [&str; 1] = ["durationMs"];
 
 /// P4.D268 (v4 `3f7320138` F5/F6/F7, `d58548051`): every delivery line
 /// `build_context` logged during the op, against v4's, in emission order —
@@ -1379,6 +1509,11 @@ fn assert_delivery_lines(op: &str, lines: &[String], want: &Value) -> Vec<(&'sta
                 let (k, v) = kv
                     .split_once('=')
                     .unwrap_or_else(|| panic!("{op}: bad field {kv:?} in {l}"));
+                let v = if MASKED_FIELDS.contains(&k) {
+                    "<masked>"
+                } else {
+                    v
+                };
                 (k.to_string(), v.to_string())
             })
             .collect();
@@ -1397,7 +1532,17 @@ fn assert_delivery_lines(op: &str, lines: &[String], want: &Value) -> Vec<(&'sta
                 .as_object()
                 .expect("fields object")
                 .iter()
-                .map(|(k, v)| (k.clone(), render(v)))
+                .map(|(k, v)| {
+                    if MASKED_FIELDS.contains(&k.as_str()) {
+                        return (k.clone(), "<masked>".to_string());
+                    }
+                    // An object / array rides the house `…Json` key (a tracing
+                    // field holds no structure), as its JSON.
+                    match v {
+                        Value::Object(_) | Value::Array(_) => (format!("{k}Json"), render(v)),
+                        _ => (k.clone(), render(v)),
+                    }
+                })
                 .collect();
             (w["message"].as_str().unwrap().to_string(), fields)
         })

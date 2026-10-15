@@ -110,12 +110,14 @@ async function main(): Promise<void> {
   const repos = getRepositories();
 
   // P4.D268 (v4 `3f7320138` F6): the delivery stamp's DEBUG line, captured off
-  // the logger singleton `memory-service.ts` imports (this registry generation).
+  // the logger singleton the stamp's module imports (this registry generation).
+  // P4.D291 (v4 `584d28164`): the ONE writer is now recall's `stampAccessed`
+  // (`lib/memory/recall/deliver.ts`), and its line is the one captured.
   const { logger } = await import('@/lib/logger');
   let accessLog: Array<{ message: string; fields: Record<string, unknown> }> = [];
   const priorDebug = (logger as unknown as { debug: (...a: unknown[]) => unknown }).debug;
   (logger as unknown as { debug: unknown }).debug = (message: string, fields?: unknown) => {
-    if (typeof message === 'string' && message === '[Memory] Marking memories accessed') {
+    if (typeof message === 'string' && message === '[Recall] Stamping delivered memories accessed') {
       accessLog.push(JSON.parse(JSON.stringify({ message, fields: fields ?? {} })));
     }
     return priorDebug.call(logger, message, fields);

@@ -61,8 +61,10 @@ use crate::services::carina_runner::{
     RunCarinaQueryOptions,
 };
 use crate::services::chat_events::{ChatEvent, EventSink};
-use crate::services::memory_service::{search_memories_semantic, SemanticSearchOptions};
 use crate::services::native_tool_loop::ToolCallDetector;
+use crate::services::recall::search::{
+    search_memories, RecallSearchOptions, SearchMemoriesOptions,
+};
 use crate::services::tool_build::{build_tools, BuildToolsInput};
 use crate::services::tool_execution::{
     create_tool_context, process_tool_calls, StatusContext, ToolRunner,
@@ -76,8 +78,6 @@ pub const MAX_TOOL_ITERATIONS: usize = 5;
 const CARINA_MEMORY_TOKEN_BUDGET: i64 = 1200;
 /// Upper bound on how many recalled memories to consider for the budget.
 const CARINA_MEMORY_LIMIT: usize = 12;
-/// Floor on memory importance for Carina recall (mirrors the per-turn head).
-const CARINA_MEMORY_MIN_IMPORTANCE: f64 = 0.3;
 
 /// Reserved `carinaMeta.answererId` for Brahma Console answers — v4
 /// `BRAHMA_CARINA_ANSWERER_ID`. A fixed RFC-4122 v4 UUID chosen so it can never
@@ -445,8 +445,16 @@ where
     }
 
     // The Commonplace Book whispers the answerer's own relevant memories.
-    if let Some(memory_recall) =
-        load_carina_memory_recall(deps, &answerer_id, &opts.question, &user_id, deps.now_ms).await
+    if let Some(memory_recall) = load_carina_memory_recall(
+        deps,
+        &answerer_id,
+        &opts.question,
+        &user_id,
+        Some(provider.as_str()),
+        &chat_id,
+        deps.now_ms,
+    )
+    .await
     {
         system_prompt.push_str(&format!("\n\n{memory_recall}"));
     }
@@ -1068,13 +1076,18 @@ fn load_prior_carina_exchanges(db: &Db, chat_id: &str, answerer_id: &str) -> Vec
 }
 
 /// v4 `loadCarinaMemoryRecall`: recall the answerer's own relevant memories and
-/// render them as a plain "you remember…" Commonplace-Book block. `None` when
-/// there is nothing to recall (or the lookup fails).
+/// render them as a plain "you remember…" Commonplace-Book block — `## Relevant
+/// Memories` (`render_relevant`, salience first, no provenance) at the
+/// answering profile's token rate. `None` when there is nothing to recall or
+/// the lookup fails — a memory miss must never block a reference answer.
+#[allow(clippy::too_many_arguments)]
 async fn load_carina_memory_recall<EMB, STR, TR, TD, SNK, BRA>(
     deps: &CarinaQueryDeps<'_, EMB, STR, TR, TD, SNK, BRA>,
     character_id: &str,
     question: &str,
     user_id: &str,
+    provider: Option<&str>,
+    chat_id: &str,
     now_ms: f64,
 ) -> Option<String>
 where
@@ -1085,62 +1098,77 @@ where
     SNK: EventSink,
     BRA: RunBrahmaConsole,
 {
-    let trimmed = question.trim();
+    let trimmed = crate::jsstr::js_trim(question);
     if trimmed.is_empty() {
         return None;
     }
-    let results = search_memories_semantic(
+    let results = match search_memories(
         deps.db,
         deps.embedding,
         character_id,
         trimmed,
-        &SemanticSearchOptions {
+        &SearchMemoriesOptions {
             user_id: user_id.to_string(),
+            // Always the default embedding profile, as the per-turn recall does.
             embedding_profile_id: None,
-            limit: Some(CARINA_MEMORY_LIMIT),
-            min_score: None,
-            min_importance: Some(CARINA_MEMORY_MIN_IMPORTANCE),
-            source: None,
-            about_character_id: None,
-            apply_literal_phrase_boost: false,
-            now_ms,
+            search: RecallSearchOptions {
+                limit: Some(CARINA_MEMORY_LIMIT),
+                min_importance: Some(crate::memory_scoring::RECALL_MIN_IMPORTANCE),
+                now_ms,
+                ..Default::default()
+            },
             ..Default::default()
         },
-        None,
     )
     .await
-    .ok()?;
+    {
+        Ok(results) => results,
+        Err(error) => {
+            tracing::warn!(
+                target: "quilltap::carina",
+                context = "carina",
+                chatId = %chat_id,
+                characterId = %character_id,
+                error = %crate::db::fallback::error_text(&error),
+                "[Carina] Memory recall failed; answering without it"
+            );
+            return None;
+        }
+    };
     if results.is_empty() {
         return None;
     }
-    let injector: Vec<crate::memory_injector::InjectorResult> =
-        results.iter().map(injector_result_from_search).collect();
     // The search runs over the answerer's whole store, so it surfaces what they
     // know about other people too — those lines must name their subject or the
-    // answerer reads them as their own life (v4 `d883a5ee1`, bug 122).
+    // answerer reads them as their own life (bug 122).
     let subject = crate::services::memory_subject::build_memory_subject_context(
         deps.db,
         character_id,
-        injector.iter().map(|r| r.memory.about_character_id.clone()),
+        results.iter().map(|r| {
+            r.memory
+                .get("aboutCharacterId")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        }),
     );
-    let formatted = crate::memory_injector::format_memories_for_context(
-        &injector,
+    let formatted = crate::services::recall::render::render_relevant(
+        &results,
         CARINA_MEMORY_TOKEN_BUDGET,
-        now_ms,
+        provider,
         &subject,
+        now_ms,
     );
     if formatted.content.is_empty() || formatted.memories_used == 0 {
         return None;
     }
-    // Only the delivered entries count as accessed (v4 `3f7320138` F6, the
-    // `!!id` filter; awaited inline, P4.D268 R-D).
+    // The block goes into the answerer's call whole: every rendered line is
+    // delivered.
     let delivered: Vec<String> = formatted
-        .debug_memories
+        .lines
         .iter()
-        .filter_map(|d| d.memory_id.clone())
-        .filter(|id| !id.is_empty())
+        .map(|l| l.memory_id.clone())
         .collect();
-    crate::services::memory_access::mark_memories_accessed(deps.db, character_id, &delivered).await;
+    crate::services::recall::deliver::stamp_accessed(deps.db, character_id, &delivered).await;
     Some(
         crate::services::commonplace_notifications::build_commonplace_llm_context(
             &crate::services::commonplace_notifications::CommonplaceParts {
@@ -1348,20 +1376,6 @@ fn to_carina_character(c: &Value) -> crate::system_prompt::Character {
         scenarios,
         system_prompts,
         ..Default::default()
-    }
-}
-
-/// Project a semantic-search result into the injector shape the memory formatter
-/// reads (mirrors `build_context`'s private `injector_result_from_search`).
-fn injector_result_from_search(
-    r: &crate::services::memory_service::SemanticSearchResult,
-) -> crate::memory_injector::InjectorResult {
-    crate::memory_injector::InjectorResult {
-        memory: crate::memory_injector::injector_memory_from_json(&r.memory),
-        score: r.score,
-        effective_weight: Some(r.effective_weight),
-        raw_weight: Some(r.raw_weight),
-        recall_adjustment: None,
     }
 }
 

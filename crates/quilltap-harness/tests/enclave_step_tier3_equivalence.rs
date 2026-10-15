@@ -69,7 +69,30 @@ use quilltap_core::enclave::step::{
 use quilltap_core::model::completion::{
     CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
 };
-use quilltap_core::model::embedding::CannedEmbeddingProvider;
+use quilltap_core::model::embedding::{
+    EmbeddingCallOptions, EmbeddingError, EmbeddingProvider, EmbeddingResult,
+};
+
+/// v4's oracle mock: every text embeds as `[0.1, 0.2, 0.3]`, provider
+/// `canned` (P4.D291 — the turn's recall record now carries `embedded`).
+struct FixedEmbedding;
+
+impl EmbeddingProvider for FixedEmbedding {
+    async fn generate_embedding_for_user(
+        &self,
+        _text: &str,
+        _user_id: &str,
+        _profile_id: Option<&str>,
+        _opts: EmbeddingCallOptions,
+    ) -> Result<EmbeddingResult, EmbeddingError> {
+        Ok(EmbeddingResult {
+            embedding: vec![0.1, 0.2, 0.3],
+            model: "canned".to_string(),
+            dimensions: 3,
+            provider: "canned".to_string(),
+        })
+    }
+}
 use quilltap_core::model::stream::{
     canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamParams, StreamUsage,
     StreamingCompletionProvider,
@@ -489,7 +512,7 @@ fn enclave_step_tier3_matches_oracle() {
             }),
         );
     }
-    let embedding = CannedEmbeddingProvider::new();
+    let embedding = FixedEmbedding;
     let bc_seams = RealBuildContextSeams { db: &db };
     let router =
         quilltap_core::services::dangerous_content::provider_routing::DangerContentRouter::new(

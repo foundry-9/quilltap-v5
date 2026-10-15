@@ -1191,6 +1191,7 @@ async fn primary_stream_tier3_matches_oracle() {
                     call.pre_generated_message_id.clone().unwrap(),
                     // P4.D205 / P4.106 item 2: the call's inform rows.
                     call.inform_row_ids.clone(),
+                    None,
                 );
                 let attached = call
                     .attached_files
@@ -1415,6 +1416,7 @@ async fn primary_stream_tier3_matches_oracle() {
                     call.pre_generated_message_id.clone().unwrap(),
                     // P4.D205 / P4.106 item 2: the call's inform rows.
                     call.inform_row_ids.clone(),
+                    None,
                 );
                 let marker = call.original_message.clone().unwrap_or_default();
                 let mut params = base_params_with_attachments(

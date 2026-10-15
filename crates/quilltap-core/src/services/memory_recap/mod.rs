@@ -1,12 +1,17 @@
-//! Memory recap (v4 `lib/memory/memory-recap.ts` + the two supporting cheap-LLM
-//! tasks `summarizeMemoryRecap` [`memory-tasks.ts`] and the vault
-//! conversation-summary search [`conversation-summary-search.ts`]).
+//! Memory recap (v4 `lib/memory/recall/recap.ts` at the `83334b9a5` pin — the
+//! fetch half — plus the narrative task `summarizeMemoryRecap`
+//! [`recall/recap-summary.ts`] and the vault conversation-summary search
+//! [`recall/conversations.ts`]).
 //!
 //! Generates a narrative summary of a character's recent memories to inject at
 //! the start of a conversation. Gathers memories by importance tier
 //! (high/medium/low), sends them to the cheap LLM for narrative summarization,
 //! builds the two vault-summary conversation lists (recent + relevant), and
-//! returns the assembled recap content.
+//! returns the assembled recap content. It is one of the turn's recall pools
+//! (`services::recall::assemble`): it leaves out the rows the frozen archive
+//! already carries (reading that many more per tier so the tiers stay full),
+//! and its relevant-conversations list rides the turn's one query embedding
+//! when there is one.
 //!
 //! Closes the `BuildContextSeams::resolve_memory_recap` seam (W4.6a). Everything
 //! model-facing rides the ported [`CheapLlmTaskExecutor`] + `EmbeddingProvider`;
@@ -21,7 +26,6 @@ use serde_json::Value;
 use crate::cheap_llm::{CheapLlmSelection, UncensoredFallbackOptions};
 use crate::db::runtime::Db;
 use crate::markdown::parse_frontmatter;
-use crate::memory_weighting::{format_relative_age, MemoryInputs};
 use crate::model::completion::{CompletionMessage, CompletionProvider};
 use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
@@ -50,10 +54,13 @@ const TIER_HIGH_LIMIT: i64 = 20;
 const TIER_MEDIUM_LIMIT: i64 = 10;
 const TIER_LOW_LIMIT: i64 = 5;
 
-/// v4 `MemoryRecapResult` (the subset build_context consumes — the content).
+/// v4 `MemoryRecapResult` (the subset the assemble stage consumes).
 #[derive(Clone, Debug, Default)]
 pub struct MemoryRecapResult {
     pub content: String,
+    /// The rows the narrative was built from (empty when no narrative was
+    /// produced). Not delivered in their own words, so never stamped.
+    pub memory_ids: Vec<String>,
 }
 
 /// v4 `rampLimit`: linear ramp from `min` (at `min_tokens` of context or less) to
@@ -432,6 +439,7 @@ async fn build_conversation_recall_lists<E: EmbeddingProvider>(
     user_id: &str,
     embedding_profile_id: Option<&str>,
     relevance_query: &str,
+    relevance_embedding: Option<&[f32]>,
     max_context: Option<i64>,
 ) -> String {
     let recent_limit = ramp_limit(
@@ -470,9 +478,10 @@ async fn build_conversation_recall_lists<E: EmbeddingProvider>(
             // not by a period. (The windowed caller is buildContext's
             // retrospective mini-recap.)
             None,
-            // The recap embeds its own relevance query (v4 passes no
-            // `precomputedEmbedding` here).
-            None,
+            // The vector already embedded for `relevance_query` (the turn's
+            // query), reused verbatim — never re-embedded (v4
+            // `relevanceEmbedding ?? null`).
+            relevance_embedding,
         )
         .await;
     }
@@ -571,7 +580,10 @@ async fn summarize_memory_recap<C: CompletionProvider>(
             .iter()
             .map(|m| {
                 let summary = m.get("summary").and_then(Value::as_str).unwrap_or("");
-                let age = format_relative_age(&memory_inputs(m), now_ms);
+                // v4 `formatMemoryAge` — the EVENT clock (`occurredAt` when
+                // present), byte-identical to the deleted `formatRelativeAge`
+                // otherwise.
+                let age = crate::services::recall::render::memory_age(m, now_ms);
                 format!("- [{age}] {summary}")
             })
             .collect::<Vec<_>>()
@@ -637,18 +649,33 @@ struct TieredMemories {
     low: Vec<Value>,
 }
 
-/// The recap inputs build_context already carries.
-pub struct MemoryRecapParams<'a> {
+/// v4 `MemoryRecapRequest`.
+pub struct MemoryRecapRequest<'a> {
     pub character_id: &'a str,
     pub character_name: &'a str,
+    /// The character's vault (the conversation lists search it).
     pub character_mount_point_id: Option<&'a str>,
+    /// Cheap LLM selection for the narrative.
     pub selection: &'a CheapLlmSelection,
     pub user_id: &'a str,
+    /// The chat, excluded from both conversation lists.
     pub chat_id: Option<&'a str>,
+    /// The uncensored understudy for dangerous chats.
     pub uncensored_fallback: Option<&'a UncensoredFallbackOptions<'a>>,
+    /// Connection profile maxContext; scales each conversation list (3 at 4K →
+    /// 10 at 32K).
     pub max_context: Option<i64>,
+    /// Free text describing the moment; drives the relevant list. Empty skips
+    /// it.
     pub relevance_query: &'a str,
+    /// The vector already embedded for `relevance_query` — reused, never
+    /// re-embedded.
+    pub relevance_embedding: Option<&'a [f32]>,
     pub embedding_profile_id: Option<&'a str>,
+    /// Rows another pool already delivers (the frozen archive); the narrative
+    /// is built without them.
+    pub exclude_ids: Option<&'a std::collections::HashSet<String>>,
+    /// The age labels' clock (v4 `new Date()`).
     pub now_ms: f64,
 }
 
@@ -666,36 +693,52 @@ pub fn digests_first(memories: Vec<Value>) -> Vec<Value> {
     first
 }
 
-/// v4 `generateMemoryRecap`. Fetches memories across importance tiers, summarizes
-/// via the cheap LLM, builds the two conversation lists from vault summaries, and
-/// assembles the recap content. Any error → `{ content: '' }` (best-effort).
+/// v4 `generateMemoryRecap(req)`. Fetches memories across importance tiers,
+/// leaves out `exclude_ids` (reading that many more per tier so the tiers stay
+/// full), summarizes via the cheap LLM, builds the two conversation lists from
+/// vault summaries, and assembles the recap content. Any error → `{ content:
+/// '', memoryIds: [] }` (best-effort).
 pub async fn generate_memory_recap<E: EmbeddingProvider, C: CompletionProvider>(
     db: &Db,
     embedding: &E,
     completion: &C,
     executor: &CheapLlmTaskExecutor,
-    params: &MemoryRecapParams<'_>,
+    params: &MemoryRecapRequest<'_>,
 ) -> MemoryRecapResult {
-    // Fetch memories across all three importance tiers.
+    // Fetch memories across all three importance tiers, past what another
+    // pool already carries.
+    let empty = std::collections::HashSet::new();
+    let exclude = params.exclude_ids.unwrap_or(&empty);
+    let extra = exclude.len() as i64;
     let tiered = {
         let cid = params.character_id.to_string();
         match db.read_main(move |conn| {
             crate::db::memories_read::find_recent_by_importance_tier(
                 conn,
                 &cid,
-                TIER_HIGH_LIMIT,
-                TIER_MEDIUM_LIMIT,
-                TIER_LOW_LIMIT,
+                TIER_HIGH_LIMIT + extra,
+                TIER_MEDIUM_LIMIT + extra,
+                TIER_LOW_LIMIT + extra,
             )
         }) {
             // Hot rows only (the repo guarantees it); digests lead the high
             // bucket so the narrative is built on consolidated knowledge
             // before loose shards (v4 `d58548051`).
-            Ok((high, medium, low)) => TieredMemories {
-                high: digests_first(high),
-                medium,
-                low,
-            },
+            Ok((high, medium, low)) => {
+                let keep = |rows: Vec<Value>, limit: i64| -> Vec<Value> {
+                    rows.into_iter()
+                        .filter(|m| {
+                            !exclude.contains(m.get("id").and_then(Value::as_str).unwrap_or(""))
+                        })
+                        .take(limit.max(0) as usize)
+                        .collect()
+                };
+                TieredMemories {
+                    high: digests_first(keep(high, TIER_HIGH_LIMIT)),
+                    medium: keep(medium, TIER_MEDIUM_LIMIT),
+                    low: keep(low, TIER_LOW_LIMIT),
+                }
+            }
             Err(_) => return MemoryRecapResult::default(),
         }
     };
@@ -710,6 +753,7 @@ pub async fn generate_memory_recap<E: EmbeddingProvider, C: CompletionProvider>(
         params.user_id,
         params.embedding_profile_id,
         params.relevance_query,
+        params.relevance_embedding,
         params.max_context,
     )
     .await;
@@ -734,6 +778,17 @@ pub async fn generate_memory_recap<E: EmbeddingProvider, C: CompletionProvider>(
         return MemoryRecapResult::default();
     }
 
+    let memory_ids = if narrative.is_empty() {
+        Vec::new()
+    } else {
+        tiered
+            .high
+            .iter()
+            .chain(tiered.medium.iter())
+            .chain(tiered.low.iter())
+            .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
+            .collect()
+    };
     let intro = format!(
         "## What You Remember\nAs {}, here is what you recall from your experiences and past conversations:",
         params.character_name
@@ -745,36 +800,10 @@ pub async fn generate_memory_recap<E: EmbeddingProvider, C: CompletionProvider>(
     if !conversations_block.is_empty() {
         sections.push(conversations_block);
     }
+    let content = sections.join("\n\n");
     MemoryRecapResult {
-        content: sections.join("\n\n"),
-    }
-}
-
-/// Build [`MemoryInputs`] from a memory `Value` (the reader shared with the
-/// frozen-archive / weighting paths).
-fn memory_inputs(v: &Value) -> MemoryInputs {
-    let num = |k: &str| v.get(k).and_then(Value::as_f64);
-    let ms = |k: &str| {
-        v.get(k)
-            .and_then(Value::as_str)
-            .and_then(crate::clock::iso_to_ms)
-            .map(|m| m as f64)
-    };
-    MemoryInputs {
-        importance: num("importance").unwrap_or(0.0),
-        reinforced_importance: num("reinforcedImportance"),
-        created_at_ms: ms("createdAt").unwrap_or(f64::NAN),
-        last_reinforced_at_ms: ms("lastReinforcedAt"),
-        last_accessed_at_ms: ms("lastAccessedAt"),
-        reinforcement_count: num("reinforcementCount").map(|c| c as u64),
-        graph_degree: v
-            .get("relatedMemoryIds")
-            .and_then(Value::as_array)
-            .map(|a| a.len())
-            .unwrap_or(0),
-        // Episodic spine (v4 8bf3cb5f): the declared kind + the event clock.
-        kind_episodic: v.get("kind").and_then(Value::as_str) == Some("episodic"),
-        occurred_at_ms: crate::episodic::event_time_ms(v.get("occurredAt").and_then(Value::as_str)),
+        content,
+        memory_ids,
     }
 }
 

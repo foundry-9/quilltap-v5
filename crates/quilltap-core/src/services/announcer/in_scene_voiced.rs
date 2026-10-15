@@ -623,6 +623,8 @@ where
         embedding,
         &character_id,
         params.seed_markdown,
+        params.profile.get("provider").and_then(Value::as_str),
+        params.user_id,
         &chat_id,
         params.now_ms,
         LOG_CONTEXT,

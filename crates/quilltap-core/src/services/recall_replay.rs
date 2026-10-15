@@ -1,29 +1,31 @@
-//! Recall replay harness (v4 `lib/memory/recall-replay.ts` — episodic recall
-//! overhaul §3, P4.d13).
+//! Recall replay harness (v4 `lib/memory/recall/replay.ts` — episodic recall
+//! overhaul §3; memory refactor §3.8, P4.D291).
 //!
-//! Given a chat (and optionally a turn index), reconstruct the per-turn recall
-//! distillation (retrospective / timeRange / entities / paraphrase) and run the
-//! memory search TWICE — once with the episodic signals inert (the pre-overhaul
-//! path) and once with them live — returning the full candidate table for each:
-//! cosine, rawWeight, blendedBefore, every multiplier that fired, blendedAfter,
-//! and whether the entry made the head. Nothing is persisted; the recall-history
-//! ring buffer is read but never written, and since v4 `3f7320138` the search
-//! does not stamp `lastAccessedAt` either — only consumers that DELIVER
-//! memories do.
+//! Given a chat (and optionally a turn index), rebuild the turn's recall query
+//! ([`build_recall_query`], distilling or reusing pinned signals), run the
+//! search stages TWICE — once with the episodic signals inert (the
+//! pre-overhaul path) and once with them live — and then the turn's
+//! [`assemble_recall`] over the live path's pool, against the turn's own
+//! clock, its pinned participants and the anti-repetition ring as it stood at
+//! that turn (read back from the chat's per-message recall records). Returns
+//! both candidate tables (cosine, salience, blend, every multiplier that
+//! fired, the head cut), the stage trace (what the archive removed, what the
+//! budget cut, what the inter-character section took), and what the text
+//! fallback would have returned. Nothing is persisted; nothing is stamped —
+//! no stage before `deliver` writes, and the replay never delivers.
 //!
-//! Three harness knobs (R7 of the recall multiplier retuning, v4 `f7d8064be`
-//! at the `01a83539d` pin) make runs comparable: `tuning` applies retuning
-//! constants to the NEW path only; `signals` reuses a saved distillation
-//! instead of calling the cheap LLM again (the distillation is not
-//! deterministic, so two runs of one turn otherwise embed different queries);
-//! `as_of` drops memories created at or after the replayed turn's opening
-//! message, so an old turn is searched against the corpus as it stood then.
+//! Harness knobs (R7 of the recall multiplier retuning): `tuning` applies to
+//! the new path only; `signals` reuses a saved distillation (the distillation
+//! is not deterministic); `as_of` drops memories created after the turn
+//! opened, so an old turn searches the corpus as it stood then;
 //! `memory_budget` sizes the new path's head as the live responder's budget
-//! would (`size_memory_pools`).
+//! would ([`size_memory_pools`]).
 //!
 //! Consumed by the `chatRecallReplay` dispatch verb (v4
 //! `POST /api/v1/chats/[id]?action=recall-replay`), which the
 //! `quilltap recall-replay` CLI wraps.
+
+use std::collections::HashSet;
 
 use serde_json::{json, Value};
 
@@ -32,11 +34,11 @@ use crate::cheap_llm::CheapLlmSelection;
 use crate::context_summary::{partition_messages_into_turns, PartitionInputMessage};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_messages_read, chats_read};
-use crate::memory_injector::{DYNAMIC_HEAD_DEFAULT_SIZE, RETRO_HEAD_SIZE};
-use crate::memory_pools::size_memory_pools;
+use crate::memory_pools::{size_memory_pools, DYNAMIC_HEAD_DEFAULT_SIZE, RETRO_HEAD_SIZE};
+use crate::memory_scoring::RECALL_MIN_IMPORTANCE;
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
-use crate::recall_history::recently_whispered_id_set;
+use crate::recall_history::{parse_recall_history, RECALL_HISTORY_TURNS};
 use crate::recall_tuning::{
     describe_recall_tuning, resolve_recall_tuning, RecallReplaySignals, RecallTuningInput,
 };
@@ -44,10 +46,16 @@ use crate::services::cheap_llm_exec::{CheapLlmTaskExecutor, CheapLlmTaskOptions}
 use crate::services::memory_recap::distill::{
     distill_memory_search, DistillMessage, DistilledSearch, ExtractionClock,
 };
-use crate::services::memory_service::{
-    search_memories_semantic, EmbeddingMemo, RecallContextInput, SemanticSearchOptions,
-    SemanticSearchResult,
+use crate::services::recall::assemble::{
+    assemble_recall, PlanRecallSettings, PlanReplay, PreRecall, RecallChat, RecallPlan,
 };
+use crate::services::recall::context::{
+    build_turn_recall_context, TurnRecallContextInput, TurnRecallSettings,
+};
+use crate::services::recall::deliver::ring_from_debug_log;
+use crate::services::recall::query::{build_recall_query, BuildRecallQueryInput, EmbeddingMemo};
+use crate::services::recall::search::{search_recall, RecallSearchOptions};
+use crate::services::recall::{RecallCandidate, RecallQuery, RecallTrace};
 
 /// The RecallReplay service logger (v4 `createServiceLogger('RecallReplay')`,
 /// whose `{service, module: 'service'}` context this target stands for — R-M).
@@ -73,10 +81,13 @@ fn bounded_memo() -> EmbeddingMemo {
     REPLAY_EMBEDDING_MEMO.clone()
 }
 
-/// A pinned `signals` body field as the distillation the search reads (R-J,
-/// lane-local — `services/memory_recap/` is another order's): v4's consumers
-/// read `retrospective === true`, an absent `entities` as `[]`, and a pinned
-/// `timeRange: null` as no window.
+/// The memory budget the assemble step sizes its pools by when none is given
+/// (the floor — v4 `REPLAY_DEFAULT_MEMORY_BUDGET`).
+const REPLAY_DEFAULT_MEMORY_BUDGET: f64 = 2000.0;
+
+/// A pinned `signals` body field as the distillation the search reads (R-J):
+/// v4's consumers read `retrospective === true`, an absent `entities` as `[]`,
+/// and a pinned `timeRange: null` as no window.
 fn pinned_as_distilled(signals: &RecallReplaySignals) -> DistilledSearch {
     DistilledSearch {
         keywords: signals.keywords.clone(),
@@ -106,14 +117,13 @@ pub struct RunRecallReplayInput {
     /// `max(25, new_head_size + 10)` — wide enough to show where the larger
     /// head ends.
     pub limit: Option<f64>,
-    /// The `Date.now()` seam the search decay reads (v4 uses the wall clock;
-    /// the differential pins it).
+    /// The `Date.now()` seam (v4 uses the wall clock; the differential pins
+    /// it): the salience clock of both paths when `as_of` is off.
     pub now_ms: f64,
     /// The responding model's memory budget in tokens (route-floored). When
     /// `> 0`, the new path's `selected` rows follow the budget-sized head
     /// (`size_memory_pools`) — the old path keeps the historical fixed head —
-    /// so the replay shows what the larger head adds. Otherwise both paths use
-    /// the fixed historical sizes.
+    /// and the assemble step sizes its pools by it (else by the 2000 floor).
     pub memory_budget: Option<f64>,
     /// Retuning constants for the NEW path only (R7). Absent → the retuned
     /// defaults. A present `{}` IS a tuning (v4's truthy test): it keeps the
@@ -123,64 +133,181 @@ pub struct RunRecallReplayInput {
     /// validated signals and v4's parsed echo (the result's `signals`).
     pub signals: Option<(RecallReplaySignals, Value)>,
     /// Search only memories created before the replayed turn's opening
-    /// message, weighted at the turn's clock.
+    /// message, decayed at the turn's clock.
     pub as_of: bool,
+}
+
+/// One candidate row of the replay table (v4 `RecallReplayRow`, key order
+/// as v4 builds it). Numbers ride as JSON values through `js_number_to_json`
+/// (an integer-valued double renders bare; a NaN serialises as `null`).
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecallReplayRow {
+    pub memory_id: Value,
+    pub summary: Value,
+    pub kind: Value,
+    pub occurred_at: Value,
+    pub narrative_time: Value,
+    pub created_at: Value,
+    pub keywords: Value,
+    pub cosine: Value,
+    pub salience: Value,
+    pub blended_before: Value,
+    pub multiplier: Value,
+    pub fired: Vec<String>,
+    pub blended_after: Value,
+    /// True when the row would make the dynamic head at this path's head size.
+    pub selected: bool,
+}
+
+/// Where the replay's ring came from (v4 `ringSource`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub enum RingSource {
+    /// The turn's own recall records (`debugMemoryLogs`).
+    #[serde(rename = "debug-log")]
+    DebugLog,
+    /// An older chat with no records that early: its CURRENT ring.
+    #[serde(rename = "chat")]
+    Chat,
+}
+
+impl RingSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RingSource::DebugLog => "debug-log",
+            RingSource::Chat => "chat",
+        }
+    }
+}
+
+/// v4 `RecallReplayResult`, key order as v4 returns it.
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecallReplayResult {
+    pub chat_id: String,
+    pub character_id: String,
+    pub character_name: String,
+    pub turn_index: usize,
+    pub total_turns: usize,
+    /// The distilled turn signals driving the new path (v4's parsed echo).
+    pub signals: Value,
+    /// The query both paths embedded (once).
+    pub query: String,
+    /// Clock the distillation resolved against (the replayed turn's timestamp).
+    pub clock_iso: String,
+    /// Pre-overhaul path: episodic signals inert.
+    pub old_path: Vec<RecallReplayRow>,
+    /// Overhaul path: retrospective flip, window, entity anchors, multi-probe.
+    pub new_path: Vec<RecallReplayRow>,
+    /// What the text fallback would have returned for the new path's question.
+    pub fallback_path: Vec<RecallReplayRow>,
+    pub old_head_size: usize,
+    pub new_head_size: usize,
+    /// The new path's tuning, summarised (`defaults` when none was given).
+    pub tuning: String,
+    pub signals_pinned: bool,
+    /// The corpus cutoff when `as_of` was set.
+    pub as_of: Option<String>,
+    pub excluded_after_as_of: usize,
+    /// The anti-repetition ring the replay ranked under, in insertion order.
+    pub ring: Vec<String>,
+    pub ring_source: RingSource,
+    /// What each pool of the turn's assemble rendered (ids).
+    pub pools: Value,
+    /// The stage trace: query, the new path's search stages, then assemble.
+    pub trace: RecallTrace,
 }
 
 /// Build one candidate row (v4 `toRows`): every field present, `?? null` /
 /// `?? []` semantics on the optional memory columns and the adjustment record.
-fn to_rows(results: &[SemanticSearchResult], head_size: usize) -> Vec<Value> {
+fn to_rows(results: &[RecallCandidate], head_size: usize) -> Vec<RecallReplayRow> {
+    use crate::db::js_number_to_json as num;
     results
         .iter()
         .enumerate()
         .map(|(index, r)| {
             let m = &r.memory;
             let nul = |k: &str| m.get(k).cloned().filter(|v| !v.is_null());
-            json!({
-                "memoryId": m.get("id").cloned().unwrap_or(Value::Null),
-                "summary": m.get("summary").cloned().unwrap_or(Value::Null),
-                "kind": nul("kind").unwrap_or_else(|| Value::String("semantic".into())),
-                "occurredAt": nul("occurredAt").unwrap_or(Value::Null),
-                "narrativeTime": nul("narrativeTime").unwrap_or(Value::Null),
-                "createdAt": m.get("createdAt").cloned().unwrap_or(Value::Null),
-                "keywords": nul("keywords").unwrap_or_else(|| json!([])),
-                "cosine": crate::db::js_number_to_json(r.score),
-                "rawWeight": crate::db::js_number_to_json(r.raw_weight),
-                "blendedBefore": r
-                    .recall_adjustment
-                    .as_ref()
-                    .map(|a| crate::db::js_number_to_json(a.blended_before))
-                    .unwrap_or(Value::Null),
-                "multiplier": r
-                    .recall_adjustment
-                    .as_ref()
-                    .map(|a| crate::db::js_number_to_json(a.multiplier))
-                    .unwrap_or(Value::Null),
-                "fired": r
-                    .recall_adjustment
-                    .as_ref()
-                    .map(|a| json!(a.fired))
-                    .unwrap_or_else(|| json!([])),
-                "blendedAfter": r
-                    .recall_adjustment
-                    .as_ref()
-                    .map(|a| crate::db::js_number_to_json(a.blended_after))
-                    .unwrap_or(Value::Null),
-                "selected": index < head_size,
-            })
+            let adj = r.recall_adjustment.as_ref();
+            RecallReplayRow {
+                memory_id: m.get("id").cloned().unwrap_or(Value::Null),
+                summary: m.get("summary").cloned().unwrap_or(Value::Null),
+                kind: nul("kind").unwrap_or_else(|| Value::String("semantic".into())),
+                occurred_at: nul("occurredAt").unwrap_or(Value::Null),
+                narrative_time: nul("narrativeTime").unwrap_or(Value::Null),
+                created_at: m.get("createdAt").cloned().unwrap_or(Value::Null),
+                keywords: nul("keywords").unwrap_or_else(|| json!([])),
+                cosine: num(r.score),
+                // `r.salience ?? null` — always a number on the candidate.
+                salience: num(r.salience),
+                blended_before: adj.map_or(Value::Null, |a| num(a.blended_before)),
+                multiplier: adj.map_or(Value::Null, |a| num(a.multiplier)),
+                fired: adj.map(|a| a.fired.clone()).unwrap_or_default(),
+                blended_after: adj.map_or(Value::Null, |a| num(a.blended_after)),
+                selected: index < head_size,
+            }
         })
+        .collect()
+}
+
+/// v4 `ringAsOf(messages, beforeMessageId)` — the anti-repetition ring as it
+/// stood when `before_message_id` was written: the head ids of the last
+/// [`RECALL_HISTORY_TURNS`] recall records before it (an EMPTY ring counts as
+/// a record seen, but contributes no turn). `None` when the chat has no recall
+/// records that early (it predates them). `messages` are the chat's message
+/// events, in order.
+pub fn ring_as_of(messages: &[&Value], before_message_id: &str) -> Option<Vec<Vec<String>>> {
+    let cutoff = messages
+        .iter()
+        .position(|m| m.get("id").and_then(Value::as_str) == Some(before_message_id));
+    let before = match cutoff {
+        Some(i) => &messages[..i],
+        None => messages,
+    };
+    let mut turns: Vec<Vec<String>> = Vec::new();
+    let mut saw_record = false;
+    for m in before {
+        let lines: Option<Vec<String>> =
+            m.get("debugMemoryLogs").and_then(Value::as_array).map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            });
+        let Some(ring) = ring_from_debug_log(lines.as_deref()) else {
+            continue;
+        };
+        saw_record = true;
+        if !ring.is_empty() {
+            turns.push(ring);
+        }
+    }
+    saw_record.then(|| {
+        let start = turns.len().saturating_sub(RECALL_HISTORY_TURNS);
+        turns.split_off(start)
+    })
+}
+
+/// The ring as an INSERTION-ORDERED id list (v4 `[...recentlyWhisperedIds]`,
+/// a `Set` built turn by turn) — the `HashSet` the multiplier reads cannot
+/// give the result its order.
+fn ordered_ring(raw_history: &Value) -> Vec<String> {
+    let mut seen = HashSet::new();
+    parse_recall_history(raw_history)
+        .into_iter()
+        .flatten()
+        .filter(|id| seen.insert(id.clone()))
         .collect()
 }
 
 /// Run the replay (v4 `runRecallReplay`). Read-only against the chat and memory
 /// corpus. Errors carry v4's exact `Error` messages (the route maps them to 400).
 ///
-/// `server_tz` is the SERVER-LOCAL IANA zone (the v5 seam for v4's ambient
-/// process zone), which the distill's TODAY line and day-reference scan resolve
-/// their calendar in. It is a parameter rather than a field on
-/// [`RunRecallReplayInput`] because the dispatch layer that builds that bag has
-/// no zone to give: the host driver supplies it (`None` behaves like a UTC
-/// server, which is what the differential pins).
+/// `server_tz` is the host's calendar NAME — the memory calendar's fallback
+/// when the instance names no timezone (the distill's TODAY line and day
+/// references resolve on the memory calendar, bug 212). It is a parameter
+/// rather than a field on [`RunRecallReplayInput`] because the dispatch layer
+/// that builds that bag has no zone to give: the host driver supplies it
+/// (`None` behaves like a UTC host, which is what the differential pins).
 #[allow(clippy::too_many_arguments)]
 pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
     db: &Db,
@@ -342,7 +469,12 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
             .and_then(Value::as_str)
             .unwrap_or("realtime")
             .to_string(),
-        local_tz: server_tz.map(str::to_string),
+        // v4 passes no zone: the distiller reads `refreshMemoryTimeZone()`.
+        time_zone: Some(crate::services::memory_time_zone::refresh_memory_time_zone(
+            db,
+            server_tz.unwrap_or("UTC"),
+            input.now_ms,
+        )),
     };
     let (signals, signals_echo): (Option<DistilledSearch>, Value) = match &input.signals {
         Some((pinned, echo)) => {
@@ -377,111 +509,81 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
         }
     };
 
-    // `signals?.paraphrase || (keywords.length ? join(' ') : '') || lastContent || ''`.
-    let query = signals
-        .as_ref()
-        .and_then(|s| s.paraphrase.clone())
-        .filter(|p| !p.is_empty())
-        .or_else(|| {
-            signals
-                .as_ref()
-                .filter(|s| !s.keywords.is_empty())
-                .map(|s| s.keywords.join(" "))
-                .filter(|q| !q.is_empty())
-        })
-        .or_else(|| {
-            window
-                .last()
-                .and_then(|m| m.get("content").and_then(Value::as_str))
-                .filter(|c| !c.is_empty())
-                .map(str::to_string)
-        })
-        .unwrap_or_default();
-    if crate::jsstr::js_trim(&query).is_empty() {
+    // v4 `window[window.length - 1]?.content || ''`.
+    let fallback_text = window
+        .last()
+        .and_then(|m| m.get("content").and_then(Value::as_str))
+        .unwrap_or("")
+        .to_string();
+    let embedding_memo = bounded_memo();
+    let mut trace: RecallTrace = Vec::new();
+    let query = build_recall_query(
+        embedding,
+        BuildRecallQueryInput {
+            signals: signals.clone(),
+            embedding_memo: Some(embedding_memo),
+            ..BuildRecallQueryInput::plain(&input.user_id, None, &fallback_text)
+        },
+        &mut trace,
+    )
+    .await;
+    if crate::jsstr::js_trim(&query.text).is_empty() {
         return Err("Could not derive a recall query for this turn".to_string());
     }
 
     let recall_settings = crate::services::build_context::read_memory_recall_settings(db);
+    let scope_policy = if recall_settings.scope_policy == "exclude" {
+        crate::recall_tags::ScopePolicy::Exclude
+    } else {
+        crate::recall_tags::ScopePolicy::DownWeight
+    };
     // v4: EVERY non-removed participant with a characterId (user-controlled
     // included — unlike buildContext's responder+others set).
     let present_about_character_ids: Vec<String> = participants
         .iter()
-        .filter(|p| {
-            p.get("status").and_then(Value::as_str) != Some("removed")
-                && p.get("characterId")
-                    .and_then(Value::as_str)
-                    .is_some_and(|s| !s.is_empty())
-        })
+        .filter(|p| p.get("status").and_then(Value::as_str) != Some("removed"))
         .filter_map(|p| {
             p.get("characterId")
                 .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
                 .map(str::to_string)
         })
         .collect();
-
-    let base_ctx = RecallContextInput {
-        current_project_id: chat
-            .get("projectId")
+    // Present characters are ALWAYS read raw (v4 `findByIdRaw`), in
+    // participant order; a missing one is `undefined` in v4's array.
+    let mut present_characters: Vec<Option<Value>> = Vec::new();
+    for id in &present_about_character_ids {
+        let cid = id.clone();
+        present_characters.push(
+            db.read_main(move |c| characters_read::find_by_id_raw(c, &cid))
+                .map_err(|e| e.to_string())?,
+        );
+    }
+    let name_of = |c: &Value| {
+        c.get("name")
             .and_then(Value::as_str)
-            .map(str::to_string),
-        scope_policy: if recall_settings.scope_policy == "exclude" {
-            crate::recall_tags::ScopePolicy::Exclude
-        } else {
-            crate::recall_tags::ScopePolicy::DownWeight
-        },
-        present_about_character_ids,
-        turn_context: signals.as_ref().and_then(|s| s.context),
-        turn_temporal: signals.as_ref().and_then(|s| s.temporal),
-        turn_retrospective: false,
-        expand_related: recall_settings.expand_related,
-        recently_whispered_ids: Some(recently_whispered_id_set(
-            chat.get("commonplaceRecallHistory").unwrap_or(&Value::Null),
-        )),
-        // Fresh-event boost against the REPLAYED TURN's clock, not wall-clock
-        // now — replaying an old turn must reproduce what recall would have done
-        // then. (v4 `Date.parse(clockIso)`: an unparsable clock lands as NaN and
-        // the multiplier's finite guard disables the boost, exactly as `None`
-        // does here. ⚠ NOT `input.now_ms`, which stays the decay seam on both
-        // search calls below.)
-        current_chat_id: Some(input.chat_id.clone()),
-        now_ms: crate::episodic::event_time_ms(Some(&clock_iso)),
-        // P4.D265 (mechanical): honoured from P4.D267.
-        present_participant_names: Vec::new(),
+            .unwrap_or("")
+            .to_string()
     };
 
-    let embedding_memo = bounded_memo();
     let tuning = resolve_recall_tuning(input.tuning.as_ref());
     let tuning_summary = describe_recall_tuning(&tuning);
     // R4 drops entities that only name someone in the room; it needs their
-    // names (resolved whenever `specific_anchors` — TRUE by default — and handed
-    // to the NEW path only).
-    let present_participant_names: Option<Vec<String>> = if tuning.specific_anchors {
-        let mut names = Vec::new();
-        for id in &base_ctx.present_about_character_ids {
-            let cid = id.clone();
-            let raw = db
-                .read_main(move |c| characters_read::find_by_id_raw(c, &cid))
-                .map_err(|e| e.to_string())?;
-            if let Some(name) = raw
-                .as_ref()
-                .and_then(|c| c.get("name"))
-                .and_then(Value::as_str)
-                .filter(|n| !n.is_empty())
-            {
-                names.push(name.to_string());
-            }
-        }
-        Some(names)
-    } else {
-        None
-    };
+    // names (handed to the NEW path only).
+    let present_participant_names: Option<Vec<String>> = tuning.specific_anchors.then(|| {
+        present_characters
+            .iter()
+            .flatten()
+            .map(name_of)
+            .filter(|n| !n.is_empty())
+            .collect()
+    });
 
     // asOf — the corpus as it stood when the turn opened: leave out every
     // memory created at or after the turn's opening (user) message, and decay
-    // weights against the turn's clock rather than today's. (Reinforcement a
-    // memory received after the turn can't be undone; its importance is read
-    // as it is now.) The cutoff is the turn's OPENING message; the weight clock
-    // is its LAST eligible message (`clock_iso`) — two different instants.
+    // salience against the turn's clock rather than today's. The cutoff is the
+    // turn's OPENING message; the salience clock is its LAST eligible message
+    // (`clock_iso`) — two different instants.
     let replayed_ids = &turns[turn_index - 1].ids;
     let message_by_id = |id: &str| {
         all_messages
@@ -501,10 +603,12 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
     } else {
         None
     };
-    let weight_clock_ms = as_of_iso
-        .as_ref()
-        .and_then(|_| crate::episodic::js_date_parse_ms(&clock_iso));
-    let mut exclude_memory_ids: Option<Vec<String>> = None;
+    // v4 `nowMs = asOfIso ? Date.parse(clockIso) : undefined` (undefined → the
+    // wall clock, the `now_ms` seam here).
+    let clock_ms = crate::episodic::js_date_parse_ms(&clock_iso).map_or(f64::NAN, |ms| ms as f64);
+    let replay_now_ms: Option<f64> = as_of_iso.as_ref().map(|_| clock_ms);
+    let search_now_ms = replay_now_ms.unwrap_or(input.now_ms);
+    let mut exclude_memory_ids: Option<HashSet<String>> = None;
     if let Some(iso) = &as_of_iso {
         let (cid, since) = (character_id.clone(), iso.clone());
         let newer = db
@@ -517,7 +621,7 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
         } else {
             Vec::new()
         };
-        let excluded: Vec<String> = recent
+        let excluded: HashSet<String> = recent
             .iter()
             .filter(|m| {
                 m.get("createdAt")
@@ -536,7 +640,30 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
         exclude_memory_ids = Some(excluded);
     }
 
-    let retrospective = signals.as_ref().is_some_and(|s| s.retrospective);
+    // The anti-repetition ring as it stood at this turn, from the recall
+    // records on the messages before it; a chat older than those records falls
+    // back to its current ring.
+    let message_events: Vec<&Value> = all_messages
+        .iter()
+        .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
+        .collect();
+    let reconstructed = opening_message
+        .and_then(|m| m.get("id").and_then(Value::as_str))
+        .and_then(|id| ring_as_of(&message_events, id));
+    let ring_source = if reconstructed.is_some() {
+        RingSource::DebugLog
+    } else {
+        RingSource::Chat
+    };
+    let ring_history: Value = match &reconstructed {
+        Some(turns) => json!({ "turns": turns }),
+        None => chat
+            .get("commonplaceRecallHistory")
+            .cloned()
+            .unwrap_or(Value::Null),
+    };
+
+    let retrospective = query.retrospective;
     let new_head_size = match input.memory_budget.filter(|b| *b > 0.0) {
         Some(budget) => size_memory_pools(budget, retrospective).head_entries,
         None if retrospective => RETRO_HEAD_SIZE,
@@ -547,91 +674,163 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
         None => 25.max(new_head_size + 10),
     };
 
-    // OLD path — episodic signals inert. NOT byte-identical to pre-overhaul
-    // recall (v4's comment says so, but it runs under the retuned defaults —
-    // the cap, and the gate whenever the profile is neural): tuning never
-    // reaches it, but the asOf cutoff does.
-    let old_results = search_memories_semantic(
+    // The same context assembly as the live paths. The OLD path leaves the
+    // retrospective flag off entirely; the fresh-event boost runs against the
+    // REPLAYED TURN's clock.
+    let base_ctx = build_turn_recall_context(TurnRecallContextInput {
+        chat_id: &input.chat_id,
+        chat_project_id: chat.get("projectId").and_then(Value::as_str),
+        commonplace_recall_history: &ring_history,
+        recall_settings: TurnRecallSettings {
+            scope_policy,
+            expand_related: recall_settings.expand_related,
+        },
+        turn_context: signals.as_ref().and_then(|s| s.context),
+        turn_temporal: signals.as_ref().and_then(|s| s.temporal),
+        turn_retrospective: false,
+        present_about_character_ids,
+        present_participant_names: Vec::new(),
+        now_ms: clock_ms,
+        tuning: None,
+    });
+
+    // OLD path — episodic signals inert: no probes, anchors or window.
+    let old_query = RecallQuery {
+        probes: Vec::new(),
+        anchors: Vec::new(),
+        window: None,
+        ..query.clone()
+    };
+    let old_results = search_recall(
         db,
-        embedding,
         &character_id,
-        &query,
-        &SemanticSearchOptions {
-            user_id: input.user_id.clone(),
+        &old_query,
+        &RecallSearchOptions {
             limit: Some(limit),
-            min_importance: Some(0.3),
+            min_importance: Some(RECALL_MIN_IMPORTANCE),
             recall_context: Some(base_ctx.clone()),
-            now_ms: input.now_ms,
-            exclude_memory_ids: exclude_memory_ids.clone().unwrap_or_default(),
-            weight_clock_ms,
-            embedding_memo: Some(embedding_memo.clone()),
+            exclude_ids: exclude_memory_ids.clone(),
+            now_ms: search_now_ms,
             ..Default::default()
         },
-        None,
+        &mut Vec::new(),
+        Some("old"),
     )
     .await
     .map_err(|e| e.to_string())?;
 
-    // NEW path — retrospective flip + window + entity anchors + multi-probe,
-    // under the requested tuning.
-    let mut extra_probes: Vec<String> = Vec::new();
-    if retrospective {
-        if let Some(s) = &signals {
-            let entity_probe = crate::jsstr::js_trim(&s.entities.join(" ")).to_string();
-            if !entity_probe.is_empty() {
-                extra_probes.push(entity_probe);
-            }
-            // v4 `signals.paraphrase && signals.timeRange` — an empty (pinned)
-            // paraphrase is FALSY.
-            if let (Some(p), Some(tr)) = (
-                s.paraphrase.as_ref().filter(|p| !p.is_empty()),
-                &s.time_range,
-            ) {
-                extra_probes.push(format!(
-                    "{p} (around {} to {})",
-                    crate::jsstr::utf16_truncate(&tr.from, 10),
-                    crate::jsstr::utf16_truncate(&tr.to, 10)
-                ));
-            }
-        }
+    // NEW path — the live path under the requested tuning.
+    let mut new_ctx = base_ctx.clone();
+    new_ctx.turn_retrospective = retrospective;
+    // `...(input.tuning ? { tuning } : {})` — present iff the input was given
+    // (`{}` included).
+    if input.tuning.is_some() {
+        new_ctx.tuning = Some(tuning.clone());
     }
-    let new_results = search_memories_semantic(
+    if let Some(names) = &present_participant_names {
+        new_ctx.present_participant_names = names.clone();
+    }
+    let new_search = RecallSearchOptions {
+        limit: Some(limit),
+        min_importance: Some(RECALL_MIN_IMPORTANCE),
+        recall_context: Some(new_ctx.clone()),
+        exclude_ids: exclude_memory_ids.clone(),
+        head_size: Some(new_head_size),
+        now_ms: search_now_ms,
+        ..Default::default()
+    };
+    let new_results = search_recall(
         db,
-        embedding,
         &character_id,
         &query,
-        &SemanticSearchOptions {
-            user_id: input.user_id.clone(),
-            limit: Some(limit),
-            min_importance: Some(0.3),
-            recall_context: Some(RecallContextInput {
-                turn_retrospective: retrospective,
-                present_participant_names: present_participant_names.clone().unwrap_or_default(),
-                ..base_ctx.clone()
-            }),
-            // R-E: `...(input.tuning ? {tuning} : {})` — present iff the input
-            // was given (`{}` included).
-            recall_tuning: input.tuning.as_ref().map(|_| tuning.clone()),
-            entity_anchors: signals
-                .as_ref()
-                .map(|s| s.entities.clone())
-                .unwrap_or_default(),
-            // Ungated from the retrospective flag exactly as the two live
-            // consumers are (v4 `505dcb1f`) — the replay is only useful while it
-            // mirrors production.
-            occurred_within: signals.as_ref().and_then(|s| s.time_range.clone()),
-            extra_probes,
-            now_ms: input.now_ms,
-            exclude_memory_ids: exclude_memory_ids.clone().unwrap_or_default(),
-            head_size: Some(new_head_size),
-            weight_clock_ms,
-            embedding_memo: Some(embedding_memo),
-            ..Default::default()
-        },
-        None,
+        &new_search,
+        &mut trace,
+        Some("head"),
     )
     .await
     .map_err(|e| e.to_string())?;
+    // What the text fallback would have done with the same question.
+    let fallback_results = search_recall(
+        db,
+        &character_id,
+        &query,
+        &RecallSearchOptions {
+            force_text: true,
+            ..new_search.clone()
+        },
+        &mut Vec::new(),
+        Some("fallback"),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // The turn's assemble over the live pool: what each pool took and cut.
+    let others: Vec<(String, String)> = present_characters
+        .iter()
+        .flatten()
+        .filter_map(|c| {
+            let id = c.get("id").and_then(Value::as_str)?;
+            (id != character_id).then(|| (id.to_string(), name_of(c)))
+        })
+        .collect();
+    let mut present = vec![(character_id.clone(), character_name.clone())];
+    present.extend(others.iter().cloned());
+    let chat_id = input.chat_id.clone();
+    let bundle = assemble_recall(
+        db,
+        embedding,
+        completion,
+        executor,
+        RecallPlan {
+            user_id: &input.user_id,
+            embedding_profile_id: None,
+            provider: None,
+            character_id: &character_id,
+            character_name: &character_name,
+            character_mount_point_id: None,
+            chat: RecallChat {
+                id: &chat_id,
+                project_id: chat.get("projectId").and_then(Value::as_str),
+                compaction_generation: chat
+                    .get("compactionGeneration")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0),
+                commonplace_recall_history: &ring_history,
+                timeline_mode: chat.get("timelineMode").and_then(Value::as_str),
+            },
+            memory_budget: input.memory_budget.unwrap_or(REPLAY_DEFAULT_MEMORY_BUDGET) as i64,
+            min_importance: RECALL_MIN_IMPORTANCE,
+            skip_memories: false,
+            present,
+            inter_character_subjects: others,
+            current_state_tokens: 0,
+            recall_settings: PlanRecallSettings {
+                scope_policy,
+                expand_related: recall_settings.expand_related,
+                per_turn_conversation_summaries: recall_settings.per_turn_conversation_summaries,
+            },
+            recent_window: fallback_text.clone(),
+            distill: None,
+            pre_recall: Some(PreRecall {
+                query: query.clone(),
+                candidates: new_results.candidates.clone(),
+                ranked: Some(new_results.ranked.clone()),
+                trace: Vec::new(),
+            }),
+            recap: None,
+            conversations: None,
+            on_status_change: None,
+            replay: Some(PlanReplay {
+                exclude_ids: Some(exclude_memory_ids.clone().unwrap_or_default()),
+                now_ms: replay_now_ms,
+                tuning: None,
+                ring: new_ctx.recently_whispered_ids.clone(),
+            }),
+            now_ms: search_now_ms,
+        },
+    )
+    .await;
+    trace.extend(bundle.trace.iter().cloned());
 
     tracing::info!(
         target: LOG_TARGET,
@@ -639,32 +838,39 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
         characterId = %character_id,
         turnIndex = turn_index as u64,
         retrospective = retrospective,
-        oldCandidates = old_results.len() as u64,
-        newCandidates = new_results.len() as u64,
+        oldCandidates = old_results.candidates.len() as u64,
+        newCandidates = new_results.candidates.len() as u64,
         newHeadSize = new_head_size as u64,
         tuning = %tuning_summary,
         signalsPinned = input.signals.is_some(),
         // A present `null` when the cutoff is off — the house `"null"` rendering.
         asOfIso = as_of_iso.as_deref().unwrap_or("null"),
+        ringSource = ring_source.as_str(),
         "Recall replay complete"
     );
 
-    Ok(json!({
-        "chatId": input.chat_id,
-        "characterId": character_id,
-        "characterName": character_name,
-        "turnIndex": turn_index,
-        "totalTurns": turns.len(),
-        "signals": signals_echo,
-        "query": query,
-        "clockIso": clock_iso,
-        "oldPath": to_rows(&old_results, DYNAMIC_HEAD_DEFAULT_SIZE),
-        "newPath": to_rows(&new_results, new_head_size),
-        "oldHeadSize": DYNAMIC_HEAD_DEFAULT_SIZE,
-        "newHeadSize": new_head_size,
-        "tuning": tuning_summary,
-        "signalsPinned": input.signals.is_some(),
-        "asOf": as_of_iso,
-        "excludedAfterAsOf": exclude_memory_ids.as_ref().map_or(0, Vec::len),
-    }))
+    let result = RecallReplayResult {
+        chat_id: input.chat_id.clone(),
+        character_id,
+        character_name,
+        turn_index,
+        total_turns: turns.len(),
+        signals: signals_echo,
+        query: query.text,
+        clock_iso,
+        old_path: to_rows(&old_results.candidates, DYNAMIC_HEAD_DEFAULT_SIZE),
+        new_path: to_rows(&new_results.candidates, new_head_size),
+        fallback_path: to_rows(&fallback_results.candidates, new_head_size),
+        old_head_size: DYNAMIC_HEAD_DEFAULT_SIZE,
+        new_head_size,
+        tuning: tuning_summary,
+        signals_pinned: input.signals.is_some(),
+        as_of: as_of_iso,
+        excluded_after_as_of: exclude_memory_ids.as_ref().map_or(0, HashSet::len),
+        ring: ordered_ring(&ring_history),
+        ring_source,
+        pools: bundle.pools.to_json(),
+        trace,
+    };
+    serde_json::to_value(&result).map_err(|e| e.to_string())
 }

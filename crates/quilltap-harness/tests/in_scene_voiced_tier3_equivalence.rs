@@ -923,7 +923,7 @@ fn in_scene_voiced_tier3_matches_oracle() {
     // P4.D268: the stamp comparand is non-vacuous.
     assert!(
         access_lines_seen >= 1,
-        "no `Marking memories accessed` line in the oracle"
+        "no `Stamping delivered memories accessed` line in the oracle"
     );
 }
 
@@ -1300,7 +1300,7 @@ fn the_warn_lines_render_their_error_unquoted() {
 /// memories accessed {characterId, count}` lines, in order, rendered the way
 /// v5's capture rig renders its own.
 fn p4d268_access_lines(want: &Value) -> Vec<String> {
-    const MSG: &str = "[Memory] Marking memories accessed";
+    const MSG: &str = "[Recall] Stamping delivered memories accessed";
     want.as_array()
         .unwrap_or_else(|| panic!("accessLog is not a list — regenerate the oracle: {want}"))
         .iter()
@@ -1310,7 +1310,7 @@ fn p4d268_access_lines(want: &Value) -> Vec<String> {
             let keys: Vec<&str> = f.as_object().unwrap().keys().map(String::as_str).collect();
             assert_eq!(keys, ["characterId", "count"], "v4's key order moved");
             format!(
-                "DEBUG quilltap::memories {MSG} characterId={} count={}",
+                "DEBUG quilltap::recall {MSG} characterId={} count={}",
                 f["characterId"].as_str().unwrap(),
                 f["count"]
             )
@@ -1322,7 +1322,7 @@ fn p4d268_access_lines(want: &Value) -> Vec<String> {
 fn p4d268_got_access_lines(lines: &[String]) -> Vec<String> {
     lines
         .iter()
-        .filter(|l| l.contains("[Memory] Marking memories accessed"))
+        .filter(|l| l.contains("[Recall] Stamping delivered memories accessed"))
         .cloned()
         .collect()
 }

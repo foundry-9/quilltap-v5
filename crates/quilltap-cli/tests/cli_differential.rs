@@ -5135,6 +5135,74 @@ fn cli_differential() {
         }
     }
 
+    // === P4.D291: recall-replay rendering ===
+    // v4 Phase E (`584d28164`): the `Ring` header line (both sources' texts, an
+    // empty ring), the `TEXT FALLBACK` table when `fallbackPath` is an array,
+    // and `STAGE TRACE` (`stage` padded to 9, the dimmed `(label) `, `k=v` with
+    // JSON for objects / arrays and JS's number / null / boolean text). Both
+    // CLIs render the SAME stub payload, byte-diffed.
+    {
+        use quilltap_core::api::types::Response;
+        let s = |v: &[&str]| -> Vec<String> { v.iter().map(|x| x.to_string()).collect() };
+        let recall_opts = || CaseOpts {
+            normalize_recall: true,
+            ..Default::default()
+        };
+        const CID: &str = "cd000000-0000-4000-8000-000000000001";
+        let v4_line = format!("POST /api/v1/chats/{CID}?action=recall-replay");
+        let v5_prefix = format!("{{\"type\":\"chatRecallReplay\",\"chatId\":\"{CID}\"");
+        let pair = || WireExpect::Pair {
+            v4_line: &v4_line,
+            v5_prefix: &v5_prefix,
+        };
+        let phase_e = |extra: &str| -> String {
+            let base = RECALL_CANNED_RESULT.strip_suffix('}').unwrap();
+            format!(
+                "{base},\"oldHeadSize\":5,\"newHeadSize\":7,\"tuning\":\"defaults\",\"signalsPinned\":false,\"asOf\":null,\"excludedAfterAsOf\":0,{extra}}}"
+            )
+        };
+        let fallback = r#""fallbackPath":[{"memoryId":"e2000000-0000-4000-8000-0000000000d1","summary":"The tide ledger and mooring fees.","kind":"semantic","occurredAt":null,"narrativeTime":null,"createdAt":"2026-05-01T00:00:00.000Z","keywords":["ledger"],"cosine":0.5,"salience":0.25,"blendedBefore":0.4375,"multiplier":1,"fired":[],"blendedAfter":0.4375,"selected":true}]"#;
+        let trace = r#""trace":[{"stage":"query","detail":{"distilled":"pinned","textLength":55,"embedded":true,"embeddingCalls":3,"probes":2,"anchors":1,"window":{"from":"2026-06-01T00:00:00.000Z","to":"2026-06-07T23:59:59.999Z"},"retrospective":true}},{"stage":"gather","label":"head","detail":{"strategy":"vector","vector":12,"anchors":["Gullwing Quay"],"literal":false,"pool":14}},{"stage":"score","label":"head","detail":{"floor":0.3,"floored":2,"bestCosine":0.8999999761581421,"window":"soft","excluded":0,"ranked":12}},{"stage":"assemble","label":"archive","detail":{"size":25,"held":3,"rendered":3,"cutByBudget":0,"tokenBudget":1700}},{"stage":"assemble","label":"interCharacter","detail":{"subjects":0,"skippedAsDelivered":null}}]"#;
+        let pools = r#""pools":{"archive":["e2000000-0000-4000-8000-0000000000c1"],"head":["e2000000-0000-4000-8000-0000000000a1"],"interCharacter":[],"recap":[]}"#;
+        let replay_stub = |result: String| {
+            let v5 = dispatch_ok(Response::RecallReplay(
+                serde_json::from_str(&result).unwrap(),
+            ));
+            spawn_wire_stub((200, result), v5)
+        };
+        for (name, result) in [
+            (
+                "recall-replay phase-e ring from records",
+                phase_e(&format!(
+                    r#"{fallback},"ring":["e2000000-0000-4000-8000-0000000000a1","e2000000-0000-4000-8000-0000000000a2"],"ringSource":"debug-log",{pools},{trace}"#
+                )),
+            ),
+            (
+                "recall-replay phase-e chat ring, empty fallback",
+                phase_e(&format!(
+                    r#""fallbackPath":[],"ring":[],"ringSource":"chat",{pools},"trace":[]"#
+                )),
+            ),
+            (
+                "recall-replay phase-e no fallback key",
+                phase_e(&format!(
+                    r#""ring":["e2000000-0000-4000-8000-0000000000a1"],"ringSource":"chat",{pools},{trace}"#
+                )),
+            ),
+        ] {
+            let stub = replay_stub(result);
+            let port = stub.port.to_string();
+            ctx.case_wire(
+                name,
+                &s(&["recall-replay", CID, "--port", &port]),
+                recall_opts(),
+                &stub,
+                pair(),
+            );
+        }
+    }
+    // === end P4.D291 ===
+
     // ---------------- anchor-probe (P4.D269) ----------------
     {
         use quilltap_core::api::types::{ErrorKind, Response};

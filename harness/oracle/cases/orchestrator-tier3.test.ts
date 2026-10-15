@@ -112,6 +112,11 @@ interface CallSpec {
   /** P4.6c: user-initiated tool results pre-inserted as TOOL messages before the
    * user message (orchestrator.service.ts:601–624). */
   pendingToolResults?: unknown[];
+  /** P4.D291 (bug 227): a letter planted IN-CASE into this character's vault
+   *  before the call (never in the shared seed — it would move every op),
+   *  discarded after; the call's `mail` row records which letters stayed
+   *  unalerted and every `markMailAlertsDelivered` DEBUG (the `via` mark). */
+  letter?: { characterId: string; fromName: string; fromCharacterId: string; sentAt: string; body: string };
   /** P4.D186 (v4 bug 137): attachment ids on the send. A held post still
    *  persists them, so the corpus needed a way to hang one on a call. */
   fileIds?: string[];
@@ -734,6 +739,8 @@ async function main(): Promise<void> {
     'Consumed informs on preserved partial response',
   ]);
   let informConsumeLines: Array<Record<string, unknown>> = [];
+  // P4.D291: the deferred mail flip's DEBUG (bug 227), per call.
+  let mailLines: Array<Record<string, unknown>> = [];
   {
     const { Logger } = await import('@/lib/logger');
     const original = Logger.prototype.debug;
@@ -745,6 +752,9 @@ async function main(): Promise<void> {
     ) {
       if (INFORM_CONSUME_MESSAGES.has(message)) {
         informConsumeLines.push({ level: 'debug', message, context: context ?? null });
+      }
+      if (message === 'markMailAlertsDelivered') {
+        mailLines.push({ level: 'debug', message, context: context ?? null });
       }
       return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
     } as never;
@@ -856,6 +866,26 @@ async function main(): Promise<void> {
     const events: unknown[] = [];
     currentStreamKeys = [];
     let threw = false;
+    // P4.D291: the call's in-case letter, through v4's REAL mailbox.
+    let letterVault: string | null = null;
+    let letterPath: string | null = null;
+    if (call.letter) {
+      const { deliverLetter } = await import('@/lib/post-office/mailbox');
+      const holder = await repos.characters.findById(call.letter.characterId);
+      letterVault = (holder as { characterDocumentMountPointId?: string | null } | null)
+        ?.characterDocumentMountPointId ?? null;
+      if (!letterVault) throw new Error(`${call.name}: the letter's holder has no vault`);
+      letterPath = (
+        await deliverLetter({
+          recipientVaultId: letterVault,
+          fromName: call.letter.fromName,
+          fromCharacterId: call.letter.fromCharacterId,
+          sentAt: call.letter.sentAt,
+          body: call.letter.body,
+          inReplyTo: null,
+        })
+      ).path;
+    }
     try {
       const stream = await handleSendMessage(repos, call.chatId, spec.userId, {
         content: call.continueMode ? undefined : call.content,
@@ -894,6 +924,15 @@ async function main(): Promise<void> {
 
     // Let the fire-and-forget background triggers settle before the next call.
     await new Promise((resolve) => setTimeout(resolve, 200));
+    // P4.D291: which letters the turn left unalerted, then the plant undone.
+    let unalerted: string[] | null = null;
+    if (letterVault && letterPath) {
+      const { collectUnalertedMail, discardLetter } = await import('@/lib/post-office/mailbox');
+      unalerted = (await collectUnalertedMail(letterVault)).map((l) => l.path);
+      await discardLetter(letterVault, letterPath);
+    }
+    lines.push(JSON.stringify({ kind: 'mail', call: call.name, unalerted, lines: mailLines }));
+    mailLines = [];
   }
 
   // Restore the real Date + Math.random before dumping (be tidy).

@@ -1,5 +1,5 @@
 {
-  "$comment": "P4.d13 recall-replay case corpus (QT_ORACLE_RECALL_REPLAY). distill: {kind:'json',text} feeds v4's REAL parse via the mocked executor; {kind:'fail'} = task failure. deleteChatSettings/deleteConnections mutate the per-case COPY before the call. P4.D267: plantSql runs on the per-case copy after open (both sides); signals-pinned cases use a FAILING canned distill so a call would show (distillCalls).",
+  "$comment": "P4.d13 recall-replay case corpus (QT_ORACLE_RECALL_REPLAY). distill: {kind:'json',text} feeds v4's REAL parse via the mocked executor; {kind:'fail'} = task failure. deleteChatSettings/deleteConnections mutate the per-case COPY before the call. P4.D267: plantSql runs on the per-case copy after open (both sides); signals-pinned cases use a FAILING canned distill so a call would show (distillCalls). P4.D291 (v4 584d28164): ring_* rows plant per-message recall records (`debugMemoryLogs`) \u2014 the replay reads the anti-repetition ring AS OF the turn (`ringSource` debug-log; an empty record still counts as seen; a record after the turn's opening message is ignored \u2192 the chat's current ring, `ringSource` chat).",
   "$nowMs": 1781524800000,
   "$nowMsComment": "2026-06-15T12:00:00.000Z \u2014 the search-decay Date.now seam, frozen identically on both sides.",
   "chatId": "cd000000-0000-4000-8000-000000000001",
@@ -522,6 +522,39 @@
         "kind": "fail"
       },
       "plantSql": "UPDATE \"memories\" SET \"createdAt\" = '2026-06-05T11:00:00.000Z' WHERE \"id\" = 'e2000000-0000-4000-8000-0000000000a1';"
+    },
+    {
+      "name": "ring_from_debug_log",
+      "body": {
+        "turnIndex": 3
+      },
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
+      },
+      "plantSql": "UPDATE \"chat_messages\" SET \"debugMemoryLogs\" = '[\"[Recall] query distilled=none\", \"[Recall:ring] e2000000-0000-4000-8000-0000000000a1 e2000000-0000-4000-8000-0000000000a2\"]' WHERE \"id\" = (SELECT \"id\" FROM \"chat_messages\" WHERE \"role\" = 'ASSISTANT' ORDER BY \"createdAt\", \"id\" LIMIT 1);"
+    },
+    {
+      "name": "ring_empty_record_counts",
+      "body": {
+        "turnIndex": 3
+      },
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
+      },
+      "plantSql": "UPDATE \"chat_messages\" SET \"debugMemoryLogs\" = '[\"[Recall:ring]\"]' WHERE \"id\" = (SELECT \"id\" FROM \"chat_messages\" WHERE \"role\" = 'ASSISTANT' ORDER BY \"createdAt\", \"id\" LIMIT 1);"
+    },
+    {
+      "name": "ring_record_after_turn_ignored",
+      "body": {
+        "turnIndex": 1
+      },
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
+      },
+      "plantSql": "UPDATE \"chat_messages\" SET \"debugMemoryLogs\" = '[\"[Recall:ring] e2000000-0000-4000-8000-0000000000a1\"]' WHERE \"id\" = (SELECT \"id\" FROM \"chat_messages\" WHERE \"role\" = 'ASSISTANT' ORDER BY \"createdAt\" DESC, \"id\" DESC LIMIT 1);"
     }
   ]
 }

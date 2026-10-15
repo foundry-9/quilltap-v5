@@ -14,15 +14,19 @@
 //!   - [`crate::system_prompt`] — `build_system_prompt` (block 1),
 //!     `build_other_participants_info`, `build_identity_reinforcement` (block 2).
 //!   - [`crate::message_selector::select_recent_messages`] — the greedy tail fit.
-//!   - [`crate::memory_injector`] — the scene-state / archive / dynamic-head /
-//!     inter-character / summary formatters.
+//!   - [`crate::memory_injector`] — the scene-state + summary formatters (v4
+//!     `lib/chat/context/scene-state.ts`).
+//!   - [`super::recall`] — v4 Phase E's recall pipeline: ONE
+//!     [`super::recall::assemble::assemble_recall`] call (query, archive, head,
+//!     recap, inter-character, conversations, the retrospective mini-recap),
+//!     then [`super::recall::deliver::deliver_recall`] once the context is
+//!     composed (the one access stamp + the anti-repetition ring).
 //!   - [`crate::context_budget`] — allocation + `calculate_max_available` +
 //!     `should_summarize_conversation`; the ratio consts mirror v4's
 //!     model-context-data (`CONTEXT_HISTORY_BUDGET_RATIO`/`MEMORY_BUDGET_RATIO`).
 //!   - [`crate::context_compression`] sizing + [`super::compression`] service
 //!     half (`apply_context_compression`, canned).
 //!   - [`super::knowledge_injector::retrieve_knowledge_for_turn`].
-//!   - [`super::memory_service::search_memories_semantic`].
 //!   - [`crate::message_attribution`] — history-access / whisper / attribution.
 //!   - [`crate::token_estimation`] — estimate / count / truncate.
 //!   - [`crate::chat_timestamp`] — `should_inject_timestamp` /
@@ -111,12 +115,6 @@
 //!     `cachedCompressionMessageCount`, the async pre-compression cache) are not
 //!     wired as inputs yet — both are additive option plumbing on the same
 //!     ported budget/window math, scoped to the `processMessage` spine unit.
-//!   - The dynamic-head `debugMemories` **recall-adjustment diagnostics**
-//!     (`recallMultiplier`/`recallFired`/`blendedBefore`/`blendedAfter`) are
-//!     absent here because [`super::memory_service::search_memories_semantic`]
-//!     defers the recallContext re-rank (its own tracked deferral); the
-//!     differential strips those four fields from both sides. They never reach
-//!     the rendered memory block.
 //!   - The **memory-recap** and **keyword-distillation** paths run only through
 //!     their seams (no canned content in the corpus → v4's mocked
 //!     `generateMemoryRecap`/`extractMemorySearchKeywords` return nothing on the
@@ -138,13 +136,7 @@ use crate::context_compression::{
 };
 use crate::db::runtime::Db;
 use crate::db::DbError;
-use crate::memory_injector::{
-    format_current_scene_state, format_dynamic_memory_head, format_frozen_memory_archive,
-    format_inter_character_memories_for_context, injector_memory_from_json,
-    DebugInterCharacterMemoryInfo, DebugMemoryInfo, InjectorMemory, InjectorResult,
-    RecallAdjustment, SceneState, SceneStateEmissionEntry,
-};
-use crate::memory_pools::size_memory_pools;
+use crate::memory_injector::{format_current_scene_state, SceneState, SceneStateEmissionEntry};
 use crate::message_attribution::{
     attribute_messages_for_character, filter_messages_by_history_access, filter_whisper_messages,
     find_user_participant_name, AttributionMessage, AttributionParticipant,
@@ -156,7 +148,6 @@ use crate::services::compression::{
     apply_context_compression, ContextCompressionOptions, ContextCompressionResult,
 };
 use crate::services::knowledge_injector::{retrieve_knowledge_for_turn, KnowledgeRetrievalParams};
-use crate::services::memory_service::{search_memories_semantic, SemanticSearchOptions};
 use crate::system_prompt::{
     build_identity_reinforcement, build_other_participants_info, build_system_prompt,
     BuildSystemPromptOptions, Character as SysChar, ChatParticipant as SysParticipant,
@@ -169,13 +160,6 @@ use crate::token_estimation::{
 const CONTEXT_HISTORY_BUDGET_RATIO: f64 = 0.50;
 /// v4 `MEMORY_BUDGET_RATIO` (`lib/llm/model-context-data.ts:273`).
 const MEMORY_BUDGET_RATIO: f64 = 0.20;
-/// v4 `INTER_CHAR_PER_CHARACTER_LIMIT`.
-const INTER_CHAR_PER_CHARACTER_LIMIT: i64 = 5;
-/// v4 `INTER_CHAR_DIGEST_LIMIT` (`d58548051`): hot digests about each other
-/// character fetched ahead of the partition query.
-const INTER_CHAR_DIGEST_LIMIT: i64 = 2;
-/// v4 `INTER_CHAR_RELEVANCE_PER_CHARACTER_LIMIT`.
-const INTER_CHAR_RELEVANCE_PER_CHARACTER_LIMIT: usize = 5;
 /// v4 `RECENT_WINDOW_QUERY_MAX_CHARS`.
 const RECENT_WINDOW_QUERY_MAX_CHARS: usize = 600;
 /// v4 `SUMMARY_CONTENT_PREFIX` — the head Librarian summary whisper marker used
@@ -346,6 +330,14 @@ pub struct BuiltContext {
     /// that key (the `f45a517a9` round's unification).
     pub inform_row_ids: Vec<String>,
     // === end P4.D205 ===
+    /// The letters Suparṇā announced this turn, owed an `alerted` flip (v4
+    /// `mailAlertsOwed`, bug 227). `None` when none were announced, and always
+    /// `None` on a swipe. Like `inform_row_ids`, they are marked only once the
+    /// turn has delivered them — by the finalizer, the preserved-partial path,
+    /// the tool-only save or a deliberate pass — never here, so a failed or
+    /// aborted turn offers the letters again. v4 ALWAYS emits the key (`null`
+    /// when none) right after `informRowIds`.
+    pub mail_alerts_owed: Option<crate::post_office::mailbox::MailAlertsOwed>,
     pub warnings: Vec<String>,
     pub debug_memories: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -359,6 +351,12 @@ pub struct BuiltContext {
     /// setting is on and the search found something new to list.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub debug_relevant_conversations: Option<String>,
+    /// The turn's recall record — the stage trace, what each pool delivered
+    /// and the head ids for the anti-repetition ring — written by
+    /// `deliver_recall` (v4 `recallDebugLog`). The finalizer stores it on the
+    /// assistant message's `debugMemoryLogs`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recall_debug_log: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub debug_summary: Option<String>,
     pub debug_system_prompt: String,
@@ -526,6 +524,10 @@ pub struct BuildContextInput {
     pub active_user_participant_id: Option<String>,
     pub roleplay_template: Option<String>,
     pub embedding_profile_id: Option<String>,
+    /// v4 `options.provider` (`connectionProfile.provider`) — the recall
+    /// renderers' token rate (R-T: GOOGLE 3.8, everyone else 3.5). `None` →
+    /// the default rate.
+    pub provider: Option<String>,
     pub skip_memories: bool,
     pub min_memory_importance: f64,
     // multi-character
@@ -610,27 +612,12 @@ pub struct BuildContextInput {
     /// `recently_addressed` adds a caution to answer rather than pass. Never
     /// persisted. `None` / `offer_skip: false` → no note.
     pub turn_skip: Option<TurnSkip>,
-    /// v4 `options.preSearchedMemories` — the proactive pre-compute distill's
-    /// semantic-search results (P4.19, `pre_compute::proactive_recall_task`). When
-    /// present AND non-empty, the two-pool memory retrieval takes the
-    /// `'pre-searched'` path: these become the dynamic head (archive-overlap
-    /// filtered) and the fallback distill block is skipped entirely
-    /// (`context-manager.ts:1141-1145`). Every non-orchestrator caller passes
-    /// `None`, leaving the fallback path unchanged.
-    pub pre_searched_memories: Option<Vec<crate::services::memory_service::SemanticSearchResult>>,
-    /// v4 `options.recallSignals` — the turn-level recall signals the proactive
-    /// distillation emitted (retrospective / timeRange / entities / paraphrase).
-    /// Seeds `turn_recall_signals` so the retrospective cadence (enlarged head +
-    /// mini-recap) fires on BOTH the pre-searched and fallback paths without
-    /// re-running the distillation (`context-manager.ts:1139`). `None` when the
-    /// proactive path didn't run or its extraction failed.
-    pub recall_signals: Option<crate::services::memory_recap::distill::DistilledSearch>,
-    /// v4 `options.preSearchedQueryEmbedding` (`870a57fa`) — the query text +
-    /// vector the proactive recall already embedded for `pre_searched_memories`.
-    /// When the pre-searched path is the one this turn uses, the per-turn
-    /// conversation-summary search reuses this vector rather than embedding the
-    /// same sentence a second time.
-    pub pre_searched_query_embedding: Option<crate::services::memory_service::SearchQueryEmbedding>,
+    /// v4 `options.preRecall` — the proactive pass's recall: its query
+    /// (distilled and embedded once) and what that query found. When present
+    /// (and it found something), this turn's recall reuses both — no second
+    /// distillation, no second embedding. Every non-orchestrator caller passes
+    /// `None`.
+    pub pre_recall: Option<crate::services::recall::assemble::PreRecall>,
     /// v4 `options.humanTurnMessageIds` (`ca363178d`) — row ids of the human's
     /// own turns (USER, no `systemSender`), captured by the caller before
     /// whisper normalization re-roles Staff whispers to USER. Feeds the
@@ -678,22 +665,6 @@ pub struct OwnedUncensoredFallback {
 // ---------------------------------------------------------------------------
 // The seams for unported feeder / post-office subsystems.
 // ---------------------------------------------------------------------------
-
-/// The result of the seamed memory-recap generation (v4 `MemoryRecapResult`).
-#[derive(Clone, Debug, Default)]
-pub struct MemoryRecapResult {
-    pub content: Option<String>,
-}
-
-/// The result of the seamed keyword distillation (v4
-/// `extractMemorySearchKeywords`). `paraphrase` wins over `keywords` as the
-/// embedding query; `context`/`temporal` steer the recall (both deferred at the
-/// search leg — see `search_memories_semantic`'s recall deferral).
-#[derive(Clone, Debug, Default)]
-pub struct DistilledSearch {
-    pub paraphrase: Option<String>,
-    pub keywords: Vec<String>,
-}
 
 /// The tri-tier mount pool (v4 `resolveTieredMountPool` output subset).
 #[derive(Clone, Debug, Default)]
@@ -1096,32 +1067,6 @@ fn build_recent_window_query(
 }
 
 // ---------------------------------------------------------------------------
-// Small helpers to project JSON memory rows into InjectorResult / InjectorMemory.
-// ---------------------------------------------------------------------------
-
-fn json_str(v: &Value, key: &str) -> Option<String> {
-    v.get(key).and_then(Value::as_str).map(str::to_string)
-}
-/// Project a [`SemanticSearchResult`](crate::services::memory_service::SemanticSearchResult)
-/// into an [`InjectorResult`] the formatters read.
-fn injector_result_from_search(
-    r: &crate::services::memory_service::SemanticSearchResult,
-) -> InjectorResult {
-    InjectorResult {
-        memory: injector_memory_from_json(&r.memory),
-        score: r.score,
-        effective_weight: Some(r.effective_weight),
-        raw_weight: Some(r.raw_weight),
-        recall_adjustment: r.recall_adjustment.as_ref().map(|a| RecallAdjustment {
-            multiplier: Some(a.multiplier),
-            fired: a.fired.clone(),
-            blended_before: Some(a.blended_before),
-            blended_after: Some(a.blended_after),
-        }),
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Ported feeder helpers (W4.6a) — the READ/COMPUTE half of the former seams.
 // ---------------------------------------------------------------------------
 
@@ -1218,25 +1163,6 @@ async fn persist_scene_cache(
                 &chat_id,
                 &crate::db::chats::ChatUpdate {
                     commonplace_scene_cache: Some(next_value),
-                    ..Default::default()
-                },
-            )
-            .map(|_| ())
-        })
-        .await;
-}
-
-/// v4 `chats.update({ commonplaceRecallHistory })` (W4.6a): persist the recall
-/// ring buffer. Awaited; a write failure is swallowed (one un-penalized turn).
-async fn persist_recall_history(db: &Db, chat_id: &str, next_history: Value) {
-    let chat_id = chat_id.to_string();
-    let _ = db
-        .write(move |writers| {
-            let repo = crate::db::chats::ChatsRepository::new(writers.main().connection());
-            repo.update(
-                &chat_id,
-                &crate::db::chats::ChatUpdate {
-                    commonplace_recall_history: Some(next_history),
                     ..Default::default()
                 },
             )
@@ -1589,74 +1515,6 @@ async fn resolve_core_whisper_llm_context<S: BuildContextSeams>(
     llm_context
 }
 
-/// Cap on entries in the retrospective mini-recap conversation list (v4
-/// `RETRO_MINI_RECAP_MAX_ENTRIES`, context-manager.ts:33).
-const RETRO_MINI_RECAP_MAX_ENTRIES: usize = 5;
-
-/// Wall-clock ceiling on the whole memory-recap phase (v4
-/// `MEMORY_RECAP_PHASE_TIMEOUT_MS`, context-manager.ts, `74ec93b5`).
-///
-/// Set above [`CHEAP_LLM_TASK_TIMEOUT_MS`](crate::services::cheap_llm_exec::CHEAP_LLM_TASK_TIMEOUT_MS)
-/// on purpose: the recap makes an embedding call and a cheap-LLM call in
-/// sequence, each already deadlined, and a recap that is merely slow in both
-/// places is still doing useful work. This is the backstop that keeps a visible
-/// turn from sitting on "Recalling…" no matter which leg misbehaves. The recap
-/// is optional context — losing it costs the character some remembered flavour,
-/// not the turn.
-pub const MEMORY_RECAP_PHASE_TIMEOUT_MS: u64 = 60_000;
-
-/// v4's `withTimeout(generateMemoryRecap(...), MEMORY_RECAP_PHASE_TIMEOUT_MS,
-/// "Memory recap exceeded its 60000ms phase budget")` at the `buildContext` call
-/// site, with v4's existing fail-soft `catch` folded in.
-///
-/// v4 rejects into a `try/catch` that already drops the recap and moves on;
-/// [`generate_memory_recap`](crate::services::memory_recap::generate_memory_recap)
-/// returns no `Result` (it fails soft to `MemoryRecapResult::default()` on a DB
-/// failure of its own), so a fired ceiling maps onto that same default — the
-/// identical observable outcome. v4's catch also does two OBSERVABLE things this
-/// wrapper reproduces (the unification review's catch — the first cut dropped
-/// both): it pushes `Failed to generate memory recap: <message>` into the
-/// context's `warnings` (a diffed comparand in the tier-3 family), and it logs
-/// at ERROR (`logger.error('[ContextManager] Memory recap generation failed')`),
-/// not warn.
-///
-/// Extracted rather than left inline because a fired ceiling is wall-clock
-/// behavior no NDJSON corpus can observe (the canned providers never stall) and
-/// the proof therefore has to be unit-tier (P4.15) — standing up a whole
-/// `build_context` call to make one future hang would pin the fifty-field input
-/// bag, not the ceiling. This has exactly one production caller, the recap block
-/// in [`build_context`].
-pub(crate) async fn memory_recap_within_phase_budget(
-    work: impl std::future::Future<Output = crate::services::memory_recap::MemoryRecapResult>,
-    chat_id: &str,
-    character_id: &str,
-    warnings: &mut Vec<String>,
-) -> crate::services::memory_recap::MemoryRecapResult {
-    match tokio::time::timeout(
-        std::time::Duration::from_millis(MEMORY_RECAP_PHASE_TIMEOUT_MS),
-        work,
-    )
-    .await
-    {
-        Ok(recap) => recap,
-        Err(_) => {
-            // v4's `withTimeout` message, through v4's own catch prefix.
-            warnings.push(format!(
-                "Failed to generate memory recap: Memory recap exceeded its \
-                 {MEMORY_RECAP_PHASE_TIMEOUT_MS}ms phase budget"
-            ));
-            tracing::error!(
-                target: "quilltap::build_context",
-                chat_id,
-                character_id,
-                timeout_ms = MEMORY_RECAP_PHASE_TIMEOUT_MS,
-                "Memory recap exceeded its phase budget; continuing without it",
-            );
-            crate::services::memory_recap::MemoryRecapResult::default()
-        }
-    }
-}
-
 /// v4's UUID-in-backticks scanner for the fold whisper's conversation list
 /// (`/\`([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\`/gi`).
 static FOLD_WHISPER_UUID_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
@@ -1709,142 +1567,6 @@ fn collect_fold_whisper_conversation_ids(
     }
     ids
 }
-
-/// The standing fold whisper's UUIDs, read at most once per turn and only when a
-/// conversation list is actually being built (v4's lazily-cached
-/// `foldWhisperConversationIds()` closure).
-fn fold_whisper_conversation_ids<'a>(
-    db: &Db,
-    chat_id: &str,
-    target_participant_id: Option<&str>,
-    cache: &'a mut Option<HashSet<String>>,
-) -> &'a HashSet<String> {
-    cache.get_or_insert_with(|| {
-        collect_fold_whisper_conversation_ids(db, chat_id, target_participant_id)
-    })
-}
-
-/// Recall-on-reference (fourth cadence, **part 2**) — v4 `buildContext`
-/// context-manager.ts:1944–2030.
-///
-/// On a retrospective turn, build the scoped mini-recap: a dated, drillable
-/// Relevant Past Conversations list from the character's vault summaries, scoped
-/// by the turn's `timeRange`/`entities` and closed by the `read_conversation`
-/// call note. Returns `Some((content, signature))` only when at least one
-/// conversation survives the fold-whisper dedup — the signature is what the
-/// caller persists into the recall-history spam-guard ring.
-///
-/// Spam guard: a block with the same `timeRange`/entity signature emitted within
-/// the last [`crate::recall_history::RETRO_SIGNATURE_TURNS`] emissions is skipped
-/// outright (v4 logs at debug and returns nothing).
-///
-/// Best-effort throughout — v4 wraps the whole block in a warn-only try/catch, so
-/// every fallible step here degrades in place (`search_vault_conversation_-
-/// summaries` already returns `[]` on any failure; the dedup read has its own
-/// swallowing catch, since "a duplicate UUID listing is harmless").
-#[allow(clippy::too_many_arguments)]
-async fn resolve_retrospective_mini_recap<E: EmbeddingProvider>(
-    db: &Db,
-    embedding: &E,
-    input: &BuildContextInput,
-    signals: &crate::services::memory_recap::distill::DistilledSearch,
-    memory_search_query: &str,
-    commonplace_target_participant_id: Option<&str>,
-    fold_whisper_ids_cache: &mut Option<HashSet<String>>,
-    per_turn_conversation_ids: &HashSet<String>,
-) -> Option<(String, String)> {
-    // The signature: the window (or `∅`) plus the lowercased entities in JS
-    // default-`sort()` order (code-unit lexicographic, which Rust's `str: Ord`
-    // reproduces across the BMP), joined by `|`.
-    let mut entity_keys: Vec<String> = signals.entities.iter().map(|e| e.to_lowercase()).collect();
-    entity_keys.sort();
-    let mut signature_parts: Vec<String> = Vec::with_capacity(entity_keys.len() + 1);
-    signature_parts.push(match &signals.time_range {
-        Some(tr) => format!("{}→{}", tr.from, tr.to),
-        None => "∅".to_string(),
-    });
-    signature_parts.extend(entity_keys);
-    let signature = signature_parts.join("|");
-
-    let recent_signatures =
-        crate::recall_history::parse_retro_signatures(&input.chat.commonplace_recall_history);
-    if recent_signatures.iter().any(|s| s == &signature) {
-        // v4 logs `[CommonplaceWhisper] Retrospective mini-recap suppressed
-        // (recent same-signature block)` and emits nothing.
-        return None;
-    }
-
-    // v4 `signals.paraphrase ?? memorySearchQuery ?? ''` — a NULLISH fallback, so
-    // an empty-string paraphrase (were one to arrive) is kept as-is and only the
-    // absent case falls back to the recent-window query. The entity join is a
-    // second part; both are dropped when whitespace-only, and the survivors join
-    // with an em dash.
-    let query_parts: Vec<String> = [
-        signals
-            .paraphrase
-            .clone()
-            .unwrap_or_else(|| memory_search_query.to_string()),
-        signals.entities.join(", "),
-    ]
-    .into_iter()
-    .filter(|part| !crate::jsstr::js_trim(part).is_empty())
-    .collect();
-    let query = query_parts.join(" — ");
-    if crate::jsstr::js_trim(&query).is_empty() {
-        return None;
-    }
-
-    let matches = crate::services::memory_recap::search_vault_conversation_summaries(
-        db,
-        embedding,
-        &input.character.id,
-        input.character.character_document_mount_point_id.as_deref(),
-        &query,
-        &input.user_id,
-        input.embedding_profile_id.as_deref(),
-        RETRO_MINI_RECAP_MAX_ENTRIES,
-        Some(&input.chat.id),
-        // The round-2 `time_range` gets its first production caller here.
-        signals.time_range.as_ref(),
-        // The mini-recap embeds its own composed query (paraphrase + entities) —
-        // not the turn's memory-search sentence, so there is nothing to reuse.
-        None,
-    )
-    .await;
-
-    // Dedup against every conversation list already going to this target this
-    // turn — the standing on-fold whisper and, when the per-turn cadence is on,
-    // the list built just before this one. No point listing the same UUID twice.
-    // Best-effort: a read failure just means a possible duplicate.
-    let fold_whisper_ids = fold_whisper_conversation_ids(
-        db,
-        &input.chat.id,
-        commonplace_target_participant_id,
-        fold_whisper_ids_cache,
-    );
-
-    let mut filtered: Vec<_> = matches
-        .into_iter()
-        .filter(|m| {
-            !fold_whisper_ids.contains(&m.conversation_id)
-                && !per_turn_conversation_ids.contains(&m.conversation_id)
-        })
-        .collect();
-    filtered.truncate(RETRO_MINI_RECAP_MAX_ENTRIES);
-    if filtered.is_empty() {
-        return None;
-    }
-    let content = format!(
-        "{}\n\n{}",
-        crate::services::memory_recap::render_relevant_conversations_block(&filtered),
-        crate::services::memory_recap::READ_CONVERSATION_CALL_NOTE
-    );
-    Some((content, signature))
-}
-
-// ---------------------------------------------------------------------------
-// The capstone.
-// ---------------------------------------------------------------------------
 
 /// v4 `buildContext`. Composes the ported context subsystem into a byte-faithful
 /// [`BuiltContext`]; the remaining seam is the W4.6b whisper-POSTING half
@@ -2300,499 +2022,16 @@ where
         final_system_prompt_tokens + compressed_history_block_tokens;
 
     // ---------------------------------------------------------------------
-    // 1b. Memory recap (seam).
+    // 2. Recall's query text and the instance recall settings, read once for
+    //    the turn (the pools themselves assemble after the scene state, whose
+    //    tokens the inter-character budget leaves room for).
     // ---------------------------------------------------------------------
-    let mut memory_recap_content = String::new();
-    let mut memory_recap_tokens = 0i64;
-    if let (true, false, Some(selection)) = (
-        input.generate_memory_recap,
-        input.character.id.is_empty(),
-        input.cheap_llm_selection.as_ref(),
-    ) {
-        let recap_relevance_query = input
-            .new_user_message
-            .clone()
-            .filter(|s| !s.is_empty())
-            .or_else(|| {
-                input
-                    .existing_messages
-                    .last()
-                    .map(|m| m.content.clone())
-                    .filter(|s| !s.is_empty())
-            })
-            .or_else(|| input.chat.scenario_text.clone().filter(|s| !s.is_empty()))
-            .or_else(|| input.chat.context_summary.clone().filter(|s| !s.is_empty()))
-            .unwrap_or_default();
-        // v4 `generateMemoryRecap` (W4.6a). Borrow the owned uncensored fallback
-        // (the danger-chat fallback for the summarization call).
-        let uncensored = input
-            .uncensored_fallback
-            .as_ref()
-            .map(|u| UncensoredFallbackOptions {
-                concierge_policy: &u.concierge_policy,
-                available_profiles: &u.available_profiles,
-                is_dangerous_chat: None,
-            });
-        let params = crate::services::memory_recap::MemoryRecapParams {
-            character_id: &input.character.id,
-            character_name: &input.character.name,
-            character_mount_point_id: input.character.character_document_mount_point_id.as_deref(),
-            selection,
-            user_id: &input.user_id,
-            chat_id: Some(input.chat.id.as_str()),
-            uncensored_fallback: uncensored.as_ref(),
-            max_context: input
-                .connection_profile
-                .as_ref()
-                .and_then(|p| p.max_context),
-            relevance_query: &recap_relevance_query,
-            embedding_profile_id: input.embedding_profile_id.as_deref(),
-            now_ms: now_ms_f,
-        };
-        // v4 `74ec93b5`: the recap is the one context step awaited inline on a
-        // visible turn that makes several independent network calls — an
-        // embedding for the relevant-conversations search, then the cheap-LLM
-        // summarization. Each leg carries its own deadline; this bounds the
-        // phase as a whole so no combination of slow legs can leave the turn
-        // sitting on "Recalling…". See [`memory_recap_within_phase_budget`].
-        let recap = memory_recap_within_phase_budget(
-            crate::services::memory_recap::generate_memory_recap(
-                db, embedding, completion, executor, &params,
-            ),
-            &input.chat.id,
-            &input.character.id,
-            &mut warnings,
-        )
-        .await;
-        if !recap.content.is_empty() {
-            memory_recap_tokens = estimate_tokens(&recap.content, cpt);
-            memory_recap_content = recap.content;
-        }
-    }
-
-    // ---------------------------------------------------------------------
-    // 2. Memory retrieval (two-pool).
-    // ---------------------------------------------------------------------
-    //
-    // Instance-wide recall settings, read once for the turn (v4 `870a57fa`
-    // hoists this out of the two-pool branch): the dynamic head's scope/expand
-    // policy below, and the per-turn conversation-summary cadence after the
-    // whisper's memory sections are assembled.
-    let recall_settings = read_memory_recall_settings(db);
-    let mut memory_content = String::new();
-    let mut memory_tokens = 0i64;
-    let mut memories_included = 0usize;
-    let mut debug_memories: Vec<DebugMemoryInfo> = Vec::new();
-
+    // Sentence-shaped recent-window query (item 3): the tail of the conversation
+    // as prose rather than a single one-line message. Recall's fallback query
+    // text, and the knowledge search's query. Works in continue mode too.
     let memory_search_query =
         build_recent_window_query(&input.existing_messages, input.new_user_message.as_deref());
-    let mut whispered_memory_ids: Vec<String> = Vec::new();
-    // The query text + vector this turn's memory search embedded, captured so the
-    // per-turn conversation-summary search can reuse it (one embedding, two
-    // searches). `None` when memories were skipped or the embedding failed — in
-    // which case the conversation-summary cadence simply sits this turn out
-    // rather than paying for a call of its own.
-    let mut turn_query_embedding: Option<crate::services::memory_service::SearchQueryEmbedding> =
-        None;
-    // Turn-level recall signals (retrospective / timeRange / entities). The
-    // proactive pre-compute path hands them in via `input.recall_signals` (v4
-    // `turnRecallSignals = options.recallSignals ?? null`, context-manager.ts:1139);
-    // the fallback distillation below fills them when the proactive path didn't run.
-    // Consumed by the retrospective head sizing there AND by the mini-recap after
-    // the whisper assembles (v4 declares it at function scope for exactly that
-    // reason, context-manager.ts:1118).
-    let mut turn_recall_signals: Option<crate::services::memory_recap::distill::DistilledSearch> =
-        input.recall_signals.clone();
-
-    if !input.skip_memories && !input.character.id.is_empty() {
-        let compaction_gen = input.chat.compaction_generation;
-
-        // Pool sizes scale with the memory budget (v4 `3f7320138` F7). The
-        // archive's size is fixed by the ordinary (non-retrospective) split so
-        // its membership stays stable across turns; the head is resized once
-        // the turn's signals are known, below. The search limit uses the
-        // ordinary head size until then — a retrospective fallback turn bumps
-        // it once the distillation says so.
-        let ordinary_sizing = size_memory_pools(budget.memory_budget as f64, false);
-        let retro_sizing = size_memory_pools(budget.memory_budget as f64, true);
-
-        // v4 `getOrComputeFrozenArchive(character.id, chat.id, compactionGen,
-        // { size, presentCharacterIds })` — byte-stable within a chat and a
-        // compactionGeneration (process-cached). Digests about the people in
-        // the room ride in the archive. Budgets are decided AFTER the search
-        // below (recall-on-reference: the retrospective head sizing needs the
-        // turn signals), so only the fetch happens here; the archive formats
-        // once the budgets are known. A read failure is v4's outer catch
-        // (`Failed to retrieve memories` → `warnings`); v5 keeps its
-        // pre-existing empty archive (P4.D268 R-K).
-        let archive_present_ids: Vec<String> = input
-            .participant_characters
-            .as_ref()
-            .map(|pc| {
-                pc.keys()
-                    .filter(|id| **id != input.character.id)
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default();
-        let frozen_archive: Vec<InjectorMemory> =
-            crate::services::frozen_archive::get_or_compute_frozen_archive(
-                db,
-                &input.character.id,
-                &input.chat.id,
-                compaction_gen,
-                Some(ordinary_sizing.archive_size),
-                &archive_present_ids,
-                now_ms_f,
-            )
-            .unwrap_or_default()
-            .iter()
-            .map(injector_memory_from_json)
-            .collect();
-        let archive_ids: HashSet<String> = frozen_archive.iter().map(|m| m.id.clone()).collect();
-
-        let mut dynamic_head_results: Vec<InjectorResult> = Vec::new();
-
-        if let Some(pre_searched) = input
-            .pre_searched_memories
-            .as_ref()
-            .filter(|p| !p.is_empty())
-        {
-            // v4 `context-manager.ts:1141-1145` — the `'pre-searched'` memory path.
-            // The proactive pre-compute distill (P4.19) already keyword-distilled
-            // and semantic-searched this turn; use its results as the dynamic head
-            // (archive-overlap filtered), and skip the fallback distill block
-            // entirely. `turn_recall_signals` is already seeded from
-            // `input.recall_signals` above, so the retrospective head sizing +
-            // mini-recap fire identically on this path.
-            // The proactive path did the embedding; take its vector as this turn's.
-            turn_query_embedding = input.pre_searched_query_embedding.clone();
-            dynamic_head_results = pre_searched
-                .iter()
-                .filter(|r| json_str(&r.memory, "id").is_none_or(|id| !archive_ids.contains(&id)))
-                .map(injector_result_from_search)
-                .collect();
-        } else if !memory_search_query.is_empty() {
-            // Query distillation (v4 `extractMemorySearchKeywords`, W4.6a). Falls
-            // back to the raw recent-window query.
-            let mut distilled_query = memory_search_query.clone();
-            let mut turn_context: Option<crate::recall_tags::ContextTag> = None;
-            let mut turn_temporal: Option<crate::recall_tags::TemporalTag> = None;
-            if let Some(selection) = &input.cheap_llm_selection {
-                // v4 `recentForDistill`: existingMessages.slice(-12), role
-                // lowercased, assistant slice tool-stripped, non-empty; then push
-                // newUserMessage.
-                let start = input.existing_messages.len().saturating_sub(12);
-                let mut recent: Vec<crate::services::memory_recap::distill::DistillMessage> = input
-                    .existing_messages[start..]
-                    .iter()
-                    .map(|m| {
-                        let role = m.role.to_lowercase();
-                        let content = if role == "assistant" {
-                            strip_tool_artifacts(&m.content).unwrap_or_default()
-                        } else {
-                            m.content.clone()
-                        };
-                        crate::services::memory_recap::distill::DistillMessage { role, content }
-                    })
-                    .filter(|m| crate::jsstr::utf16_len(&m.content) > 0)
-                    .collect();
-                // v4 `if (newUserMessage) recentForDistill.push(...)` — a truthy
-                // (non-empty) string only.
-                if let Some(num) = input.new_user_message.as_ref().filter(|s| !s.is_empty()) {
-                    recent.push(crate::services::memory_recap::distill::DistillMessage {
-                        role: "user".to_string(),
-                        content: num.clone(),
-                    });
-                }
-                // v4 passes `{ nowIso: new Date().toISOString(), timelineMode:
-                // chat.timelineMode ?? 'realtime' }` — the injected now_ms seam
-                // stands in for the wall clock.
-                let clock = crate::services::memory_recap::distill::ExtractionClock {
-                    now_iso: crate::clock::iso_from_unix_ms(now_ms_f as i64),
-                    timeline_mode: input
-                        .chat
-                        .timeline_mode
-                        .clone()
-                        .unwrap_or_else(|| "realtime".to_string()),
-                    local_tz: input.server_tz.clone(),
-                };
-                if let Some(d) = crate::services::memory_recap::distill::distill_memory_search(
-                    executor,
-                    completion,
-                    &recent,
-                    &input.character.name,
-                    selection,
-                    &input.character.id,
-                    Some(&clock),
-                    // The operator is waiting on this one: it is the fallback
-                    // branch, so no proactive pass pre-computed it and the turn
-                    // is blocked behind the call. Tight budget, and no retry —
-                    // the distillation is an optimisation over
-                    // `memory_search_query`, which is already in hand, so a lost
-                    // pass costs recall quality, not the turn. A background
-                    // budget here is 90 s plus a free retry, i.e. up to three
-                    // minutes of empty composer per responding character on a
-                    // stalled cheap route (v4 `02d4efa1b`, bug 115).
-                    crate::services::cheap_llm_exec::CheapLlmTaskOptions::interactive(),
-                )
-                .await
-                {
-                    if let Some(p) = d.paraphrase.clone().filter(|p| !p.is_empty()) {
-                        distilled_query = p;
-                    } else if !d.keywords.is_empty() {
-                        distilled_query = d.keywords.join(" ");
-                    }
-                    turn_context = d.context;
-                    turn_temporal = d.temporal;
-                    turn_recall_signals = Some(d);
-                }
-            }
-
-            // Characters present in the room this turn (responding character +
-            // every other character participant) for the participant-aware boost
-            // (item 4).
-            let mut present_about_character_ids: Vec<String> = Vec::new();
-            {
-                let mut seen: HashSet<String> = HashSet::new();
-                if !input.character.id.is_empty() && seen.insert(input.character.id.clone()) {
-                    present_about_character_ids.push(input.character.id.clone());
-                }
-                if let Some(pc) = &input.participant_characters {
-                    for id in pc.keys() {
-                        if !id.is_empty() && seen.insert(id.clone()) {
-                            present_about_character_ids.push(id.clone());
-                        }
-                    }
-                }
-            }
-
-            // v4 `[character.name, ...participantCharacters.values().map(c =>
-            // c.name)].filter(non-empty string)`.
-            let present_participant_names: Vec<String> = std::iter::once(&input.character.name)
-                .chain(
-                    input
-                        .participant_characters
-                        .iter()
-                        .flat_map(|pc| pc.values().map(|c| &c.name)),
-                )
-                .filter(|name| !name.is_empty())
-                .cloned()
-                .collect();
-
-            // Assemble the full per-turn recall context so the dynamic head
-            // reads the targeting tags back (see recall_tags). chat.projectId is
-            // the rename-proof comparand for scope: narrow gating. (The settings
-            // themselves were read once at the top of step 2.)
-            let fallback_retro = turn_recall_signals
-                .as_ref()
-                .is_some_and(|s| s.retrospective);
-            let recall_context = crate::services::memory_service::RecallContextInput {
-                current_project_id: input.chat.project_id.clone(),
-                scope_policy: if recall_settings.scope_policy == "exclude" {
-                    crate::recall_tags::ScopePolicy::Exclude
-                } else {
-                    crate::recall_tags::ScopePolicy::DownWeight
-                },
-                present_about_character_ids,
-                turn_context,
-                turn_temporal,
-                turn_retrospective: fallback_retro,
-                expand_related: recall_settings.expand_related,
-                recently_whispered_ids: Some(crate::recall_history::recently_whispered_id_set(
-                    &input.chat.commonplace_recall_history,
-                )),
-                // Fresh-event boost (mirrors the proactive path): recent events
-                // keep their footing against evergreen memories whatever the
-                // retrospective classifier decided; the chat id is the echo
-                // guard. (v4 passes `Date.now()`; the injected seam stands in.)
-                current_chat_id: Some(input.chat.id.clone()),
-                now_ms: Some(now_ms_f),
-                // Their names too: R4's entity anchors skip a name that merely
-                // names someone in the room (the participant boost already
-                // covers them). v4 `f7d8064be`; honoured by P4.D267.
-                present_participant_names,
-            };
-            // Retrospective multi-probe (mirrors the proactive path in
-            // `pre_compute::proactive_recall_task`, now ported — P4.19).
-            let mut extra_probes: Vec<String> = Vec::new();
-            if fallback_retro {
-                if let Some(signals) = &turn_recall_signals {
-                    let entity_probe =
-                        crate::jsstr::js_trim(&signals.entities.join(" ")).to_string();
-                    if !entity_probe.is_empty() {
-                        extra_probes.push(entity_probe);
-                    }
-                    if let (Some(p), Some(tr)) = (&signals.paraphrase, &signals.time_range) {
-                        extra_probes.push(format!(
-                            "{p} (around {} to {})",
-                            crate::jsstr::utf16_truncate(&tr.from, 10),
-                            crate::jsstr::utf16_truncate(&tr.to, 10)
-                        ));
-                    }
-                }
-            }
-            let results = search_memories_semantic(
-                db,
-                embedding,
-                &input.character.id,
-                &distilled_query,
-                &SemanticSearchOptions {
-                    user_id: input.user_id.clone(),
-                    embedding_profile_id: input.embedding_profile_id.clone(),
-                    // Pull a few more than the head size so the archive-overlap
-                    // filter still leaves enough candidates to fill the head.
-                    // Retrospective turns run the enlarged head, so pull
-                    // proportionally more.
-                    limit: Some(
-                        (if fallback_retro {
-                            retro_sizing.head_entries
-                        } else {
-                            ordinary_sizing.head_entries
-                        }) * 3,
-                    ),
-                    min_importance: Some(input.min_memory_importance),
-                    recall_context: Some(recall_context),
-                    // v4 passes `turnRecallSignals?.entities` on EVERY turn.
-                    entity_anchors: turn_recall_signals
-                        .as_ref()
-                        .map(|s| s.entities.clone())
-                        .unwrap_or_default(),
-                    // Ungated from the retrospective flag (v4 `505dcb1f`): a resolved
-                    // window is useful either way — the classifier misses same-day
-                    // references, and `search_memories_semantic`'s two-stage semantics
-                    // (hard filter only when enough hits survive, else the bounded soft
-                    // boost) make it starvation-safe. The flag still gates the temporal
-                    // flip, the anti-repetition suspension, and the multi-probe block.
-                    occurred_within: turn_recall_signals
-                        .as_ref()
-                        .and_then(|s| s.time_range.clone()),
-                    extra_probes,
-                    now_ms: now_ms_f,
-                    ..Default::default()
-                },
-                Some(&mut turn_query_embedding),
-            )
-            .await?;
-            dynamic_head_results = results
-                .iter()
-                .filter(|r| json_str(&r.memory, "id").is_none_or(|id| !archive_ids.contains(&id)))
-                .map(injector_result_from_search)
-                .collect();
-        }
-
-        // Recall-on-reference (fourth cadence, part 1): a retrospective turn
-        // gets an enlarged head — the turn that needs rich recall is exactly
-        // the turn that otherwise gets the smallest window. Budgets decided
-        // here, AFTER the signals are known, so the archive takes what's left.
-        let is_retrospective_turn = turn_recall_signals
-            .as_ref()
-            .is_some_and(|s| s.retrospective);
-        let turn_sizing = if is_retrospective_turn {
-            &retro_sizing
-        } else {
-            &ordinary_sizing
-        };
-        let dynamic_head_budget = turn_sizing.head_token_budget;
-        let archive_budget = turn_sizing.archive_token_budget;
-
-        // Both pools below are keyed on `characterId` alone, so each carries this
-        // character's memories ABOUT other people alongside their own — and both
-        // are delivered under "You remember the following entries…". Resolve the
-        // subjects so those lines can say whose life they describe (v4
-        // `d883a5ee1`, bug 122). Names are looked up rather than taken from
-        // `participant_characters` because a memory's subject is frequently
-        // someone not in the room (in v4's reported scene, one character
-        // accounted for 91 of the responder's).
-        //
-        // ONE lookup for the turn, over the UNION of both pools — v4 builds the
-        // context once here and hands the same value to both formatters.
-        //
-        // v4 records three contributing conditions that were NOT the bug and
-        // must not be "fixed" on the way past: `isRecentlyAddressed` was
-        // correct (the turn note rightly forbade the responder from passing);
-        // `multiCharacterPrefill: 0`, from bug 85's fix, left no trailing
-        // `[Name]` anchor between the memories and the first generated token;
-        // and all three seats ran the same cheap model.
-        let memory_subject = crate::services::memory_subject::build_memory_subject_context(
-            db,
-            &input.character.id,
-            frozen_archive
-                .iter()
-                .map(|m| m.about_character_id.clone())
-                .chain(
-                    dynamic_head_results
-                        .iter()
-                        .map(|r| r.memory.about_character_id.clone()),
-                ),
-        );
-
-        let archive_formatted =
-            format_frozen_memory_archive(&frozen_archive, archive_budget, &memory_subject);
-
-        let head_formatted = format_dynamic_memory_head(
-            &dynamic_head_results,
-            Some(dynamic_head_budget),
-            Some(turn_sizing.head_entries),
-            now_ms_f,
-            &memory_subject,
-        );
-        tracing::debug!(
-            target: "quilltap::build_context",
-            chatId = %input.chat.id,
-            characterId = %input.character.id,
-            memoryBudget = budget.memory_budget,
-            retrospective = is_retrospective_turn,
-            headTokenBudget = dynamic_head_budget,
-            headEntries = turn_sizing.head_entries as u64,
-            archiveTokenBudget = archive_budget,
-            archiveSize = ordinary_sizing.archive_size as u64,
-            headUsed = head_formatted.memories_used as u64,
-            archiveUsed = archive_formatted.memories_used as u64,
-            "[ContextManager] Memory pools sized"
-        );
-
-        whispered_memory_ids = head_formatted
-            .debug_memories
-            .iter()
-            .filter_map(|d| d.memory_id.clone())
-            .filter(|id| !id.is_empty())
-            .collect();
-
-        // Only what cleared the token budgets reached the model — those, and
-        // only those, count as accessed (v4 `3f7320138` F6). Search no longer
-        // stamps its over-fetched candidates. Awaited inline at v4's statement
-        // position (P4.D268 R-D).
-        let delivered_ids: Vec<String> = archive_formatted
-            .debug_memories
-            .iter()
-            .chain(head_formatted.debug_memories.iter())
-            .filter_map(|d| d.memory_id.clone())
-            .filter(|id| !id.is_empty())
-            .collect();
-        crate::services::memory_access::mark_memories_accessed(
-            db,
-            &input.character.id,
-            &delivered_ids,
-        )
-        .await;
-
-        let mut sections: Vec<String> = Vec::new();
-        if !archive_formatted.content.is_empty() {
-            sections.push(archive_formatted.content.clone());
-        }
-        if !head_formatted.content.is_empty() {
-            sections.push(head_formatted.content.clone());
-        }
-        memory_content = sections.join("\n\n");
-        memory_tokens = archive_formatted.token_count + head_formatted.token_count;
-        memories_included = archive_formatted.memories_used + head_formatted.memories_used;
-        debug_memories = archive_formatted
-            .debug_memories
-            .into_iter()
-            .chain(head_formatted.debug_memories)
-            .collect();
-    }
+    let recall_settings = read_memory_recall_settings(db);
 
     // ---------------------------------------------------------------------
     // 2a-bis. Scene state.
@@ -2836,167 +2075,237 @@ where
         )
     };
 
-    // ---------------------------------------------------------------------
-    // 2b. Inter-character memories (multi-character).
-    // ---------------------------------------------------------------------
-    let mut inter_character_memory_content = String::new();
-    let mut inter_character_memory_tokens = 0i64;
-    let mut inter_character_memories_included = 0usize;
-    let mut debug_inter_character_memories: Vec<DebugInterCharacterMemoryInfo> = Vec::new();
-
-    // v4 `const tInterStart = performance.now()` and `let interCharacterLoadedCount
-    // = 0`, both declared OUTSIDE the retrieval guard — because the debug line at
-    // the bottom of this section is outside it too (v4 `c9faa2c74`).
-    let t_inter_start = std::time::Instant::now();
-    let mut inter_character_loaded_count = 0usize;
-
-    if !input.skip_memories && is_multi_character && !input.character.id.is_empty() {
-        let (Some(pc), Some(all)) = (&input.participant_characters, &input.all_participants) else {
-            unreachable!("is_multi_character guarantees these are Some");
-        };
-        let mut other_character_ids: Vec<String> = Vec::new();
-        let mut other_character_names: HashMap<String, String> = HashMap::new();
-        for p in all {
-            if p.participant_type == "CHARACTER" {
-                if let Some(cid) = &p.character_id {
-                    if cid != &input.character.id {
-                        if let Some(oc) = pc.get(cid) {
-                            other_character_ids.push(oc.id.clone());
-                            other_character_names.insert(oc.id.clone(), oc.name.clone());
-                        }
-                    }
-                }
-            }
-        }
-
-        let inter_character_budget =
-            ((budget.memory_budget - memory_tokens - current_state_tokens) as f64 / 2.0).floor()
-                as i64;
-
-        if !other_character_ids.is_empty() && inter_character_budget > 0 {
-            // Importance/recency half — direct DB query, top-N per other
-            // character. Hot digests about each other character lead
-            // (consolidation spec §5), then the ordinary partition query; both
-            // are hot-only, deduped by id (first seen). A read failure keeps
-            // v5's pre-existing `?` (v4 pushes a warning — P4.D268 R-K).
-            let mut importance_rows: Vec<Value> = Vec::new();
-            for other_id in &other_character_ids {
-                let cid = input.character.id.clone();
-                let subject = crate::db::memories_read::DigestSubject::About(other_id.clone());
-                importance_rows.extend(db.read_main(move |conn| {
-                    crate::db::memories_read::find_hot_digests(
-                        conn,
-                        &cid,
-                        subject,
-                        INTER_CHAR_DIGEST_LIMIT,
-                    )
-                })?);
-            }
-            let ids = other_character_ids.clone();
-            let cid = input.character.id.clone();
-            importance_rows.extend(db.read_main(move |conn| {
-                crate::db::memories_read::find_by_character_about_characters(
-                    conn,
-                    &cid,
-                    &ids,
-                    INTER_CHAR_PER_CHARACTER_LIMIT,
-                )
-            })?);
-            let mut inter_seen: HashSet<String> = HashSet::new();
-            let importance_memories: Vec<InjectorMemory> = importance_rows
-                .iter()
-                .map(injector_memory_from_json)
-                .filter(|m| inter_seen.insert(m.id.clone()))
-                .collect();
-
-            // Relevance half — semantic search per other character.
-            let mut relevance_results: Vec<InjectorResult> = Vec::new();
-            if !memory_search_query.is_empty() {
-                for other_id in &other_character_ids {
-                    let r = search_memories_semantic(
-                        db,
-                        embedding,
-                        &input.character.id,
-                        &memory_search_query,
-                        &SemanticSearchOptions {
-                            user_id: input.user_id.clone(),
-                            embedding_profile_id: input.embedding_profile_id.clone(),
-                            limit: Some(INTER_CHAR_RELEVANCE_PER_CHARACTER_LIMIT),
-                            min_importance: Some(input.min_memory_importance),
-                            about_character_id: Some(other_id.clone()),
-                            now_ms: now_ms_f,
-                            ..Default::default()
-                        },
-                        // v4 passes no capture here — the inter-character pool
-                        // is a companion search, not the turn's main query.
-                        None,
-                    )
-                    .await
-                    .unwrap_or_default();
-                    relevance_results.extend(r.iter().map(injector_result_from_search));
-                }
-            }
-
-            // v4 sets this BEFORE the "did we find anything" check, so the count
-            // reports what was LOADED from the two pools — not what survived the
-            // budget, which is the `includedCount` field beside it.
-            inter_character_loaded_count = importance_memories.len() + relevance_results.len();
-
-            if !importance_memories.is_empty() || !relevance_results.is_empty() {
-                let names_lookup = |id: &str| other_character_names.get(id).cloned();
-                let formatted = format_inter_character_memories_for_context(
-                    &importance_memories,
-                    &names_lookup,
-                    inter_character_budget,
-                    &relevance_results,
-                    now_ms_f,
-                );
-                // (arg order matches the ported signature: importance, names,
-                // max_tokens, relevance, now_ms.)
-                inter_character_memory_content = formatted.content;
-                inter_character_memory_tokens = formatted.token_count;
-                inter_character_memories_included = formatted.memories_used;
-                debug_inter_character_memories = formatted.debug_memories;
-                // Only the delivered entries count as accessed (v4 F6),
-                // awaited inline at v4's statement position (P4.D268 R-D).
-                let delivered_ids: Vec<String> = debug_inter_character_memories
-                    .iter()
-                    .filter_map(|d| d.memory_id.clone())
-                    .filter(|id| !id.is_empty())
-                    .collect();
-                crate::services::memory_access::mark_memories_accessed(
+    // The scope every Commonplace Book whisper for this turn is addressed to:
+    // the responding participant in a multi-character chat, untargeted
+    // (public) otherwise. Shared by the conversation-list dedup and the whisper
+    // posting further down, so a list can never be filtered against one scope
+    // and then whispered to another.
+    let commonplace_target_participant_id: Option<String> = if is_multi_character {
+        input.responding_participant.as_ref().map(|p| p.id.clone())
+    } else {
+        None
+    };
+    // The standing fold whisper's UUIDs, read at most once per turn and only
+    // when a conversation list is actually being built.
+    let fold_whisper_ids_cache: std::sync::Mutex<Option<HashSet<String>>> =
+        std::sync::Mutex::new(None);
+    let fold_whisper_conversation_ids = || -> HashSet<String> {
+        fold_whisper_ids_cache
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_or_insert_with(|| {
+                collect_fold_whisper_conversation_ids(
                     db,
-                    &input.character.id,
-                    &delivered_ids,
+                    &input.chat.id,
+                    commonplace_target_participant_id.as_deref(),
                 )
-                .await;
+            })
+            .clone()
+    };
+
+    // ---------------------------------------------------------------------
+    // 2b. Recall: every memory pool of the turn from one query, one
+    //     embedding (`services::recall::assemble`). What reached the model is
+    //     recorded by `deliver_recall` once the request body is built, below.
+    // ---------------------------------------------------------------------
+    let t_memory_start = std::time::Instant::now();
+    let mut present_characters: Vec<(String, String)> = Vec::new();
+    if !input.character.id.is_empty() {
+        present_characters.push((input.character.id.clone(), input.character.name.clone()));
+    }
+    if let Some(pc) = &input.participant_characters {
+        for (id, c) in pc {
+            if !id.is_empty() && !present_characters.iter().any(|(p, _)| p == id) {
+                present_characters.push((id.clone(), c.name.clone()));
             }
         }
     }
-
-    // v4 `c9faa2c74` — restored after the `96bf74b5b` debug-strip chore emptied
-    // the `if (isMultiCharacter) { }` block and left two locals nothing read.
-    //
-    // Deliberately OUTSIDE the `!skip_memories` guard, exactly as v4 writes it:
-    // the conditional stands alone, so a multi-character turn that skipped
-    // memories still reports — with the zero counts that say it skipped.
-    if is_multi_character {
-        tracing::debug!(
-            target: "quilltap::build_context",
-            // v4's camelCase keys (P4.D268 R-L — the snake_case spelling was
-            // a defect; the unit pin moved with it).
-            chatId = %input.chat.id,
-            characterId = %input.character.id,
-            // v4 `Math.round(performance.now() - tInterStart)`. `Instant` is
-            // `performance.now()`'s twin — monotonic, and NOT the wall clock the
-            // P4.D49 llm-log durations take — and `f64::round` agrees with JS
-            // `Math.round` over the non-negative range a duration occupies.
-            durationMs = (t_inter_start.elapsed().as_secs_f64() * 1000.0).round() as u64,
-            loadedCount = inter_character_loaded_count as u64,
-            includedCount = inter_character_memories_included as u64,
-            "[ContextManager] Inter-character memory retrieval complete"
-        );
+    let mut inter_character_subjects: Vec<(String, String)> = Vec::new();
+    if is_multi_character && !input.character.id.is_empty() {
+        if let (Some(pc), Some(all)) = (&input.participant_characters, &input.all_participants) {
+            for p in all {
+                if p.participant_type != "CHARACTER" {
+                    continue;
+                }
+                let Some(cid) = p
+                    .character_id
+                    .as_ref()
+                    .filter(|c| *c != &input.character.id)
+                else {
+                    continue;
+                };
+                if let Some(other) = pc.get(cid) {
+                    inter_character_subjects.push((other.id.clone(), other.name.clone()));
+                }
+            }
+        }
     }
+    let recap_relevance_query = input
+        .new_user_message
+        .clone()
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            input
+                .existing_messages
+                .last()
+                .map(|m| m.content.clone())
+                .filter(|s| !s.is_empty())
+        })
+        .or_else(|| input.chat.scenario_text.clone().filter(|s| !s.is_empty()))
+        .or_else(|| input.chat.context_summary.clone().filter(|s| !s.is_empty()))
+        .unwrap_or_default();
+    // The fallback distillation: the proactive pass did not run (first turn,
+    // continue mode, nothing to distil from). The view here is the trimmed
+    // role/content one, so map it directly — existingMessages.slice(-12), role
+    // lowercased, the assistant slice tool-stripped, non-empty; then the new
+    // user message.
+    let distill_selection = input.cheap_llm_selection.clone();
+    let plan_distill = distill_selection.as_ref().map(|selection| {
+        let start = input.existing_messages.len().saturating_sub(12);
+        let mut messages: Vec<crate::services::memory_recap::distill::DistillMessage> = input
+            .existing_messages[start..]
+            .iter()
+            .map(|m| {
+                let role = m.role.to_lowercase();
+                let content = if role == "assistant" {
+                    strip_tool_artifacts(&m.content).unwrap_or_default()
+                } else {
+                    m.content.clone()
+                };
+                crate::services::memory_recap::distill::DistillMessage { role, content }
+            })
+            .filter(|m| crate::jsstr::utf16_len(&m.content) > 0)
+            .collect();
+        if let Some(num) = input.new_user_message.as_ref().filter(|s| !s.is_empty()) {
+            messages.push(crate::services::memory_recap::distill::DistillMessage {
+                role: "user".to_string(),
+                content: num.clone(),
+            });
+        }
+        crate::services::recall::assemble::PlanDistill {
+            messages,
+            selection,
+            clock_iso: crate::clock::iso_from_unix_ms(input.now_ms),
+            host_zone_fallback: input.server_tz.clone().unwrap_or_else(|| "UTC".to_string()),
+        }
+    });
+    let uncensored = input
+        .uncensored_fallback
+        .as_ref()
+        .map(|u| UncensoredFallbackOptions {
+            concierge_policy: &u.concierge_policy,
+            available_profiles: &u.available_profiles,
+            is_dangerous_chat: None,
+        });
+    let max_context = input
+        .connection_profile
+        .as_ref()
+        .and_then(|p| p.max_context);
+    let recall = if input.character.id.is_empty() {
+        crate::services::recall::assemble::empty_recall_bundle()
+    } else {
+        let plan_recap = match (
+            input.generate_memory_recap,
+            input.cheap_llm_selection.as_ref(),
+        ) {
+            (true, Some(selection)) => Some(crate::services::recall::assemble::PlanRecap {
+                selection,
+                uncensored_fallback: uncensored.as_ref(),
+                max_context,
+                fallback_query: recap_relevance_query.clone(),
+            }),
+            _ => None,
+        };
+        crate::services::recall::assemble::assemble_recall(
+            db,
+            embedding,
+            completion,
+            executor,
+            crate::services::recall::assemble::RecallPlan {
+                user_id: &input.user_id,
+                embedding_profile_id: input.embedding_profile_id.as_deref(),
+                provider: input.provider.as_deref(),
+                character_id: &input.character.id,
+                character_name: &input.character.name,
+                character_mount_point_id: input
+                    .character
+                    .character_document_mount_point_id
+                    .as_deref(),
+                chat: crate::services::recall::assemble::RecallChat {
+                    id: &input.chat.id,
+                    project_id: input.chat.project_id.as_deref(),
+                    compaction_generation: input.chat.compaction_generation,
+                    commonplace_recall_history: &input.chat.commonplace_recall_history,
+                    timeline_mode: input.chat.timeline_mode.as_deref(),
+                },
+                memory_budget: budget.memory_budget,
+                min_importance: input.min_memory_importance,
+                skip_memories: input.skip_memories,
+                present: present_characters.clone(),
+                inter_character_subjects,
+                current_state_tokens,
+                recall_settings: crate::services::recall::assemble::PlanRecallSettings {
+                    scope_policy: if recall_settings.scope_policy == "exclude" {
+                        crate::recall_tags::ScopePolicy::Exclude
+                    } else {
+                        crate::recall_tags::ScopePolicy::DownWeight
+                    },
+                    expand_related: recall_settings.expand_related,
+                    per_turn_conversation_summaries: recall_settings
+                        .per_turn_conversation_summaries,
+                },
+                recent_window: memory_search_query.clone(),
+                distill: plan_distill,
+                pre_recall: input.pre_recall.clone(),
+                recap: plan_recap,
+                conversations: Some(crate::services::recall::assemble::PlanConversations {
+                    max_context: budget_info.as_ref().map(|b| b.max_context),
+                    standing_ids: &fold_whisper_conversation_ids,
+                }),
+                // v4 forwards `options.onStatusChange` (the `generating_recap` /
+                // `assembling_context` frames); v5's context build has no
+                // status emitter (the frames were never ported — a pre-existing
+                // gap, recorded in the P4.D291 lane record).
+                on_status_change: None,
+                replay: None,
+                now_ms: now_ms_f,
+            },
+        )
+        .await
+    };
+    warnings.extend(recall.warnings.iter().cloned());
+
+    let memory_recap_content = recall.sections.recap.clone().unwrap_or_default();
+    let memory_recap_tokens = recall.tokens.recap;
+    let memory_content = recall.sections.relevant.clone().unwrap_or_default();
+    let memory_tokens = recall.tokens.relevant;
+    let inter_character_memory_content =
+        recall.sections.inter_character.clone().unwrap_or_default();
+    let inter_character_memory_tokens = recall.tokens.inter_character;
+    let memories_included = recall.memories_included;
+    let inter_character_memories_included = recall.inter_character_included;
+    let debug_memories = recall.debug_memories.clone();
+    let debug_inter_character_memories = recall.debug_inter_character_memories.clone();
+    let per_turn_conversations_content = recall
+        .sections
+        .relevant_conversations
+        .clone()
+        .unwrap_or_default();
+    let retrospective_recall_content = recall.sections.retrospective.clone().unwrap_or_default();
+    tracing::debug!(
+        target: "quilltap::build_context",
+        chatId = %input.chat.id,
+        characterId = %input.character.id,
+        path = recall.path.as_str(),
+        // v4 `Math.round(performance.now() - tMemoryStart)` — MASKED in every
+        // capture (R-L9), never asserted.
+        durationMs = (t_memory_start.elapsed().as_secs_f64() * 1000.0).round() as u64,
+        archive = recall.pools.archive.len(),
+        head = recall.pools.head.len(),
+        interCharacter = recall.pools.inter_character.len(),
+        recap = recall.pools.recap.len(),
+        "[ContextManager] Recall assembled"
+    );
 
     // ---------------------------------------------------------------------
     // 2c. Knowledge retrieval.
@@ -3458,137 +2767,8 @@ where
         _ => String::new(),
     };
 
-    // The scope every Commonplace Book whisper for this turn is addressed to: the
-    // responding participant in a multi-character chat, untargeted (public)
-    // otherwise. Computed ONCE (v4 `870a57fa`) and shared by the conversation-list
-    // dedup below and the whisper posting further down, so a list can never be
-    // filtered against one scope and then whispered to another.
-    let commonplace_target_participant_id: Option<String> = if is_multi_character {
-        input.responding_participant.as_ref().map(|p| p.id.clone())
-    } else {
-        None
-    };
-
-    // The standing fold whisper's UUIDs, read at most once per turn and only when
-    // a conversation list is actually being built.
-    let mut fold_whisper_ids_cache: Option<HashSet<String>> = None;
-
-    // Per-turn conversation summaries (instance-wide setting
-    // `memoryRecall.perTurnConversationSummaries`, off by default): re-run the
-    // relevant-past-conversations search over the character's vault
-    // `Conversation Summaries/` folder EVERY turn and fold the list into the
-    // consolidated whisper, instead of letting it refresh only at chat start /
-    // character join (the recap), on each summary fold (the standing
-    // `relevant-conversations` whisper), and on retrospective turns.
-    //
-    // The search rides the vector this turn's memory search already embedded —
-    // one embedding, two searches — so the extra cost is the vault chunk scan and
-    // a few frontmatter reads, not another provider call. No vector (memories
-    // skipped, no embedding profile, a failed embedding, or the text-search
-    // fallback) means no list this turn rather than an embedding of our own.
-    // Best-effort throughout: it never blocks or fails a turn.
-    //
-    // Skipped on the turn the recap itself runs: `generate_memory_recap` already
-    // searched the same shelf and its list is riding in `recap`, so a second one
-    // would say the same thing twice in a single whisper.
-    //
-    // v4 wraps the block in a warn-only try/catch. Every fallible step here
-    // degrades in place instead: `search_vault_conversation_summaries` returns an
-    // empty list on any failure, and the fold-whisper read swallows its own.
-    let mut per_turn_conversations_content = String::new();
-    let mut per_turn_conversation_ids: HashSet<String> = HashSet::new();
-    //
-    // v4's four conjuncts: the setting, a character, a vector to ride, and NOT
-    // the turn the recap runs. The vector is the fourth, so binding it here
-    // keeps the gate and the value in one place (rather than testing
-    // `is_some()` and unwrapping below, which would leave a panic on a path
-    // only a later edit could reach).
-    let per_turn_captured = if recall_settings.per_turn_conversation_summaries
-        && !input.character.id.is_empty()
-        && memory_recap_content.is_empty()
-    {
-        turn_query_embedding.clone()
-    } else {
-        None
-    };
-    if let Some(captured) = per_turn_captured {
-        let limit = crate::services::memory_recap::ramp_limit(
-            budget_info.as_ref().map(|b| b.max_context),
-            crate::services::memory_recap::RELEVANT_CONVERSATIONS_MIN,
-            crate::services::memory_recap::RELEVANT_CONVERSATIONS_MAX,
-            crate::services::memory_recap::RELEVANT_CONVERSATIONS_RAMP_MIN_TOKENS,
-            crate::services::memory_recap::RELEVANT_CONVERSATIONS_RAMP_MAX_TOKENS,
-        );
-        let matches = crate::services::memory_recap::search_vault_conversation_summaries(
-            db,
-            embedding,
-            &input.character.id,
-            input.character.character_document_mount_point_id.as_deref(),
-            &captured.query,
-            &input.user_id,
-            input.embedding_profile_id.as_deref(),
-            limit.max(0) as usize,
-            Some(&input.chat.id),
-            // A resolved window is worth honouring whichever way the retrospective
-            // classifier went — the search's window staging falls back to the full
-            // pool when too few conversations overlap, so it cannot starve the list.
-            turn_recall_signals
-                .as_ref()
-                .and_then(|s| s.time_range.as_ref()),
-            Some(&captured.embedding),
-        )
-        .await;
-        let fold_ids = fold_whisper_conversation_ids(
-            db,
-            &input.chat.id,
-            commonplace_target_participant_id.as_deref(),
-            &mut fold_whisper_ids_cache,
-        );
-        let filtered: Vec<_> = matches
-            .into_iter()
-            .filter(|m| !fold_ids.contains(&m.conversation_id))
-            .collect();
-        if !filtered.is_empty() {
-            for m in &filtered {
-                per_turn_conversation_ids.insert(m.conversation_id.clone());
-            }
-            per_turn_conversations_content = format!(
-                "{}\n\n{}",
-                crate::services::memory_recap::render_relevant_conversations_block(&filtered),
-                crate::services::memory_recap::READ_CONVERSATION_CALL_NOTE
-            );
-        }
-    }
-
-    // Recall-on-reference (fourth cadence, part 2): on a retrospective turn, build
-    // the scoped mini-recap — a dated, drillable Relevant Past Conversations list
-    // from the vault summaries, scoped by the turn's timeRange/entities and closed
-    // by the read_conversation call note. Spam guard: skip when a block with the
-    // same signature was emitted within the last few turns (piggybacking the
-    // recall-history ring buffer), and dedup conversation IDs against BOTH lists
-    // already going to this target. Best-effort — never blocks the turn.
-    let (retrospective_recall_content, emitted_retro_signature) = match &turn_recall_signals {
-        Some(signals) if signals.retrospective && !input.character.id.is_empty() => {
-            match resolve_retrospective_mini_recap(
-                db,
-                embedding,
-                input,
-                signals,
-                &memory_search_query,
-                commonplace_target_participant_id.as_deref(),
-                &mut fold_whisper_ids_cache,
-                &per_turn_conversation_ids,
-            )
-            .await
-            {
-                Some((content, signature)) => (content, Some(signature)),
-                None => (String::new(), None),
-            }
-        }
-        _ => (String::new(), None),
-    };
-
-    // Commonplace whisper post + scene-cache + recall-history persistence (seams).
+    // Commonplace whisper post + scene-cache persistence (seams). The ring is
+    // `deliver_recall`'s, below — no longer gated on the post (v4 `584d28164`).
     // Reuse the canonical builders from `commonplace_notifications` (Group 5 dedup).
     // `relevant_conversations` is empty unless the per-turn conversation-summary
     // cadence is switched on; the fold-posted whisper carries that section
@@ -3627,21 +2807,6 @@ where
             if !emitted_scene_state.is_empty() {
                 persist_scene_cache(db, input, &cache_target_key, &emitted_scene_state).await;
             }
-            // v4 `chats.update({ commonplaceRecallHistory: appendRecallTurn(...) })`,
-            // plus the retrospective mini-recap signature (the fourth cadence's spam
-            // guard) — ONE write, gated on either half having something to record.
-            if !whispered_memory_ids.is_empty() || emitted_retro_signature.is_some() {
-                let mut next = crate::recall_history::append_recall_turn(
-                    &input.chat.commonplace_recall_history,
-                    &whispered_memory_ids,
-                );
-                if let Some(sig) = &emitted_retro_signature {
-                    next = crate::recall_history::append_retro_signature(&next, sig);
-                }
-                // v4 persists the RecallHistory OBJECT (`{ turns, retroSignatures? }`),
-                // never the bare turns array — the parse side requires the wrapper.
-                persist_recall_history(db, &input.chat.id, next.to_value()).await;
-            }
         }
     }
 
@@ -3671,22 +2836,43 @@ where
     // NAME, which a POSIX `TZ` rule does not have).
     let display_zone = input.display_zone.clone();
 
-    // Suparṇā mail — v4's READ half (W4.6a): collect unalerted mail, build the
-    // LLM context, flip each `alerted` flag. The whisper POST is W4.6b (fired via
-    // the recorded seam when there is unalerted mail).
-    let suparna_mail_llm_context =
-        match input.character.character_document_mount_point_id.as_deref() {
-            Some(vault) => {
-                let (ctx, unalerted) =
-                    crate::services::suparna_mail::resolve_suparna_mail_context_in_zone(
-                        db,
-                        vault,
-                        &display_zone,
-                    )
-                    .await;
+    // Post Office: after the Commonplace Book whisper, check this character's
+    // mailbox for letters Suparṇā has not yet announced. Each new letter
+    // triggers a Suparṇā whisper — EVENT-like, not a snapshot, so we never sweep
+    // prior mail whispers. The letters are NOT marked `alerted` here: this
+    // turn's call has not been made yet. They are returned as
+    // `mail_alerts_owed` and marked once the turn has delivered them
+    // (`mark_mail_alerts_delivered`), so a provider failure or an abort offers
+    // them again on the next attempt — at the cost of a second whisper, which
+    // is the honest record of a letter re-announced (bug 227, v4 `69d38dd60`).
+    //
+    // A swipe re-rolls a line already spoken; a letter that arrived since does
+    // not belong in it (the same rule the inform block keeps for new passages),
+    // and the swipe path never reaches the finalizer that would mark it. So a
+    // regeneration skips the mail check altogether.
+    //
+    // The whole check is warn-only — a mail failure must never break the turn.
+    let mut suparna_mail_llm_context = String::new();
+    let mut mail_alerts_owed: Option<crate::post_office::mailbox::MailAlertsOwed> = None;
+    let is_regeneration = crate::services::inform_block::is_swipe_request(
+        input.regeneration_of_message_ids.as_deref(),
+    );
+    if let (Some(vault), false) = (
+        input.character.character_document_mount_point_id.as_deref(),
+        is_regeneration,
+    ) {
+        match crate::services::suparna_mail::resolve_suparna_mail_context_in_zone(
+            db,
+            vault,
+            &display_zone,
+        )
+        .await
+        {
+            Ok((ctx, unalerted, owed)) => {
                 if !unalerted.is_empty() {
-                    // v4 targets the responding participant in multi-character chats,
-                    // public otherwise; the whisper body is built from the letters.
+                    // v4 targets the responding participant in multi-character
+                    // chats, public otherwise; the whisper body is built from
+                    // the letters.
                     let target = if is_multi_character {
                         input.responding_participant.as_ref().map(|p| p.id.as_str())
                     } else {
@@ -3695,11 +2881,28 @@ where
                     seams
                         .post_suparna_mail(&input.chat.id, &unalerted, target, &display_zone)
                         .await;
+                    suparna_mail_llm_context = ctx;
+                    tracing::debug!(
+                        target: "quilltap::suparna",
+                        chatId = %input.chat.id,
+                        characterId = %input.character.id,
+                        vaultId = %vault,
+                        letters = unalerted.len(),
+                        "[Suparna] Mail announced; alerted flip deferred to delivery"
+                    );
+                    mail_alerts_owed = owed;
                 }
-                ctx
             }
-            None => String::new(),
-        };
+            Err(error) => tracing::warn!(
+                target: "quilltap::suparna",
+                chatId = %input.chat.id,
+                characterId = %input.character.id,
+                vaultId = %vault,
+                error = %crate::db::fallback::error_text(&error),
+                "[Suparna] Mail check failed; turn continues"
+            ),
+        }
+    }
 
     // Character progressions: the timed conditions this character is carrying —
     // a pregnancy, a recharging cannon, a fermentation. Derived from the wall
@@ -3842,7 +3045,26 @@ where
     }
     // === end P4.D254 ===
 
-    // New user message with trailing recall / core / mail context.
+    // The trailing sections, in their one order: who the character is (Core
+    // whisper), what it remembers (recall), what arrived for it (mail), what it
+    // is carrying (progressions), what the operator says is so (inform), and
+    // the turn note last. Built ONCE and used by both branches below — two
+    // hand-kept copies of this list is how recall, mail and the Core whisper
+    // went missing from turns with no new user message while their side effects
+    // (whisper posted, rows stamped, cadence advanced) still ran (bug 199).
+    let trailing_context_sections: Vec<String> = [
+        core_whisper_llm_context.clone(),
+        llm_recall_text.clone(),
+        suparna_mail_llm_context.clone(),
+        progressions_llm_context.clone(),
+        inform_block.clone().unwrap_or_default(),
+        turn_skip_instruction.clone(),
+    ]
+    .into_iter()
+    .filter(|s| !s.is_empty())
+    .collect();
+
+    // New user message with the trailing sections.
     let mut messages_included = selected_messages.len();
     if let Some(new_user_message) = new_user_message {
         let new_user_msg_name = if is_multi_character {
@@ -3872,49 +3094,12 @@ where
             None
         };
 
-        let mut trailing: Vec<String> = Vec::new();
-        if !core_whisper_llm_context.is_empty() {
-            trailing.push(core_whisper_llm_context.clone());
-        }
-        if !llm_recall_text.is_empty() {
-            trailing.push(llm_recall_text.clone());
-        }
-        if !suparna_mail_llm_context.is_empty() {
-            trailing.push(suparna_mail_llm_context.clone());
-        }
-        // v4's order (`context-manager.ts:2629-2633`): core whisper, recall,
-        // Suparṇā mail, PROGRESSIONS, turn-skip note.
-        //
-        // MEASURED GAP (P4.D168): the position relative to the TURN-SKIP note is
-        // pinned — swapping these two reddens
-        // `progressions_turn_skip_with_user_message` — but the position relative
-        // to the SUPARṆĀ MAIL is NOT. Both run real on both sides, yet no corpus
-        // op carries unalerted mail, so `suparna_mail_llm_context` is empty in
-        // every row and swapping those two pushes is invisible. Closing it needs
-        // a fixture op with mail AND progressions on one character; recorded
-        // rather than claimed. P4.D254 extends the gap to the INFORM block
-        // pushed below: its order against progressions, recall and the turn-skip
-        // note is pinned (`inform_trailing_*`), against the mail it is not.
-        if !progressions_llm_context.is_empty() {
-            trailing.push(progressions_llm_context.clone());
-        }
-        // P4.D254 (v4 `94fbb1ae3`): the inform block, after progressions and
-        // before the turn-skip note. Its position relative to the SUPARṆĀ MAIL
-        // inherits the measured gap above (no corpus op carries unalerted mail
-        // and an inform on one seat); relative to recall, progressions and the
-        // turn-skip note it is pinned by the `inform_trailing_*` ops.
-        if let Some(block) = &inform_block {
-            trailing.push(block.clone());
-        }
-        if !turn_skip_instruction.is_empty() {
-            trailing.push(turn_skip_instruction.clone());
-        }
-        let composed = if trailing.is_empty() {
+        let composed = if trailing_context_sections.is_empty() {
             new_user_message.to_string()
         } else {
             format!(
                 "{new_user_message}\n\n---\n\n{}",
-                trailing.join("\n\n---\n\n")
+                trailing_context_sections.join("\n\n---\n\n")
             )
         };
         context_messages.push(ContextMessage {
@@ -3931,37 +3116,75 @@ where
             cache_control: None,
         });
         messages_included += 1;
-    } else if !user_narration_anchor.is_empty()
-        || !turn_skip_instruction.is_empty()
-        || !progressions_llm_context.is_empty()
-        || inform_block.is_some()
-    {
-        // Chained / continue turns carry no new user message, so neither the
-        // note, the progressions report nor the inform block (P4.D254, v4
-        // `94fbb1ae3`) can ride as a trailing section above.
-        // Push them as their own trailing user message (same off-scene/timestamp
-        // pattern) so the model sees them this turn, IN THE SAME ORDER they
-        // would have taken there. Anthropic 4.6+ rejects role=assistant tails,
-        // so 'user' is required. The scene note leads: it is about the scene,
-        // the others about the character.
-        let trailing_only: Vec<String> = [
-            user_narration_anchor,
-            progressions_llm_context,
-            inform_block.clone().unwrap_or_default(),
-            turn_skip_instruction,
-        ]
-        .into_iter()
-        .filter(|s| !s.is_empty())
-        .collect();
-        context_messages.push(ContextMessage {
-            role: "user",
-            content: trailing_only.join("\n\n---\n\n"),
-            metadata: None,
-            thought_signature: None,
-            name: None,
-            cache_control: None,
-        });
+    } else {
+        // Chained / continue / autonomous turns carry no new user message, so
+        // the sections ride as their own trailing user message, in the same
+        // order, with the scene note leading: it is about the scene, the
+        // others about the character. Anthropic 4.6+ rejects role=assistant
+        // tails, so 'user' is required.
+        //
+        // This message may follow a user-role line: in a multi-character chat
+        // every other seat's line is attributed as `user`, so a chained turn's
+        // history routinely ends in one. That shape predates bug 199 (the scene
+        // note, progressions and informs have always ridden here). OpenAI-
+        // compatible APIs accept adjacent user messages, Anthropic's Messages
+        // API combines them into one turn, and the Google plugin merges them
+        // before sending.
+        if !llm_recall_text.is_empty() {
+            match &input.responding_participant {
+                Some(rp) => tracing::debug!(
+                    target: "quilltap::commonplace",
+                    chatId = %input.chat.id,
+                    participantId = %rp.id,
+                    length = crate::jsstr::utf16_len(&llm_recall_text),
+                    "[CommonplaceWhisper] Delivering recall in the trailing-only message (no new user message)"
+                ),
+                None => tracing::debug!(
+                    target: "quilltap::commonplace",
+                    chatId = %input.chat.id,
+                    length = crate::jsstr::utf16_len(&llm_recall_text),
+                    "[CommonplaceWhisper] Delivering recall in the trailing-only message (no new user message)"
+                ),
+            }
+        }
+        let trailing_only: Vec<String> = std::iter::once(user_narration_anchor)
+            .chain(trailing_context_sections.iter().cloned())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !trailing_only.is_empty() {
+            context_messages.push(ContextMessage {
+                role: "user",
+                content: trailing_only.join("\n\n---\n\n"),
+                metadata: None,
+                thought_signature: None,
+                name: None,
+                cache_control: None,
+            });
+        }
     }
+
+    // Recall delivery: the request body is built, compression has had its
+    // say, so what the model will read is settled. Only now are rows stamped
+    // accessed, the head recorded in the anti-repetition ring and the debug
+    // record composed — and only for lines whose memory is still in the text.
+    let recall_delivery = if !input.character.id.is_empty() && !llm_recall_text.is_empty() {
+        Some(
+            crate::services::recall::deliver::deliver_recall(
+                db,
+                &recall,
+                crate::services::recall::deliver::DeliverOptions {
+                    character_id: &input.character.id,
+                    chat_id: &input.chat.id,
+                    commonplace_recall_history: &input.chat.commonplace_recall_history,
+                    delivered_text: &llm_recall_text,
+                    persist_ring: true,
+                },
+            )
+            .await,
+        )
+    } else {
+        None
+    };
 
     // Token accounting.
     let total_memory_tokens = memory_recap_tokens + memory_tokens + inter_character_memory_tokens;
@@ -3982,6 +3205,7 @@ where
         // === P4.D205 ===
         inform_row_ids: inform_block_result.row_ids,
         // === end P4.D205 ===
+        mail_alerts_owed,
         messages: context_messages,
         token_usage: TokenUsage {
             system_prompt: effective_system_prompt_tokens,
@@ -3997,7 +3221,10 @@ where
         messages_included,
         messages_truncated: truncated,
         warnings,
-        debug_memories: debug_memories.iter().map(debug_memory_json).collect(),
+        debug_memories: debug_memories
+            .iter()
+            .map(crate::services::recall::render::DebugMemoryInfo::to_json)
+            .collect(),
         debug_inter_character_memories: if debug_inter_character_memories.is_empty() {
             None
         } else {
@@ -4007,8 +3234,8 @@ where
                     .map(|d| DebugInterCharacterOut {
                         memory_id: d.memory_id,
                         about_character_name: d.about_character_name,
-                        summary: d.summary,
-                        importance: d.importance,
+                        summary: d.summary.unwrap_or_default(),
+                        importance: d.importance.unwrap_or(f64::NAN),
                     })
                     .collect(),
             )
@@ -4020,6 +3247,7 @@ where
         },
         debug_memory_recap: opt(&memory_recap_content),
         debug_relevant_conversations: opt(&per_turn_conversations_content),
+        recall_debug_log: recall_delivery.map(|d| d.debug_log),
         debug_summary: input.chat.context_summary.clone().filter(|s| !s.is_empty()),
         debug_system_prompt,
         original_system_prompt: final_system_prompt,
@@ -4050,42 +3278,6 @@ fn opt(s: &str) -> Option<String> {
     } else {
         Some(s.to_string())
     }
-}
-
-/// Serialize a [`DebugMemoryInfo`] to v4's runtime `JSON.stringify` shape: keys
-/// in insertion order (`memoryId` first when present, then summary / importance /
-/// score / effectiveWeight, then the dynamic-head extras), each `None` dropped
-/// (JS `undefined`); the float cells rendered via `js_number_to_json` so an
-/// integer-valued weight/score emits bare (`1`, not `1.0`).
-fn debug_memory_json(d: &DebugMemoryInfo) -> Value {
-    let num = crate::db::js_number_to_json;
-    let mut m = serde_json::Map::new();
-    if let Some(id) = &d.memory_id {
-        m.insert("memoryId".into(), Value::from(id.clone()));
-    }
-    m.insert("summary".into(), Value::from(d.summary.clone()));
-    m.insert("importance".into(), num(d.importance));
-    m.insert("score".into(), num(d.score));
-    m.insert("effectiveWeight".into(), num(d.effective_weight));
-    if let Some(rw) = d.raw_weight {
-        m.insert("rawWeight".into(), num(rw));
-    }
-    if let Some(rm) = d.recall_multiplier {
-        m.insert("recallMultiplier".into(), num(rm));
-    }
-    if let Some(rf) = &d.recall_fired {
-        m.insert(
-            "recallFired".into(),
-            Value::Array(rf.iter().map(|s| Value::from(s.clone())).collect()),
-        );
-    }
-    if let Some(bb) = d.blended_before {
-        m.insert("blendedBefore".into(), num(bb));
-    }
-    if let Some(ba) = d.blended_after {
-        m.insert("blendedAfter".into(), num(ba));
-    }
-    Value::Object(m)
 }
 
 /// NOT the canonical parse, deliberately. v4's consumer
@@ -4271,156 +3463,6 @@ mod attribution_status_tests {
 }
 
 #[cfg(test)]
-mod phase_ceiling_tests {
-    //! P4.D42 unit 3 — the memory-recap phase ceiling (v4 `74ec93b5`).
-    //!
-    //! Wall-clock behavior no NDJSON corpus can observe (P4.15): the tier-3
-    //! `build_context` family additionally sets `generate_memory_recap: false`,
-    //! so the recap seam has no differential today and this ceiling could not
-    //! have one even if it were reachable. Paused-clock unit pins instead.
-
-    use super::*;
-    use crate::services::memory_recap::MemoryRecapResult;
-    use crate::test_support::CaptureLayer;
-
-    /// v4's literal, spelled out rather than read back from the constant, so
-    /// moving the bound has to be a deliberate edit here too.
-    #[test]
-    fn the_phase_ceiling_is_v4s_sixty_seconds() {
-        assert_eq!(MEMORY_RECAP_PHASE_TIMEOUT_MS, 60_000);
-        // Deliberately ABOVE the per-leg cheap-LLM budget: a recap that is
-        // merely slow in two places is still doing useful work. A const block,
-        // so inverting the ordering fails to COMPILE rather than merely failing
-        // a test.
-        //
-        // The comparison is against the **interactive** budget, and deliberately
-        // so (v4 `a1d88aa3a`, bug 107, and v4's own comment on
-        // `MEMORY_RECAP_PHASE_TIMEOUT_MS`): the recap declares itself
-        // interactive precisely so this phase ceiling stays above its legs
-        // rather than underneath them. Raising the BACKGROUND budget 45 s → 90 s
-        // would otherwise have inverted the two and made this the binding
-        // constraint — and it did, loudly, the moment the constant moved: this
-        // block failed to compile until the recap's call site declared its
-        // class. That is the pin doing its job, not a bound to relax.
-        const {
-            assert!(
-                MEMORY_RECAP_PHASE_TIMEOUT_MS
-                    > crate::services::cheap_llm_exec::CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS
-            )
-        };
-        // …and the background budget is now ABOVE it, which is exactly why the
-        // recap must not take that class.
-        const {
-            assert!(
-                crate::services::cheap_llm_exec::CHEAP_LLM_TASK_TIMEOUT_MS
-                    > MEMORY_RECAP_PHASE_TIMEOUT_MS
-            )
-        };
-    }
-
-    /// A recap that never finishes is abandoned at the ceiling and yields the
-    /// same empty result v4's fail-soft `catch` produces — the turn keeps its
-    /// remaining context and moves on.
-    #[tokio::test(start_paused = true)]
-    async fn a_stalled_recap_is_dropped_at_the_ceiling() {
-        let started = tokio::time::Instant::now();
-        let mut warnings = Vec::new();
-        let recap = memory_recap_within_phase_budget(
-            std::future::pending(),
-            "chat-1",
-            "char-1",
-            &mut warnings,
-        )
-        .await;
-        // `MemoryRecapResult::default()` is exactly the empty-content shape v4's
-        // fail-soft catch leaves behind.
-        assert_eq!(recap.content, MemoryRecapResult::default().content);
-        assert!(recap.content.is_empty());
-        assert_eq!(started.elapsed().as_millis() as u64, 60_000);
-        // v4's catch pushes its prefixed message into the context warnings — a
-        // diffed comparand in the tier-3 family (the unification review's catch).
-        assert_eq!(
-            warnings,
-            vec![
-                "Failed to generate memory recap: Memory recap exceeded its 60000ms phase budget"
-                    .to_string()
-            ]
-        );
-    }
-
-    /// The other half, and the one that makes the first half safe: a recap that
-    /// is merely slow — both legs dawdling, well past the 45 s per-leg budget —
-    /// still lands, whole. A ceiling that truncated healthy work would be worse
-    /// than no ceiling.
-    #[tokio::test(start_paused = true)]
-    async fn a_slow_but_finishing_recap_is_not_truncated() {
-        let work = async {
-            tokio::time::sleep(std::time::Duration::from_millis(55_000)).await;
-            MemoryRecapResult {
-                content: "## What You Remember\n…".to_string(),
-            }
-        };
-        let mut warnings = Vec::new();
-        let recap = memory_recap_within_phase_budget(work, "chat-1", "char-1", &mut warnings).await;
-        assert_eq!(recap.content, "## What You Remember\n…");
-        assert!(warnings.is_empty(), "a landed recap must push no warning");
-    }
-
-    /// A fired ceiling narrates itself — the incident this whole re-port exists
-    /// for was ten silent minutes on "Recalling…". At ERROR, because that is
-    /// v4's own level (`logger.error('[ContextManager] Memory recap generation
-    /// failed')`).
-    #[tokio::test(start_paused = true)]
-    async fn a_fired_ceiling_logs_error_with_its_context() {
-        use tracing_subscriber::layer::SubscriberExt;
-        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
-        {
-            let _guard = tracing::subscriber::set_default(subscriber);
-            memory_recap_within_phase_budget(
-                std::future::pending(),
-                "chat-42",
-                "char-7",
-                &mut Vec::new(),
-            )
-            .await;
-        }
-        let captured = logs.lock().unwrap().join("\n");
-        for expected in [
-            "ERROR quilltap::build_context",
-            "Memory recap exceeded its phase budget",
-            "chat_id=chat-42",
-            "character_id=char-7",
-            "timeout_ms=60000",
-        ] {
-            assert!(
-                captured.contains(expected),
-                "the ceiling's warn is missing {expected}; captured:\n{captured}"
-            );
-        }
-    }
-
-    /// A healthy recap logs nothing — the warn means "this fired", not "this ran".
-    #[tokio::test(start_paused = true)]
-    async fn a_healthy_recap_says_nothing() {
-        use tracing_subscriber::layer::SubscriberExt;
-        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
-        {
-            let _guard = tracing::subscriber::set_default(subscriber);
-            memory_recap_within_phase_budget(
-                async { MemoryRecapResult::default() },
-                "chat-1",
-                "char-1",
-                &mut Vec::new(),
-            )
-            .await;
-        }
-        assert!(logs.lock().unwrap().is_empty());
-    }
-}
-
-#[cfg(test)]
 mod distill_latency_tests {
     //! P4.D150 — bug 115 (v4 `02d4efa1b`): the dynamic-head fallback
     //! distillation asks for the INTERACTIVE budget.
@@ -4428,7 +3470,7 @@ mod distill_latency_tests {
     //! `distill_memory_search` (v4 `extractMemorySearchKeywords`) serves two
     //! consumers with opposite answers to "is anyone waiting?": the proactive
     //! pre-compute pass runs after delivery and takes the background default,
-    //! while the fallback branch below blocks the turn with an empty composer in
+    //! while the turn's own distill (no `pre_recall`) blocks the turn with an empty composer in
     //! front of the operator. The class is therefore the caller's to name, and
     //! bug 115 was this caller not naming it — inheriting 90 s *and* the free
     //! timeout retry a background pass is entitled to, i.e. up to three minutes
@@ -4451,9 +3493,9 @@ mod distill_latency_tests {
     //! starved" the same way.
     //!
     //! **No outer ceiling brackets this call — measured, not assumed.** The one
-    //! phase ceiling in this file, [`MEMORY_RECAP_PHASE_TIMEOUT_MS`], wraps
-    //! `memory_recap_within_phase_budget` and nothing else; the fallback
-    //! distillation sits in the two-pool retrieval block well outside it. So
+    //! recall phase ceiling, the assembler's `MEMORY_RECAP_PHASE_TIMEOUT_MS`,
+    //! wraps the recap and nothing else; the fallback
+    //! distillation sits in the query stage, well before it. So
     //! there is no "attempt deadline < enclosing ceiling" relation to state here
     //! the way `phase_ceiling_tests` states one for the recap — the only thing
     //! above this call is the operator's patience. The relation these two arms
@@ -4556,7 +3598,7 @@ mod distill_latency_tests {
     }
 
     /// A turn with no pre-searched memories and a non-empty recent window, so
-    /// the two-pool path takes the FALLBACK branch and the distillation fires
+    /// the assembler builds the query itself and the distillation fires
     /// (v4's `dynamic-head-distill-latency.test.ts` builds the same shape).
     fn a_blocked_turn() -> BuildContextInput {
         BuildContextInput {
@@ -4593,6 +3635,7 @@ mod distill_latency_tests {
             active_user_participant_id: None,
             roleplay_template: None,
             embedding_profile_id: None,
+            provider: None,
             skip_memories: false,
             min_memory_importance: 0.3,
             responding_participant: None,
@@ -4621,11 +3664,9 @@ mod distill_latency_tests {
             reserved_outgoing_tokens: None,
             regeneration_of_message_ids: None,
             turn_skip: None,
-            // The whole point of the branch: nothing pre-searched, so the
-            // fallback distill runs.
-            pre_searched_memories: None,
-            recall_signals: None,
-            pre_searched_query_embedding: None,
+            // The whole point of the branch: no proactive pass, so the
+            // turn's own distill runs.
+            pre_recall: None,
             human_turn_message_ids: None,
         }
     }
@@ -4764,30 +3805,21 @@ mod distill_latency_tests {
 
 #[cfg(test)]
 mod inter_character_log_tests {
-    //! P4.D150 — v4 `c9faa2c74`: the inter-character memory timing log.
+    //! P4.D291 — v4 Phase E's ONE recall line at the context build:
+    //! `[ContextManager] Recall assembled {chatId, characterId, path,
+    //! durationMs, archive, head, interCharacter, recap}` (DEBUG, after
+    //! `assembleRecall`, on EVERY turn with a character — `skipMemories`
+    //! included, where the pools are empty). It replaced two lines this module
+    //! used to pin, both RETIRED at the pin and pinned ABSENT here: P4.D150's
+    //! `[ContextManager] Inter-character memory retrieval complete` (v4
+    //! `c9faa2c74`) and P4.D268's `[ContextManager] Memory pools sized`.
     //!
-    //! v4's `96bf74b5b` debug-strip chore emptied `buildContext`'s
-    //! `if (isMultiCharacter) { }` block, leaving the conditional plus two locals
-    //! (`tInterStart`, `interCharacterLoadedCount`) that nothing read; `c9faa2c74`
-    //! put the line back rather than deleting the block. v5 never had it at all.
-    //!
-    //! **A differential cannot see a log-only fix** — the `BuiltContext` these ops
-    //! return is byte-identical with the line and without it, which is why
-    //! `build_context_tier3` stayed green through this change. The pin is a
-    //! thread-scoped capture layer, and the three arms below are chosen to pin the
-    //! two things a careless port gets wrong:
-    //!
-    //! 1. **Where the conditional sits.** v4's `if (isMultiCharacter)` stands
-    //!    ALONE, OUTSIDE the `!skipMemories && …` guard that wraps the retrieval —
-    //!    verified against the file at the pin. So a multi-character turn that
-    //!    skipped memories still reports, with zeroes. Tucking the line inside the
-    //!    retrieval guard (the tempting simplification) loses that arm.
-    //! 2. **Which count `loadedCount` is.** v4 sets it from
-    //!    `interCharacterMemories.length + interCharacterRelevance.length` BEFORE
-    //!    the "did we find anything" check — what was LOADED, not what survived
-    //!    the budget. `formatted.memoriesUsed` is the `includedCount` field beside
-    //!    it, and the two are different numbers whenever the budget bites; the
-    //!    first arm seeds exactly that shape so reading the wrong one reddens.
+    //! **A differential cannot see a log-only line** — the `BuiltContext` is
+    //! byte-identical with it and without it. The pin is a thread-scoped
+    //! capture layer. `durationMs` is masked (R-L9): only its presence counts.
+    //! The stamp is the pipeline's ONE `lastAccessedAt` writer
+    //! (`[Recall] Stamping delivered memories accessed {characterId, count}`),
+    //! fired by delivery, never by the search.
 
     use super::*;
     use crate::model::completion::{CompletionError, CompletionParams, CompletionResponse};
@@ -4921,6 +3953,7 @@ mod inter_character_log_tests {
             active_user_participant_id: None,
             roleplay_template: None,
             embedding_profile_id: None,
+            provider: None,
             skip_memories,
             min_memory_importance: 0.1,
             responding_participant: multi.then(|| RespondingParticipant {
@@ -4960,9 +3993,7 @@ mod inter_character_log_tests {
             reserved_outgoing_tokens: None,
             regeneration_of_message_ids: None,
             turn_skip: None,
-            pre_searched_memories: None,
-            recall_signals: None,
-            pre_searched_query_embedding: None,
+            pre_recall: None,
             human_turn_message_ids: None,
         }
     }
@@ -4991,139 +4022,137 @@ mod inter_character_log_tests {
     fn the_line(lines: &[String]) -> Option<&String> {
         lines
             .iter()
-            .find(|l| l.contains("[ContextManager] Inter-character memory retrieval complete"))
+            .find(|l| l.contains("[ContextManager] Recall assembled"))
     }
 
-    /// Arm 1 — a multi-character turn reports all five fields, and `loadedCount`
-    /// is the LOADED pool, not the included one.
-    ///
-    /// Two truncations sit between the seed and the log, and the arm names both.
-    /// The importance query takes the top `INTER_CHAR_PER_CHARACTER_LIMIT` rows
-    /// per other character, so seeding beyond it pins `loadedCount` to the cap
-    /// (the query's `rn <= ?`) rather than to the seed — which is what "loaded"
-    /// means. Then the budget truncates again while formatting, so
-    /// `includedCount` lands strictly below it. That gap is the discriminator:
-    /// computing `loadedCount` from `memories_used` reddens here.
+    fn field_value(line: &str, key: &str) -> usize {
+        line.split(&format!(" {key}="))
+            .nth(1)
+            .and_then(|t| t.split_whitespace().next())
+            .and_then(|t| t.parse().ok())
+            .unwrap_or_else(|| panic!("no {key} in: {line}"))
+    }
+
+    const RETIRED: [&str; 2] = [
+        "[ContextManager] Inter-character memory retrieval complete",
+        "[ContextManager] Memory pools sized",
+    ];
+
+    /// Arm 1 — a multi-character turn reports its path and the five pool
+    /// counts in v4's key order, and neither retired line.
     #[tokio::test]
-    async fn a_multi_character_turn_reports_its_timing_and_both_counts() {
-        let seeded = (INTER_CHAR_PER_CHARACTER_LIMIT as usize) + 3;
+    async fn a_multi_character_turn_reports_recall_assembled() {
+        let seeded =
+            (crate::services::recall::assemble::INTER_CHAR_PER_CHARACTER_LIMIT as usize) + 3;
         let (_dir, db) = db_with_inter_character_memories(seeded);
         let lines = captured_build(&db, &a_turn(true, false)).await;
         let line = the_line(&lines).unwrap_or_else(|| panic!("no line; captured: {lines:?}"));
-
-        assert!(line.starts_with("DEBUG quilltap::build_context"), "{line}");
-        for field in [
-            "chatId=chat-1",
-            "characterId=11111111-1111-4111-8111-111111111111",
-            "durationMs=",
-            &format!("loadedCount={INTER_CHAR_PER_CHARACTER_LIMIT}"),
-            "includedCount=",
-        ] {
-            assert!(line.contains(field), "missing {field} in: {line}");
-        }
-
-        let field_value = |key: &str| -> usize {
-            line.split(key)
-                .nth(1)
-                .and_then(|t| t.split_whitespace().next())
-                .and_then(|t| t.parse().ok())
-                .unwrap_or_else(|| panic!("no {key} in: {line}"))
-        };
-        let loaded = field_value("loadedCount=");
-        let included = field_value("includedCount=");
         assert!(
-            included > 0 && included < loaded,
-            "the budget must truncate for this arm to discriminate — included={included}, \
-             loaded={loaded}, in: {line}"
+            line.starts_with(
+                "DEBUG quilltap::build_context [ContextManager] Recall assembled chatId=chat-1 \
+                 characterId=11111111-1111-4111-8111-111111111111 path="
+            ),
+            "{line}"
         );
+        let order: Vec<usize> = [
+            " path=",
+            " durationMs=",
+            " archive=",
+            " head=",
+            " interCharacter=",
+            " recap=",
+        ]
+        .iter()
+        .map(|k| {
+            line.find(k)
+                .unwrap_or_else(|| panic!("missing {k} in: {line}"))
+        })
+        .collect();
+        assert!(
+            order.windows(2).all(|w| w[0] < w[1]),
+            "v4's key order: {line}"
+        );
+        assert_eq!(field_value(line, "recap"), 0, "no recap requested: {line}");
+        for retired in RETIRED {
+            assert!(
+                !lines.iter().any(|l| l.contains(retired)),
+                "{retired}: {lines:?}"
+            );
+        }
     }
 
-    /// Arm 2 — a single-character turn says NOTHING. v4 gates on
-    /// `isMultiCharacter`, and a line on every solo turn would be noise in the
-    /// operator's `combined.log`.
+    /// Arm 2 — a single-character turn reports too: v4's line is not gated on
+    /// `isMultiCharacter` (the retired inter-character line was).
     #[tokio::test]
-    async fn a_single_character_turn_is_silent() {
+    async fn a_single_character_turn_reports_too() {
         let (_dir, db) = db_with_inter_character_memories(8);
         let lines = captured_build(&db, &a_turn(false, false)).await;
-        assert!(
-            the_line(&lines).is_none(),
-            "a solo turn must not report inter-character retrieval; captured: {lines:?}"
-        );
+        let line = the_line(&lines).unwrap_or_else(|| panic!("no line; captured: {lines:?}"));
+        assert_eq!(field_value(line, "interCharacter"), 0, "{line}");
+        for retired in RETIRED {
+            assert!(
+                !lines.iter().any(|l| l.contains(retired)),
+                "{retired}: {lines:?}"
+            );
+        }
     }
 
-    /// P4.D268 — v4 `3f7320138` F7's `[ContextManager] Memory pools sized`
-    /// DEBUG (ten keys, v4's order, after both formatters) and F6's stamp of
-    /// exactly the delivered archive + head entries; then the silence leg
-    /// (`skipMemories` → neither line).
+    /// v4 `3f7320138` F6, kept by Phase E: exactly the DELIVERED entries are
+    /// stamped — after the build, once, through the pipeline's one writer —
+    /// and a `skipMemories` turn stamps nothing.
     #[tokio::test]
-    async fn the_pools_line_and_the_delivered_stamp() {
+    async fn the_delivered_stamp_follows_the_pools() {
         // Its own chat id: the archive cache is process-global, and sibling
         // tests here build `chat-1` for the same character over other corpora.
         let (_dir, db) = db_with_inter_character_memories(6);
         let mut turn = a_turn(false, false);
         turn.chat.id = "chat-pools-line".to_string();
         let lines = captured_build(&db, &turn).await;
-        let pools: Vec<&String> = lines
-            .iter()
-            .filter(|l| l.contains("[ContextManager] Memory pools sized"))
-            .collect();
-        assert_eq!(pools.len(), 1, "{lines:?}");
-        let line = pools[0];
-        let sizing = crate::memory_pools::size_memory_pools(2000.0, false);
-        let want_prefix = format!(
-            "DEBUG quilltap::build_context [ContextManager] Memory pools sized chatId=chat-pools-line \
-             characterId=11111111-1111-4111-8111-111111111111 memoryBudget=2000 retrospective=false \
-             headTokenBudget={} headEntries={} archiveTokenBudget={} archiveSize={} headUsed=",
-            sizing.head_token_budget, sizing.head_entries, sizing.archive_token_budget, sizing.archive_size
-        );
-        assert!(
-            line.starts_with(&want_prefix),
-            "{line}\nwant prefix {want_prefix}"
-        );
-        let field = |key: &str| -> usize {
-            line.split(key)
-                .nth(1)
-                .and_then(|t| t.split_whitespace().next())
-                .and_then(|t| t.parse().ok())
-                .unwrap_or_else(|| panic!("no {key} in: {line}"))
-        };
-        let delivered = field("headUsed=") + field("archiveUsed=");
-        assert_eq!(field("archiveUsed="), 6, "{line}");
+        let line = the_line(&lines).unwrap_or_else(|| panic!("no line; captured: {lines:?}"));
+        let pooled = field_value(line, "archive")
+            + field_value(line, "head")
+            + field_value(line, "interCharacter");
+        assert!(pooled > 0, "the seeded memories reach a pool: {line}");
         let marks: Vec<&String> = lines
             .iter()
-            .filter(|l| l.contains("[Memory] Marking memories accessed"))
+            .filter(|l| l.contains("[Recall] Stamping delivered memories accessed"))
             .collect();
-        assert_eq!(
-            marks,
-            vec![&format!(
-                "DEBUG quilltap::memories [Memory] Marking memories accessed \
-                 characterId=11111111-1111-4111-8111-111111111111 count={delivered}"
-            )],
-            "{lines:?}"
+        assert_eq!(marks.len(), 1, "{lines:?}");
+        assert!(
+            marks[0].starts_with(
+                "DEBUG quilltap::recall [Recall] Stamping delivered memories accessed \
+                 characterId=11111111-1111-4111-8111-111111111111 count="
+            ),
+            "{}",
+            marks[0]
+        );
+        let stamped = field_value(marks[0], "count");
+        assert!(
+            stamped > 0 && stamped <= pooled,
+            "stamped {stamped} of {pooled}: {lines:?}"
         );
 
         let mut skipped = a_turn(false, true);
         skipped.chat.id = "chat-pools-line".to_string();
         let silent = captured_build(&db, &skipped).await;
         assert!(
-            !silent.iter().any(
-                |l| l.contains("Memory pools sized") || l.contains("Marking memories accessed")
-            ),
-            "skipMemories logs neither line: {silent:?}"
+            !silent
+                .iter()
+                .any(|l| l.contains("Stamping delivered memories accessed")),
+            "skipMemories stamps nothing: {silent:?}"
         );
     }
 
-    /// Arm 3 — `skipMemories` bypasses the retrieval block, but NOT the report:
-    /// v4's conditional sits outside that guard, so the line still fires and its
-    /// zeroes are the fact. This is the arm that reddens if the line is tucked
-    /// inside the retrieval guard.
+    /// Arm 3 — `skipMemories` still reports, every pool zero: v4 logs after
+    /// `assembleRecall` whatever it returned.
     #[tokio::test]
-    async fn a_multi_character_turn_that_skipped_memories_still_reports_zeroes() {
+    async fn a_turn_that_skipped_memories_still_reports_zeroes() {
         let (_dir, db) = db_with_inter_character_memories(8);
         let lines = captured_build(&db, &a_turn(true, true)).await;
         let line = the_line(&lines).unwrap_or_else(|| panic!("no line; captured: {lines:?}"));
-        assert!(line.contains("loadedCount=0"), "{line}");
-        assert!(line.contains("includedCount=0"), "{line}");
+        for key in ["archive", "head", "interCharacter", "recap"] {
+            assert_eq!(field_value(line, key), 0, "{key}: {line}");
+        }
     }
 
     /// P4.D243 (v4 `ca363178d`) — the chained-turn scene note at the

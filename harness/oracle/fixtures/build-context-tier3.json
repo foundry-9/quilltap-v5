@@ -1,5 +1,5 @@
 {
-  "_comment": "Tier-3 corpus for the buildContext capstone (v4 lib/chat/context-manager.ts:477). The unported feeder / post-office subsystems are mocked to match the Rust NoopSeams (no recap, no keyword distillation, mount-pool = character vault only, no frozen archive, no live clothing, no off-scene announcement, no core/mail/commonplace posts, BALANCED recall). generateEmbeddingForUser is canned (keyed by exact query text); createLLMProvider is canned (recorded canned keys, for the compression case). Both sides run over ONE seeded two-DB fixture; the Rust side builds BuildContextInput from the same reads. P4.d15: the corpus also carries dated vault conversation summaries in Ada's vault (the retrospective mini-recap's substrate) plus one seeded on-fold relevant-conversations whisper (the mini-recap's conversation-id dedup source).",
+  "_comment": "Tier-3 corpus for the buildContext capstone (v4 lib/chat/context-manager.ts:477). The unported feeder / post-office subsystems are mocked to match the Rust NoopSeams (no recap, no keyword distillation, mount-pool = character vault only, no frozen archive, no live clothing, no off-scene announcement, no core/mail/commonplace posts, BALANCED recall). generateEmbeddingForUser is canned (keyed by exact query text); createLLMProvider is canned (recorded canned keys, for the compression case). Both sides run over ONE seeded two-DB fixture; the Rust side builds BuildContextInput from the same reads. P4.d15: the corpus also carries dated vault conversation summaries in Ada's vault (the retrospective mini-recap's substrate) plus one seeded on-fold relevant-conversations whisper (the mini-recap's conversation-id dedup source). P4.D291: ops may carry a `letter` (delivered into the responding character's vault through each side's REAL mailbox before the op, discarded after); every op's whispers row also compares `stamped` (the memory ids whose lastAccessedAt the op set \u2014 reset after each op so the ops stay independent) and `unalertedMail` (the letter still unalerted after the build, or null).",
   "_safety": "testPepperBase64 is a THROWAWAY key shared with the other fixtures \u2014 never a real pepper.",
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "userId": "b0000000-0000-4000-8000-0000000000e1",
@@ -407,6 +407,11 @@
       1.0,
       0.0,
       0.0
+    ],
+    "How does the analytical engine work? (around 2026-06-01 to 2026-06-07)": [
+      1.0,
+      0.0,
+      0.0
     ]
   },
   "completionRules": [
@@ -753,57 +758,53 @@
       "compressionEnabled": false,
       "distillEnabled": true,
       "timestampMode": null,
-      "preSearchedMemories": [
-        {
-          "id": "ce000000-0000-4000-8000-0000000000e1",
-          "score": 0.99,
-          "effectiveWeight": 0.99,
-          "rawWeight": 0.99
+      "preRecall": {
+        "signals": {
+          "keywords": [
+            "engine"
+          ],
+          "retrospective": false,
+          "timeRange": null,
+          "entities": [],
+          "paraphrase": "How does the analytical engine work?"
         },
-        {
-          "id": "ce000000-0000-4000-8000-0000000000e2",
-          "score": 0.88,
-          "effectiveWeight": 0.88,
-          "rawWeight": 0.88
-        },
-        {
-          "id": "ce000000-0000-4000-8000-0000000000e3",
-          "score": 0.77,
-          "effectiveWeight": 0.77,
-          "rawWeight": 0.77
-        },
-        {
-          "id": "ce000000-0000-4000-8000-0000000000e4",
-          "score": 0.66,
-          "effectiveWeight": 0.66,
-          "rawWeight": 0.66
-        },
-        {
-          "id": "ce000000-0000-4000-8000-0000000000e5",
-          "score": 0.55,
-          "effectiveWeight": 0.55,
-          "rawWeight": 0.55
-        },
-        {
-          "id": "ce000000-0000-4000-8000-00000000f000",
-          "score": 0.44,
-          "effectiveWeight": 0.44,
-          "rawWeight": 0.44
-        },
-        {
-          "id": "ce000000-0000-4000-8000-00000000f001",
-          "score": 0.33,
-          "effectiveWeight": 0.33,
-          "rawWeight": 0.33
-        }
-      ],
-      "recallSignals": {
-        "keywords": [
-          "engine"
-        ],
-        "retrospective": false,
-        "timeRange": null,
-        "entities": []
+        "candidates": [
+          {
+            "id": "ce000000-0000-4000-8000-0000000000e1",
+            "score": 0.99,
+            "salience": 0.99
+          },
+          {
+            "id": "ce000000-0000-4000-8000-0000000000e2",
+            "score": 0.88,
+            "salience": 0.88
+          },
+          {
+            "id": "ce000000-0000-4000-8000-0000000000e3",
+            "score": 0.77,
+            "salience": 0.77
+          },
+          {
+            "id": "ce000000-0000-4000-8000-0000000000e4",
+            "score": 0.66,
+            "salience": 0.66
+          },
+          {
+            "id": "ce000000-0000-4000-8000-0000000000e5",
+            "score": 0.55,
+            "salience": 0.55
+          },
+          {
+            "id": "ce000000-0000-4000-8000-00000000f000",
+            "score": 0.44,
+            "salience": 0.44
+          },
+          {
+            "id": "ce000000-0000-4000-8000-00000000f001",
+            "score": 0.33,
+            "salience": 0.33
+          }
+        ]
       }
     },
     {
@@ -820,60 +821,56 @@
       "compressionEnabled": false,
       "distillEnabled": true,
       "timestampMode": null,
-      "preSearchedMemories": [
-        {
-          "id": "ce000000-0000-4000-8000-0000000000e1",
-          "score": 0.99,
-          "effectiveWeight": 0.99,
-          "rawWeight": 0.99
+      "preRecall": {
+        "signals": {
+          "keywords": [
+            "engine"
+          ],
+          "retrospective": true,
+          "timeRange": {
+            "from": "2026-06-01T00:00:00.000Z",
+            "to": "2026-06-07T23:59:59.999Z"
+          },
+          "entities": [],
+          "paraphrase": "How does the analytical engine work?"
         },
-        {
-          "id": "ce000000-0000-4000-8000-0000000000e2",
-          "score": 0.88,
-          "effectiveWeight": 0.88,
-          "rawWeight": 0.88
-        },
-        {
-          "id": "ce000000-0000-4000-8000-0000000000e3",
-          "score": 0.77,
-          "effectiveWeight": 0.77,
-          "rawWeight": 0.77
-        },
-        {
-          "id": "ce000000-0000-4000-8000-0000000000e4",
-          "score": 0.66,
-          "effectiveWeight": 0.66,
-          "rawWeight": 0.66
-        },
-        {
-          "id": "ce000000-0000-4000-8000-0000000000e5",
-          "score": 0.55,
-          "effectiveWeight": 0.55,
-          "rawWeight": 0.55
-        },
-        {
-          "id": "ce000000-0000-4000-8000-00000000f000",
-          "score": 0.44,
-          "effectiveWeight": 0.44,
-          "rawWeight": 0.44
-        },
-        {
-          "id": "ce000000-0000-4000-8000-00000000f001",
-          "score": 0.33,
-          "effectiveWeight": 0.33,
-          "rawWeight": 0.33
-        }
-      ],
-      "recallSignals": {
-        "keywords": [
-          "engine"
-        ],
-        "retrospective": true,
-        "timeRange": {
-          "from": "2026-06-01T00:00:00.000Z",
-          "to": "2026-06-07T23:59:59.999Z"
-        },
-        "entities": []
+        "candidates": [
+          {
+            "id": "ce000000-0000-4000-8000-0000000000e1",
+            "score": 0.99,
+            "salience": 0.99
+          },
+          {
+            "id": "ce000000-0000-4000-8000-0000000000e2",
+            "score": 0.88,
+            "salience": 0.88
+          },
+          {
+            "id": "ce000000-0000-4000-8000-0000000000e3",
+            "score": 0.77,
+            "salience": 0.77
+          },
+          {
+            "id": "ce000000-0000-4000-8000-0000000000e4",
+            "score": 0.66,
+            "salience": 0.66
+          },
+          {
+            "id": "ce000000-0000-4000-8000-0000000000e5",
+            "score": 0.55,
+            "salience": 0.55
+          },
+          {
+            "id": "ce000000-0000-4000-8000-00000000f000",
+            "score": 0.44,
+            "salience": 0.44
+          },
+          {
+            "id": "ce000000-0000-4000-8000-00000000f001",
+            "score": 0.33,
+            "salience": 0.33
+          }
+        ]
       }
     },
     {
@@ -1001,33 +998,27 @@
       "distillEnabled": true,
       "timestampMode": null,
       "perTurnConversationSummaries": true,
-      "preSearchedMemories": [
-        {
-          "id": "ce000000-0000-4000-8000-0000000000e1",
-          "score": 0.99,
-          "effectiveWeight": 0.99,
-          "rawWeight": 0.99
+      "preRecall": {
+        "signals": {
+          "keywords": [
+            "analytical engine"
+          ],
+          "retrospective": false,
+          "entities": [],
+          "paraphrase": "How does the analytical engine work?",
+          "timeRange": null
         },
-        {
-          "id": "ce000000-0000-4000-8000-0000000000e2",
-          "score": 0.88,
-          "effectiveWeight": 0.88,
-          "rawWeight": 0.88
-        }
-      ],
-      "recallSignals": {
-        "keywords": [
-          "analytical engine"
-        ],
-        "retrospective": false,
-        "entities": []
-      },
-      "preSearchedQueryEmbedding": {
-        "query": "How does the analytical engine work?",
-        "embedding": [
-          1.0,
-          0.0,
-          0.0
+        "candidates": [
+          {
+            "id": "ce000000-0000-4000-8000-0000000000e1",
+            "score": 0.99,
+            "salience": 0.99
+          },
+          {
+            "id": "ce000000-0000-4000-8000-0000000000e2",
+            "score": 0.88,
+            "salience": 0.88
+          }
         ]
       }
     },
@@ -4501,6 +4492,258 @@
       "unplantSql": [
         "DELETE FROM memories WHERE id IN ('d2680000-0000-4000-8000-000000000003', 'd2680000-0000-4000-8000-000000000004', 'd2680000-0000-4000-8000-000000000005')"
       ]
+    },
+    {
+      "name": "mail_letter_new_message",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "I'm curious about your engines."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "_comment": "P4.D291 (bug 227, v4 69d38dd60): a letter in Ada's vault rides the new user message's trailing sections and comes back as mailAlertsOwed; the build flips NOTHING \u2014 the letter is still unalerted after the op (the provider-failure guarantee: nothing marks until delivery).",
+      "letter": {
+        "fromName": "Bea",
+        "fromCharacterId": "ca000000-0000-4000-8000-0000000000a2",
+        "sentAt": "2024-01-03T09:00:00.000Z",
+        "body": "The lighthouse key is under the third stone."
+      }
+    },
+    {
+      "name": "mail_letter_continue_mode",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "I'm curious about your engines."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "isContinueMode": true,
+      "_comment": "P4.D291 (bug 199): a continue turn carries the mail (and recall) in its trailing-only message, in the one order.",
+      "letter": {
+        "fromName": "Bea",
+        "fromCharacterId": "ca000000-0000-4000-8000-0000000000a2",
+        "sentAt": "2024-01-03T09:00:00.000Z",
+        "body": "The lighthouse key is under the third stone."
+      }
+    },
+    {
+      "name": "mail_letter_swipe_skipped",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Bea, tell Ada about the bees.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Welcome to the salon, everyone."
+        },
+        {
+          "role": "assistant",
+          "content": "Delighted to be here among the engines."
+        },
+        {
+          "role": "assistant",
+          "content": "I have been sketching card loops all morning."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000f9",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f9",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Welcome to the salon, everyone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Delighted to be here among the engines.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "I have been sketching card loops all morning.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f9",
+          "createdAt": "2024-01-02T00:02:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e4",
+          "role": "USER",
+          "content": "A private aside meant only for Bea.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:03:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e5",
+          "role": "USER",
+          "content": "A whisper meant for Ada alone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:04:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f9"
+          ]
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "regenerationOfMessageIds": [
+        "e0000000-0000-4000-8000-0000000000e6",
+        "e0000000-0000-4000-8000-0000000000e7"
+      ],
+      "_comment": "P4.D291 (bug 227): a swipe never reaches the finalizer, so it never offers the letter \u2014 no mail section, mailAlertsOwed null, the letter still unalerted.",
+      "letter": {
+        "fromName": "Bea",
+        "fromCharacterId": "ca000000-0000-4000-8000-0000000000a2",
+        "sentAt": "2024-01-03T09:00:00.000Z",
+        "body": "The lighthouse key is under the third stone."
+      }
+    },
+    {
+      "name": "bug199_chained_recall_mail_inform_in_order",
+      "_comment": "P4.D291 (bug 199, v4 124c8aca3 + 69d38dd60): a chained turn with no new user message \u2014 recall, mail and the inform block ride ONE trailing-only message in the one order (Core whisper, recall, mail, progressions, inform, turn note).",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Welcome to the salon, everyone."
+        },
+        {
+          "role": "assistant",
+          "content": "Delighted to be here among the engines."
+        },
+        {
+          "role": "assistant",
+          "content": "I have been sketching card loops all morning."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000fc",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000fc",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Welcome to the salon, everyone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Delighted to be here among the engines.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "I have been sketching card loops all morning.",
+          "participantId": "ba000000-0000-4000-8000-0000000000fc",
+          "createdAt": "2024-01-02T00:02:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e4",
+          "role": "USER",
+          "content": "A private aside meant only for Bea.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:03:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e5",
+          "role": "USER",
+          "content": "A whisper meant for Ada alone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:04:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000fc"
+          ]
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "letter": {
+        "fromName": "Bea",
+        "fromCharacterId": "ca000000-0000-4000-8000-0000000000a2",
+        "sentAt": "2024-01-03T09:00:00.000Z",
+        "body": "The lighthouse key is under the third stone."
+      }
     }
   ],
   "vaultConversationSummaries": [

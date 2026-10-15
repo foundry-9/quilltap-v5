@@ -62,9 +62,9 @@ const CAPTURED = new Set([
   'Recall replay using pinned signals',
   'Recall replay corpus cutoff',
   'Recall replay complete',
-  '[Memory] TF-IDF embeddings: recall boost gate off',
+  // P4.D291 (v4 `584d28164`): the TF-IDF gate-off and R6 reservation lines
+  // are retired; the anchors line is the search's one.
   '[Memory] Specific entity anchors chosen',
-  '[Memory] Background reservation (R6)',
 ]);
 interface Spec {
   $nowMs: number;

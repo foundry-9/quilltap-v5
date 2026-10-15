@@ -1,27 +1,34 @@
-//! Tier-3 differential (P4.D267): `search_memories_semantic` against v4's REAL
-//! `searchMemoriesSemantic` at the `01a83539d` pin — the recall multiplier
-//! retuning inside the search (R1's relevance gate and its TF-IDF gate-off,
-//! R2's cap, R4's specific entity anchors over a per-phrase hit cache, R6's
-//! background reservation), the harness knobs (`exclude_memory_ids` filtered
-//! inside the vector scan, `weight_clock_ms`, `head_size`, the embedding memo),
-//! hot-only search (`include_cold`) and F6 (the search stamps nothing).
+//! Tier-3 differential (P4.D267; REWRITTEN by P4.D291 onto Phase E): v5's
+//! `services::recall::search::search_memories` against v4's REAL
+//! `searchMemories` (`lib/memory/recall/search.ts`, `584d28164`, pinned at
+//! `83334b9a5`) — `build_recall_query` then `search_recall`'s gather /
+//! hydrate / score / select: the recall multiplier retuning (R1's relevance
+//! gate, OFF for a lexical provider without an explicit tuning; R2's cap; R4's
+//! specific entity anchors over a per-phrase hit cache; R6's background
+//! reservation), the knobs (`excludeIds` filtered inside the index scan,
+//! `nowMs` — the salience clock, `headSize`, the embedding memo), hot-only
+//! search (`includeCold`), the hybrid literal step (incl. a short query that
+//! takes none), and bug 214's text fallback honouring every option (the
+//! window as a tool-path filter and a soft boost under a context, exclusions,
+//! the multipliers with R1 off, the salience clock, probes + anchors widening
+//! the pool). A search stamps nothing.
 //!
 //! Both sides run over a fresh copy of the committed
 //! `semantic-search-tuning-main.db` per case (built AT the pin by
 //! `harness/oracle/fixtures/build-semantic-search-tuning-fixture.ts`; every
-//! embedding a 2-D unit vector `[c, √(1−c²)]`). ONLY the embedding boundary is
-//! scripted, by exact text, with a per-case `provider` label (`OPENAI`
-//! exercises R1; `BUILTIN` pins the gate-off): v4 `jest.doMock`s
-//! `generateEmbeddingForUser`, v5 a [`ScriptedEmbedding`] that also COUNTS
-//! calls. Comparands, per call: ids in order; `score`, `rawWeight`,
-//! `effectiveWeight` (1e-12), `usedEmbedding`, `recallAdjustment {multiplier,
-//! fired, blendedBefore, blendedAfter}`; per case: the embedded texts in
-//! order (the memo), the search's captured lines (level, message, v4's keys in
-//! order; arrays as `…Json`), and `lastAccessedAt` UNCHANGED before → after on
-//! both sides. Plus the pure `reserve_background_slots` over v4's jest vectors.
+//! embedding a 2-D unit vector `[c, √(1−c²)]` on `memories.embedding`). ONLY
+//! the embedding boundary is scripted, by exact text, with a per-case
+//! `provider` label: v4 `jest.doMock`s `generateEmbeddingForUser`, v5 a
+//! [`ScriptedEmbedding`] that also COUNTS calls. Comparands, per call: ids in
+//! order; `score`, `salience` (1e-12), `usedEmbedding`, `recallAdjustment
+//! {multiplier, fired, blendedBefore, blendedAfter}`; per case: the embedded
+//! texts in order (the memo), the search's captured `[Memory]` / `[Recall]`
+//! lines (level, message, v4's keys in order; arrays as `…Json`), and
+//! `lastAccessedAt` UNCHANGED before → after on both sides. Plus the pure
+//! `reserve_background_slots` over v4's jest vectors.
 //!
-//! Generate the oracle (Node 24, from the v4 checkout pinned at the baseline;
-//! STAGE outside `.claude/` — v4's jest ignores those paths):
+//! Generate the oracle (Node 24, from the v4 checkout pinned at the round's
+//! pin; STAGE outside `.claude/` — v4's jest ignores those paths):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   STAGE=/tmp/qt-sst-stage
 //!   rm -rf $STAGE; mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
@@ -47,15 +54,19 @@ use quilltap_core::model::embedding::{
 };
 use quilltap_core::recall_tags::{ContextTag, ScopePolicy, TemporalTag, TimeWindow};
 use quilltap_core::recall_tuning::{resolve_recall_tuning, validate_recall_tuning_input};
-use quilltap_core::services::memory_service::{
-    reserve_background_slots, search_memories_semantic, EmbeddingMemo, RecallAdjustment,
-    RecallContextInput, SemanticSearchOptions, SemanticSearchResult,
+use quilltap_core::services::recall::context::RecallContextInput;
+use quilltap_core::services::recall::query::EmbeddingMemo;
+use quilltap_core::services::recall::rank::reserve_background_slots;
+use quilltap_core::services::recall::search::{
+    search_memories, RecallSearchOptions, SearchMemoriesOptions,
 };
+use quilltap_core::services::recall::types::{RecallAdjustment, RecallCandidate};
 use quilltap_core::test_support::global_capture;
 use serde_json::Value;
 
 const EPS: f64 = 1e-12;
-const TARGET: &str = "quilltap::memories";
+/// The targets the search's lines ride (`[Memory]` / `[Recall]`).
+const TARGETS: [&str; 2] = ["quilltap::memories", "quilltap::recall"];
 
 /// The embedding seam: the case's scripted vector + provider label by exact
 /// text, or a thrown `EmbeddingError` — and every call recorded.
@@ -104,13 +115,14 @@ fn strings(v: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The corpus's v4-shaped options → v5's [`SemanticSearchOptions`].
+/// The corpus's v4-shaped `searchMemories` options → v5's
+/// [`SearchMemoriesOptions`].
 fn options(
     o: &Value,
     user_id: &str,
     now_ms: f64,
     memo: Option<EmbeddingMemo>,
-) -> SemanticSearchOptions {
+) -> SearchMemoriesOptions {
     let rc = o.get("recallContext").map(|rc| RecallContextInput {
         current_project_id: rc["currentProjectId"].as_str().map(str::to_string),
         scope_policy: if rc["scopePolicy"] == "exclude" {
@@ -122,44 +134,46 @@ fn options(
         turn_context: rc["turnContext"].as_str().and_then(ContextTag::from_kw),
         turn_temporal: rc["turnTemporal"].as_str().and_then(TemporalTag::from_kw),
         turn_retrospective: rc["turnRetrospective"] == true,
+        occurred_within: None,
         expand_related: rc["expandRelated"] == true,
         recently_whispered_ids: rc
             .get("recentlyWhisperedIds")
             .map(|v| strings(v).into_iter().collect::<HashSet<_>>()),
         current_chat_id: rc["currentChatId"].as_str().map(str::to_string),
         now_ms: rc["nowMs"].as_f64(),
-        present_participant_names: strings(&rc["presentParticipantNames"]),
-    });
-    let recall_tuning = o
-        .get("recallContext")
-        .and_then(|rc| rc.get("tuningInput"))
-        .map(|raw| {
+        tuning: rc.get("tuningInput").map(|raw| {
             let (input, _) = validate_recall_tuning_input(raw).expect("v4-valid tuning input");
             resolve_recall_tuning(Some(&input))
-        });
-    SemanticSearchOptions {
+        }),
+        present_participant_names: strings(&rc["presentParticipantNames"]),
+    });
+    SearchMemoriesOptions {
+        search: RecallSearchOptions {
+            limit: o["limit"].as_u64().map(|n| n as usize),
+            min_score: o["minScore"].as_f64(),
+            min_importance: o["minImportance"].as_f64(),
+            source: o["source"].as_str().map(str::to_string),
+            about_character_id: o["aboutCharacterId"].as_str().map(str::to_string),
+            include_cold: o["includeCold"] == true,
+            exclude_ids: o
+                .get("excludeIds")
+                .map(|v| strings(v).into_iter().collect::<HashSet<_>>()),
+            literal_phrase: o["literalPhrase"] == true,
+            recall_context: rc,
+            head_size: o["headSize"].as_u64().map(|n| n as usize),
+            // v4 `options.nowMs ?? Date.now()` — the frozen corpus clock.
+            now_ms: o["nowMs"].as_f64().unwrap_or(now_ms),
+            force_text: false,
+        },
         user_id: user_id.to_string(),
-        limit: o["limit"].as_u64().map(|n| n as usize),
-        min_score: o["minScore"].as_f64(),
-        min_importance: o["minImportance"].as_f64(),
-        source: o["source"].as_str().map(str::to_string),
-        about_character_id: o["aboutCharacterId"].as_str().map(str::to_string),
-        apply_literal_phrase_boost: o["applyLiteralPhraseBoost"] == true,
-        recall_context: rc,
-        occurred_within: o.get("occurredWithin").map(|w| TimeWindow {
+        embedding_profile_id: None,
+        window: o.get("window").map(|w| TimeWindow {
             from: w["from"].as_str().unwrap().to_string(),
             to: w["to"].as_str().unwrap().to_string(),
         }),
-        entity_anchors: strings(&o["entityAnchors"]),
-        extra_probes: strings(&o["extraProbes"]),
-        now_ms,
-        include_cold: o["includeCold"] == true,
-        exclude_memory_ids: strings(&o["excludeMemoryIds"]),
-        head_size: o["headSize"].as_u64().map(|n| n as usize),
-        weight_clock_ms: o["weightClockMs"].as_i64(),
-        recall_tuning,
+        anchors: strings(&o["anchors"]),
+        probes: o.get("probes").map(strings),
         embedding_memo: memo,
-        ..Default::default()
     }
 }
 
@@ -200,8 +214,13 @@ fn assert_adjustment(got: &Option<RecallAdjustment>, want: &Value, what: &str) {
 /// under `…Json` (the file-layer convention), numbers as JS prints them.
 fn expected_line(line: &Value) -> String {
     let mut out = format!(
-        "{} {TARGET} {}",
+        "{} {} {}",
         line["level"].as_str().unwrap().to_ascii_uppercase(),
+        if line["message"].as_str().unwrap().starts_with("[Recall]") {
+            TARGETS[1]
+        } else {
+            TARGETS[0]
+        },
         line["message"].as_str().unwrap()
     );
     for (k, v) in line["fields"].as_object().unwrap() {
@@ -319,7 +338,7 @@ async fn semantic_search_tuning_matches_oracle() {
 
         let access_before = access_column(&db).await;
         let (results, lines) = global_capture::capture_async(async {
-            let mut all: Vec<Vec<SemanticSearchResult>> = Vec::new();
+            let mut all: Vec<Vec<RecallCandidate>> = Vec::new();
             for call in case["calls"].as_array().unwrap() {
                 let o = options(
                     &call["options"],
@@ -327,13 +346,12 @@ async fn semantic_search_tuning_matches_oracle() {
                     now_ms,
                     (call["memo"] == true).then(|| memo.clone()),
                 );
-                let got = search_memories_semantic(
+                let got = search_memories(
                     &db,
                     &provider,
                     call["characterId"].as_str().unwrap(),
                     call["query"].as_str().unwrap(),
                     &o,
-                    None,
                 )
                 .await
                 .expect("search");
@@ -358,12 +376,7 @@ async fn semantic_search_tuning_matches_oracle() {
             for (g, w) in got.iter().zip(want) {
                 let what = format!("{name} call {ci} {}", w["id"]);
                 feq(g.score, &w["score"], &format!("{what} score"));
-                feq(g.raw_weight, &w["rawWeight"], &format!("{what} rawWeight"));
-                feq(
-                    g.effective_weight,
-                    &w["effectiveWeight"],
-                    &format!("{what} effectiveWeight"),
-                );
+                feq(g.salience, &w["salience"], &format!("{what} salience"));
                 assert_eq!(
                     Value::Bool(g.used_embedding),
                     w["usedEmbedding"],
@@ -385,7 +398,7 @@ async fn semantic_search_tuning_matches_oracle() {
         // rides `quilltap::db`).
         let got_lines: Vec<&String> = lines
             .iter()
-            .filter(|l| l.split(' ').nth(1) == Some(TARGET))
+            .filter(|l| l.split(' ').nth(1).is_some_and(|t| TARGETS.contains(&t)))
             .collect();
         let want_lines: Vec<String> = oracle["lines"]
             .as_array()
@@ -400,7 +413,7 @@ async fn semantic_search_tuning_matches_oracle() {
         );
         n_lines += want_lines.len();
 
-        // F6: the search stamps nothing, on either side.
+        // A search stamps nothing, on either side (`deliver` does).
         assert_eq!(
             access_before, access_after,
             "{name}: v5 search wrote lastAccessedAt"
@@ -422,12 +435,11 @@ async fn semantic_search_tuning_matches_oracle() {
     for (r, oracle) in reserves.iter().zip(&rows[cases.len()..]) {
         let name = r["name"].as_str().unwrap();
         assert_eq!(oracle["name"], name, "reserve order mismatch");
-        let row = |pair: &Value| SemanticSearchResult {
+        let row = |pair: &Value| RecallCandidate {
             memory: serde_json::json!({ "id": pair[0] }),
             score: 0.0,
             used_embedding: true,
-            effective_weight: 0.0,
-            raw_weight: 0.0,
+            salience: 0.0,
             recall_adjustment: Some(RecallAdjustment {
                 multiplier: 1.0,
                 fired: vec![],

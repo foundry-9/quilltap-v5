@@ -19,11 +19,12 @@
 //! proactive task writes nothing — v4 `3f7320138` F6 — buildContext stamps what
 //! it formats).
 //!
-//! The proactive task's outcome rides `BuildContextInput`
-//! (`pre_searched_memories` / `recall_signals`); a non-empty `pre_searched_memories`
-//! suppresses build_context's own fallback distill exactly as v4
-//! `context-manager.ts:1141-1145`, and `recall_signals` seeds the retrospective
-//! cadence on both paths.
+//! The proactive task's outcome is a [`PreRecall`] (v4 `584d28164`): the
+//! turn's ONE recall query — distilled and embedded once here — and what that
+//! query found. It rides `BuildContextInput::pre_recall`; when it found
+//! something, the context build reuses both (no second distillation, no second
+//! embedding); an empty or failed search hands the build nothing it uses, and
+//! the build distils again interactively (R-L8 — v4 `assemble.ts:276-333`).
 //!
 //! **The keep-alive is deliberately NOT ported here (recorded).** v4's
 //! `runPreContextPreCompute` arms a 15 s `setInterval` keep-alive during a
@@ -53,12 +54,15 @@ use crate::services::cheap_llm_exec::{CheapLlmTaskExecutor, CheapLlmTaskOptions}
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::dangerous_content::resolver::ResolvedConciergePolicy;
 use crate::services::memory_recap::distill::{
-    distill_memory_search, DistillMessage, DistilledSearch, ExtractionClock,
+    distill_memory_search, DistillMessage, ExtractionClock,
 };
-use crate::services::memory_service::{
-    search_memories_semantic, RecallContextInput, SearchQueryEmbedding, SemanticSearchOptions,
-    SemanticSearchResult,
+use crate::services::recall::assemble::PreRecall;
+use crate::services::recall::context::{
+    build_turn_recall_context, TurnRecallContextInput, TurnRecallSettings,
 };
+use crate::services::recall::query::{build_recall_query, BuildRecallQueryInput};
+use crate::services::recall::search::{search_recall, RecallSearchOptions};
+use crate::services::recall::types::RecallTrace;
 
 /// The resolved orchestrator state the proactive task reads (v4
 /// `RunPreContextPreComputeOptions`, the subset `proactiveRecallTask` consumes).
@@ -108,24 +112,6 @@ pub struct ProactiveRecallInput<'a> {
     /// (`ProcessMessageInput::timezone`, v4 `resolveTimezone`) — that one can be
     /// a per-chat setting; this one is where the server stands.
     pub server_tz: Option<&'a str>,
-}
-
-/// v4 `ProactiveRecallOutcome` (`{ memories, signals }`). Both fields are `None`
-/// (v4 `undefined`) when the task didn't run to a result; a successful extraction
-/// always carries `signals`, and `memories` is `None` only when the search came
-/// back empty or threw (the signals STILL flow so the retrospective cadence
-/// fires). The whole task returns `None` (v4's `return undefined`) for the
-/// guard / never-spoke / empty-window / extraction-fail short-circuits.
-pub struct ProactiveRecallOutcome {
-    pub memories: Option<Vec<SemanticSearchResult>>,
-    pub signals: Option<DistilledSearch>,
-    /// The query text + vector this task embedded for its memory search (v4
-    /// `870a57fa`). Threaded on to `buildContext` so the per-turn
-    /// conversation-summary list rides the same vector instead of paying for a
-    /// second embedding call. Carried on BOTH return paths — a captured vector
-    /// survives a search that found nothing — and `None` when the search never
-    /// embedded (a failed embedding, or the task short-circuiting earlier).
-    pub query_embedding: Option<SearchQueryEmbedding>,
 }
 
 /// v4 `proactiveRecallTask`'s windowing (`pre-compute.service.ts:185-214`): the
@@ -208,7 +194,7 @@ pub async fn proactive_recall_task<EMB, CMP>(
     executor: &CheapLlmTaskExecutor,
     input: &ProactiveRecallInput<'_>,
     emit_status: &mut dyn FnMut(&str, String),
-) -> Option<ProactiveRecallOutcome>
+) -> Option<PreRecall>
 where
     EMB: EmbeddingProvider,
     CMP: CompletionProvider,
@@ -282,7 +268,13 @@ where
             .and_then(Value::as_str)
             .unwrap_or("realtime")
             .to_string(),
-        local_tz: input.server_tz.map(str::to_string),
+        // Bug 212: the memory calendar's zone (v4 `clock?.timeZone ?? await
+        // refreshMemoryTimeZone()` inside the distiller).
+        time_zone: Some(crate::services::memory_time_zone::refresh_memory_time_zone(
+            db,
+            input.server_tz.unwrap_or("UTC"),
+            input.now_ms as f64,
+        )),
     };
 
     // v4 `if (!keywordResult.success || !keywordResult.result ||
@@ -314,147 +306,91 @@ where
         format!("Searching {}'s memories...", input.character_name),
     );
 
-    // Prefer the natural-language paraphrase as the embedding query (item 3); a
-    // keyword bag throws away the sentence structure the embedding model is trained
-    // on. Fall back to the keyword join when the model omits a paraphrase (v4's
-    // `||`, where an empty paraphrase is falsy — the parse already null-empties it).
-    let search_query = signals
-        .paraphrase
-        .clone()
-        .filter(|p| !p.is_empty())
-        .unwrap_or_else(|| signals.keywords.join(" "));
+    // The turn's one query: the paraphrase (else the keyword join), embedded
+    // once here and reused by every recall pool in the context build.
+    let mut trace: RecallTrace = Vec::new();
+    let keywords_text = signals.keywords.join(" ");
+    let query = build_recall_query(
+        embedding,
+        BuildRecallQueryInput {
+            signals: Some(signals.clone()),
+            ..BuildRecallQueryInput::plain(input.user_id, None, &keywords_text)
+        },
+        &mut trace,
+    )
+    .await;
 
-    // Same per-turn recall context the dynamic head uses, so the proactive path
-    // gets identical scope gating, temporal down-weighting, context steering,
-    // participant boost, and anti-repetition (see recall_tags). chat.projectId is
-    // the rename-proof comparand; the turn's temporal/context guess and
-    // present-character set drive items 3-4.
+    // The same per-turn recall context the fallback head builds: scope gating,
+    // temporal weighting, context steering, participant boost, anti-repetition
+    // and the fresh-event boost. (v4 passes `Date.now()`; the injected now_ms
+    // seam stands in for the wall clock.)
     let recall_settings = read_memory_recall_settings(db);
-    let retrospective = signals.retrospective;
-    let recall_context = RecallContextInput {
-        current_project_id: input
+    let recall_context = build_turn_recall_context(TurnRecallContextInput {
+        chat_id: input.chat_id,
+        chat_project_id: input.chat.get("projectId").and_then(Value::as_str),
+        commonplace_recall_history: input
             .chat
-            .get("projectId")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        scope_policy: if recall_settings.scope_policy == "exclude" {
-            ScopePolicy::Exclude
-        } else {
-            ScopePolicy::DownWeight
+            .get("commonplaceRecallHistory")
+            .unwrap_or(&Value::Null),
+        recall_settings: TurnRecallSettings {
+            scope_policy: if recall_settings.scope_policy == "exclude" {
+                ScopePolicy::Exclude
+            } else {
+                ScopePolicy::DownWeight
+            },
+            expand_related: recall_settings.expand_related,
         },
         turn_context: signals.context,
         turn_temporal: signals.temporal,
-        turn_retrospective: retrospective,
+        turn_retrospective: query.retrospective,
         present_about_character_ids: input.present_about_character_ids.to_vec(),
-        expand_related: recall_settings.expand_related,
-        recently_whispered_ids: Some(crate::recall_history::recently_whispered_id_set(
-            input
-                .chat
-                .get("commonplaceRecallHistory")
-                .unwrap_or(&Value::Null),
-        )),
-        // Fresh-event boost: memories of the last 24/48h keep their footing
-        // against evergreen entries whatever the retrospective classifier
-        // decided. The chat id is the echo guard — this chat's own memories are
-        // already in context. (v4 passes `Date.now()`; the injected now_ms seam
-        // stands in for the wall clock.)
-        current_chat_id: Some(input.chat_id.to_string()),
-        now_ms: Some(input.now_ms as f64),
         present_participant_names: input.present_participant_names.to_vec(),
-    };
+        now_ms: input.now_ms as f64,
+        tuning: None,
+    });
 
-    // Retrospective turns: multi-probe (entity string; paraphrase + resolved date
-    // phrase) so a "remember Lighthouse Point last week?" turn probes the vector
-    // space from every angle the reference offers (v4:296-308).
-    let mut extra_probes: Vec<String> = Vec::new();
-    if retrospective {
-        let entity_probe = crate::jsstr::js_trim(&signals.entities.join(" ")).to_string();
-        if !entity_probe.is_empty() {
-            extra_probes.push(entity_probe);
-        }
-        if let (Some(p), Some(tr)) = (&signals.paraphrase, &signals.time_range) {
-            extra_probes.push(format!(
-                "{p} (around {} to {})",
-                crate::jsstr::utf16_truncate(&tr.from, 10),
-                crate::jsstr::utf16_truncate(&tr.to, 10)
-            ));
-        }
-    }
-
-    // v4 wraps only the search in try/catch: on empty results OR a throw, it returns
-    // `{ memories: undefined, signals }` (the signals STILL flow). v5's
-    // `search_memories_semantic` returns `Result`; every non-(Ok non-empty) arm
-    // converges on `memories: None` (v4 logs a warning on the throw arm — outside
-    // the differential contract, so not reproduced).
-    // Captured by `search_memories_semantic` the moment it embeds `search_query`.
-    let mut query_embedding: Option<SearchQueryEmbedding> = None;
-    let search = search_memories_semantic(
+    match search_recall(
         db,
-        embedding,
         input.character_id,
-        &search_query,
-        &SemanticSearchOptions {
-            user_id: input.user_id.to_string(),
+        &query,
+        &RecallSearchOptions {
             // The context builder drops every candidate already in the frozen
             // archive, then fills the head from what is left — and does not
             // search again. Pull enough that a full archive overlap still
             // leaves the largest head it can ask for (a retrospective turn:
-            // 2 × max). v4 `3f7320138` F7.
+            // 2 × max).
             limit: Some(crate::memory_pools::PROACTIVE_RECALL_POOL_SIZE),
-            min_importance: Some(0.3),
+            min_importance: Some(crate::memory_scoring::RECALL_MIN_IMPORTANCE),
             recall_context: Some(recall_context),
-            // Episodic recall: entity anchoring always (a verbatim place name cannot
-            // be sliced off by the cosine floor); the multi-probe block above is
-            // still retrospective-only.
-            entity_anchors: signals.entities.clone(),
-            // Ungated from the retrospective flag (v4 `505dcb1f`): a resolved
-            // window is useful either way — the classifier misses same-day
-            // references, and `search_memories_semantic`'s two-stage semantics
-            // (hard filter only when enough hits survive, else the bounded soft
-            // boost) make it starvation-safe. The flag still gates the temporal
-            // flip, the anti-repetition suspension, and the multi-probe block.
-            occurred_within: signals.time_range.clone(),
-            extra_probes,
             now_ms: input.now_ms as f64,
             ..Default::default()
         },
-        Some(&mut query_embedding),
+        &mut trace,
+        Some("head"),
     )
-    .await;
-
-    // v4: on non-empty results → `{ memories: results, signals }` (the whole
-    // pool — `3f7320138` dropped the `.slice(0, 10)`); on
-    // empty OR a throw → `{ memories: undefined, signals }` (signals STILL flow).
-    // The captured vector rides BOTH arms (v4 `870a57fa` returns `queryEmbedding`
-    // on the success slice AND the memories-`undefined` fall-through).
-    Some(finish_outcome(
-        search.unwrap_or_default(),
-        signals,
-        query_embedding,
-    ))
-}
-
-/// v4's search-outcome shaping (`pre-compute.service.ts:359-371`): non-empty
-/// results become the memories WHOLE (the proactive pool, so archive overlap
-/// cannot starve the head — v4 `3f7320138` removed the `.slice(0, 10)`); an empty list
-/// yields `memories: None` — but the signals STILL flow so the retrospective
-/// cadence fires. (v5 collapses the empty-and-throw arms here: `search.
-/// unwrap_or_default()` maps a search error to the empty list, which v4's `catch`
-/// returns identically.)
-fn finish_outcome(
-    results: Vec<SemanticSearchResult>,
-    signals: DistilledSearch,
-    query_embedding: Option<SearchQueryEmbedding>,
-) -> ProactiveRecallOutcome {
-    let memories = if results.is_empty() {
-        None
-    } else {
-        Some(results)
-    };
-    ProactiveRecallOutcome {
-        memories,
-        signals: Some(signals),
-        query_embedding,
+    .await
+    {
+        Ok(result) => Some(PreRecall {
+            query,
+            candidates: result.candidates,
+            ranked: Some(result.ranked),
+            trace,
+        }),
+        Err(error) => {
+            tracing::warn!(
+                target: "quilltap::pre_compute",
+                chatId = %input.chat_id,
+                characterId = %input.character_id,
+                error = %crate::db::fallback::error_text(&error),
+                "Proactive memory recall: memory search failed; the turn recalls with the query alone"
+            );
+            Some(PreRecall {
+                query,
+                candidates: Vec::new(),
+                ranked: None,
+                trace,
+            })
+        }
     }
 }
 
@@ -462,8 +398,7 @@ fn finish_outcome(
 mod tests {
     //! Unit specs porting v4's `proactiveRecallTask` jest suite
     //! (`pre-compute.service.test.ts:138-264`). The guard/windowing cases run
-    //! against the pure [`messages_since_last_spoke`] helper and the whole-pool return
-    //! against [`finish_outcome`] (now the whole pool); the distill/search legs (jest
+    //! against the pure [`messages_since_last_spoke`] helper; the distill/search legs (jest
     //! "extracts-then-searches" / "extraction fails" / "search throws" /
     //! search-empty-signals-flow / multi-character) are proven end-to-end against
     //! v4's REAL code by the tier-3 `precompute` differential
@@ -474,37 +409,6 @@ mod tests {
     //! tier-1 differentialed in `cheap_llm`.
     use super::*;
     use serde_json::json;
-
-    fn fake_result(id: &str) -> SemanticSearchResult {
-        SemanticSearchResult {
-            memory: json!({ "id": id }),
-            score: 0.5,
-            used_embedding: true,
-            effective_weight: 0.5,
-            raw_weight: 0.5,
-            recall_adjustment: None,
-        }
-    }
-
-    /// jest "returns the whole proactive pool so archive overlap cannot starve
-    /// the head" (v4 `3f7320138`, which retired "caps the returned memory list
-    /// at 10").
-    #[test]
-    fn returns_the_whole_proactive_pool() {
-        let many: Vec<SemanticSearchResult> =
-            (0..15).map(|i| fake_result(&format!("m{i}"))).collect();
-        let out = finish_outcome(many, DistilledSearch::default(), None);
-        assert_eq!(out.memories.expect("memories").len(), 15);
-    }
-
-    /// An empty result set → `memories: None`, but the signals STILL flow (v4's
-    /// search-empty arm; the retrospective cadence still fires downstream).
-    #[test]
-    fn empty_results_drop_memories_keep_signals() {
-        let out = finish_outcome(Vec::new(), DistilledSearch::default(), None);
-        assert!(out.memories.is_none());
-        assert!(out.signals.is_some());
-    }
 
     fn msg(role: &str, content: &str, participant: &str) -> Value {
         json!({

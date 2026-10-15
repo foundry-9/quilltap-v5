@@ -2,8 +2,8 @@
 //! (`lib/tools/handlers/search-scriptorium-handler.ts` +
 //! `lib/tools/search-scriptorium-tool.ts`).
 //!
-//! Searches across four sources — `memories` (the ported
-//! [`search_memories_semantic`](crate::services::memory_service::search_memories_semantic)),
+//! Searches across four sources — `memories` (the recall pipeline's one-shot
+//! [`search_memories`](crate::services::recall::search::search_memories)),
 //! `conversations` ([`crate::db::conversation_search`]), `documents`
 //! ([`crate::services::knowledge_injector::document_search`]), and `knowledge`
 //! (the same document search narrowed to `Knowledge/`, per tier) — merges them,
@@ -16,9 +16,9 @@
 //! enforces the same exclusion defensively (`operatorSurface` → memory search off,
 //! documents/knowledge reach every enabled store, conversations go operator-wide).
 //!
-//! **Search itself writes nothing** (v4 `3f7320138` F6 — `searchMemoriesSemantic`
-//! no longer bumps access); the tool stamps only the memories it returns, through
-//! `mark_memories_accessed` (delivered-only access stamps). The differential
+//! **Search itself writes nothing** (v4 `3f7320138` F6); the tool stamps only
+//! the memories it returns, through the recall pipeline's one `lastAccessedAt`
+//! writer, [`stamp_accessed`](crate::services::recall::deliver::stamp_accessed). The differential
 //! isolates each case on a fresh fixture copy so the stamp never contaminates a
 //! later case.
 
@@ -37,12 +37,16 @@ use crate::jsnum::to_fixed;
 use crate::literal_boost::{
     LITERAL_BOOST_CHARACTER, LITERAL_BOOST_GLOBAL, LITERAL_BOOST_GROUP, LITERAL_BOOST_PROJECT,
 };
+use crate::memory_scoring::{importance_band, ImportanceBand, TOOL_MIN_IMPORTANCE};
+use crate::memory_time::calendar::zoned_day_bounds_iso;
 use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::project_roster_access::roster_gated_project_id;
 use crate::services::knowledge_injector::{
     search_document_chunks, DocumentSearchOptions, DocumentSearchResult,
 };
-use crate::services::memory_service::{search_memories_semantic, SemanticSearchOptions};
+use crate::services::recall::search::{
+    search_memories as search_character_memories, RecallSearchOptions, SearchMemoriesOptions,
+};
 use crate::tools::llm_number::llm_number;
 
 use super::help_search::truncate_utf16;
@@ -62,6 +66,10 @@ pub struct SearchContext {
     /// `knowledge` run: memories and conversations are forced off. Never
     /// combined with `operator_surface`.
     pub mount_pool: Option<TieredMountPool>,
+    /// The host's calendar NAME — the memory calendar's fallback when the
+    /// instance names no timezone (v4's env / system rungs of
+    /// `refreshMemoryTimeZone`); read only when `since` / `until` is given.
+    pub memory_zone_fallback: String,
 }
 
 /// v4 `SearchScriptoriumToolOutput` — `{ success, results?, error?, totalFound,
@@ -234,25 +242,39 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
     let min_importance = args
         .get("minImportance")
         .and_then(|raw| llm_number(raw).as_f64())
-        .unwrap_or(0.0);
+        .unwrap_or(TOOL_MIN_IMPORTANCE);
     let since = args.get("since").and_then(Value::as_str);
     let until = args.get("until").and_then(Value::as_str);
     let about_character = args.get("aboutCharacter").and_then(Value::as_str);
 
-    // Time filters (episodic recall): normalize date-only bounds to full-day
-    // coverage. Applied to memories via occurredAt ?? createdAt and to
+    // Time filters (episodic recall): date-only bounds widen to full LOCAL
+    // days on the memory calendar (bug 212), the calendar memories are dated
+    // on — never UTC days; a date the calendar refuses keeps v4's UTC-day
+    // fallback. Applied to memories via occurredAt ?? createdAt and to
     // conversation hits via the source chat's timestamps. (Lengths are UTF-16
     // code units in v4; these prefixes are ASCII so bytes are identical.)
+    let memory_time_zone = (since.is_some() || until.is_some()).then(|| {
+        crate::services::memory_time_zone::refresh_memory_time_zone(
+            db,
+            &context.memory_zone_fallback,
+            now_ms,
+        )
+    });
+    let zone = memory_time_zone.as_deref().unwrap_or("UTC");
     let since_iso = since.map(|s| {
         if crate::jsstr::utf16_len(s) == 10 {
-            format!("{s}T00:00:00.000Z")
+            zoned_day_bounds_iso(s, zone)
+                .map(|w| w.from)
+                .unwrap_or_else(|| format!("{s}T00:00:00.000Z"))
         } else {
             s.to_string()
         }
     });
     let until_iso = until.map(|s| {
         if crate::jsstr::utf16_len(s) == 10 {
-            format!("{s}T23:59:59.999Z")
+            zoned_day_bounds_iso(s, zone)
+                .map(|w| w.to)
+                .unwrap_or_else(|| format!("{s}T23:59:59.999Z"))
         } else {
             s.to_string()
         }
@@ -364,34 +386,33 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
                 }
 
                 if !about_character_unresolved {
-                    let opts = SemanticSearchOptions {
+                    let opts = SearchMemoriesOptions {
+                        search: RecallSearchOptions {
+                            limit: Some(limit),
+                            min_importance: Some(min_importance),
+                            about_character_id,
+                            literal_phrase: true,
+                            // The drill-down tool sees the archive too: cold
+                            // shards are returned labelled, so a character can
+                            // find what a digest replaced (v4 `d58548051`).
+                            include_cold: true,
+                            now_ms,
+                            ..Default::default()
+                        },
                         user_id: context.user_id.clone(),
                         embedding_profile_id: context.embedding_profile_id.clone(),
-                        limit: Some(limit),
-                        min_score: None,
-                        min_importance: Some(min_importance),
-                        source: None,
-                        about_character_id,
-                        apply_literal_phrase_boost: true,
                         // Tool path: a plain hard filter on event time (no
                         // recallContext, so no soft fallback — the caller asked
                         // for a window).
-                        occurred_within: time_window.clone(),
-                        // The drill-down tool sees the archive too: cold shards
-                        // are returned labelled, so a character can find what a
-                        // digest replaced (v4 `d58548051`; honoured by P4.D267).
-                        include_cold: true,
-                        now_ms,
+                        window: time_window.clone(),
                         ..Default::default()
                     };
                     if let Ok(mems) =
-                        search_memories_semantic(db, provider, cid, query, &opts, None).await
+                        search_character_memories(db, provider, cid, query, &opts).await
                     {
                         for mr in mems {
-                            results.push((
-                                mr.score,
-                                memory_result(&mr.memory, mr.score, mr.effective_weight),
-                            ));
+                            results
+                                .push((mr.score, memory_result(&mr.memory, mr.score, mr.salience)));
                         }
                     }
                 }
@@ -581,7 +602,7 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
             .filter(|r| r["sourceType"] == "memory")
             .filter_map(|r| r["metadata"]["memoryId"].as_str().map(str::to_string))
             .collect();
-        crate::services::memory_access::mark_memories_accessed(db, cid, &returned).await;
+        crate::services::recall::deliver::stamp_accessed(db, cid, &returned).await;
     }
 
     // v4 `search-scriptorium-handler.ts:522` — the per-call INFO, after the sort
@@ -818,11 +839,11 @@ fn result_value(
     })
 }
 
-/// memory metadata: `{ memoryId, summary?, importance, effectiveWeight, createdAt,
+/// memory metadata: `{ memoryId, summary?, importance, salience, createdAt,
 /// source, occurredAt, narrativeTime, kind, conversationId? }` (episodic spine:
 /// the three dated fields are ALWAYS present — v4 emits `?? null` / `?? 'semantic'`
 /// — while `conversationId` is `chatId ?? undefined`, dropped when nullish).
-fn memory_result(memory: &Value, score: f64, effective_weight: f64) -> Value {
+fn memory_result(memory: &Value, score: f64, salience: f64) -> Value {
     let content = memory.get("content").and_then(Value::as_str).unwrap_or("");
     let mut md = Map::new();
     if let Some(v) = memory.get("id") {
@@ -831,13 +852,17 @@ fn memory_result(memory: &Value, score: f64, effective_weight: f64) -> Value {
     if let Some(v) = memory.get("summary") {
         md.insert("summary".into(), v.clone());
     }
-    if let Some(v) = memory.get("importance") {
+    // `importance: filterImportance(mr.memory)` — `reinforcedImportance ??
+    // importance`, the value the band and the floor read (C1-A); absent from
+    // the JSON only when both are.
+    if let Some(v) = memory
+        .get("reinforcedImportance")
+        .filter(|v| !v.is_null())
+        .or_else(|| memory.get("importance"))
+    {
         md.insert("importance".into(), v.clone());
     }
-    md.insert(
-        "effectiveWeight".into(),
-        js_number_to_json(effective_weight),
-    );
+    md.insert("salience".into(), js_number_to_json(salience));
     if let Some(v) = memory.get("createdAt") {
         md.insert("createdAt".into(), v.clone());
     }
@@ -983,12 +1008,10 @@ fn format_one(index: usize, result: &Value) -> String {
     match source_type {
         "memory" => {
             let importance = md.get("importance").and_then(Value::as_f64).unwrap_or(0.0);
-            let importance_label = if importance >= 0.7 {
-                "High"
-            } else if importance >= 0.4 {
-                "Medium"
-            } else {
-                "Low"
+            let importance_label = match importance_band(importance) {
+                ImportanceBand::High => "High",
+                ImportanceBand::Medium => "Medium",
+                ImportanceBand::Low => "Low",
             };
             let summary = md
                 .get("summary")
@@ -1179,6 +1202,7 @@ mod tests {
             project_id: None,
             operator_surface: false,
             mount_pool: None,
+            memory_zone_fallback: "UTC".to_string(),
         };
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()

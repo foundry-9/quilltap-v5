@@ -45,7 +45,7 @@ interface Spec {
   chat: { id: string };
   project: { id: string };
   loadedMemories: {
-    semantic: Array<{ summary: string; importance: number; score: number; effectiveWeight: number }>;
+    semantic: Array<{ summary: string; importance: number; score: number; salience: number }>;
     interCharacter: Array<{ aboutCharacterName: string; summary: string; importance: number }>;
     recap: string;
   };

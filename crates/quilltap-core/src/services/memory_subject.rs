@@ -17,7 +17,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::db::runtime::Db;
-use crate::memory_injector::MemorySubjectContext;
+use crate::services::recall::render::MemorySubjectContext;
 
 /// Resolve the display names of every other character a pool of memories is
 /// about, and pair them with the owning character (v4

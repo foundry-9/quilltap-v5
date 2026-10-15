@@ -97,7 +97,30 @@ use quilltap_core::model::completion::{
     canned_completion_key, CannedCompletionProvider, CompletionMessage, CompletionRole,
     CompletionUsage,
 };
-use quilltap_core::model::embedding::CannedEmbeddingProvider;
+use quilltap_core::model::embedding::{
+    EmbeddingCallOptions, EmbeddingError, EmbeddingProvider, EmbeddingResult,
+};
+
+/// v4's oracle mock: every text embeds as `[0.1, 0.2, 0.3]`, provider
+/// `canned` (P4.D291 — the recall record now carries `embedded`).
+struct FixedEmbedding;
+
+impl EmbeddingProvider for FixedEmbedding {
+    async fn generate_embedding_for_user(
+        &self,
+        _text: &str,
+        _user_id: &str,
+        _profile_id: Option<&str>,
+        _opts: EmbeddingCallOptions,
+    ) -> Result<EmbeddingResult, EmbeddingError> {
+        Ok(EmbeddingResult {
+            embedding: vec![0.1, 0.2, 0.3],
+            model: "canned".to_string(),
+            dimensions: 3,
+            provider: "canned".to_string(),
+        })
+    }
+}
 use quilltap_core::model::stream::{
     canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamParams, StreamUsage,
     StreamingCompletionProvider,
@@ -161,6 +184,9 @@ struct CallW {
     /// the user message (orchestrator.service.ts:601–624).
     #[serde(default)]
     pending_tool_results: Vec<PtrW>,
+    /// P4.D291 (bug 227): a letter planted IN-CASE before the call.
+    #[serde(default)]
+    letter: Option<LetterW>,
     /// P4.D186 (v4 bug 137): attachment ids on the send. A held post still
     /// persists them (the seam sits below the attachment work), so the corpus
     /// needed a way to hang one on a call.
@@ -230,6 +256,17 @@ struct Spec {
     // W4.10a: the fixture builder seeds `api_keys` from the spec's `apiKeys` map;
     // the Rust harness no longer reads it (the real `DbApiKeys` resolver reads the
     // seeded table). Left off the struct — serde ignores the unknown key.
+}
+
+/// P4.D291: an in-case letter (the oracle case's `CallSpec.letter`).
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LetterW {
+    character_id: String,
+    from_name: String,
+    from_character_id: String,
+    sent_at: String,
+    body: String,
 }
 
 fn spec_path() -> PathBuf {
@@ -1409,6 +1446,9 @@ fn orchestrator_tier3_matches_oracle() {
     let mut want_tool_change: HashMap<String, Vec<Value>> = HashMap::new();
     // P4.162: v4's two `Consumed informs …` DEBUG lines per case.
     let mut want_inform_consume: HashMap<String, Vec<Value>> = HashMap::new();
+    // P4.D291: per call, the letters left unalerted + v4's flip DEBUGs.
+    let mut want_mail: HashMap<String, (Value, Vec<Value>)> = HashMap::new();
+    let mut got_unalerted: HashMap<String, Value> = HashMap::new();
     // P4.133: the keys v4's `streamMessage` received, per case, in call order.
     let mut want_stream_keys: HashMap<String, Vec<String>> = HashMap::new();
     // P4.133: v4's transport-shell `error` frame `details` per case (the
@@ -1469,6 +1509,20 @@ fn orchestrator_tier3_matches_oracle() {
                     .cloned()
                     .expect("toolChangeLog carries `lines`");
                 want_tool_change.insert(parsed.call.clone().unwrap(), lines);
+            }
+            "mail" => {
+                want_mail.insert(
+                    parsed.call.clone().unwrap(),
+                    (
+                        parsed.rest.get("unalerted").cloned().unwrap_or(Value::Null),
+                        parsed
+                            .rest
+                            .get("lines")
+                            .and_then(Value::as_array)
+                            .cloned()
+                            .expect("mail carries `lines`"),
+                    ),
+                );
             }
             "informConsumeLog" => {
                 let lines = parsed
@@ -1550,7 +1604,10 @@ fn orchestrator_tier3_matches_oracle() {
             }),
         );
     }
-    let embedding = Arc::new(CannedEmbeddingProvider::new());
+    // v4's mock answers EVERY text with `[0.1, 0.2, 0.3]` (`canned`); since
+    // P4.D291 the turn's recall record (`debugMemoryLogs`) shows whether the
+    // query embedded, so the Rust side answers every text the same way.
+    let embedding = Arc::new(FixedEmbedding);
     // Round-3 unification (Group 2): the buildContext whisper writers run LIVE
     // (RealBuildContextSeams). The oracle un-mocks the same writers; the resulting
     // whisper rows appear in the diffed chat_messages dump.
@@ -1666,6 +1723,40 @@ fn orchestrator_tier3_matches_oracle() {
     for call in &spec.calls {
         let sink = RecordingSink::new();
         streaming.recorded_api_keys.lock().unwrap().clear();
+        // P4.D291: the call's in-case letter, through the REAL mailbox.
+        let letter_at: Option<(String, String)> = call.letter.as_ref().map(|l| {
+            let cid = l.character_id.clone();
+            let vault = db
+                .read_main(|main| {
+                    db.read_mount_index(|mount| {
+                        quilltap_core::db::characters_read::find_by_id(main, mount, &cid)
+                    })
+                })
+                .expect("read the letter's holder")
+                .and_then(|c| {
+                    c.get("characterDocumentMountPointId")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
+                .unwrap_or_else(|| panic!("{}: the letter's holder has no vault", call.name));
+            let (l, v) = (l.clone(), vault.clone());
+            let path = rt
+                .block_on(db.write(move |w| {
+                    quilltap_core::post_office::mailbox::deliver_letter(
+                        w.mount_index().expect("mount present").connection(),
+                        &quilltap_core::post_office::mailbox::DeliverLetterParams {
+                            recipient_vault_id: &v,
+                            from_name: &l.from_name,
+                            from_character_id: &l.from_character_id,
+                            sent_at: &l.sent_at,
+                            body: &l.body,
+                            in_reply_to: None,
+                        },
+                    )
+                }))
+                .unwrap_or_else(|e| panic!("{}: deliver the letter: {e}", call.name));
+            (vault, path)
+        });
         // W4.11a: a per-call executor that logs each cheap-LLM provider call into
         // `llm_logs` (v4's un-mocked `logLLMCall`). The distill (memory-keyword-
         // extraction → MEMORY_EXTRACTION, per-call characterId) and the summary
@@ -1807,7 +1898,8 @@ fn orchestrator_tier3_matches_oracle() {
                     // P4.87: the case's own sequence, shared with the chain.
                     random01: case_draws.clone(),
                 },
-                model_context_limit: 200_000,
+                // P4.D291: the responder's window, as for the chain below.
+                model_context_limit: initial_context_limit(&db, chat_id, resp),
                 timestamp_config: None,
                 timezone: Some("UTC".to_string()),
                 server_tz: Some("UTC".to_string()),
@@ -1852,7 +1944,15 @@ fn orchestrator_tier3_matches_oracle() {
                     let offset = spec.local_offset_minutes;
                     let chain_draws = case_draws.clone();
                     let chain_never_pause = call_never_pause;
+                    // P4.D291: the chained responder's window, resolved from ITS
+                    // profile as the host's `registry_inputs` does (v4
+                    // `getModelContextLimit` per turn) — the recall trace's
+                    // archive `tokenBudget` made a fixed 200k visible on the
+                    // OPENAI-profile chains.
+                    let chain_db = db.clone();
+                    let chain_chat = call.chat_id.clone();
                     let make_chain_input = move |pid: String| ProcessMessageInput {
+                        model_context_limit: chain_context_limit(&chain_db, &chain_chat, &pid),
                         log_context: LogContext::none(),
                         chat_id: chat_id.clone(),
                         user_id: user_id.clone(),
@@ -1872,7 +1972,6 @@ fn orchestrator_tier3_matches_oracle() {
                             // initial turn and the chain's own carrier.
                             random01: chain_draws.clone(),
                         },
-                        model_context_limit: 200_000,
                         timestamp_config: None,
                         timezone: Some("UTC".to_string()),
                         server_tz: Some("UTC".to_string()),
@@ -1942,12 +2041,107 @@ fn orchestrator_tier3_matches_oracle() {
             }
         }
 
+        // P4.D291: which letters the turn left unalerted, then the plant undone.
+        if let Some((vault, path)) = &letter_at {
+            let v = vault.clone();
+            let paths: Vec<Value> = db
+                .read_mount_index(move |c| {
+                    quilltap_core::post_office::mailbox::collect_unalerted_mail(c, &v)
+                })
+                .expect("collect the unalerted mail")
+                .into_iter()
+                .map(|l| Value::String(l.path))
+                .collect();
+            let (v, p) = (vault.clone(), path.clone());
+            rt.block_on(db.write(move |w| {
+                quilltap_core::post_office::mailbox::discard_letter(
+                    w.mount_index().expect("mount present").connection(),
+                    &v,
+                    &p,
+                )
+                .map(|_| ())
+            }))
+            .expect("discard the letter");
+            got_unalerted.insert(call.name.clone(), Value::Array(paths));
+        }
         got_events.push((call.name.clone(), filter_events(&sink.events_json())));
         got_stream_keys.insert(
             call.name.clone(),
             std::mem::take(&mut *streaming.recorded_api_keys.lock().unwrap()),
         );
     }
+
+    // --- P4.D291 (bug 227): the deferred mail flip, per call ---
+    // Every call records its `mail` row; a call with an in-case letter compares
+    // the letters left unalerted after the turn, and every call compares its
+    // `markMailAlertsDelivered` DEBUGs (`chatId, vaultId, via, requested,
+    // marked` in v4's order) — the silence leg on every letter-less call.
+    assert_eq!(
+        want_mail.len(),
+        spec.calls.len(),
+        "every case must record its mail row (regenerate from THIS tree's oracle case)"
+    );
+    let mut vias: Vec<String> = Vec::new();
+    for call in &spec.calls {
+        let (want_unalerted, want_lines) = &want_mail[&call.name];
+        assert_eq!(
+            got_unalerted
+                .get(&call.name)
+                .cloned()
+                .unwrap_or(Value::Null),
+            *want_unalerted,
+            "{}: the letters left unalerted",
+            call.name
+        );
+        let got: Vec<&String> = initial_logs[&call.name]
+            .iter()
+            .chain(chain_logs.get(&call.name).into_iter().flatten())
+            .filter(|l| l.contains(" markMailAlertsDelivered "))
+            .collect();
+        let want: Vec<String> = want_lines
+            .iter()
+            .map(|w| {
+                let mut line =
+                    "DEBUG quilltap::post_office::mailbox markMailAlertsDelivered".to_string();
+                for (k, v) in w["context"].as_object().expect("context bag") {
+                    let text = match v {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    line.push_str(&format!(" {k}={text}"));
+                }
+                line
+            })
+            .collect();
+        assert_eq!(
+            got.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+            want.iter().map(String::as_str).collect::<Vec<_>>(),
+            "{}: markMailAlertsDelivered lines",
+            call.name
+        );
+        for w in want_lines {
+            vias.push(w["context"]["via"].as_str().unwrap_or("").to_string());
+        }
+    }
+    vias.sort();
+    // Three of the four delivery sites mark a planted letter here; the fourth,
+    // `tool-only` (tools ran, no prose), is unreachable through v4's canned
+    // streams — an empty reply sends the turn down the empty-response recovery
+    // before any tool runs — so it is pinned at the unit tier instead (the
+    // orchestrator's `persist_tools_only` path). `empty_retry` is the failure
+    // leg: every retry came back empty, nothing persisted, nothing marked.
+    assert_eq!(
+        vias,
+        ["finalizer", "preserved-partial", "turn-skip"],
+        "each reachable delivery site marks one planted letter"
+    );
+    assert_eq!(
+        got_unalerted.get("empty_retry").cloned(),
+        Some(Value::Array(vec![Value::String(
+            "Mail/1767315600000-from-jeeves.md".to_string()
+        )])),
+        "a turn that failed leaves its letter unalerted"
+    );
 
     // --- P4.133 (dogfood #133): the key every stream carried ---
     // Before P4.133 the resolver answered `api_key: None`, nothing crossed the
@@ -3523,4 +3717,93 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
             cheap_llm_fallback_to_local: false,
         })
     }
+}
+
+/// The initial turn's responder: the named participant, else the first active
+/// LLM-controlled seat (the orchestrator's own default) — then its window.
+fn initial_context_limit(db: &Db, chat_id: &str, responding: Option<&str>) -> i64 {
+    if let Some(pid) = responding {
+        return chain_context_limit(db, chat_id, pid);
+    }
+    let cid = chat_id.to_string();
+    let first_llm = db
+        .read_main(move |c| quilltap_core::db::chats_read::find_by_id(c, &cid))
+        .ok()
+        .flatten()
+        .and_then(|c| {
+            c.get("participants")
+                .and_then(Value::as_array)?
+                .iter()
+                .find(|p| {
+                    p.get("controlledBy").and_then(Value::as_str) == Some("llm")
+                        && p.get("status").and_then(Value::as_str) != Some("removed")
+                })?
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        });
+    match first_llm {
+        Some(pid) => chain_context_limit(db, chat_id, &pid),
+        None => 200_000,
+    }
+}
+
+/// The model window a chained turn's responder budgets to — the host's
+/// `registry_inputs` (`get_model_context_limit` over the responder's profile:
+/// its `maxContext` is applied downstream by the budget; here the registry
+/// resolution of `provider` / `modelName` over the host's fallback pricing
+/// rows). A participant or profile the fixture lacks keeps the historical 200k.
+fn chain_context_limit(db: &Db, chat_id: &str, participant_id: &str) -> i64 {
+    let cid = chat_id.to_string();
+    let chat = db
+        .read_main(move |c| quilltap_core::db::chats_read::find_by_id(c, &cid))
+        .ok()
+        .flatten();
+    let profile_id = chat.as_ref().and_then(|c| {
+        c.get("participants")
+            .and_then(Value::as_array)?
+            .iter()
+            .find(|p| p.get("id").and_then(Value::as_str) == Some(participant_id))?
+            .get("connectionProfileId")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    });
+    let Some(profile_id) = profile_id else {
+        return 200_000;
+    };
+    let profile = db
+        .read_main(move |c| quilltap_core::db::connection_profiles::find_by_id(c, &profile_id))
+        .ok()
+        .flatten();
+    let Some(profile) = profile else {
+        return 200_000;
+    };
+    let provider = profile
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let model = profile
+        .get("modelName")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let registry = quilltap_core::provider_manifest::Registry::built_in();
+    // The host environment's pricing rows (`quilltap-host`'s `env.rs`: every
+    // provider's legacy fallback pricing — the `contextLength` v4's
+    // `getModelContextLimit` reads), no plugin model-info.
+    let pricing: Vec<quilltap_core::model_context::PricingRow> = registry
+        .provider_names()
+        .into_iter()
+        .flat_map(quilltap_core::services::pricing_fetcher::fallback_pricing)
+        .map(|p| quilltap_core::model_context::PricingRow {
+            model_id: p.model_id,
+            context_length: p.context_length,
+        })
+        .collect();
+    quilltap_core::model_context::get_model_context_limit(
+        provider,
+        model,
+        &[],
+        &pricing,
+        registry.default_context_window(provider),
+    )
 }

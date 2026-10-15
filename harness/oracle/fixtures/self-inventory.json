@@ -144,13 +144,19 @@
         "summary": "The reader mentioned a red door.",
         "importance": 0.8,
         "score": 0.91,
-        "effectiveWeight": 0.73
+        "salience": 0.73
       },
       {
         "summary": "A ledger went missing last winter.",
         "importance": 0.6,
         "score": 0.55,
-        "effectiveWeight": 0.42
+        "salience": 0.42
+      },
+      {
+        "summary": "An archive row: delivered by the frozen archive, never ranked.",
+        "importance": 0.9,
+        "score": 0,
+        "salience": 0
       }
     ],
     "interCharacter": [

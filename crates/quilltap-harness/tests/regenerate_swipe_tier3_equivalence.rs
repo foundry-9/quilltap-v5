@@ -7,18 +7,18 @@
 //! sequence. The oracle drives v4's REAL `regenerateMessageAsSwipe` with ONLY the
 //! model boundaries + buildContext feeders mocked to match the Rust seams; this
 //! test composes the ported services through `regenerate_message_as_swipe`,
-//! replaying the recorded canned STREAM. Then the five touched tables (`chats`
-//! / `chat_messages` / `memories` / `vector_indices` / `vector_entries`) are
-//! diffed:
+//! replaying the recorded canned STREAM. Then the three touched tables (`chats`
+//! / `chat_messages` / `memories` — since P4.D288, v4 `af48f6cc2`, the
+//! `memories.embedding` column IS the index; the `vector_indices` /
+//! `vector_entries` mirror is gone) are diffed:
 //!   - `chat_messages` — the new swipe's minted id is remapped to a first-appearance
 //!     token (seeded ids identical both sides → same token); every other cell
 //!     (`createdAt` = the target's SEEDED stamp, the token counts from the fixed
 //!     usage, the swipe-group columns) is pinned;
 //!   - `chats` — the minted metadata bump (`updatedAt` / `lastMessageAt`) is
 //!     placeholdered (v4's frozen+tick vs the Rust real clock);
-//!   - `memories` / `vector_entries` — the DELETE cascade's survivors are pinned;
-//!   - `vector_indices` — a flush that removed entries mints `updatedAt` (sentinel-
-//!     aware collapse).
+//!   - `memories` — the DELETE cascade's survivors are pinned (their embeddings
+//!     ride the rows).
 //!
 //! Each call's throw/no-throw is also asserted (the `not_assistant` error path).
 //!
@@ -308,8 +308,7 @@ fn normalize_chats(dump: &mut Value) {
     }
 }
 
-/// memories / vector_indices / vector_entries: sort by id; sentinel-aware
-/// `updatedAt` collapse (a flush that removed entries mints via `saveMeta`).
+/// memories: sort by id; sentinel-aware `updatedAt` collapse.
 fn normalize_id_table(dump: &mut Value, sentinel: &str) {
     if let Some(rows) = dump.get_mut("rows").and_then(Value::as_array_mut) {
         rows.sort_by_key(|r| str_of(r, "id"));
@@ -342,7 +341,7 @@ fn assert_rows_eq(name: &str, got: &Value, want: &Value) {
 ///
 /// Returns the five normalized dumps, so the two legs can be compared to each
 /// other as well as to the oracle.
-fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
+fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 3]> {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_REGEN") else {
         eprintln!("SKIP: QT_ORACLE_REGEN not set");
         return None;
@@ -679,8 +678,6 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
     let mut got_chats = dump("chats");
     let mut got_msgs = dump("chat_messages");
     let mut got_mem = dump("memories");
-    let mut got_vi = dump("vector_indices");
-    let mut got_ve = dump("vector_entries");
     // P4.106 item 3: a swipe never consumes — the planted rows are unchanged.
     let got_informs = dump("chat_informs");
     drop(db);
@@ -689,8 +686,6 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
     let mut want_chats = oracle_table(&oracle_text, "chats");
     let mut want_msgs = oracle_table(&oracle_text, "chat_messages");
     let mut want_mem = oracle_table(&oracle_text, "memories");
-    let mut want_vi = oracle_table(&oracle_text, "vector_indices");
-    let mut want_ve = oracle_table(&oracle_text, "vector_entries");
 
     normalize_chats(&mut got_chats);
     normalize_chats(&mut want_chats);
@@ -698,14 +693,8 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
     let mut idmap_w = HashMap::new();
     normalize_messages(&mut got_msgs, &mut idmap_g);
     normalize_messages(&mut want_msgs, &mut idmap_w);
-    for (g, w) in [
-        (&mut got_mem, &mut want_mem),
-        (&mut got_vi, &mut want_vi),
-        (&mut got_ve, &mut want_ve),
-    ] {
-        normalize_id_table(g, &spec.seed_timestamp);
-        normalize_id_table(w, &spec.seed_timestamp);
-    }
+    normalize_id_table(&mut got_mem, &spec.seed_timestamp);
+    normalize_id_table(&mut want_mem, &spec.seed_timestamp);
 
     // --- the SAMPLING knobs AT THE WIRE (P4.D83, v4 `d89babc4`) ---
     streaming.assert_matches(&expected_sampling, "regenerate-swipe");
@@ -713,8 +702,6 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
     assert_rows_eq("chats", &got_chats, &want_chats);
     assert_rows_eq("chat_messages", &got_msgs, &want_msgs);
     assert_rows_eq("memories", &got_mem, &want_mem);
-    assert_rows_eq("vector_indices", &got_vi, &want_vi);
-    assert_rows_eq("vector_entries", &got_ve, &want_ve);
     // P4.106 item 3: no minted value can appear in `chat_informs` (a swipe
     // never writes it), so the rows compare RAW, and each must equal its plant.
     let want_informs = oracle_table(&oracle_text, "chat_informs");
@@ -738,18 +725,13 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 5]> {
         2,
         "memory survivors"
     );
-    assert_eq!(
-        got_ve["rows"].as_array().unwrap().len(),
-        2,
-        "vector survivors"
-    );
 
     eprintln!(
-        "OK: regenerate-swipe tier-3 [{label}] matched oracle (5 tables + call throws + \
+        "OK: regenerate-swipe tier-3 [{label}] matched oracle (3 tables + call throws + \
          {} progress frame set(s)).",
         want_progress.len()
     );
-    Some([got_chats, got_msgs, got_mem, got_vi, got_ve])
+    Some([got_chats, got_msgs, got_mem])
 }
 
 /// The narrated leg — v4's `stream: true`, every frame a comparand.
@@ -780,15 +762,9 @@ fn a_silent_regeneration_writes_exactly_what_a_narrated_one_writes() {
     };
     // Both legs already matched the oracle table-by-table inside `run_corpus`;
     // this is the direct leg-to-leg diff, which is what "identical" means.
-    for (name, (a, b)) in [
-        "chats",
-        "chat_messages",
-        "memories",
-        "vector_indices",
-        "vector_entries",
-    ]
-    .into_iter()
-    .zip(silent.iter().zip(streamed.iter()))
+    for (name, (a, b)) in ["chats", "chat_messages", "memories"]
+        .into_iter()
+        .zip(silent.iter().zip(streamed.iter()))
     {
         assert_eq!(
             a.get("rows"),
@@ -796,5 +772,5 @@ fn a_silent_regeneration_writes_exactly_what_a_narrated_one_writes() {
             "table {name}: a SILENT regeneration wrote something a narrated one did not"
         );
     }
-    eprintln!("OK: regenerate-swipe silent/narrated neutrality (5 tables, both legs).");
+    eprintln!("OK: regenerate-swipe silent/narrated neutrality (3 tables, both legs).");
 }

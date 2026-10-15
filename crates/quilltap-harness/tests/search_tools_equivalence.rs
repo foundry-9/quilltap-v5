@@ -116,7 +116,8 @@ struct OracleRow {
     /// P4.D216: an executor case's refusal ERROR lines.
     #[serde(default)]
     refusals: Option<Value>,
-    /// P4.D268: a search case's `[Memory] Marking memories accessed` lines.
+    /// P4.D268: a search case's delivery-stamp lines (since P4.D291, recall's ONE writer:
+    /// `[Recall] Stamping delivered memories accessed`).
     #[serde(default, rename = "accessLog")]
     access_log: Option<Value>,
     /// P4.D268: the SQL a case planted on its fresh copy (replayed here).
@@ -182,6 +183,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Capture {
         if target != "quilltap_core::tools::search"
             && target != "quilltap_core::tools::executor"
             && target != "quilltap::memories"
+            && target != "quilltap::recall"
         {
             return;
         }
@@ -1015,6 +1017,9 @@ async fn run_search(
                     &spec.general_mount_point_id,
                 )
             }),
+            // v4's jest forces `TZ=UTC`, the memory calendar's fallback when the
+            // instance names no zone (bug 212's since / until days).
+            memory_zone_fallback: "UTC".to_string(),
         };
         captured.lock().unwrap().clear();
         let out = execute_search_scriptorium(&db, &provider, &ctx, &c.args, spec.now_ms).await;
@@ -1052,7 +1057,7 @@ async fn run_search(
         let got_access: Vec<Line> = all_lines
             .iter()
             .filter(|(t, l)| {
-                t == "quilltap::memories" && l.1 == "[Memory] Marking memories accessed"
+                t == "quilltap::recall" && l.1 == "[Recall] Stamping delivered memories accessed"
             })
             .map(|(_, l)| l.clone())
             .collect();

@@ -12,7 +12,7 @@
 //! cache per side, reset at case start:
 //!   * `get` — `get_or_compute_frozen_archive(character, chat, generation,
 //!     size, present, now_ms)`: the returned ids in ORDER (digests-first
-//!     selection, the effective-weight fill, the final `localeCompare` sort —
+//!     selection, the SALIENCE fill (P4.D291), the final `localeCompare` sort —
 //!     the UPPER-CASE id `…0000000C9999` sorts AFTER `…c0006` there and FIRST
 //!     in code-unit order);
 //!   * `invalidate` / `invalidateAll`;
@@ -87,6 +87,9 @@ struct Op {
     size: Option<usize>,
     #[serde(default)]
     present: Option<Vec<String>>,
+    /// P4.D291: rows to leave out — computed without touching the cache.
+    #[serde(default)]
+    exclude: Option<Vec<String>>,
     #[serde(default)]
     job_id: Option<String>,
     #[serde(default, rename = "type")]
@@ -233,6 +236,8 @@ fn frozen_archive_tier2_matches_oracle() {
         );
         let (returned, lines) = global_capture::capture(|| match op.kind.as_str() {
             "get" => {
+                let exclude: Option<std::collections::HashSet<String>> =
+                    op.exclude.as_ref().map(|e| e.iter().cloned().collect());
                 let archive = get_or_compute_frozen_archive(
                     &db,
                     op.character_id.as_deref().unwrap(),
@@ -241,6 +246,7 @@ fn frozen_archive_tier2_matches_oracle() {
                     op.size,
                     op.present.as_deref().unwrap_or(&[]),
                     spec.now_ms,
+                    exclude.as_ref(),
                 )
                 .unwrap_or_else(|e| panic!("op {i}: {e}"));
                 Some(

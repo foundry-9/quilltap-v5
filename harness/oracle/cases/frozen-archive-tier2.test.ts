@@ -54,6 +54,8 @@ interface Op {
   generation?: number;
   size?: number;
   present?: string[];
+  /** P4.D291: rows to leave out — computed without touching the cache. */
+  exclude?: string[];
   jobId?: string;
   type?: string;
   payload?: Record<string, unknown>;
@@ -156,9 +158,10 @@ async function main(): Promise<void> {
         let returned: string[] | null = null;
         switch (op.kind) {
           case 'get': {
-            const options: { size?: number; presentCharacterIds?: string[] } = {};
+            const options: { size?: number; presentCharacterIds?: string[]; exclude?: Set<string> } = {};
             if (op.size !== undefined) options.size = op.size;
             if (op.present !== undefined) options.presentCharacterIds = op.present;
+            if (op.exclude !== undefined) options.exclude = new Set(op.exclude);
             const archive = await cache.getOrComputeFrozenArchive(
               op.characterId as string,
               op.chatId as string,

@@ -276,7 +276,7 @@ async function runCase(
   const accessLog: Array<{ message: string; fields: Record<string, unknown> }> = [];
   const p4d268PriorDebug = (p4d268Logger as unknown as { debug: (...a: unknown[]) => unknown }).debug;
   (p4d268Logger as unknown as { debug: unknown }).debug = (message: string, fields?: unknown) => {
-    if (message === '[Memory] Marking memories accessed') {
+    if (message === '[Recall] Stamping delivered memories accessed') {
       accessLog.push(JSON.parse(JSON.stringify({ message, fields: fields ?? {} })));
     }
     return p4d268PriorDebug.call(p4d268Logger, message, fields);

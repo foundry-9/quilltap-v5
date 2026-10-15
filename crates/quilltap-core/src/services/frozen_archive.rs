@@ -1,13 +1,19 @@
-//! Frozen memory archive cache (v4 `lib/memory/frozen-archive-cache.ts`, at
-//! `01a83539d` — `3f7320138` F5 + `d58548051`'s digest composition).
+//! Frozen memory archive cache (v4 `lib/memory/recall/archive.ts` at the
+//! `83334b9a5` pin — `3f7320138` F5 + `d58548051`'s digest composition, Phase
+//! A's salience fill, Phase E's `exclude` — moved from
+//! `frozen-archive-cache.ts`).
 //!
 //! Per-character memory pool that stays byte-stable across turns within a
 //! single `compactionGeneration`. The archive is the cache-friendly bulk of
 //! what a character "remembers" generally. Composition (consolidation spec §5):
 //! the top hot digests about each *other* character present this turn, the top
-//! self digests, then a fill of the highest effective-weight hot rows up to the
-//! budget-sized N — finally sorted by memory id so the formatted output is
-//! deterministic. Cold rows never enter (the repository reads are hot-only).
+//! self digests, then a fill of the most SALIENT hot rows (reinforced
+//! importance × time decay, no floor) up to the budget-sized N — finally
+//! sorted by memory id so the formatted output is deterministic. Cold rows
+//! never enter (the repository reads are hot-only).
+//!
+//! An `exclude` set (the recall replay's `asOf` corpus) computes WITHOUT
+//! touching the cache — a live turn never passes one.
 //!
 //! Cache key: `(characterId, chatId)`, with the chat's `compactionGeneration`
 //! (and the archive size, and the set of other characters present) as the
@@ -54,9 +60,11 @@
 //!   dropped}` / `[FrozenArchive] Invalidated all archives` `{dropped}` — only
 //!   when something was dropped.
 //! - DEBUG `Invalidated frozen memory archives after job` `{jobId, type,
-//!   characterId}` (v4's `jobs:dispatcher` child → `quilltap::jobs`). v4's
-//!   catch WARN `Failed to invalidate frozen memory archives after job` guards
-//!   a dynamic `import()` v5 does not have — unreachable, pinned NEGATIVE.
+//!   characterId}` (v4's `jobs:dispatcher` child → `quilltap::jobs`) — only for
+//!   a non-empty string `characterId`; a payload without one invalidates
+//!   NOTHING and logs nothing (v4 `104e986c7`). v4's catch WARN `Failed to
+//!   invalidate frozen memory archives after job` guards a dynamic `import()`
+//!   v5 does not have — unreachable, pinned NEGATIVE.
 
 use std::sync::{Mutex, OnceLock, PoisonError};
 
@@ -66,7 +74,7 @@ use crate::collation::locale_compare;
 use crate::db::memories_read::{self, DigestSubject};
 use crate::db::runtime::Db;
 use crate::db::DbError;
-use crate::memory_weighting::{calculate_effective_weight, DEFAULT_WEIGHTING_CONFIG};
+use crate::memory_scoring::sort_by_salience;
 
 /// Default size of the frozen archive (callers normally pass a budget-sized one).
 pub const FROZEN_ARCHIVE_SIZE: usize = 25;
@@ -81,7 +89,7 @@ pub const FROZEN_ARCHIVE_DIGESTS_PER_PRESENT: i64 = 3;
 pub const FROZEN_ARCHIVE_SELF_DIGESTS: i64 = 5;
 
 /// Pool size to draw from when ranking. Higher than the archive size so the
-/// effective-weight re-rank has room to surface long-tail high-importance rows
+/// salience re-rank has room to surface long-tail high-importance rows
 /// that fell below the reinforced-importance cutoff (v4
 /// `FROZEN_ARCHIVE_POOL_FACTOR`).
 const FROZEN_ARCHIVE_POOL_FACTOR: usize = 4;
@@ -226,9 +234,11 @@ fn cache() -> std::sync::MutexGuard<'static, FrozenArchiveCache> {
 /// turns. `present_character_ids` are the characters present this turn (the
 /// responder is ignored if listed).
 ///
-/// `now_ms` is the clock the effective-weight re-rank uses (v4's implicit
-/// `Date.now()` inside `calculateEffectiveWeight`), injected so the caller owns
-/// the clock.
+/// `now_ms` is the clock the salience re-rank uses (v4's implicit `Date.now()`
+/// inside `sortBySalience`), injected so the caller owns the clock. `exclude`
+/// (the replay's `asOf` corpus) leaves those rows out and computes WITHOUT
+/// touching the cache (v4 `options.exclude`).
+#[allow(clippy::too_many_arguments)]
 pub fn get_or_compute_frozen_archive(
     db: &Db,
     character_id: &str,
@@ -237,14 +247,20 @@ pub fn get_or_compute_frozen_archive(
     size: Option<usize>,
     present_character_ids: &[String],
     now_ms: f64,
+    exclude: Option<&std::collections::HashSet<String>>,
 ) -> Result<Vec<Value>, DbError> {
+    if let Some(exclude) = exclude {
+        let size = size.unwrap_or(FROZEN_ARCHIVE_SIZE);
+        let present = normalize_present(character_id, present_character_ids);
+        return compute_frozen_archive(db, character_id, size, &present, now_ms, Some(exclude));
+    }
     cache().get_or_compute_with(
         character_id,
         chat_id,
         compaction_generation,
         size,
         present_character_ids,
-        |size, present| compute_frozen_archive(db, character_id, size, present, now_ms),
+        |size, present| compute_frozen_archive(db, character_id, size, present, now_ms, None),
     )
 }
 
@@ -285,12 +301,12 @@ pub fn invalidate_all_frozen_archives() {
 /// per-turn memory writes deliberately do NOT invalidate — that would rebuild
 /// the archive every turn and defeat the prefix cache it exists for.
 ///
-/// Fires on EVERY non-dry `MEMORY_MAINTENANCE` (P4.D288's list — before it the
-/// two retired types) completion, changed or not. Only a JSON `true` `dryRun` skips. A string
-/// `characterId` drops that character's chats; an EMPTY string (falsy in v4)
-/// or a non-string / absent one drops EVERY archive ("a user-wide sweep touched
-/// every character") — the line logs `""` for the former and `all` for the
-/// latter (v4's `characterId ?? 'all'` keeps `""`).
+/// Fires on every non-dry `MEMORY_MAINTENANCE` (P4.D288's list)
+/// completion, changed or not. Only a JSON `true` `dryRun` skips. A non-empty
+/// string `characterId` drops that character's chats and logs the DEBUG; a
+/// missing, non-string or EMPTY one invalidates NOTHING and logs nothing (v4
+/// `104e986c7`: `if (!characterId) return` — the pre user-wide arm, which
+/// dropped every archive and logged `characterId: 'all'`, is gone).
 pub fn invalidate_frozen_archives_for_completed_job(job_id: &str, job_type: &str, payload: &Value) {
     if !JOBS_INVALIDATING_FROZEN_ARCHIVE.contains(&job_type) {
         return;
@@ -298,16 +314,19 @@ pub fn invalidate_frozen_archives_for_completed_job(job_id: &str, job_type: &str
     if payload.get("dryRun") == Some(&Value::Bool(true)) {
         return;
     }
-    let character_id = payload.get("characterId").and_then(Value::as_str);
-    match character_id {
-        Some(cid) if !cid.is_empty() => invalidate_frozen_archive(cid),
-        _ => invalidate_all_frozen_archives(),
-    }
+    let Some(character_id) = payload
+        .get("characterId")
+        .and_then(Value::as_str)
+        .filter(|cid| !cid.is_empty())
+    else {
+        return;
+    };
+    invalidate_frozen_archive(character_id);
     tracing::debug!(
         target: "quilltap::jobs",
         jobId = %job_id,
         type = %job_type,
-        characterId = %character_id.unwrap_or("all"),
+        characterId = %character_id,
         "Invalidated frozen memory archives after job"
     );
 }
@@ -317,20 +336,22 @@ pub fn reset_frozen_archive_cache_for_tests() {
     cache().clear();
 }
 
-/// v4 `computeFrozenArchive(characterId, size, presentCharacterIds)` over the
-/// real repository reads.
+/// v4 `computeFrozenArchive(characterId, size, presentCharacterIds, exclude)`
+/// over the real repository reads.
 fn compute_frozen_archive(
     db: &Db,
     character_id: &str,
     size: usize,
     present: &[String],
     now_ms: f64,
+    exclude: Option<&std::collections::HashSet<String>>,
 ) -> Result<Vec<Value>, DbError> {
     compose_frozen_archive(
         character_id,
         size,
         present,
         now_ms,
+        exclude,
         |subject, limit| {
             let cid = character_id.to_string();
             db.read_main(move |conn| memories_read::find_hot_digests(conn, &cid, subject, limit))
@@ -347,14 +368,15 @@ fn compute_frozen_archive(
 /// each person in the room (in the SORTED present order), then about themself;
 /// each fetch is hot-only and ordered by reinforced importance, so membership
 /// is deterministic. Then the fill: the cheap top-by-reinforced-importance
-/// pull, re-ranked by effective weight (importance × time decay), skipping
-/// what is already in. Digests are fetched even when `size` is 0 (`take`
+/// pull, re-ranked by salience (reinforced importance × time decay), skipping
+/// what is already in. An `exclude`d row is never taken. Digests are fetched even when `size` is 0 (`take`
 /// returns at once; the fill is skipped).
 pub(crate) fn compose_frozen_archive(
     character_id: &str,
     size: usize,
     present: &[String],
     now_ms: f64,
+    exclude: Option<&std::collections::HashSet<String>>,
     mut find_hot_digests: impl FnMut(DigestSubject, i64) -> Result<Vec<Value>, DbError>,
     find_most_important: impl FnOnce(i64) -> Result<Vec<Value>, DbError>,
 ) -> Result<Vec<Value>, DbError> {
@@ -373,6 +395,9 @@ pub(crate) fn compose_frozen_archive(
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
+            if exclude.is_some_and(|e| e.contains(&id)) {
+                continue;
+            }
             if chosen_ids.insert(id) {
                 chosen.push(m);
             }
@@ -400,7 +425,14 @@ pub(crate) fn compose_frozen_archive(
                     .any(|c| c.get("id").and_then(Value::as_str).unwrap_or("") == id)
             })
             .collect();
-        take(rank_by_effective_weight(fresh, now_ms), &mut chosen);
+        take(
+            sort_by_salience(
+                fresh,
+                crate::services::recall::rank::salience_input_of,
+                now_ms,
+            ),
+            &mut chosen,
+        );
     }
 
     tracing::debug!(
@@ -420,55 +452,6 @@ pub(crate) fn compose_frozen_archive(
         locale_compare(ai, bi)
     });
     Ok(chosen)
-}
-
-/// The fill's re-rank: effective weight descending (v4 `b.effectiveWeight -
-/// a.effectiveWeight`). JS `Array.prototype.sort` is stable and Rust's
-/// `sort_by` is too, so ties keep `findMostImportant`'s incoming order.
-fn rank_by_effective_weight(candidates: Vec<Value>, now_ms: f64) -> Vec<Value> {
-    let mut ranked: Vec<(f64, Value)> = candidates
-        .into_iter()
-        .map(|memory| {
-            let ew = calculate_effective_weight(
-                &memory_inputs(&memory),
-                &DEFAULT_WEIGHTING_CONFIG,
-                now_ms,
-            )
-            .effective_weight;
-            (ew, memory)
-        })
-        .collect();
-    ranked.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-    ranked.into_iter().map(|(_, m)| m).collect()
-}
-
-/// Build [`crate::memory_weighting::MemoryInputs`] from a memory `Value` — the
-/// ISO→ms + graph-degree mapping, identical to the memory-service / housekeeping
-/// `memory_inputs` reader.
-fn memory_inputs(v: &Value) -> crate::memory_weighting::MemoryInputs {
-    let num = |k: &str| v.get(k).and_then(Value::as_f64);
-    let ms = |k: &str| {
-        v.get(k)
-            .and_then(Value::as_str)
-            .and_then(crate::clock::iso_to_ms)
-            .map(|m| m as f64)
-    };
-    crate::memory_weighting::MemoryInputs {
-        importance: num("importance").unwrap_or(0.0),
-        reinforced_importance: num("reinforcedImportance"),
-        created_at_ms: ms("createdAt").unwrap_or(f64::NAN),
-        last_reinforced_at_ms: ms("lastReinforcedAt"),
-        last_accessed_at_ms: ms("lastAccessedAt"),
-        reinforcement_count: num("reinforcementCount").map(|c| c as u64),
-        graph_degree: v
-            .get("relatedMemoryIds")
-            .and_then(Value::as_array)
-            .map(|a| a.len())
-            .unwrap_or(0),
-        // Episodic spine (v4 8bf3cb5f): the declared kind + the event clock.
-        kind_episodic: v.get("kind").and_then(Value::as_str) == Some("episodic"),
-        occurred_at_ms: crate::episodic::event_time_ms(v.get("occurredAt").and_then(Value::as_str)),
-    }
 }
 
 #[cfg(test)]
@@ -555,6 +538,7 @@ mod tests {
                         size,
                         present,
                         NOW_MS,
+                        None,
                         |subject, limit| {
                             repo.digest_calls.borrow_mut().push((
                                 character_id.to_string(),
@@ -971,14 +955,12 @@ mod tests {
              type=MEMORY_MAINTENANCE characterId=fa-hook-1"
         );
 
-        // drops everything after a user-wide sweep
+        // a payload with no characterId invalidates NOTHING and logs nothing
+        // (v4 `104e986c7` — the pre user-wide arm is gone)
         let lines = hook("MEMORY_MAINTENANCE", json!({ "reason": "scheduled" }));
-        assert!(!global_has("fa-hook-2", "chat-1"));
-        assert_eq!(
-            lines.last().unwrap(),
-            "DEBUG quilltap::jobs Invalidated frozen memory archives after job jobId=job-1 \
-             type=MEMORY_MAINTENANCE characterId=all"
-        );
+        assert!(global_has("fa-hook-2", "chat-1"));
+        assert!(lines.is_empty(), "{lines:?}");
+        invalidate_frozen_archive("fa-hook-2");
 
         // leaves the cache alone for a dry run — and ONLY a JSON `true` is dry
         seed_global("fa-hook-3", "chat-1");
@@ -1011,20 +993,19 @@ mod tests {
             .unwrap()
             .contains("type=MEMORY_MAINTENANCE characterId=fa-hook-4"));
 
-        // `characterId: ""` is a string but falsy → ALL, logged as ""
+        // `characterId: ""` is a string but falsy → NOTHING, no line
         seed_global("fa-hook-5", "chat-1");
         let lines = hook("MEMORY_MAINTENANCE", json!({ "characterId": "" }));
-        assert!(!global_has("fa-hook-5", "chat-1"));
-        assert!(lines
-            .last()
-            .unwrap()
-            .ends_with("type=MEMORY_MAINTENANCE characterId="));
+        assert!(global_has("fa-hook-5", "chat-1"));
+        assert!(lines.is_empty(), "{lines:?}");
+        invalidate_frozen_archive("fa-hook-5");
 
-        // a non-string characterId → null → ALL, logged 'all'
+        // a non-string characterId → null → NOTHING, no line
         seed_global("fa-hook-6", "chat-1");
         let lines = hook("MEMORY_MAINTENANCE", json!({ "characterId": 7 }));
-        assert!(!global_has("fa-hook-6", "chat-1"));
-        assert!(lines.last().unwrap().ends_with("characterId=all"));
+        assert!(global_has("fa-hook-6", "chat-1"));
+        assert!(lines.is_empty(), "{lines:?}");
+        invalidate_frozen_archive("fa-hook-6");
 
         // v4's catch WARN is unreachable in v5 (pinned NEGATIVE, R-B).
         assert!(!lines

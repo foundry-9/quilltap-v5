@@ -181280,3 +181280,139 @@ One sweep (`recipe_sweep.py --run-all`, 35 families, `/tmp/p4d291/redfirst-sweep
   tests — the LANE-REMOVE census RED by design until §S.5, and P4.D289's scoring-chokepoint census, green only
   on the union), `qtap_schema_embed_guard` (the vendored schema — P4.D294's). `recall_rank_matches_oracle` ran
   (not skipped) and passed.
+
+### Unit 2 — the pipeline, assemble / render / deliver, the context build, the mail deferral, the consumers, the replay (core 0.0.1300, cli 0.0.33)
+
+One commit, not several: the old injector, the memory-service search half and `memory_access.rs` are the
+callees of every consumer, so retiring them and re-pointing the consumers only compiles as one change. Order
+items 4–21 land here (item 1's red-first is recorded above; items 2–3 are unit 1).
+
+- **Stages** (`services/recall/`): `query.rs` (`build_recall_query` — ONE embedding per turn, the distiller
+  in the memory-calendar zone — bug 212), `gather.rs` / `hydrate.rs` / `score.rs` / `select.rs` / `search.rs`
+  (the stage trace; the text strategy honouring every option — bug 214; the index-store dimension test;
+  salience in place of the floored weight), `render.rs` (the four renderers with no `[m_xxxx]` tag and no
+  marginalia; `human_keywords`; the per-provider estimate, R-T), `assemble.rs` (`RecallPlan` / `PreRecall`;
+  one subject lookup; the archive on the ordinary budget; the recap after the head reusing the turn's vector
+  and excluding the archive; inter-character as a FILTER of the turn's pool deduped against archive + head —
+  bug 224), `deliver.rs` (`stamp_accessed` — the ONE `lastAccessedAt` writer; `surviving_lines` both arms,
+  R-U; the `[Recall]` / `[Recall:ring]` record; WARN text through `db::fallback::error_text`).
+  `build_retrospective_probes` drops an EMPTY paraphrase (v4's truthiness test — the replay's pinned window
+  carries `""`).
+- **Retired (R-L10, item 6):** `memory_service.rs`'s search machinery and both RETIRED DEBUGs; the ONE
+  `LANE-REMOVE(P4.D291)` shim `search_memories_semantic` stays for `api/memories.rs:922`. `memory_injector.rs`
+  keeps only the scene-state / summary halves; the four pool heads moved into `memory_pools.rs`.
+  `services/memory_access.rs` and `day_references.rs` DELETED (this lane was their last caller).
+- **Context build** (`build_context.rs`): one `assemble_recall` call; ONE trailing-section list on BOTH
+  branches in v4's order (bug 199); `preRecall` threaded from `pre_compute.rs`; the `[ContextManager] Recall
+  assembled` DEBUG (`durationMs` masked, R-L9); `BuiltContext.recall_debug_log` + `mail_alerts_owed`.
+- **Mail (R-L11, bug 227):** `post_office/mailbox.rs` `MailAlertsOwed` / `MailAlertsVia` /
+  `mark_mail_alerts_delivered` (WARN with the bare SQLite message); `suparna_mail.rs` builds the letter
+  block flip-free; the flip is made at delivery with four `via` marks — the finalizer, the preserved partial,
+  the tool-only turn and the turn skip — and a swipe skips mail entirely.
+- **Delivery sites:** the finalizer writes the recall record into `debugMemoryLogs` and stamps the surviving
+  lines; the ring is no longer gated on the whisper post. The orchestrator resolves each responder's context
+  limit (`get_model_context_limit` with the fallback pricing rows) where it had a fixed 200k — that fixed
+  `multi_chain`'s stream keys (the red-first "TO CLASSIFY" row).
+- **Consumers:** Carina, both voice rehearsals (`recall_for_seed` gains provider + user), the greeting (v4's
+  three lines, salience sort through `js_array_sort_by`), `search_scriptorium` (`since` / `until` in the
+  memory-calendar zone), `self_inventory` and `tool_execution` (salience).
+- **Replay** (`recall_replay.rs`, R-L3): typed `RecallReplayResult` with `fallbackPath`, `ring`, `ringSource`,
+  `pools`, `trace`, `as_of` on the ring. CLI: the fenced `// === P4.D291: recall-replay rendering ===` region
+  prints the ring line, the text-fallback block and the stage trace; three Phase-E rows in `cli_differential`.
+- `format_time::format_relative_days` takes `jsnum::math_max` (v4's `Math.max` — a NaN age renders
+  `NaN year ago`, found by `recall_render`).
+
+**New families** (each red-first by not existing; regen recipes in the test headers):
+`recall_query_tier3` (`QT_ORACLE_RECALL_QUERY`), `recall_render` (`QT_ORACLE_RECALL_RENDER`), `recall_deliver`
+(`QT_ORACLE_RECALL_DELIVER`), `recall_assemble_tier3` (`QT_ORACLE_RECALL_ASSEMBLE`; NEW builder
+`build-recall-assemble-fixture.ts` + spec `recall-assemble.json` → committed
+`crates/quilltap-web/tests/fixtures/recall-assemble-main.db`), `mail_alerts_delivered`
+(`QT_ORACLE_MAIL_ALERTS` + `QT_FIXTURE_TMP_MAIN/MOUNT`; seven scenarios incl. a `BEFORE INSERT` trigger plant
+— v4's document store is content-addressed, so a changed letter is a NEW row — and an unreadable-store plant;
+v5's lines captured through the process-global capture because `mark_alerted` runs on the writer thread), and
+`last_accessed_at_writer_census` (no env).
+
+**Grown / re-aimed (fixtures changed):** `build-context-tier3.json` (three `preRecall` ops, the probe's canned
+embedding, four mail ops incl. `bug199_chained_recall_mail_inform_in_order`), `orchestrator-tier3.json`
+(letters on `single_basic`, `skip_fire`, `inform_consumed_by_preserved_partial`, `empty_retry`),
+`precompute-cases.json`, `recall-replay-cases.json` (+3 ring rows), `frozen-archive-tier2.json` (the
+`MEMORY_MAINTENANCE` hook ops), `self-inventory.json`, `semantic-search-tuning-cases.json`. Case bodies:
+`memory-injector.ts`, `memory-pools.ts`, the stamp-line re-aims (first-message-context, announcer, carina,
+in-scene, search-tools), `regenerate-swipe` (the `vector_indices` dump dropped), `precompute.test.ts` +
+`search-tools-search.test.ts` (`memoryIndex.reloadAll()` after raw plants — v4's index manager is a PROCESS
+singleton, bug 235, that survives `jest.resetModules`), `recall-assemble-tier3.test.ts` (the jest.setup vault
+bridge un-mocked). No other lane's oracle is invalidated: every fixture above is this lane's (§Fixtures).
+
+**Mutation proofs (item 22, partial):** the tool-only `via` (`tool_only_mail_mark_tests` — RED with the mark
+removed). `orchestrator_tier3` PINS the other three marks (the `via` set `finalizer` / `preserved-partial` /
+`turn-skip`) and `empty_retry`'s still-unalerted letter, but those were not mutation-run. The rest of item 22
+— OPEN.
+
+**Classified reds (none this lane's to fix):**
+- `orchestrator_tier3` — the `llm_logs` comparison on chat `c860cf74` (`summary_fold`): v5's fold-OTHER prompt
+  says `select up to 3` where v4 says `up to 1` (`passCap(foldCandidatesPerSubject, maxTokens)`), and v5's
+  episode prompt keeps the `participants` line v4 dropped — both v4 Phase D (`ac6348c5f`), **P4.D296's**
+  (that order names this family). At the base the case died earlier on `multi_chain`, which hid this row.
+  Every other comparand (mail rows, `chat_messages`, streams) is green.
+- `enclave_step_tier3` — the extraction prompts (Phase D, P4.D296); `STORED_BYTE_DIVERGENCES` left at the
+  ruled 2 for the union's re-measure.
+- `memories_routes` — the same 11 cases as at `KEYSTONE` (P4.D298's family). This lane's ranking moves the
+  SEARCH rows through the shim: `search`, `search_min_importance`, `search_include_cold` — for P4.D298 / the
+  union.
+- `last_accessed_at_writer_census` — red by exactly ONE site, `api/memories.rs:401` (the order's `:405`; the
+  item GET's stamp, bug 219 — P4.D298's, R-AG).
+- `cli_differential` — 14 rows, the same 14 as at the base (P4.D299's help / flag / completion bytes; bug 239);
+  the three new Phase-E rows pass.
+- `no_memory_lane_remove_markers_left` — red by design until §S.5; raw `LANE-REMOVE(` occurrences under
+  `crates/` 33 → 32 (`day_references.rs`'s pair gone, the one `P4.D291` shim added). Shims this lane still
+  calls: none (`memory_weighting.rs` / `episodic.rs` callers left are `generators/optimizer.rs`,
+  `memory_gate.rs`, `fold_episode_pass.rs` — other lanes').
+
+**HANDOFFs to §S.5:** (a) `api/memories.rs:922` → `services::recall::search::search_memories`, then delete
+the `LANE-REMOVE(P4.D291)` shim (Tier 3 #26); (b) P4.D296's `memory_extraction_job.rs` `debugMemoryLogs`
+write onto `services::recall::deliver::with_recall_lines` (Tier 3 #31).
+
+**Out-of-ownership edits (compile-forced or census, recorded):** `format_time.rs` (no order owns it — the
+NaN fix above); `tools/executor.rs` (`memory_zone_fallback` from the display zone);
+`in_scene_voiced.rs` (the new `recall_for_seed` arguments; `character_voiced.rs` is this lane's); sibling test files
+passing the new `None` arguments (`housekeeping`, `memory_dedup`, both tool loops, `tool_wire_call_site`,
+`tool_loop_leg_logging`, `answer_confirmation`, `message_finalizer`, `primary_stream`);
+`host_zone_sites_census` (the two `day_references.rs` rows and the two `memory_recap/distill.rs` rows removed —
+the file now resolves no zone by name and hard-codes no UTC).
+
+**Findings for the human (not fixed here):**
+- A native tool call with empty prose: v4 runs the uncensored retry, v5 does not (pre-existing; found while
+  trying to reach v4's tool-only branch, which canned streams cannot reach — the `via` is pinned at unit tier).
+- Item 25 measured: v4's `buildContext` passes `provider` to all eight `estimateTokens` sites and the four
+  `countMessagesTokens` calls; v5's `build_context.rs:1588` uses `DEFAULT_CHARS_PER_TOKEN` (3.5). The gap is
+  only GOOGLE (3.8) and any plugin-registered rate.
+- Tier 3 #30 (a swipe's missing recall record; `human_keywords`' genuine-keyword drop) — faithful to v4.
+
+**OPEN (Tier 2):** item 22's remaining mutation proofs (trailing order, push-when-non-empty, swipe mail skip,
+survival's whole-line rule, ring head-only, recap never-stamped, archive ordinary budget, text-fallback window,
+band boundary, GOOGLE rate); item 23's remaining jest mirrors (`recall-stages.test.ts`, `scene-state.test.ts`,
+`memory-recap.test.ts`'s cases); item 24 `recall_probe_fixture_equivalence` (R-S) — not started.
+
+**Gate (`CARGO_INCREMENTAL=0`, the lane's `target/debug/incremental` reclaimed first — 101 GB):** fmt clean;
+clippy clean on both feature sets (after fixing eight lints the first run caught — three same-type casts in
+`distill.rs`, a redundant `match` in `orchestrator.rs`, a `StatusChange` type alias in `assemble.rs`, the
+`entry` API in `gather.rs`, a needless borrow in `recall_deliver_equivalence.rs`; behaviour-neutral, and after
+them core's lib tests 3,597 / 0 and `recall_assemble_tier3` re-ran green). `cargo test --workspace
+--no-fail-fast` with `QT_ORACLE_RECALL_{RANK,QUERY,RENDER,DELIVER,ASSEMBLE}`, `QT_ORACLE_MAIL_ALERTS`,
+`QT_FIXTURE_TMP_MAIN/MOUNT`: 788 `test result` lines, 5,151 passed / 4 failed / 3 ignored. The four failures
+sit in three targets, each classified above: `last_accessed_at_writer_census` (`api/memories.rs:401` alone),
+`no_memory_lane_remove_markers_left` (both tests — by design / P4.D289's union census), `qtap_schema_embed_guard`
+(P4.D294). Every new family RAN and passed. `cli_differential` run separately against the pin
+(`QT_V4_CHECKOUT=$PIN QT_NODE=…`): 364 cases, the base's 14 failures, none of the Phase-E rows.
+
+**Sweep from the pin (the lane's final tree, `recipe_sweep.py --run-all`, 44 families):** 41 ok / 3 run_failed —
+`orchestrator_tier3` (the `c860cf74` fold prompts — P4.D296), `enclave_step_tier3` (`STORED_BYTE_DIVERGENCES`
+0 vs the ruled 2 — the extraction prompts, P4.D296; the union re-measures), `memories_routes` (the same 11
+cases as at `KEYSTONE` — P4.D298's family; this lane moves `search` / `search_min_importance` /
+`search_include_cold`). Every other family named in item 21 is green by name, plus `native_tool_loop_tier3`,
+`text_tool_loop_tier3`, `answer_confirmation_tier3` (compile-forced arguments) — `post_office_concierge_
+lantern_suparna` and `mail_carina_tools` MEASURED green.
+
+**Lane status: LANE COMPLETE for Tier 1** (items 1–21, with the classified reds above). Tier 2: item 25
+measured; items 22 (except the tool-only proof), 23 and 24 OPEN. Tier 3: recorded as ordered (#26 / #31
+HANDOFF to §S.5; #27 P4.D298; #28 P4.D299; #29 tracked; #30 faithful; #32 P4.D303).

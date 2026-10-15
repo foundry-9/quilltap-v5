@@ -1,22 +1,27 @@
 /**
  * @jest-environment node
  *
- * Tier-3 ORACLE (P4.D267): v4's REAL `searchMemoriesSemantic` at the
- * `01a83539d` pin — the recall retuning's R1 gate (and its TF-IDF gate-off),
- * R4 specific anchors, R6 background reservation, the embedding memo, the
- * harness knobs (`excludeMemoryIds`, `weightClockMs`, `headSize`) and the
- * hot-only search (`includeCold`) — over a fresh copy of the committed
+ * Tier-3 ORACLE (P4.D267; REWRITTEN by P4.D291 onto Phase E): v4's REAL
+ * `searchMemories` (`lib/memory/recall/search.ts`, `584d28164`, pinned at
+ * `83334b9a5`) — `buildRecallQuery` then `searchRecall`'s gather / hydrate /
+ * score / select — the recall retuning's R1 gate (and its gate-off for a
+ * lexical provider), R4 specific anchors, R6 background reservation, the
+ * embedding memo, the knobs (`excludeIds`, `nowMs`, `headSize`), hot-only
+ * search (`includeCold`), the hybrid literal step, and bug 214's text
+ * fallback honouring every option (window, exclusions, multipliers, the
+ * salience clock, probes + anchors) — over a fresh copy of the committed
  * `semantic-search-tuning-main.db` per case. Plus the pure
- * `reserveBackgroundSlots` over the jest vectors.
+ * `reserveBackgroundSlots` (`lib/memory/scoring/rank.ts`) over the jest
+ * vectors.
  *
  * ONLY `generateEmbeddingForUser` is mocked: each case scripts text →
  * `{embedding, model: 'canned', dimensions, provider}` (or a thrown
  * `EmbeddingError`), and every call is counted (the memo comparand). The
- * vector store, the repositories and the cosine are REAL. `Date` is frozen to
+ * index store, the repositories and the cosine are REAL. `Date` is frozen to
  * the corpus `$nowMs` (the decay seam; the Rust side passes the same value as
- * `now_ms`). The search's `[Memory]` lines are captured by splicing a
- * transport into the singleton logger; `lastAccessedAt` is dumped before and
- * after each case (the search stamps nothing since `3f7320138`).
+ * `now_ms`). The search's `[Memory]` / `[Recall]` lines are captured by
+ * splicing a transport into the singleton logger; `lastAccessedAt` is dumped
+ * before and after each case (a search stamps nothing — `deliver` does).
  *
  * Real-DB-under-jest (the memory-gate-tier3 recipe): resetModules + doMock
  * past jest.setup's global DB mocks + better-sqlite3 →
@@ -61,11 +66,10 @@ interface Spec {
 
 /** The search lines this family pins (v4's exact messages). */
 const CAPTURED = new Set([
-  '[Memory] TF-IDF embeddings: recall boost gate off',
   '[Memory] Specific entity anchors chosen',
-  '[Memory] Background reservation (R6)',
-  '[Memory] Extra probe embedding failed; skipping probe',
   '[Memory] Semantic search failed, falling back to text search',
+  '[Recall] Query embedding failed; recall falls back to text search',
+  '[Recall] Probe embedding failed; skipping probe',
   '[Memory] Embedding dimension mismatch — recall is degraded to TEXT search (embeddings ignored). Reindex this character or restore the matching embedding profile.',
 ]);
 
@@ -185,8 +189,8 @@ async function main(): Promise<void> {
     const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
     await initializeDatabase();
     const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
-    const { searchMemoriesSemantic } = await import('@/lib/memory/memory-service');
-    const { RecallTuningInputSchema, resolveRecallTuning } = await import('@/lib/memory/recall-tuning');
+    const { searchMemories } = await import('@/lib/memory/recall/search');
+    const { RecallTuningInputSchema, resolveRecallTuning } = await import('@/lib/memory/recall/tuning');
     const db = getRawDatabase()!;
     const access = () =>
       db.prepare('SELECT "id", "lastAccessedAt" FROM "memories" ORDER BY "id"').all();
@@ -205,16 +209,15 @@ async function main(): Promise<void> {
         }
         o.recallContext = rc;
       }
-      if (Array.isArray(o.excludeMemoryIds)) o.excludeMemoryIds = new Set(o.excludeMemoryIds);
+      if (Array.isArray(o.excludeIds)) o.excludeIds = new Set(o.excludeIds);
       if (call.memo) o.embeddingMemo = memo;
-      const results = await searchMemoriesSemantic(call.characterId, call.query, o as never);
+      const results = await searchMemories(call.characterId, call.query, o as never);
       calls.push(
         results.map((r) => ({
           id: r.memory.id,
           score: r.score,
           usedEmbedding: r.usedEmbedding,
-          effectiveWeight: r.effectiveWeight ?? null,
-          rawWeight: r.rawWeight ?? null,
+          salience: r.salience,
           recallAdjustment: r.recallAdjustment ?? null,
         })),
       );
@@ -230,7 +233,7 @@ async function main(): Promise<void> {
   }
 
   // The pure R6 slotting, v4's exported fn.
-  const { reserveBackgroundSlots } = await import('@/lib/memory/memory-service');
+  const { reserveBackgroundSlots } = await import('@/lib/memory/scoring/rank');
   for (const r of spec.reserve) {
     const row = (id: string, after: number) =>
       ({ memory: { id }, score: 0, recallAdjustment: { multiplier: 1, fired: [], blendedBefore: after, blendedAfter: after } }) as never;

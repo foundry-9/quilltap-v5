@@ -2461,6 +2461,7 @@ mod tests {
                 active_user_participant_id: None,
                 roleplay_template: None,
                 embedding_profile_id: None,
+                provider: None,
                 skip_memories: true,
                 min_memory_importance: 0.1,
                 responding_participant: None,
@@ -2489,9 +2490,7 @@ mod tests {
                 reserved_outgoing_tokens: None,
                 regeneration_of_message_ids: None,
                 turn_skip: None,
-                pre_searched_memories: None,
-                recall_signals: None,
-                pre_searched_query_embedding: None,
+                pre_recall: None,
                 human_turn_message_ids: None,
             }
         }

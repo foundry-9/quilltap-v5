@@ -938,6 +938,7 @@ mod tests {
                 None,
                 &[],
                 crate::clock::now_unix_ms() as f64,
+                None,
             )
             .unwrap()
             .iter()

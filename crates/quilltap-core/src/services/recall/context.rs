@@ -139,9 +139,13 @@ pub fn build_retrospective_probes(
     if !entity_probe.is_empty() {
         probes.push(entity_probe);
     }
-    if let (Some(paraphrase), Some(range)) = (&signals.paraphrase, &signals.time_range) {
-        // `paraphrase` is never `Some("")` (the parse null-empties it), so
-        // v4's truthiness test is `is_some`.
+    // v4 `signals.paraphrase && signals.timeRange` — truthiness: a replay's
+    // PINNED signals bypass the parse, so an empty paraphrase reaches here and
+    // adds no window probe.
+    if let (Some(paraphrase), Some(range)) = (
+        signals.paraphrase.as_ref().filter(|p| !p.is_empty()),
+        &signals.time_range,
+    ) {
         probes.push(format!(
             "{paraphrase} (around {} to {})",
             crate::jsstr::utf16_truncate(&range.from, 10),

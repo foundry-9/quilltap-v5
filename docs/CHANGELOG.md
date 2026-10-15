@@ -188,6 +188,24 @@ Ports v4's `builtin-refit-policy.ts` and `scheduleRefit` (v4 `4ae0c4ca6`, pin `8
 - An empty `fittedAt` now counts no new memories, matching v4's `since ? … : 0`. The read itself is P4.D288's, so this is filtered at the caller and the body fix is handed off.
 - New family `builtin_refit_policy_equivalence` (v4's real code from the pin): 315 tier-1 rows, 23 planted scenarios across both `textShapeVersion` storage classes, 6 debounce scenarios under a virtual clock, and 2 step-10 rows through v4's real `runScheduledMaintenance`.
 
+#### 2026-10-14 — feat(core,cli): P4.D291 — recall as a pipeline, delivery as the one access writer, the deferred mail flip, and the replay's stage trace
+
+_Versions: core 0.0.1300, cli 0.0.33._
+
+Ports v4's Phase-E recall pipeline (`584d28164`) and bugs 199 / 227 (`124c8aca3`, `69d38dd60`), plus the recall side of bugs 212 / 214. The memory search half of `memory_service.rs` and the old injector's recall rendering are retired; everything recall-shaped now lives under `services/recall/`.
+- `query.rs` / `gather.rs` / `hydrate.rs` / `score.rs` / `select.rs` / `search.rs`: `build_recall_query` embeds once per turn; the search runs gather → hydrate → score → select with a stage trace, the text fallback honouring every option (bug 214), and salience in place of the floored weight. The recall floor drops from .5 to .3.
+- `render.rs`: the four renderers without the `[m_xxxx]` tag or any importance / relevance / weight marginalia; the per-provider token estimate.
+- `assemble.rs`: one subject lookup; the frozen archive on the ordinary budget; the recap after the head, reusing the turn's vector and excluding the archive; inter-character memories as a filter of the turn's pool, deduped against archive and head (bug 224).
+- `deliver.rs`: `stamp_accessed` is now the only `lastAccessedAt` writer (searches and reads stamp nothing); `surviving_lines`; the `[Recall]` / `[Recall:ring]` record written by the finalizer to `debugMemoryLogs`.
+- The context build: one `assemble_recall` call and one trailing-section list on both branches (bug 199). `preRecall` is threaded from the proactive pass.
+- Mail: the `alerted` flip moves from context build to delivery (`MailAlertsOwed`, `mark_mail_alerts_delivered`) with four `via` marks (finalizer, preserved-partial, tool-only, turn-skip); a swipe neither delivers nor flips mail.
+- Consumers re-pointed: Carina, both voice rehearsals, the greeting, `search_scriptorium` (the memory-calendar zone for `since` / `until`), `self_inventory`.
+- `recall-replay`: typed result with `fallbackPath`, `ring`, `ringSource`, `pools` and `trace`; the CLI prints the ring line, the text-fallback marker and the stage trace.
+- `format_time::format_relative_days` takes V8's `Math.max` (a NaN age now renders as v4 does).
+- `day_references.rs` and `services/memory_access.rs` are deleted (no callers left).
+
+New differential families against v4's real code: `recall_query_tier3`, `recall_render`, `recall_deliver`, `recall_assemble_tier3` (new committed fixture `recall-assemble-main.db`), `mail_alerts_delivered`, and the `last_accessed_at_writer_census`. Grown or re-aimed: `build_context_tier3` (preRecall, four mail cases, the bug-199 order), `orchestrator_tier3` (letters on four turn shapes, per-responder context limits), `precompute`, `recall_replay`, `frozen_archive_tier2`, `memory_injector`, `memory_pools`, `search_tools`, `semantic_search_tuning_tier3`, `first_message_context`, and the CLI differential's three Phase-E rows.
+
 #### 2026-10-14 — feat(core): P4.D291 unit 1 — the recall stage contracts and the one recall ranking (`services/recall/{types,context,rank}`)
 
 _Versions: core 0.0.1299._

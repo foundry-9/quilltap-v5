@@ -119,6 +119,9 @@ impl ContextTag {
 /// v4 `TEMPORAL_VALUES` — the closed `temporal` vocabulary in v4's order (the
 /// replay signals schema's enum).
 pub const TEMPORAL_VALUES: [&str; 4] = ["past", "moment", "present", "future"];
+/// v4 `SCOPE_VALUES` (`tags.ts:51`) — the closed `scope:` vocabulary the
+/// renderer's `human_keywords` drops (R-L4).
+pub const SCOPE_VALUES: [&str; 2] = ["narrow", "wide"];
 /// v4 `CONTEXT_VALUES`, in v4's order.
 pub const CONTEXT_VALUES: [&str; 7] = [
     "philosophy",

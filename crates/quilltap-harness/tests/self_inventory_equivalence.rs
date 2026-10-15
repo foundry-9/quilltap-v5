@@ -77,8 +77,8 @@ struct SemSpec {
     summary: String,
     importance: f64,
     score: f64,
-    #[serde(rename = "effectiveWeight")]
-    effective_weight: f64,
+    /// `reinforcedImportance × decay` (v4 `e0ac7493a`); an archive row's is 0.
+    salience: f64,
 }
 
 #[derive(Deserialize)]
@@ -202,7 +202,7 @@ async fn self_inventory_matches_oracle() {
                 summary: s.summary.clone(),
                 importance: s.importance,
                 score: s.score,
-                effective_weight: s.effective_weight,
+                salience: s.salience,
             })
             .collect(),
         inter_character: spec

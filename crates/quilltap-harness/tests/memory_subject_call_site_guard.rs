@@ -16,7 +16,9 @@
 //!   * the union loses one of its two halves, which no differential over a
 //!     fixture whose archive and head draw from the same store can detect.
 //!
-//! v4's three sites: `context-manager.ts:1495` (the per-turn build),
+//! v4's three sites: the per-turn build (`context-manager.ts:1495` until v4
+//! Phase E, `584d28164`, moved it into `lib/memory/recall/assemble.ts:353` —
+//! P4.D291 followed the move to `services/recall/assemble.rs`),
 //! `carina.service.ts:229` (the answerer's recall) and — since v4 `686954937`
 //! extracted it — `voice-rewrite-core.ts:80` (`recallForSeed`, the recall BOTH
 //! voice rehearsals share). It was `character-voiced.ts:131` until that commit;
@@ -46,7 +48,10 @@ const CALL: &str = "build_memory_subject_context(";
 #[test]
 fn the_three_v4_call_sites_and_no_others() {
     for (file, want) in [
-        ("services/build_context.rs", 1usize),
+        // P4.D291 (v4 `584d28164`): the per-turn build moved into the recall
+        // assembler; the context build composes the assembler and builds none.
+        ("services/build_context.rs", 0usize),
+        ("services/recall/assemble.rs", 1),
         ("services/carina_query.rs", 1),
         // v4 `686954937`: moved out of `character_voiced.rs` into the core
         // both rehearsals share. ONE call still serves both.
@@ -63,25 +68,26 @@ fn the_three_v4_call_sites_and_no_others() {
 }
 
 /// The per-turn build is ONE lookup over the UNION of both pools — v4's
-/// `[...frozenArchive, ...dynamicHeadResults.map(r => r.memory)]`.
+/// `[...archiveMemories, ...bundle.pool.map(c => c.memory)]` (Phase E; the
+/// pool is the turn's search result the head draws on).
 #[test]
 fn the_per_turn_build_spans_both_pools_in_one_lookup() {
-    let src = source("services/build_context.rs");
+    let src = source("services/recall/assemble.rs");
     let at = src
         .find(CALL)
         .expect("the per-turn build has moved or gone");
-    // The argument list, up to the `format_frozen_memory_archive` that follows it.
+    // The argument list, up to the `render_archive` that follows it.
     let end = src[at..]
-        .find("format_frozen_memory_archive(")
-        .expect("the archive format call no longer follows the subject build");
+        .find("render_archive(")
+        .expect("the archive render no longer follows the subject build");
     let call = &src[at..at + end];
     assert!(
-        call.contains("frozen_archive"),
+        call.contains("archive_memories"),
         "the union must carry the frozen archive:\n{call}"
     );
     assert!(
-        call.contains("dynamic_head_results"),
-        "the union must carry the dynamic head:\n{call}"
+        call.contains("bundle.pool"),
+        "the union must carry the turn's pool:\n{call}"
     );
     assert!(
         call.contains(".chain("),
@@ -97,6 +103,7 @@ fn the_per_turn_build_spans_both_pools_in_one_lookup() {
 fn no_production_call_site_formats_under_a_default_context() {
     for file in [
         "services/build_context.rs",
+        "services/recall/assemble.rs",
         "services/carina_query.rs",
         "services/announcer/character_voiced.rs",
     ] {

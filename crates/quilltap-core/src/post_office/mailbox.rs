@@ -581,3 +581,102 @@ mod tests {
         assert_eq!(letters.len(), before, "letters lost during the sort");
     }
 }
+
+// === P4.D291: the deferred `alerted` flip (bug 227, v4 `69d38dd60`) ===
+
+/// The letters one turn announced to its character, owed an `alerted` flip
+/// once the turn has delivered them (v4 `MailAlertsOwed`). `buildContext`
+/// collects and announces; it never marks — a provider failure or an abort
+/// before anything is persisted must leave the letters unalerted so the next
+/// attempt offers them again.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MailAlertsOwed {
+    pub vault_id: String,
+    pub paths: Vec<String>,
+}
+
+/// Which delivery site marked a turn's letters (v4's `context.via` strings).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MailAlertsVia {
+    /// The finalizer persisted the reply.
+    Finalizer,
+    /// A failed stream's partial reply was preserved.
+    PreservedPartial,
+    /// Tool results were saved without prose.
+    ToolOnly,
+    /// The character deliberately passed the turn.
+    TurnSkip,
+}
+
+impl MailAlertsVia {
+    /// v4's `via` string.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MailAlertsVia::Finalizer => "finalizer",
+            MailAlertsVia::PreservedPartial => "preserved-partial",
+            MailAlertsVia::ToolOnly => "tool-only",
+            MailAlertsVia::TurnSkip => "turn-skip",
+        }
+    }
+}
+
+/// v4 `markMailAlertsDelivered(owed, { chatId, via })` — mark a turn's
+/// announced letters `alerted`. Called only once the turn is known to have
+/// reached the model and ended in something the chat keeps: a persisted reply
+/// (finalizer or preserved partial), tool results saved without prose, or a
+/// deliberate pass. Warn-only per letter — a mail failure never breaks a turn.
+///
+/// `None` or no paths → returns silently. Each letter is its OWN mount-index
+/// write over [`mark_alerted`] (a vanished letter is its warned no-op, still
+/// counted marked — v4's `markAlerted` returns normally there); a failed write
+/// logs WARN `markMailAlertsDelivered: could not mark letter alerted {chatId,
+/// vaultId, path, error}` and the loop carries on. Then DEBUG
+/// `markMailAlertsDelivered {chatId, vaultId, via, requested, marked}`. Both
+/// lines on the CALLER thread (memory note `capture-rig-writer-thread`).
+pub async fn mark_mail_alerts_delivered(
+    db: &crate::db::runtime::Db,
+    owed: Option<&MailAlertsOwed>,
+    chat_id: &str,
+    via: MailAlertsVia,
+) {
+    let Some(owed) = owed.filter(|o| !o.paths.is_empty()) else {
+        return;
+    };
+    let mut marked = 0usize;
+    for path in &owed.paths {
+        let vault = owed.vault_id.clone();
+        let p = path.clone();
+        let result = db
+            .write(move |writers| match writers.mount_index() {
+                Some(mount_w) => mark_alerted(mount_w.connection(), &vault, &p),
+                None => Err(DbError::Internal(
+                    "the mount-index partition is not available".to_string(),
+                )),
+            })
+            .await;
+        match result {
+            Ok(()) => marked += 1,
+            // v4 `err instanceof Error ? err.message : String(err)` — the bare
+            // message (`db::fallback::error_text`, no `sqlite error:` prefix).
+            Err(error) => tracing::warn!(
+                target: LOG_TARGET,
+                chatId = %chat_id,
+                vaultId = %owed.vault_id,
+                path = %path,
+                error = %crate::db::fallback::error_text(&error),
+                "markMailAlertsDelivered: could not mark letter alerted"
+            ),
+        }
+    }
+    tracing::debug!(
+        target: LOG_TARGET,
+        chatId = %chat_id,
+        vaultId = %owed.vault_id,
+        via = via.as_str(),
+        requested = owed.paths.len(),
+        marked = marked,
+        "markMailAlertsDelivered"
+    );
+}
+// === end P4.D291 ===

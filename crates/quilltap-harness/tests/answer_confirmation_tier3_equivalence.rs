@@ -688,6 +688,9 @@ fn answer_confirmation_tier3_matches_oracle() {
         }];
 
         let opts = FinalizeOptions {
+            // P4.D291: no recall record and no letters owed on this corpus.
+            recall_debug_log: None,
+            mail_alerts_owed: None,
             // P4.D205: this corpus carries no informs.
             inform_row_ids: Vec::new(),
             chat_id: call.chat_id.clone(),

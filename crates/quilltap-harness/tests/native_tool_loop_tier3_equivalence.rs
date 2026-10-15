@@ -401,6 +401,7 @@ async fn native_tool_loop_tier3_matches_oracle() {
                 .map_or_else(|| c.chat_id.clone(), |rest| format!("5{rest}")),
             // P4.D205: this corpus carries no informs.
             vec![],
+            None,
         );
         let mut state = StreamingState {
             full_response: c.initial_full_response.clone(),

@@ -1,7 +1,6 @@
-//! The memory-pool sizer — v4 `sizeMemoryPools` and its constants
-//! (`lib/chat/context/memory-injector.ts:41-134`, v4 `3f7320138` /
-//! `d58548051`), and `PROACTIVE_RECALL_POOL_SIZE`
-//! (`lib/services/chat-message/pre-compute.service.ts:48`).
+//! The memory-pool sizer — v4 `sizeMemoryPools`, its constants and
+//! `PROACTIVE_RECALL_POOL_SIZE` (v4 `3f7320138` / `d58548051`; all in v4 Phase
+//! E's `lib/memory/recall/assemble.ts:72-160` since the recall rewrite).
 //!
 //! Splits a turn's memory budget (`max(2000, 4% of context)` — about 8k tokens
 //! on a 200k model) between the per-turn dynamic head and the frozen archive,
@@ -17,16 +16,27 @@
 //!
 //! Pure; tier-1 exact against v4's REAL export (`memory_pools_equivalence`).
 //! Consumed by P4.D268 at every buildContext / pre-compute site and by
-//! P4.D267's replay (this round, §R.14). The four FLOORS are the existing
-//! [`crate::memory_injector`] constants, imported read-only. JS `Math.round`
+//! P4.D267's replay (this round, §R.14), and by the recall assembler. The four
+//! FLOORS live here too since P4.D291 (they left the deleted injector's memory
+//! formatters with v4 Phase E). JS `Math.round`
 //! is [`crate::jsnum::math_round`]; every v4 caller passes a FINITE budget (the
 //! replay floors a finite positive `memoryBudget`; the context builders compute
 //! one from integer token counts), so `NaN` never reaches the sizer.
 
 use crate::jsnum::math_round;
-use crate::memory_injector::{
-    DYNAMIC_HEAD_DEFAULT_SIZE, DYNAMIC_HEAD_TOKEN_BUDGET, RETRO_HEAD_SIZE, RETRO_HEAD_TOKEN_BUDGET,
-};
+
+/// Phase 3b: hard cap on the dynamic-head rank instruction.
+pub const DYNAMIC_HEAD_TOKEN_BUDGET: i64 = 200;
+/// Phase 3b: how many rank-instruction entries to attempt.
+pub const DYNAMIC_HEAD_DEFAULT_SIZE: usize = 5;
+
+/// Recall-on-reference (episodic overhaul): a retrospective turn — the user is
+/// invoking past shared events — gets an enlarged head, because that is
+/// exactly the turn that needs rich recall. Tuning knobs; validate against
+/// real chats via the recall-replay harness before tightening.
+pub const RETRO_HEAD_TOKEN_BUDGET: i64 = 600;
+/// Enlarged entry count for retrospective turns.
+pub const RETRO_HEAD_SIZE: usize = 10;
 
 /// Share of the memory budget the per-turn relevance head may spend.
 pub const DYNAMIC_HEAD_BUDGET_RATIO: f64 = 0.15;
@@ -45,7 +55,7 @@ pub const FROZEN_ARCHIVE_MAX_SIZE: usize = 60;
 /// in v4.
 pub(crate) const ARCHIVE_TOKENS_PER_ENTRY: f64 = 60.0;
 
-/// v4 `PROACTIVE_RECALL_POOL_SIZE` (`pre-compute.service.ts:48`): the archive
+/// v4 `PROACTIVE_RECALL_POOL_SIZE` (`assemble.ts:90`): the archive
 /// overlap (≤ [`FROZEN_ARCHIVE_MAX_SIZE`]) plus the largest retrospective head
 /// — 90, computed from the constants as v4 does.
 pub const PROACTIVE_RECALL_POOL_SIZE: usize = FROZEN_ARCHIVE_MAX_SIZE + DYNAMIC_HEAD_MAX_SIZE * 2;

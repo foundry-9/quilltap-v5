@@ -7,14 +7,19 @@
 //! mail summary into the new user message so the model reliably ACTS on its mail.
 //!
 //! Closes the READ half of the `BuildContextSeams::resolve_suparna_mail_context`
-//! seam (W4.6a). The whisper POST (`postSuparnaMailWhisper`) is W4.6b — it is NOT
-//! ported here. The `alerted` flip IS part of this unit (the read is only correct
-//! with the double-announce guard): `mark_alerted` runs on each surfaced letter.
+//! seam (W4.6a). The whisper POST (`postSuparnaMailWhisper`) is the caller's.
+//! Since P4.D291 (bug 227, v4 `69d38dd60`) this module flips NOTHING: the
+//! letters a turn announces come back as a
+//! [`MailAlertsOwed`](crate::post_office::mailbox::MailAlertsOwed) and are
+//! marked `alerted` only once the turn has delivered them
+//! ([`crate::post_office::mailbox::mark_mail_alerts_delivered`]), so a provider
+//! failure or an abort offers them again on the next attempt.
 
 use crate::db::runtime::Db;
+use crate::db::DbError;
 use crate::post_office::instructions::format_letter_date;
 use crate::post_office::mailbox::{
-    collect_unalerted_mail, letter_file_name, mark_alerted, DeliveredLetterSummary,
+    collect_unalerted_mail, letter_file_name, DeliveredLetterSummary, MailAlertsOwed,
 };
 use jiff::tz::TimeZone;
 
@@ -65,46 +70,34 @@ pub fn build_suparna_mail_llm_context(
 
 /// The READ half of v4's Suparṇā mail check (build_context's suparna block minus
 /// the whisper POST). Reads the character vault's unalerted mail; if any, builds
-/// the LLM-context contribution, flips each letter's `alerted` flag, and returns
-/// the context string. The whisper POST (`postSuparnaMailWhisper`) is W4.6b (the
-/// caller invokes the recorded seam separately). Any failure → `""` (v4 wraps the
-/// whole check warn-only — a mail failure never breaks the turn).
+/// the LLM-context contribution and the owed-alerts record. It flips NOTHING
+/// (bug 227): `build_context` collects and announces, the turn's delivery site
+/// marks. The whisper POST is the caller's (it posts before handing the context
+/// on, exactly as v4 orders the two).
 ///
 /// Letter dates render in `zone` (v4's zone-less `formatDateTime` — the host's
 /// zone, threaded from the composition root; P4.119/P4.127).
 ///
-/// Returns `(llm_context, unalerted)` so the caller can hand the unalerted list to
-/// the W4.6b whisper-post seam without re-reading.
+/// Returns `(llm_context, unalerted, owed)` — the unalerted list for the
+/// whisper post without a re-read, and `Some(owed)` exactly when there is a
+/// letter. A failed read is the caller's to WARN (v4's `[Suparna] Mail check
+/// failed; turn continues` — a mail failure never breaks the turn).
 pub async fn resolve_suparna_mail_context_in_zone(
     db: &Db,
     mail_vault_id: &str,
     zone: &TimeZone,
-) -> (String, Vec<DeliveredLetterSummary>) {
+) -> Result<(String, Vec<DeliveredLetterSummary>, Option<MailAlertsOwed>), DbError> {
     let vault = mail_vault_id.to_string();
-    let unalerted = match db.read_mount_index(move |conn| collect_unalerted_mail(conn, &vault)) {
-        Ok(u) => u,
-        Err(_) => return (String::new(), Vec::new()),
-    };
+    let unalerted = db.read_mount_index(move |conn| collect_unalerted_mail(conn, &vault))?;
     if unalerted.is_empty() {
-        return (String::new(), Vec::new());
+        return Ok((String::new(), Vec::new(), None));
     }
-
     let llm_context = build_suparna_mail_llm_context(&unalerted, zone);
-
-    // Flip `alerted` on each surfaced letter (the double-announce guard). Each is a
-    // content-only write; a failure never breaks the turn (best-effort).
-    for letter in &unalerted {
-        let vault = mail_vault_id.to_string();
-        let path = letter.path.clone();
-        let _ = db
-            .write(move |writers| match writers.mount_index() {
-                Some(mount_w) => mark_alerted(mount_w.connection(), &vault, &path),
-                None => Ok(()),
-            })
-            .await;
-    }
-
-    (llm_context, unalerted)
+    let owed = MailAlertsOwed {
+        vault_id: mail_vault_id.to_string(),
+        paths: unalerted.iter().map(|letter| letter.path.clone()).collect(),
+    };
+    Ok((llm_context, unalerted, Some(owed)))
 }
 
 #[cfg(test)]

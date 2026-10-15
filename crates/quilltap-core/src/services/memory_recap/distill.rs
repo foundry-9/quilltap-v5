@@ -20,31 +20,35 @@ use crate::services::cheap_llm_exec::CheapLlmTaskOptions;
 
 use super::prompt_text::MEMORY_KEYWORD_EXTRACTION_PROMPT;
 
-/// v4 `ExtractionClock` (memory-tasks.ts, episodic spine) — the subset the
+/// v4 `ExtractionClock` (`extraction/prompts/shared.ts`) — the subset the
 /// SEARCH extraction consumes: the TODAY line resolves relative time phrases
-/// ("last week") into absolute dates. The full three-field type (with
-/// `narrative_now`, for the creation prompts' CLOCK block) lives at its v4
-/// home, [`crate::memory_tasks::ExtractionClock`]; unifying the two is a
-/// post-round rider (this file's struct literals are built across a lane
-/// boundary, so P4.d14 deliberately left them alone).
+/// ("last week") into absolute dates. The full type (with `narrative_now`, for
+/// the creation prompts' CLOCK block) lives at
+/// [`crate::memory_tasks::ExtractionClock`].
 #[derive(Clone, Debug)]
 pub struct ExtractionClock {
     /// ISO wall-clock timestamp of the source turn (the turn's message time).
     pub now_iso: String,
     /// Which clock the chat's story runs on: `"realtime" | "narrative"`.
     pub timeline_mode: String,
-    /// The SERVER-LOCAL IANA zone (v5 seam — v4 reads the ambient process zone,
-    /// which core never may). Both the TODAY line and the deterministic
-    /// day-reference scan resolve their calendar in it; `None` behaves like a
-    /// UTC server. Quilltap is self-hosted, so this is the user's zone: a UTC
-    /// TODAY line tells someone talking at 21:44 CDT that it is already
-    /// tomorrow, and every "today" the model then resolves lands on a day
-    /// containing none of the memories it means (v4 `505dcb1f`).
-    pub local_tz: Option<String>,
+    /// v4 `clock.timeZone` — the instance's MEMORY CALENDAR zone (bug 212:
+    /// instance timezone → `QUILLTAP_TIMEZONE` → the host's own), the same
+    /// calendar the write side stamps with. v4 reads `clock?.timeZone ?? await
+    /// refreshMemoryTimeZone()`; every v5 production caller resolves it through
+    /// [`crate::services::memory_time_zone::refresh_memory_time_zone`] and hands
+    /// it in (core never reads the process zone). `None` reads `"UTC"` — reached
+    /// only by unit tests.
+    pub time_zone: Option<String>,
 }
 
-/// v4 `WEEKDAYS` (memory-tasks.ts) — indexed by `getDay()` (0 = Sunday), the
-/// LOCAL weekday since v4 `505dcb1f` (it was `getUTCDay()` before).
+impl ExtractionClock {
+    fn zone(&self) -> &str {
+        self.time_zone.as_deref().unwrap_or("UTC")
+    }
+}
+
+/// v4 `WEEKDAYS` (`recall/query.ts`) — indexed by the memory calendar's
+/// weekday (0 = Sunday; bug 212's `zonedParts(nowMs, zone).weekday`).
 const WEEKDAYS: [&str; 7] = [
     "Sunday",
     "Monday",
@@ -142,32 +146,10 @@ pub struct DistillMessage {
 /// fires on a stale "yesterday" from three topics ago is worse than no override.
 const DAY_REFERENCE_SCAN_MESSAGES: usize = 4;
 
-/// v4 `localDateStamp(d)` — a LOCAL `YYYY-MM-DD` stamp (never
-/// `toISOString().slice(0, 10)`, which is UTC) plus the local weekday index the
-/// TODAY line's `WEEKDAYS` lookup uses (JS `getDay()`, 0 = Sunday).
-fn local_date_stamp(now_ms: i64, local_tz: Option<&str>) -> (String, usize) {
-    let zone = local_tz
-        .and_then(|tz| jiff::tz::TimeZone::get(tz).ok())
-        .unwrap_or(jiff::tz::TimeZone::UTC);
-    match jiff::Timestamp::from_millisecond(now_ms) {
-        Ok(ts) => {
-            let date = zone.to_datetime(ts).date();
-            (
-                format!("{:04}-{:02}-{:02}", date.year(), date.month(), date.day()),
-                date.weekday().to_sunday_zero_offset() as usize,
-            )
-        }
-        // Unreachable from the callers (the arm is gated on a finite clock).
-        Err(_) => (
-            crate::jsstr::utf16_truncate(&crate::clock::iso_from_unix_ms(now_ms), 10),
-            0,
-        ),
-    }
-}
-
 /// Resolve the turn's deterministic day reference exactly as v4's
-/// `extractMemorySearchKeywords` does (`505dcb1f`): realtime timelines with a
-/// finite clock only, scanning the RAW content of the last
+/// `extractMemorySearchKeywords` does (`505dcb1f`; bug 212 moved it onto the
+/// memory calendar, `resolveReferenceWindow(text, { timeZone, nowMs })`):
+/// realtime timelines with a finite clock only, scanning the RAW content of the last
 /// [`DAY_REFERENCE_SCAN_MESSAGES`] of the capped-20 window joined with a single
 /// newline — a different rendering from the speaker-prefixed, 500-unit-truncated
 /// text the prompt sees.
@@ -177,7 +159,7 @@ fn local_date_stamp(now_ms: i64, local_tz: Option<&str>) -> (String, usize) {
 pub fn resolve_distill_day_reference(
     recent_messages: &[DistillMessage],
     clock: Option<&ExtractionClock>,
-) -> Option<crate::day_references::DayReferenceResolution> {
+) -> Option<crate::memory_time::clock::DayReferenceResolution> {
     let now_iso = match clock {
         Some(c) => c.now_iso.clone(),
         None => crate::clock::now_iso(),
@@ -201,10 +183,10 @@ pub fn resolve_distill_day_reference(
         .collect::<Vec<_>>()
         .join("\n");
 
-    crate::day_references::resolve_day_reference(
+    crate::memory_time::clock::resolve_reference_window(
         &text,
+        clock.map(ExtractionClock::zone).unwrap_or("UTC"),
         now_ms,
-        clock.and_then(|c| c.local_tz.as_deref()).unwrap_or("UTC"),
     )
 }
 
@@ -231,7 +213,7 @@ pub fn resolve_distill_day_reference(
 /// `parse_failed` guard is that arm.
 pub fn merge_day_reference(
     parsed: DistilledSearch,
-    day_reference: Option<&crate::day_references::DayReferenceResolution>,
+    day_reference: Option<&crate::memory_time::clock::DayReferenceResolution>,
 ) -> DistilledSearch {
     if parsed.parse_failed {
         return parsed;
@@ -310,13 +292,17 @@ pub fn build_distill_messages(
     let timeline_mode = clock
         .map(|c| c.timeline_mode.as_str())
         .unwrap_or("realtime");
-    // Rendered from the SERVER-LOCAL calendar, not UTC (v4 `505dcb1f`): both the
-    // date and the weekday. The non-finite arm keeps the raw string unchanged.
+    // Rendered from the instance's MEMORY CALENDAR (bug 212 — instance
+    // timezone → `QUILLTAP_TIMEZONE` → the host's own), never UTC: a UTC TODAY
+    // line tells a user talking at 21:44 CDT that it is already tomorrow, and
+    // every "today" the model resolves then lands on a day containing none of
+    // the memories it means. The non-finite arm keeps the raw string unchanged.
+    let zone = clock.map(ExtractionClock::zone).unwrap_or("UTC");
     let today_line = match crate::episodic::event_time_ms(Some(&now_iso)) {
         Some(ms) => {
-            let (date, weekday_index) =
-                local_date_stamp(ms as i64, clock.and_then(|c| c.local_tz.as_deref()));
-            let weekday = WEEKDAYS[weekday_index];
+            let date = crate::memory_time::calendar::zoned_date_stamp(ms, zone);
+            let weekday =
+                WEEKDAYS[crate::memory_time::calendar::zoned_parts(ms, zone).weekday as usize];
             format!("TODAY: {date} ({weekday}); timeline mode: {timeline_mode}")
         }
         None => format!("TODAY: {now_iso}; timeline mode: {timeline_mode}"),
@@ -356,6 +342,7 @@ pub async fn distill_memory_search<C: CompletionProvider>(
     options: CheapLlmTaskOptions,
 ) -> Option<DistilledSearch> {
     let messages = build_distill_messages(recent_messages, character_name, clock);
+    let zone = clock.map(ExtractionClock::zone).unwrap_or("UTC");
     // Resolved BEFORE the call, exactly where v4 resolves it, and applied inside
     // the parse closure so the catch arm's bare `{ keywords: [] }` stays bare.
     let day_reference = resolve_distill_day_reference(recent_messages, clock);
@@ -365,7 +352,9 @@ pub async fn distill_memory_search<C: CompletionProvider>(
             completion,
             selection,
             messages,
-            |content: &str| merge_day_reference(parse_extraction(content), day_reference.as_ref()),
+            |content: &str| {
+                merge_day_reference(parse_extraction(content, zone), day_reference.as_ref())
+            },
             None,
             None,
             Some(character_id),
@@ -384,8 +373,10 @@ pub async fn distill_memory_search<C: CompletionProvider>(
 /// the object shape `{ keywords, temporal, context, paraphrase, retrospective,
 /// timeRange, entities }` or a bare keyword array; a parse failure →
 /// `{ keywords: [] }` (still a success value, with every other field ABSENT —
-/// see [`DistilledSearch::parse_failed`]).
-pub fn parse_extraction(content: &str) -> DistilledSearch {
+/// see [`DistilledSearch::parse_failed`]). A date-only `timeRange` bound widens
+/// to the LOCAL day on the memory calendar `time_zone` (bug 212,
+/// `normaliseTimeRange`), never a UTC day.
+pub fn parse_extraction(content: &str, time_zone: &str) -> DistilledSearch {
     let clean = strip_code_fences(content);
     let parsed: Value = match serde_json::from_str(&clean) {
         Ok(v) => v,
@@ -454,56 +445,21 @@ pub fn parse_extraction(content: &str) -> DistilledSearch {
         .and_then(Value::as_bool)
         == Some(true);
 
-    // v4: `timeRange` must be an object with string `from`/`to` matching
-    // `^\d{4}-\d{2}-\d{2}`, both finite under `Date.parse`; date-only bounds
-    // normalize to full-day coverage; `from <= to` (on the NORMALIZED forms)
-    // else null. NOTE `typeof null === 'object'` is false-y here because v4
-    // guards `parsed?.timeRange &&` (null is falsy) first.
-    let mut time_range: Option<DistillTimeRange> = None;
-    if let Some(tr) = obj
+    // v4: `parsed?.timeRange && typeof parsed.timeRange === 'object'` (null is
+    // falsy), then `normaliseTimeRange({ from, to }, { timeZone })` over the
+    // string bounds (a non-string bound is `null`): both bounds trimmed and
+    // `YYYY-MM-DD`-prefixed, a date-only bound widened to its LOCAL day on the
+    // memory calendar (bug 212), `from <= to`, else no window.
+    let time_range: Option<DistillTimeRange> = obj
         .and_then(|o| o.get("timeRange"))
-        .and_then(Value::as_object)
-    {
-        let from = tr
-            .get("from")
-            .and_then(Value::as_str)
-            .map(crate::jsstr::js_trim)
-            .unwrap_or_default();
-        let to = tr
-            .get("to")
-            .and_then(Value::as_str)
-            .map(crate::jsstr::js_trim)
-            .unwrap_or_default();
-        if starts_with_date_prefix(from)
-            && starts_with_date_prefix(to)
-            && crate::episodic::event_time_ms(Some(from)).is_some()
-            && crate::episodic::event_time_ms(Some(to)).is_some()
-        {
-            // Normalize date-only bounds to full-day coverage (v4 checks the
-            // UTF-16 length; these prefixes are ASCII so bytes are identical).
-            let from_iso = if crate::jsstr::utf16_len(from) == 10 {
-                format!("{from}T00:00:00.000Z")
-            } else {
-                from.to_string()
-            };
-            let to_iso = if crate::jsstr::utf16_len(to) == 10 {
-                format!("{to}T23:59:59.999Z")
-            } else {
-                to.to_string()
-            };
-            if let (Some(f), Some(t)) = (
-                crate::episodic::event_time_ms(Some(&from_iso)),
-                crate::episodic::event_time_ms(Some(&to_iso)),
-            ) {
-                if f <= t {
-                    time_range = Some(DistillTimeRange {
-                        from: from_iso,
-                        to: to_iso,
-                    });
-                }
-            }
-        }
-    }
+        .filter(|t| t.is_object())
+        .and_then(|tr| {
+            crate::memory_time::clock::normalise_time_range(
+                tr.get("from").and_then(Value::as_str),
+                tr.get("to").and_then(Value::as_str),
+                time_zone,
+            )
+        });
 
     // v4: filter (typeof string && trim().length > 0) → map(trim) → slice(0, 5).
     let entities = obj
@@ -531,19 +487,6 @@ pub fn parse_extraction(content: &str) -> DistilledSearch {
     }
 }
 
-/// v4's `/^\d{4}-\d{2}-\d{2}/` (JS `\d` is ASCII-only).
-fn starts_with_date_prefix(s: &str) -> bool {
-    let b = s.as_bytes();
-    b.len() >= 10
-        && b[..4].iter().all(u8::is_ascii_digit)
-        && b[4] == b'-'
-        && b[5].is_ascii_digit()
-        && b[6].is_ascii_digit()
-        && b[7] == b'-'
-        && b[8].is_ascii_digit()
-        && b[9].is_ascii_digit()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -552,6 +495,7 @@ mod tests {
     fn parse_object_shape() {
         let out = parse_extraction(
             r#"{"keywords":["a","b"," ","c"],"temporal":"Present","context":"relationships","paraphrase":"They talk."}"#,
+            "UTC",
         );
         assert_eq!(out.keywords, vec!["a", "b", "c"]);
         assert_eq!(out.temporal, Some(TemporalTag::Present));
@@ -561,7 +505,7 @@ mod tests {
 
     #[test]
     fn parse_bare_array_shape() {
-        let out = parse_extraction(r#"["x","y"]"#);
+        let out = parse_extraction(r#"["x","y"]"#, "UTC");
         assert_eq!(out.keywords, vec!["x", "y"]);
         assert_eq!(out.temporal, None);
         assert_eq!(out.context, None);
@@ -570,7 +514,7 @@ mod tests {
 
     #[test]
     fn parse_failure_yields_empty() {
-        let out = parse_extraction("not json at all");
+        let out = parse_extraction("not json at all", "UTC");
         assert!(out.keywords.is_empty());
         assert!(out.paraphrase.is_none());
         assert!(out.parse_failed);
@@ -580,11 +524,11 @@ mod tests {
 
     #[test]
     fn parse_retrospective_strict_true_only() {
-        let out = parse_extraction(r#"{"keywords":["k"],"retrospective":true}"#);
+        let out = parse_extraction(r#"{"keywords":["k"],"retrospective":true}"#, "UTC");
         assert!(out.retrospective);
-        let out = parse_extraction(r#"{"keywords":["k"],"retrospective":"true"}"#);
+        let out = parse_extraction(r#"{"keywords":["k"],"retrospective":"true"}"#, "UTC");
         assert!(!out.retrospective);
-        let out = parse_extraction(r#"{"keywords":["k"],"retrospective":1}"#);
+        let out = parse_extraction(r#"{"keywords":["k"],"retrospective":1}"#, "UTC");
         assert!(!out.retrospective);
     }
 
@@ -592,6 +536,7 @@ mod tests {
     fn parse_time_range_date_only_normalizes_full_day() {
         let out = parse_extraction(
             r#"{"keywords":[],"timeRange":{"from":"2024-06-01","to":"2024-06-07"}}"#,
+            "UTC",
         );
         let tr = out.time_range.expect("window");
         assert_eq!(tr.from, "2024-06-01T00:00:00.000Z");
@@ -602,32 +547,38 @@ mod tests {
     fn parse_time_range_rejects_bad_shapes() {
         // from > to.
         assert!(parse_extraction(
-            r#"{"keywords":[],"timeRange":{"from":"2024-06-08","to":"2024-06-07"}}"#
+            r#"{"keywords":[],"timeRange":{"from":"2024-06-08","to":"2024-06-07"}}"#,
+            "UTC"
         )
         .time_range
         .is_none());
         // Regex miss.
         assert!(parse_extraction(
-            r#"{"keywords":[],"timeRange":{"from":"June 1","to":"2024-06-07"}}"#
+            r#"{"keywords":[],"timeRange":{"from":"June 1","to":"2024-06-07"}}"#,
+            "UTC"
         )
         .time_range
         .is_none());
         // Passes the regex, non-finite Date.parse (month 13).
         assert!(parse_extraction(
-            r#"{"keywords":[],"timeRange":{"from":"2024-13-01","to":"2024-12-31"}}"#
+            r#"{"keywords":[],"timeRange":{"from":"2024-13-01","to":"2024-12-31"}}"#,
+            "UTC"
         )
         .time_range
         .is_none());
         // Null / non-object.
-        assert!(parse_extraction(r#"{"keywords":[],"timeRange":null}"#)
-            .time_range
-            .is_none());
+        assert!(
+            parse_extraction(r#"{"keywords":[],"timeRange":null}"#, "UTC")
+                .time_range
+                .is_none()
+        );
     }
 
     #[test]
     fn parse_entities_trimmed_capped_at_five() {
         let out = parse_extraction(
             r#"{"keywords":[],"entities":[" Amy ","","Lighthouse Point",3,"b","c","d","e","f"]}"#,
+            "UTC",
         );
         assert_eq!(out.entities, vec!["Amy", "Lighthouse Point", "b", "c", "d"]);
     }
@@ -637,7 +588,7 @@ mod tests {
         let clock = ExtractionClock {
             now_iso: "2024-06-15T12:00:00.000Z".to_string(),
             timeline_mode: "narrative".to_string(),
-            local_tz: None,
+            time_zone: None,
         };
         let msgs = build_distill_messages(
             &[DistillMessage {
@@ -657,7 +608,7 @@ mod tests {
         let clock = ExtractionClock {
             now_iso: "sometime".to_string(),
             timeline_mode: "realtime".to_string(),
-            local_tz: None,
+            time_zone: None,
         };
         let msgs = build_distill_messages(&[], "Aria", Some(&clock));
         assert!(msgs[1]
@@ -669,13 +620,13 @@ mod tests {
     fn keywords_capped_at_ten() {
         let arr: Vec<String> = (0..15).map(|i| format!("\"k{i}\"")).collect();
         let json = format!("{{\"keywords\":[{}]}}", arr.join(","));
-        let out = parse_extraction(&json);
+        let out = parse_extraction(&json, "UTC");
         assert_eq!(out.keywords.len(), 10);
     }
 
     #[test]
     fn code_fences_stripped() {
-        let out = parse_extraction("```json\n{\"keywords\":[\"z\"]}\n```");
+        let out = parse_extraction("```json\n{\"keywords\":[\"z\"]}\n```", "UTC");
         assert_eq!(out.keywords, vec!["z"]);
     }
 }

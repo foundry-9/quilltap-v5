@@ -685,11 +685,12 @@ where
         // Regenerate-as-swipe never offers the "nothing to add" pass (v4 passes
         // no `turnSkip`).
         turn_skip: None,
-        // Regenerate-swipe does not run the proactive pre-compute distill (P4.19);
-        // its rebuild falls through to buildContext's own fallback path, as before.
-        pre_searched_memories: None,
-        recall_signals: None,
-        pre_searched_query_embedding: None,
+        // Regenerate-swipe does not run the proactive pre-compute pass (P4.19);
+        // its rebuild assembles recall with the turn's own query, as before.
+        pre_recall: None,
+        // v4 `buildMessageContext` hands `connectionProfile.provider` on — the
+        // recall renderers' token rate (R-T).
+        provider: json_str(&connection_profile, "provider"),
     });
 
     // The per-character opaque-anywhere transparency map (v4's wrapper reads each

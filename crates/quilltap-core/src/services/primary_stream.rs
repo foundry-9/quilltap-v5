@@ -676,12 +676,17 @@ pub struct PreservePartialOnError {
     /// PRESERVED message id once that row is saved.
     inform_row_ids: Vec<String>,
     // === end P4.D205 ===
+    /// v4 `makePreservePartialOnError({…, mailAlertsOwed})` (bug 227): the
+    /// letters this turn announced, marked `preserved-partial` once the partial
+    /// is a persisted turn.
+    mail_alerts_owed: Option<crate::post_office::mailbox::MailAlertsOwed>,
 }
 
 impl PreservePartialOnError {
     /// Build the preserver for this turn.
     ///
-    /// P4.D205 took this from seven parameters to eight (`inform_row_ids`).
+    /// P4.D205 took this from seven parameters to eight (`inform_row_ids`);
+    /// P4.D291 to nine (`mail_alerts_owed`).
     /// Grouping them into a struct would be tidier Rust and a worse port: these
     /// are v4's captured closure variables, one for one
     /// (`makePreservePartialOnError({chatId, characterId, character, …,
@@ -699,11 +704,13 @@ impl PreservePartialOnError {
         // === P4.D205 ===
         inform_row_ids: Vec<String>,
         // === end P4.D205 ===
+        mail_alerts_owed: Option<crate::post_office::mailbox::MailAlertsOwed>,
     ) -> Self {
         Self {
             // === P4.D205 ===
             inform_row_ids,
             // === end P4.D205 ===
+            mail_alerts_owed,
             chat_id: chat_id.into(),
             character_id: character_id.into(),
             character_name: character_name.into(),
@@ -859,6 +866,16 @@ impl PreservePartialOnError {
             );
         }
         // === end P4.D205 ===
+
+        // The letters too: a preserved partial delivered them (bug 227, v4
+        // `primary-stream.service.ts:139`, after the inform consume).
+        crate::post_office::mailbox::mark_mail_alerts_delivered(
+            db,
+            self.mail_alerts_owed.as_ref(),
+            &self.chat_id,
+            crate::post_office::mailbox::MailAlertsVia::PreservedPartial,
+        )
+        .await;
     }
 
     /// Test / caller accessor: whether a partial has already been preserved.
@@ -1955,6 +1972,7 @@ mod tests {
             None,
             "msg-1",
             vec![],
+            None,
         );
 
         let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
@@ -2279,6 +2297,7 @@ mod tests {
             "msg-1",
             // P4.D205: no informs on this turn.
             Vec::new(),
+            None,
         );
         let params = StreamParams {
             messages: vec![StreamMessage::user("please invoke a helper")],
@@ -2568,6 +2587,7 @@ mod tests {
             "msg-1",
             // P4.D205: no informs on this turn.
             Vec::new(),
+            None,
         );
         let params = StreamParams {
             messages: vec![StreamMessage::user("a very long message")],

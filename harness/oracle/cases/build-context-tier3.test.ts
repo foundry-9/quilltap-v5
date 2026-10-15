@@ -157,22 +157,20 @@ interface Op {
     messageCount: number;
     warnings?: string[];
   };
-  /** P4.19: the proactive pre-compute outcome. */
-  preSearchedMemories?: Array<{
-    id: string;
-    score: number;
-    effectiveWeight: number;
-    rawWeight: number;
-  }>;
-  recallSignals?: unknown;
+  /** P4.19 / P4.D291: the proactive pre-compute outcome, as v4 Phase E
+   *  threads it (`options.preRecall`): the query is built by the REAL
+   *  `buildRecallQuery` from these signals (its embedding from the canned
+   *  table), the candidates synthesized from real memory rows with the spec's
+   *  score + salience. */
+  preRecall?: {
+    signals: Record<string, unknown>;
+    candidates: Array<{ id: string; score: number; salience: number }>;
+  };
   /** P4.D95 (v4 `870a57fa`): the instance-wide recall setting this op runs
    *  under. Written through the REAL `setMemoryRecallSettings` before EVERY op
    *  (an absent field writes `false`) so the row can never leak from one op to
    *  the next — the ops share one working database copy. */
   perTurnConversationSummaries?: boolean;
-  /** P4.D95: `options.preSearchedQueryEmbedding` — the query text + vector the
-   *  proactive recall already embedded, for the pre-searched memory path. */
-  preSearchedQueryEmbedding?: { query: string; embedding: number[] };
   /** P4.D95: run the REAL memory recap for this op, so the per-turn cadence's
    *  recap stand-down is reachable. */
   generateMemoryRecap?: boolean;
@@ -183,6 +181,9 @@ interface Op {
   /** P4.D268: raw SQL statements (one per entry — `rawQuery` runs a single
    *  statement) planted before the op, identically on both sides. */
   plantSql?: string[];
+  /** P4.D291 (bug 227): a letter delivered into the responding character's
+   *  vault through the REAL mailbox before the op, discarded after it. */
+  letter?: { fromName: string; fromCharacterId: string; sentAt: string; body: string };
   /** P4.D268: raw SQL run after the op's dumps, so a plant never leaks
    *  forward. */
   unplantSql?: string[];
@@ -364,10 +365,14 @@ async function main(): Promise<void> {
   // P4.D268: the delivery lines — v4 `3f7320138`'s frozen-archive lines, the
   // F7 pools line and the F6 delivery stamp, in emission order.
   let deliveryLog: Array<{ message: string; fields: Record<string, unknown> }> = [];
+  // P4.D291 (v4 `584d28164`): the pools line and the old stamp are RETIRED;
+  // Phase E's `[ContextManager] Recall assembled` (its `durationMs` masked on
+  // both sides), the ONE writer's stamp and `[Recall] Delivered` replace them.
   const DELIVERY_PREFIXES = [
     '[FrozenArchive] ',
-    '[ContextManager] Memory pools sized',
-    '[Memory] Marking memories accessed',
+    '[ContextManager] Recall assembled',
+    '[Recall] Stamping delivered memories accessed',
+    '[Recall] Delivered',
   ];
   const priorDebug = (logger as unknown as { debug: (...a: unknown[]) => unknown }).debug;
   (logger as unknown as { debug: unknown }).debug = (message: string, fields?: unknown) => {
@@ -504,13 +509,6 @@ async function main(): Promise<void> {
     if (op.generateMemoryRecap) {
       options.generateMemoryRecap = true;
     }
-    // P4.D95: the vector the proactive recall already embedded.
-    if (op.preSearchedQueryEmbedding) {
-      options.preSearchedQueryEmbedding = {
-        query: op.preSearchedQueryEmbedding.query,
-        embedding: new Float32Array(op.preSearchedQueryEmbedding.embedding),
-      };
-    }
     // P4.D82: a profile-only op (no compression) — the budget window comes from
     // the profile's Max Context (v4 `f933ba9c`).
     if (op.profileMaxContext != null) {
@@ -544,28 +542,30 @@ async function main(): Promise<void> {
       }
     }
 
-    // P4.19: the proactive pre-compute distill's outcome (preSearchedMemories +
-    // recallSignals). When present, buildContext takes the 'pre-searched' memory
-    // path (the filtered entries become the dynamic head; the fallback distill is
-    // skipped) and recallSignals seeds the retrospective head sizing. The entries
-    // are synthesized from real memory rows so both sides read identical memory
-    // JSON; scores/weights come from the op spec verbatim.
-    if (op.preSearchedMemories) {
-      const rows = await repos.memories.findByIds(
-        op.preSearchedMemories.map((m: { id: string }) => m.id)
-      );
+    // P4.19 / P4.D291 (v4 `584d28164`): the proactive pre-compute's outcome
+    // as `options.preRecall` — the query (built by the REAL `buildRecallQuery`
+    // from the op's signals; ONE embedding, from the canned table) and what it
+    // found (synthesized from real memory rows so both sides read identical
+    // memory JSON; score + salience from the op spec). buildContext's recall
+    // then takes the 'pre-searched' path and skips its own distillation.
+    if (op.preRecall) {
+      const { buildRecallQuery } = await import('@/lib/memory/recall/query');
+      const query = await buildRecallQuery({
+        userId: spec.userId,
+        text: op.newUserMessage ?? '',
+        signals: op.preRecall.signals as never,
+      });
+      const rows = await repos.memories.findByIds(op.preRecall.candidates.map(m => m.id));
       const byId = new Map(rows.map((r: { id: string }) => [r.id, r]));
-      options.preSearchedMemories = op.preSearchedMemories.map(
-        (m: { id: string; score: number; effectiveWeight: number; rawWeight: number }) => ({
+      options.preRecall = {
+        query,
+        candidates: op.preRecall.candidates.map(m => ({
           memory: byId.get(m.id),
           score: m.score,
           usedEmbedding: true,
-          effectiveWeight: m.effectiveWeight,
-          rawWeight: m.rawWeight,
-          recallAdjustment: undefined,
-        })
-      );
-      options.recallSignals = op.recallSignals;
+          salience: m.salience,
+        })),
+      };
       options.cheapLLMSelection = cheapLLMSelection;
     }
 
@@ -603,6 +603,26 @@ async function main(): Promise<void> {
     }
 
     for (const sql of op.plantSql ?? []) await rawQuery(sql);
+    // P4.D291: the op's letter, through v4's REAL mailbox.
+    let letterVault: string | null = null;
+    let letterPath: string | null = null;
+    if (op.letter) {
+      const { deliverLetter } = await import('@/lib/post-office/mailbox');
+      const holder = await repos.characters.findById(op.characterId);
+      letterVault = (holder as { characterDocumentMountPointId?: string | null } | null)
+        ?.characterDocumentMountPointId ?? null;
+      if (!letterVault) throw new Error(`${op.name}: the responder has no vault`);
+      letterPath = (
+        await deliverLetter({
+          recipientVaultId: letterVault,
+          fromName: op.letter.fromName,
+          fromCharacterId: op.letter.fromCharacterId,
+          sentAt: op.letter.sentAt,
+          body: op.letter.body,
+          inReplyTo: null,
+        })
+      ).path;
+    }
     resetFrozenArchiveCacheForTests();
     informLog = [];
     deliveryLog = [];
@@ -645,6 +665,19 @@ async function main(): Promise<void> {
         return ka < kb ? -1 : ka > kb ? 1 : 0;
       });
     const afterChat = await repos.chats.findById(spec.chat.id);
+    // P4.D291: the ids delivery stamped this op (reset after, so every op's
+    // set is its own), and the letter the build left unalerted (bug 227: the
+    // build flips nothing — delivery marks).
+    const stamped = (
+      (await rawQuery('SELECT "id" FROM "memories" WHERE "lastAccessedAt" IS NOT NULL ORDER BY "id"')) as Array<{ id: string }>
+    ).map((r) => r.id);
+    await rawQuery('UPDATE "memories" SET "lastAccessedAt" = NULL WHERE "lastAccessedAt" IS NOT NULL');
+    let unalertedMail: string[] | null = null;
+    if (letterVault && letterPath) {
+      const { collectUnalertedMail, discardLetter } = await import('@/lib/post-office/mailbox');
+      unalertedMail = (await collectUnalertedMail(letterVault)).map((l) => l.path);
+      await discardLetter(letterVault, letterPath);
+    }
     lines.push(
       JSON.stringify({
         kind: 'whispers',
@@ -653,6 +686,8 @@ async function main(): Promise<void> {
         recallHistory:
           (afterChat as { commonplaceRecallHistory?: unknown } | null)?.commonplaceRecallHistory ??
           null,
+        stamped,
+        unalertedMail,
       })
     );
     for (const sql of op.unplantSql ?? []) await rawQuery(sql);

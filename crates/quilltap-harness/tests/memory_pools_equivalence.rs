@@ -1,7 +1,8 @@
-//! P4.D265 tier-1 differential: v4's `sizeMemoryPools` and the pool constants
-//! (`lib/chat/context/memory-injector.ts`, `3f7320138` / `d58548051`) plus
-//! `PROACTIVE_RECALL_POOL_SIZE` (`lib/services/chat-message/pre-compute.service.ts`)
-//! against `quilltap_core::memory_pools` — exact equality over every clamp edge
+//! P4.D265 tier-1 differential (RE-AIMED by P4.D291): v4's `sizeMemoryPools`,
+//! the pool constants and `PROACTIVE_RECALL_POOL_SIZE` (`3f7320138` /
+//! `d58548051`), plus the assembler's own caps — all in v4 Phase E's
+//! `lib/memory/recall/assemble.ts` — against `quilltap_core::memory_pools` and
+//! `services::recall::assemble` — exact equality over every clamp edge
 //! (budgets 0 … 1e9, a fractional and a negative one) under both `retro`
 //! values. NaN is excluded: every v4 caller passes a finite budget.
 //!
@@ -15,13 +16,15 @@
 //!   QT_ORACLE_MEMORY_POOLS=/tmp/oracle-memory-pools.ndjson \
 //!     cargo test -p quilltap-harness --test memory_pools_equivalence -- --nocapture
 
-use quilltap_core::memory_injector::{
-    DYNAMIC_HEAD_DEFAULT_SIZE, DYNAMIC_HEAD_TOKEN_BUDGET, RETRO_HEAD_SIZE, RETRO_HEAD_TOKEN_BUDGET,
-};
 use quilltap_core::memory_pools::{
-    size_memory_pools, DYNAMIC_HEAD_BUDGET_RATIO, DYNAMIC_HEAD_MAX_SIZE,
-    DYNAMIC_HEAD_MAX_TOKEN_BUDGET, FROZEN_ARCHIVE_MAX_SIZE, FROZEN_ARCHIVE_MIN_SIZE,
-    PROACTIVE_RECALL_POOL_SIZE,
+    size_memory_pools, DYNAMIC_HEAD_BUDGET_RATIO, DYNAMIC_HEAD_DEFAULT_SIZE, DYNAMIC_HEAD_MAX_SIZE,
+    DYNAMIC_HEAD_MAX_TOKEN_BUDGET, DYNAMIC_HEAD_TOKEN_BUDGET, FROZEN_ARCHIVE_MAX_SIZE,
+    FROZEN_ARCHIVE_MIN_SIZE, PROACTIVE_RECALL_POOL_SIZE, RETRO_HEAD_SIZE, RETRO_HEAD_TOKEN_BUDGET,
+};
+use quilltap_core::services::recall::assemble::{
+    INTER_CHAR_DIGEST_LIMIT, INTER_CHAR_PER_CHARACTER_LIMIT,
+    INTER_CHAR_RELEVANCE_PER_CHARACTER_LIMIT, MEMORY_RECAP_PHASE_TIMEOUT_MS,
+    RETRO_MINI_RECAP_MAX_ENTRIES,
 };
 use serde_json::{json, Value};
 
@@ -45,6 +48,11 @@ fn memory_pools_match_oracle() {
         "FROZEN_ARCHIVE_MIN_SIZE": FROZEN_ARCHIVE_MIN_SIZE,
         "FROZEN_ARCHIVE_MAX_SIZE": FROZEN_ARCHIVE_MAX_SIZE,
         "PROACTIVE_RECALL_POOL_SIZE": PROACTIVE_RECALL_POOL_SIZE,
+        "INTER_CHAR_PER_CHARACTER_LIMIT": INTER_CHAR_PER_CHARACTER_LIMIT,
+        "INTER_CHAR_DIGEST_LIMIT": INTER_CHAR_DIGEST_LIMIT,
+        "INTER_CHAR_RELEVANCE_PER_CHARACTER_LIMIT": INTER_CHAR_RELEVANCE_PER_CHARACTER_LIMIT,
+        "RETRO_MINI_RECAP_MAX_ENTRIES": RETRO_MINI_RECAP_MAX_ENTRIES,
+        "MEMORY_RECAP_PHASE_TIMEOUT_MS": MEMORY_RECAP_PHASE_TIMEOUT_MS,
     });
     assert_eq!(
         serde_json::to_string(&constants).unwrap(),

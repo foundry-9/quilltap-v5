@@ -14,9 +14,10 @@
 //! `executeCheapLLMTask` call, and the never-throws result shape — lives here so
 //! the two framings cannot drift apart in everything except their wording.
 //!
-//! Nothing in this module persists anything. (The recall does bump
-//! `lastAccessedAt` on the memories it returns, which is
-//! `searchMemoriesSemantic`'s own write, not this module's.)
+//! Nothing in this module persists anything but the recall's delivery stamp:
+//! the rehearsal carries the recalled block whole, so every rendered line is
+//! stamped `lastAccessedAt` through the one writer,
+//! [`crate::services::recall::deliver::stamp_accessed`].
 //!
 //! **The extraction is behaviour-neutral, proven not read.**
 //! `announcer_tier3_equivalence`'s NDJSON regenerated from a worktree pinned at
@@ -28,32 +29,29 @@
 //!
 //! v4 reads its repositories and its embedding provider out of module-level
 //! singletons and its clock off `Date.now()`; v5 injects all three (`db`,
-//! `embedding`, `now_ms`) because the core is a library. v4 also passes
-//! `profile.provider` to `formatDynamicMemoryHead`, which v5's port of that
-//! function does not take — measured unused at the P4.9E2A port and pinned ever
-//! since by this family's assembled-prompt comparand, so the `profile` argument
-//! is gone here rather than carried as decoration.
+//! `embedding`, `now_ms`) because the core is a library. v4's `character` /
+//! `profile` objects are narrowed to the two fields it reads (the character's
+//! id, the profile's `provider` — the head's token rate, R-T).
 
 use serde_json::Value;
 
 use crate::cheap_llm::CheapLlmSelection;
 use crate::db::runtime::Db;
 use crate::jsstr::js_trim;
-use crate::memory_injector::{format_dynamic_memory_head, InjectorResult, RecallAdjustment};
 use crate::model::completion::{CompletionMessage, CompletionProvider};
 use crate::model::embedding::EmbeddingProvider;
 use crate::services::cheap_llm_exec::{CheapLlmTaskExecutor, CheapLlmTaskOptions};
 use crate::services::commonplace_notifications::{build_commonplace_llm_context, CommonplaceParts};
-use crate::services::memory_service::{
-    search_memories_semantic, SemanticSearchOptions, SemanticSearchResult,
+use crate::services::recall::search::{
+    search_memories, RecallSearchOptions, SearchMemoriesOptions,
 };
 
 /// v4 `RECALL_LIMIT` — upper bound on how many memories the recall considers.
 const RECALL_LIMIT: usize = 20;
-/// v4 `RECALL_MIN_IMPORTANCE` — floor on memory importance for a rehearsal.
-const RECALL_MIN_IMPORTANCE: f64 = 0.3;
 /// v4 `RECALL_MAX_ENTRIES` — how many recalled memories survive into the block.
 const RECALL_MAX_ENTRIES: usize = 12;
+/// v4 `RECALL_HEAD_TOKEN_BUDGET` — the rendered head's token budget.
+const RECALL_HEAD_TOKEN_BUDGET: i64 = 200;
 
 /// v4 `VoiceRewriteResult` — the shape both rehearsals return. Never throws;
 /// failure is a field.
@@ -77,23 +75,6 @@ pub fn format_name_list(names: &[String]) -> String {
     }
 }
 
-/// Project a semantic-search result into the injector shape the memory formatter
-/// reads (mirrors `build_context`'s private `injector_result_from_search`).
-fn injector_result_from_search(r: &SemanticSearchResult) -> InjectorResult {
-    InjectorResult {
-        memory: crate::memory_injector::injector_memory_from_json(&r.memory),
-        score: r.score,
-        effective_weight: Some(r.effective_weight),
-        raw_weight: Some(r.raw_weight),
-        recall_adjustment: r.recall_adjustment.as_ref().map(|a| RecallAdjustment {
-            multiplier: Some(a.multiplier),
-            fired: a.fired.clone(),
-            blended_before: Some(a.blended_before),
-            blended_after: Some(a.blended_after),
-        }),
-    }
-}
-
 /// v4 `recallForSeed` — Commonplace Book recall against the operator's draft,
 /// rendered as the block that leads the user-role message.
 ///
@@ -104,11 +85,14 @@ fn injector_result_from_search(r: &SemanticSearchResult) -> InjectorResult {
 /// `log_context` is the caller's bracketed tag (`[CharacterVoicedAnnouncement]`
 /// / `[InSceneVoicedLine]`), which is the only thing the warn line's bytes vary
 /// by — v4 interpolates it the same way.
+#[allow(clippy::too_many_arguments)]
 pub async fn recall_for_seed<E>(
     db: &Db,
     embedding: &E,
     character_id: &str,
     seed_markdown: &str,
+    provider: Option<&str>,
+    user_id: &str,
     chat_id: &str,
     now_ms: f64,
     log_context: &str,
@@ -116,18 +100,21 @@ pub async fn recall_for_seed<E>(
 where
     E: EmbeddingProvider,
 {
-    let memory_results = search_memories_semantic(
+    let memory_results = search_memories(
         db,
         embedding,
         character_id,
         seed_markdown,
-        &SemanticSearchOptions {
-            limit: Some(RECALL_LIMIT),
-            min_importance: Some(RECALL_MIN_IMPORTANCE),
-            now_ms,
+        &SearchMemoriesOptions {
+            user_id: user_id.to_string(),
+            search: RecallSearchOptions {
+                limit: Some(RECALL_LIMIT),
+                min_importance: Some(crate::memory_scoring::RECALL_MIN_IMPORTANCE),
+                now_ms,
+                ..Default::default()
+            },
             ..Default::default()
         },
-        None,
     )
     .await;
 
@@ -141,39 +128,47 @@ where
             tracing::warn!(
                 chatId = %chat_id,
                 characterId = %character_id,
-                error = %err,
+                error = %crate::db::fallback::error_text(&err),
                 "{log_context} Memory recall failed; proceeding without"
             );
             return String::new();
         }
     };
 
-    let injector: Vec<InjectorResult> = results.iter().map(injector_result_from_search).collect();
     // The recall spans the character's whole store, so it carries their memories
     // about other people too; attribute them or the rewrite reads someone else's
-    // life as its own (v4 `d883a5ee1`, bug 122).
+    // life as its own (bug 122).
     let subject = crate::services::memory_subject::build_memory_subject_context(
         db,
         character_id,
-        injector.iter().map(|r| r.memory.about_character_id.clone()),
+        results.iter().map(|r| {
+            r.memory
+                .get("aboutCharacterId")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        }),
     );
-    let formatted =
-        format_dynamic_memory_head(&injector, None, Some(RECALL_MAX_ENTRIES), now_ms, &subject);
+    let formatted = crate::services::recall::render::render_head(
+        &results,
+        provider,
+        &subject,
+        crate::services::recall::render::RenderHeadOptions {
+            max_tokens: RECALL_HEAD_TOKEN_BUDGET,
+            max_entries: RECALL_MAX_ENTRIES,
+            now_ms,
+        },
+    );
     // v4 `if (!formatted.content) return ''`.
     if formatted.content.is_empty() {
         return String::new();
     }
-    // Only the delivered entries count as accessed (v4 `3f7320138` F6, the
-    // `!!id` filter; awaited inline, P4.D268 R-D). Formatting through the
-    // dynamic head also gives a digest its ` (from N notes)` suffix here
-    // (v4 `d58548051`).
+    // The rehearsal carries the block whole: every rendered line is delivered.
     let delivered: Vec<String> = formatted
-        .debug_memories
+        .lines
         .iter()
-        .filter_map(|d| d.memory_id.clone())
-        .filter(|id| !id.is_empty())
+        .map(|l| l.memory_id.clone())
         .collect();
-    crate::services::memory_access::mark_memories_accessed(db, character_id, &delivered).await;
+    crate::services::recall::deliver::stamp_accessed(db, character_id, &delivered).await;
     build_commonplace_llm_context(&CommonplaceParts {
         relevant: Some(formatted.content),
         ..Default::default()

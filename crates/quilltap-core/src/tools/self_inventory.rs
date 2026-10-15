@@ -317,8 +317,7 @@ pub struct SemanticMemoryItem {
     pub summary: String,
     pub importance: Value,
     pub score: Value,
-    #[serde(rename = "effectiveWeight")]
-    pub effective_weight: Value,
+    pub salience: Value,
 }
 
 /// v4 `SelfInventoryInterCharacterMemoryItem`.
@@ -1244,7 +1243,7 @@ fn build_loaded_memories_section(loaded: Option<&LoadedMemoriesContext>) -> Load
                 summary: m.summary.clone(),
                 importance: js_number_to_json(m.importance),
                 score: js_number_to_json(m.score),
-                effective_weight: js_number_to_json(m.effective_weight),
+                salience: js_number_to_json(m.salience),
             })
             .collect(),
         inter_character_memories: loaded
@@ -2642,10 +2641,10 @@ fn format_loaded_memories_section(section: &LoadedMemoriesSection) -> String {
                 ));
                 for m in semantic_memories {
                     parts.push(format!(
-                        "- [importance {}, score {}, weight {}] {}",
+                        "- [importance {}, score {}, salience {}] {}",
                         to_fixed2(&m.importance),
                         to_fixed2(&m.score),
-                        to_fixed2(&m.effective_weight),
+                        to_fixed2(&m.salience),
                         m.summary
                     ));
                 }

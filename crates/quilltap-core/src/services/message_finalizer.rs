@@ -606,6 +606,13 @@ pub struct FinalizeOptions {
     /// below. Empty on a swipe and on a turn that carried nothing.
     pub inform_row_ids: Vec<String>,
     // === end P4.D205 ===
+    /// v4 `builtContext.recallDebugLog` — the turn's recall record (the stage
+    /// trace, the delivered pools, the ring line the replay reads back),
+    /// stored on the assistant message's `debugMemoryLogs` after the save.
+    pub recall_debug_log: Option<Vec<String>>,
+    /// v4 `builtContext.mailAlertsOwed` — the letters Suparṇā announced this
+    /// turn, marked `alerted` once the reply is persisted (bug 227).
+    pub mail_alerts_owed: Option<crate::post_office::mailbox::MailAlertsOwed>,
     pub profile: FinalizerProfile,
     pub streaming: FinalizerStreaming,
     pub compression: FinalizerCompression,
@@ -702,6 +709,8 @@ where
         mut tool_messages,
         pre_generated_assistant_message_id,
         inform_row_ids,
+        recall_debug_log,
+        mail_alerts_owed,
         profile,
         streaming,
         compression,
@@ -1039,6 +1048,38 @@ where
     })
     .await?;
 
+    // === P4.D291 (v4 `584d28164`, `message-finalizer.service.ts:290-300`) ===
+    // The turn's recall record (stage trace, delivered pools, the ring line the
+    // replay reads back) rides on the message it shaped. v4's catch WARN
+    // `Failed to store the recall record on the assistant message` is
+    // unreachable through v4's real repository (`updateMessage` answers `null`
+    // on a failure, logging its own line); v5's home is a WRITER failure,
+    // logged here on the caller thread.
+    if let Some(record) = recall_debug_log.as_ref().filter(|r| !r.is_empty()) {
+        let record_chat_id = chat_id.clone();
+        let record_message_id = assistant_message_id.clone();
+        let updates = serde_json::json!({ "debugMemoryLogs": record });
+        if let Err(error) = db
+            .write(move |writers| {
+                writers
+                    .main()
+                    .chat_messages()
+                    .update_message(&record_chat_id, &record_message_id, &updates)
+                    .map(|_| ())
+            })
+            .await
+        {
+            tracing::warn!(
+                target: "quilltap::message_finalizer",
+                chatId = %chat_id,
+                messageId = %assistant_message_id,
+                error = %crate::db::fallback::error_text(&error),
+                "Failed to store the recall record on the assistant message"
+            );
+        }
+    }
+    // === end P4.D291 ===
+
     // === P4.D205 (v4 `e7d77bb60`, `message-finalizer.service.ts:290-305`) ===
     // Consume this turn's informs. Tied to the *persisted* assistant message,
     // never to context building: a provider failure that saved nothing must
@@ -1093,6 +1134,17 @@ where
         );
     }
     // === end P4.D205 ===
+
+    // Mark the letters Suparṇā announced this turn, on the same footing as the
+    // informs above: only now that the reply is persisted. `None` on a swipe
+    // (bug 227, v4 `69d38dd60`).
+    crate::post_office::mailbox::mark_mail_alerts_delivered(
+        db,
+        mail_alerts_owed.as_ref(),
+        &chat_id,
+        crate::post_office::mailbox::MailAlertsVia::Finalizer,
+    )
+    .await;
 
     // v4 emits a `confirmationResult` event whenever `confirmed !== undefined` —
     // which INCLUDES the user-driven skip path (`confirmed = null`), so the event

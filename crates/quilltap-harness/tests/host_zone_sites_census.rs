@@ -283,16 +283,6 @@ const UTC_ALLOWED: &[(&str, usize, &str)] = &[
         "`wall_ms_in_zone` reads wall digits encoded as UTC epoch ms back out",
     ),
     (
-        "day_references.rs",
-        1,
-        "untouched precedent (Mandate 5): an unresolvable chat zone",
-    ),
-    (
-        "services/memory_recap/distill.rs",
-        1,
-        "untouched precedent (Mandate 5): `local_date_stamp`'s fallback",
-    ),
-    (
         "memory_time/calendar.rs",
         1,
         "`zoned_parts`' misuse fallback for an unresolvable zone NAME — v4's \
@@ -361,12 +351,6 @@ const NAME_ZONE_ALLOWED: &[(&str, usize, &str)] = &[
          `getDatePartsInTimezone`), the sole TZDB call of the timestamp family",
     ),
     (
-        "day_references.rs",
-        1,
-        "`resolve_day_reference` — the chat zone a \"today\"/\"yesterday\" reference \
-         resolves in (calendar math)",
-    ),
-    (
         "db/llm_logs.rs",
         1,
         "`llm_log_retention_cutoff_iso` — the retention cutoff's local-midnight \
@@ -396,11 +380,6 @@ const NAME_ZONE_ALLOWED: &[(&str, usize, &str)] = &[
         1,
         "`format_instant_en_us` — the STORY zone NAME, falling back to the PASSED \
          host display VALUE (P4.140 Tier 3 residue)",
-    ),
-    (
-        "services/memory_recap/distill.rs",
-        1,
-        "`local_date_stamp` — the distill's `server_tz` calendar date",
     ),
 ];
 

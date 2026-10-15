@@ -247,8 +247,13 @@ pub fn locale_date_time_us(iso: &str, zone: &TimeZone) -> Option<String> {
 /// semantics are v4's exactly (JS `Math.floor` on a non-negative f64 is
 /// Rust's `.floor()`); the year branch pluralizes only when the floored
 /// count exceeds 1.
+///
+/// P4.D291: the clamp is JS `Math.max`, which PROPAGATES a NaN (an unparsable
+/// `createdAt`) where Rust's `f64::max` drops it — every comparison with NaN
+/// is false, so v4 falls through to the year branch and says `NaN year ago`
+/// (measured by `recall_render_equivalence`); `f64::max` had answered `today`.
 pub fn format_relative_days(ts_ms: f64, now_ms: f64) -> String {
-    let days_old = ((now_ms - ts_ms) / 86_400_000.0).max(0.0);
+    let days_old = crate::jsnum::math_max(0.0, (now_ms - ts_ms) / 86_400_000.0);
 
     if days_old < 1.0 {
         "today".to_string()
@@ -265,7 +270,13 @@ pub fn format_relative_days(ts_ms: f64, now_ms: f64) -> String {
     } else if days_old < 365.0 {
         format!("{} months ago", (days_old / 30.0).floor() as i64)
     } else {
-        let years = (days_old / 365.0).floor() as i64;
+        // `Math.floor(NaN)` is NaN, and `${NaN}` is `NaN` (singular: NaN > 1
+        // is false).
+        let years = (days_old / 365.0).floor();
+        if years.is_nan() {
+            return "NaN year ago".to_string();
+        }
+        let years = years as i64;
         format!("{} year{} ago", years, if years > 1 { "s" } else { "" })
     }
 }
@@ -339,6 +350,9 @@ mod tests {
         // The shared ladder itself is unchanged.
         assert_eq!(format_relative_days(now - 8.0 * DAY, now), "last week");
         assert_eq!(format_relative_days(now - 45.0 * DAY, now), "last month");
+        // P4.D291: an unparsable date's NaN propagates as v4's `Math.max`
+        // propagates it.
+        assert_eq!(format_relative_days(f64::NAN, now), "NaN year ago");
     }
 
     fn chicago() -> TimeZone {
