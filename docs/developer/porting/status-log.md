@@ -181110,3 +181110,30 @@ This lane's half (the `builtinRefit` key) is written into the Rust comparand (fe
   `vector_entries`) → GREEN from the pin: each plant now `UPDATE memories SET embedding = X'…'` (the corpus is
   this lane's); the builder `build-characters-fixture.ts` was not touched (not dead at the tip — the case, not the
   builder, carried the mirror).
+
+### Tier 2 — the lexical-text writers guard, the bug-243 probe and evidence
+
+- NEW `crates/quilltap-harness/tests/lexical_text_writers_guard.rs` (#17): a RULE over the production zone — each
+  `embedding_text_for(` call (word-bounded; the definition excluded) must be followed within 2,500 code bytes by
+  `lexical_embedding_text_for(` AND the seam field. Writers found on this branch: `services/embedding_generate_job.rs`,
+  `services/memory_index_backfill.rs`. **Request for §S.4:** re-measure on the union (v4 has eight writers at the
+  pin; admission ×4 + the digest embed + the probe land with P4.D290 / P4.D297).
+- NEW `crates/quilltap-host/tests/host_boot_p4d292_builtin_help_embed.rs` (#19): fresh `setup` instance (BUILTIN
+  default) + two memories + the PRODUCTION spine → PHASE 3.8 `unfitted` refit → the reindex → all 131 help docs
+  vectored, no `not found in registry` line (~88 s; a bare `Host::start` registers no EMBEDDING_GENERATE handler —
+  measured first: every job hit the loud fallback).
+- **Bug 243's NO-PORT evidence for P4.D303 (R-AL), re-verified at this branch's tip:**
+  1. `crates/quilltap-core/src/services/job_runner.rs:15-20` — "**In Rust it dissolves.** … So v5 job handlers run
+     **in-process** … No child, no buffer, no reflection." (no forked child, so no child-side plugin load to race);
+  2. `crates/quilltap-core/src/services/embedding_provider.rs:230-231` — `if profile.provider == "BUILTIN" { return
+     generate_builtin_embedding(&self.db, text, profile, lexical_text).await; }` (BUILTIN dispatches BEFORE any
+     registry lookup);
+  3. `crates/quilltap-core/src/services/builtin_embedding.rs:72` — `let mut provider =
+     BuiltinEmbeddingProvider::new(true);` (the TF-IDF provider is constructed directly from linked code);
+  4. `crates/quilltap-core/src/provider_manifest/mod.rs:505, 528-529` — `static BUILT_IN_REGISTRY: LazyLock<Registry>`
+     / `pub fn built_in() -> &'static Registry` (a static registry, populated at first use, never empty); the ONLY
+     `Provider '{name}' not found in registry` site is `embedding_provider.rs:256-258`, reached only for a
+     non-BUILTIN name (pinned for `MYSTERY` at `:914`);
+  5. `crates/quilltap-core/src/services/embedding_refit_job.rs:172` — `let mut vectorizer = TfIdfVectorizer::new(true);`
+     (no `getTfIdfVectorizer` dynamic import — its ERROR / throw NO-PORT too).
+  Plus the behavioural probe above. 💸 dogfood: the same on a fresh `setup` instance by hand.

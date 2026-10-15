@@ -84,6 +84,13 @@ New `services::admission` (v4 `lib/memory/admission/` at the `83334b9a5` pin): `
 
 New differential families from the pin: `admission_tier3_equivalence` (44 steps over UTC and Chicago legs, plus tier-1 content-key and key-scope rows) and `update_memory_tier2_equivalence` (12 edits plus the Commonplace mirror); the retired `memory_gate_tier3` family is deleted and its builder renamed `build-admission-fixture.ts`. Census rows: two admission publish sites; the activity-span row re-pointed to `admit_row`. One measured divergence is pinned both ways and flagged: `FIND_BY_IDS_UNVALIDATED` (v4's `findByIds` drops a schema-invalid row; v5's does not).
 
+#### 2026-10-15 — test: P4.D292 Tier 2 — the lexical-text writers guard and the bug-243 boot probe
+
+_No crate versions bumped._
+
+- New `lexical_text_writers_guard`. Every production call of `embedding_text_for(` must hand the seam `lexical_text: lexical_embedding_text_for(..)` within the same writer sequence. The guard is a rule, not a count. It prints the writer list so the unifier can re-measure the union. Its own fixtures prove it catches a forgetting writer.
+- New host test `host_boot_p4d292_builtin_help_embed` boots a fresh BUILTIN-default instance with memories on the production spine. PHASE 3.8 refits, the reindex follows, and every one of the 131 help docs ends with a vector. No `not found in registry` line appears. This is the behavioural evidence for bug 243's NO-PORT.
+
 #### 2026-10-15 — feat(generators): P4.D292 unit 8 — the character optimizer searches the memory rows and ranks by salience
 
 _Versions: core 0.0.1304._
