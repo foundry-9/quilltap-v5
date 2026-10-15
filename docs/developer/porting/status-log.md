@@ -182577,3 +182577,25 @@ the wipe's truncate lands), so they land and go green together.
     surfaces the same ZodError — the export FAILS. C1-9's read arm is v4-faithful in BOTH modes (strict throws as
     v4's strict throws; `find_by_id_or_none` falls back as v4's non-strict does). Pinned both ways as
     `stream_chats_selected_one_scenario_text` (a NEW `…_scenario_text` copy); `system_export_equivalence` 64/64.
+- **Gate (lane close, `CARGO_INCREMENTAL=0`, `QT_V4_CHECKOUT` / `QT_V4_ROOT` = the pin, the lane's eleven oracle
+  env vars):** `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` AND with
+  `--features quilltap-core/native-transport` clean (after `apps/web` `npm run build`); `cargo test --workspace
+  --no-fail-fast` — **782 binaries / 5,171 passed / 3 failed / 3 ignored**: the three reds are RED BY DESIGN for other
+  owners only (`cli_differential` → P4.D299; `no_memory_lane_remove_markers_left`'s two tests → §S.5);
+  `qtap_schema_embed_guard`, red at `KEYSTONE`, is GREEN. Every owned family green FROM THE PIN by name (via the
+  recipes, outputs under `/tmp/p4d294/`): `system_export_equivalence` 64, `system_import_state` 83,
+  `system_import_equivalence`, `qtap_import_equivalence`, `chat_informs_remap_equivalence` 21,
+  `message_id_remap_equivalence` 34 (NEW), `qtap_schema_embed_guard` 2/2, `qtap_schema_validate_equivalence`,
+  `wardrobe_wear_import_remap_equivalence`, `ai_import_assembly_equivalence`, `import_warning_text_guard`,
+  `qtap_import_guards_equivalence`; `recipe_sweep.py --self-test` exit 0.
+- **Fixtures changed (committed):** `harness/oracle/fixtures/message-id-remap.json` (NEW),
+  `chat-informs-remap.json` (+6 rows), `qtap-schema-validate.json` (+10 mutation rows); the case bodies
+  `system-export.test.ts`, `system-import-execute.test.ts`, `chat-informs-remap.ts`, `message-id-remap.ts` (NEW);
+  `schema-key-order.json` + the vendored schema. No committed DB pair touched. Invalidates no other lane's oracle.
+- **💸 dogfood rows:** a `.qtap` export of a Friday-copy chat with cursors (three keys at the end of the chat line)
+  and a chosen scenario (source + notes after `scenarioText`); that bundle imported "Create New" beside the original
+  (every message present, swipes / summary / Informs / cursors on the new ids, participants / tags / project
+  reconciled); imported twice without preserve-ids with no failure; a chats-only export into an instance holding the
+  character (memories attach) and one where it is archived (not revived); an `instance-settings` round trip.
+- **Versions at close:** core 0.0.1302 (from 0.0.1298 at `KEYSTONE`); host / web / cli / SPA / tauri unchanged;
+  harness frozen 0.0.1110.

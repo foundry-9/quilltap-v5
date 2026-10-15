@@ -403,6 +403,12 @@ v4 `af48f6cc2` (memory refactor Phase B) on the backup and restore carriers, at 
 - Restore: 22j is deleted. Phase 9 adopts an old archive's mirror vector onto a memory that arrived without one (last duplicate wins, counted only after a successful create) and logs `Restored memories`. The summary drops the two vector counts and gains restore-only `legacyVectorsAdopted` (preview 39 keys, restore 41). The archive reader ignores `vector-index-metas.json`; the new-account remap no longer touches it.
 - Harness: two new backup cases (`backup_with_memory_carriers`, `backup_cursor_read_fails`) and a per-case log comparison; the restore census goes from 80 to 79 lines in both lists; the two vector plants are removed; the oracle's restore target gets the cursor table in the migration shape from v4's real migration; the uuid-remap corpus is regenerated from the pin.
 
+#### 2026-10-15 — docs(porting): P4.D294 lane close — the `.qtap` carriers
+
+_Docs-only change._
+
+Closes the P4.D294 lane. The status-log record has the gate, the fixtures changed, the dogfood rows and the versions at close. The work order's status header is set to `LANE COMPLETE`. The workspace suite (782 binaries) passed 5,171 tests and failed 3, all of them red by design for other owners (`cli_differential`, and the two `no_memory_lane_remove_markers_left` tests).
+
 #### 2026-10-15 — test(harness): P4.D294 Tier 2 — mutation proofs, the schema-validator rows, the non-object scenario cell on export
 
 _No crate versions bumped._
