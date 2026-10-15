@@ -1,5 +1,5 @@
-//! Tier-3 differential: the F2 anchor-gate probe (P4.D269; v4 `3f7320138`,
-//! pin `01a83539d`).
+//! Tier-3 differential: the F2 anchor-gate probe (P4.D269, P4.D290; v4
+//! `3f7320138`, at the `83334b9a5` pin).
 //!
 //! Drives v5's REAL `services::anchor_gate_probe::run_anchor_gate_probe` and
 //! `api::memories::memory_anchor_gate_probe` (the `memoryAnchorGateProbe`
@@ -21,11 +21,21 @@
 //! and ERROR) rendered from v4's `{level, message, fields}` into v5's
 //! `"<LEVEL> <target> <message> k=v …"` (an object field becomes `<key>Json`).
 //!
-//! One case is a NAMED both-ways divergence (P4.D269 R-G,
-//! `PROBE_STORE_LOAD_FAILURE`): with `vector_entries` dropped, v4 re-ensures
-//! the table on access and probes an empty store (200), while v5's store load
-//! fails and the route answers 500 `Anchor gate probe failed`. The row pins
-//! BOTH sides as measured, so a convergence on either side trips it.
+//! P4.D290 (Tier 2, the `83334b9a5` pin): the probe decides through
+//! admission's `decideAdmission` — the rows carry `anchoredAction` /
+//! `anchorFreeAction`, the result `lexicalProfile` / `note`, the thresholds come
+//! from the first embedding's provider (`probe_empty_character` keeps the
+//! neural set and a null note). `PROBE_STORE_LOAD_FAILURE` (P4.D269 R-G)
+//! RETIRED on measurement (LR-12): the mirror tables are gone at the pin and in
+//! the widened pair, so `route_vector_entries_dropped` is re-planted `IF EXISTS`
+//! and BOTH sides answer 200 with the same body — compared like any row. The
+//! dimension skip is re-planted on `memories.embedding` (`probe_dim_mismatch`),
+//! beside a mixed-width store and an empty one that proceed. LR-14's
+//! `probe_neural_scripted` runs the NEURAL path: the oracle answers every text
+//! by its summary at the store's width under provider `OPENAI` and EMITS the
+//! exact texts (`canned`); this side builds a `CannedEmbeddingProvider` from
+//! them. The probe's memory-calendar fallback on the route's entry
+//! (`run_anchor_gate_probe`) is `"UTC"`, matching the oracle's `TZ=UTC`.
 //!
 //! Recorded at the pin, not compared (each a measured v4 shape no plant can
 //! make v5 reach the same way): an unparseable `createdAt` never reaches the
@@ -54,7 +64,7 @@
 //!     $N/npx jest --silent --watchman=false --testTimeout=240000 \
 //!       --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- anchor-gate-probe-tier3
 //! Run:
-//!   QT_ORACLE_ANCHOR_GATE_PROBE=/tmp/oracle-anchor-gate-probe.ndjson \
+//!   TZ=UTC QT_ORACLE_ANCHOR_GATE_PROBE=/tmp/oracle-anchor-gate-probe.ndjson \
 //!     cargo test -p quilltap-harness --test anchor_gate_probe_tier3_equivalence -- --nocapture
 
 use std::future::Future;
@@ -64,8 +74,8 @@ use quilltap_core::api::memories::memory_anchor_gate_probe;
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::embedding::{
-    EmbeddingCallOptions, EmbeddingError, EmbeddingProvider, EmbeddingResult,
-    ErasedEmbeddingProvider,
+    CannedEmbeddingProvider, EmbeddingCallOptions, EmbeddingError, EmbeddingProvider,
+    EmbeddingResult, ErasedEmbeddingProvider,
 };
 use quilltap_core::model::wire::CannedWireTransport;
 use quilltap_core::services::anchor_gate_probe::{
@@ -88,10 +98,6 @@ const CAPTURED: &[&str] = &[
     "Error finding recent memories",
     "Error finding memories by IDs",
 ];
-
-/// `PROBE_STORE_LOAD_FAILURE` (P4.D269 R-G) — the both-ways divergence row:
-/// `(case, v4 status, v5 status)`.
-const PROBE_STORE_LOAD_FAILURE: &[(&str, u16, u16)] = &[("route_vector_entries_dropped", 200, 500)];
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -124,6 +130,8 @@ struct CaseSpec {
     fail_text: Option<String>,
     #[serde(default)]
     fail_message: Option<String>,
+    #[serde(default)]
+    neural: bool,
 }
 
 #[derive(Deserialize)]
@@ -376,11 +384,36 @@ fn anchor_gate_probe_matches_v4() {
                 limit: input.limit,
                 embedding_profile_id: None,
             };
+            let neural = c.neural.then(|| {
+                let mut p = CannedEmbeddingProvider::new();
+                for entry in want["canned"]
+                    .as_array()
+                    .expect("the neural case emits its texts")
+                {
+                    let embedding: Vec<f32> = entry["embedding"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|x| x.as_f64().unwrap() as f32)
+                        .collect();
+                    p = p.with_result(
+                        entry["text"].as_str().unwrap(),
+                        EmbeddingResult {
+                            dimensions: embedding.len(),
+                            embedding,
+                            model: "scripted".into(),
+                            provider: "OPENAI".into(),
+                        },
+                    );
+                }
+                p
+            });
             let (result, captured) = quilltap_core::test_support::captured_with(|| {
                 rt.block_on(async {
-                    match &failing {
-                        Some(p) => run_anchor_gate_probe(db, p, &run_input).await,
-                        None => run_anchor_gate_probe(db, &real, &run_input).await,
+                    match (&failing, &neural) {
+                        (Some(p), _) => run_anchor_gate_probe(db, p, &run_input).await,
+                        (None, Some(p)) => run_anchor_gate_probe(db, p, &run_input).await,
+                        (None, None) => run_anchor_gate_probe(db, &real, &run_input).await,
                     }
                 })
             });
@@ -405,37 +438,6 @@ fn anchor_gate_probe_matches_v4() {
             lines = captured;
             let want_status = want["status"].as_u64().unwrap() as u16;
             let got_status = status_of(&resp);
-            if let Some((_, v4, v5)) = PROBE_STORE_LOAD_FAILURE
-                .iter()
-                .find(|(name, _, _)| *name == c.name)
-            {
-                // The named divergence: each side pinned as measured.
-                if want_status != *v4 {
-                    case_failures.push(format!(
-                        "PROBE_STORE_LOAD_FAILURE: v4 now answers {want_status} (was {v4}) — retire or re-rule the row"
-                    ));
-                }
-                if got_status != *v5
-                    || http_body(&resp)
-                        != serde_json::json!({ "error": "Anchor gate probe failed" })
-                {
-                    case_failures.push(format!(
-                        "PROBE_STORE_LOAD_FAILURE: v5 now answers {got_status} {}",
-                        http_body(&resp)
-                    ));
-                }
-                let errors = compared_v5_lines(&lines);
-                let want_error = format!(
-                    "ERROR quilltap_core::api::memories [Memories API] Anchor gate probe failed characterId={character_id} error=no such table: vector_entries"
-                );
-                if !errors.contains(&want_error) {
-                    case_failures.push(format!(
-                        "PROBE_STORE_LOAD_FAILURE: v5's ERROR line missing: {errors:#?}"
-                    ));
-                }
-                report(&c.name, case_failures, &mut failures);
-                continue;
-            }
             if got_status != want_status {
                 case_failures.push(format!("status {got_status} vs {want_status}"));
             }

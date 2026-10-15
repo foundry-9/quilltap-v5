@@ -1,5 +1,5 @@
 {
-  "$comment": "P4.D269 — the anchor-gate probe tier-3 corpus (v4 `lib/memory/anchor-gate-probe.ts` + `POST /api/v1/memories?action=anchor-gate-probe`, pin `01a83539d`). Read by BOTH sides: harness/oracle/cases/anchor-gate-probe-tier3.test.ts and crates/quilltap-harness/tests/anchor_gate_probe_tier3_equivalence.rs. Every case opens a FRESH copy of the committed episodic-recall-{main,mount}.db pair, applies the memory-tiers migration, then runs `basePlant` and the case's own `plant`, one statement each, identically on both sides. The base plant staggers createdAt (the fixture seeds every row at one instant, which would make nothing older) and turns two rows into restatements of older ones: a2 retells a1 with a different anchor line, f1 retells d1 with none.",
+  "$comment": "P4.D269 — the anchor-gate probe tier-3 corpus (v4 `lib/memory/anchor-gate-probe.ts` + `POST /api/v1/memories?action=anchor-gate-probe`, pins `01a83539d` → `83334b9a5` (P4.D290: the probe decides through admission)). Read by BOTH sides: harness/oracle/cases/anchor-gate-probe-tier3.test.ts and crates/quilltap-harness/tests/anchor_gate_probe_tier3_equivalence.rs. Every case opens a FRESH copy of the committed episodic-recall-{main,mount}.db pair, applies the memory-tiers migration, then runs `basePlant` and the case's own `plant`, one statement each, identically on both sides. The base plant staggers createdAt (the fixture seeds every row at one instant, which would make nothing older) and turns two rows into restatements of older ones: a2 retells a1 with a different anchor line, f1 retells d1 with none. P4.D290: `probe_dim_mismatch` re-planted on `memories.embedding` (every row a 3-wide raw Float32 vector — the store has no entry of the probe's width); `probe_mixed_widths` (one row narrowed: the store still holds the probe's width, so nothing skips) and `probe_no_stored_vectors` (an empty store proceeds) added; `route_vector_entries_dropped` re-planted `IF EXISTS` (the mirror tables are gone at the pin and in the widened pair — LR-12's measurement); `probe_neural_scripted` (LR-14) answers every text with a vector keyed by its SUMMARY at the store's width under provider `OPENAI`, so a retelling with a different anchor line folds only anchor-free; the exact texts are emitted for the Rust side.",
   "characterId": "c1000000-0000-4000-8000-0000000000e1",
   "userId": "a0000000-0000-4000-8000-000000000001",
   "basePlant": [
@@ -14,8 +14,18 @@
     "UPDATE memories SET summary = (SELECT summary FROM memories WHERE id = 'e2000000-0000-4000-8000-0000000000d1'), content = (SELECT content FROM memories WHERE id = 'e2000000-0000-4000-8000-0000000000d1') WHERE id = 'e2000000-0000-4000-8000-0000000000f1'"
   ],
   "cases": [
-    { "name": "probe_default", "kind": "service", "input": {} },
-    { "name": "probe_limit_3", "kind": "service", "input": { "limit": 3 } },
+    {
+      "name": "probe_default",
+      "kind": "service",
+      "input": {}
+    },
+    {
+      "name": "probe_limit_3",
+      "kind": "service",
+      "input": {
+        "limit": 3
+      }
+    },
     {
       "name": "probe_cold_sample",
       "kind": "service",
@@ -53,7 +63,7 @@
       "kind": "service",
       "input": {},
       "plant": [
-        "UPDATE vector_indices SET dimensions = 7 WHERE characterId = 'c1000000-0000-4000-8000-0000000000e1'"
+        "UPDATE memories SET embedding = X'0000003F0000003F0000003F' WHERE characterId = 'c1000000-0000-4000-8000-0000000000e1'"
       ]
     },
     {
@@ -66,23 +76,119 @@
     {
       "name": "probe_empty_character",
       "kind": "service",
-      "input": { "characterId": "c1000000-0000-4000-8000-0000000000f1" }
+      "input": {
+        "characterId": "c1000000-0000-4000-8000-0000000000f1"
+      }
     },
-    { "name": "route_ok", "kind": "route", "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1", "limit": 4 } },
-    { "name": "route_no_limit", "kind": "route", "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1" } },
-    { "name": "route_missing_character", "kind": "route", "body": { "characterId": "00000000-0000-4000-8000-0000000000ff" } },
-    { "name": "route_bad_uuid", "kind": "route", "body": { "characterId": "nope" } },
-    { "name": "route_limit_zero", "kind": "route", "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1", "limit": 0 } },
-    { "name": "route_limit_201", "kind": "route", "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1", "limit": 201 } },
-    { "name": "route_limit_fraction", "kind": "route", "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1", "limit": 1.5 } },
-    { "name": "route_limit_negative_fraction", "kind": "route", "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1", "limit": -0.5 } },
-    { "name": "route_limit_unsafe_int", "kind": "route", "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1", "limit": 100000000000000000000 } },
-    { "name": "route_both_bad", "kind": "route", "body": { "characterId": "nope", "limit": 0 } },
+    {
+      "name": "probe_mixed_widths",
+      "kind": "service",
+      "input": {},
+      "plant": [
+        "UPDATE memories SET embedding = X'0000003F0000003F0000003F' WHERE id = 'e2000000-0000-4000-8000-0000000000d1'"
+      ]
+    },
+    {
+      "name": "probe_no_stored_vectors",
+      "kind": "service",
+      "input": {},
+      "plant": [
+        "UPDATE memories SET embedding = NULL WHERE characterId = 'c1000000-0000-4000-8000-0000000000e1'"
+      ]
+    },
+    {
+      "name": "probe_neural_scripted",
+      "kind": "service",
+      "input": {},
+      "neural": true
+    },
+    {
+      "name": "route_ok",
+      "kind": "route",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-0000000000e1",
+        "limit": 4
+      }
+    },
+    {
+      "name": "route_no_limit",
+      "kind": "route",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-0000000000e1"
+      }
+    },
+    {
+      "name": "route_missing_character",
+      "kind": "route",
+      "body": {
+        "characterId": "00000000-0000-4000-8000-0000000000ff"
+      }
+    },
+    {
+      "name": "route_bad_uuid",
+      "kind": "route",
+      "body": {
+        "characterId": "nope"
+      }
+    },
+    {
+      "name": "route_limit_zero",
+      "kind": "route",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-0000000000e1",
+        "limit": 0
+      }
+    },
+    {
+      "name": "route_limit_201",
+      "kind": "route",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-0000000000e1",
+        "limit": 201
+      }
+    },
+    {
+      "name": "route_limit_fraction",
+      "kind": "route",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-0000000000e1",
+        "limit": 1.5
+      }
+    },
+    {
+      "name": "route_limit_negative_fraction",
+      "kind": "route",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-0000000000e1",
+        "limit": -0.5
+      }
+    },
+    {
+      "name": "route_limit_unsafe_int",
+      "kind": "route",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-0000000000e1",
+        "limit": 100000000000000000000
+      }
+    },
+    {
+      "name": "route_both_bad",
+      "kind": "route",
+      "body": {
+        "characterId": "nope",
+        "limit": 0
+      }
+    },
     {
       "name": "route_vector_entries_dropped",
       "kind": "route",
-      "body": { "characterId": "c1000000-0000-4000-8000-0000000000e1", "limit": 2 },
-      "plant": ["DROP TABLE vector_entries"]
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-0000000000e1",
+        "limit": 2
+      },
+      "plant": [
+        "DROP TABLE IF EXISTS vector_entries"
+      ]
     }
   ]
 }

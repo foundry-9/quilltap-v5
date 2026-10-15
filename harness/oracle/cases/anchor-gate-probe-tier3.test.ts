@@ -1,8 +1,10 @@
 /**
  * @jest-environment node
  *
- * P4.D269 — tier-3 ORACLE for the F2 anchor-gate probe (v4 `3f7320138`, pin
- * `01a83539d`): drives v4's REAL `runAnchorGateProbe`
+ * P4.D269 — tier-3 ORACLE for the F2 anchor-gate probe (v4 `3f7320138`; at
+ * the `83334b9a5` pin since P4.D290 — the probe decides through admission's
+ * `decideAdmission`, with `lexicalProfile` / `note`): drives v4's REAL
+ * `runAnchorGateProbe`
  * (`lib/memory/anchor-gate-probe.ts`) and the REAL `POST
  * /api/v1/memories?action=anchor-gate-probe` route (`handleAnchorGateProbe`,
  * through `createContextHandler`, so the Zod 400 and the 404 / 500 arms are
@@ -12,7 +14,9 @@
  *
  * Nothing is mocked but auth and the startup gate (the memories-routes mock
  * set) and, in ONE case (`failText`), a wrapper around the REAL
- * `generateEmbeddingForUser` that rejects that exact text. Embeddings run REAL
+ * `generateEmbeddingForUser` that rejects that exact text, and in ONE case
+ * (`neural`, LR-14) a scripted NEURAL provider whose exact texts are emitted
+ * (`canned`) for the Rust side. Embeddings run REAL
  * through the fixture's fitted BUILTIN TF-IDF profile on both sides —
  * deterministic and free. Each copy gets v4's REAL `add-memory-tiers-v1`
  * (`applyMemoryTiersMigration`, C1 §13), then the corpus's `basePlant` and the
@@ -50,12 +54,33 @@ interface CaseSpec {
   plant?: string[];
   failText?: string;
   failMessage?: string;
+  /** LR-14: a scripted NEURAL provider (see the corpus `$comment`). */
+  neural?: boolean;
 }
 interface Corpus {
   characterId: string;
   userId: string;
   basePlant: string[];
   cases: CaseSpec[];
+}
+
+/** Deterministic unit vector for a key (FNV-1a over UTF-16 code units + xorshift). */
+function hashVector(key: string, dims: number): number[] {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  const out: number[] = [];
+  let x = h || 1;
+  for (let i = 0; i < dims; i++) {
+    x ^= x << 13; x >>>= 0;
+    x ^= x >>> 17;
+    x ^= x << 5; x >>>= 0;
+    out.push((x % 2000) / 1000 - 1);
+  }
+  const norm = Math.sqrt(out.reduce((acc, y) => acc + y * y, 0)) || 1;
+  return out.map((y) => y / norm);
 }
 
 /** The lines the family compares (message → compared). */
@@ -141,8 +166,25 @@ async function main(): Promise<void> {
     // probe calls rejects that exact text (and passes every other through).
     const failText = c.failText;
     const failMessage = c.failMessage ?? 'canned embedding failure';
+    // LR-14: the scripted neural provider — a vector keyed by the text's
+    // SUMMARY (its first `\n\n` part) at the store's width, provider OPENAI;
+    // every exact text answered is emitted for the Rust side.
+    const neural = c.neural === true;
+    let neuralWidth = 0;
+    const neuralCanned = new Map<string, number[]>();
     jest.doMock('@/lib/embedding/embedding-service', () => {
       const actual = jest.requireActual('@/lib/embedding/embedding-service');
+      if (neural) {
+        return {
+          __esModule: true,
+          ...actual,
+          generateEmbeddingForUser: async (text: string) => {
+            const f32 = new Float32Array(hashVector(text.split('\n\n')[0], neuralWidth));
+            neuralCanned.set(text, Array.from(f32));
+            return { embedding: f32, model: 'scripted', dimensions: f32.length, provider: 'OPENAI' };
+          },
+        };
+      }
       if (failText === undefined) return actual;
       return {
         __esModule: true,
@@ -213,6 +255,14 @@ async function main(): Promise<void> {
     for (const sql of [...corpus.basePlant, ...(c.plant ?? [])]) {
       await rawQuery(sql);
     }
+    // LR-11: startup may already have loaded v4's memory-index cache; the
+    // plants rewrote the rows behind it, so drop it (v5 keeps none).
+    const { memoryIndex } = await import('@/lib/memory/index-store');
+    memoryIndex.reloadAll();
+    if (neural) {
+      const entries = await memoryIndex.entries(corpus.characterId);
+      neuralWidth = entries[0]?.embedding.length ?? 4;
+    }
     captured.length = 0;
     other.length = 0;
 
@@ -242,6 +292,7 @@ async function main(): Promise<void> {
       );
       rec = { name: c.name, kind: c.kind, status: res.status, body: await res.json() };
     }
+    if (neural) rec.canned = Array.from(neuralCanned, ([text, embedding]) => ({ text, embedding }));
     rec.logs = captured.slice();
     rec.otherLogs = other.slice();
 

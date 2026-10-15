@@ -56,6 +56,14 @@ _Docs-only change._
 
 The P4.D288 work order's status header now names `149cb8fc1` as the commit P4.D290 through P4.D295 branch from.
 
+#### 2026-10-14 — feat(memory): P4.D290 Tier 2 — the anchor probe decides through admission; the CLI's anchor-probe rendering; mutation proofs and the jest mirrors
+
+_Versions: core 0.0.1300, cli 0.0.33._
+
+`services::anchor_gate_probe` now asks admission's own decider what it would do with each sampled row, anchored and anchor-free (v4 at the `83334b9a5` pin): rows carry `anchoredAction` / `anchorFreeAction`, the result `lexicalProfile` and a `note` for the Built-in TF-IDF profile, the thresholds come from the first embedding's provider, the store loads once per run, and the dimension skip follows v4's store-shape test. The gate's two merge thresholds lost `pub` (the probe was their last outside caller). `quilltap anchor-probe` marks a row that folds only without its anchor line, prints v4's relabelled summary, and shows the note in yellow.
+
+`anchor_gate_probe_tier3` is green from the pin with re-planted cases, a neural scripted-provider case and the retired `PROBE_STORE_LOAD_FAILURE` divergence (both sides now answer 200). New unit tests: the at-cap re-embed (bug 204) and the sixteen `admission-admit.test.ts` parent cases. Mutation proofs: 9 of 10 rules redden their families; bug 200's orphan widen is unprovable in v5 (`FIND_BY_IDS_UNVALIDATED`). The probe takes the memory calendar's host fallback as a value (`run_anchor_gate_probe_in_zone`; the route's entry forwards `"UTC"` until P4.D298 threads the engine's zone), and the admission unit tests moved inline under `#[cfg(test)]` without global resets.
+
 #### 2026-10-14 — docs(porting): P4.D290 records its `ADMISSION` sha (`e43551bf5`) and the C1-B spellings in the order header
 
 _Docs-only change._

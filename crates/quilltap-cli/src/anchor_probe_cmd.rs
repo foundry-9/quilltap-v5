@@ -1,8 +1,15 @@
+// === P4.D290: anchor-probe rendering ===
 //! `quilltap anchor-probe <characterId>` — measure whether the episodic anchor
-//! line embedded with each memory suppresses Memory Gate reinforcement (P4.D269;
-//! v4 `packages/quilltap/lib/anchor-probe-command.js`, `3f7320138`, ported
-//! line-for-line: flag parsing, the help text, the stderr progress line, the
-//! band table, the row table, `--json`).
+//! line embedded with each memory keeps admission from folding a retelling
+//! into the row it retells (P4.D269; v4 `packages/quilltap/lib/anchor-probe-
+//! command.js` at the `83334b9a5` pin, ported line-for-line: flag parsing, the
+//! help text, the stderr progress line, the band table, the row table,
+//! `--json`). Since P4.D290 the probe decides through admission's own decider:
+//! a row's `▸` marks a row admission would fold (reinforce, absorb, promote)
+//! only WITHOUT the anchor line (`anchorFreeAction` folds, `anchoredAction`
+//! does not), the summary reads `would fold` / `near-dup absorbed` / `Fold only
+//! without anchors`, and a lexical profile's `note` prints in yellow after the
+//! `Embeddings` line.
 //!
 //! Like v4's, a thin HTTP wrapper over the running server. v4 POSTs
 //! `/api/v1/memories?action=anchor-gate-probe`; v5 has no memories REST family,
@@ -16,6 +23,7 @@
 //! ANSI-stripped width (recall-replay pads by the raw `padEnd`).
 //!
 //! Read-only, but it costs embedding calls (roughly up to 7 per sampled row).
+// === end P4.D290 ===
 
 use serde_json::Value;
 
@@ -135,6 +143,7 @@ fn strip_ansi(s: &str) -> String {
     out
 }
 
+// === P4.D290: anchor-probe rendering ===
 /// v4 `fmt(n, digits)`: `—` (dimmed) for null/undefined, `n.toFixed(digits)`
 /// otherwise. A non-number throws into the launcher's generic catch.
 fn fmt(v: Option<&Value>, digits: u32) -> String {
@@ -182,26 +191,28 @@ fn collapse_ws(s: &str) -> String {
     out
 }
 
-/// v4 `printRows(rows, thresholds)`.
-fn print_rows(rows: &[Value], thresholds: &Value) {
-    out::log(&format!("\n{BOLD}Rows{RESET} ({})", rows.len()));
+/// v4 `folds(kind)`: admission would fold the row into an older one.
+fn folds(kind: Option<&Value>) -> bool {
+    matches!(
+        kind.and_then(Value::as_str),
+        Some("reinforce" | "absorb" | "promote-and-reinforce")
+    )
+}
+
+/// v4 `printRows(rows, thresholds)`'s lines.
+fn render_rows(rows: &[Value], thresholds: &Value) -> Vec<String> {
+    let mut lines = vec![format!("\n{BOLD}Rows{RESET} ({})", rows.len())];
     if rows.is_empty() {
-        out::log(&format!("  {DIM}(none){RESET}"));
-        return;
+        lines.push(format!("  {DIM}(none){RESET}"));
+        return lines;
     }
-    out::log(&format!(
+    lines.push(format!(
         "  {DIM}{}{}{}{}summary{RESET}",
         pad_end("anchored", 10),
         pad_end("free", 10),
         pad_end("delta", 9),
         pad_end("anchor", 8)
     ));
-    // `thresholds?.reinforce ?? 0.85`.
-    let reinforce_value = match thresholds.get("reinforce") {
-        None | Some(Value::Null) => Value::from(0.85),
-        Some(v) => v.clone(),
-    };
-    let reinforce = as_js_number(Some(&reinforce_value));
     for row in rows {
         let a = row.get("anchoredBest");
         let f = row.get("anchorFreeBest");
@@ -211,8 +222,7 @@ fn print_rows(rows: &[Value], thresholds: &Value) {
             (Some(a), Some(f)) => Some(f - a),
             _ => None,
         };
-        let only_free =
-            f_num.is_some_and(|f| f >= reinforce) && !a_num.is_some_and(|a| a >= reinforce);
+        let only_free = folds(row.get("anchorFreeAction")) && !folds(row.get("anchoredAction"));
         let delta_str = match delta {
             None => format!("{DIM}—{RESET}"),
             Some(d) => format!(
@@ -237,16 +247,77 @@ fn print_rows(rows: &[Value], thresholds: &Value) {
             pad(&delta_str, 9),
             pad(&anchor_str, 8)
         );
-        if only_free {
-            out::log(&format!("{YELLOW}▸ {RESET}{line}"));
+        lines.push(if only_free {
+            format!("{YELLOW}▸ {RESET}{line}")
         } else {
-            out::log(&format!("  {line}"));
-        }
+            format!("  {line}")
+        });
     }
-    out::log(&format!(
-        "\n  {YELLOW}▸{RESET} {DIM}= crosses {} only without the anchor line{RESET}",
-        nodefmt::js_string(Some(&reinforce_value))
+    // `fmt(thresholds?.reinforce, 2)`.
+    lines.push(format!(
+        "\n  {YELLOW}▸{RESET} {DIM}= would fold into an older row only without the anchor line (reinforce ≥ {}){RESET}",
+        fmt(thresholds.get("reinforce"), 2)
     ));
+    lines
+}
+
+/// v4's summary block (from the `Character` line through `Fold only without
+/// anchors`).
+fn render_summary(result: &Value) -> Vec<String> {
+    let anchored = or_empty(result.get("anchored"));
+    let free = or_empty(result.get("anchorFree"));
+    let s = |v: Option<&Value>| nodefmt::js_string(v);
+    let mut lines = vec![
+        format!("\n{BOLD}Character{RESET}  {}", s(result.get("characterId"))),
+        format!(
+            "{BOLD}Sampled{RESET}    {} rows, {} with an anchor line",
+            s(result.get("sampled")),
+            s(result.get("anchoredRows"))
+        ),
+        format!(
+            "{BOLD}Embeddings{RESET} {} generated",
+            s(result.get("embeddingsGenerated"))
+        ),
+    ];
+    // `if (result.note) console.log(YELLOW + note + RESET)`.
+    if nodefmt::js_truthy(result.get("note")) {
+        lines.push(format!("{YELLOW}{}{RESET}", s(result.get("note"))));
+    }
+    lines.push(format!(
+        "\n{DIM}{}{}anchor-free{RESET}",
+        pad_end("", 22),
+        pad_end("anchored", 11)
+    ));
+    lines.push(format!(
+        "{BOLD}{}{RESET}{}{CYAN}{}{RESET}",
+        pad_end("would fold", 22),
+        pad_end(&s(anchored.get("reinforce")), 11),
+        s(free.get("reinforce"))
+    ));
+    lines.push(format!(
+        "{BOLD}{}{RESET}{}{CYAN}{}{RESET}",
+        pad_end("near-dup absorbed", 22),
+        pad_end(&s(anchored.get("nearDuplicate")), 11),
+        s(free.get("nearDuplicate"))
+    ));
+    let only = result.get("crossedOnlyWithoutAnchors");
+    let colour = if as_js_number(only) > 0.0 {
+        YELLOW
+    } else {
+        GREEN
+    };
+    lines.push(format!(
+        "{BOLD}Fold only without anchors{RESET}  {colour}{}{RESET}",
+        s(only)
+    ));
+    lines
+}
+
+/// v4 `printRows(rows, thresholds)`.
+fn print_rows(rows: &[Value], thresholds: &Value) {
+    for line in render_rows(rows, thresholds) {
+        out::log(&line);
+    }
 }
 
 /// `x || {}` over a JSON field.
@@ -256,6 +327,7 @@ fn or_empty(v: Option<&Value>) -> Value {
         _ => Value::Object(serde_json::Map::new()),
     }
 }
+// === end P4.D290 ===
 
 pub fn run(args: &[String]) {
     let (flags, positional) = parse_flags(args);
@@ -302,6 +374,7 @@ pub fn run(args: &[String]) {
         }
     };
 
+    // === P4.D290: anchor-probe rendering ===
     let payload: Value = match serde_json::from_str(&payload_text) {
         Ok(v) => nodefmt::js_faithful_json(&v),
         Err(_) => {
@@ -352,52 +425,9 @@ pub fn run(args: &[String]) {
     }
 
     let t = or_empty(result.get("thresholds"));
-    let anchored = or_empty(result.get("anchored"));
-    let free = or_empty(result.get("anchorFree"));
-    let s = |v: Option<&Value>| nodefmt::js_string(v);
-    out::log(&format!(
-        "\n{BOLD}Character{RESET}  {}",
-        s(result.get("characterId"))
-    ));
-    out::log(&format!(
-        "{BOLD}Sampled{RESET}    {} rows, {} with an anchor line",
-        s(result.get("sampled")),
-        s(result.get("anchoredRows"))
-    ));
-    out::log(&format!(
-        "{BOLD}Embeddings{RESET} {} generated",
-        s(result.get("embeddingsGenerated"))
-    ));
-    out::log(&format!(
-        "\n{DIM}{}{}anchor-free{RESET}",
-        pad_end("", 22),
-        pad_end("anchored", 11)
-    ));
-    out::log(&format!(
-        "{BOLD}{}{RESET}{}{CYAN}{}{RESET}",
-        pad_end(&format!("reinforce ≥ {}", fmt(t.get("reinforce"), 2)), 22),
-        pad_end(&s(anchored.get("reinforce")), 11),
-        s(free.get("reinforce"))
-    ));
-    out::log(&format!(
-        "{BOLD}{}{RESET}{}{CYAN}{}{RESET}",
-        pad_end(
-            &format!("near-dup ≥ {}", fmt(t.get("nearDuplicate"), 2)),
-            22
-        ),
-        pad_end(&s(anchored.get("nearDuplicate")), 11),
-        s(free.get("nearDuplicate"))
-    ));
-    let only = result.get("crossedOnlyWithoutAnchors");
-    let colour = if as_js_number(only) > 0.0 {
-        YELLOW
-    } else {
-        GREEN
-    };
-    out::log(&format!(
-        "{BOLD}Crossed only without anchors{RESET}  {colour}{}{RESET}",
-        s(only)
-    ));
+    for line in render_summary(&result) {
+        out::log(&line);
+    }
 
     let rows = match result.get("rows") {
         Some(Value::Array(items)) => items.clone(),
@@ -406,6 +436,7 @@ pub fn run(args: &[String]) {
     print_rows(&rows, &t);
     out::log("");
     out::exit(0);
+    // === end P4.D290 ===
 }
 
 #[cfg(test)]
@@ -436,3 +467,110 @@ mod tests {
         assert_eq!(collapse_ws("a\u{85}b"), "a\u{85}b");
     }
 }
+
+// === P4.D290: anchor-probe rendering ===
+/// v4's printed bytes at the `83334b9a5` pin (`anchor-probe-command.js`
+/// `printRows` `:121-143`, the summary `:204-219`).
+#[cfg(test)]
+mod rendering_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn row(summary: &str, anchored: Value, free: Value, a: Value, f: Value) -> Value {
+        json!({
+            "memoryId": "m", "summary": summary, "createdAt": "2026-01-01T00:00:00.000Z",
+            "hasAnchorLine": true, "anchoredBest": a, "anchoredBestId": null,
+            "anchorFreeBest": f, "anchorFreeBestId": null,
+            "anchorFreeAction": free, "anchoredAction": anchored,
+        })
+    }
+
+    /// `▸` marks a row that folds ONLY anchor-free (the actions, not the
+    /// scores); the legend names the reinforce threshold at two places.
+    #[test]
+    fn rows_mark_the_anchor_free_only_folds_by_action() {
+        let rows = vec![
+            row(
+                "only free",
+                json!("insert"),
+                json!("reinforce"),
+                json!(0.31),
+                json!(0.5),
+            ),
+            row(
+                "both",
+                json!("absorb"),
+                json!("promote-and-reinforce"),
+                json!(0.9),
+                json!(0.95),
+            ),
+            row(
+                "neither",
+                Value::Null,
+                Value::Null,
+                Value::Null,
+                Value::Null,
+            ),
+        ];
+        let lines = render_rows(&rows, &json!({ "reinforce": 0.4, "nearDuplicate": 0.8 }));
+        assert_eq!(lines[0], format!("\n{BOLD}Rows{RESET} (3)"));
+        assert_eq!(
+            lines[2],
+            format!("{YELLOW}▸ {RESET}0.310     0.500     +0.190   yes     only free")
+        );
+        assert_eq!(lines[3], "  0.900     0.950     +0.050   yes     both");
+        assert_eq!(
+            lines[4],
+            format!("  {DIM}—{RESET}         {DIM}—{RESET}         {DIM}—{RESET}        yes     neither")
+        );
+        assert_eq!(
+            lines[5],
+            format!(
+                "\n  {YELLOW}▸{RESET} {DIM}= would fold into an older row only without the anchor line (reinforce ≥ 0.40){RESET}"
+            )
+        );
+        // No thresholds: `fmt(undefined, 2)` is the dim dash.
+        let lines = render_rows(&rows[..1], &json!({}));
+        assert!(lines
+            .last()
+            .unwrap()
+            .contains(&format!("(reinforce ≥ {DIM}—{RESET})")));
+    }
+
+    #[test]
+    fn the_summary_carries_v4s_labels_and_the_note_after_embeddings() {
+        let result = json!({
+            "characterId": "c", "sampled": 7, "anchoredRows": 3,
+            "thresholds": { "reinforce": 0.4, "nearDuplicate": 0.8 },
+            "anchored": { "reinforce": 2, "nearDuplicate": 1 },
+            "anchorFree": { "reinforce": 3, "nearDuplicate": 1 },
+            "crossedOnlyWithoutAnchors": 1, "embeddingsGenerated": 11,
+            "lexicalProfile": true, "note": "Built-in note.", "rows": [],
+        });
+        let lines = render_summary(&result);
+        assert_eq!(
+            lines,
+            vec![
+                format!("\n{BOLD}Character{RESET}  c"),
+                format!("{BOLD}Sampled{RESET}    7 rows, 3 with an anchor line"),
+                format!("{BOLD}Embeddings{RESET} 11 generated"),
+                format!("{YELLOW}Built-in note.{RESET}"),
+                format!("\n{DIM}                      anchored   anchor-free{RESET}"),
+                format!("{BOLD}would fold            {RESET}2          {CYAN}3{RESET}"),
+                format!("{BOLD}near-dup absorbed     {RESET}1          {CYAN}1{RESET}"),
+                format!("{BOLD}Fold only without anchors{RESET}  {YELLOW}1{RESET}"),
+            ]
+        );
+        // A null note prints nothing; zero crossings are green.
+        let mut quiet = result.clone();
+        quiet["note"] = Value::Null;
+        quiet["crossedOnlyWithoutAnchors"] = json!(0);
+        let lines = render_summary(&quiet);
+        assert_eq!(lines.len(), 7);
+        assert_eq!(
+            lines[6],
+            format!("{BOLD}Fold only without anchors{RESET}  {GREEN}0{RESET}")
+        );
+    }
+}
+// === end P4.D290 ===

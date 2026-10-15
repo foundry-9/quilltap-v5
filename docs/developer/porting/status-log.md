@@ -180825,3 +180825,94 @@ Lane `claude/p4.d290-admission-149cb8fc1`, worktree `.claude/worktrees/p4d290-ad
   `&[character_id]`, logging DEBUG `Maintenance watermark check skipped after admission {module:
   'memory:admission', characterId, error}` on failure; the `admission_tier3` watermark invariant becomes the
   measured call list.
+
+### Unit 2 — Tier 2: the anchor probe on admission's decider, its CLI region, the mutation proofs, the mirrors
+
+- **Item 13 — `services/anchor_gate_probe.rs` rewritten in place** (v4 `anchor-gate-probe.ts` at the pin): ONE
+  `CharacterVectorStore::load` per run; v4's `memoryIndex.shape` skip (a non-empty store with NO entry of the
+  probe's width; `store` = the dominant width); the anchored embed carries `lexical_text`, the anchor-free embed
+  none; the thresholds re-picked from the FIRST successful embedding's provider (an empty sample keeps the neural
+  set); both sides through `decide_admission` over the older-only top 5 (no digest following);
+  `admission_reinforced` / `is_near_duplicate_decision` for the bands; the rows' `anchorFreeAction` /
+  `anchoredAction` (v4's literal order — anchor-free FIRST); `lexicalProfile` + the byte-exact `note`
+  (`LEXICAL_PROFILE_NOTE`); `hasAnchors` and the anchored text in the memory-calendar zone
+  (`refresh_memory_time_zone` over the host's system zone — v4 falls back to the process zone; no struct change
+  in P4.D298's `api/memories.rs`). A neighbour's stored vector is decoded locally (no reach into
+  `memory_service.rs`, P4.D291's). The gate's `MERGE_THRESHOLD` / `NEAR_DUPLICATE_THRESHOLD` import went; the
+  probe was their last outside caller, so they lost `pub` and their two markers (the consts stay the frozen
+  gate's internals). **`no_memory_lane_remove_markers_left` now 32 markers.**
+- **`anchor_gate_probe_tier3` — red-first:** at the pin the oracle could not run at all (`SqliteError: no such
+  table: vector_indices` — `probe_dim_mismatch`'s plant). **Plant rewrites:** `probe_dim_mismatch` on
+  `memories.embedding` (every row a 3-wide raw Float32 vector — every row skips with v4's WARN); NEW
+  `probe_mixed_widths` (one row narrowed: still matching, nothing skips) and `probe_no_stored_vectors` (an empty
+  store proceeds to inserts); `route_vector_entries_dropped` re-planted `DROP TABLE IF EXISTS` — **LR-12
+  MEASURED: the mirror tables are gone at the pin AND in the widened pair (the original plant fails on both
+  sides), and re-planted, both sides answer 200 with the same body — `PROBE_STORE_LOAD_FAILURE` RETIRED (the
+  ruled table and its row deleted from the family).** NEW `probe_neural_scripted` (LR-14): the oracle answers
+  every text with a vector keyed by its summary at the store's width under provider `OPENAI` and EMITS the exact
+  texts; the Rust side builds a `CannedEmbeddingProvider` from them — the neural thresholds, `lexicalProfile:
+  false`, `note: null`, eleven calls. (Its decisions are all inserts: the stored vectors stay TF-IDF, so no
+  anchor-free fold can appear — recorded, not dressed up.) **The oracle drops v4's memory-index cache after the
+  plants** (startup loads it; the plants rewrote the rows behind it — LR-11; before that the two re-planted
+  cases read the stale cache). **23 / 23 GREEN from the pin**; the run requires `TZ=UTC` (asserted).
+- **Item 14:** P4.D288 already re-aimed the route's 500 arm (`anchor_probe_store_failure_logs_v4s_error_and_
+  answers_500` pins `anchor_gate_probe_failed` directly; the probe's `Err` is now only a read-pool failure). No
+  HANDOFF.
+- **Item 15 — the CLI region (`anchor_probe_cmd.rs`, fenced `// === P4.D290: anchor-probe rendering ===`):** the
+  module docs; `render_rows` (`▸` on `folds(anchorFreeAction) && !folds(anchoredAction)`, the new legend `=
+  would fold into an older row only without the anchor line (reinforce ≥ X)`), `render_summary` (`would fold`,
+  `near-dup absorbed`, `Fold only without anchors`, the YELLOW `note` right after `Embeddings`), the run tail
+  from the payload parse onward; unit pins of v4's printed bytes (`rendering_tests`, 2). **Tier R** (`cli_
+  differential`, my fenced block `// === P4.D290: anchor-probe rendering rows ===`: `anchor-probe decided
+  table` / `json` — a row folding only anchor-free, one folding both, a null pair, `lexicalProfile`, a note):
+  run whole from the pin — **every anchor-probe rendering row GREEN** (`table`, `json`, three limits, `empty
+  rows`, the five refusals, `unreachable`, the two new rows); the 9 reds are help-text / completion bytes
+  (`db help`, `completion bash|zsh|fish`, `recall-replay help|no chat`, `anchor-probe help|-h|no id`) —
+  P4.D299's (§R.10(i)), not this lane's.
+- **Item 16 — mutation proofs** (a throwaway driver; each mutation applied, the families run, the source
+  restored): **9 / 10 RED by name** — `hotOnly: true` (admission_tier3), the lock removed (admission_tier3 + the
+  FIFO unit test), the ledger bypassed (admission_tier3), the commit point moved (the unit commit-point test), the
+  re-embed skipped at the cap (a NEW unit test — `apply_fold_re_embeds_at_the_footnote_cap_when_the_anchor_line_
+  moves`, added because no test could see it), `raise_importance` lowering (admission_tier3 + unit), the empty
+  check removed (admission_tier3), the TF-IDF scale ignored (admission_tier3), the probe never re-picking its
+  thresholds (anchor_gate_probe_tier3). **The widen capped at 5 stays GREEN — UNPROVABLE in v5**
+  (`FIND_BY_IDS_UNVALIDATED`: no row the index loads is missing from `find_by_ids`).
+- **Item 17 — the jest mirrors:** `admission-admit.test.ts`'s 16 parent cases as `tests::admit_mirror` (the two
+  job-child cases NO-PORT, LR-4); `anchor-gate-probe-lexical.test.ts`'s two (the Built-in note + TF-IDF
+  thresholds; no note on a neural profile) are the probe's `a_builtin_first_embedding_selects_the_tfidf_scale_
+  and_the_note` + `an_empty_character_…_on_the_neural_scale`. The admission module: 45 unit tests.
+- **Versions at close:** core 0.0.1300, cli 0.0.33 (harness frozen 0.0.1110; host / web / tauri / SPA
+  unchanged).
+- **HANDOFFs:** (1) §R.10(h) the watermark call — unit 1's. (2) **To P4.D298 — the probe route's zone:**
+  `host_zone_sites_census` forbids an ambient zone read in core, so the probe takes the memory calendar's host
+  fallback as a VALUE (`run_anchor_gate_probe_in_zone(db, provider, input, host_zone_fallback)`);
+  `run_anchor_gate_probe` (the signature `api/memories.rs::memory_anchor_gate_probe` calls) forwards with
+  `"UTC"`. The hunk: in `memory_anchor_gate_probe`, call `run_anchor_gate_probe_in_zone(db, provider, &input,
+  <the engine's calendar name — `HostConfig.tz`'s value as the engine holds it>)`. Until then an instance with NO
+  `chat_settings.timezone` renders the probe's anchor dates on UTC where v4 uses its process zone (an instance
+  WITH one — the normal case — is unaffected). (3) The workspace gate's two lane-caused reds were fixed before
+  the commit: the probe's ambient zone read (`host_zone_sites_census`) and the admission unit tests' trigger
+  `DELETE`s counted as production deleters (`memory_retire_sole_deleter_guard` — the module moved inline under
+  `#[cfg(test)]`).
+- **Deferrals (Tier 3, recorded):** item 19 NO-PORT — the job-child half of admission (host-RPC `admitMemory` /
+  `countRecentAdmissions` + its WARN, `patchChildIndex` + its DEBUG, the IPC `memory-index-patch`, `isJobChild`,
+  the two child refusals) for P4.D303's R-AL record; item 20 — the watermark HANDOFF above; item 21 — the
+  "about = holder" reader census (LR-8) OWED: after a name-presence flip the stored `aboutCharacterId` is the
+  holder's own id, not NULL; which readers treat the two differently is unmeasured.
+- **FINDING for the human (repeated):** `FIND_BY_IDS_UNVALIDATED` — see unit 1.
+- **💸 for the dogfood pass:** the order's list, unchanged (a reinforcing extraction turn, an absorb, a hand-written
+  memory over an extracted twin, a cold row promoted, a BUILTIN instance's `thresholdScale: tfidf`, a width
+  switch + bug 237's WARN, an edit that re-embeds and one refused, the Memories card refreshing on the new hint,
+  `quilltap anchor-probe` with the note and `▸` on the actions).
+- **Lane-close gate** (`TZ=UTC CARGO_INCREMENTAL=0`, `QT_V4_CHECKOUT` / `QT_V4_ROOT` = the pin, the four family
+  oracles + the admission pair): fmt clean; clippy (both feature sets) clean; `cargo test --workspace
+  --no-fail-fast` — **782 binaries / 5,210 passed / 5 failed / 3 ignored, zero SKIP**. The reds: the three
+  by-design binaries (`cli_differential` — P4.D299's help / completion bytes; `no_memory_lane_remove_markers_left`
+  — 32 markers + P4.D289's floored-weight offenders; `qtap_schema_embed_guard` — P4.D294) and ONE lane flake,
+  FIXED: `admit_mirror::answers_a_repeated_job_attempt_key_from_the_ledger_and_writes_nothing` — the module's
+  parallel unit tests each called `reset_admission_state_for_tests()`, which could wipe the process-global ledger
+  between another test's two attempts; the resets were removed from the parallel tests (the single-test harness
+  binaries keep theirs), then the whole core lib ran green 3 / 3 (3,663 passed). My families GREEN by name inside
+  the run: `admission_tier3_equivalence`, `update_memory_tier2_equivalence`, `anchor_gate_probe_tier3_equivalence`.
+  `recipe_sweep.py --self-test` 0. (The families ran through their own env blocks, not the sweep driver — no
+  sweep was started on the shared machine.)

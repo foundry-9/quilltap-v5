@@ -7,7 +7,9 @@
 //! family → P4.D297): their unit tests pin the old `[MemoryGate]` contract, so
 //! a forwarding shim onto `admit_row` would redden them. Each marked item goes
 //! with its last caller's lane, or at §S.5. Its two items with no caller
-//! outside this file (`RELATED_THRESHOLD`, `GATE_TOP_K`) lost `pub`.
+//! outside this file (`RELATED_THRESHOLD`, `GATE_TOP_K`, and — once the anchor
+//! probe moved onto admission's thresholds — `NEAR_DUPLICATE_THRESHOLD` /
+//! `MERGE_THRESHOLD`) lost `pub`.
 //!
 //! The **memory gate** service — v4's `createMemoryWithGate` / `runMemoryGate`
 //! (`lib/memory/memory-service.ts` + `lib/memory/memory-gate.ts`). The pre-write
@@ -72,16 +74,14 @@ use crate::services::activity_registry::track_activity;
 
 use crate::db::runtime::Db;
 
-// LANE-REMOVE(P4.D290|P4.D296|P4.D297|P4.D298): v4 deleted memory-gate.ts's NEAR_DUPLICATE_THRESHOLD in 8af764514
 /// At or above this cosine similarity the candidate is an exact-or-near-exact
 /// restatement of an existing memory. No new row is written and the existing
 /// text is left alone, but the observation still counts:
 /// [`absorb_near_duplicate`] bumps the row's reinforcement count (v4
 /// `3f7320138` F1).
-pub const NEAR_DUPLICATE_THRESHOLD: f64 = 0.90;
-// LANE-REMOVE(P4.D290|P4.D296|P4.D297|P4.D298): v4 deleted memory-gate.ts's MERGE_THRESHOLD in 8af764514
+const NEAR_DUPLICATE_THRESHOLD: f64 = 0.90;
 /// At or above this the best match is reinforced instead of duplicated.
-pub const MERGE_THRESHOLD: f64 = 0.85;
+const MERGE_THRESHOLD: f64 = 0.85;
 /// Related-but-distinct band floor — matches here get bidirectionally linked.
 const RELATED_THRESHOLD: f64 = 0.70;
 /// Top-K nearest existing memories fetched from the vector store during the gate.

@@ -1579,7 +1579,6 @@ mod admission_publish_tests {
 
     #[tokio::test]
     async fn each_admission_with_a_row_announces_once_and_a_reject_or_dry_run_never() {
-        crate::services::admission::reset_admission_state_for_tests();
         let (_dir, db) = make_db();
         let mut cap = HintCapture::start();
         cap.arm_writer_thread(&db).await;

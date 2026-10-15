@@ -5277,6 +5277,33 @@ fn cli_differential() {
                 );
             }
         }
+        // === P4.D290: anchor-probe rendering rows ===
+        // The pin's probe decides through admission: each row carries
+        // `anchoredAction` / `anchorFreeAction`, the result `lexicalProfile` and
+        // a `note`. `▸` follows the actions (one row folds only anchor-free, one
+        // folds both, one is a null pair), the summary reads `would fold` /
+        // `near-dup absorbed` / `Fold only without anchors`, and the yellow note
+        // follows `Embeddings`.
+        {
+            let decided = r#"{"characterId":"c1000000-0000-4000-8000-0000000000e1","sampled":4,"anchoredRows":3,"thresholds":{"reinforce":0.4,"nearDuplicate":0.8},"anchored":{"reinforce":1,"nearDuplicate":1},"anchorFree":{"reinforce":2,"nearDuplicate":1},"crossedOnlyWithoutAnchors":1,"embeddingsGenerated":9,"lexicalProfile":true,"note":"Built-in (TF-IDF) profile: anchor lines are never embedded, so both sides embed the same text; the comparison is not measurable here. Decisions show what admission would do.","rows":[{"memoryId":"m1","summary":"Folds only without its anchor line.","createdAt":"2026-06-01T00:00:00.000Z","hasAnchorLine":true,"anchoredBest":0.31,"anchoredBestId":"m9","anchorFreeBest":0.52,"anchorFreeBestId":"m9","anchorFreeAction":"reinforce","anchoredAction":"insert-linked"},{"memoryId":"m2","summary":"Folds both ways.","createdAt":"2026-06-02T00:00:00.000Z","hasAnchorLine":true,"anchoredBest":0.86,"anchoredBestId":"m8","anchorFreeBest":0.9,"anchorFreeBestId":"m8","anchorFreeAction":"promote-and-reinforce","anchoredAction":"absorb"},{"memoryId":"m3","summary":"Skipped: another width.","createdAt":"2026-06-03T00:00:00.000Z","hasAnchorLine":true,"anchoredBest":null,"anchoredBestId":null,"anchorFreeBest":null,"anchorFreeBestId":null,"anchorFreeAction":null,"anchoredAction":null},{"memoryId":"m4","summary":"Scores above the old band, inserts both ways.","createdAt":"2026-06-04T00:00:00.000Z","hasAnchorLine":false,"anchoredBest":0.95,"anchoredBestId":"m7","anchorFreeBest":0.97,"anchorFreeBestId":"m7","anchorFreeAction":"insert","anchoredAction":"insert"}]}"#;
+            let stub = probe_stub(decided);
+            let port = stub.port.to_string();
+            ctx.case_wire(
+                "anchor-probe decided table",
+                &s(&["anchor-probe", CHAR, "--port", &port]),
+                recall_opts(),
+                &stub,
+                pair(),
+            );
+            ctx.case_wire(
+                "anchor-probe decided json",
+                &s(&["anchor-probe", CHAR, "--port", &port, "--json"]),
+                recall_opts(),
+                &stub,
+                pair(),
+            );
+        }
+        // === end P4.D290 ===
         let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let dead_port = dead.local_addr().unwrap().port().to_string();
         drop(dead);
