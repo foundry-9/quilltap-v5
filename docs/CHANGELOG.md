@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — chore(logs): v4's debug-line prune — the mailbox's two descriptive messages, no per-file sync trace (01f508d4e, P4.D310)
+
+_Versions: core 0.0.1308._
+
+Ports the `lib/` half of v4's `01f508d4e` debug-line prune. The mailbox DEBUGs now use v4's descriptive messages: `Mail alerts marked delivered` (was `markMailAlertsDelivered`) and `Letter discarded` (was `discardLetter`). Fields are unchanged, and the per-letter WARN keeps its text. All five pin sites move with them, including the oracle-side spy in `orchestrator-tier3.test.ts`. `[Sync] Reading disk file` is removed from `read_disk_file`, and its pin now asserts silence. v5's transcript projection never carried either `[Transcript]` line, so there was nothing to remove there. The mail and orchestrator tier-3 families were regenerated from the `25b8fab6a` pin.
+
 #### 2026-10-16 — fix(jobs): the conversation render decides each chunk's embedding from the row before the write (bug 248, P4.D310)
 
 _Versions: core 0.0.1307._

@@ -2244,8 +2244,9 @@ fn orchestrator_tier3_matches_oracle() {
     // --- P4.D291 (bug 227): the deferred mail flip, per call ---
     // Every call records its `mail` row; a call with an in-case letter compares
     // the letters left unalerted after the turn, and every call compares its
-    // `markMailAlertsDelivered` DEBUGs (`chatId, vaultId, via, requested,
-    // marked` in v4's order) — the silence leg on every letter-less call.
+    // `markMailAlertsDelivered` DEBUGs — v4 `01f508d4e`'s message `Mail alerts
+    // marked delivered` (`chatId, vaultId, via, requested, marked` in v4's
+    // order) — the silence leg on every letter-less call.
     assert_eq!(
         want_mail.len(),
         spec.calls.len(),
@@ -2266,13 +2267,13 @@ fn orchestrator_tier3_matches_oracle() {
         let got: Vec<&String> = initial_logs[&call.name]
             .iter()
             .chain(chain_logs.get(&call.name).into_iter().flatten())
-            .filter(|l| l.contains(" markMailAlertsDelivered "))
+            .filter(|l| l.contains(" Mail alerts marked delivered "))
             .collect();
         let want: Vec<String> = want_lines
             .iter()
             .map(|w| {
                 let mut line =
-                    "DEBUG quilltap::post_office::mailbox markMailAlertsDelivered".to_string();
+                    "DEBUG quilltap::post_office::mailbox Mail alerts marked delivered".to_string();
                 for (k, v) in w["context"].as_object().expect("context bag") {
                     let text = match v {
                         Value::String(s) => s.clone(),
@@ -2286,7 +2287,7 @@ fn orchestrator_tier3_matches_oracle() {
         assert_eq!(
             got.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
             want.iter().map(String::as_str).collect::<Vec<_>>(),
-            "{}: markMailAlertsDelivered lines",
+            "{}: Mail alerts marked delivered lines",
             call.name
         );
         for w in want_lines {

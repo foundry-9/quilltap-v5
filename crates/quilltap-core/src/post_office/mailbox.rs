@@ -430,7 +430,8 @@ pub fn mark_alerted(mount: &Connection, vault_id: &str, path: &str) -> Result<()
 /// read, so a failed lookup logs `Error querying joined file links` (v4's outer
 /// `Error finding file link by mount point and path` is unreachable) and
 /// discards NOTHING (`false`), never a throw; [`delete_database_document`] is now
-/// v4's on exactly that (P4.131).
+/// v4's on exactly that (P4.131). Logs DEBUG `Letter discarded {vaultId, path,
+/// deleted}` — v4 `01f508d4e` renamed the message from the bare function name.
 pub fn discard_letter(mount: &Connection, vault_id: &str, path: &str) -> Result<bool, DbError> {
     let deleted = delete_database_document(mount, vault_id, path)?;
     tracing::debug!(
@@ -438,7 +439,7 @@ pub fn discard_letter(mount: &Connection, vault_id: &str, path: &str) -> Result<
         vaultId = vault_id,
         path = path,
         deleted = deleted,
-        "discardLetter"
+        "Letter discarded"
     );
     Ok(deleted)
 }
@@ -631,9 +632,11 @@ impl MailAlertsVia {
 /// write over [`mark_alerted`] (a vanished letter is its warned no-op, still
 /// counted marked — v4's `markAlerted` returns normally there); a failed write
 /// logs WARN `markMailAlertsDelivered: could not mark letter alerted {chatId,
-/// vaultId, path, error}` and the loop carries on. Then DEBUG
-/// `markMailAlertsDelivered {chatId, vaultId, via, requested, marked}`. Both
-/// lines on the CALLER thread (memory note `capture-rig-writer-thread`).
+/// vaultId, path, error}` and the loop carries on. Then DEBUG `Mail alerts
+/// marked delivered {chatId, vaultId, via, requested, marked}` — v4
+/// `01f508d4e` renamed it from the bare `markMailAlertsDelivered`; the WARN
+/// keeps its text. Both lines on the CALLER thread (memory note
+/// `capture-rig-writer-thread`).
 pub async fn mark_mail_alerts_delivered(
     db: &crate::db::runtime::Db,
     owed: Option<&MailAlertsOwed>,
@@ -676,7 +679,7 @@ pub async fn mark_mail_alerts_delivered(
         via = via.as_str(),
         requested = owed.paths.len(),
         marked = marked,
-        "markMailAlertsDelivered"
+        "Mail alerts marked delivered"
     );
 }
 // === end P4.D291 ===

@@ -91,18 +91,13 @@ pub fn resolve_in_target(
 }
 
 /// Read one file's bytes from the target, refusing a path that escapes it —
-/// v4 `readDiskFile` (`apply-disk.ts:55-60`, `197104649`). The containment
-/// check runs FIRST, so an escape errs before any line; then DEBUG `[Sync]
-/// Reading disk file` `{relativePath}` (v4's root logger); then the read, its
-/// failure in Node's `open` message form. The sync engine's disk-side
+/// v4 `readDiskFile` (`apply-disk.ts:55-59`). The containment check runs
+/// FIRST, then the read, its failure in Node's `open` message form — with NO
+/// line: v4 `01f508d4e` removed the per-file `[Sync] Reading disk file` trace
+/// `197104649` had added (P4.D274 ported it; P4.D310 removed it). The sync engine's disk-side
 /// `bytesFor` (`sync/index.ts:265-279`) delegates here — the one disk read.
 pub(crate) fn read_disk_file(target_path: &Path, relative_path: &str) -> Result<Vec<u8>, String> {
     let absolute = resolve_in_target(target_path, relative_path).map_err(|e| e.to_string())?;
-    tracing::debug!(
-        target: "quilltap::mount_index",
-        relativePath = %relative_path,
-        "[Sync] Reading disk file",
-    );
     std::fs::read(&absolute).map_err(|e| super::node_io_message(&e, "open", &absolute))
 }
 
@@ -383,20 +378,18 @@ pub fn apply_disk_action(
 mod tests {
     use super::*;
 
-    /// P4.D274 (v4 `197104649`): a disk-side read logs `[Sync] Reading disk
-    /// file` `{relativePath}` exactly once and answers the bytes.
+    /// A disk-side read answers the bytes and logs NOTHING: v4 `01f508d4e`
+    /// pruned the per-file `[Sync] Reading disk file` trace P4.D274 ported
+    /// from `197104649`.
     #[test]
-    fn a_disk_read_logs_v4s_line_once() {
+    fn a_disk_read_logs_nothing() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("Notes")).unwrap();
         std::fs::write(dir.path().join("Notes/a.md"), b"hello").unwrap();
         let (bytes, lines) =
             crate::test_support::captured_with(|| read_disk_file(dir.path(), "Notes/a.md"));
         assert_eq!(bytes.unwrap(), b"hello");
-        assert_eq!(
-            lines,
-            ["DEBUG quilltap::mount_index [Sync] Reading disk file relativePath=Notes/a.md"]
-        );
+        assert!(lines.is_empty(), "{lines:?}");
     }
 
     /// The containment check runs FIRST: an escaping path errs before any line.

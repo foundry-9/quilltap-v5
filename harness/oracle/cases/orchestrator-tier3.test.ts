@@ -753,7 +753,8 @@ async function main(): Promise<void> {
       if (INFORM_CONSUME_MESSAGES.has(message)) {
         informConsumeLines.push({ level: 'debug', message, context: context ?? null });
       }
-      if (message === 'markMailAlertsDelivered') {
+      // v4 `01f508d4e` renamed the DEBUG from the bare function name.
+      if (message === 'Mail alerts marked delivered') {
         mailLines.push({ level: 'debug', message, context: context ?? null });
       }
       return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);

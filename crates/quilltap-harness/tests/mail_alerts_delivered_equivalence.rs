@@ -225,7 +225,10 @@ fn mail_alerts_delivered_matches_oracle() {
         let relevant: Vec<String> = lines
             .into_iter()
             .filter(|l| {
-                l.contains("markMailAlertsDelivered")
+                // v4 `01f508d4e`: the DEBUG's message is `Mail alerts marked
+                // delivered`; the per-letter WARN keeps `markMailAlertsDelivered:`.
+                l.contains("Mail alerts marked delivered")
+                    || l.contains("markMailAlertsDelivered")
                     || l.contains("markAlerted")
                     || l.contains("Error finding document")
             })

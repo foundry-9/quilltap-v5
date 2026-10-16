@@ -5857,12 +5857,12 @@ mod tool_only_mail_mark_tests {
         .await;
         let marks: Vec<&String> = lines
             .iter()
-            .filter(|l| l.contains(" markMailAlertsDelivered "))
+            .filter(|l| l.contains(" Mail alerts marked delivered "))
             .collect();
         assert_eq!(
             marks,
             vec![&format!(
-                "DEBUG quilltap::post_office::mailbox markMailAlertsDelivered \
+                "DEBUG quilltap::post_office::mailbox Mail alerts marked delivered \
                  chatId=chat-without-a-row vaultId={vault} via=tool-only requested=1 marked=1"
             )],
             "{lines:#?}"

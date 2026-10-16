@@ -809,7 +809,7 @@ async fn run_mail(
 
 /// v5-side capture pins for v4's handler log lines (P4.D234 — every one was
 /// absent from v5 before this lane: the four new read/discard lines, the
-/// `discardLetter` debug, and the pre-existing `Reply target not in sender
+/// `discardLetter` debug (`Letter discarded` since v4 `01f508d4e`), and the pre-existing `Reply target not in sender
 /// mailbox` debug). Each fires on its own branch with v4's level, message and
 /// fields, and stays silent on the siblings. The texts are v4's
 /// (`read-mail-handler.ts`, `discard-mail-handler.ts`, `mailbox.ts`,
@@ -852,7 +852,7 @@ fn assert_mail_logs(logs: &HashMap<&'static str, Vec<Vec<String>>>, spec: &Spec,
         op("discard_ok", 0),
         &vec![
             format!(
-                "DEBUG quilltap::post_office::mailbox discardLetter vaultId={rv} path={} deleted=true",
+                "DEBUG quilltap::post_office::mailbox Letter discarded vaultId={rv} path={} deleted=true",
                 p("unalerted")
             ),
             format!(
@@ -866,7 +866,7 @@ fn assert_mail_logs(logs: &HashMap<&'static str, Vec<Vec<String>>>, spec: &Spec,
         op("discard_twice", 1),
         &vec![
             format!(
-                "DEBUG quilltap::post_office::mailbox discardLetter vaultId={rv} path={} deleted=false",
+                "DEBUG quilltap::post_office::mailbox Letter discarded vaultId={rv} path={} deleted=false",
                 p("blank")
             ),
             format!(
