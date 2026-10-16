@@ -53,6 +53,7 @@ function participant(id: string, characterId: string, name: string): Participant
     <qt-run-tool-modal
       [chatId]="'chat-1'"
       [participants]="participants()"
+      [initialTool]="initialTool()"
       (executed)="ran = ran + 1"
       (close)="closed = closed + 1"
     />
@@ -63,11 +64,14 @@ class Host {
     participant('p1', 'char-1', 'Lorian'),
     participant('p2', 'char-2', 'Riya'),
   ]);
+  readonly initialTool = signal<{ toolId: string; nonce: number } | null>(null);
   ran = 0;
   closed = 0;
 }
 
-async function render(): Promise<ComponentFixture<Host>> {
+async function render(
+  initialTool: { toolId: string; nonce: number } | null = null,
+): Promise<ComponentFixture<Host>> {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [Host],
@@ -77,6 +81,7 @@ async function render(): Promise<ComponentFixture<Host>> {
     ],
   });
   const fixture = TestBed.createComponent(Host);
+  fixture.componentInstance.initialTool.set(initialTool);
   fixture.detectChanges();
   await settle(fixture);
   return fixture;
@@ -275,5 +280,114 @@ describe('RunToolModal', () => {
     pick(fixture, 'Search Memories').click();
     await settle(fixture);
     expect(fixture.nativeElement.textContent).toContain('(incomplete)');
+  });
+});
+
+/**
+ * v4 `RunToolModal.test.tsx:613-659` (`4877fc2da`, "initialTool (the composer's
+ * `/` commands)") ported case for case, plus the `available === false` arm and
+ * its fallback text.
+ */
+describe("RunToolModal — initialTool (the composer's `/` commands)", () => {
+  const SEARCH: AvailableTool = {
+    id: 'search',
+    name: 'Search Memories',
+    description: 'Look things up',
+    source: 'built-in',
+    category: 'memory',
+  };
+  const WEAR: AvailableTool = {
+    id: 'wardrobe_wear',
+    name: 'Wear Wardrobe Items',
+    description: 'Put things on',
+    source: 'built-in',
+    category: 'wardrobe',
+    parameters: { type: 'object', properties: { operations: { type: 'string' } } },
+  };
+
+  beforeEach(() => {
+    sent.length = 0;
+    runAnswer = { success: true };
+  });
+
+  function title(fixture: ComponentFixture<Host>): string {
+    return (fixture.nativeElement.querySelector('.qt-dialog-title')?.textContent ?? '').trim();
+  }
+
+  it("opens straight onto the requested tool's form", async () => {
+    tools = [SEARCH, WEAR];
+    const fixture = await render({ toolId: 'wardrobe_wear', nonce: 1 });
+
+    expect(title(fixture)).toBe('Run Tool: Wear Wardrobe Items');
+    // The form (v4's `json-schema-form` test id).
+    expect(fixture.nativeElement.querySelector('qt-json-schema-form')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('operations');
+    // "Back" still returns to the list.
+    pick(fixture, 'Back').click();
+    await settle(fixture);
+    expect(fixture.nativeElement.textContent).toContain('Search Memories');
+  });
+
+  it('stays on the list and says so when the tool is not in this chat', async () => {
+    tools = [SEARCH];
+    const fixture = await render({ toolId: 'nonesuch', nonce: 1 });
+
+    expect(fixture.nativeElement.textContent).toContain('Search Memories');
+    expect(toasts()).toContainEqual({
+      type: 'error',
+      message: 'No tool named "nonesuch" is available in this chat',
+    });
+  });
+
+  it('re-selects on a new nonce for the same tool', async () => {
+    tools = [WEAR];
+    const fixture = await render({ toolId: 'wardrobe_wear', nonce: 1 });
+    pick(fixture, 'Back').click();
+    await settle(fixture);
+    expect(title(fixture)).toBe('Run Tool');
+
+    fixture.componentInstance.initialTool.set({ toolId: 'wardrobe_wear', nonce: 2 });
+    await settle(fixture);
+    expect(title(fixture)).toBe('Run Tool: Wear Wardrobe Items');
+  });
+
+  it('does not re-apply a nonce it has applied', async () => {
+    tools = [WEAR];
+    const fixture = await render({ toolId: 'wardrobe_wear', nonce: 1 });
+    pick(fixture, 'Back').click();
+    await settle(fixture);
+    // A changed list (a refetch) with the same request.
+    fixture.componentInstance.initialTool.set({ toolId: 'wardrobe_wear', nonce: 1 });
+    tools = [WEAR, SEARCH];
+    await TestBed.inject(QueryClient).invalidateQueries({ queryKey: ['tools'] });
+    await settle(fixture);
+    expect(title(fixture)).toBe('Run Tool');
+    expect(fixture.nativeElement.textContent).toContain('Search Memories');
+  });
+
+  it("toasts an unavailable tool's reason and stays on the list", async () => {
+    tools = [SEARCH, { ...WEAR, available: false, unavailableReason: 'No wardrobe here' }];
+    const fixture = await render({ toolId: 'wardrobe_wear', nonce: 1 });
+    expect(title(fixture)).toBe('Run Tool');
+    expect(toasts()).toContainEqual({ type: 'error', message: 'No wardrobe here' });
+  });
+
+  it("falls back to '\"<name>\" is not available in this chat' without a reason", async () => {
+    tools = [SEARCH, { ...WEAR, available: false }];
+    const fixture = await render({ toolId: 'wardrobe_wear', nonce: 1 });
+    expect(title(fixture)).toBe('Run Tool');
+    expect(toasts()).toContainEqual({
+      type: 'error',
+      message: '"Wear Wardrobe Items" is not available in this chat',
+    });
+  });
+
+  it('searches the INVOCABLE list only (v4 searches `invocable`)', async () => {
+    tools = [SEARCH, { ...WEAR, userInvocable: false }];
+    await render({ toolId: 'wardrobe_wear', nonce: 1 });
+    expect(toasts()).toContainEqual({
+      type: 'error',
+      message: 'No tool named "wardrobe_wear" is available in this chat',
+    });
   });
 });

@@ -7,6 +7,7 @@ import {
   input,
   output,
   signal,
+  untracked,
 } from '@angular/core';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
@@ -266,6 +267,15 @@ export class RunToolModal {
 
   readonly chatId = input.required<string>();
   readonly participants = input.required<ParticipantDetail[]>();
+  /**
+   * Open on a tool's form (v4 `RunToolModal.initialTool`, `4877fc2da` — the
+   * composer's `/` commands). "Re-applied on every open — the nonce changes
+   * with each request, so picking the same command twice in a row re-selects."
+   * v5's Salon mounts this modal per open, so a fresh instance applies its
+   * first nonce by construction; the nonce is still honoured so a `/roll` while
+   * the sidebar already has the modal open re-selects as v4 does.
+   */
+  readonly initialTool = input<{ toolId: string; nonce: number } | null>(null);
 
   /** v4 `onToolExecuted()` — the parent refetches. */
   readonly executed = output<void>();
@@ -306,7 +316,31 @@ export class RunToolModal {
       const first = this.activeCharacters()[0]?.character?.id ?? null;
       if (first && this.characterId() === null) this.characterId.set(first);
     });
+    // v4 `:113-133`: once the invocable list lands, a requested tool is
+    // selected — or, when it is not dealt or not reachable here, the list
+    // stays and a toast says why. Once per nonce.
+    effect(() => {
+      const request = this.initialTool();
+      const tools = this.tools();
+      if (!request || !this.toolsQuery.isSuccess() || this.toolsQuery.isFetching()) return;
+      if (this.appliedNonce === request.nonce) return;
+      this.appliedNonce = request.nonce;
+      untracked(() => {
+        const requested = tools.find((tool) => tool.id === request.toolId);
+        if (!requested) {
+          this.toasts.showError(`No tool named "${request.toolId}" is available in this chat`);
+        } else if (requested.available === false) {
+          this.toasts.showError(
+            requested.unavailableReason || `"${requested.name}" is not available in this chat`,
+          );
+        } else {
+          this.selectTool(requested);
+        }
+      });
+    });
   }
+
+  private appliedNonce: number | null = null;
 
   protected readonly title = computed(() =>
     this.selected() ? `Run Tool: ${this.selected()!.name}` : 'Run Tool',

@@ -2,10 +2,12 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   input,
   output,
   signal,
+  untracked,
 } from '@angular/core';
 import { Router } from '@angular/router';
 import { injectQuery } from '@tanstack/angular-query-experimental';
@@ -461,6 +463,17 @@ export class CustomToolsPopup {
   readonly disabled = input(false);
   /** v4 `CustomToolsButton` `variant` — see {@link RngDropdown.variant}. */
   readonly variant = input<'gutter' | 'toolbar'>('toolbar');
+  /**
+   * Open straight onto a tool's form (v4 `CustomToolRunDialog.initialTool`,
+   * `4877fc2da` — the composer's `/` commands). "Applied once per nonce, after
+   * the fresh roster arrives; it lands on the remembered values for that tool
+   * like any other selection." A NEW nonce opens the dialog through
+   * {@link open}, as v4's `openCustomTool(initial)` does; the composer's slash
+   * host calls {@link open} directly.
+   */
+  readonly initialTool = input<{ name: string; asCharacterId: string | null; nonce: number } | null>(
+    null,
+  );
   /** A run landed — the salon refetches the chat (v4 `onRan`). */
   readonly ran = output<void>();
 
@@ -492,8 +505,10 @@ export class CustomToolsPopup {
 
   /** Show the button when there is anything to say — a runnable tool OR a broken
    *  file (v4 `customToolsAvailable`: gating on tools alone hides the error
-   *  badge exactly when it is most needed). */
-  protected readonly available = computed(
+   *  badge exactly when it is most needed). PUBLIC because it is also the
+   *  composer's `/` menu's `customToolsAvailable` — ONE derivation, so `/pascal`
+   *  and the customs list agree with the wand by construction. */
+  readonly available = computed(
     () => this.tools().length > 0 || this.errors().length > 0,
   );
 
@@ -558,12 +573,81 @@ export class CustomToolsPopup {
     return err.mountPointId ? "Open in Pascal's Workbench to repair" : null;
   }
 
+  /** The wand: open wherever the dialog remembers being (v4 `openCustomTool()`). */
   protected openDialog(): void {
+    this.open();
+  }
+
+  /**
+   * Open the dialog — on a tool's form when given one (v4 `useModalState.
+   * openCustomTool`, `4877fc2da`: "Without one the dialog lands wherever it
+   * remembers being"). The ONE opening path: the wand, the `initialTool` input
+   * and the composer's `/` commands all come through here, so one instance
+   * serves them all and keeps its memory across a close (v4 moved its dialog
+   * into `ChatModals` to share one instance; v5's popup already is that one
+   * instance, living where the composer's slash host can reach it).
+   */
+  open(initial?: { name: string; asCharacterId: string | null }): void {
     if (this.disabled()) return;
+    const request = initial
+      ? { name: initial.name, asCharacterId: initial.asCharacterId, nonce: ++this.requestNonce }
+      : null;
+    this.request.set(request);
     this.isOpen.set(true);
     // Refetch fresh on open — definitions live in stores the user edits mid-chat.
-    void this.rosterQuery.refetch();
+    void this.rosterQuery.refetch().finally(() => this.fetchedForNonce.set(request?.nonce ?? null));
   }
+
+  /** The pending pre-selection, if the last open asked for one. */
+  private readonly request = signal<{ name: string; asCharacterId: string | null; nonce: number } | null>(
+    null,
+  );
+  private requestNonce = 0;
+  /** The request whose open's refetch has come back — see the effect below. */
+  private readonly fetchedForNonce = signal<number | null>(null);
+  private appliedNonce: number | null = null;
+  private lastInputNonce: number | null = null;
+
+  /** A new `initialTool` nonce is a request to open on that tool. */
+  private readonly applyInitialInput = effect(() => {
+    const initial = this.initialTool();
+    if (!initial || initial.nonce === this.lastInputNonce) return;
+    this.lastInputNonce = initial.nonce;
+    untracked(() => this.open({ name: initial.name, asCharacterId: initial.asCharacterId }));
+  });
+
+  /**
+   * v4 `:272-292`: "A pre-selection waits for the roster THIS open fetched, not
+   * a cached one, so a tool added to a store mid-chat is found. One nonce, one
+   * application." `rosterSettled` is `isSuccess && !isFetching`; the extra
+   * `fetchedForNonce` gate is v5's — `injectQuery`'s signals lag the refetch
+   * by a tick, so without it a cached roster could read as THIS open's.
+   */
+  private readonly applyRequest = effect(() => {
+    // Tracked like v4's `[isOpen, initialTool, rosterSettled, tools]` deps — a
+    // roster that changes under an open dialog re-runs this, and the nonce
+    // keeps it from re-selecting.
+    const tools = this.tools();
+    const request = this.request();
+    if (!request || !this.isOpen()) return;
+    if (!this.rosterQuery.isSuccess() || this.rosterQuery.isFetching()) return;
+    if (this.fetchedForNonce() !== request.nonce) return;
+    if (this.appliedNonce === request.nonce) return;
+    this.appliedNonce = request.nonce;
+    untracked(() => {
+      const named = tools.filter((tool) => tool.name === request.name);
+      const match =
+        named.find((tool) => (tool.asCharacterId ?? null) === request.asCharacterId) ??
+        (request.asCharacterId === null ? named[0] : undefined) ??
+        null;
+      if (!match) {
+        this.selectedKey.set(null);
+        this.toasts.showError(`No tool named "${request.name}" is on Pascal's table in this chat`);
+        return;
+      }
+      this.select(match);
+    });
+  });
 
   protected close(): void {
     // The selection survives the close on purpose — see the class header.

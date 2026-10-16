@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(spa): initialTool on the custom-tool dialog and the Run Tool modal, and a public open() on the popup (P4.D308)
+
+_Versions: SPA 0.5.867._
+
+Both tool dialogs can now open straight onto a tool's form, as v4 `4877fc2da` does for the composer's `/` commands. The custom-tool popup gains an `initialTool` input and a public `open(initial?)`, which is now the one opening path (the wand calls it with no tool). A request waits for the roster that open fetched, then selects the named tool, preferring the asked-for character variant; if nothing matches it stays on the picker and toasts `No tool named "<name>" is on Pascal's table in this chat`. Each nonce applies once, even if the roster refetches under the open dialog. `available` is now public so the composer's `/` menu reads the wand's own gate. The Run Tool modal gains an `initialTool` input applied once per nonce after the tool list settles: `No tool named "<id>" is available in this chat` when it is not listed, the tool's `unavailableReason` (or `"<name>" is not available in this chat`) when it is unavailable, otherwise the tool's form. v4's three cases for each component are transcribed, plus nonce, variant and availability rows; five mutants of these rules each turn a spec red.
+
 #### 2026-10-16 — feat(spa): the shared RNG request and the slash-command runner (P4.D308)
 
 _Versions: SPA 0.5.866._

@@ -825,3 +825,161 @@ describe('CustomToolsPopup — what a tool says about progressions', () => {
     expect(text(fixture)).not.toContain('progress.');
   });
 });
+
+/**
+ * v4 `CustomToolRunDialog.test.tsx:147-172` (`4877fc2da`, "initialTool (the
+ * composer's `/` commands)") ported case for case, plus the nonce rules v4's
+ * `appliedNonceRef` carries and the public `open()` the composer's slash host
+ * calls.
+ */
+describe('CustomToolRunDialog — initialTool (the composer’s `/` commands)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  async function request(
+    fixture: ComponentFixture<CustomToolsPopup>,
+    initial: { name: string; asCharacterId: string | null; nonce: number },
+  ): Promise<void> {
+    fixture.componentRef.setInput('initialTool', initial);
+    fixture.detectChanges();
+    await settle(fixture);
+    await settle(fixture);
+  }
+
+  it('opens straight onto the requested tool’s form', async () => {
+    const fixture = await mount(stub({ tools: [UNLOCK, WHEEL], errors: [] }));
+    await request(fixture, { name: 'wheel', asCharacterId: 'char-1', nonce: 1 });
+
+    expect(buttons(fixture, 'Run Spin the Wheel').length).toBe(1);
+    expect(text(fixture)).not.toContain('Force the Lock');
+  });
+
+  it('picks the per-character variant it was asked for', async () => {
+    const s = stub({
+      tools: [UNLOCK, { ...UNLOCK, characterLabel: 'Vivienne', asCharacterId: 'char-v' }],
+      errors: [],
+    });
+    const fixture = await mount(s);
+    await request(fixture, { name: 'unlock', asCharacterId: 'char-v', nonce: 1 });
+
+    await click(fixture, buttons(fixture, 'Run Force the Lock')[0]);
+    const runs = s.calls.filter((c) => c['type'] === 'chatCustomToolRun');
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ tool: 'unlock', asCharacterId: 'char-v' });
+  });
+
+  it('stays on the picker and says so when nothing by that name is dealt', async () => {
+    const fixture = await mount(stub({ tools: [UNLOCK, WHEEL], errors: [] }));
+    await request(fixture, { name: 'nonesuch', asCharacterId: null, nonce: 1 });
+
+    expect(text(fixture)).toContain('Force the Lock');
+    expect(buttons(fixture, 'Run Force the Lock').length).toBe(0);
+    expect(toasts()).toContainEqual({
+      type: 'error',
+      message: 'No tool named "nonesuch" is on Pascal\'s table in this chat',
+    });
+  });
+
+  it('a null asCharacterId takes the first tool by that name', async () => {
+    const s = stub({
+      tools: [UNLOCK, { ...UNLOCK, characterLabel: 'Vivienne', asCharacterId: 'char-v' }],
+      errors: [],
+    });
+    const fixture = await mount(s);
+    await request(fixture, { name: 'unlock', asCharacterId: null, nonce: 1 });
+    await click(fixture, buttons(fixture, 'Run Force the Lock')[0]);
+    expect(s.calls.find((c) => c['type'] === 'chatCustomToolRun')).toMatchObject({
+      asCharacterId: 'char-1',
+    });
+  });
+
+  it('applies one nonce once: the wand later lands where the dialog remembers being', async () => {
+    const fixture = await mount(stub({ tools: [UNLOCK, WHEEL], errors: [] }));
+    await request(fixture, { name: 'wheel', asCharacterId: 'char-1', nonce: 1 });
+    await click(fixture, buttons(fixture, 'Choose another tool')[0]);
+    await click(fixture, buttons(fixture, 'Cancel')[0]);
+
+    // The same nonce again changes nothing; the wand reopens on the picker.
+    fixture.componentRef.setInput('initialTool', { name: 'wheel', asCharacterId: 'char-1', nonce: 1 });
+    await settle(fixture);
+    expect(dialog(fixture)).toBeNull();
+    await open(fixture);
+    await settle(fixture);
+    expect(buttons(fixture, 'Run Spin the Wheel').length).toBe(0);
+    expect(text(fixture)).toContain('Force the Lock');
+  });
+
+  it('does not re-apply its nonce when the roster refetches under an open dialog', async () => {
+    const s = stub({ tools: [UNLOCK, WHEEL], errors: [] });
+    const fixture = await mount(s);
+    await request(fixture, { name: 'wheel', asCharacterId: 'char-1', nonce: 1 });
+    await click(fixture, buttons(fixture, 'Choose another tool')[0]);
+
+    // A realtime invalidation while the picker shows, bringing a changed roster
+    // (v4's effect re-runs on `tools`; only the nonce stops a re-selection).
+    s.list = { tools: [UNLOCK, WHEEL, { ...UNLOCK, name: 'unlock2', title: 'Pick the Lock' }], errors: [] };
+    await fixture.debugElement.injector.get(QueryClient).invalidateQueries({ queryKey: ['customTools', 'chat-1'] });
+    await settle(fixture);
+    await settle(fixture);
+
+    expect(text(fixture)).toContain('Pick the Lock');
+    expect(buttons(fixture, 'Run Spin the Wheel').length).toBe(0);
+    expect(text(fixture)).toContain('Force the Lock');
+  });
+
+  it('a character variant that is not dealt is NOT swapped for another', async () => {
+    const fixture = await mount(stub({ tools: [UNLOCK, WHEEL], errors: [] }));
+    await request(fixture, { name: 'unlock', asCharacterId: 'char-x', nonce: 1 });
+
+    expect(buttons(fixture, 'Run Force the Lock').length).toBe(0);
+    expect(toasts()).toContainEqual({
+      type: 'error',
+      message: 'No tool named "unlock" is on Pascal\'s table in this chat',
+    });
+  });
+
+  it('a NEW nonce for the same tool re-selects it after Choose another tool', async () => {
+    const fixture = await mount(stub({ tools: [UNLOCK, WHEEL], errors: [] }));
+    await request(fixture, { name: 'wheel', asCharacterId: 'char-1', nonce: 1 });
+    await click(fixture, buttons(fixture, 'Choose another tool')[0]);
+    expect(buttons(fixture, 'Run Spin the Wheel').length).toBe(0);
+
+    await request(fixture, { name: 'wheel', asCharacterId: 'char-1', nonce: 2 });
+    expect(buttons(fixture, 'Run Spin the Wheel').length).toBe(1);
+  });
+
+  it('open() from outside, with the dialog already open, re-applies once the refetch settles', async () => {
+    const s = stub({ tools: [UNLOCK, WHEEL], errors: [] });
+    const fixture = await mount(s);
+    await open(fixture);
+    expect(buttons(fixture, 'Run Force the Lock').length).toBe(0);
+    const listsBefore = s.calls.filter((c) => c['type'] === 'chatCustomToolsList').length;
+
+    fixture.componentInstance.open({ name: 'unlock', asCharacterId: 'char-1' });
+    fixture.detectChanges();
+    await settle(fixture);
+    await settle(fixture);
+
+    expect(buttons(fixture, 'Run Force the Lock').length).toBe(1);
+    // It waited for THIS open's fetch, not the cached roster.
+    expect(s.calls.filter((c) => c['type'] === 'chatCustomToolsList').length).toBe(listsBefore + 1);
+  });
+
+  it('finds a tool added to a store mid-chat (it waits for the fresh roster)', async () => {
+    const s = stub({ tools: [UNLOCK], errors: [] });
+    const fixture = await mount(s);
+    s.list = { tools: [UNLOCK, WHEEL], errors: [] };
+    fixture.componentInstance.open({ name: 'wheel', asCharacterId: 'char-1' });
+    fixture.detectChanges();
+    await settle(fixture);
+    await settle(fixture);
+    expect(buttons(fixture, 'Run Spin the Wheel').length).toBe(1);
+    expect(toasts()).toEqual([]);
+  });
+
+  it('exposes available() for the composer’s slash host', async () => {
+    const fixture = await mount(stub({ tools: [UNLOCK], errors: [] }));
+    expect(fixture.componentInstance.available()).toBe(true);
+    const empty = await mount(stub({ tools: [], errors: [] }));
+    expect(empty.componentInstance.available()).toBe(false);
+  });
+});
