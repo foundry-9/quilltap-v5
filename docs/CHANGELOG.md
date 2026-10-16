@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(spa): Pascal's definition and draft twins learn trigger phrases and wardrobe effects at the `25b8fab6a` pin (P4.D307 unit 1)
+
+_Versions: SPA 0.5.863._
+
+The SPA's Pascal schema twins now match v4 at the `25b8fab6a` pin (v4 `362426c8f` trigger phrases and `f0db8cbb8` wardrobe effects).
+
+- `pascal/custom-tool-types.ts`: the five new caps; the `triggers` key (after `chipLabel`) with `validateTriggers` fourth in the refine order; effects are now a write (`target` + `value`) or a `wardrobe` gesture, with the three refine sentences, `isWriteEffect` / `isWardrobeEffect`, `wardrobeGestureProblems`, and `validateWardrobeGesture`; `validateEffects` checks `when` first; `KNOWN_TOP_LEVEL_KEYS` is exported and lists `triggers`. The slot enum is imported from `wardrobe/slot-meta`.
+- Zod 4.6.7 (the pin's resolved version) changes two array rules, now modelled for `triggers`, `items`, `effects` and `outcomes`: an array over its `.max` fails with only that sentence before any element parses, and a string where an array belongs is also measured against the array's bounds.
+- `pascal/tool-draft.ts`: `ToolDraft.triggers`, `DraftEffect.kind` plus an always-present `wardrobe` half, `newDraftEffect`, `emptyDraftWardrobeGesture`, the wardrobe emitter, `validateDraftTriggers` with the self-echo warning, `validateDraftWardrobeGesture`, and the rename / references arms.
+- NEW `pascal/trigger-phrases.ts` (the scanner twin) and `stripCarinaQueryLines` in `chat/carina-parser.ts`.
+- Corpora re-recorded from the pin: the definition corpus 362 → 425 rows (a fenced `P4.D307 rows` block in the shared generator, merged by id with P4.D305 / P4.D306 at unification), the Carina corpus 83 → 144 rows (a new `strip` kind; the 83 old rows byte-identical). Three hand-captured rows in `custom-tool-types.effects.spec.ts` re-measured at the pin.
+- v4's jest describes transcribed: the `triggers` and wardrobe-gesture definition cases, the two draft describes, and the scanner's 80-line suite.
+- `side-effects-section.ts` adds rows through `newDraftEffect()`.
+
 #### 2026-10-16 — docs(porting): P4.D313 lane record — the `25b8fab6a` vendored trees, the NO-PORT ratification evidence, the `phase-0.md` cipher note
 
 _Docs-only change._

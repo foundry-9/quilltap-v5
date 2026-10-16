@@ -97,6 +97,13 @@ import {
   type Res,
 } from './zod-shim';
 import { MAX_EFFECT_EXPRESSION_LENGTH, parseExpression } from './expressions';
+import { scanPlaceholders as scanPlaceholdersInText } from './placeholders';
+import { zodLenMaxOk, zodLenMinOk } from './zod-length';
+// The slot enum is IMPORTED from the wardrobe registry, never minted here: it
+// holds v4's `WARDROBE_SLOT_TYPES` (`wardrobe.types.ts:33-37`) in v4's order,
+// and `custom-tool-types.effects.spec.ts` trips if that list ever moves.
+import { WARDROBE_SLOT_TYPES } from '../wardrobe/slot-meta';
+import type { WardrobeSlotType } from '../core/core-contract';
 
 export { MAX_EFFECT_EXPRESSION_LENGTH };
 
@@ -134,8 +141,23 @@ export const MAX_CHIP_LABEL_LENGTH = 160;
 /** Cap on effects per tool. */
 export const MAX_EFFECTS = 16;
 
+/** Cap on trigger phrases per tool. */
+export const MAX_TRIGGERS = 8;
+
+/** Shortest trigger phrase, in characters — keeps `"a"` and `"ok"` out. A length, not a word count. */
+export const MIN_TRIGGER_PHRASE_LENGTH = 3;
+
+/** Longest trigger phrase, in characters. */
+export const MAX_TRIGGER_PHRASE_LENGTH = 80;
+
 /** Cap on an effect's `target` string, in characters. */
 export const MAX_EFFECT_TARGET_LENGTH = 200;
+
+/** Cap on the item references one wardrobe effect may list. */
+export const MAX_WARDROBE_EFFECT_ITEMS = 8;
+
+/** Cap on one wardrobe item reference (a title or id template), in characters. */
+export const MAX_WARDROBE_ITEM_REF_LENGTH = 200;
 
 /** Cap on an LLM consult prompt, in characters (measured before templating). */
 export const MAX_LLM_PROMPT_LENGTH = 4000;
@@ -500,8 +522,49 @@ export interface EffectWhen {
   outcome?: { eq?: OutcomeState; neq?: OutcomeState };
 }
 
+/** What a wardrobe effect does to the rolling character's outfit. */
+export type WardrobeEffectAction = 'wear' | 'take_off' | 'clear_slot';
+
+/** v4 `WardrobeEffectActionSchema`'s options, in its order. */
+export const WARDROBE_EFFECT_ACTIONS: readonly WardrobeEffectAction[] = ['wear', 'take_off', 'clear_slot'];
+
+/** The put-on modes a `wear` gesture may name — the `wardrobe_wear` tool's own. */
+export type WardrobeEffectMode = 'wear' | 'replace' | 'add_to_slot';
+
+/** v4 `WardrobeEffectModeSchema`'s options, in its order. */
+export const WARDROBE_EFFECT_MODES: readonly WardrobeEffectMode[] = ['wear', 'replace', 'add_to_slot'];
+
 /**
- * One side effect: a write the run records after the table has dealt.
+ * A wardrobe slot. v4 re-exports `WardrobeItemType` from its wardrobe schema
+ * module (`export type { WardrobeItemType }`); the SPA's twin of that module is
+ * the wardrobe registry (`../wardrobe/slot-meta`), whose type this is.
+ */
+export type WardrobeItemType = WardrobeSlotType;
+
+/**
+ * A wardrobe gesture: wear the listed items, take them off, or empty one slot,
+ * on the ROLLING character and nobody else.
+ *
+ * Item references are TEMPLATES, not expressions: each is rendered through
+ * `renderTemplate` (so `{{params.garment}}` lets a parameter choose) and then
+ * looked up by id, then by case-insensitive title, in the character's wearable
+ * pool. The per-action cross-field rules (which action needs `items`, which
+ * needs `slot`) live in `validateEffects`, not here, so the issues they raise
+ * carry precise paths.
+ */
+export interface CustomToolWardrobeGesture {
+  action: WardrobeEffectAction;
+  items?: string[];
+  mode?: WardrobeEffectMode;
+  slot?: WardrobeItemType;
+}
+
+/**
+ * One side effect, recorded after the table has dealt. Either a WRITE
+ * (`target` + `value`) or a WARDROBE GESTURE (`wardrobe`) — never both, never
+ * neither (v4 `f0db8cbb8`). One strict object with a refine rather than a
+ * union, so a mistake produces one readable issue rather than a union's tree of
+ * them.
  *
  * `value` discrimination is the one ergonomic trap in the format: a JSON number
  * or boolean is a literal, stored as-is, but a JSON **string is always an
@@ -511,8 +574,59 @@ export interface EffectWhen {
  */
 export interface CustomToolEffect {
   when?: EffectWhen;
-  target: string;
-  value: number | boolean | string;
+  target?: string;
+  value?: number | boolean | string;
+  wardrobe?: CustomToolWardrobeGesture;
+}
+
+/** An effect that writes one value. */
+export type CustomToolWriteEffect = CustomToolEffect & { target: string; value: number | boolean | string };
+
+/** An effect that changes the rolling character's outfit. */
+export type CustomToolWardrobeEffect = CustomToolEffect & { wardrobe: CustomToolWardrobeGesture };
+
+/** True for a write effect. Use this rather than re-testing keys. */
+export function isWriteEffect(effect: CustomToolEffect): effect is CustomToolWriteEffect {
+  return effect.wardrobe === undefined && effect.target !== undefined && effect.value !== undefined;
+}
+
+/** True for a wardrobe gesture. Use this rather than re-testing keys. */
+export function isWardrobeEffect(effect: CustomToolEffect): effect is CustomToolWardrobeEffect {
+  return effect.wardrobe !== undefined && effect.target === undefined && effect.value === undefined;
+}
+
+/**
+ * The per-action rules of a wardrobe gesture, as `[field, message]` pairs. The
+ * single statement of them: load-time validation and the Workbench's draft
+ * check both read this, so the two say the same words.
+ */
+export function wardrobeGestureProblems(
+  gesture: Pick<CustomToolWardrobeGesture, 'action' | 'mode' | 'slot'> & { items?: readonly string[] },
+): Array<{ field: 'items' | 'mode' | 'slot'; message: string }> {
+  const problems: Array<{ field: 'items' | 'mode' | 'slot'; message: string }> = [];
+  const hasItems = (gesture.items?.length ?? 0) > 0;
+  switch (gesture.action) {
+    case 'wear': {
+      if (!hasItems) problems.push({ field: 'items', message: 'wear needs at least one item' });
+      const mode = gesture.mode ?? 'wear';
+      if (mode === 'add_to_slot' && gesture.slot === undefined) {
+        problems.push({ field: 'slot', message: 'mode add_to_slot needs a slot' });
+      } else if (mode !== 'add_to_slot' && gesture.slot !== undefined) {
+        problems.push({ field: 'slot', message: 'slot is only used with mode add_to_slot' });
+      }
+      break;
+    }
+    case 'take_off':
+      if (!hasItems) problems.push({ field: 'items', message: 'take_off needs at least one item' });
+      if (gesture.mode !== undefined) problems.push({ field: 'mode', message: 'mode is only used with wear' });
+      break;
+    case 'clear_slot':
+      if (gesture.slot === undefined) problems.push({ field: 'slot', message: 'clear_slot needs a slot' });
+      if (gesture.items !== undefined) problems.push({ field: 'items', message: 'clear_slot takes no items' });
+      if (gesture.mode !== undefined) problems.push({ field: 'mode', message: 'mode is only used with wear' });
+      break;
+  }
+  return problems;
 }
 
 /** A parsed effect target, with the raw text kept for records and messages. */
@@ -677,6 +791,15 @@ export interface QtapCustomTool {
    * Blank/absent = the title labels the chip.
    */
   chipLabel?: string;
+  /**
+   * Phrases that run this tool automatically, with every parameter at its
+   * default, when a message from anyone in the chat contains one — exact
+   * substrings, case-insensitive, no wildcards. Only honoured when the chat
+   * setting "Auto-Run Custom Tools on Trigger Phrases" is on (it is off by
+   * default). 1–8 phrases, each 3–80 characters, stored as written (v4
+   * `362426c8f`).
+   */
+  triggers?: string[];
   description: string;
   disabled?: boolean;
   /** Offer this tool ONLY to an invoker whose metadata satisfies every test. */
@@ -689,7 +812,8 @@ export interface QtapCustomTool {
   roll?: Roll;
   llm?: CustomToolLlm;
   /** Side effects applied after the run: writes into tiered persistent state or
-   *  the rolling character's metadata. */
+   *  the rolling character's metadata, or wardrobe gestures that change what the
+   *  rolling character is wearing. */
   effects?: CustomToolEffect[];
   outcomes: CustomToolOutcome[];
 }
@@ -729,6 +853,66 @@ function parseString(
   }
 
   return { value: input, issues };
+}
+
+/** One `.min(N)` / `.max(N)` length check on an array, with Zod's own sentence unless authored. */
+interface LengthCheck {
+  n: number;
+  message?: string;
+}
+
+/**
+ * v4 `z.array(element).min(…).max(…)` under Zod 4.6.7 — the pin's resolved
+ * Zod (`25b8fab6a`). Two engine rules decide its issues, both measured against
+ * v4's real schema (the `P4.D307 rows` of the committed corpus):
+ *
+ * 1. **`capSize`** (new in 4.6.7): an array LONGER than its `.max(N)` fails
+ *    with ONLY that check's `too_big`, ABORTING, before any element is
+ *    parsed — so an oversized list of bad elements reports one sentence, not
+ *    N+1, and no later refine reads it.
+ * 2. **The length checks' own `when`** (`_whenHasLength`): a length check runs
+ *    whenever the input HAS a `.length`, even after the type check aborted. So
+ *    a STRING where the array belongs fails the type check AND is measured
+ *    against the array's bounds, with the string origin (`Too big: expected
+ *    string to have <=8 characters`). Only a string can reach that arm from
+ *    JSON (an object carrying a `length` key would too — no corpus row poses
+ *    one, so it is not modelled).
+ *
+ * Within bounds, the elements parse in order and the `min` check follows them.
+ */
+function parseSizedArray<T>(
+  input: unknown,
+  parseElement: (v: unknown) => Res<T>,
+  min: LengthCheck | undefined,
+  max: LengthCheck,
+): Res<T[]> {
+  if (!Array.isArray(input)) {
+    const issues: Issue[] = [hardIssue(invalidType('array', input))];
+    if (typeof input === 'string') {
+      if (min !== undefined && !zodLenMinOk(input, min.n)) {
+        issues.push(checkIssue(min.message ?? `Too small: expected string to have >=${min.n} characters`));
+      }
+      if (!zodLenMaxOk(input, max.n)) {
+        issues.push(checkIssue(max.message ?? `Too big: expected string to have <=${max.n} characters`));
+      }
+    }
+    return { value: undefined, issues };
+  }
+  if (input.length > max.n) {
+    return resHard(max.message ?? `Too big: expected array to have <=${max.n} items`);
+  }
+
+  const list: T[] = [];
+  const issues: Issue[] = [];
+  input.forEach((item, i) => {
+    const r = parseElement(item);
+    issues.push(...prefix(String(i), r.issues));
+    if (r.value !== undefined) list.push(r.value);
+  });
+  if (min !== undefined && input.length < min.n) {
+    issues.push(checkIssue(min.message ?? `Too small: expected array to have >=${min.n} items`));
+  }
+  return { value: aborted(issues) ? undefined : list, issues };
 }
 
 // --------------------------------------------------------- schema validators
@@ -1488,10 +1672,70 @@ function parseOutcomeSubject(input: unknown): Res<{ eq?: OutcomeState; neq?: Out
 }
 
 /**
- * v4 `CustomToolEffectSchema`. The `value` union is number → boolean → string,
- * and the string arm's length rules are CHECKS: an empty string leaves the
- * string branch as the only non-aborted one, so its own "Too small" sentence
- * hoists out of the union rather than a bare "Invalid input".
+ * v4 `CustomToolWardrobeGestureSchema` — a strict object; `items` is a sized
+ * array of item-reference TEMPLATES ({@link parseSizedArray}), `mode` and
+ * `slot` the two enums. The per-action rules are the tool-level refine's
+ * ({@link validateWardrobeGesture}), not this parse's.
+ */
+function parseWardrobeGesture(input: unknown): Res<CustomToolWardrobeGesture> {
+  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+
+  const issues: Issue[] = [];
+
+  const action = parseEnum<WardrobeEffectAction>(input['action'], WARDROBE_EFFECT_ACTIONS);
+  issues.push(...prefix('action', action.issues));
+
+  let items: string[] | undefined;
+  if (hasKey(input, 'items')) {
+    const r = parseSizedArray<string>(
+      input['items'],
+      (item) => parseString(item, 1, MAX_WARDROBE_ITEM_REF_LENGTH, false),
+      { n: 1 },
+      { n: MAX_WARDROBE_EFFECT_ITEMS },
+    );
+    issues.push(...prefix('items', r.issues));
+    items = r.value;
+  }
+
+  let mode: WardrobeEffectMode | undefined;
+  if (hasKey(input, 'mode')) {
+    const r = parseEnum<WardrobeEffectMode>(input['mode'], WARDROBE_EFFECT_MODES);
+    issues.push(...prefix('mode', r.issues));
+    mode = r.value;
+  }
+
+  let slot: WardrobeItemType | undefined;
+  if (hasKey(input, 'slot')) {
+    const r = parseEnum<WardrobeItemType>(input['slot'], WARDROBE_SLOT_TYPES);
+    issues.push(...prefix('slot', r.issues));
+    slot = r.value;
+  }
+
+  issues.push(...unrecognizedKeys(input, ['action', 'items', 'mode', 'slot']));
+
+  if (action.value === undefined || aborted(issues)) return { value: undefined, issues };
+
+  // Schema order, absent optionals omitted — Zod emits schema order, never the
+  // author's (the `effects-wardrobe-key-order` row).
+  const gesture = { action: action.value } as CustomToolWardrobeGesture;
+  if (items !== undefined) gesture.items = items;
+  if (mode !== undefined) gesture.mode = mode;
+  if (slot !== undefined) gesture.slot = slot;
+  return { value: gesture, issues };
+}
+
+/**
+ * v4 `CustomToolEffectSchema` (`f0db8cbb8`): a strict object whose `target`,
+ * `value` and `wardrobe` are all OPTIONAL, then a refine that says which of the
+ * two shapes it is. The `value` union is number → boolean → string, and the
+ * string arm's length rules are CHECKS: an empty string leaves the string
+ * branch as the only non-aborted one, so its own "Too small" sentence hoists
+ * out of the union rather than a bare "Invalid input".
+ *
+ * The refine runs only on a non-aborted object (continuable issues — a length
+ * check, a stray key — do not stop it), and its three sentences are the
+ * author's: both halves → not both; neither → needs one; one write half → the
+ * missing half's path.
  */
 function parseCustomToolEffect(input: unknown): Res<CustomToolEffect> {
   if (!isPlainObject(input)) return resHard(invalidType('object', input));
@@ -1505,30 +1749,58 @@ function parseCustomToolEffect(input: unknown): Res<CustomToolEffect> {
     when = r.value;
   }
 
-  const target = parseString(input['target'], 1, MAX_EFFECT_TARGET_LENGTH, false);
-  issues.push(...prefix('target', target.issues));
-
-  const rawValue = input['value'];
-  const value = union<number | boolean | string>([
-    parseFiniteNumber(rawValue),
-    parseBool(rawValue),
-    parseString(rawValue, 1, MAX_EFFECT_EXPRESSION_LENGTH, false),
-  ]);
-  issues.push(...prefix('value', value.issues));
-
-  issues.push(...unrecognizedKeys(input, ['when', 'target', 'value']));
-
-  if (target.value === undefined || value.value === undefined) {
-    return { value: undefined, issues };
+  let target: string | undefined;
+  if (hasKey(input, 'target')) {
+    const r = parseString(input['target'], 1, MAX_EFFECT_TARGET_LENGTH, false);
+    issues.push(...prefix('target', r.issues));
+    target = r.value;
   }
+
+  let value: number | boolean | string | undefined;
+  if (hasKey(input, 'value')) {
+    const rawValue = input['value'];
+    const r = union<number | boolean | string>([
+      parseFiniteNumber(rawValue),
+      parseBool(rawValue),
+      parseString(rawValue, 1, MAX_EFFECT_EXPRESSION_LENGTH, false),
+    ]);
+    issues.push(...prefix('value', r.issues));
+    value = r.value;
+  }
+
+  let wardrobe: CustomToolWardrobeGesture | undefined;
+  if (hasKey(input, 'wardrobe')) {
+    const r = parseWardrobeGesture(input['wardrobe']);
+    issues.push(...prefix('wardrobe', r.issues));
+    wardrobe = r.value;
+  }
+
+  issues.push(...unrecognizedKeys(input, ['when', 'target', 'value', 'wardrobe']));
+
   if (aborted(issues)) return { value: undefined, issues };
+
+  // ---- the effect's superRefine (v4 `custom-tool.types.ts:715-738`) -------
+  const isWrite = target !== undefined || value !== undefined;
+  const isWardrobe = wardrobe !== undefined;
+  if (isWrite && isWardrobe) {
+    issues.push(
+      checkIssue('an effect is either a write (target + value) or a wardrobe gesture, not both'),
+    );
+  } else if (!isWrite && !isWardrobe) {
+    issues.push(checkIssue('an effect needs target + value, or wardrobe'));
+  } else if (isWrite && (target === undefined || value === undefined)) {
+    issues.push(
+      checkIssue('a write needs both target and value', [target === undefined ? 'target' : 'value']),
+    );
+  }
 
   // Declaration order, absent optionals omitted — the corpus byte-compares
   // `JSON.stringify` of the parsed document against Zod's own output.
   const effect = {} as CustomToolEffect;
   if (when !== undefined) effect.when = when;
-  effect.target = target.value;
-  effect.value = value.value;
+  if (target !== undefined) effect.target = target;
+  if (value !== undefined) effect.value = value;
+  if (wardrobe !== undefined) effect.wardrobe = wardrobe;
   return { value: effect, issues };
 }
 
@@ -1606,6 +1878,21 @@ export function safeParse(raw: unknown): SafeParseResult {
     chipLabel = r.value;
   }
 
+  // v4 `362426c8f`: after `chipLabel`, before `description` — an issue-order
+  // contract (the `shape-order-chip-triggers-description` row), not just a key
+  // order.
+  let triggers: string[] | undefined;
+  if (hasKey(obj, 'triggers')) {
+    const r = parseSizedArray<string>(
+      obj['triggers'],
+      (phrase) => parseString(phrase, MIN_TRIGGER_PHRASE_LENGTH, MAX_TRIGGER_PHRASE_LENGTH, false),
+      { n: 1 },
+      { n: MAX_TRIGGERS },
+    );
+    issues.push(...prefix('triggers', r.issues));
+    triggers = r.value;
+  }
+
   const description = parseString(obj['description'], 1, MAX_DESCRIPTION_LENGTH, false);
   issues.push(...prefix('description', description.issues));
 
@@ -1669,55 +1956,28 @@ export function safeParse(raw: unknown): SafeParseResult {
     llm = r.value;
   }
 
+  // `.max(MAX_EFFECTS, …)` and the outcomes' `.min(1, …)` / `.max(MAX_OUTCOMES,
+  // …)` carry authored messages; {@link parseSizedArray} applies Zod 4.6.7's
+  // two length rules to them (an oversized list reports ONLY its cap, before
+  // any element; a string is measured against the bounds too).
   let effects: CustomToolEffect[] | undefined;
   if (hasKey(obj, 'effects')) {
-    const rawEffects = obj['effects'];
-    if (Array.isArray(rawEffects)) {
-      const list: CustomToolEffect[] = [];
-      const arrIssues: Issue[] = [];
-      rawEffects.forEach((item, i) => {
-        const r = parseCustomToolEffect(item);
-        arrIssues.push(...prefix(String(i), r.issues));
-        if (r.value !== undefined) list.push(r.value);
-      });
-      // `.max(MAX_EFFECTS, …)` is a check with an authored message, so it is
-      // skipped once an element aborted.
-      if (!aborted(arrIssues) && rawEffects.length > MAX_EFFECTS) {
-        arrIssues.push(checkIssue(`at most ${MAX_EFFECTS} effects`));
-      }
-      const ok = !aborted(arrIssues);
-      issues.push(...prefix('effects', arrIssues));
-      if (ok) effects = list;
-    } else {
-      issues.push(...prefix('effects', [hardIssue(invalidType('array', rawEffects))]));
-    }
+    const r = parseSizedArray(obj['effects'], parseCustomToolEffect, undefined, {
+      n: MAX_EFFECTS,
+      message: `at most ${MAX_EFFECTS} effects`,
+    });
+    issues.push(...prefix('effects', r.issues));
+    effects = r.value;
   }
 
-  let outcomes: CustomToolOutcome[] | undefined;
-  const rawOutcomes = obj['outcomes'];
-  if (Array.isArray(rawOutcomes)) {
-    const list: CustomToolOutcome[] = [];
-    const arrIssues: Issue[] = [];
-    rawOutcomes.forEach((item, i) => {
-      const r = parseOutcome(item);
-      arrIssues.push(...prefix(String(i), r.issues));
-      if (r.value !== undefined) list.push(r.value);
-    });
-    // `.min(1, …)` / `.max(MAX_OUTCOMES, …)` are checks with authored messages,
-    // so they are skipped once an element aborted.
-    if (!aborted(arrIssues)) {
-      if (rawOutcomes.length === 0) {
-        arrIssues.push(checkIssue('at least one outcome is required'));
-      } else if (rawOutcomes.length > MAX_OUTCOMES) {
-        arrIssues.push(checkIssue(`at most ${MAX_OUTCOMES} outcomes`));
-      }
-    }
-    const ok = !aborted(arrIssues);
-    issues.push(...prefix('outcomes', arrIssues));
-    if (ok) outcomes = list;
-  } else {
-    issues.push(...prefix('outcomes', [hardIssue(invalidType('array', rawOutcomes))]));
-  }
+  const outcomesRes = parseSizedArray(
+    obj['outcomes'],
+    parseOutcome,
+    { n: 1, message: 'at least one outcome is required' },
+    { n: MAX_OUTCOMES, message: `at most ${MAX_OUTCOMES} outcomes` },
+  );
+  issues.push(...prefix('outcomes', outcomesRes.issues));
+  const outcomes = outcomesRes.value;
 
   // The top level is NOT strict — unknown keys are tolerated here on purpose.
 
@@ -1733,6 +1993,7 @@ export function safeParse(raw: unknown): SafeParseResult {
   tool.name = name.value;
   if (title !== undefined) tool.title = title;
   if (chipLabel !== undefined) tool.chipLabel = chipLabel;
+  if (triggers !== undefined) tool.triggers = triggers;
   tool.description = description.value;
   if (disabled !== undefined) tool.disabled = disabled;
   if (availableWhen !== undefined) tool.availableWhen = availableWhen;
@@ -1750,6 +2011,7 @@ export function safeParse(raw: unknown): SafeParseResult {
   validateReferences(tool, issues);
   validateGates(tool, issues);
   validateEffects(tool, issues);
+  validateTriggers(tool, issues);
 
   if (issues.length === 0) return { success: true, data: tool };
   return { success: false, issues };
@@ -1950,6 +2212,25 @@ function validateEffects(
   (tool.effects ?? []).forEach((effect, i) => {
     const base = ['effects', String(i)];
 
+    // v4 `f0db8cbb8` moved the `when` subjects FIRST (they were last), so a
+    // write with a bad subject and a bad target reports the subject first —
+    // the `effects-write-when-order` row.
+    if (effect.when !== undefined) {
+      validateWhenSubjects(declared, effect.when, Boolean(tool.llm), issues, [...base, 'when']);
+    }
+
+    if (effect.wardrobe !== undefined) {
+      validateWardrobeGesture(declared, Boolean(tool.llm), effect.wardrobe, issues, [
+        ...base,
+        'wardrobe',
+      ]);
+      return;
+    }
+
+    // Shape errors (a write missing its target or value) are the effect
+    // schema's own refine; nothing further to check without both halves.
+    if (effect.target === undefined || effect.value === undefined) return;
+
     const target = parseEffectTarget(effect.target);
     if (!target.ok) {
       issues.push(checkIssue(`target ${target.reason}`, [...base, 'target']));
@@ -1983,9 +2264,74 @@ function validateEffects(
         }
       }
     }
+  });
+}
 
-    if (effect.when !== undefined) {
-      validateWhenSubjects(declared, effect.when, Boolean(tool.llm), issues, [...base, 'when']);
+/**
+ * Rule: a wardrobe gesture carries exactly the fields its action uses
+ * ({@link wardrobeGestureProblems}), and every item reference's placeholders
+ * resolve the way an outcome message's must — a `{{params.x}}` names a
+ * declared parameter, a `{{llm}}` needs an `llm` block. Unknown placeholder
+ * families are NOT rejected: the `renderTemplate` doctrine leaves them as
+ * written, and the item simply fails to resolve at the table.
+ */
+function validateWardrobeGesture(
+  declared: Record<string, CustomToolParameter>,
+  hasLlmBlock: boolean,
+  gesture: CustomToolWardrobeGesture,
+  issues: Issue[],
+  path: string[],
+): void {
+  for (const problem of wardrobeGestureProblems(gesture)) {
+    issues.push(checkIssue(problem.message, [...path, problem.field]));
+  }
+
+  (gesture.items ?? []).forEach((item, m) => {
+    for (const { ref } of scanPlaceholdersInText(item)) {
+      if (ref.kind === 'params' && !declared[ref.name]) {
+        issues.push(
+          checkIssue(`item references undeclared parameter "${ref.name}"`, [...path, 'items', String(m)]),
+        );
+      } else if (ref.kind === 'llm' && !hasLlmBlock) {
+        issues.push(
+          checkIssue('item references {{llm}}, but the tool declares no `llm` block', [
+            ...path,
+            'items',
+            String(m),
+          ]),
+        );
+      }
+    }
+  });
+}
+
+/**
+ * Rule (v4 `362426c8f`, FOURTH in the superRefine): a trigger phrase carries no
+ * leading or trailing whitespace, and no two phrases are the same once folded
+ * (`toLocaleLowerCase` — lower-casing, not case-folding: `Straße` and
+ * `STRASSE` are two phrases). The FIRST occurrence wins the fold map, so a
+ * third copy names trigger 1.
+ */
+function validateTriggers(tool: Pick<QtapCustomTool, 'triggers'>, issues: Issue[]): void {
+  if (!tool.triggers) return;
+  const seen = new Map<string, number>();
+  tool.triggers.forEach((phrase, index) => {
+    if (phrase !== phrase.trim()) {
+      issues.push(
+        checkIssue(`trigger ${index + 1} has leading or trailing whitespace`, ['triggers', String(index)]),
+      );
+    }
+    const folded = phrase.toLocaleLowerCase();
+    const earlier = seen.get(folded);
+    if (earlier !== undefined) {
+      issues.push(
+        checkIssue(
+          `trigger ${index + 1} repeats trigger ${earlier + 1} (phrases match regardless of case)`,
+          ['triggers', String(index)],
+        ),
+      );
+    } else {
+      seen.set(folded, index);
     }
   });
 }
@@ -2195,12 +2541,17 @@ function flattenIssues(issues: readonly Issue[]): string[] {
   });
 }
 
-/** Top-level keys the v1 format knows about. Anything else is reserved for v2. */
-const KNOWN_TOP_LEVEL_KEYS = new Set([
+/**
+ * Top-level keys the v1 format knows about, in schema order. Anything else is
+ * reserved for v2. v4 derives it from `QtapCustomToolSchema.shape`; the SPA has
+ * no schema object, so it is written out (16 since `362426c8f`'s `triggers`).
+ */
+export const KNOWN_TOP_LEVEL_KEYS: readonly string[] = [
   '$schema',
   'name',
   'title',
   'chipLabel',
+  'triggers',
   'description',
   'disabled',
   'availableWhen',
@@ -2212,7 +2563,9 @@ const KNOWN_TOP_LEVEL_KEYS = new Set([
   'llm',
   'effects',
   'outcomes',
-]);
+];
+
+const KNOWN_TOP_LEVEL_KEY_SET: ReadonlySet<string> = new Set(KNOWN_TOP_LEVEL_KEYS);
 
 /**
  * Report top-level keys this build doesn't understand, so discovery can log
@@ -2221,5 +2574,5 @@ const KNOWN_TOP_LEVEL_KEYS = new Set([
  */
 export function collectUnknownKeys(raw: unknown): string[] {
   if (typeof raw !== 'object' || raw === null) return [];
-  return Object.keys(raw as Record<string, unknown>).filter((k) => !KNOWN_TOP_LEVEL_KEYS.has(k));
+  return Object.keys(raw as Record<string, unknown>).filter((k) => !KNOWN_TOP_LEVEL_KEY_SET.has(k));
 }

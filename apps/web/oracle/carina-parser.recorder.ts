@@ -28,8 +28,9 @@
  *   > <V5>/apps/web/src/testing/fixtures/carina-parser.ndjson
  * ```
  *
- * Expect 49 + 34 = 83 lines; a shorter file means the recorder errored and the
- * redirect already truncated the old one (the empty-file trap).
+ * Expect 49 + 34 + 61 = 144 lines; a shorter file means the recorder errored and
+ * the redirect already truncated the old one (the empty-file trap).
+ * `rm -f` the target first, and `grep -c '"kind":"strip"'` must answer 61.
  *
  * **P4.D224 (v4 `3376b3dfa`)** appended the `isCarinaInvocableName` rows — the
  * parser's name grammar exported for the composer's `@` typeahead. The 49
@@ -38,9 +39,20 @@
  * same pattern). Those rows carry a `name` key instead of `content`, which is how
  * the spec tells the two kinds apart. Pin marker: only a post-`3376b3dfa` tree
  * can import `isCarinaInvocableName` at all.
+ *
+ * **P4.D307 (v4 `362426c8f`, pinned at `25b8fab6a`)** appended the
+ * `stripCarinaQueryLines` rows — the `{ id, kind: 'strip', content, out }` kind,
+ * AFTER the 34 name rows. v4 extracted `parseCarinaQuery`'s loop body into
+ * `parseQueryLine(line)` and built the strip on the same line grammar, so the
+ * 83 rows above are byte-identical when re-recorded (that IS the proof the
+ * extraction changed no parse). The strip rows are twelve hand-written vectors
+ * (v4's own spell-line example, CRLF, a trailing newline, a lone `\r`, U+2028,
+ * the empty query kept beside a real one removed) plus the strip of every
+ * `parseCarinaQuery` vector above. Pin marker: only a post-`362426c8f` tree
+ * exports `stripCarinaQueryLines` — this import is the guard.
  */
 
-import { isCarinaInvocableName, parseCarinaQuery } from '@/lib/chat/carina-parser';
+import { isCarinaInvocableName, parseCarinaQuery, stripCarinaQueryLines } from '@/lib/chat/carina-parser';
 
 /** `[label, content]` — the label is the spec's test name, so it must be unique. */
 const VECTORS: Array<[string, string]> = [
@@ -173,4 +185,34 @@ for (const [label, name] of NAMES) {
       parsedName: parseCarinaQuery(`@${name}: hello`)?.characterName ?? null,
     }),
   );
+}
+
+/**
+ * `[label, text]` for `stripCarinaQueryLines` (P4.D307, v4 `362426c8f`). The
+ * strip of every `VECTORS` content rides after these, labelled `strip: <label>`.
+ */
+const STRIPS: Array<[string, string]> = [
+  ["strip: v4's spoken lines around a query", 'Hold on.\n@Alice: what is a spell?\nAbracadabra!'],
+  ['strip: a public query line alone', '@Alice: abracadabra'],
+  ['strip: a whisper query line alone', '@Alice? “abracadabra”'],
+  ['strip: a query among spoken lines', 'First.\n@Alice: what?\nSecond.\n@Bob? why?\nThird.'],
+  ['strip: CRLF lines rejoin with LF', 'Hold on.\r\n@Alice: what is a spell?\r\nAbracadabra!'],
+  ['strip: leading whitespace is NOT a query (kept)', '  @Alice: abracadabra'],
+  ['strip: the empty text', ''],
+  ['strip: an empty query is kept, the real one removed', '@Alice:\n@Alice: real'],
+  ['strip: a trailing newline survives', 'a\n'],
+  ['strip: a lone CR inside a line', 'one\rtwo\n@Alice: q'],
+  ['strip: U+2028 inside a line', 'one\u2028@Alice: q'],
+  ['strip: every line a query', '@Alice: one\n@Bob: two'],
+];
+for (const [label, text] of STRIPS) {
+  if (seen.has(label)) throw new Error(`duplicate vector label: ${label}`);
+  seen.add(label);
+  console.log(JSON.stringify({ id: label, kind: 'strip', content: text, out: stripCarinaQueryLines(text) }));
+}
+for (const [label, content] of VECTORS) {
+  const id = `strip: ${label}`;
+  if (seen.has(id)) throw new Error(`duplicate vector label: ${id}`);
+  seen.add(id);
+  console.log(JSON.stringify({ id, kind: 'strip', content, out: stripCarinaQueryLines(content) }));
 }

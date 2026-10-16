@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import corpusText from '../../testing/fixtures/carina-parser.ndjson';
+import * as carina from './carina-parser';
 import {
   CARINA_LINE_RE,
   isCarinaInvocableName,
@@ -34,18 +35,30 @@ interface NameRow {
   parsedName: string | null;
 }
 
-const ALL: Array<Row | NameRow> = (corpusText as unknown as string)
+/**
+ * `stripCarinaQueryLines` rows (P4.D307, v4 `362426c8f`) carry `kind: 'strip'`;
+ * the 83 older rows carry no `kind` at all, which is how they are told apart.
+ */
+interface StripRow {
+  id: string;
+  kind: 'strip';
+  content: string;
+  out: string;
+}
+
+const ALL: Array<Row | NameRow | StripRow> = (corpusText as unknown as string)
   .split('\n')
   .filter((line) => line.trim() !== '')
-  .map((line) => JSON.parse(line) as Row | NameRow);
+  .map((line) => JSON.parse(line) as Row | NameRow | StripRow);
 
-const ROWS: Row[] = ALL.filter((r): r is Row => 'content' in r);
-const NAME_ROWS: NameRow[] = ALL.filter((r): r is NameRow => 'name' in r);
+const STRIP_ROWS: StripRow[] = ALL.filter((r): r is StripRow => 'kind' in r && r.kind === 'strip');
+const ROWS: Row[] = ALL.filter((r): r is Row => !('kind' in r) && 'content' in r);
+const NAME_ROWS: NameRow[] = ALL.filter((r): r is NameRow => !('kind' in r) && 'name' in r);
 
 describe("parseCarinaQuery agrees with v4's lib/chat/carina-parser.ts row for row", () => {
   it('carries the whole recorded corpus', () => {
     // A truncated fixture would make the it.each below vacuously green.
-    expect(ALL).toHaveLength(83);
+    expect(ALL).toHaveLength(144);
     expect(ROWS).toHaveLength(49);
   });
 
@@ -80,5 +93,33 @@ describe("isCarinaInvocableName agrees with v4's lib/chat/carina-parser.ts row f
     const before = /^@([\w][\w ]*\w)([?:])\s*(.*)$/;
     expect(CARINA_LINE_RE.source).toBe(before.source);
     expect(CARINA_LINE_RE.flags).toBe(before.flags);
+  });
+});
+
+/**
+ * The strip a reader of "what was said" applies (v4 `362426c8f`): every line
+ * that parses as a query is removed, the rest rejoin with `'\n'`. Read
+ * STRUCTURALLY so this describe can run (red) against a twin that predates the
+ * export, rather than failing the whole file at import.
+ */
+const stripCarinaQueryLines = (carina as unknown as { stripCarinaQueryLines?: (text: string) => string })
+  .stripCarinaQueryLines;
+
+describe("stripCarinaQueryLines agrees with v4's lib/chat/carina-parser.ts row for row", () => {
+  it('carries the whole recorded strip corpus', () => {
+    // Twelve hand-written vectors plus the strip of every parse vector.
+    expect(STRIP_ROWS).toHaveLength(61);
+    expect(STRIP_ROWS.length + ROWS.length + NAME_ROWS.length).toBe(ALL.length);
+    // Both outcomes well populated: lines removed, and text left untouched.
+    expect(STRIP_ROWS.filter((r) => r.out !== r.content).length).toBeGreaterThanOrEqual(20);
+    expect(STRIP_ROWS.filter((r) => r.out === r.content).length).toBeGreaterThanOrEqual(20);
+  });
+
+  it('is exported by the twin', () => {
+    expect(typeof stripCarinaQueryLines).toBe('function');
+  });
+
+  it.each(STRIP_ROWS)('$id', (row) => {
+    expect(stripCarinaQueryLines?.(row.content)).toBe(row.out);
   });
 });

@@ -2,7 +2,12 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
-import { draftFromDefinition, validateDraft, type ToolDraft } from '../../pascal/tool-draft';
+import {
+  draftFromDefinition,
+  emptyDraftWardrobeGesture,
+  validateDraft,
+  type ToolDraft,
+} from '../../pascal/tool-draft';
 import { OutcomesSection } from './outcomes-section';
 import { ProvingBench } from './proving-bench';
 import { SideEffectsSection } from './side-effects-section';
@@ -345,6 +350,8 @@ describe('SideEffectsSection — the progress. prefix', () => {
         id: 'e1',
         when: { kind: 'always' },
         target: '',
+        kind: 'write',
+        wardrobe: emptyDraftWardrobeGesture(),
         valueKind: 'literal-number',
         value: '1',
       },

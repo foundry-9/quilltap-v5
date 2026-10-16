@@ -7,7 +7,15 @@
  * sentence it renders is user-visible payload the server also produces, so the
  * browser and the server must phrase the same file's rejection identically.
  *
- * This replays the COMMITTED oracle corpus — 362 rows generated from v4's REAL
+ * This replays the COMMITTED oracle corpus — 425 rows (10 title + 363
+ * definition + 52 gate) RE-RECORDED from v4's REAL `QtapCustomToolSchema` at the
+ * `25b8fab6a` pin under Zod 4.6.7 (P4.D307: the generator's fenced
+ * `P4.D307 rows` block added 63 definition rows — 20 `triggers-*`, 30
+ * `effects-wardrobe-*`, and the effect-union / shape / Zod-4.6.7 length rows —
+ * and two older rows MOVED by design, `effect-target-missing` /
+ * `effect-value-missing`, to v4 `f0db8cbb8`'s `a write needs both target and
+ * value`; the unifier's one merged regen supersedes this copy). Before that:
+ * 362 rows generated from v4's REAL
  * `QtapCustomToolSchema` at `d883a5ee1` under Zod 4.5.4 (refreshed at the
  * `d883a5ee1` unification: thirteen unrecognized-key rows moved when Zod made
  * `unrecognized_keys` continuable, and two astral-title rows were added for
@@ -105,7 +113,14 @@ const definitionRows = rows.filter((r): r is DefinitionRow => r.kind === 'defini
 const gateVerdictRows = rows.filter((r): r is GateRow => r.kind === 'gate');
 
 /**
- * The corpus was first generated at v4 `c4d4b0de` (P4.D35's §C extension, 299 rows; 301 since the `d883a5ee1` refresh; 362 since the `25f534c0b` progressions round, whose Pascal lane grew the generator by 40 definition + 21 gate rows for the `progress` family —
+ * The ids of the generator's fenced `P4.D307 rows` block, by prefix, with the
+ * floor each must reach — so the unifier's merge-by-id with P4.D305's and
+ * P4.D306's blocks can be checked by count (`grep -c '"id":"triggers-'`).
+ */
+const P4D307_ROW_FLOORS = { 'triggers-': 20, 'effects-wardrobe-': 18 } as const;
+
+/**
+ * The corpus was first generated at v4 `c4d4b0de` (P4.D35's §C extension, 299 rows; 301 since the `d883a5ee1` refresh; 362 since the `25f534c0b` progressions round, whose Pascal lane grew the generator by 40 definition + 21 gate rows for the `progress` family; 425 since the `25b8fab6a` pin, P4.D307 —
  * the chipLabel/effects arms joined at the `c4d4b0de` drift round). The map is
  * empty — every row passes against the fixture's own bytes. The map and its
  * guard stay as the mechanism for the NEXT drift window (fill it only with
@@ -150,6 +165,11 @@ describe('custom-tool schema — the committed v4 corpus', () => {
 
     // Ids are the test names below; a duplicate would silently shadow a case.
     expect(new Set(rows.map((r) => r.id)).size).toBe(rows.length);
+
+    // P4.D307: the fenced block's two families reached the planned floors.
+    for (const [prefix, floor] of Object.entries(P4D307_ROW_FLOORS)) {
+      expect(definitionRows.filter((r) => r.id.startsWith(prefix)).length, prefix).toBeGreaterThanOrEqual(floor);
+    }
 
     for (const row of titleRows) {
       expect(typeof row.input.name, row.id).toBe('string');

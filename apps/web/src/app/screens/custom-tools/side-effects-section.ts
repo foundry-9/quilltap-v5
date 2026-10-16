@@ -5,7 +5,7 @@ import {
   MAX_EFFECT_TARGET_LENGTH,
   type OutcomeState,
 } from '../../pascal/custom-tool-types';
-import type { DraftEffect, DraftIssue, ToolDraft } from '../../pascal/tool-draft';
+import { newDraftEffect, type DraftEffect, type DraftIssue, type ToolDraft } from '../../pascal/tool-draft';
 import { Icon } from '../../ui/icon';
 
 /**
@@ -41,7 +41,6 @@ const EFFECTS_HINT_TAIL =
 const PROGRESS_PREFIX_TITLE =
   'Adjust one of the rolling character\u2019s timed progressions — progress.<id>.<field>. An id nobody authored is created; write true to progress.<id>.remove to delete one.';
 
-let effectIdCounter = 0;
 
 const OUTCOME_STATES: readonly OutcomeState[] = ['success', 'partial', 'failure', 'info'] as const;
 
@@ -283,17 +282,7 @@ export class SideEffectsSection {
   }
 
   addEffect(): void {
-    effectIdCounter += 1;
-    this.setEffects([
-      ...this.effects(),
-      {
-        id: `new-effect-${effectIdCounter}`,
-        when: { kind: 'always' },
-        target: '',
-        valueKind: 'expression',
-        value: '',
-      },
-    ]);
+    this.setEffects([...this.effects(), newDraftEffect()]);
   }
 
   removeEffect(id: string): void {

@@ -81,3 +81,64 @@
 {"id":"invocable: a separator inside","name":"Who:Me","out":false,"parsedName":"Who"}
 {"id":"invocable: a question mark inside","name":"Who?","out":false,"parsedName":"Who"}
 {"id":"invocable: an @ inside","name":"a@b","out":false,"parsedName":null}
+{"id":"strip: v4's spoken lines around a query","kind":"strip","content":"Hold on.\n@Alice: what is a spell?\nAbracadabra!","out":"Hold on.\nAbracadabra!"}
+{"id":"strip: a public query line alone","kind":"strip","content":"@Alice: abracadabra","out":""}
+{"id":"strip: a whisper query line alone","kind":"strip","content":"@Alice? “abracadabra”","out":""}
+{"id":"strip: a query among spoken lines","kind":"strip","content":"First.\n@Alice: what?\nSecond.\n@Bob? why?\nThird.","out":"First.\nSecond.\nThird."}
+{"id":"strip: CRLF lines rejoin with LF","kind":"strip","content":"Hold on.\r\n@Alice: what is a spell?\r\nAbracadabra!","out":"Hold on.\nAbracadabra!"}
+{"id":"strip: leading whitespace is NOT a query (kept)","kind":"strip","content":"  @Alice: abracadabra","out":"  @Alice: abracadabra"}
+{"id":"strip: the empty text","kind":"strip","content":"","out":""}
+{"id":"strip: an empty query is kept, the real one removed","kind":"strip","content":"@Alice:\n@Alice: real","out":"@Alice:"}
+{"id":"strip: a trailing newline survives","kind":"strip","content":"a\n","out":"a\n"}
+{"id":"strip: a lone CR inside a line","kind":"strip","content":"one\rtwo\n@Alice: q","out":"one\rtwo"}
+{"id":"strip: U+2028 inside a line","kind":"strip","content":"one @Alice: q","out":"one @Alice: q"}
+{"id":"strip: every line a query","kind":"strip","content":"@Alice: one\n@Bob: two","out":""}
+{"id":"strip: public address","kind":"strip","content":"@Evangeline: what year is it?","out":""}
+{"id":"strip: whispered address","kind":"strip","content":"@Evangeline? what year is it?","out":""}
+{"id":"strip: gate: mid-text @name is not an address","kind":"strip","content":"I look at @Evangeline and say nothing.","out":"I look at @Evangeline and say nothing."}
+{"id":"strip: gate: plain prose","kind":"strip","content":"I tell him I will take the job.","out":"I tell him I will take the job."}
+{"id":"strip: gate: empty string","kind":"strip","content":"","out":""}
+{"id":"strip: leading space defeats the anchor","kind":"strip","content":" @Evangeline: what year is it?","out":" @Evangeline: what year is it?"}
+{"id":"strip: leading tab defeats the anchor","kind":"strip","content":"\t@Evangeline: what year is it?","out":"\t@Evangeline: what year is it?"}
+{"id":"strip: a second line CAN carry the address","kind":"strip","content":"Setting the scene.\n@Evangeline: what year is it?","out":"Setting the scene."}
+{"id":"strip: CRLF split is honoured","kind":"strip","content":"Setting the scene.\r\n@Evangeline: what year is it?","out":"Setting the scene."}
+{"id":"strip: two-word name","kind":"strip","content":"@Madame Evangeline: the hour, please.","out":""}
+{"id":"strip: three-word name","kind":"strip","content":"@The Right Honourable: your verdict?","out":""}
+{"id":"strip: single character name cannot match (needs two word chars)","kind":"strip","content":"@E: hello","out":"@E: hello"}
+{"id":"strip: two character name is the floor","kind":"strip","content":"@Ev: hello","out":""}
+{"id":"strip: digits are word chars","kind":"strip","content":"@Unit7: report","out":""}
+{"id":"strip: underscores are word chars","kind":"strip","content":"@brass_owl: report","out":""}
+{"id":"strip: an apostrophe is NOT a word char","kind":"strip","content":"@O'Malley: report","out":"@O'Malley: report"}
+{"id":"strip: a hyphen is NOT a word char","kind":"strip","content":"@Jean-Luc: report","out":"@Jean-Luc: report"}
+{"id":"strip: an accented name does not match (ASCII \\w)","kind":"strip","content":"@Zoé: bonjour","out":"@Zoé: bonjour"}
+{"id":"strip: a non-Latin name does not match (ASCII \\w)","kind":"strip","content":"@Иван: привет","out":"@Иван: привет"}
+{"id":"strip: an emoji name does not match","kind":"strip","content":"@🦉: hoot","out":"@🦉: hoot"}
+{"id":"strip: a trailing space before the separator breaks the name","kind":"strip","content":"@Evangeline : hello","out":"@Evangeline : hello"}
+{"id":"strip: bare @ with no name","kind":"strip","content":"@: hello","out":"@: hello"}
+{"id":"strip: bare @ alone","kind":"strip","content":"@","out":"@"}
+{"id":"strip: @ followed by the separator only","kind":"strip","content":"@?","out":"@?"}
+{"id":"strip: a comma is not a separator","kind":"strip","content":"@Evangeline, what year is it?","out":"@Evangeline, what year is it?"}
+{"id":"strip: an exclamation is not a separator","kind":"strip","content":"@Evangeline! what year is it?","out":"@Evangeline! what year is it?"}
+{"id":"strip: a dash is not a separator","kind":"strip","content":"@Evangeline - what year is it?","out":"@Evangeline - what year is it?"}
+{"id":"strip: no space after the colon","kind":"strip","content":"@Evangeline:what year is it?","out":""}
+{"id":"strip: several spaces after the colon","kind":"strip","content":"@Evangeline:     what year is it?","out":""}
+{"id":"strip: a tab after the colon","kind":"strip","content":"@Evangeline:\twhat year is it?","out":""}
+{"id":"strip: an address with no question at all","kind":"strip","content":"@Evangeline:","out":"@Evangeline:"}
+{"id":"strip: an address with only whitespace after it","kind":"strip","content":"@Evangeline:    ","out":"@Evangeline:    "}
+{"id":"strip: an empty address then a real one on the next line","kind":"strip","content":"@Evangeline:\n@Prosper: who is there?","out":"@Evangeline:"}
+{"id":"strip: only the FIRST real question fires","kind":"strip","content":"@Evangeline: first?\n@Prosper: second?","out":""}
+{"id":"strip: straight double quotes are stripped","kind":"strip","content":"@Evangeline: \"what year is it?\"","out":""}
+{"id":"strip: straight single quotes are stripped","kind":"strip","content":"@Evangeline: 'what year is it?'","out":""}
+{"id":"strip: smart double quotes are stripped","kind":"strip","content":"@Evangeline: “what year is it?”","out":""}
+{"id":"strip: smart single quotes are stripped","kind":"strip","content":"@Evangeline: ‘what year is it?’","out":""}
+{"id":"strip: an unmatched open quote keeps the quote","kind":"strip","content":"@Evangeline: \"what year is it?","out":""}
+{"id":"strip: a mismatched close quote keeps the quote","kind":"strip","content":"@Evangeline: “what year is it?\"","out":""}
+{"id":"strip: text after the close quote is dropped","kind":"strip","content":"@Evangeline: \"what year?\" and be quick","out":""}
+{"id":"strip: an empty quoted span answers null, it does not fall through","kind":"strip","content":"@Evangeline: \"\"","out":"@Evangeline: \"\""}
+{"id":"strip: an empty span swallows the text after it","kind":"strip","content":"@Evangeline: '' really","out":"@Evangeline: '' really"}
+{"id":"strip: inner quotes survive","kind":"strip","content":"@Evangeline: \"say 'hello' twice\"","out":""}
+{"id":"strip: the quoted span is trimmed","kind":"strip","content":"@Evangeline: \"   spaced   \"","out":""}
+{"id":"strip: a markdown-ish line that merely starts with @","kind":"strip","content":"@@Evangeline: hello","out":"@@Evangeline: hello"}
+{"id":"strip: an email-looking line","kind":"strip","content":"@evangeline@example.com: ping","out":"@evangeline@example.com: ping"}
+{"id":"strip: whisper with a quoted question","kind":"strip","content":"@Evangeline? 'is he still here'","out":""}
+{"id":"strip: trailing newline after a valid address","kind":"strip","content":"@Evangeline: what year is it?\n","out":""}

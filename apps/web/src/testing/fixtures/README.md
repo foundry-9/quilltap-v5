@@ -202,3 +202,47 @@ are v4's own, not reimplemented. Drives
 `app/screens/settings/memory/memory-maintenance-text.oracle.spec.ts` (objects
 compared through `JSON.stringify` — key order is part of the value).
 
+
+## The `25b8fab6a` refresh — `pascal-custom-tool-definition.oracle.ndjson` + `carina-parser.ndjson` (P4.D307)
+
+_Recorded 2026-10-16 at v4 `25b8fab6a` (`4.11.0-dev.10`) by P4.D307 (the
+Pascal SPA lane), from the lane's pinned worktree
+(`/tmp/qt-v4-pin-p4d307-25b8fab6a`), Node 24.13.1, the pin's resolved `zod`
+**4.6.7**._
+
+**`pascal-custom-tool-definition.oracle.ndjson` — 362 → 425 rows** (10 `title`
++ 363 `definition` + 52 `gate`), sha-256 `633c837f33bd59fa4be0bda3d00001cca6c39a71680fb57594378bf7a1398f3f`.
+v4 `362426c8f` (`triggers`) and `f0db8cbb8` (the write | wardrobe effect
+union) grew the format; the shared generator
+`harness/oracle/cases/pascal-custom-tool-definition.ts` gained ONE fenced block,
+`// ---- P4.D307 rows (the SPA twin's; MERGE BY ID with P4.D305 §4.1 / P4.D306
+§4.1 at unification) ----`, of 63 definition rows under the two server surveys'
+row names (20 `triggers-*`, 30 `effects-wardrobe-*`, the effect-union /
+shape-order / known-key rows, and nine Zod 4.6.7 length-check rows). Two OLDER
+rows moved by design: `effect-target-missing` / `effect-value-missing` now read
+`a write needs both target and value` (the write halves became optional). No
+older row moved from the Zod 4.6.5 → 4.6.7 bump. Main's unmodified generator
+re-run at the pin: 362 rows, those two rows the only diff. **The unifier's one
+merged regen supersedes this copy** (P4.D305 and P4.D306 grow the same
+generator on their branches; a same-id row with different bytes is a finding).
+
+**`carina-parser.ndjson` — 83 → 144 rows**, sha-256 `87a2e489679d7744cb19fcafeaaedf466bc343d848e3c87957933b9d34a3b86a`. v4 extracted
+`parseCarinaQuery`'s loop body into `parseQueryLine` and added
+`stripCarinaQueryLines`; the recorder appends 61 rows of a new `{ id, kind:
+'strip', content, out }` kind AFTER the 34 name rows — twelve hand-written
+vectors plus the strip of every parse vector. The 83 older rows (no `kind` key)
+re-record BYTE-IDENTICAL, which is the proof the extraction changed no parse.
+
+Recipes (canonical; stage under a lane-private dir, `rm -f` the target first):
+
+```bash
+PIN=/tmp/qt-v4-pin-<order>-25b8fab6a          # git worktree add --detach "$PIN" 25b8fab6a
+V5W=${V5W:-$HOME/source/quilltap-v5}
+cd "$PIN" && TZ=UTC npx tsx "$V5W/harness/oracle/cases/pascal-custom-tool-definition.ts" \
+  > "$V5W/apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson"
+cp "$V5W/apps/web/oracle/carina-parser.recorder.ts" "$PIN/" && cd "$PIN" && \
+  npx tsx carina-parser.recorder.ts > "$V5W/apps/web/src/testing/fixtures/carina-parser.ndjson"
+```
+
+Expect ≥ 425 and exactly 144 lines; `grep -c '"id":"triggers-'` ≥ 20,
+`grep -c '"id":"effects-wardrobe-'` ≥ 18, `grep -c '"kind":"strip"'` = 61.

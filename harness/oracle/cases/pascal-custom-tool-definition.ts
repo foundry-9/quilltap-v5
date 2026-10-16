@@ -524,6 +524,33 @@ const corpus: Array<[string, unknown]> = [
   // `triggers` is a KNOWN top-level key; `persist` stays reserved.
   ['unknown-keys-triggers-known', { ...BASE, triggers: ['abracadabra'], persist: true }],
 
+  // ---- P4.D307 rows (the SPA twin's), merged BY ID at unification ----
+  // The ids P4.D305 / P4.D306 already carry keep the server lanes' inputs;
+  // three ids P4.D307 recorded over a DIFFERENT input are kept under a
+  // suffixed id so both inputs stay pinned. The Zod 4.6.7 length-check rows:
+  // an array over its `.max(N)` fails with ONLY that `too_big` (no element
+  // parsed), and a string input fails the type check AND runs the length
+  // checks with the STRING origin.
+  ['shape-order-chip-triggers-description-wrong-types', { name: 'probe', chipLabel: 5, triggers: 5, description: 5, outcomes: [{ when: true, message: '-', state: 'info' }] }],
+  ['unknown-keys-triggers-known-bogus-key', { ...BASE, triggers: ['abracadabra'], bogus: 1 }],
+  ['effects-wardrobe-key-order', withEffects([{ wardrobe: { slot: 'hair', mode: 'add_to_slot', items: ['Ribbon'], action: 'wear' }, when: { outcome: { eq: 'success' } } }])],
+  ['effects-wardrobe-take-off-with-mode', withEffects([{ wardrobe: { action: 'take_off', items: ['Hat'], mode: 'replace' } }])],
+  ['effects-wardrobe-take-off-no-items', withEffects([{ wardrobe: { action: 'take_off', slot: 'top' } }])],
+  ['effects-wardrobe-clear-slot-with-items', withEffects([{ wardrobe: { action: 'clear_slot', slot: 'hair', items: ['Wig'] } }])],
+  ['effects-wardrobe-at-cap', withEffects([{ wardrobe: { action: 'wear', items: Array.from({ length: 8 }, (_, i) => `Item ${i}`) } }])],
+  ['effects-wardrobe-empty-item-string', withEffects([{ wardrobe: { action: 'wear', items: [''] } }])],
+  ['effects-write-when-order-literal-value', withEffects([{ when: { params: { ghost: { gt: 1 } } }, target: 'nowhere', value: 1 }])],
+  ['effects-wardrobe-when-order', withEffects([{ when: { params: { ghost: { gt: 1 } } }, wardrobe: { action: 'clear_slot' } }])],
+  ['effects-over-cap-bad-elements', withEffects(Array.from({ length: 17 }, () => ({ target: 'nowhere', value: 1 })))],
+  ['outcomes-over-cap-bad-elements', { ...BASE, outcomes: Array.from({ length: 33 }, () => ({ when: 5, message: '-', state: 'info' })) }],
+  ['effects-string-over-cap', withEffects('x'.repeat(20))],
+  ['outcomes-string-over-cap', { ...BASE, outcomes: 'x'.repeat(40) }],
+  ['outcomes-empty-string', { ...BASE, outcomes: '' }],
+  ['triggers-empty-string', { ...BASE, triggers: '' }],
+  ['effects-wardrobe-nine-bad-items', withEffects([{ wardrobe: { action: 'wear', items: Array.from({ length: 9 }, () => 7) } }])],
+  ['triggers-nine-bad-elements', { ...BASE, triggers: Array.from({ length: 9 }, () => 7) }],
+  // ---- end P4.D307 rows ----
+
   // ---- effects: accepted --------------------------------------------------
   ['effect-literal-number', withEffects([{ target: 'state.encounter.count', value: 3 }])],
   ['effect-literal-negative-number', withEffects([{ target: 'state.debt', value: -12.5 }])],

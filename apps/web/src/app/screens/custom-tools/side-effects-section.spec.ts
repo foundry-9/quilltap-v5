@@ -1,7 +1,13 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { newDraft, validateDraft, type DraftEffect, type ToolDraft } from '../../pascal/tool-draft';
+import {
+  emptyDraftWardrobeGesture,
+  newDraft,
+  validateDraft,
+  type DraftEffect,
+  type ToolDraft,
+} from '../../pascal/tool-draft';
 import { SideEffectsSection, whenChoiceOf } from './side-effects-section';
 
 /**
@@ -18,9 +24,11 @@ function effect(over: Partial<DraftEffect> = {}): DraftEffect {
   return {
     id: 'e1',
     when: { kind: 'always' },
+    kind: 'write',
     target: 'state.tally',
     valueKind: 'literal-number',
     value: '1',
+    wardrobe: emptyDraftWardrobeGesture(),
     ...over,
   };
 }

@@ -3,6 +3,13 @@
  * `c4d4b0de`, "custom-tool chip labels, two-block bubbles, and side effects"),
  * pinned against v4's REAL Zod at that commit (P4.D36 unit 2).
  *
+ * ⚠ **Re-measured at the `25b8fab6a` pin (P4.D307).** Three rows moved BY
+ * DESIGN, each re-captured through v4's real schema there: `effect-target-missing`
+ * and `effect-value-missing` now read v4 `f0db8cbb8`'s refine sentence `a write
+ * needs both target and value` (the write halves became optional when the
+ * wardrobe gesture joined the effect), and `effects-past-cap-and-broken` reads
+ * Zod 4.6.7's lone cap sentence (see the third bullet below).
+ *
  * ⚠ **Refreshed at v4 `25f534c0b` (P4.D170).** `0587d1e96` gave Pascal's format
  * a `progress` family, and the sentences these rows carry MOVED with it: the
  * effect target's terminal reason gained `"progress."`, both "must test
@@ -50,9 +57,11 @@
  *    continuable) and then `target must start with "state.", "metadata." or "progress."`
  *    from the superRefine, which still runs because nothing aborted. The same
  *    doubling happens for an empty or over-long `value`.
- *  - `effects: at most 16 effects` fires ALONGSIDE per-effect superRefine
- *    complaints, because a bad target is not a schema-shape failure: the array
- *    check is only skipped when an ELEMENT aborts.
+ *  - `effects: at most 16 effects` USED to fire alongside per-effect
+ *    superRefine complaints (a bad target is not a schema-shape failure). Under
+ *    Zod 4.6.7 (`capSize`, the `25b8fab6a` pin) an oversized list reports ONLY
+ *    its cap, aborting, before any element is parsed — so
+ *    `effects-past-cap-and-broken` now carries that one sentence.
  *  - the `value` union reports all three branch failures joined by ` — or — `
  *    for a null/object/array value, but an EMPTY string hoists the string
  *    branch's own `Too small` alone (exactly one non-aborted branch).
@@ -60,6 +69,7 @@
 
 import { describe, expect, it } from 'vitest';
 
+import * as types from './custom-tool-types';
 import {
   collectUnknownKeys,
   formatDefinitionIssues,
@@ -132,9 +142,9 @@ const CAPTURED: readonly Row[] = [
   {"kind": "definition", "id": "effect-target-metadata-empty", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"target\":\"metadata.\",\"value\":1}]}", "success": false, "reason": "effects.0.target: target names no metadata key after \"metadata.\"", "data": null, "unknownKeys": []},
   {"kind": "definition", "id": "effect-target-empty-string", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"target\":\"\",\"value\":1}]}", "success": false, "reason": "effects.0.target: Too small: expected string to have >=1 characters; effects.0.target: target must start with \"state.\", \"metadata.\" or \"progress.\"", "data": null, "unknownKeys": []},
   {"kind": "definition", "id": "effect-target-over-cap", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"target\":\"state.kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk\",\"value\":1}]}", "success": false, "reason": "effects.0.target: Too big: expected string to have <=200 characters", "data": null, "unknownKeys": []},
-  {"kind": "definition", "id": "effect-target-missing", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"value\":1}]}", "success": false, "reason": "effects.0.target: Invalid input: expected string, received undefined", "data": null, "unknownKeys": []},
+  {"kind": "definition", "id": "effect-target-missing", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"value\":1}]}", "success": false, "reason": "effects.0.target: a write needs both target and value", "data": null, "unknownKeys": []},
   {"kind": "definition", "id": "effect-target-not-a-string", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"target\":7,\"value\":1}]}", "success": false, "reason": "effects.0.target: Invalid input: expected string, received number", "data": null, "unknownKeys": []},
-  {"kind": "definition", "id": "effect-value-missing", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"target\":\"state.x\"}]}", "success": false, "reason": "effects.0.value: Invalid input: expected number, received undefined — or — Invalid input: expected boolean, received undefined — or — Invalid input: expected string, received undefined", "data": null, "unknownKeys": []},
+  {"kind": "definition", "id": "effect-value-missing", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"target\":\"state.x\"}]}", "success": false, "reason": "effects.0.value: a write needs both target and value", "data": null, "unknownKeys": []},
   {"kind": "definition", "id": "effect-value-empty-string", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"target\":\"state.x\",\"value\":\"\"}]}", "success": false, "reason": "effects.0.value: Too small: expected string to have >=1 characters; effects.0.value: value is not a valid expression: the expression is empty", "data": null, "unknownKeys": []},
   {"kind": "definition", "id": "effect-value-over-cap", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"target\":\"state.x\",\"value\":\"'yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy'\"}]}", "success": false, "reason": "effects.0.value: Too big: expected string to have <=500 characters; effects.0.value: value is not a valid expression: the expression exceeds 500 characters", "data": null, "unknownKeys": []},
   {"kind": "definition", "id": "effect-value-null", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"target\":\"state.x\",\"value\":null}]}", "success": false, "reason": "effects.0.value: Invalid input: expected number, received null — or — Invalid input: expected boolean, received null — or — Invalid input: expected string, received null", "data": null, "unknownKeys": []},
@@ -157,7 +167,7 @@ const CAPTURED: readonly Row[] = [
   {"kind": "definition", "id": "effect-not-an-object", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[1]}", "success": false, "reason": "effects.0: Invalid input: expected object, received number", "data": null, "unknownKeys": []},
   {"kind": "definition", "id": "effects-not-an-array", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":{\"target\":\"state.x\",\"value\":1}}", "success": false, "reason": "effects: Invalid input: expected array, received object", "data": null, "unknownKeys": []},
   {"kind": "definition", "id": "effects-past-cap", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"target\":\"state.k0\",\"value\":1},{\"target\":\"state.k1\",\"value\":1},{\"target\":\"state.k2\",\"value\":1},{\"target\":\"state.k3\",\"value\":1},{\"target\":\"state.k4\",\"value\":1},{\"target\":\"state.k5\",\"value\":1},{\"target\":\"state.k6\",\"value\":1},{\"target\":\"state.k7\",\"value\":1},{\"target\":\"state.k8\",\"value\":1},{\"target\":\"state.k9\",\"value\":1},{\"target\":\"state.k10\",\"value\":1},{\"target\":\"state.k11\",\"value\":1},{\"target\":\"state.k12\",\"value\":1},{\"target\":\"state.k13\",\"value\":1},{\"target\":\"state.k14\",\"value\":1},{\"target\":\"state.k15\",\"value\":1},{\"target\":\"state.k16\",\"value\":1}]}", "success": false, "reason": "effects: at most 16 effects", "data": null, "unknownKeys": []},
-  {"kind": "definition", "id": "effects-past-cap-and-broken", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"target\":\"nowhere0\",\"value\":1},{\"target\":\"nowhere1\",\"value\":1},{\"target\":\"nowhere2\",\"value\":1},{\"target\":\"nowhere3\",\"value\":1},{\"target\":\"nowhere4\",\"value\":1},{\"target\":\"nowhere5\",\"value\":1},{\"target\":\"nowhere6\",\"value\":1},{\"target\":\"nowhere7\",\"value\":1},{\"target\":\"nowhere8\",\"value\":1},{\"target\":\"nowhere9\",\"value\":1},{\"target\":\"nowhere10\",\"value\":1},{\"target\":\"nowhere11\",\"value\":1},{\"target\":\"nowhere12\",\"value\":1},{\"target\":\"nowhere13\",\"value\":1},{\"target\":\"nowhere14\",\"value\":1},{\"target\":\"nowhere15\",\"value\":1},{\"target\":\"nowhere16\",\"value\":1}]}", "success": false, "reason": "effects: at most 16 effects; effects.0.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.1.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.2.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.3.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.4.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.5.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.6.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.7.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.8.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.9.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.10.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.11.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.12.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.13.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.14.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.15.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.16.target: target must start with \"state.\", \"metadata.\" or \"progress.\"", "data": null, "unknownKeys": []},
+  {"kind": "definition", "id": "effects-past-cap-and-broken", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"target\":\"nowhere0\",\"value\":1},{\"target\":\"nowhere1\",\"value\":1},{\"target\":\"nowhere2\",\"value\":1},{\"target\":\"nowhere3\",\"value\":1},{\"target\":\"nowhere4\",\"value\":1},{\"target\":\"nowhere5\",\"value\":1},{\"target\":\"nowhere6\",\"value\":1},{\"target\":\"nowhere7\",\"value\":1},{\"target\":\"nowhere8\",\"value\":1},{\"target\":\"nowhere9\",\"value\":1},{\"target\":\"nowhere10\",\"value\":1},{\"target\":\"nowhere11\",\"value\":1},{\"target\":\"nowhere12\",\"value\":1},{\"target\":\"nowhere13\",\"value\":1},{\"target\":\"nowhere14\",\"value\":1},{\"target\":\"nowhere15\",\"value\":1},{\"target\":\"nowhere16\",\"value\":1}]}", "success": false, "reason": "effects: at most 16 effects", "data": null, "unknownKeys": []},
   {"kind": "definition", "id": "effect-two-broken", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"target\":\"nowhere\",\"value\":1},{\"target\":\"state.x\",\"value\":\"bare prose\"}]}", "success": false, "reason": "effects.0.target: target must start with \"state.\", \"metadata.\" or \"progress.\"; effects.1.value: value is not a valid expression: \"bare\" is a bare word — there are no identifiers here. Quote literal text ('bare') or use a {{ref}}", "data": null, "unknownKeys": []},
   {"kind": "definition", "id": "effect-plus-unknown-top-level", "inputJson": "{\"name\":\"probe\",\"description\":\"A probe.\",\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}],\"effects\":[{\"target\":\"state.x\",\"value\":1}],\"persist\":true}", "success": true, "reason": null, "data": "{\"name\":\"probe\",\"description\":\"A probe.\",\"effects\":[{\"target\":\"state.x\",\"value\":1}],\"outcomes\":[{\"when\":true,\"message\":\"-\",\"state\":\"info\"}]}", "unknownKeys": ["persist"]},
   {"kind": "target", "id": "state-path", "target": "state.encounter.count", "ok": true, "parsed": "{\"kind\":\"state\",\"path\":[\"encounter\",\"count\"],\"raw\":\"state.encounter.count\"}", "reason": null},
@@ -236,5 +246,169 @@ describe('chipLabel + effects — the captured v4 rows', () => {
         }
       });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v4 `f0db8cbb8` — "effects — wardrobe gestures" (`custom-tool-definition.
+// test.ts:276-354`, pinned at `25b8fab6a`), transcribed CASE FOR CASE, plus
+// the Zod half of "is deliberately weaker than Zod on wardrobe per-action
+// rules" (`:791-801`). The ten JSON-Schema-mirror rows (`:725-734`) and the
+// mirror half of that case read the published schema file, which the SPA
+// serves rather than imports (P4.D313's byte guards cover it) — not
+// transcribed, recorded by name in the P4.D307 lane record. The regexes run
+// over the twin's JOINED sentence (`path: message; …`), exactly as v4's run
+// over `formatDefinitionIssues`.
+// ---------------------------------------------------------------------------
+
+const WB_BASE = {
+  name: 'probe',
+  description: 'A probe.',
+  outcomes: [{ when: true, message: '-', state: 'info' }],
+};
+const STR_PARAM = { parameters: { material: { type: 'string', default: 'brass' } } };
+const LLM_BLOCK = {
+  llm: { prompt: 'Answer YES or NO: is {{value}} auspicious?', errorMessage: 'The wire went dead.' },
+};
+const MAX_EFFECTS = 16;
+
+function withEffects(effects: unknown, extra: Record<string, unknown> = {}) {
+  return { ...WB_BASE, ...extra, effects };
+}
+
+function accepts(doc: unknown): boolean {
+  return safeParse(doc).success;
+}
+
+function rejection(doc: unknown): string {
+  const result = safeParse(doc);
+  if (result.success) throw new Error('expected the definition to be rejected, but it parsed');
+  return formatDefinitionIssues(result.issues);
+}
+
+describe('effects — wardrobe gestures', () => {
+  const issuesOf = (doc: unknown): string => {
+    const result = safeParse(doc);
+    return result.success ? '' : formatDefinitionIssues(result.issues);
+  };
+
+  it('accepts each action in its own shape', () => {
+    expect(
+      accepts(
+        withEffects([
+          { wardrobe: { action: 'wear', items: ['Cloak of Night'] } },
+          { wardrobe: { action: 'wear', items: ['Ribbon'], mode: 'add_to_slot', slot: 'hair' } },
+          { wardrobe: { action: 'wear', items: ['Regalia'], mode: 'replace' } },
+          { when: { outcome: { eq: 'failure' } }, wardrobe: { action: 'take_off', items: ['Sundress'] } },
+          { wardrobe: { action: 'take_off', items: ['Sundress'], slot: 'top' } },
+          { wardrobe: { action: 'clear_slot', slot: 'hair' } },
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  it('accepts a parameter choosing the garment', () => {
+    expect(
+      accepts(withEffects([{ wardrobe: { action: 'wear', items: ['{{params.material}} gloves'] } }], STR_PARAM)),
+    ).toBe(true);
+  });
+
+  it('tolerates an unknown placeholder family — it simply fails to resolve at the table', () => {
+    expect(accepts(withEffects([{ wardrobe: { action: 'wear', items: ['{{mystery}}'] } }]))).toBe(true);
+  });
+
+  it('rejects an effect that is both a write and a gesture, or neither', () => {
+    expect(
+      rejection(withEffects([{ target: 'state.x', value: 1, wardrobe: { action: 'clear_slot', slot: 'hair' } }])),
+    ).toMatch(/not both/);
+    expect(rejection(withEffects([{}]))).toMatch(/needs target \+ value, or wardrobe/);
+    expect(rejection(withEffects([{ target: 'state.x' }]))).toMatch(/needs both target and value/);
+  });
+
+  it('states the per-action rules at precise paths', () => {
+    expect(issuesOf(withEffects([{ wardrobe: { action: 'wear', items: ['Hat'], mode: 'add_to_slot' } }]))).toMatch(
+      /effects\.0\.wardrobe\.slot.*mode add_to_slot needs a slot/,
+    );
+    expect(issuesOf(withEffects([{ wardrobe: { action: 'wear', items: ['Hat'], slot: 'hair' } }]))).toMatch(
+      /effects\.0\.wardrobe\.slot.*only used with mode add_to_slot/,
+    );
+    expect(issuesOf(withEffects([{ wardrobe: { action: 'wear' } }]))).toMatch(
+      /effects\.0\.wardrobe\.items.*at least one item/,
+    );
+    expect(issuesOf(withEffects([{ wardrobe: { action: 'take_off', items: ['Hat'], mode: 'replace' } }]))).toMatch(
+      /effects\.0\.wardrobe\.mode/,
+    );
+    expect(issuesOf(withEffects([{ wardrobe: { action: 'clear_slot' } }]))).toMatch(/clear_slot needs a slot/);
+    expect(issuesOf(withEffects([{ wardrobe: { action: 'clear_slot', slot: 'hair', items: ['Wig'] } }]))).toMatch(
+      /effects\.0\.wardrobe\.items.*takes no items/,
+    );
+  });
+
+  it('rejects an item naming an undeclared parameter, or {{llm}} without a consult', () => {
+    expect(issuesOf(withEffects([{ wardrobe: { action: 'wear', items: ['Hat', '{{params.ghost}}'] } }]))).toMatch(
+      /effects\.0\.wardrobe\.items\.1.*undeclared parameter "ghost"/,
+    );
+    expect(rejection(withEffects([{ wardrobe: { action: 'wear', items: ['{{llm}}'] } }]))).toMatch(
+      /declares no `llm` block/,
+    );
+    expect(accepts(withEffects([{ wardrobe: { action: 'wear', items: ['{{llm}}'] } }], LLM_BLOCK))).toBe(true);
+  });
+
+  it('rejects an over-long item list or reference', () => {
+    const nine = Array.from({ length: 9 }, (_, i) => `Item ${i}`);
+    expect(accepts(withEffects([{ wardrobe: { action: 'wear', items: nine } }]))).toBe(false);
+    expect(accepts(withEffects([{ wardrobe: { action: 'wear', items: ['x'.repeat(201)] } }]))).toBe(false);
+  });
+
+  it('counts gestures and writes together against the effects cap', () => {
+    const many = Array.from({ length: MAX_EFFECTS + 1 }, (_, i) =>
+      i % 2 ? { target: `state.k${i}`, value: 1 } : { wardrobe: { action: 'clear_slot', slot: 'hair' } },
+    );
+    expect(accepts(withEffects(many))).toBe(false);
+  });
+
+  it('is deliberately weaker than Zod on wardrobe per-action rules — the Zod half', () => {
+    const addToSlotNoSlot = withEffects([{ wardrobe: { action: 'wear', items: ['Hat'], mode: 'add_to_slot' } }]);
+    const clearSlotWithItems = withEffects([{ wardrobe: { action: 'clear_slot', slot: 'hair', items: ['Wig'] } }]);
+    const ghostGarment = withEffects([{ wardrobe: { action: 'wear', items: ['{{params.ghost}}'] } }]);
+    for (const doc of [addToSlotNoSlot, clearSlotWithItems, ghostGarment]) {
+      expect(accepts(doc)).toBe(false);
+    }
+  });
+});
+
+describe('the gesture guards and the slot enum (L-B)', () => {
+  const t = types as unknown as Record<string, unknown>;
+
+  it('isWriteEffect / isWardrobeEffect tell the two shapes apart, and neither claims a half-write', () => {
+    const isWrite = t['isWriteEffect'] as ((e: unknown) => boolean) | undefined;
+    const isWardrobe = t['isWardrobeEffect'] as ((e: unknown) => boolean) | undefined;
+    expect(typeof isWrite).toBe('function');
+    expect(typeof isWardrobe).toBe('function');
+    const write = { target: 'state.x', value: 1 };
+    const gesture = { wardrobe: { action: 'clear_slot', slot: 'hair' } };
+    expect([isWrite?.(write), isWardrobe?.(write)]).toEqual([true, false]);
+    expect([isWrite?.(gesture), isWardrobe?.(gesture)]).toEqual([false, true]);
+    expect([isWrite?.({ target: 'state.x' }), isWardrobe?.({ target: 'state.x' })]).toEqual([false, false]);
+  });
+
+  it('wardrobeGestureProblems speaks the loader’s words, in its switch order', () => {
+    const problems = t['wardrobeGestureProblems'] as ((g: unknown) => unknown) | undefined;
+    expect(typeof problems).toBe('function');
+    expect(problems?.({ action: 'clear_slot', items: ['Wig'], mode: 'wear' })).toEqual([
+      { field: 'slot', message: 'clear_slot needs a slot' },
+      { field: 'items', message: 'clear_slot takes no items' },
+      { field: 'mode', message: 'mode is only used with wear' },
+    ]);
+    expect(problems?.({ action: 'wear', items: [], mode: 'add_to_slot' })).toEqual([
+      { field: 'items', message: 'wear needs at least one item' },
+      { field: 'slot', message: 'mode add_to_slot needs a slot' },
+    ]);
+    expect(problems?.({ action: 'take_off', items: ['Hat'], slot: 'top' })).toEqual([]);
+  });
+
+  it('the slot enum is v4’s five, in v4’s order (a wardrobe-registry reorder trips HERE)', async () => {
+    const { WARDROBE_SLOT_TYPES } = await import('../wardrobe/slot-meta');
+    expect(WARDROBE_SLOT_TYPES).toEqual(['top', 'bottom', 'footwear', 'accessories', 'hair']);
   });
 });
