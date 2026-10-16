@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — docs(porting): P4.D306 lane record — the red-first counts, the three entrances' set behaviour, the catalog and Zod 4.6.7 findings, the hand-offs
+
+_No crate versions bumped._
+
+The order's status header reads LANE COMPLETE with the commits and the Tier 1 / 2 / 3 outcomes; the lane record is appended to `status-log.md`.
+
 #### 2026-10-16 — feat(pascal): custom tools dress and undress the rolling character — the wardrobe-effects applier, the write/gesture split with the stable index merge, the turn's announcement set threaded from the executor (P4.D306)
 
 _Versions: core 0.0.1310._

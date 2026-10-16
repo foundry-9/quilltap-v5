@@ -185695,3 +185695,226 @@ C1 spelt as written — `ChatSettings.custom_tool_triggers`, ensure module
   on the wire; a consult-bearing trigger LIVE; the file-log lines).
 - **Versions at close:** core 0.0.1307, host 0.0.209 (harness frozen; web / cli /
   tauri / SPA untouched).
+
+## P4.D306 — Pascal wardrobe effects, the SERVER side of v4 `f0db8cbb8` + the composite take-off fix (lane, 2026-10-16)
+
+Branch `claude/p4.d306-pascal-wardrobe-effects-server-dafcffc`. The session
+opened on an app worktree branch `claude/silly-bouman-fbdaaa` at main
+`6f78aa3d7` (NOT on the base); it was moved before the first edit with
+`git switch -c` onto **`TRIGGERS` = `dafcffc2c`** (P4.D305's Tier-1 commit, as
+recorded in P4.D305's status header on its lane branch; `KEYSTONE` `09a3d9489`
+and `REAIM` `abea3f336` in the ancestry). C2 §4's seam was reserved exactly as
+spelt (`RunCustomToolParams.pending_wardrobe_announcements:
+Option<&'a Arc<Mutex<HashSet<String>>>>`, unread) — the USE landed with NO
+retype; no `HANDOFF:` needed for it.
+
+- **§2 probe (observation, the pin rule):** v4 branch `main`, tree clean;
+  `log 25b8fab6a..main` = TWO commits — **v4 moved: `5cb0e0190`** ("feat(pascal):
+  wardrobe picker in the Workbench") and **`a05c6f755`** ("feat(pascal):
+  {{character}} placeholder; character-announced custom tools") observed 16:31
+  CDT; `log 489b228b6..bugfix` empty. Not ported. Pin worktree
+  `/tmp/qt-v4-pin-p4d306-25b8fab6a` (`25b8fab6aa58…`, `4.11.0-dev.10`, root
+  `openai` 7.34.0, `zod` 4.6.7; the three symlink classes).
+- **Regen path:** each family's recipe extracted by `recipe_sweep.py --show`
+  and run with EVERY `/tmp` path rewritten under `/tmp/p4d306/` (the shared
+  wardrobe `/tmp/qt-*` fixture names, the order's override rule) and the
+  driver's committed-`.db` shield reproduced (a `QT_FIXTURE*` naming a
+  committed pair is pointed at a per-family, per-stage copy). ONE sweep,
+  announced in the shared notes folder (`p4d306-sweep-announce.md`).
+
+### Red-first (item 1)
+
+- `wardrobe_tools_equivalence` with the five new ops at the pin, on the
+  unported handler: `takeoff_casual_outfit`, `takeoff_casual_outfit_not_on`
+  (+ its logs) and `takeoff_casual_outfit_restricted` RED (v5 reported
+  `slots_affected` = the composite's `types` and took nothing off), plus the
+  read-back and four picture ops RED downstream (the state carryover:
+  `wear_casual_outfit_again` credited no wear on v5 because nothing had come
+  off); `wear_casual_outfit` / `_again` green. `wear_hairdo` red on BOTH sides
+  of the fix — P4.D312's hair note (`7458ff94e`), sibling residue at the pin.
+- `pascal_custom_tool_definition_equivalence` grown by 46 rows, on unported
+  `TRIGGERS`: **48 rows RED** — all 46 new rows + `effect-target-missing` /
+  `effect-value-missing` (the refine's sentences replace the old
+  `invalid_type`). No pre-existing row carried BOTH a `when` and a target
+  issue, so the reorder reddened nothing else; the new
+  `effects-write-when-order` row pins it. Every `triggers-*` row GREEN
+  (confirming the base). Two probe rows were added after the measurement
+  (`effects-wardrobe-items-long-string`, `effects-over-cap-with-bad-element`).
+- Execution / run-custom / vocabulary / tool-definitions: measured on a
+  scratch worktree at commit 1 (`55bfda8dd`, unported union) with the NEW
+  corpora's pin oracles — execution RED at its first wardrobe row (the old
+  parser refuses `wardrobe`); run-custom RED from row one (all 25 rows carry
+  the preamble — closing P4.D305's 18 recorded reds, so the unifier must not
+  double-count them); vocabulary RED on every row (the three keys missing);
+  `tool_definitions_equivalence` RED on `runCustom` (see the finding below).
+- `pascal_side_effects_equivalence` with the six merge rows, on the unported
+  harness: RED (panics on the first wardrobe effect).
+- NEW `pascal_wardrobe_effects_equivalence` on a skeleton applier (returning
+  `(vec![], false)` after its no-character branch): **21 of 23 steps RED**;
+  `no-gestures` / `no-character` converge (the latter compares its DEBUG line,
+  so it cannot pass vacuously).
+
+### What landed
+
+1. **`55bfda8dd` — the composite take-off fix (R-4, items 10–11).**
+   `wear_ops::{TakeOffOutcome, take_off_wearable, load_current_slots}` exactly
+   as v4 `takeOffWearable` / `loadCurrentSlots`; `apply_displacement` reads
+   through `load_current_slots` (ONE reader; `outfit_displacement::load_slots`
+   deleted); `wardrobe_take_off`'s `remove` arm reports what was committed
+   against. **`take_off_item` RETIRED** (v4 keeps `takeOffItem` exported and
+   dead at `wear-ops.ts:127-135` — a deliberate non-mirror; its rig test was
+   re-pointed to `take_off_wearable`'s single-garment arm). Eight rig tests.
+   The five corpus ops sit at the END of `ops` rather than after `:395` —
+   the ops share state, so a mid-corpus insert would have moved every later
+   op's outfit. `wear_ops_equivalence`'s / `wear-ops.ts`'s header notes name
+   the persisted half (item 17; NDJSON identical at the pin).
+2. **`5bbe569ef` — the union and its four readers (items 2–7, 14).**
+   `CustomToolEffect { when, body: Write | Wardrobe }` (R-12) with a hand
+   `Serialize` in Zod's schema order; `PutOnMode` reused (its three strings ARE
+   v4's `WardrobeEffectModeSchema`); `wardrobe_gesture_problems` (+
+   `GestureField`); `validate_effects` when-first + `validate_wardrobe_gesture`;
+   `is_write_effect` / `is_wardrobe_effect`. **Lane call:** the parser keeps a
+   private all-`Option` `EffectParts` that `validate_effects` walks, because the
+   refine's issues are continuable — v4's tool-level `validateEffects` still
+   runs over a both-halves / half-a-write effect (pinned by
+   `effects-wardrobe-bad-when-and-bad-gesture` and the refine rows); an
+   incomplete effect always carries a refine issue, so it never escapes. The
+   pure core: `ResolvedEffect::Wardrobe`, `ResolvedWardrobeGesture`,
+   `is_applicable` = either, `is_applicable_write` / `_wardrobe` (no v5 caller
+   used the old meaning; `plan_applications` stays write-only by pattern);
+   v4's unreachable `effect is neither …` guard recorded as unrepresentable in
+   a comment. R-15: the `rendered empty` DEBUG follows its sibling's
+   snake_case `effect_index` (plus `context = "pascal.custom-tools"`), pinned
+   in-crate with a silence leg. `describe_effects` + the preamble sentence
+   (MODEL-VISIBLE); the vocabulary's three keys after `now`. The `effects`
+   describe doc moved; the SPA's copy is P4.D307's (HANDOFF below).
+3. **`08c010745` — the applier, the split, the USE lines (items 8–9, 12–13).**
+   NEW `pascal::wardrobe_effects` (C3 §6 names; `ResolvedWardrobeGesture`
+   re-exported there). `apply_custom_tool_effects` → `(Vec<AppliedEffect>,
+   bool)` with the writes' pending entries carrying their index and ONE
+   production `merge_applied` (stable `sort_by_key`), which
+   `differential::plan_run(params, wardrobe_plan)` also uses;
+   `ApplyCustomToolEffectsParams.user_id`. `apply_effects_for_run(db, user_id,
+   …, pending)` runs `finish_wardrobe_effects` (the ONE notify with
+   `pascal.wardrobe-effects`, then the `applied` DEBUG — `appliedJson`, the
+   `…Json` convention — whose `announcement` word is decided by "was a set
+   passed") after the write. USE lines: the run service passes `user_id` +
+   its set (comment mirrored: "metadata, progress and wardrobe effects skip");
+   `RunCustomToolContext.pending_wardrobe_announcements:
+   Option<Arc<Mutex<HashSet<String>>>>`; the executor's `run_custom` arm hands
+   `Some(Arc::clone(&ctx.pending_wardrobe_announcements))` — the same `Arc` the
+   wardrobe tools borrow; the operator route and the trigger runner pass
+   `None` with comments naming v4's `route.ts:451` / `trigger-runner.ts:165`.
+   **Lane calls:** `apply_wardrobe_effects(main, mount: Option<&Connection>,
+   params)` — a degraded open (no mount-index writer) is v5's home for v4's
+   `loadToolPool` catch, otherwise unreachable on both sides (every pool read
+   is a fallback); `ApplyWardrobeEffectsParams` keeps no `user_id` / set (the
+   in-write half reads neither); the set rides `apply_effects_for_run`, not
+   the params (item 8's permitted choice). The pool is read once per run by
+   construction — pinned by inspection, not by a counter.
+
+### The three entrances' set behaviour
+
+- model `run_custom` → the turn's set (joins; the orchestrator's drain
+  enqueues ONE announcement for the turn);
+- the operator popup route → `None` (enqueued now);
+- the trigger runner → `None` (enqueued now).
+
+### Proofs (the ten families + the extras, from the pin)
+
+- `pascal_custom_tool_definition_equivalence` green, 431 lines (NDJSON sha256
+  `cf884647302a705ed0f0b393b63a4cabc057ed3f820542277afbe1b93514913a`, R-F; the
+  SPA copy `apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson`
+  is the same bytes — it also gains P4.D305's 21 `triggers` rows the copy
+  predated); the family gains a wardrobe floor.
+- `pascal_custom_tools_execution_equivalence` green (+6 rows).
+- `pascal_run_custom_equivalence` green, 25 rows (18 + 7).
+- `pascal_tool_vocabulary_equivalence` green, 68 rows (+8).
+- `pascal_side_effects_equivalence` green, 55 rows (+6 merge rows), `applied`
+  now byte-compared, the pass's argument object compared (v4's set key carried
+  from the row — v5's set rides `apply_effects_for_run`).
+- NEW `pascal_wardrobe_effects_equivalence` green: 23 steps, 15 landing a
+  change, 26 module lines and 28 chokepoint commits compared whole, the
+  records / outfit / wear ledger / set / `background_jobs` as bytes; the
+  binary owns a process-wide recorder (writer-thread lines). v5-only legs:
+  the failed commit (the wear ledger dropped → the WARN `{ effectIndex: 0,
+  item: 'Linen Shirt', error: no such table … }`, the clear still lands), the
+  degraded open (the WARN, no notify), and **the MODEL ENTRANCE end to end** —
+  the production `BuiltInToolRunner` running `run_custom` on the vault's
+  wear-effect tool then `wardrobe_wear` over ONE turn context: one set entry,
+  no job, the drain → exactly one job, Pascal's row carrying
+  `pascalMeta.effects` with `previous` and no `tier`. **Mutation-proven:** the
+  executor line reverted to `None` reddens the leg at "joined the turn's set".
+  This is item 12's proof (named, per the order); Tier 2 item 18 was not taken.
+- `wardrobe_tools_equivalence` green bar `wear_hairdo` (P4.D312).
+- `wear_ops_equivalence`, `pascal_run_custom_handler_equivalence`,
+  `pascal_custom_tools_route_equivalence` (item 19 — P4.D305's `list*`
+  residue closed), `tool_definitions_equivalence`,
+  `outfit_change_effects_tier3_equivalence`,
+  `wardrobe_tools_avatar_trigger_equivalence`,
+  `outfit_displacement_tier2_equivalence`,
+  `wardrobe_wear_commit_tier2_equivalence`,
+  `pascal_trigger_runner_equivalence`, `pascal_definition_reader_equivalence`,
+  `pascal_build_tools_roster`, `pascal_workbench(_route)_equivalence`,
+  `pascal_writers_equivalence`, `message_finalizer_tier3_equivalence` all
+  green; `orchestrator_tier3_equivalence` red only on the `no such table:
+  users` class P4.D305 recorded (KEYSTONE-side; 22 calls), not this lane's.
+- The SPA twin, run ONCE through `ng-run` (`npx vitest` lacks the NDJSON
+  loader): `custom-tool-types.corpus.spec.ts` **71 failed / 396 passed** — 21
+  P4.D305 `triggers` rows + 50 of mine; P4.D307's premise, never a gate here.
+
+### Findings, corrections, HANDOFFs
+
+- **Survey §7.7 / the order's item 24 were WRONG:** `tools/definitions/data.rs`
+  is v4's generated tool catalog and v4's static `run_custom` definition embeds
+  the preamble, so the sentence moves it (and the in-crate
+  `empty_roster_description_matches_data_rs` pins it). Regenerated through
+  `gen-tool-catalog.mjs` at the pin — exactly ONE line moved;
+  `tool_definitions_equivalence` was red at the pin on `runCustom` and is green.
+- **Zod 4.6.7 on the `effects` array** (measured by
+  `effects-over-cap-with-bad-element`): an oversized list reports ONLY `at most
+  16 effects`, before any element — fixed in the effects arm (mine).
+  **HANDOFF (unifier / P4.D311's zod-4.6.7 class):** the same shape holds for
+  `outcomes` (`.max(32)` — measured at the pin with a scratch probe: v4 answers
+  `outcomes: at most 32 outcomes` for 33 rows with a bad first one, where
+  v5's arm parses the elements first); not this lane's region, not fixed.
+- **HANDOFF → P4.D307:** the SPA doc comment on `effects`
+  (`apps/web/src/app/pascal/custom-tool-types.ts:691-692`) still reads v4's
+  pre-`f0db8cbb8` sentence; C3 is as the order spells it (no contract drift).
+- **Tier 2 item 18 DEFERRED (measured obstacle):** the committed
+  `pascal-run-custom` pair is read by FIVE families (handler, route,
+  trigger-runner, definition-reader, build-tools-roster); a wear-capable tool
+  must sit in a store their rosters or store dumps reach, so the widen would
+  move siblings' oracles. The new family's model-entrance leg is the standing
+  production proof of C3 §7.2.
+- **R-6 vendor dependency:** `public/schemas/qtap-custom-tool.schema.json`
+  is 43,493 bytes at the pin and `qtap-export.schema.json` 105,774 — P4.D313
+  moved both and the guards; untouched here.
+- **R-8 measured:** no custom-tool entity in `services/qtap_export/` (grep
+  `custom.tool|\.tool\.json` → nothing); `pascalMeta` is read opaque. No DDL,
+  no carrier, no ensure. Live-data: none.
+- Versions: core 0.0.1307 → **0.0.1310** (three bumps); harness frozen
+  0.0.1110; **host untouched** (`spine.rs` did not move); no web / cli / tauri /
+  SPA bump; **CLI untouched** (Tier R not run).
+
+### Gate (the final tree, `08c010745` + this record)
+
+fmt clean; clippy clean (both feature sets, `apps/web/dist` built in-lane);
+`cargo test --workspace --no-fail-fast` with the lane's env block (37 vars,
+every `QT_ORACLE_*` from the pin): **812 binaries, 5,275 passed / 7 failed /
+3 ignored** — every red owned elsewhere and named: `cli_differential`
+(P4.D312's CLI bytes), `provider_sdk_version_guard` + `zod_version_guard`
+(P4.D311), `public_schemas_vendor_guard` + `qtap_schema_embed_guard`
+(P4.D313's vendor — not on this base), `wardrobe_tools_equivalence`'s
+`wear_hairdo` (P4.D312), `orchestrator_tier3_equivalence`'s `no such table:
+users` (the KEYSTONE-side class P4.D305 recorded). Core lib 3,640 passed. Per-commit gates (the P4.D305 precedent): each code commit ran the core lib
+tests it touched, `cargo clippy -p quilltap-core -p quilltap-harness
+--all-targets` and its own families; the full workspace gate ran ONCE, here.
+
+### 💸 for the dogfood pass
+
+The order's seven rows, unchanged (the model-run wear tool with ONE Aurora
+announcement; the operator popup's `enqueued now`; take-off with `slot: top`,
+`clear_slot: hair`, an empty reference; 💸 `wardrobe_take_off` on a worn
+composite from Friday's vault; the LLM Inspector's preamble + `Side effects:
+… wears …`; the two load refusals; the trigger entrance's `enqueued now`).
