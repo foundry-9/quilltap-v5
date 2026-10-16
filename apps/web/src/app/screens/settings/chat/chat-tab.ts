@@ -20,6 +20,7 @@ import { AutomationSettings } from './automation-settings';
 import { ComposerEmojiSettings } from './composer-emoji-settings';
 import { ComposerSpellcheckSettings } from './composer-spellcheck-settings';
 import { ComposerUnicodeSettings } from './composer-unicode-settings';
+import { ComposerSlashCommandsSettings } from './composer-slash-commands-settings';
 import { ImpersonationVoiceSettings } from './impersonation-voice-settings';
 import { CompositionModeSettings } from './composition-mode-settings';
 import { ContextCompressionSettings } from './context-compression-settings';
@@ -71,6 +72,7 @@ import { TokenDisplaySettings } from './token-display-settings';
     AutomationSettings,
     ComposerEmojiSettings,
     ComposerUnicodeSettings,
+    ComposerSlashCommandsSettings,
     ImpersonationVoiceSettings,
     ComposerSpellcheckSettings,
     CompositionModeSettings,
@@ -119,6 +121,19 @@ import { TokenDisplaySettings } from './token-display-settings';
           <!-- v4 ChatTabContent:107-111 — In Their Own Words lands LAST in the
                Composer card, after the unicode toggle. -->
           <qt-impersonation-voice-settings />
+        </qt-collapsible-card>
+
+        <!-- v4 ChatTabContent.tsx:112-118 (4877fc2da): Slash Commands is its
+             OWN card between Composer and Auto-Scroll, not a Composer row.
+             Its sectionId is the deep-link help/chat-settings-composer.md's
+             url: targets (?tab=chat&section=composer-slash-commands). -->
+        <qt-collapsible-card
+          title="Slash Commands"
+          description="Run tools and composer actions by typing / in the Salon composer"
+          sectionId="composer-slash-commands"
+          [forceOpen]="section() === 'composer-slash-commands'"
+        >
+          <qt-composer-slash-commands-settings />
         </qt-collapsible-card>
 
         <qt-collapsible-card

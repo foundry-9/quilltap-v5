@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(spa): the Slash Commands settings card between Composer and Auto-Scroll (P4.D308)
+
+_Versions: SPA 0.5.869._
+
+Settings → Chat gains v4's "Slash Commands" card (`4877fc2da`), its own card between Composer and Auto-Scroll with `sectionId="composer-slash-commands"` — the section the help page's deep link targets. Its toggle ("Slash commands", v4's copy) reads `composerSlashCommands ?? true` and saves the bare scalar, showing `Failed to update composer slash-commands setting` if the save fails. It gates only the composer's `/` menu; the gutter buttons and the sidebar are unaffected. The chat tab now has 21 cards; the settings e2e checks the new title. The server PUT arm for the key comes from P4.D304; until it lands an unknown key is dropped server-side.
+
 #### 2026-10-16 — feat(spa): the Salon composer's / commands wired end to end (P4.D308)
 
 _Versions: SPA 0.5.868._

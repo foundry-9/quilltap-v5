@@ -94,6 +94,8 @@ test.describe('P4.6an — the Chat-tab settings cards', () => {
     for (const title of [
       'Composition Mode',
       'Composer',
+      // v4 4877fc2da — its own card between Composer and Auto-Scroll.
+      'Slash Commands',
       'Auto-Scroll',
       'Text Replacement',
       'Token Display',

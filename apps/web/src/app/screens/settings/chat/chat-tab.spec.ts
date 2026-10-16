@@ -23,10 +23,12 @@ import { ChatTab } from './chat-tab';
  *  Smart Typography at `2d31810f` — between Text Replacement and Token
  *  Display, where the feature reads as the Text Replacement card's sibling).
  *  Dangerous Content LEFT at `3b463d6b1` (#76) for the Concierge's own tab —
- *  Taboo follows Answer Confirmation directly. */
+ *  Taboo follows Answer Confirmation directly. Slash Commands at `4877fc2da`
+ *  — its OWN card between Composer and Auto-Scroll, not a Composer row. */
 const V4_CARD_ORDER = [
   ['Composition Mode', 'composition-mode'],
   ['Composer', 'composer-spellcheck'],
+  ['Slash Commands', 'composer-slash-commands'],
   ['Auto-Scroll', 'auto-scroll'],
   ['Text Replacement', 'text-replacements'],
   ['Smart Typography', 'smart-typography'],
@@ -91,7 +93,7 @@ function mount(section: string | null = null) {
 }
 
 describe('ChatTab', () => {
-  it('mounts all twenty v4 cards in v4\'s exact order', () => {
+  it('mounts all twenty-one v4 cards in v4\'s exact order', () => {
     const fixture = mount();
     const titles = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('qt-collapsible-card'),
@@ -99,7 +101,7 @@ describe('ChatTab', () => {
     expect(titles).toEqual(V4_CARD_ORDER.map(([title]) => title));
     // The count itself is a pin: a card silently dropped from the template
     // would otherwise only shift the array and read as an order change.
-    expect(titles.length).toBe(20);
+    expect(titles.length).toBe(21);
   });
 
   it('carries v4\'s sectionId on every card (the ?section= deep link)', () => {
@@ -141,6 +143,22 @@ describe('ChatTab', () => {
       'qt-composer-unicode-settings',
       'qt-impersonation-voice-settings',
     ]);
+  });
+
+  it('the Slash Commands card hosts its own toggle, forced open by the help page deep link', () => {
+    // v4 `4877fc2da`: its own card (NOT a Composer row), at the section id
+    // `help/chat-settings-composer.md`'s url: targets.
+    const fixture = mount('composer-slash-commands');
+    const cards = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('qt-collapsible-card'),
+    );
+    const card = cards.find((c) => c.getAttribute('sectionId') === 'composer-slash-commands');
+    expect(card?.getAttribute('description')).toBe(
+      'Run tools and composer actions by typing / in the Salon composer',
+    );
+    expect(card?.querySelector('qt-composer-slash-commands-settings')).toBeTruthy();
+    const composer = cards.find((c) => c.getAttribute('sectionId') === 'composer-spellcheck');
+    expect(composer?.querySelector('qt-composer-slash-commands-settings')).toBeFalsy();
   });
 
   it('no longer advertises the retired "not yet fitted out" placeholder', () => {
