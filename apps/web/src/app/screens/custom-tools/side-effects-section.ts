@@ -5,17 +5,31 @@ import {
   MAX_EFFECT_TARGET_LENGTH,
   type OutcomeState,
 } from '../../pascal/custom-tool-types';
-import { newDraftEffect, type DraftEffect, type DraftIssue, type ToolDraft } from '../../pascal/tool-draft';
+import {
+  newDraftEffect,
+  type DraftEffect,
+  type DraftIssue,
+  type DraftWardrobeGesture,
+  type ToolDraft,
+} from '../../pascal/tool-draft';
 import { Icon } from '../../ui/icon';
+import { WardrobeFields } from './wardrobe-fields';
 
 /**
  * SideEffectsSection — the Workbench's "Side effects" card, between the
  * builder form and the outcome table: what a run writes back once the deal is
- * done (v4 `components/custom-tools/SideEffectsSection.tsx`, 252).
+ * done (v4 `components/custom-tools/SideEffectsSection.tsx`, 428 at `25b8fab6a`).
  *
- * The form authors the common shapes only: a When of "Always" or "on a given
- * outcome state", a target, and a value that is a literal number, a literal
- * boolean, or an expression. A hand-written richer condition (comparators,
+ * Each row is one of two kinds (v4 `f0db8cbb8`). A WRITE has a target and a
+ * value that is a literal number, a literal boolean, or an expression. A
+ * WARDROBE row changes what the rolling character has on: an action (wear /
+ * take off / clear a slot), a short list of item references (title or id,
+ * templated), and the mode and slot where the action wants them
+ * (`./wardrobe-fields`). Switching kind keeps the other half on the draft
+ * until save, so nothing typed is lost.
+ *
+ * The When is the common shapes only: "Always" or "on a given outcome
+ * state". A hand-written richer condition (comparators,
  * metadata, the oracle) is carried verbatim behind a read-only badge — the
  * `$state`-default precedent: the builder round-trips what it cannot author.
  * Everything else arrives as issues from `validateDraft` and renders inline.
@@ -30,7 +44,8 @@ const EFFECTS_HINT =
 
 const EFFECTS_HINT_TAIL =
   ', never bare words. Expressions take + − × ÷, parentheses, and the same {{…}} references as a ' +
-  'message.';
+  'message. An outfit change dresses or undresses the rolling character and nobody else; an item it ' +
+  'cannot find is skipped and the rest still go on.';
 
 /**
  * v4's third prefix title (`SideEffectsSection.tsx` at `25f534c0b`). A constant
@@ -56,7 +71,7 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
 @Component({
   selector: 'qt-side-effects-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, WardrobeFields],
   template: `
     <section class="qt-card p-4 space-y-3">
       <div class="flex items-center justify-between">
@@ -76,14 +91,28 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
       @if (effects().length === 0) {
         <p class="text-xs qt-text-secondary">
           None declared. An effect lets a roll record its consequences &mdash; tick a counter in the
-          story&rsquo;s state, note a fact on the rolling character&rsquo;s sheet &mdash; applied
-          server-side as part of the deal, beyond any model&rsquo;s power to fudge.
+          story&rsquo;s state, note a fact on the rolling character&rsquo;s sheet, put a garment on
+          them or take one off &mdash; applied server-side as part of the deal, beyond any
+          model&rsquo;s power to fudge.
         </p>
       }
 
       @for (effect of effects(); track effect.id) {
         <div class="qt-card p-3 space-y-2">
           <div class="flex items-center gap-2 flex-wrap text-sm">
+            <label class="flex items-center gap-2">
+              Kind
+              <select
+                [value]="effect.kind"
+                (change)="onKindChange(effect.id, selectValue($event))"
+                [disabled]="disabled()"
+                class="qt-select qt-select-sm"
+                aria-label="Effect kind"
+              >
+                <option value="write" [selected]="effect.kind === 'write'">Write a value</option>
+                <option value="wardrobe" [selected]="effect.kind === 'wardrobe'">Change the outfit</option>
+              </select>
+            </label>
             <label class="flex items-center gap-2">
               When
               @if (whenChoice(effect) === 'verbatim') {
@@ -118,6 +147,14 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
             </button>
           </div>
 
+          @if (effect.kind === 'wardrobe') {
+          <qt-wardrobe-fields
+            [gesture]="effect.wardrobe"
+            [hasErrors]="effectErrors(effect.id).length > 0"
+            [disabled]="disabled()"
+            (gestureChange)="onGestureChange(effect.id, $event)"
+          />
+          } @else {
           <div class="flex items-center gap-2 flex-wrap text-sm">
             <label class="flex items-center gap-2 flex-1 min-w-56">
               Target
@@ -208,6 +245,7 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
               />
             }
           </div>
+          }
 
           @for (message of effectErrors(effect.id); track message) {
             <p class="text-xs qt-text-destructive">{{ message }}</p>
@@ -266,6 +304,21 @@ export class SideEffectsSection {
     this.updateEffect(id, {
       when: choice === 'always' ? { kind: 'always' } : { kind: 'outcome-state', state: choice },
     });
+  }
+
+  /**
+   * Switch a row's kind. BOTH halves are kept (v4: "switching kind keeps the
+   * other half on the draft until save"); the effects are read once into a
+   * local before emitting.
+   */
+  protected onKindChange(id: string, raw: string): void {
+    const kind = raw as DraftEffect['kind'];
+    const current = this.effects();
+    this.setEffects(current.map((effect) => (effect.id === id ? { ...effect, kind } : effect)));
+  }
+
+  protected onGestureChange(id: string, wardrobe: DraftWardrobeGesture): void {
+    this.updateEffect(id, { wardrobe });
   }
 
   protected onValueKindChange(effect: DraftEffect, raw: string): void {

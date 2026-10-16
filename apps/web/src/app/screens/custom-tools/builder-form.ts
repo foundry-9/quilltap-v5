@@ -33,6 +33,7 @@ import {
 import { Icon } from '../../ui/icon';
 import { GateSection } from './gate-section';
 import { NumberOrParamField } from './number-or-param-field';
+import { TriggerPhrasesField } from './trigger-phrases-field';
 
 /**
  * BuilderForm — identity, options, parameters, and the roll, i.e. everything in
@@ -105,7 +106,7 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
 @Component({
   selector: 'qt-builder-form',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [GateSection, Icon, NumberOrParamField],
+  imports: [GateSection, Icon, NumberOrParamField, TriggerPhrasesField],
   template: `
     <div class="space-y-4">
       <!-- Identity -->
@@ -233,6 +234,14 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
             </select>
           </label>
         </div>
+
+        <!-- v4 \`362426c8f\` (\`BuilderForm.tsx:344-349\`): the last thing in the identity section. -->
+        <qt-trigger-phrases-field
+          [triggers]="draft().triggers"
+          [issues]="issues()"
+          (triggersChange)="update({ triggers: $event })"
+          [disabled]="disabled()"
+        />
       </section>
 
       <!-- Availability gate -->

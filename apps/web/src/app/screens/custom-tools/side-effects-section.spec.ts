@@ -190,3 +190,105 @@ describe('SideEffectsSection (v4 SideEffectsSection.tsx)', () => {
     expect(text(fixture)).toContain('{{dice}} is an empty string outside the dice form');
   });
 });
+
+// ---------------------------------------------------------------------------
+// v4 `f0db8cbb8` (pinned at `25b8fab6a`): the Kind select, the wardrobe
+// branch, `newDraftEffect()` on Add, and the two copy changes. The wardrobe
+// fields' own visibility rules are `wardrobe-fields.spec.ts`'s.
+// ---------------------------------------------------------------------------
+
+describe('SideEffectsSection — the Kind select and wardrobe rows (v4 f0db8cbb8)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const root = (f: ComponentFixture<unknown>) => f.nativeElement as HTMLElement;
+  const kindSelect = (f: ComponentFixture<unknown>) =>
+    root(f).querySelector<HTMLSelectElement>('select[aria-label="Effect kind"]');
+
+  function chooseKind(fixture: ComponentFixture<SideEffectsSection>, value: string): void {
+    const select = kindSelect(fixture)!;
+    select.value = value;
+    select.dispatchEvent(new Event('change'));
+  }
+
+  it('puts the Kind select FIRST in the row’s top line, with v4’s two options', async () => {
+    const fixture = await render(draftWith([effect()]));
+    const select = kindSelect(fixture);
+    expect(select).not.toBeNull();
+    expect(Array.from(select!.options).map((o) => [o.value, o.textContent?.trim()])).toEqual([
+      ['write', 'Write a value'],
+      ['wardrobe', 'Change the outfit'],
+    ]);
+    const topLine = select!.closest('div');
+    expect(topLine?.querySelector('select')).toBe(select);
+    expect(select!.closest('label')?.textContent?.trim().startsWith('Kind')).toBe(true);
+  });
+
+  it('switching Write → Outfit → Write keeps BOTH halves (the target survives)', async () => {
+    const fixture = await render(draftWith([effect({ target: 'state.tally' })]));
+    const emitted: ToolDraft[] = [];
+    fixture.componentInstance.draftChange.subscribe((d) => emitted.push(d));
+
+    chooseKind(fixture, 'wardrobe');
+    expect(emitted.at(-1)!.effects[0]).toMatchObject({ kind: 'wardrobe', target: 'state.tally' });
+
+    fixture.componentRef.setInput('draft', emitted.at(-1)!);
+    fixture.componentRef.setInput('issues', validateDraft(emitted.at(-1)!));
+    fixture.detectChanges();
+    chooseKind(fixture, 'write');
+    expect(emitted.at(-1)!.effects[0]).toMatchObject({ kind: 'write', target: 'state.tally', value: '1' });
+    expect(emitted.at(-1)!.effects[0].wardrobe).toEqual(emptyDraftWardrobeGesture());
+  });
+
+  it('shows the wardrobe fields INSTEAD of Target + Value on a wardrobe row', async () => {
+    const fixture = await render(draftWith([effect({ kind: 'wardrobe' })]));
+    expect(root(fixture).querySelector('qt-wardrobe-fields')).not.toBeNull();
+    expect(root(fixture).querySelector('[aria-label="Effect target"]')).toBeNull();
+    expect(root(fixture).querySelector('[aria-label="Value kind"]')).toBeNull();
+    const write = await render(draftWith([effect()]));
+    expect(root(write).querySelector('qt-wardrobe-fields')).toBeNull();
+    expect(root(write).querySelector('[aria-label="Effect target"]')).not.toBeNull();
+  });
+
+  it('routes a gesture edit onto the row’s wardrobe half, and marks items on error', async () => {
+    const fixture = await render(draftWith([effect({ kind: 'wardrobe' })]));
+    const emitted: ToolDraft[] = [];
+    fixture.componentInstance.draftChange.subscribe((d) => emitted.push(d));
+    // The blank item row is an error (`wear needs at least one item`), so the
+    // row's issue line renders and the item input carries the error class.
+    expect(text(fixture)).toContain('wear needs at least one item');
+    const item = root(fixture).querySelector<HTMLInputElement>('input[aria-label="Item 1"]')!;
+    expect(item.classList.contains('qt-input-error')).toBe(true);
+    item.value = 'Cloak of Night';
+    item.dispatchEvent(new Event('input'));
+    expect(emitted.at(-1)!.effects[0].wardrobe.items).toEqual(['Cloak of Night']);
+    expect(emitted.at(-1)!.effects[0].target).toBe('state.tally');
+  });
+
+  it('adds a fresh write row through newDraftEffect()', async () => {
+    const fixture = await render(draftWith([]));
+    const emitted: ToolDraft[] = [];
+    fixture.componentInstance.draftChange.subscribe((d) => emitted.push(d));
+    fixture.componentInstance.addEffect();
+    const added = emitted.at(-1)!.effects[0];
+    expect(added).toMatchObject({
+      when: { kind: 'always' },
+      kind: 'write',
+      target: '',
+      valueKind: 'expression',
+      value: '',
+      wardrobe: emptyDraftWardrobeGesture(),
+    });
+    expect(added.id).toMatch(/^effect-\d+$/);
+  });
+
+  it('says a roll may dress or undress the character, in the empty sentence and the hint', async () => {
+    const fixture = await render(draftWith([]));
+    const rendered = text(fixture).replace(/\s+/g, ' ');
+    expect(rendered).toContain(
+      'None declared. An effect lets a roll record its consequences — tick a counter in the story’s state, note a fact on the rolling character’s sheet, put a garment on them or take one off — applied server-side as part of the deal, beyond any model’s power to fudge.',
+    );
+    expect(rendered).toContain(
+      'An outfit change dresses or undresses the rolling character and nobody else; an item it cannot find is skipped and the rest still go on.',
+    );
+  });
+});

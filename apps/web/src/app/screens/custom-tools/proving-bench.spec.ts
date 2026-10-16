@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import { draftFromDefinition, newDraft, type ToolDraft } from '../../pascal/tool-draft';
+import * as bench from './proving-bench';
 import { ProvingBench, formatShort, stateToken } from './proving-bench';
 
 /**
@@ -675,6 +676,61 @@ describe('the two-block bubble and the dry run (v4 c4d4b0de)', () => {
     // would write", so the bare phrase is not a safe negative.
     expect(text(fixture)).not.toContain('(would write)');
     expect(text(fixture)).not.toContain('never applies them');
+  });
+});
+
+// v4 `f0db8cbb8` (`ProvingBench.tsx:683-716`): the bench's THIRD branch — a
+// wardrobe gesture it "would attempt" — and `describeBenchGesture`'s words.
+// Read structurally so the file compiles (red) against a bench without it.
+const describeBenchGesture = (bench as unknown as {
+  describeBenchGesture?: (gesture: Record<string, unknown>) => string;
+}).describeBenchGesture;
+
+describe('the bench\u2019s wardrobe gestures (v4 f0db8cbb8)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('describes the five gesture shapes in the bench\u2019s words, curly quotes and all', () => {
+    expect(typeof describeBenchGesture).toBe('function');
+    expect(describeBenchGesture?.({ action: 'wear', items: ['Hat'] })).toBe('wear \u201cHat\u201d');
+    expect(describeBenchGesture?.({ action: 'wear', items: ['Ribbon'], mode: 'add_to_slot', slot: 'hair' })).toBe(
+      'wear \u201cRibbon\u201d (add to slot hair)',
+    );
+    expect(describeBenchGesture?.({ action: 'wear', items: ['Cloak', 'Hat'], mode: 'replace' })).toBe(
+      'wear \u201cCloak\u201d, \u201cHat\u201d (replace)',
+    );
+    expect(describeBenchGesture?.({ action: 'take_off', items: ['Sundress'], slot: 'top' })).toBe(
+      'take off \u201cSundress\u201d from top',
+    );
+    expect(describeBenchGesture?.({ action: 'clear_slot', items: [], slot: 'hair' })).toBe('clear hair');
+    expect(describeBenchGesture?.({ action: 'clear_slot', items: [] })).toBe('clear a slot');
+    // The default mode adds nothing, even when a slot rides along.
+    expect(describeBenchGesture?.({ action: 'wear', items: ['Hat'], mode: 'wear' })).toBe('wear \u201cHat\u201d');
+  });
+
+  it('renders a gesture as "would attempt" between the write and skipped arms', async () => {
+    const fixture = await render(
+      validDraft(),
+      stubClient({
+        preview: previewResult({
+          effects: [
+            { index: 0, target: { kind: 'state', path: ['x'], raw: 'state.x' }, value: 1 },
+            { index: 1, wardrobe: { action: 'wear', items: ['Cloak of Night'] } },
+            { index: 2, skipped: 'every item reference rendered empty' },
+          ],
+        }),
+      }),
+    );
+    await fixture.componentInstance.roll();
+    fixture.detectChanges();
+
+    const lines = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.font-mono p'),
+    ).map((p) => p.textContent?.replace(/\s+/g, ' ').trim());
+    expect(lines).toContain('\u2192 state.x = 1 (would write)');
+    expect(lines).toContain('\u2192 wardrobe: wear \u201cCloak of Night\u201d (would attempt)');
+    expect(lines).toContain('\u00b7 effect 3 skipped: every item reference rendered empty');
+    // A gesture never reads as a write.
+    expect(lines.filter((l) => l?.includes('(would write)'))).toHaveLength(1);
   });
 });
 

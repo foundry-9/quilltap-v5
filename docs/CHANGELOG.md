@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(spa): the Workbench learns trigger phrases, wardrobe effects, the bench's "would attempt" and the phrase badge (P4.D307 unit 2)
+
+_Versions: SPA 0.5.864._
+
+The Workbench surfaces for v4 `362426c8f` and `f0db8cbb8`, at the `25b8fab6a` pin.
+
+- NEW `qt-trigger-phrases-field` (`screens/custom-tools/trigger-phrases-field.ts`): the chip list, the input with Enter and Add, the cap of eight, the hint, and per-index and list error lines in v4's words. It is mounted last in the builder form's identity section. Adding reads the input element at call time and keeps the trimmed text.
+- The Side-effects card gains the Kind select (Write a value / Change the outfit) first in each row. Switching kind keeps both halves. A wardrobe row shows the NEW `qt-wardrobe-fields` (Action, Mode on wear, Slot when the action uses one, item rows, Add item capped at eight). The empty-state sentence and the hint name outfit changes.
+- The Proving Bench shows a gesture as `→ wardrobe: … (would attempt)`; `describeBenchGesture` renders the five shapes with curly quotes. `workbench.api.ts`'s `DryEffect` gains the wardrobe arm, `ResolvedWardrobeGesture` and the three `isApplicable*` predicates (`isApplicableEffect` now means either kind).
+- The library shows `✦ N phrase(s)` with v4's title between `oracle` and the parameter count.
+- `core-contract.ts`: `CustomToolLibraryEntry.triggerCount`, `pascalMeta.invokedBy` widened with `'trigger'` plus `triggerPhrase?`, and `ChatSettingsDto` declares `customToolTriggers?` and `composerSlashCommands?`.
+- Saving `triggers` or a wardrobe effect needs the server lanes (P4.D305 / P4.D306); the library badge stays hidden against a server without `triggerCount`.
+
 #### 2026-10-16 — feat(spa): Pascal's definition and draft twins learn trigger phrases and wardrobe effects at the `25b8fab6a` pin (P4.D307 unit 1)
 
 _Versions: SPA 0.5.863._

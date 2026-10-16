@@ -3134,8 +3134,14 @@ export interface PascalMeta {
     next: unknown;
     tier?: 'chat' | 'project' | 'group' | 'general';
   }>;
-  /** A model's reach for the tool vs a user's own Run-Tool. */
-  invokedBy: 'llm' | 'user';
+  /**
+   * A model's reach for the tool vs a user's own Run-Tool vs a trigger phrase
+   * overheard in the chat (`'trigger'`, v4 `362426c8f`, with the phrase in
+   * {@link triggerPhrase}). Widened type-only: no SPA renderer keys on it.
+   */
+  invokedBy: 'llm' | 'user' | 'trigger';
+  /** The trigger phrase that fired the run, as the definition wrote it (only on `'trigger'`). */
+  triggerPhrase?: string;
   callerParticipantId?: string;
 }
 
@@ -3869,6 +3875,14 @@ export interface ChatSettingsDto {
   wardrobeImageSettings?: WardrobeImageSettingsDto;
   /** The composer text-replacement master switch (v4 default true). */
   textReplacementsEnabled?: boolean;
+  // === P4.D307: the two chat-settings booleans the `25b8fab6a` round adds ===
+  // Declared so readers stay cast-free once the server lanes land them (C1);
+  // the index signature below already admits both on an older server.
+  /** Whether a custom tool's trigger phrases, said by anyone in a chat, run it automatically with its defaults (v4 `362426c8f`; default false). */
+  customToolTriggers?: boolean;
+  /** Whether `/` opens the slash-command menu in the Salon composer (the gutter buttons and sidebar are not gated by this) (v4 `4877fc2da`; default true). */
+  composerSlashCommands?: boolean;
+  // === end P4.D307 ===
   [key: string]: unknown;
 }
 
@@ -7531,6 +7545,8 @@ export interface CustomToolLibraryEntry {
   rollForm: 'range' | 'dice';
   /** §B — true when the definition declares an `llm` consult block. */
   llm: boolean;
+  /** How many trigger phrases the tool listens for (0 = none) (v4 `362426c8f`). */
+  triggerCount: number;
   parameterCount: number;
   outcomeCount: number;
   mountPointId: string;

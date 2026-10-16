@@ -1,6 +1,11 @@
 import type { CoreClient } from '../../core/core-client';
 import { CoreDispatchError } from '../../core/core-contract';
-import type { EffectTarget } from '../../pascal/custom-tool-types';
+import type {
+  EffectTarget,
+  WardrobeEffectAction,
+  WardrobeEffectMode,
+  WardrobeItemType,
+} from '../../pascal/custom-tool-types';
 import type { ToolGateVerdict } from '../../pascal/tool-gate';
 import type {
   CoreRequest,
@@ -54,8 +59,10 @@ export interface GatedLibraryResponse extends CustomToolLibraryResponse {
 }
 
 /**
- * §P of the `c4d4b0de` round — one effect as the BENCH sees it: either the
- * value it would write, or the reason it was skipped (v4 `ResolvedEffect`).
+ * §P of the `c4d4b0de` round — one effect as the BENCH sees it: the value it
+ * would write, the wardrobe gesture it would make (v4 `f0db8cbb8`), or the
+ * reason it was skipped (v4 `ResolvedEffect`, `lib/pascal/custom-tools.ts:
+ * 1144-1147`).
  *
  * Deliberately NOT the shape `pascalMeta.effects` carries. A live run records
  * what it APPLIED — a flat `target` string, the previous value, the tier the
@@ -65,13 +72,40 @@ export interface GatedLibraryResponse extends CustomToolLibraryResponse {
  */
 export type DryEffect =
   | { index: number; target: EffectTarget; value: number | string | boolean }
+  | { index: number; wardrobe: ResolvedWardrobeGesture }
   | { index: number; skipped: string };
 
-/** True for a dry effect that would actually write. */
-export function isApplicableEffect(
+/** A wardrobe gesture with its item references rendered — ready for the applier. */
+export interface ResolvedWardrobeGesture {
+  action: WardrobeEffectAction;
+  /** Rendered, trimmed item references in file order (empty strings dropped server-side). */
+  items: string[];
+  mode?: WardrobeEffectMode;
+  slot?: WardrobeItemType;
+}
+
+/** True for a dry effect that would actually write a value. */
+export function isApplicableWriteEffect(
   effect: DryEffect,
 ): effect is Extract<DryEffect, { target: EffectTarget }> {
   return 'target' in effect;
+}
+
+/** True for a dry effect that would actually change an outfit. */
+export function isApplicableWardrobeEffect(
+  effect: DryEffect,
+): effect is Extract<DryEffect, { wardrobe: ResolvedWardrobeGesture }> {
+  return 'wardrobe' in effect;
+}
+
+/**
+ * True for a dry effect of EITHER kind that would apply (v4 `f0db8cbb8` — it
+ * meant "would write" before the wardrobe arm existed).
+ */
+export function isApplicableEffect(
+  effect: DryEffect,
+): effect is Exclude<DryEffect, { skipped: string }> {
+  return isApplicableWriteEffect(effect) || isApplicableWardrobeEffect(effect);
 }
 
 /**

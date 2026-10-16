@@ -29,6 +29,10 @@ import { ToastService } from '../../ui/toast.service';
  * the browser never re-derives it.
  */
 
+/** v4's title on the `✦ N phrase(s)` badge (`WorkbenchLibrary.tsx:243`). */
+export const TRIGGER_BADGE_TITLE =
+  'Listens for trigger phrases — said in a chat with the setting on, they run this tool';
+
 /** The advisory a colliding name carries. Carried verbatim from v4 `:36-39`. */
 export const TIER_ADVISORY =
   'Nearest tier wins: character → participant → group → project → global. ' +
@@ -293,6 +297,14 @@ interface OverCapStore {
               >oracle</span
             >
           }
+          <!-- v4 \`362426c8f\` (\`WorkbenchLibrary.tsx:241-248\`), its expression as
+               written: an older server omits \`triggerCount\`, and \`undefined > 0\`
+               hides the badge — no \`?? 0\`. -->
+          @if (tool.triggerCount > 0) {
+            <span class="qt-badge qt-badge-outline" [title]="TRIGGER_BADGE_TITLE"
+              >✦ {{ tool.triggerCount }} phrase{{ tool.triggerCount === 1 ? '' : 's' }}</span
+            >
+          }
           @if (tool.parameterCount > 0) {
             <span class="qt-badge qt-badge-outline"
               >{{ tool.parameterCount }} param{{ tool.parameterCount === 1 ? '' : 's' }}</span
@@ -343,6 +355,7 @@ export class WorkbenchLibrary {
 
   protected readonly MAX_ROSTER_SIZE = MAX_ROSTER_SIZE;
   protected readonly TIER_ADVISORY = TIER_ADVISORY;
+  protected readonly TRIGGER_BADGE_TITLE = TRIGGER_BADGE_TITLE;
   /** The `gated` badge's tooltip — one sentence per clause (v4 `:218-226`). */
   protected gateTitle(gate: api.LibraryGateMode): string {
     return gate === 'available'

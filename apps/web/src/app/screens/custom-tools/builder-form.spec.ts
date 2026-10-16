@@ -520,3 +520,72 @@ describe('BuilderForm — the chip label', () => {
     ).not.toContain('qt-input-error');
   });
 });
+
+// ---------------------------------------------------------------------------
+// v4 `362426c8f` (pinned at `25b8fab6a`): the trigger-phrase field's mount
+// (`BuilderForm.tsx:344-349`) and where the draft's self-echo warnings land.
+// The drafts carry `triggers` through a cast so this file still compiles (red)
+// against a `ToolDraft` that predates the key.
+// ---------------------------------------------------------------------------
+
+describe('BuilderForm — trigger phrases (v4 362426c8f)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const triggered = (over: Record<string, unknown> = {}): ToolDraft =>
+    draftWith({ triggers: ['abracadabra'], ...over } as Partial<ToolDraft>);
+
+  it('mounts the field INSIDE the identity section, after the Default visibility select', async () => {
+    const fixture = await renderForm(triggered());
+    const root = fixture.nativeElement as HTMLElement;
+    const identity = root.querySelector('section');
+    expect(identity?.querySelector('h2')?.textContent).toBe('The contrivance itself');
+    const field = identity?.querySelector('qt-trigger-phrases-field');
+    expect(field).not.toBeNull();
+    const select = identity?.querySelector('select[aria-label="Default visibility"]');
+    expect(select).not.toBeNull();
+    // DOCUMENT_POSITION_FOLLOWING: the field comes after the select.
+    expect(select!.compareDocumentPosition(field!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // ...and it is the section's last element.
+    expect(identity?.lastElementChild?.tagName.toLowerCase()).toBe('qt-trigger-phrases-field');
+  });
+
+  it('routes the field’s change through update({ triggers }) onto draftChange', async () => {
+    const fixture = await renderForm(triggered());
+    const emitted: ToolDraft[] = [];
+    fixture.componentInstance.draftChange.subscribe((d) => emitted.push(d));
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector<HTMLInputElement>('#wb-trigger-phrase')!;
+    input.value = 'open sesame';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    expect(emitted).toHaveLength(1);
+    expect((emitted[0] as unknown as { triggers: string[] }).triggers).toEqual(['abracadabra', 'open sesame']);
+    expect(emitted[0].name).toBe(fixture.componentInstance.draft().name);
+  });
+
+  it('renders the chip-label self-echo warning in the identity section’s own list', async () => {
+    const fixture = await renderForm(triggered({ chipLabel: 'Abracadabra!' }));
+    expect(text(fixture)).toContain(
+      "the chip label contains the trigger \"abracadabra\" — a character who repeats Pascal's line will set this tool off again",
+    );
+  });
+
+  it('renders the consult-prompt self-echo warning in the consult section', async () => {
+    const fixture = await renderForm(
+      triggered({
+        llmEnabled: true,
+        llmPrompt: 'Say abracadabra back.',
+        llmErrorMessage: 'Silence.',
+      }),
+    );
+    expect(text(fixture)).toContain('the consult prompt contains the trigger "abracadabra"');
+  });
+
+  it('renders the outcome-message self-echo warning on the outcome row', async () => {
+    const draft = triggered();
+    draft.outcomes = draft.outcomes.map((o) => ({ ...o, message: 'You cry ABRACADABRA and the door opens.' }));
+    const fixture = await renderOutcomes(draft);
+    expect(text(fixture)).toContain('this message contains the trigger "abracadabra"');
+  });
+});

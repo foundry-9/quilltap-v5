@@ -30,7 +30,13 @@ import { flattenProgressions, type ProgressPrimitive } from '../../progressions/
 import { evaluateToolGate, type ToolGateVerdict } from '../../pascal/tool-gate';
 import { Icon } from '../../ui/icon';
 import * as api from './workbench.api';
-import { isApplicableEffect, type BenchRoll, type DryEffect } from './workbench.api';
+import {
+  isApplicableWardrobeEffect,
+  isApplicableWriteEffect,
+  type BenchRoll,
+  type DryEffect,
+  type ResolvedWardrobeGesture,
+} from './workbench.api';
 
 /**
  * ProvingBench — the Workbench's right-hand panel: single dry-run rolls, the
@@ -158,10 +164,15 @@ export function extractErrorMessage(err: unknown): string {
             @if (entry.effects && entry.effects.length > 0) {
               <div class="text-xs qt-text-secondary font-mono">
                 @for (effect of entry.effects; track effect.index) {
-                  @if (isApplicable(effect)) {
+                  @if (isWrite(effect)) {
                     <p>
                       → {{ effectTarget(effect) }} = {{ effectValue(effect) }}
                       <em>(would write)</em>
+                    </p>
+                  } @else if (isWardrobe(effect)) {
+                    <p>
+                      → wardrobe: {{ effectGesture(effect) }}
+                      <em>(would attempt)</em>
                     </p>
                   } @else {
                     <p>· effect {{ effect.index + 1 }} skipped: {{ effectSkipped(effect) }}</p>
@@ -901,22 +912,31 @@ export class ProvingBench {
     return roll.chipLabel?.trim() || this.bubbleTitle();
   }
 
-  protected isApplicable(effect: DryEffect): boolean {
-    return isApplicableEffect(effect);
+  protected isWrite(effect: DryEffect): boolean {
+    return isApplicableWriteEffect(effect);
+  }
+
+  protected isWardrobe(effect: DryEffect): boolean {
+    return isApplicableWardrobeEffect(effect);
   }
 
   /** The target as the author wrote it — the raw text, not the parsed shape. */
   protected effectTarget(effect: DryEffect): string {
-    return isApplicableEffect(effect) ? effect.target.raw : '';
+    return isApplicableWriteEffect(effect) ? effect.target.raw : '';
   }
 
   /** v4 renders the resolved value through `JSON.stringify`, quotes and all. */
   protected effectValue(effect: DryEffect): string {
-    return isApplicableEffect(effect) ? JSON.stringify(effect.value) : '';
+    return isApplicableWriteEffect(effect) ? JSON.stringify(effect.value) : '';
+  }
+
+  /** The gesture in the bench's words (v4 `f0db8cbb8`). */
+  protected effectGesture(effect: DryEffect): string {
+    return isApplicableWardrobeEffect(effect) ? describeBenchGesture(effect.wardrobe) : '';
   }
 
   protected effectSkipped(effect: DryEffect): string {
-    return isApplicableEffect(effect) ? '' : effect.skipped;
+    return 'skipped' in effect ? effect.skipped : '';
   }
 
   protected sheetSuffix(roll: CustomToolRunResult): string {
@@ -925,5 +945,28 @@ export class ProvingBench {
       .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
       .join(', ');
     return ` · sheet: ${pairs}`;
+  }
+}
+
+/**
+ * A dry-run gesture, in the bench's words (v4 `ProvingBench.tsx:700-716`).
+ * "Would attempt", never "would apply": the bench has no character, so it
+ * cannot know the garment exists. The item list is built HERE, curly quotes
+ * (U+201C / U+201D) and all, never interpolated in a template.
+ */
+export function describeBenchGesture(gesture: ResolvedWardrobeGesture): string {
+  const items = gesture.items.map((item) => `\u201c${item}\u201d`).join(', ');
+  switch (gesture.action) {
+    case 'wear': {
+      const mode =
+        gesture.mode && gesture.mode !== 'wear'
+          ? ` (${gesture.mode.replace(/_/g, ' ')}${gesture.slot ? ` ${gesture.slot}` : ''})`
+          : '';
+      return `wear ${items}${mode}`;
+    }
+    case 'take_off':
+      return `take off ${items}${gesture.slot ? ` from ${gesture.slot}` : ''}`;
+    case 'clear_slot':
+      return `clear ${gesture.slot ?? 'a slot'}`;
   }
 }

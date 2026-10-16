@@ -3,7 +3,7 @@ import { provideRouter } from '@angular/router';
 import { describe, expect, it, afterEach } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
-import type { CustomToolLibraryError } from '../../core/core-contract';
+import type { CustomToolLibraryEntry, CustomToolLibraryError } from '../../core/core-contract';
 import { MAX_ROSTER_SIZE } from '../../pascal/custom-tool-types';
 import type * as api from './workbench.api';
 import { WorkbenchLibrary } from './workbench-library';
@@ -26,6 +26,7 @@ function tool(over: Partial<api.GatedLibraryEntry> = {}): api.GatedLibraryEntry 
     defaultVisibility: 'public',
     rollForm: 'range',
     llm: false,
+    triggerCount: 0,
     parameterCount: 0,
     outcomeCount: 2,
     mountPointId: 'm1',
@@ -236,6 +237,40 @@ describe('WorkbenchLibrary (v4 WorkbenchLibrary.tsx)', () => {
     const many = await render(stubClient([tool({ parameterCount: 3, outcomeCount: 4 })]));
     expect(text(many)).toContain('3 params');
     expect(text(many)).toContain('4 outcomes');
+  });
+
+  // v4 `362426c8f` (`WorkbenchLibrary.tsx:241-248`): the trigger-phrase badge,
+  // between `oracle` and the parameter count.
+  it('shows the trigger-phrase badge, singularized, with v4\u2019s title', async () => {
+    const one = await render(stubClient([tool({ triggerCount: 1 })]));
+    const badge = Array.from(one.nativeElement.querySelectorAll('.qt-badge') as NodeListOf<HTMLElement>).find(
+      (el) => el.textContent?.includes('phrase'),
+    );
+    expect(badge?.textContent?.trim()).toBe('\u2726 1 phrase');
+    expect(badge?.getAttribute('title')).toBe(
+      'Listens for trigger phrases \u2014 said in a chat with the setting on, they run this tool',
+    );
+    expect(text(await render(stubClient([tool({ triggerCount: 2 })])))).toContain('\u2726 2 phrases');
+  });
+
+  it('places the phrase badge after oracle and before the parameter count', async () => {
+    const fixture = await render(stubClient([tool({ llm: true, triggerCount: 3, parameterCount: 2 })]));
+    const labels = Array.from(fixture.nativeElement.querySelectorAll('.qt-badge') as NodeListOf<HTMLElement>).map(
+      (el) => el.textContent?.trim() ?? '',
+    );
+    const oracle = labels.indexOf('oracle');
+    const phrases = labels.indexOf('\u2726 3 phrases');
+    const params = labels.indexOf('2 params');
+    expect(oracle).toBeGreaterThanOrEqual(0);
+    expect(phrases).toBeGreaterThan(oracle);
+    expect(params).toBeGreaterThan(phrases);
+  });
+
+  it('hides the phrase badge at zero, and for a server that omits the key (`undefined > 0`)', async () => {
+    expect(text(await render(stubClient([tool({ triggerCount: 0 })])))).not.toContain('phrase');
+    const older = tool() as Partial<CustomToolLibraryEntry>;
+    delete older.triggerCount;
+    expect(text(await render(stubClient([older as CustomToolLibraryEntry])))).not.toContain('phrase');
   });
 
   it('omits the parameter badge entirely at zero (v4 renders it only when > 0)', async () => {
