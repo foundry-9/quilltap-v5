@@ -185918,3 +185918,232 @@ announcement; the operator popup's `enqueued now`; take-off with `slot: top`,
 `clear_slot: hair`, an empty reference; 💸 `wardrobe_take_off` on a worn
 composite from Friday's vault; the LLM Inspector's preamble + `Side effects:
 … wears …`; the two load refusals; the trigger entrance's `enqueued now`).
+
+## P4.D310 — the chat-spine smalls: bug 249 (the lone character's floor), bug 248 (chunk embeddings decided from the pre-write read), `01f508d4e`'s prune — LANE COMPLETE (2026-10-16)
+
+**Branch** `claude/p4.d310-chat-spine-smalls-b6043d`, cut from P4.D314's
+`REAIM` `abea3f336`. The session opened on `claude/happy-almeida-b6043d` at
+main `6f78aa3d7` with no commits of its own; it was switched onto the new
+branch at `abea3f336` before the first edit. Pin worktree
+`/tmp/qt-v4-pin-p4d310-25b8fab6a` (`25b8fab6aa58…`, `4.11.0-dev.10`, root
+`openai` 7.34.0 / `zod` 4.6.7, the three symlink classes); every oracle
+output under `/tmp/p4d310/`.
+
+**Probe (§R.2, an observation):** v4 `main` clean, on `main`; **v4 moved:
+`5cb0e0190` and `a05c6f755` observed at 15:29 CDT** (`a05c6f755` "feat(pascal):
+{{character}} placeholder; character-announced custom tools" — new since the
+orders); `bugfix` unmoved. Neither is ported. The pin stood throughout.
+
+### Landed (Tier 1, items 1–12)
+
+- **Bug 249 (`6069a7acd`).** `should_chain_next`'s early return inside the
+  selector arm, v4's five tests in v4's order, then `user_turn` with no
+  participant / name / selection reason and the INFO `[TurnOrchestrator] Lone
+  character has answered; floor returns to the operator` — **R-2: snake_case
+  `chat_id` / `chain_depth` / `participant_id`, the file's seven siblings'
+  case.** `select_speaker.rs` untouched; no consumer change.
+  - **The family** (`turn_orchestrator_tier2_equivalence`): BOTH sides grew
+    `neverPauseForUser` (the oracle passes `DEFAULT_CHAIN_CONFIG` + `{
+    neverPauseForUser }` per op; the Rust op builds `ChainGuards` per op), the
+    spec grew nine chats `cccc0030…`–`cccc0038…` + nine ops (L1–L9), and the
+    comparison now reports EVERY diverging op instead of the first.
+  - **Red-first on unported code: 4 of 27 ops red — L1, L4, L5, L9** (v5
+    chained `algorithm` where v4 returns `user_turn`); **L2, L3, L6, L7
+    green** (they converge); **L8 green**; the 18 pre-existing ops identical.
+    After the port: 27 / 27 + the `chats` dump.
+  - **R-5's predicted oddity DOES NOT EXIST — measured, no filing.** The
+    survey (A6.10) read the early return as preceding the user-driven-seat
+    arm, so a lone USER-controlled seat that spoke last would lose its
+    `participantId` / `characterName`. v4's oracle row L8 answers
+    `{chain:false, participantId: <the seat>, characterName: "Uma", reason:
+    "user_turn"}`: `selection.ts`'s `buildResult` rewrites a user-driven
+    seat's reason to `user_turn` (`:238`), so `only_character` never reaches
+    the new block for it. The v4 filing CANDIDATE is RETIRED by measurement;
+    nothing for the human to file. The why-comment at the port says so.
+  - **The in-crate INFO pin** (`turn_orchestrator::tests`): the home leg
+    `a_lone_character_who_answered_returns_the_floor` (L1's shape, depth 2 →
+    exactly the INFO line with `participant_id=<SEAT>`) and four named silence
+    legs (L2 not yet spoken, L3 genuinely all-LLM, L7 `never_pause_for_user`,
+    L6 queued). **Mutation-proven:** with only the `tracing::info!` removed the
+    home leg fails (16 / 1); with the whole block removed (unported) the home
+    leg fails and the four silence legs pass (16 / 1). The pin's seat is a
+    UUID, not the order's `p1`: the message read's per-row schema SKIPS a row
+    whose `id` or `participantId` is not a UUID, so a `p1` seat's history
+    read as empty and the first draft of these tests passed vacuously —
+    caught before the record, re-proven after.
+- **Bug 248 (`b82037d75`).** Step 3 reads each chunk BEFORE its upsert
+  through `fallback::find_one_by_filter_or_none("conversation_chunks", ||
+  db.read_main(…find_by_interchange_index…))` on the caller thread (R-1 —
+  never a `?`, never inside the write closure), keeps the upsert's returned
+  id, decides `full_reembed || existing is None || !has_embedding || content
+  changed` (decoded strings), queues `existing.id ?? upserted id`; then the
+  unconditional DEBUG `[ConversationRender] Chunks upserted {jobId, chatId,
+  interchangeCount, needingEmbedding, fullReembed}` (**R-2: camelCase, the
+  file's P4.126 convention**). Step 4 runs only when something needs
+  embedding, reads the profile ONCE, enqueues from the list (the
+  per-interchange re-read is deleted), and with no default logs DEBUG
+  `[ConversationRender] No default embedding profile; chunks left for the
+  startup reconcile {jobId, chatId, pending}`. The catch WARN, success INFO,
+  no-events DEBUG and not-found WARN are untouched. **The read-then-write
+  window is v4's own** (a concurrent `EMBEDDING_GENERATE` can at most cause a
+  redundant enqueue, deduped against PENDING) — kept, recorded.
+  - **`embedding_remainder_equivalence`: the state diff is GREEN before AND
+    after the port** (the acceptance gate — jest's read-your-writes). The
+    oracle now records each render's `[ConversationRender]` lines (a
+    `Logger.prototype` spy, the `mail-alerts-delivered` technique), and the
+    Rust side captures each render through `global_capture::capture_async`
+    with v4's synthesized job id (`…ff{i}`) and compares them whole
+    (`durationMs` masked). `RenderCase` grew `setDefaultProfileId` /
+    `clearDefault` preludes, a `restoreDefaultProfileId` postlude and a
+    `plantEmbeddingHex` prelude (cleared after the handler). Two new cases:
+    `no-op-rerender-needing-nothing` (the healthy chat with eight raw float32
+    0.5s planted — **measured: without the plant the healthy chat's second
+    render still needs 1, because its first render nulled the seeded vector,
+    so no corpus chunk is both embedded and render-identical**) →
+    `needingEmbedding=0`; `no-default-profile-leaves-chunks-for-reconcile`
+    (`a0…02` under `fullReembed` with the default cleared, the BUILTIN
+    restored after) → `needingEmbedding=2` then `pending=2`, no enqueue. The
+    existing cases now pin `needingEmbedding = interchangeCount` /
+    `fullReembed=true`, and a by-name assertion holds `f0…01` queued PENDING
+    under its EXISTING id. **Red-first: 6 of 8 render cases red on lines**
+    (the two early-return cases agree), state diff green.
+  - **`log_tests` (R-6, measured):** the shared fixture has NO default
+    embedding profile, so `a_render_logs_v4s_success_line` now pins BOTH
+    DEBUGs in order (`needingEmbedding=1 fullReembed=false`, then
+    `pending=1`). New: `a_render_with_a_default_profile_queues_the_new_chunk`
+    (one DEBUG + the queued payload under the upsert's id),
+    `a_rerender_needing_nothing_reads_no_profile` (vector planted,
+    `embedding_profiles` DROPPED, the second render completes with no WARN
+    and `needingEmbedding=0`), `a_full_reembed_needs_every_chunk`,
+    `the_pre_write_read_is_the_fallback_home`. **Red-first** (the new test
+    module grafted onto the base handler): 5 red (the amended pin, the three
+    new legs, the guard), 5 pre-existing green.
+    `an_enqueue_failure_warns_with_v4s_field_names` unchanged and green.
+  - **The fallback read's ERROR leg has NO clean plant** (item 8): `upsert`'s
+    own lookup is the same statement through the same marshal, so anything
+    that fails the pre-read fails the upsert too. The ERROR leg is pinned at
+    the home's unit level (`db::fallback`'s `find_one_by_filter_or_none`
+    test, `fallback.rs:1932`) and the handler's USE of the home by the
+    whitespace-insensitive source guard over step 3 (the home call, ONE chunk
+    read, before the write).
+  - **The repository half (R-3):** the create arm already took the caller's
+    `new_id`; a comment names bug 248 and v4's bare `Creating conversation
+    chunk` DEBUG as comment-only by the standing convention.
+    `conversation_chunks_tier2_equivalence` grew two supplied-id upsert ops
+    (create arm under `5e00…0248` — visible in v4's dump; update arm with
+    `…0249` ignored): **GREEN on the unported repository — a convergence, not
+    a red** (13 rows).
+- **`01f508d4e`.** `Mail alerts marked delivered` (`mailbox.rs`, was the
+  bare `markMailAlertsDelivered`) and `Letter discarded` (was
+  `discardLetter`), fields and order unchanged, the per-letter WARN's text
+  kept, doc comments name both. **The five pin sites:** (1)
+  `services/orchestrator.rs:5799` + `:5804` inside `mod
+  tool_only_mail_mark_tests` (opened at `:5720`, outside P4.D305's
+  `:1925-1970` region — a textual union for the unifier); (2)
+  `orchestrator_tier3_equivalence.rs` `:2116-2119` comment, the filter, the
+  prefix literal, the assert label; (3) **the oracle-side spy
+  `harness/oracle/cases/orchestrator-tier3.test.ts:756` — the exact hunk for
+  P4.D305's regen:** `-      if (message === 'markMailAlertsDelivered') {` →
+  `+      // v4 \`01f508d4e\` renamed the DEBUG from the bare function name.` /
+  `+      if (message === 'Mail alerts marked delivered') {`; (4)
+  `mail_alerts_delivered_equivalence.rs` — the v5 filter gains `Mail alerts
+  marked delivered` (the `markMailAlertsDelivered` arm stays for the WARN);
+  (5) `mail_carina_tools_equivalence.rs` the two `Letter discarded` literals +
+  the doc comment. **Red-first:** sites 2 and 4 red from the ORACLE side
+  after the pin regen (v4 says `Mail alerts marked delivered`); sites 1 and 5
+  red once their literals moved; all green after `mailbox.rs`.
+  `[Sync] Reading disk file` deleted from `apply_disk.rs` with the doc
+  comment, its pin flipped to `a_disk_read_logs_nothing` (bytes AND
+  `lines.is_empty()`) — red on the line, green after; the escape test stays;
+  no oracle ever captured it (grep). **The transcript line (item 11):** v5's
+  transcript projection never carried `[Transcript] Projecting chat
+  transcript` nor the surviving exit line; nothing to remove, nothing added.
+
+### Tier 2 / Tier 3
+
+- **Item 13 — DEFERRED** (the order's own caveat): an oracle-side capture of
+  the lone INFO would compare v4's camelCase keys against the file's
+  snake_case pins, i.e. a key-renaming normalizer over all eight
+  `[TurnOrchestrator]` lines; that is the shape the order says to record as
+  DEFERRED rather than land. The literal in-crate pin (mutation-proven) stands.
+- **Item 14 — DEFERRED:** a `sqlite3_trace_v2` statement-order pin needs the
+  connection handles of `Db`'s reader pool AND its writer thread, and `Db`
+  exposes neither; adding a test hook is a `db::runtime` edit outside this
+  lane's files. The two behaviours it would show are pinned otherwise: no
+  profile read on a no-op re-render (the `DROP TABLE embedding_profiles`
+  test) and read-before-write (the step-3 source guard).
+- **Item 15 — RAN:** `help_chat_orchestrator_tier3_equivalence` regenerated
+  from the pin (against `/tmp` copies of the committed help-chat pair): 5 / 5
+  green, no decision change. `orchestrator_tier3_equivalence` green with the
+  port — **no `no such table: users` on this base**: the 22 such calls
+  P4.D305 recorded on its branch belong to the KEYSTONE tree, not to the pin
+  or to this lane.
+- **Items 16–21** recorded as the order states (the repository DEBUG and
+  `Entity created` INFO unported by convention; the SPA `console.debug` is
+  P4.D308's; the transcript exit line a pre-existing absence; v4's jest tests
+  not transcribed; the filing candidate RETIRED by measurement, above).
+- **Observed, not in scope:** v5's `ConversationChunksRepository::upsert`
+  reads its own lookup with `?` where v4's `upsert` calls the fallback
+  `findByInterchangeIndex` — so on a row whose content fails to decode, v4
+  would create a SECOND chunk at that index while v5 fails the job. Read, not
+  measured; a candidate for a follow-ups order.
+
+### Regenerated families (all from the pin, outputs under `/tmp/p4d310/`)
+
+| family | recipe deviation | output |
+|---|---|---|
+| `turn_orchestrator_tier2_equivalence` | fixture + case | `qt-turnorch-{main,mount}.db`, `oracle-turnorch.ndjson` |
+| `embedding_remainder_equivalence` | staged under `qt-er-oracle/` against `/tmp` copies of the committed pair (unmodified) | `oracle-embedding-remainder.ndjson` |
+| `conversation_chunks_tier2_equivalence` | — | `qt-cc-fixture.db`, `oracle-cc.ndjson` |
+| `mail_alerts_delivered_equivalence` | stage `mail-alerts-stage/` | `qt-mailalerts-{main,mount}.db`, `oracle-mail-alerts-delivered.ndjson` |
+| `mail_carina_tools_equivalence` | stage `mail-stage/` | `qt-mail-{main,mount}.db`, `oracle-mail-tools{,-plants}.ndjson`, `oracle-carina-tool.ndjson` |
+| `orchestrator_tier3_equivalence` | `$TMPO` = `qt-orch-oracle/` | `qt-orch-{main,mount}.db`, `oracle-orchestrator.ndjson` |
+| `help_chat_orchestrator_tier3_equivalence` | the committed pair copied to `help-orch/db/` | `oracle-help-orch.ndjson` |
+
+Changed-bytes proofs: `neverPauseForUser` ×1 in the spec, the nine L-rows in
+the NDJSON; `Chunks upserted` ×6 in the render rows; `Mail alerts marked
+delivered` ×5 (mail-alerts) and ×3 (orchestrator, the `vias` guard
+`finalizer` / `preserved-partial` / `turn-skip` satisfied). No sweep driver
+run (each family by its own recipe, lane-private paths). No fixture `.db` is
+committed or changed; the committed embedding-remainder and help-chat pairs
+were only ever COPIED.
+
+### Gate
+
+On the final source (before the version bumps, per the keystone note):
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D
+warnings` clean in BOTH feature sets (`apps/web/dist` built first);
+`cargo test --workspace --no-fail-fast` with the lane's env block
+(`/tmp/p4d310/gate/env.sh`, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin):
+**806 binaries / 5,238 passed / 5 failed / 3 ignored**. The five reds are
+exactly the §R.3 by-design sibling residue: `cli_differential` (main help /
+zsh / fish — P4.D312), `provider_sdk_version_guard` + `zod_version_guard` —
+P4.D311, `public_schemas_vendor_guard` + `qtap_schema_embed_guard` —
+P4.D313. Every lane family ran by name, no SKIP: turn-orchestrator 1/1,
+embedding-remainder 1/1, conversation-chunks 1/1, mail-carina 2/2,
+orchestrator tier-3 1/1, help-chat tier-3 5/5.
+`mail_alerts_delivered_equivalence` shares `QT_FIXTURE_TMP_*` with
+mail-carina over a different builder run (re-minted vault ids), so it ran
+by name with its own env instead: 1/1. The in-crate modules
+(`turn_orchestrator::tests` 17, `conversation_render_job::log_tests` 11,
+`apply_disk::tests`, `orchestrator::tool_only_mail_mark_tests`) passed inside
+the `quilltap-core` lib binary.
+
+### Versions at close
+
+core 0.0.1308 (0.0.1306 / 0.0.1307 / 0.0.1308, one per commit: `e0e2320b8` bug 249, `192893ec3` bug 248, `ffd0fa178` the prune). Host untouched (`spine.rs` did not move); harness frozen
+`0.0.1110`; no web / cli / SPA / tauri change. Tier R not owed (the CLI does
+not move); SPA gates not owed (no `apps/web` source change).
+
+### 💸 For the dogfood pass
+
+As the order lists (§"💸"), minus R-5's row, which the oracle retired: the
+lone character returning the floor once on a persona-less one-on-one chat
+(the INFO once, no `Max chain depth reached`); a nudge right after it spoke
+running once more; a one-character autonomous room keeping its monologue;
+bug 248's `Chunks upserted … needingEmbedding=1` with the job queued in the
+SAME render, the `No default embedding profile … pending=N` line with the
+default cleared, a full re-render's `needingEmbedding = interchangeCount
+fullReembed=true`; no `[Sync] Reading disk file` on a disk-side sync; `Mail
+alerts marked delivered` on a delivering turn; `Letter discarded` on a
+discard.

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — docs(porting): P4.D310 lane record + status header (LANE COMPLETE)
+
+_Docs-only change._
+
+Appends the P4.D310 lane record to `status-log.md` and marks the order LANE COMPLETE. The record covers the red-first counts, the retired lone-user-seat filing candidate, the two Tier 2 deferrals, the gate, and the HANDOFF for P4.D305's oracle spy.
+
 #### 2026-10-16 — chore(logs): v4's debug-line prune — the mailbox's two descriptive messages, no per-file sync trace (01f508d4e, P4.D310)
 
 _Versions: core 0.0.1308._
