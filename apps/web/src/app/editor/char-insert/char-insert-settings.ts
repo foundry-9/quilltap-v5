@@ -8,7 +8,7 @@ import {
 } from '../../screens/settings/chat/chat-settings.api';
 
 /**
- * The two composer toggles, read where the feature lives.
+ * The composer's typing-aid toggles, read where the feature lives.
  *
  * v4's `CharTypeaheadPlugin` runs its OWN `useQuery(queryKeys.settings.chat)`
  * rather than being handed a flag, and that shape is worth keeping: the
@@ -17,7 +17,7 @@ import {
  * `chatSettingsKeys.all` means both mounts and the sixteen settings cards still
  * dedupe into ONE GET, exactly as v4's single provider does.
  *
- * `?? true` is v4's default for both keys.
+ * `?? true` is v4's default for every key here.
  *
  * The toggles gate the automatic `:` / `\` trigger ONLY — the toolbar pickers
  * are never gated, because an explicit button press cannot surprise anyone.
@@ -29,10 +29,22 @@ export interface CharInsertSettings {
   emoji: Signal<boolean>;
   /** `chat_settings.composerUnicode ?? true` — the `\` typeahead. */
   unicode: Signal<boolean>;
+  /**
+   * `chat_settings.composerSlashCommands ?? true` — the `/` command menu (v4
+   * `SlashCommandPlugin`'s own `useChatSettingsQuery`). Gates the menu ONLY:
+   * the gutter buttons and the sidebar are never affected. Read through the
+   * DTO's index signature with this file's own cast until the key is declared
+   * on `ChatSettingsDto` (a sibling lane's file).
+   */
+  slashCommands: Signal<boolean>;
 }
 
-/** Both flags ON — v4's defaults, and the answer when there is no query context. */
-const DEFAULTS: CharInsertSettings = { emoji: signal(true), unicode: signal(true) };
+/** Every flag ON — v4's defaults, and the answer when there is no query context. */
+const DEFAULTS: CharInsertSettings = {
+  emoji: signal(true),
+  unicode: signal(true),
+  slashCommands: signal(true),
+};
 
 /**
  * Must be called from an injection context (a component field initializer).
@@ -40,7 +52,7 @@ const DEFAULTS: CharInsertSettings = { emoji: signal(true), unicode: signal(true
  * Degrades to the defaults when no `QueryClient` is provided. That is not a
  * runtime path — the app root always provides one — but a host component under
  * test need not stand up a query stack just to render an editor, and answering
- * "both on" there is the same thing an unset settings row means.
+ * "all on" there is the same thing an unset settings row means.
  */
 export function injectCharInsertSettings(): CharInsertSettings {
   if (!inject(QueryClient, { optional: true })) return DEFAULTS;
@@ -54,5 +66,8 @@ export function injectCharInsertSettings(): CharInsertSettings {
   return {
     emoji: computed(() => (query.data()?.['composerEmoji'] as boolean | undefined) ?? true),
     unicode: computed(() => (query.data()?.['composerUnicode'] as boolean | undefined) ?? true),
+    slashCommands: computed(
+      () => (query.data()?.['composerSlashCommands'] as boolean | undefined) ?? true,
+    ),
   };
 }

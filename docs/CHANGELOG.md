@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(spa): the composer / command menu as a ProseMirror plugin, mounted behind a slashCommands input (P4.D308)
+
+_Versions: SPA 0.5.865._
+
+New `editor/slash/slash-command-plugin.ts` ports v4's `SlashCommandPlugin` (`4877fc2da`): a `/` at a word start opens a menu of the composer's actions, Prospero's invocable tools and Pascal's customs, ranked by `chat/slash-commands/` and capped at 12 for a typed query. Enter, Tab or a click removes the `/query` in its own history step (one undo restores it) and then dispatches: actions run their handler, a zero-parameter tool runs at once, a tool with parameters opens its dialog on that tool. Escape leaves the text; Space dissolves the trigger. Enter and Tab are held while a list is still loading and nothing matches. `editor/slash/slash-command-host.ts` defines the host contract (v4's `SlashCommandContext`) and a `QueryObserver` source over the Run Tool modal's and the custom-tool popup's existing cache keys, fetched only while the menu is open. `rich-editor.ts` gains `slashCommands` (default `null`, inert) and mounts the plugin after the `@` typeahead and before smart typography. `char-insert-settings.ts` gains `slashCommands` (`composerSlashCommands ?? true`). Rows use text glyphs (`/`, `⚙`, `✦`) where v4 renders icons, and the listbox id takes the `qt-` prefix. v4's jsdom file is transcribed case for case through a new real-editor harness; four mutants of the adapter rules each turn the spec red.
+
 #### 2026-10-16 — feat(spa): the composer slash commands pure tier, transcribed from v4 and checked against a recorded corpus (P4.D308)
 
 _Versions: SPA 0.5.864._

@@ -34,6 +34,8 @@ import {
 import { dialectSchema, parseMarkdown, serializeMarkdown } from './markdown-dialect';
 import type { MentionCharacterSource } from './mentions/mention-source';
 import { mentionTypeaheadPlugin } from './mentions/mention-typeahead-plugin';
+import type { SlashCommandHost } from './slash/slash-command-host';
+import { slashCommandPlugin } from './slash/slash-command-plugin';
 import { smartTypographyPlugin } from './smart-typography-plugin';
 import { textReplacementPlugin, type CompiledRules } from './text-replacement';
 
@@ -121,6 +123,15 @@ export class RichEditor {
   readonly mentionSource = input<MentionCharacterSource | null>(null);
   /** Character ids the `@` typeahead lists first — the chat's cast. Read live. */
   readonly mentionPriorityCharacterIds = input<readonly string[]>([]);
+  /**
+   * The `/` command menu's handlers and lists (v4 `SlashCommandPlugin`, the
+   * wrapper's `slashCommands` prop). "Omit (or null) and there is no menu — the
+   * plugin also stays unmounted while the `composerSlashCommands` setting is
+   * off": `null`, the default, leaves it inert, so Document Mode and every form
+   * field stay as they were; the Salon composer binds its host only while the
+   * setting is on. Read live.
+   */
+  readonly slashCommands = input<SlashCommandHost | null>(null);
 
   /** Fired with the serialized markdown whenever the document changes. */
   readonly contentChange = output<string>();
@@ -345,6 +356,11 @@ export class RichEditor {
         source: () => this.mentionSource(),
         priorityCharacterIds: () => this.mentionPriorityCharacterIds(),
       }),
+      // The `/` command menu, after the `@` typeahead and before smart
+      // typography — v4 `LexicalComposerWrapper.tsx:171-174`'s order — and
+      // above the keymaps, so Enter / Tab reach it before the composer's
+      // submit. Inert without a host.
+      slashCommandPlugin({ host: () => this.slashCommands() }),
       // Smart typography sits ABOVE text replacement so `.` resolves as
       // typography before it resolves as a word boundary (v4 gets the same
       // ordering from COMMAND_PRIORITY_NORMAL over LOW), and above the keymaps

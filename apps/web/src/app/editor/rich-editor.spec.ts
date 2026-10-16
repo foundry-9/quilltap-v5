@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import './jsdom-range-shim';
 import { RichEditor } from './rich-editor';
+import type { SlashCommandHost, SlashToolSource } from './slash/slash-command-host';
 
 @Component({
   imports: [RichEditor],
@@ -405,5 +406,103 @@ describe('RichEditor — Enter escapes a fenced code block', () => {
     pressEnter(fixture);
 
     expect(editor.inCodeBlock()).toBe(true);
+  });
+});
+
+/**
+ * The `/` command menu's mount contract (v4 `LexicalComposerWrapper`'s
+ * `slashCommands` prop): a host mounts the listbox on `/`; `null` — the default,
+ * and what the composer binds while `composerSlashCommands` is off — leaves `/`
+ * as prose and Enter to the submit command.
+ */
+describe('RichEditor — the slashCommands input', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  @Component({
+    imports: [RichEditor],
+    template: `<qt-rich-editor
+      [submitOnEnter]="true"
+      [slashCommands]="host()"
+      (submit)="submitted.set(submitted() + 1)"
+    />`,
+  })
+  class SlashHost {
+    readonly editor = viewChild.required(RichEditor);
+    readonly host = signal<SlashCommandHost | null>(null);
+    readonly submitted = signal(0);
+  }
+
+  function staticSource<T>(): SlashToolSource<T> {
+    return {
+      snapshot: () => ({ tools: [], isPending: false, isError: false }),
+      setActive: () => undefined,
+      subscribe: () => () => undefined,
+    };
+  }
+
+  function stubHost(calls: string[]): SlashCommandHost {
+    return {
+      chatId: 'chat-1',
+      actions: { attach: () => calls.push('attach') },
+      openRunTool: (id?: string) => calls.push(`openRunTool:${id ?? ''}`),
+      openCustomTool: () => calls.push('openCustomTool'),
+      runBuiltInNow: async () => undefined,
+      runCustomNow: async () => undefined,
+      customToolsAvailable: () => false,
+      builtInTools: staticSource(),
+      customTools: staticSource(),
+    };
+  }
+
+  async function mount(host: SlashCommandHost | null): Promise<ComponentFixture<SlashHost>> {
+    TestBed.configureTestingModule({ imports: [SlashHost] });
+    const fixture = TestBed.createComponent(SlashHost);
+    fixture.componentInstance.host.set(host);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    return fixture;
+  }
+
+  function typeText(fixture: ComponentFixture<SlashHost>, text: string): void {
+    fixture.componentInstance.editor().runCommand((state, dispatch) => {
+      if (dispatch) dispatch(state.tr.insertText(text));
+      return true;
+    });
+  }
+
+  function enter(fixture: ComponentFixture<SlashHost>): void {
+    const el = fixture.nativeElement.querySelector('.qt-rich-editor-content') as HTMLElement;
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  }
+
+  it('a host mounts #qt-slash-command-listbox on `/`, and Enter picks instead of sending', async () => {
+    const calls: string[] = [];
+    const fixture = await mount(stubHost(calls));
+    typeText(fixture, '/atta');
+    expect(document.getElementById('qt-slash-command-listbox')).not.toBeNull();
+
+    enter(fixture);
+
+    expect(calls).toEqual(['attach']);
+    expect(fixture.componentInstance.submitted()).toBe(0);
+    expect(fixture.componentInstance.editor().getMarkdown()).toBe('');
+    expect(document.getElementById('qt-slash-command-listbox')).toBeNull();
+  });
+
+  it('null leaves `/` as prose: no listbox, and Enter submits', async () => {
+    const fixture = await mount(null);
+    typeText(fixture, '/atta');
+    expect(document.getElementById('qt-slash-command-listbox')).toBeNull();
+
+    enter(fixture);
+
+    expect(fixture.componentInstance.submitted()).toBe(1);
+  });
+
+  it('defaults to null — every other host stays inert', () => {
+    TestBed.configureTestingModule({ imports: [RichEditor] });
+    const fixture = TestBed.createComponent(RichEditor);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.slashCommands()).toBeNull();
   });
 });
