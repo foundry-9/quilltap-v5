@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — docs(porting): P4.D304 records its KEYSTONE sha and ensure names in the order's status header
+
+_Docs-only change._
+
+The status header now names `KEYSTONE` and the `db::chat_settings_4_11_repair` ensure names, so P4.D305 can branch from it.
+
 #### 2026-10-16 — KEYSTONE: P4.D304 — chat_settings.customToolTriggers + composerSlashCommands (the TENTH + ELEVENTH D23 moves in one re-dump), two unstamped boot ensures, the six column sites, the two PUT arms, the help bag key and the Almanack line
 
 _Versions: core 0.0.1306, host 0.0.208._
