@@ -23,7 +23,10 @@
 //!   spaced values kept whole), the PDF arm's [`PDF_MESSAGES`],
 //!   [`pdf_lines_from_capture`], [`pdf_outcome`];
 //! - SQLite error text — [`normalize_v4_sqlite`] (v4's quoted-identifier
-//!   `no such column` onto v5's bare one).
+//!   `no such column` onto v5's bare one);
+//! - v4 log lines captured through the transports splice —
+//!   [`v4_log_as_capture_line`] (the line v5's capture rig renders for one) and
+//!   [`pinned_capture_lines`] (a capture narrowed to the pinned messages).
 //!
 //! `#[allow(dead_code)]` — each integration-test binary pulls in this module and
 //! uses a different subset of the helpers.
@@ -540,4 +543,56 @@ pub fn pdf_outcome(lines: &[Value]) -> Option<&'static str> {
         (true, true) => Some("fallback"),
         (true, false) => Some("refused"),
     }
+}
+
+/// P4.D305 — the line the capture rig ([`quilltap_core::test_support`]'s
+/// `FieldVisitor`) renders for the v5 twin of ONE v4 log line, as a jest oracle
+/// records it through the transports splice (`{ level, message, fields }`,
+/// `service` / `environment` dropped). v4's field NAMES in v4's order; a string
+/// renders bare, a number through JS `ToString`, a boolean as `true`/`false`,
+/// and an array or object through the `…Json` file-layer convention (the field
+/// renamed `<name>Json`, its value the compact JSON).
+pub fn v4_log_as_capture_line(target: &str, log: &Value) -> String {
+    let level = log["level"].as_str().unwrap_or("").to_ascii_uppercase();
+    let message = log["message"].as_str().unwrap_or("");
+    let mut line = format!("{level} {target} {message}");
+    if let Some(fields) = log["fields"].as_object() {
+        for (k, v) in fields {
+            match v {
+                Value::String(s) => line.push_str(&format!(" {k}={s}")),
+                Value::Number(n) => line.push_str(&format!(
+                    " {k}={}",
+                    quilltap_core::pascal::js_value::number_to_string(n.as_f64().unwrap_or(0.0))
+                )),
+                Value::Bool(b) => line.push_str(&format!(" {k}={b}")),
+                Value::Null => line.push_str(&format!(" {k}=null")),
+                other => line.push_str(&format!(
+                    " {k}Json={}",
+                    serde_json::to_string(other).unwrap_or_default()
+                )),
+            }
+        }
+    }
+    line
+}
+
+/// P4.D305 — the captured lines whose `<LEVEL> <target> <message>` head names
+/// one of `pinned`, in capture order. A family that pins a SET of v4's lines
+/// narrows both sides to that set, so a line neither side ports cannot move it.
+pub fn pinned_capture_lines(lines: &[String], target: &str, pinned: &[&str]) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|l| {
+            l.split_once(' ').is_some_and(|(_, rest)| {
+                rest.strip_prefix(target)
+                    .and_then(|r| r.strip_prefix(' '))
+                    .is_some_and(|m| {
+                        pinned
+                            .iter()
+                            .any(|p| m == *p || m.starts_with(&format!("{p} ")))
+                    })
+            })
+        })
+        .cloned()
+        .collect()
 }

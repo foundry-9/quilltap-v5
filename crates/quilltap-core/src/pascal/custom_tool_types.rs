@@ -103,6 +103,15 @@ pub const MAX_CHIP_LABEL_LENGTH: usize = 160;
 /// Cap on effects per tool.
 pub const MAX_EFFECTS: usize = 16;
 
+/// Cap on trigger phrases per tool (v4 `362426c8f`).
+pub const MAX_TRIGGERS: usize = 8;
+
+/// Shortest trigger phrase — keeps "a" and "ok" out. A length, not a word count.
+pub const MIN_TRIGGER_PHRASE_LENGTH: usize = 3;
+
+/// Longest trigger phrase, in characters.
+pub const MAX_TRIGGER_PHRASE_LENGTH: usize = 80;
+
 /// Cap on an effect's `target` string, in characters.
 pub const MAX_EFFECT_TARGET_LENGTH: usize = 200;
 
@@ -989,6 +998,13 @@ pub struct QtapCustomTool {
     /// chosen. Blank/absent = the title labels the chip.
     #[serde(rename = "chipLabel", skip_serializing_if = "Option::is_none")]
     pub chip_label: Option<String>,
+    /// Phrases that run this tool automatically, with every parameter at its
+    /// default, when a message from anyone in the chat contains one — exact
+    /// substrings, case-insensitive, no wildcards (v4 `362426c8f`). Only
+    /// honoured when the chat setting `customToolTriggers` is on. Stored AS
+    /// WRITTEN; absent when the file declares none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub triggers: Option<Vec<String>>,
     pub description: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub disabled: Option<bool>,
@@ -2488,6 +2504,60 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
         None => None,
     };
 
+    // `triggers` (v4 `362426c8f`) — declared between `chipLabel` and
+    // `description`, so its issues sort there. `z.array(z.string().min(3)
+    // .max(80)).min(1).max(8).optional()`: `.optional()` admits `undefined`
+    // only, so an explicit `null` is an invalid_type.
+    let triggers = match obj.get("triggers") {
+        // Zod ≥ 4.6.7: an oversized array fails with ONLY its `too_big`, before
+        // a single element is parsed — and that issue ABORTS (measured at the
+        // pin: a nine-phrase list carrying a duplicate reports the cap alone).
+        Some(Value::Array(items)) if items.len() > MAX_TRIGGERS => {
+            issues.extend(prefix(
+                "triggers",
+                vec![Issue::hard(format!(
+                    "Too big: expected array to have <={MAX_TRIGGERS} items"
+                ))],
+            ));
+            None
+        }
+        Some(Value::Array(items)) => {
+            let mut list = Vec::new();
+            let mut arr_issues = Vec::new();
+            for (i, item) in items.iter().enumerate() {
+                let r = parse_string(
+                    Some(item),
+                    Some(MIN_TRIGGER_PHRASE_LENGTH),
+                    Some(MAX_TRIGGER_PHRASE_LENGTH),
+                    false,
+                );
+                arr_issues.extend(prefix(&i.to_string(), r.issues));
+                if let Some(phrase) = r.value {
+                    list.push(phrase);
+                }
+            }
+            // `.min(1)` is a built-in CHECK: continuable, so the refine still
+            // runs beside it.
+            if items.is_empty() {
+                arr_issues.push(Issue::check("Too small: expected array to have >=1 items"));
+            }
+            let ok = !aborted(&arr_issues);
+            issues.extend(prefix("triggers", arr_issues));
+            if ok {
+                Some(list)
+            } else {
+                None
+            }
+        }
+        Some(v) => {
+            let mut arr_issues = vec![Issue::hard(invalid_type("array", Some(v)))];
+            arr_issues.extend(length_checks_past_invalid_type(v, 1, MAX_TRIGGERS));
+            issues.extend(prefix("triggers", arr_issues));
+            None
+        }
+        None => None,
+    };
+
     let description = parse_string(
         obj.get("description"),
         Some(1),
@@ -2668,6 +2738,7 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
         name,
         title,
         chip_label,
+        triggers,
         description,
         disabled,
         available_when,
@@ -2686,6 +2757,7 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
     validate_references(&tool, &mut issues);
     validate_gates(&tool, &mut issues);
     validate_effects(&tool, &mut issues);
+    validate_triggers(&tool, &mut issues);
 
     if issues.is_empty() {
         Ok(tool)
@@ -2989,6 +3061,90 @@ fn validate_operand_refs(
         // Only reports an undeclared-`$param` operand; the subject-type check is
         // deliberately skipped.
         resolve_operand_type(tool, &operand, issues, &key_path);
+    }
+}
+
+/// Zod ≥ 4.6's length checks carry a `when` (`val.length !== undefined`), so
+/// they run even after the array's own `invalid_type` aborted — on ANY input
+/// with a `.length` (measured at the pin): a string is measured by the
+/// code-point rule `$ZodCheckMinLength` / `MaxLength` apply to strings
+/// (`"abracadabra"` → `Too big: expected string to have <=8 characters`), and
+/// an object carrying a numeric `length` key reports origin `unknown`
+/// (`Too big: expected unknown to be <=8`). Declaration order: `.min` before
+/// `.max`. A `null` is nullish and runs neither; a number or boolean has no
+/// `.length`. (An object whose `length` is a non-number — which JS would coerce
+/// in the comparison — is not modelled; no definition file reaches it.)
+fn length_checks_past_invalid_type(v: &Value, min: usize, max: usize) -> Vec<Issue> {
+    let mut out = Vec::new();
+    match v {
+        Value::String(s) => {
+            if !crate::jsstr::zod_len_min_ok(s, min) {
+                out.push(Issue::check(format!(
+                    "Too small: expected string to have >={min} characters"
+                )));
+            }
+            if !crate::jsstr::zod_len_max_ok(s, max) {
+                out.push(Issue::check(format!(
+                    "Too big: expected string to have <={max} characters"
+                )));
+            }
+        }
+        Value::Object(o) => {
+            if let Some(n) = o.get("length").and_then(Value::as_f64) {
+                if n < min as f64 {
+                    out.push(Issue::check(format!(
+                        "Too small: expected unknown to be >={min}"
+                    )));
+                }
+                if n > max as f64 {
+                    out.push(Issue::check(format!(
+                        "Too big: expected unknown to be <={max}"
+                    )));
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+/// Rule (v4 `validateTriggers`, the FIFTH superRefine step): each phrase is
+/// stored as written, so it must carry no leading or trailing whitespace, and
+/// no two phrases may fold to the same text. BOTH rules are checked for every
+/// phrase, whitespace first; a repeat names the FIRST occurrence (the map is
+/// never updated for a repeat, so a third copy names the first too).
+///
+/// `js_trim` is JS `String.prototype.trim`'s whitespace class, never
+/// `str::trim`; the fold is `toLocaleLowerCase()` with no locale, which the
+/// ICU ruling makes byte-identical to `str::to_lowercase` (the mention
+/// ranker's precedent) — never `to_ascii_lowercase`.
+fn validate_triggers(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
+    let Some(triggers) = &tool.triggers else {
+        return;
+    };
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for (index, phrase) in triggers.iter().enumerate() {
+        let path = ["triggers".to_string(), index.to_string()];
+        if crate::jsstr::js_trim(phrase) != phrase.as_str() {
+            issues.push(issue_at(
+                format!("trigger {} has leading or trailing whitespace", index + 1),
+                &path,
+            ));
+        }
+        let folded = phrase.to_lowercase();
+        match seen.get(&folded) {
+            Some(earlier) => issues.push(issue_at(
+                format!(
+                    "trigger {} repeats trigger {} (phrases match regardless of case)",
+                    index + 1,
+                    earlier + 1
+                ),
+                &path,
+            )),
+            None => {
+                seen.insert(folded, index);
+            }
+        }
     }
 }
 
@@ -3318,11 +3474,17 @@ fn flatten_issues(issues: &[Issue]) -> Vec<String> {
 }
 
 /// Top-level keys the v1 format knows about. Anything else is reserved for v2.
-const KNOWN_TOP_LEVEL_KEYS: [&str; 15] = [
+///
+/// v4 DERIVES this list (`Object.keys(QtapCustomToolSchema.shape)`), so a new
+/// key is known for free there; here it is written by hand, and the definition
+/// corpus's `unknown-keys-triggers-known` row is the tripwire for a key added
+/// to the shape but not to this list.
+const KNOWN_TOP_LEVEL_KEYS: [&str; 16] = [
     "$schema",
     "name",
     "title",
     "chipLabel",
+    "triggers",
     "description",
     "disabled",
     "availableWhen",

@@ -1346,6 +1346,20 @@ fn filter_events(events: &[Value]) -> Vec<Value> {
                         }
                     }
                 }
+                // P4.D305: the `pascalResult` frame (a triggered run's live
+                // `onPosted`) carries the posted Pascal message — a fresh
+                // minted `id` + `createdAt` on each side; the rest (content,
+                // `pascalMeta` incl. `invokedBy` / `triggerPhrase`) is
+                // deterministic.
+                if let Some(msg) = obj.get_mut("pascalResult").and_then(Value::as_object_mut) {
+                    for (k, placeholder) in [("id", "<msgid>"), ("createdAt", "<ts>")] {
+                        if let Some(v) = msg.get_mut(k) {
+                            if v.is_string() {
+                                *v = Value::String(placeholder.into());
+                            }
+                        }
+                    }
+                }
                 if let Some(msg) = obj.get_mut("carinaAnswer").and_then(Value::as_object_mut) {
                     if let Some(v) = msg.get_mut("id") {
                         if v.is_string() {
@@ -2109,6 +2123,123 @@ fn orchestrator_tier3_matches_oracle() {
             std::mem::take(&mut *streaming.recorded_api_keys.lock().unwrap()),
         );
     }
+
+    // === P4.D305: the user-message trigger site, by name ===
+    // v4 `362426c8f`: the operator's seat says a phrase, the runner deals the
+    // seat's `bell` (gated on the SEAT's sheet, so the responder is offered no
+    // `run_custom`), and Pascal's post lands BETWEEN the user message and the
+    // reply, live on `pascalResult` and spliced into the model's context.
+    // Proven HERE — before the sibling residue below (P4.D310's mailbox
+    // lines; the pin's `users` read on the persona-less chained calls) can stop
+    // the walk — so this row is green or red by name on any branch.
+    {
+        const ROOM: &str = "e0000305-0000-4000-8000-000000000305";
+        const PASCAL_LINE: &str = "The bell rings out over the square.";
+        let name = "trigger_phrase";
+        let got = &got_events
+            .iter()
+            .find(|(n, _)| n == name)
+            .expect("the trigger_phrase call ran")
+            .1;
+        let want = want_events
+            .get(name)
+            .expect("oracle events for trigger_phrase");
+        assert_events_eq(name, got, want);
+        // The frame precedes the model leg (its first streamed `content`).
+        let frame = |evs: &[Value]| {
+            let pascal = evs.iter().position(|e| e.get("pascalResult").is_some());
+            let tools = evs.iter().position(|e| e.get("content").is_some());
+            (pascal, tools)
+        };
+        let (pascal, tools) = frame(got);
+        assert!(
+            pascal.is_some() && pascal < tools,
+            "{name}: the pascalResult frame must precede the model leg ({pascal:?} vs {tools:?})"
+        );
+        let invoked = got[pascal.unwrap()]
+            .pointer("/pascalResult/pascalMeta/invokedBy")
+            .cloned();
+        assert_eq!(invoked, Some(json!("trigger")), "{name}: invokedBy");
+        // The room's rows: v5 in INSERTION order (rowid) — user, Pascal, reply.
+        let order: Vec<(String, Option<String>)> = db
+            .read_main(|c| {
+                let mut st = c.prepare(
+                    "SELECT role, systemSender FROM chat_messages WHERE chatId = ?1 ORDER BY rowid",
+                )?;
+                let rows = st
+                    .query_map([ROOM], |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .unwrap();
+        assert_eq!(
+            order,
+            vec![
+                ("USER".to_string(), None),
+                ("ASSISTANT".to_string(), Some("pascal".to_string())),
+                ("ASSISTANT".to_string(), None),
+            ],
+            "{name}: the Pascal row lands BETWEEN the user message and the reply"
+        );
+        // ...and the same three rows on both sides (projected, as a set — the
+        // oracle dump carries no rowid), `pascalMeta` compared as its TEXT.
+        let room_rows = |dump: &Value| -> Vec<Value> {
+            let mut rows: Vec<Value> = dump["rows"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|r| r["chatId"] == json!(ROOM))
+                .map(|r| {
+                    json!({
+                        "role": r["role"], "content": r["content"],
+                        "participantId": r["participantId"],
+                        "systemSender": r["systemSender"], "systemKind": r["systemKind"],
+                        "targetParticipantIds": r["targetParticipantIds"],
+                        "pascalMeta": r["pascalMeta"],
+                    })
+                })
+                .collect();
+            rows.sort_by_key(|r| r.to_string());
+            rows
+        };
+        assert_eq!(
+            room_rows(&dump_table(&db, "chat_messages")),
+            room_rows(
+                want_tables
+                    .get("chat_messages")
+                    .expect("oracle chat_messages")
+            ),
+            "{name}: the trigger room's rows"
+        );
+        // The splice: the reply's request carries Pascal's line, on both sides.
+        // `request` is a compressed-text cell, hex in both dumps — decoded.
+        let carries = |rows: &[Value]| {
+            rows.iter().any(|r| {
+                r["chatId"] == json!(ROOM)
+                    && r["type"] == json!("CHAT_MESSAGE")
+                    && r["request"]
+                        .as_str()
+                        .and_then(|h| hex::decode(h).ok())
+                        .is_some_and(|b| {
+                            quilltap_core::db::text_compression::decode_blob(&b)
+                                .contains(PASCAL_LINE)
+                        })
+            })
+        };
+        let got_logs = common::dump_llm_logs(&db);
+        let want_logs = want_llm_logs.clone().expect("oracle llm_logs");
+        assert!(
+            carries(&want_logs),
+            "{name}: v4's reply request carries Pascal's line"
+        );
+        assert!(
+            carries(&got_logs),
+            "{name}: v5's reply request carries Pascal's line (the splice)"
+        );
+        eprintln!("OK: {name} — the user-message trigger site matched v4 by name.");
+    }
+    // === end P4.D305 ===
 
     // --- P4.D291 (bug 227): the deferred mail flip, per call ---
     // Every call records its `mail` row; a call with an in-case letter compares
@@ -3720,6 +3851,11 @@ impl orchestrator::OrchestratorSeams for HarnessOrchestratorSeams {
             // fires only for the three rng_* cases.
             auto_detect_rng: true,
             custom_tools: true,
+            // P4.D305 (v4 `362426c8f`): the fixture's single row carries
+            // `customToolTriggers: 1`, so the user-message trigger site runs on
+            // EVERY call; only the `trigger_phrase` case's content says a
+            // phrase, so it is the one case that fires.
+            custom_tool_triggers: true,
             answer_confirmation_global_enabled: false,
             autonomous_destructive_policy: "opt_in_per_room".to_string(),
             // Agent mode (W4.4): the fixture's single chat_settings row sets

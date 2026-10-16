@@ -108,6 +108,31 @@ fn extract_question(rest: &str) -> String {
     js_trim(rest).to_string()
 }
 
+/// Parse ONE line as a Carina query (v4 `parseQueryLine`, `362426c8f` — the
+/// old loop body of [`parse_carina_query`], extracted verbatim so the trigger
+/// scanner's [`strip_carina_query_lines`] removes exactly the lines the parser
+/// would answer). `None` when the line is not a usable query.
+pub fn parse_query_line(line: &str) -> Option<CarinaQuery> {
+    let caps = LINE_RE.captures(line)?;
+
+    let character_name = js_trim(&caps[1]).to_string();
+    if character_name.is_empty() {
+        return None;
+    }
+
+    // An `@Name:` with no question text isn't a usable query.
+    let question = extract_question(&caps[3]);
+    if question.is_empty() {
+        return None;
+    }
+
+    Some(CarinaQuery {
+        character_name,
+        whisper: &caps[2] == "?",
+        question,
+    })
+}
+
 /// Parse the first Carina query from a message's raw content.
 /// Returns `None` when no line yields a valid (non-empty) query.
 pub fn parse_carina_query(content: Option<&str>) -> Option<CarinaQuery> {
@@ -117,33 +142,28 @@ pub fn parse_carina_query(content: Option<&str>) -> Option<CarinaQuery> {
     }
 
     // v4 splits on `/\r?\n/` — an optional `\r` before each `\n`, but a lone
-    // `\r` (no following `\n`) is NOT a line separator.
-    for line in split_crlf_or_lf(content) {
-        let caps = match LINE_RE.captures(line) {
-            Some(c) => c,
-            None => continue,
-        };
+    // `\r` (no following `\n`) is NOT a line separator. The first line that
+    // parses wins; a non-parsing `@Name:` line keeps the scan going.
+    split_crlf_or_lf(content)
+        .into_iter()
+        .find_map(parse_query_line)
+}
 
-        let character_name = js_trim(&caps[1]).to_string();
-        if character_name.is_empty() {
-            continue;
-        }
-
-        let question = extract_question(&caps[3]);
-        if question.is_empty() {
-            // An `@Name:` with no question text isn't a usable query — keep
-            // scanning in case a later line carries a real one.
-            continue;
-        }
-
-        return Some(CarinaQuery {
-            character_name,
-            whisper: &caps[2] == "?",
-            question,
-        });
+/// Remove every line that parses as a Carina query (v4
+/// `stripCarinaQueryLines`, `362426c8f`), so the trigger scanner never reads a
+/// question addressed to Carina as words spoken in the scene. EVERY parsing
+/// line goes, not just the first; a line that does not parse (an `@Name:` with
+/// no question, a mid-line `@`) is kept verbatim. The rejoin is `\n`, so CRLF
+/// is NORMALISED to LF; empty text passes through as-is.
+pub fn strip_carina_query_lines(text: &str) -> String {
+    if text.is_empty() {
+        return String::new();
     }
-
-    None
+    split_crlf_or_lf(text)
+        .into_iter()
+        .filter(|line| parse_query_line(line).is_none())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Split on JS's `/\r?\n/`: each `\n`, optionally preceded by a `\r`, ends a

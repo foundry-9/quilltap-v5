@@ -458,8 +458,47 @@ fn assert_perspective_witnesses(oracle: &HashMap<String, Value>) {
     }
 }
 
+/// P4.D305: the run-path lines this family pins (the oracle's `PINNED_MESSAGES`).
+const PINNED_MESSAGES: [&str; 6] = [
+    "Custom tool run: state cascade unavailable, defaulting to {}",
+    "Custom tool run refused",
+    "Custom tool dealt",
+    "Manual custom-tool run named an unknown tool",
+    "Manual custom-tool run refused",
+    "[Pascal] Manual custom-tool run completed",
+];
+
+/// The system rows' raw `chat_messages` objects (v5's dump).
+fn raw_system_rows(db: &Db) -> Vec<Value> {
+    db.read_main(|conn| dump_table_json_conn(conn, "chat_messages", "id"))
+        .unwrap()
+        .get("rows")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| r.get("systemSender").is_some_and(|s| !s.is_null()))
+        .collect()
+}
+
+/// Every posted `pascalMeta` TEXT, in row order (v5).
+fn pascal_meta_texts(rows: &[Value]) -> Vec<Value> {
+    rows.iter()
+        .filter(|r| r.get("pascalMeta").is_some_and(|m| !m.is_null()))
+        .map(|r| r["pascalMeta"].clone())
+        .collect()
+}
+
+/// Every posted `pascalMeta` TEXT, in row order (the oracle's `systemRows`).
+fn oracle_pascal_meta_texts(row: &Value) -> Vec<Value> {
+    pascal_meta_texts(row["systemRows"].as_array().map_or(&[], |v| v.as_slice()))
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn custom_tools_route_matches_oracle() {
+    // The capture rig must own this binary's subscriber before any callsite is
+    // reached (memory note `capture-rig-writer-thread`).
+    quilltap_core::test_support::global_capture::install();
     // P4.133 OUT-OF-MANDATE (dogfood #133): the oracle mocks
     // `getApiKeyForCheapLLMSelection` to a constant; the twin (v5 now resolves
     // the cheap selection's own key and refuses without one).
@@ -783,6 +822,26 @@ async fn custom_tools_route_matches_oracle() {
             Some(json!({ "tool": "recharge", "asCharacterId": "" })),
             false,
         ),
+        // ---- P4.D305 (v4 `362426c8f`): R-5's two route changes -------------
+        // A default-whisper tool with NO `private`: whispered by the
+        // definition — targeted `[userId]`, `whispered: true`.
+        (
+            "run-default-whisper-no-private",
+            CHAT,
+            Some(
+                json!({ "tool": "whispered", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
+            ),
+            false,
+        ),
+        // ...and its refusal: the Prospero bubble whispered to the operator.
+        (
+            "run-default-whisper-refused-no-private",
+            CHAT,
+            Some(
+                json!({ "tool": "whispered", "asCharacterId": "a1000000-0000-4000-8000-00000000000a", "parameters": { "nobody": 1 } }),
+            ),
+            false,
+        ),
     ];
 
     // Declared on BOTH sides, so a case added to the oracle and forgotten here
@@ -803,77 +862,97 @@ async fn custom_tools_route_matches_oracle() {
     // rather than one: a named seat writes, and an unnamed one does not.
     let mut saw_progress_write = false;
     let mut saw_unnamed_seat_wrote_nothing = false;
+    // P4.D305: a case's mismatch is RECORDED and the walk continues, so one
+    // red case (a sibling lane's residue at the shared pin — P4.D306's tool
+    // vocabulary on the `list` rows) cannot hide every case after it. The
+    // family still fails, naming each case and comparand.
+    let mut failures: Vec<String> = Vec::new();
+    macro_rules! soft_eq {
+        ($got:expr, $want:expr, $($what:tt)+) => {{
+            let (got, want) = (&$got, &$want);
+            if got != want {
+                let what = format!($($what)+);
+                eprintln!("MISMATCH {what}\n  left: {got:?}\n right: {want:?}");
+                failures.push(what);
+            }
+        }};
+    }
+    let mut logged_rows = 0usize;
     for (name, chat, body, profile) in &cases {
         let want = oracle
             .get(*name)
             .unwrap_or_else(|| panic!("oracle missing case '{name}'"));
         let db = open(name, *profile);
 
-        let (status, resp_body, sys) = match body {
-            None => {
-                let (s, b) =
-                    status_body(chat_custom_tools_list(&db, USER, chat, case_now_ms(want)));
-                (s, b, Vec::new())
-            }
-            Some(b) => {
-                // P4.60: the raw body goes through the REAL `runSchema` port the
-                // web edge calls. Reading the keys HERE with `as_str`/`as_bool`/
-                // `as_object` — what this leg used to do — mirrored the edge's own
-                // wrong-type collapse and would make every new arm below vacuous.
-                match quilltap_core::api::custom_tools::parse_run_body(b) {
-                    Err(resp) => {
-                        let (s, bd) = status_body(resp);
-                        (s, bd, system_rows(&db))
+        let ((status, resp_body, sys), lines) =
+            quilltap_core::test_support::global_capture::capture_async(async {
+                match body {
+                    None => {
+                        let (s, b) =
+                            status_body(chat_custom_tools_list(&db, USER, chat, case_now_ms(want)));
+                        (s, b, Vec::new())
                     }
-                    Ok(parsed) => {
-                        // The REAL consult seam, exactly as the engine passes it
-                        // since P4.6bd: a `ProviderConsultRunner` over the canned
-                        // provider — the handler builds the real
-                        // `CustomToolLlmInvoker` through it. Profile-free cases
-                        // stop at v4's `no connection profiles are configured`;
-                        // the `profile: true` case resolves through the
-                        // oracle-recorded canned rows.
-                        let runner = ProviderConsultRunner {
-                            completion: canned_provider(want),
-                        };
-                        let (s, bd) = status_body(
-                            chat_custom_tool_run(
-                                &db,
-                                USER,
-                                chat,
-                                &parsed.tool,
-                                parsed.parameters,
-                                parsed.private,
-                                parsed.as_character_id,
-                                Some(&runner),
-                                case_now_ms(want),
-                            )
-                            .await,
-                        );
-                        let rows = system_rows(&db);
-                        (s, bd, rows)
+                    Some(b) => {
+                        // P4.60: the raw body goes through the REAL `runSchema` port the
+                        // web edge calls. Reading the keys HERE with `as_str`/`as_bool`/
+                        // `as_object` — what this leg used to do — mirrored the edge's own
+                        // wrong-type collapse and would make every new arm below vacuous.
+                        match quilltap_core::api::custom_tools::parse_run_body(b) {
+                            Err(resp) => {
+                                let (s, bd) = status_body(resp);
+                                (s, bd, system_rows(&db))
+                            }
+                            Ok(parsed) => {
+                                // The REAL consult seam, exactly as the engine passes it
+                                // since P4.6bd: a `ProviderConsultRunner` over the canned
+                                // provider — the handler builds the real
+                                // `CustomToolLlmInvoker` through it. Profile-free cases
+                                // stop at v4's `no connection profiles are configured`;
+                                // the `profile: true` case resolves through the
+                                // oracle-recorded canned rows.
+                                let runner = ProviderConsultRunner {
+                                    completion: canned_provider(want),
+                                };
+                                let (s, bd) = status_body(
+                                    chat_custom_tool_run(
+                                        &db,
+                                        USER,
+                                        chat,
+                                        &parsed.tool,
+                                        parsed.parameters,
+                                        parsed.private,
+                                        parsed.as_character_id,
+                                        Some(&runner),
+                                        case_now_ms(want),
+                                    )
+                                    .await,
+                                );
+                                let rows = system_rows(&db);
+                                (s, bd, rows)
+                            }
+                        }
                     }
                 }
-            }
-        };
+            })
+            .await;
 
         // The persisted llm_logs rows (P4.6bd): the resolved consult writes ONE
         // CUSTOM_TOOL_CONSULT row; every other case pins an empty dump.
         let got_logs = common::dump_llm_logs(&db);
         let want_logs = common::oracle_llm_logs(&want["llmLogs"]);
-        assert_eq!(got_logs, want_logs, "case '{name}' llm_logs rows");
+        soft_eq!(got_logs, want_logs, "case '{name}' llm_logs rows");
 
-        assert_eq!(
+        soft_eq!(
             status as u64,
             want["status"].as_u64().unwrap(),
             "case '{name}' status"
         );
-        assert_eq!(
+        soft_eq!(
             canon(&resp_body),
             canon(&drop_zod_details(name, &want["body"])),
             "case '{name}' body"
         );
-        assert_eq!(
+        soft_eq!(
             canon(&Value::Array(sys)),
             canon(&Value::Array(oracle_system_rows(want))),
             "case '{name}' system rows"
@@ -887,7 +966,7 @@ async fn custom_tools_route_matches_oracle() {
         } else {
             Value::Null
         };
-        assert_eq!(
+        soft_eq!(
             canon(&got_stores),
             canon(&want["stores"]),
             "case '{name}' state tiers + fact sheets after the run"
@@ -909,8 +988,32 @@ async fn custom_tools_route_matches_oracle() {
                 saw_unnamed_seat_wrote_nothing = true;
             }
         }
+        // P4.D305: the posted `pascalMeta` TEXT as bytes (key order checked).
+        soft_eq!(
+            pascal_meta_texts(&raw_system_rows(&db)),
+            oracle_pascal_meta_texts(want),
+            "case '{name}' pascalMeta bytes"
+        );
+        // P4.D305: v4's pinned run-path lines against v5's capture.
+        let want_lines: Vec<String> = want["logs"]
+            .as_array()
+            .unwrap_or_else(|| panic!("case '{name}' oracle row has no `logs`"))
+            .iter()
+            .map(|l| common::v4_log_as_capture_line("quilltap::pascal", l))
+            .collect();
+        let got_lines = common::pinned_capture_lines(&lines, "quilltap::pascal", &PINNED_MESSAGES);
+        if !want_lines.is_empty() {
+            logged_rows += 1;
+        }
+        soft_eq!(got_lines, want_lines, "case '{name}' log lines");
         checked += 1;
     }
+    assert!(
+        failures.is_empty(),
+        "{} comparand(s) differ from the oracle: {failures:#?}",
+        failures.len()
+    );
+    assert!(logged_rows > 0, "no case carried a pinned log line");
 
     assert_eq!(checked, cases.len());
     assert!(

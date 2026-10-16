@@ -9,7 +9,10 @@
 
 mod common;
 
-use common::{capture_fields, normalize_v4_sqlite, pdf_lines_from_capture};
+use common::{
+    capture_fields, normalize_v4_sqlite, pdf_lines_from_capture, pinned_capture_lines,
+    v4_log_as_capture_line,
+};
 use serde_json::json;
 
 // ─────────────────────────── normalize_v4_sqlite ───────────────────────────
@@ -189,4 +192,41 @@ fn pdf_lines_parse_the_posed_shapes_unchanged() {
     );
     let keys: Vec<_> = got[1]["context"].as_object().unwrap().keys().collect();
     assert_eq!(keys, ["size", "chars"]);
+}
+
+/// P4.D305: a v4 log line renders as the capture rig renders its v5 twin —
+/// strings bare, numbers through JS `ToString`, booleans, arrays as `…Json`.
+#[test]
+fn v4_log_renders_as_the_capture_line() {
+    let log = json!({
+        "level": "warn",
+        "message": "Trigger phrases over the per-message cap; later tools not fired",
+        "fields": { "context": "pascal.trigger-runner", "effects": 2, "value": 0.7,
+                    "posted": false, "fired": ["t1", "t2"] }
+    });
+    assert_eq!(
+        v4_log_as_capture_line("quilltap::pascal", &log),
+        "WARN quilltap::pascal Trigger phrases over the per-message cap; later tools not fired \
+         context=pascal.trigger-runner effects=2 value=0.7 posted=false firedJson=[\"t1\",\"t2\"]"
+    );
+}
+
+/// P4.D305: the narrowing keeps a pinned message (bare or with fields) and
+/// drops everything else, including a message that merely STARTS like one.
+#[test]
+fn pinned_capture_lines_match_the_whole_message() {
+    let lines = vec![
+        "DEBUG quilltap::pascal Custom tool dealt context=x".to_string(),
+        "DEBUG quilltap::pascal Custom tool dealtx".to_string(),
+        "INFO quilltap::pascal Custom tool run completed".to_string(),
+        "DEBUG quilltap::other Custom tool dealt".to_string(),
+    ];
+    assert_eq!(
+        pinned_capture_lines(
+            &lines,
+            "quilltap::pascal",
+            &["Custom tool dealt", "Custom tool run completed"]
+        ),
+        vec![lines[0].clone(), lines[2].clone()]
+    );
 }

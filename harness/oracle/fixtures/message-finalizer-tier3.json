@@ -38,6 +38,14 @@
       "aliases": [],
       "controlledBy": "llm",
       "talkativeness": 0.5
+    },
+    {
+      "id": "c5000305-0000-4000-8000-0000000000c1",
+      "name": "Chime",
+      "description": "Keeps the brass bell.",
+      "aliases": [],
+      "controlledBy": "llm",
+      "talkativeness": 0.5
     }
   ],
   "generatedImages": [
@@ -60,7 +68,8 @@
         "enabled": true,
         "summaryClassification": true
       }
-    }
+    },
+    "customToolTriggers": true
   },
   "chats": [
     {
@@ -329,6 +338,31 @@
           "role": "USER",
           "content": "Carry on.",
           "participantId": "f4000000-0000-4000-8000-0000000000a4"
+        }
+      ]
+    },
+    {
+      "id": "f5000305-0000-4000-8000-000000000305",
+      "chatType": "salon",
+      "participants": [
+        {
+          "userParticipant": true,
+          "id": "f5030502-0000-4000-8000-0000000000ff"
+        },
+        {
+          "character": "c5000305-0000-4000-8000-0000000000c1",
+          "id": "f5030501-0000-4000-8000-0000000000c1",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ],
+      "contextSummary": null,
+      "messages": [
+        {
+          "id": "f5030503-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "Ring something for me, Chime.",
+          "participantId": "f5030502-0000-4000-8000-0000000000ff"
         }
       ]
     }
@@ -1062,10 +1096,61 @@
       "$comment": "A detail already truncated to its 200-unit ceiling (199 + U+2026) survives the round trip through the column byte-for-byte.",
       "effectiveProfileId": "a1b2c3d4-0000-4000-8000-000000000001",
       "effectiveProfileName": "House Anthropic"
+    },
+    {
+      "name": "trigger-phrase-reply",
+      "chatId": "f5000305-0000-4000-8000-000000000305",
+      "responderCharacter": "c5000305-0000-4000-8000-0000000000c1",
+      "responderParticipant": "f5030501-0000-4000-8000-0000000000c1",
+      "userParticipantId": "f5030502-0000-4000-8000-0000000000ff",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "f5030504-0000-4000-8000-000000000001",
+      "fullResponse": "[Chime] Very well — I ring the brass bell.",
+      "usage": {
+        "promptTokens": 40,
+        "completionTokens": 12,
+        "totalTokens": 52
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "c5000305-0000-4000-8000-0000000000c1"
+      ]
     }
   ],
   "randomBytes": [
     2,
     4
+  ],
+  "triggerTools": [
+    {
+      "characterId": "c5000305-0000-4000-8000-0000000000c1",
+      "tool": {
+        "name": "bell",
+        "description": "Ring the brass bell.",
+        "triggers": [
+          "ring the brass bell"
+        ],
+        "roll": {
+          "min": 0.5,
+          "max": 0.5
+        },
+        "outcomes": [
+          {
+            "when": true,
+            "message": "The bell rings out over the square.",
+            "state": "info"
+          }
+        ]
+      }
+    }
   ]
 }

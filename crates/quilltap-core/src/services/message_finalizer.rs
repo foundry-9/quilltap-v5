@@ -524,6 +524,12 @@ pub struct FinalizerChatSettings {
     /// `answerConfirmationSettings.enabled === true` — the global confirmation
     /// gate leg.
     pub answer_confirmation_global_enabled: bool,
+    /// `customTools` — three-state, as v4's `Pick` is (an absent key is
+    /// enabled; P4.D305, the reply trigger site's gate).
+    pub custom_tools: Option<bool>,
+    /// `customToolTriggers` — three-state; only `Some(true)` fires
+    /// (P4.D305, v4 `362426c8f`).
+    pub custom_tool_triggers: Option<bool>,
 }
 
 /// The async-compression gate + trigger inputs (v4 `compression` context). When
@@ -1306,6 +1312,45 @@ where
             });
         }
     }
+
+    // === P4.D305: reply trigger site ===
+    // v4 `message-finalizer.service.ts:441-462` (`362426c8f`): after the reply
+    // is saved and the response RNG auto-detect has run, a phrase the character
+    // said runs its custom tool, from that character's own perspective. BEFORE
+    // the Carina assistant-markup path and the `done` event, so each post
+    // surfaces live on the existing `pascalResult` event. No in-memory splice:
+    // a chained next speaker re-reads the transcript. No wardrobe announcement
+    // set either — the turn's tool-execution context is already drained here.
+    // A swipe never reaches this path (`regenerate_swipe` has its own spine).
+    // `None` settings (no row) stay disabled, the `Pick`'s three-state.
+    {
+        let trigger_settings =
+            chat_settings
+                .as_ref()
+                .map(|s| crate::pascal::trigger_runner::TriggerSettings {
+                    custom_tools: s.custom_tools,
+                    custom_tool_triggers: s.custom_tool_triggers,
+                });
+        let mut on_posted = |message: &Value| sink.emit(ChatEvent::pascal_result(message.clone()));
+        super::trigger_phrase_sites::run_reply_triggers(
+            db,
+            super::trigger_phrase_sites::ReplyTriggerParams {
+                user_id: &user_id,
+                chat_id: &chat_id,
+                project_id: chat.project_id.as_deref(),
+                participants: &chat.participants,
+                content: &cleaned_response,
+                character_participant_id: &character_participant.id,
+                character_id: &character.id,
+                chat_settings: trigger_settings,
+                now_ms: crate::clock::now_unix_ms(),
+            },
+            None,
+            &mut on_posted,
+        )
+        .await;
+    }
+    // === end P4.D305 ===
 
     // --- Carina markup in the assistant response (message-finalizer.service.ts:434–445) ---
     // Runs AFTER the assistant message is saved (answer ordered after it) and

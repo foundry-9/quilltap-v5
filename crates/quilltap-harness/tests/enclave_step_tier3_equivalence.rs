@@ -345,6 +345,7 @@ impl quilltap_core::services::orchestrator::OrchestratorSeams for HarnessOrchest
             project_context_reinject_interval: 5,
             auto_detect_rng: false,
             custom_tools: true,
+            custom_tool_triggers: false,
             answer_confirmation_global_enabled: false,
             autonomous_destructive_policy: "opt_in_per_room".to_string(),
             agent_mode_default_enabled: false,

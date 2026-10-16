@@ -221,8 +221,16 @@ interface Spec {
     concierge: Record<string, unknown>;
     /** W4.4: the Global level of the agent-mode cascade. */
     agentModeSettings?: { maxTurns: number; defaultEnabled: boolean };
+    /** P4.D305 (v4 `362426c8f`): "Auto-Run Custom Tools on Trigger Phrases". */
+    customToolTriggers?: boolean;
   };
   characters: CharacterSpec[];
+  /**
+   * P4.D305: trigger-bearing `.tool.json` files written into a character's
+   * vault (through v4's REAL `storeMountFile`), with that character's
+   * `metadata.json` fact sheet.
+   */
+  triggerTools?: import('../lib/trigger-tools').TriggerToolSpec[];
   /** P4.D154: `files` rows for the bug-121 re-hydration case (absent = none). */
   files?: FileSpec[];
   chats: ChatSpec[];
@@ -455,9 +463,16 @@ async function main(): Promise<void> {
       ...(spec.chatSettings.agentModeSettings !== undefined
         ? { agentModeSettings: spec.chatSettings.agentModeSettings }
         : {}),
+      ...(spec.chatSettings.customToolTriggers !== undefined
+        ? { customToolTriggers: spec.chatSettings.customToolTriggers }
+        : {}),
     } as never,
     { id: spec.chatSettings.id }
   );
+
+  // P4.D305: the trigger-bearing tools, each in its character's own vault.
+  const { writeTriggerTools } = await import('../lib/trigger-tools');
+  await writeTriggerTools(repos, spec.triggerTools);
 
   // P4.D154 (bug 121): the `files` rows a USER message can carry. `files` is a
   // lazily-created collection in v4 — the orchestrator fixture never needed it

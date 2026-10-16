@@ -44,6 +44,9 @@
  * ever previewed through a fixed-byte source), so preview/audit rows diff
  * exactly across languages without a shared draw stream.
  *
+ * P4.D305 (v4 `362426c8f`) added `Tools/theta.tool.json` (two `triggers`) to
+ * the general store, so the library's `triggerCount` reads both 0 and 2.
+ *
  * Regenerate (v4 @ 231be14c, Node 24; the pinned detached worktree):
  *   cd /tmp/qt-v4-pin-231be14c
  *   QT_FIXTURE_CI_MAIN=<V5W>/crates/quilltap-web/tests/fixtures/workbench-main.db \
@@ -166,6 +169,15 @@ const GATED_SHUT = {
 };
 
 /** Lives in the DISABLED store — neither view may see it. */
+/** P4.D305: two trigger phrases → `triggerCount: 2` on its library row. */
+const THETA = {
+  name: 'theta',
+  description: 'Said aloud, it rolls itself.',
+  triggers: ['roll the bones', 'cast the lots'],
+  roll: { min: 0.5, max: 0.5 },
+  outcomes: [{ when: true, message: 'The bones fall.', state: 'info' }],
+};
+
 const EPSILON = {
   name: 'epsilon',
   description: 'The epsilon tool.',
@@ -338,6 +350,9 @@ async function main(): Promise<void> {
   await writeFile(spec.generalMountPointId, 'Tools/zeta.tool.json', ZETA);
   await writeFile(spec.generalMountPointId, 'Tools/gated_open.tool.json', GATED_OPEN);
   await writeFile(spec.generalMountPointId, 'Tools/gated_shut.tool.json', GATED_SHUT);
+  // P4.D305 (v4 `362426c8f`): a tool listening for TWO trigger phrases, so the
+  // library's `triggerCount` reads both 0 (every other tool) and 2.
+  await writeFile(spec.generalMountPointId, 'Tools/theta.tool.json', THETA);
 
   // 2. The unattached + disabled stores.
   await provisionStore(spec.looseMountPointId, 'Loose Papers');

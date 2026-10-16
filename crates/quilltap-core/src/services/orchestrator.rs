@@ -302,6 +302,10 @@ pub struct OrchestratorChatSettings {
     /// Withholding the `run_custom` roster context when this is false is HOW the
     /// setting turns the feature off (v4 `orchestrator.service.ts:888`).
     pub custom_tools: bool,
+    /// `customToolTriggers ?? false` — whether a trigger phrase said in the
+    /// chat runs its custom tool (v4 `362426c8f`). Off by default, and dead
+    /// while `custom_tools` is off; read by the two trigger sites alone.
+    pub custom_tool_triggers: bool,
     /// `answerConfirmationSettings.enabled === true`.
     pub answer_confirmation_global_enabled: bool,
     /// `autonomousRoomSettings.destructiveToolPolicy ?? 'opt_in_per_room'` — the
@@ -349,6 +353,7 @@ impl OrchestratorChatSettings {
             project_context_reinject_interval: 5,
             auto_detect_rng: true,
             custom_tools: true,
+            custom_tool_triggers: false,
             answer_confirmation_global_enabled: false,
             autonomous_destructive_policy: "opt_in_per_room".to_string(),
             agent_mode_default_enabled: false,
@@ -1976,6 +1981,58 @@ where
     // Unmoderated flags were v5's ONLY writer, so the attach had no input left
     // and is deleted rather than kept dead.
     let _ = user_message_id;
+
+    // === P4.D305: user-message trigger site ===
+    // v4 `orchestrator.service.ts:881-892` (`362426c8f`): after the user message
+    // persists (and after the RNG auto-detect, whose TOOL rows already precede
+    // it), a phrase the operator's seat said runs its custom tool. v4's call
+    // sits ABOVE its paused-chat return, so a HELD turn still fires — this site
+    // sits above the hold for the same reason. (v4's next neighbour, the Carina
+    // user-message path, is the standing `user_message_carina` deferral — see
+    // the module note — so nothing here depends on its order.) The runner reads
+    // the ONE settings read above and the seat the resolver already returned;
+    // it adds no read of its own. Pascal's posts are spliced onto
+    // `existing_messages` so the responding model hears them, and each surfaces
+    // live on the existing `pascalResult` event. The consult seam: the in-chat
+    // turn holds no `ConsultRunner` (the per-turn tool runner wires none — the
+    // same state the in-chat `run_custom` is in), so a consult-bearing trigger
+    // tool takes `execute_custom_tool`'s no-invoker fail-soft arm here.
+    {
+        let trigger_settings =
+            chat_settings
+                .as_ref()
+                .map(|s| crate::pascal::trigger_runner::TriggerSettings {
+                    custom_tools: Some(s.custom_tools),
+                    custom_tool_triggers: Some(s.custom_tool_triggers),
+                });
+        let participants: Vec<Value> = chat
+            .get("participants")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let mut on_posted = |message: &Value| sink.emit(ChatEvent::pascal_result(message.clone()));
+        super::trigger_phrase_sites::run_user_message_triggers(
+            db,
+            super::trigger_phrase_sites::UserMessageTriggerParams {
+                user_id: &user_id,
+                chat_id: &chat_id,
+                // `chat.projectId ?? null`.
+                project_id: chat.get("projectId").and_then(Value::as_str),
+                participants: &participants,
+                content: &content,
+                is_continue_mode,
+                user_participant: resolution.user_participant.as_ref(),
+                user_participant_id: user_participant_id.as_deref(),
+                chat_settings: trigger_settings,
+                now_ms: input.clock.now_ms,
+            },
+            None,
+            &mut existing_messages,
+            &mut on_posted,
+        )
+        .await;
+    }
+    // === end P4.D305 ===
 
     // ============================================================================
     // Paused chat — the user's turn is recorded; nobody answers it
@@ -3686,6 +3743,10 @@ where
             cheap_llm_settings_present: s.cheap_llm_settings_present,
             auto_detect_rng: Some(s.auto_detect_rng),
             answer_confirmation_global_enabled: s.answer_confirmation_global_enabled,
+            // P4.D305: the reply trigger site's `Pick<…, 'customTools' |
+            // 'customToolTriggers'>`, off the ONE settings read.
+            custom_tools: Some(s.custom_tools),
+            custom_tool_triggers: Some(s.custom_tool_triggers),
         });
 
         let result = message_finalizer::finalize_message_response(

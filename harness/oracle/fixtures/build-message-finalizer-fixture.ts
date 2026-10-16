@@ -87,7 +87,11 @@ interface Spec {
     answerConfirmationEnabled: boolean;
     /** v4 `3b463d6b1` (#76): the stored `conciergeSettings`. */
     concierge: Record<string, unknown>;
+    /** P4.D305 (v4 `362426c8f`): "Auto-Run Custom Tools on Trigger Phrases". */
+    customToolTriggers?: boolean;
   };
+  /** P4.D305: trigger-bearing tools planted in characters' vaults. */
+  triggerTools?: import('../lib/trigger-tools').TriggerToolSpec[];
   chats: ChatSpec[];
 }
 
@@ -198,9 +202,16 @@ async function main(): Promise<void> {
       autoDetectRng: spec.chatSettings.autoDetectRng,
       answerConfirmationSettings: { enabled: spec.chatSettings.answerConfirmationEnabled },
       conciergeSettings: spec.chatSettings.concierge,
+      ...(spec.chatSettings.customToolTriggers !== undefined
+        ? { customToolTriggers: spec.chatSettings.customToolTriggers }
+        : {}),
     } as never,
     { id: spec.chatSettings.id }
   );
+
+  // P4.D305: the trigger-bearing tools, each in its character's own vault.
+  const { writeTriggerTools } = await import('../lib/trigger-tools');
+  await writeTriggerTools(repos, spec.triggerTools);
 
   // One generated-image file row (for the addLink loop).
   for (const img of spec.generatedImages) {

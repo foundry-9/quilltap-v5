@@ -17,6 +17,18 @@
 //! keying), and the persisted `CUSTOM_TOOL_CONSULT` `llm_logs` row is diffed
 //! alongside the Pascal message.
 //!
+//! P4.D305 (v4 `362426c8f`): the deal now runs through the ONE run service
+//! (`pascal::run_service`), and this family is the extraction's proof — its
+//! pre-existing rows are unchanged. Each row also carries v4's log lines on
+//! the run-custom path (the service's `Custom tool run refused` / `Custom tool
+//! dealt` / `state cascade unavailable`, the handler's `Custom tool run
+//! failed` / `Custom tool run completed`), captured through the transports
+//! splice and compared against v5's `global_capture` lines narrowed to the
+//! same set; and every posted row's `pascalMeta` TEXT is compared as bytes,
+//! so its key order is checked (`Map ==` is order-blind). Two plant rows:
+//! `run-llm-chat-unreadable` (the cascade's chat read fails SILENTLY — v4's
+//! `findById` is a fallback) and `run-llm-unposted` (every insert aborts).
+//!
 //! Generate the oracle (Node 24; the v4 checkout at the oracle baseline —
 //! jest ignores `.claude/`, so mirror the case file to /tmp; see the case-file
 //! header). Self-shielding: the fixture DBs AND the `.meta.json` sidecar the
@@ -113,6 +125,43 @@ struct Case {
     /// P4.6bd: insert the shared consult profile before the run (mirrors the
     /// oracle's `profile: true` — the same row through both sides' real repos).
     profile: bool,
+    /// P4.D305: SQL planted on the main copy before the open (the oracle's
+    /// `plant`, the same statements).
+    plant: Option<&'static [&'static str]>,
+}
+
+/// P4.D305: the log lines this family pins (the oracle's `PINNED_MESSAGES`).
+const PINNED_MESSAGES: [&str; 5] = [
+    "Custom tool run: state cascade unavailable, defaulting to {}",
+    "Custom tool run refused",
+    "Custom tool dealt",
+    "Custom tool run failed",
+    "Custom tool run completed",
+];
+
+/// The oracle's `PLANT_CHAT_UNREADABLE` — `chats.title` rebuilt as a generated
+/// column whose read throws, on BOTH sides' reads.
+const PLANT_CHAT_UNREADABLE: &[&str] = &[
+    r#"ALTER TABLE "chats" DROP COLUMN "title""#,
+    r#"ALTER TABLE "chats" ADD COLUMN "title" TEXT AS (json("id")) VIRTUAL"#,
+];
+/// The oracle's `PLANT_POST_FAILS` — every `chat_messages` insert aborts.
+const PLANT_POST_FAILS: &[&str] = &[
+    r#"CREATE TRIGGER "p4d305_no_posts" BEFORE INSERT ON "chat_messages" BEGIN SELECT RAISE(ABORT, 'planted: no posts'); END"#,
+];
+
+/// The posted system rows' raw `pascalMeta` TEXT, in row order — compared as
+/// BYTES so the key order (`invokedBy`, `triggerPhrase`,
+/// `callerParticipantId`) is checked.
+fn pascal_meta_texts(msgs: &Value) -> Vec<Value> {
+    msgs.get("rows")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| r.get("pascalMeta").is_some_and(|m| !m.is_null()))
+        .map(|r| r["pascalMeta"].clone())
+        .collect()
 }
 
 // The recorded canned-completion rows the oracle emits per case
@@ -313,6 +362,9 @@ fn canon(v: &Value) -> Value {
 
 #[test]
 fn run_custom_handler_matches_oracle() {
+    // The capture rig must own this binary's subscriber before any callsite is
+    // reached (memory note `capture-rig-writer-thread`).
+    quilltap_core::test_support::global_capture::install();
     // P4.133 OUT-OF-MANDATE (dogfood #133): the oracle mocks
     // `getApiKeyForCheapLLMSelection` to a constant; the twin (v5 now resolves
     // the cheap selection's own key — and the Concierge classifier's — and
@@ -358,6 +410,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "ansible" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "gated-miss",
@@ -365,6 +418,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_b.clone()),
             input: json!({ "tool": "ansible" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "gated-empty",
@@ -372,6 +426,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_c.clone()),
             input: json!({ "tool": "ansible" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "public-coin",
@@ -379,6 +434,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "coin" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "whispered-default",
@@ -386,6 +442,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "whispered" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "private-override",
@@ -393,6 +450,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "coin", "private": true }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "public-override",
@@ -400,6 +458,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "whispered", "private": false }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "unknown-tool",
@@ -407,6 +466,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "nonexistent" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "validation-fail",
@@ -414,6 +474,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "notTool": 1 }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "run-error",
@@ -421,6 +482,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "coin", "parameters": { "bad": 1 } }),
             profile: false,
+            plant: None,
         },
         // The 616930db consult, end to end over the real invoker.
         Case {
@@ -429,6 +491,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "oracle" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "llm-consult-private",
@@ -436,6 +499,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "oracle", "private": true }),
             profile: false,
+            plant: None,
         },
         // P4.6bd: the consult RESOLVES — the inserted profile carries the
         // ladder, the canned provider answers 'YES' (the oracle-recorded key),
@@ -447,6 +511,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "oracle" }),
             profile: true,
+            plant: None,
         },
         // P4.d10 `$state`: the entrance cascade, scoped to the rolling
         // character's own groups (hit for CHAR_A in Table Stakes; fallback for
@@ -457,6 +522,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "stateful" }),
             profile: false,
+            plant: None,
         },
         // ---- P4.d19: the availability gate, end-to-end through the handler --
         // The gated definitions live in the GENERAL store, so only the invoker's
@@ -469,6 +535,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "secure_line" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "gate-available-missing-key-unrunnable",
@@ -476,6 +543,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_b.clone()),
             input: json!({ "tool": "secure_line" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "gate-available-empty-sheet-unrunnable",
@@ -483,6 +551,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_c.clone()),
             input: json!({ "tool": "secure_line" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "gate-withheld-when-holds-unrunnable",
@@ -490,6 +559,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_b.clone()),
             input: json!({ "tool": "novice_aid" }),
             profile: false,
+            plant: None,
         },
         // The same empty sheet that fails `availableWhen` above satisfies no
         // `withheldWhen`, so CHAR_C IS dealt this one.
@@ -499,6 +569,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_c.clone()),
             input: json!({ "tool": "novice_aid" }),
             profile: false,
+            plant: None,
         },
         // ---- P4.d19: the fact-sheet read MOVED ahead of the roster ---------
         // With no definition in hand, only an explicit `private: true` whispers.
@@ -508,6 +579,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_d.clone()),
             input: json!({ "tool": "coin", "private": true }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "vault-broken-private-false",
@@ -515,6 +587,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_d.clone()),
             input: json!({ "tool": "whispered", "private": false }),
             profile: false,
+            plant: None,
         },
         // THE arm whose behavior CHANGED: `whispered` declares
         // defaultVisibility:'whisper', and this failure is PUBLIC now.
@@ -524,6 +597,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_d.clone()),
             input: json!({ "tool": "whispered" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "vault-broken-unknown-tool",
@@ -531,6 +605,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_d.clone()),
             input: json!({ "tool": "nonexistent" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "state-no-group-falls-back",
@@ -538,6 +613,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_b.clone()),
             input: json!({ "tool": "stateful" }),
             profile: false,
+            plant: None,
         },
         // ---- P4.D35: side effects, end-to-end through the LLM entrance ----
         Case {
@@ -546,6 +622,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "ledger", "parameters": { "entry": "brass" } }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "effects-no-group-skips-the-group-write",
@@ -553,6 +630,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_b.clone()),
             input: json!({ "tool": "ledger" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "effects-precedence-under-sealed-odds",
@@ -560,6 +638,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "sealed_tally" }),
             profile: false,
+            plant: None,
         },
         // ---- P4.D169: progressions, end to end through the LLM entrance ----
         // The clock each of these runs at is taken from its ORACLE row, which
@@ -571,6 +650,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "recharged" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "progress-gate-running-span-unrunnable",
@@ -578,6 +658,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "gestating" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "progress-effect-writes-the-span",
@@ -585,6 +666,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "recharge" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "progress-effect-creates-a-progression",
@@ -592,6 +674,7 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "kindle" }),
             profile: false,
+            plant: None,
         },
         Case {
             name: "progress-effect-writes-under-a-different-clock",
@@ -599,6 +682,28 @@ fn run_custom_handler_matches_oracle() {
             vault: Some(meta.vault_a.clone()),
             input: json!({ "tool": "recharge" }),
             profile: false,
+            plant: None,
+        },
+        // ---- P4.D305: the run service's fail-soft arms ---------------------
+        // The cascade's chat read fails SILENTLY (a fallback read — v4's
+        // DEBUG `state cascade unavailable` is NOT reached this way); the deal
+        // lands against `{}`; the post's chat check answers None.
+        Case {
+            name: "run-llm-chat-unreadable",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "coin" }),
+            profile: false,
+            plant: Some(PLANT_CHAT_UNREADABLE),
+        },
+        // The chat reads, every insert aborts: the handler's unposted arm.
+        Case {
+            name: "run-llm-unposted",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "coin" }),
+            profile: false,
+            plant: Some(PLANT_POST_FAILS),
         },
     ];
 
@@ -619,6 +724,7 @@ fn run_custom_handler_matches_oracle() {
     let mut saw_progress_gate_withheld = false;
     let mut saw_progress_write = false;
     let mut saw_progress_create = false;
+    let mut logged_rows = 0usize;
     for case in &cases {
         let want = oracle
             .get(case.name)
@@ -639,6 +745,16 @@ fn run_custom_handler_matches_oracle() {
         common::materialize_llm_logs(&llm_logs, &spec.test_pepper_base64);
         if case.profile {
             insert_consult_profile(&main, &spec.test_pepper_base64, &spec.user_id);
+        }
+        if let Some(plant) = case.plant {
+            let writer = Writer::open_writable(&main, &spec.test_pepper_base64)
+                .expect("open main for the plant");
+            for sql in plant {
+                writer
+                    .connection()
+                    .execute_batch(sql)
+                    .unwrap_or_else(|e| panic!("case '{}' plant {sql}: {e}", case.name));
+            }
         }
         let db = Db::open(
             DbPaths {
@@ -684,13 +800,16 @@ fn run_custom_handler_matches_oracle() {
                 chat_id: Some(ctx.chat_id.clone()),
             },
         );
-        let (out, _posted) = rt.block_on(execute_run_custom_tool_with_consult(
-            &db,
-            &ctx,
-            &case.input,
-            &mut rng,
-            Some(&invoker),
-        ));
+        let ((out, _posted), lines) =
+            rt.block_on(quilltap_core::test_support::global_capture::capture_async(
+                execute_run_custom_tool_with_consult(
+                    &db,
+                    &ctx,
+                    &case.input,
+                    &mut rng,
+                    Some(&invoker),
+                ),
+            ));
 
         // min === max never draws.
         assert_eq!(rng.consumed(), 0, "case '{}' consumed bytes", case.name);
@@ -703,7 +822,11 @@ fn run_custom_handler_matches_oracle() {
         let got_logs = common::dump_llm_logs(&db);
         let want_logs = common::oracle_llm_logs(&want["llmLogs"]);
         // P4.D35: WHERE the writes landed, not merely what `pascalMeta` claims.
-        let got_stores = common::dump_pascal_stores(&db, CHAT, GROUP, [CHAR_A, CHAR_B, CHAR_C]);
+        let got_stores = if want["stores"].is_null() {
+            Value::Null
+        } else {
+            common::dump_pascal_stores(&db, CHAT, GROUP, [CHAR_A, CHAR_B, CHAR_C])
+        };
         drop(db);
         let _ = std::fs::remove_dir_all(&scratch);
 
@@ -727,6 +850,25 @@ fn run_custom_handler_matches_oracle() {
             "case '{}' state tiers + fact sheets after the run",
             case.name
         );
+        // P4.D305: the posted `pascalMeta` as BYTES (key order included).
+        assert_eq!(
+            pascal_meta_texts(&msgs),
+            pascal_meta_texts(want),
+            "case '{}' pascalMeta bytes",
+            case.name
+        );
+        // P4.D305: v4's pinned lines, line for line, against v5's capture.
+        let want_lines: Vec<String> = want["logs"]
+            .as_array()
+            .unwrap_or_else(|| panic!("case '{}' oracle row has no `logs`", case.name))
+            .iter()
+            .map(|l| common::v4_log_as_capture_line("quilltap::pascal", l))
+            .collect();
+        let got_lines = common::pinned_capture_lines(&lines, "quilltap::pascal", &PINNED_MESSAGES);
+        assert_eq!(got_lines, want_lines, "case '{}' log lines", case.name);
+        if !want_lines.is_empty() {
+            logged_rows += 1;
+        }
         // `updatedAt` is stamped only by the applier, and `kettle` exists in no
         // fixture — so each is the signature of a write that actually landed in
         // a real vault rather than merely being reported in `applied`.
@@ -766,5 +908,6 @@ fn run_custom_handler_matches_oracle() {
         saw_progress_create,
         "no case CREATED a progression nobody had authored"
     );
+    assert!(logged_rows > 0, "no case carried a pinned log line");
     eprintln!("OK: run_custom handler matched oracle ({checked} cases).");
 }

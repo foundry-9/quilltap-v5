@@ -12,29 +12,24 @@
 //! model did not author, so a failure cannot be talked into a success and
 //! regenerating a reply does not re-roll.
 
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value};
 
 use crate::db::characters_read;
 use crate::db::runtime::Db;
 use crate::pascal::custom_tool_types::{
-    display_title, AnyOperand, LlmComparator, NumberOrParamRef, NumericComparator, ParamComparator,
-    ParamRef, Roll, RollRange, StringOperand, Visibility, When, WhenObject,
+    AnyOperand, LlmComparator, NumberOrParamRef, NumericComparator, ParamComparator, ParamRef,
+    Roll, RollRange, StringOperand, Visibility, When, WhenObject,
 };
-use crate::pascal::custom_tools::{
-    execute_custom_tool, CustomToolRunError, CustomToolRunResult, LlmInvoker, ResolvedParams,
-    RollForm,
-};
+use crate::pascal::custom_tools::LlmInvoker;
 use crate::pascal::js_value::{json_stringify, number_to_string};
 use crate::pascal::roster::{resolve_custom_tool_roster, DiscoveredCustomTool, RosterContext};
-use crate::pascal::side_effects::apply_effects_for_run;
-use crate::progressions::flatten_progressions;
-use crate::services::pascal_writer::{
-    build_pascal_result_content, post_pascal_result, PostPascalResultParams, PostedPascalMessage,
+use crate::pascal::run_service::{
+    run_custom_tool, InvokedBy, RunCustomToolOutcome, RunCustomToolParams,
 };
+use crate::services::pascal_writer::PostedPascalMessage;
 use crate::services::prospero_notifications::{
     post_prospero_custom_tool_error, ProsperoCustomToolErrorArgs,
 };
-use crate::state::cascade::StateCascadeResult;
 use crate::tools::rng::RandomBytes;
 
 // ===========================================================================
@@ -475,6 +470,10 @@ pub struct RunCustomToolOutput {
     pub error: Option<String>,
 }
 
+/// v4 `run-custom-handler.ts`'s `CONTEXT` — the `context` field of the
+/// handler's own lines (the run service's carry `pascal.run-service`).
+const HANDLER_CONTEXT: &str = "run-custom-handler";
+
 /// Shape the failure the same way whether it was a bad input or a bad roll
 /// (v4 `failure`).
 fn failure(error: impl Into<String>, tool: Option<&str>) -> RunCustomToolOutput {
@@ -500,6 +499,15 @@ async fn report_failure(
     reason: String,
     whisper: bool,
 ) -> RunCustomToolOutput {
+    tracing::warn!(
+        target: "quilltap::pascal",
+        context = HANDLER_CONTEXT,
+        userId = ctx.user_id.as_str(),
+        chatId = ctx.chat_id.as_str(),
+        tool = tool_name,
+        reason = reason.as_str(),
+        "Custom tool run failed",
+    );
     post_prospero_custom_tool_error(
         db,
         ProsperoCustomToolErrorArgs {
@@ -514,12 +522,40 @@ async fn report_failure(
     failure(reason, Some(tool_name))
 }
 
-/// Convert an ordered [`ResolvedParams`] into the JSON object v4 stores.
-fn params_to_object(params: &ResolvedParams) -> Map<String, Value> {
-    params
-        .iter()
-        .map(|(k, v)| (k.clone(), v.to_value()))
-        .collect()
+/// v4 `repos.characters.findById(id)` as the custom-tool entrances see it:
+/// the row hydrated through the vault overlay, `Ok(None)` when no such
+/// character, and `Err(message)` — v4's `getErrorMessage(error)` — when the
+/// read fails or the vault is broken (v4's `CharacterVaultUnavailableError`).
+///
+/// The read goes through `find_by_id_raw` + the overlay rather than
+/// `characters_read::find_by_id` so the message is v4's own
+/// `CharacterVaultUnavailableError` sentence (`find_by_id` erases it into a
+/// generic `DbError::Internal`); `api::custom_tools::resolve_metadata` reaches
+/// for the same pair, for the same reason. Shared by the LLM entrance and the
+/// trigger runner (`pascal::trigger_runner`).
+pub(crate) fn read_character_hydrated(
+    db: &Db,
+    character_id: &str,
+) -> Result<Option<Value>, String> {
+    let read = db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            let raw = characters_read::find_by_id_raw(main, character_id)?;
+            let repo = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
+            Ok(crate::db::vault_read_overlay::apply_document_store_overlay_one(&repo, raw))
+        })
+    });
+    let read = match read {
+        Ok(inner) => inner,
+        Err(e) => Err(crate::db::vault_read_overlay::OverlayOneError::Db(e)),
+    };
+    read.map_err(|error| match error {
+        crate::db::vault_read_overlay::OverlayOneError::Db(e) => e.to_string(),
+        crate::db::vault_read_overlay::OverlayOneError::Unavailable(u) => format!(
+            "Character {} has no usable vault (characterDocumentMountPointId={}): \
+             properties.json missing",
+            u.character_id, u.mount_id
+        ),
+    })
 }
 
 /// Execute the `run_custom` tool (v4 `executeRunCustomTool`). Returns the model
@@ -584,34 +620,14 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
     // the same pair, for the same reason.
     let mut metadata: Map<String, Value> = Map::new();
     if let Some(character_id) = &ctx.character_id {
-        let cid = character_id.clone();
-        let read = db.read_main(|main| {
-            db.read_mount_index(|mount| {
-                let raw = characters_read::find_by_id_raw(main, &cid)?;
-                let repo = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
-                Ok(crate::db::vault_read_overlay::apply_document_store_overlay_one(&repo, raw))
-            })
-        });
-        let read = match read {
-            Ok(inner) => inner,
-            Err(e) => Err(crate::db::vault_read_overlay::OverlayOneError::Db(e)),
-        };
-        match read {
+        match read_character_hydrated(db, character_id) {
             Ok(Some(character)) => {
                 if let Some(map) = character.get("metadata").and_then(Value::as_object) {
                     metadata = map.clone();
                 }
             }
             Ok(None) => {}
-            Err(error) => {
-                let reason = match error {
-                    crate::db::vault_read_overlay::OverlayOneError::Db(e) => e.to_string(),
-                    crate::db::vault_read_overlay::OverlayOneError::Unavailable(u) => format!(
-                        "Character {} has no usable vault (characterDocumentMountPointId={}): \
-                         properties.json missing",
-                        u.character_id, u.mount_id
-                    ),
-                };
+            Err(reason) => {
                 return (
                     report_failure(
                         db,
@@ -671,190 +687,57 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         return (failure(msg, Some(&tool_name)), None);
     };
 
-    let default_whisper = entry.definition.default_visibility == Some(Visibility::Whisper);
-
-    let metadata_arg = if metadata.is_empty() {
-        None
-    } else {
-        Some(&metadata)
-    };
-
-    // The state cascade (chat → project → group → general) the run's `$state`
-    // references resolve against (v4 `f48f34dc`) — retained WHOLE, not just
-    // `.merged`, because the effect applier needs the per-tier objects to decide
-    // where a write lives (v4 `c4d4b0de`). Read once here; never re-read.
-    // Scoped to the rolling character's own groups (Knowledge's rule).
-    // Fail-soft: every `$state` ref carries a required fallback, so a run is
-    // always dealable even if state can't be read — state effects then skip.
-    let cascade: Option<StateCascadeResult> = {
-        use crate::state::cascade::{resolve_state_cascade, GroupScope};
-        let cid = ctx.chat_id.clone();
-        let scope = match &ctx.character_id {
-            Some(id) if !id.is_empty() => GroupScope::Character {
-                character_id: id.clone(),
-            },
-            _ => GroupScope::None,
-        };
-        db.read_main(|main| {
-            let Some(chat) = crate::db::chats_read::find_by_id(main, &cid)? else {
-                return Ok(None);
-            };
-            // A degraded (no mount-index) open still resolves the chat tier.
-            let resolved = match db.read_mount_index(|mount| {
-                Ok(resolve_state_cascade(main, Some(mount), &chat, &scope))
-            }) {
-                Ok(c) => c,
-                Err(_) => resolve_state_cascade(main, None, &chat, &scope),
-            };
-            Ok(Some(resolved))
-        })
-        .unwrap_or(None)
-    };
-    let tool_state: Value = cascade
-        .as_ref()
-        .map(|c| c.merged.clone())
-        .unwrap_or_else(|| Value::Object(Map::new()));
-
-    // The flattened progress sheet, derived HERE from the same hydrated snapshot
-    // the gates read, against the one `now_ms` this run took — so the tables,
-    // the templates, `{{now}}` and the `updatedAt` the applier stamps all agree
-    // about the instant (v4 `run-custom-handler.ts:148`).
-    let progress = flatten_progressions(
-        Some(&Value::Object(metadata.clone())),
-        ctx.now_ms,
-        // A malformed entry is dropped by the shared reader. The prompt path
-        // already warns about the same vault once per turn; a second warn here
-        // would double every line for a character mid-roll.
-        &mut |_, _| {},
-    );
-
-    let result: CustomToolRunResult = match execute_custom_tool(
-        &entry.definition,
-        parameters.as_ref(),
-        is_private,
-        metadata_arg,
-        Some(&tool_state),
+    // The deal itself — cascade, roll, effects, Pascal's post — is the shared
+    // run service's (`pascal::run_service`, v4 `lib/pascal/run-service.ts`);
+    // this entrance only resolves the roster from the caller's perspective and
+    // reports back to the model.
+    let outcome = run_custom_tool(
+        db,
+        RunCustomToolParams {
+            user_id: &ctx.user_id,
+            chat_id: &ctx.chat_id,
+            chat: None,
+            entry: &entry,
+            parameters: parameters.as_ref(),
+            private: is_private,
+            character_id: ctx.character_id.as_deref(),
+            metadata: &metadata,
+            // A private roll is whispered to the rolling character alone: every
+            // other participant's context excludes it. The human operator sees
+            // it regardless — Pascal is one of the operator-facing senders the
+            // Salon's whisper filter exempts.
+            whisper_target_ids: ctx.caller_participant_id.clone().map(|c| vec![c]),
+            invoked_by: InvokedBy::Llm,
+            caller_participant_id: ctx.caller_participant_id.as_deref(),
+            trigger_phrase: None,
+            now_ms: ctx.now_ms,
+            pending_wardrobe_announcements: None,
+        },
         rng,
-        // v4 builds the invoker only when the definition declares an `llm`
-        // block; withholding it otherwise is the same thing, since a tool with
-        // no block never consults.
-        entry.definition.llm.as_ref().and(llm_invoke),
-        Some(&progress),
-        ctx.now_ms,
+        llm_invoke,
     )
-    .await
-    {
-        Ok(r) => r,
-        Err(CustomToolRunError(reason)) => {
-            let whisper = is_private.unwrap_or(default_whisper);
+    .await;
+
+    let (result, posted) = match outcome {
+        Ok(RunCustomToolOutcome::Ok { result, posted, .. }) => (result, posted),
+        Ok(RunCustomToolOutcome::Refused { reason, whisper }) => {
             return (
                 report_failure(db, ctx, &tool_name, reason, whisper).await,
                 None,
             );
         }
+        // v4's `catch` — the service rethrows only what is not a
+        // `CustomToolRunError`; the model's result is the same failure shape.
+        Err(error) => {
+            let whisper = is_private
+                .unwrap_or(entry.definition.default_visibility == Some(Visibility::Whisper));
+            return (
+                report_failure(db, ctx, &tool_name, error.to_string(), whisper).await,
+                None,
+            );
+        }
     };
-
-    // Effects apply BEFORE the Pascal post: if the post then fails, the effects
-    // stand — they happened, and the existing "outcome could not be posted"
-    // failure path still tells the model. (An error out of `execute_custom_tool`
-    // means no effects were ever applied.) The applier never fails the run.
-    let applied_effects = apply_effects_for_run(
-        db,
-        &ctx.chat_id,
-        &result,
-        cascade,
-        ctx.character_id.clone(),
-        &metadata,
-        ctx.now_ms,
-    )
-    .await;
-
     let whispered = result.visibility == Visibility::Whisper;
-
-    // A private roll is whispered to the rolling character alone. The human
-    // operator sees it regardless — Pascal is one of the operator-facing senders
-    // the Salon's whisper filter exempts (see app/salon/[id]/whisper-visibility.ts).
-    let target_participant_ids = if whispered {
-        ctx.caller_participant_id.clone().map(|c| vec![c])
-    } else {
-        None
-    };
-
-    let tool_title = display_title(&entry.definition.name, entry.definition.title.as_deref());
-
-    let body =
-        build_pascal_result_content(&tool_title, result.chip_label.as_deref(), &result.message);
-
-    // Assemble `pascalMeta` field-for-field with v4's handler (:208-224).
-    let mut pascal_meta = Map::new();
-    pascal_meta.insert("tool".into(), json!(result.tool));
-    pascal_meta.insert("toolTitle".into(), json!(tool_title));
-    // `...(result.chipLabel ? { chipLabel } : {})` — v4 `c4d4b0de`, right after
-    // `toolTitle`. `preserve_order` makes the placement byte-sensitive.
-    if let Some(chip_label) = &result.chip_label {
-        pascal_meta.insert("chipLabel".into(), json!(chip_label));
-    }
-    pascal_meta.insert(
-        "definitionTier".into(),
-        serde_json::to_value(entry.tier).unwrap_or(Value::Null),
-    );
-    pascal_meta.insert("definitionMountId".into(), json!(entry.mount_point_id));
-    pascal_meta.insert(
-        "params".into(),
-        Value::Object(params_to_object(&result.params)),
-    );
-    pascal_meta.insert(
-        "rollForm".into(),
-        json!(match result.roll_form {
-            RollForm::Range => "range",
-            RollForm::Dice => "dice",
-        }),
-    );
-    if let Some(notation) = &result.notation {
-        pascal_meta.insert("notation".into(), json!(notation));
-    }
-    pascal_meta.insert("raw".into(), crate::db::js_number_to_json(result.raw));
-    if let Some(dice_rolls) = &result.dice_rolls {
-        pascal_meta.insert("diceRolls".into(), json!(dice_rolls));
-    }
-    pascal_meta.insert("value".into(), crate::db::js_number_to_json(result.value));
-    pascal_meta.insert("state".into(), json!(result.state.as_str()));
-    pascal_meta.insert("outcomeIndex".into(), json!(result.outcome_index));
-    if let Some(metadata_tested) = &result.metadata_tested {
-        let obj: Map<String, Value> = metadata_tested
-            .iter()
-            .map(|(k, v)| (k.clone(), v.to_value()))
-            .collect();
-        pascal_meta.insert("metadataTested".into(), Value::Object(obj));
-    }
-    if let Some(llm) = &result.llm {
-        pascal_meta.insert("llm".into(), Value::Object(llm.to_wire()));
-    }
-    // `...(appliedEffects.length ? { effects: appliedEffects } : {})` — v4
-    // `c4d4b0de`, after `llm` and before `invokedBy`. Only the writes that
-    // LANDED are recorded; a skipped or dropped effect leaves no trace here.
-    if !applied_effects.is_empty() {
-        pascal_meta.insert(
-            "effects".into(),
-            serde_json::to_value(&applied_effects).unwrap_or(Value::Null),
-        );
-    }
-    pascal_meta.insert("invokedBy".into(), json!("llm"));
-    if let Some(caller) = &ctx.caller_participant_id {
-        pascal_meta.insert("callerParticipantId".into(), json!(caller));
-    }
-
-    let posted = post_pascal_result(
-        db,
-        PostPascalResultParams {
-            chat_id: ctx.chat_id.clone(),
-            content: body.content,
-            opaque_content: body.opaque_content,
-            pascal_meta: Value::Object(pascal_meta),
-            target_participant_ids,
-        },
-    )
-    .await;
 
     let Some(posted) = posted else {
         // The roll was real but the announcement did not land. Say so rather than
@@ -872,6 +755,27 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         );
     };
 
+    let result = *result;
+    tracing::info!(
+        target: "quilltap::pascal",
+        context = HANDLER_CONTEXT,
+        userId = ctx.user_id.as_str(),
+        chatId = ctx.chat_id.as_str(),
+        tool = result.tool.as_str(),
+        tier = serde_json::to_value(entry.tier)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default(),
+        rollForm = match result.roll_form {
+            crate::pascal::custom_tools::RollForm::Range => "range",
+            crate::pascal::custom_tools::RollForm::Dice => "dice",
+        },
+        value = %crate::pascal::js_value::number_to_string(result.value),
+        state = result.state.as_str(),
+        outcomeIndex = result.outcome_index as u64,
+        whispered,
+        "Custom tool run completed",
+    );
     (
         RunCustomToolOutput {
             success: true,

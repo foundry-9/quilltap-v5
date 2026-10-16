@@ -72,7 +72,40 @@ interface CaseSpec {
    * stay exactly where they were.
    */
   nowMs?: number;
+  /**
+   * P4.D305: SQL planted on the case's MAIN copy BEFORE the database opens
+   * (the same statements the Rust side runs on its copy). Each plant must fail
+   * BOTH sides' reads (memory note `throwing-plant-must-fail-both-reads`); a
+   * planted case dumps no stores (the dump reads the chat).
+   */
+  plant?: string[];
 }
+
+/**
+ * P4.D305: the log lines this family pins — every line v4 emits at the pin on
+ * the run-custom path that v5 ports. Anything else v4 logs on the way (the
+ * Pascal / Prospero writers' own lines, the roster's) is not compared here.
+ */
+const PINNED_MESSAGES = new Set([
+  'Custom tool run: state cascade unavailable, defaulting to {}',
+  'Custom tool run refused',
+  'Custom tool dealt',
+  'Custom tool run failed',
+  'Custom tool run completed',
+]);
+
+/** chats.title rebuilt as a generated column that THROWS on read — v4's
+ *  `SELECT *` and v5's named-column read both evaluate it (memory note
+ *  `throwing-plant-must-fail-both-reads`), so `chats.findById` fails on both. */
+const PLANT_CHAT_UNREADABLE = [
+  'ALTER TABLE "chats" DROP COLUMN "title"',
+  'ALTER TABLE "chats" ADD COLUMN "title" TEXT AS (json("id")) VIRTUAL',
+];
+/** Every chat_messages INSERT aborts, so the Pascal post (and Prospero's)
+ *  fails after the deal while the chat itself stays readable. */
+const PLANT_POST_FAILS = [
+  'CREATE TRIGGER "p4d305_no_posts" BEFORE INSERT ON "chat_messages" BEGIN SELECT RAISE(ABORT, \'planted: no posts\'); END',
+];
 
 /** See `CaseSpec.nowMs`. 2026-08-29T12:00:00Z, the fixture's spans' anchor. */
 const PASCAL_NOW_MS = 1_788_004_800_000;
@@ -242,6 +275,31 @@ async function runCase(
   const mountWork = join(work, 'mount.db');
   copyFileSync(fixtures.main, mainWork);
   copyFileSync(fixtures.mount, mountWork);
+  if (c.plant) {
+    // Before the database opens: no cross-case singleton can hold the copy.
+    const Cipher = jest.requireActual(cipherDriverPath);
+    const conn = new Cipher(mainWork);
+    conn.pragma(`key = "x'${Buffer.from(spec.testPepperBase64, 'base64').toString('hex')}'"`);
+    for (const sql of c.plant) conn.exec(sql);
+    conn.close();
+  }
+
+  // P4.D305: v4's log lines, through the singleton logger's shared transports
+  // (memory note `v4-oracle-job-host-and-log-capture` §2) — `LOG_LEVEL` set
+  // before the (reset) logger module loads; `service` / `environment` dropped.
+  process.env.LOG_LEVEL = 'debug';
+  const { logger } = await import('@/lib/logger');
+  const logs: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as { level: string; message: string; context?: Record<string, unknown>; error?: { message: string } };
+      if (!PINNED_MESSAGES.has(data.message)) return;
+      const { service: _s, environment: _e, ...fields } = (data.context ?? {}) as Record<string, unknown>;
+      if (data.error) fields.error = data.error.message;
+      logs.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+    },
+  });
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
   // A fresh llm-logs DB per case for the un-mocked logLLMCall (P4.6bd).
@@ -352,7 +410,8 @@ async function runCase(
       output,
       columns,
       rows,
-      stores: await dumpStores(CHAT),
+      logs,
+      stores: c.plant ? null : await dumpStores(CHAT),
       canned: Array.from(cannedRecorded.values()),
       llmLogs,
     };
@@ -498,6 +557,19 @@ async function main(): Promise<void> {
     // one above in exactly the values the run clock touches, which is what says
     // the write takes the caller's instant rather than one of its own.
     { name: 'progress-effect-writes-under-a-different-clock', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'recharge' }, nowMs: PASCAL_NOW_MS + 3_600_000 },
+
+    // ---- P4.D305 (v4 `362426c8f`): the run service's fail-soft arms --------
+    // The chat cannot be read. v4's `chats.findById` is a `safeQuery` fallback
+    // (a failed read answers `null`), so the service's cascade simply has no
+    // chat — SILENTLY: its `state cascade unavailable` DEBUG is NOT reached
+    // this way (pinned NEGATIVE; the catch is reachable only through a throw
+    // inside `resolveStateCascade` itself). The deal lands against `{}`, the
+    // Pascal post's own chat check answers null, and the model hears the
+    // unposted failure.
+    { name: 'run-llm-chat-unreadable', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'coin' }, plant: PLANT_CHAT_UNREADABLE },
+    // The chat reads fine but no message can be inserted: the cascade holds,
+    // the deal lands, the post fails — the handler's unposted arm.
+    { name: 'run-llm-unposted', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'coin' }, plant: PLANT_POST_FAILS },
   ];
 
   const out = fs.createWriteStream(outPath);

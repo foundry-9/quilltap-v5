@@ -45,17 +45,18 @@ use crate::pascal::llm_consult::{ConsultRunner, CustomToolConsultContext, SeamCo
 use crate::pascal::roster::{
     resolve_custom_tool_roster, CustomToolRoster, DiscoveredCustomTool, RosterContext,
 };
-use crate::pascal::side_effects::apply_effects_for_run;
+use crate::pascal::run_service::{
+    run_custom_tool, InvokedBy, RunCustomToolOutcome, RunCustomToolParams,
+};
 use crate::pascal::tool_gate::{evaluate_tool_gate, has_tool_gate};
 use crate::pascal::tool_vocabulary::collect_tool_vocabulary;
 use crate::progressions::flatten_progressions;
-use crate::services::pascal_writer::{
-    build_pascal_result_content, post_pascal_result, PostPascalResultParams,
-};
 use crate::services::prospero_notifications::{
     post_prospero_custom_tool_error, ProsperoCustomToolErrorArgs,
 };
-use crate::state::cascade::StateCascadeResult;
+
+/// v4 `route.ts`'s `HANDLER` — the `context` field of the run arm's lines.
+const HANDLER: &str = "api.v1.chats.custom-tools";
 
 fn not_found(resource: &str) -> Response {
     Response::error(ErrorKind::NotFound, format!("{resource} not found"))
@@ -540,17 +541,10 @@ enum RunPrep {
         available: Vec<String>,
     },
     /// Boxed — the discovered definition dwarfs the other variants. Carries the
-    /// tool entry, the AS-character's fact sheet, the WHOLE state cascade (v4
-    /// `c4d4b0de` — the effect applier needs the per-tier objects, not just
-    /// `.merged`), and the resolved perspective's character id.
-    Ready(
-        Box<(
-            DiscoveredCustomTool,
-            Map<String, Value>,
-            StateCascadeResult,
-            String,
-        )>,
-    ),
+    /// tool entry, the AS-character's fact sheet, the chat row (handed to the
+    /// run service so its cascade read is saved — v4 `runCustomTool({ chat })`),
+    /// and the resolved perspective's character id.
+    Ready(Box<(DiscoveredCustomTool, Map<String, Value>, Value, String)>),
 }
 
 /// v4 `runSchema` (`route.ts:371-378`), ported whole:
@@ -736,32 +730,10 @@ pub async fn chat_custom_tool_run(
                     } else {
                         Map::new()
                     };
-                    // The state cascade the run's `$state` references resolve
-                    // against (v4 `f48f34dc`) — retained WHOLE, not just
-                    // `.merged`, because the effect applier needs the per-tier
-                    // objects to decide where a write lives (v4 `c4d4b0de`).
-                    // The group tier follows the same asymmetry as metadata
-                    // above: scoped to the named character's own groups, or
-                    // skipped entirely for a run nobody made (no
-                    // `asCharacterId`), rather than borrowing an arbitrary
-                    // participant's groups. Fail-soft — required fallbacks keep
-                    // every run dealable.
-                    let scope = match &as_char {
-                        Some(cid) => crate::state::cascade::GroupScope::Character {
-                            character_id: cid.clone(),
-                        },
-                        None => crate::state::cascade::GroupScope::None,
-                    };
-                    let cascade = crate::state::cascade::resolve_state_cascade(
-                        main,
-                        Some(mount),
-                        &chat,
-                        &scope,
-                    );
                     Ok(RunPrep::Ready(Box::new((
                         entry.clone(),
                         metadata,
-                        cascade,
+                        chat,
                         perspective.character_id.clone(),
                     ))))
                 }
@@ -769,7 +741,7 @@ pub async fn chat_custom_tool_run(
         })
     });
 
-    let (entry, metadata, cascade, perspective_character_id) = match prep {
+    let (entry, metadata, chat, perspective_character_id) = match prep {
         Ok(RunPrep::NoChat) => return not_found("Chat"),
         Ok(RunPrep::NoPerspectives) => {
             return bad_request(
@@ -782,6 +754,14 @@ pub async fn chat_custom_tool_run(
             ))
         }
         Ok(RunPrep::UnknownTool { available }) => {
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = HANDLER,
+                chatId = chat_id,
+                tool = tool,
+                availableJson = %serde_json::to_string(&available).unwrap_or_default(),
+                "Manual custom-tool run named an unknown tool",
+            );
             return bad_request(if available.is_empty() {
                 format!("Unknown custom tool \"{tool}\". This chat has no custom tools available.")
             } else {
@@ -789,28 +769,15 @@ pub async fn chat_custom_tool_run(
                     "Unknown custom tool \"{tool}\". Available: {}",
                     available.join(", ")
                 )
-            })
+            });
         }
         Ok(RunPrep::Ready(boxed)) => {
-            let (entry, metadata, cascade, perspective_character_id) = *boxed;
-            (entry, metadata, cascade, perspective_character_id)
+            let (entry, metadata, chat, perspective_character_id) = *boxed;
+            (entry, metadata, chat, perspective_character_id)
         }
         Err(e) => return internal(e),
     };
 
-    // A private run is whispered to the OPERATOR's userId — NOT a participant id.
-    let whispered = private == Some(true);
-    let target_participant_ids = if whispered {
-        Some(vec![user_id.to_string()])
-    } else {
-        None
-    };
-
-    let metadata_arg = if metadata.is_empty() {
-        None
-    } else {
-        Some(&metadata)
-    };
     let invoker = match (entry.definition.llm.as_ref(), consult) {
         (Some(_), Some(runner)) => Some(SeamConsultInvoker {
             runner,
@@ -835,45 +802,67 @@ pub async fn chat_custom_tool_run(
         _ => None,
     };
 
-    // The flattened progress sheet, derived from the SAME snapshot the gates
-    // read and against the SAME `now_ms`. It follows the metadata asymmetry
-    // above by construction: a run nobody made carries an empty `metadata`, so
-    // its sheet is empty too, and every `progress` test declines (v4
-    // `route.ts:457` — `body.asCharacterId ? perspective.metadata : {}`).
-    let progress = flatten_progressions(
-        Some(&Value::Object(metadata.clone())),
-        now_ms,
-        &mut |_, _| {},
-    );
-
+    // A private run is whispered to the OPERATOR's userId — a UUID that is not
+    // a participant id, so every character's context filter excludes it while
+    // the "show all whispers" toggle still reveals it to the human.
+    //
+    // Metadata comes from the character the run is made AS; a run that names
+    // nobody is one nobody made: an empty sheet (and progress sheet), its group
+    // tier skipped, and its metadata effects written to nobody — an
+    // unattributed operator roll must not borrow, or edit, an arbitrary
+    // participant's secrets. The deal itself is the shared run service's
+    // (`pascal::run_service`, v4 `lib/pascal/run-service.ts`).
     let mut rng = crate::tools::rng::OsRandomBytes;
-    let result: CustomToolRunResult = match execute_custom_tool(
-        &entry.definition,
-        parameters.as_ref(),
-        private,
-        metadata_arg,
-        Some(&cascade.merged),
+    let outcome = run_custom_tool(
+        db,
+        RunCustomToolParams {
+            user_id,
+            chat_id,
+            chat: Some(&chat),
+            entry: &entry,
+            parameters: parameters.as_ref(),
+            private,
+            character_id: as_character_id
+                .as_ref()
+                .map(|_| perspective_character_id.as_str()),
+            metadata: &metadata,
+            whisper_target_ids: Some(vec![user_id.to_string()]),
+            invoked_by: InvokedBy::User,
+            caller_participant_id: None,
+            trigger_phrase: None,
+            now_ms,
+            pending_wardrobe_announcements: None,
+        },
         &mut rng,
-        // v4 builds the invoker only when the definition declares an `llm`
-        // block; the chat run attributes the consult to THIS chat, so a
-        // dangerous room reroutes to the uncensored profile.
+        // The chat run attributes the consult to THIS chat, so a dangerous room
+        // reroutes to the uncensored profile.
         invoker.as_ref().map(|i| i as &dyn LlmInvoker),
-        Some(&progress),
-        now_ms,
     )
-    .await
-    {
-        Ok(r) => r,
-        Err(CustomToolRunError(reason)) => {
-            // Pascal never announces a run that did not happen — Prospero reports it.
+    .await;
+
+    let (result, posted) = match outcome {
+        Ok(RunCustomToolOutcome::Ok { result, posted, .. }) => (result, posted),
+        Ok(RunCustomToolOutcome::Refused { reason, whisper }) => {
+            // Pascal never announces a run that did not happen — the failure is
+            // Prospero's to report. `whisper` is the service's (`private ??
+            // defaultVisibility === 'whisper'`), so a default-whisper tool's
+            // refusal bubble is whispered to the operator (v4 `362426c8f`).
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = HANDLER,
+                chatId = chat_id,
+                tool = tool,
+                reason = reason.as_str(),
+                "Manual custom-tool run refused",
+            );
             post_prospero_custom_tool_error(
                 db,
                 ProsperoCustomToolErrorArgs {
                     chat_id: chat_id.to_string(),
                     tool_name: tool.to_string(),
                     reason: reason.clone(),
-                    whisper: whispered,
-                    caller_participant_id: if whispered {
+                    whisper,
+                    caller_participant_id: if whisper {
                         Some(user_id.to_string())
                     } else {
                         None
@@ -883,105 +872,23 @@ pub async fn chat_custom_tool_run(
             .await;
             return bad_request(reason);
         }
+        // v4 has no `try` around the service: a rethrow is the middleware's 500.
+        Err(e) => return internal(e),
     };
 
-    // Effects apply BEFORE the Pascal post; if the post then fails, the effects
-    // stand — they happened. `characterId` follows the same asymmetry as the
-    // metadata rule above: only a run made AS a character writes to that
-    // character's sheet — a run nobody made writes to nobody's, because an
-    // unattributed operator roll must not edit an arbitrary character.
-    let applied_effects = apply_effects_for_run(
-        db,
-        chat_id,
-        &result,
-        Some(cascade),
-        as_character_id.map(|_| perspective_character_id),
-        &metadata,
-        now_ms,
-    )
-    .await;
+    // The DEFINITION's visibility, not `private === true` (v4 `362426c8f`): a
+    // default-whisper tool run with no `private` is whispered, and says so.
+    let whispered = result.visibility == Visibility::Whisper;
 
-    let tool_title = display_title(&entry.definition.name, entry.definition.title.as_deref());
-    let body =
-        build_pascal_result_content(&tool_title, result.chip_label.as_deref(), &result.message);
-
-    // pascalMeta — `invokedBy: 'user'`, NO callerParticipantId (v4 handleRun).
-    let mut pascal_meta = Map::new();
-    pascal_meta.insert("tool".into(), json!(result.tool));
-    pascal_meta.insert("toolTitle".into(), json!(tool_title));
-    // `...(result.chipLabel ? { chipLabel } : {})` — v4 `c4d4b0de`, right after
-    // `toolTitle`. `preserve_order` makes the placement byte-sensitive.
-    if let Some(chip_label) = &result.chip_label {
-        pascal_meta.insert("chipLabel".into(), json!(chip_label));
-    }
-    pascal_meta.insert(
-        "definitionTier".into(),
-        serde_json::to_value(entry.tier).unwrap_or(Value::Null),
+    tracing::info!(
+        target: "quilltap::pascal",
+        context = HANDLER,
+        chatId = chat_id,
+        tool = result.tool.as_str(),
+        state = result.state.as_str(),
+        whispered,
+        "[Pascal] Manual custom-tool run completed",
     );
-    pascal_meta.insert("definitionMountId".into(), json!(entry.mount_point_id));
-    pascal_meta.insert(
-        "params".into(),
-        Value::Object(
-            result
-                .params
-                .iter()
-                .map(|(k, v)| (k.clone(), v.to_value()))
-                .collect(),
-        ),
-    );
-    pascal_meta.insert(
-        "rollForm".into(),
-        json!(match result.roll_form {
-            crate::pascal::custom_tools::RollForm::Range => "range",
-            crate::pascal::custom_tools::RollForm::Dice => "dice",
-        }),
-    );
-    if let Some(notation) = &result.notation {
-        pascal_meta.insert("notation".into(), json!(notation));
-    }
-    pascal_meta.insert("raw".into(), crate::db::js_number_to_json(result.raw));
-    if let Some(dice_rolls) = &result.dice_rolls {
-        pascal_meta.insert("diceRolls".into(), json!(dice_rolls));
-    }
-    pascal_meta.insert("value".into(), crate::db::js_number_to_json(result.value));
-    pascal_meta.insert("state".into(), json!(result.state.as_str()));
-    pascal_meta.insert("outcomeIndex".into(), json!(result.outcome_index));
-    if let Some(metadata_tested) = &result.metadata_tested {
-        pascal_meta.insert(
-            "metadataTested".into(),
-            Value::Object(
-                metadata_tested
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.to_value()))
-                    .collect(),
-            ),
-        );
-    }
-    if let Some(llm) = &result.llm {
-        pascal_meta.insert("llm".into(), Value::Object(llm.to_wire()));
-    }
-    // `...(appliedEffects.length ? { effects: appliedEffects } : {})` — v4
-    // `c4d4b0de`, after `llm` and before `invokedBy`. Only the writes that
-    // LANDED are recorded; a skipped or dropped effect leaves no trace here.
-    if !applied_effects.is_empty() {
-        pascal_meta.insert(
-            "effects".into(),
-            serde_json::to_value(&applied_effects).unwrap_or(Value::Null),
-        );
-    }
-    pascal_meta.insert("invokedBy".into(), json!("user"));
-
-    let posted = post_pascal_result(
-        db,
-        PostPascalResultParams {
-            chat_id: chat_id.to_string(),
-            content: body.content,
-            opaque_content: body.opaque_content,
-            pascal_meta: Value::Object(pascal_meta),
-            target_participant_ids,
-        },
-    )
-    .await;
 
     let messages = match posted {
         Some(p) => vec![p.message],

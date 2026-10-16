@@ -109,6 +109,11 @@ fn pascal_custom_tool_definition_matches_oracle() {
     let mut gates_testing_progress = 0usize;
     let mut defs_writing_progress = 0usize;
     let mut defs_testing_progress = 0usize;
+    // P4.D305: a definition row's mismatch is RECORDED and the walk continues,
+    // so one red row (a sibling lane's residue at a shared pin) cannot hide
+    // every row after it; the family still fails, naming each row.
+    let mut failed_rows: Vec<String> = Vec::new();
+    let mut defs_with_triggers = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<Row>(line).unwrap() {
             Row::Title { id, input, out } => {
@@ -127,57 +132,65 @@ fn pascal_custom_tool_definition_matches_oracle() {
                 let raw: Value = serde_json::from_str(&input_json)
                     .unwrap_or_else(|e| panic!("case '{id}': oracle input is not JSON: {e}"));
 
-                assert_eq!(
-                    collect_unknown_keys(&raw),
-                    unknown_keys,
-                    "collectUnknownKeys '{id}'"
-                );
+                let row_id = id.clone();
+                let walked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    assert_eq!(
+                        collect_unknown_keys(&raw),
+                        unknown_keys,
+                        "collectUnknownKeys '{id}'"
+                    );
 
-                match safe_parse(&raw) {
-                    Ok(tool) => {
-                        assert!(
-                            success,
-                            "case '{id}': v5 accepted, v4 rejected with: {reason:?}"
-                        );
-                        if tool
-                            .effects
-                            .iter()
-                            .flatten()
-                            .any(|e| e.target.starts_with("progress."))
-                        {
-                            defs_writing_progress += 1;
-                        }
-                        if tool
-                            .available_when
-                            .iter()
-                            .chain(tool.withheld_when.iter())
-                            .any(|g| g.progress.is_some())
-                            || tool
-                                .outcomes
+                    match safe_parse(&raw) {
+                        Ok(tool) => {
+                            assert!(
+                                success,
+                                "case '{id}': v5 accepted, v4 rejected with: {reason:?}"
+                            );
+                            if tool
+                                .effects
                                 .iter()
-                                .any(|o| matches!(&o.when, When::Object(w) if w.progress.is_some()))
-                        {
-                            defs_testing_progress += 1;
+                                .flatten()
+                                .any(|e| e.target.starts_with("progress."))
+                            {
+                                defs_writing_progress += 1;
+                            }
+                            if tool
+                                .available_when
+                                .iter()
+                                .chain(tool.withheld_when.iter())
+                                .any(|g| g.progress.is_some())
+                                || tool.outcomes.iter().any(
+                                    |o| matches!(&o.when, When::Object(w) if w.progress.is_some()),
+                                )
+                            {
+                                defs_testing_progress += 1;
+                            }
+                            if tool.triggers.is_some() {
+                                defs_with_triggers += 1;
+                            }
+                            let got = serde_json::to_string(&tool).unwrap();
+                            assert_eq!(
+                                got,
+                                data.unwrap_or_default(),
+                                "case '{id}': parsed data differs (key order included)"
+                            );
                         }
-                        let got = serde_json::to_string(&tool).unwrap();
-                        assert_eq!(
-                            got,
-                            data.unwrap_or_default(),
-                            "case '{id}': parsed data differs (key order included)"
-                        );
+                        Err(issues) => {
+                            let got = format_definition_issues(&issues);
+                            assert!(
+                                !success,
+                                "case '{id}': v5 rejected with '{got}', v4 accepted"
+                            );
+                            assert_eq!(
+                                got,
+                                reason.unwrap_or_default(),
+                                "case '{id}': rejection differs"
+                            );
+                        }
                     }
-                    Err(issues) => {
-                        let got = format_definition_issues(&issues);
-                        assert!(
-                            !success,
-                            "case '{id}': v5 rejected with '{got}', v4 accepted"
-                        );
-                        assert_eq!(
-                            got,
-                            reason.unwrap_or_default(),
-                            "case '{id}': rejection differs"
-                        );
-                    }
+                }));
+                if walked.is_err() {
+                    failed_rows.push(row_id);
                 }
                 defs += 1;
             }
@@ -244,6 +257,15 @@ fn pascal_custom_tool_definition_matches_oracle() {
         }
     }
 
+    assert!(
+        failed_rows.is_empty(),
+        "{} definition row(s) differ from the oracle: {failed_rows:?}",
+        failed_rows.len()
+    );
+    assert!(
+        defs_with_triggers > 0,
+        "no accepted definition row declares `triggers` (v4 `362426c8f`)"
+    );
     assert!(
         titles > 0 && defs > 0 && gates > 0,
         "oracle file looks empty: {titles} titles, {defs} definitions, {gates} gates"

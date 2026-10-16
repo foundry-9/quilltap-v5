@@ -70,6 +70,9 @@ import {
   MAX_MESSAGE_LENGTH,
   MAX_OUTCOMES,
   MAX_TITLE_LENGTH,
+  MAX_TRIGGERS,
+  MAX_TRIGGER_PHRASE_LENGTH,
+  MIN_TRIGGER_PHRASE_LENGTH,
 } from '@/lib/pascal/custom-tool.types';
 import { evaluateToolGate, hasToolGate } from '@/lib/pascal/tool-gate';
 // P4.D169: the writable-field rows are generated from v4's own exported list,
@@ -487,6 +490,39 @@ const corpus: Array<[string, unknown]> = [
   ['chip-label-over-cap', { ...BASE, chipLabel: 'x'.repeat(MAX_CHIP_LABEL_LENGTH + 1) }],
   ['chip-label-not-a-string', { ...BASE, chipLabel: 7 }],
   ['chip-label-null', { ...BASE, chipLabel: null }],
+
+  // ---- triggers (362426c8f) -----------------------------------------------
+  // Phrases that run the tool when said in the chat. Stored AS WRITTEN; the
+  // two refine rules (no padding, no case-fold repeat) are `validateTriggers`,
+  // the FIFTH superRefine step. Zod 4.6.7: an oversized list fails with its
+  // `too_big` alone (no element is parsed), and that issue aborts.
+  ['triggers-stored-as-written', { ...BASE, triggers: ['Open Sesame'] }],
+  ['triggers-at-cap', { ...BASE, triggers: Array.from({ length: MAX_TRIGGERS }, (_, i) => `phrase ${i}`) }],
+  ['triggers-over-cap', { ...BASE, triggers: Array.from({ length: MAX_TRIGGERS + 1 }, (_, i) => `phrase ${i}`) }],
+  ['triggers-empty-array', { ...BASE, triggers: [] }],
+  ['triggers-too-short', { ...BASE, triggers: ['ok'] }],
+  ['triggers-at-min', { ...BASE, triggers: ['x'.repeat(MIN_TRIGGER_PHRASE_LENGTH)] }],
+  ['triggers-over-long', { ...BASE, triggers: ['x'.repeat(MAX_TRIGGER_PHRASE_LENGTH + 1)] }],
+  ['triggers-at-max', { ...BASE, triggers: ['x'.repeat(MAX_TRIGGER_PHRASE_LENGTH)] }],
+  ['triggers-not-an-array', { ...BASE, triggers: 'abracadabra' }],
+  ['triggers-null', { ...BASE, triggers: null }],
+  ['triggers-element-not-a-string', { ...BASE, triggers: [7] }],
+  ['triggers-padded', { ...BASE, triggers: ['abracadabra', 'open sesame '] }],
+  ['triggers-case-duplicate', { ...BASE, triggers: ['Abracadabra', 'ABRACADABRA'] }],
+  // BOTH rules at one index, whitespace first.
+  ['triggers-padded-duplicate', { ...BASE, triggers: ['open sesame ', 'OPEN SESAME '] }],
+  // The map is never updated for a repeat: a third copy names the FIRST too.
+  ['triggers-third-copy-names-first', { ...BASE, triggers: ['a b c', 'A B C', 'a B c'] }],
+  // Fold-identity rows: the fold is lower-casing, not case-folding, and these
+  // are where a future `to_lowercase` / `toLocaleLowerCase` divergence shows.
+  ['triggers-unicode-fold', { ...BASE, triggers: ['Straße', 'STRASSE'] }],
+  ['triggers-turkish-i', { ...BASE, triggers: ['İstanbul', 'istanbul'] }],
+  ['triggers-final-sigma', { ...BASE, triggers: ['ΟΔΥΣΣΕΥΣ', 'οδυσσευς'] }],
+  // Issue ORDER across chipLabel → triggers → description.
+  ['triggers-with-chip-and-description-issues', { ...BASE, chipLabel: '', triggers: ['ok'], description: '' }],
+  ['shape-order-chip-triggers-description', { name: 'probe', description: 'A probe.', triggers: ['abracadabra'], chipLabel: 'Chip', outcomes: [{ when: true, message: '-', state: 'info' }] }],
+  // `triggers` is a KNOWN top-level key; `persist` stays reserved.
+  ['unknown-keys-triggers-known', { ...BASE, triggers: ['abracadabra'], persist: true }],
 
   // ---- effects: accepted --------------------------------------------------
   ['effect-literal-number', withEffects([{ target: 'state.encounter.count', value: 3 }])],

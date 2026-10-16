@@ -151,7 +151,8 @@
   "agentModeSettings": {
    "maxTurns": 1,
    "defaultEnabled": false
-  }
+  },
+  "customToolTriggers": true
  },
  "characters": [
   {
@@ -288,6 +289,24 @@
    "controlledBy": "llm",
    "talkativeness": 0.5,
    "connectionProfileId": "b1330005-0000-4000-8000-000000000135"
+  },
+  {
+   "id": "b0000305-0000-4000-8000-0000000000b1",
+   "name": "Bellman",
+   "description": "Keeps the bell tower.",
+   "aliases": [],
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
+  },
+  {
+   "id": "b0000305-0000-4000-8000-0000000000b2",
+   "name": "Ringer",
+   "description": "The user's bell-ringer.",
+   "aliases": [],
+   "controlledBy": "user",
+   "talkativeness": 0.5,
+   "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
   }
  ],
  "files": [
@@ -2553,6 +2572,26 @@
      "participantId": "e3710003-0000-4000-8000-000000000003"
     }
    ]
+  },
+  {
+   "id": "e0000305-0000-4000-8000-000000000305",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "e0305001-0000-4000-8000-0000000000b1",
+     "character": "b0000305-0000-4000-8000-0000000000b1",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "e0305002-0000-4000-8000-0000000000b2",
+     "character": "b0000305-0000-4000-8000-0000000000b2",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
   }
  ],
  "calls": [
@@ -3442,6 +3481,16 @@
    "fileIds": [
     "1f151001-0000-4000-8000-000000000001"
    ]
+  },
+  {
+   "name": "trigger_phrase",
+   "kind": "chain",
+   "chatId": "e0000305-0000-4000-8000-000000000305",
+   "content": "I ring the brass bell twice.",
+   "continueMode": false,
+   "streamLabel": "trigger_phrase",
+   "cheapLLMSettings": false,
+   "summaryCheck": false
   }
  ],
  "streams": {
@@ -5005,6 +5054,21 @@
      }
     }
    ]
+  ],
+  "trigger_phrase": [
+   [
+    {
+     "content": "Bellman hears the bell and bows."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 30,
+      "completionTokens": 7,
+      "totalTokens": 37
+     }
+    }
+   ]
   ]
  },
  "detection": {
@@ -5171,6 +5235,40 @@
    "provider": "OPENAI_COMPATIBLE",
    "keyValue": "k-oac-stored",
    "isActive": true
+  }
+ ],
+ "triggerTools": [
+  {
+   "_note": "P4.D305 (v4 362426c8f): the user-driven seat's vault carries a trigger-bearing tool gated on that seat's OWN sheet, so the responding character's roster (which reaches the vault through the participant tier) is offered nothing and no run_custom appears in the model's tools.",
+   "characterId": "b0000305-0000-4000-8000-0000000000b2",
+   "metadata": {
+    "bellRinger": true
+   },
+   "tool": {
+    "name": "bell",
+    "description": "Ring the brass bell.",
+    "triggers": [
+     "ring the brass bell"
+    ],
+    "availableWhen": {
+     "metadata": {
+      "bellRinger": {
+       "eq": true
+      }
+     }
+    },
+    "roll": {
+     "min": 0.5,
+     "max": 0.5
+    },
+    "outcomes": [
+     {
+      "when": true,
+      "message": "The bell rings out over the square.",
+      "state": "info"
+     }
+    ]
+   }
   }
  ]
 }

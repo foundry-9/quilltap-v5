@@ -63,6 +63,10 @@ pub struct CustomToolLibraryEntry {
     /// Whether the tool consults an LLM mid-run (v4 `616930db`). Declared
     /// after `rollForm` and before `parameterCount`, which is v4's own order.
     pub llm: bool,
+    /// How many trigger phrases the tool listens for, 0 = none (v4
+    /// `362426c8f`). Declared after `llm` and before `parameterCount`, which
+    /// is v4's own order.
+    pub trigger_count: usize,
     pub parameter_count: usize,
     pub outcome_count: usize,
     pub mount_point_id: String,
@@ -388,6 +392,7 @@ pub fn build_custom_tool_library(
                 _ => RollForm::Range,
             },
             llm: entry.definition.llm.is_some(),
+            trigger_count: entry.definition.triggers.as_ref().map_or(0, Vec::len),
             parameter_count: entry
                 .definition
                 .parameters

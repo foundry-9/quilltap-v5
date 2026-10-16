@@ -234,6 +234,10 @@ struct ToolMsgW {
 struct ChatSettingsW {
     auto_detect_rng: bool,
     answer_confirmation_enabled: bool,
+    /// P4.D305 (v4 `362426c8f`): the trigger-phrase setting the builder
+    /// writes onto the ONE user-level row (absent → `false`, C1's default).
+    #[serde(default)]
+    custom_tool_triggers: bool,
 }
 
 #[derive(Deserialize)]
@@ -311,6 +315,24 @@ impl CostTracker for RecordingCost {
             source: Some("unavailable".to_string()),
         }
     }
+}
+
+/// P4.D305: placeholder the minted `id` + `createdAt` of every `pascalResult`
+/// frame (both sides mint their own).
+fn normalize_pascal_frames(events: &Value) -> Value {
+    let mut events = events.clone();
+    if let Some(frames) = events.as_array_mut() {
+        for frame in frames {
+            if let Some(msg) = frame.get_mut("pascalResult").and_then(Value::as_object_mut) {
+                for (k, placeholder) in [("id", "<msgid>"), ("createdAt", "<ts>")] {
+                    if msg.get(k).is_some_and(Value::is_string) {
+                        msg.insert(k.to_string(), Value::String(placeholder.into()));
+                    }
+                }
+            }
+        }
+    }
+    events
 }
 
 /// The fixed carinaAnswer message both sides emit for a `carina` corpus case
@@ -824,6 +846,10 @@ fn message_finalizer_tier3_matches_oracle() {
                 cheap_llm_settings_present: true,
                 auto_detect_rng: Some(spec.chat_settings.auto_detect_rng),
                 answer_confirmation_global_enabled: spec.chat_settings.answer_confirmation_enabled,
+                // P4.D305: the stored row's `customTools` (its Zod default,
+                // `true`) and `customToolTriggers` as the builder writes it.
+                custom_tools: Some(true),
+                custom_tool_triggers: Some(spec.chat_settings.custom_tool_triggers),
             })
         } else {
             None
@@ -934,8 +960,16 @@ fn message_finalizer_tier3_matches_oracle() {
             .unwrap_or_else(|| panic!("oracle events missing for {name}"));
         // Whole-frame compare: P4.D173's `routeTrail` on the `done` frame is a
         // comparand of its own now that both stacked lanes are on one branch
-        // (the P4.D172-era subtraction retired at unification).
-        assert_eq!(got, want, "event trace mismatch for call {name}");
+        // (the P4.D172-era subtraction retired at unification). P4.D305: a
+        // `pascalResult` frame (a triggered run's live post) carries a minted
+        // `id` + `createdAt` on each side — placeholdered; the rest (content,
+        // `pascalMeta` with `invokedBy` / `triggerPhrase`) and its POSITION in
+        // the trace (after the reply's frames, before `done`) are compared.
+        assert_eq!(
+            normalize_pascal_frames(got),
+            normalize_pascal_frames(want),
+            "event trace mismatch for call {name}"
+        );
     }
 
     // --- 3. seam records ---
@@ -995,6 +1029,51 @@ fn message_finalizer_tier3_matches_oracle() {
     normalize_vs_prerun(&mut want_files, &pre_files, &["updatedAt"]);
     assert_table_eq("files", &got_files, &want_files);
 
+    // === P4.D305: the reply trigger site, by name ===
+    // The character's reply says the phrase: Pascal's post lands AFTER the
+    // saved reply (insertion order — the table compare above is id-sorted) and
+    // its `pascalResult` frame comes after the reply's frames, before `done`.
+    {
+        const ROOM: &str = "f5000305-0000-4000-8000-000000000305";
+        let order: Vec<(String, Option<String>)> = db
+            .read_main(|c| {
+                let mut st = c.prepare(
+                    "SELECT role, systemSender FROM chat_messages WHERE chatId = ?1 ORDER BY rowid",
+                )?;
+                let rows = st
+                    .query_map([ROOM], |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .unwrap();
+        assert_eq!(
+            order,
+            vec![
+                ("USER".to_string(), None),
+                ("ASSISTANT".to_string(), None),
+                ("ASSISTANT".to_string(), Some("pascal".to_string())),
+            ],
+            "trigger-phrase-reply: the Pascal row lands after the saved reply"
+        );
+        let events = &got_events
+            .iter()
+            .find(|(n, _)| n == "trigger-phrase-reply")
+            .expect("the trigger-phrase-reply call ran")
+            .1;
+        let frames = events.as_array().expect("an event array");
+        let pascal = frames.iter().position(|e| e.get("pascalResult").is_some());
+        let done = frames.iter().position(|e| e.get("done").is_some());
+        assert!(
+            pascal.is_some() && pascal < done,
+            "trigger-phrase-reply: the pascalResult frame precedes done ({pascal:?} vs {done:?})"
+        );
+        assert_eq!(
+            frames[pascal.unwrap()].pointer("/pascalResult/pascalMeta/invokedBy"),
+            Some(&json!("trigger"))
+        );
+    }
+    // === end P4.D305 ===
+
     // Clean up scratch.
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);
@@ -1003,14 +1082,19 @@ fn message_finalizer_tier3_matches_oracle() {
 /// Remap TOOL-role rows' minted ids (`saveToolMessages` uses `crypto.randomUUID`)
 /// to content-sorted tokens, then re-sort the whole rows array by id — so the two
 /// sides' TOOL rows (identical pinned content, different minted ids) line up. A
-/// no-op when there are no TOOL rows.
+/// no-op when there are no TOOL rows. P4.D305: a Pascal post (a triggered run's
+/// `postPascalResult` mints its own id too) is remapped the same way.
 fn normalize_tool_row_ids(dump: &mut Value) {
     let Some(rows) = dump.get_mut("rows").and_then(Value::as_array_mut) else {
         return;
     };
+    let minted = |r: &Value| {
+        r.get("role").and_then(Value::as_str) == Some("TOOL")
+            || r.get("systemSender").and_then(Value::as_str) == Some("pascal")
+    };
     let mut tool: Vec<(String, String)> = rows
         .iter()
-        .filter(|r| r.get("role").and_then(Value::as_str) == Some("TOOL"))
+        .filter(|r| minted(r))
         .map(|r| {
             (
                 r.get("content")
@@ -1031,7 +1115,7 @@ fn normalize_tool_row_ids(dump: &mut Value) {
         .map(|(i, (_content, id))| (id, format!("tool{i}")))
         .collect();
     for row in rows.iter_mut() {
-        if row.get("role").and_then(Value::as_str) == Some("TOOL") {
+        if minted(row) {
             if let Some(tok) = row
                 .get("id")
                 .and_then(Value::as_str)

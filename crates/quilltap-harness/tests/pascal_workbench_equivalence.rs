@@ -166,7 +166,16 @@ fn workbench_matches_oracle() {
     // branch fails loudly rather than passing on a thinner world.
     let library = &oracle["library"]["value"];
     let tools = library["tools"].as_array().expect("tools array");
-    assert_eq!(tools.len(), 8, "library tool count");
+    // P4.D305: 9 since `theta` (two `triggers`) joined the general store.
+    assert_eq!(tools.len(), 9, "library tool count");
+    let counts: Vec<u64> = tools
+        .iter()
+        .filter_map(|t| t.get("triggerCount").and_then(Value::as_u64))
+        .collect();
+    assert!(
+        counts.contains(&0) && counts.contains(&2),
+        "the library must carry triggerCount 0 AND 2 (got {counts:?})"
+    );
     assert_eq!(
         library["errors"].as_array().map(Vec::len),
         Some(1),

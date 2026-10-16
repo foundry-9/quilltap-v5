@@ -38,9 +38,19 @@
  *   QT_FIXTURE_CI_MOUNT=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db \
  *     npx tsx <V5W>/harness/oracle/fixtures/build-pascal-run-custom-fixture.ts
  *
+ * P4.D305 (v4 `362426c8f`): the TRIGGER-PHRASE room — `c1…07`, its project
+ * "The Trigger Shelf" and the linked "Trigger Shelf" store holding every
+ * trigger-bearing tool (`pascal-run-custom-triggers.ts`, shared) — plus
+ * `blessed: true` on CHAR_A's sheet. The COMMITTED pair got them through the
+ * in-place widen `extend-pascal-run-custom-triggers.ts` (a fresh build at the
+ * `25b8fab6a` pin comes out a migration vintage BEHIND the committed pair —
+ * memory note `rebuilt-fixture-pair-vintage` — and re-mints every vault id);
+ * this builder carries the same room so a future full rebuild keeps it.
+ *
  * ⚠ A rebuild MINTS FRESH character-vault mount ids, so every family that reads
  * this fixture must be regenerated and re-run afterwards:
  * `pascal_custom_tools_route_equivalence`, `pascal_run_custom_handler_equivalence`,
+ * `pascal_trigger_runner_equivalence`,
  * `pascal_definition_reader_equivalence` (all oracle-backed) and
  * `pascal_build_tools_roster` (fixture-direct). The e2e seed reads `vaultA` from
  * the `.meta.json` sidecar, so it follows on its own.
@@ -115,6 +125,7 @@ const P4_B = 'e4000000-0000-4000-8000-00000000000b';
 const P4_C = 'e4000000-0000-4000-8000-00000000000c';
 const P5_A = 'e5000000-0000-4000-8000-00000000000a';
 const P6_A = 'e6000000-0000-4000-8000-00000000000a';
+
 const P6_B = 'e6000000-0000-4000-8000-00000000000b';
 const P6_C = 'e6000000-0000-4000-8000-00000000000c';
 
@@ -597,6 +608,9 @@ async function main(): Promise<void> {
         timeIncrement: 'day',
       },
     },
+    // P4.D305: the sheet the trigger room's `seer` gate reads (LAST, where the
+    // in-place widen of the committed pair appended it).
+    blessed: true,
   });
 
   await writeVaultFile(vaultB, 'Tools/ansible.tool.json', ANSIBLE);
@@ -807,6 +821,11 @@ async function main(): Promise<void> {
     mkParticipant(P6_B, CHAR_B, 'user', 'removed'),
     mkParticipant(P6_C, CHAR_C, 'user', 'silent'),
   ]);
+
+  // P4.D305: the trigger-phrase room (shared with the in-place widen script
+  // `extend-pascal-run-custom-triggers.ts`, which put it into the committed pair).
+  const { addTriggerRoom } = await import('./pascal-run-custom-triggers');
+  await addTriggerRoom({ repos, writeVaultFile, userId: spec.userId, ts: TS, mkParticipant });
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

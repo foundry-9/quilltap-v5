@@ -625,6 +625,8 @@ fn answer_confirmation_tier3_matches_oracle() {
             cheap_llm_settings_present: true,
             auto_detect_rng: Some(false),
             answer_confirmation_global_enabled: call.global_enabled,
+            custom_tools: None,
+            custom_tool_triggers: None,
         });
 
         // W4.3 confirmation inputs (feature ON).

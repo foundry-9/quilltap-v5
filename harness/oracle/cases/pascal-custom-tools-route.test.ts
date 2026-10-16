@@ -74,6 +74,19 @@ interface CaseSpec {
   nowMs?: number;
 }
 
+/**
+ * P4.D305: the log lines this family pins — the run path's lines v5 ports (the
+ * run service's and the route's own). The GET's roster lines are not compared.
+ */
+const PINNED_MESSAGES = new Set([
+  'Custom tool run: state cascade unavailable, defaulting to {}',
+  'Custom tool run refused',
+  'Custom tool dealt',
+  'Manual custom-tool run named an unknown tool',
+  'Manual custom-tool run refused',
+  '[Pascal] Manual custom-tool run completed',
+]);
+
 /** See `CaseSpec.nowMs`. 2026-08-29T12:00:00Z, the fixture's spans' anchor. */
 const PASCAL_NOW_MS = 1_788_004_800_000;
 
@@ -272,6 +285,22 @@ async function runCase(
   // A fresh llm-logs DB per case for the un-mocked logLLMCall (P4.6bd).
   process.env.SQLITE_LLM_LOGS_PATH = join(work, 'llm-logs.db');
 
+  // P4.D305: v4's log lines, through the singleton logger's shared transports
+  // (memory note `v4-oracle-job-host-and-log-capture` §2).
+  process.env.LOG_LEVEL = 'debug';
+  const { logger } = await import('@/lib/logger');
+  const logs: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as { level: string; message: string; context?: Record<string, unknown>; error?: { message: string } };
+      if (!PINNED_MESSAGES.has(data.message)) return;
+      const { service: _s, environment: _e, ...fields } = (data.context ?? {}) as Record<string, unknown>;
+      if (data.error) fields.error = data.error.message;
+      logs.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+    },
+  });
+
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
@@ -388,6 +417,7 @@ async function runCase(
       status,
       body,
       systemRows,
+      logs,
       stores: c.method === 'POST' ? await dumpStores(chatId) : null,
       canned: Array.from(cannedRecorded.values()),
       llmLogs,
@@ -548,6 +578,16 @@ async function main(): Promise<void> {
     // The empty-string seat, which the four truthiness gates read as "nobody
     // named" — this must match `run-progress-effect-no-character` exactly.
     { name: 'run-progress-effect-as-empty-string', method: 'POST', body: { tool: 'recharge', asCharacterId: '' }, nowMs: PASCAL_NOW_MS },
+
+    // ---- P4.D305 (v4 `362426c8f`): the run service's two route changes ----
+    // `whispered` declares `defaultVisibility: 'whisper'`. With NO `private`,
+    // the run is whispered by the DEFINITION: targeted to the operator's
+    // userId and answered `whispered: true` (the baseline read
+    // `body.private === true`, so it posted to the room and said `false`).
+    { name: 'run-default-whisper-no-private', method: 'POST', body: { tool: 'whispered', asCharacterId: CHAR_A } },
+    // ...and its REFUSAL (a parameter nobody declared): the Prospero bubble is
+    // whispered too — `body.private ?? defaultVisibility === 'whisper'`.
+    { name: 'run-default-whisper-refused-no-private', method: 'POST', body: { tool: 'whispered', asCharacterId: CHAR_A, parameters: { nobody: 1 } } },
   ];
 
   const out = fs.createWriteStream(outPath);

@@ -327,7 +327,18 @@ pub struct PascalMetaIn {
     /// applied none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effects: Option<Vec<PascalMetaEffectIn>>,
+    /// `'llm'` (a model's `run_custom`), `'user'` (the operator's Run Tool) or
+    /// `'trigger'` (a phrase said in the chat, v4 `362426c8f`). Deliberately a
+    /// plain `String`, never a closed enum: a narrowing here would REFUSE rows a
+    /// newer v4 writes, and v4 itself validates the enum only on the way IN of
+    /// a `.qtap`.
     pub invoked_by: String,
+    /// The phrase that fired a triggered run, AS WRITTEN in the definition
+    /// (v4 `362426c8f`). Declared between `invokedBy` and
+    /// `callerParticipantId` — `chat.types.ts`'s order, so the wire's — and
+    /// present only on a `'trigger'` run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger_phrase: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub caller_participant_id: Option<String>,
 }
@@ -1197,6 +1208,27 @@ mod pascal_meta_tests {
 
         // Re-serialized byte-for-byte, key order included.
         assert_eq!(serde_json::to_string(&parsed).unwrap(), wire);
+    }
+
+    /// P4.D305 (v4 `362426c8f`): a triggered run carries `invokedBy:
+    /// 'trigger'` + `triggerPhrase`, and the phrase sits BETWEEN `invokedBy`
+    /// and `callerParticipantId` — compared as bytes, since `Map ==` ignores
+    /// key order. A `'user'` row carries NO `triggerPhrase` key at all (absent,
+    /// not `null`).
+    #[test]
+    fn pascal_meta_trigger_phrase_round_trips_in_key_order() {
+        let wire = r#"{"tool":"spell","toolTitle":"Spell","definitionTier":"character","definitionMountId":"m1","params":{},"rollForm":"range","raw":0.5,"value":1,"state":"success","outcomeIndex":0,"invokedBy":"trigger","triggerPhrase":"Open Sesame","callerParticipantId":"p1"}"#;
+        let parsed: PascalMetaIn = serde_json::from_str(wire).expect("pascalMeta parses");
+        assert_eq!(parsed.invoked_by, "trigger");
+        assert_eq!(parsed.trigger_phrase.as_deref(), Some("Open Sesame"));
+        assert_eq!(serde_json::to_string(&parsed).unwrap(), wire);
+
+        let user = r#"{"tool":"spell","definitionTier":"chat","definitionMountId":"m1","params":{},"rollForm":"range","raw":0.5,"value":1,"state":"success","outcomeIndex":0,"invokedBy":"user"}"#;
+        let parsed: PascalMetaIn = serde_json::from_str(user).expect("pascalMeta parses");
+        assert_eq!(parsed.trigger_phrase, None);
+        let back = serde_json::to_string(&parsed).unwrap();
+        assert_eq!(back, user);
+        assert!(!back.contains("triggerPhrase"));
     }
 }
 

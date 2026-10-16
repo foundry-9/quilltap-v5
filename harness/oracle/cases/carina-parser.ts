@@ -19,7 +19,7 @@
  *     > /tmp/oracle-carina-parser.ndjson
  */
 
-import { parseCarinaQuery } from '@/lib/chat/carina-parser';
+import { parseCarinaQuery, stripCarinaQueryLines } from '@/lib/chat/carina-parser';
 
 interface Row {
   id: string;
@@ -182,3 +182,33 @@ const rows: Row[] = cases.map(([id, content]) => ({
 }));
 
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');
+
+// ---- stripCarinaQueryLines (362426c8f) — a second row kind ------------------
+// The trigger scanner strips every line the parser would answer, so a question
+// addressed to Carina is never read as words spoken in the scene. Driven over
+// v4's own four test inputs, EVERY parse input above (the strip and the parse
+// must agree line by line), and the separator edges. `null` content rows are
+// left out: the port's strip takes text, and v4's `if (!text) return text`
+// passes `null` through untouched.
+const stripCases: Array<[string, string]> = [
+  ['strip-v4-two-queries-one-spoken', '@Alice: one\nsaid aloud\n@Bob? two'],
+  ['strip-v4-middle-smart-quotes', 'before\n@Alice: “what is it?”\nafter'],
+  ['strip-v4-non-parsing-lines-kept', 'say @Alice: hi\n@Alice:\n@X: y'],
+  ['strip-v4-crlf-normalised', 'a\r\n@Alice: q\r\nb'],
+  ['strip-v4-empty', ''],
+  ['strip-empty-query-kept-real-removed', '@Alice:\n@Alice: real'],
+  ['strip-mixed-crlf-lf', 'one\r\ntwo\n@Bob: q\r\nthree\nfour'],
+  ['strip-lone-cr-inside-line', 'a\rb\n@Bob: q\rstill the question'],
+  ['strip-trailing-newline', 'a\n'],
+  ['strip-trailing-crlf', 'a\r\n'],
+  ['strip-only-a-query', '@Alice: abracadabra'],
+  ['strip-u2028-inside-line', 'a\u2028b\n@Bob: q\u2028r'],
+  ['strip-all-queries', '@Alice: one\n@Bob? two\r\n@Carol: three'],
+  ...cases
+    .filter((c): c is [string, string] => typeof c[1] === 'string')
+    .map(([id, content]): [string, string] => [`strip-of-${id}`, content]),
+];
+
+for (const [id, content] of stripCases) {
+  process.stdout.write(JSON.stringify({ id, kind: 'strip', content, out: stripCarinaQueryLines(content) }) + '\n');
+}
