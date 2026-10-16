@@ -783,6 +783,10 @@ fn run_custom_handler_matches_oracle() {
             // clock-independent case takes the shared default, which is what
             // the pre-progression rows have always run against.
             now_ms: case_now_ms(want),
+            // The oracle's handler context carries no announcement set (v4's
+            // `pendingWardrobeAnnouncements` is the executor's), so neither
+            // does this one.
+            pending_wardrobe_announcements: None,
         };
         let mut rng = FixedBytes::new(vec![]);
         // The REAL consult invoker, exactly as v4's handler builds one. For the

@@ -35,6 +35,15 @@
 //! discipline by another road — but the read-once rule and its consequence are
 //! identical, so the behavior is unchanged.)
 //!
+//! ## Wardrobe gestures go after the writes
+//!
+//! A `wardrobe` effect is not a write into any of these stores; it is a
+//! sequence of outfit changes through the wardrobe chokepoint, applied by
+//! [`super::wardrobe_effects::apply_wardrobe_effects`] AFTER every write here
+//! has committed (v4 `f0db8cbb8`), so a `metadata.` write and a gesture in one
+//! tool never interleave their store reads. The two applied lists are merged
+//! back into effect order for the record.
+//!
 //! ## Never fails the run
 //!
 //! The roll already happened and Pascal still announces. Each store's write is
@@ -56,8 +65,15 @@ use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use serde_json::{Map, Value};
 
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
+
 use super::custom_tool_types::EffectTarget;
-use super::custom_tools::ResolvedEffect;
+use super::custom_tools::{ResolvedEffect, ResolvedWardrobeGesture};
+use super::wardrobe_effects::{
+    apply_wardrobe_effects, finish_wardrobe_effects, ApplyWardrobeEffectsParams,
+    IndexedAppliedEffect,
+};
 use crate::clock::iso_from_unix_ms;
 use crate::db::runtime::WriterSet;
 use crate::progressions::{
@@ -88,14 +104,18 @@ impl EffectTier {
     }
 }
 
-/// One write that actually landed — the shape `pascalMeta.effects` records.
+/// One write or wardrobe change that actually landed — the shape
+/// `pascalMeta.effects` records.
 ///
 /// Serialization is payload: this rides into a persisted `pascalMeta`, so the
 /// key order is v4's object literal — `target`, then `previous` ONLY when the
 /// store held something, then `next`, then `tier` on state writes alone.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AppliedEffect {
-    /// The effect's raw target (`"state.encounter.count"`, `"metadata.lockpick"`).
+    /// The effect's raw target (`"state.encounter.count"`, `"metadata.lockpick"`),
+    /// or for a wardrobe change one of `"wardrobe.wear"` / `"wardrobe.take_off"` /
+    /// `"wardrobe.clear_slot"` (its `previous` / `next` are then the slots
+    /// before — ALWAYS present — and a `WardrobeEffectRecord`; no `tier`).
     pub target: String,
     /// What the store held before, when it held anything. `Some(Value::Null)` is
     /// a stored `null` and DOES serialize; `None` is v4's `undefined` and does
@@ -124,6 +144,10 @@ impl Serialize for AppliedEffect {
 
 /// Everything the applier needs, read once at run start.
 pub struct ApplyCustomToolEffectsParams<'a> {
+    /// v4's REQUIRED `userId` (`f0db8cbb8`) — the wardrobe pass's notify needs
+    /// it. v5's notify runs after the write ([`apply_effects_for_run`]), so the
+    /// in-write half reads it only to hand the pass's call its v4 shape.
+    pub user_id: &'a str,
     pub chat_id: &'a str,
     pub tool_name: &'a str,
     /// The core's resolved effects; skipped entries are ignored here.
@@ -168,15 +192,21 @@ struct Plan {
     /// The character's fact sheet with every metadata effect folded in, `None`
     /// when no metadata effect applied.
     metadata_next: Option<Map<String, Value>>,
-    pending: Vec<(Store, AppliedEffect)>,
+    pending: Vec<(Store, AppliedEffect, usize)>,
 }
 
-/// Apply a run's resolved effects. Returns the writes that landed, in effect
-/// order, for `pascalMeta.effects`. Never fails the run.
+/// Apply a run's resolved effects (v4 `applyCustomToolEffects`): the value
+/// writes first ([`commit_plan`], read-once / commit-once per store), THEN the
+/// wardrobe gestures through [`apply_wardrobe_effects`] — after every write
+/// has committed, so a `metadata.` write and a gesture in one tool never
+/// interleave their store reads. The two applied lists merge back into effect
+/// order ([`merge_applied`]). Returns the landed effects for
+/// `pascalMeta.effects` and whether a wardrobe change landed (the caller then
+/// runs the after-commit notify). Never fails the run.
 pub fn apply_custom_tool_effects(
     writers: &mut WriterSet,
     params: ApplyCustomToolEffectsParams<'_>,
-) -> Vec<AppliedEffect> {
+) -> (Vec<AppliedEffect>, bool) {
     let chat_id = params.chat_id;
     let tool_name = params.tool_name;
     let cascade = params.cascade;
@@ -187,26 +217,74 @@ pub fn apply_custom_tool_effects(
         metadata_next,
         pending,
     } = plan_applications(&params);
-    if pending.is_empty() {
-        return Vec::new();
-    }
+    let writes = if pending.is_empty() {
+        Vec::new()
+    } else {
+        commit_plan(
+            writers,
+            chat_id,
+            tool_name,
+            cascade,
+            character_id,
+            tiers,
+            metadata_next,
+            pending,
+        )
+    };
 
-    commit_plan(
-        writers,
-        chat_id,
-        tool_name,
-        cascade,
-        character_id,
-        tiers,
-        metadata_next,
-        pending,
-    )
+    // Gestures after the writes have committed — see the module header. The
+    // pass is NOT called without one (v4's test).
+    let gestures = wardrobe_gestures(params.effects);
+    let (changes, changed) = if gestures.is_empty() {
+        (Vec::new(), false)
+    } else {
+        apply_wardrobe_effects(
+            writers.main().connection(),
+            writers.mount_index().map(|w| w.connection()),
+            ApplyWardrobeEffectsParams {
+                chat_id,
+                tool_name,
+                character_id,
+                gestures: &gestures,
+            },
+        )
+    };
+
+    (merge_applied(writes, changes), changed)
+}
+
+/// v4 `effects.filter(isApplicableWardrobeEffect)`, each with its index.
+fn wardrobe_gestures(effects: &[ResolvedEffect]) -> Vec<(usize, &ResolvedWardrobeGesture)> {
+    effects
+        .iter()
+        .filter_map(|e| match e {
+            ResolvedEffect::Wardrobe { index, wardrobe } => Some((*index, wardrobe)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// v4's merge: no wardrobe change → the writes as they are; otherwise both
+/// lists by effect index with a STABLE sort, so entries of one effect keep
+/// their own order (a write at index 1 sits between two wear records at 0 and
+/// a clear at 2). `slice::sort_by_key` is stable, as V8's `sort` is.
+fn merge_applied(
+    writes: Vec<IndexedAppliedEffect>,
+    changes: Vec<IndexedAppliedEffect>,
+) -> Vec<AppliedEffect> {
+    if changes.is_empty() {
+        return writes.into_iter().map(|w| w.applied).collect();
+    }
+    let mut all: Vec<IndexedAppliedEffect> = writes.into_iter().chain(changes).collect();
+    all.sort_by_key(|w| w.index);
+    all.into_iter().map(|w| w.applied).collect()
 }
 
 /// The pure half: decide WHERE each applicable effect goes and what it writes,
 /// mutating only local copies. Never touches a store.
 fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
     let &ApplyCustomToolEffectsParams {
+        user_id: _,
         chat_id,
         tool_name,
         effects,
@@ -218,10 +296,14 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
 
     // v4 `effects.filter(isApplicableEffect)`. The resolved value is a
     // primitive; `to_value` is the JSON form the stores actually hold.
-    let applicable: Vec<(&EffectTarget, Value)> = effects
+    let applicable: Vec<(usize, &EffectTarget, Value)> = effects
         .iter()
         .filter_map(|e| match e {
-            ResolvedEffect::Applicable { target, value, .. } => Some((target, value.to_value())),
+            ResolvedEffect::Applicable {
+                index,
+                target,
+                value,
+            } => Some((*index, target, value.to_value())),
             // v4 `isApplicableWriteEffect` — the write filter stays write-only;
             // the gestures are `wardrobe_effects`' business, after the writes.
             ResolvedEffect::Wardrobe { .. } | ResolvedEffect::Skipped { .. } => None,
@@ -260,10 +342,11 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
         );
     };
 
-    // Applications in effect order, each tagged with the store it rode.
-    let mut pending: Vec<(Store, AppliedEffect)> = Vec::new();
+    // Applications in effect order, each tagged with the store it rode and
+    // its effect's index (v4 `f0db8cbb8`: the wardrobe pass merges back by it).
+    let mut pending: Vec<(Store, AppliedEffect, usize)> = Vec::new();
 
-    for (target, value) in &applicable {
+    for (index, target, value) in &applicable {
         match target {
             EffectTarget::Metadata { key, raw } => {
                 let Some(_) = character_id else {
@@ -282,6 +365,7 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
                         next: value.clone(),
                         tier: None,
                     },
+                    *index,
                 ));
             }
 
@@ -342,6 +426,7 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
                                 next: next_value,
                                 tier: None,
                             },
+                            *index,
                         ));
                     }
                 }
@@ -395,6 +480,7 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
                         next: value.clone(),
                         tier: Some(tier),
                     },
+                    *index,
                 ));
             }
         }
@@ -471,8 +557,10 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
         };
         !dropped_progressions.iter().any(|d| d == id)
     };
-    let pending: Vec<(Store, AppliedEffect)> =
-        pending.into_iter().filter(|(_, e)| survived(e)).collect();
+    let pending: Vec<(Store, AppliedEffect, usize)> = pending
+        .into_iter()
+        .filter(|(_, e, _)| survived(e))
+        .collect();
 
     Plan {
         tiers,
@@ -670,11 +758,11 @@ fn commit_plan(
     character_id: Option<&str>,
     tiers: Option<[Value; 4]>,
     metadata_next: Option<Map<String, Value>>,
-    pending: Vec<(Store, AppliedEffect)>,
-) -> Vec<AppliedEffect> {
+    pending: Vec<(Store, AppliedEffect, usize)>,
+) -> Vec<IndexedAppliedEffect> {
     let touched: Vec<Store> = {
         let mut seen: Vec<Store> = Vec::new();
-        for (store, _) in &pending {
+        for (store, _, _) in &pending {
             if !seen.contains(store) {
                 seen.push(*store);
             }
@@ -795,19 +883,23 @@ fn commit_plan(
         );
     }
 
-    let applied: Vec<AppliedEffect> = pending
+    let applied: Vec<IndexedAppliedEffect> = pending
         .into_iter()
-        .filter(|(store, _)| !failed.contains(store))
-        .map(|(_, entry)| entry)
+        .filter(|(store, _, _)| !failed.contains(store))
+        .map(|(_, entry, index)| IndexedAppliedEffect {
+            index,
+            applied: entry,
+        })
         .collect();
 
+    // WRITES only — the wardrobe pass logs its own line.
     if !applied.is_empty() {
         tracing::debug!(
             target: "quilltap::pascal",
             context = CONTEXT,
             chat_id,
             tool = tool_name,
-            applied = ?applied.iter().map(|e| e.target.as_str()).collect::<Vec<_>>(),
+            applied = ?applied.iter().map(|e| e.applied.target.as_str()).collect::<Vec<_>>(),
             "Custom tool effects applied",
         );
     }
@@ -815,17 +907,23 @@ fn commit_plan(
     applied
 }
 
-/// The shape both entrances call: `result.effects?.length ? await
+/// The shape the run service calls: `result.effects?.length ? await
 /// applyCustomToolEffects({…}) : []`, wrapped in the one
-/// [`Db::write`](crate::db::runtime::Db::write) closure the applier needs.
+/// [`Db::write`](crate::db::runtime::Db::write) closure the applier needs —
+/// and, once that write returns, the wardrobe pass's after-commit half
+/// ([`finish_wardrobe_effects`]: the ONE notify, then its `applied` DEBUG).
 ///
-/// Shared rather than written twice because v4 writes the same six lines in
-/// `run-custom-handler.ts` and the chat route, and the ONE deliberate asymmetry
-/// between them (`characterId`) is the caller's argument, not this function's
-/// business — the manual route passes `None` for a run nobody made, so an
-/// unattributed operator roll cannot edit an arbitrary character's sheet.
+/// `character_id` is the caller's argument, not this function's business — the
+/// manual route passes `None` for a run nobody made, so an unattributed
+/// operator roll cannot edit an arbitrary character's sheet or wardrobe.
+/// `pending` is the turn's wardrobe announcement set, `Some` only when the run
+/// came through the model's `run_custom` (v4 threads it from the executor);
+/// the manual route and the trigger runner pass `None`, as v4's pass nothing,
+/// so their changes enqueue the announcement at once.
+#[allow(clippy::too_many_arguments)]
 pub async fn apply_effects_for_run(
     db: &crate::db::runtime::Db,
+    user_id: &str,
     chat_id: &str,
     result: &super::custom_tools::CustomToolRunResult,
     cascade: Option<StateCascadeResult>,
@@ -834,25 +932,29 @@ pub async fn apply_effects_for_run(
     // The run's one clock reading, threaded from the entrance — the same instant
     // the roster's gates, the progress sheet and `{{now}}` used.
     now_ms: i64,
+    pending: Option<&Arc<Mutex<HashSet<String>>>>,
 ) -> Vec<AppliedEffect> {
     let effects = match &result.effects {
         Some(e) if !e.is_empty() => e.clone(),
         _ => return Vec::new(),
     };
 
+    let user_id_owned = user_id.to_string();
     let chat_id_owned = chat_id.to_string();
     let tool_name = result.tool.clone();
     let metadata = metadata_snapshot.clone();
+    let character = character_id.clone();
     let outcome = db
         .write(move |writers| {
             Ok(apply_custom_tool_effects(
                 writers,
                 ApplyCustomToolEffectsParams {
+                    user_id: &user_id_owned,
                     chat_id: &chat_id_owned,
                     tool_name: &tool_name,
                     effects: &effects,
                     cascade: cascade.as_ref(),
-                    character_id: character_id.as_deref(),
+                    character_id: character.as_deref(),
                     metadata_snapshot: &metadata,
                     now_ms,
                 },
@@ -861,7 +963,27 @@ pub async fn apply_effects_for_run(
         .await;
 
     match outcome {
-        Ok(applied) => applied,
+        Ok((applied, changed)) => {
+            if let (true, Some(character_id)) = (changed, character_id.as_deref()) {
+                // v4 logs the WARDROBE list here, not the merged one.
+                let targets: Vec<&str> = applied
+                    .iter()
+                    .map(|a| a.target.as_str())
+                    .filter(|t| t.starts_with("wardrobe."))
+                    .collect();
+                finish_wardrobe_effects(
+                    db,
+                    user_id,
+                    chat_id,
+                    &result.tool,
+                    character_id,
+                    &targets,
+                    pending,
+                )
+                .await;
+            }
+            applied
+        }
         // v5-only: the writer task is gone. v4 has no analogue, and the
         // module's promise is that nothing here fails a roll that already
         // happened — so this lands where a failed store lands, with the effects
@@ -934,10 +1056,27 @@ fn resolve_tier(
 pub mod differential {
     use super::*;
 
+    /// The wardrobe pass's argument object, as v4's mocked
+    /// `applyWardrobeEffects` records it (`f0db8cbb8`): who, where, which tool,
+    /// and the applicable gestures with their indices. v4's turn set rides this
+    /// call; v5's rides [`apply_effects_for_run`] beside it (the notify is
+    /// after the write), so it is not echoed here.
+    pub struct WardrobeCall {
+        pub user_id: String,
+        pub chat_id: String,
+        pub tool_name: String,
+        pub character_id: Option<String>,
+        pub gestures: Vec<(usize, ResolvedWardrobeGesture)>,
+    }
+
     /// What a run would have written, per store — the mocked repositories' view.
     pub struct PlannedRun {
-        /// The applier's return value: the writes that landed, in effect order.
+        /// The applier's return value: the writes that landed merged with the
+        /// scripted wardrobe changes, in effect order.
         pub applied: Vec<AppliedEffect>,
+        /// The wardrobe pass's call, `None` when the run had no applicable
+        /// gesture (v4 never calls it then).
+        pub wardrobe_call: Option<WardrobeCall>,
         /// The whole `metadata` object the ONE character write would carry, or
         /// `None` when no character write happens (nobody rolled, no metadata
         /// or progress effect applied, or every progress write rolled back).
@@ -947,11 +1086,32 @@ pub mod differential {
         pub state_writes: Vec<(EffectTier, Option<String>, Value)>,
     }
 
-    /// Plan a run without committing it.
-    pub fn plan_run(params: ApplyCustomToolEffectsParams<'_>) -> PlannedRun {
+    /// Plan a run without committing it. `wardrobe_plan` is what the wardrobe
+    /// pass would return (the harness scripts it, as v4's suite mocks it); the
+    /// merge is the production [`merge_applied`].
+    pub fn plan_run(
+        params: ApplyCustomToolEffectsParams<'_>,
+        wardrobe_plan: Option<Vec<IndexedAppliedEffect>>,
+    ) -> PlannedRun {
         let chat_id = params.chat_id;
         let cascade = params.cascade;
         let character_id = params.character_id;
+
+        let gestures = wardrobe_gestures(params.effects);
+        let (wardrobe_call, changes) = if gestures.is_empty() {
+            (None, Vec::new())
+        } else {
+            (
+                Some(WardrobeCall {
+                    user_id: params.user_id.to_string(),
+                    chat_id: chat_id.to_string(),
+                    tool_name: params.tool_name.to_string(),
+                    character_id: character_id.map(str::to_string),
+                    gestures: gestures.iter().map(|(i, g)| (*i, (*g).clone())).collect(),
+                }),
+                wardrobe_plan.unwrap_or_default(),
+            )
+        };
 
         let Plan {
             tiers,
@@ -963,7 +1123,8 @@ pub mod differential {
         // applies, so no store is observed at all.
         if pending.is_empty() {
             return PlannedRun {
-                applied: Vec::new(),
+                applied: merge_applied(Vec::new(), changes),
+                wardrobe_call,
                 character_write: None,
                 state_writes: Vec::new(),
             };
@@ -971,7 +1132,7 @@ pub mod differential {
 
         let touched: Vec<Store> = {
             let mut seen: Vec<Store> = Vec::new();
-            for (store, _) in &pending {
+            for (store, _, _) in &pending {
                 if !seen.contains(store) {
                     seen.push(*store);
                 }
@@ -1005,8 +1166,16 @@ pub mod differential {
             _ => None,
         };
 
+        let writes = pending
+            .into_iter()
+            .map(|(_, entry, index)| IndexedAppliedEffect {
+                index,
+                applied: entry,
+            })
+            .collect();
         PlannedRun {
-            applied: pending.into_iter().map(|(_, entry)| entry).collect(),
+            applied: merge_applied(writes, changes),
+            wardrobe_call,
             character_write,
             state_writes,
         }
@@ -1162,6 +1331,7 @@ mod tests {
         metadata: &Map<String, Value>,
     ) -> Plan {
         plan_applications(&ApplyCustomToolEffectsParams {
+            user_id: "user-1",
             chat_id: "chat-1",
             tool_name: "probe",
             effects,
@@ -1187,7 +1357,7 @@ mod tests {
         // Three applications in EFFECT order...
         assert_eq!(p.pending.len(), 3);
         // ...but all on ONE store, so the commit issues one write.
-        let stores: Vec<Store> = p.pending.iter().map(|(s, _)| *s).collect();
+        let stores: Vec<Store> = p.pending.iter().map(|(s, _, _)| *s).collect();
         assert!(stores.iter().all(|s| *s == Store::Tier(EffectTier::Chat)));
         // The last write wins in the local copy.
         assert_eq!(p.tiers.unwrap()[0], json!({"a": 3, "b": true}));
@@ -1434,6 +1604,7 @@ mod progress_fold_debug_tests {
     fn run(effects: &[ResolvedEffect], metadata: &Map<String, Value>) -> Vec<String> {
         captured(|| {
             plan_applications(&ApplyCustomToolEffectsParams {
+                user_id: "user-1",
                 chat_id: "chat-1",
                 tool_name: "fire_cannon",
                 effects,
@@ -1545,6 +1716,7 @@ mod progress_key_order_tests {
 
     fn plan(effects: &[ResolvedEffect], metadata: &Map<String, Value>) -> Map<String, Value> {
         plan_applications(&ApplyCustomToolEffectsParams {
+            user_id: "user-1",
             chat_id: "chat-1",
             tool_name: "probe",
             effects,

@@ -49,6 +49,11 @@ import * as fs from 'fs';
 
 jest.mock('@/lib/repositories/factory', () => ({ getRepositories: jest.fn() }));
 jest.mock('@/lib/mount-index/general-state', () => ({ writeGeneralState: jest.fn() }));
+// P4.D306 (v4 `f0db8cbb8`): the wardrobe pass is its own module; here it is a
+// RECORDER returning the row's SCRIPTED `IndexedAppliedEffect[]`, so the split
+// (`applyWriteEffects` + the pass) and the stable index merge are what is
+// compared — the applier itself is `pascal_wardrobe_effects_equivalence`'s.
+jest.mock('@/lib/pascal/wardrobe-effects', () => ({ applyWardrobeEffects: jest.fn(async () => []) }));
 jest.mock('@/lib/logger', () => {
   // `child` matters: modules loaded transitively by the applier build service
   // loggers off this one at import time, and a mock without it fails the whole
@@ -63,10 +68,12 @@ import type { StateCascadeResult } from '@/lib/state/state-cascade';
 import type { EffectTarget } from '@/lib/pascal/custom-tool.types';
 import { getRepositories } from '@/lib/repositories/factory';
 import { writeGeneralState } from '@/lib/mount-index/general-state';
+import { applyWardrobeEffects } from '@/lib/pascal/wardrobe-effects';
 
 const { logger } = require('@/lib/logger') as { logger: Record<string, jest.Mock> };
 const mockGetRepositories = getRepositories as jest.Mock;
 const mockWriteGeneralState = writeGeneralState as jest.Mock;
+const mockApplyWardrobeEffects = applyWardrobeEffects as jest.Mock;
 
 const OUT = process.env.QT_ORACLE_OUT;
 const CORPUS = process.env.QT_SIDE_EFFECTS_CORPUS;
@@ -87,6 +94,8 @@ interface CorpusEffect {
   target?: EffectTarget;
   value?: CorpusValue;
   skipped?: string;
+  /** P4.D306: a resolved wardrobe gesture (`ResolvedWardrobeGesture`). */
+  wardrobe?: Record<string, unknown>;
 }
 
 interface CorpusCase {
@@ -98,6 +107,12 @@ interface CorpusCase {
   cascade: StateCascadeResult | null;
   effects: CorpusEffect[];
   nowMs?: number;
+  /** P4.D306: v4's REQUIRED `userId` (defaults to `user-1`, v4's suites' value). */
+  userId?: string;
+  /** P4.D306: what the mocked wardrobe pass returns (`IndexedAppliedEffect[]`). */
+  wardrobeReturns?: unknown[];
+  /** P4.D306: the turn's announcement set, when the run is inside a model turn. */
+  pendingWardrobeAnnouncements?: string[];
 }
 
 function repos() {
@@ -122,10 +137,14 @@ describe('applyCustomToolEffects', () => {
       const db = repos();
       mockGetRepositories.mockReturnValue(db);
 
+      mockApplyWardrobeEffects.mockResolvedValue(c.wardrobeReturns ?? []);
+
       const effects: ResolvedEffect[] = c.effects.map((e) =>
         e.skipped !== undefined
           ? ({ index: e.index, skipped: e.skipped } as ResolvedEffect)
-          : ({ index: e.index, target: e.target, value: value(e.value!) } as ResolvedEffect),
+          : e.wardrobe !== undefined
+            ? ({ index: e.index, wardrobe: e.wardrobe } as unknown as ResolvedEffect)
+            : ({ index: e.index, target: e.target, value: value(e.value!) } as ResolvedEffect),
       );
 
       // The snapshot the applier is handed, and an untouched twin to compare it
@@ -137,6 +156,7 @@ describe('applyCustomToolEffects', () => {
       let threw: string | null = null;
       try {
         applied = await applyCustomToolEffects({
+          userId: c.userId ?? 'user-1',
           chatId: c.chatId,
           toolName: c.toolName,
           effects,
@@ -144,6 +164,9 @@ describe('applyCustomToolEffects', () => {
           characterId: c.characterId,
           metadataSnapshot: snapshot,
           nowMs: c.nowMs ?? corpus.nowMs,
+          ...(c.pendingWardrobeAnnouncements
+            ? { pendingWardrobeAnnouncements: new Set(c.pendingWardrobeAnnouncements) }
+            : {}),
         });
       } catch (e) {
         threw = (e as Error).message;
@@ -183,6 +206,15 @@ describe('applyCustomToolEffects', () => {
         stateWrites,
         warns,
         snapshotMutated: JSON.stringify(snapshot) !== snapshotBefore,
+        // P4.D306: the wardrobe pass's EXACT argument objects (the set as its
+        // sorted members, key kept only when v4 passed one).
+        wardrobeCalls: mockApplyWardrobeEffects.mock.calls.map(([arg]) => {
+          const { pendingWardrobeAnnouncements: set, ...rest } = arg as Record<string, unknown>;
+          return {
+            ...rest,
+            ...(set ? { pendingWardrobeAnnouncements: [...(set as Set<string>)].sort() } : {}),
+          };
+        }),
       });
     }
   });

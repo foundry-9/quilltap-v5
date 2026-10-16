@@ -12,6 +12,9 @@
 //! model did not author, so a failure cannot be talked into a success and
 //! regenerating a reply does not re-roll.
 
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
+
 use serde_json::{Map, Value};
 
 use crate::db::characters_read;
@@ -495,6 +498,11 @@ pub struct RunCustomToolContext {
     /// another. Injected rather than read here so a differential can freeze it;
     /// production passes `now_unix_ms()`.
     pub now_ms: i64,
+    /// The turn's wardrobe announcement set, so a tool's `wardrobe` effect
+    /// joins the turn's single Aurora announcement alongside any
+    /// `wardrobe_wear` call (v4 `f0db8cbb8`). The executor hands its own
+    /// context's `Arc` — the SAME set the wardrobe tools borrow.
+    pub pending_wardrobe_announcements: Option<Arc<Mutex<HashSet<String>>>>,
 }
 
 /// The compact result handed back to the model (v4 `RunCustomToolOutput`).
@@ -750,7 +758,7 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
             caller_participant_id: ctx.caller_participant_id.as_deref(),
             trigger_phrase: None,
             now_ms: ctx.now_ms,
-            pending_wardrobe_announcements: None,
+            pending_wardrobe_announcements: ctx.pending_wardrobe_announcements.as_ref(),
         },
         rng,
         llm_invoke,

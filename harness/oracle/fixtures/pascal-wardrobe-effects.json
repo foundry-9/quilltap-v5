@@ -1,0 +1,592 @@
+{
+  "note": "P4.D306 \u2014 the wardrobe-effects applier's step matrix (v4 `lib/pascal/wardrobe-effects.ts`, `f0db8cbb8`). Each step plants the character's starting outfit (`start`, a key of `states`) with ONE raw UPDATE on both sides, then hands its RESOLVED gestures to the applier: v4's REAL `applyWardrobeEffects` (REAL `loadToolPool` / `wearItem` / `takeOffWearable` / `applyDisplacement` / `notifyWardrobeChanged`) and v5's production seam `side_effects::apply_effects_for_run`. Steps share one database, so the wear ledger and `background_jobs` accumulate in step order on both sides. `withSet: false` passes NO announcement set (the operator route / trigger runner shape) \u2014 every other step passes a fresh one. v4's `wardrobe-effects.test.ts` also scripts a THROWING commit (`disk on fire`) through its mocked `applyDisplacement`; a real-DB oracle cannot, so that branch is v5-rig only (`wardrobe_effects.rs`'s tests), the `pascal-side-effects.json` precedent. The pool is read once per run by construction on both sides (one `loadToolPool` call / one `load_tool_pool` call) \u2014 pinned by inspection, not by a counter. The builder also stores `toolDefinition` as `Tools/regalia.tool.json` in the character's vault (v4's REAL `storeMountFile`); the oracle never reads it \u2014 it is the v5-only MODEL-ENTRANCE leg's tool (the production `BuiltInToolRunner`: `run_custom` then `wardrobe_wear` over ONE turn context, one set entry, the orchestrator's drain, one job).",
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "userId": "11111111-1111-4111-8111-1111111111aa",
+  "user": {
+    "username": "wardrobe-effects-tester",
+    "name": "Effects Tester"
+  },
+  "characterId": "c1000000-0000-4000-8000-000000000001",
+  "character": {
+    "name": "Lady Vane"
+  },
+  "generalMountPointId": "44444444-4444-4444-8444-4444444444aa",
+  "generalStore": {
+    "name": "Quilltap General"
+  },
+  "chatId": "55555555-5555-4555-8555-5555555555aa",
+  "participantId": "66666666-6666-4666-8666-6666666666aa",
+  "toolName": "regalia",
+  "items": [
+    {
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "title": "Linen Shirt",
+      "types": [
+        "top"
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "title": "Wool Trousers",
+      "types": [
+        "bottom"
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000003",
+      "title": "Riding Boots",
+      "types": [
+        "footwear"
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000004",
+      "title": "Old Coat",
+      "types": [
+        "top"
+      ],
+      "archived": true
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000005",
+      "title": "Silk Ribbon",
+      "types": [
+        "hair"
+      ]
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000006",
+      "title": "Cloak of Night",
+      "types": [
+        "top",
+        "accessories"
+      ],
+      "replace": true
+    },
+    {
+      "id": "a1000000-0000-4000-8000-000000000007",
+      "title": "Regalia",
+      "types": [
+        "top",
+        "bottom",
+        "footwear"
+      ],
+      "componentItemIds": [
+        "a1000000-0000-4000-8000-000000000001",
+        "a1000000-0000-4000-8000-000000000002",
+        "a1000000-0000-4000-8000-000000000003"
+      ]
+    }
+  ],
+  "generalItems": [
+    {
+      "id": "b1000000-0000-4000-8000-000000000001",
+      "title": "Pearl Brooch",
+      "types": [
+        "accessories"
+      ]
+    },
+    {
+      "id": "b1000000-0000-4000-8000-000000000002",
+      "title": "Linen Shirt",
+      "types": [
+        "top"
+      ]
+    }
+  ],
+  "toolDefinition": {
+    "name": "regalia",
+    "description": "Dress for court.",
+    "parameters": {
+      "garment": {
+        "type": "string",
+        "default": "Cloak of Night"
+      }
+    },
+    "effects": [
+      {
+        "wardrobe": {
+          "action": "wear",
+          "items": [
+            "{{params.garment}}"
+          ],
+          "mode": "replace"
+        }
+      }
+    ],
+    "outcomes": [
+      {
+        "when": true,
+        "message": "Dressed for court.",
+        "state": "success"
+      }
+    ]
+  },
+  "states": {
+    "empty": {
+      "top": [],
+      "bottom": [],
+      "footwear": [],
+      "accessories": [],
+      "hair": []
+    },
+    "shirt-on": {
+      "top": [
+        "a1000000-0000-4000-8000-000000000001"
+      ],
+      "bottom": [],
+      "footwear": [],
+      "accessories": [],
+      "hair": []
+    },
+    "cloak-on": {
+      "top": [
+        "a1000000-0000-4000-8000-000000000006"
+      ],
+      "bottom": [],
+      "footwear": [],
+      "accessories": [
+        "a1000000-0000-4000-8000-000000000006"
+      ],
+      "hair": []
+    },
+    "regalia-on": {
+      "top": [
+        "a1000000-0000-4000-8000-000000000001"
+      ],
+      "bottom": [
+        "a1000000-0000-4000-8000-000000000002"
+      ],
+      "footwear": [
+        "a1000000-0000-4000-8000-000000000003"
+      ],
+      "accessories": [
+        "b1000000-0000-4000-8000-000000000001"
+      ],
+      "hair": []
+    },
+    "coat-on": {
+      "top": [
+        "a1000000-0000-4000-8000-000000000004"
+      ],
+      "bottom": [],
+      "footwear": [],
+      "accessories": [],
+      "hair": []
+    },
+    "ribbon-and-shirt": {
+      "top": [
+        "a1000000-0000-4000-8000-000000000001"
+      ],
+      "bottom": [],
+      "footwear": [],
+      "accessories": [],
+      "hair": [
+        "a1000000-0000-4000-8000-000000000005"
+      ]
+    },
+    "ribbon-on": {
+      "top": [],
+      "bottom": [],
+      "footwear": [],
+      "accessories": [],
+      "hair": [
+        "a1000000-0000-4000-8000-000000000005"
+      ]
+    }
+  },
+  "steps": [
+    {
+      "name": "no-gestures",
+      "start": "empty",
+      "gestures": []
+    },
+    {
+      "name": "no-character",
+      "start": "empty",
+      "characterId": null,
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Linen Shirt"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "wear-by-title-and-id",
+      "start": "empty",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Linen Shirt",
+              "a1000000-0000-4000-8000-000000000002"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "wear-replace-by-flag",
+      "start": "shirt-on",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Cloak of Night"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "wear-add-to-slot-hair",
+      "start": "shirt-on",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Silk Ribbon"
+            ],
+            "mode": "add_to_slot",
+            "slot": "hair"
+          }
+        }
+      ]
+    },
+    {
+      "name": "wear-archived-skipped-rest-worn",
+      "start": "empty",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Old Coat",
+              "Riding Boots"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "wear-not-in-pool-and-slot-mismatch",
+      "start": "empty",
+      "withSet": false,
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Ghost Hat"
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Riding Boots"
+            ],
+            "mode": "add_to_slot",
+            "slot": "top"
+          }
+        }
+      ]
+    },
+    {
+      "name": "wear-composite-whole",
+      "start": "empty",
+      "gestures": [
+        {
+          "index": 2,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Regalia"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "wear-replace-mode",
+      "start": "regalia-on",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Silk Ribbon",
+              "Riding Boots"
+            ],
+            "mode": "replace"
+          }
+        }
+      ]
+    },
+    {
+      "name": "take-off-whole",
+      "start": "cloak-on",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "take_off",
+            "items": [
+              "Cloak of Night"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "take-off-restricted",
+      "start": "cloak-on",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "take_off",
+            "items": [
+              "Cloak of Night"
+            ],
+            "slot": "top"
+          }
+        }
+      ]
+    },
+    {
+      "name": "take-off-composite-by-leaves",
+      "start": "regalia-on",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "take_off",
+            "items": [
+              "Regalia"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "take-off-archived",
+      "start": "coat-on",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "take_off",
+            "items": [
+              "Old Coat"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "take-off-not-on",
+      "start": "empty",
+      "withSet": false,
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "take_off",
+            "items": [
+              "Riding Boots"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "take-off-not-in-pool",
+      "start": "shirt-on",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "take_off",
+            "items": [
+              "Ghost Hat"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "clear-slot",
+      "start": "ribbon-and-shirt",
+      "gestures": [
+        {
+          "index": 3,
+          "wardrobe": {
+            "action": "clear_slot",
+            "items": [],
+            "slot": "hair"
+          }
+        }
+      ]
+    },
+    {
+      "name": "clear-slot-no-slot",
+      "start": "ribbon-and-shirt",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "clear_slot",
+            "items": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "clear-slot-already-empty",
+      "start": "shirt-on",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "clear_slot",
+            "items": [],
+            "slot": "hair"
+          }
+        }
+      ]
+    },
+    {
+      "name": "already-so",
+      "start": "ribbon-on",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Silk Ribbon"
+            ],
+            "mode": "add_to_slot",
+            "slot": "hair"
+          }
+        }
+      ]
+    },
+    {
+      "name": "title-shadowing-own-first",
+      "start": "empty",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "linen shirt",
+              "Pearl Brooch"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "slots-threaded-gesture-to-gesture",
+      "start": "empty",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Regalia"
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "wardrobe": {
+            "action": "take_off",
+            "items": [
+              "Wool Trousers"
+            ],
+            "slot": "bottom"
+          }
+        },
+        {
+          "index": 4,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Pearl Brooch"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "two-gestures-shared-set",
+      "start": "ribbon-on",
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Linen Shirt"
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "wardrobe": {
+            "action": "clear_slot",
+            "items": [],
+            "slot": "hair"
+          }
+        }
+      ]
+    },
+    {
+      "name": "two-gestures-no-set",
+      "start": "ribbon-on",
+      "withSet": false,
+      "gestures": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Linen Shirt"
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "wardrobe": {
+            "action": "clear_slot",
+            "items": [],
+            "slot": "hair"
+          }
+        }
+      ]
+    }
+  ]
+}

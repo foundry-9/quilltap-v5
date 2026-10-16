@@ -47,11 +47,14 @@
 //!   QT_ORACLE_PASCAL_SIDE_EFFECTS=/tmp/oracle-pascal-side-effects.ndjson \
 //!     cargo test -p quilltap-harness --test pascal_side_effects_equivalence
 
-use quilltap_core::pascal::custom_tool_types::{parse_effect_target, EffectTarget};
-use quilltap_core::pascal::custom_tools::{ResolvedEffect, ResolvedValue};
-use quilltap_core::pascal::side_effects::{
-    differential::plan_run, ApplyCustomToolEffectsParams, EffectTier,
+use quilltap_core::pascal::custom_tool_types::{
+    parse_effect_target, EffectTarget, PutOnMode, WardrobeEffectAction,
 };
+use quilltap_core::pascal::custom_tools::{ResolvedEffect, ResolvedValue, ResolvedWardrobeGesture};
+use quilltap_core::pascal::side_effects::{
+    differential::plan_run, AppliedEffect, ApplyCustomToolEffectsParams, EffectTier,
+};
+use quilltap_core::pascal::wardrobe_effects::IndexedAppliedEffect;
 use quilltap_core::state::cascade::{GroupCandidate, GroupTier, StateCascadeResult};
 use quilltap_core::state::paths::PathKey;
 use serde_json::{json, Map, Value};
@@ -189,6 +192,48 @@ fn expected_warn_line(warn: &Value) -> String {
     }
 }
 
+/// A corpus `wardrobe` entry — v4's `ResolvedWardrobeGesture` as JSON.
+fn wardrobe_gesture(v: &Value) -> ResolvedWardrobeGesture {
+    let action = match v["action"].as_str().expect("gesture action") {
+        "wear" => WardrobeEffectAction::Wear,
+        "take_off" => WardrobeEffectAction::TakeOff,
+        "clear_slot" => WardrobeEffectAction::ClearSlot,
+        other => panic!("unknown gesture action {other}"),
+    };
+    ResolvedWardrobeGesture {
+        action,
+        items: v["items"]
+            .as_array()
+            .expect("gesture items always ride")
+            .iter()
+            .map(|i| i.as_str().expect("item").to_string())
+            .collect(),
+        mode: v
+            .get("mode")
+            .and_then(Value::as_str)
+            .map(|m| PutOnMode::parse(m).expect("mode")),
+        slot: v.get("slot").and_then(Value::as_str).map(str::to_string),
+    }
+}
+
+/// A row's scripted `wardrobeReturns` — what v4's mocked pass hands back.
+fn wardrobe_plan(v: Option<&Value>) -> Option<Vec<IndexedAppliedEffect>> {
+    let list = v?.as_array()?;
+    Some(
+        list.iter()
+            .map(|e| IndexedAppliedEffect {
+                index: e["index"].as_u64().expect("index") as usize,
+                applied: AppliedEffect {
+                    target: e["applied"]["target"].as_str().expect("target").to_string(),
+                    previous: e["applied"].get("previous").cloned(),
+                    next: e["applied"]["next"].clone(),
+                    tier: None,
+                },
+            })
+            .collect(),
+    )
+}
+
 #[test]
 fn pascal_side_effects_planning_matches_v4() {
     let path = match std::env::var("QT_ORACLE_PASCAL_SIDE_EFFECTS") {
@@ -220,12 +265,13 @@ fn pascal_side_effects_planning_matches_v4() {
     // The corpus is what this family is for; a truncated one would pass every
     // remaining row silently.
     assert!(
-        cases.len() >= 49,
-        "corpus shrank to {} cases (>= 49 expected)",
+        cases.len() >= 55,
+        "corpus shrank to {} cases (>= 55 expected)",
         cases.len()
     );
 
     let mut warned_rows = 0usize;
+    let mut wardrobe_call_rows = 0usize;
     let mut character_writes = 0usize;
     let mut progress_writes = 0usize;
     let mut state_write_rows = 0usize;
@@ -244,6 +290,12 @@ fn pascal_side_effects_planning_matches_v4() {
             .iter()
             .map(|e| {
                 let index = e["index"].as_u64().expect("effect index") as usize;
+                if let Some(g) = e.get("wardrobe") {
+                    return ResolvedEffect::Wardrobe {
+                        index,
+                        wardrobe: wardrobe_gesture(g),
+                    };
+                }
                 match e.get("skipped").and_then(Value::as_str) {
                     Some(reason) => ResolvedEffect::Skipped {
                         index,
@@ -283,24 +335,77 @@ fn pascal_side_effects_planning_matches_v4() {
             .and_then(Value::as_i64)
             .unwrap_or(default_now);
 
+        let user_id = case
+            .get("userId")
+            .and_then(Value::as_str)
+            .unwrap_or("user-1");
+        let scripted = wardrobe_plan(case.get("wardrobeReturns"));
         let (run, lines) = quilltap_core::test_support::captured_with(|| {
-            plan_run(ApplyCustomToolEffectsParams {
-                chat_id: case["chatId"].as_str().expect("chatId"),
-                tool_name: case["toolName"].as_str().expect("toolName"),
-                effects: &effects,
-                cascade: cascade.as_ref(),
-                character_id,
-                metadata_snapshot: &snapshot,
-                now_ms,
-            })
+            plan_run(
+                ApplyCustomToolEffectsParams {
+                    user_id,
+                    chat_id: case["chatId"].as_str().expect("chatId"),
+                    tool_name: case["toolName"].as_str().expect("toolName"),
+                    effects: &effects,
+                    cascade: cascade.as_ref(),
+                    character_id,
+                    metadata_snapshot: &snapshot,
+                    now_ms,
+                },
+                scripted,
+            )
         });
 
-        // --- applied -------------------------------------------------------
-        let got_applied = serde_json::to_value(&run.applied).expect("applied serializes");
+        // --- applied (bytes: the merge's ORDER and each record's key order) --
         assert_eq!(
-            got_applied, want["applied"],
+            serde_json::to_string(&run.applied).expect("applied serializes"),
+            serde_json::to_string(&want["applied"]).unwrap(),
             "applied effects differ: {name}"
         );
+
+        // --- the wardrobe pass's call (P4.D306) -----------------------------
+        // v4's turn set rides the pass's argument; v5's rides
+        // `apply_effects_for_run` beside it (the notify is after the write —
+        // `pascal_wardrobe_effects_equivalence` proves the set is USED), so the
+        // key is carried over from the row it was handed to.
+        let got_calls: Vec<Value> = run
+            .wardrobe_call
+            .iter()
+            .map(|c| {
+                let mut m = Map::new();
+                m.insert("userId".into(), json!(c.user_id));
+                m.insert("chatId".into(), json!(c.chat_id));
+                m.insert("toolName".into(), json!(c.tool_name));
+                m.insert(
+                    "characterId".into(),
+                    c.character_id
+                        .clone()
+                        .map(Value::from)
+                        .unwrap_or(Value::Null),
+                );
+                m.insert(
+                    "gestures".into(),
+                    Value::Array(
+                        c.gestures
+                            .iter()
+                            .map(|(index, g)| json!({ "index": index, "wardrobe": g }))
+                            .collect(),
+                    ),
+                );
+                if let Some(set) = case.get("pendingWardrobeAnnouncements") {
+                    m.insert("pendingWardrobeAnnouncements".into(), set.clone());
+                }
+                Value::Object(m)
+            })
+            .collect();
+        assert_eq!(
+            serde_json::to_string(&got_calls).unwrap(),
+            serde_json::to_string(&want["wardrobeCalls"]).unwrap(),
+            "the wardrobe pass's call differs: {name}"
+        );
+        if !got_calls.is_empty() {
+            wardrobe_call_rows += 1;
+        }
 
         // --- the one character write ---------------------------------------
         let got_character = match &run.character_write {
@@ -395,6 +500,10 @@ fn pascal_side_effects_planning_matches_v4() {
     assert!(
         state_write_rows >= 10,
         "only {state_write_rows} rows issue a state write"
+    );
+    assert!(
+        wardrobe_call_rows >= 5,
+        "only {wardrobe_call_rows} rows hand gestures to the wardrobe pass"
     );
     assert!(
         run_touches_every_tier(cases),

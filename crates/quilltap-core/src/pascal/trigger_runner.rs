@@ -267,6 +267,8 @@ async fn run_triggered(
                 caller_participant_id: speaker.participant_id.as_deref(),
                 trigger_phrase: Some(&hit.phrase),
                 now_ms,
+                // v4's runner (`trigger-runner.ts:165`) passes no set: a
+                // triggered gesture enqueues its announcement at once.
                 pending_wardrobe_announcements: None,
             },
             &mut rng,

@@ -831,6 +831,8 @@ pub async fn chat_custom_tool_run(
             caller_participant_id: None,
             trigger_phrase: None,
             now_ms,
+            // v4's route (`route.ts:451`) passes no set: an operator-run
+            // gesture enqueues its announcement at once.
             pending_wardrobe_announcements: None,
         },
         &mut rng,

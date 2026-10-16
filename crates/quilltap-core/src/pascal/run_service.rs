@@ -106,12 +106,11 @@ pub struct RunCustomToolParams<'a> {
     /// One clock reading for the whole run (v4 `params.nowMs ?? Date.now()` —
     /// the CALLERS resolve the default, so a differential can freeze it).
     pub now_ms: i64,
-    /// RESERVED — always `None` here and never read. v4 `f0db8cbb8` gives it a
-    /// use: the turn's wardrobe announcement set, threaded into the effect
-    /// applier so a `wardrobe` effect joins the turn's ONE Aurora
-    /// announcement. Typed as the set the executor's context and the
-    /// wardrobe-tool table already carry, so that lane adds the USE without a
-    /// retype (a `&mut` would need a std `MutexGuard` across an `.await`).
+    /// The turn's wardrobe announcement set, when the run happens inside a
+    /// model turn — a `wardrobe` effect then joins the turn's one Aurora
+    /// announcement (v4 `f0db8cbb8`). The SAME set the executor's context and
+    /// the wardrobe-tool table carry (a `&mut` would need a std `MutexGuard`
+    /// across an `.await`). `None` → the announcement is enqueued at once.
     pub pending_wardrobe_announcements: Option<&'a Arc<Mutex<HashSet<String>>>>,
 }
 
@@ -153,9 +152,6 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         now_ms,
         ..
     } = params;
-    // Reserved for `f0db8cbb8` (see the field); deliberately unread here.
-    let _ = params.pending_wardrobe_announcements;
-
     // The derived progress sheet, from the SAME snapshot the gates read,
     // against the one clock reading. Costs no reads: progressions live in the
     // metadata. A malformed entry is dropped by the shared reader; the prompt
@@ -265,16 +261,18 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         }
     };
 
-    // The applier never fails the run. `character_id` `None` → metadata and
-    // progress effects skip.
+    // The applier never fails the run. `character_id` `None` → metadata,
+    // progress and wardrobe effects skip.
     let applied_effects = apply_effects_for_run(
         db,
+        params.user_id,
         chat_id,
         &result,
         cascade,
         character_id.map(str::to_string),
         metadata,
         now_ms,
+        params.pending_wardrobe_announcements,
     )
     .await;
 

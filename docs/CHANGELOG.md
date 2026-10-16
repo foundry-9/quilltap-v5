@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(pascal): custom tools dress and undress the rolling character — the wardrobe-effects applier, the write/gesture split with the stable index merge, the turn's announcement set threaded from the executor (P4.D306)
+
+_Versions: core 0.0.1310._
+
+The applier half of v4 `f0db8cbb8` at the `25b8fab6a` pin. New `pascal::wardrobe_effects`: inside the effects write, after the value writes commit, the run's gestures go one at a time over ONE wearable pool and ONE slots read, the slots threaded gesture to gesture — `wear` through `wear_item` (source `tool`, the reference tried as an id then a title), `take_off` through `take_off_wearable`, `clear_slot` through `apply_displacement`. Per-item skips (not found, archived, slot mismatch, `clear_slot names no slot`, `the outfit was already so`) log `Custom tool wardrobe effect not applied`; a failed commit is dropped with `Custom tool wardrobe effect failed; that change was dropped` and the run continues; a run nobody made logs `Custom tool: no rolling character, wardrobe effects skipped`; a degraded open (no mount-index writer) logs `Custom tool wardrobe effects skipped — the wardrobe could not be read`. A change that changed the slots is recorded as `wardrobe.wear` / `wardrobe.take_off` / `wardrobe.clear_slot` with `previous` always present and a `{ item?, slot?, slotsAffected, effect, slots }` `next`, no `tier`. `apply_custom_tool_effects` returns the writes and the changes merged back into effect order by a stable index sort; `apply_effects_for_run` takes `user_id` and the turn's set and, after the write, runs the ONE `notify_wardrobe_changed` with context `pascal.wardrobe-effects`, then `Custom tool wardrobe effects applied` (`joined the turn` when a set was passed, `enqueued now` otherwise).
+
+The run service now passes `user_id` and its `pending_wardrobe_announcements` to the applier; `RunCustomToolContext` carries the set and the executor's `run_custom` arm hands it the same `Arc` the wardrobe tools borrow, so a tool's change and the model's own wardrobe calls produce one Aurora announcement. The manual route and the trigger runner pass none, as v4's do.
+
+New differential `pascal_wardrobe_effects_equivalence` (23 steps over a new fixture, v4's real applier against the production seam; the records, the outfit, the wear ledger, the set, the job table and the lines compared as bytes) with v5-only legs for the failed commit, the degraded open, and the model entrance end to end (`run_custom` then `wardrobe_wear` over one turn context: one set entry, no job until the drain, then one; Pascal's row carrying the record). `pascal_side_effects_equivalence` gains six merge rows with the wardrobe pass scripted, compares the pass's argument object, and passes `userId` on every row.
+
 #### 2026-10-16 — feat(pascal): a custom-tool effect is a write XOR a wardrobe gesture — the union, wardrobe_gesture_problems, validate_effects when-first, the third ResolvedEffect arm, describe_effects + the preamble sentence, the vocabulary's three lists (P4.D306)
 
 _Versions: core 0.0.1309._

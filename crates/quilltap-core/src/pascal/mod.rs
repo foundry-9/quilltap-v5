@@ -15,4 +15,5 @@ pub mod tool_gate;
 pub mod tool_vocabulary;
 pub mod trigger_phrases;
 pub mod trigger_runner;
+pub mod wardrobe_effects;
 pub mod workbench;

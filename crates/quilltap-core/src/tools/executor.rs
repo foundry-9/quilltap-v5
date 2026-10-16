@@ -670,6 +670,10 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             // of the handler). Every family that drives this path injects its
             // own frozen instant instead.
             now_ms: crate::clock::now_unix_ms(),
+            // v4 `tool-executor.ts:625` — the SAME set the wardrobe tools get
+            // (`run_wardrobe_tool`), so a tool's gesture and the model's own
+            // wardrobe calls produce one Aurora announcement.
+            pending_wardrobe_announcements: Some(Arc::clone(&ctx.pending_wardrobe_announcements)),
         };
         let mut source = rng::OsRandomBytes;
         // The handler posts Pascal's bubble itself — that message is the run's

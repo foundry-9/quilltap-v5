@@ -1,5 +1,5 @@
 {
-  "note": "P4.D169 item 5 — the side-effect applier's corpus, 49 rows. Rows 1-15 are v4's `__tests__/unit/lib/pascal/side-effects.test.ts` (the state/metadata matrix that predates progressions, so the family is green on the pre-change applier); rows 16-47 are its `side-effects-progress.test.ts` siblings. v4 has 31 `it`s there and this has 32 rows, which is four deliberate departures: its increment case asserts twice and became two rows, its declined-time case loops three values and became three, its `warns naming the character's progression and the issue` is the SAME input as the drop-and-restore row above it and rides that row's `warns` comparand rather than repeating the input, and its `defaults nowMs to the wall clock` has no row at all — v5's `now_ms` is not optional (the entrance passes the reading it already took), which is a recorded divergence, not a gap. v4's three commit-half fail-soft cases have no row either: they mock a repository REJECTION, which the pure planning pass this corpus drives cannot express — v5 proves those in `side_effects.rs`'s commit tests.",
+  "note": "P4.D169 item 5 — the side-effect applier's corpus, 49 rows. Rows 1-15 are v4's `__tests__/unit/lib/pascal/side-effects.test.ts` (the state/metadata matrix that predates progressions, so the family is green on the pre-change applier); rows 16-47 are its `side-effects-progress.test.ts` siblings. v4 has 31 `it`s there and this has 32 rows, which is four deliberate departures: its increment case asserts twice and became two rows, its declined-time case loops three values and became three, its `warns naming the character's progression and the issue` is the SAME input as the drop-and-restore row above it and rides that row's `warns` comparand rather than repeating the input, and its `defaults nowMs to the wall clock` has no row at all — v5's `now_ms` is not optional (the entrance passes the reading it already took), which is a recorded divergence, not a gap. v4's three commit-half fail-soft cases have no row either: they mock a repository REJECTION, which the pure planning pass this corpus drives cannot express — v5 proves those in `side_effects.rs`'s commit tests. P4.D306 (v4 `f0db8cbb8`): six `merge-*` rows drive the split + stable index merge with the wardrobe pass MOCKED to each row's scripted `wardrobeReturns` (v4 side) / handed to `differential::plan_run` as its `wardrobe_plan` (v5 side); `wardrobeCalls` records the pass's exact argument objects. Every row now passes v4's REQUIRED `userId` (`user-1` unless the row names one). The pass's own branches — and the throwing commit v4's `wardrobe-effects.test.ts` mocks — are `pascal_wardrobe_effects_equivalence`'s and `wardrobe_effects.rs`'s rig tests.",
   "nowMs": 1788876000000,
   "cases": [
     {
@@ -2074,6 +2074,596 @@
           }
         }
       ]
+    },
+    {
+      "name": "merge-interleaved — writes and wardrobe changes merged back into effect order, stable within one effect",
+      "chatId": "chat-1",
+      "toolName": "regalia",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "count": 1
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Linen Shirt",
+              "Vest"
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "state",
+            "path": [
+              "count"
+            ],
+            "raw": "state.count"
+          },
+          "value": {
+            "n": 2
+          }
+        },
+        {
+          "index": 2,
+          "wardrobe": {
+            "action": "clear_slot",
+            "items": [],
+            "slot": "hair"
+          }
+        },
+        {
+          "index": 3,
+          "target": {
+            "kind": "metadata",
+            "key": "k",
+            "raw": "metadata.k"
+          },
+          "value": {
+            "s": "v"
+          }
+        }
+      ],
+      "wardrobeReturns": [
+        {
+          "index": 0,
+          "applied": {
+            "target": "wardrobe.wear",
+            "previous": {
+              "top": [],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "next": {
+              "item": {
+                "id": "shirt",
+                "title": "Linen Shirt"
+              },
+              "slotsAffected": [
+                "top"
+              ],
+              "effect": "layered",
+              "slots": {
+                "top": [
+                  "shirt"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              }
+            }
+          }
+        },
+        {
+          "index": 0,
+          "applied": {
+            "target": "wardrobe.wear",
+            "previous": {
+              "top": [
+                "shirt"
+              ],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "next": {
+              "item": {
+                "id": "vest",
+                "title": "Vest"
+              },
+              "slotsAffected": [
+                "top"
+              ],
+              "effect": "layered",
+              "slots": {
+                "top": [
+                  "shirt",
+                  "vest"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              }
+            }
+          }
+        },
+        {
+          "index": 2,
+          "applied": {
+            "target": "wardrobe.clear_slot",
+            "previous": {
+              "top": [
+                "shirt",
+                "vest"
+              ],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": [
+                "ribbon"
+              ]
+            },
+            "next": {
+              "slot": "hair",
+              "slotsAffected": [
+                "hair"
+              ],
+              "effect": "cleared",
+              "slots": {
+                "top": [
+                  "shirt",
+                  "vest"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "merge-no-gestures — the wardrobe pass is never called for a run with no gestures",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "count": 1
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "count"
+            ],
+            "raw": "state.count"
+          },
+          "value": {
+            "n": 5
+          }
+        },
+        {
+          "index": 1,
+          "skipped": "condition did not hold"
+        }
+      ],
+      "wardrobeReturns": [
+        {
+          "index": 0,
+          "applied": {
+            "target": "wardrobe.wear",
+            "previous": {
+              "top": [],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "next": {
+              "item": {
+                "id": "shirt",
+                "title": "Linen Shirt"
+              },
+              "slotsAffected": [
+                "top"
+              ],
+              "effect": "layered",
+              "slots": {
+                "top": [
+                  "shirt"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              }
+            }
+          }
+        },
+        {
+          "index": 0,
+          "applied": {
+            "target": "wardrobe.wear",
+            "previous": {
+              "top": [
+                "shirt"
+              ],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "next": {
+              "item": {
+                "id": "vest",
+                "title": "Vest"
+              },
+              "slotsAffected": [
+                "top"
+              ],
+              "effect": "layered",
+              "slots": {
+                "top": [
+                  "shirt",
+                  "vest"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              }
+            }
+          }
+        },
+        {
+          "index": 2,
+          "applied": {
+            "target": "wardrobe.clear_slot",
+            "previous": {
+              "top": [
+                "shirt",
+                "vest"
+              ],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": [
+                "ribbon"
+              ]
+            },
+            "next": {
+              "slot": "hair",
+              "slotsAffected": [
+                "hair"
+              ],
+              "effect": "cleared",
+              "slots": {
+                "top": [
+                  "shirt",
+                  "vest"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "merge-gestures-only-writes-empty — gestures alone, the writes list empty",
+      "chatId": "chat-1",
+      "toolName": "regalia",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": null,
+      "effects": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Linen Shirt",
+              "Vest"
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "skipped": "every item reference rendered empty"
+        },
+        {
+          "index": 2,
+          "wardrobe": {
+            "action": "clear_slot",
+            "items": [],
+            "slot": "hair"
+          }
+        }
+      ],
+      "wardrobeReturns": [
+        {
+          "index": 0,
+          "applied": {
+            "target": "wardrobe.wear",
+            "previous": {
+              "top": [],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "next": {
+              "item": {
+                "id": "shirt",
+                "title": "Linen Shirt"
+              },
+              "slotsAffected": [
+                "top"
+              ],
+              "effect": "layered",
+              "slots": {
+                "top": [
+                  "shirt"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              }
+            }
+          }
+        },
+        {
+          "index": 0,
+          "applied": {
+            "target": "wardrobe.wear",
+            "previous": {
+              "top": [
+                "shirt"
+              ],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "next": {
+              "item": {
+                "id": "vest",
+                "title": "Vest"
+              },
+              "slotsAffected": [
+                "top"
+              ],
+              "effect": "layered",
+              "slots": {
+                "top": [
+                  "shirt",
+                  "vest"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              }
+            }
+          }
+        },
+        {
+          "index": 2,
+          "applied": {
+            "target": "wardrobe.clear_slot",
+            "previous": {
+              "top": [
+                "shirt",
+                "vest"
+              ],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": [
+                "ribbon"
+              ]
+            },
+            "next": {
+              "slot": "hair",
+              "slotsAffected": [
+                "hair"
+              ],
+              "effect": "cleared",
+              "slots": {
+                "top": [
+                  "shirt",
+                  "vest"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "merge-gestures-none-landed — gestures that changed nothing return the writes alone",
+      "chatId": "chat-1",
+      "toolName": "regalia",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "count": 1
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "count"
+            ],
+            "raw": "state.count"
+          },
+          "value": {
+            "n": 2
+          }
+        },
+        {
+          "index": 1,
+          "wardrobe": {
+            "action": "take_off",
+            "items": [
+              "Ghost Coat"
+            ],
+            "slot": "top"
+          }
+        }
+      ],
+      "wardrobeReturns": []
+    },
+    {
+      "name": "merge-applier-args — the pass receives userId, chatId, toolName, characterId, the applicable gestures and the turn's set",
+      "chatId": "chat-9",
+      "toolName": "regalia",
+      "characterId": "char-7",
+      "userId": "user-42",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "count": 1
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "skipped": "condition did not hold"
+        },
+        {
+          "index": 1,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Ribbon"
+            ],
+            "mode": "add_to_slot",
+            "slot": "hair"
+          }
+        },
+        {
+          "index": 2,
+          "target": {
+            "kind": "state",
+            "path": [
+              "count"
+            ],
+            "raw": "state.count"
+          },
+          "value": {
+            "n": 3
+          }
+        },
+        {
+          "index": 3,
+          "wardrobe": {
+            "action": "take_off",
+            "items": [
+              "Sundress"
+            ]
+          }
+        }
+      ],
+      "pendingWardrobeAnnouncements": [
+        "char-3",
+        "char-7"
+      ],
+      "wardrobeReturns": []
+    },
+    {
+      "name": "merge-no-character — a run nobody made still hands its gestures to the pass (which skips them)",
+      "chatId": "chat-1",
+      "toolName": "regalia",
+      "characterId": null,
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "count": 1
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Linen Shirt"
+            ]
+          }
+        }
+      ],
+      "wardrobeReturns": []
     }
   ]
 }
