@@ -187895,3 +187895,268 @@ SPA `apps/web` **0.5.866** (from 0.5.862). Rust crates: none bumped.
 
 The pin worktree `/tmp/qt-v4-pin-p4d307-25b8fab6a` and the scratch red-check
 worktree removed; the lane's `target/` deleted; nothing pushed to `main`.
+
+## P4.D308 — the composer's `/` slash commands, client-side whole + bug 251's trim + the smalls (lane `claude/p4.d308-composer-spa-slash-commands-3a1233`, 2026-10-16)
+
+Stage A from `main` at the approval commit `6f78aa3d7` (descends from the
+orders' commit `19fb707e6`; no stacking). The session STARTED in the app's
+worktree `quirky-noether-3a1233` on `claude/quirky-noether-3a1233` sitting
+exactly on `6f78aa3d7` with no commits of its own, and moved by `git switch -c
+claude/p4.d308-composer-spa-slash-commands-3a1233` (the carryout skill's
+sanctioned form for an app-made worktree). v4 pin `25b8fab6a`
+(`4.11.0-dev.10`), pin worktree `/tmp/qt-v4-pin-p4d308-25b8fab6a` (HEAD
+verified `25b8fab6aa58636c6885ba63684c7f8fbfca9c3b`, the three symlink
+classes). SPA only — NO `crates/` hunk.
+
+**§2 probe at lane start (2026-10-16 10:00 CDT) — an OBSERVATION, recorded,
+lane continued:** v4 on `main`, tree CLEAN; **v4 moved: `5cb0e0190`
+("feat(pascal): wardrobe picker in the Workbench") observed at 10:00 CDT** —
+one past the pin, already recorded by the planning probe; `bugfix` at
+`489b228b6` unchanged. Not ported (the pin rule). The pin is usable.
+
+### Units (one commit each; SPA 0.5.862 → 0.5.871)
+
+1. `9dab7dba3` — **bug 251's exit TRIM** re-ported by vector
+   (`editing-commands.ts`: `[^\S\n]*$` then ONE `\n`; the docstring made TRUE,
+   citing bug 251 and the old regex's `\s`-matches-`\n` flaw); **`a42c282b8`**
+   (`memory-card.ts` digest button → `qt-link`); **`8489d08b9`** (the About
+   page's four blurbs, byte copies of the `+` lines); **bug 250's regression
+   row** in `mention-typeahead-plugin.spec.ts`. SPA 0.5.863.
+2. `ceaf98d38` — **the pure tier** `chat/slash-commands/{types,trigger,ranking,
+   registry,index}.ts`, character for character from the pin (two relative
+   imports re-pointed to `../../editor/char-insert/{trigger,types}`; v4's
+   PORTABILITY header carried with the ESLint sentence replaced — `apps/web`
+   has no ESLint); **the recorder** `apps/web/oracle/slash-commands.recorder.ts`
+   → `src/testing/fixtures/slash-commands.ndjson` (**186 rows**: 1 `constants`,
+   54 `trigger`, 107 `rank`, 24 `build`) → `slash-commands.oracle.spec.ts`;
+   **v4's jest file transcribed** as `slash-commands.spec.ts` (12 `it` + 2
+   `.each` tables = 18 vectors, counted by file). SPA 0.5.864.
+3. `077d9d373` — **the adapter** `editor/slash/{slash-command-host,
+   slash-command-plugin,slash-command-harness}.ts` + spec; mounted in
+   `rich-editor.ts` after the `@` typeahead and before smart typography behind
+   `slashCommands = input<SlashCommandHost | null>(null)`;
+   `char-insert-settings.ts` gains `slashCommands` (`composerSlashCommands ??
+   true`, the file's own cast idiom — no `core-contract.ts` edit). SPA 0.5.865.
+4. `9c8dc21b8` — **`chat/rng-request.ts`** (`RngRollType` = `RngKind`,
+   measured identical; `RngPendingResult` MOVED and re-exported by the
+   dropdown; `requestRngPendingResult`) + the dropdown re-pointed;
+   **`chat/slash-command-runner.ts`** (`createSlashCommandRunner`,
+   `buildQuickRollActions`, `QUICK_ROLLS`). SPA 0.5.866.
+5. `974086388` — **the openers**: the popup's `initialTool` input + PUBLIC
+   `open(initial?)` (the ONE opening path — the wand calls it bare) + PUBLIC
+   `available`; the Run Tool modal's `initialTool`. SPA 0.5.867.
+6. `eab1dc770` — **the composer host + the Salon**: the host assembled from the
+   gutter's own handlers, ONE per `chatId`; `slashDefaultCharacterId` input;
+   `openRunTool` / `slashToolRan` outputs; the Salon's `runToolRequest`
+   (bumped by BOTH openers), `runToolInitial` → `[initialTool]`,
+   `slashDefaultCharacterId` (v4's predicate over v5's `ParticipantDetail`
+   fields `type` / `isActive` / `removedAt` / `character.id`), `(slashToolRan)`
+   → `onCustomToolRan()`. SPA 0.5.868.
+7. `91dd5f243` — **the Slash Commands card** (`composer-slash-commands-
+   settings.ts`) between Composer and Auto-Scroll with
+   `sectionId="composer-slash-commands"` (20 → 21 cards; the `HANDOFF:` from
+   P4.D313 for the help page's deep link LANDS here);
+   `settings-chat-cards-flow.spec.ts` lists the new title. SPA 0.5.869.
+8. `a8852c3c1` — **Tier 2 item 23 LANDED (option (a))**: `TypeaheadRow.
+   iconName?: IconName`, rendered by `typeahead-menu.ts` as the plain-DOM twin
+   of `qt-icon`'s span (`span.qt-icon.w-4.h-4[data-icon][aria-hidden]` in the
+   glyph slot) — no `ui/icon.ts` edit needed (the icon is pure CSS keyed on
+   `data-icon`); the slash rows carry v4's `glyphFor` / `ACTION_ICONS`.
+   **`SLASH_ROW_GLYPH_TEXT` RETIRED.** SPA 0.5.870.
+9. (this commit) — the e2e spec `e2e/composer-slash-commands-flow.spec.ts`,
+   the lane record, the order's status header. SPA 0.5.871.
+
+### Red-first (item 1) — on main's source, specs edited first
+
+- Batch 1: **8 red / 90 green** across 5 files — the trim `"a\n  \n"`,
+  `"a\n\t\n"`, `"one\ntwo\n\n\n"` **RED (3)**; `"a\n  "` and `"code\n"` GREEN
+  (**convergence**, as the order predicted); v4's two `KeyboardPlugin` cases
+  (the `.each` chat/document rows + "also escapes when the blank line holds
+  only whitespace") GREEN (the caret half holds by construction);
+  `memory-card` digest `qt-link` **RED (1)** with the Show-more over-port guard
+  GREEN; `about` **RED (2 tests carrying the 4 sentences)**; `chat-tab` order +
+  ids **RED (2)**; the **bug-250 row GREEN — a convergence, not a red**.
+- `rich-editor.spec.ts`'s slash-host row: RED with the plugin mount removed (1).
+- The popup's and the modal's `initialTool` cases: red by ABSENCE on main
+  (`setInput('initialTool')` on an undeclared input throws; `open()` absent).
+- New modules (pure tier, adapter, runner, `rng-request`, the card): no main
+  counterpart — "new module".
+
+### Mutation proofs (Tier 2 item 22) — every one RED
+
+Pure tier (oracle spec, 188 cases): empty-needle limit applied **5**;
+`KIND_ORDER` action/custom swapped **16** (incl. the `/coin` tie);
+`sensitivity: 'variant'` **3**; `maxQueryLength` 65 **2**;
+`declaresProperties` on `properties: {}` **3**; the duplicate-key skip removed
+**1**. Adapter (30): hold Enter without `loading` **1**; customs active while
+unavailable **1**; no `closeHistory` before the removal **1** (the typed-text
+undo row — a seeded doc cannot see it); a source notification re-opening a
+closed menu **2**. Popup (48): nonce-once removed **1** (needed v4's `tools`
+dep tracked — a same-data refetch leaves every signal where it was, so the
+first proof row was vacuous and was rebuilt with a changed roster); the
+fresh-roster gate removed **1**; the strict variant → `named[0]` **1**. Modal
+(17): nonce-once **1**; the `available === false` arm **2**. Trim: `[^\S\n]`
+→ `\s` **3**.
+
+### Transcribed case counts (counted by FILE at the pin)
+
+`slash-commands.test.ts` 12 `it` + 2 `.each` (7 + 11 rows) → all;
+`SlashCommandPlugin.test.tsx` 13 `it` + 1 `.each` (3 rows) → all (+ 13 v5-shape
+rows); `CustomToolRunDialog.test.tsx:147-172` 3 → all (+ 6);
+`RunToolModal.test.tsx:613-659` 3 → all (+ 4); `KeyboardPlugin.test.tsx:101-131`
+1 `.each` (2 rows) + 1 → all (+ 5 vectors); `MentionTypeaheadPlugin.test.tsx:
+153-167` 1 → 1.
+
+### Lane-local findings worth keeping
+
+- **Escape vs a query notification.** The `@` plugin's pattern
+  (`subscribe(() => refresh(view))`) re-opened the slash menu straight after
+  Escape: `closeMenu` → `setActive(false)` → the observer notifies → refresh
+  finds the trigger still live. v4's menu opens only from an editor update, so
+  source notifications now refresh an OPEN menu only. (The mention plugin
+  likely escapes this only because its single source rarely notifies on
+  disable; not touched — out of scope, noted.)
+- **An Angular `effect` does not re-run when its signals return to their old
+  values** (`isFetching` true → false with `isSuccess` unchanged): a
+  nonce-once proof needs the dependency v4 actually lists (`tools`) and a
+  roster that CHANGES. The popup tracks `tools()` like v4's deps.
+- `injectQuery`'s signals lag `refetch()`; the popup gates a pre-selection on
+  the refetch promise of THIS open (`fetchedForNonce`) as well as
+  `isSuccess && !isFetching`.
+
+### Recorded divergences (by name)
+
+- `SLASH_LISTBOX_ID_PREFIX` — `qt-slash-command-listbox` vs v4's
+  `slash-command-listbox` (the `qt-*-typeahead-listbox` convention).
+- `RUNNER_ERROR_ARMS` — v4's two failure arms collapse into one catch,
+  `coreErrorMessage(err, fallback)`: v5's `runTool` / `runCustomTool` throw the
+  server's text on a refused dispatch.
+- `CUSTOM_RUN_PARAMETERS_OMITTED` — the immediate custom run omits
+  `parameters` (v4: `null`) and `private` (both sides); the Rust verb's
+  `.nullish()` makes the bodies equivalent; `asCharacterId: null` → omitted
+  (v5's `RunCustomToolArgs.asCharacterId?: string`).
+- `SLASH_ROW_GLYPH_TEXT` — **RETIRED** by item 23 (unit 8).
+- The quick rolls' toast is `coreErrorMessage(err, 'The dice would not roll')`
+  — byte-equal to v4's `err instanceof Error ? err.message : …`.
+- The modal applies a NEW nonce against the settled list without refetching
+  (v4's fetch effect refetches on a new nonce); v5 mounts the modal per open,
+  so only a `/` while the sidebar already opened it takes this path.
+- The popup's `initialTool` INPUT opens the dialog on a new nonce (through
+  `open()`), as v4's `openCustomTool(initial)` does; a wand open CLEARS a
+  pending request, as v4's `openCustomTool()` sets `tool: null`.
+
+### Tier 3 records
+
+27. **Bug 250 — NO-PORT** (`GuardedTypeaheadMenuPlugin`): v5's plugin views
+    `refresh()` synchronously in `update`; no deferred resolution to orphan.
+    ONE regression row (GREEN on main — a convergence). Evidence for P4.D313.
+28. **Bug 251's caret half — NO-PORT**: ProseMirror's caret in a `code_block`
+    has ONE shape; v4's "Enter after a trailing line break" `.each` is
+    transcribed and GREEN on main.
+29. **The Lexical 0.52 internals — NO-PORT** (survey §8.1): no file corresponds
+    (D17, ProseMirror).
+30. **`requestRngDirect` — NO-PORT**: v5 always previews (header of
+    `rng-request.ts`).
+31. **`01f508d4e`'s SPA half — NOT THIS LANE'S (`HANDOFF:` to the Ownership
+    table — P4.D309 or the unifier):** delete the `console.debug(
+    '[useWardrobeItemActions] Duplicating wardrobe item', …)` twin at
+    `apps/web/src/app/wardrobe/wardrobe-item-actions.ts:231-237` and, in
+    `wardrobe-item-actions.spec.ts:150-166`, the `console.debug` spy, its
+    assertion and the "logs v4's debug line" title.
+32. **The `ChatModals` move / `useModalState` / `CustomToolsButton` as a bare
+    button / `ComposerGutterTools.onCustomToolsClick` — NO-PORT as files**: one
+    popup instance; `RunToolRequest` → the Salon's `runToolRequest`,
+    `CustomToolRequest` → the popup's own request slot.
+33. **`queryKeys.tools.byChat` + the ESLint widening — NO-PORT as files**: the
+    key is a REUSE of the modal's `['tools', chatId, 'schemas']`; no lint.
+34. **`useChatSettings.handleComposerSlashCommandsChange` + the tab plumbing —
+    NO-PORT as files, PORT as behaviour** inside the card.
+35. **The wardrobe-lines wire in the popup — the UNIFIER's (R-9).**
+36. **The setting-toggle e2e beat — GATED** behind `P4D304_SERVER_LANDED =
+    false` (§S.9 flips it).
+37. **The accessor's cast** — droppable after the union (a nicety, never a
+    wire).
+38–40. `CUSTOM_RUN_PARAMETERS_OMITTED`, `SLASH_LISTBOX_ID_PREFIX`,
+    `RUNNER_ERROR_ARMS` — above.
+41. `help/` / `docs/v4/` — none of this lane's.
+
+**Tier 2 item 26 (precedence row) — NOT APPLICABLE, recorded:** no keystroke
+is claimed by both plugins — `.` is not a slash opener (the corpus's
+`trigger: . before /` row is SHUT), and `/` is not a smart-typography or
+text-replacement trigger; the mount order keeps v4's precedence for a future
+overlap. **Tier 2 item 24 LANDED** (the Salon row: a `/roll` with the modal
+already open re-requests on the SAME instance, nonce 2 then 3). **Tier 2 item
+25 LANDED** as a self-skipping e2e beat (derives a zero-parameter invocable
+`self_inventory` from `toolsList`).
+
+### HANDOFFS
+
+- **Received (R-9):** P4.D307's `qt-custom-tool-wardrobe-lines` — the THREE-line
+  wire into `chat/custom-tools-popup.ts` (imports; extend the reference-panel
+  `@if` with `|| wardrobeLines().length > 0`; the component after the writes
+  `@if`) + the popup spec's one `wears` case are the UNIFIER's. Untouched here.
+- **Received (P4.D313):** the `composer-slash-commands` section id — landed
+  (unit 7).
+- **Given:** item 31 above (P4.D309 / the unifier).
+
+### e2e (R-12, R-L8, R-L9)
+
+R-L8 measured, BOTH routes: `seed-pascal-tools-fixture.ts` writes the SHARED
+`INSTANCE_DIR` and takes no instance parameter; and the pair it reads
+(`pascal-run-custom-{main,mount}.db`) is a slim harness fixture the Salon cannot
+boot on (no `memories` / `background_jobs` / `embedding_profiles` — `listChats`
+answered `500 Failed to fetch chats`, measured on a scratch boot; replaying
+`fresh_schema.json` as `IF NOT EXISTS` was too slow through the debug CLI's
+per-call PBKDF2). So the spec boots the salon pair the `salon-scenario-flow`
+way (+ its userId rewrite) and performs the seeder's copy itself (vault A's
+`Tools` folder + links + files/documents, from the pascal pair, remapped onto
+Aria's vault), then checks over the dispatch wire that "Group Expedition"
+exists, deals `coin`, and seats an active CHARACTER. The seeder is untouched.
+(`cliBinary()` prefers `target/release/quilltap`: 0.46 s a call vs ~4 s for the
+debug build — worth knowing for any own-instance spec.)
+R-L9: `/coin` lists `/coin — Flip a coin`
+(Composer) FIRST, then Pascal's `coin` — the exact tie breaks by `KIND_ORDER`.
+No beat consults a model, so mock port 45342 stays reserved but unused.
+
+### The gate (final tree)
+
+- SPA: `npm run lint` clean; `npm test` (the whole suite, with the lint
+  self-test) **514 files / 10,628 tests, 0 failed**; `npm run build` clean.
+- Playwright BY FILE, one at a time (announced in the shared notes):
+  `composer-slash-commands-flow` **4 passed / 2 skipped** (the gated
+  setting beat; the self-skipping zero-parameter built-in beat — the salon
+  instance's `self_inventory` takes parameters); `composer-mention-flow` 4 / 0;
+  `settings-chat-cards-flow` 5 / 0; `salon-custom-tools-flow` 4 / 0 (the
+  popup's `openDialog` → `open()` path).
+- The recorder re-run from the pin: byte-identical (`cmp`), 186 lines.
+- Rust (no `crates/` hunk — confirms the clone): `cargo fmt --all --check`
+  clean; `cargo clippy --workspace --all-targets -- -D warnings` clean, and
+  again with `--features quilltap-core/native-transport`; `cargo test
+  --workspace --no-fail-fast` **806 result lines / 5,230 passed / 4 failed / 3
+  ignored** — the four reds are LIVE-CHECKOUT guards, none this lane's:
+  `every_installed_provider_sdk_matches_the_recorded_version` and
+  `v4s_installed_zod_matches_the_recorded_version` (P4.D311's dependency move;
+  P4.D313's pin gate saw the same pair), `the_vendored_schemas_equal_the_v4_
+  checkouts` and `the_embedded_schema_equals_the_v4_checkouts` (P4.D313's
+  `public/schemas/`, compared against the live checkout one commit past the
+  pin). Run without `QT_V4_CHECKOUT` pointed at the pin (the gate ran from the
+  worktree's defaults).
+- `git diff --name-only main` free of every forbidden path; no `TODO`/`FIXME`
+  in the new modules; the misspelling guard empty; `recipe_sweep.py
+  --self-test` exit 0.
+
+### Versions
+
+SPA 0.5.862 → **0.5.871** (one bump per commit); no crate moves;
+`quilltap-harness` untouched.
+
+### 💸 for the dogfood pass
+
+As the order lists (the real Prospero tool room and Friday's Pascal customs in
+the bare menu, `/d20` and `/coin` chips, `/wardrobe_w` pre-selected, `/pascal`
+landing where the wand left it, a zero-parameter custom run at once — 💸 if the
+definition consults the model — `/image`, `/inform`, Space / Escape / undo,
+prose that never opens, the Slash Commands card off and on once P4.D304 lands,
+the help page's deep link, bug 251's whitespace line kept, the About
+sentences, the digest link's colour in dark mode) — plus the new row icons
+taking the theme's icon set.

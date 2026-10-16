@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — test(e2e): the composer / commands flow; P4.D308 lane record (P4.D308)
+
+_Versions: SPA 0.5.871._
+
+New `e2e/composer-slash-commands-flow.spec.ts` runs on its own instance (port 4344): the salon fixture plus Pascal's `Tools/` rows copied into Aria's vault, the same rows the shared seeder copies. Live beats: a bare `/` lists the composer actions, Prospero and Pascal; `and/or` stays prose; Escape leaves `/atta`; one undo restores a committed `/atta`; `/d20` stages the dice chip from a real preview roll; `/coin` lists the Composer action before Pascal's `coin`, and picking Pascal's runs it at once (`Pascal has settled coin.`); `/wardrobe_w` opens Run Tool on Wear Wardrobe Items. The Slash Commands toggle beat waits behind `P4D304_SERVER_LANDED`. Also: the P4.D308 lane record and the order's status header (LANE COMPLETE).
+
 #### 2026-10-16 — feat(spa): the slash menu rows carry v4's icons (P4.D308)
 
 _Versions: SPA 0.5.870._
