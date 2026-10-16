@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — docs(porting): P4.D305 lane record — `TRIGGERS: dafcffc2c` in the order's status header, the red-first counts, the residue by owner, the hand-offs
+
+_Docs-only change._
+
+The P4.D305 order's status header records `TRIGGERS: dafcffc2c` and LANE COMPLETE; `status-log.md` gains the lane record (the pin probe, the red-first sweep, the measured corrections to the order, the sibling residue by owner, the gate, the hand-offs to P4.D306 / P4.D307 / P4.D310).
+
 #### 2026-10-16 — TRIGGERS: P4.D305 — Pascal trigger phrases, server side: the `triggers` definition key, the scanner + Carina strip, ONE run service for every entrance, the never-failing trigger runner, the two spine sites, `pascalMeta.triggerPhrase`, the Workbench `triggerCount`
 
 _Versions: core 0.0.1307, host 0.0.209._

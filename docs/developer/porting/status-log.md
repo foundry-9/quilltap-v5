@@ -185442,3 +185442,256 @@ Versions at `KEYSTONE`: core 0.0.1306, host 0.0.208.
   `Auto-Run on Trigger Phrases: No` → `Yes`; backup → `replace` restore with
   both non-default; nothing for the CLI).
 - **Versions at close:** core 0.0.1306, host 0.0.208.
+
+## P4.D305 — Pascal trigger phrases, the SERVER side of v4 `362426c8f` (lane, 2026-10-16)
+
+Branch `claude/p4.d305-pascal-trigger-server-5c400d`. The session opened on an
+app worktree branch `claude/competent-wright-5c400d` at main `6f78aa3d7`; it
+was moved before the first edit with `git switch -c` onto **`KEYSTONE` =
+`09a3d9489`** (P4.D304's Tier-1 commit, recorded in P4.D304's status header;
+C1 spelt as written — `ChatSettings.custom_tool_triggers`, ensure module
+`db::chat_settings_4_11_repair`). `REAIM` `abea3f336` is in the ancestry
+(`git merge-base --is-ancestor` → yes). `help.rs:217` carries P4.D304's
+`customToolTriggers` bag line (R-7, verified on `KEYSTONE`).
+
+- **§2 probe (observation, the pin rule):** v4 branch `main`, tree clean;
+  `log 25b8fab6a..main` = ONE commit — **v4 moved: `5cb0e0190`** ("feat(pascal):
+  wardrobe picker in the Workbench") observed 13:57 CDT; `log 489b228b6..bugfix`
+  empty. Not ported. Pin worktree `/tmp/qt-v4-pin-p4d305-25b8fab6a`
+  (`25b8fab6aa58…`, `4.11.0-dev.10`, root `openai` 7.34.0, `zod` 4.6.7; the
+  three symlink classes).
+
+### Red-first (item 1) — sweep 1 from the pin on unported `KEYSTONE`
+
+13 families, 7 ok / 6 red, every red named:
+- `pascal_run_custom_handler_equivalence` **ok** (the extraction's pre-measure:
+  the LLM arm byte-identical).
+- `pascal_custom_tools_route_equivalence` red on `list` — C3's
+  `wears`/`takesOff`/`clearsSlots` vocabulary keys (**P4.D306**); no existing
+  row runs the `whispered` tool, so R-5's flips show only on item 7's two new
+  rows (measured red on the unported route: `run-default-whisper-no-private`
+  body + system rows, `run-default-whisper-refused-no-private` system rows).
+- `pascal_workbench_equivalence` / `_route` red on `triggerCount` (mine).
+- `orchestrator_tier3_equivalence` red on `single_basic: markMailAlertsDelivered
+  lines` (**P4.D310**, `01f508d4e`).
+- `pascal_run_custom_equivalence` red on the preamble's "or what they are
+  wearing" (**P4.D306**).
+- `pascal_custom_tool_definition_equivalence` red on `effect-target-missing`
+  (**P4.D306**'s `when`-first reorder); with the 21 new rows added, on the
+  unported parser: 23 rows red (the 21 `triggers` rows + `effect-target-missing`
+  + `effect-value-missing`).
+- ok: `message_finalizer_tier3`, `pascal_side_effects`, `pascal_writers`,
+  `pascal_custom_tools_execution`, `carina_parser`, `pascal_definition_reader`.
+- `carina_parser`'s strip rows and the new phrases family are compile-red on
+  unported code (no `strip_carina_query_lines`, no `pascal::trigger_phrases`).
+
+### What landed (Tier 1 items 2–16, one `TRIGGERS` commit)
+
+- **T1 the definition** (`custom_tool_types.rs`): the three constants after
+  `MAX_EFFECTS`; `QtapCustomTool.triggers` between `chip_label` and
+  `description`; the parse arm with Zod 4.6.7's measured behaviour — an
+  oversized list (> 8) fails with `Too big: expected array to have <=8 items`
+  ALONE and ABORTS (4.6.7's early size cap — no element parsed, no refine);
+  `.min(1)` is a continuable check; an element `too_small` is continuable (the
+  refine still runs: `['ok','OK']` → both `>=3` issues + `trigger 2 repeats
+  trigger 1`); a non-string element aborts; and a NON-ARRAY input with a
+  `.length` ALSO gets the array's length checks after its `invalid_type`
+  (zod's `when: val.length !== undefined` — `"abracadabra"` → `… received
+  string; triggers: Too big: expected string to have <=8 characters`, a string
+  by the code-point rule, an object's numeric `length` as origin `unknown`;
+  found by the corpus row `triggers-not-an-array`, probed at the pin);
+  `validate_triggers` as the fifth step; `KNOWN_TOP_LEVEL_KEYS` 16. Corpus: 21
+  rows under `// ---- triggers (362426c8f) ----` (the survey's 20 +
+  `triggers-final-sigma`). **Green: every `triggers-*` row**; the oracle NDJSON
+  sha256 at the pin `47514514631e2e0d2405643e793cc36cc1ceb0212aa05de03c8167913b366ea9`
+  (R-F — P4.D306 / P4.D307 compare). The family now records a row mismatch and
+  walks on (so one sibling row cannot hide the rest).
+- **T2 Carina:** `parse_query_line` (the loop body) + `strip_carina_query_lines`;
+  the corpus gains 79 `kind: "strip"` rows (v4's four, nine edges, the strip of
+  every string parse input — `null` inputs left out, the port's strip takes
+  text). 146 rows, green.
+- **T3 the scanner:** NEW `pascal::trigger_phrases` + NEW tier-1
+  `pascal_trigger_phrases_equivalence` over NEW `pascal-trigger-phrases.ts` (29
+  scan rows incl. the astral `3`, CRLF `2`, stripped-Carina `0`, the `İ` fold
+  offset, ties, the zero-length phrase, the cap-drops-latest-by-offset row; 8
+  `triggersContainedIn` rows; the constant). Green; bytes compared.
+- **T7 the row:** `PascalMetaIn.trigger_phrase` between `invoked_by` (a
+  `String` still) and `caller_participant_id`; the byte round-trip unit (a
+  `'trigger'` row in order, a `'user'` row with NO key).
+- **T4 the run service:** NEW `pascal::run_service` with C2 §4's spellings
+  (`pending_wardrobe_announcements: Option<&Arc<Mutex<HashSet<String>>>>`
+  RESERVED, doc-commented for `f0db8cbb8`); ONE `pascalMeta` assembly. Both
+  entrances re-pointed and their copies deleted; the handler's character-sheet
+  read extracted once (`tools::run_custom::read_character_hydrated`, shared with
+  the runner). **Measured at the pin (R-L4 corrected):** v4's
+  `chats.findById` is a `safeQuery` FALLBACK — an unreadable chat answers
+  `null`, so the service's `state cascade unavailable` DEBUG is NOT reachable
+  through a chat-read failure; the service reads through
+  `chats_read::find_by_id_or_none` and the row `run-llm-chat-unreadable` pins
+  the SILENCE on both sides (renamed from the order's
+  `run-llm-cascade-unavailable`). v4's catch is reachable only through a throw
+  inside `resolveStateCascade` itself (every read in it is a fallback); its v5
+  home is the read connection failing — no fault seam reaches it in a test
+  (recorded, unpinned). The route's `run-cascade-unavailable` row is
+  UNREACHABLE (the route reads the chat first and answers 404/500 itself);
+  recorded, not added. **Extraction proof:**
+  `pascal_run_custom_handler_equivalence` green at the pin, 34 cases (32 + 2
+  plants), every row's v4 lines captured through the transports splice and
+  compared against v5's `global_capture` (5 pinned messages), every posted
+  `pascalMeta` compared as stored TEXT. `pascal_custom_tools_route_equivalence`
+  green on every non-`list` case (44 cases; R-5's two rows
+  `run-default-whisper-no-private` / `run-default-whisper-refused-no-private`
+  red-first on the unported route, green ported); the six `list*` bodies differ
+  ONLY by C3's `wears`/`takesOff`/`clearsSlots` (P4.D306 residue, verified by
+  stripping the three keys). The route family now records per-case mismatches.
+- **T5 the runner:** NEW `pascal::trigger_runner` (C2 §5 spellings; the
+  `on_posted` sink is `&mut (dyn FnMut(&Value) + Send)` so the spine future
+  stays `Send`). NEW `pascal_trigger_runner_equivalence` + NEW
+  `pascal-trigger-runner.test.ts`: 21 cases, both sides REAL (v4's logger
+  spliced; the job host held), rows in INSERTION order with `pascalMeta` as
+  text, posted / `onPosted` positions, stores, 10 pinned messages; floors:
+  fired, refused, whispered, unposted, logged. Green. Plus the v5-only
+  `consult_none_takes_the_no_invoker_arm` (R-L2: with no runner in hand a
+  consult-bearing trigger tool is still dealt — `execute_custom_tool`'s
+  no-invoker FAIL-SOFT, `pascalMeta.llm` carries `no LLM invoker was available
+  in this context`, state `failure`; NOT a Prospero bubble).
+- **The fixture (item 16):** the committed `pascal-run-custom` pair is WIDENED
+  IN PLACE (NEW `extend-pascal-run-custom-triggers.ts`, through v4's real repos
+  and `storeMountFile`) with the trigger room `c1…07` (CHAR_A LLM seat, CHAR_B
+  user-driven seat), its project "The Trigger Shelf" + the linked "Trigger
+  Shelf" store (13 tools: spell, seer, initiative, hush, t0–t4, wind, stoke,
+  dormant, augur — shared module `pascal-run-custom-triggers.ts`, also called
+  by the builder), and `blessed: true` on CHAR_A. **Why not the rebuild the
+  order named:** a fresh build at the pin comes out a migration vintage BEHIND
+  the committed pair (measured: no `migrations_state` / `migrations_metadata` /
+  `memory_extraction_cursors`, no `chats."transcriptVersion"` /
+  `"moderationRefusalCount"` / `"lastModerationRefusalAt"`, no
+  `chat_settings."dangerousContentSettings"`) and re-mints every vault id; the
+  widen leaves the schema identical (`sqlite_master` diffed: main unchanged;
+  mount gains v4's dump-borne `idx_doc_mount_points_name_nocase`, created by any
+  v4 open) and the `.meta.json` sidecar byte-identical. **Order corrections
+  measured:** the format REQUIRES a parameter default, so "a required parameter
+  WITHOUT a default" cannot load — `initiative` refuses at the deal instead (a
+  `$param`-bound roll whose default bounds are inverted: `the roll's low bound
+  (0.9) is above its high bound (0.1)`); a tool cannot be named `oracle` (CHAR_A's
+  vault already has one, which would shadow it), so the gated tool is `seer`;
+  the runner takes `chatSettings` as a parameter, so the pair carries no
+  settings flip. Dependents re-run green: handler, route (bar residue), runner,
+  `pascal_definition_reader`, `pascal_build_tools_roster`.
+- **⚠ v4 oddity measured (a filing candidate — the human files, R-T):** two
+  progression-writing hits in ONE message share the runner's ONE metadata
+  snapshot, so the second run's whole-sheet write DROPS the first's progression
+  (`two-hits-one-clock`: `stoke`'s `hearth` is gone, `wind`'s `clockwork`
+  remains, stamped `updatedAt` = the one `nowMs`). Ported faithfully.
+- **T6 the settings + sites:** `OrchestratorChatSettings.custom_tool_triggers`
+  (ctor `false`; `quilltap-host/src/spine.rs` `orchestrator_chat_settings_from_value`
+  `customToolTriggers ?? false`; test literals `enclave_step_tier3_equivalence.rs`
+  `orchestrator_tier3_equivalence.rs` — the `orchestrator.rs` unit literal uses
+  `..Default`); `FinalizerChatSettings.{custom_tools, custom_tool_triggers}`
+  (`orchestrator.rs` population; `message_finalizer_tier3_equivalence.rs`,
+  `answer_confirmation_tier3_equivalence.rs` literals). NEW
+  `services::trigger_phrase_sites` (`room_character_ids`, the two helpers) and
+  the two fenced hunks (`// === P4.D305: user-message trigger site ===` after
+  the persist, ABOVE the paused-chat hold; `// === P4.D305: reply trigger site
+  ===` after the RNG block, before Carina). **Consult at the sites:** the
+  in-chat turn holds no `ConsultRunner` (`build_turn_tool_runner` wires none —
+  the in-chat `run_custom` is in the same state), so both sites pass `None`
+  (recorded; see the follow-up).
+- **T6 proven:** `orchestrator-tier3.json` gains an isolated room
+  (`e0000305…`: Bellman LLM + Ringer user seat) and a `bell` tool in Ringer's
+  vault GATED on Ringer's own sheet (so the responder is offered no `run_custom`
+  and P4.D306's preamble cannot leak in); the builder writes it via NEW
+  `harness/oracle/lib/trigger-tools.ts` (shared with the finalizer builder);
+  the user row carries `customToolTriggers: true`. A NAMED block runs before
+  the residue: events equal (the `pascalResult` frame normalised and before the
+  model's first `content`), the room's rows in rowid order USER → Pascal →
+  ASSISTANT, the same three rows on both sides, and Pascal's line inside BOTH
+  sides' `CHAT_MESSAGE` request (decoded) — "OK: trigger_phrase …" in the sweep.
+  `message-finalizer-tier3.json` gains `trigger-phrase-reply` (Chime's reply
+  says the phrase) — the family is GREEN WHOLE, plus a named rowid-order /
+  frame-before-`done` block. Red-first: both cases red with the Rust trigger
+  flag forced off (≙ the unported sites), green on.
+- **T8:** `CustomToolLibraryEntry.trigger_count`; `workbench` pair REBUILT at
+  the pin with `theta` (two triggers) — the rebuild comes out WIDER, not
+  narrower (gains `characters.archived*`); count pin 8 → 9 + a 0-and-2 floor.
+  Both workbench families green.
+- **R-L5:** NEW `trigger_sites_order_guard` (3 tests); its mutant (the
+  user-message site moved below the hold) goes red.
+- **Item 8 (the `.qtap` validator rows):** ALREADY LANDED by P4.D313
+  (`647638bf1`, `message_pascal_meta_invoked_by_trigger_valid` + its pair) —
+  §R.10(s) gives the rows to P4.D313; nothing added here (a second copy would
+  collide at the union). The family is untouched on this branch; the dependency
+  closes on the union.
+- **Tier 2:** item 18 landed (the handler's WARN `Custom tool run failed` /
+  INFO `Custom tool run completed`, the route's INFO `[Pascal] Manual
+  custom-tool run completed` + DEBUG `Manual custom-tool run named an unknown
+  tool`, all compared against v4's captured lines); item 19 landed
+  (`run-llm-unposted` in the handler family, `trigger-unposted` in the runner
+  family — an insert-aborting trigger plant that fails both sides); item 20
+  RECORDED: v4 `custom-tools.ts:294`'s `Custom tool carries keys this build does
+  not know` DEBUG is not ported (`roster.rs:198` discards `_unknown_keys`) —
+  follow-ups round; item 21: `room_character_ids` (PERSONA in the middle, an
+  unlinked CHARACTER skipped), continue / empty content → nothing read (silence
+  leg on a mount-less instance), and the runner's OUTER WARN reachable on that
+  instance (a failed roster read) — unit-pinned in `trigger_phrase_sites`.
+  `run_service`'s own units pin `dealt` / `refused` each with its silence leg
+  and `triggerPhrase` only on a `'trigger'` run.
+- **Log-line field naming:** camelCase (v4's keys), `target:
+  "quilltap::pascal"`; arrays as `…Json` (`firedJson`, `droppedJson`,
+  `availableJson`); a null `speakerParticipantId` renders `null`. The list
+  handler's older snake_case DEBUG (`custom_tools.rs`) is uncaptured and left.
+- **Tier 3 (recorded, untouched):** the orchestrator's `user_message_carina`
+  deferral (R-8); the executor's `on_posted` gap (the LLM entrance's post
+  surfaces at the post-turn refresh); the autonomous sink is a no-op for
+  `pascalResult`; the R-3 residue; P4.D304's `help.rs:217` / Almanack lines; the
+  SPA (P4.D307); a consult-bearing trigger fired LIVE (💸).
+- **⚠ Recorded gap (follow-up):** the in-chat turn's per-turn tool runner
+  (`orchestrator.rs` `build_turn_tool_runner`) wires NO `ConsultRunner`, so an
+  `llm`-bearing tool fails soft both through the in-chat `run_custom` AND
+  through the two trigger sites (which pass `None` for the same reason).
+- **HANDOFF:** **P4.D306** — `TRIGGERS: dafcffc2c`; the reserved
+  `pending_wardrobe_announcements` (doc-commented); the R-3 residue (all 18
+  `pascal_run_custom` rows), the route's six `list*` bodies, the definition's
+  `effect-target-missing` / `effect-value-missing`. **P4.D307** — the 21
+  definition row ids (`triggers-stored-as-written` … `unknown-keys-triggers-known`,
+  incl. `triggers-final-sigma`; NDJSON sha256 `4751451463…`), the 79 Carina
+  `strip-*` rows, `triggerCount` on `workbench.api.ts`, `pascalMeta.invokedBy:
+  'trigger'` + `triggerPhrase`. **P4.D310 / the unifier** —
+  `orchestrator_tier3`'s mailbox lines and the 22 calls erroring `no such
+  table: users` on v5's strict `users` read (present with the trigger site off;
+  shared note `p4d305-orchestrator-tier3-residue.md`). **P4.D313** — nothing new
+  (its two validator rows measure the export schema; this branch adds none).
+- **Final sweep from the pin (15 families):** 11 ok —
+  `carina_parser`, `pascal_trigger_phrases`, `pascal_run_custom_handler`,
+  `pascal_trigger_runner`, `message_finalizer_tier3`, `pascal_workbench`,
+  `pascal_workbench_route`, `pascal_side_effects`, `pascal_writers`,
+  `pascal_custom_tools_execution`, `pascal_definition_reader`; 4 red on named
+  sibling residue only (`pascal_custom_tool_definition`, `pascal_custom_tools_route`,
+  `orchestrator_tier3` — after "OK: trigger_phrase", `pascal_run_custom`).
+  `pascal_build_tools_roster` ok. `recipe_sweep.py --self-test` 0 failures;
+  `--collisions` adds none (the runner's `/tmp/qt-pascal-trigger-mirror` and
+  phrases NDJSON are unique).
+- **Gate:** fmt / clippy (both feature sets) clean; `cargo test --workspace`
+  (oracle env pointed at lane-private copies) **811 binaries / 5,258 passed / 9
+  failed / 3 ignored, zero SKIP** — every red an owner's: P4.D306 ×3
+  (definition, route, run_custom), P4.D311 ×2 (provider SDK, zod guards),
+  P4.D313 ×2 (public schemas, qtap embed), P4.D312 (`cli_differential`),
+  P4.D310 (`orchestrator_tier3` mailbox lines). Core lib after the
+  `run_service` units 3,629 / 0. `git diff --stat apps/web/src
+  crates/quilltap-cli` empty.
+- **Fixtures changed:** `pascal-run-custom-{main,mount}.db` (widened; sidecar
+  unchanged) → re-run `pascal_run_custom_handler`, `pascal_custom_tools_route`,
+  `pascal_trigger_runner`, `pascal_definition_reader`, `pascal_build_tools_roster`
+  and the e2e seed; `workbench-{main,mount}.db` + sidecar (rebuilt) → both
+  workbench families; `orchestrator-tier3.json`, `message-finalizer-tier3.json`
+  (+ builders, NEW `harness/oracle/lib/trigger-tools.ts`).
+- **Regen recipes:** the canonical headers (sweep driver, `--v4` the pin,
+  `--v5w` the spaceless worktree); the pair widen —
+  `extend-pascal-run-custom-triggers.ts`'s header (staged copies, idempotent).
+- **💸 Owed to the next `/dogfood`:** the order's rows (operator and character
+  saying a phrase on real turns; reverse-roster appearance order; the cap WARN;
+  setting off; a Carina line; the manual default-whisper run + its refusal; a
+  refused trigger; a triggered row through `.qtap` on the union; `triggerCount`
+  on the wire; a consult-bearing trigger LIVE; the file-log lines).
+- **Versions at close:** core 0.0.1307, host 0.0.209 (harness frozen; web / cli /
+  tauri / SPA untouched).
