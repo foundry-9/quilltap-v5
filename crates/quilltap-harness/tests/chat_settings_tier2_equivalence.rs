@@ -45,6 +45,10 @@ use quilltap_core::db::Writer;
 use serde::Deserialize;
 use serde_json::Value;
 
+fn default_true() -> bool {
+    true
+}
+
 /// The committed fixture spec — the single source driving both ports.
 #[derive(Deserialize)]
 struct Spec {
@@ -110,10 +114,16 @@ struct CreateData {
     llm_logging_settings: LlmLoggingSettings,
     auto_detect_rng: bool,
     custom_tools: bool,
+    /// P4.D304 (v4 4.11): absent → `false` (the struct's serde default).
+    #[serde(default)]
+    custom_tool_triggers: bool,
     composition_mode_default: bool,
     composer_spellcheck: bool,
     composer_emoji: bool,
     composer_unicode: bool,
+    /// P4.D304 (v4 4.11): absent → `true`.
+    #[serde(default = "default_true")]
+    composer_slash_commands: bool,
     /// P4.D251 (v4 `07b8f0209`): the voice MODE that replaced P4.D179's
     /// boolean. The spec's `#[serde(default)]`-free shape means every create
     /// op in `chat-settings-tier2.json` must name it.
@@ -175,6 +185,8 @@ struct UpdateData {
     auto_detect_rng: Option<bool>,
     custom_tools: Option<bool>,
     #[serde(default)]
+    custom_tool_triggers: Option<bool>,
+    #[serde(default)]
     composition_mode_default: Option<bool>,
     #[serde(default)]
     composer_spellcheck: Option<bool>,
@@ -182,6 +194,8 @@ struct UpdateData {
     composer_emoji: Option<bool>,
     #[serde(default)]
     composer_unicode: Option<bool>,
+    #[serde(default)]
+    composer_slash_commands: Option<bool>,
     #[serde(default)]
     impersonation_voice_mode: Option<ImpersonationVoiceMode>,
     #[serde(default)]
@@ -270,10 +284,12 @@ fn chat_settings_tier2_matches_oracle() {
                             llm_logging_settings: data.llm_logging_settings,
                             auto_detect_rng: data.auto_detect_rng,
                             custom_tools: data.custom_tools,
+                            custom_tool_triggers: data.custom_tool_triggers,
                             composition_mode_default: data.composition_mode_default,
                             composer_spellcheck: data.composer_spellcheck,
                             composer_emoji: data.composer_emoji,
                             composer_unicode: data.composer_unicode,
+                            composer_slash_commands: data.composer_slash_commands,
                             impersonation_voice_mode: data.impersonation_voice_mode,
                             text_replacements_enabled: data.text_replacements_enabled,
                             auto_scroll_on_response_complete: data.auto_scroll_on_response_complete,
@@ -313,10 +329,12 @@ fn chat_settings_tier2_matches_oracle() {
                                 auto_lock_settings: data.auto_lock_settings,
                                 auto_detect_rng: data.auto_detect_rng,
                                 custom_tools: data.custom_tools,
+                                custom_tool_triggers: data.custom_tool_triggers,
                                 composition_mode_default: data.composition_mode_default,
                                 composer_spellcheck: data.composer_spellcheck,
                                 composer_emoji: data.composer_emoji,
                                 composer_unicode: data.composer_unicode,
+                                composer_slash_commands: data.composer_slash_commands,
                                 impersonation_voice_mode: data.impersonation_voice_mode,
                                 text_replacements_enabled: data.text_replacements_enabled,
                                 auto_scroll_on_response_complete: data

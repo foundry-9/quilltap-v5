@@ -940,6 +940,14 @@ fn build_settings_assignments(
             bool_field(v, "Invalid customTools value (must be boolean)")?,
         ));
     }
+    // P4.D304 (v4 4.11 `362426c8f`, route.ts:171-182): after `customTools`,
+    // before `agentModeSettings` — v4's parameter order (route.ts:54).
+    if let Some(v) = obj.get("customToolTriggers") {
+        out.push((
+            "customToolTriggers",
+            bool_field(v, "Invalid customToolTriggers value (must be boolean)")?,
+        ));
+    }
     if let Some(v) = obj.get("agentModeSettings") {
         out.push((
             "agentModeSettings",
@@ -1061,6 +1069,15 @@ fn build_settings_assignments(
         out.push((
             "composerUnicode",
             bool_field(v, "Invalid composerUnicode value (must be boolean)")?,
+        ));
+    }
+    // P4.D304 (v4 4.11 `4877fc2da`, route.ts:246-257): after
+    // `composerUnicode`, before `impersonationVoiceMode` — v4's parameter
+    // order (route.ts:64).
+    if let Some(v) = obj.get("composerSlashCommands") {
+        out.push((
+            "composerSlashCommands",
+            bool_field(v, "Invalid composerSlashCommands value (must be boolean)")?,
         ));
     }
     // P4.D251 (v4 `07b8f0209`) — the impersonated-line voice MODE, at v4's own
@@ -3466,5 +3483,63 @@ mod tests {
                 other => panic!("expected the 400 for {bad}, got {other:?}"),
             }
         }
+    }
+
+    /// P4.D304 (v4 4.11 `362426c8f` / `4877fc2da`, route.ts:171-182 /
+    /// :246-257): the two boolean arms' sentences, an explicit `null` refused
+    /// (v4's `typeof null !== 'boolean'`), and v4's PARAMETER order — a body
+    /// with two bad keys answers the EARLIER arm's sentence, so an arm
+    /// appended at the end of the builder would fail only these rows.
+    #[test]
+    fn the_4_11_arms_refuse_in_v4s_parameter_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open_main(
+            dir.path().join("main.db"),
+            "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+        )
+        .unwrap();
+        let triggers = "Invalid customToolTriggers value (must be boolean)";
+        let slash = "Invalid composerSlashCommands value (must be boolean)";
+        let err = |body: serde_json::Value| build_settings_assignments(&db, "u1", &body).err();
+        for bad in [
+            serde_json::json!("yes"),
+            serde_json::json!(null),
+            serde_json::json!(1),
+        ] {
+            assert_eq!(
+                err(serde_json::json!({ "customToolTriggers": bad })).as_deref(),
+                Some(triggers)
+            );
+            assert_eq!(
+                err(serde_json::json!({ "composerSlashCommands": bad })).as_deref(),
+                Some(slash)
+            );
+        }
+        assert_eq!(
+            err(serde_json::json!({ "composerSlashCommands": "x", "customToolTriggers": "y" }))
+                .as_deref(),
+            Some(triggers),
+            "customToolTriggers precedes the composer family"
+        );
+        assert_eq!(
+            err(serde_json::json!({ "composerSlashCommands": "x", "impersonationVoiceMode": "bogus" }))
+                .as_deref(),
+            Some(slash),
+            "composerSlashCommands precedes the voice-mode arm"
+        );
+        assert_eq!(
+            err(serde_json::json!({ "customToolTriggers": "x", "agentModeSettings": 5 }))
+                .as_deref(),
+            Some(triggers),
+            "customToolTriggers precedes agentModeSettings"
+        );
+        let ok = build_settings_assignments(
+            &db,
+            "u1",
+            &serde_json::json!({ "customToolTriggers": true, "composerSlashCommands": false }),
+        )
+        .unwrap();
+        let names: Vec<&str> = ok.iter().map(|(n, _)| *n).collect();
+        assert_eq!(names, ["customToolTriggers", "composerSlashCommands"]);
     }
 }

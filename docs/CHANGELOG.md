@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — KEYSTONE: P4.D304 — chat_settings.customToolTriggers + composerSlashCommands (the TENTH + ELEVENTH D23 moves in one re-dump), two unstamped boot ensures, the six column sites, the two PUT arms, the help bag key and the Almanack line
+
+_Versions: core 0.0.1306, host 0.0.208._
+
+The `chat_settings` half of v4 `362426c8f` (Pascal trigger phrases) and `4877fc2da` (composer slash commands), ported at the `25b8fab6a` pin. `fresh_schema.json` and `chat_settings_seed.json` are re-dumped once from v4's real `generateDDL` at the pin: exactly two lines move (`"customToolTriggers" INTEGER DEFAULT 0` at cid 18, `"composerSlashCommands" INTEGER DEFAULT 1` at cid 23; 37 to 39 columns) and the seed gains the two captured values at indices 16 and 21. `migration_indexes.json` does not move.
+
+v4's two migrations are re-homed in the new `db::chat_settings_4_11_repair` as unstamped, table-gated, fatal boot ensures. `run_chat_settings_4_11_ensures` runs triggers then slash, after the P4.D288 span chain and before the P4.160 index backfill, and logs one boot INFO per added column. The vintage restore mirror-boot calls the same chain. v4's migration log lines and prettify labels are not ported.
+
+`ChatSettingsCreate` / `ChatSettingsUpdate` carry `custom_tool_triggers` (serde default `false`) and `composer_slash_commands` (serde default `true`) at all six column sites. The positional read shifts every later index; an absent `customToolTriggers` column reads `false` (`.is_some_and`), an absent `composerSlashCommands` reads `true`. The settings PUT gains the two boolean arms with v4's sentences in v4's parameter order. `help_settings`' chat bag gains `customToolTriggers` after `customTools`, and the Almanack renders `Auto-Run on Trigger Phrases` under Pascal's Workbench.
+
+New differential `chat_settings_4_11_columns_ensure_equivalence` compares both ensures against v4's real migrations in seven shapes, including the pair-order mode. `settings_routes` gains 14 rows (with a chat-settings refetch), `chat_settings_tier2`'s corpus carries non-default values, the Almanack render oracle fills the key v4's own fixture lacks and adds a `Yes` variant, and `help_tools` / `almanack_*` are regenerated from the pin. New tests: the by-name positional pin, the absent-column defaults, the provisioned seed row, the PUT arm order, a host boot capture test, a web-edge test, and the restore carrier rows in `restore_vintage_state`.
+
 #### 2026-10-16 — docs(porting): P4.D314 lane record — the `REAIM` sha (`abea3f336`) in the order's status header
 
 _Docs-only change._

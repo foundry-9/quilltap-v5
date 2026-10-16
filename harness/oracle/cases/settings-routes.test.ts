@@ -71,7 +71,7 @@ interface CaseSpec {
   body?: Record<string, unknown>;
   /** Re-fetch the family list after the op (observe the persisted effect via the
    *  already-verified read marshaling), or none. */
-  after?: 'connProfiles' | 'apiKeys' | 'taboo' | 'brahmaConsole' | 'dataRetention';
+  after?: 'connProfiles' | 'apiKeys' | 'taboo' | 'brahmaConsole' | 'dataRetention' | 'settingsChat';
   /** P4.56: seed `instance_settings['dataRetention']` through v4's REAL setter
    *  before the case runs — the merge-over-current and writes-nothing arms need
    *  a NON-DEFAULT stored value, or "kept the current value" and "reset to the
@@ -345,6 +345,14 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
       const r = (await mod.GET(
         mockRequest('http://x/api/v1/settings/brahma-console', 'GET') as never,
       )) as never as {
+        json: () => Promise<unknown>;
+      };
+      out.after = await r.json();
+    } else if (c.after === 'settingsChat') {
+      // P4.D304: the chat-settings GET after a PUT — the persisted row, which a
+      // refused PUT must leave unchanged.
+      const mod = await import('@/app/api/v1/settings/chat/route');
+      const r = (await mod.GET(mockRequest('http://x/api/v1/settings/chat', 'GET') as never)) as never as {
         json: () => Promise<unknown>;
       };
       out.after = await r.json();
@@ -944,6 +952,164 @@ describe('settings-routes oracle', () => {
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
       body: { impersonationVoiceMode: 'ask' },
+    },
+    // ---- P4.D304 (v4 4.11 `362426c8f` / `4877fc2da`): the two boolean toggles ----
+    // v4's arms (route.ts:171-182 / :246-257): `typeof x !== 'undefined'` then
+    // `typeof x !== 'boolean'` → the fixed sentence, a 400 through
+    // `.includes('Invalid')`. Each PUT row refetches the GET (`after`), so a
+    // refused PUT is shown to leave the row unchanged. Subsumes v4's mocked
+    // `route.custom-tool-triggers.test.ts` over the REAL route + repo.
+    {
+      // The GET defaults over user A's repo-written row: `customToolTriggers: false`, `composerSlashCommands: true`.
+      name: 's_get_4_11_defaults',
+      family: 'custom_tool_triggers',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+    },
+    {
+      // On — the echo and the refetch carry `true`.
+      name: 's_put_custom_tool_triggers_on',
+      family: 'custom_tool_triggers',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customToolTriggers: true },
+      after: 'settingsChat',
+    },
+    {
+      // An explicit `false` (the default) — still an assignment.
+      name: 's_put_custom_tool_triggers_off',
+      family: 'custom_tool_triggers',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customToolTriggers: false },
+      after: 'settingsChat',
+    },
+    {
+      // A string — refused with v4's sentence; the row unchanged.
+      name: 's_put_custom_tool_triggers_wrong_type',
+      family: 'custom_tool_triggers',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customToolTriggers: 'yes' },
+      after: 'settingsChat',
+    },
+    {
+      // An EXPLICIT null — `typeof null !== 'undefined'`, so the arm runs and refuses (the raw-bag dispatch carries it).
+      name: 's_put_custom_tool_triggers_null',
+      family: 'custom_tool_triggers',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customToolTriggers: null },
+      after: 'settingsChat',
+    },
+    {
+      // A number — refused.
+      name: 's_put_custom_tool_triggers_number',
+      family: 'custom_tool_triggers',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customToolTriggers: 1 },
+      after: 'settingsChat',
+    },
+    {
+      // Off — the echo and the refetch carry `false`.
+      name: 's_put_composer_slash_commands_off',
+      family: 'composer_slash_commands',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { composerSlashCommands: false },
+      after: 'settingsChat',
+    },
+    {
+      // An explicit `true` (the default).
+      name: 's_put_composer_slash_commands_on',
+      family: 'composer_slash_commands',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { composerSlashCommands: true },
+      after: 'settingsChat',
+    },
+    {
+      // A number — refused with v4's sentence.
+      name: 's_put_composer_slash_commands_wrong_type',
+      family: 'composer_slash_commands',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { composerSlashCommands: 0 },
+      after: 'settingsChat',
+    },
+    {
+      // An explicit null — refused.
+      name: 's_put_composer_slash_commands_null',
+      family: 'composer_slash_commands',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { composerSlashCommands: null },
+      after: 'settingsChat',
+    },
+    {
+      // Two bad keys: the EARLIER arm in v4's parameter order answers — `customToolTriggers` (after `customTools`) precedes the composer family.
+      name: 's_put_4_11_both_bad_order',
+      family: 'custom_tool_triggers',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { composerSlashCommands: 'x', customToolTriggers: 'y' },
+      after: 'settingsChat',
+    },
+    {
+      // `composerSlashCommands` precedes the voice-mode arm, so ITS sentence answers.
+      name: 's_put_4_11_slash_before_voice',
+      family: 'composer_slash_commands',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { composerSlashCommands: 'x', impersonationVoiceMode: 'bogus' },
+      after: 'settingsChat',
+    },
+    {
+      // The CREATE branch (user B has no row): the repository seed fills the rest and both overrides land.
+      name: 's_put_4_11_create_branch',
+      family: 'custom_tool_triggers',
+      user: 'B',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customToolTriggers: true, composerSlashCommands: false },
+      after: 'settingsChat',
+    },
+    {
+      // Both written — the "dead while customTools is off" rule is the READER's (the trigger runner), not the PUT's.
+      name: 's_put_4_11_alongside',
+      family: 'custom_tool_triggers',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customTools: false, customToolTriggers: true },
+      after: 'settingsChat',
     },
     // ---- P4.47 (A): the three sibling Zod-collapse arms ----
     // The D73 bank. `smartTypographySettings` above proved the machinery: a

@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-host"
-version = "0.0.207"
+version = "0.0.208"
 edition = "2021"
 publish = false
 

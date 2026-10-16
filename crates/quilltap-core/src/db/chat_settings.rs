@@ -59,10 +59,12 @@
 //!     default; v4 applies the Zod default during `validate`, so a row created
 //!     without it stores `256`. The corpus supplies it explicitly. Bound as
 //!     `i64`.
-//!   - **eight boolean columns** → INTEGER 0/1 (`i64::from(bool)`):
-//!     `autoDetectRng`, `customTools`, `compositionModeDefault`,
-//!     `composerSpellcheck`, `composerEmoji`, `composerUnicode`,
-//!     `textReplacementsEnabled`, `autoScrollOnResponseComplete`.
+//!   - **ten boolean columns** → INTEGER 0/1 (`i64::from(bool)`):
+//!     `autoDetectRng`, `customTools`, `customToolTriggers`,
+//!     `compositionModeDefault`, `composerSpellcheck`, `composerEmoji`,
+//!     `composerUnicode`, `composerSlashCommands`, `textReplacementsEnabled`,
+//!     `autoScrollOnResponseComplete` (the two 4.11 columns — P4.D304, v4
+//!     `362426c8f` / `4877fc2da` — at their schema positions, cid 18 / 23).
 //!   - **one plain-enum TEXT column**, `impersonationVoiceMode`
 //!     (`'off'` / `'ask'` / `'always'`, v4 `07b8f0209` — it REPLACED the
 //!     boolean `impersonationVoiceRewrite` at the same position; P4.D251),
@@ -813,6 +815,17 @@ pub struct ChatSettingsCreate {
     pub llm_logging_settings: LlmLoggingSettings,
     pub auto_detect_rng: bool,
     pub custom_tools: bool,
+    /// v4 4.11 `362426c8f` (P4.D304) — run a custom tool automatically, with
+    /// its defaults, when a message from anyone in a chat contains one of its
+    /// declared `triggers` phrases (default: false). Dead while `customTools`
+    /// is off. Schema-ordered between `customTools` and
+    /// `compositionModeDefault` (cid 18).
+    ///
+    /// `#[serde(default)]` — the FALSE default of
+    /// `z.boolean().default(false)` — for the same restore reason as
+    /// `composer_emoji` below: an archive taken before 4.11 has no such key.
+    #[serde(default)]
+    pub custom_tool_triggers: bool,
     pub composition_mode_default: bool,
     pub composer_spellcheck: bool,
     /// v4 4.8.2 `22de75f9` — the `:` emoji typeahead gate (schema-ordered
@@ -829,6 +842,15 @@ pub struct ChatSettingsCreate {
     /// same reason as `composer_emoji`.
     #[serde(default = "smart_typography_default_true")]
     pub composer_unicode: bool,
+    /// v4 4.11 `4877fc2da` (P4.D304) — whether `/` at the start of a word
+    /// opens the slash-command menu in the Salon composer (default: true).
+    /// Document Mode never has it. The gutter buttons and the sidebar's Run
+    /// Tool are NOT gated by this — an explicit button press is never a
+    /// surprise. Schema-ordered between `composerUnicode` and
+    /// `impersonationVoiceMode` (cid 23); defaulted for the same restore
+    /// reason as `composer_emoji`.
+    #[serde(default = "smart_typography_default_true")]
+    pub composer_slash_commands: bool,
     /// v4 `07b8f0209` (P4.D251) — the impersonated-line voice MODE
     /// (`ImpersonationVoiceModeEnum.default('off')`, schema-ordered between
     /// `composerUnicode` and `textReplacementsEnabled`, where the 4.10-dev
@@ -951,10 +973,14 @@ pub struct ChatSettingsUpdate {
     pub auto_lock_settings: Option<AutoLockSettings>,
     pub auto_detect_rng: Option<bool>,
     pub custom_tools: Option<bool>,
+    /// P4.D304 (v4 4.11): `customToolTriggers`.
+    pub custom_tool_triggers: Option<bool>,
     pub composition_mode_default: Option<bool>,
     pub composer_spellcheck: Option<bool>,
     pub composer_emoji: Option<bool>,
     pub composer_unicode: Option<bool>,
+    /// P4.D304 (v4 4.11): `composerSlashCommands`.
+    pub composer_slash_commands: Option<bool>,
     pub impersonation_voice_mode: Option<ImpersonationVoiceMode>,
     pub text_replacements_enabled: Option<bool>,
     pub auto_scroll_on_response_complete: Option<bool>,
@@ -1050,10 +1076,12 @@ impl<'c> ChatSettingsRepository<'c> {
         // outlive the call.
         let auto_detect_rng = i64::from(data.auto_detect_rng);
         let custom_tools = i64::from(data.custom_tools);
+        let custom_tool_triggers = i64::from(data.custom_tool_triggers);
         let composition_mode_default = i64::from(data.composition_mode_default);
         let composer_spellcheck = i64::from(data.composer_spellcheck);
         let composer_emoji = i64::from(data.composer_emoji);
         let composer_unicode = i64::from(data.composer_unicode);
+        let composer_slash_commands = i64::from(data.composer_slash_commands);
         // The enum binds as its TEXT spelling (v4 stores the Zod enum's string).
         let impersonation_voice_mode = data.impersonation_voice_mode.as_str();
         let text_replacements_enabled = i64::from(data.text_replacements_enabled);
@@ -1087,10 +1115,12 @@ impl<'c> ChatSettingsRepository<'c> {
                 ("llmLoggingSettings", &llm_logging_settings),
                 ("autoDetectRng", &auto_detect_rng),
                 ("customTools", &custom_tools),
+                ("customToolTriggers", &custom_tool_triggers),
                 ("compositionModeDefault", &composition_mode_default),
                 ("composerSpellcheck", &composer_spellcheck),
                 ("composerEmoji", &composer_emoji),
                 ("composerUnicode", &composer_unicode),
+                ("composerSlashCommands", &composer_slash_commands),
                 ("impersonationVoiceMode", &impersonation_voice_mode),
                 ("textReplacementsEnabled", &text_replacements_enabled),
                 (
@@ -1193,6 +1223,10 @@ impl<'c> ChatSettingsRepository<'c> {
             assignments.push(format!("customTools = ?{}", values.len() + 1));
             values.push(Box::new(i64::from(custom_tools)));
         }
+        if let Some(custom_tool_triggers) = patch.custom_tool_triggers {
+            assignments.push(format!("customToolTriggers = ?{}", values.len() + 1));
+            values.push(Box::new(i64::from(custom_tool_triggers)));
+        }
         if let Some(composition_mode_default) = patch.composition_mode_default {
             assignments.push(format!("compositionModeDefault = ?{}", values.len() + 1));
             values.push(Box::new(i64::from(composition_mode_default)));
@@ -1208,6 +1242,10 @@ impl<'c> ChatSettingsRepository<'c> {
         if let Some(composer_unicode) = patch.composer_unicode {
             assignments.push(format!("composerUnicode = ?{}", values.len() + 1));
             values.push(Box::new(i64::from(composer_unicode)));
+        }
+        if let Some(composer_slash_commands) = patch.composer_slash_commands {
+            assignments.push(format!("composerSlashCommands = ?{}", values.len() + 1));
+            values.push(Box::new(i64::from(composer_slash_commands)));
         }
         if let Some(impersonation_voice_mode) = patch.impersonation_voice_mode {
             assignments.push(format!("impersonationVoiceMode = ?{}", values.len() + 1));
@@ -1376,10 +1414,12 @@ pub fn find_by_user_id(
             "llmLoggingSettings",
             "autoDetectRng",
             "customTools",
+            "customToolTriggers",
             "compositionModeDefault",
             "composerSpellcheck",
             "composerEmoji",
             "composerUnicode",
+            "composerSlashCommands",
             "impersonationVoiceMode",
             "textReplacementsEnabled",
             "autoScrollOnResponseComplete",
@@ -1489,13 +1529,26 @@ pub fn find_by_user_id(
                     "customTools".into(),
                     Value::Bool(r.get::<_, Option<i64>>(17)?.is_none_or(|v| v == 1)),
                 );
+                // P4.D304 (v4 4.11 `362426c8f`): the FIRST default-FALSE
+                // tolerant boolean. NULL here means the COLUMN IS ABSENT (a
+                // pre-ensure instance, or a differential fixture opened
+                // without a boot), and v4's `SELECT *` + `customToolTriggers:
+                // z.boolean().default(false)` turns that `undefined` into
+                // `false` — so absent → `false` (`.is_some_and`). NEVER copy
+                // the `.is_none_or` of `customTools` / `composerUnicode`
+                // here: it would read an absent column as `true` and switch
+                // trigger phrases ON across every pre-ensure instance.
+                obj.insert(
+                    "customToolTriggers".into(),
+                    Value::Bool(r.get::<_, Option<i64>>(18)?.is_some_and(|v| v == 1)),
+                );
                 obj.insert(
                     "compositionModeDefault".into(),
-                    Value::Bool(r.get::<_, i64>(18)? == 1),
+                    Value::Bool(r.get::<_, i64>(19)? == 1),
                 );
                 obj.insert(
                     "composerSpellcheck".into(),
-                    Value::Bool(r.get::<_, i64>(19)? == 1),
+                    Value::Bool(r.get::<_, i64>(20)? == 1),
                 );
                 // P4.D73, same shape as `customTools` above: v5 adopts the
                 // three 4.8.2 columns without porting v4's migration runner,
@@ -1506,11 +1559,18 @@ pub fn find_by_user_id(
                 // must surface as `true` and the row must still READ.
                 obj.insert(
                     "composerEmoji".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(20)?.is_none_or(|v| v == 1)),
+                    Value::Bool(r.get::<_, Option<i64>>(21)?.is_none_or(|v| v == 1)),
                 );
                 obj.insert(
                     "composerUnicode".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(21)?.is_none_or(|v| v == 1)),
+                    Value::Bool(r.get::<_, Option<i64>>(22)?.is_none_or(|v| v == 1)),
+                );
+                // P4.D304 (v4 4.11 `4877fc2da`): the `composerUnicode` shape —
+                // `z.boolean().default(true)` fills an absent column, so
+                // absent → `true`.
+                obj.insert(
+                    "composerSlashCommands".into(),
+                    Value::Bool(r.get::<_, Option<i64>>(23)?.is_none_or(|v| v == 1)),
                 );
                 // P4.D251 (v4 `07b8f0209`): the voice MODE, a TEXT enum where
                 // its P4.D179 predecessor was a boolean. v4 reads `SELECT *`
@@ -1524,33 +1584,33 @@ pub fn find_by_user_id(
                 obj.insert(
                     "impersonationVoiceMode".into(),
                     Value::String(
-                        r.get::<_, Option<String>>(22)?
+                        r.get::<_, Option<String>>(24)?
                             .unwrap_or_else(|| "off".to_string()),
                     ),
                 );
                 obj.insert(
                     "textReplacementsEnabled".into(),
-                    Value::Bool(r.get::<_, i64>(23)? == 1),
+                    Value::Bool(r.get::<_, i64>(25)? == 1),
                 );
                 obj.insert(
                     "autoScrollOnResponseComplete".into(),
-                    Value::Bool(r.get::<_, i64>(24)? == 1),
+                    Value::Bool(r.get::<_, i64>(26)? == 1),
                 );
                 obj.insert(
                     "agentModeSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(25)?),
-                );
-                obj.insert(
-                    "coreWhisper".into(),
-                    parse_json(r.get::<_, Option<String>>(26)?),
-                );
-                obj.insert(
-                    "thinkingDisplay".into(),
                     parse_json(r.get::<_, Option<String>>(27)?),
                 );
                 obj.insert(
-                    "answerConfirmationSettings".into(),
+                    "coreWhisper".into(),
                     parse_json(r.get::<_, Option<String>>(28)?),
+                );
+                obj.insert(
+                    "thinkingDisplay".into(),
+                    parse_json(r.get::<_, Option<String>>(29)?),
+                );
+                obj.insert(
+                    "answerConfirmationSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(30)?),
                 );
                 // The JSON-column twin of the two booleans above: an absent
                 // column (or a NULL cell) is `undefined` to v4, and
@@ -1559,19 +1619,19 @@ pub fn find_by_user_id(
                 obj.insert(
                     "smartTypographySettings".into(),
                     parse_json_or_default(
-                        r.get::<_, Option<String>>(29)?,
+                        r.get::<_, Option<String>>(31)?,
                         super::chat_settings_composer_repair::SMART_TYPOGRAPHY_DEFAULT_JSON,
                     ),
                 );
                 obj.insert(
                     "storyBackgroundsSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(30)?),
+                    parse_json(r.get::<_, Option<String>>(32)?),
                 );
                 // P4.D255: `wardrobeImageSettings` (index 33 — every later
                 // positional read shifted by one). A NULL cell is v4's
                 // `undefined`: the key is OMITTED; a stored object is parsed
                 // with the schema's defaults (judged below with the voice mode).
-                if let Some(v) = read_wardrobe_image_settings_cell(r.get::<_, Option<String>>(31)?)
+                if let Some(v) = read_wardrobe_image_settings_cell(r.get::<_, Option<String>>(33)?)
                 {
                     obj.insert("wardrobeImageSettings".into(), v);
                 }
@@ -1588,15 +1648,15 @@ pub fn find_by_user_id(
                 // strips them).
                 obj.insert(
                     "conciergeSettings".into(),
-                    read_concierge_settings_cell(r.get::<_, Option<String>>(32)?),
+                    read_concierge_settings_cell(r.get::<_, Option<String>>(34)?),
                 );
                 obj.insert(
                     "autoLockSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(33)?),
+                    parse_json(r.get::<_, Option<String>>(35)?),
                 );
-                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(34)?);
-                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(35)?));
-                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(36)?));
+                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(36)?);
+                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(37)?));
+                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(38)?));
                 Ok(Value::Object(obj))
             },
         )
@@ -2066,6 +2126,282 @@ mod tests {
         let created_again =
             update_for_user(&conn, "u1", &[], "2026-08-03T00:00:01.000Z").expect("update branch");
         assert!(!created_again, "the row now exists");
+    }
+
+    /// P4.D304: the committed generateDDL `chat_settings` CREATE (39 columns).
+    fn fresh_chat_settings_ddl() -> String {
+        let fresh: serde_json::Value =
+            serde_json::from_str(include_str!("../services/provisioning/fresh_schema.json"))
+                .unwrap();
+        fresh["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find_map(|s| {
+                s.as_str()
+                    .filter(|s| s.starts_with("CREATE TABLE \"chat_settings\""))
+            })
+            .unwrap()
+            .to_string()
+    }
+
+    /// P4.D304 (v4 4.11 `362426c8f`): `customToolTriggers` is the FIRST
+    /// default-FALSE tolerant boolean — an ABSENT column (a pre-ensure
+    /// instance, a fixture opened without a boot) reads `false`, v4's
+    /// `z.boolean().default(false)` over `SELECT *`. An `.is_none_or` would
+    /// read `true` and switch trigger phrases on everywhere.
+    #[test]
+    fn find_by_user_id_defaults_custom_tool_triggers_false_when_the_column_is_absent() {
+        let conn = Connection::open_in_memory().unwrap();
+        let ddl =
+            fresh_chat_settings_ddl().replace("  \"customToolTriggers\" INTEGER DEFAULT 0,\n", "");
+        conn.execute_batch(&ddl).unwrap();
+        update_for_user(&conn, "u1", &[], "2026-10-16T00:00:00.000Z").unwrap();
+        let row = find_by_user_id(&conn, "u1").unwrap().expect("row");
+        assert_eq!(row["customToolTriggers"], serde_json::Value::Bool(false));
+        // Its neighbours keep their own cells.
+        assert_eq!(row["customTools"], serde_json::Value::Bool(true));
+        assert_eq!(
+            row["compositionModeDefault"],
+            serde_json::Value::Bool(false)
+        );
+        assert_eq!(row["composerSlashCommands"], serde_json::Value::Bool(true));
+    }
+
+    /// P4.D304 (v4 4.11 `4877fc2da`): `composerSlashCommands` absent → `true`
+    /// (the `composerUnicode` shape, `z.boolean().default(true)`).
+    #[test]
+    fn find_by_user_id_defaults_composer_slash_commands_true_when_the_column_is_absent() {
+        let conn = Connection::open_in_memory().unwrap();
+        let ddl = fresh_chat_settings_ddl()
+            .replace("  \"composerSlashCommands\" INTEGER DEFAULT 1,\n", "");
+        conn.execute_batch(&ddl).unwrap();
+        update_for_user(
+            &conn,
+            "u1",
+            &[("composerUnicode", SettingsColVal::Int(0))],
+            "2026-10-16T00:00:00.000Z",
+        )
+        .unwrap();
+        let row = find_by_user_id(&conn, "u1").unwrap().expect("row");
+        assert_eq!(row["composerSlashCommands"], serde_json::Value::Bool(true));
+        assert_eq!(row["composerUnicode"], serde_json::Value::Bool(false));
+        assert_eq!(row["customToolTriggers"], serde_json::Value::Bool(false));
+    }
+
+    /// P4.D304: the positional read, pinned BY NAME over a FULLY-POPULATED
+    /// 39-column row — every TEXT a unique sentinel, every JSON bag a unique
+    /// object, every boolean a pattern that differs from its neighbours' (two
+    /// rows; the (row1, row2) pairs cycle 00 → 01 → 11 → 10, so a read shifted
+    /// by one OR two columns lands on a different pair). The trailing
+    /// `createdAt` / `updatedAt` are the index canaries. Also pins the key
+    /// ORDER: each 4.11 key right after its schema neighbour.
+    #[test]
+    fn find_by_user_id_reads_every_column_by_name() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(&fresh_chat_settings_ddl()).unwrap();
+        let bools = [
+            "autoDetectRng",
+            "customTools",
+            "customToolTriggers",
+            "compositionModeDefault",
+            "composerSpellcheck",
+            "composerEmoji",
+            "composerUnicode",
+            "composerSlashCommands",
+            "textReplacementsEnabled",
+            "autoScrollOnResponseComplete",
+        ];
+        let cycle = [(0, 0), (0, 1), (1, 1), (1, 0)];
+        let raw_bags = [
+            "tagStyles",
+            "themePreference",
+            "defaultTimestampConfig",
+            "memoryCascadePreferences",
+            "autonomousRoomSettings",
+            "tokenDisplaySettings",
+            "contextCompressionSettings",
+            "llmLoggingSettings",
+            "agentModeSettings",
+            "coreWhisper",
+            "thinkingDisplay",
+            "answerConfirmationSettings",
+            "smartTypographySettings",
+            "storyBackgroundsSettings",
+            "autoLockSettings",
+        ];
+        for (row_ix, user) in ["u1", "u2"].iter().enumerate() {
+            let mut cols: Vec<(String, rusqlite::types::Value)> = vec![
+                ("id".into(), format!("id-{user}").into()),
+                ("userId".into(), user.to_string().into()),
+                ("avatarDisplayMode".into(), "NEVER".to_string().into()),
+                ("avatarDisplayStyle".into(), "RECTANGULAR".to_string().into()),
+                (
+                    "cheapLLMSettings".into(),
+                    format!(
+                        "{{\"strategy\":\"USER_DEFINED\",\"fallbackToLocal\":false,\"allowCheapFallback\":true,\"embeddingProvider\":\"emb-{user}\"}}"
+                    )
+                    .into(),
+                ),
+                ("imageDescriptionProfileId".into(), format!("idp-{user}").into()),
+                ("defaultRoleplayTemplateId".into(), format!("rtp-{user}").into()),
+                ("sidebarWidth".into(), rusqlite::types::Value::Integer(300 + row_ix as i64)),
+                ("impersonationVoiceMode".into(), "always".to_string().into()),
+                (
+                    "wardrobeImageSettings".into(),
+                    "{\"imageProfileId\":null,\"generateFromTools\":true}".to_string().into(),
+                ),
+                (
+                    "conciergeSettings".into(),
+                    format!("{{\"enabled\":false,\"autoSwitchAfterRefusals\":{}}}", 7 + row_ix).into(),
+                ),
+                ("timezone".into(), format!("Zone/{user}").into()),
+                ("createdAt".into(), format!("created-{user}").into()),
+                ("updatedAt".into(), format!("updated-{user}").into()),
+            ];
+            for name in raw_bags {
+                cols.push((name.into(), format!("{{\"m\":\"{name}-{user}\"}}").into()));
+            }
+            for (i, name) in bools.iter().enumerate() {
+                let (a, b) = cycle[i % 4];
+                let v = if row_ix == 0 { a } else { b };
+                cols.push(((*name).into(), rusqlite::types::Value::Integer(v)));
+            }
+            let names = cols
+                .iter()
+                .map(|(n, _)| format!("\"{n}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let marks = (1..=cols.len())
+                .map(|i| format!("?{i}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let values: Vec<rusqlite::types::Value> = cols.into_iter().map(|(_, v)| v).collect();
+            conn.execute(
+                &format!("INSERT INTO chat_settings ({names}) VALUES ({marks})"),
+                rusqlite::params_from_iter(values),
+            )
+            .unwrap();
+        }
+        for (row_ix, user) in ["u1", "u2"].iter().enumerate() {
+            let row = find_by_user_id(&conn, user).unwrap().expect("row");
+            assert_eq!(row["id"], format!("id-{user}"));
+            assert_eq!(row["userId"], *user);
+            assert_eq!(row["avatarDisplayMode"], "NEVER");
+            assert_eq!(row["avatarDisplayStyle"], "RECTANGULAR");
+            assert_eq!(
+                row["cheapLLMSettings"]["embeddingProvider"],
+                format!("emb-{user}")
+            );
+            assert_eq!(row["imageDescriptionProfileId"], format!("idp-{user}"));
+            assert_eq!(row["defaultRoleplayTemplateId"], format!("rtp-{user}"));
+            assert_eq!(row["sidebarWidth"], 300 + row_ix as i64);
+            assert_eq!(row["impersonationVoiceMode"], "always");
+            assert_eq!(row["wardrobeImageSettings"]["generateFromTools"], true);
+            assert_eq!(
+                row["conciergeSettings"]["autoSwitchAfterRefusals"],
+                7 + row_ix as i64
+            );
+            assert_eq!(row["conciergeSettings"]["enabled"], false);
+            assert_eq!(row["timezone"], format!("Zone/{user}"));
+            assert_eq!(row["createdAt"], format!("created-{user}"), "index canary");
+            assert_eq!(row["updatedAt"], format!("updated-{user}"), "index canary");
+            for name in raw_bags {
+                assert_eq!(
+                    row[name],
+                    serde_json::json!({ "m": format!("{name}-{user}") }),
+                    "{name}"
+                );
+            }
+            for (i, name) in bools.iter().enumerate() {
+                let (a, b) = cycle[i % 4];
+                let v = if row_ix == 0 { a } else { b };
+                assert_eq!(
+                    row[*name],
+                    serde_json::Value::Bool(v == 1),
+                    "{name} for {user}"
+                );
+            }
+            let keys: Vec<&str> = row
+                .as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect();
+            let at = |k: &str| keys.iter().position(|x| *x == k).unwrap();
+            assert_eq!(at("customToolTriggers"), at("customTools") + 1);
+            assert_eq!(at("compositionModeDefault"), at("customToolTriggers") + 1);
+            assert_eq!(at("composerSlashCommands"), at("composerUnicode") + 1);
+            assert_eq!(
+                at("impersonationVoiceMode"),
+                at("composerSlashCommands") + 1
+            );
+        }
+    }
+
+    /// P4.D304: `update` with both 4.11 fields flips both columns and nothing
+    /// else; `create` binds both (the deserialize is restore's input: an
+    /// archive without the keys lands `false` / `true`).
+    #[test]
+    fn update_and_create_bind_the_4_11_columns() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(&fresh_chat_settings_ddl()).unwrap();
+        update_for_user(&conn, "u1", &[], "2026-10-16T00:00:00.000Z").unwrap();
+        let before = find_by_user_id(&conn, "u1").unwrap().unwrap();
+        let id = before["id"].as_str().unwrap().to_string();
+        let repo = ChatSettingsRepository::new(&conn);
+        assert!(repo
+            .update(
+                &id,
+                &ChatSettingsUpdate {
+                    custom_tool_triggers: Some(true),
+                    composer_slash_commands: Some(false),
+                    updated_at: "2026-10-16T00:00:01.000Z".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap());
+        let mut after = find_by_user_id(&conn, "u1").unwrap().unwrap();
+        assert_eq!(after["customToolTriggers"], true);
+        assert_eq!(after["composerSlashCommands"], false);
+        let mut expected = before.clone();
+        for v in [&mut after, &mut expected] {
+            let o = v.as_object_mut().unwrap();
+            for k in ["customToolTriggers", "composerSlashCommands", "updatedAt"] {
+                o.remove(k);
+            }
+        }
+        assert_eq!(after, expected, "nothing else moved");
+
+        // `create` from the read row (the restore's own path): the carried
+        // non-default values bind; a bag without the keys takes the defaults.
+        let mut bag = find_by_user_id(&conn, "u1").unwrap().unwrap();
+        bag["userId"] = "u2".into();
+        let data: ChatSettingsCreate = serde_json::from_value(bag.clone()).unwrap();
+        assert!(data.custom_tool_triggers && !data.composer_slash_commands);
+        let opts = |id: &str| CreateOptions {
+            id: id.into(),
+            created_at: "c".into(),
+            updated_at: "u".into(),
+        };
+        repo.create(&data, &opts("s2")).unwrap();
+        let o = bag.as_object_mut().unwrap();
+        o.remove("customToolTriggers");
+        o.remove("composerSlashCommands");
+        o.insert("userId".into(), "u3".into());
+        let data: ChatSettingsCreate = serde_json::from_value(bag).unwrap();
+        assert!(!data.custom_tool_triggers && data.composer_slash_commands);
+        repo.create(&data, &opts("s3")).unwrap();
+        let raw = |id: &str| -> (i64, i64) {
+            conn.query_row(
+                "SELECT customToolTriggers, composerSlashCommands FROM chat_settings WHERE id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap()
+        };
+        assert_eq!(raw("s2"), (1, 0));
+        assert_eq!(raw("s3"), (0, 1));
     }
 
     /// Unit 10's accepted consequence, pinned: v5 adopts `customTools` WITHOUT

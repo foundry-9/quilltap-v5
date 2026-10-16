@@ -66,6 +66,20 @@ function fixture(): AlmanackReportData {
       )}) — re-measure the recorder's polarity choice`,
     );
   }
+  // P4.D304 (v4 `362426c8f`): `FeatureConfigInfo.customToolTriggers` was added
+  // to the interface, `defaultFeatureConfig()`, `collectFeatureConfig` and the
+  // renderer but NOT to `__tests__/helpers/almanack/fixture.ts` — the P4.D179
+  // gap shape again. v4 renders the absent key through `yesNo(undefined)` as
+  // `No`, the same bytes as `false`; the Rust model types it as a required
+  // `bool`, so the recorder fills v4's own default (`defaultFeatureConfig()`'s
+  // `false`) and the `custom_tool_triggers_on` variant below takes the `Yes`
+  // arm. Tripwire: when v4's fixture grows the key, re-measure.
+  if ('customToolTriggers' in d.featureConfig) {
+    throw new Error(
+      "v4's Almanack fixture now sets customToolTriggers — drop the P4.D304 fill and re-measure",
+    );
+  }
+  d.featureConfig.customToolTriggers = false;
   return d;
 }
 
@@ -466,6 +480,16 @@ function variants(): Variant[] {
       build: () => {
         const d = clone(fixture());
         d.featureConfig.wardrobeImages = { hasDesignatedImageProfile: true };
+        return d;
+      },
+    },
+    // 12. P4.D304 (v4 `362426c8f`): the "Auto-Run on Trigger Phrases" line's
+    //     `Yes` arm — every other variant renders `No`.
+    {
+      name: 'custom_tool_triggers_on',
+      build: () => {
+        const d = clone(fixture());
+        d.featureConfig.customToolTriggers = true;
         return d;
       },
     },

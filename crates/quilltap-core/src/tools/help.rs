@@ -213,6 +213,8 @@ fn fetch_chat(db: &Db, user_id: &str) -> Result<Value, DbError> {
     obj.insert("agentModeSettings".into(), field(&s, "agentModeSettings"));
     obj.insert("autoDetectRng".into(), field(&s, "autoDetectRng"));
     obj.insert("customTools".into(), field(&s, "customTools"));
+    // P4.D304 (v4 4.11 `362426c8f`, help-settings-handler.ts:113).
+    obj.insert("customToolTriggers".into(), field(&s, "customToolTriggers"));
     obj.insert("llmLoggingSettings".into(), field(&s, "llmLoggingSettings"));
     obj.insert("avatarDisplayMode".into(), field(&s, "avatarDisplayMode"));
     obj.insert("avatarDisplayStyle".into(), field(&s, "avatarDisplayStyle"));

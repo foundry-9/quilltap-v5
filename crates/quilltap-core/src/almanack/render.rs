@@ -1117,6 +1117,11 @@ pub fn render_almanack_markdown(data: &AlmanackReportData, zone: &TimeZone) -> S
         "- **Custom tools offered to models**: {}",
         yes_no(fc.custom_tools)
     ));
+    // P4.D304 (v4 4.11 `362426c8f`, render.ts:727).
+    push!(format!(
+        "- **Auto-Run on Trigger Phrases**: {}",
+        yes_no(fc.custom_tool_triggers)
+    ));
     push!(
         "- *(the inventory of definitions lives in the Scriptorium section — they are documents, not settings)*",
         "",

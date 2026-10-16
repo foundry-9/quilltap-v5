@@ -157,6 +157,20 @@ fn open(instance: &Path) -> Db {
     })
     .expect("boot-align the vintage main partition (P4.D288)");
     // === end P4.D288 ===
+    // === P4.D304: mirror-boot ensures ===
+    // The two 4.11 `chat_settings` toggles through the host's OWN chain
+    // (`db::chat_settings_4_11_repair::run_chat_settings_4_11_ensures`), after
+    // the span chain as the host runs them. Nothing reddens without it — the
+    // restore's settings phase is `tolerant_insert`, which silently DROPS a
+    // column the vintage table lacks — which is exactly why it is here: a
+    // restored settings row would otherwise lose both keys.
+    db.write_blocking(|writers| {
+        quilltap_core::db::chat_settings_4_11_repair::run_chat_settings_4_11_ensures(
+            writers.main().connection(),
+        )
+    })
+    .expect("boot-align the vintage main partition (P4.D304)");
+    // === end P4.D304 ===
     db
 }
 
@@ -220,7 +234,13 @@ fn run_restore_with(
 ) -> (tempfile::TempDir, PathBuf, Vec<String>, usize) {
     let (root, instance) = vintage_instance(tag);
     prepare(&instance);
-    let zip = fixtures_dir().join("restore-archives").join(archive);
+    // An absolute path is a test-built archive (P4.D304's rewritten copy);
+    // anything else names a committed one.
+    let zip = if Path::new(archive).is_absolute() {
+        PathBuf::from(archive)
+    } else {
+        fixtures_dir().join("restore-archives").join(archive)
+    };
     assert!(zip.exists(), "missing committed archive: {zip:?}");
     let host = TestHost {
         root: root.path().to_path_buf(),
@@ -963,3 +983,93 @@ fn the_wear_ledger_restores_onto_the_migrated_table_without_doubling() {
     }
 }
 // === end P4.D264 ===
+
+/// P4.D304 (R-6, the carriers): the two 4.11 `chat_settings` toggles through a
+/// `replace` restore onto the vintage instance (whose table the mirror-boot
+/// fence widened). (1) A committed archive taken BEFORE the columns existed —
+/// `chat-settings.json` carries neither key — restores v4's Zod defaults
+/// (`customToolTriggers = 0`, `composerSlashCommands = 1`) through
+/// `ChatSettingsCreate`'s serde defaults. (2) The same archive rewritten so the
+/// row carries both keys NON-default restores them (`1` / `0`) — the backup
+/// side carries them for free (`collect` reads through `find_by_user_id`), so
+/// this is the round trip's restore half. Red without the serde defaults
+/// (archive 1 would fail to deserialize) or without the create bind / the
+/// mirror-boot fence (archive 2 would land the DDL defaults).
+#[test]
+fn the_4_11_chat_settings_toggles_restore_defaulted_and_carried() {
+    use std::io::{Read, Write};
+
+    fn cells(instance: &Path) -> Vec<(i64, i64)> {
+        let db = open(instance);
+        db.read_main(|c| {
+            let mut stmt = c.prepare(
+                "SELECT customToolTriggers, composerSlashCommands FROM chat_settings ORDER BY id",
+            )?;
+            let out = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok::<_, quilltap_core::db::DbError>(out)
+        })
+        .expect("read the restored settings")
+    }
+
+    const ARCHIVE: &str = "restore-archive-compact.zip";
+    let (_scratch, instance, warnings, _) = run_restore("cs411pre", ARCHIVE, RestoreMode::Replace);
+    assert_no_raw_sqlite(ARCHIVE, &warnings);
+    assert!(
+        !warnings.iter().any(|w| w.contains("chat settings")),
+        "{warnings:#?}"
+    );
+    assert_eq!(
+        cells(&instance),
+        [(0, 1)],
+        "a pre-4.11 archive lands v4's defaults"
+    );
+
+    // The same archive, its settings row carrying both keys non-default.
+    let src = fixtures_dir().join("restore-archives").join(ARCHIVE);
+    let built = tempfile::tempdir().unwrap();
+    let rewritten = built.path().join("restore-archive-cs411.zip");
+    {
+        let mut archive = zip::ZipArchive::new(std::fs::File::open(&src).unwrap()).unwrap();
+        let mut out = zip::ZipWriter::new(std::fs::File::create(&rewritten).unwrap());
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        let mut touched = 0;
+        for i in 0..archive.len() {
+            let mut entry = archive.by_index(i).unwrap();
+            let name = entry.name().to_string();
+            if entry.is_dir() {
+                out.add_directory(name, options).unwrap();
+                continue;
+            }
+            let mut bytes = Vec::new();
+            entry.read_to_end(&mut bytes).unwrap();
+            if name.ends_with("/data/chat-settings.json") {
+                let mut rows: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+                for row in rows.as_array_mut().unwrap() {
+                    let o = row.as_object_mut().unwrap();
+                    assert!(
+                        !o.contains_key("customToolTriggers"),
+                        "the archive predates 4.11"
+                    );
+                    o.insert("customToolTriggers".into(), true.into());
+                    o.insert("composerSlashCommands".into(), false.into());
+                    touched += 1;
+                }
+                bytes = serde_json::to_vec(&rows).unwrap();
+            }
+            out.start_file(name, options).unwrap();
+            out.write_all(&bytes).unwrap();
+        }
+        out.finish().unwrap();
+        assert_eq!(touched, 1, "the archive's one settings row");
+    }
+    let (_scratch2, instance2, warnings2, _) = run_restore(
+        "cs411carried",
+        rewritten.to_str().unwrap(),
+        RestoreMode::Replace,
+    );
+    assert_no_raw_sqlite("restore-archive-cs411.zip", &warnings2);
+    assert_eq!(cells(&instance2), [(1, 0)], "both carried values restore");
+}

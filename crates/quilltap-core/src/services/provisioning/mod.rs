@@ -231,6 +231,21 @@ pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 /// affinities, every reader takes both — R-R); (6) `vector_entries` /
 /// `vector_indices` and their two `createdAt` indexes DELETED (`af48f6cc2`). The
 /// seed row LOSES the two dead keys (both column and value).
+///
+/// `25b8fab6a` (P4.D304 — D23 re-dumps #10 + #11 as ONE, v4 `362426c8f` (Pascal
+/// trigger phrases, migration `add-custom-tool-triggers-field-v1`) +
+/// `4877fc2da` (composer slash commands, migration
+/// `add-composer-slash-commands-field-v1`); run FROM the pin, 2026-10-16):
+/// EXACTLY two lines move in ONE statement, as the keystone survey predicted —
+/// `chat_settings` GAINS `"customToolTriggers" INTEGER DEFAULT 0` between
+/// `customTools` and `compositionModeDefault` (cid 18) and
+/// `"composerSlashCommands" INTEGER DEFAULT 1` between `composerUnicode` and
+/// `impersonationVoiceMode` (cid 23); 37 → 39 columns; main 83 → 83, the
+/// mount-index and llm-logs partitions `cmp`-identical. ONE shape for both:
+/// generateDDL's text is byte-equal to the migrations' `addColumnIfMissing`
+/// clauses, position apart (the migrations append — re-homed as
+/// `db::chat_settings_4_11_repair`). Nothing else moved;
+/// `migration_indexes.json` UNMOVED (neither migration makes an index).
 static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 
 /// The captured `chat_settings` seed row's columns (all but the minted
@@ -258,6 +273,11 @@ static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 /// between `storyBackgroundsSettings` and `conciergeSettings`) — v4's
 /// repository default (`chat-settings.repository.ts:222-225`), as captured;
 /// nothing else moved.
+/// `25b8fab6a` (P4.D304): the seed row GAINS `"customToolTriggers": 0` (column
+/// index 16, after `customTools`) and `"composerSlashCommands": 1` (index 21,
+/// after `composerUnicode`) — v4's repository defaults
+/// (`chat-settings.repository.ts:194`, `:199`), as captured at schema
+/// positions; nothing else moved.
 static CHAT_SETTINGS_SEED_JSON: &str = include_str!("chat_settings_seed.json");
 
 /// P4.153 (dogfood #149): v4's OTHER index family — the one its MIGRATIONS
@@ -895,6 +915,39 @@ mod tests {
                 "CREATE UNIQUE INDEX \"idx_doc_mount_points_name_nocase\" ON \"doc_mount_points\" (\"name\" COLLATE NOCASE)"
             )
         );
+    }
+
+    /// P4.D304 (D23 re-dumps #10 + #11): the provisioned `chat_settings` seed
+    /// row carries v4's two 4.11 toggles at their repository defaults
+    /// (`customToolTriggers = 0`, `composerSlashCommands = 1`), at generateDDL's
+    /// schema positions (cid 18 / 23).
+    #[test]
+    fn the_seed_row_carries_the_4_11_toggles_at_schema_positions() {
+        let dir = tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        provision_fresh_instance(&data, PEPPER).unwrap();
+        let main = Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
+        let conn = main.connection();
+        let (t, s): (i64, i64) = conn
+            .query_row(
+                "SELECT customToolTriggers, composerSlashCommands FROM chat_settings \
+                 WHERE userId = ?1",
+                [SINGLE_USER_ID],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((t, s), (0, 1));
+        let cid = |name: &str| -> i64 {
+            conn.query_row(
+                "SELECT cid FROM pragma_table_info('chat_settings') WHERE name = ?1",
+                [name],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(cid("customToolTriggers"), 18);
+        assert_eq!(cid("composerSlashCommands"), 23);
     }
 
     #[test]

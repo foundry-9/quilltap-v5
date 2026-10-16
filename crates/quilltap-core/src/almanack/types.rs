@@ -524,6 +524,8 @@ pub struct FeatureConfigInfo {
     pub memory_cascade: MemoryCascadeConfig,
     pub auto_detect_rng: bool,
     pub custom_tools: bool,
+    /// P4.D304 (v4 4.11 `362426c8f`, types.ts:277).
+    pub custom_tool_triggers: bool,
     pub avatar_display: AvatarDisplayConfig,
     pub core_whisper: CoreWhisperConfig,
     pub thinking_display: ThinkingDisplayConfig,

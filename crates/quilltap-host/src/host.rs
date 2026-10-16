@@ -2167,6 +2167,18 @@ fn seed_built_ins(db: &Db, tz: &str) -> Result<EnsureFailures, String> {
             // INFO when it did anything. `tz` is the rezone's host rung (O-8).
             quilltap_core::db::p4d288_span::run_span_ensures(main, &tz)?;
             // === end P4.D288 ===
+            // === P4.D304: the 4.11 chat_settings columns, in v4's registration order ===
+            // `add-custom-tool-triggers-field-v1` then
+            // `add-composer-slash-commands-field-v1` (`migrations/scripts/
+            // index.ts:909`, `:911` at the `25b8fab6a` pin — appended right
+            // after the span's slot 12), as ONE chain
+            // (`db::chat_settings_4_11_repair` — the vintage mirror-boot and the
+            // zero-rerun differential run the same one): after the span chain,
+            // BEFORE the P4.160 index-family backfill. UNSTAMPED (a re-ADD is a
+            // no-op on either app), FATAL on failure (neither migration is
+            // `resumable`); each logs v5's ONE INFO when it added its column.
+            quilltap_core::db::chat_settings_4_11_repair::run_chat_settings_4_11_ensures(main)?;
+            // === end P4.D304 ===
             // === P4.160 (P4.153's OPEN item) ===
             // v4's MIGRATION-created index family on an instance provisioned
             // before P4.153 (the 56 absent names + the PLAIN `mp_path`),

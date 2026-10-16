@@ -445,3 +445,107 @@ async fn impersonation_voice_mode_ping_pong_shape_is_healed_at_boot() {
         assert_eq!(table_sql(w.connection()), healed_sql);
     }
 }
+
+/// P4.D304 (v4 4.11 `362426c8f` / `4877fc2da`): the two `chat_settings`
+/// toggles' boot ensures under a LIVE boot, and the wire. Both columns are
+/// DROPPED before boot whatever the committed fixture's vintage, so the ensure
+/// is genuinely under test; the PUT after boot is what proves it (the update
+/// branch is a plain `SET`, which would 500 `no such column` without the
+/// column). The refusals and an explicit `null` ride the raw dispatch bag.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_4_11_toggles_web_edges() {
+    const COLUMNS: [&str; 2] = ["customToolTriggers", "composerSlashCommands"];
+    let base = common::materialize_fixture_instance();
+    let data = base.path().join("data");
+    {
+        let w = Writer::open_writable(&data.join("quilltap.db"), common::TEST_PEPPER).unwrap();
+        for col in COLUMNS {
+            if column_present(w.connection(), col) {
+                w.connection()
+                    .execute_batch(&format!(
+                        "ALTER TABLE \"chat_settings\" DROP COLUMN \"{col}\""
+                    ))
+                    .unwrap();
+            }
+            assert!(
+                !column_present(w.connection(), col),
+                "{col} absent before boot"
+            );
+        }
+    }
+
+    let (addr, _state) = common::serve_instance(base.path(), |mut c| {
+        c.terminal = false;
+        c.on_lock_lost = Some(std::sync::Arc::new(|| {}));
+        c
+    })
+    .await;
+    let client = reqwest::Client::new();
+
+    {
+        let w = Writer::open_writable(&data.join("quilltap.db"), common::TEST_PEPPER).unwrap();
+        for col in COLUMNS {
+            assert!(
+                column_present(w.connection(), col),
+                "{col} after the boot ensure"
+            );
+        }
+    }
+
+    // GET: v4's defaults.
+    let (status, body) = dispatch(&client, &addr, json!({ "type": "chatSettings" })).await;
+    assert_eq!(status, 200, "settings GET");
+    assert_eq!(body["data"]["customToolTriggers"], json!(false));
+    assert_eq!(body["data"]["composerSlashCommands"], json!(true));
+
+    // PUT both non-default, then re-read: the writes STUCK.
+    let (status, body) = dispatch(
+        &client,
+        &addr,
+        json!({
+            "type": "chatSettingsUpdate",
+            "settings": { "customToolTriggers": true, "composerSlashCommands": false }
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "the 4.11 PUT: {body}");
+    assert_eq!(body["data"]["customToolTriggers"], json!(true), "echo");
+    assert_eq!(body["data"]["composerSlashCommands"], json!(false), "echo");
+    let (_, body) = dispatch(&client, &addr, json!({ "type": "chatSettings" })).await;
+    assert_eq!(body["data"]["customToolTriggers"], json!(true));
+    assert_eq!(body["data"]["composerSlashCommands"], json!(false));
+
+    // The two refusal sentences, and an explicit null refused, by wire.
+    for (settings, sentence) in [
+        (
+            json!({ "customToolTriggers": "yes" }),
+            "Invalid customToolTriggers value (must be boolean)",
+        ),
+        (
+            json!({ "customToolTriggers": null }),
+            "Invalid customToolTriggers value (must be boolean)",
+        ),
+        (
+            json!({ "composerSlashCommands": 0 }),
+            "Invalid composerSlashCommands value (must be boolean)",
+        ),
+        (
+            json!({ "composerSlashCommands": null }),
+            "Invalid composerSlashCommands value (must be boolean)",
+        ),
+    ] {
+        let (status, body) = dispatch(
+            &client,
+            &addr,
+            json!({ "type": "chatSettingsUpdate", "settings": settings }),
+        )
+        .await;
+        assert_eq!(status, 400, "{settings}");
+        assert_eq!(body["data"]["message"], json!(sentence), "{settings}");
+    }
+
+    // …and the refused PUTs left the stored values untouched.
+    let (_, body) = dispatch(&client, &addr, json!({ "type": "chatSettings" })).await;
+    assert_eq!(body["data"]["customToolTriggers"], json!(true));
+    assert_eq!(body["data"]["composerSlashCommands"], json!(false));
+}

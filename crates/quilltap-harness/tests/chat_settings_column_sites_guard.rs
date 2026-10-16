@@ -24,6 +24,12 @@
 
 use std::path::PathBuf;
 
+/// Predicates are NOT counted: `customToolTriggers`' default-FALSE
+/// `.is_some_and` read (vs `.is_none_or` for the default-true columns) and the
+/// positional INDEX of every read are pinned by name in `db::chat_settings`'s
+/// own `find_by_user_id_reads_every_column_by_name` /
+/// `…_defaults_custom_tool_triggers_false_…` unit tests (P4.D304).
+///
 /// The columns whose adoption this guard pins. Not every `chat_settings` column
 /// (the JSON-object bags have their own shape) — the plain boolean columns
 /// adopted one at a time from a v4 migration, which are the ones that keep
@@ -40,6 +46,9 @@ const ADOPTED_BOOLEAN_COLUMNS: &[&str] = &[
     // pre-existing
     "textReplacementsEnabled",
     "autoScrollOnResponseComplete",
+    // P4.D304 (v4 4.11)
+    "customToolTriggers",
+    "composerSlashCommands",
 ];
 
 /// The plain-enum TEXT columns adopted the same way — the same six regions,

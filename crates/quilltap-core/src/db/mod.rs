@@ -54,6 +54,8 @@ pub mod chat_settings_impersonation_voice_mode_repair;
 // P4.D255 (v4 `7c8572869`): `add-wardrobe-image-settings-field-v1` re-homed.
 pub mod chat_settings_wardrobe_image_settings_repair;
 // === end P4.D251 ===
+// P4.D304 (v4 4.11 `362426c8f` + `4877fc2da`): the two `chat_settings` toggles.
+pub mod chat_settings_4_11_repair;
 pub mod chats;
 // === P4.D171 ===
 pub mod chats_cycle_order_repair;

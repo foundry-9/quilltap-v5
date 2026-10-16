@@ -185225,3 +185225,139 @@ no `cargo fmt` / clippy / workspace gate run (R-1: no Rust source). **Versions
 at close:** none bumped (`quilltap-harness` frozen `0.0.1110`). 💸 none.
 Cleanup: the pin worktree removed, `/tmp/p4d314/` and the recipes' `/tmp`
 outputs deleted, the lane `target/` deleted; nothing pushed to `main`.
+
+## P4.D304 — the chat-settings KEYSTONE of the `25b8fab6a` round (lane record, 2026-10-16)
+
+Branch `claude/p4.d304-chat-settings-keystone-caf897`, cut from P4.D314's
+`REAIM` (`abea3f336`). The session opened in the app-made worktree
+`gallant-brahmagupta-caf897` on `main`'s tip (`6f78aa3d7`, NOT descended from
+`REAIM`); before the first edit it switched to the lane branch at `REAIM`
+(`git switch -c`) and checked out `6f78aa3d7`'s approved copy of this order
+(§R.11 recorded) — the only file taken from that commit. Pin worktree
+`/tmp/qt-v4-pin-p4d304-25b8fab6a` (HEAD `25b8fab6aa58…`, `package.json`
+`4.11.0-dev.10`, root `openai` 7.34.0 / `zod` 4.6.7, the six plugin dirs'
+`openai` 7.23.0, the three symlink classes).
+
+### §2 probe (an observation, §R.2) — 2026-10-16 09:10 CDT
+
+Branch `main`, tree clean, `log 25b8fab6a..main` = `5cb0e0190` ("feat(pascal):
+wardrobe picker in the Workbench") — **v4 moved: `5cb0e0190` observed at
+09:10** (already recorded at drafting; nothing in it is this lane's);
+`log 489b228b6..bugfix` empty. The pin stands.
+
+### Tier 1 — the `KEYSTONE:` commit
+
+**Ensure names (R-2's default spelling, RECORDED for the status header):**
+module `quilltap_core::db::chat_settings_4_11_repair` —
+`MIGRATION_ID_TRIGGERS` / `MIGRATION_ID_SLASH`, `TRIGGERS_COLUMN` /
+`TRIGGERS_DECL`, `SLASH_COLUMN` / `SLASH_DECL`,
+`ensure_chat_settings_custom_tool_triggers(main) -> Result<bool, DbError>`,
+`ensure_chat_settings_composer_slash_commands(main) -> Result<bool, DbError>`,
+`run_chat_settings_4_11_ensures(main) -> Result<(), DbError>` (the ONE chain:
+host `seed_built_ins` fence `// === P4.D304 … ===` after `run_span_ensures`,
+the vintage mirror-boot, and — Tier 2 — `zero_migrations_rerun`'s
+`run_chain`). Boot INFOs (R-L1): `Fitted the custom-tool trigger toggle` /
+`Fitted the composer slash-command toggle`, `target: "quilltap::boot"`,
+`migrationId`, `columnAdded = true`.
+
+**C1 note:** C1-1 names `ChatSettings.custom_tool_triggers`; v5 has no
+`ChatSettings` struct — the read row is `find_by_user_id`'s JSON object (it
+emits `customToolTriggers` right after `customTools`, `composerSlashCommands`
+right after `composerUnicode`), and the typed carriers are
+`ChatSettingsCreate` / `ChatSettingsUpdate` exactly as R-3 spells them. Not a
+departure from any NAME a consumer calls.
+
+**The re-dump (R-1), from the pin:** `main` 83 → 83 statements, ONE statement
+moved by EXACTLY two lines (`"customToolTriggers" INTEGER DEFAULT 0,` after
+`customTools`, `"composerSlashCommands" INTEGER DEFAULT 1,` after
+`composerUnicode`); mount-index 31 and llm-logs 3 byte-equal; the seed 33 → 35
+columns, the two entries at indices 16 / 21 with values `0` / `1`, nothing
+else. `migration_indexes.json` untouched.
+
+**Red-first, from the pin, on unported `REAIM`** (the unported test binaries
+were preserved from the warm build, compiled before any edit reached core,
+and run against the regenerated oracles):
+- `provisioning_equivalence` with `QT_FRESH_SCHEMA_LIVE` from the pin — (1d)
+  RED on exactly the `chat_settings` statement (one only-in-v4, one
+  only-committed); re-run with the live dump pointed at the committed one, (1b)
+  RED on exactly `main.chat_settings.{composerSlashCommands,customToolTriggers}:
+  v4 has it, v5 does not`.
+- `help_tools_equivalence` RED (the chat bag grows `customToolTriggers`).
+- `almanack_render_equivalence` RED (`- **Auto-Run on Trigger Phrases**: No`).
+- `almanack_tier2_equivalence` RED (`/featureConfig/customToolTriggers:
+  presence differs` + the render line).
+- `settings_routes_equivalence` (14 new rows) RED — first at the existing
+  `s_default_inject` row (v4's create-branch row now carries both keys).
+- `chat_settings_tier2_equivalence` (grown corpus) RED (`row state diverged`).
+- `chat_settings_column_sites_guard` (two names added) RED against `REAIM`'s
+  `chat_settings.rs` (0 of the expected sites for both).
+- NEW `chat_settings_4_11_columns_ensure_equivalence`: v4's bar measured
+  first — `+RAN` on T-A / S-A / D (×2, triggers then slash), `not needed` on
+  T-B / T-C / S-B / S-C; green on the first run with the ensures present.
+
+**Mutation proofs:** `.is_some_and` → `.is_none_or` at index 18 reddens
+`find_by_user_id_defaults_custom_tool_triggers_false_when_the_column_is_absent`;
+`updatedAt` read at 36 reddens `find_by_user_id_reads_every_column_by_name`;
+the chain run slash-first reddens the ensure family's mode D (`table_info`).
+
+**The Almanack render oracle (a v4-side gap, the P4.D179 shape):** v4's
+`__tests__/helpers/almanack/fixture.ts` at the pin lacks
+`featureConfig.customToolTriggers` (added to the interface, defaults, collect
+and render but not the fixture; v4 renders `yesNo(undefined)` = `No`). The
+recorder's `fixture()` wrapper fills v4's default `false` with a tripwire
+(throws if the fixture grows the key) and a new `custom_tool_triggers_on`
+variant takes the `Yes` arm; `EXPECTED_CASES` 11 → 12. Not filed (a v4 test
+fixture, no behaviour).
+
+**`settings_routes`:** a `settingsChat` refetch kind added to both sides
+(`after: 'settingsChat'`); 14 rows (`custom_tool_triggers` 9,
+`composer_slash_commands` 5 — the floors), v4's bytes as predicted: both
+sentences, the null / number refusals, `both_bad_order` answering the
+`customToolTriggers` sentence and `slash_before_voice` the
+`composerSlashCommands` one, user B's create branch carrying both overrides,
+`customTools: false` alongside written.
+
+**Carriers (R-6), measured:** backup auto-carries (no edit; `collect` reads
+through `find_by_user_id`); restore needs only the serde defaults — pinned in
+`restore_vintage_state::the_4_11_chat_settings_toggles_restore_defaulted_and_carried`
+(the committed pre-4.11 `restore-archive-compact.zip` restores `(0, 1)`; the
+same archive rewritten with both keys non-default restores `(1, 0)`); `.qtap`
+carries nothing — `grep -rnE "chat_settings|chatSettings"
+services/qtap_export services/quilltap_import` → 0 lines. No
+`RESTORE_TS_MESSAGES` change.
+
+**Host:** grep of `crates/quilltap-host/tests` for `sqlite_master` / `type =
+'index'` / `chat_settings` counts before adding — none moves (the backfilled /
+fresh index tests compare against a fresh provision; P4.D255's test drops its
+own column). New `host_boot_p4d304_chat_settings_4_11.rs`: a pre-4.11 boot
+appends both at cids 37 / 38 with v4's clauses, the seeded row reads `(0, 1)`,
+the two INFOs in order, no v4 line, nothing stamped; the second boot silent; a
+fresh instance silent with the columns at cids 18 / 23.
+
+**R-L2 (web / CLI):** `grep -rnE "customTools|composerUnicode|
+chat_settings_update|ChatSettingsUpdate" crates/quilltap-web/src
+crates/quilltap-cli/src` → empty at `REAIM`; the new web-edge test
+(`chat_settings_composer_web_routes::the_4_11_toggles_web_edges`) is test-only
+— no `web` bump; Tier R not owed.
+
+**The sweep (announced in the shared notes; one at a time):** 17 families from
+the pin — **15 ok**: `provisioning`, `chat_settings_4_11_columns_ensure`,
+`chat_settings_tier2`, `settings_routes`, `help_tools`, `almanack_render`,
+`almanack_tier2`, both adjacent `chat_settings_*_ensure` families,
+`impersonation_voice_legacy`, `repository_zod_messages`,
+`memory_settings_legacy`, `salon_reads`, `system_backup`,
+`system_restore_state`; **2 regen_failed** — `memories_routes` and
+`chat_regenerate_title_tier3`, both `SqliteError: no such column:
+customToolTriggers` from v4's whole-entity `_update` over the committed
+`memories-main.db` / `chat-admin-main.db` (R-7's write-set, measured — Tier 2
+widens them).
+
+**Gate:** fmt clean; clippy clean (both feature sets); `cargo test --workspace
+--no-fail-fast` (pin as `QT_V4_CHECKOUT` / `QT_V4_ROOT`, the families' env
+block) **808 binaries / 5,245 passed / 5 failed / 3 ignored, zero SKIP** — the
+five are §R.3's by-design owners: `provider_sdk_version_guard` +
+`zod_version_guard` (P4.D311), `public_schemas_vendor_guard` +
+`qtap_schema_embed_guard` (P4.D313), `cli_differential` 422 cases / 3
+(`main help`, `completion zsh`, `completion fish` — P4.D312, §R.4(k)).
+
+Versions at `KEYSTONE`: core 0.0.1306, host 0.0.208.

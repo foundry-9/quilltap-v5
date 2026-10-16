@@ -338,6 +338,8 @@ fn settings_routes_match_v4() {
     let mut brahma_console_cases = 0;
     let mut composer_settings_cases = 0;
     let mut impersonation_voice_cases = 0;
+    let mut custom_tool_triggers_cases = 0;
+    let mut composer_slash_commands_cases = 0;
     let mut settings_zod_cases = 0;
     let mut concierge_settings_cases = 0;
     let mut connection_profile_cases = 0;
@@ -553,6 +555,9 @@ fn settings_routes_match_v4() {
                 "dataRetention" => settings::data_retention_settings_get(&db),
                 "taboo" => settings::taboo_settings_get(&db),
                 "brahmaConsole" => settings::brahma_console_settings_get(&db),
+                // P4.D304: the chat-settings GET after a PUT — the persisted
+                // row (a refused PUT left it unchanged).
+                "settingsChat" => rt.block_on(settings::chat_settings_get(&db, user)),
                 _ => panic!("unknown after: {kind}"),
             };
             response_to_body(r).0
@@ -606,6 +611,12 @@ fn settings_routes_match_v4() {
         }
         if row["family"].as_str() == Some("impersonation_voice") {
             impersonation_voice_cases += 1;
+        }
+        if row["family"].as_str() == Some("custom_tool_triggers") {
+            custom_tool_triggers_cases += 1;
+        }
+        if row["family"].as_str() == Some("composer_slash_commands") {
+            composer_slash_commands_cases += 1;
         }
         if row["family"].as_str() == Some("settings_zod") {
             settings_zod_cases += 1;
@@ -668,6 +679,20 @@ fn settings_routes_match_v4() {
     assert!(
         impersonation_voice_cases >= 12,
         "expected >= 12 impersonation_voice cases, got {impersonation_voice_cases} — regenerate the oracle"
+    );
+    // P4.D304 (v4 4.11 `362426c8f` / `4877fc2da`): the two boolean arms — the
+    // GET defaults, each arm's positive / refusal rows (`null` included), the
+    // two bad-keys ORDER rows (the earlier arm's sentence wins: an arm appended
+    // at the end of the builder passes every single-key row and fails only
+    // these), the create branch and `customTools: false` alongside. A
+    // pre-4.11 oracle carries none of them.
+    assert!(
+        custom_tool_triggers_cases >= 9,
+        "expected >= 9 custom_tool_triggers cases, got {custom_tool_triggers_cases} — regenerate the oracle"
+    );
+    assert!(
+        composer_slash_commands_cases >= 5,
+        "expected >= 5 composer_slash_commands cases, got {composer_slash_commands_cases} — regenerate the oracle"
     );
     // P4.47 (A): the three sibling Zod arms
     // (`answerConfirmationSettings` / `cheapLLMSettings` /

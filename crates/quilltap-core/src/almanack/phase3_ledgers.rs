@@ -614,6 +614,7 @@ pub fn default_feature_config() -> FeatureConfigInfo {
         },
         auto_detect_rng: true,
         custom_tools: true,
+        custom_tool_triggers: false,
         avatar_display: AvatarDisplayConfig {
             mode: "ALWAYS".into(),
             style: "CIRCULAR".into(),
@@ -748,6 +749,7 @@ pub fn collect_feature_config(db: &Db, user_id: &str) -> Result<FeatureConfigInf
         },
         auto_detect_rng: jbool(s, &["autoDetectRng"], true),
         custom_tools: jbool(s, &["customTools"], true),
+        custom_tool_triggers: jbool(s, &["customToolTriggers"], false),
         avatar_display: AvatarDisplayConfig {
             mode: jstr(s, &["avatarDisplayMode"], "ALWAYS"),
             style: jstr(s, &["avatarDisplayStyle"], "CIRCULAR"),
