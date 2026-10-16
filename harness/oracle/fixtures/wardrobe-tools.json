@@ -578,6 +578,62 @@
       "args": {
         "item_title": "Spats Ensemble"
       }
+    },
+    {
+      "name": "wear_casual_outfit",
+      "tool": "wardrobe_wear",
+      "args": {
+        "operations": [
+          {
+            "item_title": "Casual Outfit"
+          }
+        ]
+      }
+    },
+    {
+      "name": "takeoff_casual_outfit",
+      "tool": "wardrobe_take_off",
+      "args": {
+        "operations": [
+          {
+            "item_title": "Casual Outfit"
+          }
+        ]
+      }
+    },
+    {
+      "name": "takeoff_casual_outfit_not_on",
+      "tool": "wardrobe_take_off",
+      "args": {
+        "operations": [
+          {
+            "item_title": "Casual Outfit"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wear_casual_outfit_again",
+      "tool": "wardrobe_wear",
+      "args": {
+        "operations": [
+          {
+            "item_title": "Casual Outfit"
+          }
+        ]
+      }
+    },
+    {
+      "name": "takeoff_casual_outfit_restricted",
+      "tool": "wardrobe_take_off",
+      "args": {
+        "operations": [
+          {
+            "item_title": "Casual Outfit",
+            "slot": "top"
+          }
+        ]
+      }
     }
   ],
   "callerGroupItems": [

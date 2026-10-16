@@ -10,11 +10,14 @@
 //! item, the covered / uncovered slot, the empty / whitespace references, an
 //! archived OWN item found by title where an archived SHARED one is not.
 //!
-//! The persisted half (`wear_item` / `take_off_item`) is one
-//! `apply_displacement` call each — the write itself is pinned by
-//! `outfit_displacement_tier2_equivalence`; the wrappers (effect, slots
-//! affected, the pool lookup handed down, the source, the per-slot take-off
-//! loop) by `wear_ops.rs`'s own tests, v4 `wear-ops.test.ts:129-163` ported.
+//! The persisted half (`wear_item` / `take_off_wearable` /
+//! `load_current_slots` — v4 `f0db8cbb8` retired `take_off_item`'s last
+//! caller, and v5 retired it) is `apply_displacement` calls — the write itself
+//! is pinned by `outfit_displacement_tier2_equivalence`; the wrappers (effect,
+//! slots affected, the pool lookup handed down, the source, the per-slot
+//! take-off loop, a composite taken off by its leaves) by `wear_ops.rs`'s own
+//! tests, v4 `wear-ops.test.ts:129-163` ported, and the composite take-off end
+//! to end by `wardrobe_tools_equivalence`'s `takeoff_casual_outfit*` ops.
 //!
 //! Generate the oracle output (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}

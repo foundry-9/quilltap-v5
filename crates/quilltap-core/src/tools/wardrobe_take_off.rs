@@ -6,7 +6,9 @@
 //! first bad op), over the tool call's ONE wearable pool (v4 `9ecebf986`).
 //! `remove` finds the item in the pool (`find_in_pool` — archived garments CAN
 //! be taken off) and takes it off every slot it covers, or the one named
-//! (`wear_ops::take_off_item`); `clear_slot` empties one slot (ONE
+//! (`wear_ops::take_off_wearable`). Works for single garments and composites:
+//! a composite comes off by its leaves, since worn composites are stored
+//! dissolved (v4 `f0db8cbb8`). `clear_slot` empties one slot (ONE
 //! `apply_displacement` in `clear_slot` mode). The outfit-change effects (v4
 //! `notifyWardrobeChanged`) fire ONCE when at least one op landed: the returned
 //! ids are the characters whose outfit changed, fired by the executor once the
@@ -21,7 +23,9 @@ use crate::db::DbError;
 use crate::services::outfit_displacement::apply_displacement;
 use crate::slot_ops::{ComputeDisplacedOptions, DisplacementMode};
 use crate::wardrobe::{describe_wardrobe_effect, normalize_no_item_sentinel, WardrobeEffect};
-use crate::wear_ops::{find_in_pool, take_off_item, wardrobe_item_not_found_message, WearableRef};
+use crate::wear_ops::{
+    find_in_pool, take_off_wearable, wardrobe_item_not_found_message, WearableRef,
+};
 
 use super::wardrobe_shared::{empty_equipped_state, load_current_wardrobe_state};
 use super::wardrobe_tool_table::load_tool_pool;
@@ -240,21 +244,18 @@ fn run(
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            // Restrict to one slot if given, else every slot the item covers.
-            let slots_affected: Vec<String> = match op.slot.as_deref() {
-                Some(s) if !s.is_empty() => vec![s.to_string()],
-                _ => item
-                    .get("types")
-                    .and_then(Value::as_array)
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|e| e.as_str().map(str::to_string))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-            };
-            take_off_item(main, chat_id, character_id, &id, &slots_affected)
-                .map_err(|e| crate::db::fallback::error_text(&e))?;
+            // Restrict to one slot if given, else take it off every slot it
+            // covers (a composite: every slot one of its leaves occupies).
+            // `slots_affected` is what was COMMITTED AGAINST.
+            let slots_affected = take_off_wearable(
+                main,
+                chat_id,
+                &pool,
+                item,
+                op.slot.as_deref().filter(|s| !s.is_empty()),
+            )
+            .map_err(|e| crate::db::fallback::error_text(&e))?
+            .slots_affected;
             tracing::info!(
                 target: "quilltap::tools",
                 context = LOG_CONTEXT,

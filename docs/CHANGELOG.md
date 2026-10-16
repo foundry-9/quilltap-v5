@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — fix(wardrobe): wardrobe_take_off takes a worn composite off by its leaves — wear_ops::take_off_wearable + load_current_slots, take_off_item retired (P4.D306)
+
+_Versions: core 0.0.1308._
+
+The composite half of v4 `f0db8cbb8` at the `25b8fab6a` pin. A worn composite is stored as its leaves, so `wardrobe_take_off`'s `remove` (which filtered the composite's own id out of its `types` slots) removed nothing while reporting success; v5 shared the bug. New `wear_ops::take_off_wearable` (v4 `takeOffWearable`): a single garment comes off every slot it covers or only the one named; a composite comes off by its component graph (the composite itself included), read from one snapshot, slots in `WARDROBE_SLOT_TYPES` order, ids in stored order, and commits nothing when none of it is on. It returns the slots and `slots_affected` (what was committed against), which the handler now reports. New `wear_ops::load_current_slots` is the one reader of a character's slots in a chat; `apply_displacement` reads through it. `take_off_item` lost its last caller and is removed (v4 keeps its twin exported and unused).
+
+`wardrobe_tools_equivalence`'s corpus gains five ops at the end (`wear_casual_outfit`, `takeoff_casual_outfit`, `takeoff_casual_outfit_not_on`, `wear_casual_outfit_again`, `takeoff_casual_outfit_restricted`); the three take-off rows were red on the unported handler and are green now. `wear_ops.rs` gains eight rig tests over the real `apply_displacement`.
+
 #### 2026-10-16 — docs(porting): P4.D305 lane record — `TRIGGERS: dafcffc2c` in the order's status header, the red-first counts, the residue by owner, the hand-offs
 
 _Docs-only change._

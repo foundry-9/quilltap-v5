@@ -10,13 +10,16 @@
  * case plus the shapes it leaves implicit (empty / whitespace references, an
  * archived SHARED item by title, every mode × an archived item, a slot the item
  * covers vs one it does not, `newlyWornArchivedItems` with and without slots).
- * The persisted half (`wearItem` / `takeOffItem`) is NOT in this corpus:
- * `outfit_displacement_tier2_equivalence` compares `applyDisplacement` itself
- * and never reaches the wrappers. Their mode → effect / `slotsAffected`
- * mapping, the pool's `byId` handed as the composite lookup, the source
- * passthrough and the per-slot take-off loop are pinned by `wear_ops.rs`'s
- * in-crate tests (v4's `describe('wearItem')` / `describe('takeOffItem')`,
- * run against the real v5 `apply_displacement`).
+ * The persisted half (`wearItem` / `takeOffWearable` / `loadCurrentSlots`,
+ * v4 `f0db8cbb8`) is NOT in this corpus: `outfit_displacement_tier2_equivalence`
+ * compares `applyDisplacement` itself and never reaches the wrappers. Their
+ * mode → effect / `slotsAffected` mapping, the pool's `byId` handed as the
+ * composite lookup, the source passthrough, the per-slot take-off loop and a
+ * composite taken off by its leaves are pinned by `wear_ops.rs`'s in-crate
+ * tests (v4's `describe('wearItem')` / `describe('takeOffItem')` and the
+ * `takeOffWearable` handler case, run against the real v5
+ * `apply_displacement`), and the composite take-off end to end by
+ * `wardrobe_tools_equivalence`'s `takeoff_casual_outfit*` ops.
  *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}

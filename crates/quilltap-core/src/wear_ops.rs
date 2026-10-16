@@ -11,20 +11,28 @@
 //!     where.
 //!
 //! Take-off is narrower on purpose. The route's `remove_from_slot` takes one
-//! item out of one named slot; the `wardrobe_take_off` tool's `remove` takes
-//! an item out of every slot it covers, which is that same gesture looped
-//! over the item's slots ([`take_off_item`]).
+//! item out of one named slot; [`take_off_wearable`] is the by-reference form
+//! the `wardrobe_take_off` tool's `remove` and Pascal's `take_off` wardrobe
+//! effect share (v4 `f0db8cbb8`). Worn composites are stored dissolved, so
+//! filtering the composite's own id out of a slot would remove nothing — a
+//! composite comes off by its leaves. [`load_current_slots`] is the ONE reader
+//! of a character's slots in a chat ([`apply_displacement`] reads through it).
+//!
+//! v4 keeps `takeOffItem` exported with no production caller left; v5 retired
+//! its twin (P4.D306 R-4) — [`take_off_wearable`]'s single-garment arm is the
+//! same loop.
 
 use rusqlite::Connection;
 use serde_json::Value;
 
+use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::wardrobe_wear_stats::EquipSource;
 use crate::db::DbError;
 use crate::services::outfit_displacement::apply_displacement;
 use crate::slot_ops::{ComputeDisplacedOptions, DisplacementMode, WearableNode};
-use crate::wardrobe::Slots;
+use crate::wardrobe::{Slots, WARDROBE_SLOT_TYPES};
 use crate::wearable::wear_refusal;
-use crate::wearable_pool::WearablePool;
+use crate::wearable_pool::{component_graph, WearablePool};
 
 /// The put-on modes (v4 `PutOnMode`). `equip` is the ROUTE's deprecated alias
 /// for `wear` — the route maps it, not this module.
@@ -248,33 +256,127 @@ pub fn wear_item(
     })
 }
 
-/// Take one item off the given slots (v4 `takeOffItem` — the tool's `remove`:
-/// every slot the item covers, or the one it names). Other layers in those
-/// slots stay. v4 passes no `source`; the take-off mode commits as `take-off`
-/// regardless.
-pub fn take_off_item(
+/// v4 `TakeOffOutcome`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TakeOffOutcome {
+    /// The slots after the last commit, or what was loaded when nothing was
+    /// committed.
+    pub slots: Slots,
+    /// Every slot a removal was committed against, in slot order.
+    pub slots_affected: Vec<String>,
+}
+
+/// One `remove_from_slot` commit. v4 passes no `source`; the take-off mode
+/// commits as `take-off` regardless (the chokepoint forces it).
+fn remove_from_slot(
     main: &Connection,
     chat_id: &str,
     character_id: &str,
+    slot: &str,
     item_id: &str,
-    slots: &[String],
-) -> Result<(), DbError> {
-    for slot in slots {
-        apply_displacement(
-            main,
-            chat_id,
-            character_id,
-            &ComputeDisplacedOptions {
-                mode: DisplacementMode::RemoveFromSlot,
-                item: None,
-                slot: Some(slot),
-                item_id: Some(item_id),
-                items_by_id: None,
-            },
-            EquipSource::Ui,
-        )?;
+) -> Result<Slots, DbError> {
+    apply_displacement(
+        main,
+        chat_id,
+        character_id,
+        &ComputeDisplacedOptions {
+            mode: DisplacementMode::RemoveFromSlot,
+            item: None,
+            slot: Some(slot),
+            item_id: Some(item_id),
+            items_by_id: None,
+        },
+        EquipSource::Ui,
+    )
+}
+
+/// Take a resolved item off, by reference (v4 `takeOffWearable`) — the
+/// `wardrobe_take_off` tool's `remove` and Pascal's `take_off` effect both
+/// come through here.
+///
+/// - A single garment comes off every slot it covers, or only `slot` when one
+///   is named — other layers stay.
+/// - A composite comes off by its leaves: every item in its component graph
+///   (the composite itself included, in case it was stored whole) is taken out
+///   of each slot it currently occupies, restricted to `slot` when one is
+///   named. The occupancy is read from ONE snapshot, slots walked in
+///   [`WARDROBE_SLOT_TYPES`] order and ids in each slot's stored order. A
+///   composite with nothing of it on commits nothing.
+///
+/// Archived items may be taken off; archiving never undresses anyone.
+pub fn take_off_wearable(
+    main: &Connection,
+    chat_id: &str,
+    pool: &WearablePool,
+    item: &Value,
+    slot: Option<&str>,
+) -> Result<TakeOffOutcome, DbError> {
+    let character_id = pool.character_id.as_str();
+    let item_id = item.get("id").and_then(Value::as_str).unwrap_or_default();
+    let is_composite = item
+        .get("componentItemIds")
+        .and_then(Value::as_array)
+        .is_some_and(|c| !c.is_empty());
+
+    if !is_composite {
+        let slots_affected: Vec<String> = match slot {
+            Some(s) => vec![s.to_string()],
+            None => item_types(item),
+        };
+        let mut slots: Option<Slots> = None;
+        for s in &slots_affected {
+            slots = Some(remove_from_slot(main, chat_id, character_id, s, item_id)?);
+        }
+        let slots = match slots {
+            Some(s) => s,
+            None => load_current_slots(main, chat_id, character_id),
+        };
+        return Ok(TakeOffOutcome {
+            slots,
+            slots_affected,
+        });
     }
-    Ok(())
+
+    let current = load_current_slots(main, chat_id, character_id);
+    let graph_ids: std::collections::HashSet<String> =
+        component_graph(pool, &[item_id.to_string()])
+            .iter()
+            .filter_map(|v| v.get("id").and_then(Value::as_str).map(str::to_string))
+            .collect();
+    let candidate_slots: Vec<&str> = match slot {
+        Some(s) => vec![s],
+        None => WARDROBE_SLOT_TYPES.to_vec(),
+    };
+
+    let mut slots = current.clone();
+    let mut slots_affected: Vec<String> = Vec::new();
+    for s in candidate_slots {
+        let worn: Vec<&String> = current
+            .slot(s)
+            .iter()
+            .filter(|id| graph_ids.contains(id.as_str()))
+            .collect();
+        for id in &worn {
+            slots = remove_from_slot(main, chat_id, character_id, s, id)?;
+        }
+        if !worn.is_empty() {
+            slots_affected.push(s.to_string());
+        }
+    }
+    Ok(TakeOffOutcome {
+        slots,
+        slots_affected,
+    })
+}
+
+/// The character's slots in a chat right now — a fresh empty outfit when none
+/// are stored (v4 `loadCurrentSlots`: `current ? cloneEquippedSlots(current) :
+/// makeEmptyEquippedSlots()`; [`Slots::from_value`] IS that pair). The ONE
+/// reader: [`apply_displacement`] loads through it too.
+pub(crate) fn load_current_slots(main: &Connection, chat_id: &str, character_id: &str) -> Slots {
+    let stored =
+        ChatOutfitsRepository::new(main).get_equipped_outfit_for_character(chat_id, character_id);
+    Slots::from_value(stored.as_ref())
 }
 
 #[cfg(test)]
@@ -496,6 +598,15 @@ mod tests {
                     &["top", "bottom"],
                     json!({"componentItemIds": ["shirt", "trousers"]}),
                 ),
+                own("boots", "Riding Boots", &["footwear"], json!({})),
+                own("bare", "Odd Charm", &[], json!({})),
+                // v4's applier test wardrobe: a three-leaf composite.
+                own(
+                    "regalia",
+                    "Regalia",
+                    &["top", "bottom", "footwear"],
+                    json!({"componentItemIds": ["shirt", "trousers", "boots"]}),
+                ),
             ],
             vec![],
             vec![],
@@ -701,16 +812,22 @@ mod tests {
         );
     }
 
+    // ---- v4 `takeOffWearable` (`f0db8cbb8`): `wear-ops.ts`'s persisted half,
+    // proven here (the oracle's `wear-ops.ts` corpus is the pure half only).
+
     #[test]
-    fn take_off_item_removes_the_item_from_each_named_slot_one_call_per_slot() {
+    fn take_off_wearable_single_garment_all_slots() {
+        // The retired `take_off_item`'s own case: every slot the item covers,
+        // one call per slot; other layers and unnamed slots stay.
+        let p = wear_pool();
         let conn = rig(Some(json!({
             "top": ["vest", "dress"],
             "bottom": ["dress"],
             "footwear": ["dress"],
         })));
         let (result, lines) =
-            captured_with(|| take_off_item(&conn, CHAT, CHAR, "dress", &strs(&["top", "bottom"])));
-        result.unwrap();
+            captured_with(|| take_off_wearable(&conn, CHAT, &p, p.get("dress").unwrap(), None));
+        let outcome = result.unwrap();
         assert_eq!(
             commits(&lines),
             vec![
@@ -718,7 +835,9 @@ mod tests {
                 "mode=remove_from_slot itemId=dress slot=bottom source=take-off",
             ]
         );
+        assert_eq!(outcome.slots_affected, strs(&["top", "bottom"]));
         let after = stored(&conn);
+        assert_eq!(outcome.slots, after, "the last commit's slots");
         assert_eq!(after.top, strs(&["vest"]), "other layers stay");
         assert!(after.bottom.is_empty());
         assert_eq!(
@@ -726,5 +845,130 @@ mod tests {
             strs(&["dress"]),
             "an unnamed slot is untouched"
         );
+    }
+
+    #[test]
+    fn take_off_wearable_single_garment_restricted() {
+        let p = wear_pool();
+        let conn = rig(Some(json!({ "top": ["dress"], "bottom": ["dress"] })));
+        let (result, lines) = captured_with(|| {
+            take_off_wearable(&conn, CHAT, &p, p.get("dress").unwrap(), Some("top"))
+        });
+        let outcome = result.unwrap();
+        assert_eq!(
+            commits(&lines),
+            vec!["mode=remove_from_slot itemId=dress slot=top source=take-off"]
+        );
+        assert_eq!(outcome.slots_affected, strs(&["top"]));
+        assert_eq!(outcome.slots.bottom, strs(&["dress"]));
+        assert_eq!(stored(&conn), outcome.slots);
+    }
+
+    #[test]
+    fn take_off_wearable_single_garment_types_empty_no_commit() {
+        // `types: []` and no slot named → zero commits, `slots_affected: []`,
+        // and the slots are what was loaded.
+        let p = wear_pool();
+        let conn = rig(Some(json!({ "top": ["vest"] })));
+        let (result, lines) =
+            captured_with(|| take_off_wearable(&conn, CHAT, &p, p.get("bare").unwrap(), None));
+        let outcome = result.unwrap();
+        assert!(commits(&lines).is_empty());
+        assert!(outcome.slots_affected.is_empty());
+        assert_eq!(outcome.slots.top, strs(&["vest"]));
+        assert_eq!(outcome.slots, stored(&conn));
+    }
+
+    #[test]
+    fn take_off_wearable_composite_by_leaves() {
+        // v4's jest expectation, exactly: worn dissolved, the composite comes
+        // off by its leaves in slot order; the scarf (not of it) stays.
+        let p = wear_pool();
+        let conn = rig(Some(json!({
+            "top": ["shirt"],
+            "bottom": ["trousers"],
+            "footwear": ["boots"],
+            "accessories": ["scarf"],
+        })));
+        let (result, lines) =
+            captured_with(|| take_off_wearable(&conn, CHAT, &p, p.get("regalia").unwrap(), None));
+        let outcome = result.unwrap();
+        assert_eq!(
+            commits(&lines),
+            vec![
+                "mode=remove_from_slot itemId=shirt slot=top source=take-off",
+                "mode=remove_from_slot itemId=trousers slot=bottom source=take-off",
+                "mode=remove_from_slot itemId=boots slot=footwear source=take-off",
+            ]
+        );
+        assert_eq!(outcome.slots_affected, strs(&["top", "bottom", "footwear"]));
+        let after = stored(&conn);
+        assert_eq!(outcome.slots, after);
+        assert!(after.top.is_empty() && after.bottom.is_empty() && after.footwear.is_empty());
+        assert_eq!(after.accessories, strs(&["scarf"]));
+    }
+
+    #[test]
+    fn take_off_wearable_composite_stored_whole_comes_off_by_its_own_id() {
+        // The graph includes the root, "in case it was stored whole".
+        let p = wear_pool();
+        let conn = rig(Some(json!({ "top": ["suit", "vest"], "bottom": ["suit"] })));
+        let (result, lines) =
+            captured_with(|| take_off_wearable(&conn, CHAT, &p, p.get("suit").unwrap(), None));
+        let outcome = result.unwrap();
+        assert_eq!(
+            commits(&lines),
+            vec![
+                "mode=remove_from_slot itemId=suit slot=top source=take-off",
+                "mode=remove_from_slot itemId=suit slot=bottom source=take-off",
+            ]
+        );
+        assert_eq!(outcome.slots.top, strs(&["vest"]));
+        assert_eq!(outcome.slots_affected, strs(&["top", "bottom"]));
+    }
+
+    #[test]
+    fn take_off_wearable_composite_nothing_on_commits_nothing() {
+        let p = wear_pool();
+        let conn = rig(Some(json!({ "top": ["vest"] })));
+        let (result, lines) =
+            captured_with(|| take_off_wearable(&conn, CHAT, &p, p.get("regalia").unwrap(), None));
+        let outcome = result.unwrap();
+        assert!(commits(&lines).is_empty());
+        assert!(outcome.slots_affected.is_empty());
+        assert_eq!(outcome.slots, stored(&conn), "the loaded snapshot");
+        assert_eq!(outcome.slots.top, strs(&["vest"]));
+    }
+
+    #[test]
+    fn take_off_wearable_composite_restricted_slot() {
+        let p = wear_pool();
+        let conn = rig(Some(json!({
+            "top": ["vest", "shirt"],
+            "bottom": ["trousers"],
+            "footwear": ["boots"],
+        })));
+        let (result, lines) = captured_with(|| {
+            take_off_wearable(&conn, CHAT, &p, p.get("regalia").unwrap(), Some("top"))
+        });
+        let outcome = result.unwrap();
+        assert_eq!(
+            commits(&lines),
+            vec!["mode=remove_from_slot itemId=shirt slot=top source=take-off"]
+        );
+        assert_eq!(outcome.slots_affected, strs(&["top"]));
+        assert_eq!(outcome.slots.top, strs(&["vest"]));
+        assert_eq!(outcome.slots.bottom, strs(&["trousers"]));
+        assert_eq!(outcome.slots, stored(&conn));
+    }
+
+    #[test]
+    fn load_current_slots_reads_the_stored_outfit_or_a_fresh_one() {
+        let conn = rig(Some(json!({ "hair": ["ribbon"] })));
+        let slots = load_current_slots(&conn, CHAT, CHAR);
+        assert_eq!(slots.hair, strs(&["ribbon"]));
+        assert!(slots.top.is_empty());
+        let conn = rig(None);
+        assert_eq!(load_current_slots(&conn, CHAT, CHAR), Slots::fresh());
     }
 }

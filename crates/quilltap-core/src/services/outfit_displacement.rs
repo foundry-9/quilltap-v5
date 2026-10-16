@@ -27,7 +27,6 @@
 
 use rusqlite::Connection;
 
-use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::wardrobe_wear_stats::EquipSource;
 use crate::db::DbError;
 use crate::services::wardrobe_wear_commit::{commit_equipped_outfit, CommitEquippedOutfitInput};
@@ -35,15 +34,6 @@ use crate::slot_ops::{
     analyze_composite, compute_displaced_slots, worn_bundles_for_mode, ComputeDisplacedOptions,
 };
 use crate::wardrobe::Slots;
-
-/// v4 `loadSlots` — the character's current slots in the chat, or a fresh
-/// empty outfit when they have none (`current ? cloneEquippedSlots(current) :
-/// makeEmptyEquippedSlots()`; [`Slots::from_value`] IS that pair).
-fn load_slots(main: &Connection, chat_id: &str, character_id: &str) -> Slots {
-    let stored =
-        ChatOutfitsRepository::new(main).get_equipped_outfit_for_character(chat_id, character_id);
-    Slots::from_value(stored.as_ref())
-}
 
 /// v4 `logCompositeIssues` — log a composite that could not dissolve cleanly;
 /// the client-safe math can't.
@@ -92,7 +82,8 @@ pub fn apply_displacement(
     options: &ComputeDisplacedOptions<'_>,
     source: EquipSource,
 ) -> Result<Slots, DbError> {
-    let current = load_slots(main, chat_id, character_id);
+    // v4 `loadSlots` — the ONE reader, `wear_ops::load_current_slots` (P4.D306).
+    let current = crate::wear_ops::load_current_slots(main, chat_id, character_id);
     log_composite_issues(options, character_id);
     let next_slots = compute_displaced_slots(&current, options);
     let effective = if options.mode.is_take_off() {
