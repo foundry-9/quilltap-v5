@@ -112,12 +112,39 @@ describe('AboutPage (v4 app/about/AboutView.tsx)', () => {
       'AI-generated atmospheric background images derived from chat context, with LoRA adapters and per-model options taken from the provider\u0027s own advertised capabilities',
     );
     expect(text).toContain(
-      // v4 `4d370a90f` (#75) rewrote the Concierge sentence for the three states.
-      'content classification with detection, auto-routing to uncensored providers, quick-hide integration, and a three-state per-chat control (Moderated, Unmoderated, Locked) settable at creation as well as mid-conversation, with the Concierge switching a chat himself after repeated refusals',
+      // v4 `4d370a90f` (#75) rewrote the Concierge sentence for the three states;
+      // v4 `8489d08b9` rewrote its head again (the tail is unchanged).
+      'refusal failover to the uncensored desk, an opt-in pre-screen, quick-hide integration, a Try Uncensored shield on every reply, and a three-state per-chat control (Moderated, Unmoderated, Locked) settable at creation as well as mid-conversation, with the Concierge switching a chat himself after repeated refusals',
     );
     expect(text).toContain(
       'Anthropic, OpenAI, Google Gemini, Grok, DeepSeek, Z.AI, NanoGPT, Ollama, OpenRouter, and OpenAI-compatible APIs, each profile able to name an understudy to take the call when its provider falls over',
     );
+  });
+
+  /**
+   * v4 `8489d08b9` (`app/about/AboutView.tsx`, `+4 / −4`) brought four feature
+   * sentences up to date: Aurora's wardrobe, the Salon's newer furniture, the
+   * Commonplace Book's shelves and digests, and the Concierge's failover (pinned
+   * in the case above). Byte copies of the commit's `+` lines.
+   */
+  it('carries 8489d08b9\u2019s four rewritten feature sentences', async () => {
+    const fixture = await render({ kind: 'healthy', version: '0.0.28' });
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain(
+      'detailed profiles with pronouns, aliases, personalities, subprompts and progressions, a four-tier wardrobe with folders, pictures and a wear ledger, multi-character turn management, and archiving into an encrypted bundle you can rehydrate later',
+    );
+    expect(text).toContain(
+      'chat interface with tool palette, agent mode, server-side rendering, embedded tool messages, Inform notes from the wings, the Scenario Builder, and indexed message search',
+    );
+    expect(text).toContain(
+      'long-term memory with semantic recall and proactive recall, active and archived shelves, consolidation into digests, and one per-character maintenance pass',
+    );
+    expect(text).toContain(
+      'refusal failover to the uncensored desk, an opt-in pre-screen, quick-hide integration, a Try Uncensored shield on every reply, and a three-state per-chat control',
+    );
+    expect(text).not.toContain('clothing records');
+    expect(text).not.toContain('memory gate');
   });
 
   it('renders the version LOCALLY from the §3 health field', async () => {

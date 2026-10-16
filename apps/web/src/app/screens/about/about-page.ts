@@ -323,11 +323,11 @@ export class AboutPage {
     },
     {
       title: 'Aurora – Characters',
-      body: 'detailed profiles with pronouns, aliases, clothing records, personalities, multi-character turn management, and archiving into an encrypted bundle you can rehydrate later',
+      body: 'detailed profiles with pronouns, aliases, personalities, subprompts and progressions, a four-tier wardrobe with folders, pictures and a wear ledger, multi-character turn management, and archiving into an encrypted bundle you can rehydrate later',
     },
     {
       title: 'The Salon – Chat',
-      body: 'chat interface with tool palette, agent mode, server-side rendering, and embedded tool messages',
+      body: 'chat interface with tool palette, agent mode, server-side rendering, embedded tool messages, Inform notes from the wings, the Scenario Builder, and indexed message search',
     },
     {
       title: 'Prospero – Projects',
@@ -335,7 +335,7 @@ export class AboutPage {
     },
     {
       title: 'The Commonplace Book – Memory',
-      body: 'long-term memory with semantic recall, memory gate, proactive recall, and deduplication',
+      body: 'long-term memory with semantic recall and proactive recall, active and archived shelves, consolidation into digests, and one per-character maintenance pass',
     },
     {
       title: 'The Lantern – Story Backgrounds',
@@ -343,7 +343,7 @@ export class AboutPage {
     },
     {
       title: 'The Concierge – Alternative Content Provision and Routing',
-      body: 'content classification with detection, auto-routing to uncensored providers, quick-hide integration, and a three-state per-chat control (Moderated, Unmoderated, Locked) settable at creation as well as mid-conversation, with the Concierge switching a chat himself after repeated refusals',
+      body: 'refusal failover to the uncensored desk, an opt-in pre-screen, quick-hide integration, a Try Uncensored shield on every reply, and a three-state per-chat control (Moderated, Unmoderated, Locked) settable at creation as well as mid-conversation, with the Concierge switching a chat himself after repeated refusals',
     },
     {
       title: 'Pascal the Croupier – Gaming',

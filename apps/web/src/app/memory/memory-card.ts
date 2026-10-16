@@ -67,7 +67,7 @@ import {
       <!-- Provenance (v4 :99-116). One line, no template whitespace: the lead
            carries v4's trailing space inside the string. -->
       @if (showProvenance()) {
-        <p class="qt-text-xs qt-text-muted mb-2">{{ digestLead() }}@if (supersededId(); as digestId) {@if (canViewDigest()) {<button type="button" class="text-primary hover:underline" (click)="viewDigest.emit(digestId)">Superseded by a digest</button>} @else {Superseded by a digest.}}</p>
+        <p class="qt-text-xs qt-text-muted mb-2">{{ digestLead() }}@if (supersededId(); as digestId) {@if (canViewDigest()) {<button type="button" class="qt-link" (click)="viewDigest.emit(digestId)">Superseded by a digest</button>} @else {Superseded by a digest.}}</p>
       }
 
       <!-- Content preview / full -->

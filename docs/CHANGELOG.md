@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — fix(spa): bug 251 code-block exit trim, the memory card digest link, the About blurbs (P4.D308)
+
+_Versions: SPA 0.5.863._
+
+Leaving a code block with Enter now removes only the last line's whitespace and one line break (v4 bug 251, `b2793400f`). The old `/\n\s*$/` trim also ate the spaces on the line before a blank one, so `"a\n  \n"` became `"a"`; it now becomes `"a\n  "`. The docstring now describes what the code does. Five vectors plus v4's two `KeyboardPlugin` cases pin it; the caret half of bug 251 is NO-PORT (ProseMirror has one caret shape in a code block). The memory card's "Superseded by a digest" button uses `qt-link` (v4 `a42c282b8`), and the About page carries `8489d08b9`'s four rewritten feature sentences. A bug-250 regression case joins the mention typeahead spec; it passes without a port because the plugin view refreshes synchronously.
+
 #### 2026-10-16 — docs(porting): P4.D307 lane record and LANE COMPLETE status
 
 _Docs-only change._

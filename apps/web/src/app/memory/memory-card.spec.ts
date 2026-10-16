@@ -77,6 +77,10 @@ describe('MemoryCard', () => {
     const long = render(mem({ content: 'x'.repeat(151) }));
     expect(long.nativeElement.textContent).toContain('Show more');
     const btn = long.nativeElement.querySelector('button') as HTMLButtonElement;
+    // v4 `a42c282b8` moved ONLY the digest link to `qt-link`; Show more keeps
+    // its classes (the over-port guard).
+    expect(btn.classList.contains('text-primary')).toBe(true);
+    expect(btn.classList.contains('qt-link')).toBe(false);
     btn.click();
     long.detectChanges();
     expect(long.nativeElement.textContent).toContain('Show less');
@@ -249,8 +253,11 @@ describe('MemoryCard — tiers and digests (P4.D276, v4 d58548051)', () => {
     expect(p.textContent).toBe('Superseded by a digest');
     const btn = p.querySelector('button') as HTMLButtonElement;
     expect(btn.getAttribute('type')).toBe('button');
-    expect(btn.classList.contains('text-primary')).toBe(true);
-    expect(btn.classList.contains('hover:underline')).toBe(true);
+    // v4 `a42c282b8`: the digest link takes the theme's link class; v4 dropped
+    // BOTH old tokens on THIS button only.
+    expect(btn.classList.contains('qt-link')).toBe(true);
+    expect(btn.classList.contains('text-primary')).toBe(false);
+    expect(btn.classList.contains('hover:underline')).toBe(false);
     btn.click();
     expect(seen).toBe('digest-7');
   });

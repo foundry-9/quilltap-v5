@@ -67,6 +67,24 @@ describe('mentionTypeaheadPlugin', () => {
   });
 
   describe('the menu', () => {
+    // v4 `MentionTypeaheadPlugin.test.tsx:153-167` (`25b8fab6a`, bug 250). v4's
+    // menu opened through a deferred React transition, so a clear landing
+    // before it committed left the menu orphaned; its fix
+    // (`GuardedTypeaheadMenuPlugin`) is NO-PORT. Here the plugin view refreshes
+    // SYNCHRONOUSLY in `update` on every transaction and closes the moment the
+    // trigger is gone — there is no deferred resolution to orphan, so this case
+    // holds by construction (a convergence, green before and after the port).
+    it('does not stay open, orphaned, when the trigger is cleared before the open commits (bug 250)', async () => {
+      const h = mount();
+      await h.settle();
+      h.seed('hello @ar');
+      h.seed('');
+      await h.settle();
+      expect(h.text()).toBe('');
+      expect(document.getElementById(LISTBOX_ID)).toBeNull();
+      expect(h.optionLabels()).toHaveLength(0);
+    });
+
     it('opens on a bare @ with every character', async () => {
       const h = mount();
       await openMenu(h, 'hello @');

@@ -208,9 +208,17 @@ export function dialectListNavigationKeymap(schema: Schema): Record<string, Comm
  *
  * The conditions are v4's, one for one: a collapsed caret, inside a code block,
  * at the very end of its text, with at least two lines and a blank last one
- * (`trim() === ''`, so a line of spaces counts as blank). The trailing blank is
- * removed with v4's own `/\n\s*$/` — which strips one newline plus any trailing
- * whitespace, not every trailing blank line.
+ * (`trim() === ''`, so a line of spaces counts as blank).
+ *
+ * Leaving removes the last line's whitespace, then ONE line break — never every
+ * trailing blank line (v4 bug 251, `b2793400f`, `KeyboardPlugin.tsx:93-103`:
+ * "remove trailing whitespace-only text nodes, then one line break; earlier
+ * lines are left alone"). v4's OLD `/\n\s*$/` did not do what its comment
+ * said: `\s` matches `\n` too, so it cut from the LEFTMOST newline of the
+ * trailing whitespace run — `"a\n  \n"` lost the spaces of the line before
+ * the blank one. Expressed on the block's text, v4's node walk is
+ * `[^\S\n]*$` (whitespace but not a newline — the last line's content) and
+ * then a single `\n`.
  */
 export function exitCodeBlockOnBlankLine(schema: Schema): Command {
   const codeBlock = schema.nodes['code_block'];
@@ -232,7 +240,8 @@ export function exitCodeBlockOnBlankLine(schema: Schema): Command {
     if (lines[lines.length - 1].trim() !== '') return false;
 
     if (dispatch) {
-      const trimmed = text.replace(/\n\s*$/, '');
+      const withoutTail = text.replace(/[^\S\n]*$/, '');
+      const trimmed = withoutTail.endsWith('\n') ? withoutTail.slice(0, -1) : withoutTail;
       const end = $from.end();
       const tr = state.tr;
       // A code block holds text only, so text offsets and document positions

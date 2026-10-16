@@ -300,6 +300,100 @@ describe('RichEditor — Enter escapes a fenced code block', () => {
     expect(editor.inCodeBlock()).toBe(true);
   });
 
+  /**
+   * Bug 251's exit TRIM (v4 `b2793400f`, `KeyboardPlugin.tsx:93-103`): leaving
+   * the block removes the last line's whitespace-only text, then ONE line break
+   * — "Earlier lines (and their highlight nodes) are left alone." v4's OLD
+   * `/\n\s*$/` swallowed every trailing whitespace-only line (its `\s` matches
+   * `\n`), so `"a\n  \n"` lost the spaces of the line BEFORE the blank one.
+   * The block is seeded through `runCommand` (the markdown serialiser trims a
+   * fence's trailing newline, so `getMarkdown()` cannot witness the trim) and
+   * read back as the block's own `textContent`.
+   */
+  function seedCodeBlock(fixture: ComponentFixture<Host>, text: string): void {
+    fixture.componentInstance.editor().runCommand((state, dispatch) => {
+      const { schema } = state;
+      const block = schema.nodes['code_block'].create(null, text ? schema.text(text) : null);
+      if (dispatch) {
+        const tr = state.tr.replaceWith(0, state.doc.content.size, block);
+        dispatch(tr.setSelection(TextSelection.create(tr.doc, 1 + text.length)));
+      }
+      return true;
+    });
+  }
+
+  function firstCodeBlockText(fixture: ComponentFixture<Host>): string | null {
+    let out: string | null = null;
+    fixture.componentInstance.editor().runCommand((state) => {
+      state.doc.descendants((node) => {
+        if (out === null && node.type.name === 'code_block') out = node.textContent;
+        return out === null;
+      });
+      return true;
+    });
+    return out;
+  }
+
+  it.each([
+    // The divergence from the old regex: only the blank line goes; the spaces
+    // of the line before it stay (old: "a").
+    ['a\n  \n', 'a\n  '],
+    ['a\n\t\n', 'a\n\t'],
+    // One line break, never every trailing blank line (old: "one\ntwo").
+    ['one\ntwo\n\n\n', 'one\ntwo\n\n'],
+    // Convergent with the old regex: a whitespace LAST line goes, then its break.
+    ['a\n  ', 'a'],
+    ['code\n', 'code'],
+  ])('bug 251: exiting %j leaves %j in the block', async (seed, kept) => {
+    const fixture = await render();
+    fixture.componentInstance.submitOnEnter.set(true);
+    fixture.detectChanges();
+    seedCodeBlock(fixture, seed);
+
+    pressEnter(fixture);
+
+    const editor = fixture.componentInstance.editor();
+    expect(editor.inCodeBlock()).toBe(false);
+    expect(firstCodeBlockText(fixture)).toBe(kept);
+    expect(fixture.componentInstance.submitted()).toBe(0);
+  });
+
+  // v4 `KeyboardPlugin.test.tsx:101-119` — "Enter after a trailing line break
+  // leaves the block without submitting (%s)", both modes (the caret half of
+  // bug 251; v5's ProseMirror caret has ONE shape in a code block, so this
+  // holds by construction — NO-PORT for the caret arm, pinned again here).
+  it.each([
+    ['chat mode', false],
+    ['document mode', true],
+  ])('v4: Enter after a trailing line break leaves the block without submitting (%s)', async (_label, documentMode) => {
+    const fixture = await render();
+    if (documentMode) fixture.componentInstance.submitOnModEnter.set(true);
+    else fixture.componentInstance.submitOnEnter.set(true);
+    fixture.detectChanges();
+    seedCodeBlock(fixture, 'let x = 1\n');
+
+    pressEnter(fixture);
+
+    expect(fixture.componentInstance.editor().inCodeBlock()).toBe(false);
+    expect(fixture.componentInstance.submitted()).toBe(0);
+    expect(firstCodeBlockText(fixture)).toBe('let x = 1');
+  });
+
+  // v4 `KeyboardPlugin.test.tsx:121-131` — "also escapes when the blank line
+  // holds only whitespace": `'a'` + a line break + `'  '` → `codeText: 'a'`.
+  it('v4: also escapes when the blank line holds only whitespace', async () => {
+    const fixture = await render();
+    fixture.componentInstance.submitOnEnter.set(true);
+    fixture.detectChanges();
+    seedCodeBlock(fixture, 'a\n  ');
+
+    pressEnter(fixture);
+
+    expect(fixture.componentInstance.editor().inCodeBlock()).toBe(false);
+    expect(firstCodeBlockText(fixture)).toBe('a');
+    expect(fixture.componentInstance.submitted()).toBe(0);
+  });
+
   it('stays out of the hosts v4 never gave the escape to (form fields)', async () => {
     // Neither submit mode set — v4 mounts KeyboardPlugin only in the composer,
     // so a markdown form field must keep ProseMirror's plain behavior.
