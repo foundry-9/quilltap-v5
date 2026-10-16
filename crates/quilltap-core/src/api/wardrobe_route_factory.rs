@@ -10,7 +10,9 @@
 //! Every tier is a location ([`resolve_wardrobe_location`]), so the handler
 //! bodies are written once: list / create (each with `?action=instructions`),
 //! the folder actions (`GET ?action=folders`; `POST ?action=create-folder`,
-//! `rename-folder`, `delete-folder`, `move-items`), and get (with
+//! `rename-folder`, `delete-folder`, `move-items`, `copy-items` — the last
+//! two through [`crate::services::wardrobe_folder_filing`], v4 `bbbcd2388`,
+//! an outfit's components moved / copied / left as the body asks), and get (with
 //! `?action=wear-history`) / update / delete. Each tier's file is a config
 //! ([`WardrobeRouteConfig`]) and one-line delegates. Rules that hold everywhere:
 //!
@@ -29,8 +31,8 @@
 //! General ensures the folder — so those two run on the WRITER for the three
 //! store tiers (the read pool is read-only); the character tier stays a read.
 //! Create, the instructions POST and `create-folder` ensure; every item route,
-//! `?action=folders`, `rename-folder`, `delete-folder` and `move-items` never
-//! provision.
+//! `?action=folders`, `rename-folder`, `delete-folder`, `move-items` and
+//! `copy-items` never provision.
 //!
 //! **Log lines.** v4 keys each line by the tier's `logIdKey` (`characterId` /
 //! `generalId` / `projectId` / `groupId`); tracing field names are static, so
@@ -40,6 +42,8 @@
 //! capture rig cannot see it (memory note `capture-rig-writer-thread`). The
 //! keystone's own lines beneath (`[WardrobeLocation]`, `[ItemMutations]`,
 //! `[FolderMutations]`, the folder-writer DEBUGs) are the keystone's (R-H).
+
+use std::sync::Arc;
 
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
@@ -58,6 +62,11 @@ use crate::db::wardrobe_location::{
 use crate::db::wardrobe_read::read_shared_tiers;
 use crate::db::DbError;
 use crate::services::image_job_common::with_both_conns;
+use crate::services::mount_index::blob_transcode::WebpTranscoder;
+use crate::services::wardrobe_folder_filing::{
+    file_items_to_folder, FileItemsToFolderRequest, FolderComponentMode, FolderFilingAction,
+    FolderFilingError,
+};
 use crate::services::wardrobe_folder_mutations::{
     create_wardrobe_folder, delete_wardrobe_folder, rename_wardrobe_folder,
 };
@@ -65,8 +74,8 @@ use crate::services::wardrobe_item_images::primitives::{
     cleanup_item_images, ItemImageCleanupMeta,
 };
 use crate::services::wardrobe_item_mutations::{
-    component_lookup_for, create_item, move_items_to_folder, update_item, CreateItemOptions,
-    ItemPatch, WardrobeCreateBody,
+    component_lookup_for, create_item, update_item, CreateItemOptions, ItemPatch,
+    WardrobeCreateBody,
 };
 use crate::services::wardrobe_item_route_steps::{
     image_choice_error, log_cleanup_equipped_refs, parse_image_file_id, run_cleanup_equipped_refs,
@@ -215,6 +224,30 @@ fn read_main_mount<T>(
     f: impl FnOnce(&Connection, &Connection) -> Result<T, DbError>,
 ) -> Result<T, DbError> {
     db.read_main(|main| db.read_mount_index(|mount| f(main, mount)))
+}
+
+/// A write's refusal as the factory answers it.
+trait WriteRefusal {
+    fn into_response(self) -> Response;
+}
+
+impl WriteRefusal for WardrobeLocationError {
+    fn into_response(self) -> Response {
+        write_error_response(self)
+    }
+}
+
+impl WriteRefusal for FolderFilingError {
+    /// v4 `writeErrorResponse`'s `FolderFilingRequestError → badRequest(message)`
+    /// arm (`bbbcd2388`). Unreachable over either transport for `copy` +
+    /// `move` — the request parse refuses that body first, as v4's Zod does —
+    /// but the service-level contract carries it.
+    fn into_response(self) -> Response {
+        match self {
+            FolderFilingError::Request(m) => bad_request(m),
+            FolderFilingError::Location(e) => write_error_response(e),
+        }
+    }
 }
 
 /// v4 `writeErrorResponse` — the write-side refusals every tier shares; any
@@ -491,9 +524,18 @@ fn parse_rename_body(body: &Value) -> Result<(String, String), ()> {
     Ok((path, name))
 }
 
-/// `moveWardrobeItemsSchema` — `{ itemIds: z.array(z.string().min(1)).min(1).max(500),
-/// folder: WardrobeFolderInputSchema }`.
-fn parse_move_body(body: &Value) -> Result<(Vec<String>, String), ()> {
+/// v4 `moveWardrobeItemsSchema` / `copyWardrobeItemsSchema` (`bbbcd2388`) —
+/// `{ itemIds: z.array(z.string().min(1)).min(1).max(500), folder:
+/// WardrobeFolderInputSchema, components?: … }`: a move admits `components` ∈
+/// {`move`, `copy`, `none`}, a copy only {`copy`, `none`} (copying an outfit
+/// cannot move the pieces the original still needs — refused HERE, at the
+/// schema, with the flat `Validation error`). `.optional()` is not
+/// `.nullable()`: an explicit `null`, a non-string or any other string
+/// (`"Move"`) refuses. Unknown keys are stripped.
+fn parse_filing_body(
+    body: &Value,
+    action: FolderFilingAction,
+) -> Result<(Vec<String>, String, Option<FolderComponentMode>), ()> {
     let obj = body.as_object().ok_or(())?;
     let Some(Value::Array(ids)) = obj.get("itemIds") else {
         return Err(());
@@ -509,7 +551,17 @@ fn parse_move_body(body: &Value) -> Result<(Vec<String>, String), ()> {
         }
     }
     let folder = folder_input(obj, "folder", false)?;
-    Ok((item_ids, folder))
+    let components = match obj.get("components") {
+        None => None,
+        Some(Value::String(s)) => Some(match (s.as_str(), action) {
+            ("move", FolderFilingAction::Move) => FolderComponentMode::Move,
+            ("copy", _) => FolderComponentMode::Copy,
+            ("none", _) => FolderComponentMode::None,
+            _ => return Err(()),
+        }),
+        Some(_) => return Err(()),
+    };
+    Ok((item_ids, folder, components))
 }
 
 // ===========================================================================
@@ -915,15 +967,13 @@ pub fn folders_list(
 
 /// The shape every folder write shares: parse (before resolve) → resolve →
 /// the mutation (its refusals through [`write_error_response`]).
-async fn folder_write<T: Send + 'static>(
+async fn folder_write<T: Send + 'static, E: WriteRefusal>(
     db: &Db,
     cfg: WardrobeRouteConfig,
     id: Option<&str>,
     user_id: &str,
     ensure: bool,
-    op: impl FnOnce(&Connection, &Connection, &WardrobeLocation) -> Result<T, WardrobeLocationError>
-        + Send
-        + 'static,
+    op: impl FnOnce(&Connection, &Connection, &WardrobeLocation) -> Result<T, E> + Send + 'static,
 ) -> Result<Result<(WardrobeLocation, T), Response>, DbError> {
     let (id, uid) = (id.map(str::to_string), user_id.to_string());
     with_both_conns(db, move |main, mount| {
@@ -933,7 +983,7 @@ async fn folder_write<T: Send + 'static>(
         };
         match op(main, mount, &location) {
             Ok(v) => Ok(Ok((location, v))),
-            Err(e) => Ok(Err(write_error_response(e))),
+            Err(e) => Ok(Err(e.into_response())),
         }
     })
     .await
@@ -1038,40 +1088,131 @@ pub async fn folder_delete(
     }
 }
 
-/// `POST ?action=move-items` `{ itemIds, folder }` → `{ items }` serialized.
-/// The INFO logs the folder AS REQUESTED (v4 `folder: body.folder`) where
-/// `create-folder` logs the resolved path — v4's asymmetry, ported as written
-/// (R-I).
+/// `POST ?action=move-items` `{ itemIds, folder, components? }` → 200 `{ items,
+/// componentsCarried }` serialized (v4 `handleMoveItems`).
 pub async fn items_move(
     db: &Db,
     cfg: WardrobeRouteConfig,
     id: Option<&str>,
     user_id: &str,
     body: &Value,
+    blob_webp: Arc<dyn WebpTranscoder>,
 ) -> Response {
-    let Ok((item_ids, folder)) = parse_move_body(body) else {
+    file_items(
+        db,
+        cfg,
+        id,
+        user_id,
+        body,
+        FolderFilingAction::Move,
+        blob_webp,
+    )
+    .await
+}
+
+/// `POST ?action=copy-items` `{ itemIds, folder, components? }` → 200 `{ items,
+/// componentsCarried }` serialized — a copy is NOT a 201 (v4 `handleCopyItems`).
+pub async fn items_copy(
+    db: &Db,
+    cfg: WardrobeRouteConfig,
+    id: Option<&str>,
+    user_id: &str,
+    body: &Value,
+    blob_webp: Arc<dyn WebpTranscoder>,
+) -> Response {
+    file_items(
+        db,
+        cfg,
+        id,
+        user_id,
+        body,
+        FolderFilingAction::Copy,
+        blob_webp,
+    )
+    .await
+}
+
+/// v4 `handleFileItems(action, body, ctx, params)` — parse (before resolve) →
+/// resolve WITHOUT provisioning → `fileItemsToFolder` → the INFO on success.
+/// The INFO logs the folder AS REQUESTED (v4 `folder: body.folder`) where
+/// `create-folder` logs the resolved path — v4's asymmetry, ported as written
+/// (R-I) — and `components` as the body gave it (`?? 'none'`). The items
+/// answer in v4's own key orders: a move (plain, `move`, or `copy` — the moved
+/// originals, `updateMany`'s `{ ...before, ...patch }`) in READ order, a
+/// copy's fresh items in CREATE order. Both `move-items` and `copy-items` run
+/// on the picture transcoder: a move with `components: 'copy'` copies the
+/// components' pictures too.
+async fn file_items(
+    db: &Db,
+    cfg: WardrobeRouteConfig,
+    id: Option<&str>,
+    user_id: &str,
+    body: &Value,
+    action: FolderFilingAction,
+    blob_webp: Arc<dyn WebpTranscoder>,
+) -> Response {
+    let Ok((item_ids, folder, components)) = parse_filing_body(body, action) else {
         return validation_error();
     };
     let requested = folder.clone();
+    let uid = user_id.to_string();
     let out = folder_write(db, cfg, id, user_id, false, move |main, mount, loc| {
-        let moved = move_items_to_folder(main, mount, loc, &item_ids, &folder)?;
-        let items: Vec<Value> = moved.iter().map(item_read_value).collect();
-        Ok((
-            moved.len(),
+        let filed = file_items_to_folder(
+            main,
+            mount,
+            &uid,
+            loc,
+            &FileItemsToFolderRequest {
+                action,
+                item_ids: &item_ids,
+                folder: &folder,
+                components,
+            },
+            &mut || uuid::Uuid::new_v4().to_string(),
+            &mut || uuid::Uuid::new_v4().to_string(),
+            &crate::clock::now_iso(),
+            blob_webp.as_ref(),
+        )?;
+        let shape: fn(&WardrobeItem) -> Value = match action {
+            FolderFilingAction::Move => item_read_value,
+            FolderFilingAction::Copy => item_create_value,
+        };
+        let items: Vec<Value> = filed.items.iter().map(shape).collect();
+        Ok::<_, FolderFilingError>((
+            filed.items.len(),
+            filed.components_carried,
             serialize_wardrobe_items(main, items, &loc.origin),
         ))
     })
     .await;
     match out {
-        Ok(Ok((location, (count, items)))) => {
-            tier_line!(info, cfg, id_of(&location), "Moved wardrobe items to folder";
-                userId = user_id,
-                mountPointId = location.mount_point_id.as_str(),
-                folder = requested.as_str(),
-                count = count,
-                context = "wardrobe",
-            );
-            Response::Wardrobe(json!({ "items": items }))
+        Ok(Ok((location, (count, carried, items)))) => {
+            let mode = components.unwrap_or(FolderComponentMode::None).as_str();
+            match action {
+                FolderFilingAction::Move => {
+                    tier_line!(info, cfg, id_of(&location), "Moved wardrobe items to folder";
+                        userId = user_id,
+                        mountPointId = location.mount_point_id.as_str(),
+                        folder = requested.as_str(),
+                        count = count,
+                        components = mode,
+                        componentsCarried = carried,
+                        context = "wardrobe",
+                    );
+                }
+                FolderFilingAction::Copy => {
+                    tier_line!(info, cfg, id_of(&location), "Copied wardrobe items to folder";
+                        userId = user_id,
+                        mountPointId = location.mount_point_id.as_str(),
+                        folder = requested.as_str(),
+                        count = count,
+                        components = mode,
+                        componentsCarried = carried,
+                        context = "wardrobe",
+                    );
+                }
+            }
+            Response::Wardrobe(json!({ "items": items, "componentsCarried": carried }))
         }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
@@ -1456,7 +1597,7 @@ pub fn container_id_issue(
     .then(|| bad_request("containerId is required for a character, project or group wardrobe"))
 }
 
-/// The five folder verbs, as the engine dispatches them.
+/// The six folder verbs, as the engine dispatches them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FolderAction {
     List,
@@ -1464,10 +1605,12 @@ pub enum FolderAction {
     Rename,
     Delete,
     MoveItems,
+    CopyItems,
 }
 
 /// Dispatch one folder verb for `scope` / `container_id` (`body` is the raw
-/// request body — ignored by `List`).
+/// request body — ignored by `List`). `blob_webp` is the picture codec the
+/// two filing verbs write copied pictures through (the other four ignore it).
 pub async fn folder_action(
     db: &Db,
     action: FolderAction,
@@ -1475,6 +1618,7 @@ pub async fn folder_action(
     container_id: Option<&str>,
     user_id: &str,
     body: &Value,
+    blob_webp: Arc<dyn WebpTranscoder>,
 ) -> Response {
     if let Some(r) = container_id_issue(scope, container_id) {
         return r;
@@ -1490,7 +1634,8 @@ pub async fn folder_action(
         FolderAction::Create => folder_create(db, cfg, id, user_id, body).await,
         FolderAction::Rename => folder_rename(db, cfg, id, user_id, body).await,
         FolderAction::Delete => folder_delete(db, cfg, id, user_id, body).await,
-        FolderAction::MoveItems => items_move(db, cfg, id, user_id, body).await,
+        FolderAction::MoveItems => items_move(db, cfg, id, user_id, body, blob_webp).await,
+        FolderAction::CopyItems => items_copy(db, cfg, id, user_id, body, blob_webp).await,
     }
 }
 
@@ -1498,12 +1643,15 @@ pub async fn folder_action(
 mod folder_route_lines {
     //! The folder actions' route lines (v4 `wardrobe-route-factory.ts`
     //! `handleGetFolders` / `handleCreateFolder` / `handleRenameFolder` /
-    //! `handleDeleteFolder` / `handleMoveItems`, `4a38222e6`), capture-pinned
-    //! byte for byte — level, `<logTag> <message>`, then v4's keys in v4's
-    //! order (`[logIdKey]` first, `context` last) — with the silence legs: a
-    //! refused action logs no route line. The differential
-    //! (`wardrobe_folders_routes_equivalence`) compares bodies and write-sets
-    //! only, so nothing else sees these.
+    //! `handleDeleteFolder` / `handleMoveItems`, `4a38222e6`; `handleCopyItems`
+    //! and the filing INFO's `components` / `componentsCarried`, `bbbcd2388`),
+    //! capture-pinned byte for byte — level, `<logTag> <message>`, then v4's
+    //! keys in v4's order (`[logIdKey]` first, `context` last) — with the
+    //! silence legs: a refused action logs no route line. These are v5-side
+    //! LITERALS checked against v4's source (the P4.D309 survey §1.7), NOT
+    //! oracle-pinned: the differential (`wardrobe_folders_routes_equivalence`)
+    //! runs v4 at `LOG_LEVEL=error` and compares bodies and write-sets only, so
+    //! nothing else sees these.
     //!
     //! The route lines are logged on the CALLER's thread after the writer
     //! answers, so the process-global capture (armed on this current-thread
@@ -1628,17 +1776,22 @@ mod folder_route_lines {
             None,
             USER,
             &json!({ "itemIds": [item_id], "folder": "coats" }),
+            refusing(),
         ))
         .await;
         let Response::Wardrobe(body) = resp else {
             panic!("{resp:?}")
         };
         assert_eq!(body["items"][0]["folder"], "Coats");
+        assert_eq!(body["componentsCarried"], 0);
+        // P4.D309 (v4 `bbbcd2388`): the plain move's line gains the body's
+        // `components` (`?? 'none'`) and the carried count before `context`.
         assert_eq!(
             route_lines(lines, TAG),
             vec![format!(
                 "INFO {HEAD} Moved wardrobe items to folder generalId=null userId={USER} \
-                 mountPointId={mp} folder=coats count=1 context=wardrobe"
+                 mountPointId={mp} folder=coats count=1 components=none componentsCarried=0 \
+                 context=wardrobe"
             )]
         );
 
@@ -1704,6 +1857,96 @@ mod folder_route_lines {
                  mountPointId={mp} folder=jackets movedItems=1 movedFolders=0 context=wardrobe"
             )]
         );
+
+        // copy-items (P4.D309, v4 `bbbcd2388`): `Copied …`, the folder AS
+        // REQUESTED, the copies' count, the body's `components`, the
+        // components carried. An outfit with one piece, copied with its
+        // pieces: one requested copy, one component carried.
+        let Response::Wardrobe(belt) = create(
+            &db,
+            g,
+            None,
+            USER,
+            &json!({ "title": "Belt", "types": ["accessories"] }),
+        )
+        .await
+        else {
+            panic!("create belt")
+        };
+        let belt = belt["wardrobeItem"]["id"].as_str().unwrap().to_string();
+        let Response::Wardrobe(rig) = create(
+            &db,
+            g,
+            None,
+            USER,
+            &json!({ "title": "Rig", "types": ["accessories"], "componentItemIds": [belt] }),
+        )
+        .await
+        else {
+            panic!("create rig")
+        };
+        let rig = rig["wardrobeItem"]["id"].as_str().unwrap().to_string();
+        let (resp, lines) = capture_async(items_copy(
+            &db,
+            g,
+            None,
+            USER,
+            &json!({ "itemIds": [rig], "folder": "spares", "components": "copy" }),
+            refusing(),
+        ))
+        .await;
+        let Response::Wardrobe(body) = resp else {
+            panic!("{resp:?}")
+        };
+        assert_eq!(body["items"][0]["title"], "Rig (copy)");
+        assert_eq!(body["componentsCarried"], 1);
+        assert_eq!(
+            route_lines(lines, TAG),
+            vec![format!(
+                "INFO {HEAD} Copied wardrobe items to folder generalId=null userId={USER} \
+                 mountPointId={mp} folder=spares count=1 components=copy componentsCarried=1 \
+                 context=wardrobe"
+            )]
+        );
+
+        // Silence: a copy asked to MOVE the components (the schema's 400), a
+        // copy of an id not in this wardrobe (400), and a move with an
+        // unknown `components` word log no route line.
+        for (body, filer) in [
+            (
+                json!({ "itemIds": [rig], "folder": "", "components": "move" }),
+                FolderFilingAction::Copy,
+            ),
+            (
+                json!({ "itemIds": [MISSING_PROJECT], "folder": "" }),
+                FolderFilingAction::Copy,
+            ),
+            (
+                json!({ "itemIds": [rig], "folder": "", "components": "Move" }),
+                FolderFilingAction::Move,
+            ),
+        ] {
+            let (resp, lines) = capture_async(async {
+                match filer {
+                    FolderFilingAction::Copy => {
+                        items_copy(&db, g, None, USER, &body, refusing()).await
+                    }
+                    FolderFilingAction::Move => {
+                        items_move(&db, g, None, USER, &body, refusing()).await
+                    }
+                }
+            })
+            .await;
+            assert!(
+                matches!(&resp, Response::Error(e) if e.kind == ErrorKind::BadRequest),
+                "{body}: {resp:?}"
+            );
+            assert!(route_lines(lines, TAG).is_empty(), "{body}");
+        }
+    }
+
+    fn refusing() -> Arc<dyn WebpTranscoder> {
+        Arc::new(crate::services::mount_index::blob_transcode::RefusingWebpTranscoder)
     }
 
     /// v4's `No store yet; no wardrobe folders` arm (`[logIdKey]: id, context`)
@@ -1760,5 +2003,69 @@ mod folder_route_lines {
             other => panic!("{other:?}"),
         }
         assert!(route_lines(lines, "[Projects v1]").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod parse_filing_body_matrix {
+    //! `parse_filing_body` against v4's two Zod schemas (`bbbcd2388`,
+    //! `lib/schemas/wardrobe.types.ts:208-233`): `components` optional but not
+    //! nullable, a closed enum per action, unknown keys stripped, the
+    //! `itemIds` bounds.
+    use super::*;
+
+    fn parse(body: Value, action: FolderFilingAction) -> Option<Option<FolderComponentMode>> {
+        parse_filing_body(&body, action).ok().map(|(_, _, c)| c)
+    }
+
+    #[test]
+    fn the_components_word_per_action() {
+        use FolderComponentMode as M;
+        use FolderFilingAction::{Copy, Move};
+        let b = |c: Value| json!({ "itemIds": ["a"], "folder": "", "components": c });
+        assert_eq!(
+            parse(json!({ "itemIds": ["a"], "folder": "" }), Move),
+            Some(None)
+        );
+        assert_eq!(
+            parse(json!({ "itemIds": ["a"], "folder": "" }), Copy),
+            Some(None)
+        );
+        assert_eq!(parse(b(json!("move")), Move), Some(Some(M::Move)));
+        assert_eq!(parse(b(json!("copy")), Move), Some(Some(M::Copy)));
+        assert_eq!(parse(b(json!("none")), Move), Some(Some(M::None)));
+        assert_eq!(parse(b(json!("copy")), Copy), Some(Some(M::Copy)));
+        assert_eq!(parse(b(json!("none")), Copy), Some(Some(M::None)));
+        // A copy cannot move the components — refused at the schema.
+        assert_eq!(parse(b(json!("move")), Copy), None);
+        for bad in [
+            json!(null),
+            json!("Move"),
+            json!(5),
+            json!(""),
+            json!(["move"]),
+        ] {
+            assert_eq!(parse(b(bad.clone()), Move), None, "{bad}");
+            assert_eq!(parse(b(bad.clone()), Copy), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn unknown_keys_are_stripped_and_the_ids_bounded() {
+        use FolderFilingAction::Copy;
+        assert_eq!(
+            parse(json!({ "itemIds": ["a"], "folder": "x", "bogus": 1 }), Copy),
+            Some(None)
+        );
+        let ids = |n: usize| (0..n).map(|i| format!("i{i}")).collect::<Vec<_>>();
+        assert!(parse(json!({ "itemIds": ids(500), "folder": "" }), Copy).is_some());
+        assert_eq!(
+            parse(json!({ "itemIds": ids(501), "folder": "" }), Copy),
+            None
+        );
+        assert_eq!(parse(json!({ "itemIds": [], "folder": "" }), Copy), None);
+        assert_eq!(parse(json!({ "itemIds": [""], "folder": "" }), Copy), None);
+        assert_eq!(parse(json!({ "itemIds": ["a"] }), Copy), None);
+        assert_eq!(parse(json!("not an object"), Copy), None);
     }
 }

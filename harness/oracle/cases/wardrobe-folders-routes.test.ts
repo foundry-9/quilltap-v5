@@ -7,8 +7,9 @@
  * `wardrobe` (Quilltap General), `projects/[id]/wardrobe`,
  * `groups/[id]/wardrobe` (+ each `[itemId]` route) — for the five folder
  * actions (`GET ?action=folders`; `POST ?action=create-folder`,
- * `rename-folder`, `delete-folder`, `move-items`) and the collection POST /
- * item PUT carrying `folder`. Each case runs over a FRESH copy of the
+ * `rename-folder`, `delete-folder`, `move-items`, and — P4.D309, v4
+ * `bbbcd2388` — `copy-items` and the filing verbs' `components`) and the
+ * collection POST / item PUT carrying `folder`. Each case runs over a FRESH copy of the
  * keystone's four-tier seed (`build-wardrobe-keystone-fixture.ts`, consumed
  * read-only and built into this family's OWN `/tmp/p4d281`-style paths), in a
  * fresh jest module graph.
@@ -56,12 +57,13 @@ import { tmpdir } from 'node:os';
 
 interface Step {
   /** `folders` | `create-folder` | `rename-folder` | `delete-folder` |
-   *  `move-items` | `create` | `update` | `list`. */
+   *  `move-items` | `copy-items` | `create` | `update` | `list`. */
   op: string;
   body?: unknown;
   /** `update`: the item ref (a seed `items` key) or a literal id. */
   item?: string;
-  /** `move-items`: item refs, expanded into `body.itemIds` (keys or literals). */
+  /** `move-items` / `copy-items`: item refs, expanded into `body.itemIds`
+   *  (keys or literals). */
   items?: string[];
 }
 interface Case {
@@ -215,11 +217,14 @@ async function runCase(
         case 'delete-folder':
           response = await r.coll.POST(mockRequest(`${B}?action=${s.op}`, 'POST', s.body), collCtx);
           break;
-        case 'move-items': {
+        // P4.D309 (v4 `bbbcd2388`): `copy-items` mirrors `move-items`; either
+        // carries `components` through `s.body`.
+        case 'move-items':
+        case 'copy-items': {
           const body = s.items
             ? { ...(s.body as Record<string, unknown>), itemIds: s.items.map(itemId) }
             : s.body;
-          response = await r.coll.POST(mockRequest(`${B}?action=move-items`, 'POST', body), collCtx);
+          response = await r.coll.POST(mockRequest(`${B}?action=${s.op}`, 'POST', body), collCtx);
           break;
         }
         case 'create':

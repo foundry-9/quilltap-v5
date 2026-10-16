@@ -5,7 +5,8 @@
 //! - `GET|POST   /api/v1/wardrobe`                 → the GLOBAL archetype tier
 //!   (the route factory's collection: `?action=instructions | folders` on GET,
 //!   `?action=instructions | create-folder | rename-folder | delete-folder |
-//!   move-items` on POST — P4.D281, v4 `4a38222e6`)
+//!   move-items | copy-items` on POST — P4.D281, v4 `4a38222e6`; `copy-items`
+//!   P4.D309, v4 `bbbcd2388`)
 //! - `GET|PUT|DELETE /api/v1/wardrobe/{itemId}`    → one archetype
 //! - `GET|POST   /api/v1/wardrobe/transfers`       → the transfers pair
 //! - `POST       /api/v1/wardrobe/preview-avatar`  → the one-shot render
@@ -121,23 +122,27 @@ pub(crate) const COLLECTION_GET_ACTIONS: [&str; 2] = ["instructions", "folders"]
 
 /// v4's collection POST action map, in its literal order; no action is the
 /// create.
-pub(crate) const COLLECTION_POST_ACTIONS: [&str; 5] = [
+pub(crate) const COLLECTION_POST_ACTIONS: [&str; 6] = [
     "instructions",
     "create-folder",
     "rename-folder",
     "delete-folder",
     "move-items",
+    "copy-items",
 ];
 
 /// The folder write verb for a collection POST action (C2 — the body rides
-/// RAW so the handler answers v4's flat `Validation error`).
+/// RAW so the handler answers v4's flat `Validation error`). Every verb is an
+/// EXPLICIT arm: an action with no arm is `None` (the caller's `Unknown
+/// action` envelope), never a default — a fall-through to the move would
+/// silently file a COPY as a MOVE (P4.D309, the `bbbcd2388` trap).
 fn folder_write_request(
     action: &str,
     scope: WardrobeContainerScope,
     container_id: Option<String>,
     body: Value,
-) -> CoreRequest {
-    match action {
+) -> Option<CoreRequest> {
+    Some(match action {
         "create-folder" => CoreRequest::WardrobeFolderCreate {
             scope,
             container_id,
@@ -153,12 +158,18 @@ fn folder_write_request(
             container_id,
             body,
         },
-        _ => CoreRequest::WardrobeItemsMove {
+        "move-items" => CoreRequest::WardrobeItemsMove {
             scope,
             container_id,
             body,
         },
-    }
+        "copy-items" => CoreRequest::WardrobeItemsCopy {
+            scope,
+            container_id,
+            body,
+        },
+        _ => return None,
+    })
 }
 
 /// v4 `GET /api/v1/wardrobe` — the factory's collection GET for Quilltap
@@ -218,8 +229,8 @@ pub async fn wardrobe_post(
 /// character's vault — R-F: project / group stay dispatch-only): the action
 /// dispatch FIRST (an unknown action never reaches the body), then
 /// `?action=instructions` (decoded through the Request enum so the
-/// required-but-nullable key keeps its tri-state), the four folder writes
-/// (`4a38222e6`), or the create (201). An unparsable body is v4's uncaught
+/// required-but-nullable key keeps its tri-state), the five folder writes
+/// (`4a38222e6`; `copy-items` `bbbcd2388`), or the create (201). An unparsable body is v4's uncaught
 /// `req.json()` throw — the middleware's 500.
 pub(crate) async fn collection_post(
     state: &SharedState,
@@ -255,10 +266,20 @@ pub(crate) async fn collection_post(
             };
             (req, StatusCode::OK)
         }
-        Some(folder_action) => (
-            folder_write_request(folder_action, scope, container_id, body),
-            StatusCode::OK,
-        ),
+        // Both filing verbs answer 200 — a copy is NOT a 201 (v4
+        // `successResponse`).
+        Some(folder_action) => match folder_write_request(folder_action, scope, container_id, body)
+        {
+            Some(req) => (req, StatusCode::OK),
+            None => {
+                return crate::query::unknown_action_response(
+                    folder_action,
+                    &COLLECTION_POST_ACTIONS,
+                    "POST",
+                    path,
+                )
+            }
+        },
         None => (
             match scope {
                 WardrobeContainerScope::Character => CoreRequest::CharacterWardrobeCreate {

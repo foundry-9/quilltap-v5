@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(wardrobe): copy-items and the filing components on the route factory, the WardrobeItemsCopy wire, and explicit web arms (P4.D309)
+
+_Versions: core 0.0.1307, web 0.0.241._
+
+The route factory's `move-items` now takes `components` (`move` / `copy` / `none`) and the new `copy-items` (`copy` / `none`) files copies; both run `file_items_to_folder` and answer 200 `{ items, componentsCarried }` — moved items in read key order, copies in create key order — and their INFO lines gain `components` and `componentsCarried` (`Copied wardrobe items to folder` for a copy). The body parse refuses `null`, a non-string or an unlisted word, and a copy asked to move components, with the flat `Validation error`. `folder_action` takes the picture transcoder and every folder arm in the engine runs on `ready_db_and_blob_webp`, since a move with copied components copies pictures too. New `Request::WardrobeItemsCopy`. In `quilltap-web` the collection POST lists six actions and `folder_write_request` names every verb explicitly — an unnamed action is now the `Unknown action` envelope instead of falling through to a move. The `wardrobe-folders-routes` corpus grows from 86 to 116 cases (regenerated from the `25b8fab6a` pin), plus a REST test that a copy copies and a move does not.
+
 #### 2026-10-16 — feat(wardrobe): folder filing with components — next_copy_title, the array-form collect_container_components, and file_items_to_folder (P4.D309)
 
 _Versions: core 0.0.1306._

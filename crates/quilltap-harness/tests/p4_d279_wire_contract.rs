@@ -91,6 +91,45 @@ fn p4_d279_contract_wire_shapes() {
         }
         other => panic!("wardrobeItemsMove decoded to {other:?}"),
     }
+    // P4.D309 (v4 `bbbcd2388`): `components` rides in the flattened body of
+    // both filing verbs (parsed by the handler, so `"Move"` / `null` reach v4's
+    // flat `Validation error` there, not a serde refusal here).
+    match decode(json!({
+        "type":"wardrobeItemsMove","scope":"general",
+        "itemIds":["a"],"folder":"Formal","components":"copy"
+    })) {
+        Request::WardrobeItemsMove {
+            scope,
+            container_id,
+            body,
+        } => {
+            assert_eq!(scope, WardrobeContainerScope::General);
+            assert_eq!(container_id, None);
+            assert_eq!(
+                body,
+                json!({"itemIds": ["a"], "folder": "Formal", "components": "copy"})
+            );
+        }
+        other => panic!("wardrobeItemsMove (components) decoded to {other:?}"),
+    }
+    match decode(json!({
+        "type":"wardrobeItemsCopy","scope":"character","containerId":"ch1",
+        "itemIds":["a","b"],"folder":"","components":"Move"
+    })) {
+        Request::WardrobeItemsCopy {
+            scope,
+            container_id,
+            body,
+        } => {
+            assert_eq!(scope, WardrobeContainerScope::Character);
+            assert_eq!(container_id.as_deref(), Some("ch1"));
+            assert_eq!(
+                body,
+                json!({"itemIds": ["a", "b"], "folder": "", "components": "Move"})
+            );
+        }
+        other => panic!("wardrobeItemsCopy decoded to {other:?}"),
+    }
     assert_eq!(
         decode(json!({
             "type":"wardrobeItemImageLink","scope":"character","containerId":"ch1",

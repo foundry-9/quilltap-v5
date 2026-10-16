@@ -5720,8 +5720,8 @@ impl CoreEngine {
             Request::WardrobeFoldersList {
                 scope,
                 container_id,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_blob_webp() {
+                Ok((db, blob_webp)) => {
                     super::wardrobe_route_factory::folder_action(
                         &db,
                         super::wardrobe_route_factory::FolderAction::List,
@@ -5729,6 +5729,11 @@ impl CoreEngine {
                         container_id.as_deref(),
                         SINGLE_USER_ID,
                         &serde_json::Value::Null,
+                        blob_webp.unwrap_or_else(|| {
+                            Arc::new(
+                                crate::services::mount_index::blob_transcode::RefusingWebpTranscoder,
+                            )
+                        }),
                     )
                     .await
                 }
@@ -5738,8 +5743,8 @@ impl CoreEngine {
                 scope,
                 container_id,
                 body,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_blob_webp() {
+                Ok((db, blob_webp)) => {
                     super::wardrobe_route_factory::folder_action(
                         &db,
                         super::wardrobe_route_factory::FolderAction::Create,
@@ -5747,6 +5752,11 @@ impl CoreEngine {
                         container_id.as_deref(),
                         SINGLE_USER_ID,
                         &body,
+                        blob_webp.unwrap_or_else(|| {
+                            Arc::new(
+                                crate::services::mount_index::blob_transcode::RefusingWebpTranscoder,
+                            )
+                        }),
                     )
                     .await
                 }
@@ -5756,8 +5766,8 @@ impl CoreEngine {
                 scope,
                 container_id,
                 body,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_blob_webp() {
+                Ok((db, blob_webp)) => {
                     super::wardrobe_route_factory::folder_action(
                         &db,
                         super::wardrobe_route_factory::FolderAction::Rename,
@@ -5765,6 +5775,11 @@ impl CoreEngine {
                         container_id.as_deref(),
                         SINGLE_USER_ID,
                         &body,
+                        blob_webp.unwrap_or_else(|| {
+                            Arc::new(
+                                crate::services::mount_index::blob_transcode::RefusingWebpTranscoder,
+                            )
+                        }),
                     )
                     .await
                 }
@@ -5774,8 +5789,8 @@ impl CoreEngine {
                 scope,
                 container_id,
                 body,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_blob_webp() {
+                Ok((db, blob_webp)) => {
                     super::wardrobe_route_factory::folder_action(
                         &db,
                         super::wardrobe_route_factory::FolderAction::Delete,
@@ -5783,17 +5798,24 @@ impl CoreEngine {
                         container_id.as_deref(),
                         SINGLE_USER_ID,
                         &body,
+                        blob_webp.unwrap_or_else(|| {
+                            Arc::new(
+                                crate::services::mount_index::blob_transcode::RefusingWebpTranscoder,
+                            )
+                        }),
                     )
                     .await
                 }
                 Err(r) => r,
             },
+            // P4.D309 (v4 `bbbcd2388`): both filing verbs on the picture codec —
+            // a move with `components: 'copy'` copies the components' pictures.
             Request::WardrobeItemsMove {
                 scope,
                 container_id,
                 body,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_blob_webp() {
+                Ok((db, blob_webp)) => {
                     super::wardrobe_route_factory::folder_action(
                         &db,
                         super::wardrobe_route_factory::FolderAction::MoveItems,
@@ -5801,6 +5823,34 @@ impl CoreEngine {
                         container_id.as_deref(),
                         SINGLE_USER_ID,
                         &body,
+                        blob_webp.unwrap_or_else(|| {
+                            Arc::new(
+                                crate::services::mount_index::blob_transcode::RefusingWebpTranscoder,
+                            )
+                        }),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::WardrobeItemsCopy {
+                scope,
+                container_id,
+                body,
+            } => match self.ready_db_and_blob_webp() {
+                Ok((db, blob_webp)) => {
+                    super::wardrobe_route_factory::folder_action(
+                        &db,
+                        super::wardrobe_route_factory::FolderAction::CopyItems,
+                        scope,
+                        container_id.as_deref(),
+                        SINGLE_USER_ID,
+                        &body,
+                        blob_webp.unwrap_or_else(|| {
+                            Arc::new(
+                                crate::services::mount_index::blob_transcode::RefusingWebpTranscoder,
+                            )
+                        }),
                     )
                     .await
                 }

@@ -186461,3 +186461,64 @@ Branch `claude/p4.d309-wardrobe-copy-to-folder-d7a12a`, cut from P4.D314's
   `kJson=`. The service seam compares VALUES (keys canonicalised, as
   `item_mutations_tier2` does); the three wire key orders are byte-pinned at
   the route family (R-8).
+
+### Unit 2 — the route factory, the wire, the web edge (core 0.0.1307, web 0.0.241)
+
+- `parse_filing_body` (R-13) replaces `parse_move_body`; `items_move` + NEW
+  `items_copy` over ONE `file_items`; `FolderAction::CopyItems`;
+  `folder_action(…, blob_webp: Arc<dyn WebpTranscoder>)`; `folder_write` made
+  generic over a `WriteRefusal` (the location error, or the filing error whose
+  `Request` arm is the 400 `bad_request(message)` — unreachable over either
+  transport, Tier 3 item 26). All SIX engine folder arms now on
+  `ready_db_and_blob_webp()` + the `RefusingWebpTranscoder` fallback (R-7).
+- `Request::WardrobeItemsCopy` (R-10) beside `WardrobeItemsMove`;
+  `p4_d279_wire_contract` decodes both verbs with `components` in the body;
+  `dispatch_wrong_type_census` gains the `WardrobeItemsCopy`/`scope` row and
+  `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` 482 → 483 (its `container_id`);
+  `tri_state_edges_share_the_decoder`'s `wardrobe_routes.rs` count 22 → 23.
+  `web_edge_body_parse_guard` green unchanged (no new body read);
+  `web_edge_action_sites_census` green.
+- `wardrobe_routes.rs`: `COLLECTION_POST_ACTIONS` six strings; the `_ =>`
+  move fall-through REPLACED by explicit `move-items` / `copy-items` arms and
+  a `None` default that answers the `Unknown action` envelope. NEW
+  `wardrobe_copy_items_route.rs`: General `copy-items` → 200, a `(copy)`
+  sibling, the original's id and folder intact; `move-items` on the same id
+  → moved, nothing copied; `components: "move"` on a copy → 400
+  `Validation error`; the character edge once. (Red on `REAIM` by
+  construction: `copy-items` was `400 Unknown action` with five strings.)
+- The flipped pins, updated in this commit (never deleted):
+  `folder_route_lines`' move INFO — OLD `… folder=coats count=1
+  context=wardrobe`, NEW `… folder=coats count=1 components=none
+  componentsCarried=0 context=wardrobe`; plus a NEW `Copied wardrobe items to
+  folder … folder=spares count=1 components=copy componentsCarried=1
+  context=wardrobe` pin and three silence legs (copy+move, a foreign id, a
+  `"Move"` word) — v5-side LITERALS against the survey §1.7, not
+  oracle-pinned (the routes oracle runs `LOG_LEVEL=error`). The two
+  `availableActions` lists in `wardrobe_instructions_routes.rs` (`:241`,
+  `:292`): OLD five strings, NEW six with `"copy-items"` last.
+  `characters_wardrobe_route.rs:230` did NOT flip — it is a Zod REFUSAL row
+  (`itemIds: []` → 400), so it carries no `componentsCarried` (the order's
+  prediction assumed a success body).
+- Tier 2 item 23: `parse_filing_body_matrix` (absent / `null` / `"Move"` /
+  `5` / `""` / an array, `move` on a copy, unknown keys stripped, 500 vs 501
+  ids, `""` id, a missing folder, a non-object body).
+- `wardrobe-folders-routes`: 86 → 116 cases (the order's ~24 + a nested
+  move, `ci_char_beside_original`, `ci_char_copy_components_none`,
+  `ci_char_archived_item`, `ci_char_bad_path`, a two-copy
+  `ci_char_then_list`). **Deviation, recorded:** the keystone seed's only
+  composite bundles a BORROWED piece, so the order's fallback was to grow
+  `build-wardrobe-keystone-fixture.ts` and re-run every keystone consumer;
+  instead each components case composes its outfit with `update` steps first
+  (`Commute Set` ← `[Apple Watch (borrowed), Tweed Coat]`; nested: `Evening
+  Gown` ← `[Shelved Hat]`, then `Commute Set` ← `[Tweed Coat, Evening Gown,
+  Apple Watch]`) — the seed and its consumers untouched. The Rust test's
+  normaliser tokenises a case's minted UUIDs (`<minted:N>`, first appearance
+  across steps) on body BYTES, so the three key orders compare byte-exact
+  (R-8). Oracle from the pin: 116 rows, `grep -c componentsCarried` 24,
+  `grep -c '"copy-items"'` 23. **Red-first** (the new corpus + this oracle
+  against `REAIM`'s code in a scratch worktree): 38 cases red / 65
+  divergences — all 23 `ci_*` (no verb), the 8 pre-existing successful
+  `mi_*` (the missing `componentsCarried`; the order's "16" counted the
+  refusal rows too, which do not flip), and the 7 new `mi_*components*`
+  (`bad_enum` / `null` answering 200 where v4 answers 400). Green 116/116
+  after.

@@ -567,7 +567,10 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     // body RAW, no tri-state) and the character collection's create
     // (`CharacterWardrobeCreate`); the item GET's 404-first `WardrobeItemGet`
     // is gone (the factory dispatches the action FIRST).
-    ("wardrobe_routes.rs", 22),
+    // P4.D309 (v4 `bbbcd2388`): 22 → 23 — `WardrobeItemsCopy`, the copy twin
+    // of `WardrobeItemsMove` (both filing verbs' bodies RAW, no tri-state),
+    // each its own explicit arm (no fall-through to the move).
+    ("wardrobe_routes.rs", 23),
 ];
 
 #[test]

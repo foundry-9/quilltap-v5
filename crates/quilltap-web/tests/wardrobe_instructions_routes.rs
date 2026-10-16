@@ -233,7 +233,7 @@ async fn the_instructions_action_resolves_on_the_registered_edges() {
     assert_eq!(resp.status(), 400, "unknown-action POST must refuse");
     let body: Value = resp.json().await.unwrap();
     // The factory's collection POST map (`4a38222e6` adds the four folder
-    // writes), in v4's literal order.
+    // writes, `bbbcd2388` the copy), in v4's literal order.
     assert_eq!(
         body,
         json!({
@@ -243,7 +243,8 @@ async fn the_instructions_action_resolves_on_the_registered_edges() {
                 "create-folder",
                 "rename-folder",
                 "delete-folder",
-                "move-items"
+                "move-items",
+                "copy-items"
             ],
         })
     );
@@ -294,7 +295,8 @@ async fn the_instructions_action_resolves_on_the_registered_edges() {
                 "create-folder",
                 "rename-folder",
                 "delete-folder",
-                "move-items"
+                "move-items",
+                "copy-items"
             ],
         })
     );

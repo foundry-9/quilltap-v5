@@ -2300,6 +2300,1106 @@
           "op": "folders"
         }
       ]
+    },
+    {
+      "name": "mi_char_components_move",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "update",
+          "item": "composite",
+          "body": {
+            "componentItemIds": [
+              "d9000000-0000-4000-8000-000000000031",
+              "d9000000-0000-4000-8000-000000000001"
+            ]
+          }
+        },
+        {
+          "op": "move-items",
+          "items": [
+            "composite"
+          ],
+          "body": {
+            "folder": "Formal",
+            "components": "move"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "mi_char_components_copy",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "update",
+          "item": "composite",
+          "body": {
+            "componentItemIds": [
+              "d9000000-0000-4000-8000-000000000031",
+              "d9000000-0000-4000-8000-000000000001"
+            ]
+          }
+        },
+        {
+          "op": "move-items",
+          "items": [
+            "composite"
+          ],
+          "body": {
+            "folder": "Formal",
+            "components": "copy"
+          }
+        },
+        {
+          "op": "list"
+        }
+      ]
+    },
+    {
+      "name": "mi_char_components_none_explicit",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "update",
+          "item": "composite",
+          "body": {
+            "componentItemIds": [
+              "d9000000-0000-4000-8000-000000000031",
+              "d9000000-0000-4000-8000-000000000001"
+            ]
+          }
+        },
+        {
+          "op": "move-items",
+          "items": [
+            "composite"
+          ],
+          "body": {
+            "folder": "Formal",
+            "components": "none"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mi_char_components_bad_enum_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "composite"
+          ],
+          "body": {
+            "folder": "Formal",
+            "components": "Move"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mi_char_components_null_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "composite"
+          ],
+          "body": {
+            "folder": "Formal",
+            "components": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "mi_char_components_leaf_only",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "move-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {
+            "folder": "Formal",
+            "components": "move"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mi_char_components_move_nested",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "update",
+          "item": "filedGown",
+          "body": {
+            "componentItemIds": [
+              "d9000000-0000-4000-8000-000000000003"
+            ]
+          }
+        },
+        {
+          "op": "update",
+          "item": "composite",
+          "body": {
+            "componentItemIds": [
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000002",
+              "d9000000-0000-4000-8000-000000000031"
+            ]
+          }
+        },
+        {
+          "op": "move-items",
+          "items": [
+            "composite"
+          ],
+          "body": {
+            "folder": "Sets",
+            "components": "move"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "ci_char_ok",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {
+            "folder": "Formal"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "ci_char_root_target",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "filedGown"
+          ],
+          "body": {
+            "folder": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_char_beside_original",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "filedGown"
+          ],
+          "body": {
+            "folder": "Formal/Evening"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_char_new_folder",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {
+            "folder": "Brand New/Sub"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "ci_char_copy_components_copy",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "update",
+          "item": "filedGown",
+          "body": {
+            "componentItemIds": [
+              "d9000000-0000-4000-8000-000000000003"
+            ]
+          }
+        },
+        {
+          "op": "update",
+          "item": "composite",
+          "body": {
+            "componentItemIds": [
+              "d9000000-0000-4000-8000-000000000001",
+              "d9000000-0000-4000-8000-000000000002",
+              "d9000000-0000-4000-8000-000000000031"
+            ]
+          }
+        },
+        {
+          "op": "copy-items",
+          "items": [
+            "composite"
+          ],
+          "body": {
+            "folder": "Formal",
+            "components": "copy"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_char_copy_components_none",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "update",
+          "item": "composite",
+          "body": {
+            "componentItemIds": [
+              "d9000000-0000-4000-8000-000000000031",
+              "d9000000-0000-4000-8000-000000000001"
+            ]
+          }
+        },
+        {
+          "op": "copy-items",
+          "items": [
+            "composite"
+          ],
+          "body": {
+            "folder": "Formal",
+            "components": "none"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_char_components_move_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "composite"
+          ],
+          "body": {
+            "folder": "Formal",
+            "components": "move"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_char_components_null_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {
+            "folder": "Formal",
+            "components": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_char_borrowed",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "rootCoat",
+            "generalWatch"
+          ],
+          "body": {
+            "folder": "Formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_char_dupes",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "rootCoat",
+            "rootCoat"
+          ],
+          "body": {
+            "folder": "Formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_char_archived_item",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "archivedHat"
+          ],
+          "body": {
+            "folder": "Formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_char_501_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "copy-items",
+          "body": {
+            "itemIds": [
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x",
+              "x"
+            ],
+            "folder": "Formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_char_empty_ids_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "copy-items",
+          "body": {
+            "itemIds": [],
+            "folder": "Formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_char_folder_missing_zod",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {}
+        }
+      ]
+    },
+    {
+      "name": "ci_char_bad_path",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {
+            "folder": "images"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_char_archived",
+      "tier": "character",
+      "owner": "zed",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "archivedCape"
+          ],
+          "body": {
+            "folder": "Old"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_char_missing_id_archived",
+      "tier": "character",
+      "owner": "zed",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {
+            "folder": "Old"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_general_ok",
+      "tier": "general",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "generalWatch"
+          ],
+          "body": {
+            "folder": "Timepieces"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "ci_project_ok",
+      "tier": "project",
+      "owner": "full",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "projectLivery",
+            "projectBoots"
+          ],
+          "body": {
+            "folder": "Staff"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_group_borrowed_general",
+      "tier": "group",
+      "owner": "guild",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "groupCloak",
+            "generalBoots"
+          ],
+          "body": {
+            "folder": "Cloaks"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_unknown_owner_404",
+      "tier": "character",
+      "owner": "missingChar",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {
+            "folder": "Formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_foreign_owner_404",
+      "tier": "character",
+      "owner": "bo",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {
+            "folder": "Formal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ci_char_then_list",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "copy-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {
+            "folder": "Formal"
+          }
+        },
+        {
+          "op": "copy-items",
+          "items": [
+            "rootCoat"
+          ],
+          "body": {
+            "folder": ""
+          }
+        },
+        {
+          "op": "list"
+        }
+      ]
     }
   ]
 }

@@ -1,9 +1,18 @@
-//! P4.D281 WARDROBE-FOLDERS-ROUTES differential (v4 `4a38222e6`): the five
+//! P4.D281 WARDROBE-FOLDERS-ROUTES differential (v4 `4a38222e6`): the
 //! folder actions — `GET ?action=folders`, `POST ?action=create-folder /
-//! rename-folder / delete-folder / move-items` — and `folder` on the
+//! rename-folder / delete-folder / move-items`, and (P4.D309, v4 `bbbcd2388`)
+//! `copy-items` and both filing verbs' `components` — and `folder` on the
 //! collection POST / item PUT, through `api::wardrobe_route_factory` on all
 //! four tiers, vs v4's REAL route factory behind the four registered route
 //! files (`harness/oracle/cases/wardrobe-folders-routes.test.ts`).
+//!
+//! P4.D309: the keystone seed's one composite bundles only a BORROWED piece,
+//! so a components case composes its outfit with `update` steps first (the
+//! seed itself stays untouched — no keystone consumer re-runs). A copy MINTS
+//! ids: every UUID in a case's bodies that the seed corpus does not carry is
+//! tokenised `<minted:N>` by first appearance across the case's steps (body
+//! bytes, so both sides' key orders must already agree — R-8: a move answers
+//! READ order, a copy CREATE order).
 //!
 //! THE CASE LIST LIVES IN `wardrobe-folders-routes.json#cases` — the corpus
 //! the oracle reads too; this test asserts its case count against the NDJSON's
@@ -15,8 +24,8 @@
 //! Compared per step: the status, and for a success the body BYTES (key
 //! order included — `serde_json`'s `preserve_order` map equality is
 //! order-blind, so both sides are rendered with `to_string`) after blanking
-//! every `createdAt` / `updatedAt` (a move restamps `updatedAt`) and a
-//! create's minted `wardrobeItem.id`; for a refusal the status and v4's
+//! every `createdAt` / `updatedAt` (a move restamps `updatedAt`), a
+//! create's minted `wardrobeItem.id` and a copy's minted ids; for a refusal the status and v4's
 //! sentence (Zod's `details` array is the standing project-wide deferral).
 //! Then the case's mount-index write-set: every `doc_mount_file_links`
 //! relative path and every `doc_mount_folders` path, per mount.
@@ -144,6 +153,76 @@ fn normalize(v: &Value, op: &str) -> Value {
     out
 }
 
+/// The picture codec the filing verbs take — the refusing one stores the
+/// original bytes (the keystone seed carries no pictures anyway).
+fn refusing(
+) -> std::sync::Arc<dyn quilltap_core::services::mount_index::blob_transcode::WebpTranscoder> {
+    std::sync::Arc::new(
+        quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder,
+    )
+}
+
+/// P4.D309: a case's minted ids → `<minted:N>` by first appearance across its
+/// steps. A UUID the seed corpus (or the case list) carries is fixture-baked
+/// and compares literally — so are the fixture build's own minted store ids,
+/// which are the SAME on both sides (one fixture copy) and appear in the same
+/// byte positions.
+struct Minted {
+    baked: String,
+    map: Vec<(String, String)>,
+}
+
+/// Every lowercase hyphenated 8-4-4-4-12 hex run in `text`, in order.
+fn uuids_in(text: &str) -> Vec<String> {
+    let b = text.as_bytes();
+    let shape = |w: &[u8]| {
+        w.len() == 36
+            && w.iter().enumerate().all(|(i, c)| match i {
+                8 | 13 | 18 | 23 => *c == b'-',
+                _ => c.is_ascii_digit() || (b'a'..=b'f').contains(c),
+            })
+    };
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i + 36 <= b.len() {
+        if shape(&b[i..i + 36]) {
+            out.push(text[i..i + 36].to_string());
+            i += 36;
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+impl Minted {
+    fn new(baked: &str) -> Self {
+        Minted {
+            baked: baked.to_string(),
+            map: Vec::new(),
+        }
+    }
+
+    fn tokenise(&mut self, text: &str) -> String {
+        let mut out = text.to_string();
+        for id in uuids_in(text) {
+            if self.baked.contains(&id) {
+                continue;
+            }
+            let token = match self.map.iter().find(|(k, _)| *k == id) {
+                Some((_, t)) => t.clone(),
+                None => {
+                    let t = format!("<minted:{}>", self.map.len());
+                    self.map.push((id.clone(), t.clone()));
+                    t
+                }
+            };
+            out = out.replace(&id, &token);
+        }
+        out
+    }
+}
+
 fn config(tier: &str) -> WardrobeRouteConfig {
     match tier {
         "character" => CHARACTER_WARDROBE,
@@ -219,6 +298,11 @@ async fn wardrobe_folders_routes_match_oracle() {
         "oracle row count != corpus case count — regenerate the NDJSON"
     );
 
+    let seed_text = format!(
+        "{}{}",
+        std::fs::read_to_string(fixtures_dir().join("wardrobe-keystone-tier2.json")).unwrap(),
+        std::fs::read_to_string(fixtures_dir().join("wardrobe-folders-routes.json")).unwrap()
+    );
     let user = seed.user_a_id.as_str();
     let item_id = |r: &str| {
         seed.items
@@ -280,6 +364,8 @@ async fn wardrobe_folders_routes_match_oracle() {
         };
         let owner = owner.as_deref();
 
+        let mut minted_got = Minted::new(&seed_text);
+        let mut minted_want = Minted::new(&seed_text);
         let want_steps = want["steps"].as_array().expect("oracle steps");
         assert_eq!(
             want_steps.len(),
@@ -291,7 +377,16 @@ async fn wardrobe_folders_routes_match_oracle() {
             let body = step.body.clone().unwrap_or(Value::Null);
             let resp = match step.op.as_str() {
                 "folders" => {
-                    factory::folder_action(&db, FolderAction::List, scope, owner, user, &body).await
+                    factory::folder_action(
+                        &db,
+                        FolderAction::List,
+                        scope,
+                        owner,
+                        user,
+                        &body,
+                        refusing(),
+                    )
+                    .await
                 }
                 "list" => {
                     if case.tier == "character" {
@@ -301,18 +396,42 @@ async fn wardrobe_folders_routes_match_oracle() {
                     }
                 }
                 "create-folder" => {
-                    factory::folder_action(&db, FolderAction::Create, scope, owner, user, &body)
-                        .await
+                    factory::folder_action(
+                        &db,
+                        FolderAction::Create,
+                        scope,
+                        owner,
+                        user,
+                        &body,
+                        refusing(),
+                    )
+                    .await
                 }
                 "rename-folder" => {
-                    factory::folder_action(&db, FolderAction::Rename, scope, owner, user, &body)
-                        .await
+                    factory::folder_action(
+                        &db,
+                        FolderAction::Rename,
+                        scope,
+                        owner,
+                        user,
+                        &body,
+                        refusing(),
+                    )
+                    .await
                 }
                 "delete-folder" => {
-                    factory::folder_action(&db, FolderAction::Delete, scope, owner, user, &body)
-                        .await
+                    factory::folder_action(
+                        &db,
+                        FolderAction::Delete,
+                        scope,
+                        owner,
+                        user,
+                        &body,
+                        refusing(),
+                    )
+                    .await
                 }
-                "move-items" => {
+                op @ ("move-items" | "copy-items") => {
                     let mut body = body.clone();
                     if let Some(items) = &step.items {
                         if !body.is_object() {
@@ -321,8 +440,12 @@ async fn wardrobe_folders_routes_match_oracle() {
                         body["itemIds"] =
                             Value::Array(items.iter().map(|r| Value::String(item_id(r))).collect());
                     }
-                    factory::folder_action(&db, FolderAction::MoveItems, scope, owner, user, &body)
-                        .await
+                    let action = if op == "move-items" {
+                        FolderAction::MoveItems
+                    } else {
+                        FolderAction::CopyItems
+                    };
+                    factory::folder_action(&db, action, scope, owner, user, &body, refusing()).await
                 }
                 "create" => factory::create(&db, cfg, owner, user, &body).await,
                 "update" => {
@@ -350,8 +473,10 @@ async fn wardrobe_folders_routes_match_oracle() {
                 continue;
             }
             let (g, w) = (
-                serde_json::to_string(&normalize(&got, &step.op)).unwrap(),
-                serde_json::to_string(&normalize(&want_step["body"], &step.op)).unwrap(),
+                minted_got.tokenise(&serde_json::to_string(&normalize(&got, &step.op)).unwrap()),
+                minted_want.tokenise(
+                    &serde_json::to_string(&normalize(&want_step["body"], &step.op)).unwrap(),
+                ),
             );
             if g != w {
                 failed.push(format!(

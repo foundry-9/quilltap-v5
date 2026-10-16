@@ -863,7 +863,8 @@ pub async fn characters_wardrobe_get(
 
 /// v4 `POST /api/v1/characters/[id]/wardrobe` (the route factory,
 /// `9ecebf986` + `4a38222e6`) — registered by P4.D281 so the folder writes
-/// (`?action=create-folder | rename-folder | delete-folder | move-items`) are
+/// (`?action=create-folder | rename-folder | delete-folder | move-items |
+/// copy-items`) are
 /// served on v4's documented path; the factory's POST map comes whole, so
 /// `?action=instructions` and the create (201) ride the same edge.
 pub async fn characters_wardrobe_post(

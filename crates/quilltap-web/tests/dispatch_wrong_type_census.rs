@@ -2347,7 +2347,14 @@ const CENSUS: &[Row] = &[
         field: "scope",
         rust_type: "WardrobeContainerScope",
         v4: V4::Query,
-        note: "`?action=move-items`; the `{ itemIds, folder }` body rides as a flattened `Value` parsed by v4's `moveWardrobeItemsSchema` inside the handler — `4a38222e6`",
+        note: "`?action=move-items`; the `{ itemIds, folder, components? }` body rides as a flattened `Value` parsed by v4's `moveWardrobeItemsSchema` inside the handler — `4a38222e6`; `components` `bbbcd2388`",
+    },
+    Row {
+        variant: "WardrobeItemsCopy",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Query,
+        note: "`?action=copy-items`; the `{ itemIds, folder, components? }` body rides as a flattened `Value` parsed by v4's `copyWardrobeItemsSchema` inside the handler — `bbbcd2388` (P4.D309)",
     },
     Row {
         variant: "WardrobeItemImageLink",
@@ -2693,7 +2700,10 @@ fn is_route_identifier(field: &str) -> bool {
 // / `path`). The planning survey predicted 479; measured, never pasted (red
 // at 482 against 479 first). The census's only new ROW is
 // `ScenarioEverywhere.include_archived`.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 482;
+// **P4.D309 (+1): 482 → 483** — v4 `bbbcd2388`'s `WardrobeItemsCopy.
+// container_id` (the owner's `[id]` segment, as on `WardrobeItemsMove`);
+// its `scope` is the census's one new ROW.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 483;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus

@@ -2952,10 +2952,23 @@ pub enum Request {
         #[serde(flatten)]
         body: serde_json::Value,
     },
-    /// v4 `POST <tier>/wardrobe?action=move-items` `{ itemIds (≤ 500), folder }` → `{ items }`
-    /// serialized WITH `origin` + `wear`. P4.D281.
+    /// v4 `POST <tier>/wardrobe?action=move-items` `{ itemIds (≤ 500), folder, components?:
+    /// 'move' | 'copy' | 'none' }` → `{ items, componentsCarried }` serialized WITH `origin` +
+    /// `wear`. P4.D281; `components` + `componentsCarried` P4.D309 (v4 `bbbcd2388`).
     #[serde(rename_all = "camelCase")]
     WardrobeItemsMove {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// v4 `POST <tier>/wardrobe?action=copy-items` `{ itemIds (≤ 500), folder, components?:
+    /// 'copy' | 'none' }` → 200 `{ items, componentsCarried }` — fresh copies with `(copy)`
+    /// titles, serialized WITH `origin` + `wear` (v4 `bbbcd2388`, P4.D309). The R-D scoped
+    /// family: the body rides RAW so the handler answers v4's flat `Validation error`.
+    #[serde(rename_all = "camelCase")]
+    WardrobeItemsCopy {
         scope: WardrobeContainerScope,
         #[serde(default)]
         container_id: Option<String>,
