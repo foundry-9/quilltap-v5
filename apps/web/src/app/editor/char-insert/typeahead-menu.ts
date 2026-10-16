@@ -17,12 +17,21 @@
  * @module editor/char-insert/typeahead-menu
  */
 
+import type { IconName } from '../../ui/icon';
+
 /** One rendered row (v4 `typeahead/types.ts` `TypeaheadRow`). */
 export interface TypeaheadRow {
   /** Stable identity — the inserted character. */
   key: string;
   /** Leading glyph: the character itself. */
   glyph?: string;
+  /**
+   * Leading ICON instead of a text glyph (v4's slash menu renders an `<Icon>`
+   * per row, `SlashCommandPlugin.tsx:86-92`). Rendered as the same
+   * `span.qt-icon[data-icon]` markup `qt-icon` produces, so the theme's icon
+   * set (the `_icons.css` mask rules) styles it. Wins over `glyph`.
+   */
+  iconName?: IconName;
   /** Primary label. This is the row's accessible name. */
   label: string;
   /** Muted trailing detail, e.g. `:shortcode:` or `\to`. */
@@ -268,7 +277,13 @@ export class TypeaheadMenu {
       });
       option.addEventListener('mouseenter', () => this.options.onHighlight(index));
 
-      if (row.glyph !== undefined) {
+      if (row.iconName !== undefined) {
+        const glyph = document.createElement('span');
+        glyph.className = 'qt-typeahead-option-glyph';
+        glyph.setAttribute('aria-hidden', 'true');
+        glyph.appendChild(iconMarkup(row.iconName));
+        option.appendChild(glyph);
+      } else if (row.glyph !== undefined) {
         const glyph = document.createElement('span');
         glyph.className = 'qt-typeahead-option-glyph';
         glyph.setAttribute('aria-hidden', 'true');
@@ -315,4 +330,17 @@ export class TypeaheadMenu {
     target.removeAttribute('aria-controls');
     target.removeAttribute('aria-expanded');
   }
+}
+
+/**
+ * The plain-DOM twin of `<qt-icon [name]="name" class="w-4 h-4" />` — the one
+ * span `qt-icon` renders (`ui/icon.ts`), decorative. The menu is plain DOM, so
+ * it cannot host the component.
+ */
+function iconMarkup(name: IconName): HTMLSpanElement {
+  const icon = document.createElement('span');
+  icon.className = 'qt-icon w-4 h-4';
+  icon.setAttribute('data-icon', name);
+  icon.setAttribute('aria-hidden', 'true');
+  return icon;
 }

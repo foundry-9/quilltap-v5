@@ -39,11 +39,10 @@
  *   ProseMirror's `dispatch` is synchronous, so calling
  *   {@link dispatchSlashCommand} after it returns gives the same order by
  *   construction.
- * - **The glyph.** v4 renders an `<Icon>` per row (wrench / wand / the action's
- *   own); the shared menu renders plain DOM with a TEXT glyph, so each kind gets
- *   one character — `/` for actions, `⚙` for Prospero, `✦` for Pascal (a
- *   recorded cosmetic divergence, `SLASH_ROW_GLYPH_TEXT`; the label and the
- *   muted source carry the information).
+ * - **The glyph.** v4 renders an `<Icon>` per row (`:75-92`): wrench for a
+ *   Prospero tool, wand for Pascal's, the action's own for the composer's, dice
+ *   otherwise. The shared menu is plain DOM, so it emits the `qt-icon` span
+ *   itself (`TypeaheadRow.iconName`) — the same names, the theme's icon set.
  * - **The listbox id.** v4's `slash-command-listbox` takes v5's `qt-` prefix
  *   (`SLASH_LISTBOX_ID_PREFIX`, the `qt-mention-typeahead-listbox` convention).
  *
@@ -64,8 +63,8 @@ import {
   rankSlashCommands,
   type ComposerAction,
   type SlashCommand,
-  type SlashCommandKind,
 } from '../../chat/slash-commands';
+import type { IconName } from '../../ui/icon';
 import { textBeforeCursor } from '../char-insert/trigger-context';
 import { TypeaheadMenu, type TypeaheadRow } from '../char-insert/typeahead-menu';
 import type { SlashCommandHost } from './slash-command-host';
@@ -80,12 +79,24 @@ export const LOADING_LABEL = 'Consulting the tool room…';
 /** Actions derived from the dialog openers rather than the composer's handler map. */
 export const DIALOG_ACTIONS: ReadonlySet<ComposerAction> = new Set(['tool', 'roll', 'pascal']);
 
-/** One text glyph per kind — see the header (`SLASH_ROW_GLYPH_TEXT`). */
-export const SLASH_GLYPHS: Readonly<Record<SlashCommandKind, string>> = {
-  action: '/',
-  'builtin-tool': '⚙',
-  'custom-tool': '✦',
+/** v4 `ACTION_ICONS` (`:75-84`). */
+export const ACTION_ICONS: Readonly<Partial<Record<ComposerAction, IconName>>> = {
+  attach: 'paperclip',
+  library: 'file-plus',
+  image: 'camera',
+  announce: 'megaphone',
+  mail: 'mail',
+  inform: 'info',
+  tool: 'wrench',
+  pascal: 'wand',
 };
+
+/** v4 `glyphFor` (`:86-92`). */
+export function slashIconFor(command: SlashCommand): IconName {
+  if (command.payload.kind === 'builtin-tool') return 'wrench';
+  if (command.payload.kind === 'custom-tool') return 'wand';
+  return ACTION_ICONS[command.payload.action] ?? 'dice';
+}
 
 export interface SlashCommandPluginOptions {
   /**
@@ -381,7 +392,7 @@ function toRow(command: SlashCommand): TypeaheadRow {
   const label = `/${command.command} — ${command.label}`;
   return {
     key: JSON.stringify([command.key, label, command.source]),
-    glyph: SLASH_GLYPHS[command.kind],
+    iconName: slashIconFor(command),
     label,
     detail: command.source,
   };

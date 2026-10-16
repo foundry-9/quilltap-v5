@@ -84,6 +84,31 @@ describe('TypeaheadMenu — the surface v4 MenuPortal renders', () => {
     return { menu, target, picks, cleanup: () => target.remove() };
   }
 
+  it("renders an ICON row as qt-icon's own markup, in the glyph slot (the slash menu's rows)", () => {
+    const { menu, cleanup } = mount();
+    menu.render(
+      [
+        { key: 'a', iconName: 'paperclip', glyph: 'x', label: '/attach \u2014 Attach file', detail: 'Composer' },
+        { key: 'b', glyph: '😄', label: 'grinning face' },
+      ],
+      0,
+      { left: 10, top: 20, bottom: 40 },
+    );
+
+    const options = document.querySelectorAll('.qt-typeahead-option');
+    const glyph = options[0].querySelector('.qt-typeahead-option-glyph')!;
+    const icon = glyph.querySelector('span.qt-icon') as HTMLElement;
+    expect(icon.getAttribute('data-icon')).toBe('paperclip');
+    expect(icon.classList.contains('w-4')).toBe(true);
+    expect(icon.getAttribute('aria-hidden')).toBe('true');
+    // The icon wins over a text glyph; text rows are unchanged.
+    expect(glyph.textContent).toBe('');
+    expect(options[1].querySelector('.qt-typeahead-option-glyph')?.textContent).toBe('😄');
+
+    menu.destroy();
+    cleanup();
+  });
+
   it('renders one option per row, with the glyph, label and detail', () => {
     const { menu, cleanup } = mount();
     menu.render(rows, 0, { left: 10, top: 20, bottom: 40 });

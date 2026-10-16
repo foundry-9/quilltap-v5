@@ -72,8 +72,8 @@ export interface SlashHarness {
   text(): string;
   /** The open menu's option labels, or `[]` when there are none. */
   optionLabels(): string[];
-  /** The open menu's option glyphs. */
-  optionGlyphs(): string[];
+  /** The open menu's option icon names (`data-icon`). */
+  optionIcons(): string[];
   /** The open menu's option details. */
   optionDetails(): string[];
   /** The open menu's text (empty-state label included), or null when shut. */
@@ -177,7 +177,12 @@ export function mountSlashHarness(options: SlashHarnessOptions): SlashHarness {
       );
     },
     optionLabels: () => rows('.qt-typeahead-option-label'),
-    optionGlyphs: () => rows('.qt-typeahead-option-glyph'),
+    optionIcons: () =>
+      Array.from(
+        document.querySelectorAll(
+          '.qt-typeahead-menu [role="option"] .qt-typeahead-option-glyph .qt-icon',
+        ),
+      ).map((el) => el.getAttribute('data-icon') ?? ''),
     optionDetails: () => rows('.qt-typeahead-option-detail'),
     menuText() {
       const menu = document.querySelector<HTMLElement>('.qt-typeahead-menu');

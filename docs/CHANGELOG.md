@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(spa): the slash menu rows carry v4's icons (P4.D308)
+
+_Versions: SPA 0.5.870._
+
+The `/` menu rows now show v4's icons instead of text glyphs: a wrench for Prospero's tools, a wand for Pascal's, the action's own icon for the composer's (paperclip, file-plus, camera, megaphone, mail, info, wrench, wand) and dice for the rest (v4 `SlashCommandPlugin.tsx:75-92`). The shared typeahead menu gains `TypeaheadRow.iconName`, rendered as the same `span.qt-icon[data-icon]` markup `qt-icon` produces, so the theme's icon set applies; text-glyph rows are unchanged. This retires the planned `SLASH_ROW_GLYPH_TEXT` divergence.
+
 #### 2026-10-16 — feat(spa): the Slash Commands settings card between Composer and Auto-Scroll (P4.D308)
 
 _Versions: SPA 0.5.869._

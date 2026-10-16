@@ -7,7 +7,6 @@ import {
   LISTBOX_ID,
   LOADING_LABEL,
   MENU_LIMIT,
-  SLASH_GLYPHS,
 } from './slash-command-plugin';
 
 /**
@@ -309,20 +308,28 @@ describe('slashCommandPlugin', () => {
       expect(h.optionLabels()).toHaveLength(7 + 15 + 2);
     });
 
-    it("renders v4's label and source, with a text glyph per kind", async () => {
+    it("renders v4's label, source and icon per row (`glyphFor`, `ACTION_ICONS`)", async () => {
       const h = mount();
       await openMenu(h, '/we');
       expect(h.optionLabels()).toEqual([
-        '/wear_regalia — Wear Regalia',
-        '/wardrobe_wear — Wear Wardrobe Items',
+        '/wear_regalia \u2014 Wear Regalia',
+        '/wardrobe_wear \u2014 Wear Wardrobe Items',
       ]);
-      expect(h.optionDetails()).toEqual(['Pascal', 'Prospero · wardrobe']);
-      expect(h.optionGlyphs()).toEqual([SLASH_GLYPHS['custom-tool'], SLASH_GLYPHS['builtin-tool']]);
+      expect(h.optionDetails()).toEqual(['Pascal', 'Prospero \u00b7 wardrobe']);
+      expect(h.optionIcons()).toEqual(['wand', 'wrench']);
       await openMenu(h, '/atta');
       // `/attach` and `/library` ("Attach from library").
       expect(h.optionDetails()).toEqual(['Composer', 'Composer']);
-      expect(h.optionGlyphs()).toEqual(['/', '/']);
-      expect(SLASH_GLYPHS).toEqual({ action: '/', 'builtin-tool': '⚙', 'custom-tool': '✦' });
+      expect(h.optionIcons()).toEqual(['paperclip', 'file-plus']);
+      // A quick roll has no entry of its own: v4's `dice` fallback.
+      await openMenu(h, '/d2');
+      expect(h.optionIcons()).toEqual(['dice']);
+      await openMenu(h, '/infor');
+      expect(h.optionIcons()).toEqual(['info']);
+      await openMenu(h, '/too');
+      expect(h.optionIcons()[0]).toBe('wrench');
+      await openMenu(h, '/pasc');
+      expect(h.optionIcons()).toEqual(['wand']);
     });
 
     it('ArrowDown moves the pick; Tab commits like Enter', async () => {
