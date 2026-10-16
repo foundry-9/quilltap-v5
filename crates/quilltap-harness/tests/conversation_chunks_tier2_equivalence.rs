@@ -92,6 +92,9 @@ enum Op {
     /// (v4 `_create`; v5's create branch). The create-arm minted fields are
     /// placeholdered on both sides and the dump re-sorted by (chatId,
     /// interchangeIndex) so the row order is independent of the minted id.
+    /// P4.D310 (v4 `b82037d75`, bug 248): two ops carry a caller `id` — on the
+    /// create arm the row is born under it (pinned in the spec, so the dump
+    /// shows it), on the update arm it is ignored (the row keeps its own).
     #[serde(rename = "upsert")]
     Upsert { data: CreateData },
     #[serde(rename = "delete")]
@@ -100,6 +103,11 @@ enum Op {
 
 #[derive(Deserialize)]
 struct CreateData {
+    /// P4.D310 (v4 `b82037d75`, bug 248): a caller-supplied id on an `upsert`
+    /// op — v4 reads it out of the input, v5 takes it as `upsert`'s `new_id`.
+    /// Absent ⇒ the synthetic [`upsert_new_id`].
+    #[serde(default)]
+    id: Option<String>,
     #[serde(rename = "chatId")]
     chat_id: String,
     #[serde(rename = "interchangeIndex")]
@@ -330,7 +338,7 @@ fn conversation_chunks_tier2_matches_oracle() {
                     assert!(found, "update target {id} not found in fixture");
                 }
                 Op::Upsert { data } => {
-                    let new_id = upsert_new_id(upsert_seq);
+                    let new_id = data.id.clone().unwrap_or_else(|| upsert_new_id(upsert_seq));
                     upsert_seq += 1;
                     repo.upsert(
                         &CcUpsert {

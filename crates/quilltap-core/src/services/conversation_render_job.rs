@@ -28,6 +28,11 @@
 //!     participantNames / messageIds are rewritten, so a re-render of an already
 //!     embedded chunk keeps its vector and is NOT re-enqueued (unless
 //!     `fullReembed`).
+//!   - **Which chunks need an embedding is decided from the row as it was
+//!     BEFORE the write** (v4 `b82037d75`, bug 248): new, unembedded or
+//!     changed — or every one under `fullReembed` — queued under the existing
+//!     row's id or the upsert's, with v4's `Chunks upserted` DEBUG; nothing to
+//!     embed reads no profile.
 //!   - **The whole embedding-enqueue block is caught.** An enqueue failure warns
 //!     and the job still completes — the render is the valuable half.
 //!   - **The embedding profile is the `isDefault` one ONLY** (v4 `d553f72a`) — no
@@ -159,11 +164,39 @@ async fn handle_inner(
         return Ok(());
     };
 
-    // 3. Upsert one chunk per interchange (v4 :46-56). v4 reads `new Date()`
-    //    once before the loop; every upsert in a run therefore shares one
-    //    timestamp — though `_update`/`_create` mint their own anyway, which is
-    //    what actually lands. One `now` here matches both.
+    // 3. Upsert one chunk per interchange, deciding which need an embedding
+    //    from what each chunk was BEFORE the write (v4 `b82037d75`, bug 248,
+    //    `:46-77`). v4's handler runs in the job child, whose writes are
+    //    buffered until the job ends: its old read-AFTER-the-upsert still saw
+    //    the committed row (the old vector the upsert was about to clear, and
+    //    no row at all for a new chunk), so a changed or new chunk was never
+    //    queued. v5 never had that lag (read-your-writes), but it keeps v4's
+    //    read-before-write ORDER and predicate, which are equivalent under
+    //    read-your-writes. The id comes from the existing row, or for a new
+    //    chunk from the upsert's result (the id this handler minted for it).
+    //
+    //    The pre-read is v4's `findByInterchangeIndex` — a FALLBACK read
+    //    (`safeQuery(…, null)` over the fallback `findOneByFilter`): a failed
+    //    read logs `Error finding entity by filter` and answers `None`, so the
+    //    chunk is simply queued. Never a `?` (that would fail the whole job),
+    //    and on the CALLER thread, outside the write closure, so the ERROR home
+    //    is the one the capture rig sees. The read-then-write window this opens
+    //    is v4's own: a concurrent EMBEDDING_GENERATE can at most cause a
+    //    redundant enqueue, which dedupes against the PENDING row.
+    //
+    //    v4 reads `new Date()` once before the loop; every upsert in a run
+    //    therefore shares one timestamp — though `_update`/`_create` mint their
+    //    own anyway, which is what actually lands. One `now` here matches both.
+    let mut to_embed: Vec<String> = Vec::new();
     for interchange in &result.interchanges {
+        let (cid, index) = (payload.chat_id.clone(), interchange.index as f64);
+        let existing =
+            crate::db::fallback::find_one_by_filter_or_none("conversation_chunks", || {
+                db.read_main(move |conn| {
+                    crate::db::conversation_chunks::ConversationChunksRepository::new(conn)
+                        .find_by_interchange_index(&cid, index)
+                })
+            });
         let input = crate::db::conversation_chunks::CcUpsert {
             chat_id: payload.chat_id.clone(),
             interchange_index: interchange.index as f64,
@@ -177,18 +210,45 @@ async fn handle_inner(
         };
         let new_id = Uuid::new_v4().to_string();
         let now_for_write = now_iso.to_string();
-        db.write(move |ws| {
-            ws.main()
-                .conversation_chunks()
-                .upsert(&input, &new_id, &now_for_write)
-        })
-        .await?;
+        let (upserted_id, _created) = db
+            .write(move |ws| {
+                ws.main()
+                    .conversation_chunks()
+                    .upsert(&input, &new_id, &now_for_write)
+            })
+            .await?;
+
+        // v4 `payload.fullReembed || !existing || !existing.embedding ||
+        // existing.content !== interchange.content` — `has_embedding` is JS
+        // `!!existing.embedding` (an empty vector hydrates NULL), and the
+        // compare is on the DECODED content.
+        let needs_embedding = payload.full_reembed
+            || existing
+                .as_ref()
+                .is_none_or(|e| !e.has_embedding || e.content != interchange.content);
+        // v4 `existing?.id ?? upserted?.id`.
+        let chunk_id = existing.map(|e| e.id).unwrap_or(upserted_id);
+        if needs_embedding {
+            to_embed.push(chunk_id);
+        }
     }
 
-    // 4. Re-enqueue embeddings (v4 :58-98). The WHOLE block is caught: an
-    //    enqueue failure warns and the render job still completes.
-    if !result.interchanges.is_empty() {
-        if let Err(e) = enqueue_embeddings(db, user_id, payload, &result.interchanges).await {
+    tracing::debug!(
+        target: "quilltap::jobs",
+        jobId = %job_id,
+        chatId = %payload.chat_id,
+        interchangeCount = result.interchanges.len(),
+        needingEmbedding = to_embed.len(),
+        fullReembed = payload.full_reembed,
+        "[ConversationRender] Chunks upserted",
+    );
+
+    // 4. Enqueue an embedding for the chunks that need one (v4 :87-121) — when
+    //    `fullReembed`, that is all of them. Nothing to embed reads no profile.
+    //    The WHOLE block is caught: an enqueue failure warns and the render
+    //    job still completes.
+    if !to_embed.is_empty() {
+        if let Err(e) = enqueue_embeddings(db, job_id, payload, user_id, &to_embed).await {
             tracing::warn!(
                 target: "quilltap::jobs",
                 jobId = %job_id,
@@ -213,12 +273,14 @@ async fn handle_inner(
     Ok(())
 }
 
-/// v4's step-4 body (`:83-106`), lifted so its `try`/`catch` is one call site.
+/// v4's step-4 `try` body (`:89-112`), lifted so its `try`/`catch` is one call
+/// site. `to_embed` is step 3's decision — the chunk ids, in interchange order.
 async fn enqueue_embeddings(
     db: &Db,
-    user_id: &str,
+    job_id: &str,
     payload: &ConversationRenderPayload,
-    interchanges: &[super::conversation_markdown::InterchangeInfo],
+    user_id: &str,
+    to_embed: &[String],
 ) -> Result<(), DbError> {
     // Default profile ONLY (v4 `d553f72a`) — every vector in the instance must
     // come from the same profile. With none marked, chunks wait for the startup
@@ -231,30 +293,29 @@ async fn enqueue_embeddings(
         .and_then(|p| p.get("id"))
         .and_then(Value::as_str)
     else {
+        tracing::debug!(
+            target: "quilltap::jobs",
+            jobId = %job_id,
+            chatId = %payload.chat_id,
+            pending = to_embed.len(),
+            "[ConversationRender] No default embedding profile; chunks left for the startup reconcile",
+        );
         return Ok(());
     };
     let profile_id = profile_id.to_string();
 
-    for interchange in interchanges {
-        let (cid, index) = (payload.chat_id.clone(), interchange.index as f64);
-        let chunk = db.read_main(move |conn| {
-            crate::db::conversation_chunks::ConversationChunksRepository::new(conn)
-                .find_by_interchange_index(&cid, index)
-        })?;
-        let Some(chunk) = chunk else { continue };
-        if payload.full_reembed || !chunk.has_embedding {
-            enqueue_embedding_generate(
-                db,
-                user_id,
-                json!({
-                    "entityType": "CONVERSATION_CHUNK",
-                    "entityId": chunk.id,
-                    "chatId": payload.chat_id,
-                    "profileId": profile_id,
-                }),
-            )
-            .await?;
-        }
+    for chunk_id in to_embed {
+        enqueue_embedding_generate(
+            db,
+            user_id,
+            json!({
+                "entityType": "CONVERSATION_CHUNK",
+                "entityId": chunk_id,
+                "chatId": payload.chat_id,
+                "profileId": profile_id,
+            }),
+        )
+        .await?;
     }
     Ok(())
 }
@@ -338,13 +399,17 @@ mod log_tests {
     const JOB: &str = "00000000-0000-4000-8000-0000000000f1";
 
     fn run(db: &Db, chat_id: &str) -> Vec<String> {
+        run_with(db, chat_id, false)
+    }
+
+    fn run_with(db: &Db, chat_id: &str, full_reembed: bool) -> Vec<String> {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap();
         let payload = ConversationRenderPayload {
             chat_id: chat_id.to_string(),
-            full_reembed: false,
+            full_reembed,
         };
         let (out, lines) = capture(|| {
             rt.block_on(handle_conversation_render_in_zone(
@@ -385,7 +450,23 @@ mod log_tests {
         ] {
             assert!(info[0].contains(f), "{f} missing: {}", info[0]);
         }
-        assert!(jobs(&lines, "DEBUG").is_empty(), "{lines:?}");
+        // P4.D310 (v4 `b82037d75`, bug 248): the new chunk needs an embedding,
+        // and this fixture has NO default embedding profile (measured), so
+        // both new DEBUGs fire — in order, v4's camelCase fields (R-2).
+        assert_eq!(
+            jobs(&lines, "DEBUG"),
+            vec![
+                format!(
+                    "DEBUG quilltap::jobs [ConversationRender] Chunks upserted jobId={JOB} \
+                     chatId={CHAT} interchangeCount=1 needingEmbedding=1 fullReembed=false"
+                ),
+                format!(
+                    "DEBUG quilltap::jobs [ConversationRender] No default embedding profile; \
+                     chunks left for the startup reconcile jobId={JOB} chatId={CHAT} pending=1"
+                ),
+            ],
+            "{lines:?}"
+        );
         assert!(jobs(&lines, "WARN").is_empty(), "{lines:?}");
         // The chunk landed and the chat row was never written (v4's test
         // asserts `chats.update` is not called).
@@ -500,6 +581,162 @@ mod log_tests {
             assert!(warn[0].contains(f), "{f} missing: {}", warn[0]);
         }
         assert_eq!(jobs(&lines, "INFO").len(), 1, "{lines:?}");
+    }
+
+    /// P4.D310 (bug 248): `DEFAULT_PROFILE` marked default — the shape
+    /// `an_enqueue_failure_warns_with_v4s_field_names` plants, without its drop.
+    const DEFAULT_PROFILE: &str = "00000000-0000-4000-8000-0000000000e9";
+
+    fn insert_default_profile(db: &Db) {
+        db.write_blocking(|w| {
+            w.main().connection().execute_batch(&format!(
+                "INSERT INTO embedding_profiles (id, userId, name, provider, modelName, \
+                 isDefault, createdAt, updatedAt) VALUES \
+                 ('{DEFAULT_PROFILE}', '{USER}', 'Default', 'OPENAI', \
+                 'text-embedding-3-small', 1, '{NOW}', '{NOW}');"
+            ))?;
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    /// The `EMBEDDING_GENERATE` payloads queued, in insertion order.
+    fn queued(db: &Db) -> Vec<Value> {
+        db.read_main(|c| {
+            let mut stmt = c.prepare(
+                "SELECT payload FROM background_jobs WHERE type = 'EMBEDDING_GENERATE' \
+                 ORDER BY rowid",
+            )?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows
+                .iter()
+                .map(|s| serde_json::from_str(s).unwrap())
+                .collect())
+        })
+        .unwrap()
+    }
+
+    fn chunk_id(db: &Db) -> String {
+        db.read_main(|c| {
+            Ok(c.query_row(
+                "SELECT id FROM conversation_chunks WHERE chatId = ?1",
+                [CHAT],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap()
+    }
+
+    /// P4.D310 (bug 248): with a default profile the new chunk is queued in
+    /// the SAME render, under the upsert's id — and only `Chunks upserted`
+    /// is logged (the `No default` line's silence leg).
+    #[test]
+    fn a_render_with_a_default_profile_queues_the_new_chunk() {
+        let db = db();
+        insert_default_profile(&db);
+        let lines = run(&db, CHAT);
+        assert_eq!(
+            jobs(&lines, "DEBUG"),
+            vec![format!(
+                "DEBUG quilltap::jobs [ConversationRender] Chunks upserted jobId={JOB} \
+                 chatId={CHAT} interchangeCount=1 needingEmbedding=1 fullReembed=false"
+            )],
+            "{lines:?}"
+        );
+        assert_eq!(
+            queued(&db),
+            vec![json!({
+                "entityType": "CONVERSATION_CHUNK",
+                "entityId": chunk_id(&db),
+                "chatId": CHAT,
+                "profileId": DEFAULT_PROFILE,
+            })]
+        );
+    }
+
+    /// P4.D310 (bug 248): a re-render of an embedded, unchanged chunk needs
+    /// nothing, so step 4 reads NO profile — proven by dropping the profile
+    /// table first: the render still completes with no WARN.
+    #[test]
+    fn a_rerender_needing_nothing_reads_no_profile() {
+        let db = db();
+        run(&db, CHAT);
+        db.write_blocking(|w| {
+            // Eight raw float32 0.5s — a non-empty vector.
+            let blob: Vec<u8> = [0.5f32; 8].iter().flat_map(|f| f.to_le_bytes()).collect();
+            let c = w.main().connection();
+            c.execute(
+                "UPDATE conversation_chunks SET embedding = ?1 WHERE chatId = ?2",
+                rusqlite::params![blob, CHAT],
+            )?;
+            c.execute_batch("DROP TABLE embedding_profiles")?;
+            Ok(())
+        })
+        .unwrap();
+        let lines = run(&db, CHAT);
+        assert_eq!(
+            jobs(&lines, "DEBUG"),
+            vec![format!(
+                "DEBUG quilltap::jobs [ConversationRender] Chunks upserted jobId={JOB} \
+                 chatId={CHAT} interchangeCount=1 needingEmbedding=0 fullReembed=false"
+            )],
+            "{lines:?}"
+        );
+        assert!(jobs(&lines, "WARN").is_empty(), "{lines:?}");
+        assert_eq!(jobs(&lines, "INFO").len(), 1, "{lines:?}");
+    }
+
+    /// P4.D310 (bug 248): `fullReembed` needs every chunk, embedded or not.
+    #[test]
+    fn a_full_reembed_needs_every_chunk() {
+        let db = db();
+        insert_default_profile(&db);
+        run(&db, CHAT);
+        let lines = run_with(&db, CHAT, true);
+        assert_eq!(
+            jobs(&lines, "DEBUG"),
+            vec![format!(
+                "DEBUG quilltap::jobs [ConversationRender] Chunks upserted jobId={JOB} \
+                 chatId={CHAT} interchangeCount=1 needingEmbedding=1 fullReembed=true"
+            )],
+            "{lines:?}"
+        );
+    }
+
+    /// P4.D310 (R-1): the pre-write read is v4's FALLBACK read, on the caller
+    /// thread — never a `?`. No plant can fail ONLY that SELECT (the upsert's
+    /// own lookup is the same statement through the same marshal), so the
+    /// ERROR leg is pinned at the home's unit level
+    /// (`db::fallback`'s `find_one_by_filter_or_none` test) and the
+    /// handler's USE of the home by this source guard over step 3.
+    #[test]
+    fn the_pre_write_read_is_the_fallback_home() {
+        let src = include_str!("conversation_render_job.rs");
+        let start = src
+            .find("    // 3. Upsert one chunk per interchange")
+            .expect("step 3");
+        let end = src[start..].find("    // 4. Enqueue").expect("step 4") + start;
+        // Whitespace-insensitive, so rustfmt's wrapping never moves the guard.
+        let squash = |s: &str| s.split_whitespace().collect::<String>();
+        let step3 = squash(&src[start..end]);
+        let home = squash(
+            "crate::db::fallback::find_one_by_filter_or_none(\"conversation_chunks\", || { \
+             db.read_main(move |conn| { \
+             crate::db::conversation_chunks::ConversationChunksRepository::new(conn) \
+             .find_by_interchange_index(&cid, index) }) });",
+        );
+        let at = step3
+            .find(&home)
+            .unwrap_or_else(|| panic!("step 3 lost the fallback pre-read:\n{step3}"));
+        assert_eq!(
+            step3.matches(".find_by_interchange_index(").count(),
+            1,
+            "a second chunk read crept into step 3"
+        );
+        // The read happens BEFORE the write (v4's order).
+        assert!(at < step3.find(".write(move|ws|").expect("the upsert write"));
     }
 
     /// v4 `orchestrator.service.ts:253-256`: a failed trigger warns with

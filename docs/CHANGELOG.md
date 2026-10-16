@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — fix(jobs): the conversation render decides each chunk's embedding from the row before the write (bug 248, P4.D310)
+
+_Versions: core 0.0.1307._
+
+Ports v4 bug 248 (`b82037d75`). The conversation-render job now reads each chunk BEFORE its upsert. The read is a fallback read on the caller thread: a failure logs `Error finding entity by filter` and queues the chunk instead of failing the job. A chunk needs an embedding when `fullReembed` is set, when it is new, when it has no vector, or when its content changed. It is queued under the existing row's id or the upsert's id. v4's two DEBUGs are added: `[ConversationRender] Chunks upserted {jobId, chatId, interchangeCount, needingEmbedding, fullReembed}` and `… No default embedding profile; chunks left for the startup reconcile {jobId, chatId, pending}`. The profile is read only when something needs embedding, and the per-interchange re-read is gone. The repository's supplied-id create arm was already in place; a comment now records v4's repository DEBUG as unported by convention. `embedding_remainder_equivalence` captures and compares the handler's lines per render case (6 of 8 were red before the port; the state diff was green before and after). It also gains default-profile and planted-vector preludes and two cases. `conversation_chunks_tier2_equivalence` adds two supplied-id upsert ops, which already converged. `log_tests` pins both DEBUGs, the no-profile-read leg and a source guard for the fallback read.
+
 #### 2026-10-16 — fix(chat): a lone character who has answered returns the floor to the operator (bug 249, P4.D310)
 
 _Versions: core 0.0.1306._

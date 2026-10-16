@@ -33,7 +33,12 @@
  *      narrowed: `chats.renderedMarkdown` is dropped).
  *   2. RENDER — each corpus `renderCases` entry through `handleConversationRender`
  *      with a synthesized job row, recorded as `{kind:'render', name, outcome,
- *      error}`.
+ *      error, lines}` — `lines` the handler's `[ConversationRender]` log lines
+ *      (P4.D310, v4 `b82037d75`). A case may carry a default-profile prelude
+ *      (`setDefaultProfileId` / `clearDefault`) and a `restoreDefaultProfileId`
+ *      postlude, so the phases after it still see the BUILTIN default, and a
+ *      `plantEmbeddingHex` vector planted on the chat's chunks for the handler
+ *      and cleared after it.
  *   2b. DIMENSION RECONCILE (P4.d27) — v4's REAL `reconcileEmbeddingDimensions()`
  *      once per corpus `dimensionReconcileCases` entry, recorded as
  *      `{kind:'dimReconcile', name, ...result}`. It runs HERE — after the renders,
@@ -93,6 +98,16 @@ interface RenderCase {
   name: string;
   chatId: string;
   fullReembed: boolean;
+  /** P4.D310 — the same default-profile preludes as `DimensionReconcileCase`,
+   *  run before the handler (harness scaffolding, identical on both sides). */
+  setDefaultProfileId?: string | null;
+  clearDefault?: boolean;
+  /** P4.D310 — restore this profile as the ONLY default AFTER the handler, so
+   *  the phases written against the corpus's BUILTIN default still see it. */
+  restoreDefaultProfileId?: string | null;
+  /** P4.D310 — a vector (hex BLOB) planted on every chunk of the case's chat
+   *  before the handler and cleared (NULL) after it. */
+  plantEmbeddingHex?: string | null;
 }
 interface ReindexCase {
   name: string;
@@ -263,7 +278,52 @@ async function main(): Promise<void> {
   lines.push(JSON.stringify({ kind: 'reconcile', ...reconcile }));
 
   // ── Phase 2: the render handler, corpus order, state accumulating.
+  //
+  // P4.D310 (v4 `b82037d75`, bug 248): every `[ConversationRender]` line the
+  // handler logs is recorded on its row as `lines: [{level, message, fields:
+  // [[k, v]…]}]` in v4's key order — a spy on `Logger.prototype` (the
+  // `mail-alerts-delivered` technique: child loggers inherit the methods, and a
+  // call is recorded whatever `LOG_LEVEL` says). Only `[ConversationRender]`
+  // messages: the repositories log plenty beside them.
+  const { Logger } = await import('@/lib/logger');
+  let renderLines: Array<Record<string, unknown>> | null = null;
+  const loggerOriginals: Array<[string, unknown]> = [];
+  for (const level of ['debug', 'info', 'warn', 'error'] as const) {
+    const original = Logger.prototype[level];
+    loggerOriginals.push([level, original]);
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (renderLines && typeof message === 'string' && message.startsWith('[ConversationRender]')) {
+        const fields: Array<[string, unknown]> = [];
+        for (const [k, v] of Object.entries(context ?? {})) {
+          if (v === undefined) continue;
+          fields.push([k, v]);
+        }
+        renderLines.push({ level, message, fields });
+      }
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+  const setDefaultProfile = async (profileId: string) => {
+    await rawQuery('UPDATE embedding_profiles SET isDefault = 0');
+    await rawQuery('UPDATE embedding_profiles SET isDefault = 1 WHERE id = ?', [profileId]);
+  };
   for (const [i, rc] of spec.renderCases.entries()) {
+    if (rc.clearDefault) {
+      await rawQuery('UPDATE embedding_profiles SET isDefault = 0');
+    } else if (rc.setDefaultProfileId) {
+      await setDefaultProfile(rc.setDefaultProfileId);
+    }
+    if (rc.plantEmbeddingHex) {
+      await rawQuery('UPDATE conversation_chunks SET embedding = ? WHERE chatId = ?', [
+        Buffer.from(rc.plantEmbeddingHex, 'hex'),
+        rc.chatId,
+      ]);
+    }
     const job = {
       id: `00000000-0000-4000-8000-00000000ff${String(i).padStart(2, '0')}`,
       userId: spec.userId,
@@ -272,10 +332,19 @@ async function main(): Promise<void> {
       payload: { chatId: rc.chatId, fullReembed: rc.fullReembed },
     };
     let error: string | null = null;
+    renderLines = [];
     try {
       await handleConversationRender(job as never);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
+    }
+    const captured = renderLines;
+    renderLines = null;
+    if (rc.plantEmbeddingHex) {
+      await rawQuery('UPDATE conversation_chunks SET embedding = NULL WHERE chatId = ?', [rc.chatId]);
+    }
+    if (rc.restoreDefaultProfileId) {
+      await setDefaultProfile(rc.restoreDefaultProfileId);
     }
     lines.push(
       JSON.stringify({
@@ -283,8 +352,12 @@ async function main(): Promise<void> {
         name: rc.name,
         outcome: error === null ? 'ok' : 'error',
         error,
+        lines: captured,
       })
     );
+  }
+  for (const [level, original] of loggerOriginals) {
+    (Logger.prototype as unknown as Record<string, unknown>)[level] = original;
   }
 
   // ── Phase 2b: the boot DIMENSION reconcile (P4.d27 / v4 `7391404e`), LAST

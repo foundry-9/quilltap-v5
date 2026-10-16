@@ -166,6 +166,89 @@ struct RenderCase {
     name: String,
     chat_id: String,
     full_reembed: bool,
+    /// P4.D310 — the default-profile preludes `DimensionReconcileCase` carries,
+    /// run identically on both sides before the handler.
+    #[serde(default)]
+    set_default_profile_id: Option<String>,
+    #[serde(default)]
+    clear_default: bool,
+    /// P4.D310 — restore this profile as the ONLY default after the handler.
+    #[serde(default)]
+    restore_default_profile_id: Option<String>,
+    /// P4.D310 — a vector (hex BLOB) planted on the chat's chunks before the
+    /// handler and cleared (NULL) after it.
+    #[serde(default)]
+    plant_embedding_hex: Option<String>,
+}
+
+/// P4.D310 — the `plantEmbeddingHex` prelude / postlude (`Some` plants, `None`
+/// clears), the oracle's UPDATE byte for byte.
+async fn plant_embedding(db: &Db, chat_id: &str, blob: Option<Vec<u8>>) {
+    let db = db.clone();
+    let chat_id = chat_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        db.write_blocking(move |ws| {
+            ws.main().connection().execute(
+                "UPDATE conversation_chunks SET embedding = ?1 WHERE chatId = ?2",
+                rusqlite::params![blob, chat_id],
+            )?;
+            Ok(())
+        })
+    })
+    .await
+    .expect("join plant")
+    .expect("embedding plant");
+}
+
+fn hex_bytes(hex: &str) -> Vec<u8> {
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex"))
+        .collect()
+}
+
+/// P4.D310 — one v4 `[ConversationRender]` line as the oracle recorded it
+/// (`{level, message, fields: [[k, v]…]}`, v4's key order), rendered the way
+/// v5's capture rig renders a `quilltap::jobs` event — so the two sides
+/// compare as whole strings, field ORDER and v4's camelCase names included.
+/// `durationMs` is wall clock on both sides: MASKED (§R.5), never asserted.
+fn v4_render_line(line: &Value) -> String {
+    let level = line["level"].as_str().expect("level").to_ascii_uppercase();
+    let mut out = format!(
+        "{level} quilltap::jobs {}",
+        line["message"].as_str().expect("message")
+    );
+    for pair in line["fields"].as_array().expect("fields") {
+        let key = pair[0].as_str().expect("field key");
+        let value = match &pair[1] {
+            _ if key == "durationMs" => "<ms>".to_string(),
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        out.push_str(&format!(" {key}={value}"));
+    }
+    out
+}
+
+/// The v5 side of [`v4_render_line`]: the captured `[ConversationRender]`
+/// lines, `durationMs` masked the same way.
+fn v5_render_lines(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|l| l.contains(" [ConversationRender] "))
+        .map(|l| {
+            l.split(' ')
+                .map(|w| {
+                    if w.starts_with("durationMs=") {
+                        "durationMs=<ms>"
+                    } else {
+                        w
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect()
 }
 
 #[derive(Deserialize)]
@@ -441,6 +524,7 @@ async fn embedding_remainder_matches_oracle() {
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
     let mut oracle_reconcile: Option<ReconcileResult> = None;
     let mut oracle_renders: Vec<(String, String, Option<String>)> = Vec::new();
+    let mut oracle_render_lines: Vec<(String, Vec<String>)> = Vec::new();
     let mut oracle_reindexes: Vec<(String, String, Option<String>)> = Vec::new();
     let mut oracle_queue: Vec<(String, u16, Value)> = Vec::new();
     let mut oracle_dim: Vec<(String, DimensionReconcileResult)> = Vec::new();
@@ -461,11 +545,23 @@ async fn embedding_remainder_matches_oracle() {
                     "a pre-P4.D235 oracle (the stale gate is gone) — regenerate at the pin"
                 );
             }
-            Some("render") => oracle_renders.push((
-                v["name"].as_str().unwrap().to_string(),
-                v["outcome"].as_str().unwrap().to_string(),
-                v.get("error").and_then(Value::as_str).map(str::to_string),
-            )),
+            Some("render") => {
+                oracle_renders.push((
+                    v["name"].as_str().unwrap().to_string(),
+                    v["outcome"].as_str().unwrap().to_string(),
+                    v.get("error").and_then(Value::as_str).map(str::to_string),
+                ));
+                // P4.D310: a pre-capture oracle has no `lines` — loud, never
+                // read as "v4 logged nothing".
+                let lines = v
+                    .get("lines")
+                    .and_then(Value::as_array)
+                    .expect("a render row without `lines` — regenerate the oracle at the pin");
+                oracle_render_lines.push((
+                    v["name"].as_str().unwrap().to_string(),
+                    lines.iter().map(v4_render_line).collect(),
+                ));
+            }
             Some("reindex") => oracle_reindexes.push((
                 v["name"].as_str().unwrap().to_string(),
                 v["outcome"].as_str().unwrap().to_string(),
@@ -713,32 +809,101 @@ async fn embedding_remainder_matches_oracle() {
     assert_eq!(got_reconcile, want_reconcile, "reconcile counters diverge");
 
     // ── Phase 2: the render handler, corpus order, state accumulating.
+    //
+    // P4.D310: each render runs under the global capture (the handler's lines,
+    // and the fallback pre-read's ERROR home, log on THIS thread — the
+    // current-thread test runtime), and its `[ConversationRender]` lines are
+    // compared whole against v4's. The job id is v4's synthesized one, so the
+    // `jobId` field compares too.
+    quilltap_core::test_support::global_capture::install();
+    let set_default = |db: &Db, clear: bool, set: Option<String>| {
+        let db = db.clone();
+        async move {
+            if !clear && set.is_none() {
+                return;
+            }
+            tokio::task::spawn_blocking(move || {
+                db.write_blocking(move |ws| {
+                    let main = ws.main().connection();
+                    main.execute("UPDATE embedding_profiles SET isDefault = 0", [])?;
+                    if let Some(id) = set {
+                        main.execute(
+                            "UPDATE embedding_profiles SET isDefault = 1 WHERE id = ?1",
+                            [id],
+                        )?;
+                    }
+                    Ok(())
+                })
+            })
+            .await
+            .expect("join prelude")
+            .expect("default-profile prelude");
+        }
+    };
     let mut got_renders: Vec<(String, String, Option<String>)> = Vec::new();
-    for rc in &spec.render_cases {
+    let mut got_render_lines: Vec<(String, Vec<String>)> = Vec::new();
+    for (i, rc) in spec.render_cases.iter().enumerate() {
+        set_default(
+            &db,
+            rc.clear_default,
+            if rc.clear_default {
+                None
+            } else {
+                rc.set_default_profile_id.clone()
+            },
+        )
+        .await;
+        if let Some(hex) = &rc.plant_embedding_hex {
+            plant_embedding(&db, &rc.chat_id, Some(hex_bytes(hex))).await;
+        }
         let payload = ConversationRenderPayload {
             chat_id: rc.chat_id.clone(),
             full_reembed: rc.full_reembed,
         };
         // The oracle runs under `TZ=UTC`; the render's display zone is an
         // argument (P4.119), so the comparison holds on any host zone.
-        let outcome = handle_conversation_render_in_zone(
-            &db,
-            &format!("render-{}", rc.name),
-            &spec.user_id,
-            &payload,
-            &spec.render_now_iso,
-            &quilltap_core::host_zone::TimeZone::UTC,
+        let job_id = format!("00000000-0000-4000-8000-00000000ff{i:02}");
+        let (outcome, lines) = quilltap_core::test_support::global_capture::capture_async(
+            handle_conversation_render_in_zone(
+                &db,
+                &job_id,
+                &spec.user_id,
+                &payload,
+                &spec.render_now_iso,
+                &quilltap_core::host_zone::TimeZone::UTC,
+            ),
         )
         .await;
+        if rc.plant_embedding_hex.is_some() {
+            plant_embedding(&db, &rc.chat_id, None).await;
+        }
+        if let Some(id) = &rc.restore_default_profile_id {
+            set_default(&db, false, Some(id.clone())).await;
+        }
         got_renders.push(match outcome {
             Ok(()) => (rc.name.clone(), "ok".to_string(), None),
             Err(e) => (rc.name.clone(), "error".to_string(), Some(e)),
         });
+        got_render_lines.push((rc.name.clone(), v5_render_lines(&lines)));
     }
     assert_eq!(
         got_renders, oracle_renders,
         "render outcome sequence diverges"
     );
+    // The capture is not vacuous: v4 logged lines on every case, and both of
+    // bug 248's new DEBUGs appear somewhere in the corpus.
+    let all_v4: Vec<&String> = oracle_render_lines.iter().flat_map(|(_, l)| l).collect();
+    for needle in [
+        "[ConversationRender] Chunks upserted",
+        "[ConversationRender] No default embedding profile; chunks left for the startup reconcile",
+    ] {
+        assert!(
+            all_v4.iter().any(|l| l.contains(needle)),
+            "the corpus stopped exercising {needle:?}: {oracle_render_lines:?}"
+        );
+    }
+    // (The per-case line comparison runs at the END, after the table dumps,
+    // so a line divergence never hides the state diff.)
 
     // ── Phase 2b: the boot DIMENSION reconcile (P4.d27). Runs where boot runs it
     // relative to the render reconcile, and BEFORE the reindex phase (the
@@ -917,8 +1082,36 @@ async fn embedding_remainder_matches_oracle() {
         );
     }
 
+    // P4.D310 (bug 248): the changed chunk `f0…01` is queued under its
+    // EXISTING (corpus-pinned) id — the pre-write read's id, not a fresh one.
+    // Asserted by name on v4's dump; the table compare above holds v5 to it.
+    assert!(
+        want_tables["background_jobs"].iter().any(|r| {
+            r["type"] == "EMBEDDING_GENERATE"
+                && r["status"] == "PENDING"
+                && r["payload"].as_str().is_some_and(|p| {
+                    p.contains("\"entityId\":\"f0000000-0000-4000-8000-000000000001\"")
+                })
+        }),
+        "the changed chunk f0…01 is no longer queued under its existing id"
+    );
+
+    // P4.D310: the render cases' `[ConversationRender]` lines, compared whole.
+    let diverged: Vec<String> = got_render_lines
+        .iter()
+        .zip(oracle_render_lines.iter())
+        .filter(|(got, want)| got != want)
+        .map(|((name, got), (_, want))| format!("{name}:\n  v5: {got:#?}\n  v4: {want:#?}"))
+        .collect();
+    assert!(
+        diverged.is_empty(),
+        "[ConversationRender] lines diverge on {} render case(s):\n{}",
+        diverged.len(),
+        diverged.join("\n")
+    );
+
     println!(
-        "embedding_remainder: reconcile + {} render / {} dim-reconcile / {} reindex / {} queue-memories cases, {} tables OK",
+        "embedding_remainder: reconcile + {} render (lines compared) / {} dim-reconcile / {} reindex / {} queue-memories cases, {} tables OK",
         got_renders.len(),
         spec.dimension_reconcile_cases.len(),
         got_reindexes.len(),

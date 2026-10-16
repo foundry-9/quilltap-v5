@@ -895,6 +895,21 @@
       "name": "missing-chat-returns-early",
       "chatId": "a0000000-0000-4000-8000-0000000000ff",
       "fullReembed": false
+    },
+    {
+      "name": "no-op-rerender-needing-nothing",
+      "comment": "P4.D310 (v4 b82037d75, bug 248): the healthy chat again, right after its first render, with a non-empty vector planted on its chunk (eight float32 0.5s, raw LE) by the prelude so the row is embedded AND unchanged. The decision from the PRE-write read queues nothing: 'Chunks upserted ... needingEmbedding=0', no profile read and no 'No default embedding profile' line. The plant is cleared after the handler, so the phases after it see the state they were written against.",
+      "chatId": "a0000000-0000-4000-8000-000000000006",
+      "fullReembed": false,
+      "plantEmbeddingHex": "0000003f0000003f0000003f0000003f0000003f0000003f0000003f0000003f"
+    },
+    {
+      "name": "no-default-profile-leaves-chunks-for-reconcile",
+      "comment": "P4.D310 (bug 248): with isDefault cleared everywhere, a full re-render of the rendered chat needs every chunk embedded but has no profile to embed under: 'Chunks upserted ... needingEmbedding=N fullReembed=true' then 'No default embedding profile; chunks left for the startup reconcile ... pending=N', and no enqueue. The BUILTIN default is restored after the handler, so the phases after it see the corpus's state.",
+      "chatId": "a0000000-0000-4000-8000-000000000002",
+      "fullReembed": true,
+      "clearDefault": true,
+      "restoreDefaultProfileId": "b0000000-0000-4000-8000-000000000001"
     }
   ],
   "dimensionReconcileCases": [

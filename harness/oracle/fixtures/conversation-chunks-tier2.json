@@ -461,6 +461,38 @@
           "m1000000-0000-4000-8000-0000000000a2"
         ]
       }
+    },
+    {
+      "kind": "upsert",
+      "comment": "P4.D310 (v4 b82037d75, bug 248) \u2014 a SUPPLIED id on the CREATE arm. Upsert on (chatId ffff, interchangeIndex 2), not in the seed, with `id` in the input: v4's repository destructures `{ id: suppliedId, ...data }` and creates the row UNDER that id (`_create(data, { id })`); v5 takes it as `upsert`'s `new_id`. The id is pinned here, so the dump shows it rather than `<id>`.",
+      "data": {
+        "id": "5e000000-0000-4000-8000-000000000248",
+        "chatId": "c0000000-0000-4000-8000-00000000ffff",
+        "interchangeIndex": 2,
+        "content": "A chunk born under the id its caller chose.",
+        "participantNames": [
+          "Aurora"
+        ],
+        "messageIds": [
+          "m-supplied-1"
+        ]
+      }
+    },
+    {
+      "kind": "upsert",
+      "comment": "P4.D310 (bug 248) \u2014 a supplied id on the UPDATE arm is IGNORED: (eeee, 1) already exists, so the row keeps its own id and only the content / names / ids (and the NULLed vector of a content change) move.",
+      "data": {
+        "id": "5e000000-0000-4000-8000-000000000249",
+        "chatId": "c0000000-0000-4000-8000-00000000eeee",
+        "interchangeIndex": 1,
+        "content": "Upsert seed bravo, rendered again.",
+        "participantNames": [
+          "Aurora"
+        ],
+        "messageIds": [
+          "m-supplied-2"
+        ]
+      }
     }
   ]
 }

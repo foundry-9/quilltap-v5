@@ -624,6 +624,14 @@ impl<'c> ConversationChunksRepository<'c> {
             // v4 `_create(input)` carries the supplied embedding (or NULL).
             embedding: input.embedding.clone(),
         };
+        // v4 `b82037d75` (bug 248) made `upsert` honour a caller-SUPPLIED id
+        // (`{ id: suppliedId, ...data }` → `_create(data, { id })`) so the
+        // render handler can queue a new chunk under the id it will carry.
+        // v5's create arm always took the caller's `new_id`, so there is no
+        // behaviour to port; v4's bare-logger DEBUG `Creating conversation
+        // chunk {chatId, interchangeIndex, suppliedId}` is a repository-layer
+        // line, unported by the standing convention (`embedding_status.rs`'s
+        // `Creating embedding status row` comment; P4.D310 R-3).
         let opts = CreateOptions {
             id: new_id.to_string(),
             created_at: now_iso.to_string(),
