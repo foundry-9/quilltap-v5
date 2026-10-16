@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — docs(porting): P4.D314 lane record — the `REAIM` sha (`abea3f336`) in the order's status header
+
+_Docs-only change._
+
+Records `REAIM` = `abea3f336` in P4.D314's status header (LANE COMPLETE) so the stacked lanes can branch from it, and appends the lane record to `status-log.md`: the probe, the pin checks, the red-first shapes (memory-time failed at load with a `SyntaxError`, not the predicted Null unwrap), the 21-family sweep table, the four reds and their owning lanes, and the handoffs.
+
 #### 2026-10-16 — REAIM: the IMPORT-DEAD oracle repairs at 25b8fab6a — createMountWardrobeItem rebuilt at 12 builder sites, the @/lib/memory doMock deleted, isModerationRefusal and MEMORY_CALENDAR_DAY_MS re-aimed (P4.D314)
 
 _No crate versions bumped._

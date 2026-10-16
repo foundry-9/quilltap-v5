@@ -185059,3 +185059,169 @@ fresh-id `.qtap` chat import, a chats-only import under BUILTIN (the forced
 refit ~5 s later), a scenario from the browser edited at its source, the
 send-failure composer restore, bug 242's single-character first turn, the
 Almanack's `Memory maintenance` line, an offset `occurredAt` create.
+
+## P4.D314 — the IMPORT-DEAD re-aims at the `25b8fab6a` pin — LANE record (2026-10-16)
+
+**Branch** `claude/p4.d314-import-dead-reaims-4b5302`. The session started in an
+app-made worktree (`claude/optimistic-shtern-4b5302`, clean, no commits of its
+own) sitting exactly on the orders' commit `19fb707e6`; the lane branch was cut
+there with `git switch -c` (no move needed). Worktree reached through the
+spaceless path `~/source/quilltap-v5/.claude/worktrees/optimistic-shtern-4b5302`
+(the `--v5w`). **`REAIM` = `abea3f336`** — the stacking root for P4.D304 /
+P4.D309 / P4.D310 / P4.D311 / P4.D312. Commits: `abea3f336` (`REAIM:`), then
+this docs commit (status header + this record).
+
+**Freshness probe (§R.2, an observation), 2026-10-16 08:14 CDT:** v4 branch
+`main`, tree CLEAN, `log 25b8fab6a..main` = **v4 moved: `5cb0e0190`** ("feat(pascal):
+wardrobe picker in the Workbench", already recorded by the orders), `log
+489b228b6..bugfix` empty. Not ported.
+
+**The pin:** `/tmp/qt-v4-pin-p4d314-25b8fab6a`, `rev-parse HEAD` =
+`25b8fab6aa58636c6885ba63684c7f8fbfca9c3b`; `git show 25b8fab6a:package.json`
+→ `4.11.0-dev.10`; the three symlink classes (root, `packages/quilltap`,
+fifteen `plugins/dist/*/node_modules`) linked to the live checkout; root
+`openai` 7.34.0, `zod` 4.6.7, `@quilltap/plugin-utils` 2.7.1 (the live
+lockfile differs from the pin's only by the version stamp, so the root link
+is the pin's tree). Node v24.13.1.
+
+**Before-census:** `grep -rn -w createMountWardrobeItem harness/oracle --include=*.ts`
+= 21 (12 import lines + 7 call lines in the keystone (6) and wearable-pool (1)
+builders + 2 comment lines). **After:** the old destructure census
+(`createMountWardrobeItem: ` / `{ createMountWardrobeItem }`) = **0**;
+`grep -c 7417e9a1b harness/oracle/fixtures/*.ts` totals **24 lines = 12 sites
+× the two-line canonical comment** (the order's "12" counts sites); the word
+count is 23 (the two kept bare-named arrows + their 7 calls + 12 comment
+mentions + 2 header comments). `processMessageForMemoryAsync` /
+`processInterCharacterMemoryAsync` / `'@/lib/memory'` absent from
+`danger-trigger.test.ts`; `isModerationRefusal(` no longer called in
+`refusal-classify.test.ts` (the emitted key kept); `MEMORY_CALENDAR_DAY_MS`
+gone from `memory-time.ts`'s import list.
+
+**Red-first (R-7), on the unrepaired files from the pin, verbatim:**
+1. `build-wearable-pool-fixture.ts`: `wearable-pool fixture build failed:
+   TypeError: createMountWardrobeItem is not a function` at `seedShared
+   (…/build-wearable-pool-fixture.ts:300:37)`; rc 1. REPRODUCED.
+2. `danger-trigger.test.ts`: `Configuration error: Could not locate module
+   @/lib/memory mapped as: /private/tmp/qt-v4-pin-p4d314-25b8fab6a/$1.` at
+   `doMock (…/danger-trigger.test.ts:163:8)` via `runCase` — jest FAIL, the
+   survey's "expected to throw" now EXECUTED and confirmed.
+3. `refusal-classify.test.ts`: `TypeError: isModerationRefusal is not a
+   function` at `:223:49`; jest FAIL, no NDJSON. REPRODUCED.
+4. `memory-time.ts`: **the predicted shape did NOT reproduce.** The case
+   imports the calendar STATICALLY, so under tsx/ESM a missing export fails at
+   LOAD, not at use: `SyntaxError: The requested module
+   '@/lib/memory/time/calendar' does not provide an export named
+   'MEMORY_CALENDAR_DAY_MS'` (both legs, rc 1, an EMPTY NDJSON). The Rust
+   family on that empty NDJSON panics at `memory_time_equivalence.rs:195`
+   (`MEMORY_ZONE_VALIDITY drifted … left: {}`), never reaching the
+   `constants` arm. Louder than predicted, so the silent-missing-key worry
+   applies only to dynamic `await import` sites (the other three).
+
+**Repairs (R-2..R-5):** exactly as ordered — the inline arrow with the
+canonical two-line comment at all 12 sites (aliases kept: `createProjectWardrobeItem`
+×10, `createIntoMount` ×1, bare `createMountWardrobeItem` in the keystone and
+wearable-pool builders; call sites untouched; no other line in the builders
+moved); the four-line `doMock` deleted; `classifyRefusal({ error }).refused`;
+the measured constant. No typechecking step exists for `harness/oracle`
+(`item: never` kept).
+
+**Proof (R-6 / Tier 1 items 4–6), from the pin:**
+- The three cases by hand into `/tmp/p4d314/green/`: `danger-trigger` jest 13/13
+  (19 NDJSON rows), Rust `danger_trigger_equivalence` ok 1/1; `refusal-classify`
+  jest 1/1, 74 rows, **byte-identical (`cmp`) to the UNREPAIRED case run at a
+  `83334b9a5` pin** (so the second `classifyRefusal` call adds no rows' lines —
+  `classifyLogs` is captured before it and the next iteration's
+  `logs.length = 0` clears its lines), Rust ok 2/2; `memory-time` both legs rc
+  0, 25,072 rows, the `constants` row `{"MEMORY_CALENDAR_DAY_MS":86400000}` in
+  BOTH legs, the `constants` arm and the `("constants", 1)` count pass; the
+  family then reds ONLY at `:622` (`PROTOTYPE_KEY_MONTH_THROWS drifted … left:
+  {} right: {"5 constructor", "constructor 5"}`) — bug 247 converging,
+  **P4.D312's**.
+- **The sweep** (announced; ONE sweep; `recipe_sweep.py --run-all --force
+  --label p4d314 --results /tmp/p4d314/sweep-results.json --v4 "$PIN" --v5w
+  <spaceless worktree>`, `CARGO_INCREMENTAL=0`, `QT_V4_CHECKOUT` =
+  `QT_V4_ROOT` = the pin). None of the 65 `/tmp` outputs the 21 recipes write
+  existed beforehand (no stale-fixture pass possible). Totals `ok` 17,
+  `run_failed` 4; every regen stage completed; **zero** `is not a function` /
+  `TypeError` / `Cannot find module` in the log; zero `SKIP`; `git status`
+  showed no committed fixture changed.
+
+| family | builder / case LOADS + RUNS | output | Rust `test result` | red owner |
+|---|---|---|---|---|
+| chat_create_capstone | ✓ | 2,888,289 B | FAILED 2/3 | **P4.D311** — `sp_empty_and_101_items_two_issues_400`: v4 now reports only `too_big` (zod 4.6.7's oversized-array-first); v5 reports `too_small` + `too_big` (first mismatch; the owner re-measures the rest) |
+| chat_export | ✓ | 10,150 B | ok 1/1 | — |
+| project_roster_access | ✓ | 33,239 B | ok 1/1 | — |
+| wardrobe_item_image_generation_tier3 | ✓ | 1,963,461 B | ok 1/1 | — |
+| image_attempt_tier3 | ✓ | 15,006 B | ok 1/1 | — |
+| generated_file_row | ✓ | 10,897 B | ok 1/1 | — |
+| wardrobe_item_images_tier2 | ✓ | 2,700,191 B | ok 3/3 | — |
+| photo_album_options | ✓ | 23,260 B | ok 2/2 | — |
+| wardrobe_location_tier2 | ✓ | 16,801 B | ok 1/1 | — |
+| wardrobe_folder_writes_tier2 | ✓ | 47,615 B | ok 1/1 | — |
+| vault_projection_recursive_tier2 | ✓ | 20,096 B | ok 1/1 | — |
+| wardrobe_folders_routes (quilltap-web) | ✓ | 849,692 B | FAILED 0/1 | **P4.D309** — 8 `move-items` rows, each differing ONLY by v4's new `"componentsCarried":0` (measured: removing the key makes all 8 equal) |
+| wardrobe_tools | ✓ | 289,182 B | FAILED 1/2 | **P4.D312** — `op[45] wear_hairdo`: v4's hair line gains ` (current styling — overrides the natural hair's texture and style in the physical description)` (`7458ff94e`) |
+| wardrobe_tools_avatar_trigger | ✓ | 7,718 B | ok 3/3 | — |
+| wardrobe_wear_commit_tier2 | ✓ | 113,350 B | ok 1/1 | — |
+| wardrobe_transfers_tier2 | ✓ | 3,270,052 B | ok 1/1 | — |
+| group_wardrobe_routes | ✓ | 2,838,663 B | ok 1/1 | — |
+| wearable_pool_tier2 | ✓ | 237,991 B | ok 1/1 | — |
+| danger_trigger | ✓ | 6,590 B | ok 1/1 | — |
+| refusal_classify | ✓ | 38,593 B | ok 2/2 | — |
+| memory_time | ✓ (both legs) | 5,814,277 B | FAILED 0/1 at `:622` | **P4.D312** — `PROTOTYPE_KEY_MONTH_THROWS` (bug 247); the `constants` arm green |
+
+No red is a FINDING: every one matches §R.13's predicted owner.
+
+- **The two recipe-less builders (item 6)** from the pin into
+  `/tmp/p4d314/norecipe/`: `build-groups-projects-fixture.ts` rc 0 (`built
+  groups-projects fixture: … (2 groups, 3 projects, 4 roleplay templates, 3
+  image profiles, indexed store)`, 240 KB + 260 KB), `build-wardrobe-routes-fixture.ts`
+  rc 0 (`built wardrobe-routes fixture: … project store …`, 168 KB + 220 KB);
+  no committed fixture changed; scratch deleted. **Observation (not this
+  lane's, not IMPORT-DEAD):** the groups-projects build logs two v4 ERROR
+  lines `SQLite updateOne error … no such column: "transcriptVersion"` /
+  `Failed to bump transcript version` — the builder's DB lacks
+  `chats.transcriptVersion` at the pin; the build still completes. Whoever
+  next regenerates that committed fixture should look (the builder's schema
+  vintage — memory note `rebuilt-fixture-pair-vintage`).
+
+**Tier 2.** Item 9: no existing guard censuses oracle imports against v4's
+exports (the `*_guard` / `*_census` families scan v5 source or vendored
+bytes), so per the order no new guard was invented — **recommendation for the
+unifier:** a cheap oracle-import census (every `await import('@/…')`
+destructure and static `import { … } from '@/…'` name checked against the
+pin's exports) would turn the next v4 dead-code sweep from a late
+`undefined` into a loud red. Item 10: for every `lib|app|packages|plugins`
+`.ts(x)` file modified or deleted in `83334b9a5..25b8fab6a`, the export names
+present at the baseline and absent at the pin were grepped across
+`harness/oracle` — the only hits are the four names repaired here plus names
+from the two deleted barrels (`lib/memory/index.ts`, `lib/memory/recall/index.ts`)
+that the oracle imports from their SUBPATHS (`@/lib/memory/index-store`,
+`format-utils`, `recall/*` — real modules); no oracle specifier names either
+barrel any more. **Zero further dead imports.** (Limit: `export * from`
+re-exports were not expanded.)
+
+**R-9 — NO-PORT discharge.** This lane discharges ONLY the harness
+obligation of ledger §3 row `7417e9a1b`; the row's production half is
+NO-PORT and its ratification is P4.D313's record. No other §3 row touched.
+
+**Tier 3, deferred as written:** Rust `is_moderation_refusal` now test-only
+(follow-ups round); Rust `MEMORY_CALENDAR_DAY_MS`, `SyncDirection` /
+`SyncPreference`, SPA `ProgressionIssue` survive as v5 code; nothing to drop
+for `deleteMountWardrobeItem` & co.; the production NO-PORT is P4.D313's.
+
+**HANDOFF:** to the **unifier** — the ledger row `7417e9a1b` reads
+"NO-PORT-RATIFIED(round) + oracle repaired by P4.D314 (`REAIM` `abea3f336`)";
+`memory-time.ts` / `memory_time_equivalence.rs` union with P4.D312 (this lane
+touched only the case's import list and the `constants` emit; nothing in the
+Rust file); P4.D313's NO-PORT record cites this lane. To **P4.D312** — the
+constant is already measured; do not re-introduce the import. To **P4.D304 /
+D309 / D310 / D311 / D312** — branch from `REAIM` (`abea3f336`); regens at the
+pin now load.
+
+**Gate:** `git diff --stat 19fb707e6 abea3f336 -- crates apps` EMPTY;
+`recipe_sweep.py --self-test` 0 failures; the 21 families resolve by name;
+no `cargo fmt` / clippy / workspace gate run (R-1: no Rust source). **Versions
+at close:** none bumped (`quilltap-harness` frozen `0.0.1110`). 💸 none.
+Cleanup: the pin worktree removed, `/tmp/p4d314/` and the recipes' `/tmp`
+outputs deleted, the lane `target/` deleted; nothing pushed to `main`.
