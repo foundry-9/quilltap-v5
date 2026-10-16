@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, openSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { expect, test, type APIRequestContext, type Page } from './support/fixtures';
@@ -10,6 +10,7 @@ import {
   cliBinary,
   E2E_PASSPHRASE,
   FIXTURE_USER,
+  REPO_ROOT,
   FIXTURES_DIR,
   SINGLE_USER_ID,
   spaDir,
@@ -122,6 +123,28 @@ test.describe('P4.D302 — the scenario browser and the recorded source', () => 
         `UPDATE ${table} SET userId = '${SINGLE_USER_ID}' WHERE userId = '${FIXTURE_USER}';`,
       );
     }
+    // The fixture's user-scoped rows belong to FIXTURE_USER; the server acts as
+    // SINGLE_USER_ID. global-setup rewrites EVERY user-scoped table (and the
+    // `users` row itself) on ITS copy, and a spec that boots its own server must
+    // do the same — without it the New Chat form lists no connection profile,
+    // `userProfileGet` answers "User not found", and Create Chat stays disabled
+    // (the `83334b9a5` unification's first live run of the gated beats). The
+    // helper skips a table the pair lacks.
+    for (const table of [
+      'chats',
+      'connection_profiles',
+      'api_keys',
+      'chat_settings',
+      'characters',
+      'tags',
+      'projects',
+      'memories',
+      'files',
+      'image_profiles',
+    ]) {
+      runCliWrite(cli, `UPDATE ${table} SET userId = '${SINGLE_USER_ID}' WHERE userId = '${FIXTURE_USER}';`);
+    }
+    runCliWrite(cli, `UPDATE users SET id = '${SINGLE_USER_ID}' WHERE id = '${FIXTURE_USER}';`);
     // The gated create beat's greeting rides this spec's own mock (the
     // global-setup profile rewrite, aimed at a port nobody else uses).
     runCliWrite(
@@ -129,6 +152,30 @@ test.describe('P4.D302 — the scenario browser and the recorded source', () => 
       `UPDATE connection_profiles SET baseUrl = 'http://127.0.0.1:${BROWSE_MOCK_LLM_PORT}/v1' WHERE provider = 'OPENAI_COMPATIBLE';`,
     );
     mock = await startMockLlm(MOCK_LLM_REPLY, BROWSE_MOCK_LLM_PORT);
+
+    // The salon pair carries NO `instance_settings` table (built before the
+    // table existed), and every real instance has one — v4's repository creates
+    // the collection lazily. The boot's "Quilltap General" provisioning records
+    // its mount id there, so without the table the General shelf never exists
+    // and `scenarioCreate` answers "has not been provisioned yet" (the
+    // `83334b9a5` unification's first live run of the General beat). Plant
+    // generateDDL's own table from the committed D23 dump, never hand-written
+    // (the `settings-flow` precedent for `chat_settings`).
+    const freshSchema = JSON.parse(
+      readFileSync(
+        resolve(REPO_ROOT, 'crates/quilltap-core/src/services/provisioning/fresh_schema.json'),
+        'utf8',
+      ),
+    ) as { main: string[] };
+    const settingsDdl = freshSchema.main.find((sql) => sql.startsWith('CREATE TABLE "instance_settings"'));
+    if (!settingsDdl) throw new Error('fresh_schema.json carries no instance_settings CREATE TABLE');
+    const ddl = spawnSync(cli, ['db', '--data-dir', BROWSE_INSTANCE_DIR, '--write', settingsDdl], {
+      env: { ...withoutPepper(), QUILLTAP_DB_PASSPHRASE: E2E_PASSPHRASE, QUILLTAP_QUIET_HINTS: '1' },
+      encoding: 'utf8',
+    });
+    if (ddl.status !== 0 && !`${ddl.stdout}${ddl.stderr}`.includes('already exists')) {
+      throw new Error(`instance_settings plant failed:\n${ddl.stdout}\n${ddl.stderr}`);
+    }
 
     const logFd = openSync(BROWSE_SERVER_LOG, 'w');
     server = spawn(
@@ -163,15 +210,20 @@ test.describe('P4.D302 — the scenario browser and the recorded source', () => 
       const made = await dispatchRaw({ type: 'projectScenarioCreate', projectId, scenario });
       expect(made.type, JSON.stringify(made)).not.toBe('error');
     }
-    await dispatchRaw({
+    // v4's `updateScenarioSchema` (`scenarios-common.ts`) REQUIRES `body` — the
+    // serializer rewrites the whole file — so a bare `{ archived: true }` is
+    // refused (`Invalid request body: Required`) on both sides; the first live
+    // run never checked and the archived beat found no badge.
+    const archived = await dispatchRaw({
       type: 'projectScenarioUpdate',
       projectId: farProjectId,
       scenarioPath: `Scenarios/${FAR_ARCHIVED.filename}`,
-      scenario: { archived: true },
+      scenario: { name: FAR_ARCHIVED.name, body: FAR_ARCHIVED.body, archived: true },
     });
-    // The General shelf needs the "Quilltap General" mount, which a server
-    // provisions at boot; recorded rather than asserted, so a fixture without
-    // it skips only the General beat (the ungated beats never read it).
+    expect(archived.type, JSON.stringify(archived)).not.toBe('error');
+    // The General shelf needs the "Quilltap General" mount, which the boot
+    // provisions once `instance_settings` exists (planted above); recorded here
+    // and asserted by the General beat.
     const general = await dispatchRaw({ type: 'scenarioCreate', scenario: GENERAL_SCENE });
     generalSeedRefusal = general.type === 'error' ? JSON.stringify(general.data ?? general) : null;
     if (generalSeedRefusal) console.warn(`[scenario-browser-flow] General seed refused: ${generalSeedRefusal}`);
@@ -287,7 +339,11 @@ test.describe('P4.D302 — the scenario browser and the recorded source', () => 
     await unlockIfLocked(page);
     await openChatDrawer(page);
     const control = page.locator('qt-chat-scenario-control');
-    await expect(control.getByText(/^From:/)).toHaveText(`From: ${label}`, { timeout: 15_000 });
+    // A SUBSTRING locator, not `/^From:/`: Angular keeps the template's leading
+    // whitespace in that text node and Playwright's regex runs over the raw
+    // text, so the anchored form never matched the rendered line (the
+    // `83334b9a5` unification's first live run; `toHaveText` normalizes).
+    await expect(control.getByText('From:')).toHaveText(`From: ${label}`, { timeout: 15_000 });
     await expect(control.locator('#chat-scenario-select')).toHaveValue(/^store:/);
   });
 
@@ -346,7 +402,7 @@ test.describe('P4.D302 — the scenario browser and the recorded source', () => 
     await unlockIfLocked(page);
     await openChatDrawer(page);
     const control = page.locator('qt-chat-scenario-control');
-    await expect(control.getByText(/^From:/)).toHaveText(`From: ${HOME_PROJECT} › ${HOME_SCENE.name}`, {
+    await expect(control.getByText('From:')).toHaveText(`From: ${HOME_PROJECT} › ${HOME_SCENE.name}`, {
       timeout: 15_000,
     });
 

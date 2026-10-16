@@ -255,9 +255,11 @@ fn no_migration_reruns_after_the_v5_chain() {
                 for (id, v5_row) in &v5_rows {
                     // The ping-pong id's v4 row is the twin's (see the header).
                     let v4_row = v4_ledger.iter().find(|(i, _)| i == id).or_else(|| {
-                        (id == TIERS)
-                            .then_some(())
-                            .and_then(|_| planted_twin_tiers.as_ref())
+                        if id == TIERS {
+                            planted_twin_tiers.as_ref()
+                        } else {
+                            None
+                        }
                     });
                     match v4_row {
                         None => {

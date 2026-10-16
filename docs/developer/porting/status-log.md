@@ -184963,11 +184963,11 @@ example re-pointed at `memory-scoring.ts`; `ai_import_tier3`'s
 
 - `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
   -- -D warnings` plain AND `--features quilltap-core/native-transport`:
-  <<CLIPPY>>; `cargo build --release`: <<RELEASE>>.
+  clean on the final tree (one `unnecessary_lazy_evaluations` lint from the unifier's own zero-rerun edit caught and fixed first); `cargo build --release`: clean (`Finished release`).
 - **The full sweep from the pin** (`recipe_sweep.py --run-all --v4
   /tmp/qt-v4-pin-unify-83334b9a5`; artifact
   `harness/tools/sweep-results/2026-10-15-83334b9a5-memory-scenarios-unify.json`):
-  <<SWEEP>>.
+  **699 ok / 13 `run_failed` / 3 refused of 715** (the three refusals standing — `backup_uuid_remap` repo-write, `avatar_rolls_routes` / `generator_sse_wire` non-extractable); the thirteen classified below — two standing, ELEVEN union reds, each fixed and green by name from the pin (`…-unify-rerun.json` 12 of 13 ok; `…-unify-rerun2.json` the routes + admission re-runs ok).
 - **The sweep's thirteen `run_failed`, classified:** two standing
   (`ariel_writers_tier3`, `search_replace`; `memory_processor_tier3`, red
   since P4.D296's lane, is GREEN again — the fold trio below) and ELEVEN
@@ -185030,11 +185030,11 @@ example re-pointed at `memory-scoring.ts`; `ai_import_tier3`'s
   admit side's `merged` through it) now inserts an absent schema key before
   the first present key that follows it (`memories_read::schema_keys`),
   unit-pinned by bytes.
-- **Tier R (`cli_differential`):** <<TIER_R>>.
+- **Tier R (`cli_differential`):** **422 cases, 0 failures** (the sweep's `cli_differential`, 336.6 s).
 - **The workspace suite** (`QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin + the
-  harvested env block, `cargo test --workspace --no-fail-fast`): <<WORKSPACE>>.
+  harvested env block, `cargo test --workspace --no-fail-fast`): **806 binaries / 5,219 passed / 15 failed / 3 ignored, zero SKIP.** The fifteen: the two standing (`ariel_writers_tier3`, `search_replace`); `backup_uuid_remap`'s absent oracle (the refused repo-write family — an env-block artifact every round); TEN env-block artifacts — shared `/tmp` fixtures that later sweep families overwrote (`file is not a database`, a rebuilt pair's re-minted ids): `doc_mount_files_tier2`, `mail_carina_tools`, `search_tools`, `state_cascade`, `state_routes`, `state_sql_tools`, `tiered_mount_pool`, `update_memory_tier2`, `vault_read_overlay`, `wardrobe_folder_writes_tier2`, each `ok` in the full sweep and green by name afterwards (`…-unify-envblock.json`); and `host_boot_p4d265_memory_tiers`'s two `UNSTAMPED (R-A)` assertions, whose premise the ping-pong stamp retired — the pre-round and the fresh boots now carry ONE `add-memory-tiers-v1` row (the test amended, header rewritten; 4 passed).
 - **SPA:** lint clean; vitest **508 files** (all passed); build clean.
-- **Playwright (full suite):** <<PLAYWRIGHT>>.
+- **Playwright (full suite):** **399 passed / 0 failed / 6 skipped (13.4 m)** on the final tree, every §S.9 beat LIVE. the first full run on the fixed tree reddened FIVE first-time-live beats (394 / 5 / 6, 15.4 m) — the lanes had written them GATED and the unifier flipped them LIVE, so that run was their first against a real server — each deterministic by file alone and each a SPEC gesture, not a port defect: (1) `memory-maintenance-flow`'s filed-twice note shared `lighthouse keeper … dusk` with Mnemo's seeded rows and admission REINFORCED a seeded row on the FIRST create (v4's TF-IDF decision too) — the note now shares nothing with the seeded vocabulary; (2)–(5) `scenario-browser-flow`: its own server skipped global-setup's user-scoped rewrite (`FIXTURE_USER` → `SINGLE_USER_ID`, the `users` row included), so the New Chat form listed no connection profile and Create Chat stayed disabled; the archived seed sent `{ archived: true }` alone where v4's `updateScenarioSchema` REQUIRES `body` (refused `Invalid request body: Required` on BOTH sides and never checked), so the badge beat found no badge; the General shelf needs `instance_settings` for the boot's "Quilltap General" provisioning, which the salon pair predates (planted from the D23 dump before the boot — the `settings-flow` precedent); and the provenance locator `getByText(/^From:/)` ran Playwright's regex over the RAW text node, where Angular keeps the template's leading whitespace — a substring locator (`toHaveText` normalizes). Measured with a scratch probe spec reusing the spec's own boot: the server answered the recorded `source` + `owner` correctly within a second, the `everywhere` listing carried `archived: false` because the update had been refused. Each file green alone (7 / 7, 11 / 11) before the final full run.
 - `handler-logging-inventory.md` regenerated ONCE on the union: 243 rows
   (25 PORTED-PINNED, 115 PORTED-UNPINNED, 8 NO-PORT-RECORDED, 95 NO-SITE).
 - `help/` byte-identical to the pin (131 files); `docs/v4/` 483 / 483.

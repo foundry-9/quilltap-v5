@@ -23,6 +23,16 @@
 //! boot), and (d)'s v4 plant carries v4's own text for both. (d)'s planted
 //! watermark column is MOVED by the P4.D288 cursor ensure on that boot (the
 //! half-migrated arm) — asserted gone, not part of the tier surface.
+//!
+//! **The `83334b9a5` unification (the ping-pong class):** R-A's "writes NO
+//! `migrations_state` row" is SUPERSEDED for this id. Once the cursor move has
+//! dropped the chat column, v4's `shouldRun` for `add-memory-tiers-v1` holds
+//! through `needsChatWatermark` alone, so an unstamped instance would have v4
+//! re-add the dead column on its next boot and stamp it for good. v5 now
+//! stamps the row v4 would write (`Memory tiers in place (1 changes)`) — the
+//! settled-chain arm on a fresh provision (c), `stamp_tiers_after_cursor_move`
+//! on the pre-round boot (a) — so (a) and (c) assert ONE ledger row for the id;
+//! the ensure itself stays unstamped and every-boot (the heal, (b)).
 
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -211,7 +221,11 @@ async fn a_pre_round_instance_is_fitted_once_unstamped_and_in_the_migrations_tex
             .any(|l| l.contains("Failed to backfill a migration-created index")),
         "the ensure runs BEFORE the index backfill: {lines:#?}"
     );
-    assert_eq!(ledger_rows(&data), 0, "UNSTAMPED (R-A)");
+    assert_eq!(
+        ledger_rows(&data),
+        1,
+        "the ping-pong stamp after the cursor move (the `83334b9a5` unification)"
+    );
     {
         let w = Writer::open_writable(&data.join(MAIN), PEPPER).unwrap();
         let (tier, from): (String, String) = w
@@ -284,7 +298,11 @@ async fn a_fresh_instance_carries_both_indexes_and_the_ensure_is_silent() {
     let mem = columns(&data, "memories");
     let at = mem.iter().position(|c| c.0 == "tier").unwrap();
     assert_eq!(mem[at - 1].0, "reinforcedImportance", "generateDDL's slot");
-    assert_eq!(ledger_rows(&data), 0);
+    assert_eq!(
+        ledger_rows(&data),
+        1,
+        "the settled-chain arm stamps the ping-pong id on a fresh provision"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

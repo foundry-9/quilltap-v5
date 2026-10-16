@@ -550,13 +550,18 @@ test.describe('P4.D300 — the Maintenance card, dialog and ledger of v4 Phase G
      * fixture's default BUILTIN TF-IDF profile (identical text — cosine 1).
      * The second create's reply `action` is asserted first, so a union whose
      * admission does not absorb the repeat fails loudly with the action it
-     * did take, never a silent toast mismatch.
+     * did take, never a silent toast mismatch. The note's words are NOT the
+     * fixture's: the first live run (the `83334b9a5` unification) filed "the
+     * lighthouse keeper whistles … at dusk" and admission REINFORCED Mnemo's
+     * seeded "Alden the lighthouse keeper …" row instead of inserting (TF-IDF
+     * cosine over the shared terms crossed the reinforce band — v4's decision
+     * too), so the first create must share nothing with the seeded rows.
      */
     test('a manual note filed twice: the second create toasts "Already on file"', async ({ page }) => {
       test.setTimeout(90_000);
       await openMemoriesTab(page, MNEMO);
-      const summary = 'The lighthouse keeper whistles at dusk';
-      const content = 'Mnemo noted that the lighthouse keeper whistles the same three notes at dusk, every evening.';
+      const summary = 'A brass thimble in the oilskin pocket';
+      const content = 'Mnemo keeps a brass thimble in the left pocket of the oilskin coat and counts it before sleeping.';
 
       const file = async (): Promise<string | undefined> => {
         await page.getByRole('button', { name: 'Add Memory', exact: true }).click();
