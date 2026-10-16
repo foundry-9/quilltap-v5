@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — test(e2e): the Workbench's trigger phrases and wardrobe effects, and the Automation trigger row (P4.D307 unit 4)
+
+_Versions: SPA 0.5.866._
+
+NEW `apps/web/e2e/workbench-triggers-effects-flow.spec.ts` on its own instance (port 4343, mock LLM 45341), from the salon pair. Three beats run live against `main`'s server: (a) the trigger field (chip on Enter, Add dead under three characters, the cap of eight), (c) the Kind select and wardrobe fields (Item 1, the issue lines, `clear a slot`), and (e) the Automation trigger row, dead while Custom Tools is off and live again after. Three beats are gated behind `P4D304_SERVER_LANDED` / `P4D305_SERVER_LANDED` / `P4D306_SERVER_LANDED = false` for the unifier to flip: (b) the `✦ 1 phrase` badge after a save, (d) the bench's "would attempt" line, and (f) the trigger row surviving a reload.
+
+The instance plants `instance_settings`, `groups` and `group_doc_mount_links` from `fresh_schema.json`, as global-setup does for the shared copy. Without them the Workbench save picker answers `no such table: groups`. Flipped once uncommitted, each gated beat failed only at its server-dependent assertion.
+
 #### 2026-10-16 — feat(spa): the Automation card's trigger-phrase row and the run dialog's wardrobe sentences (P4.D307 unit 3)
 
 _Versions: SPA 0.5.865._
