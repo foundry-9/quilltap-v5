@@ -44,6 +44,10 @@ interface Op {
   chainDepth?: number;
   nowMs?: number;
   chainStartTimeMs?: number;
+  // P4.D310 (bug 249): v4's `ChainGuards.neverPauseForUser` (an autonomous
+  // room). Absent ⇒ `{ neverPauseForUser: false }`, the same decision as v4's
+  // default `{}` for every pre-existing op.
+  neverPauseForUser?: boolean;
   // turnAction
   action?: 'nudge' | 'queue' | 'dequeue' | 'skipUserTurn' | 'query';
   participantId?: string | null;
@@ -89,7 +93,7 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { getRepositories } = await import('@/lib/repositories/factory');
-  const { shouldChainNext } = await import(
+  const { shouldChainNext, DEFAULT_CHAIN_CONFIG } = await import(
     '@/lib/services/chat-message/turn-orchestrator.service'
   );
   const {
@@ -259,6 +263,8 @@ async function main(): Promise<void> {
           op.userParticipantId ?? null,
           op.chainDepth as number,
           op.chainStartTimeMs as number,
+          DEFAULT_CHAIN_CONFIG,
+          { neverPauseForUser: op.neverPauseForUser === true },
         );
         Date.now = realNow;
         results.push({

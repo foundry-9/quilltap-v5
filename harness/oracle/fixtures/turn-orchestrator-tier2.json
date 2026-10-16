@@ -485,6 +485,276 @@
      "talkativeness": 0.5
     }
    ]
+  },
+  {
+   "id": "cccc0030-0000-4000-8000-c00000000030",
+   "title": "Bug 249 Lone Character",
+   "isPaused": false,
+   "turnQueue": "[]",
+   "spokenThisCycleParticipantIds": "[]",
+   "participants": [
+    {
+     "id": "eeee0030-0000-4000-8000-e00000000030",
+     "type": "CHARACTER",
+     "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+     "controlledBy": "llm",
+     "status": "active",
+     "talkativeness": 0.5,
+     "createdAt": "2026-03-01T00:00:00.000Z",
+     "updatedAt": "2026-03-01T00:00:00.000Z"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ffff0030-0000-4000-8000-f00000000030",
+     "role": "USER",
+     "content": "Hello there.",
+     "participantId": null
+    },
+    {
+     "id": "ffff0031-0000-4000-8000-f00000000031",
+     "role": "ASSISTANT",
+     "content": "Aria answers.",
+     "participantId": "eeee0030-0000-4000-8000-e00000000030"
+    }
+   ]
+  },
+  {
+   "id": "cccc0031-0000-4000-8000-c00000000031",
+   "title": "Bug 249 Lone Character Silent",
+   "isPaused": false,
+   "turnQueue": "[]",
+   "spokenThisCycleParticipantIds": "[]",
+   "participants": [
+    {
+     "id": "eeee0031-0000-4000-8000-e00000000031",
+     "type": "CHARACTER",
+     "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+     "controlledBy": "llm",
+     "status": "active",
+     "talkativeness": 0.5,
+     "createdAt": "2026-03-01T00:00:00.000Z",
+     "updatedAt": "2026-03-01T00:00:00.000Z"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "cccc0032-0000-4000-8000-c00000000032",
+   "title": "Bug 249 Lone Character Monologue",
+   "isPaused": false,
+   "turnQueue": "[]",
+   "spokenThisCycleParticipantIds": "[]",
+   "participants": [
+    {
+     "id": "eeee0032-0000-4000-8000-e00000000032",
+     "type": "CHARACTER",
+     "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+     "controlledBy": "llm",
+     "status": "active",
+     "talkativeness": 0.5,
+     "createdAt": "2026-03-01T00:00:00.000Z",
+     "updatedAt": "2026-03-01T00:00:00.000Z"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ffff0032-0000-4000-8000-f00000000032",
+     "role": "ASSISTANT",
+     "content": "Aria answers.",
+     "participantId": "eeee0032-0000-4000-8000-e00000000032"
+    }
+   ]
+  },
+  {
+   "id": "cccc0033-0000-4000-8000-c00000000033",
+   "title": "Bug 249 Lone Character Continue Mode",
+   "isPaused": false,
+   "turnQueue": "[]",
+   "spokenThisCycleParticipantIds": "[]",
+   "participants": [
+    {
+     "id": "eeee0033-0000-4000-8000-e00000000033",
+     "type": "CHARACTER",
+     "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+     "controlledBy": "llm",
+     "status": "active",
+     "talkativeness": 0.5,
+     "createdAt": "2026-03-01T00:00:00.000Z",
+     "updatedAt": "2026-03-01T00:00:00.000Z"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ffff0033-0000-4000-8000-f00000000033",
+     "role": "USER",
+     "content": "Hello there.",
+     "participantId": null
+    },
+    {
+     "id": "ffff0034-0000-4000-8000-f00000000034",
+     "role": "ASSISTANT",
+     "content": "Aria answers.",
+     "participantId": "eeee0033-0000-4000-8000-e00000000033"
+    }
+   ]
+  },
+  {
+   "id": "cccc0034-0000-4000-8000-c00000000034",
+   "title": "Bug 249 Lone Character Nudged After Speaking",
+   "isPaused": false,
+   "turnQueue": "[\"eeee0034-0000-4000-8000-e00000000034\"]",
+   "spokenThisCycleParticipantIds": "[]",
+   "participants": [
+    {
+     "id": "eeee0034-0000-4000-8000-e00000000034",
+     "type": "CHARACTER",
+     "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+     "controlledBy": "llm",
+     "status": "active",
+     "talkativeness": 0.5,
+     "createdAt": "2026-03-01T00:00:00.000Z",
+     "updatedAt": "2026-03-01T00:00:00.000Z"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ffff0035-0000-4000-8000-f00000000035",
+     "role": "USER",
+     "content": "Hello there.",
+     "participantId": null
+    },
+    {
+     "id": "ffff0036-0000-4000-8000-f00000000036",
+     "role": "ASSISTANT",
+     "content": "Aria answers.",
+     "participantId": "eeee0034-0000-4000-8000-e00000000034"
+    }
+   ]
+  },
+  {
+   "id": "cccc0035-0000-4000-8000-c00000000035",
+   "title": "Bug 249 Lone Character Queued",
+   "isPaused": false,
+   "turnQueue": "[\"eeee0035-0000-4000-8000-e00000000035\"]",
+   "spokenThisCycleParticipantIds": "[]",
+   "participants": [
+    {
+     "id": "eeee0035-0000-4000-8000-e00000000035",
+     "type": "CHARACTER",
+     "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+     "controlledBy": "llm",
+     "status": "active",
+     "talkativeness": 0.5,
+     "createdAt": "2026-03-01T00:00:00.000Z",
+     "updatedAt": "2026-03-01T00:00:00.000Z"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ffff0037-0000-4000-8000-f00000000037",
+     "role": "USER",
+     "content": "Hello there.",
+     "participantId": null
+    }
+   ]
+  },
+  {
+   "id": "cccc0036-0000-4000-8000-c00000000036",
+   "title": "Bug 249 Lone Character Autonomous Room",
+   "isPaused": false,
+   "turnQueue": "[]",
+   "spokenThisCycleParticipantIds": "[]",
+   "participants": [
+    {
+     "id": "eeee0036-0000-4000-8000-e00000000036",
+     "type": "CHARACTER",
+     "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+     "controlledBy": "llm",
+     "status": "active",
+     "talkativeness": 0.5,
+     "createdAt": "2026-03-01T00:00:00.000Z",
+     "updatedAt": "2026-03-01T00:00:00.000Z"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ffff0038-0000-4000-8000-f00000000038",
+     "role": "USER",
+     "content": "Hello there.",
+     "participantId": null
+    },
+    {
+     "id": "ffff0039-0000-4000-8000-f00000000039",
+     "role": "ASSISTANT",
+     "content": "Aria answers.",
+     "participantId": "eeee0036-0000-4000-8000-e00000000036"
+    }
+   ]
+  },
+  {
+   "id": "cccc0037-0000-4000-8000-c00000000037",
+   "title": "Bug 249 Lone User Seat",
+   "isPaused": false,
+   "turnQueue": "[]",
+   "spokenThisCycleParticipantIds": "[]",
+   "participants": [
+    {
+     "id": "eeee0037-0000-4000-8000-e00000000037",
+     "type": "CHARACTER",
+     "characterId": "dddd0000-0000-4000-8000-d00000000000",
+     "controlledBy": "user",
+     "status": "active",
+     "talkativeness": 0.5,
+     "createdAt": "2026-03-01T00:00:00.000Z",
+     "updatedAt": "2026-03-01T00:00:00.000Z"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ffff003a-0000-4000-8000-f0000000003a",
+     "role": "USER",
+     "content": "Uma speaks.",
+     "participantId": "eeee0037-0000-4000-8000-e00000000037"
+    }
+   ]
+  },
+  {
+   "id": "cccc0038-0000-4000-8000-c00000000038",
+   "title": "Bug 249 One Active Of Two",
+   "isPaused": false,
+   "turnQueue": "[]",
+   "spokenThisCycleParticipantIds": "[]",
+   "participants": [
+    {
+     "id": "eeee0038-0000-4000-8000-e00000000038",
+     "type": "CHARACTER",
+     "characterId": "aaaa0000-0000-4000-8000-a00000000000",
+     "controlledBy": "llm",
+     "status": "active",
+     "talkativeness": 0.5,
+     "createdAt": "2026-03-01T00:00:00.000Z",
+     "updatedAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+     "id": "eeee0039-0000-4000-8000-e00000000039",
+     "type": "CHARACTER",
+     "characterId": "bbbb0000-0000-4000-8000-b00000000000",
+     "controlledBy": "llm",
+     "status": "absent",
+     "talkativeness": 0.5,
+     "createdAt": "2026-03-01T00:00:00.000Z",
+     "updatedAt": "2026-03-01T00:00:00.000Z"
+    }
+   ],
+   "messages": [
+    {
+     "id": "ffff003b-0000-4000-8000-f0000000003b",
+     "role": "ASSISTANT",
+     "content": "Aria answers.",
+     "participantId": "eeee0038-0000-4000-8000-e00000000038"
+    }
+   ]
   }
  ],
  "ops": [
@@ -651,6 +921,97 @@
    "participantId": "eeee0026-0000-4000-8000-e00000000026",
    "random01": 0.3,
    "note": "v4 `turn.ts:184-189` resolves UNCONDITIONALLY, so a read-only `query` may WRITE the chats row. This room is touched by nothing else, so that write is the only thing that can put a rotation on it."
+  },
+  {
+   "kind": "shouldChainNext",
+   "chatId": "cccc0030-0000-4000-8000-c00000000030",
+   "userParticipantId": "__user__",
+   "chainDepth": 1,
+   "nowMs": 1000,
+   "chainStartTimeMs": 0,
+   "random01": 0.5,
+   "note": "L1 bug 249: the lone llm character spoke last with the operator present -> the floor returns (user_turn, no participant)"
+  },
+  {
+   "kind": "shouldChainNext",
+   "chatId": "cccc0031-0000-4000-8000-c00000000031",
+   "userParticipantId": "__user__",
+   "chainDepth": 1,
+   "nowMs": 1000,
+   "chainStartTimeMs": 0,
+   "random01": 0.5,
+   "note": "L2: the lone character has not spoken yet -> the selector's only_character pick chains"
+  },
+  {
+   "kind": "shouldChainNext",
+   "chatId": "cccc0032-0000-4000-8000-c00000000032",
+   "userParticipantId": null,
+   "chainDepth": 1,
+   "nowMs": 1000,
+   "chainStartTimeMs": 0,
+   "random01": 0.5,
+   "note": "L3: genuinely all-LLM (no user, no USER row) -> the monologue is kept (turnCount 1 < 3)"
+  },
+  {
+   "kind": "shouldChainNext",
+   "chatId": "cccc0033-0000-4000-8000-c00000000033",
+   "userParticipantId": null,
+   "chainDepth": 1,
+   "nowMs": 1000,
+   "chainStartTimeMs": 0,
+   "random01": 0.5,
+   "note": "L4: no user participant but a USER row in history -> presence -> user_turn"
+  },
+  {
+   "kind": "shouldChainNext",
+   "chatId": "cccc0034-0000-4000-8000-c00000000034",
+   "userParticipantId": "__user__",
+   "chainDepth": 1,
+   "nowMs": 1000,
+   "chainStartTimeMs": 0,
+   "random01": 0.5,
+   "note": "L5: the queued entry is the last speaker -> skipped, turnQueue written back []; then the selector arm -> user_turn"
+  },
+  {
+   "kind": "shouldChainNext",
+   "chatId": "cccc0035-0000-4000-8000-c00000000035",
+   "userParticipantId": "__user__",
+   "chainDepth": 1,
+   "nowMs": 1000,
+   "chainStartTimeMs": 0,
+   "random01": 0.5,
+   "note": "L6: a queued turn for the lone character who has not spoken -> runs (selectionReason queue)"
+  },
+  {
+   "kind": "shouldChainNext",
+   "chatId": "cccc0036-0000-4000-8000-c00000000036",
+   "userParticipantId": "__user__",
+   "chainDepth": 1,
+   "nowMs": 1000,
+   "chainStartTimeMs": 0,
+   "random01": 0.5,
+   "neverPauseForUser": true,
+   "note": "L7: L1's shape with neverPauseForUser (autonomous room) -> the monologue is kept"
+  },
+  {
+   "kind": "shouldChainNext",
+   "chatId": "cccc0037-0000-4000-8000-c00000000037",
+   "userParticipantId": "eeee0037-0000-4000-8000-e00000000037",
+   "chainDepth": 1,
+   "nowMs": 1000,
+   "chainStartTimeMs": 0,
+   "random01": 0.5,
+   "note": "L8: a lone USER-controlled seat that spoke last -> the early return precedes the user-driven-seat arm (user_turn WITHOUT participantId/characterName) -- a v4 oddity, not the persona-less bug-249 case"
+  },
+  {
+   "kind": "shouldChainNext",
+   "chatId": "cccc0038-0000-4000-8000-c00000000038",
+   "userParticipantId": "__user__",
+   "chainDepth": 1,
+   "nowMs": 1000,
+   "chainStartTimeMs": 0,
+   "random01": 0.5,
+   "note": "L9: two CHARACTER seats, the second absent -> one ACTIVE character, like L1"
   }
  ]
 }

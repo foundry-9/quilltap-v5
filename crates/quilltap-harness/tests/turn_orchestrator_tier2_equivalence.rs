@@ -16,6 +16,15 @@
 //! turnQueue + lastTurnParticipantId (+ spokenThisCycleParticipantIds on skip)
 //! writes.
 //!
+//! P4.D310 (v4 `6069a7acd`, bug 249): nine lone-seat rows (`cccc0030…` –
+//! `cccc0038…`, notes `L1`–`L9`) pin the early return for a lone character who
+//! spoke last with a human present, and the legs that keep chaining (not yet
+//! spoken, genuinely all-LLM, a queued turn, `neverPauseForUser`). `L8` (a lone
+//! USER-controlled seat) keeps its participant + name: v4's `buildResult`
+//! rewrites a user-driven seat's reason to `user_turn`, so `only_character`
+//! never reaches the early return there. The guard is built per op from the
+//! op's `neverPauseForUser` on both sides.
+//!
 //! NORMALIZATION: none. The seed pins every id + timestamp; no op mints a chat
 //! `updatedAt` (v4 `_update` preserves it, and none of these ops pass one), so the
 //! final `chats` dump and every decision object are compared exactly.
@@ -71,6 +80,10 @@ enum Op {
         #[serde(rename = "chainStartTimeMs")]
         chain_start_time_ms: i64,
         random01: f64,
+        /// P4.D310 (bug 249): v4's `ChainGuards.neverPauseForUser` — absent ⇒
+        /// `false`, v4's default `{}` for every pre-existing op.
+        #[serde(rename = "neverPauseForUser", default)]
+        never_pause_for_user: bool,
     },
     #[serde(rename = "turnAction")]
     TurnAction {
@@ -159,7 +172,6 @@ async fn turn_orchestrator_tier2_matches_oracle() {
     .unwrap_or_else(|e| panic!("open fixture copies: {e}"));
 
     let config = ChainConfig::default();
-    let guards = ChainGuards::default();
 
     let mut got_results: Vec<Value> = Vec::new();
 
@@ -172,7 +184,12 @@ async fn turn_orchestrator_tier2_matches_oracle() {
                 now_ms,
                 chain_start_time_ms,
                 random01,
+                never_pause_for_user,
             } => {
+                // Built PER OP, as the oracle passes `{ neverPauseForUser }` per op.
+                let guards = ChainGuards {
+                    never_pause_for_user: *never_pause_for_user,
+                };
                 let decision = should_chain_next(
                     &db,
                     chat_id,
@@ -237,12 +254,24 @@ async fn turn_orchestrator_tier2_matches_oracle() {
         oracle_results.len(),
         "op-count mismatch — regenerate the oracle NDJSON"
     );
-    for (i, (got, want)) in got_results.iter().zip(oracle_results.iter()).enumerate() {
-        assert_eq!(
-            got, want,
-            "op {i} decision diverged\n  rust:   {got}\n  oracle: {want}"
-        );
-    }
+    // Every diverging op is reported (not just the first), so a red run counts
+    // its rows by name.
+    let diverged: Vec<String> = got_results
+        .iter()
+        .zip(oracle_results.iter())
+        .enumerate()
+        .filter(|(_, (got, want))| got != want)
+        .map(|(i, (got, want))| {
+            format!("op {i} decision diverged\n  rust:   {got}\n  oracle: {want}")
+        })
+        .collect();
+    assert!(
+        diverged.is_empty(),
+        "{} of {} ops diverged:\n{}",
+        diverged.len(),
+        got_results.len(),
+        diverged.join("\n")
+    );
 
     // Compare the final chats dump (zero-normalization).
     let got_dump = db

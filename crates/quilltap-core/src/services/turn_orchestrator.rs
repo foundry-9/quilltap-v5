@@ -520,6 +520,31 @@ pub async fn should_chain_next(
 
         next_participant_id = result.next_speaker_id.clone();
         selection_reason = result.reason.to_string();
+
+        // A lone character's monologue is the selector's answer for "who could
+        // speak next" (it has nobody else to alternate with), but it is not a
+        // reason to keep CHAINING when a human is in the room: the character
+        // has answered, and the floor goes back to the operator. Without this a
+        // persona-less one-on-one chat ran the character to the depth cap on
+        // every message (v4 `6069a7acd`, bug 249). A genuinely all-LLM chat
+        // keeps its monologue — the all-LLM pause above governs it — and so
+        // does an autonomous room. (A user-driven lone seat never gets here:
+        // the selector already answers `user_turn` for it, not
+        // `only_character`.)
+        if selection_reason == "only_character"
+            && next_participant_id.is_some()
+            && next_participant_id.as_deref() == turn_state.last_speaker_id.as_deref()
+            && !effective_all_llm
+            && !guards.never_pause_for_user
+        {
+            tracing::info!(
+                chat_id = %chat_id,
+                chain_depth,
+                participant_id = %next_participant_id.as_deref().unwrap_or_default(),
+                "[TurnOrchestrator] Lone character has answered; floor returns to the operator",
+            );
+            return Ok(ChainDecision::stop(ChainReason::UserTurn));
+        }
     }
 
     // No next speaker.
@@ -1182,5 +1207,159 @@ mod tests {
                 "INFO {T} [TurnOrchestrator] Chain decision: continue chat_id={CHAT} chain_depth=2 next_participant_id=p1 character_name=Unknown selection_reason=queue"
             )]
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // P4.D310 (v4 `6069a7acd`, bug 249): the lone character's early return.
+    // The seat carries a character id (no character row — the name falls back
+    // to `Unknown`) so the selector counts it as the ONE active character
+    // (`only_character`); `seed_chat`'s empty id is not a character at all.
+    // -----------------------------------------------------------------------
+
+    /// The lone seat — a real UUID, as every message row's `participantId`
+    /// must be (the read's per-row schema skips any other).
+    const SEAT: &str = "a1000000-0000-4000-8000-000000000127";
+
+    /// One LLM seat [`SEAT`] with a character id, the given queue, and
+    /// `messages` as `(role, participant id)` rows in order.
+    async fn seed_lone_chat(db: &Db, turn_queue: &str, messages: &[(&str, Option<&str>)]) {
+        seed_chat(db, false, turn_queue).await;
+        let mut participants = json!([{
+            "id": SEAT, "type": "CHARACTER",
+            "characterId": "c1000000-0000-4000-8000-0000000000a1",
+            "controlledBy": "llm", "displayOrder": 0, "isActive": true,
+            "status": "active",
+            "createdAt": "2026-09-29T00:00:00.000Z",
+            "updatedAt": "2026-09-29T00:00:00.000Z"
+        }])
+        .to_string();
+        let events: Vec<crate::db::chats_messages::ChatEventInput> = messages
+            .iter()
+            .enumerate()
+            .map(|(i, (role, participant))| {
+                serde_json::from_value(json!({
+                    "type": "message",
+                    // A real UUID: the read's per-row schema skips any other.
+                    "id": format!("e1000000-0000-4000-8000-00000000012{i}"),
+                    "role": role,
+                    "content": format!("line {i}"),
+                    "participantId": participant,
+                    "createdAt": format!("2026-09-29T00:00:0{i}.000Z"),
+                }))
+                .expect("an event")
+            })
+            .collect();
+        db.write(move |w| {
+            let conn = w.main().connection();
+            conn.execute(
+                "UPDATE chats SET participants = ?1 WHERE id = ?2",
+                rusqlite::params![std::mem::take(&mut participants), CHAT],
+            )?;
+            if !events.is_empty() {
+                w.main().chat_messages().add_messages(CHAT, &events)?;
+            }
+            Ok(())
+        })
+        .await
+        .unwrap();
+    }
+
+    /// [`decide`] with the user participant and the guard spelled out.
+    async fn decide_as(
+        db: &Db,
+        user_participant_id: Option<&str>,
+        depth: i64,
+        guards: ChainGuards,
+    ) -> (&'static str, Vec<String>) {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let _g = tracing::subscriber::set_default(
+            tracing_subscriber::registry().with(crate::test_support::CaptureLayer(logs.clone())),
+        );
+        let decision = should_chain_next(
+            db,
+            CHAT,
+            user_participant_id,
+            depth,
+            0,
+            0,
+            &ChainConfig::default(),
+            guards,
+            &DrawSource::constant(0.0),
+        )
+        .await
+        .expect("a decision");
+        let lines = logs
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.contains("[TurnOrchestrator]"))
+            .cloned()
+            .collect();
+        (decision.reason.as_str(), lines)
+    }
+
+    const LONE: &str = "Lone character has answered; floor returns to the operator";
+
+    /// The home leg (corpus row L1's shape): the operator spoke, the lone
+    /// character answered, and the floor returns — v4's INFO, snake_case like
+    /// the file's seven siblings (P4.D310 R-2).
+    #[tokio::test]
+    async fn a_lone_character_who_answered_returns_the_floor() {
+        let (_d, db) = provisioned();
+        seed_lone_chat(&db, "[]", &[("USER", None), ("ASSISTANT", Some(SEAT))]).await;
+        let (reason, lines) = decide_as(&db, Some("__user__"), 2, ChainGuards::default()).await;
+        assert_eq!(reason, "user_turn", "{lines:?}");
+        assert_eq!(
+            lines,
+            vec![format!(
+                "INFO {T} [TurnOrchestrator] {LONE} chat_id={CHAT} chain_depth=2 participant_id={SEAT}"
+            )]
+        );
+    }
+
+    /// Silence (L2): the lone character has not spoken yet — it chains.
+    #[tokio::test]
+    async fn a_lone_character_who_has_not_spoken_chains_silently() {
+        let (_d, db) = provisioned();
+        seed_lone_chat(&db, "[]", &[]).await;
+        let (reason, lines) = decide_as(&db, Some("__user__"), 2, ChainGuards::default()).await;
+        assert_eq!(reason, "continue");
+        assert!(!lines.iter().any(|l| l.contains(LONE)), "{lines:?}");
+    }
+
+    /// Silence (L3): a genuinely all-LLM chat (no user, no USER row) keeps the
+    /// monologue — the all-LLM pause governs it.
+    #[tokio::test]
+    async fn a_genuinely_all_llm_monologue_chains_silently() {
+        let (_d, db) = provisioned();
+        seed_lone_chat(&db, "[]", &[("ASSISTANT", Some(SEAT))]).await;
+        let (reason, lines) = decide_as(&db, None, 2, ChainGuards::default()).await;
+        assert_eq!(reason, "continue");
+        assert!(!lines.iter().any(|l| l.contains(LONE)), "{lines:?}");
+    }
+
+    /// Silence (L7): an autonomous room keeps its monologue.
+    #[tokio::test]
+    async fn an_autonomous_room_keeps_its_monologue_silently() {
+        let (_d, db) = provisioned();
+        seed_lone_chat(&db, "[]", &[("USER", None), ("ASSISTANT", Some(SEAT))]).await;
+        let guards = ChainGuards {
+            never_pause_for_user: true,
+        };
+        let (reason, lines) = decide_as(&db, Some("__user__"), 2, guards).await;
+        assert_eq!(reason, "continue");
+        assert!(!lines.iter().any(|l| l.contains(LONE)), "{lines:?}");
+    }
+
+    /// Silence (L6): a queued turn for the lone character runs — the queue pick
+    /// never reaches the selector arm.
+    #[tokio::test]
+    async fn a_queued_lone_character_runs_silently() {
+        let (_d, db) = provisioned();
+        seed_lone_chat(&db, &format!("[\"{SEAT}\"]"), &[("USER", None)]).await;
+        let (reason, lines) = decide_as(&db, Some("__user__"), 2, ChainGuards::default()).await;
+        assert_eq!(reason, "continue");
+        assert!(!lines.iter().any(|l| l.contains(LONE)), "{lines:?}");
     }
 }

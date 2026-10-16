@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — fix(chat): a lone character who has answered returns the floor to the operator (bug 249, P4.D310)
+
+_Versions: core 0.0.1306._
+
+Ports v4 bug 249 (`6069a7acd`). In a chat with one LLM character and a human present, `should_chain_next` now returns `user_turn` once that character has answered: the selector picked it as `only_character`, it spoke last, the chat is not genuinely all-LLM, and the room does not set `never_pause_for_user`. It logs v4's INFO `[TurnOrchestrator] Lone character has answered; floor returns to the operator` with snake_case fields, matching the file's other lines. Before this, a persona-less one-on-one chat chained the character to the depth cap on every message. The selector is unchanged. `turn_orchestrator_tier2_equivalence` now passes `neverPauseForUser` per op on both sides, adds nine lone-seat rows (4 were red before the port), and reports every diverging op. Five in-crate pins cover the line and its four silence legs. The pin is mutation-proven. A lone user-controlled seat is not affected: v4's selector already answers `user_turn` for it. The oracle measured this, so no v4 filing is needed.
+
 #### 2026-10-16 — docs(porting): P4.D306 lane record — the red-first counts, the three entrances' set behaviour, the catalog and Zod 4.6.7 findings, the hand-offs
 
 _No crate versions bumped._
