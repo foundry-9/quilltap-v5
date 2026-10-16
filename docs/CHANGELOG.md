@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — docs(porting): drift ledger records six more v4 commits past the `83334b9a5` pin — the ELEVENTH D23 move among them
+
+_Docs-only change._
+
+`/driftcheck`: v4 `main` is at `b2793400f` (`4.11.0-dev.9`), 25 commits past the baseline; `bugfix` and `release` are unchanged and bugfix carries no unabsorbed content. The checkout is clean now that the 2026-10-15 dirt landed as `f0db8cbb8` (Pascal wardrobe effects plus a composite `wardrobe_take_off` fix) and `6069a7acd` (bug 249, the lone-character chain runaway). The other new rows are `4877fc2da` (composer slash commands, adding `chat_settings.composerSlashCommands` as the eleventh D23 move), `b93c2efda` (two dependency specs), `eb5d42338` (the dependency batch, including `openai` 7.30.0 to 7.34.0 re-bundled into every plugin), and `b2793400f` (Lexical 0.52 plus bug 251, whose narrowed code-block trim applies to v5's composer). All six are UNPROCESSED. The pin is still required at `83334b9a5`, and one re-dump should carry the tenth and eleventh moves.
+
 #### 2026-10-15 — unify: the `83334b9a5` memory-refactor + scenarios drift catch-up round — sixteen lanes (P4.D288–P4.D303), the baseline moves `4a38222e6` → `83334b9a5`
 
 _Versions: core 0.0.1305, host 0.0.207, SPA 0.5.862 (web 0.0.240, cli 0.0.33 at the lanes' highest; tauri 0.0.9 and harness 0.0.1110 unchanged)._
