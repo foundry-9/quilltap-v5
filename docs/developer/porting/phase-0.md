@@ -34,6 +34,10 @@ SQLCipher — but v4 sets **no `cipher=` pragma**, so it uses the default cipher
 `better-sqlite3-multiple-ciphers` (the binding for the C project
 **SQLite3MultipleCiphers**, utelle): **sqleet = ChaCha20-Poly1305**. Confirmed
 empirically — `PRAGMA cipher` on Friday → `chacha20`.
+v4's own `README.md` and `CLAUDE.md` say ChaCha20 as of `3f64d3a6c`
+(2026-10-14 — "not SQLCipher, despite the identifiers");
+`docs/developer/DATABASE_ENCRYPTION.md` still does not (13 hits at
+`25b8fab6a`), so the mirror's copy keeps the error by design.
 
 - **`rusqlite` + `bundled-sqlcipher` is the WRONG dependency.** Stock SQLCipher
   is AES-only; it returns `NotADatabase` on every real Quilltap DB regardless of

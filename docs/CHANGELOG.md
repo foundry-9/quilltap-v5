@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — docs(porting): P4.D313 lane record — the `25b8fab6a` vendored trees, the NO-PORT ratification evidence, the `phase-0.md` cipher note
+
+_Docs-only change._
+
+The lane record in `status-log.md`: the red-first set with assertion text, the help / schema / 61-row mirror md5 tables, the NO-PORT evidence for ten whole rows and seven halves (each `--stat` re-run at lane time; `7417e9a1b`'s harness obligation cited as discharged by P4.D314's `REAIM` `abea3f336`), the R-7 dependency counts, the HANDOFFs (the `composer-slash-commands` card and About blurbs to P4.D308, the SPA `console.debug` to P4.D309, the CLI bytes to P4.D312), and the gate. `phase-0.md` notes that v4's README and CLAUDE.md now say ChaCha20 while `DATABASE_ENCRYPTION.md` still does not. The order's status header reads LANE COMPLETE.
+
 #### 2026-10-16 — vendor(docs): the `docs/v4/` mirror brought to v4 `25b8fab6a` — 61 operations, 484 → 491 tracked (P4.D313 U3)
 
 _Docs-only change._
