@@ -17,8 +17,9 @@ use serde_json::{Map, Value};
 use crate::db::characters_read;
 use crate::db::runtime::Db;
 use crate::pascal::custom_tool_types::{
-    AnyOperand, LlmComparator, NumberOrParamRef, NumericComparator, ParamComparator, ParamRef,
-    Roll, RollRange, StringOperand, Visibility, When, WhenObject,
+    AnyOperand, CustomToolEffect, CustomToolEffectBody, LlmComparator, NumberOrParamRef,
+    NumericComparator, ParamComparator, ParamRef, Roll, RollRange, StringOperand, Visibility,
+    WardrobeEffectAction, When, WhenObject,
 };
 use crate::pascal::custom_tools::LlmInvoker;
 use crate::pascal::js_value::{json_stringify, number_to_string};
@@ -98,11 +99,55 @@ const RUN_CUSTOM_PREAMBLE: &str = concat!(
     "Do not describe the result before calling, and do not re-run a tool to get a better answer.\n",
     "An outcome table may also consult your own character's metadata, so the same tool can deal differently to different characters.\n",
     "Some tools additionally pose a question to a separate model mid-run and let its answer steer the outcome; that consult happens server-side too, and you never speak for it.\n",
-    "Some tools record side effects when they run — adjusting the scene's persistent state or the rolling character's own records, server-side, as part of the roll.\n",
+    "Some tools record side effects when they run — adjusting the scene's persistent state, the rolling character's own records, or what they are wearing, server-side, as part of the roll.\n",
     "Some tools consult, or adjust, the rolling character's timed progressions — recharges, gestations, countdowns — server-side; you cannot set one yourself.\n",
     "\n",
     "Available tools:"
 );
+
+/// The `Side effects:` line's clauses (v4 `describeEffects`, `f0db8cbb8`):
+/// `writes a, b` for the value writes (targets deduplicated in declaration
+/// order, v4's `[...new Set(...)]`), then one clause per wardrobe gesture in
+/// file order — `wears Cloak of Night, Boots`, `takes off {{params.garment}}`
+/// (+ ` (<slot> only)` when one is named), `clears hair` — each pushed only if
+/// that exact string is not already there; `"; "`-joined. Items render
+/// verbatim and joined blindly (`mode` never appears; an `add_to_slot` wear
+/// takes no slot suffix).
+pub fn describe_effects(effects: &[CustomToolEffect]) -> String {
+    let mut targets: Vec<&str> = Vec::new();
+    for effect in effects {
+        if let CustomToolEffectBody::Write { target, .. } = &effect.body {
+            if !targets.contains(&target.as_str()) {
+                targets.push(target);
+            }
+        }
+    }
+    let mut clauses: Vec<String> = Vec::new();
+    if !targets.is_empty() {
+        clauses.push(format!("writes {}", targets.join(", ")));
+    }
+    for effect in effects {
+        let CustomToolEffectBody::Wardrobe(gesture) = &effect.body else {
+            continue;
+        };
+        let items = gesture.items.as_deref().unwrap_or_default().join(", ");
+        let clause = match gesture.action {
+            WardrobeEffectAction::Wear => format!("wears {items}"),
+            WardrobeEffectAction::TakeOff => match gesture.slot.as_deref() {
+                Some(slot) => format!("takes off {items} ({slot} only)"),
+                None => format!("takes off {items}"),
+            },
+            // v4 `clears ${slot}` — load validation guarantees the slot.
+            WardrobeEffectAction::ClearSlot => {
+                format!("clears {}", gesture.slot.as_deref().unwrap_or("undefined"))
+            }
+        };
+        if !clauses.contains(&clause) {
+            clauses.push(clause);
+        }
+    }
+    clauses.join("; ")
+}
 
 /// Render a `NumberOrParamRef` operand bare (v4 template coercion `${v}`):
 /// a `$param` reference prints its target's name, a literal its JS `String(n)`.
@@ -404,16 +449,10 @@ pub fn build_run_custom_description(roster: &[DiscoveredCustomTool]) -> String {
             // `revealOdds: false` this line is gone with the rest of the odds
             // (the `continue` above): the consequences stay as hidden as the
             // thresholds. (The human popup still sees the targets via the
-            // vocabulary — the file is the user's own.)
-            //
-            // Deduplicated in DECLARATION order, v4's `[...new Set(...)]`.
-            let mut targets: Vec<&str> = Vec::new();
-            for effect in effects {
-                if !targets.contains(&effect.target.as_str()) {
-                    targets.push(&effect.target);
-                }
-            }
-            lines.push(format!("    Side effects: writes {}", targets.join(", ")));
+            // vocabulary — the file is the user's own.) Wardrobe gestures name
+            // their item references verbatim, placeholders and all — what may
+            // be worn, not which outcome wears it.
+            lines.push(format!("    Side effects: {}", describe_effects(effects)));
         }
         for outcome in &definition.outcomes {
             lines.push(format!(
@@ -827,6 +866,29 @@ mod tests {
         let def: Value = serde_json::from_str(json).unwrap();
         let pinned = def["description"].as_str().unwrap();
         assert_eq!(build_run_custom_description(&[]), pinned);
+    }
+
+    /// v4 `describeEffects` edge pins beyond the corpus (P4.D306 Tier 2 item
+    /// 16): items are joined blindly (a comma inside a title reads as two),
+    /// and ` (<slot> only)` renders on any take-off naming a slot, composite
+    /// or not — the description never consults a wardrobe.
+    #[test]
+    fn describe_effects_joins_blindly_and_suffixes_any_named_take_off_slot() {
+        let tool = crate::pascal::custom_tool_types::safe_parse(&serde_json::json!({
+            "name": "edges", "description": "d",
+            "effects": [
+                { "wardrobe": { "action": "wear", "items": ["Hat, Feathered"] } },
+                { "wardrobe": { "action": "take_off", "items": ["Regalia"], "slot": "top" } },
+                { "target": "state.x", "value": 1 },
+                { "target": "state.x", "value": 2 },
+            ],
+            "outcomes": [{ "when": true, "message": "x", "state": "info" }],
+        }))
+        .unwrap();
+        assert_eq!(
+            describe_effects(tool.effects.as_deref().unwrap()),
+            "writes state.x; wears Hat, Feathered; takes off Regalia (top only)"
+        );
     }
 
     #[test]

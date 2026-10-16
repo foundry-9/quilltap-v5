@@ -16,10 +16,11 @@ use serde::{Serialize, Serializer};
 use serde_json::{Map, Value};
 
 use super::custom_tool_types::{
-    is_state_ref_value, parse_effect_target, AnyOperand, CustomToolLlm, CustomToolParameter,
-    EffectTarget, EffectValue, EffectWhen, LlmComparator, MetadataComparator, NumberOrParamRef,
-    NumericComparator, OutcomeState, ParamComparator, ParameterType, QtapCustomTool, Roll,
-    RollRange, StateRef, StateRefFallback, StringOperand, Visibility, When, WhenObject,
+    is_state_ref_value, parse_effect_target, AnyOperand, CustomToolEffectBody, CustomToolLlm,
+    CustomToolParameter, CustomToolWardrobeGesture, EffectTarget, EffectValue, EffectWhen,
+    LlmComparator, MetadataComparator, NumberOrParamRef, NumericComparator, OutcomeState,
+    ParamComparator, ParameterType, PutOnMode, QtapCustomTool, Roll, RollRange, StateRef,
+    StateRefFallback, StringOperand, Visibility, WardrobeEffectAction, When, WhenObject,
     MAX_LLM_OUTPUT_LENGTH,
 };
 use super::dice::{format_dice_breakdown, parse_dice_notation, roll_notation, RandomBytes};
@@ -1183,9 +1184,10 @@ pub fn matches_effect_when(
     matches_when_object(&when.base, &subjects.base, tool_name)
 }
 
-/// One effect, resolved by the pure core: either the value it would write, or
-/// the reason it was skipped. The entrances (and only they) apply the former;
-/// the Proving Bench shows both as a dry run.
+/// One effect, resolved by the pure core: the value it would write, the
+/// wardrobe gesture it would make, or the reason it was skipped. The entrances
+/// (and only they) apply the first two; the Proving Bench shows all three as a
+/// dry run.
 ///
 /// Serialization is payload — the Workbench preview body spreads the whole run
 /// result — so the key order below is v4's object literals, not a convenience.
@@ -1196,17 +1198,64 @@ pub enum ResolvedEffect {
         target: EffectTarget,
         value: ResolvedValue,
     },
+    /// v4's middle arm `{ index, wardrobe }` (`f0db8cbb8`).
+    Wardrobe {
+        index: usize,
+        wardrobe: ResolvedWardrobeGesture,
+    },
     Skipped {
         index: usize,
         reason: String,
     },
 }
 
+/// A wardrobe gesture with its item references rendered — ready for the
+/// applier (v4 `ResolvedWardrobeGesture`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedWardrobeGesture {
+    pub action: WardrobeEffectAction,
+    /// Rendered, trimmed item references in file order. Empty strings are
+    /// dropped here, with a debug log.
+    pub items: Vec<String>,
+    pub mode: Option<PutOnMode>,
+    pub slot: Option<String>,
+}
+
+impl Serialize for ResolvedWardrobeGesture {
+    /// `{ action, items, mode?, slot? }` — `items` ALWAYS present (`[]` on a
+    /// `clear_slot`), `mode` / `slot` only when defined.
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let mut m = s.serialize_map(None)?;
+        m.serialize_entry("action", self.action.as_str())?;
+        m.serialize_entry("items", &self.items)?;
+        if let Some(mode) = self.mode {
+            m.serialize_entry("mode", mode.as_str())?;
+        }
+        if let Some(slot) = &self.slot {
+            m.serialize_entry("slot", slot)?;
+        }
+        m.end()
+    }
+}
+
 impl ResolvedEffect {
-    /// True for a resolved effect that would actually write (v4
-    /// `isApplicableEffect`).
+    /// True for a resolved effect of either kind that would apply — the
+    /// Proving Bench's count (v4 `isApplicableEffect`, whose meaning
+    /// `f0db8cbb8` widened from "would write").
     pub fn is_applicable(&self) -> bool {
+        self.is_applicable_write() || self.is_applicable_wardrobe()
+    }
+
+    /// True for a resolved effect that would actually write a value (v4
+    /// `isApplicableWriteEffect`).
+    pub fn is_applicable_write(&self) -> bool {
         matches!(self, ResolvedEffect::Applicable { .. })
+    }
+
+    /// True for a resolved effect that would actually change an outfit (v4
+    /// `isApplicableWardrobeEffect`).
+    pub fn is_applicable_wardrobe(&self) -> bool {
+        matches!(self, ResolvedEffect::Wardrobe { .. })
     }
 }
 
@@ -1222,6 +1271,10 @@ impl Serialize for ResolvedEffect {
                 m.serialize_entry("index", index)?;
                 m.serialize_entry("target", &effect_target_to_value(target))?;
                 m.serialize_entry("value", &value.to_value())?;
+            }
+            ResolvedEffect::Wardrobe { index, wardrobe } => {
+                m.serialize_entry("index", index)?;
+                m.serialize_entry("wardrobe", wardrobe)?;
             }
             ResolvedEffect::Skipped { index, reason } => {
                 m.serialize_entry("index", index)?;
@@ -1331,13 +1384,29 @@ fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Ve
                 return skipped(index, "condition did not hold".to_string());
             }
 
-            let target = match parse_effect_target(&effect.target) {
+            // v4 then guards `effect is neither a complete write nor a
+            // wardrobe gesture` (`custom-tools.ts:1219-1222`); here that state
+            // is unrepresentable (`CustomToolEffectBody`), so there is no arm.
+            let (target, value) = match &effect.body {
+                CustomToolEffectBody::Wardrobe(gesture) => {
+                    return resolve_wardrobe_gesture(
+                        &definition.name,
+                        index,
+                        gesture,
+                        &template_vars,
+                        &skipped,
+                    )
+                }
+                CustomToolEffectBody::Write { target, value } => (target, value),
+            };
+
+            let target = match parse_effect_target(target) {
                 Ok(t) => t,
                 Err(reason) => return skipped(index, format!("target {reason}")),
             };
 
-            let EffectValue::Str(source) = &effect.value else {
-                let value = match &effect.value {
+            let EffectValue::Str(source) = value else {
+                let value = match value {
                     EffectValue::Number(n) => ResolvedValue::Number(*n),
                     EffectValue::Bool(b) => ResolvedValue::Bool(*b),
                     EffectValue::Str(_) => unreachable!("handled by the let-else"),
@@ -1365,6 +1434,53 @@ fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Ve
             }
         })
         .collect()
+}
+
+/// Render a wardrobe gesture's item references with the same subjects an
+/// effect expression gets (v4 `resolveWardrobeGesture`). Templates, not
+/// expressions: a reference that renders empty is dropped (a `wear` or
+/// `take_off` left with none is skipped), and one that keeps an unresolved
+/// placeholder is passed on as written — it will simply fail to resolve in the
+/// wardrobe, fail-soft, at the applier.
+fn resolve_wardrobe_gesture(
+    tool_name: &str,
+    index: usize,
+    gesture: &CustomToolWardrobeGesture,
+    vars: &TemplateVars,
+    skipped: &dyn Fn(usize, String) -> ResolvedEffect,
+) -> ResolvedEffect {
+    let mut items: Vec<String> = Vec::new();
+    for raw in gesture.items.iter().flatten() {
+        let rendered = js_trim(&render_template(raw, vars)).to_string();
+        if rendered.is_empty() {
+            // Keys follow this file's sibling `Custom tool effect skipped`
+            // line (`effect_index`, snake_case — P4.D306 R-15).
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = "pascal.custom-tools",
+                tool = tool_name,
+                effect_index = index,
+                reference = raw.as_str(),
+                "Custom tool wardrobe item reference rendered empty; dropped",
+            );
+            continue;
+        }
+        items.push(rendered);
+    }
+
+    if gesture.action != WardrobeEffectAction::ClearSlot && items.is_empty() {
+        return skipped(index, "every item reference rendered empty".to_string());
+    }
+
+    ResolvedEffect::Wardrobe {
+        index,
+        wardrobe: ResolvedWardrobeGesture {
+            action: gesture.action,
+            items,
+            mode: gesture.mode,
+            slot: gesture.slot.clone(),
+        },
+    }
 }
 
 /// Render a number for display: integers plain, floats to 4 significant digits.
@@ -2410,5 +2526,125 @@ mod simulate_tests {
         }));
         let mut rng = OsRandomBytes;
         assert!(simulate_outcomes(&d, None, 10, None, None, None, &mut rng, None).is_err());
+    }
+}
+
+#[cfg(test)]
+mod wardrobe_gesture_tests {
+    //! v4 `resolveWardrobeGesture` (`f0db8cbb8`): the `rendered empty` DEBUG
+    //! pinned on the caller thread, with its silence leg. The rendered bytes
+    //! themselves are pinned against v4's real core by
+    //! `pascal_custom_tools_execution_equivalence`'s `effects-wardrobe-*` rows.
+    use super::*;
+    use crate::test_support::captured_with;
+
+    fn vars<'a>(params: &'a ResolvedParams) -> TemplateVars<'a> {
+        TemplateVars {
+            value: 1.0,
+            roll: 1.0,
+            dice: "",
+            params,
+            metadata: None,
+            progress: None,
+            now: Some(0),
+            llm: None,
+            state: None,
+        }
+    }
+
+    fn gesture(action: WardrobeEffectAction, items: &[&str]) -> CustomToolWardrobeGesture {
+        CustomToolWardrobeGesture {
+            action,
+            items: Some(items.iter().map(|s| s.to_string()).collect()),
+            mode: None,
+            slot: None,
+        }
+    }
+
+    fn skipped(index: usize, reason: String) -> ResolvedEffect {
+        ResolvedEffect::Skipped { index, reason }
+    }
+
+    #[test]
+    fn an_item_rendering_empty_is_dropped_with_the_debug_line() {
+        let params: ResolvedParams = vec![("garment".into(), ResolvedValue::String(String::new()))];
+        let g = gesture(
+            WardrobeEffectAction::TakeOff,
+            &["{{params.garment}}", "Gloves"],
+        );
+        let (out, lines) =
+            captured_with(|| resolve_wardrobe_gesture("blank", 3, &g, &vars(&params), &skipped));
+        let ResolvedEffect::Wardrobe { index, wardrobe } = out else {
+            panic!("{out:?}")
+        };
+        assert_eq!(index, 3);
+        assert_eq!(wardrobe.items, vec!["Gloves".to_string()]);
+        let hits: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Custom tool wardrobe item reference rendered empty; dropped"))
+            .collect();
+        assert_eq!(hits.len(), 1, "{lines:?}");
+        let line = hits[0];
+        for field in [
+            "context=pascal.custom-tools",
+            "tool=blank",
+            "effect_index=3",
+            "reference={{params.garment}}",
+        ] {
+            assert!(line.contains(field), "missing {field}: {line}");
+        }
+        // Key order: v4's `tool, effectIndex, reference` after the context.
+        let at = |k: &str| line.find(k).unwrap();
+        assert!(at("tool=") < at("effect_index=") && at("effect_index=") < at("reference="));
+    }
+
+    #[test]
+    fn every_item_empty_skips_through_the_shared_helper_and_clear_slot_never_does() {
+        let params: ResolvedParams = vec![("garment".into(), ResolvedValue::String("  ".into()))];
+        let wear = gesture(WardrobeEffectAction::Wear, &["{{params.garment}}"]);
+        let (out, _) =
+            captured_with(|| resolve_wardrobe_gesture("blank", 0, &wear, &vars(&params), &skipped));
+        assert_eq!(
+            out,
+            ResolvedEffect::Skipped {
+                index: 0,
+                reason: "every item reference rendered empty".into()
+            }
+        );
+        // `clear_slot` with no items is a gesture, never a skip.
+        let clear = CustomToolWardrobeGesture {
+            action: WardrobeEffectAction::ClearSlot,
+            items: None,
+            mode: None,
+            slot: Some("hair".into()),
+        };
+        let out = resolve_wardrobe_gesture("blank", 1, &clear, &vars(&params), &skipped);
+        assert_eq!(
+            serde_json::to_string(&out).unwrap(),
+            r#"{"index":1,"wardrobe":{"action":"clear_slot","items":[],"slot":"hair"}}"#
+        );
+    }
+
+    #[test]
+    fn a_rendered_item_logs_nothing() {
+        // The silence leg: nothing empties, so the line never fires.
+        let params: ResolvedParams =
+            vec![("garment".into(), ResolvedValue::String("Boots".into()))];
+        let mut g = gesture(
+            WardrobeEffectAction::Wear,
+            &["  {{params.garment}} ", "Hat"],
+        );
+        g.mode = Some(PutOnMode::Replace);
+        let (out, lines) =
+            captured_with(|| resolve_wardrobe_gesture("dress", 0, &g, &vars(&params), &skipped));
+        assert!(
+            !lines.iter().any(|l| l.contains("rendered empty")),
+            "{lines:?}"
+        );
+        assert_eq!(
+            serde_json::to_string(&out).unwrap(),
+            r#"{"index":0,"wardrobe":{"action":"wear","items":["Boots","Hat"],"mode":"replace"}}"#
+        );
+        assert!(out.is_applicable() && out.is_applicable_wardrobe() && !out.is_applicable_write());
     }
 }

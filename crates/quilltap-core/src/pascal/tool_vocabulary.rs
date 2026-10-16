@@ -29,7 +29,8 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::custom_tool_types::{
-    is_state_ref_value, parse_effect_target, EffectTarget, EffectValue, QtapCustomTool, When,
+    is_state_ref_value, parse_effect_target, CustomToolEffectBody, EffectTarget, EffectValue,
+    QtapCustomTool, WardrobeEffectAction, When,
 };
 use super::placeholders::{scan_placeholders, PlaceholderRef};
 use crate::collation::locale_compare;
@@ -93,6 +94,17 @@ pub struct ToolVocabulary {
     pub progress_writes: Vec<String>,
     /// True when some rendered string quotes `{{now}}`.
     pub now: bool,
+    /// Item references this tool's wardrobe effects may PUT ON the rolling
+    /// character, verbatim (a `{{params.garment}}` stays as written — it is
+    /// vocabulary, not a resolved garment). Sorted. (v4 `f0db8cbb8`, appended
+    /// after `now` in the interface AND the returned object — wire order.)
+    pub wears: Vec<String>,
+    /// Item references this tool's wardrobe effects may TAKE OFF, verbatim. Sorted.
+    #[serde(rename = "takesOff")]
+    pub takes_off: Vec<String>,
+    /// Slots this tool's wardrobe effects may CLEAR. Sorted.
+    #[serde(rename = "clearsSlots")]
+    pub clears_slots: Vec<String>,
 }
 
 /// True when a tool quotes nothing at all, and so has no vocabulary to show.
@@ -109,6 +121,9 @@ pub fn is_empty_vocabulary(vocabulary: &ToolVocabulary) -> bool {
         && vocabulary.progress.is_empty()
         && vocabulary.progress_writes.is_empty()
         && !vocabulary.now
+        && vocabulary.wears.is_empty()
+        && vocabulary.takes_off.is_empty()
+        && vocabulary.clears_slots.is_empty()
 }
 
 /// The mutable accumulator v4 calls `found` — insertion-ordered lists standing
@@ -128,6 +143,9 @@ struct Found {
     progress: Vec<String>,
     progress_writes: Vec<String>,
     now: bool,
+    wears: Vec<String>,
+    takes_off: Vec<String>,
+    clears_slots: Vec<String>,
 }
 
 /// The progression id out of a `"<id>.<field>"` sheet key. A key that somehow
@@ -198,8 +216,14 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
     // verbatim, so the one placeholder scanner reads them too; a condition's
     // metadata keys are reads like an outcome row's; and each target is a WRITE,
     // reported on its own lists because it is a different claim than a read.
+    // A wardrobe gesture's item references are templates too, scanned the same
+    // way, and the gesture itself is reported on the dress/undress lists.
     for effect in definition.effects.iter().flatten() {
-        if let EffectValue::Str(source) = &effect.value {
+        if let CustomToolEffectBody::Write {
+            value: EffectValue::Str(source),
+            ..
+        } = &effect.body
+        {
             collect_placeholders(source, &declared, &mut found);
         }
         for when in effect.when.iter() {
@@ -211,7 +235,34 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
             }
         }
 
-        let Ok(target) = parse_effect_target(&effect.target) else {
+        let target = match &effect.body {
+            CustomToolEffectBody::Wardrobe(gesture) => {
+                let items = gesture.items.as_deref().unwrap_or_default();
+                for item in items {
+                    collect_placeholders(item, &declared, &mut found);
+                }
+                match gesture.action {
+                    WardrobeEffectAction::Wear => {
+                        for item in items {
+                            add(&mut found.wears, item);
+                        }
+                    }
+                    WardrobeEffectAction::TakeOff => {
+                        for item in items {
+                            add(&mut found.takes_off, item);
+                        }
+                    }
+                    WardrobeEffectAction::ClearSlot => {
+                        if let Some(slot) = gesture.slot.as_deref() {
+                            add(&mut found.clears_slots, slot);
+                        }
+                    }
+                }
+                continue;
+            }
+            CustomToolEffectBody::Write { target, .. } => target,
+        };
+        let Ok(target) = parse_effect_target(target) else {
             continue; // load-rejected; nothing honest to report
         };
         match &target {
@@ -250,6 +301,9 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
         progress: sorted(found.progress),
         progress_writes: sorted(found.progress_writes),
         now: found.now,
+        wears: sorted(found.wears),
+        takes_off: sorted(found.takes_off),
+        clears_slots: sorted(found.clears_slots),
     }
 }
 

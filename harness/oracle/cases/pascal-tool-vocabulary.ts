@@ -242,6 +242,39 @@ const corpus: Array<[string, Record<string, unknown>]> = [
     ],
     effects: [{ target: 'progress.cannon.startTime', value: 1 }],
   })],
+
+  // ---- wardrobe gestures (f0db8cbb8, P4.D306) -------------------------------
+  // `wears` / `takesOff` / `clearsSlots` after `now`; item references verbatim
+  // and SORTED (`locale_compare`); each item scanned as a template, so its
+  // placeholders reach `params` / `metadata` / `state` / `now` / `llm`; a
+  // gesture is never a write.
+  ['wardrobe-three-lists', withEffects([
+    { target: 'state.encounter.count', value: 1 },
+    { wardrobe: { action: 'wear', items: ['Cloak of Night', '{{params.garment}}'] } },
+    { wardrobe: { action: 'take_off', items: ['{{metadata.favouriteHat}}'] } },
+    { wardrobe: { action: 'clear_slot', slot: 'hair' } },
+  ], { parameters: { garment: { type: 'string', default: 'Boots' } } })],
+  ['wardrobe-clear-slot-no-items', withEffects([{ wardrobe: { action: 'clear_slot', slot: 'footwear' } }])],
+  ['wardrobe-item-quotes-state-now-llm', withEffects([
+    { wardrobe: { action: 'wear', items: ['{{state.uniform}} coat', 'Badge {{now}}', '{{llm}}', '{{value}} {{roll}}'] } },
+  ], LLM)],
+  ['wardrobe-sort-mixed-case-and-brace', withEffects([
+    { wardrobe: { action: 'wear', items: ['zephyr cloak', 'Apron', '{{params.material}}', 'apron', '_hat', 'Éclat'] } },
+    { wardrobe: { action: 'take_off', items: ['b', 'A', 'B', 'a'] } },
+    { wardrobe: { action: 'clear_slot', slot: 'top' } },
+    { wardrobe: { action: 'clear_slot', slot: 'accessories' } },
+    { wardrobe: { action: 'clear_slot', slot: 'top' } },
+  ], STR_PARAM)],
+  ['wardrobe-duplicate-across-gestures', withEffects([
+    { wardrobe: { action: 'wear', items: ['Hat'] } },
+    { wardrobe: { action: 'wear', items: ['Hat', 'Gloves'] } },
+    { wardrobe: { action: 'take_off', items: ['Hat'] } },
+  ])],
+  // An unknown family loads (and names nothing beyond the item itself).
+  ['wardrobe-unknown-family-in-item', withEffects([{ wardrobe: { action: 'wear', items: ['{{mystery}} hat'] } }])],
+  // A gesture-only tool is NOT empty; an empty one carries the three `[]`s.
+  ['wardrobe-gesture-only-is-not-empty', withEffects([{ wardrobe: { action: 'take_off', items: ['Gloves'] } }])],
+  ['wardrobe-empty-shape-has-three-keys', def({})],
 ];
 
 for (const [id, doc] of corpus) {

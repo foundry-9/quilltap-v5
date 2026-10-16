@@ -222,7 +222,9 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
         .iter()
         .filter_map(|e| match e {
             ResolvedEffect::Applicable { target, value, .. } => Some((target, value.to_value())),
-            ResolvedEffect::Skipped { .. } => None,
+            // v4 `isApplicableWriteEffect` — the write filter stays write-only;
+            // the gestures are `wardrobe_effects`' business, after the writes.
+            ResolvedEffect::Wardrobe { .. } | ResolvedEffect::Skipped { .. } => None,
         })
         .collect();
     if applicable.is_empty() {

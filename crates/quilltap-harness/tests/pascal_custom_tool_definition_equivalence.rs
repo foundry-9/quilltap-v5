@@ -28,10 +28,10 @@
 //!   QT_ORACLE_PASCAL_DEFINITION=/tmp/oracle-pascal-definition.ndjson \
 //!     cargo test -p quilltap-harness --test pascal_custom_tool_definition_equivalence
 
-use quilltap_core::pascal::custom_tool_types::When;
 use quilltap_core::pascal::custom_tool_types::{
     collect_unknown_keys, display_title, format_definition_issues, safe_parse,
 };
+use quilltap_core::pascal::custom_tool_types::{CustomToolEffectBody, When};
 use quilltap_core::pascal::tool_gate::{evaluate_tool_gate, has_tool_gate};
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -114,6 +114,7 @@ fn pascal_custom_tool_definition_matches_oracle() {
     // every row after it; the family still fails, naming each row.
     let mut failed_rows: Vec<String> = Vec::new();
     let mut defs_with_triggers = 0usize;
+    let mut defs_with_wardrobe_effects = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<Row>(line).unwrap() {
             Row::Title { id, input, out } => {
@@ -150,9 +151,17 @@ fn pascal_custom_tool_definition_matches_oracle() {
                                 .effects
                                 .iter()
                                 .flatten()
-                                .any(|e| e.target.starts_with("progress."))
+                                .any(|e| matches!(&e.body, CustomToolEffectBody::Write { target, .. } if target.starts_with("progress.")))
                             {
                                 defs_writing_progress += 1;
+                            }
+                            if tool
+                                .effects
+                                .iter()
+                                .flatten()
+                                .any(|e| e.is_wardrobe_effect())
+                            {
+                                defs_with_wardrobe_effects += 1;
                             }
                             if tool
                                 .available_when
@@ -265,6 +274,10 @@ fn pascal_custom_tool_definition_matches_oracle() {
     assert!(
         defs_with_triggers > 0,
         "no accepted definition row declares `triggers` (v4 `362426c8f`)"
+    );
+    assert!(
+        defs_with_wardrobe_effects > 0,
+        "no accepted definition row carries a wardrobe gesture (v4 `f0db8cbb8`)"
     );
     assert!(
         titles > 0 && defs > 0 && gates > 0,

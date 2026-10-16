@@ -589,6 +589,80 @@ const corpus: Array<[string, unknown]> = [
   // in the superRefine, so its sentences trail the others.
   ['effect-and-outcome-issue', { ...BASE, outcomes: [{ when: { params: { ghost: { gt: 1 } } }, message: '-', state: 'info' }, CATCH_ALL], effects: [{ target: 'nowhere', value: 1 }] }],
 
+  // ---- wardrobe gestures (f0db8cbb8, P4.D306) -----------------------------
+  // An effect is a write XOR a gesture: the `superRefine`'s three sentences at
+  // their paths, `wardrobeGestureProblems`' nine per-action rules at
+  // `effects.N.wardrobe.<field>`, the item-reference placeholder checks, the
+  // Zod shape's own refusals (`.min(1)`, `.max(8)`, `.max(200)`, strict, the
+  // three enums), and `validateEffects`' NEW issue order (`when` first).
+  ['effects-wardrobe-each-action', withEffects([
+    { wardrobe: { action: 'wear', items: ['Cloak of Night'] } },
+    { wardrobe: { action: 'wear', items: ['Ribbon'], mode: 'add_to_slot', slot: 'hair' } },
+    { wardrobe: { action: 'wear', items: ['Regalia'], mode: 'replace' } },
+    { when: { outcome: { eq: 'failure' } }, wardrobe: { action: 'take_off', items: ['Sundress'] } },
+    { wardrobe: { action: 'take_off', items: ['Sundress'], slot: 'top' } },
+    { wardrobe: { action: 'clear_slot', slot: 'hair' } },
+  ])],
+  // The author's key order is NOT the parsed order — Zod emits schema order.
+  ['effects-wardrobe-author-key-order', withEffects([
+    { wardrobe: { slot: 'hair', mode: 'add_to_slot', items: ['Ribbon'], action: 'wear' }, when: { outcome: { neq: 'failure' } } },
+  ])],
+  ['effects-wardrobe-param-template', withEffects([{ wardrobe: { action: 'wear', items: ['{{params.material}} gloves'] } }], STR_PARAM)],
+  ['effects-wardrobe-unknown-family', withEffects([{ wardrobe: { action: 'wear', items: ['{{mystery}}'] } }])],
+  ['effects-both-halves', withEffects([{ target: 'state.x', value: 1, wardrobe: { action: 'clear_slot', slot: 'hair' } }])],
+  ['effects-target-and-wardrobe', withEffects([{ target: 'state.x', wardrobe: { action: 'clear_slot', slot: 'hair' } }])],
+  ['effects-empty-object', withEffects([{}])],
+  ['effects-when-only', withEffects([{ when: { outcome: { eq: 'success' } } }])],
+  ['effects-write-no-value', withEffects([{ target: 'state.x' }])],
+  ['effects-write-no-target', withEffects([{ value: 1 }])],
+  ['effects-wardrobe-add-to-slot-no-slot', withEffects([{ wardrobe: { action: 'wear', items: ['Hat'], mode: 'add_to_slot' } }])],
+  ['effects-wardrobe-slot-without-add-to-slot', withEffects([{ wardrobe: { action: 'wear', items: ['Hat'], slot: 'hair' } }])],
+  ['effects-wardrobe-replace-with-slot', withEffects([{ wardrobe: { action: 'wear', items: ['Hat'], mode: 'replace', slot: 'hair' } }])],
+  ['effects-wardrobe-wear-no-items', withEffects([{ wardrobe: { action: 'wear' } }])],
+  ['effects-wardrobe-wear-no-items-add-to-slot', withEffects([{ wardrobe: { action: 'wear', mode: 'add_to_slot' } }])],
+  ['effects-wardrobe-take-off-mode', withEffects([{ wardrobe: { action: 'take_off', items: ['Hat'], mode: 'replace' } }])],
+  ['effects-wardrobe-take-off-no-items-mode', withEffects([{ wardrobe: { action: 'take_off', mode: 'wear' } }])],
+  ['effects-wardrobe-clear-slot-no-slot', withEffects([{ wardrobe: { action: 'clear_slot' } }])],
+  ['effects-wardrobe-clear-slot-items', withEffects([{ wardrobe: { action: 'clear_slot', slot: 'hair', items: ['Wig'] } }])],
+  ['effects-wardrobe-clear-slot-everything-wrong', withEffects([{ wardrobe: { action: 'clear_slot', items: ['Wig'], mode: 'wear' } }])],
+  ['effects-wardrobe-undeclared-param-at-index-1', withEffects([{ wardrobe: { action: 'wear', items: ['Hat', '{{params.ghost}}'] } }])],
+  ['effects-wardrobe-llm-no-block', withEffects([{ wardrobe: { action: 'wear', items: ['{{llm}}'] } }])],
+  ['effects-wardrobe-llm-with-block', withEffects([{ wardrobe: { action: 'wear', items: ['{{llm}}'] } }], LLM_BLOCK)],
+  ['effects-wardrobe-two-refs-one-item', withEffects([{ wardrobe: { action: 'take_off', items: ['{{params.ghost}} {{llm}}'] } }])],
+  ['effects-wardrobe-nine-items', withEffects([{ wardrobe: { action: 'wear', items: Array.from({ length: 9 }, (_, i) => `Item ${i}`) } }])],
+  ['effects-wardrobe-eight-items', withEffects([{ wardrobe: { action: 'wear', items: Array.from({ length: 8 }, (_, i) => `Item ${i}`) } }])],
+  ['effects-wardrobe-201-char-ref', withEffects([{ wardrobe: { action: 'wear', items: ['x'.repeat(201)] } }])],
+  ['effects-wardrobe-200-char-ref', withEffects([{ wardrobe: { action: 'wear', items: ['x'.repeat(200)] } }])],
+  ['effects-wardrobe-empty-ref', withEffects([{ wardrobe: { action: 'wear', items: [''] } }])],
+  ['effects-wardrobe-non-string-ref', withEffects([{ wardrobe: { action: 'wear', items: ['Hat', 5] } }])],
+  ['effects-wardrobe-empty-items', withEffects([{ wardrobe: { action: 'wear', items: [] } }])],
+  ['effects-wardrobe-clear-slot-empty-items', withEffects([{ wardrobe: { action: 'clear_slot', slot: 'hair', items: [] } }])],
+  ['effects-wardrobe-items-not-an-array', withEffects([{ wardrobe: { action: 'wear', items: 'Hat' } }])],
+  ['effects-wardrobe-items-long-string', withEffects([{ wardrobe: { action: 'wear', items: 'Cloak of Night' } }])],
+  ['effects-wardrobe-unknown-key', withEffects([{ wardrobe: { action: 'clear_slot', slot: 'hair', who: 'Bob' } }])],
+  ['effects-wardrobe-unknown-action', withEffects([{ wardrobe: { action: 'dress', items: ['Hat'] } }])],
+  ['effects-wardrobe-missing-action', withEffects([{ wardrobe: { items: ['Hat'] } }])],
+  ['effects-wardrobe-unknown-mode', withEffects([{ wardrobe: { action: 'wear', items: ['Hat'], mode: 'layer' } }])],
+  ['effects-wardrobe-unknown-slot', withEffects([{ wardrobe: { action: 'clear_slot', slot: 'gloves' } }])],
+  ['effects-wardrobe-not-an-object', withEffects([{ wardrobe: 'wear' }])],
+  ['effects-wardrobe-null', withEffects([{ wardrobe: null }])],
+  ['effects-wardrobe-and-unknown-effect-key', withEffects([{ wardrobe: { action: 'clear_slot', slot: 'hair' }, bogus: 1 }])],
+  ['effects-wardrobe-bad-when-and-bad-gesture', withEffects([{ when: { params: { ghost: { gt: 1 } } }, wardrobe: { action: 'clear_slot' } }])],
+  ['effects-cap-mixed', withEffects(Array.from({ length: MAX_EFFECTS + 1 }, (_, i) =>
+    i % 2 ? { target: `state.k${i}`, value: 1 } : { wardrobe: { action: 'clear_slot', slot: 'hair' } }))],
+  ['effects-over-cap-with-bad-element', withEffects([{ wardrobe: { action: 'dress' } }, ...Array.from({ length: MAX_EFFECTS }, (_, i) => ({ target: `state.k${i}`, value: 1 }))])],
+  ['effects-cap-mixed-at-cap', withEffects(Array.from({ length: MAX_EFFECTS }, (_, i) =>
+    i % 2 ? { target: `state.k${i}`, value: 1 } : { wardrobe: { action: 'clear_slot', slot: 'hair' } }))],
+  // The reorder: a write with BOTH a bad `when` subject and a bad target lists
+  // the `when` issue FIRST now (v4 `validateEffects` `:1279-1291`).
+  ['effects-write-when-order', withEffects([{ when: { params: { ghost: { gt: 1 } } }, target: 'nowhere', value: '{{params.phantom}}' }])],
+  ['effects-mixed-writes-and-gestures', withEffects([
+    { target: 'state.encounter.count', value: 1 },
+    { wardrobe: { action: 'wear', items: ['Cloak of Night', 'Boots'] } },
+    { target: 'metadata.ansibleTool', value: "'lens'" },
+    { wardrobe: { action: 'take_off', items: ['{{params.material}}'] } },
+  ], STR_PARAM)],
+
   // ---- P4.D169: the progress subject, at LOAD time ------------------------
   // Every writable field, one row each, generated from v4's own exported list
   // so a field added upstream arrives here rather than being forgotten. The

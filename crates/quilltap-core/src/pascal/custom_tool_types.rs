@@ -65,11 +65,14 @@ use serde_json::Value;
 
 use super::dice::{parse_dice_notation, MAX_DIE_SIDES, MIN_DIE_SIDES};
 use super::expressions::parse_expression;
+use super::placeholders::{scan_placeholders, PlaceholderRef};
 use crate::progressions::{
     is_progression_id, is_writable_progression_field, parse_progress_key,
     PROGRESSIONS_METADATA_KEY, WRITABLE_PROGRESSION_FIELDS,
 };
 use crate::state::paths::{parse_path, PathKey};
+use crate::wardrobe::WARDROBE_SLOT_TYPES;
+pub use crate::wear_ops::PutOnMode;
 
 /// Well-known folder, at a store's root, holding custom-tool definitions.
 pub const TOOLS_FOLDER: &str = "Tools";
@@ -114,6 +117,12 @@ pub const MAX_TRIGGER_PHRASE_LENGTH: usize = 80;
 
 /// Cap on an effect's `target` string, in characters.
 pub const MAX_EFFECT_TARGET_LENGTH: usize = 200;
+
+/// Cap on the item references one wardrobe effect may list (v4 `f0db8cbb8`).
+pub const MAX_WARDROBE_EFFECT_ITEMS: usize = 8;
+
+/// Cap on one wardrobe item reference (a title or id template), in characters.
+pub const MAX_WARDROBE_ITEM_REF_LENGTH: usize = 200;
 
 /// Re-exported for the same reason v4 re-exports it here: the effect `value`
 /// cap belongs to the format, and the format's importers should not have to
@@ -820,20 +829,248 @@ pub enum EffectValue {
     Str(String),
 }
 
-/// One side effect: a write the run records after the table has dealt.
+/// What a wardrobe effect does to the rolling character's outfit (v4
+/// `WardrobeEffectActionSchema`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WardrobeEffectAction {
+    Wear,
+    TakeOff,
+    ClearSlot,
+}
+
+impl WardrobeEffectAction {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            WardrobeEffectAction::Wear => "wear",
+            WardrobeEffectAction::TakeOff => "take_off",
+            WardrobeEffectAction::ClearSlot => "clear_slot",
+        }
+    }
+}
+
+/// The enum's options in v4's declaration order — the order Zod's
+/// `Invalid option` sentence lists them in.
+const WARDROBE_EFFECT_ACTIONS: [(&str, WardrobeEffectAction); 3] = [
+    ("wear", WardrobeEffectAction::Wear),
+    ("take_off", WardrobeEffectAction::TakeOff),
+    ("clear_slot", WardrobeEffectAction::ClearSlot),
+];
+
+/// The put-on modes a `wear` gesture may name — the `wardrobe_wear` tool's own
+/// (v4 `WardrobeEffectModeSchema`, `['wear','replace','add_to_slot']`). ONE
+/// mode type end to end: [`PutOnMode`]'s three variants and strings are
+/// exactly v4's, and v4's `wearItem` takes the same value.
+const WARDROBE_EFFECT_MODES: [(&str, PutOnMode); 3] = [
+    ("wear", PutOnMode::Wear),
+    ("replace", PutOnMode::Replace),
+    ("add_to_slot", PutOnMode::AddToSlot),
+];
+
+/// A wardrobe gesture: wear the listed items, take them off, or empty one
+/// slot, on the ROLLING character and nobody else (v4
+/// `CustomToolWardrobeGestureSchema`).
+///
+/// Item references are TEMPLATES, not expressions: each is rendered through
+/// `render_template` (so `{{params.garment}}` lets a parameter choose) and then
+/// looked up by id, then by case-insensitive title, in the character's wearable
+/// pool. The per-action cross-field rules (which action needs `items`, which
+/// needs `slot`) live in [`wardrobe_gesture_problems`], not here, so the issues
+/// they raise carry precise paths. `slot` is one of [`WARDROBE_SLOT_TYPES`]
+/// (v5 has no slot enum type; the parse refuses anything else).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CustomToolWardrobeGesture {
+    pub action: WardrobeEffectAction,
+    /// The garments or outfits, each by title or id, in order. Required for
+    /// `wear` and `take_off`.
+    pub items: Option<Vec<String>>,
+    /// `wear` only.
+    pub mode: Option<PutOnMode>,
+    /// Required for `clear_slot` and for mode `add_to_slot`; optional on
+    /// `take_off` to restrict the removal to one slot.
+    pub slot: Option<String>,
+}
+
+impl Serialize for CustomToolWardrobeGesture {
+    /// Zod's parsed output: schema order, each optional only when present.
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let mut m = s.serialize_map(None)?;
+        m.serialize_entry("action", self.action.as_str())?;
+        if let Some(items) = &self.items {
+            m.serialize_entry("items", items)?;
+        }
+        if let Some(mode) = self.mode {
+            m.serialize_entry("mode", mode.as_str())?;
+        }
+        if let Some(slot) = &self.slot {
+            m.serialize_entry("slot", slot)?;
+        }
+        m.end()
+    }
+}
+
+/// One side effect, recorded after the table has dealt: either a WRITE
+/// (`target` + `value`) or a WARDROBE GESTURE (`wardrobe`) — never both, never
+/// neither (v4 `CustomToolEffectSchema`, `f0db8cbb8`). v4 states that with one
+/// strict object and a refine rather than a union, so a mistake produces one
+/// readable issue rather than a union's tree of them; v5's PARSE reproduces
+/// that refine exactly, and the parsed type says it with [`CustomToolEffectBody`]
+/// — "both halves" and "neither" are unrepresentable here, so every reader is
+/// compile-forced to handle the gesture.
 ///
 /// `value` discrimination is the one ergonomic trap in the format: a JSON number
 /// or boolean is a literal, stored as-is, but a JSON **string is always an
 /// expression** — so literal prose must be quoted INSIDE the expression
 /// (`"value": "'broken pick'"`, not `"value": "broken pick"`; the bare form is a
 /// load-time parse error, and a loud one).
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CustomToolEffect {
     /// Condition for this effect. Omitted = fires on every run.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub when: Option<EffectWhen>,
-    pub target: String,
-    pub value: EffectValue,
+    pub body: CustomToolEffectBody,
+}
+
+/// The two halves an effect may be (see [`CustomToolEffect`]).
+#[derive(Debug, Clone, PartialEq)]
+pub enum CustomToolEffectBody {
+    /// Where to write, and what.
+    Write { target: String, value: EffectValue },
+    /// A wardrobe gesture on the rolling character instead of a write.
+    Wardrobe(CustomToolWardrobeGesture),
+}
+
+impl CustomToolEffect {
+    /// v4 `isWriteEffect` — kept under v4's name for the readers that ask.
+    pub fn is_write_effect(&self) -> bool {
+        matches!(self.body, CustomToolEffectBody::Write { .. })
+    }
+
+    /// v4 `isWardrobeEffect`.
+    pub fn is_wardrobe_effect(&self) -> bool {
+        matches!(self.body, CustomToolEffectBody::Wardrobe(_))
+    }
+}
+
+impl Serialize for CustomToolEffect {
+    /// Zod's strict-object output is SCHEMA order, not the author's: `when?`,
+    /// then `target`, `value` — or `wardrobe`.
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let mut m = s.serialize_map(None)?;
+        if let Some(when) = &self.when {
+            m.serialize_entry("when", when)?;
+        }
+        match &self.body {
+            CustomToolEffectBody::Write { target, value } => {
+                m.serialize_entry("target", target)?;
+                m.serialize_entry("value", value)?;
+            }
+            CustomToolEffectBody::Wardrobe(gesture) => {
+                m.serialize_entry("wardrobe", gesture)?;
+            }
+        }
+        m.end()
+    }
+}
+
+/// The field a [`wardrobe_gesture_problems`] entry is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GestureField {
+    Items,
+    Mode,
+    Slot,
+}
+
+impl GestureField {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GestureField::Items => "items",
+            GestureField::Mode => "mode",
+            GestureField::Slot => "slot",
+        }
+    }
+}
+
+/// The per-action rules of a wardrobe gesture, as `(field, message)` pairs
+/// (v4 `wardrobeGestureProblems`). The single statement of them: load-time
+/// validation reads this, and the Workbench's draft check (the SPA's
+/// `tool-draft.ts` twin) states the same nine sentences, so the two say the
+/// same words. Order is v4's: per action, the checks below in sequence.
+pub fn wardrobe_gesture_problems(
+    action: WardrobeEffectAction,
+    items: Option<&[String]>,
+    mode: Option<PutOnMode>,
+    slot: Option<&str>,
+) -> Vec<(GestureField, &'static str)> {
+    let mut problems = Vec::new();
+    let has_items = items.is_some_and(|i| !i.is_empty());
+    match action {
+        WardrobeEffectAction::Wear => {
+            if !has_items {
+                problems.push((GestureField::Items, "wear needs at least one item"));
+            }
+            let mode = mode.unwrap_or(PutOnMode::Wear);
+            if mode == PutOnMode::AddToSlot && slot.is_none() {
+                problems.push((GestureField::Slot, "mode add_to_slot needs a slot"));
+            } else if mode != PutOnMode::AddToSlot && slot.is_some() {
+                problems.push((
+                    GestureField::Slot,
+                    "slot is only used with mode add_to_slot",
+                ));
+            }
+        }
+        WardrobeEffectAction::TakeOff => {
+            if !has_items {
+                problems.push((GestureField::Items, "take_off needs at least one item"));
+            }
+            if mode.is_some() {
+                problems.push((GestureField::Mode, "mode is only used with wear"));
+            }
+        }
+        WardrobeEffectAction::ClearSlot => {
+            if slot.is_none() {
+                problems.push((GestureField::Slot, "clear_slot needs a slot"));
+            }
+            if items.is_some() {
+                problems.push((GestureField::Items, "clear_slot takes no items"));
+            }
+            if mode.is_some() {
+                problems.push((GestureField::Mode, "mode is only used with wear"));
+            }
+        }
+    }
+    problems
+}
+
+/// An effect as v4's Zod object parses it, BEFORE its refine has spoken: every
+/// half optional. Load validation ([`validate_effects`]) walks THIS, because
+/// the refine's issues are continuable — v4's tool-level `validateEffects`
+/// still runs over an effect that is both halves, or half a write, and reports
+/// its `when` / gesture issues beside the refine's sentence. Never escapes the
+/// parse: an incomplete one always carries a refine issue, so the tool is
+/// rejected.
+#[derive(Debug, Clone)]
+struct EffectParts {
+    when: Option<EffectWhen>,
+    target: Option<String>,
+    value: Option<EffectValue>,
+    wardrobe: Option<CustomToolWardrobeGesture>,
+}
+
+impl EffectParts {
+    /// The parsed type, when the effect is exactly one of the two halves.
+    fn complete(&self) -> Option<CustomToolEffect> {
+        let body = match (&self.target, &self.value, &self.wardrobe) {
+            (Some(target), Some(value), None) => CustomToolEffectBody::Write {
+                target: target.clone(),
+                value: value.clone(),
+            },
+            (None, None, Some(gesture)) => CustomToolEffectBody::Wardrobe(gesture.clone()),
+            _ => return None,
+        };
+        Some(CustomToolEffect {
+            when: self.when.clone(),
+            body,
+        })
+    }
 }
 
 /// A parsed effect target, with the raw text kept for records and messages.
@@ -1032,7 +1269,8 @@ pub struct QtapCustomTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm: Option<CustomToolLlm>,
     /// Side effects applied after the run: writes into tiered persistent state
-    /// or the rolling character's metadata.
+    /// or the rolling character's metadata, or wardrobe gestures that change
+    /// what the rolling character is wearing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effects: Option<Vec<CustomToolEffect>>,
     pub outcomes: Vec<CustomToolOutcome>,
@@ -2320,8 +2558,122 @@ fn parse_outcome_test(input: Option<&Value>) -> Res<OutcomeTest> {
     }
 }
 
-/// v4 `CustomToolEffectSchema`.
-fn parse_custom_tool_effect(input: Option<&Value>) -> Res<CustomToolEffect> {
+/// v4's `items: z.array(z.string().min(1).max(200)).min(1).max(8)` — with
+/// Zod 4.6.7's array semantics, as the `triggers` arm measured them: an
+/// oversized list fails with ONLY its `too_big`, before an element is parsed,
+/// and ABORTS; `.min(1)` is a continuable check; a non-array input with a
+/// `.length` also gets the length checks past its `invalid_type`.
+fn parse_wardrobe_items(v: &Value) -> Res<Vec<String>> {
+    match v {
+        Value::Array(items) if items.len() > MAX_WARDROBE_EFFECT_ITEMS => Res::hard(format!(
+            "Too big: expected array to have <={MAX_WARDROBE_EFFECT_ITEMS} items"
+        )),
+        Value::Array(items) => {
+            let mut list = Vec::new();
+            let mut issues = Vec::new();
+            for (i, item) in items.iter().enumerate() {
+                let r = parse_string(
+                    Some(item),
+                    Some(1),
+                    Some(MAX_WARDROBE_ITEM_REF_LENGTH),
+                    false,
+                );
+                issues.extend(prefix(&i.to_string(), r.issues));
+                if let Some(reference) = r.value {
+                    list.push(reference);
+                }
+            }
+            if items.is_empty() {
+                issues.push(Issue::check("Too small: expected array to have >=1 items"));
+            }
+            let value = (!aborted(&issues)).then_some(list);
+            Res { value, issues }
+        }
+        other => {
+            let mut issues = vec![Issue::hard(invalid_type("array", Some(other)))];
+            issues.extend(length_checks_past_invalid_type(
+                other,
+                1,
+                MAX_WARDROBE_EFFECT_ITEMS,
+            ));
+            Res {
+                value: None,
+                issues,
+            }
+        }
+    }
+}
+
+/// v4 `CustomToolWardrobeGestureSchema` — a strict object; the per-action
+/// rules are NOT here (they are [`wardrobe_gesture_problems`], at load).
+fn parse_custom_tool_wardrobe_gesture(input: Option<&Value>) -> Res<CustomToolWardrobeGesture> {
+    let obj = match as_object(input) {
+        Ok(o) => o,
+        Err(e) => {
+            return Res {
+                value: None,
+                issues: e.issues,
+            }
+        }
+    };
+    let mut issues = Vec::new();
+
+    let action = parse_enum(obj.get("action"), &WARDROBE_EFFECT_ACTIONS);
+    issues.extend(prefix("action", action.issues));
+
+    let items = match obj.get("items") {
+        Some(v) => {
+            let r = parse_wardrobe_items(v);
+            issues.extend(prefix("items", r.issues));
+            r.value
+        }
+        None => None,
+    };
+
+    let mode = match obj.get("mode") {
+        Some(v) => {
+            let r = parse_enum(Some(v), &WARDROBE_EFFECT_MODES);
+            issues.extend(prefix("mode", r.issues));
+            r.value
+        }
+        None => None,
+    };
+
+    // `WardrobeItemTypeEnum` — the five slots, in `WARDROBE_SLOT_TYPES` order.
+    let slot = match obj.get("slot") {
+        Some(v) => {
+            let options: Vec<(&str, &str)> = WARDROBE_SLOT_TYPES.iter().map(|s| (*s, *s)).collect();
+            let r = parse_enum(Some(v), &options);
+            issues.extend(prefix("slot", r.issues));
+            r.value.map(str::to_string)
+        }
+        None => None,
+    };
+
+    issues.extend(unrecognized_keys(obj, &["action", "items", "mode", "slot"]));
+
+    match action.value {
+        Some(action) if !aborted(&issues) => Res {
+            value: Some(CustomToolWardrobeGesture {
+                action,
+                items,
+                mode,
+                slot,
+            }),
+            issues,
+        },
+        _ => Res {
+            value: None,
+            issues,
+        },
+    }
+}
+
+/// v4 `CustomToolEffectSchema` — the shape, then its `superRefine` (a write
+/// XOR a gesture). Zod runs the refine only on an object no hard issue
+/// aborted; its three issues are `code: 'custom'` and continuable, so the
+/// effect still reaches load validation ([`EffectParts`]).
+fn parse_custom_tool_effect(input: Option<&Value>) -> Res<EffectParts> {
     let obj = match as_object(input) {
         Ok(o) => o,
         Err(e) => {
@@ -2343,53 +2695,87 @@ fn parse_custom_tool_effect(input: Option<&Value>) -> Res<CustomToolEffect> {
         None => None,
     };
 
-    let target = parse_string(
-        obj.get("target"),
-        Some(1),
-        Some(MAX_EFFECT_TARGET_LENGTH),
-        false,
-    );
-    issues.extend(prefix("target", target.issues));
-
-    // `z.union([z.number().finite(), z.boolean(), z.string().min(1).max(500)])`.
-    let value = {
-        let raw = obj.get("value");
-        let number = parse_finite_number(raw);
-        let boolean = parse_bool(raw);
-        let string = parse_string(raw, Some(1), Some(MAX_EFFECT_EXPRESSION_LENGTH), false);
-        let r = union(vec![
-            Res {
-                value: number.value.map(EffectValue::Number),
-                issues: number.issues,
-            },
-            Res {
-                value: boolean.value.map(EffectValue::Bool),
-                issues: boolean.issues,
-            },
-            Res {
-                value: string.value.map(EffectValue::Str),
-                issues: string.issues,
-            },
-        ]);
-        issues.extend(prefix("value", r.issues));
-        r.value
+    // `.optional()` since `f0db8cbb8`: absent is fine; a present non-string is
+    // still its `invalid_type`.
+    let target = match obj.get("target") {
+        Some(v) => {
+            let r = parse_string(Some(v), Some(1), Some(MAX_EFFECT_TARGET_LENGTH), false);
+            issues.extend(prefix("target", r.issues));
+            r.value
+        }
+        None => None,
     };
 
-    issues.extend(unrecognized_keys(obj, &["when", "target", "value"]));
+    // `z.union([z.number().finite(), z.boolean(), z.string().min(1).max(500)])`.
+    let value = match obj.get("value") {
+        Some(raw) => {
+            let raw = Some(raw);
+            let number = parse_finite_number(raw);
+            let boolean = parse_bool(raw);
+            let string = parse_string(raw, Some(1), Some(MAX_EFFECT_EXPRESSION_LENGTH), false);
+            let r = union(vec![
+                Res {
+                    value: number.value.map(EffectValue::Number),
+                    issues: number.issues,
+                },
+                Res {
+                    value: boolean.value.map(EffectValue::Bool),
+                    issues: boolean.issues,
+                },
+                Res {
+                    value: string.value.map(EffectValue::Str),
+                    issues: string.issues,
+                },
+            ]);
+            issues.extend(prefix("value", r.issues));
+            r.value
+        }
+        None => None,
+    };
 
-    match (target.value, value) {
-        (Some(target), Some(value)) if !aborted(&issues) => Res {
-            value: Some(CustomToolEffect {
-                when,
-                target,
-                value,
-            }),
-            issues,
-        },
-        _ => Res {
+    let wardrobe = match obj.get("wardrobe") {
+        Some(v) => {
+            let r = parse_custom_tool_wardrobe_gesture(Some(v));
+            issues.extend(prefix("wardrobe", r.issues));
+            r.value
+        }
+        None => None,
+    };
+
+    issues.extend(unrecognized_keys(
+        obj,
+        &["when", "target", "value", "wardrobe"],
+    ));
+
+    if aborted(&issues) {
+        return Res {
             value: None,
             issues,
-        },
+        };
+    }
+
+    // ---- the superRefine (v4 `:721-741`)
+    let is_write = target.is_some() || value.is_some();
+    let is_wardrobe = wardrobe.is_some();
+    if is_write && is_wardrobe {
+        issues.push(Issue::check(
+            "an effect is either a write (target + value) or a wardrobe gesture, not both",
+        ));
+    } else if !is_write && !is_wardrobe {
+        issues.push(Issue::check("an effect needs target + value, or wardrobe"));
+    } else if is_write && (target.is_none() || value.is_none()) {
+        let field = if target.is_none() { "target" } else { "value" };
+        issues.push(Issue::check("a write needs both target and value").at(field));
+    }
+
+    Res {
+        value: Some(EffectParts {
+            when,
+            target,
+            value,
+            wardrobe,
+        }),
+        issues,
     }
 }
 
@@ -2652,21 +3038,34 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
     };
 
     // Between `llm` and `outcomes`, per v4's shape.
+    // `effect_parts` is what load validation walks (see [`EffectParts`]);
+    // `effects` holds only the complete ones, which is every one whenever the
+    // tool is accepted.
+    let mut effect_parts: Vec<EffectParts> = Vec::new();
     let effects = match obj.get("effects") {
+        // Zod ≥ 4.6.7 (the `triggers` arm's measurement, re-measured here by
+        // `effects-over-cap-with-bad-element`): an oversized array fails with
+        // ONLY its `too_big` — the authored `at most 16 effects` — before an
+        // element is parsed, and that issue aborts.
+        Some(Value::Array(items)) if items.len() > MAX_EFFECTS => {
+            issues.extend(prefix(
+                "effects",
+                vec![Issue::hard(format!("at most {MAX_EFFECTS} effects"))],
+            ));
+            None
+        }
         Some(Value::Array(items)) => {
             let mut list = Vec::new();
             let mut arr_issues = Vec::new();
             for (i, item) in items.iter().enumerate() {
                 let r = parse_custom_tool_effect(Some(item));
                 arr_issues.extend(prefix(&i.to_string(), r.issues));
-                if let Some(e) = r.value {
-                    list.push(e);
+                if let Some(parts) = r.value {
+                    if let Some(effect) = parts.complete() {
+                        list.push(effect);
+                    }
+                    effect_parts.push(parts);
                 }
-            }
-            // `.max(MAX_EFFECTS, …)` is a check with an authored message, so it
-            // is skipped once an element aborted.
-            if !aborted(&arr_issues) && items.len() > MAX_EFFECTS {
-                arr_issues.push(Issue::check(format!("at most {MAX_EFFECTS} effects")));
             }
             let ok = !aborted(&arr_issues);
             issues.extend(prefix("effects", arr_issues));
@@ -2756,7 +3155,7 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
     validate_outcome_ordering(&tool.outcomes, &mut issues);
     validate_references(&tool, &mut issues);
     validate_gates(&tool, &mut issues);
-    validate_effects(&tool, &mut issues);
+    validate_effects(&tool, &effect_parts, &mut issues);
     validate_triggers(&tool, &mut issues);
 
     if issues.is_empty() {
@@ -2975,16 +3374,20 @@ fn validate_when_subjects(
     }
 }
 
-/// Rule: every effect must be applicable. The target parses (including the
+/// Rule: every effect must be applicable. Its `when` subjects resolve (checked
+/// FIRST — v4 `f0db8cbb8` moved them to the top of the loop, so a write's
+/// `when` issues now precede its target / value issues); a wardrobe gesture
+/// carries exactly the fields its action uses and its item references resolve
+/// ([`validate_wardrobe_gesture`]); otherwise the target parses (including the
 /// underscore guard), a string `value` parses as an expression, every
 /// `params.x` reference names a declared parameter, and an `{{llm}}` reference
-/// or an `llm` `when`-subject requires an `llm` block — the same rule outcome
-/// rows follow.
+/// requires an `llm` block — the same rule outcome rows follow. A write missing
+/// a half is the effect refine's business; nothing further is checked on it.
 ///
 /// Parse failure here is the dice-notation doctrine: syntax errors are typos,
 /// caught in the Workbench and at discovery, never at the table.
-fn validate_effects(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
-    for (i, effect) in tool.effects.iter().flatten().enumerate() {
+fn validate_effects(tool: &QtapCustomTool, effects: &[EffectParts], issues: &mut Vec<Issue>) {
+    for (i, effect) in effects.iter().enumerate() {
         let base = vec!["effects".to_string(), i.to_string()];
         let at = |rest: &str| {
             let mut p = base.clone();
@@ -2992,14 +3395,29 @@ fn validate_effects(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
             p
         };
 
-        if let Err(reason) = parse_effect_target(&effect.target) {
+        if let Some(when) = &effect.when {
+            validate_when_subjects(tool, &when.base, issues, &at("when"));
+        }
+
+        if let Some(gesture) = &effect.wardrobe {
+            validate_wardrobe_gesture(tool, gesture, issues, &at("wardrobe"));
+            continue;
+        }
+
+        // Shape errors (a write missing its target or value) are the effect
+        // schema's own refine; nothing further to check without both halves.
+        let (Some(target), Some(value)) = (&effect.target, &effect.value) else {
+            continue;
+        };
+
+        if let Err(reason) = parse_effect_target(target) {
             issues.push(issue_at(format!("target {reason}"), &at("target")));
         }
 
         // A JSON string value is ALWAYS an expression — the quoting trap. The
         // bare prose an author meant as a literal fails to parse right here,
         // loudly.
-        if let EffectValue::Str(source) = &effect.value {
+        if let EffectValue::Str(source) = value {
             match parse_expression(source) {
                 Err(reason) => issues.push(issue_at(
                     format!("value is not a valid expression: {reason}"),
@@ -3025,11 +3443,57 @@ fn validate_effects(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
                 }
             }
         }
+    }
+}
 
-        if let Some(when) = &effect.when {
-            let mut p = base.clone();
-            p.push("when".to_string());
-            validate_when_subjects(tool, &when.base, issues, &p);
+/// Rule (v4 `validateWardrobeGesture`): a wardrobe gesture carries exactly the
+/// fields its action uses ([`wardrobe_gesture_problems`]), and every item
+/// reference's placeholders resolve the way an outcome message's must — a
+/// `{{params.x}}` names a declared parameter, a `{{llm}}` needs an `llm` block.
+/// Unknown placeholder families are NOT rejected: the `render_template`
+/// doctrine leaves them as written, and the item simply fails to resolve at the
+/// table.
+fn validate_wardrobe_gesture(
+    tool: &QtapCustomTool,
+    gesture: &CustomToolWardrobeGesture,
+    issues: &mut Vec<Issue>,
+    path: &[String],
+) {
+    let at = |rest: &[String]| {
+        let mut p = path.to_vec();
+        p.extend_from_slice(rest);
+        p
+    };
+    for (field, message) in wardrobe_gesture_problems(
+        gesture.action,
+        gesture.items.as_deref(),
+        gesture.mode,
+        gesture.slot.as_deref(),
+    ) {
+        issues.push(issue_at(
+            message.to_string(),
+            &at(&[field.as_str().to_string()]),
+        ));
+    }
+
+    for (m, item) in gesture.items.iter().flatten().enumerate() {
+        let item_path = at(&["items".to_string(), m.to_string()]);
+        for scanned in scan_placeholders(item) {
+            match &scanned.place_ref {
+                PlaceholderRef::Params { name } if tool.parameter(name).is_none() => {
+                    issues.push(issue_at(
+                        format!("item references undeclared parameter \"{name}\""),
+                        &item_path,
+                    ));
+                }
+                PlaceholderRef::Llm if tool.llm.is_none() => {
+                    issues.push(issue_at(
+                        "item references {{llm}}, but the tool declares no `llm` block".into(),
+                        &item_path,
+                    ));
+                }
+                _ => {}
+            }
         }
     }
 }

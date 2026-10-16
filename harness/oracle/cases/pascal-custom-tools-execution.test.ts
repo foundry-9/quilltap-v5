@@ -1461,6 +1461,103 @@ describe('executeCustomTool', () => {
         {},
         { now: PROGRESS_START },
       ],
+      // ---- wardrobe gestures (f0db8cbb8, P4.D306) ------------------------
+      // Item references are TEMPLATES rendered with the effect subjects,
+      // trimmed; an empty one is dropped with a DEBUG; a gesture left with
+      // none (bar `clear_slot`) is skipped; `items` always rides.
+      [
+        'effects-wardrobe-rendering',
+        {
+          name: 'regalia',
+          description: 'x',
+          parameters: { garment: { type: 'string', default: 'Boots' } },
+          roll: { min: 1, max: 1 },
+          effects: [
+            { wardrobe: { action: 'wear', items: ['Cloak of Night', '  {{params.garment}} ', '{{metadata.hat}}'], mode: 'replace' } },
+            { wardrobe: { action: 'clear_slot', slot: 'hair' } },
+            { wardrobe: { action: 'wear', items: ['Ribbon'], mode: 'add_to_slot', slot: 'hair' } },
+            { wardrobe: { action: 'take_off', items: ['Sundress'], slot: 'top' } },
+          ],
+          outcomes: [CATCH_ALL],
+        },
+        { garment: 'Velvet Slippers' },
+        { metadata: { hat: 'Crown' } },
+      ],
+      [
+        'effects-wardrobe-unresolved-left-as-written',
+        {
+          name: 'hat',
+          description: 'x',
+          roll: { min: 1, max: 1 },
+          effects: [{ wardrobe: { action: 'take_off', items: ['{{metadata.absent}}'] } }],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        undefined,
+      ],
+      [
+        'effects-wardrobe-every-item-empty-skips',
+        {
+          name: 'blank',
+          description: 'x',
+          parameters: { garment: { type: 'string', default: '' } },
+          roll: { min: 1, max: 1 },
+          effects: [
+            { wardrobe: { action: 'wear', items: ['{{params.garment}}'] } },
+            { wardrobe: { action: 'take_off', items: ['{{params.garment}}', 'Gloves', '   '] } },
+            { wardrobe: { action: 'clear_slot', slot: 'footwear' } },
+          ],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        undefined,
+      ],
+      [
+        'effects-wardrobe-when-gate',
+        {
+          name: 'tear',
+          description: 'x',
+          roll: { min: 7, max: 7 },
+          effects: [
+            { when: { outcome: { eq: 'failure' } }, wardrobe: { action: 'take_off', items: ['Sundress'] } },
+            { when: { outcome: { eq: 'success' } }, wardrobe: { action: 'wear', items: ['Laurels'] } },
+          ],
+          outcomes: [{ when: { gte: 5 }, message: 'won', state: 'success' }, CATCH_ALL],
+        },
+        {},
+        undefined,
+      ],
+      // `{{now}}` renders in an item exactly as in an expression (one reading).
+      [
+        'effects-wardrobe-now-in-an-item',
+        {
+          name: 'stamp',
+          description: 'x',
+          roll: { min: 1, max: 1 },
+          effects: [{ wardrobe: { action: 'wear', items: ['Badge {{now}}', '{{value}} {{dice}}'] } }],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        { now: PROGRESS_START },
+      ],
+      // Indices survive a mix: a write, a gesture, a skipped write, a gesture.
+      [
+        'effects-wardrobe-indices-interleaved',
+        {
+          name: 'mixed',
+          description: 'x',
+          roll: { min: 3, max: 3 },
+          effects: [
+            { target: 'state.count', value: 1 },
+            { wardrobe: { action: 'wear', items: ['Cloak of Night'] } },
+            { when: { gte: 100 }, target: 'state.never', value: 1 },
+            { wardrobe: { action: 'clear_slot', slot: 'hair' } },
+          ],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        undefined,
+      ],
       // The same instant reaches the outcome MESSAGE, not just the effects.
       [
         'message-renders-now-and-progress',

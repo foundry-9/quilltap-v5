@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(pascal): a custom-tool effect is a write XOR a wardrobe gesture — the union, wardrobe_gesture_problems, validate_effects when-first, the third ResolvedEffect arm, describe_effects + the preamble sentence, the vocabulary's three lists (P4.D306)
+
+_Versions: core 0.0.1309._
+
+The definition half of v4 `f0db8cbb8` at the `25b8fab6a` pin. An effect may be `{ "wardrobe": { "action": "wear" | "take_off" | "clear_slot", "items"?, "mode"?, "slot"? } }` instead of `target` + `value`: `CustomToolEffect` is now `{ when, body: Write | Wardrobe }` with a hand `Serialize` in Zod's schema order. The parse reproduces v4's strict gesture object (`items` 1–8 references of 1–200 characters with Zod 4.6.7's array semantics, the three enums, `slot` against `WARDROBE_SLOT_TYPES`) and the effect's refine with v4's three sentences at v4's paths. `wardrobe_gesture_problems` states the nine per-action rules once; `validate_effects` now checks `when` subjects first, then a gesture's rules and item placeholders (`item references undeclared parameter`, `item references {{llm}}, …`), then a write's target and value. Load validation walks the parsed effect before the refine's verdict, as v4 does, so a both-halves effect still reports its gesture issues. The effects array's cap now reports `at most 16 effects` alone for an oversized list, as Zod 4.6.7 does.
+
+The pure core gains `ResolvedEffect::Wardrobe` (`{ index, wardrobe: { action, items, mode?, slot? } }`): item references render as templates with the effect subjects, trimmed; an empty one is dropped with `Custom tool wardrobe item reference rendered empty; dropped`; a wear or take-off left with none skips with `every item reference rendered empty`. `is_applicable` now means either kind, beside `is_applicable_write` / `is_applicable_wardrobe`; the side-effects write filter stays write-only. The `run_custom` preamble gains `, or what they are wearing` (model-visible), the roster's `Side effects:` line is `describe_effects` (writes, then `wears …` / `takes off … (slot only)` / `clears …`), and the generated tool catalog's `run_custom` description moves with it. The tool vocabulary gains `wears`, `takesOff` and `clearsSlots` after `now`.
+
+Corpora grown at the pin: the definition corpus (+48 rows; the SPA twin's NDJSON copied from the same regen), the execution corpus (+6), the run-custom roster corpus (+7; all 25 descriptions carry the new sentence) and the vocabulary corpus (+8). `tool_definitions_equivalence` is green again at the pin.
+
 #### 2026-10-16 — fix(wardrobe): wardrobe_take_off takes a worn composite off by its leaves — wear_ops::take_off_wearable + load_current_slots, take_off_item retired (P4.D306)
 
 _Versions: core 0.0.1308._

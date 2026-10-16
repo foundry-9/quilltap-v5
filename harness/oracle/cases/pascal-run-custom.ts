@@ -237,6 +237,76 @@ const effectsAndLlm = {
   ],
 };
 
+// The f0db8cbb8 roster (P4.D306): writes first as ONE `writes a, b` clause,
+// then one clause per gesture in file order (`wears …`, `takes off …` with
+// ` (<slot> only)` iff a slot, `clears <slot>`), duplicates collapsed by the
+// exact string, references verbatim — v4's own jest roster.
+const wardrobeRoster = {
+  name: 'regalia',
+  description: 'dress for court',
+  parameters: { garment: { type: 'string', default: 'Boots' } },
+  effects: [
+    { target: 'state.encounter.count', value: 1 },
+    { target: 'metadata.ansibleTool', value: "'lens'" },
+    { wardrobe: { action: 'wear', items: ['Cloak of Night', 'Boots'] } },
+    { wardrobe: { action: 'take_off', items: ['{{params.garment}}'] } },
+    { wardrobe: { action: 'clear_slot', slot: 'hair' } },
+  ],
+  outcomes: [{ when: true, message: 'x', state: 'info' }],
+};
+
+const takeOffSlot = {
+  name: 'doff',
+  description: 'doff a layer',
+  effects: [{ wardrobe: { action: 'take_off', items: ['Sundress', 'Shawl'], slot: 'top' } }],
+  outcomes: [{ when: true, message: 'x', state: 'info' }],
+};
+
+const duplicateClauses = {
+  name: 'twice',
+  description: 'the same twice',
+  effects: [
+    { wardrobe: { action: 'wear', items: ['Hat'] } },
+    { when: { outcome: { eq: 'success' } }, wardrobe: { action: 'wear', items: ['Hat'] } },
+    { wardrobe: { action: 'wear', items: ['Hat', 'Gloves'] } },
+    { wardrobe: { action: 'clear_slot', slot: 'hair' } },
+    { wardrobe: { action: 'clear_slot', slot: 'hair' } },
+    { wardrobe: { action: 'take_off', items: ['Hat'] } },
+    { wardrobe: { action: 'take_off', items: ['Hat'], slot: 'top' } },
+    { wardrobe: { action: 'wear', items: ['Hat, Feathered'] } },
+  ],
+  outcomes: [{ when: true, message: 'x', state: 'info' }],
+};
+
+const gestureOnly = {
+  name: 'dresser',
+  description: 'only dresses',
+  effects: [
+    { wardrobe: { action: 'clear_slot', slot: 'accessories' } },
+    { wardrobe: { action: 'wear', items: ['Pearls'] } },
+  ],
+  outcomes: [{ when: true, message: 'x', state: 'info' }],
+};
+
+const addToSlotNoSuffix = {
+  name: 'ribbon',
+  description: 'tie a ribbon',
+  effects: [
+    { wardrobe: { action: 'wear', items: ['Ribbon'], mode: 'add_to_slot', slot: 'hair' } },
+    { wardrobe: { action: 'wear', items: ['Regalia'], mode: 'replace' } },
+    { target: 'state.ribbons', value: 1 },
+  ],
+  outcomes: [{ when: true, message: 'x', state: 'info' }],
+};
+
+const wardrobeSecret = {
+  name: 'sealed_wardrobe',
+  description: 'a sealed wardrobe',
+  revealOdds: false,
+  effects: [{ wardrobe: { action: 'wear', items: ['Cloak of Night'] } }],
+  outcomes: [{ when: true, message: 'x', state: 'info' }],
+};
+
 const cases: Array<[string, unknown[]]> = [
   ['minimal', [minimal]],
   ['params-bounds', [paramsBounds]],
@@ -259,6 +329,16 @@ const cases: Array<[string, unknown[]]> = [
   ['effects-empty-array', [effectsEmpty]],
   ['effects-and-llm-line-order', [effectsAndLlm]],
   ['multi-tool-with-effects', [minimal, effectsTool, effectsAndLlm]],
+  // The f0db8cbb8 additions (P4.D306).
+  ['effects-wardrobe-roster', [wardrobeRoster]],
+  ['effects-take-off-slot', [takeOffSlot]],
+  ['effects-duplicate-clauses', [duplicateClauses]],
+  ['effects-gesture-only', [gestureOnly]],
+  ['effects-add-to-slot-no-suffix', [addToSlotNoSuffix]],
+  ['effects-wardrobe-reveal-odds-false', [wardrobeSecret]],
+  // Every description embeds the preamble; this row names the sentence so a
+  // future preamble move has a row to point at.
+  ['preamble-sentence', [minimal]],
 ];
 
 const rows: unknown[] = [];
