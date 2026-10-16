@@ -215,6 +215,32 @@ pub fn wardrobe_item_from_create_body(
     }
 }
 
+/// An existing item spread into a create body — v4's `createItem(location,
+/// { ...item, title, folder, componentItemIds }, …)` (the transfers route's
+/// planned item; folder filing's copies). Everything `wardrobeItemFromCreateBody`
+/// reads is carried as the item holds it — so a copy of a default item is a
+/// default item, and its `replace` / `appropriateness` / prose ride along —
+/// while `imageFileId` / `migratedFromClothingRecordId` / the stamps come only
+/// through [`PreservedIdentity`].
+pub(crate) fn item_as_create_body(
+    item: &WardrobeItem,
+    title: String,
+    folder: String,
+    component_item_ids: Vec<String>,
+) -> WardrobeCreateBody {
+    WardrobeCreateBody {
+        title,
+        description: item.description.clone().flatten(),
+        image_prompt: item.image_prompt.clone().flatten(),
+        types: item.types.clone(),
+        appropriateness: item.appropriateness.clone().flatten(),
+        is_default: Some(item.is_default),
+        component_item_ids: Some(component_item_ids),
+        replace: Some(item.replace),
+        folder: Some(folder),
+    }
+}
+
 // ============================================================================
 // item-mutations.ts
 // ============================================================================

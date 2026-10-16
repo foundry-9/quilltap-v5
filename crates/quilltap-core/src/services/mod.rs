@@ -205,6 +205,7 @@ pub mod turn_orchestrator;
 pub mod turn_transcript;
 pub mod user_identity_resolver;
 pub mod wardrobe_container;
+pub mod wardrobe_folder_filing;
 pub mod wardrobe_folder_mutations;
 pub mod wardrobe_image_bridge;
 pub mod wardrobe_image_paths;

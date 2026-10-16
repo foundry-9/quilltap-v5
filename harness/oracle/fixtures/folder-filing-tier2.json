@@ -1,0 +1,1064 @@
+{
+  "$comment": [
+    "Tier-2 differential for wardrobe FOLDER FILING (P4.D309 — v4 bbbcd2388,",
+    "lib/wardrobe/folder-filing.ts fileItemsToFolder), ported to",
+    "quilltap-core::services::wardrobe_folder_filing::file_items_to_folder.",
+    "One committed file drives BOTH sides:",
+    "  - build-folder-filing-fixture.ts bakes the seed (a character + vault, an",
+    "    ARCHIVED character, Quilltap General, a project store, a group store; the",
+    "    items below through v4's REAL vault writers; pictures through v4's REAL",
+    "    addWardrobeItemImage; wear rows raw) into /tmp/qt-ffl-main.db + mount.db;",
+    "  - folder-filing-tier2.ts (the oracle) and folder_filing_tier2_equivalence.rs",
+    "    (the port) each run every CHAIN against a FRESH copy of the fixture",
+    "    through the REAL / ported fileItemsToFolder over resolveWardrobeLocation.",
+    "An itemIds entry is an `items` key, or `raw:<id>` for an id the seed lacks.",
+    "Seed titles are unique (no slug falls back to a UUID path); `Shirt (copy)`",
+    "pre-exists in Evening (a copy of Shirt is `Shirt (copy 2)` across folders);",
+    "`Bowler Hat (copy 3)` shares Bowler Hat's base (one request mints `(copy)`",
+    "and `(copy 2)`)."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "a3090000-0000-4000-8000-000000000001",
+  "user": {
+    "id": "a3090000-0000-4000-8000-000000000001",
+    "username": "filing-owner",
+    "name": "Filing Owner"
+  },
+  "characterId": "c3090000-0000-4000-8000-000000000001",
+  "character": {
+    "id": "c3090000-0000-4000-8000-000000000001",
+    "userId": "a3090000-0000-4000-8000-000000000001",
+    "name": "Filing Owner Character",
+    "identity": "The keeper of a modest closet.",
+    "description": "",
+    "manifesto": "",
+    "personality": "",
+    "exampleDialogues": "",
+    "title": "",
+    "firstMessage": "",
+    "talkativeness": 0.5,
+    "pronouns": {
+      "subject": "they",
+      "object": "them",
+      "possessive": "theirs"
+    },
+    "aliases": [],
+    "physicalDescription": null,
+    "systemPrompts": [],
+    "scenarios": [],
+    "controlledBy": "llm",
+    "isFavorite": false,
+    "npc": false,
+    "defaultImageId": null,
+    "defaultConnectionProfileId": null,
+    "defaultPartnerId": null,
+    "defaultRoleplayTemplateId": null,
+    "defaultImageProfileId": null,
+    "sillyTavernData": null,
+    "defaultAgentModeEnabled": null,
+    "defaultHelpToolsEnabled": null,
+    "defaultTimestampConfig": null,
+    "defaultScenarioId": null,
+    "defaultSystemPromptId": null,
+    "characterDocumentMountPointId": null,
+    "canDressThemselves": null,
+    "canCreateOutfits": null,
+    "systemTransparency": null,
+    "coreWhisperEnabled": null,
+    "canBeCarina": null,
+    "partnerLinks": [],
+    "tags": []
+  },
+  "archivedCharacterId": "c3090000-0000-4000-8000-0000000000a1",
+  "archivedCharacter": {
+    "id": "c3090000-0000-4000-8000-0000000000a1",
+    "userId": "a3090000-0000-4000-8000-000000000001",
+    "name": "Zed the Retired",
+    "identity": "The keeper of a modest closet.",
+    "description": "",
+    "manifesto": "",
+    "personality": "",
+    "exampleDialogues": "",
+    "title": "",
+    "firstMessage": "",
+    "talkativeness": 0.5,
+    "pronouns": {
+      "subject": "they",
+      "object": "them",
+      "possessive": "theirs"
+    },
+    "aliases": [],
+    "physicalDescription": null,
+    "systemPrompts": [],
+    "scenarios": [],
+    "controlledBy": "llm",
+    "isFavorite": false,
+    "npc": false,
+    "defaultImageId": null,
+    "defaultConnectionProfileId": null,
+    "defaultPartnerId": null,
+    "defaultRoleplayTemplateId": null,
+    "defaultImageProfileId": null,
+    "sillyTavernData": null,
+    "defaultAgentModeEnabled": null,
+    "defaultHelpToolsEnabled": null,
+    "defaultTimestampConfig": null,
+    "defaultScenarioId": null,
+    "defaultSystemPromptId": null,
+    "characterDocumentMountPointId": null,
+    "canDressThemselves": null,
+    "canCreateOutfits": null,
+    "systemTransparency": null,
+    "coreWhisperEnabled": null,
+    "canBeCarina": null,
+    "partnerLinks": [],
+    "tags": []
+  },
+  "archivedAt": "2026-03-01T00:00:00.000Z",
+  "projectId": "b3090000-0000-4000-8000-000000000001",
+  "groupId": "b3090000-0000-4000-8000-000000000002",
+  "generalMountPointId": "d3090000-0000-4000-8000-000000000001",
+  "generalStore": {
+    "id": "d3090000-0000-4000-8000-000000000001",
+    "name": "Quilltap General"
+  },
+  "pinnedTs": "2026-02-01T00:00:00.000Z",
+  "pinnedStamps": [
+    "2026-02-01T00:00:00.000Z",
+    "2026-03-01T00:00:00.000Z",
+    "2026-01-01T00:00:00.000Z",
+    "2026-01-20T00:00:00.000Z"
+  ],
+  "items": {
+    "shirt": {
+      "id": "e3090000-0000-4000-8000-000000000001",
+      "scope": "character",
+      "title": "Shirt",
+      "types": [
+        "top"
+      ],
+      "description": "A crisp white shirt.",
+      "imagePrompt": "white shirt, crisp collar"
+    },
+    "trousers": {
+      "id": "e3090000-0000-4000-8000-000000000002",
+      "scope": "character",
+      "title": "Trousers",
+      "types": [
+        "bottom"
+      ],
+      "description": "Pinstriped trousers."
+    },
+    "suit": {
+      "id": "e3090000-0000-4000-8000-000000000003",
+      "scope": "character",
+      "title": "Suit",
+      "types": [
+        "top",
+        "bottom"
+      ],
+      "componentItemIds": [
+        "e3090000-0000-4000-8000-000000000001",
+        "e3090000-0000-4000-8000-000000000002"
+      ]
+    },
+    "generalHat": {
+      "id": "e3090000-0000-4000-8000-0000000000b1",
+      "scope": "general",
+      "title": "General Top Hat",
+      "types": [
+        "accessories"
+      ],
+      "description": "A shared silk topper."
+    },
+    "outfit": {
+      "id": "e3090000-0000-4000-8000-000000000004",
+      "scope": "character",
+      "title": "Outfit",
+      "types": [
+        "top",
+        "bottom",
+        "accessories"
+      ],
+      "componentItemIds": [
+        "e3090000-0000-4000-8000-000000000003",
+        "e3090000-0000-4000-8000-0000000000b1"
+      ],
+      "appropriateness": "Evenings."
+    },
+    "lonely": {
+      "id": "e3090000-0000-4000-8000-000000000005",
+      "scope": "character",
+      "title": "Lonely Scarf",
+      "types": [
+        "accessories"
+      ]
+    },
+    "defaultSash": {
+      "id": "e3090000-0000-4000-8000-000000000006",
+      "scope": "character",
+      "title": "Default Sash",
+      "types": [
+        "accessories"
+      ],
+      "isDefault": true,
+      "replace": true,
+      "appropriateness": "Rain."
+    },
+    "archivedCape": {
+      "id": "e3090000-0000-4000-8000-000000000007",
+      "scope": "character",
+      "title": "Archived Cape",
+      "types": [
+        "top"
+      ],
+      "archived": true
+    },
+    "shirtCopyElsewhere": {
+      "id": "e3090000-0000-4000-8000-000000000008",
+      "scope": "character",
+      "title": "Shirt (copy)",
+      "types": [
+        "top"
+      ],
+      "folder": "Evening"
+    },
+    "formalGloves": {
+      "id": "e3090000-0000-4000-8000-000000000009",
+      "scope": "character",
+      "title": "Formal Gloves",
+      "types": [
+        "accessories"
+      ],
+      "folder": "Formal"
+    },
+    "watchChain": {
+      "id": "e3090000-0000-4000-8000-00000000000a",
+      "scope": "character",
+      "title": "Watch Chain",
+      "types": [
+        "accessories"
+      ]
+    },
+    "morningSet": {
+      "id": "e3090000-0000-4000-8000-00000000000b",
+      "scope": "character",
+      "title": "Morning Set",
+      "types": [
+        "accessories"
+      ],
+      "componentItemIds": [
+        "e3090000-0000-4000-8000-00000000000a"
+      ]
+    },
+    "eveningSet": {
+      "id": "e3090000-0000-4000-8000-00000000000c",
+      "scope": "character",
+      "title": "Evening Set",
+      "types": [
+        "accessories"
+      ],
+      "componentItemIds": [
+        "e3090000-0000-4000-8000-00000000000a",
+        "e3090000-0000-4000-8000-000000000005"
+      ]
+    },
+    "cloakedLook": {
+      "id": "e3090000-0000-4000-8000-00000000000d",
+      "scope": "character",
+      "title": "Cloaked Look",
+      "types": [
+        "top"
+      ],
+      "componentItemIds": [
+        "e3090000-0000-4000-8000-000000000007"
+      ]
+    },
+    "bowler": {
+      "id": "e3090000-0000-4000-8000-00000000000e",
+      "scope": "character",
+      "title": "Bowler Hat",
+      "types": [
+        "accessories"
+      ]
+    },
+    "bowler3": {
+      "id": "e3090000-0000-4000-8000-00000000000f",
+      "scope": "character",
+      "title": "Bowler Hat (copy 3)",
+      "types": [
+        "accessories"
+      ]
+    },
+    "generalCane": {
+      "id": "e3090000-0000-4000-8000-0000000000b2",
+      "scope": "general",
+      "title": "General Cane",
+      "types": [
+        "accessories"
+      ]
+    },
+    "generalEnsemble": {
+      "id": "e3090000-0000-4000-8000-0000000000b3",
+      "scope": "general",
+      "title": "General Ensemble",
+      "types": [
+        "accessories"
+      ],
+      "componentItemIds": [
+        "e3090000-0000-4000-8000-0000000000b1",
+        "e3090000-0000-4000-8000-0000000000b2"
+      ]
+    },
+    "projectApron": {
+      "id": "e3090000-0000-4000-8000-0000000000c1",
+      "scope": "project",
+      "title": "Project Apron",
+      "types": [
+        "top"
+      ]
+    },
+    "projectUniform": {
+      "id": "e3090000-0000-4000-8000-0000000000c2",
+      "scope": "project",
+      "title": "Project Uniform",
+      "types": [
+        "top"
+      ],
+      "componentItemIds": [
+        "e3090000-0000-4000-8000-0000000000c1"
+      ]
+    },
+    "groupBadge": {
+      "id": "e3090000-0000-4000-8000-0000000000d1",
+      "scope": "group",
+      "title": "Group Badge",
+      "types": [
+        "accessories"
+      ]
+    },
+    "groupRegalia": {
+      "id": "e3090000-0000-4000-8000-0000000000d2",
+      "scope": "group",
+      "title": "Group Regalia",
+      "types": [
+        "accessories"
+      ],
+      "componentItemIds": [
+        "e3090000-0000-4000-8000-0000000000d1",
+        "e3090000-0000-4000-8000-0000000000b2"
+      ]
+    },
+    "zedCoat": {
+      "id": "e3090000-0000-4000-8000-0000000000a1",
+      "scope": "archived",
+      "title": "Zed Coat",
+      "types": [
+        "top"
+      ]
+    }
+  },
+  "handmade": {
+    "path": "Wardrobe/hats: summer/straw-boater.md",
+    "id": "e3090000-0000-4000-8000-000000000010",
+    "content": "---\nid: e3090000-0000-4000-8000-000000000010\ntitle: Straw Boater\ntypes:\n  - accessories\n---\nA boater filed by hand.\n"
+  },
+  "pictures": [
+    {
+      "item": "shirt",
+      "kind": "uploaded",
+      "webp": 0
+    },
+    {
+      "item": "shirt",
+      "kind": "generated",
+      "webp": 1,
+      "generationPrompt": "a crisp white shirt",
+      "generationModel": "gpt-image-1"
+    },
+    {
+      "item": "archivedCape",
+      "kind": "imported",
+      "webp": 2
+    },
+    {
+      "item": "trousers",
+      "kind": "uploaded",
+      "webp": 2
+    },
+    {
+      "item": "zedCoat",
+      "kind": "uploaded",
+      "webp": 0
+    },
+    {
+      "item": "generalCane",
+      "kind": "uploaded",
+      "webp": 1
+    }
+  ],
+  "webp": [
+    "UklGRjoAAABXRUJQVlA4IC4AAACQAQCdASoEAAQAAUAmJaACdLoAA5gA/vFNr+LaR0KZD/7xn/9xn/9xn/yIAAAA",
+    "UklGRjwAAABXRUJQVlA4IDAAAAAQAgCdASoEAAQAAUAmJaACdLoB+AH4AAPIAP7tBy/9wb7Iuf+tF/9ZVfJUfvyAAAA=",
+    "UklGRjoAAABXRUJQVlA4IC4AAADwAQCdASoGAAYAAUAmJaACdLoB+AAEyAAA/hMf+Uq8FjdHn/3nz9z5+58/5xgA"
+  ],
+  "wearRows": [
+    {
+      "id": "f3090000-0000-4000-8000-000000000001",
+      "itemId": "e3090000-0000-4000-8000-000000000001",
+      "wearerCharacterId": "c3090000-0000-4000-8000-000000000001",
+      "wearCount": 4,
+      "firstWornAt": "2026-01-01T00:00:00.000Z",
+      "lastWornAt": "2026-01-20T00:00:00.000Z",
+      "lastWornChatId": null
+    }
+  ],
+  "chains": [
+    {
+      "name": "move_none_plain_casing",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "move",
+          "itemIds": [
+            "outfit"
+          ],
+          "folder": "formal"
+        }
+      ]
+    },
+    {
+      "name": "move_none_dupes",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "move",
+          "itemIds": [
+            "shirt",
+            "shirt",
+            "lonely"
+          ],
+          "folder": "Evening"
+        }
+      ]
+    },
+    {
+      "name": "move_none_explicit_borrowed",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "move",
+          "itemIds": [
+            "outfit",
+            "generalHat"
+          ],
+          "folder": "Formal",
+          "components": "none"
+        }
+      ]
+    },
+    {
+      "name": "move_move_composite",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "move",
+          "itemIds": [
+            "outfit"
+          ],
+          "folder": "Formal",
+          "components": "move"
+        }
+      ]
+    },
+    {
+      "name": "move_move_leaf",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "move",
+          "itemIds": [
+            "lonely"
+          ],
+          "folder": "Formal",
+          "components": "move"
+        }
+      ]
+    },
+    {
+      "name": "move_move_diamond",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "move",
+          "itemIds": [
+            "morningSet",
+            "eveningSet"
+          ],
+          "folder": "Sets",
+          "components": "move"
+        }
+      ]
+    },
+    {
+      "name": "move_move_outfit_and_component",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "move",
+          "itemIds": [
+            "outfit",
+            "suit"
+          ],
+          "folder": "Formal",
+          "components": "move"
+        }
+      ]
+    },
+    {
+      "name": "move_move_borrowed",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "move",
+          "itemIds": [
+            "outfit",
+            "generalHat"
+          ],
+          "folder": "Formal",
+          "components": "move"
+        }
+      ]
+    },
+    {
+      "name": "move_move_archived_component",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "move",
+          "itemIds": [
+            "cloakedLook"
+          ],
+          "folder": "Formal",
+          "components": "move"
+        }
+      ]
+    },
+    {
+      "name": "move_copy_outfit_and_leaf",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "move",
+          "itemIds": [
+            "outfit",
+            "lonely"
+          ],
+          "folder": "Formal",
+          "components": "copy"
+        }
+      ]
+    },
+    {
+      "name": "move_copy_leaf_only",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "move",
+          "itemIds": [
+            "lonely"
+          ],
+          "folder": "Formal",
+          "components": "copy"
+        }
+      ]
+    },
+    {
+      "name": "move_copy_diamond",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "move",
+          "itemIds": [
+            "morningSet",
+            "eveningSet"
+          ],
+          "folder": "Sets",
+          "components": "copy"
+        }
+      ]
+    },
+    {
+      "name": "copy_none_single",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "shirt"
+          ],
+          "folder": "Formal"
+        }
+      ]
+    },
+    {
+      "name": "copy_none_several_root",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "shirt",
+            "trousers",
+            "lonely"
+          ],
+          "folder": ""
+        }
+      ]
+    },
+    {
+      "name": "copy_none_dupes",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "lonely",
+            "lonely"
+          ],
+          "folder": "Formal",
+          "components": "none"
+        }
+      ]
+    },
+    {
+      "name": "copy_none_new_folder",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "lonely"
+          ],
+          "folder": "Brand New/Sub"
+        }
+      ]
+    },
+    {
+      "name": "copy_none_existing_folder_casing",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "lonely"
+          ],
+          "folder": "formal"
+        }
+      ]
+    },
+    {
+      "name": "copy_none_handmade_folder",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "lonely"
+          ],
+          "folder": "hats: summer"
+        }
+      ]
+    },
+    {
+      "name": "copy_none_archived_original",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "archivedCape"
+          ],
+          "folder": "Formal"
+        }
+      ]
+    },
+    {
+      "name": "copy_none_default_carried",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "defaultSash"
+          ],
+          "folder": "Formal"
+        }
+      ]
+    },
+    {
+      "name": "copy_none_two_same_base",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "bowler",
+            "bowler3"
+          ],
+          "folder": "Formal"
+        }
+      ]
+    },
+    {
+      "name": "copy_none_outfit_keeps_pieces",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "outfit"
+          ],
+          "folder": ""
+        }
+      ]
+    },
+    {
+      "name": "copy_none_related_items",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "suit",
+            "shirt"
+          ],
+          "folder": "Formal"
+        }
+      ]
+    },
+    {
+      "name": "copy_none_beside_original",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "formalGloves"
+          ],
+          "folder": "Formal"
+        }
+      ]
+    },
+    {
+      "name": "copy_copy_nested",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "outfit"
+          ],
+          "folder": "Formal",
+          "components": "copy"
+        }
+      ]
+    },
+    {
+      "name": "copy_copy_diamond",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "morningSet",
+            "eveningSet"
+          ],
+          "folder": "Sets",
+          "components": "copy"
+        }
+      ]
+    },
+    {
+      "name": "copy_copy_leaf_and_parent",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "shirt",
+            "suit"
+          ],
+          "folder": "Formal",
+          "components": "copy"
+        }
+      ]
+    },
+    {
+      "name": "copy_copy_archived_component",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "cloakedLook"
+          ],
+          "folder": "Formal",
+          "components": "copy"
+        }
+      ]
+    },
+    {
+      "name": "copy_copy_leaf",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "lonely"
+          ],
+          "folder": "Formal",
+          "components": "copy"
+        }
+      ]
+    },
+    {
+      "name": "copy_move_refused",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "outfit"
+          ],
+          "folder": "Formal",
+          "components": "move"
+        }
+      ]
+    },
+    {
+      "name": "copy_copy_borrowed",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "outfit",
+            "generalHat"
+          ],
+          "folder": "Formal",
+          "components": "copy"
+        }
+      ]
+    },
+    {
+      "name": "copy_none_missing_two",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "raw:e3090000-0000-4000-8000-0000000000ff",
+            "lonely",
+            "raw:e3090000-0000-4000-8000-0000000000fe"
+          ],
+          "folder": "Formal"
+        }
+      ]
+    },
+    {
+      "name": "path_images_beats_missing",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "raw:e3090000-0000-4000-8000-0000000000ff"
+          ],
+          "folder": "images"
+        }
+      ]
+    },
+    {
+      "name": "path_dotdot_beats_missing_move",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "move",
+          "itemIds": [
+            "raw:e3090000-0000-4000-8000-0000000000ff"
+          ],
+          "folder": "../x",
+          "components": "move"
+        }
+      ]
+    },
+    {
+      "name": "archived_missing_beats_409",
+      "ops": [
+        {
+          "scope": "archived",
+          "action": "copy",
+          "itemIds": [
+            "raw:e3090000-0000-4000-8000-0000000000ff"
+          ],
+          "folder": "Formal"
+        }
+      ]
+    },
+    {
+      "name": "archived_plain_move_409",
+      "ops": [
+        {
+          "scope": "archived",
+          "action": "move",
+          "itemIds": [
+            "zedCoat"
+          ],
+          "folder": "Formal"
+        }
+      ]
+    },
+    {
+      "name": "archived_move_move_409",
+      "ops": [
+        {
+          "scope": "archived",
+          "action": "move",
+          "itemIds": [
+            "zedCoat"
+          ],
+          "folder": "Formal",
+          "components": "move"
+        }
+      ]
+    },
+    {
+      "name": "archived_copy_none_409",
+      "ops": [
+        {
+          "scope": "archived",
+          "action": "copy",
+          "itemIds": [
+            "zedCoat"
+          ],
+          "folder": "Formal"
+        }
+      ]
+    },
+    {
+      "name": "general_move_move",
+      "ops": [
+        {
+          "scope": "general",
+          "action": "move",
+          "itemIds": [
+            "generalEnsemble"
+          ],
+          "folder": "Formal",
+          "components": "move"
+        }
+      ]
+    },
+    {
+      "name": "general_copy_copy",
+      "ops": [
+        {
+          "scope": "general",
+          "action": "copy",
+          "itemIds": [
+            "generalEnsemble"
+          ],
+          "folder": "Formal",
+          "components": "copy"
+        }
+      ]
+    },
+    {
+      "name": "project_move_move",
+      "ops": [
+        {
+          "scope": "project",
+          "action": "move",
+          "itemIds": [
+            "projectUniform"
+          ],
+          "folder": "Formal",
+          "components": "move"
+        }
+      ]
+    },
+    {
+      "name": "project_copy_copy",
+      "ops": [
+        {
+          "scope": "project",
+          "action": "copy",
+          "itemIds": [
+            "projectUniform"
+          ],
+          "folder": "Formal",
+          "components": "copy"
+        }
+      ]
+    },
+    {
+      "name": "group_move_move_borrowed_piece",
+      "ops": [
+        {
+          "scope": "group",
+          "action": "move",
+          "itemIds": [
+            "groupRegalia"
+          ],
+          "folder": "Formal",
+          "components": "move"
+        }
+      ]
+    },
+    {
+      "name": "group_copy_copy_borrowed_piece",
+      "ops": [
+        {
+          "scope": "group",
+          "action": "copy",
+          "itemIds": [
+            "groupRegalia"
+          ],
+          "folder": "Formal",
+          "components": "copy"
+        }
+      ]
+    },
+    {
+      "name": "chain_copy_twice_then_move",
+      "ops": [
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "shirt"
+          ],
+          "folder": ""
+        },
+        {
+          "scope": "character",
+          "action": "copy",
+          "itemIds": [
+            "shirt"
+          ],
+          "folder": ""
+        },
+        {
+          "scope": "character",
+          "action": "move",
+          "itemIds": [
+            "outfit"
+          ],
+          "folder": "Formal",
+          "components": "copy"
+        }
+      ]
+    }
+  ]
+}

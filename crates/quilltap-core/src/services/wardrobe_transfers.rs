@@ -60,7 +60,7 @@ use crate::services::wardrobe_item_images::carry::{
     carry_item_images, commit_moved_images, CarryArgs, CarryMode, PendingImageMove,
 };
 use crate::services::wardrobe_item_mutations::{
-    create_item, CreateItemOptions, PreservedIdentity, WardrobeCreateBody,
+    create_item, item_as_create_body, CreateItemOptions, PreservedIdentity,
 };
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe_folders::normalize_wardrobe_folder_path_or_root;
@@ -401,39 +401,6 @@ fn resolve_source_item(
     }
 }
 
-/// v4 `collectContainerComponents` (`f6a10055`) — the transitive closure of a
-/// composite's components that live in the same source folder. Components
-/// from other tiers (e.g. a General archetype bundled into a character outfit)
-/// are excluded — they are already shared and stay where they are. Cycles are
-/// tolerated via the visited set (the write layer refuses to store them, but
-/// old data gets no infinite loop here).
-fn collect_container_components(
-    outfit: &WardrobeItem,
-    container_items: &[WardrobeItem],
-) -> Vec<WardrobeItem> {
-    let by_id: HashMap<&str, &WardrobeItem> = container_items
-        .iter()
-        .map(|it| (it.id.as_str(), it))
-        .collect();
-    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
-    visited.insert(outfit.id.clone());
-    let mut result: Vec<WardrobeItem> = Vec::new();
-    let mut queue: std::collections::VecDeque<String> =
-        outfit.component_item_ids.iter().cloned().collect();
-    while let Some(id) = queue.pop_front() {
-        if visited.contains(&id) {
-            continue;
-        }
-        visited.insert(id.clone());
-        let Some(item) = by_id.get(id.as_str()) else {
-            continue;
-        };
-        result.push((*item).clone());
-        queue.extend(item.component_item_ids.iter().cloned());
-    }
-    result
-}
-
 /// v4 `createAtDestination(destination, planned)` — `createItem(destination,
 /// planned, { preserve: { id, createdAt, updatedAt, archivedAt, imageFileId,
 /// migratedFromClothingRecordId } })`: the planned item rides as a create body
@@ -446,17 +413,12 @@ fn create_at_destination(
     destination: &WardrobeLocation,
     planned: &WardrobeItem,
 ) -> Result<WardrobeItem, TransferError> {
-    let body = WardrobeCreateBody {
-        title: planned.title.clone(),
-        description: planned.description.clone().flatten(),
-        image_prompt: planned.image_prompt.clone().flatten(),
-        types: planned.types.clone(),
-        appropriateness: planned.appropriateness.clone().flatten(),
-        is_default: Some(planned.is_default),
-        component_item_ids: Some(planned.component_item_ids.clone()),
-        replace: Some(planned.replace),
-        folder: Some(planned.folder.clone()),
-    };
+    let body = item_as_create_body(
+        planned,
+        planned.title.clone(),
+        planned.folder.clone(),
+        planned.component_item_ids.clone(),
+    );
     let preserve = PreservedIdentity {
         id: planned.id.clone(),
         created_at: planned.created_at.clone(),
@@ -546,7 +508,12 @@ pub fn transfer_wardrobe_item(
     let travelling: Vec<WardrobeItem> = if req.components == ComponentMode::None {
         Vec::new()
     } else {
-        collect_container_components(&source.item, &source.container_items)
+        // v4 `bbbcd2388`: the array form with ONE composite
+        // (`transfers/route.ts:256`) — the same result as the old one-outfit walk.
+        crate::wardrobe::collect_container_components(
+            std::slice::from_ref(&&source.item),
+            &source.container_items,
+        )
     };
 
     // Plan every write up front so id remapping is consistent across the whole

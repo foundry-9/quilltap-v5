@@ -1499,3 +1499,213 @@ mod archived_patch_tests {
         assert_eq!(archived_patch(Some(""), false, NOW), None);
     }
 }
+
+// === P4.D309: folder filing helpers ===
+//
+// v4 `bbbcd2388` — the two pure leaves folder filing composes:
+// `collectContainerComponents` (moved out of the transfers route into
+// `expand-composites.ts` and generalised from one composite to many) and
+// `nextCopyTitle` (`lib/wardrobe/next-copy-title.ts`, the Duplicate helper,
+// whose first server-side caller is folder filing).
+
+/// v4 `COPY_SUFFIX = /\s*\(copy(?:\s+\d+)?\)\s*$/i` — a trailing ` (copy)` or
+/// ` (copy <N>)` suffix. JS `\s` is [`crate::jsstr::JS_WS_CLASS`] (U+FEFF and
+/// U+00A0 included, U+0085 not); JS `\d` is ASCII-only and `/i` folds ASCII
+/// letters only, so the class and the letters are spelled out rather than
+/// left to the `regex` crate's Unicode-aware `\d` / `(?i)`.
+static COPY_SUFFIX: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    let ws = crate::jsstr::JS_WS_CLASS;
+    regex::Regex::new(&format!(r"{ws}*\([cC][oO][pP][yY](?:{ws}+[0-9]+)?\){ws}*$"))
+        .expect("COPY_SUFFIX compiles")
+});
+
+/// v4 `nextCopyTitle(sourceTitle, existingTitles)` — the next free `(copy)` /
+/// `(copy N)` title for a duplicated item.
+///
+/// Appends `(copy)` to the source title, escalating to `(copy 2)`, `(copy 3)`,
+/// … when earlier copies already exist. Any trailing `(copy)` / `(copy N)`
+/// suffix on the source is stripped first, so duplicating `Shirt (copy)` yields
+/// `Shirt (copy 2)` rather than `Shirt (copy) (copy)`. Collision is
+/// case-insensitive (`toLowerCase` on both sides — `str::to_lowercase` is
+/// byte-identical to JS's, final sigma included). A title that is ONLY a
+/// suffix strips to `''` and falls back to the trimmed source (`|| trim()`).
+pub fn next_copy_title(source_title: &str, existing_titles: &[String]) -> String {
+    // `String.prototype.replace` with a non-global regex replaces the
+    // leftmost match only — `regex::Regex::replace` (one replacement) is the
+    // same leftmost-first match.
+    let stripped = COPY_SUFFIX.replace(source_title, "");
+    let stripped_trimmed = crate::jsstr::js_trim(&stripped);
+    let base = if stripped_trimmed.is_empty() {
+        crate::jsstr::js_trim(source_title)
+    } else {
+        stripped_trimmed
+    };
+    let taken: HashSet<String> = existing_titles
+        .iter()
+        .map(|t| crate::jsstr::js_trim(t).to_lowercase())
+        .collect();
+    let mut n: u64 = 1;
+    loop {
+        let candidate = if n == 1 {
+            format!("{base} (copy)")
+        } else {
+            format!("{base} (copy {n})")
+        };
+        if !taken.contains(&candidate.to_lowercase()) {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+/// v4 `collectContainerComponents(composites, containerItems)` — the
+/// transitive closure of the composites' components that live in the same
+/// container (the same wardrobe, the same mount). Components from other tiers
+/// (a General archetype bundled into a character outfit) are excluded — they
+/// are already shared and stay where they are.
+///
+/// Breadth-first from the composites' component lists IN COMPOSITE ORDER, each
+/// list in stored order. `visited` is seeded with EVERY composite's own id, so
+/// a composite that is also another composite's component is never returned —
+/// it is a requested item, not a component. An id absent from
+/// `container_items` (a borrowed piece) is marked visited and dropped, and its
+/// own components are NOT walked. Each reachable item appears once, in
+/// first-reached order. Cycles are tolerated via the visited set (the write
+/// layer refuses to store them, but old data gets no infinite loop here).
+pub fn collect_container_components(
+    composites: &[&crate::vault_overlay::WardrobeItem],
+    container_items: &[crate::vault_overlay::WardrobeItem],
+) -> Vec<crate::vault_overlay::WardrobeItem> {
+    let by_id: std::collections::HashMap<&str, &crate::vault_overlay::WardrobeItem> =
+        container_items
+            .iter()
+            .map(|it| (it.id.as_str(), it))
+            .collect();
+    let mut visited: HashSet<String> = composites.iter().map(|c| c.id.clone()).collect();
+    let mut result: Vec<crate::vault_overlay::WardrobeItem> = Vec::new();
+    let mut queue: std::collections::VecDeque<String> = composites
+        .iter()
+        .flat_map(|c| c.component_item_ids.iter().cloned())
+        .collect();
+    while let Some(id) = queue.pop_front() {
+        if !visited.insert(id.clone()) {
+            continue;
+        }
+        let Some(item) = by_id.get(id.as_str()) else {
+            continue;
+        };
+        result.push((*item).clone());
+        queue.extend(item.component_item_ids.iter().cloned());
+    }
+    result
+}
+
+#[cfg(test)]
+mod folder_filing_helper_tests {
+    use super::{collect_container_components, next_copy_title};
+    use crate::vault_overlay::WardrobeItem;
+
+    fn item(id: &str, components: &[&str]) -> WardrobeItem {
+        WardrobeItem {
+            id: id.to_string(),
+            character_id: None,
+            title: id.to_string(),
+            description: None,
+            image_prompt: None,
+            types: vec!["top".to_string()],
+            component_item_ids: components.iter().map(|c| c.to_string()).collect(),
+            appropriateness: None,
+            is_default: false,
+            replace: false,
+            migrated_from_clothing_record_id: None,
+            image_file_id: None,
+            archived_at: None,
+            folder: String::new(),
+            created_at: String::new(),
+            updated_at: String::new(),
+        }
+    }
+
+    fn ids(items: &[WardrobeItem]) -> Vec<&str> {
+        items.iter().map(|i| i.id.as_str()).collect()
+    }
+
+    #[test]
+    fn the_walk_is_breadth_first_in_composite_order() {
+        let all = vec![
+            item("outfit", &["suit", "general-hat"]),
+            item("suit", &["shirt", "trousers"]),
+            item("shirt", &[]),
+            item("trousers", &[]),
+            item("cloak", &["clasp"]),
+            item("clasp", &[]),
+        ];
+        let out = collect_container_components(&[&all[0], &all[4]], &all);
+        // BFS: the outfit's list and the cloak's list first, then the suit's.
+        assert_eq!(ids(&out), ["suit", "clasp", "shirt", "trousers"]);
+    }
+
+    #[test]
+    fn a_diamond_piece_is_returned_once() {
+        let all = vec![
+            item("a", &["piece"]),
+            item("b", &["piece"]),
+            item("piece", &[]),
+        ];
+        let out = collect_container_components(&[&all[0], &all[1]], &all);
+        assert_eq!(ids(&out), ["piece"]);
+    }
+
+    #[test]
+    fn a_composite_that_is_another_composites_component_is_never_returned() {
+        let all = vec![
+            item("outfit", &["suit", "hat"]),
+            item("suit", &["shirt"]),
+            item("shirt", &[]),
+            item("hat", &[]),
+        ];
+        let out = collect_container_components(&[&all[0], &all[1]], &all);
+        assert_eq!(ids(&out), ["hat", "shirt"]);
+    }
+
+    #[test]
+    fn a_borrowed_id_is_dropped_and_not_walked() {
+        // `borrowed` is not in the container, so even though a same-named item
+        // elsewhere might have components, nothing past it is reached.
+        let all = vec![item("outfit", &["borrowed", "shirt"]), item("shirt", &[])];
+        let out = collect_container_components(&[&all[0]], &all);
+        assert_eq!(ids(&out), ["shirt"]);
+    }
+
+    #[test]
+    fn a_planted_cycle_terminates() {
+        let all = vec![
+            item("outfit", &["a"]),
+            item("a", &["b"]),
+            item("b", &["a", "outfit"]),
+        ];
+        let out = collect_container_components(&[&all[0]], &all);
+        assert_eq!(ids(&out), ["a", "b"]);
+    }
+
+    #[test]
+    fn next_copy_title_chains_and_strips() {
+        let t = |s: &[&str]| s.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(next_copy_title("Shirt", &[]), "Shirt (copy)");
+        assert_eq!(
+            next_copy_title("Shirt", &t(&["Shirt (copy)", "shirt (COPY 2)"])),
+            "Shirt (copy 3)"
+        );
+        assert_eq!(next_copy_title("Shirt (copy 4)", &[]), "Shirt (copy)");
+        assert_eq!(
+            next_copy_title("Shirt (copy2)", &[]),
+            "Shirt (copy2) (copy)"
+        );
+        assert_eq!(next_copy_title("(copy)", &[]), "(copy) (copy)");
+        assert_eq!(next_copy_title("", &[]), " (copy)");
+        assert_eq!(
+            next_copy_title("Shirt (copy ٣)", &[]),
+            "Shirt (copy ٣) (copy)"
+        );
+    }
+}

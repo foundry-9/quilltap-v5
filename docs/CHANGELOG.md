@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(wardrobe): folder filing with components — next_copy_title, the array-form collect_container_components, and file_items_to_folder (P4.D309)
+
+_Versions: core 0.0.1306._
+
+Ports v4 `bbbcd2388`'s server algorithm. `wardrobe.rs` gains `next_copy_title` (v4 `nextCopyTitle`: the `(copy)` / `(copy N)` chain over a JS-`\s`, ASCII-`\d`, ASCII-case-insensitive suffix strip) and `collect_container_components` in v4's array form (breadth-first over several composites, `visited` seeded with every composite id); the transfers service's private one-outfit walk is deleted and its one caller uses the array form. New `services/wardrobe_folder_filing.rs` ports `fileItemsToFolder` whole: the five action × component-mode combinations, the copy+move refusal sentence, the folder-path then missing-id then archived-character error order, `(copy)` titles unique across the whole wardrobe (archived items included), per-copy picture carry, the outfit rewire, one `now` per call, and the `[FolderFiling]` DEBUG on the non-plain exits. The planned-item create-body mapping is lifted into `item_as_create_body`, shared with the transfers service (its family stays byte-green). Two new differential families against v4's real code at `25b8fab6a`: tier-1 `next_copy_title_equivalence` (43 rows) and tier-2 `folder_filing_tier2_equivalence` (45 chains, 47 ops, DB state + logs + pictures) over a new fixture builder.
+
 #### 2026-10-16 — docs(porting): P4.D312 lane close — the lane record and the order's status header
 
 _Docs-only change._

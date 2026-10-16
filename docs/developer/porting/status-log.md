@@ -186407,3 +186407,57 @@ Branch `claude/p4.d312-data-cli-smalls-e89421`, cut from `REAIM`
   `completion fish`; an extraction turn whose `when` is `constructor 5`.
 - **Versions at close:** core 0.0.1308, cli 0.0.34; harness frozen 0.0.1110;
   host / web / tauri / SPA untouched.
+
+## P4.D309 — wardrobe copy-to-folder + the components ask (lane record, 2026-10-16)
+
+Branch `claude/p4.d309-wardrobe-copy-to-folder-d7a12a`, cut from P4.D314's
+`REAIM` `abea3f336` (the session opened on an app worktree at main
+`6f78aa3d7` with no commits of its own; `git switch -c` moved it onto
+`REAIM` before the first edit). Pin `/tmp/qt-v4-pin-p4d309-25b8fab6a`
+(HEAD `25b8fab6aa58…`, `4.11.0-dev.10`; root `openai` 7.34.0, `zod` 4.6.7).
+§2 probe at 10:00 CDT (an observation, §R.2): branch `main`, tree clean,
+`25b8fab6a..main` = ONE commit — **v4 moved: `5cb0e0190` observed at
+10:00** (the recorded wardrobe-picker commit) — `bugfix` unmoved.
+
+### Unit 1 — the server algorithm (core 0.0.1306)
+
+- `wardrobe.rs` `// === P4.D309: folder filing helpers ===` (appended at the
+  end of the file — P4.D312's region is `describe_outfit_with_omit` +
+  the `HAIR_*` constants, untouched): `next_copy_title` + the array-form
+  `collect_container_components` + six pure unit tests (BFS order over two
+  composites, the diamond, an outfit that is another's component, a borrowed
+  id dropped and not walked, a planted cycle, the title chain).
+- `services/wardrobe_folder_filing.rs` (NEW) — v4's 18 steps in order; the
+  plain path delegates to `move_items_to_folder` and logs nothing else; no
+  transaction (v4 has none — Tier 3 item 25).
+- R-12: `item_as_create_body` LIFTED into `wardrobe_item_mutations.rs`; the
+  transfers service's `create_at_destination` calls it;
+  `wardrobe_transfers_tier2_equivalence` byte-green on the FIRST run after
+  the lift (35-line oracle from the pin, lane-private `/tmp/p4d309/wtr-*`).
+- `item_mutations_tier2_equivalence` green from the pin (lane-private
+  `/tmp/p4d309/im-*`).
+- NEW tier-1 `next_copy_title_equivalence` — 43 rows, all equal. Mutation
+  red-first: the digit class widened to Unicode `\d` → 2 rows flip
+  (`arabic_indic_digit`, `fullwidth_digit`); the letters as `(?i:copy)` →
+  EQUIVALENT (no Unicode fold maps onto c/o/p/y — no row can tell; recorded);
+  `visited` not seeded by the composite ids → 2 pure tests flip.
+- NEW tier-2 `folder_filing_tier2_equivalence` — 45 chains / 47 ops over the
+  NEW `build-folder-filing-fixture.ts` + `folder-filing-tier2.json` (23
+  items over five owners, six pictures, a hand-made folder item, a wear row),
+  every chain in a FRESH v4 child process (the singleton repositories) and a
+  fresh Rust copy. All 47 equal on the first run; mutation proofs: components
+  FIRST swapped to requested-first → 33 divergences (log LIST order +
+  tables); `taken_titles` from the target folder only → 74 (the cross-folder
+  `(copy 2)` rows); `is_default` not carried → `copy_none_default_carried`
+  alone; the archived 409 hoisted above the missing check →
+  `archived_missing_beats_409` alone.
+- R-3: the normaliser is lane-private in the test file (title-tokenised
+  minted ids, `<minted-file:…#n>` picture ids, recomputed document shas),
+  extending the transfers family's `normalize_all` / `normalize_item` by
+  DUPLICATION (that file untouched); `wardrobe_images_support`'s `dump`,
+  `rust_lines`, `baked_tokens`, `MOUNT_TABLES` reused as they are. The
+  oracle's log renderer is local too: an array field renders `k=<JSON>`
+  (the keystone's `types=` convention) where the support module's renders
+  `kJson=`. The service seam compares VALUES (keys canonicalised, as
+  `item_mutations_tier2` does); the three wire key orders are byte-pinned at
+  the route family (R-8).
