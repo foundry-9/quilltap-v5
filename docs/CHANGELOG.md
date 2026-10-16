@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — vendor(docs): the `docs/v4/` mirror brought to v4 `25b8fab6a` — 61 operations, 484 → 491 tracked (P4.D313 U3)
+
+_Docs-only change._
+
+Every path from `git show 25b8fab6a:` (never v4's working tree, whose `ROADMAP.md` is dirty): 29 overwrites (incl. the `CHANGELOG.md` / `CHANGELOG_V4.md` split and the CLI README mirror), 11 additions (`FEATURES.md`, bugs 247–251 under `bugs/fixed/`, five `features/complete/` specs incl. the trigger-phrase, wardrobe-effect and slash-command designs), 17 renames into `features/complete/` with `git mv` (13 then overwritten), and four `git rm`s of specs v4 deleted (`MCP.md`, `distant_future_separate_api.md`, `native-core-api-boundary.md`, `native-port-phase-0.md` — the P4.81 prune precedent). Census: all 621 pin paths under `help/` + `docs/` byte-equal to their v5 copies, `git ls-files docs/v4` = 491 and the same set as the pin's `docs/` plus the README mapping.
+
 #### 2026-10-16 — vendor(schemas): both moved `public/schemas/*.json` at v4 `25b8fab6a`, three byte constants, two `invokedBy: "trigger"` validator rows (P4.D313 U2)
 
 _Versions: core 0.0.1306._

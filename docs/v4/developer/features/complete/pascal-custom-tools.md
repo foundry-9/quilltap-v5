@@ -403,7 +403,7 @@ Per the standing rule, propagate additions to the stylebook and `packages/theme-
 
 ## Settings
 
-One toggle in the Chat tab (`components/settings/tabs/ChatTabContent.tsx`), grouped under Pascal's existing area: **"Custom tools"** (default on). Off = `run_custom` never offered to models and the gutter button hidden. No further settings in v1 (per-tool configuration lives in the JSON files themselves).
+One toggle in the Chat tab (`components/settings/tabs/ChatTabContent.tsx`), grouped under Pascal's existing area: **"Custom tools"** (default on). Off = `run_custom` never offered to models, the gutter button hidden, and (since 4.11) no trigger phrase listened for. The trigger phrases' own toggle, **"Auto-Run Custom Tools on Trigger Phrases"** (`customToolTriggers`, default off), sits in the Automation card beside Auto-Detect RNG. No further settings in v1 (per-tool configuration lives in the JSON files themselves).
 
 ## Error handling
 
@@ -414,6 +414,7 @@ Load-time validation failures do not error at run time; they simply keep the too
 ## Security constraints
 
 - **Outcome tests are comparator objects, never expressions.** Indirection in tests and roll fields is limited to the two closed reference forms (`$param`, `$state`). The **one** place a string grammar exists is an effect's `value` (added by [pascal-custom-tool-enhancements.md](./pascal-custom-tool-enhancements.md)), evaluated by the closed, eval-free parser in `lib/pascal/expressions.ts`: arithmetic, string concatenation, parentheses, literals, and `{{ref}}` substitution. There are no identifiers, no function calls, and no member access — the only names that grammar admits are the same `{{...}}` reference families `renderTemplate` already substitutes, so there is still nothing callable and nothing reachable beyond the run's own subjects. Reject on schema, don't sanitize.
+- **Wardrobe item references are templates, not expressions.** Since [pascal-wardrobe-effects.md](./pascal-wardrobe-effects.md) an effect may be a `wardrobe` gesture instead of a write; its `items` are rendered through `renderTemplate` and looked up by id or title in the rolling character's wearable pool — no arithmetic, nothing evaluated — and the change goes through the wardrobe's own chokepoints.
 - Roster caps: max 64 tools per resolved roster (excess dropped with a logged warning and UI notice — no silent truncation), max 8 parameters and 32 outcomes per tool, message ≤ 1000 chars, description ≤ 500 chars.
 - Parameter values from the model/UI are validated against declared types and clamped to declared ranges before any use.
 - Crypto-strength RNG (`node:crypto`), never `Math.random`.
@@ -421,7 +422,7 @@ Load-time validation failures do not error at run time; they simply keep the too
 
 ## Deferred to v2 (schema room reserved)
 
-- ~~**`persist` block**~~ — **Shipped as `effects`** (a better fit: the array describes consequences, not storage) by [pascal-custom-tool-enhancements.md](./pascal-custom-tool-enhancements.md): a tool-level list of conditional writes into tiered persistent state or the rolling character's metadata, applied server-side after the deal. Covers the ratcheting and counter use cases the reserved `persist` key was for.
+- ~~**`persist` block**~~ — **Shipped as `effects`** (a better fit: the array describes consequences, not storage) by [pascal-custom-tool-enhancements.md](./pascal-custom-tool-enhancements.md): a tool-level list of conditional writes into tiered persistent state or the rolling character's metadata, applied server-side after the deal. Covers the ratcheting and counter use cases the reserved `persist` key was for. An effect may now also be a wardrobe gesture (wear, take off, clear a slot on the rolling character) — see [pascal-wardrobe-effects.md](./pascal-wardrobe-effects.md).
 - Parameterized dice notation (`"{{params.n}}d6"`).
 - ~~Group-tier authoring UI (definitions are hand-authored JSON in v1; a form-based editor could come later).~~ Shipped as [Pascal's Workbench](custom-tool-builder.md) — a full visual editor, library, and proving bench at `/custom-tools`.
 - Per-run seeds / deterministic replay.
@@ -435,6 +436,8 @@ Load-time validation failures do not error at run time; they simply keep the too
 - `lib/tools/run-custom-tool.ts` + `lib/tools/handlers/run-custom-handler.ts`.
 - `components/chat/CustomToolsDropdown.tsx`.
 - `app/api/v1/chats/[id]/custom-tools/route.ts`.
+
+**Correction (4.11) — three entrances, one run service.** A custom tool is now reached three ways: a model's `run_custom`, the operator's popup, and a [trigger phrase](pascal-trigger-phrases.md) overheard in the chat (`lib/pascal/trigger-runner.ts`). Each entrance resolves the roster its own way and reports failure its own way; the sequence between — state cascade, `executeCustomTool`, `applyCustomToolEffects`, Pascal's post with its `pascalMeta` — lives once in `runCustomTool` (`lib/pascal/run-service.ts`). A new entrance calls it rather than copying the sequence.
 
 ## Engineering tasks
 
@@ -498,6 +501,7 @@ Load-time validation failures do not error at run time; they simply keep the too
 14. **The LLM consult is a fifth test subject, and its failure is an outcome, not an error** (added post-ship; see [The `llm` consult](#the-llm-consult)). The author supplies the failure's words (`errorMessage`, required), the run never fails because the oracle went quiet, and the technical reason stays out of the fiction. The provider call arrives through an injected `llmInvoke` seam so the core stays testable and the audit stays free; answer comparisons are deliberately forgiving (trim, case-insensitive eq, numeric coercion for ordering) because the subject is a model's prose, not a declared value.
 15. **`contains`/`ncontains` are substring comparators, not a grammar** (added post-ship; see [Containment](#when--comparators-not-expressions)). Two more AND-composed keys rather than any pattern language: no regex, no globs, nothing to parse or inject. Per-context strictness follows each subject's `eq` precedent — exact and case-sensitive on `params`/`metadata`, trimmed case-insensitive on `llm` — and the operand is a non-empty string literal or a `$param` to a string parameter, so an outcome can ask whether one input appears inside another (or inside the consult's answer).
 
+16. **Trigger phrases run a tool when its words are said** (added 4.11; design of record [pascal-trigger-phrases.md](pascal-trigger-phrases.md)). A `triggers` key on the definition (case-insensitive substrings, no grammar) plus an off-by-default `chatSettings.customToolTriggers` toggle under the `customTools` master switch. A triggered run is an ordinary run with every parameter at its default, recorded as `pascalMeta.invokedBy: 'trigger'` with the `triggerPhrase`; only the operator's message and a character's reply are scanned.
 
 ## Addition — the `progress` family (v4.10, 2026-09-08)
 
