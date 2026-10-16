@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(spa): the Automation card's trigger-phrase row and the run dialog's wardrobe sentences (P4.D307 unit 3)
+
+_Versions: SPA 0.5.865._
+
+The chat-settings and run-dialog halves of v4 `362426c8f` and `f0db8cbb8`, at the `25b8fab6a` pin.
+
+- The Automation card is now a row table over `AUTOMATION_OPTIONS`, with a second row, "Auto-Run Custom Tools on Trigger Phrases" (`customToolTriggers`, default off). That row is dead (`opacity-50 cursor-not-allowed`, checkbox disabled) while Custom Tools is off, and saves with v4's failure text `Failed to update trigger phrase setting`. `chat-settings.types.ts` gains the row, `AutomationKey`, `DEFAULT_CUSTOM_TOOLS` and `DEFAULT_CUSTOM_TOOL_TRIGGERS`. The save needs the server's PUT arm (P4.D304); until then the server drops the key.
+- NEW `chat/custom-tool-wardrobe-lines.ts`: the pure `wardrobeReferenceLines` and the standalone `qt-custom-tool-wardrobe-lines` component render v4's three wardrobe sentences, one per non-empty list. `CustomToolReferences` gains `wears?` / `takesOff?` / `clearsSlots?`. The unifier wires it into the custom-tool popup.
+- A spec pins that a trigger-run `pascalMeta` with a wardrobe effect reads through the Staff bar's label and accent functions unchanged.
+
 #### 2026-10-16 — feat(spa): the Workbench learns trigger phrases, wardrobe effects, the bench's "would attempt" and the phrase badge (P4.D307 unit 2)
 
 _Versions: SPA 0.5.864._

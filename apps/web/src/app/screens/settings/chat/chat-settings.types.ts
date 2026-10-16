@@ -136,7 +136,7 @@ export const DEFAULT_CONTEXT_COMPRESSION_SETTINGS: ContextCompressionSettings = 
 // ---------------------------------------------------------------------------
 
 export const AUTOMATION_OPTIONS: readonly {
-  key: 'autoDetectRng';
+  key: 'autoDetectRng' | 'customToolTriggers';
   label: string;
   description: string;
 }[] = [
@@ -146,9 +146,28 @@ export const AUTOMATION_OPTIONS: readonly {
     description:
       'Automatically detect dice rolls (e.g., 2d6), coin flips, and "spin the bottle" in your messages and execute them',
   },
+  // v4 `362426c8f` (`types.ts:500-511` at `25b8fab6a`).
+  {
+    key: 'customToolTriggers',
+    label: 'Auto-Run Custom Tools on Trigger Phrases',
+    description:
+      "When anyone in a chat says a phrase one of Pascal's custom tools declares, run that tool automatically with its defaults. Requires Custom Tools.",
+  },
 ];
 
+/** One Automation row's settings key (v4 `types.ts:513-514`). */
+export type AutomationKey = (typeof AUTOMATION_OPTIONS)[number]['key'];
+
 export const DEFAULT_AUTO_DETECT_RNG = true;
+
+/**
+ * Default Custom Tools setting — on (v4 `types.ts`). Read by the Automation
+ * card's trigger row; the Custom Tools card keeps its own inline `?? true`.
+ */
+export const DEFAULT_CUSTOM_TOOLS = true;
+
+/** Default trigger-phrase setting — off: overhearing is a surprise the first time (v4 `types.ts:526-529`). */
+export const DEFAULT_CUSTOM_TOOL_TRIGGERS = false;
 
 // ---------------------------------------------------------------------------
 // Agent mode (v4 types.ts L443-459, MAX_TURNS_OPTIONS from AgentModeSettings.tsx L14-20)

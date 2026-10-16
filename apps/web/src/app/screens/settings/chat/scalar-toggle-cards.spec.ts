@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ComponentFixture } from '@angular/core/testing';
 
 import { AnswerConfirmationSettings } from './answer-confirmation-settings';
 import { AutoScrollSettings } from './auto-scroll-settings';
@@ -79,11 +80,19 @@ describe('AutomationSettings', () => {
     expect(checkboxes(fixture)[0].checked).toBe(true);
   });
 
-  it('renders v4\'s single AUTOMATION_OPTIONS row with its copy', async () => {
+  it('renders v4\'s two AUTOMATION_OPTIONS rows with their copy (v4 362426c8f added the second)', async () => {
     const stub = cardStub(settingsRow());
     const fixture = await mountCard(AutomationSettings, stub);
-    expect(checkboxes(fixture)).toHaveLength(1);
-    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Auto-Detect RNG Calls');
+    expect(checkboxes(fixture)).toHaveLength(2);
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Auto-Detect RNG Calls');
+    expect(text).toContain(
+      'Automatically detect dice rolls (e.g., 2d6), coin flips, and "spin the bottle" in your messages and execute them',
+    );
+    expect(text).toContain('Auto-Run Custom Tools on Trigger Phrases');
+    expect(text).toContain(
+      "When anyone in a chat says a phrase one of Pascal's custom tools declares, run that tool automatically with its defaults. Requires Custom Tools.",
+    );
   });
 
   it('PUTs the bare scalar on toggle', async () => {
@@ -100,6 +109,66 @@ describe('AutomationSettings', () => {
     expect((fixture.nativeElement as HTMLElement).textContent).toContain(
       'Failed to update auto-detect RNG setting',
     );
+  });
+
+  // ---- v4 `362426c8f` (pinned at `25b8fab6a`): the trigger-phrase row ----
+  const rowLabel = (fixture: ComponentFixture<unknown>, index: number) =>
+    checkboxes(fixture)[index].closest('label') as HTMLLabelElement;
+
+  it('leaves the trigger row unchecked by default (v4 DEFAULT_CUSTOM_TOOL_TRIGGERS = false)', async () => {
+    const fixture = await mountCard(AutomationSettings, cardStub(settingsRow()));
+    expect(checkboxes(fixture)[1].checked).toBe(false);
+  });
+
+  it('checks the trigger row when the setting says true', async () => {
+    const fixture = await mountCard(AutomationSettings, cardStub(settingsRow({ customToolTriggers: true })));
+    expect(checkboxes(fixture)[1].checked).toBe(true);
+  });
+
+  it('kills the trigger row while Custom Tools is off — opacity-50, not-allowed, checkbox disabled', async () => {
+    const fixture = await mountCard(
+      AutomationSettings,
+      cardStub(settingsRow({ customTools: false, customToolTriggers: true })),
+    );
+    const label = rowLabel(fixture, 1);
+    expect(checkboxes(fixture)[1].disabled).toBe(true);
+    expect(label.classList.contains('opacity-50')).toBe(true);
+    expect(label.classList.contains('cursor-not-allowed')).toBe(true);
+    expect(label.classList.contains('qt-hover-accent')).toBe(false);
+    expect(label.classList.contains('cursor-pointer')).toBe(false);
+    // The RNG row is unaffected by Custom Tools.
+    expect(checkboxes(fixture)[0].disabled).toBe(false);
+    expect(rowLabel(fixture, 0).classList.contains('qt-hover-accent')).toBe(true);
+  });
+
+  it('keeps the trigger row live while Custom Tools is unset (v4 DEFAULT_CUSTOM_TOOLS = true) or on', async () => {
+    for (const row of [settingsRow(), settingsRow({ customTools: true })]) {
+      const fixture = await mountCard(AutomationSettings, cardStub(row));
+      const label = rowLabel(fixture, 1);
+      expect(checkboxes(fixture)[1].disabled).toBe(false);
+      expect(label.classList.contains('qt-hover-accent')).toBe(true);
+      expect(label.classList.contains('cursor-pointer')).toBe(true);
+      expect(label.classList.contains('opacity-50')).toBe(false);
+      expect(label.classList.contains('cursor-not-allowed')).toBe(false);
+      // The static tokens ride on every row.
+      for (const token of ['flex', 'items-start', 'gap-3', 'p-4', 'border', 'qt-border-default', 'rounded', 'transition-colors']) {
+        expect(label.classList.contains(token), token).toBe(true);
+      }
+    }
+  });
+
+  it('PUTs the bare customToolTriggers scalar on toggle', async () => {
+    const stub = cardStub(settingsRow());
+    const fixture = await mountCard(AutomationSettings, stub);
+    await toggle(fixture, checkboxes(fixture)[1], true);
+    expect(stub.updates).toEqual([{ customToolTriggers: true }]);
+  });
+
+  it('surfaces a failed trigger save in v4\'s words (dogfood #6)', async () => {
+    const stub = cardStub(settingsRow(), true);
+    const fixture = await mountCard(AutomationSettings, stub);
+    await toggle(fixture, checkboxes(fixture)[1], true);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Failed to update trigger phrase setting');
   });
 });
 
