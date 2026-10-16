@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — test(web): the typed-only construction total counts WardrobeItemsCopy; the P4.D309 lane record and status header (P4.D309)
+
+_No crate versions bumped._
+
+`tri_state_edges_share_the_decoder`'s total of typed-only hand-built `Request` constructions moves 121 → 122 for the new `WardrobeItemsCopy` arm (the per-file count already moved in the route commit). Closes the P4.D309 lane: the order's status header reads LANE COMPLETE and the lane record carries the gate numbers, the two HANDOFFs and the versions at close.
+
 #### 2026-10-16 — feat(spa): Copy to folder…, the components fieldset shared by the transfer dialog and the folder picker, and 01f508d4e's SPA half (P4.D309)
 
 _Versions: SPA 0.5.863._

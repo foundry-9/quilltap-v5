@@ -607,8 +607,10 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 121,
-        "121 = 123 − P4.D288's two (unit 5, R-G: the retired `system_data_routes.rs` dedup arms \
+        total, 122,
+        "122 = 121 + P4.D309's one (`wardrobe_routes.rs`'s `WardrobeItemsCopy`, the copy \
+         twin of `WardrobeItemsMove`, v4 `bbbcd2388`). \
+         121 = 123 − P4.D288's two (unit 5, R-G: the retired `system_data_routes.rs` dedup arms \
          `MemoryDedupPreview` / `MemoryDedupRun` deleted with their wire verbs). \
          123 = 117 + P4.D281's six (five in `wardrobe_routes.rs` net — the folder list, the four \
          folder writes and the character create, less the retired 404-first item GET — and the \

@@ -186595,3 +186595,84 @@ Branch `claude/p4.d309-wardrobe-copy-to-folder-d7a12a`, cut from P4.D314's
   `wardrobe-copy-to-folder-flow` **1/1** (LIVE), `wardrobe-folders-flow`
   **5/5** (the untouched move beat beside the new row entry),
   `wardrobe-flow` **18/18**. No `wardrobe-transfer-flow` spec exists.
+
+### Lane close — the gate, the HANDOFFs, the versions
+
+- **The sweep from the pin** (`recipe_sweep.py --run-all --force --families
+  …` `--v4 /tmp/qt-v4-pin-p4d309-25b8fab6a --v5w <this worktree>`, announced
+  in the shared notes, alone on the machine): **7 / 7 ok** —
+  `next_copy_title_equivalence`, `folder_filing_tier2_equivalence`,
+  `wardrobe_folders_routes_equivalence`, `item_mutations_tier2_equivalence`,
+  `wardrobe_transfers_tier2_equivalence`, `composite_types_equivalence`,
+  `wardrobe_folders_equivalence`. Changed-byte counts in the fresh NDJSON:
+  `componentsCarried` 24 and `"copy-items"` 23 (routes), `(copy 2)` 10
+  (filing) and 12 (title). The regenerated title NDJSON is byte-identical to
+  the vendored SPA copy. `recipe_sweep.py --self-test` → 0 failures.
+- fmt clean; `cargo clippy --workspace --all-targets -D warnings` clean, and
+  with `--features quilltap-core/native-transport` clean (after `npm run
+  build` made `apps/web/dist`).
+- **`cargo test --workspace --no-fail-fast`** (the sweep outputs copied into
+  lane-private `/tmp/p4d309/gate/`, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin):
+  **810 binaries / 5,239 passed / 6 failed / 3 ignored, zero `SKIP:` lines.**
+  Five are the §R.13 owners' by-design reds: `cli_differential` (3 cases —
+  `main help`, `completion zsh`, `completion fish`; P4.D312),
+  `provider_sdk_version_guard` + `zod_version_guard` (`4.6.5` → `4.6.7`;
+  P4.D311), `public_schemas_vendor_guard` + `qtap_schema_embed_guard`
+  (P4.D313). The sixth was THIS lane's: `tri_state_edges_share_the_decoder`'s
+  typed-only TOTAL (121 → 122) beside the per-file count I had already moved
+  — my earlier targeted run of it had aborted on a mistyped sibling target
+  name, so it never ran; fixed in the closing commit and green by name (11/11).
+  Green by name in the gate: `wardrobe_copy_items_route`,
+  `characters_wardrobe_route`, `wardrobe_instructions_routes`,
+  `p4_d279_wire_contract`, `dispatch_wrong_type_census`,
+  `web_edge_body_parse_guard`, `web_edge_action_sites_census`.
+- **HANDOFF (item 19) → the unifier:** two mechanical signature moves to check
+  against P4.D305 / P4.D306 by name — `wardrobe_route_factory::folder_action(…,
+  blob_webp: Arc<dyn WebpTranscoder>)` (all six engine folder arms in
+  `engine.rs` now on `ready_db_and_blob_webp()`; the web routes test's call
+  sites edited here) and `wardrobe::collect_container_components(&[&WardrobeItem],
+  &[WardrobeItem])` (its one other caller `wardrobe_transfers.rs`, the private
+  one-outfit walk deleted). Neither touches `wear_ops.rs`. The `wardrobe.rs`
+  region is APPENDED at the end of the file (`// === P4.D309: folder filing
+  helpers ===`); P4.D312's `describe_outfit_with_omit` / `HAIR_*` edits are
+  far above it.
+- **HANDOFF (item 20) → P4.D313 (R-6):** the vendor lane's byte copy at the
+  pin must carry `bbbcd2388`'s text in four paths (`git -C "$PIN" show
+  bbbcd2388 -- help docs/developer`, 4 files +9/−5): `help/wardrobe.md` — the
+  two new Folders bullets (`- **Copy to folder…**, its neighbour in the menu,
+  works the same way but files a *copy* …` and `- **Outfits ask after their
+  components.** Move or copy an outfit to a folder and the picker poses …`),
+  the select-bar sentence `*N selected · Move to folder… · Copy to folder… ·
+  Cancel*`, and the closing clause `(and moving an outfit moves its pieces
+  only if you say so when asked)`; `help/project-wardrobe.md` — the **File**
+  bullet naming `**Move to folder…** or **Copy to folder…** in a row's **⋮**
+  menu (an outfit asks whether its components should come along)`;
+  `docs/v4/developer/API.md` — the `move-items` row rewritten (`{ itemIds,
+  folder, components? }` → `{ items, componentsCarried }`) + the new
+  `copy-items` row; `docs/v4/developer/features/complete/wardrobe-folders.md`
+  — the same two rows in the spec's table. The help COUNT stays 131.
+- **R-3 recorded:** the transfers family's `normalize_all` / `normalize_item`
+  DUPLICATED (lane-private, extended) into
+  `folder_filing_tier2_equivalence.rs`, not hoisted; a later smalls round may
+  hoist both.
+- **Tier 3, recorded:** 25 no transaction around the copy loop (v4-faithful);
+  26 `FolderFilingError::Request` unreachable over either transport; 27 the
+  Zod `details` array compared by status + `error` only; 28 no client
+  `collectContainerComponents`; 29 no CLI verb / Tier R row; 30
+  `01f508d4e`'s lib half is P4.D310's.
+- **v4 moved / dirty observations (§R.2):** `5cb0e0190` observed past the pin
+  at 10:00 CDT (the recorded wardrobe-picker commit); tree clean; nothing
+  ported from it.
+- **💸 for the dogfood pass:** the order's list unchanged (a real garment
+  with pictures copied → its own picture rows and an empty tally; `(copy 2)`;
+  a copy beside its original; a real outfit moved with components move /
+  copy; `copy-items` with components copy; a default item copied stays
+  default; the select bar's multi-copy toast; the General tier over REST;
+  `components: "move"` on a copy → the flat 400; a foreign id → the
+  sentence; the INFO lines in the server log; one avatar repaint ONLY if the
+  walk equips a copied outfit).
+- **Versions at close:** core 0.0.1307, web 0.0.241, SPA 0.5.863; host,
+  cli, tauri unchanged; harness frozen 0.0.1110.
+- **Cleanup:** the pin worktree removed; the lane's `target/` and
+  `apps/web/node_modules` / `dist` deleted; the red-first scratch worktree
+  removed earlier; nothing pushed to main.
