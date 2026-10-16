@@ -7151,6 +7151,122 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `25b8fab6a` Pascal-programme + composer-slash-commands + 4.10.0-release drift catch-up round (P4.D314 → {P4.D304 → {P4.D305 → P4.D306}} ∥ P4.D309 ∥ P4.D310 ∥ P4.D311 ∥ P4.D312, with P4.D307 ∥ P4.D308 ∥ P4.D313) — ORDERED 2026-10-16
+
+**Baseline `83334b9a5`. The round is PINNED at v4 `25b8fab6a`** ("fix:
+month-word prototype keys (bug 247); orphaned typeahead menu (bug 250)",
+`4.11.0-dev.10`, 2026-10-16 07:07) — v4 `main` HEAD at the planning probe,
+twenty-six commits past the baseline. The §2 probe PASSED (branch `main`,
+tree clean, both logs empty; `origin` agreed after a fetch; `bugfix`
+`489b228b6` and `release` `2432b9057` unmoved), so the ledger stood and
+nothing was re-derived. **The human's ruling (2026-10-09): the work follows
+the PIN, not the latest commit or later changes in v4.** For this round's
+lanes the probe is an observation, not a gate. During planning the live tree
+went dirty and then committed `5cb0e0190` ("feat(pascal): wardrobe picker in
+the Workbench", `4.11.0-dev.11`, no schema hunk) — ONE commit past the pin,
+recorded UNPROCESSED in the ledger's §3 for the next `/driftcheck`; not this
+round's.
+
+**Scope — ALL TWENTY-SIX ledger §3 rows past the baseline, as ONE round**
+(the `83334b9a5` unification's NEXT item 3, revised 2026-10-16 in the ledger):
+the TENTH (`362426c8f`, `chat_settings.customToolTriggers`) and ELEVENTH
+(`4877fc2da`, `chat_settings.composerSlashCommands`) D23 moves in ONE
+`fresh_schema.json` re-dump with two unstamped table-gated boot ensures
+(`migration_indexes.json` unmoved — the two columns are the span's only DDL);
+the Pascal programme (trigger phrases with the one run service; wardrobe
+effects with the composite take-off fix v5 shares); composer slash commands;
+copy-to-folder with the components ask; bugs 248 / 249; the seat-id remap in
+the new-account restore; the hair precedence note; the openai-compatible
+cache-hit exclusion + the openai 7.34.0 / zod 4.6.7 dependency move; bug 251's
+trim; the CLI bytes; the About blurbs; the `qt-link`; bug 247's CONVERGENCE
+(this port's filing — `PROTOTYPE_KEY_MONTH_THROWS` retires by measurement);
+`help/` 131 whole + both public schemas + 61 `docs/v4` operations; and the
+NO-PORT ratification of the release squash and its nine docs / infra siblings.
+
+**The finding that shaped the round:** at the pin, v4's dead-code sweep
+(`7417e9a1b`) has deleted `createMountWardrobeItem` (12 import sites in 11
+fixture builders → 18 families), the `@/lib/memory` barrel (one `jest.doMock`),
+`isModerationRefusal` and `MEMORY_CALENDAR_DAY_MS` — every regen of those
+families dies at the pin. So a FIRST, tiny, harness-only lane lands the
+re-aims (`REAIM`) and every regenerating lane stacks on it.
+
+Eleven lanes split by FILE OWNERSHIP, three stacking points (`REAIM` →
+`KEYSTONE` → `TRIGGERS`):
+
+- **Wave 0, from `main` at the orders' commit:**
+  - **P4.D314 — the IMPORT-DEAD re-aims** (`work-orders/p4.d314-import-dead-reaims-at-the-pin-create-mount-wardrobe-item-memory-barrel-refusal-calendar-constant.md`):
+    `harness/oracle` only, v4's own removed one-liners rebuilt from the
+    exports still at the pin — ends in `REAIM`.
+  - **P4.D307 — the Pascal SPA** (`…/p4.d307-pascal-spa-workbench-trigger-phrases-field-effects-kind-select-automation-toggle-twins-corpora.md`, e2e 4343):
+    the `pascal/*` TS twins + corpora, `trigger-phrases.ts`, the Workbench's
+    triggers field / Kind select / Proving Bench / library badge, the
+    Automation toggle, the chat-settings TS keys, the run-dialog wardrobe
+    lines as a separate component.
+  - **P4.D308 — the composer SPA** (`…/p4.d308-composer-spa-slash-commands-typeahead-runner-initial-tool-settings-card-bug-251-trim-smalls.md`, e2e 4344):
+    `lib/slash-commands` as a tier-1 oracle twin, the ProseMirror slash
+    adapter, the runner, `initialTool` on both dialogs, the Slash Commands
+    settings card, bug 251's trim, bug 250 NO-PORT, the `qt-link`, the About
+    blurbs.
+  - **P4.D313 — vendor + NO-PORT** (`…/p4.d313-vendor-help-131-public-schemas-docs-v4-noport-record-4-10-release-round.md`):
+    `help/` whole at the pin, both public schemas + the three byte guards,
+    `docs/v4` 61 operations (four `git rm`s), the ten-row NO-PORT record.
+- **Wave A, from `REAIM`:**
+  - **P4.D304 — the chat-settings KEYSTONE** (`…/p4.d304-chat-settings-keystone-tenth-eleventh-d23-custom-tool-triggers-composer-slash-commands-ensures-put-arms.md`):
+    the re-dump, the seed, the two ensures (each differentially compared
+    against v4's real `MigrationRunner`), the struct + six column sites + the
+    positional-read shift, the PUT arms, the help bag + Almanack line, the
+    carriers, the committed pairs — ends in `KEYSTONE`.
+  - **P4.D309 — wardrobe copy-to-folder** (`…/p4.d309-wardrobe-copy-to-folder-components-ask-server-spa.md`, e2e 4345):
+    a NEW `folder_filing_tier2` family, a Rust `next_copy_title`, explicit
+    `folder_write_request` arms, the transcoder on both arms, the SPA
+    fieldset / picker / browser / row, the `console.debug` removal.
+  - **P4.D310 — the chat-spine smalls** (`…/p4.d310-chat-spine-smalls-bug-249-lone-character-floor-bug-248-chunk-embeddings-pre-write-log-prune.md`):
+    bug 249 with `neverPauseForUser` on both sides, bug 248's fallback
+    pre-read + the two DEBUG lines, the `01f508d4e` log prune / renames.
+  - **P4.D311 — the provider lane** (`…/p4.d311-provider-openai-compatible-normalize-usage-sdk-7-34-rerecord-zod-4-6-7.md`):
+    `normalizeUsage` for openai-compatible alone, the guards re-stamped, the
+    corpora re-recorded from the pin, the zod `too_big` twins.
+  - **P4.D312 — the data / CLI / memory-time smalls** (`…/p4.d312-data-cli-smalls-restore-seat-id-remap-hair-precedence-note-tier-r-bytes-bug-247-convergence.md`):
+    the remapper's four fields + every dependent restore regen, the hair
+    note + a NEW `describe-outfit` case, the three Tier R bytes, bug 247's
+    retirement by measurement.
+- **Wave B, from `KEYSTONE`:** **P4.D305 — Pascal trigger phrases, server** (`…/p4.d305-pascal-trigger-phrases-server-run-service-scanner-runner-sites.md`):
+  the `triggers` key, the scanner + Carina strip, the ONE run service
+  extracted from both entrances, the runner, the two spine sites,
+  `pascalMeta.invokedBy 'trigger'`, `triggerCount` — ends in `TRIGGERS`.
+- **Wave C, from `TRIGGERS`:** **P4.D306 — Pascal wardrobe effects, server** (`…/p4.d306-pascal-wardrobe-effects-server-gesture-union-applier-take-off-wearable-composite-fix.md`):
+  the write-XOR-gesture union, the applier, `pascalMeta.effects` wardrobe
+  records, `describeEffects`, `takeOffWearable` by component-graph leaves
+  (the harness blind spot made visible first).
+
+The eight planning surveys under `work-orders/surveys/2026-10-16-setupphase-*.md`
+are the long form each lane reads whole. The round-level rulings (§R.11 R-A …
+R-V — one round pinned at HEAD, the three stacking points, the vendor lane
+owning every vendored byte, `invoked_by` a String on the row, one owner for
+the keystone-adjacent lines, the shared definition corpus regenerated once,
+the run-service seam, the manual route's two behaviour changes ported, the
+composite bug made visible before fixed, the SPA dialog meeting point, the
+chat-settings SPA keys, the text glyph, the restore blast radius, bug 247 by
+measurement, the usage-count candidate retired, bug 248's fallback read, the
+new filing family, the hair note's new case, no Tier R regen, the v4 filing
+candidates, the help deep-link's card id, the NO-PORT list) are the planner's;
+the human may overrule any before lane start. Pick order (§S.1): P4.D314 →
+P4.D304 → P4.D305 → P4.D306 → P4.D310 → P4.D312 → P4.D309 → P4.D311 → P4.D313
+→ P4.D307 → P4.D308. **The oracle baseline MOVES to `25b8fab6a` at the
+unification.**
+
+**For the human before lane start:** every planning ruling above (§R.11 and
+the lanes' local calls); no new dependency is asked for.
+
+**Left out of the round, deliberately:** the owed dogfood pass (the
+`83334b9a5` unification's NEXT item 1 — it wants a Friday copy taken before
+v4 ran past `362426c8f`, which this round makes unnecessary: after it any
+post-`4877fc2da` copy serves, so the pass is better run AFTER it, with this
+round's 💸 rows); the follow-ups smalls round (NEXT item 2 — the review's
+recorded items and the two human rulings `OFFSET_OCCURRED_AT_ROW_SCHEMA` /
+the strict-export consequence; next after this); `5cb0e0190` and anything
+later in v4 (`/driftcheck`).
+
 ## The `83334b9a5` memory-refactor + scenarios drift catch-up round ({P4.D289 → P4.D288} → {P4.D290 → {P4.D296 ∥ P4.D297 ∥ P4.D298}} ∥ P4.D291 ∥ P4.D292 ∥ P4.D293 ∥ P4.D294 ∥ P4.D295, with P4.D299 ∥ P4.D300 ∥ P4.D301 ∥ P4.D302 ∥ P4.D303) — UNIFIED 2026-10-15 (ordered 2026-10-14)
 
 **UNIFIED on main (2026-10-15) — ALL SIXTEEN LANES LANDED; the oracle
@@ -7207,7 +7323,7 @@ carries its Unification paragraph and exactly what stays OPEN.
    export whole — keep the strict-export ruling or converge?). Also the
    earlier OPEN lists (the `4a38222e6` and `01a83539d` headers, the P4.D273
    ruling, dogfood #156 / #157).
-3. **The `362426c8f` drift catch-up round** (`/driftcheck` first — the
+3. ✅ **ORDERED 2026-10-16 as the `25b8fab6a` round (P4.D314 → {P4.D304 → {P4.D305 → P4.D306}} ∥ P4.D309 ∥ P4.D310 ∥ P4.D311 ∥ P4.D312, with P4.D307 ∥ P4.D308 ∥ P4.D313; pinned at `25b8fab6a`, all twenty-six rows) — the ORDERED section above.** Was: **The `362426c8f` drift catch-up round** (`/driftcheck` first — the
    checkout's Pascal dirt will have committed): the TENTH D23 move
    (`chat_settings.customToolTriggers` + the trigger-phrase feature + the one
    run service), plugin-utils 2.7.1's cache-hit exclusion (`OpenAiCompatible`),

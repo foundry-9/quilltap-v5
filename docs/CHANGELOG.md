@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — docs(porting): order the `25b8fab6a` Pascal-programme + composer-slash-commands + 4.10.0-release drift catch-up round — eleven work orders (P4.D314 → {P4.D304 → {P4.D305 → P4.D306}} ∥ P4.D309 ∥ P4.D310 ∥ P4.D311 ∥ P4.D312, with P4.D307 ∥ P4.D308 ∥ P4.D313)
+
+_Docs-only change._
+
+`/setupphase` for the twenty-six-commit drift past `83334b9a5`. The round is PINNED at v4 `25b8fab6a` (`4.11.0-dev.10`, v4 main HEAD at the planning probe, which passed) and the work follows the pin: a later v4 commit is recorded, never ported, and is not a lane STOP. Eleven work orders with one binding round block (§R, §S, contracts C1–C4, Ownership) spliced byte-identically into each; eight planning surveys under `work-orders/surveys/2026-10-16-setupphase-*.md`; the ledger's twenty-six rows marked ORDERED; the phase plan's ORDERED section.
+
+The shape: a FIRST harness-only lane (P4.D314) re-aims the oracle side at the pin — v4's dead-code sweep deleted `createMountWardrobeItem` (12 builder import sites, 18 families), the `@/lib/memory` barrel, `isModerationRefusal` and `MEMORY_CALENDAR_DAY_MS`, so regens die at the pin until it lands (`REAIM`). The chat-settings keystone (P4.D304) carries the TENTH + ELEVENTH D23 moves (`customToolTriggers`, `composerSlashCommands`) in one `fresh_schema.json` re-dump with two unstamped boot ensures (`KEYSTONE`); the Pascal trigger-phrase server lane (P4.D305, `TRIGGERS`) and the wardrobe-effects server lane (P4.D306, with the composite take-off fix v5 shares) stack on it; the Pascal SPA (P4.D307) and the composer slash-commands SPA with bug 251's trim and the smalls (P4.D308) run from main; copy-to-folder (P4.D309), the chat-spine smalls (bugs 248 / 249, P4.D310), the provider lane (`normalizeUsage`, openai 7.34.0, zod 4.6.7 — P4.D311), the data / CLI / memory-time smalls (the seat-id remap, the hair note, the Tier R bytes, bug 247's convergence — P4.D312) and the vendor lane (help/ 131, docs/v4 61 operations, both public schemas, the NO-PORT record for ten rows — P4.D313) fill the rest. The surveys corrected the ledger on several points the orders carry: the restore remapper's corpus is not byte-identical (the `wide` row and ~17 restore cases go red by design), only eight plugin bundles re-bundle the SDK and no recorder resolves the root `openai`, v5 shares the composite take-off bug invisibly, and `help/wardrobe.md` carries three commits' hunks (so the vendor lane copies whole files).
+
+During planning v4's in-flight wardrobe-effect picker committed as `5cb0e0190` (one past the pin, no schema hunk); recorded UNPROCESSED for the next `/driftcheck`, not this round's.
+
 #### 2026-10-16 — docs(porting): drift ledger records `25b8fab6a` — bug 247, this port's filing, converges
 
 _Docs-only change._
