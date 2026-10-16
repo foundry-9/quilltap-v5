@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(spa): the Salon composer's / commands wired end to end (P4.D308)
+
+_Versions: SPA 0.5.868._
+
+The composer now builds the `/` menu's host from its own gutter handlers (v4 `ChatComposer.tsx:233-274`, `4877fc2da`): attach clicks the hidden file input; library, image, announce, mail and inform fire the same outputs as their gutter buttons; the four quick rolls land as the dice chip; `/tool` and `/roll` emit a new `openRunTool` output; Pascal's tools open through the popup's `open()`, and `customToolsAvailable` reads the wand's own `available()`. Immediate runs go through the slash-command runner as the new `slashDefaultCharacterId` input, then fire `slashToolRan`. The host is created once per chat and bound to the editor only while `composerSlashCommands` is on. The Salon keeps one Run Tool request bumped by both the sidebar (no tool) and the composer (a tool id), passes it to the modal as `initialTool`, hands the composer the first active, non-removed character seat as the default, and refetches after a slash run as it does after a gutter run.
+
 #### 2026-10-16 — feat(spa): initialTool on the custom-tool dialog and the Run Tool modal, and a public open() on the popup (P4.D308)
 
 _Versions: SPA 0.5.867._

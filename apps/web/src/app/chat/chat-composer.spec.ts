@@ -1010,3 +1010,169 @@ describe('ChatComposer — the failed-send snapshot / restore pair (P4.D301, bug
     expect(richEditor(fixture).getMarkdown()).toBe('');
   });
 });
+
+/**
+ * The `/` command menu's host (v4 `ChatComposer.tsx:233-274`, `4877fc2da`):
+ * assembled from the gutter's own handlers, one per chat, bound to the editor
+ * only while `composerSlashCommands` is on.
+ */
+describe('ChatComposer — the / command host (v4 4877fc2da)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const ROSTER_TOOL = {
+    name: 'coin',
+    title: 'Flip A Coin',
+    description: 'd',
+    parameters: {},
+    defaultVisibility: 'public',
+    sourceTier: 'general',
+    asCharacterId: 'char-1',
+    definitionPath: 'Tools/coin.tool.json',
+    mountName: 'Vault',
+    mountPointId: 'm-1',
+  };
+
+  function mount(
+    settings: Record<string, unknown> = {},
+    roster: unknown[] = [],
+  ): { fixture: ComponentFixture<ChatComposer>; requests: Record<string, unknown>[] } {
+    const requests: Record<string, unknown>[] = [];
+    const client = {
+      ...coreStreamStub(),
+      dispatchExpect: vi.fn(async () => ({ type: 'chatSettings', data: settings })),
+      dispatchData: vi.fn(async (req: Record<string, unknown>) => {
+        requests.push(req);
+        if (req['type'] === 'chatRng') {
+          return {
+            success: true,
+            preview: true,
+            result: { formattedText: 'f', summary: 's', requestPrompt: 'p', arguments: { type: 20, rolls: 1 } },
+          };
+        }
+        if (req['type'] === 'chatCustomToolsList') return { tools: roster, errors: [] };
+        return { tools: [], errors: [] };
+      }),
+    } as unknown as CoreClient;
+    TestBed.configureTestingModule({
+      imports: [ChatComposer],
+      providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: client }],
+    });
+    const fixture = TestBed.createComponent(ChatComposer);
+    fixture.componentRef.setInput('chatId', 'chat-1');
+    fixture.detectChanges();
+    return { fixture, requests };
+  }
+
+  function host(fixture: ComponentFixture<ChatComposer>) {
+    const h = richEditor(fixture).slashCommands();
+    expect(h).not.toBeNull();
+    return h!;
+  }
+
+  it('binds the host while the setting is unset (v4 `?? true`), and null while it is off', async () => {
+    const on = mount();
+    await settle(on.fixture);
+    expect(richEditor(on.fixture).slashCommands()).not.toBeNull();
+    TestBed.resetTestingModule();
+
+    const off = mount({ composerSlashCommands: false });
+    await settle(off.fixture);
+    expect(richEditor(off.fixture).slashCommands()).toBeNull();
+  });
+
+  it("wires the gutter's own handlers as the actions", async () => {
+    const { fixture } = mount();
+    await settle(fixture);
+    const h = host(fixture);
+    const c = fixture.componentInstance;
+    const seen: string[] = [];
+    c.openLibrary.subscribe(() => seen.push('library'));
+    c.openGenerate.subscribe(() => seen.push('image'));
+    c.openAnnouncement.subscribe(() => seen.push('announce'));
+    c.openMail.subscribe(() => seen.push('mail'));
+    c.openInform.subscribe(() => seen.push('inform'));
+    for (const action of ['library', 'image', 'announce', 'mail', 'inform'] as const) h.actions[action]!();
+    expect(seen).toEqual(['library', 'image', 'announce', 'mail', 'inform']);
+    expect(Object.keys(h.actions)).toEqual([
+      'attach', 'library', 'image', 'announce', 'mail', 'inform', 'd6', 'd20', 'coin', 'bottle',
+    ]);
+  });
+
+  it('attach clicks the hidden file input (v4 clicks it too)', async () => {
+    const { fixture } = mount();
+    await settle(fixture);
+    const input = fixture.nativeElement.querySelector('input[type="file"]') as HTMLInputElement;
+    const click = vi.spyOn(input, 'click');
+    host(fixture).actions.attach!();
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  it('a quick roll lands as the pending chip', async () => {
+    const { fixture, requests } = mount();
+    await settle(fixture);
+    const chips: unknown[] = [];
+    fixture.componentInstance.pendingToolResult.subscribe((chip) => chips.push(chip));
+    host(fixture).actions.d20!();
+    await settle(fixture);
+    expect(requests.filter((r) => r['type'] === 'chatRng')).toEqual([
+      { type: 'chatRng', chatId: 'chat-1', kind: 20, rolls: 1, preview: true },
+    ]);
+    expect(chips).toEqual([expect.objectContaining({ tool: 'rng', summary: 's' })]);
+  });
+
+  it('openRunTool emits the id, or undefined for a bare /tool', async () => {
+    const { fixture } = mount();
+    await settle(fixture);
+    const seen: (string | undefined)[] = [];
+    fixture.componentInstance.openRunTool.subscribe((id) => seen.push(id));
+    host(fixture).openRunTool('rng');
+    host(fixture).openRunTool();
+    expect(seen).toEqual(['rng', undefined]);
+  });
+
+  it("openCustomTool reaches the popup's open(); customToolsAvailable mirrors the wand", async () => {
+    const empty = mount();
+    await settle(empty.fixture);
+    expect(host(empty.fixture).customToolsAvailable()).toBe(false);
+    TestBed.resetTestingModule();
+
+    const { fixture } = mount({}, [ROSTER_TOOL]);
+    await settle(fixture);
+    expect(host(fixture).customToolsAvailable()).toBe(true);
+    host(fixture).openCustomTool({ name: 'coin', asCharacterId: 'char-1' });
+    await settle(fixture);
+    await settle(fixture);
+    expect(fixture.nativeElement.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Run Flip A Coin');
+  });
+
+  it('a run made at once runs as the default character and reports slashToolRan', async () => {
+    const { fixture, requests } = mount();
+    fixture.componentRef.setInput('slashDefaultCharacterId', 'char-9');
+    await settle(fixture);
+    let ran = 0;
+    fixture.componentInstance.slashToolRan.subscribe(() => ran++);
+    await host(fixture).runBuiltInNow('self_inventory');
+    expect(requests.find((r) => r['type'] === 'chatRunTool')).toMatchObject({
+      toolName: 'self_inventory',
+      characterId: 'char-9',
+      private: false,
+    });
+    expect(ran).toBe(1);
+  });
+
+  it('keeps ONE host per chat across renders, and a new one for a new chat', async () => {
+    const { fixture } = mount();
+    await settle(fixture);
+    const first = host(fixture);
+    fixture.componentRef.setInput('busy', true);
+    fixture.detectChanges();
+    expect(host(fixture)).toBe(first);
+
+    fixture.componentRef.setInput('chatId', 'chat-2');
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(host(fixture)).not.toBe(first);
+    expect(host(fixture).chatId).toBe('chat-2');
+  });
+});

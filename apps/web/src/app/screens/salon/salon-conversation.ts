@@ -424,7 +424,7 @@ interface CascadePrompt {
           (deleteMemories)="onDeleteMemories()"
           (openProject)="showProject.set(true)"
           (openToolSettings)="showToolSettings.set(true)"
-          (openRunTool)="showRunTool.set(true)"
+          (openRunTool)="requestRunTool()"
           (openState)="showStateEditor.set(true)"
           (openGallery)="showGallery.set(true)"
           (whisper)="onWhisper($event)"
@@ -515,6 +515,7 @@ interface CascadePrompt {
         [templateDelimiters]="templateDelimiters()"
         [narrationDelimiters]="narrationDelimiters()"
         [mentionPriorityCharacterIds]="mentionCastCharacterIds()"
+        [slashDefaultCharacterId]="slashDefaultCharacterId()"
         [textReplacementRules]="textReplacementRules()"
         [textReplacementsEnabled]="textReplacementsEnabled()"
         [composerSpellcheck]="composerSpellcheck()"
@@ -535,6 +536,8 @@ interface CascadePrompt {
         (openMail)="showComposeMail.set(true)"
         (openInform)="showInform.set(true)"
         (customToolRan)="onCustomToolRan()"
+        (openRunTool)="requestRunTool($event)"
+        (slashToolRan)="onCustomToolRan()"
       />
     </ng-template>
 
@@ -767,6 +770,7 @@ interface CascadePrompt {
       <qt-run-tool-modal
         [chatId]="c.id"
         [participants]="c.participants"
+        [initialTool]="runToolInitial()"
         (executed)="onToolRun()"
         (close)="showRunTool.set(false)"
       />
@@ -1807,6 +1811,40 @@ export class SalonConversation {
   );
   /** v4 `runToolModalOpen`, opened from the Chat section's Run Tool… entry. */
   protected readonly showRunTool = signal(false);
+  /**
+   * What the Run Tool modal should open on (v4 `useModalState`'s
+   * `RunToolRequest`, `4877fc2da`). Bumped by BOTH openers — the sidebar's
+   * button (no tool) and the composer's `/` commands (a tool id, or none for
+   * `/tool`) — so picking the same command twice re-selects.
+   */
+  private readonly runToolRequest = signal<{ toolId: string | null; nonce: number }>({
+    toolId: null,
+    nonce: 0,
+  });
+  /** v4 `ChatModals`: `initialTool={runToolRequest.toolId ? { toolId, nonce } : null}`. */
+  protected readonly runToolInitial = computed(() => {
+    const { toolId, nonce } = this.runToolRequest();
+    return toolId ? { toolId, nonce } : null;
+  });
+
+  /** v4 `openRunTool(toolId?)`: bump the nonce and open. */
+  protected requestRunTool(toolId?: string): void {
+    const nonce = this.runToolRequest().nonce;
+    this.runToolRequest.set({ toolId: toolId ?? null, nonce: nonce + 1 });
+    this.showRunTool.set(true);
+  }
+
+  /**
+   * The character a `/`-run built-in runs as — "acts as Run Tool's default
+   * would": the first active, non-removed CHARACTER seat (v4 `SalonView.tsx:
+   * 253-259`; the modal's own `activeCharacters()[0]`).
+   */
+  protected readonly slashDefaultCharacterId = computed(
+    () =>
+      (this.chat()?.participants ?? []).find(
+        (p) => p.type === 'CHARACTER' && p.isActive && !p.removedAt,
+      )?.character?.id ?? null,
+  );
   /** v4 `searchReplaceOpen`, opened from the Edit Content section. */
   protected readonly showSearchReplace = signal(false);
 

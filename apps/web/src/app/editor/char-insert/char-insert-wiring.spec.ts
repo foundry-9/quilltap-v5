@@ -200,6 +200,9 @@ describe('the @ typeahead mounts in ONE host — the composer', () => {
     await settle(fixture);
 
     expect(editorOf(fixture).mentionSource()).toBeNull();
+    // Nor a `/` menu — v4 mounts `SlashCommandPlugin` in the Salon composer
+    // alone (`LexicalComposerWrapper`'s `slashCommands`), never Document Mode.
+    expect(editorOf(fixture).slashCommands()).toBeNull();
   });
 
   it('leaves a bare editor — every form field — without one', () => {

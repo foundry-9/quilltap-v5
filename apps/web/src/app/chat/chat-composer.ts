@@ -9,6 +9,7 @@ import {
   input,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { QueryClient } from '@tanstack/angular-query-experimental';
@@ -16,6 +17,10 @@ import { QueryClient } from '@tanstack/angular-query-experimental';
 import { CoreClient } from '../core/core-client';
 import { injectCharInsertSettings } from '../editor/char-insert/char-insert-settings';
 import { createQueryMentionSource } from '../editor/mentions/mention-source';
+import {
+  createQuerySlashToolSource,
+  type SlashCommandHost,
+} from '../editor/slash/slash-command-host';
 import { recordRecent } from '../editor/char-insert/recents-storage';
 import {
   applyDelimiterCommand,
@@ -41,8 +46,12 @@ import {
   type FileConflictInfo,
   type UploadedChatFile,
 } from './chat-files.api';
+import { listTools } from './chat-admin.api';
 import { CustomToolsPopup } from './custom-tools-popup';
+import { customToolsKeys, fetchCustomToolsRoster } from './custom-tools.api';
 import { RngDropdown, type RngPendingResult } from './rng-dropdown';
+import { buildQuickRollActions, createSlashCommandRunner } from './slash-command-runner';
+import type { SlashBuiltInToolSource } from './slash-commands';
 import { FileConflictDialog } from './file-conflict-dialog';
 import { PendingInformChips } from './pending-inform-chips';
 import {
@@ -508,6 +517,7 @@ export interface PendingToolResultChip extends RngPendingResult {
           [composerUnicode]="charInsert.unicode()"
           [mentionSource]="mentionSource"
           [mentionPriorityCharacterIds]="mentionPriorityCharacterIds()"
+          [slashCommands]="charInsert.slashCommands() ? slashHost() : null"
           ariaLabel="Message"
           (contentChange)="onContentChange($event)"
           (submit)="submit()"
@@ -661,6 +671,12 @@ export class ChatComposer implements OnInit {
    * `ChatComposer.tsx`'s `mentionPriorityCharacterIds`, P4.D224 §S.2).
    */
   readonly mentionPriorityCharacterIds = input<readonly string[]>([]);
+  /**
+   * The character a `/`-run built-in runs as — "acts as Run Tool's default
+   * would": the first active, non-removed CHARACTER seat (v4 `SalonView.tsx:
+   * 253-259`'s `slashDefaultCharacterId`). Null runs as nobody.
+   */
+  readonly slashDefaultCharacterId = input<string | null>(null);
 
   readonly send = output<ComposerSend>();
   readonly stop = output<void>();
@@ -678,6 +694,13 @@ export class ChatComposer implements OnInit {
   readonly openInform = output<void>();
   /** A manual custom-tool run landed — the salon refetches the chat (v4 `onRan`). */
   readonly customToolRan = output<void>();
+  /**
+   * A `/` command asked for Run Tool — on a tool's form when it carries an id
+   * (v4 `onOpenRunTool`). `/tool` emits `undefined`, `/roll` emits `'rng'`.
+   */
+  readonly openRunTool = output<string | undefined>();
+  /** A `/` command ran a tool at once — the salon refetches (v4 `onSlashToolRan`). */
+  readonly slashToolRan = output<void>();
   /** The user flipped the mode via the toolbar toggle; the salon persists it. */
   readonly compositionModeChange = output<boolean>();
   /** The gutter's RNG rolled something (preview mode) — the Salon holds it. */
@@ -694,6 +717,80 @@ export class ChatComposer implements OnInit {
    */
   private readonly editorView = viewChild(RichEditor);
   private readonly sourceArea = viewChild<ElementRef<HTMLTextAreaElement>>('sourceArea');
+  private readonly fileInputRef = viewChild<ElementRef<HTMLInputElement>>('fileInput');
+  /**
+   * The ONE custom-tool dialog — the wand's and the `/` menu's alike (v4 moved
+   * its dialog into `ChatModals` so both launch points share an instance; the
+   * popup already is that instance here).
+   */
+  private readonly customToolsPopup = viewChild(CustomToolsPopup);
+  private readonly queryClient = inject(QueryClient);
+
+  /**
+   * What the `/` command menu runs (v4 `ChatComposer.tsx:233-274`'s memoised
+   * `SlashCommandContext`), assembled from the gutter's OWN handlers: every
+   * action is the emit its gutter button already fires, `attach` clicks the
+   * hidden file input, and the quick rolls land as the dice button's chip.
+   *
+   * ONE host per chat, never per render: its two query-backed sources are
+   * created `untracked` when `chatId` changes, and the plugin follows the new
+   * pair (dropping the old one's subscriptions) when the binding moves. Read
+   * live: the default character, the wand's `available()` gate.
+   */
+  protected readonly slashHost = computed<SlashCommandHost>(() => {
+    const chatId = this.chatId();
+    return untracked(() => this.createSlashHost(chatId));
+  });
+
+  private createSlashHost(chatId: string): SlashCommandHost {
+    const runner = () =>
+      createSlashCommandRunner({
+        core: this.core,
+        queryClient: this.queryClient,
+        toasts: this.toasts,
+        chatId,
+        defaultCharacterId: this.slashDefaultCharacterId(),
+        onRan: () => this.slashToolRan.emit(),
+      });
+    return {
+      chatId,
+      actions: {
+        attach: () => this.fileInputRef()?.nativeElement.click(),
+        library: () => this.openLibrary.emit(),
+        image: () => this.openGenerate.emit(),
+        announce: () => this.openAnnouncement.emit(),
+        mail: () => this.openMail.emit(),
+        inform: () => this.openInform.emit(),
+        ...buildQuickRollActions(
+          this.core,
+          chatId,
+          (chip) => this.pendingToolResult.emit(chip),
+          this.toasts,
+        ),
+      },
+      openRunTool: (toolId) => this.openRunTool.emit(toolId),
+      openCustomTool: (initial) => this.customToolsPopup()?.open(initial),
+      runBuiltInNow: (toolId) => runner().runBuiltInNow(toolId),
+      runCustomNow: (tool) => runner().runCustomNow(tool),
+      customToolsAvailable: () => this.customToolsPopup()?.available() ?? false,
+      // The Run Tool modal's own key and read — a `/` warms the modal, and the
+      // modal warms the `/` (v4 `queryKeys.tools.byChat`, `staleTime: 60_000`).
+      builtInTools: createQuerySlashToolSource(this.queryClient, {
+        queryKey: ['tools', chatId, 'schemas'],
+        queryFn: () => listTools(this.core, { chatId, includeSchemas: true }),
+        select: (tools) => tools as readonly SlashBuiltInToolSource[],
+        staleTime: 60_000,
+      }),
+      // The popup's key — "Same key as the custom-tool dialog and the Salon's
+      // gutter gate. Fresh per open" (`staleTime: 0`).
+      customTools: createQuerySlashToolSource(this.queryClient, {
+        queryKey: customToolsKeys.byChat(chatId),
+        queryFn: () => fetchCustomToolsRoster(this.core, chatId),
+        select: (roster) => roster.tools,
+        staleTime: 0,
+      }),
+    };
+  }
 
   /** Flips the toolbar's code-block button (v4 tracks Lexical's selection). */
   protected readonly inCodeBlock = computed(() => this.editorView()?.inCodeBlock() ?? false);

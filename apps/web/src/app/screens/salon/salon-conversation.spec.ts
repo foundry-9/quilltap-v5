@@ -54,6 +54,7 @@ import { IMAGES_HIDDEN } from '../../chat/hidden-image/images-hidden';
 import { QuickHideService } from '../../quick-hide/quick-hide.service';
 import { HIDE_SALON_IMAGES_KEY } from '../../quick-hide/quick-hide.storage';
 import { ChatSidebar } from '../../chat/sidebar/chat-sidebar';
+import { RunToolModal } from '../../chat/tools/run-tool-modal';
 import { By } from '@angular/platform-browser';
 import { ToastService } from '../../ui/toast.service';
 import { chatKeys } from '../../chat/chat-keys';
@@ -4938,5 +4939,94 @@ describe('SalonConversation — a failed send hands the submission back (P4.D301
     expect(h.showError.mock.calls[0][0]).toBe(`Failed to generate response: ${DETAILS}`);
     expect(h.showError.mock.calls[0][1]).toBe(SEND_FAILURE_TOAST_MS);
     expect(h.editor().getMarkdown()).toBe('');
+  });
+});
+
+/**
+ * The composer's `/` commands in the Salon (v4 `SalonView.tsx:253-259,
+ * 1738-1742, 1947-1951, 2077` + `useModalState`'s `RunToolRequest`,
+ * `4877fc2da`): one Run Tool request bumped by both openers, the default
+ * character a `/`-run built-in runs as, and the refetch after a slash run.
+ */
+describe('SalonConversation — the composer’s `/` commands (v4 4877fc2da)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function composer(fixture: ComponentFixture<SalonConversation>): ChatComposer {
+    return fixture.debugElement.query(By.directive(ChatComposer)).componentInstance as ChatComposer;
+  }
+
+  function modal(fixture: ComponentFixture<SalonConversation>): RunToolModal | null {
+    const el = fixture.debugElement.query(By.directive(RunToolModal));
+    return el ? (el.componentInstance as RunToolModal) : null;
+  }
+
+  async function settle(fixture: ComponentFixture<SalonConversation>): Promise<void> {
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  it('hands the composer the first active, non-removed CHARACTER seat as the default', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    // v4's predicate is Run Tool's own default: type, isActive, !removedAt.
+    expect(composer(fixture).slashDefaultCharacterId()).toBe('u');
+    TestBed.resetTestingModule();
+
+    const chat = chatDetail();
+    chat.participants[0] = { ...chat.participants[0], removedAt: '2024-01-02T00:00:00.000Z' };
+    const second = await render(stubClient(chat, new Subject<ScopedEvent>()));
+    expect(composer(second).slashDefaultCharacterId()).toBe('char1');
+  });
+
+  it('a composer `/` opens Run Tool ON the tool; the sidebar opener carries none', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    expect(modal(fixture)).toBeNull();
+
+    composer(fixture).openRunTool.emit('wardrobe_wear');
+    await settle(fixture);
+    expect(modal(fixture)!.initialTool()).toEqual({ toolId: 'wardrobe_wear', nonce: 1 });
+
+    // Close, then the sidebar's Run Tool… entry: no pre-selection.
+    modal(fixture)!.close.emit();
+    await settle(fixture);
+    expect(modal(fixture)).toBeNull();
+    fixture.debugElement.query(By.directive(ChatSidebar)).componentInstance.openRunTool.emit();
+    await settle(fixture);
+    expect(modal(fixture)!.initialTool()).toBeNull();
+  });
+
+  it('/tool opens Run Tool with nothing pre-selected', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    composer(fixture).openRunTool.emit(undefined);
+    await settle(fixture);
+    expect(modal(fixture)).not.toBeNull();
+    expect(modal(fixture)!.initialTool()).toBeNull();
+  });
+
+  it('a `/roll` with the modal ALREADY open re-requests on the same instance (a new nonce, no remount)', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    fixture.debugElement.query(By.directive(ChatSidebar)).componentInstance.openRunTool.emit();
+    await settle(fixture);
+    const opened = modal(fixture)!;
+
+    composer(fixture).openRunTool.emit('rng');
+    await settle(fixture);
+    expect(modal(fixture)).toBe(opened);
+    expect(opened.initialTool()).toEqual({ toolId: 'rng', nonce: 2 });
+
+    composer(fixture).openRunTool.emit('rng');
+    await settle(fixture);
+    expect(opened.initialTool()).toEqual({ toolId: 'rng', nonce: 3 });
+  });
+
+  it('a slash run refetches the chat, as a gutter run does', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const invalidate = vi.spyOn(fixture.debugElement.injector.get(QueryClient), 'invalidateQueries');
+    composer(fixture).slashToolRan.emit();
+    await settle(fixture);
+    expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toEqual(
+      expect.arrayContaining([chatKeys.detail('chat-1'), ['customTools', 'chat-1']]),
+    );
   });
 });
