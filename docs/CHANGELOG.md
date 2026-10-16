@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — docs(porting): P4.D304 lane close — status header LANE COMPLETE, the closing lane record
+
+_Docs-only change._
+
+The order's status header reads LANE COMPLETE with the Tier 2 commit and the versions at close; the status log carries the close record (gate, Tier 3 deferrals, the P4.D312 handoff for the remap corpus, the changed fixtures, the dogfood rows).
+
 #### 2026-10-16 — test(harness): P4.D304 Tier 2 — zero_migrations_rerun widened to the two 4.11 chat_settings migrations; memories-main.db and chat-admin-main.db widened through v4's real migrations
 
 _No crate versions bumped._

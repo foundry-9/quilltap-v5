@@ -185407,3 +185407,38 @@ Versions at `KEYSTONE`: core 0.0.1306, host 0.0.208.
 - **Item 17 — the guard's doc comment** landed in `KEYSTONE` (the predicates /
   indices sentence pointing at the by-name unit tests).
 - Sweep 2 announced and closed in the shared notes.
+
+### P4.D304 lane close
+
+- **Commits:** `09a3d9489` KEYSTONE (Tier 1); `b3fa81680` status header (the
+  sha + ensure names); `409ee8129` Tier 2; this close.
+- **Gate:** fmt / clippy (both feature sets) clean; `cargo build --release`
+  compiles (4 m 17 s); `cargo test --workspace` at KEYSTONE as recorded above
+  (808 / 5,245 / 5 by-design owners / 3, zero SKIP); every §R.13(b) family ok
+  from the pin (sweeps 1 + 2 — 25 families run, 25 ok after the widening).
+- **Tier 3 (recorded):** the migration runner (standing deferral; no
+  `migrations_state` row for either id); v4's migration INFO / ERROR lines
+  (the triggers migration's doubled INFO, the slash one's single), the
+  `database-utils` DEBUG and the two `prettify.ts` labels (`:188` "Teaching
+  Pascal which words to listen for", `:150` "Fitting the composer with a
+  speaking-tube to the tool room") — NO-PORT, evidence for P4.D313's record in
+  `db::chat_settings_4_11_repair`'s header; `registry.test.ts`'s acyclic
+  guard and the mocked `route.custom-tool-triggers.test.ts` — NO-PORT
+  (tests-only; the latter's three pins are the `settings_routes` rows);
+  `DDL.md` / `help/` / `public/schemas` — P4.D313's; `pascalMeta` — P4.D305's;
+  the SPA keys — P4.D307 / P4.D308's.
+- **HANDOFF:** P4.D312 — `uuid-remap-corpus.json`'s settings row gains the two
+  keys when it re-records (item 16).
+- **Fixtures changed:** `fresh_schema.json`, `chat_settings_seed.json`,
+  `chat-settings-tier2.json`, `memories-main.db`, `chat-admin-main.db`. The
+  unifier re-runs every family over the two widened pairs after the union
+  (sweep 2's list).
+- **💸 Owed to the next `/dogfood`:** the order's seven rows (a pre-4.11
+  Friday copy's first v5 boot ALTERing `chat_settings` twice — the two INFOs,
+  both columns LAST, the row reading `0` / `1`, then v4 at the pin booting the
+  same copy with `not needed` ×2; a post-`4877fc2da` copy booting silent; the
+  GET / PUT through the SPA after the union with a `null` refused by curl; one
+  cheap `help_settings` turn showing `customToolTriggers`; the Almanack's
+  `Auto-Run on Trigger Phrases: No` → `Yes`; backup → `replace` restore with
+  both non-default; nothing for the CLI).
+- **Versions at close:** core 0.0.1306, host 0.0.208.
