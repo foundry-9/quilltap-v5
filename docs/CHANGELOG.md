@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(spa): the composer slash commands pure tier, transcribed from v4 and checked against a recorded corpus (P4.D308)
+
+_Versions: SPA 0.5.864._
+
+New `chat/slash-commands/{types,trigger,ranking,registry,index}.ts` copies v4's `lib/slash-commands/` at `25b8fab6a` (`4877fc2da`) line for line: the `/` trigger config, the three-tier ranking with kind order and the bare-slash browse rule, the 13-row composer action table, and the registry that turns actions, Prospero built-ins and Pascal customs into commands. A new recorder, `apps/web/oracle/slash-commands.recorder.ts`, runs v4's real module from the pin and writes 186 rows to `src/testing/fixtures/slash-commands.ndjson`; `slash-commands.oracle.spec.ts` replays every row, and a second recording is byte-identical. v4's 172-line jest file is transcribed as `slash-commands.spec.ts`. v4 enforces the module's import rule with ESLint; `apps/web` has no ESLint, so the header and the oracle spec stand in. Six mutants of the ranking, trigger and registry rules each turn the oracle spec red.
+
 #### 2026-10-16 — fix(spa): bug 251 code-block exit trim, the memory card digest link, the About blurbs (P4.D308)
 
 _Versions: SPA 0.5.863._

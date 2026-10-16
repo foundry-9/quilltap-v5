@@ -246,3 +246,26 @@ cp "$V5W/apps/web/oracle/carina-parser.recorder.ts" "$PIN/" && cd "$PIN" && \
 
 Expect ≥ 425 and exactly 144 lines; `grep -c '"id":"triggers-'` ≥ 20,
 `grep -c '"id":"effects-wardrobe-'` ≥ 18, `grep -c '"kind":"strip"'` = 61.
+
+
+## `slash-commands.ndjson`
+
+**186 rows** — 1 `constants`, 54 `trigger`, 107 `rank`, 24 `build`. Drives
+`app/chat/slash-commands/slash-commands.oracle.spec.ts`: v4's `lib/slash-commands/`
+(the composer's `/` slash commands, `4877fc2da`) over v4's own test vectors
+(`lib/slash-commands/__tests__/slash-commands.test.ts`) plus a wider corpus —
+every opener context (incl. a soft `\n` and an image leaf U+FFFC), the alphabet
+and 64/65 length edges, uppercase folding, each `WORD_SPLIT` separator and a run,
+kind-order and label ties, `sensitivity: 'base'`, the limit at 0 / 12 / 13 and
+the bare-slash no-limit rule, the `/coin` action-before-custom tie, and the
+registry's skip rules for built-ins (`available` / `userInvocable` undefined,
+empty and duplicate ids, every `parameters` shape) and customs (`asCharacterId`
+absent / `null` / a string, duplicate keys, an empty name). `build` rows are
+compared through `JSON.stringify` (key order is part of the value).
+
+- **Provenance:** recorded 2026-10-16 by P4.D308 at v4 `25b8fab6a` (the round
+  pin, `4.11.0-dev.10`) from a pinned worktree, Node 24.13.1 —
+  `localeCompare` / `toLocaleLowerCase` are Node's ICU on both sides.
+- **Recorder:** `apps/web/oracle/slash-commands.recorder.ts` (its header has
+  the invocation). Expect 186 lines; a second run reproduces the file byte
+  for byte (`cmp`).
