@@ -72,9 +72,13 @@ export interface TransferRequest {
   mode: 'move' | 'copy';
 }
 
-/** v4 `97f0d8cb8` `FolderPickerRequest` — the items the picker files. */
+/**
+ * v4 `97f0d8cb8` `FolderPickerRequest` — the items the picker files, and
+ * (`bbbcd2388`) whether it moves them or files copies.
+ */
 export interface FolderPickerRequest {
   items: WardrobeItemDto[];
+  mode: 'move' | 'copy';
 }
 
 /** v4 `ImageViewRequest`. */
@@ -125,7 +129,8 @@ export interface WardrobeItemActions {
   copy(item: WardrobeItemDto): void;
   closeTransfer(): void;
   closeImage(): void;
-  openFolderPicker(items: WardrobeItemDto[]): void;
+  /** `mode` defaults to a move (v4 `openFolderPicker(items, mode = 'move')`). */
+  openFolderPicker(items: WardrobeItemDto[], mode?: 'move' | 'copy'): void;
   closeFolderPicker(): void;
   /** The container an item's routes live under, from this view. */
   addressOf(item: WardrobeItemDto): WardrobeContainer | null;
@@ -228,13 +233,6 @@ export function createWardrobeItemActions(opts: WardrobeItemActionsOptions): War
       item.title,
       opts.listItems().map((i) => i.title),
     );
-    console.debug('[useWardrobeItemActions] Duplicating wardrobe item', {
-      sourceId: item.id,
-      targetScope: home.scope,
-      targetId: home.id,
-      newTitle: title,
-      componentItemIds: item.componentItemIds,
-    });
     if (await send(() => duplicateWardrobeItem(core, home, item, title), 'Failed to duplicate item')) {
       toasts.showSuccess(`Duplicated "${item.title}"`);
     }
@@ -302,8 +300,8 @@ export function createWardrobeItemActions(opts: WardrobeItemActionsOptions): War
     copy: (item) => transfer.set({ item, mode: 'copy' }),
     closeTransfer: () => transfer.set(null),
     closeImage: () => imageView.set(null),
-    openFolderPicker: (items) => {
-      if (items.length > 0) folderPicker.set({ items });
+    openFolderPicker: (items, mode = 'move') => {
+      if (items.length > 0) folderPicker.set({ items, mode });
     },
     closeFolderPicker: () => folderPicker.set(null),
     addressOf,

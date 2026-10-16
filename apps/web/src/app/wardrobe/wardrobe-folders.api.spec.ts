@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CoreClient } from '../core/core-client';
 import { CoreDispatchError, type CoreRequest } from '../core/core-contract';
 import {
+  copyWardrobeItemsToFolder,
   createWardrobeFolder,
   createWardrobeFoldersStore,
   deleteWardrobeFolder,
@@ -67,6 +68,21 @@ describe('the request bodies (C2 + C3 §0)', () => {
       { type: 'wardrobeItemsMove', scope: 'general', itemIds: ['a', 'b'], folder: '' },
     ]);
   });
+
+  it('move and copy carry `components` ONLY when set (v4 `bbbcd2388` `fileItems`)', async () => {
+    const { core, seen } = fakeCore({});
+    await moveWardrobeItemsToFolder(core, CHARACTER, ['o'], 'Formal', 'copy');
+    await moveWardrobeItemsToFolder(core, CHARACTER, ['o'], 'Formal', undefined);
+    await copyWardrobeItemsToFolder(core, PROJECT, ['a', 'b'], '');
+    await copyWardrobeItemsToFolder(core, GENERAL_CONTAINER, ['o'], 'Spares', 'none');
+    // `toStrictEqual`: an unset `components` is an ABSENT key, never `undefined`.
+    expect(seen).toStrictEqual([
+      { type: 'wardrobeItemsMove', scope: 'character', containerId: 'c1', itemIds: ['o'], folder: 'Formal', components: 'copy' },
+      { type: 'wardrobeItemsMove', scope: 'character', containerId: 'c1', itemIds: ['o'], folder: 'Formal' },
+      { type: 'wardrobeItemsCopy', scope: 'project', containerId: 'p1', itemIds: ['a', 'b'], folder: '' },
+      { type: 'wardrobeItemsCopy', scope: 'general', itemIds: ['o'], folder: 'Spares', components: 'none' },
+    ]);
+  });
 });
 
 describe('the result reads (v4 `use-wardrobe-folders.ts:77-140`)', () => {
@@ -83,6 +99,16 @@ describe('the result reads (v4 `use-wardrobe-folders.ts:77-140`)', () => {
       folder,
     );
     expect(await moveWardrobeItemsToFolder(fakeCore({}).core, CHARACTER, ['a'], 'X')).toEqual([]);
+    expect(await copyWardrobeItemsToFolder(fakeCore({}).core, CHARACTER, ['a'], 'X')).toEqual([]);
+    const copies = [{ id: 'n', title: 'A (copy)' }];
+    expect(
+      await copyWardrobeItemsToFolder(
+        fakeCore({ items: copies, componentsCarried: 0 }).core,
+        CHARACTER,
+        ['a'],
+        'X',
+      ),
+    ).toEqual(copies);
   });
 
   it('delete reads both counts through Number(… ?? 0)', async () => {

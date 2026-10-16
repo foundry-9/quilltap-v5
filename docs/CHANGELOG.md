@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(spa): Copy to folder…, the components fieldset shared by the transfer dialog and the folder picker, and 01f508d4e's SPA half (P4.D309)
+
+_Versions: SPA 0.5.863._
+
+Ports v4 `bbbcd2388`'s client. New standalone `WardrobeComponentModeFieldset` (move / copy / leave, or copy / alone, with the wardrobe and folder footnotes); the transfer dialog's inline radio group is swapped onto it. The folder picker gains `mode`, `outfits`, `working` and `submitted` (v4's names): a copy mode with its own title, helper line and Copy / Copying… button, no folder disabled as "(here now)" when copying, and the components question when outfits are among the items. The row kebab gains **Copy to folder…** right after **Move to folder…**, the select bar gains it between Move and Cancel, and the browser files through `copyWardrobeItemsToFolder` / `moveWardrobeItemsToFolder` with v4's copy toasts; `components` rides the dispatch only when set. `wardrobeItemsCopy` joins the core contract. Also drops the `[useWardrobeItemActions] Duplicating wardrobe item` debug line, as v4 `01f508d4e` did. The SPA's `nextCopyTitle` twin is now pinned on the server family's 43-row v4 corpus, and a new LIVE Playwright spec (`wardrobe-copy-to-folder-flow`, port 4345) walks the copy end to end.
+
 #### 2026-10-16 — feat(wardrobe): copy-items and the filing components on the route factory, the WardrobeItemsCopy wire, and explicit web arms (P4.D309)
 
 _Versions: core 0.0.1307, web 0.0.241._

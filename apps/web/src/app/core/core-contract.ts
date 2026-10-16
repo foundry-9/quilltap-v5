@@ -4627,10 +4627,12 @@ export interface WardrobeFolderDeleteRequest {
 }
 
 /**
- * v4 `POST <tier>/wardrobe?action=move-items` `{ itemIds (≤ 500), folder }`
- * (C2) → `{ items }` serialized WITH `origin` + `wear`. 400 an id filed
- * elsewhere (`Not in this wardrobe (shared items are filed where they live):
- * …`); 404 the folder.
+ * v4 `POST <tier>/wardrobe?action=move-items` `{ itemIds (≤ 500), folder,
+ * components? }` (C2) → `{ items, componentsCarried }` serialized WITH
+ * `origin` + `wear`. 400 an id filed elsewhere (`Not in this wardrobe (shared
+ * items are filed where they live): …`); 404 the folder. `components`
+ * (`bbbcd2388`, P4.D309): an outfit's same-wardrobe pieces moved along,
+ * copied, or left — the key rides only when set.
  */
 export interface WardrobeItemsMoveRequest {
   type: 'wardrobeItemsMove';
@@ -4638,7 +4640,26 @@ export interface WardrobeItemsMoveRequest {
   containerId?: string;
   itemIds: string[];
   folder: string;
+  components?: 'move' | 'copy' | 'none';
 }
+
+// === P4.D309: wardrobe copy-to-folder (owned) ===
+/**
+ * v4 `POST <tier>/wardrobe?action=copy-items` `{ itemIds (≤ 500), folder,
+ * components? }` (`bbbcd2388`) → 200 `{ items, componentsCarried }` — fresh
+ * copies (a new id, a `(copy)` title, their own pictures) serialized WITH
+ * `origin` + `wear`. A copy cannot move its components (`components: 'move'`
+ * is the schema's 400).
+ */
+export interface WardrobeItemsCopyRequest {
+  type: 'wardrobeItemsCopy';
+  scope: WardrobeOriginScope;
+  containerId?: string;
+  itemIds: string[];
+  folder: string;
+  components?: 'copy' | 'none';
+}
+// === end P4.D309 ===
 
 /**
  * v4 `POST /wardrobe/[itemId]/images?scope=…&id=…&action=link-image`
@@ -6607,6 +6628,9 @@ export type MemoryRequest =
   | WardrobeItemsMoveRequest
   | WardrobeItemImageLinkRequest
   // === end P4.D285 ===
+  // === P4.D309: wardrobe copy-to-folder (owned) ===
+  | WardrobeItemsCopyRequest
+  // === end P4.D309 ===
   | WardrobeUpdateRequest
   | WardrobeDeleteRequest
   | WardrobePreviewAvatarRequest

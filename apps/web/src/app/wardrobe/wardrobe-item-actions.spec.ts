@@ -79,6 +79,16 @@ describe('the overlay truth table (v4 `97f0d8cb8` `overlayOpen` — bug 229)', (
     actions.openFolderPicker([item('a'), item('b')]);
     expect(actions.folderPicker()?.items.map((i) => i.id)).toEqual(['a', 'b']);
   });
+
+  it('openFolderPicker defaults to a move and carries a copy (v4 `bbbcd2388`)', () => {
+    const { actions } = harness();
+    actions.openFolderPicker([item('a')]);
+    expect(actions.folderPicker()?.mode).toBe('move');
+    actions.openFolderPicker([item('a')], 'copy');
+    expect(actions.folderPicker()?.mode).toBe('copy');
+    actions.openFolderPicker([], 'copy');
+    expect(actions.folderPicker()?.mode).toBe('copy');
+  });
 });
 
 describe('addressOf (v4 `:134-138` — origin first in a character view)', () => {
@@ -147,20 +157,16 @@ describe('the row writes', () => {
     expect(bare.toasts.showSuccess).not.toHaveBeenCalled();
   });
 
-  it('duplicate picks a title not in the list, logs v4’s debug line, posts at the home and toasts', async () => {
+  it('duplicate picks a title not in the list, posts at the home and toasts — and logs nothing (v4 `01f508d4e`)', async () => {
     const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
     const { actions, seen, toasts } = harness();
     await actions.duplicate(item('Greatcoat', { characterId: 'alice', componentItemIds: [] }));
     expect(seen).toHaveLength(1);
     expect(seen[0]['type']).toBe('characterWardrobeCreate');
     expect((seen[0]['item'] as Record<string, unknown>)['title']).toBe('Greatcoat (copy 2)');
-    expect(debug).toHaveBeenCalledWith('[useWardrobeItemActions] Duplicating wardrobe item', {
-      sourceId: 'Greatcoat',
-      targetScope: 'character',
-      targetId: 'alice',
-      newTitle: 'Greatcoat (copy 2)',
-      componentItemIds: [],
-    });
+    // v4's `01f508d4e` pruned the `[useWardrobeItemActions] Duplicating
+    // wardrobe item` debug line; the duplicate is silent now.
+    expect(debug).not.toHaveBeenCalled();
     expect(toasts.showSuccess).toHaveBeenCalledWith('Duplicated "Greatcoat"');
   });
 });

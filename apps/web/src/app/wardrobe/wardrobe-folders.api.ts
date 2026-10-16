@@ -7,7 +7,8 @@
  * **Recorded mechanism divergences.**
  *  - The five calls ride C2's scoped dispatch verbs (`wardrobeFoldersList`,
  *    `wardrobeFolderCreate`, `wardrobeFolderRename`, `wardrobeFolderDelete`,
- *    `wardrobeItemsMove` — R-D, one family carrying the container) where v4
+ *    `wardrobeItemsMove`, and `bbbcd2388`'s `wardrobeItemsCopy` — R-D, one
+ *    family carrying the container) where v4
  *    POSTs `wardrobeCollectionActionUrl(container, action)`. A refusal arrives
  *    as a `CoreDispatchError` whose `message` is the server's sentence — the
  *    `result.error` v4's `fetchJson` throws with.
@@ -26,7 +27,7 @@
 import { signal, type Signal } from '@angular/core';
 
 import type { CoreClient } from '../core/core-client';
-import type { WardrobeFolderDto, WardrobeItemDto } from '../core/core-contract';
+import type { CoreRequest, WardrobeFolderDto, WardrobeItemDto } from '../core/core-contract';
 import type { WardrobeContainer } from './wardrobe-container';
 
 export type { WardrobeFolderDto } from '../core/core-contract';
@@ -103,20 +104,59 @@ export async function deleteWardrobeFolder(
   };
 }
 
-/** v4 `moveItems(container, itemIds, folder)` → `data.items ?? []`. */
+/**
+ * What travels with an outfit filed into a folder (v4 `bbbcd2388`
+ * `WardrobeFolderComponentMode`): its same-wardrobe components moved, copied,
+ * or left where they are.
+ */
+export type WardrobeFolderComponentMode = 'move' | 'copy' | 'none';
+
+/**
+ * v4 `fileItems(mode, container, itemIds, folder, components?)` — one
+ * `move-items` / `copy-items` call; `components` rides ONLY when set (a
+ * conditional spread — the key is absent, never `undefined`).
+ */
+async function fileItems(
+  core: CoreClient,
+  mode: 'move' | 'copy',
+  container: WardrobeContainer,
+  itemIds: string[],
+  folder: string,
+  components?: WardrobeFolderComponentMode,
+): Promise<WardrobeItemDto[]> {
+  const data = await core.dispatchData({
+    type: mode === 'move' ? 'wardrobeItemsMove' : 'wardrobeItemsCopy',
+    ...containerFields(container),
+    itemIds,
+    folder,
+    ...(components ? { components } : {}),
+  } as CoreRequest);
+  return (data['items'] as WardrobeItemDto[] | undefined) ?? [];
+}
+
+/** v4 `moveItems(container, itemIds, folder, components?)` → `data.items ?? []`. */
 export async function moveWardrobeItemsToFolder(
   core: CoreClient,
   container: WardrobeContainer,
   itemIds: string[],
   folder: string,
+  components?: WardrobeFolderComponentMode,
 ): Promise<WardrobeItemDto[]> {
-  const data = await core.dispatchData({
-    type: 'wardrobeItemsMove',
-    ...containerFields(container),
-    itemIds,
-    folder,
-  });
-  return (data['items'] as WardrobeItemDto[] | undefined) ?? [];
+  return fileItems(core, 'move', container, itemIds, folder, components);
+}
+
+/**
+ * v4 `copyItems(container, itemIds, folder, components?)` (`bbbcd2388`) →
+ * the copies (`data.items ?? []`).
+ */
+export async function copyWardrobeItemsToFolder(
+  core: CoreClient,
+  container: WardrobeContainer,
+  itemIds: string[],
+  folder: string,
+  components?: 'copy' | 'none',
+): Promise<WardrobeItemDto[]> {
+  return fileItems(core, 'copy', container, itemIds, folder, components);
 }
 
 /** One container's folder tree, held as signals (v4 `useWardrobeFolders`). */

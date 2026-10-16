@@ -15,6 +15,7 @@ import {
   wearItemIntoSlots,
   type EquippedSlots,
 } from './equipped-slots';
+import nextCopyTitleCorpus from './__fixtures__/next-copy-title.ndjson';
 
 function item(partial: Partial<WardrobeItemDto> & { id: string }): WardrobeItemDto {
   return {
@@ -248,6 +249,34 @@ describe('nextCopyTitle (v4 next-copy-title.ts:21-29)', () => {
   it('strips an existing copy suffix first, so a copy of a copy escalates (v4 :22)', () => {
     expect(nextCopyTitle('Shirt (copy)', ['Shirt (copy)'])).toBe('Shirt (copy 2)');
     expect(nextCopyTitle('Shirt (copy 4)', [])).toBe('Shirt (copy)');
+  });
+});
+
+/**
+ * P4.D309 — the SPA twin pinned on the server family's tier-1 corpus: every
+ * row of `next_copy_title_equivalence`'s NDJSON (v4's REAL `nextCopyTitle` at
+ * `25b8fab6a`), vendored as `__fixtures__/next-copy-title.ndjson`. Recipe —
+ * from the pinned v4 worktree:
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+ *   cd ~/source/quilltap-server
+ *   $N/node --import tsx $V5W/harness/oracle/cases/next-copy-title.ts \
+ *     > $V5W/apps/web/src/app/wardrobe/__fixtures__/next-copy-title.ndjson
+ * (the same bytes the Rust family reads; 44 lines — a meta row + 43 cases).
+ */
+describe('nextCopyTitle against v4’s corpus (P4.D309)', () => {
+  const rows = (nextCopyTitleCorpus as string)
+    .split('\n')
+    .filter((l) => l.trim())
+    .map((l) => JSON.parse(l) as { kind: string; id?: string; source?: string; existing?: string[]; out?: string });
+  const cases = rows.filter((r) => r.kind === 'case');
+
+  it('carries the whole corpus', () => {
+    expect(rows[0]).toEqual({ kind: 'meta', baseline: 'p4.d309-next-copy-title' });
+    expect(cases.length).toBe(43);
+  });
+
+  it.each(cases.map((c) => [c.id, c] as const))('%s', (_id, c) => {
+    expect(nextCopyTitle(c.source!, c.existing!)).toBe(c.out);
   });
 });
 

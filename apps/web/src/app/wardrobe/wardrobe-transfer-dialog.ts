@@ -14,6 +14,10 @@ import { CoreClient } from '../core/core-client';
 import type { WardrobeItemDto } from '../core/core-contract';
 import { Modal } from '../ui/modal';
 import {
+  WardrobeComponentModeFieldset,
+  defaultComponentMode,
+} from './wardrobe-component-mode-fieldset';
+import {
   dispatchWardrobe,
   type TransferDestinationsPayload,
   type WardrobeTransferComponentMode,
@@ -63,7 +67,7 @@ export function decodeDestination(value: string): DestinationValue | null {
 @Component({
   selector: 'qt-wardrobe-transfer-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal],
+  imports: [Modal, WardrobeComponentModeFieldset],
   template: `
     <qt-modal
       [title]="title()"
@@ -154,29 +158,15 @@ export function decodeDestination(value: string): DestinationValue | null {
         }
 
         @if (isComposite()) {
-          <fieldset>
-            <legend class="text-sm qt-text-secondary mb-1">{{ componentCountLabel() }}</legend>
-            <div class="space-y-1">
-              @for (opt of componentOptions(); track opt.value) {
-                <label class="flex items-center gap-2 cursor-pointer text-sm">
-                  <input
-                    type="radio"
-                    name="wardrobe-transfer-components"
-                    class="qt-radio"
-                    [checked]="componentMode() === opt.value"
-                    (change)="componentMode.set(opt.value)"
-                    [disabled]="working()"
-                  />
-                  <span>{{ opt.label }}</span>
-                </label>
-              }
-            </div>
-            <p class="qt-text-xs qt-text-secondary mt-1">
-              All or nothing — the choice covers every component, nested pieces included. Only
-              components living in the same wardrobe travel; pieces from a shared tier stay put.
-              The transferred outfit is rewired to point at whichever components arrive with it.
-            </p>
-          </fieldset>
+          <qt-wardrobe-component-mode-fieldset
+            [mode]="mode()"
+            [value]="componentMode()"
+            (valueChange)="componentMode.set($event)"
+            [legend]="componentCountLabel()"
+            destination="wardrobe"
+            name="wardrobe-transfer-components"
+            [disabled]="working()"
+          />
         }
 
         <p class="qt-text-xs qt-text-secondary">
@@ -260,7 +250,7 @@ export class WardrobeTransferDialog {
       if (this.loaded) return;
       this.loaded = true;
       untracked(() => {
-        this.componentMode.set(this.mode() === 'move' ? 'move' : 'copy');
+        this.componentMode.set(defaultComponentMode(this.mode()));
         void this.loadDestinations();
       });
     });
@@ -313,26 +303,6 @@ export class WardrobeTransferDialog {
   });
 
   protected readonly selection = computed(() => decodeDestination(this.selectedDestination()));
-
-  /**
-   * v4 `:290-327` — the radio pair. Moving offers move / copy / leave; copying
-   * offers copy / don't. Copy + `components: 'move'` is unreachable from here
-   * by construction, and the server refuses it besides.
-   */
-  protected readonly componentOptions = computed<
-    Array<{ value: WardrobeTransferComponentMode; label: string }>
-  >(() =>
-    this.mode() === 'move'
-      ? [
-          { value: 'move', label: 'Move the components along with it' },
-          { value: 'copy', label: 'Copy the components (originals stay behind)' },
-          { value: 'none', label: 'Leave the components behind' },
-        ]
-      : [
-          { value: 'copy', label: 'Copy the components along with it' },
-          { value: 'none', label: 'Copy the outfit alone' },
-        ],
-  );
 
   protected readonly componentCountLabel = computed(() => {
     const count = (this.item().componentItemIds ?? []).length;

@@ -1,0 +1,44 @@
+{"kind":"meta","baseline":"p4.d309-next-copy-title"}
+{"kind":"case","id":"plain","source":"Shirt","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"taken_cased","source":"Shirt","existing":["shirt (COPY)"],"out":"Shirt (copy 2)"}
+{"kind":"case","id":"chain_to_3","source":"Shirt","existing":["Shirt (copy)","Shirt (copy 2)"],"out":"Shirt (copy 3)"}
+{"kind":"case","id":"copy_of_copy","source":"Shirt (copy)","existing":["Shirt (copy)"],"out":"Shirt (copy 2)"}
+{"kind":"case","id":"copy4_strips","source":"Shirt (copy 4)","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"long_chain_12","source":"Coat","existing":["Coat (copy)","Coat (copy 2)","Coat (copy 3)","Coat (copy 4)","Coat (copy 5)","Coat (copy 6)","Coat (copy 7)","Coat (copy 8)","Coat (copy 9)","Coat (copy 10)","Coat (copy 11)","Coat (copy 12)"],"out":"Coat (copy 13)"}
+{"kind":"case","id":"case_only_n1_n2","source":"Hat","existing":["HAT (COPY)","hat (Copy 2)"],"out":"Hat (copy 3)"}
+{"kind":"case","id":"double_inner_trailing","source":"Shirt  (copy)  ","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"tab_before_after","source":"Shirt\t(copy)\t","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"nbsp_before_after","source":"Shirt (copy) ","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"feff_before_after","source":"Shirt﻿(copy)﻿","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"ls_before_after","source":"Shirt (copy) ","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"ideographic_before_after","source":"Shirt　(copy)　","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"nbsp_inside_digits","source":"Shirt (copy 7)","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"nel_not_js_ws","source":"Shirt(copy)","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"no_space_before_paren","source":"Shirt(copy)","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"no_space_before_digits","source":"Shirt (copy2)","existing":[],"out":"Shirt (copy2) (copy)"}
+{"kind":"case","id":"copy_0","source":"Shirt (copy 0)","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"copy_007","source":"Shirt (copy 007)","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"copy_13_digits","source":"Shirt (copy 1234567890123)","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"upper_copy_12","source":"Shirt (COPY 12)","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"mixed_case_copy","source":"Shirt (CoPy)","existing":[],"out":"Shirt (copy)"}
+{"kind":"case","id":"arabic_indic_digit","source":"Shirt (copy ٣)","existing":[],"out":"Shirt (copy ٣) (copy)"}
+{"kind":"case","id":"fullwidth_digit","source":"Shirt (copy ７)","existing":[],"out":"Shirt (copy ７) (copy)"}
+{"kind":"case","id":"two_suffixes_last_only","source":"Shirt (copy) (copy)","existing":[],"out":"Shirt (copy) (copy)"}
+{"kind":"case","id":"suffix_mid_title","source":"Shirt (copy) blue","existing":[],"out":"Shirt (copy) blue (copy)"}
+{"kind":"case","id":"only_suffix","source":"(copy)","existing":[],"out":"(copy) (copy)"}
+{"kind":"case","id":"only_suffix_padded_n","source":"  (copy 3)  ","existing":[],"out":"(copy 3) (copy)"}
+{"kind":"case","id":"only_suffix_taken","source":"(copy)","existing":["(copy) (copy)"],"out":"(copy) (copy 2)"}
+{"kind":"case","id":"empty","source":"","existing":[],"out":" (copy)"}
+{"kind":"case","id":"empty_taken","source":"","existing":[" (copy)"],"out":" (copy)"}
+{"kind":"case","id":"whitespace_only","source":"   ","existing":[],"out":" (copy)"}
+{"kind":"case","id":"tab_only","source":"\t","existing":[],"out":" (copy)"}
+{"kind":"case","id":"padded_existing","source":"Shirt","existing":["  SHIRT (COPY)  "],"out":"Shirt (copy 2)"}
+{"kind":"case","id":"unicode_title","source":"Ünïcode","existing":["ünïcode (copy)"],"out":"Ünïcode (copy 2)"}
+{"kind":"case","id":"dotted_i","source":"İstanbul","existing":["i̇stanbul (copy)"],"out":"İstanbul (copy 2)"}
+{"kind":"case","id":"dotted_i_not_plain_i","source":"İstanbul","existing":["istanbul (copy)"],"out":"İstanbul (copy)"}
+{"kind":"case","id":"final_sigma","source":"ΑΣ","existing":["ας (copy)"],"out":"ΑΣ (copy 2)"}
+{"kind":"case","id":"sigma_mid","source":"ΑΣ","existing":["ασ (copy)"],"out":"ΑΣ (copy)"}
+{"kind":"case","id":"astral","source":"𝒮𝒽𝒾𝓇𝓉 🧥","existing":["𝒮𝒽𝒾𝓇𝓉 🧥 (copy)"],"out":"𝒮𝒽𝒾𝓇𝓉 🧥 (copy 2)"}
+{"kind":"case","id":"long_300","source":"LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL","existing":[],"out":"LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL (copy)"}
+{"kind":"case","id":"long_300_taken","source":"LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL","existing":["llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll (copy)"],"out":"LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL (copy 2)"}
+{"kind":"case","id":"existing_blank_entries","source":"Shirt","existing":["","   ","Shirt (copy) "],"out":"Shirt (copy 2)"}

@@ -28,6 +28,7 @@ async function render(
     generatingImageIds?: ReadonlySet<string>;
     canOpenImage?: boolean;
     canMoveToFolder?: boolean;
+    canCopyToFolder?: boolean;
     selection?: { selected: boolean; onToggle: () => void };
     folderCrumb?: string | null;
     inChat?: boolean;
@@ -40,6 +41,7 @@ async function render(
   fixture.componentRef.setInput('allItems', allItems);
   fixture.componentRef.setInput('inChat', opts.inChat ?? false);
   if (opts.canMoveToFolder) fixture.componentRef.setInput('canMoveToFolder', true);
+  if (opts.canCopyToFolder) fixture.componentRef.setInput('canCopyToFolder', true);
   if (opts.selection) fixture.componentRef.setInput('selection', opts.selection);
   if (opts.folderCrumb !== undefined) fixture.componentRef.setInput('folderCrumb', opts.folderCrumb);
   if (canManage) fixture.componentRef.setInput('canManage', canManage);
@@ -513,6 +515,45 @@ describe('WardrobeItemRow — folders, select mode, slot labels (v4 4a38222e6)',
     expect(kebabLabels(borrowed)).toEqual(['Move to another wardrobe…', 'Copy to another wardrobe…']);
     const noHost = await render(owned());
     expect(kebabLabels(noHost)).not.toContain('Move to folder…');
+  });
+
+  it('offers Copy to folder… right after Move to folder… on a manageable row (v4 `bbbcd2388`)', async () => {
+    const fixture = await render(owned(), undefined, [], {
+      canArchive: true,
+      canMoveToFolder: true,
+      canCopyToFolder: true,
+    });
+    const seen: string[] = [];
+    fixture.componentInstance.copyToFolder.subscribe((i: WardrobeItemDto) => seen.push(i.id));
+    expect(kebabLabels(fixture)).toEqual([
+      'Edit',
+      '★ Mark as default outfit item',
+      'Duplicate',
+      'Archive',
+      'Move to folder…',
+      'Copy to folder…',
+      'Move to another wardrobe…',
+      'Copy to another wardrobe…',
+      'Delete',
+    ]);
+    const entry = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('[role="menu"] button'),
+    ).find((b) => (b.textContent ?? '').trim() === 'Copy to folder…') as HTMLButtonElement;
+    expect(entry.getAttribute('role')).toBe('menuitem');
+    entry.click();
+    fixture.detectChanges();
+    expect(seen).toEqual(['i1']);
+    expect((fixture.nativeElement as HTMLElement).querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it('withholds Copy to folder… from a borrowed row and from a host that does not copy', async () => {
+    const borrowed = await render(dto({ id: 'b1', characterId: null }), () => false, [], {
+      canCopyToFolder: true,
+    });
+    expect(kebabLabels(borrowed)).not.toContain('Copy to folder…');
+    const moveOnly = await render(owned(), undefined, [], { canMoveToFolder: true });
+    expect(kebabLabels(moveOnly)).toContain('Move to folder…');
+    expect(kebabLabels(moveOnly)).not.toContain('Copy to folder…');
   });
 
   it('in select mode a manageable row leads with a checkbox; its controls go quiet', async () => {

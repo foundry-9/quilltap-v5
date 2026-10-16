@@ -32,8 +32,9 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
  *  - `[+]` icon that adds the item to a slot. Single-slot items target their
  *    only slot directly; multi-slot items open a small popover picker.
  *  - `⋮` kebab menu with secondary actions: Edit, Generate image, toggle the
- *    default-outfit flag, Duplicate, Archive, Move to folder…, Move to another
- *    wardrobe…, Copy to another wardrobe…, and Delete. Which of these appear
+ *    default-outfit flag, Duplicate, Archive, Move to folder…, Copy to
+ *    folder…, Move to another wardrobe…, Copy to another wardrobe…, and
+ *    Delete. Which of these appear
  *    is governed by the `canManage` predicate: items living in the container
  *    being browsed get the full set, items merged in from another shared tier
  *    keep only the two cross-wardrobe actions (a borrowed item is filed by
@@ -58,7 +59,8 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
  * simply omits it and the entry does not render. An Angular `output` is always
  * present, so the same gate is an explicit boolean input, defaulting to FALSE —
  * absence, not presence, is what the two spellings share. {@link canMoveToFolder}
- * is v4's optional `onMoveToFolder` in the same idiom.
+ * and {@link canCopyToFolder} are v4's optional `onMoveToFolder` /
+ * `onCopyToFolder` in the same idiom.
  *
  * The popovers close on an outside mousedown or Escape (v4 `useClickOutside`,
  * `:149-167` — the Escape swallowed so the enclosing dialog stays open).
@@ -309,6 +311,18 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
                       </button>
                     </li>
                   }
+                  @if (manageable() && canCopyToFolder()) {
+                    <li>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        (click)="menuAction(copyToFolder)"
+                        class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
+                      >
+                        Copy to folder…
+                      </button>
+                    </li>
+                  }
                   <li>
                     <button
                       type="button"
@@ -350,7 +364,8 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
 
       <!-- Nested components (read-only here; click Edit to change). A nested
            row cannot be filed, selected or archived from its parent: none of
-           canMoveToFolder / selection / folderCrumb / canArchive is forwarded
+           canMoveToFolder / canCopyToFolder / selection / folderCrumb /
+           canArchive is forwarded
            (v4 4a38222e6 :511-529). -->
       @if (isComposite() && expanded()) {
         <div class="mt-2 border-l-2 qt-border-default pl-2 space-y-1">
@@ -446,6 +461,12 @@ export class WardrobeItemRow {
    */
   readonly canMoveToFolder = input(false, { transform: booleanAttribute });
   /**
+   * v4's optional `onCopyToFolder` (`bbbcd2388` `:80`: file a COPY in a folder
+   * of its own wardrobe, manageable rows only) as a gate — its entry sits
+   * immediately after **Move to folder…**.
+   */
+  readonly canCopyToFolder = input(false, { transform: booleanAttribute });
+  /**
    * Select mode (v4 `4a38222e6` `:79-83`): a checkbox on a manageable row
    * (never on a borrowed one), and the wear buttons and `⋮` disabled while it
    * is on. Undefined = not selecting.
@@ -471,6 +492,8 @@ export class WardrobeItemRow {
   readonly openImage = output<WardrobeItemDto>();
   /** File the item in another folder of its own wardrobe (v4 `onMoveToFolder`). */
   readonly moveToFolder = output<WardrobeItemDto>();
+  /** File a copy of the item in a folder of its own wardrobe (v4 `onCopyToFolder`). */
+  readonly copyToFolder = output<WardrobeItemDto>();
   readonly equip = output<WardrobeItemDto>();
   readonly addToSlot = output<{ item: WardrobeItemDto; slot: WardrobeSlotType }>();
 

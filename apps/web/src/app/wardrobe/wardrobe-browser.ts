@@ -38,11 +38,13 @@ import { WARDROBE_SLOT_META, WARDROBE_SLOT_TYPES } from './slot-meta';
 import { encodeWardrobeContainer, type WardrobeContainer } from './wardrobe-container';
 import { WardrobeFolderPickerDialog } from './wardrobe-folder-picker-dialog';
 import {
+  copyWardrobeItemsToFolder,
   createWardrobeFolder,
   createWardrobeFoldersStore,
   deleteWardrobeFolder,
   moveWardrobeItemsToFolder,
   renameWardrobeFolder,
+  type WardrobeFolderComponentMode,
 } from './wardrobe-folders.api';
 import type { WardrobeItemActions } from './wardrobe-item-actions';
 import { WardrobeItemRow } from './wardrobe-item-row';
@@ -481,7 +483,9 @@ export class WardrobeFolderRow {
                 [selection]="selectionFor(item)"
                 [folderCrumb]="crumbFor(item)"
                 [canMoveToFolder]="true"
-                (moveToFolder)="openPickerFor([$event])"
+                (moveToFolder)="openPickerFor([$event], 'move')"
+                [canCopyToFolder]="true"
+                (copyToFolder)="openPickerFor([$event], 'copy')"
               />
             }
           }
@@ -493,9 +497,17 @@ export class WardrobeFolderRow {
                   type="button"
                   class="qt-button-secondary qt-button-sm"
                   [disabled]="selectedItems().length === 0"
-                  (click)="openPickerFor(selectedItems())"
+                  (click)="openPickerFor(selectedItems(), 'move')"
                 >
                   Move to folder…
+                </button>
+                <button
+                  type="button"
+                  class="qt-button-secondary qt-button-sm"
+                  [disabled]="selectedItems().length === 0"
+                  (click)="openPickerFor(selectedItems(), 'copy')"
+                >
+                  Copy to folder…
                 </button>
                 <button
                   type="button"
@@ -528,12 +540,14 @@ export class WardrobeFolderRow {
       @if (actions().folderPicker(); as picker) {
         @if (pickerHome(); as home) {
           <qt-wardrobe-folder-picker-dialog
+            [mode]="picker.mode"
             [container]="home"
             [subject]="pickerSubject()"
+            [outfits]="pickerOutfits()"
             [currentFolder]="pickerCurrentFolder()"
-            [moving]="moving()"
+            [working]="working()"
             (closed)="actions().closeFolderPicker()"
-            (move)="moveToFolder($event)"
+            (submitted)="fileToFolder($event)"
             (foldersChanged)="actions().refreshLists()"
           />
         }
@@ -583,7 +597,7 @@ export class WardrobeBrowser {
     key: '',
     ids: EMPTY_SELECTION,
   });
-  protected readonly moving = signal(false);
+  protected readonly working = signal(false);
 
   private readonly folders = createWardrobeFoldersStore(this.core);
 
@@ -902,9 +916,12 @@ export class WardrobeBrowser {
     return this.searching() && item.folder ? folderCrumb(item.folder) : null;
   }
 
-  /** The row's **Move to folder…** and the select bar's (v4 `97f0d8cb8`). */
-  protected openPickerFor(items: WardrobeItemDto[]): void {
-    this.actions().openFolderPicker(items);
+  /**
+   * The row's **Move to folder…** / **Copy to folder…** and the select bar's
+   * (v4 `97f0d8cb8`; the copy `bbbcd2388`).
+   */
+  protected openPickerFor(items: WardrobeItemDto[], mode: 'move' | 'copy'): void {
+    this.actions().openFolderPicker(items, mode);
   }
 
   protected readonly selectedItems = computed(() => {
@@ -931,33 +948,63 @@ export class WardrobeBrowser {
     return items.length === 1 ? `"${items[0].title}"` : plural(items.length, 'item');
   });
 
-  protected async moveToFolder(folder: string): Promise<void> {
+  /** The outfits among the items being filed — the picker asks after their components. */
+  protected readonly pickerOutfits = computed(
+    () => this.actions().folderPicker()?.items.filter(isComposite) ?? [],
+  );
+
+  /**
+   * v4 `fileToFolder(folder, components?)` (`bbbcd2388`) — one `move-items` /
+   * `copy-items` call. The picker's mode and items are read into locals
+   * BEFORE anything is set (closing the picker clears them).
+   */
+  protected async fileToFolder(choice: {
+    folder: string;
+    components?: WardrobeFolderComponentMode;
+  }): Promise<void> {
     const picker = this.actions().folderPicker();
     const home = this.pickerHome();
     if (!picker || !home) return;
-    this.moving.set(true);
+    const { folder, components } = choice;
+    const copying = picker.mode === 'copy';
+    const items = picker.items;
+    this.working.set(true);
     try {
-      const moved = await moveWardrobeItemsToFolder(
-        this.core,
-        home,
-        picker.items.map((i) => i.id),
-        folder,
-      );
+      const ids = items.map((i) => i.id);
+      const filed = copying
+        ? await copyWardrobeItemsToFolder(
+            this.core,
+            home,
+            ids,
+            folder,
+            components === 'move' ? undefined : components,
+          )
+        : await moveWardrobeItemsToFolder(this.core, home, ids, folder, components);
       const where = folder
-        ? `"${folderCrumb(moved[0]?.folder || folder)}"`
+        ? `"${folderCrumb(filed[0]?.folder || folder)}"`
         : 'the top of the wardrobe';
       this.toasts.showSuccess(
-        picker.items.length === 1
-          ? `"${picker.items[0].title}" now hangs in ${where}`
-          : `${plural(moved.length, 'item')} now hang in ${where}`,
+        copying
+          ? items.length === 1
+            ? `A copy of "${items[0].title}" now hangs in ${where}`
+            : `Copies of ${plural(filed.length, 'item')} now hang in ${where}`
+          : items.length === 1
+            ? `"${items[0].title}" now hangs in ${where}`
+            : `${plural(filed.length, 'item')} now hang in ${where}`,
       );
       this.actions().closeFolderPicker();
       this.clearSelection();
       this.setSelectMode(false);
     } catch (error) {
-      this.toasts.showError(error instanceof Error ? error.message : 'The items would not be moved');
+      this.toasts.showError(
+        error instanceof Error
+          ? error.message
+          : copying
+            ? 'The items would not be copied'
+            : 'The items would not be moved',
+      );
     } finally {
-      this.moving.set(false);
+      this.working.set(false);
       void this.actions().refreshLists();
     }
   }

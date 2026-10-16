@@ -590,7 +590,9 @@ describe('WardrobeBrowser — filing (v4 `WardrobeBrowser.tsx:249-381`)', () => 
     await settle(fixture);
     buttonNamed(el, 'Move')!.click();
     await settle(fixture);
-    expect(seen.filter((r) => r['type'] === 'wardrobeItemsMove')).toEqual([
+    // `toStrictEqual`: a plain garment sends NO `components` key (v4
+    // `bbbcd2388`'s conditional spread).
+    expect(seen.filter((r) => r['type'] === 'wardrobeItemsMove')).toStrictEqual([
       { type: 'wardrobeItemsMove', scope: 'character', containerId: CHAR, itemIds: ['coat'], folder: 'Formal' },
     ]);
     expect(showSuccess).toHaveBeenCalledWith('"Greatcoat" now hangs in "Formal"');
@@ -719,5 +721,231 @@ describe('WardrobeBrowser — filing (v4 `WardrobeBrowser.tsx:249-381`)', () => 
       'Wardrobe',
       'Project: Blackwood',
     ]);
+  });
+});
+
+/**
+ * P4.D309 — v4 `bbbcd2388`'s two `wardrobe-browser.folders.test.tsx` cases,
+ * transcribed one for one, plus v5 rows for the browser's copy half: the
+ * select bar's **Copy to folder…**, the copy toasts and fallback, the
+ * defensive drop of `components: 'move'` on a copy.
+ */
+describe('WardrobeBrowser — copy to folder + the components ask (v4 `bbbcd2388`)', () => {
+  const menuItem = (el: HTMLElement, text: string) =>
+    Array.from(el.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find(
+      (m) => m.textContent?.trim() === text,
+    );
+  const radioLabelled = (el: HTMLElement, text: string) =>
+    Array.from(el.querySelectorAll<HTMLInputElement>('input[type="radio"]')).find(
+      (r) => r.parentElement?.textContent?.trim() === text,
+    );
+  const OUTFIT = item('outfit', 'Evening Ensemble', '', { componentItemIds: ['coat'] });
+
+  it('Copy to folder… may land in the folder the item already sits in', async () => {
+    const { el, fixture } = await renderBrowser(characterContainer, makeData([COAT, GLOVES], ownOnly));
+    expect(folderRows(el)).toHaveLength(2);
+    buttonNamed(folderRows(el)[0], 'Formal')!.click();
+    await settle(fixture);
+    expect(byTitle(el, 'Opera Gloves')).not.toBeNull();
+    el.querySelector<HTMLButtonElement>('button[aria-label="More actions"]')!.click();
+    await settle(fixture);
+    // The entry sits IMMEDIATELY after Move to folder….
+    const entries = Array.from(el.querySelectorAll('[role="menuitem"]')).map((m) =>
+      m.textContent?.trim(),
+    );
+    expect(entries[entries.indexOf('Move to folder…') + 1]).toBe('Copy to folder…');
+    menuItem(el, 'Copy to folder…')!.click();
+    await settle(fixture);
+    expect(listbox(el)).not.toBeNull();
+    const formal = option(el, /Formal/);
+    expect(formal.disabled).toBe(false);
+    formal.click();
+    await settle(fixture);
+    expect(buttonNamed(el, 'Copy')!.disabled).toBe(false);
+    // A plain garment brings no components question.
+    expect(el.querySelector('input[type="radio"]')).toBeNull();
+  });
+
+  it('moving an outfit to a folder asks about its components and sends the choice', async () => {
+    const { el, fixture, seen } = await renderBrowser(
+      characterContainer,
+      makeData([COAT, OUTFIT], ownOnly),
+      {
+        route: (req) =>
+          req['type'] === 'wardrobeItemsMove'
+            ? { items: [{ ...OUTFIT, folder: 'Formal' }], componentsCarried: 1 }
+            : { folders: TREE },
+      },
+    );
+    expect(folderRows(el)).toHaveLength(2);
+    Array.from(el.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+      .find((t) => /Outfits/.test(t.textContent ?? ''))!
+      .click();
+    await settle(fixture);
+    expect(byTitle(el, 'Evening Ensemble')).not.toBeNull();
+    el.querySelectorAll<HTMLButtonElement>('button[aria-label="More actions"]')[0].click();
+    await settle(fixture);
+    menuItem(el, 'Move to folder…')!.click();
+    await settle(fixture);
+    expect(listbox(el)).not.toBeNull();
+    expect(el.textContent).toContain('This outfit bundles 1 component');
+    expect(radioLabelled(el, 'Move the components along with it')!.checked).toBe(true);
+    radioLabelled(el, 'Copy the components (originals stay behind)')!.click();
+    await settle(fixture);
+    option(el, /Formal/).click();
+    await settle(fixture);
+    buttonNamed(el, 'Move')!.click();
+    await settle(fixture);
+    expect(seen.filter((r) => r['type'] === 'wardrobeItemsMove')).toStrictEqual([
+      {
+        type: 'wardrobeItemsMove',
+        scope: 'character',
+        containerId: CHAR,
+        itemIds: ['outfit'],
+        folder: 'Formal',
+        components: 'copy',
+      },
+    ]);
+  });
+
+  it('the select bar offers Copy to folder… between Move and Cancel, disabled until something is picked', async () => {
+    const { el, fixture, actions } = await renderBrowser(
+      characterContainer,
+      makeData([COAT, GLOVES], ownOnly),
+    );
+    buttonNamed(el, 'Select')!.click();
+    await settle(fixture);
+    const bar = el.querySelector<HTMLElement>('[data-testid="wardrobe-select-bar"]')!;
+    expect(
+      Array.from(bar.querySelectorAll('button')).map((b) => b.textContent?.trim()),
+    ).toEqual(['Move to folder…', 'Copy to folder…', 'Cancel']);
+    expect(buttonNamed(bar, 'Copy to folder…')!.disabled).toBe(true);
+    el.querySelector<HTMLInputElement>('input[aria-label="Select Greatcoat"]')!.click();
+    await settle(fixture);
+    const copy = buttonNamed(bar, 'Copy to folder…')!;
+    expect(copy.disabled).toBe(false);
+    copy.click();
+    await settle(fixture);
+    expect(actions.folderPicker()?.mode).toBe('copy');
+    expect(actions.folderPicker()?.items.map((i) => i.id)).toEqual(['coat']);
+    expect(el.querySelector('.qt-dialog-title')?.textContent?.trim()).toBe(
+      'Copy "Greatcoat" to a folder',
+    );
+  });
+
+  it('a copy toasts A copy of … / Copies of …, the crumb from the first copy’s folder', async () => {
+    const one = await renderBrowser(characterContainer, makeData([COAT, GLOVES], ownOnly), {
+      route: (req) =>
+        req['type'] === 'wardrobeItemsCopy'
+          ? { items: [{ ...COAT, id: 'coat-copy', title: 'Greatcoat (copy)', folder: 'Formal' }], componentsCarried: 0 }
+          : { folders: TREE },
+    });
+    one.actions.openFolderPicker([COAT], 'copy');
+    await settle(one.fixture);
+    option(one.el, /Formal/).click();
+    await settle(one.fixture);
+    buttonNamed(one.el, 'Copy')!.click();
+    await settle(one.fixture);
+    expect(one.seen.filter((r) => r['type'] === 'wardrobeItemsCopy')).toStrictEqual([
+      { type: 'wardrobeItemsCopy', scope: 'character', containerId: CHAR, itemIds: ['coat'], folder: 'Formal' },
+    ]);
+    expect(one.showSuccess).toHaveBeenCalledWith('A copy of "Greatcoat" now hangs in "Formal"');
+    expect(one.actions.folderPicker()).toBeNull();
+
+    const two = await renderBrowser(characterContainer, makeData([COAT, GOWN, GLOVES], ownOnly), {
+      route: (req) =>
+        req['type'] === 'wardrobeItemsCopy'
+          ? { items: [{ ...GOWN, id: 'g2' }, { ...GLOVES, id: 'o2' }], componentsCarried: 0 }
+          : { folders: TREE },
+    });
+    two.actions.openFolderPicker([GOWN, GLOVES], 'copy');
+    await settle(two.fixture);
+    option(two.el, /top level/).click();
+    await settle(two.fixture);
+    buttonNamed(two.el, 'Copy')!.click();
+    await settle(two.fixture);
+    expect(two.showSuccess).toHaveBeenCalledWith('Copies of 2 items now hang in the top of the wardrobe');
+  });
+
+  it('a refused copy keeps the picker and toasts; an unworded failure says it would not be copied', async () => {
+    const bad = await renderBrowser(characterContainer, makeData([COAT], ownOnly), {
+      route: (req) =>
+        req['type'] === 'wardrobeItemsCopy'
+          ? new Error('Not in this wardrobe (shared items are filed where they live): cape')
+          : { folders: TREE },
+    });
+    bad.actions.openFolderPicker([COAT], 'copy');
+    await settle(bad.fixture);
+    option(bad.el, /Formal/).click();
+    await settle(bad.fixture);
+    buttonNamed(bad.el, 'Copy')!.click();
+    await settle(bad.fixture);
+    expect(bad.showError).toHaveBeenCalledWith(
+      'Not in this wardrobe (shared items are filed where they live): cape',
+    );
+    expect(bad.actions.folderPicker()).not.toBeNull();
+
+    const odd = await renderBrowser(characterContainer, makeData([COAT], ownOnly), {
+      route: (req) => {
+        if (req['type'] === 'wardrobeItemsCopy') throw 'no sentence';
+        return { folders: TREE };
+      },
+    });
+    odd.actions.openFolderPicker([COAT], 'copy');
+    await settle(odd.fixture);
+    option(odd.el, /Formal/).click();
+    await settle(odd.fixture);
+    buttonNamed(odd.el, 'Copy')!.click();
+    await settle(odd.fixture);
+    expect(odd.showError).toHaveBeenCalledWith('The items would not be copied');
+  });
+
+  it('copying an outfit sends the copy choice; a stray components: move is dropped, never sent', async () => {
+    const { el, fixture, seen } = await renderBrowser(
+      characterContainer,
+      makeData([COAT, OUTFIT], ownOnly),
+      {
+        route: (req) =>
+          req['type'] === 'wardrobeItemsCopy' ? { items: [OUTFIT], componentsCarried: 1 } : { folders: TREE },
+      },
+    );
+    const browser = fixture.debugElement.query(
+      (d) => d.componentInstance instanceof WardrobeBrowser,
+    ).componentInstance as unknown as {
+      fileToFolder(choice: { folder: string; components?: string }): Promise<void>;
+    };
+    const actions = fixture.componentInstance.actions();
+    actions.openFolderPicker([OUTFIT], 'copy');
+    await settle(fixture);
+    expect(radioLabelled(el, 'Copy the components along with it')!.checked).toBe(true);
+    option(el, /Formal/).click();
+    await settle(fixture);
+    buttonNamed(el, 'Copy')!.click();
+    await settle(fixture);
+    // The defensive drop (v4 `components === 'move' ? undefined : components`).
+    actions.openFolderPicker([OUTFIT], 'copy');
+    await settle(fixture);
+    await browser.fileToFolder({ folder: '', components: 'move' });
+    await settle(fixture);
+    expect(seen.filter((r) => r['type'] === 'wardrobeItemsCopy')).toStrictEqual([
+      { type: 'wardrobeItemsCopy', scope: 'character', containerId: CHAR, itemIds: ['outfit'], folder: 'Formal', components: 'copy' },
+      { type: 'wardrobeItemsCopy', scope: 'character', containerId: CHAR, itemIds: ['outfit'], folder: '' },
+    ]);
+  });
+
+  it('three selected, two of them outfits: the plural legend through the browser', async () => {
+    const SUIT = item('suit', 'Suit', '', { componentItemIds: ['coat', 'gloves'] });
+    const { el, fixture, actions } = await renderBrowser(
+      characterContainer,
+      makeData([COAT, GLOVES, OUTFIT, SUIT], ownOnly),
+    );
+    actions.openFolderPicker([COAT, OUTFIT, SUIT], 'copy');
+    await settle(fixture);
+    expect(el.querySelector('legend')?.textContent?.trim()).toBe(
+      '2 of these are outfits, bundling 3 components between them',
+    );
+    expect(el.querySelector('.qt-dialog-title')?.textContent?.trim()).toBe(
+      'Copy 3 items to a folder',
+    );
   });
 });

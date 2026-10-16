@@ -54,6 +54,7 @@ import type {
   WardrobeUpdateRequest,
   WardrobeItemDto,
 } from '../core/core-contract';
+import type { ComponentMode } from './wardrobe-component-mode-fieldset';
 import type { EquippedSlots } from './equipped-slots';
 import { draftFromItem, draftToPayload } from './item-draft';
 import type { WardrobeContainer } from './wardrobe-container';
@@ -92,8 +93,9 @@ export type {
 } from '../core/core-contract';
 
 /** What travels with a composite outfit (§Shared contract item 2 — the
- *  `components` field's union, spelled out for the transfer dialog). */
-export type WardrobeTransferComponentMode = 'move' | 'copy' | 'none';
+ *  `components` field's union, spelled out for the transfer dialog). The one
+ *  type the shared components fieldset carries (P4.D309, v4 `bbbcd2388`). */
+export type WardrobeTransferComponentMode = ComponentMode;
 
 /** The §1 + §2 union — every arm now lives in `CoreRequest`. */
 export type WardrobeLaneRequest =

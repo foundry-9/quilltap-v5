@@ -186522,3 +186522,76 @@ Branch `claude/p4.d309-wardrobe-copy-to-folder-d7a12a`, cut from P4.D314's
   refusal rows too, which do not flip), and the 7 new `mi_*components*`
   (`bad_enum` / `null` answering 200 where v4 answers 400). Green 116/116
   after.
+
+### Unit 3 — the SPA (SPA 0.5.863)
+
+- NEW `wardrobe-component-mode-fieldset.ts` (`WardrobeComponentModeFieldset`,
+  `defaultComponentMode`, `ComponentMode`) — v4's markup classes, labels and
+  both footnotes byte-exact. `wardrobe-transfer-dialog.ts` SWAPPED onto it
+  (its inline fieldset, `componentOptions` deleted; `componentCountLabel`
+  kept as the legend); `WardrobeTransferComponentMode` stays exported,
+  aliased to the shared type. `wardrobe-transfer-dialog.spec.ts` green
+  UNCHANGED.
+- `wardrobe-folder-picker-dialog.ts` (R-4): `mode` / `outfits` / `working`
+  (was `moving`) / `submitted` (was `move`, emitting `{ folder, components? }`
+  — the key absent without outfits); the copy title / helper / `Copy` /
+  `Copying…`; `isCurrent` mode-gated; the fieldset after the list in
+  `<div class="mt-3">`, `name="wardrobe-folder-components"`.
+- `wardrobe-browser.ts`: `pickerOutfits`, `fileToFolder` (mode + items read
+  into locals before any `.set()`), the copy toasts + `The items would not be
+  copied`, the defensive drop of `components: 'move'` on a copy, the select
+  bar's **Copy to folder…** between Move and Cancel, the row binding
+  `[canCopyToFolder] (copyToFolder)`; `moving` → `working`.
+  `wardrobe-item-row.ts`: `canCopyToFolder` + `copyToFolder`, the menuitem
+  right after **Move to folder…**, nested rows forward neither.
+- `wardrobe-folders.api.ts`: `WardrobeFolderComponentMode`, ONE `fileItems`
+  (the conditional spread), `moveWardrobeItemsToFolder(…, components?)`, NEW
+  `copyWardrobeItemsToFolder`. `core-contract.ts`:
+  `WardrobeItemsMoveRequest.components?` in place, `WardrobeItemsCopyRequest`
+  + its union row inside `// === P4.D309: wardrobe copy-to-folder (owned)
+  ===` fences. `wardrobe-item-actions.ts`: `FolderPickerRequest.mode`,
+  `openFolderPicker(items, mode = 'move')`.
+- **`01f508d4e`'s SPA half (R-9):** the `console.debug('[useWardrobeItemActions]
+  Duplicating wardrobe item', { sourceId, targetScope, targetId, newTitle,
+  componentItemIds })` statement DELETED from `duplicate`. The spec's pin
+  FLIPPED, not deleted: OLD `expect(debug).toHaveBeenCalledWith('[use
+  WardrobeItemActions] Duplicating wardrobe item', { sourceId: 'Greatcoat', … })`,
+  NEW `expect(debug).not.toHaveBeenCalled()`. `grep -rn console.debug
+  apps/web/src/app/wardrobe` → EMPTY.
+- Specs: NEW `wardrobe-component-mode-fieldset.spec.ts` (6); the picker spec
+  rewritten for the new names + 8 copy / components rows (18); the browser
+  spec's two v4 `bbbcd2388` cases transcribed one for one + 5 rows (the
+  select bar, both copy toasts, the refusal + fallback, the defensive drop,
+  Tier 2 item 24's three-selected plural legend) and the existing move
+  assert upgraded to `toStrictEqual` (key ABSENCE — vitest's `toEqual`
+  ignores an `undefined` key); `wardrobe-folders.api.spec.ts` (both verbs,
+  with and without `components`, `toStrictEqual`); `wardrobe-item-actions.
+  spec.ts` (`mode` default); `wardrobe-item-row.spec.ts` (+2);
+  `equipped-slots.spec.ts` — item 4: the 43-row tier-1 corpus vendored as
+  `apps/web/src/app/wardrobe/__fixtures__/next-copy-title.ndjson` (the
+  order's path; the recipe in the spec's header), `it.each` row for row.
+  **Red-first** (these specs against `REAIM`'s eight component / contract
+  files): 25 TypeScript errors at compile (no `mode`, no `submitted`, no
+  `copyWardrobeItemsToFolder`, no `wardrobeItemsCopy`, the arities).
+  Touched files 200/200; the WHOLE suite **509 files / 10,378 passed**;
+  lint clean; build clean.
+- **Gotcha (memory note):** an APFS `cp -cR` of main's `apps/web/node_modules`
+  into a lane worktree makes EVERY Angular spec fail with `NG0203: The
+  ApplicationRef token injection failed` (73/73 on an untouched spec) —
+  `npm ci` fixes it.
+- NEW LIVE `e2e/wardrobe-copy-to-folder-flow.spec.ts` (port 4345; 45343
+  reserved, unused): the kebab entry's position, the copy picker's title /
+  helper / choosable current row, `(copy)` then `(copy 2)` beside the
+  untouched original, the select bar's two-item copy → five rows. No gate
+  flag (both halves on this branch). Tier 2 item 21 (the outfit-asks beat)
+  NOT landed — the pair has no outfit and composing one would exceed the
+  order's ~40 lines; the radio contract rides the picker spec and the
+  transcribed browser case. The spec's own two first-run reds were
+  test-side (a menu read before it rendered; `hangs` for the plural
+  `hang`) — fixed, then green.
+  Playwright BY FILE on this branch's debug `quilltap-web` + `quilltap`
+  (the cloned `target/release` pair was main's — deleted from the lane's own
+  clone so `webBinary()` falls through to debug):
+  `wardrobe-copy-to-folder-flow` **1/1** (LIVE), `wardrobe-folders-flow`
+  **5/5** (the untouched move beat beside the new row entry),
+  `wardrobe-flow` **18/18**. No `wardrobe-transfer-flow` spec exists.
