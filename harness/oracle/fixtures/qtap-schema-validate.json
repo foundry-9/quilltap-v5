@@ -888,6 +888,57 @@
           "value": null
         }
       ]
+    },
+    {
+      "name": "message_pascal_meta_invoked_by_trigger_valid",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D313] v4 `362426c8f` widened the enum; RED on the stale schema (v4 valid, v5 invalid), green after. A COMPLETE pascalMeta (all ten required keys, each of the pin's declared type) so the ONLY thing under test is `invokedBy: \"trigger\"`, with v4's new documentation-only `triggerPhrase`. The seed is itself invalid (its two `participantId` errors), so \"valid\" means this row adds NO instance path.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/messages/0/pascalMeta",
+          "value": {
+            "tool": "saving_throw",
+            "definitionTier": "character",
+            "definitionMountId": "d0000001-0000-4000-8000-000000000001",
+            "params": { "dc": 12 },
+            "rollForm": "dice",
+            "notation": "1d20",
+            "raw": 14,
+            "diceRolls": [14],
+            "value": 14,
+            "state": "success",
+            "outcomeIndex": 0,
+            "invokedBy": "trigger",
+            "triggerPhrase": "make a saving throw"
+          }
+        }
+      ]
+    },
+    {
+      "name": "message_pascal_meta_invoked_by_bogus_invalid",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D313] …and the enum stays CLOSED: an `invokedBy` outside `llm` / `user` / `trigger` adds the `/pascalMeta/invokedBy` path on both engines, before and after the re-vendor.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/messages/0/pascalMeta",
+          "value": {
+            "tool": "saving_throw",
+            "definitionTier": "character",
+            "definitionMountId": "d0000001-0000-4000-8000-000000000001",
+            "params": { "dc": 12 },
+            "rollForm": "dice",
+            "notation": "1d20",
+            "raw": 14,
+            "diceRolls": [14],
+            "value": 14,
+            "state": "success",
+            "outcomeIndex": 0,
+            "invokedBy": "bogus"
+          }
+        }
+      ]
     }
   ],
   "literals": [

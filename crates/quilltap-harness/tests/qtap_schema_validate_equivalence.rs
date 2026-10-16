@@ -66,6 +66,22 @@
 //! own `then` wrapper, one more each), `memory_superseded_at_bad_date` 4/1 (the
 //! wrapper plus `anyOf`'s two branch errors); the null rows add nothing.
 //!
+//! **[P4.D313] The `pascalMeta.invokedBy: "trigger"` rows** (the schema
+//! re-vendored at `25b8fab6a`, 105,774 B — `362426c8f` widened the enum to
+//! `["llm","user","trigger"]` and documented `triggerPhrase`; `f0db8cbb8`
+//! re-described `effects`). The object stays open, so the move LOOSENS one
+//! enum. Two mutation rows from `chats_all_memories`, each setting a COMPLETE
+//! `pascalMeta` (all ten required keys) on `/data/chats/0/messages/0`:
+//! `message_pascal_meta_invoked_by_trigger_valid` (`"trigger"` +
+//! `triggerPhrase`) went RED on the stale schema — v5 alone reported
+//! `/data/chats/0/messages/0/pascalMeta/invokedBy` (`"trigger" is not one of
+//! "llm" or "user"`), the only red row of 82 — and green after the
+//! re-vendor; `message_pascal_meta_invoked_by_bogus_invalid` (`"bogus"`) adds
+//! that path on both engines before and after (the enum stays closed). The
+//! seed is itself invalid, so "valid" there means the row adds no path.
+//! RECORDED count deltas, ajv vs the crate: 3/2 and 4/3 (the seed's `then`
+//! wrapper, one more each).
+//!
 //! Regenerate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}

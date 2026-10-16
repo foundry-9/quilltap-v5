@@ -69,7 +69,11 @@ mod common;
 /// `supersededById` (`c2795733f`, a Timestamp-or-null — bug 225's cold
 /// retention clock). Both `$defs` stay `additionalProperties: true`, so every
 /// move tightens a PRESENT key only.
-const VENDORED_BYTES: usize = 105_310;
+/// P4.D313: 105,774 at v4 `25b8fab6a` — `pascalMeta.invokedBy` gains
+/// `"trigger"` (`362426c8f`), NEW `triggerPhrase`, the `effects` description
+/// (`f0db8cbb8`); the object stays open, so the move LOOSENS one enum and
+/// refuses nothing new.
+const VENDORED_BYTES: usize = 105_774;
 
 #[test]
 fn the_embedded_schema_is_self_consistent() {

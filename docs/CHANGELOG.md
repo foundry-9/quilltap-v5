@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — vendor(schemas): both moved `public/schemas/*.json` at v4 `25b8fab6a`, three byte constants, two `invokedBy: "trigger"` validator rows (P4.D313 U2)
+
+_Versions: core 0.0.1306._
+
+`qtap-custom-tool.schema.json` (39,471 → 43,493 B: `triggers`, the `$defs.Effect` `oneOf`, `$defs.WardrobeGesture`) to `apps/web/public/schemas/`, and `qtap-export.schema.json` (105,310 → 105,774 B: `pascalMeta.invokedBy` gains `"trigger"`, `triggerPhrase` documented) to `crates/quilltap-core/src/generators/`, both byte-exact from the pin. The constants move in `public_schemas_vendor_guard`, `qtap_schema_embed_guard`, and `qtap_schema.rs`'s test. `qtap_schema_validate_equivalence` gains two corpus rows: a complete `pascalMeta` with `invokedBy: "trigger"` (red on the stale schema, which refused it — the only red of 82 rows — and green after) and one with `"bogus"` (refused by both engines, before and after). A v4 4.11-dev `.qtap` export carrying a triggered Pascal run now passes v5's AI-import validation. No Rust code reads the new keys.
+
 #### 2026-10-16 — vendor(help): `help/` re-vendored WHOLE at v4 `25b8fab6a` — nine pages, 131 → 131 (P4.D313 U1)
 
 _No crate versions bumped._

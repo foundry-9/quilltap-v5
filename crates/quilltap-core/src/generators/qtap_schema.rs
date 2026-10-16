@@ -192,7 +192,9 @@ mod tests {
         // `scenarioNotes` after `scenarioText`; the cursor triple
         // `other` / `episode` / `turnExtractionWatermarkMessageId`;
         // `Memory.supersededAt` after `supersededById`).
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 105_310);
+        // P4.D313: 105,774 at v4 `25b8fab6a` (`pascalMeta.invokedBy` gains
+        // `"trigger"`, NEW `triggerPhrase`, the `effects` description).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 105_774);
     }
 
     /// The export with one memory of `minimal_characters_export`'s character.
