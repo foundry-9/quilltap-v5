@@ -340,9 +340,12 @@ async function main(): Promise<void> {
   const groupMp = groupRow?.officialMountPointId as string;
   if (!groupMp) throw new Error('group official store not minted');
   const { ensureSharedWardrobeFolder } = await import('@/lib/mount-index/shared-wardrobe');
-  const { createMountWardrobeItem: createProjectWardrobeItem } = await import(
-    '@/lib/database/repositories/vault-overlay/wardrobe-writes'
-  );
+  // 7417e9a1b removed createMountWardrobeItem (no production caller); rebuilt
+  // verbatim from 7417e9a1b^:wardrobe-writes.ts:647-650 on the surviving exports.
+  const createProjectWardrobeItem = async (mountPointId: string, item: never) => {
+    const w = await import('@/lib/database/repositories/vault-overlay/wardrobe-writes');
+    return w.createInMount(w.mountWardrobeLocation(mountPointId), item);
+  };
   // [P4.D112 / v4 f6a10055] The component-collision seed: a PROJECT-store item
   // sharing the travelling Coat's id, so moving "Sunday Best" with
   // components: 'move' into the project must refuse before writing anything.
@@ -350,9 +353,12 @@ async function main(): Promise<void> {
   const projectMp = projectRow?.officialMountPointId as string;
   if (!projectMp) throw new Error('project official store not minted');
   await ensureSharedWardrobeFolder(projectMp);
-  const { createMountWardrobeItem: createIntoMount } = await import(
-    '@/lib/database/repositories/vault-overlay/wardrobe-writes'
-  );
+  // 7417e9a1b removed createMountWardrobeItem (no production caller); rebuilt
+  // verbatim from 7417e9a1b^:wardrobe-writes.ts:647-650 on the surviving exports.
+  const createIntoMount = async (mountPointId: string, item: never) => {
+    const w = await import('@/lib/database/repositories/vault-overlay/wardrobe-writes');
+    return w.createInMount(w.mountWardrobeLocation(mountPointId), item);
+  };
   await createIntoMount(projectMp, {
     id: spec.projectCollisionItem.id,
     characterId: null,

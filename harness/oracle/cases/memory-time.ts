@@ -36,7 +36,6 @@ import {
   startOfZonedWeekMs,
   zonedDateStamp,
   zonedDayBoundsIso,
-  MEMORY_CALENDAR_DAY_MS,
 } from '@/lib/memory/time/calendar';
 
 const LEG = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -144,6 +143,8 @@ for (const tz of ZONES) {
   for (const date of DATES) emit({ kind: 'bounds', tz, date, out: zonedDayBoundsIso(date, tz) });
 }
 
+// 7417e9a1b removed the MEMORY_CALENDAR_DAY_MS export; measured through the real calendar.
+const MEMORY_CALENDAR_DAY_MS = zonedTimeToUtcMs(2026, 1, 2, 0, 'UTC') - zonedTimeToUtcMs(2026, 1, 1, 0, 'UTC');
 emit({ kind: 'constants', MEMORY_CALENDAR_DAY_MS });
 
 // =============================================================================

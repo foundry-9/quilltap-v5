@@ -295,9 +295,12 @@ async function main(): Promise<void> {
   //     the recipient.
   // The official store is provisioned by hand rather than via
   // `ensureOwnerOfficialStore` so its mount-point id can be pinned.
-  const { createMountWardrobeItem: createProjectWardrobeItem } = await import(
-    '@/lib/database/repositories/vault-overlay/wardrobe-writes'
-  );
+  // 7417e9a1b removed createMountWardrobeItem (no production caller); rebuilt
+  // verbatim from 7417e9a1b^:wardrobe-writes.ts:647-650 on the surviving exports.
+  const createProjectWardrobeItem = async (mountPointId: string, item: never) => {
+    const w = await import('@/lib/database/repositories/vault-overlay/wardrobe-writes');
+    return w.createInMount(w.mountWardrobeLocation(mountPointId), item);
+  };
   const { ensureFolderPath } = await import('@/lib/mount-index/folder-paths');
   const { ensureOwnerOfficialStore } = await import('@/lib/mount-index/ensure-owner-store');
 

@@ -202,7 +202,7 @@ async function main(): Promise<void> {
     };
   });
 
-  const { classifyRefusal, isModerationRefusal } = await import('@/lib/services/dangerous-content/refusal');
+  const { classifyRefusal } = await import('@/lib/services/dangerous-content/refusal');
 
   const lines: string[] = [];
   for (const c of CASES) {
@@ -220,7 +220,8 @@ async function main(): Promise<void> {
       throw new Error(`${c.label}: a line from outside ConciergeRefusal: ${JSON.stringify(logs)}`);
     }
     logs.length = 0;
-    const isRefusal = c.error === null ? null : isModerationRefusal(error);
+    // 7417e9a1b removed isModerationRefusal; its body, through the real classifier.
+    const isRefusal = c.error === null ? null : classifyRefusal({ error }).refused;
 
     lines.push(
       JSON.stringify({

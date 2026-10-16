@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — REAIM: the IMPORT-DEAD oracle repairs at 25b8fab6a — createMountWardrobeItem rebuilt at 12 builder sites, the @/lib/memory doMock deleted, isModerationRefusal and MEMORY_CALENDAR_DAY_MS re-aimed (P4.D314)
+
+_No crate versions bumped._
+
+Harness-only. v4's dead-code sweep (`7417e9a1b`) deleted four things the oracle still named, so 18 fixture-builder families and 3 oracle cases died at the `25b8fab6a` pin. The 12 `createMountWardrobeItem` import sites in 11 builders now call v4's removed one-liner rebuilt from the two surviving exports (`createInMount(mountWardrobeLocation(id), item)`), inline per site with each file's alias kept. `danger-trigger.test.ts` drops the `jest.doMock('@/lib/memory')` block, as v4's own test did. `refusal-classify.test.ts` computes the kept `isModerationRefusal` key as `classifyRefusal({ error }).refused`, which is v4's removed body. Its NDJSON is byte-identical to the unrepaired case run at `83334b9a5`. `memory-time.ts` measures `MEMORY_CALENDAR_DAY_MS` through v4's real `zonedTimeToUtcMs`, which gives 86400000 in both TZ legs. All 21 families now load and run from the pin. Four reds belong to the lanes that own them: the `chat_create_capstone` zod `too_big` row goes to P4.D311, the 8 `wardrobe_folders_routes` `componentsCarried` rows go to P4.D309, and the `wardrobe_tools` hair note and `memory_time`'s `PROTOTYPE_KEY_MONTH_THROWS` go to P4.D312. No Rust source changed.
+
 #### 2026-10-16 — docs(porting): the `25b8fab6a` round's planning rulings APPROVED by the human; recorded in every order's §R.11 and the phase plan
 
 _Docs-only change._

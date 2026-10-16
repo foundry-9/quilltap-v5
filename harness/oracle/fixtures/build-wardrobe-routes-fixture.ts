@@ -270,9 +270,12 @@ async function main(): Promise<void> {
 
   // The project store's Wardrobe/ + P_SCARF.
   const { ensureSharedWardrobeFolder } = await import('@/lib/mount-index/shared-wardrobe');
-  const { createMountWardrobeItem: createProjectWardrobeItem } = await import(
-    '@/lib/database/repositories/vault-overlay/wardrobe-writes'
-  );
+  // 7417e9a1b removed createMountWardrobeItem (no production caller); rebuilt
+  // verbatim from 7417e9a1b^:wardrobe-writes.ts:647-650 on the surviving exports.
+  const createProjectWardrobeItem = async (mountPointId: string, item: never) => {
+    const w = await import('@/lib/database/repositories/vault-overlay/wardrobe-writes');
+    return w.createInMount(w.mountWardrobeLocation(mountPointId), item);
+  };
   await ensureSharedWardrobeFolder(projectMp);
   await createProjectWardrobeItem(projectMp, {
     id: I.pScarf,

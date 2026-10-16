@@ -160,10 +160,6 @@ async function runCase(c: CaseSpec): Promise<Record<string, unknown>> {
   jest.doMock('@/lib/logging/create-logger', () => ({
     createServiceLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }),
   }));
-  jest.doMock('@/lib/memory', () => ({
-    processMessageForMemoryAsync: () => {},
-    processInterCharacterMemoryAsync: () => {},
-  }));
   jest.doMock('@/lib/chat/context-summary', () => ({ checkAndGenerateSummaryIfNeeded: () => {} }));
   jest.doMock('@/lib/services/system-events.service', () => ({ createMemoryExtractionEvent: () => {} }));
   jest.doMock('@/lib/services/cost-estimation.service', () => ({ estimateMessageCost: () => {} }));

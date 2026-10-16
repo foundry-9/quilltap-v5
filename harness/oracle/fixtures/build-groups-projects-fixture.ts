@@ -571,9 +571,12 @@ async function main(): Promise<void> {
 
   // Iota wardrobe (two items, one composite referencing the other).
   const { ensureSharedWardrobeFolder } = await import('@/lib/mount-index/shared-wardrobe');
-  const { createMountWardrobeItem: createProjectWardrobeItem } = await import(
-    '@/lib/database/repositories/vault-overlay/wardrobe-writes'
-  );
+  // 7417e9a1b removed createMountWardrobeItem (no production caller); rebuilt
+  // verbatim from 7417e9a1b^:wardrobe-writes.ts:647-650 on the surviving exports.
+  const createProjectWardrobeItem = async (mountPointId: string, item: never) => {
+    const w = await import('@/lib/database/repositories/vault-overlay/wardrobe-writes');
+    return w.createInMount(w.mountWardrobeLocation(mountPointId), item);
+  };
   await ensureSharedWardrobeFolder(iotaMp);
   const CLOAK = 'aa000000-0000-4000-8000-000000000001';
   const ENSEMBLE = 'aa000000-0000-4000-8000-000000000002';
