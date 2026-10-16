@@ -325,9 +325,33 @@ Your characters never see the template — like `title`, it is display furniture
 }
 ```
 
+## Words that pull the lever — `triggers`
+
+A dice roll typed into a chat is thrown at once, without anybody reaching for a tool. A custom tool has, until now, lacked that reflex: it waited for a character to call it or for you to open the dialog. Yet a great many tools are *about* something that gets said. *"I draw my sword"* could roll for initiative; *"Abracadabra"* could set the transformation going; *"Let us see what the oracle says"* could, with a certain inevitability, consult the oracle. You know the words. Now you may tell Pascal to listen for them:
+
+```json
+{ "triggers": ["abracadabra", "open sesame"] }
+```
+
+Up to eight phrases per tool, each between three and eighty characters. When a message in the chat contains one, Pascal runs the tool on the spot and announces the outcome exactly as he would for any other run.
+
+**What counts as a match.** The plainest rule there is: the phrase appears in the message, in any mixture of capitals. No wildcards, no word boundaries, no cleverness. `"fire"` will go off at *"warm by the fireplace"* as readily as at *"Fire!"* — if you want precision, write a longer phrase. A phrase must not begin or end with a space, and two phrases of one tool may not differ only in their capitals.
+
+**Who can set one off.** Everyone who speaks: you, a character you are playing, and every character the models are playing, autonomous rooms included. The tool runs *as the speaker* — their fact sheet, their groups, their version of the tool if it is defined differently for different characters — so a tool gated away from a character cannot be triggered by them, either. When you speak as nobody in particular, the tool rolls as nobody: every metadata test declines, and effects that need a character are skipped.
+
+**What Pascal never listens to.** His own announcements, Carina's answers, and the remarks of the rest of the staff — the Host, the Lantern, Aurora, Prospero and the Post Office. A [Carina](carina.md) question line (`@Name: …`) is set aside too: it is addressed to the reference desk, not spoken in the scene. A regenerated reply fires nothing, just as dice in a swipe are not re-thrown.
+
+**How it rolls.** Every parameter at its default — there is nobody to fill in a form. Visibility follows the tool's own `defaultVisibility`: a whispering tool whispers to whoever spoke the words. The announcement lands *after* the message that caused it (dice, by long habit, land before yours; Pascal is more of a respecter of sequence).
+
+**At most four tools per message.** Should one sentence happen to contain the phrases of six tools, the first four to appear are dealt and the rest are noted in the logs, not run — a sentence should not be able to spend six oracle consultations on your account.
+
+**A word on echoes.** Pascal never hears himself, but a character who *repeats* Pascal's announcement in their own reply will say whatever words it contains — and if those include the tool's own trigger, the tool goes off again on that reply, and possibly again on the next. The Workbench warns you when an outcome message, the chip label or an oracle prompt quotes one of the tool's own phrases. Heed it.
+
+**It must be switched on.** All of this sleeps until you turn on **Auto-Run Custom Tools on Trigger Phrases** under Settings → Chat → Automation. It is off by default — being overheard is a surprise the first time — and it does nothing at all while Custom Tools itself is switched off. The phrases are never shown to any model; `run_custom` remains a character's own way to reach for the tool.
+
 ## Recording consequences — side effects
 
-A roll can now leave a mark. A tool may carry an `effects` array — up to sixteen entries, applied in order after the table has dealt — each writing one value into the story's **persistent state** or onto the rolling character's own **fact sheet**. The third failed lockpick really can break the pick, and nobody has to *ask* the model to record it — the write happens on the server, as part of the roll, entirely beyond a model's power to fudge:
+A roll can now leave a mark. A tool may carry an `effects` array — up to sixteen entries, applied in order after the table has dealt — each writing one value into the story's **persistent state** or onto the rolling character's own **fact sheet**, or else changing what that character **has on** (see *[Dressing and undressing](#dressing-and-undressing)* below). The third failed lockpick really can break the pick, and nobody has to *ask* the model to record it — the write happens on the server, as part of the roll, entirely beyond a model's power to fudge:
 
 ```json
 "effects": [
@@ -412,7 +436,60 @@ The bare form is two words where the grammar expects an expression, and the file
 
 A few civilities, all in the fail-soft family you know from `metadata`: an expression that cannot be evaluated at run time (a division by zero, a `{{metadata.key}}` the roller hasn't got) skips *that one effect* and never sinks the roll; a run with no character attached skips the `metadata.` writes (a run nobody made writes to nobody's sheet — which includes an unattributed roll of your own from the composer); and everything that *was* written rides in the roll's permanent record, previous value and all. The oracle's answer may be written too — `"value": "{{llm}}"` files the consult's text — but it is never treated as a number; route numeric judgments through the outcome table instead.
 
-Your characters are told a tool records side effects and *where* it writes (the targets are vocabulary, like a parameter's name) — never the values or the conditions, and under `revealOdds: false` not even the targets. The run dialog names them too, under **What this tool can quote**. And on the Workbench, the proving bench shows every would-be write as a dry run — `→ state.lockpicking.failures = 3 (would write)` — while applying, as ever, nothing at all.
+### Dressing and undressing
+
+An effect need not write a value at all. Give it a `wardrobe` key in place of `target` and `value` — never both — and it changes the rolling character's outfit instead: the dress tears and comes off, the Cloak of Night is drawn from the chest and donned, the beast-form sweeps the slots clean. It all happens on the server, through precisely the same valet's hands the `wardrobe_wear` and `wardrobe_take_off` tools use, and so it cannot be forgotten, fudged, or applied to the wrong garment by an over-excited model.
+
+```json
+"effects": [
+  { "when": { "outcome": { "eq": "success" } },
+    "wardrobe": { "action": "wear", "items": ["Cloak of Night", "{{params.garment}}"] } },
+  { "when": { "outcome": { "eq": "failure" } },
+    "wardrobe": { "action": "take_off", "items": ["Sundress"] } },
+  { "wardrobe": { "action": "clear_slot", "slot": "hair" } }
+]
+```
+
+Three actions, each fussy about its own particulars:
+
+- **`wear`** puts the listed `items` on, in order. An optional **`mode`** means exactly what it means to `wardrobe_wear`: `wear` (the default — honour each item's own *replace* setting), `replace` (a decisive swap), or `add_to_slot` (tuck it into one named `slot`, which that mode then requires and no other mode accepts).
+- **`take_off`** takes the listed `items` off, leaving every other layer where it lies. Name a `slot` to take an item out of that slot alone; leave it off and the item comes off everywhere it covers. `mode` has no business here.
+- **`clear_slot`** empties one `slot` — `top`, `bottom`, `footwear`, `accessories` or `hair` — and takes neither `items` nor `mode`.
+
+A file that puts a field where its action has no use for it is refused when it loads, with the reason beside the offending line.
+
+**Items are named by title or id.** Each is looked up the way a character's own wardrobe tools look things up — the id first, then the title, without regard to case — across everything the rolling character may wear: their own wardrobe, their groups', the project's, and Quilltap General. An item is a *template*, not an expression: the `{{…}}` placeholders a message takes are filled in before the lookup, so `"{{params.garment}}"` lets the person rolling choose the garment, and `"{{metadata.favouriteHat}}"` lets the character's own fact sheet choose it. There is no arithmetic and no quoting trap here — the words you write are the words looked up.
+
+**Outfits wear and come off whole.** A composite outfit goes on like any garment, and comes off the same way: everything of it the character has on is taken off, whichever slots its pieces landed in.
+
+**The rolling character, and nobody else.** A wardrobe effect dresses whoever the tool was run *as* — the same person a `metadata.` write lands on. A tool one character runs cannot undress another, and a run nobody made (your own unattributed roll from the composer) dresses nobody at all.
+
+**One missing garment never spoils the evening.** An item that cannot be found, has been archived (for wearing — an archived garment may still be taken *off*), or does not cover the `add_to_slot` slot is skipped quietly, and the rest of the list goes on. The roll has happened; Pascal announces it regardless.
+
+Afterwards [Aurora](wardrobe.md#auroras-wardrobe-announcements) announces the new ensemble in the usual way — once per turn, even when a character's own `wardrobe_wear` call and a tool's wardrobe effect both landed in the same reply — and the character's per-chat portrait is redrawn if the chat has asked for that. The roll's permanent record notes what went on, what came off, and the outfit before and after.
+
+#### A tool that simply dresses someone
+
+There is no rule that a tool must be a gamble. A tool with one possible roll and one outcome is a button — and a button that dresses a character is a very handsome thing to have in the composer:
+
+```json
+{
+  "name": "wear_regalia",
+  "title": "Don the Regalia",
+  "description": "Put on the full ceremonial regalia, for an investiture or a very good dinner.",
+  "roll": { "min": 1, "max": 1 },
+  "effects": [
+    { "wardrobe": { "action": "wear", "items": ["Regalia"], "mode": "replace" } }
+  ],
+  "outcomes": [
+    { "when": true, "message": "The regalia goes on, and the room rises.", "state": "success" }
+  ]
+}
+```
+
+Run it from the composer **as** a character and on it goes; a character may equally run it themselves. A `take_off` twin makes the matching button for the end of the evening.
+
+Your characters are told a tool records side effects and *where* it writes (the targets are vocabulary, like a parameter's name) — never the values or the conditions, and under `revealOdds: false` not even the targets. A wardrobe effect is described the same way — *wears Cloak of Night, Boots*, *takes off {{params.garment}}*, *clears hair* — naming what may be worn, never which roll wears it. The run dialog names them too, under **What this tool can quote**. And on the Workbench, the proving bench shows every would-be write as a dry run — `→ state.lockpicking.failures = 3 (would write)` — while applying, as ever, nothing at all. A wardrobe effect shows as `→ wardrobe: wear “Cloak of Night” (would attempt)` — *attempt*, because the bench has no character in the chair and so cannot know whether the garment is in anyone's wardrobe.
 
 ## Which tool wins: the matter of tiers
 
@@ -503,6 +580,8 @@ It arrives in two acts. First the table: every tool available to this scene, wit
 
 It remembers. Close the dialog and reopen it, and you are back on the tool you last used, with the figures you last set still in their boxes. This is deliberate: the same roll is usually wanted twice, and re-typing it is a tax on the second one.
 
+The composer offers a shorter road. Type `/pascal` at the start of a word to open the same dialog, or `/` and a tool's name — `/unlock` — to land straight upon that tool's form with your remembered figures waiting. A tool that declares no parameters at all is rolled the moment you choose it, with its definition's own preference for public or private. To whisper a roll that would otherwise be public, use the dialog. See [Slash Commands](chat-settings-composer.md).
+
 ### Presets — hands set aside for later
 
 Memory of the last hand is all very well, but some tools are run the same three ways for a season at a stretch, and for those the dialog offers **presets**. Beneath a tool's parameters — provided it has any, and provided the roll runs as a character with a vault to keep things in — you will find a modest row of conveniences: a dropdown of hands set aside earlier, a box for naming a new one, **Save preset**, and **Reset to defaults**.
@@ -543,11 +622,13 @@ If a roll fails while it's actually running — a bound that ended up above its 
 
 ## Limits
 
-Sixty-four tools per scene, eight parameters and thirty-two outcomes per tool, a thousand characters per message, five hundred per description, eighty per title. An oracle's prompt runs to four thousand characters and its error line to a thousand; its answer is trimmed to eight thousand before anything tests or prints it, unless the tool's own `maxOutput` says otherwise — anywhere from one character to a hundred thousand, with the call's token budget following along. If a scene somehow exceeds the roster limit, the surplus is dropped and said so out loud — never silently.
+Sixty-four tools per scene, eight parameters and thirty-two outcomes per tool, eight trigger phrases per tool (three to eighty characters each) and four triggered tools per message, a thousand characters per message, five hundred per description, eighty per title. An oracle's prompt runs to four thousand characters and its error line to a thousand; its answer is trimmed to eight thousand before anything tests or prints it, unless the tool's own `maxOutput` says otherwise — anywhere from one character to a hundred thousand, with the call's token budget following along. If a scene somehow exceeds the roster limit, the surplus is dropped and said so out loud — never silently.
 
 ## Turning it off
 
-The **Custom tools** setting on Settings → Chat governs the whole arrangement. Switched off, `run_custom` is never offered to any model and the gutter button goes away. Your files stay exactly where they are.
+The **Custom tools** setting on Settings → Chat governs the whole arrangement. Switched off, `run_custom` is never offered to any model, the gutter button goes away, and no trigger phrase is listened for. Your files stay exactly where they are.
+
+Trigger phrases have a switch of their own besides — **Auto-Run Custom Tools on Trigger Phrases**, under Settings → Chat → Automation, off unless you turn it on.
 
 ## In-Chat Navigation
 

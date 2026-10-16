@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — vendor(help): `help/` re-vendored WHOLE at v4 `25b8fab6a` — nine pages, 131 → 131 (P4.D313 U1)
+
+_No crate versions bumped._
+
+The nine pages v4's span moved (`custom-tools`, `chat-settings-composer`, `wardrobe`, `rng-tool`, `pascals-workbench`, `chat-settings`, `chats`, `run-tool`, `project-wardrobe`) copied from `git show 25b8fab6a:help/<p>.md`, never from v4's working tree. All 131 paths md5-identical to the pin; same file set. `chat-settings-composer.md` now deep-links `section=composer-slash-commands` (the SPA card is P4.D308's). `help_tree_equivalence` and `help_section_size_equivalence` regenerated at the pin went red on content alone (`docs[28]`, `chunks[191]`; the section set) and are green after: chunks 779 → 786, largest section still 775 tokens. `help_tree_embed_guard` and `host_help_docs_boot` stay at 131 and were green before and after. History comments added to the three help tests. The host re-embeds `help/` at build time; its source is unchanged.
+
 #### 2026-10-16 — docs(porting): P4.D311 lane record — the provider lane LANE COMPLETE
 
 _Docs-only change._

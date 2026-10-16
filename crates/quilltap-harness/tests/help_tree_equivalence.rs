@@ -131,7 +131,13 @@ async fn shipped_help_tree_matches_oracle() {
     // `memory-housekeeping.md` retired, `memory-maintenance.md` and
     // `scenario-browser.md` new); measured RED on content alone (walk order
     // from index 68, `docs[22]`, `chunks[135]`) before the tree was
-    // re-vendored WHOLE; green after.
+    // re-vendored WHOLE; green after. P4.D313 (v4 `25b8fab6a`): the count
+    // UNMOVED at 131 = 131 (the SAME set — nine pages re-vendored:
+    // `custom-tools.md` +3 headings, `chat-settings-composer.md` +1 with its
+    // `url:` moved to `section=composer-slash-commands`, `rng-tool.md` +1, six
+    // prose-only); measured RED on content alone (`docs[28]`, `chunks[191]` —
+    // the composer page's `url:`) before the nine were re-vendored
+    // byte-exact; green after (chunks 779 → 786).
     assert_eq!(
         files.len(),
         want.count,

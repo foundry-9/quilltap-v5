@@ -114,6 +114,11 @@ async fn boot_syncs_the_embedded_help_tree_and_reindex_reads_it() {
     // + `help/scenario-browser.md` added, `help/memory-consolidation.md` +
     // `help/memory-housekeeping.md` retired; the 21 re-vendored pages move no
     // count. Measured GREEN before and after.
+    //
+    // 131 at v4 `25b8fab6a` (131, P4.D313): nine pages re-vendored, none
+    // added or retired — `custom-tools`, `chat-settings-composer`, `wardrobe`,
+    // `rng-tool`, `pascals-workbench`, `chat-settings`, `chats`, `run-tool`,
+    // `project-wardrobe`. Measured GREEN before and after.
     assert_eq!(expected, 131, "the vendored tree at v4 01a83539d");
 
     // ── 1. The boot ensure. ──

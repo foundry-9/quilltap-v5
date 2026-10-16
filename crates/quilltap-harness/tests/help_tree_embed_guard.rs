@@ -94,6 +94,12 @@ use quilltap_host::help_content::EMBEDDED_HELP;
 /// and `scenario-browser.md` added, `memory-consolidation.md` and
 /// `memory-housekeeping.md` retired; the 21 re-vendored pages move no count.
 /// Measured GREEN before and after.
+///
+/// **131 at v4 `25b8fab6a` (131, nine pages re-vendored, none added or
+/// retired, P4.D313):** `custom-tools.md`, `chat-settings-composer.md`,
+/// `wardrobe.md`, `rng-tool.md`, `pascals-workbench.md`, `chat-settings.md`,
+/// `chats.md`, `run-tool.md`, `project-wardrobe.md`. Measured GREEN before
+/// and after.
 const VENDORED_FILE_COUNT: usize = 131;
 
 fn repo_root() -> PathBuf {
