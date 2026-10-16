@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — docs(porting): drift ledger records `25b8fab6a` — bug 247, this port's filing, converges
+
+_Docs-only change._
+
+A second `/driftcheck` today found one more v4 commit, `25b8fab6a` (`4.11.0-dev.10`). It fixes bug 247: v4's `when`-phrase parser now reads its word tables by own key only, and `resolveEpisodicAnchors` catches a parser throw and uses the fallback. That matches v5's existing answer, so the row is a CONVERGENCE. At a pin past this commit, `memory_time_equivalence`'s `PROTOTYPE_KEY_MONTH_THROWS` table will trip by design and should be retired by measurement. The same commit fixes bug 250 with a Lexical-only typeahead guard, which doesn't apply to v5. v4 now reports bugs 1–251 fixed and none open. The total is 26 commits past the baseline, the checkout is clean, and the pin is still required.
+
 #### 2026-10-16 — docs(porting): drift ledger records six more v4 commits past the `83334b9a5` pin — the ELEVENTH D23 move among them
 
 _Docs-only change._
