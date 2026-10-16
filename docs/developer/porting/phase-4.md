@@ -7151,7 +7151,73 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `83334b9a5` memory-refactor + scenarios drift catch-up round ({P4.D289 → P4.D288} → {P4.D290 → {P4.D296 ∥ P4.D297 ∥ P4.D298}} ∥ P4.D291 ∥ P4.D292 ∥ P4.D293 ∥ P4.D294 ∥ P4.D295, with P4.D299 ∥ P4.D300 ∥ P4.D301 ∥ P4.D302 ∥ P4.D303) — ORDERED 2026-10-14
+## The `83334b9a5` memory-refactor + scenarios drift catch-up round ({P4.D289 → P4.D288} → {P4.D290 → {P4.D296 ∥ P4.D297 ∥ P4.D298}} ∥ P4.D291 ∥ P4.D292 ∥ P4.D293 ∥ P4.D294 ∥ P4.D295, with P4.D299 ∥ P4.D300 ∥ P4.D301 ∥ P4.D302 ∥ P4.D303) — UNIFIED 2026-10-15 (ordered 2026-10-14)
+
+**UNIFIED on main (2026-10-15) — ALL SIXTEEN LANES LANDED; the oracle
+baseline MOVES `4a38222e6` → `83334b9a5`; the ledger's twenty absorbed /
+ratified rows retire to §6, the nineteen commits past the pin stay in §3
+(v4 RELEASED 4.10.0 and started 4.11-dev mid-round; the TENTH D23 move,
+`362426c8f` Pascal trigger phrases, is the next round's), and the LIVE-DATA
+HAZARDS block RETIRES by measurement.** The §2 probe FAILED at the start (v4
+seventeen commits further, the checkout dirty), so the §4 procedure ran FIRST
+(three readers, `3f5c43b19`); every regen, the whole sweep and every
+live-checkout guard ran from `/tmp/qt-v4-pin-unify-83334b9a5` with its own
+`npm ci --offline` tree. The lanes were CHERRY-PICKED in §S.1's order over the
+three stacking points (102 commits; six adjacent-edit source unions, zero
+contract drift). §S.5 landed whole: the admission watermark call, the refit
+triggers (incl. the import's FORCED refit — P4.D62's deferral retires), the
+embeddings pair and the search route re-points, `with_recall_lines`, P4.D301's
+flag rows, the canon loaders, the probe zone; all 33 LANE-REMOVE shims
+deleted (five modules gone whole); the four §S.9 gates LIVE. **The §3 review
+(eight readers + two deeper SPA reads + the unifier): FOUR findings that would
+have shipped, each fixed red-first on the branch** — P4.D288's unstamped
+`add-memory-tiers-v1` on a v5-provisioned instance (the ping-pong class: v4
+would re-add the dropped chat column; the settled-chain arm stamps it, the
+zero-rerun oracle widened to see it), the paginated list + `findByImportance`
+on the RAW `importance` (v4: `reinforcedImportance`), every extraction job
+ERASING the turn's `[Recall]` record on the union (P4.D296's unwired handoff;
+a planted-record tripwire added), V8's NaN comparator (`SortCompareUserFn`
+maps NaN → +0) — plus the swap-remove key order, the NULL
+`reinforcedImportance` 500, the Almanack's four dropped-column lines → v4's
+`Memory maintenance` line, the in-loop fold zone, the dead refusal scaffold,
+`js_string` / `pass_cap`, the census counts, and the lanes' doc smalls. Gate:
+<<GATE_LONG>>. Versions: core 0.0.1305, host 0.0.207, web 0.0.240, cli
+0.0.33, SPA 0.5.862; tauri 0.0.9 and harness 0.0.1110 unchanged. Round
+record: `status-log.md` → "The `83334b9a5` memory-refactor + scenarios drift
+catch-up round — UNIFICATION record (2026-10-15)"; each order's status header
+carries its Unification paragraph and exactly what stays OPEN.
+
+**NEXT (in order):**
+1. **The owed dogfood pass** (`/dogfood`) — on a Friday COPY taken BEFORE the
+   human ran v4 past `362426c8f` (a post-migration copy is FINE now; the
+   headline row is its first v5 boot with every ensure a measured NO-OP). The
+   queue is `dogfood-findings.md`'s standing note of 2026-10-15 (the §S.8
+   list + the lanes' own 💸 rows + bug 242's single-character check).
+2. **The follow-ups smalls round** (`/setupphase`): the review's recorded
+   items — the repository-fallback `?` reads (P4.D290 / P4.D296 / P4.D297;
+   regenerate-all's chat list a RULING), `ADMISSION_SINGLE_TERM_LINK` and
+   `CASCADE_VECTORS_REMOVED` to classify, P4.D291 #24's recall-probe fixture,
+   P4.D298's `create_project_explicit_wins` + `Error listing memories`, the
+   lock's closed-enum read + v4's three lock lines, the scenario parser WARNs,
+   the host L2 → L37 capture row (needs an injected failure between phases),
+   the D301 toast duration + duplicated literal, the SPA lows, the Almanack /
+   API-doc smalls, `DQS_QUOTED_IDENTIFIER_FALLBACK`; **two human rulings
+   first:** `OFFSET_OCCURRED_AT_ROW_SCHEMA` (v5 stores an offset `occurredAt`
+   v4's readers refuse — refuse as v4 does + file a v4 bug?) and P4.D294 item
+   19 (a string `scenarioSource` cell: v4 skips the chat silently, v5 fails the
+   export whole — keep the strict-export ruling or converge?). Also the
+   earlier OPEN lists (the `4a38222e6` and `01a83539d` headers, the P4.D273
+   ruling, dogfood #156 / #157).
+3. **The `362426c8f` drift catch-up round** (`/driftcheck` first — the
+   checkout's Pascal dirt will have committed): the TENTH D23 move
+   (`chat_settings.customToolTriggers` + the trigger-phrase feature + the one
+   run service), plugin-utils 2.7.1's cache-hit exclusion (`OpenAiCompatible`),
+   the restore remapper's participant-id arrays (grow the corpus — today's
+   passes vacuously), bug 248, the hair precedence note, copy-to-folder + the
+   components ask, the Tier R help / completion bytes, the About blurbs, the
+   docs re-vendor (moves + deletes), and the NO-PORT ratifications (the
+   release squash and its siblings, bug 247's filing).
+
 
 **Baseline `4a38222e6`. The round is PINNED at v4 `83334b9a5`** ("Release
 checklist 4: API standard audit; use successResponse in new handlers",
@@ -7319,8 +7385,8 @@ SPA 0.5.846; cli 0.0.32 and tauri 0.0.9 unchanged; harness frozen 0.0.1110.
    190's archived part, bug 194's cleanup from the editor AND a row, Duplicate
    filing beside the original, bug 198's Reset to worn, bug 191's refusals,
    Escape with a row's kebab open).
-2. ✅ **ORDERED 2026-10-14 as ONE round — the `83334b9a5` memory-refactor +
-   scenarios drift catch-up (P4.D288–P4.D303; the ORDERED section above).**
+2. ✅ **UNIFIED 2026-10-15 — the `83334b9a5` memory-refactor + scenarios
+   drift catch-up (P4.D288–P4.D303; the UNIFIED section above).**
    Was: **The catch-up rounds** (`/driftcheck` FIRST, once v4 commits the
    in-flight memory dirt the ledger's §1 records; the rows and their full
    classification are the ledger's §3): (a) `545e299bb` scenarios from

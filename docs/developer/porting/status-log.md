@@ -184764,3 +184764,237 @@ stays symlinked (§R.3's cure not needed for this lane).
   `[ScenarioLocation] Refused scenario ref` WARN — v4-faithful.
 - **Versions at close:** SPA **0.5.851** (from 0.5.846, five bumps); no crate
   version moved; `quilltap-harness` untouched.
+
+## The `83334b9a5` memory-refactor + scenarios drift catch-up round — UNIFICATION record (2026-10-15)
+
+**{P4.D289 → P4.D288} → {P4.D290 → {P4.D296 ∥ P4.D297 ∥ P4.D298}} ∥ P4.D291
+∥ P4.D292 ∥ P4.D293 ∥ P4.D294 ∥ P4.D295, with P4.D299 ∥ P4.D300 ∥ P4.D301 ∥
+P4.D302 ∥ P4.D303 — ALL SIXTEEN LANES LANDED; the oracle baseline MOVES
+`4a38222e6` → `83334b9a5`** (v4 `main`, 2026-10-13 21:18, `4.10.0-dev.176`,
+"Release checklist 4: API standard audit; use successResponse in new
+handlers" — behaviour-identical to `64743ee13`, the memory refactor's close).
+Branch `unify/83334b9a5` from `main` `d1434189c`, the lanes CHERRY-PICKED in
+§S.1's order over the three stacking points: P4.D289 (`SCORING` `7e18b9cf7`) →
+P4.D288 (`KEYSTONE` `149cb8fc1` + its Tier 2) → P4.D290 (`ADMISSION`
+`e43551bf5`) → P4.D292 → P4.D291 → P4.D296 → P4.D297 → P4.D298 → P4.D293 →
+P4.D294 → P4.D295 → P4.D299 → P4.D301 → P4.D303 → P4.D300 → P4.D302 — 102
+commits. Conflicts: the version files, `Cargo.lock`, the CHANGELOG and this
+log (a both-sides union; the versions recounted once at the end), and SIX
+source-level adjacent-edit unions, every one a resolution of two lanes
+appending to the same anchor — the maintenance summary's `fold_episode_catchup`
+(P4.D296) beside `builtin_refit` (P4.D292) in `scheduled_maintenance.rs` and
+its tier-2 twin, P4.D297's retirement of `housekeeping.rs` / `memory_dedup.rs`
+over a one-argument widening, the maintenance enqueue section above P4.D296's
+rewritten extraction-enqueue doc in `queue_service.rs`, three append-only
+blocks in `zod_issues.rs` / `fallback.rs` / `fallback_home_guard.rs`, and the
+host-zone census's description string grown by three lanes. Nothing drifted a
+contract; the raw union compiled the first time.
+
+### The §2 probe, `/driftcheck`, and the pin
+
+The probe FAILED at the start: v4 `main` had moved SEVENTEEN commits past the
+ledger's recorded tip — **including the `release: 4.10.0` squash**
+(`2432b9057`) and the `4.10.0` bug branch's start (`489b228b6`, ZERO
+unabsorbed content by content diff) — and the checkout was DIRTY with the
+human's in-flight Pascal wardrobe effects + a bug-249 fix. `/driftcheck`'s §4
+procedure ran FIRST (three parallel readers, from the hunks — `3f5c43b19` on
+the unify branch): 8 NO-PORT?, 7 PORT, 2 PORT-NEW + PORT, among them
+**`362426c8f` Pascal trigger phrases WITH THE TENTH D23 MOVE**
+(`chat_settings.customToolTriggers`, `pascalMeta.invokedBy: 'trigger'`) and
+**ONE dependency move** (`@quilltap/plugin-utils` 2.6.3 → 2.7.1, `a8b2d2861`).
+**Every regen followed the PIN:** `/tmp/qt-v4-pin-unify-83334b9a5` (detached at
+`83334b9a5`) with its OWN `npm ci --offline` tree (1,046 packages; the plugin
+and `packages/quilltap` trees symlinked — the lockfile moved past the pin only
+for plugin-utils, which the pin's own tree does not see). The ledger's
+baseline move: the twenty absorbed / ratified rows retire to §6, the
+nineteen commits past the pin stay in §3, and **the LIVE-DATA HAZARDS block
+RETIRES by measurement** (each hazard closed by a named family — §1 lists
+them), replaced by the two R-AI notes and ONE new one (a v4 at `4.11.0-dev`
+writes rows a `83334b9a5` v5 refuses — the copy-before-pull rule continues).
+
+### Delivered scope, verified against each order
+
+Every lane reported LANE COMPLETE; EIGHT parallel §3 readers (+ two deeper
+reads of P4.D300 and P4.D302 after the SPA reader ran out of time) read v4 at
+the pin against each order's Tier 1 / Tier 2, and the unifier read every
+HANDOFF site on the union. The lane records stand in this file (`##` /
+`## Lane record —` entries dated 2026-10-14/15) and are not repeated; every
+order's status header carries its Unification paragraph and exactly what
+stays OPEN. In brief: P4.D289 the pure leaf family (scoring, the memory
+calendar, the candidate, footnotes, pure admission, the embedding text, V8's
+whole `Date.parse`); P4.D288 the KEYSTONE (the eighth + ninth D23 re-dump,
+twelve ensures in v4's registration order with the two ledgered data
+rewrites, the cursor repository, the settings document, the 23 job types, the
+embedding-call seam, the index over rows, the ONE retire path, the wire — 8
+new verbs, 10 retired —, 45 fixture pairs widened); P4.D290 stateful admission
+(the lock, the SHA-1 ledger, the one combine's writes, the hand edit, the
+anchor probe through admission); P4.D291 recall as a pipeline + delivery as
+the one access writer + the deferred mail flip + the replay's trace; P4.D292
+the TF-IDF refit policy, boot PHASE 3.8, the DATA tick's step 10,
+`EMBEDDING_REFIT`, the `memory_index_backfill` pair, the optimizer on
+salience; P4.D293 the backup / restore carriers (no vector mirror, cursors,
+scenario sources, the legacy settings, the 22l refusal); P4.D294 the `.qtap`
+carriers (bug 228's reminted ids, bug 240's local characters, the cursors);
+P4.D295 scenarios from anywhere, server side (the location, ONE route
+factory, the catalogue + by-ref reads, the recipe, `localeCompare` sorts);
+P4.D296 extraction as one context + four passes + cursors + the turn grain +
+the fold runner and catch-ups; P4.D297 maintenance as ONE job (five phases,
+the ledger, `repair`, bugs 244 / 246 — `PARTIAL_DEFAULTS_CLOBBER` CONVERGED
+to `PATCH_PRESERVES_STORED`); P4.D298 the Memories API (the manual create
+through admission, the item routes through the edit chokepoint, the wipe
+sparing manual / cold / digest rows, counts, limits, the search-replace arm);
+P4.D299 the lock's `port` (bug 239) + the CLI's resolution; P4.D300 the
+memory SPA of Phase G (ONE Maintenance card + dialog + report + ledger, the
+rate limits, the `.3` band); P4.D301 bugs 241 / 242 (the submission ledger,
+the composer restore, the depth-0 `turnStart`); P4.D302 the scenarios SPA
+(the browser, New Chat's one selection, the in-chat control); P4.D303
+`help/` 131 whole + 74 `docs/v4/` writes + the NO-PORT record.
+
+### The §3 review — FOUR findings that would have shipped, all fixed on the branch
+
+1. **P4.D288 — `add-memory-tiers-v1` would ping-pong a v5-provisioned
+   instance with v4.** Retiring the tiers ensure's chat-column arm left the
+   migration UNSTAMPED on an instance v5 provisioned; v4's `shouldRun`
+   (`add-memory-tiers-v1.ts:83,96-105`) holds there through
+   `needsChatWatermark` ALONE, so v4 would re-add
+   `chats.otherExtractionWatermarkMessageId`, stamp tiers, then SKIP the
+   stamped cursor migration — and NEITHER app would ever drop the column
+   again. Invisible to `zero_migrations_rerun_equivalence` because its
+   narrowed runner ran only the twelve. **Fix:** the settled-chain arm
+   (`memory_extraction_cursors_repair::stamp_settled_chain`) stamps tiers
+   with v4's row (`Memory tiers in place (1 changes)`) and writes the cursor
+   row as v4's real fresh-boot chain does (`from 2 watermark column(s)`);
+   `P4D288_SPAN_MIGRATIONS` gains `add-memory-tiers-v1` so the oracle's
+   runner SEES the re-run; `host_boot_p4d288_ensures` (c) re-pinned
+   (`tiersStamped=true`). Friday and every v4-migrated instance were immune
+   (tiers is in their ledger); the population was `quilltap setup`
+   instances later opened by v4.
+2. **P4.D298 / P4.D288 — the paginated list and `findByImportance` filtered
+   the RAW `importance` column** where v4 filters `reinforcedImportance`
+   (`memories.repository.ts:258-259`, `:341`) — the Commonplace Book's live
+   list and the model-facing `self_inventory` tool excluded a row reinforced
+   past the floor. Two string edits in `memories_read.rs`; the lane's
+   `list_min_importance_reinforced_paginated` row moved from `S5_RESIDUE`
+   to the strict set (the family is built to fail loudly on the flip).
+3. **P4.D296 — on the union every extraction job ERASED the turn's recall
+   record.** P4.D291 landed the finalizer's `[Recall]` record on
+   `debugMemoryLogs` and `with_recall_lines`; P4.D296's job still wrote its
+   own lines alone (the HANDOFF the lane named). Wired; and the lane's L-12
+   "planted recall record kept first" tier-3 row did not exist — the plant
+   now sits on the pipeline fixture's `e1000002` message
+   (`memory-pipeline-jobs-tier3.json`, the builder's `debugMemoryLogs`
+   seed), red on the pre-fix union by the family's own `debugMemoryLogs`
+   comparand.
+4. **P4.D289 — `js_array_sort_by` passed a NaN comparator result raw** where
+   V8's `SortCompareUserFn` maps NaN → +0 first, so `[c .75, b .95, a NaN]`
+   read as a descending run and `decide_admission` picked `a`; the six
+   `nan-*` corpus rows never formed that shape (green by construction).
+   Fixed at the entry point; the `nan-descending-run` oracle row added.
+
+**Should-fixes landed with them:** P4.D290's `without_embedding` swap-remove
+(every manual-create body's key order; `shift_remove` + a byte assertion); a
+NULL `reinforcedImportance` failing the whole read (v4's `.default(0.5)`; the
+dogfood-#144 class); the Almanack rendering four lines from the DROPPED
+`autoHousekeepingSettings` column and lacking v4's `Memory maintenance` line
+(the instance-settings ledger now carries `memoryMaintenance` + the override
+count; the four lines gone); the admission watermark call placed AFTER
+`Memory admitted` and OUTSIDE the lock (v4 fires it `void`); the in-loop fold
+passes' hard-coded `"UTC"` memory-calendar fallback (`FoldEpisodePassSeams.
+host_zone_fallback`, threaded from the orchestrator's input, the Courier's
+resolve, the enclave step's deps and the help chat's host constructor);
+P4.D296's `js_string` copy (a `String([null])` bug — `to_js_string` instead)
+and `pass_cap`'s NaN (every draft where v4 slices none); the dead
+`p4d288_not_yet_available` scaffold (every C2 arm filled — `-D warnings`
+would have refused it); the stale `api/types.rs` memory variant docs; the
+duplicated `writable: true` both SPA lanes added to one spec; a stale gate
+reason; `count_corpus_since`'s empty `since`; the TF-IDF refusal line
+`Error creating TF-IDF vocabulary` on BOTH restore census lists (P4.D293's
+"byte-equal" claim named a line neither side captured); a stale export
+comment and a dangling doc link (P4.D294 / P4.D295); the
+`lexical_text_writers_guard`'s forward-only window reading admission's
+build-the-options-first writer and the probe's text compare as offenders (a
+bidirectional window + an embed-call gate); three §S.4 census counts moved by
+the union (`host_zone_sites_census` engine 15, `clock.rs` 3 after the
+deleted helpers; the seven scoring-census offenders reworded).
+
+**Recorded, not fixed (each order's header names its own):** the `?` reads
+where v4 falls back (P4.D290 / P4.D296 / P4.D297 — regenerate-all's chat list
+is a RULING candidate: v5 fails where v4 would wipe every chat as orphans);
+`OFFSET_OCCURRED_AT_ROW_SCHEMA` (v5 stores an offset `occurredAt` v4's own
+readers refuse — a human ruling + a v4 filing); `ADMISSION_SINGLE_TERM_LINK`
+/ `CASCADE_VECTORS_REMOVED` unclassified; P4.D294 item 19's strict-export
+consequence (a chat with a string `scenarioSource` cell: v4 skips it silently,
+v5 fails the export whole — keep or converge); P4.D291 #24's probe fixture;
+P4.D298's `create_project_explicit_wins` and `Error listing memories`; the
+lock's closed-enum read + v4's three lock lines (pre-existing); P4.D295's host
+L2 → L37 capture row — NOT reachable from a static plant (phase 3.4's built-in
+seed creates `Scenarios/` first and its failure is FATAL; a unit-level pin
+covers the order); the D301 toast duration and duplicated literal; the
+scenario parser WARNs (P4.D295 S4); the SPA lows.
+
+### The §S.5 wires (one commit with the review fixes)
+
+(1) the admission watermark call; (2) the refit triggers — `schedule_refit`
+at the manual create / item PUT / DELETE with v4's three WARN lines +
+`handle_entity_deletion`, and the import's FORCED refit through a new
+`ImportResult.refit_profile_id` (not on the wire) scheduled by
+`api/system_qtap.rs` and the character archive's rehydrate once the write
+returns — P4.D62's deferral retires; (3) the embeddings pair on
+`memory_index_backfill` (the route gains the host zone + clock); (4) the
+memories search route on `search_memories`, `memory_service.rs` DELETED
+whole; (5) `with_recall_lines`; (6) P4.D301's flag rows — the
+`mid_stream_error_staged_tools` call in the orchestrator fixture and the
+harness driving `process_message_with_ledger`, every failing call's ledger
+against v4's error-frame flags; (7) `host.rs`'s comment (the capture row:
+above); (8) the canon loaders on `services::canon_loaders`,
+`memory_processor.rs` DELETED. **The LANE-REMOVE shims:** all 33 markers
+deleted in one pass — `memory_weighting.rs`, the root `memory_gate.rs`,
+`services/memory_gate.rs`, `services/memory_service.rs`,
+`services/memory_processor.rs` gone whole, the `episodic` when-phrase
+resolver + its regexes + two `clock` helpers, two `memories_read` fns —
+`no_memory_lane_remove_markers_left` GREEN (both tests). The probe route on
+`run_anchor_gate_probe_in_zone` (P4.D290's handoff). CLAUDE.md's harness
+example re-pointed at `memory-scoring.ts`; `ai_import_tier3`'s
+`V4_APP_VERSION` → `4.10.0-dev.176`; `maintenance_ops_tier2`'s builder on
+`MEMORY_MAINTENANCE`; the four §S.9 gates flipped LIVE
+(`memory-maintenance-flow`, `salon-memories-realtime-flow`,
+`salon-send-failure-restore-flow`, `scenario-browser-flow`).
+
+### The gate (final tree)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` plain AND `--features quilltap-core/native-transport`:
+  <<CLIPPY>>; `cargo build --release`: <<RELEASE>>.
+- **The full sweep from the pin** (`recipe_sweep.py --run-all --v4
+  /tmp/qt-v4-pin-unify-83334b9a5`; artifact
+  `harness/tools/sweep-results/2026-10-15-83334b9a5-memory-scenarios-unify.json`):
+  <<SWEEP>>.
+- **Tier R (`cli_differential`):** <<TIER_R>>.
+- **The workspace suite** (`QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin + the
+  harvested env block, `cargo test --workspace --no-fail-fast`): <<WORKSPACE>>.
+- **SPA:** lint clean; vitest **508 files** (all passed); build clean.
+- **Playwright (full suite):** <<PLAYWRIGHT>>.
+- `handler-logging-inventory.md` regenerated ONCE on the union: 243 rows
+  (25 PORTED-PINNED, 115 PORTED-UNPINNED, 8 NO-PORT-RECORDED, 95 NO-SITE).
+- `help/` byte-identical to the pin (131 files); `docs/v4/` 483 / 483.
+
+### Versions
+
+core 0.0.1305, host 0.0.207 (the union's recount over the highest lane
+values, +1 each); web 0.0.240, cli 0.0.33 (the lanes' highest — the union
+commit touched only tests there); SPA 0.5.862; tauri 0.0.9 unchanged;
+harness frozen 0.0.1110.
+
+### 💸 Owed to the next `/dogfood`
+
+The §S.8 queue, recorded in `dogfood-findings.md`'s standing notes with the
+copy rule (a copy taken BEFORE v4 ran past `362426c8f`): the first v5 boot of
+a POST-migration Friday copy (every ensure a NO-OP), a `quilltap setup`
+instance opened by v4 HEAD with ZERO migrations re-run (tiers included), a
+real turn with memories, an extraction turn (the `turn` cursor; the job's
+lines APPENDED under the `[Recall]` record), a `maintain` dry run then a real
+run, the wipe's spares, a backup → restore round trip with cursors, a
+fresh-id `.qtap` chat import, a chats-only import under BUILTIN (the forced
+refit ~5 s later), a scenario from the browser edited at its source, the
+send-failure composer restore, bug 242's single-character first turn, the
+Almanack's `Memory maintenance` line, an offset `occurredAt` create.

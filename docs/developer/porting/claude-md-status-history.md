@@ -6296,3 +6296,25 @@ Removed from CLAUDE.md's Status when the oracle baseline moved `97b25fc53` →
   characters in story backgrounds instead of re-dressing them",
   `4.10.0-dev.100`), adopted at the `97b25fc53` seven-commit round
   unification (2026-09-29).**
+
+### The `4a38222e6` baseline paragraph (CLAUDE.md, 2026-10-13 → 2026-10-15), archived verbatim at the `83334b9a5` unification
+
+- **Oracle baseline: `4a38222e6` (2026-10-12, v4 main — "Wardrobe folders —
+  file items into a tier's closet (#85)", `4.10.0-dev.148`), adopted at the
+  `4a38222e6` wardrobe-programme round's unification (2026-10-13).** **Drift state, the drift-check method, and the
+  pinned-worktree regen recipe live in `docs/developer/porting/drift-ledger.md`**
+  — maintained by `/driftcheck` and by `/unify` at baseline moves; the other
+  porting commands run the ledger's §2 freshness probe instead of
+  re-deriving drift, and lanes never write it. **Never restate the drift
+  count here — read the ledger's §1** (this bullet restated it once, went
+  stale within hours, and the restatement is gone for good). Still no
+  `release: 4.10.0` squash as of the 2026-10-13 check — re-probe BOTH
+  branches every time. The sweep driver remains the sanctioned per-family
+  regen path — never run two sweeps concurrently; it needs Python ≥ 3.12
+  (`/opt/homebrew/bin/python3.13`; the system 3.9 cannot parse it); since
+  P4.53 it refuses empty-stage families by name, `--self-test` guards recipe
+  headers against cross-alias defaults, and it pins the `--nocapture` splice
+  against the continued-command regression. The distill-transitive TZ pins,
+  the committed-fixture rule, and the venue/staging rules stand unchanged.
+  (The superseded baseline paragraphs formerly kept here "for history" are
+  archived verbatim in `docs/developer/porting/claude-md-status-history.md`.)

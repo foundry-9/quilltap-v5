@@ -19,259 +19,56 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `4a38222e6`**: "Wardrobe folders — file items into a
-  tier's closet (#85)" (v4 main, 2026-10-12 13:03, `4.10.0-dev.148`),
-  adopted when the `4a38222e6` wardrobe-programme drift catch-up round was
-  unified, all nine lanes landed (P4.D279 → {P4.D280 ∥ P4.D281 ∥ P4.D282 ∥
-  P4.D283 ∥ P4.D284} ∥ P4.D285 ∥ P4.D286 ∥ P4.D287, 2026-10-13). CLAUDE.md's
-  Status bullet for the round names `4a38222e6`. MOVED from `01a83539d` by
-  this unification — the eight rows it passes retired to §6.
-- **Checked:** 2026-10-15 (`/unify` of the `83334b9a5` round — the §2 probe FAILED at
-  the start: v4 SEVENTEEN commits further, INCLUDING the `release: 4.10.0`
-  squash and the `4.10.0` bug branch's start, and the checkout DIRTY with
-  in-flight Pascal work; seventeen rows appended (§3), every one UNPROCESSED
-  and PAST the round's pin, classified from the hunks by three parallel
-  readers — ONE new D23 move among them, `362426c8f`'s
-  `chat_settings.customToolTriggers`). Before that: 2026-10-14 (`/setupphase`, late in planning — v4 committed its
-  dead-code dirt as `7417e9a1b` and landed `01f508d4e`; two rows appended,
-  both UNPROCESSED, both PAST the `83334b9a5` round's pin). Earlier the same
-  session: (`/setupphase`'s §2 probe FAILED mid-planning;
-  §4 procedure run by hand for ONE commit: `83334b9a5` the API-standard
-  audit — NO-PORT?, identical-output `successResponse` swaps — and the
-  checkout's new dirt recorded). Before that: 2026-10-13 late evening (`/driftcheck` — six rows
-  appended: `4ae0c4ca6` TF-IDF tuning + bug 243, `104e986c7` Phase F,
-  `b045dd986` Phase G + bugs 242 / 244, `48790fb73` the refactor's close +
-  **the Friday backfill record**, `9ec4fa2e9` the V4test dogfood, `64743ee13`
-  bugs 245 / 246). Previous checks: 2026-10-13 afternoon (`/driftcheck`
-  `dd70e65e8` — `93c5af6ad` bugs 235–242 + `584d28164` Phase E); 2026-10-13
-  (`/unify` of the `4a38222e6` round — the eight absorbed / ratified rows
-  retired, the eleven past the pin kept, their dispositions confirmed
-  unchanged bar `97f0d8cb8`'s PORTED); 2026-10-13 (`/driftcheck` `732eebcd7` — the five memory-refactor
-  rows appended); 2026-10-12 evening (`/driftcheck` — `8050958be`,
-  `97f0d8cb8`, `4ce64fa1e`); 2026-10-12 (`/driftcheck` — the `01a83539d`
-  unification's close probe, seven rows); 2026-10-12 (`/unify` of the
-  `01a83539d` round); 2026-10-12 morning (the four wardrobe rows);
-  2026-10-09 (three checks); 2026-10-08 (`/unify` of the `f5e953a3f` round +
-  the evening check).
+- **Oracle baseline: `83334b9a5`**: "Release checklist 4: API standard audit;
+  use successResponse in new handlers" (v4 main, 2026-10-13 21:18,
+  `4.10.0-dev.176` — behaviour-identical to `64743ee13`, the memory
+  refactor's close), adopted when the `83334b9a5` memory-refactor +
+  scenarios drift catch-up round was unified, all sixteen lanes landed
+  ({P4.D289 → P4.D288} → {P4.D290 → {P4.D296 ∥ P4.D297 ∥ P4.D298}} ∥
+  P4.D291 ∥ P4.D292 ∥ P4.D293 ∥ P4.D294 ∥ P4.D295, with P4.D299 ∥ P4.D300 ∥
+  P4.D301 ∥ P4.D302 ∥ P4.D303; 2026-10-15). CLAUDE.md's Status bullet for the
+  round names `83334b9a5`. MOVED from `4a38222e6` by this unification — the
+  twenty rows it passes retired to §6.
+- **Checked:** 2026-10-15 (`/unify` of the `83334b9a5` round — the §2 probe
+  FAILED at the start: v4 SEVENTEEN commits further, INCLUDING the `release:
+  4.10.0` squash and the `4.10.0` bug branch's start, and the checkout DIRTY
+  with in-flight Pascal work; seventeen rows appended (§3), every one
+  UNPROCESSED and PAST the round's pin, classified from the hunks by three
+  parallel readers — ONE new D23 move among them, `362426c8f`'s
+  `chat_settings.customToolTriggers`; this §1 restated at the baseline move).
+  Before that: 2026-10-14 (`/setupphase`, late in planning — `7417e9a1b` and
+  `01f508d4e` appended, both past the pin); 2026-10-14 (the §4 procedure by
+  hand for `83334b9a5` itself); 2026-10-13 late evening (`/driftcheck` — the
+  six rows `4ae0c4ca6` … `64743ee13`); 2026-10-13 afternoon (`dd70e65e8`);
+  2026-10-13 (`/unify` of the `4a38222e6` round); and the earlier checks the
+  §6 bullets record.
 - **v4 `main` HEAD at check: `362426c8f`** ("feat(pascal): trigger phrases run
   custom tools when their words are said", 2026-10-15 16:18, `4.11.0-dev.3`) —
-  local `main` = `origin/main`. **THIRTY-NINE commits past the baseline**
-  (`4a38222e6..main`); the seventeen newest (`a42c282b8` … `362426c8f`, §3)
-  land AFTER the `83334b9a5` round's pin. Among them: **v4 RELEASED 4.10.0** —
-  `2432b9057` (`release: 4.10.0`, 2026-10-14 10:26, the squash whose first
-  parent is `release: 4.9.2`; tree-identical to main's pre-merge tip save five
-  stamp files — NOTHING in it is new relative to main), `f573a7576` the merge
-  back, `37246654d` `dev: started 4.11.0 development` (v4 now stamps
-  `4.11.0-dev.N`); the five release-checklist commits 7 / 8 / 10 / 12 / 13 (one
-  SPA class, plugin-utils 2.7.1's `normalizeUsage` cache-hit exclusion for
-  `openai-compatible`, the restore remapper's three JSON-string participant
-  arrays + `targetParticipantIds`, the CLI help / completions bytes + the
-  `migrations status` id fix, the About page's four blurbs + a docs tidy); bug
-  247 FILED (OPEN — the v5 harness's `PROTOTYPE_KEY_MONTH_THROWS` finding,
-  provenance `Original to v4`; the CONVERGENCE row belongs to the future fix);
-  bug 248 (the chunk-embedding queue from the pre-write read); `bbbcd2388`
-  wardrobe copy-to-folder + the components ask (a wire-shape change on
-  P4.D281's routes, NO schema move); `7458ff94e` the styled-hair precedence
-  note (model-visible text on `describeOutfit`); `936a34720` three new feature
-  specs (docs-only); and **`362426c8f` Pascal trigger phrases — PORT-NEW +
-  PORT WITH THE TENTH D23 MOVE** (`add-custom-tool-triggers-field-v1`:
+  local `main` = `origin/main`. **NINETEEN commits past the baseline**
+  (`83334b9a5..main`): `7417e9a1b` (Release checklist 5, the dead-code sweep)
+  and `01f508d4e` (Release checklist 6, the debug-line prune) recorded at the
+  orders' commit, and the seventeen this check classified. Among them: **v4
+  RELEASED 4.10.0** — `2432b9057` (`release: 4.10.0`, 2026-10-14 10:26, the
+  squash whose first parent is `release: 4.9.2`; tree-identical to main's
+  pre-merge tip save five stamp files — NOTHING in it is new relative to
+  main), `f573a7576` the merge back, `37246654d` `dev: started 4.11.0
+  development` (v4 now stamps `4.11.0-dev.N`); the five release-checklist
+  commits 7 / 8 / 10 / 12 / 13 (one SPA class; plugin-utils 2.7.1's
+  `normalizeUsage` cache-hit exclusion for `openai-compatible` — a DEPENDENCY
+  move past the pin; the restore remapper's three JSON-string participant
+  arrays + `targetParticipantIds`; the CLI help / completions bytes + the
+  `migrations status` id fix; the About page's four blurbs + a docs tidy);
+  bug 247 FILED (OPEN — the v5 harness's `PROTOTYPE_KEY_MONTH_THROWS`
+  finding, provenance `Original to v4`; the CONVERGENCE row belongs to the
+  future fix); bug 248 (the chunk-embedding queue from the pre-write read);
+  `bbbcd2388` wardrobe copy-to-folder + the components ask (a wire-shape
+  change on P4.D281's routes, NO schema move); `7458ff94e` the styled-hair
+  precedence note (model-visible text on `describeOutfit`); `936a34720` three
+  new feature specs (docs-only); and **`362426c8f` Pascal trigger phrases —
+  PORT-NEW + PORT WITH THE TENTH D23 MOVE** (`add-custom-tool-triggers-field-v1`:
   `chat_settings.customToolTriggers INTEGER DEFAULT 0`, the schema field
   between `customTools` and `compositionModeDefault`; `pascalMeta.invokedBy`
-  widens to `'trigger'`; one run service replaces two ported entrances). Before
-  them, at `01f508d4e` ("Release checklist 6: prune leftover debug logging",
-  2026-10-13 21:52, `4.10.0-dev.178`) — local `main` = `origin/main`, tree
-  CLEAN: **TWENTY-TWO commits past the baseline**; the two newest (`7417e9a1b` dead-code sweep, `01f508d4e`
-  debug-line prune) land AFTER the `83334b9a5` round's pin (§3 rows).
-  Before them: **`83334b9a5`** ("Release checklist 4: API
-  standard audit; use successResponse in new handlers", 2026-10-13 21:18,
-  `4.10.0-dev.176`) — local `main` = `origin/main`. **TWENTY commits past
-  the baseline** (`4a38222e6..main`). `83334b9a5` (15 files, +41 / −35):
-  24 `NextResponse.json(x[, {status}])` → `successResponse(x[, status])`
-  (`lib/api/responses.ts:63-68` IS `NextResponse.json(data, { status })`,
-  default 200 — byte-identical responses; every non-swap hunk line is the
-  import widening, measured) in the chat actions / GET handlers, connection
-  profiles, memories (`maintain` / `maintenance-status` / `repair` /
-  config handlers + manual create), plugins and the scenario item route
-  factory; a jest mock fix; CHANGELOG / README / stamps. **NO-PORT?** — its
-  only effect on v5 is pin line numbers (one-for-one, no line count move in
-  `memories/route.ts`). Before it, at `64743ee13`: **NINETEEN commits past
-  the baseline** (`4a38222e6..64743ee13`). The six NEW
-  this check (§3 rows carry the full classification; dependencies
-  stamps-only — `package.json` / `packages/quilltap/package.json` move only
-  their `version`; `help/` 132 → **131**: `memory-consolidation.md` +
-  `memory-housekeeping.md` DELETED, `memory-maintenance.md` ADDED, twelve
-  edited):
-  - `4ae0c4ca6` (Built-in TF-IDF tuning + bug 243, 14:31, `.169`; 69
-    files, +1,655 / −122) — **the NINTH D23 move** (the message's first
-    paragraph says "no schema change"; the PR-review commit inside the
-    squash adds one): migration `add-tfidf-text-shape-version-v1`
-    (`tfidf_vocabularies.textShapeVersion INTEGER DEFAULT 0`, APPENDED by
-    `addColumnIfMissing`) AND the field on `TfidfVocabularySchema` between
-    `fittedAt` and `createdAt` — so generateDDL's fresh table carries it in
-    SCHEMA order (the informs two-shape precedent). Behaviour: BUILTIN
-    embeds drop the anchor line (`lexicalEmbeddingTextFor`), per-provider
-    admission thresholds (`ADMISSION_THRESHOLDS_TFIDF` 0.80 / 0.40 / 0.20),
-    `memoryConsolidation.tfidfClusterThreshold` (0.30), the refit-when-due
-    policy (`builtin-refit-policy.ts`), `isLexicalEmbeddingProvider`, the
-    anchor probe's `lexicalProfile` note. Bug 243 is the forked job child's
-    plugin-load race — NO-PORT candidate (v5's runner is in-process over
-    static manifests).
-  - `104e986c7` (Phase F, 15:55, `.172`; 88 files, +4,235 / −3,696) — ONE
-    `MEMORY_MAINTENANCE` job (fold-near-duplicates → consolidate → demote →
-    retire → mirror) replaces `MEMORY_HOUSEKEEPING` + `MEMORY_CONSOLIDATION`;
-    `housekeeping.ts`, `consolidation-triggers.ts`, the outcome cache,
-    `scheduled-housekeeping.ts`, both handlers and the `memory-dedup` TOOL
-    DELETED; the parent-side ledger; `memoryMaintenance.phases` toggles;
-    `?action=maintain` / `maintenance-status`; the three retention knobs
-    gone; migration `drop-housekeeping-consolidation-jobs-v1` (a row DELETE
-    — no DDL).
-  - `b045dd986` (Phase G + bugs 242 / 244, 17:05; 87 files, +4,135 /
-    −2,441) — the `housekeep` / `housekeep-sweep` / `consolidate` /
-    `housekeeping-config` actions RETIRED, NEW `?action=repair` (dangling
-    links), ONE Maintenance card + dialog, the extraction limits onto the
-    Extraction Grain card, CLI `memories maintain` / `validate --repair` /
-    `db memories --tier`; **bug 244** (`patchSchemaOf` — Zod 4's
-    `.partial()` keeps defaults) — v5's ruled both-ways table
-    `PARTIAL_DEFAULTS_CLOBBER` (P4.D271 R-A) mirrored v4's clobber, so its
-    three rows TRIP BY DESIGN at a pin past this (§5.4 — measure, then
-    retire); **bug 242** (`inChain` only for `chainDepth > 0`) — v5's
-    `chat-stream.reducer.ts:296` sets `inChain` on ANY `turnStart`, the
-    pre-fix shape. NO migration (`add-memory-tiers-v1` gains a doc-path
-    comment only).
-  - `48790fb73` (the refactor's close, 17:46; 32 files, +105 / −65) — three
-    report / ledger labels (SPA + CLI) and docs; **its spec records the
-    Friday backfill: v4 ran the refactor migrations on LIVE Friday on
-    2026-10-13 22:24 UTC** (the LIVE-DATA HAZARDS block below is now FIRED).
-  - `9ec4fa2e9` (V4test dogfood, 20:17; 10 files) — docs, bugs 245 / 246
-    filed, one CLI status line ("within the cap").
-  - `64743ee13` (bugs 245 / 246, 20:36, `.175`; 38 files, +637 / −95) — a
-    `turn` pass in `memory_extraction_cursors` (free-text `pass`, NO
-    migration; `ExtractionCursorPassEnum` widens), the turn transcript's
-    "EARLIER IN THIS TURN" context, autonomous speakers bounded by the
-    previous anchor, `turnExtractionWatermarkMessageId` on the bundles
-    (`qtap-export.schema.json`, the restore / import id remaps);
-    consolidation's budget from `resolveMaxTokens` with 4,000 as a floor.
-
-  The two from the previous check (`dd70e65e8`; NEITHER ships a migration):
-  - `93c5af6ad` ("Fix bugs 235–241 from the memory refactor dogfood; file
-    bug 242", 11:49, `.165`; 56 files, +2,253 / −217) — the in-flight dirt
-    the last check recorded, committed. PORT: 236 (manual create / edit trim
-    + require text → 400; refusal mapped by reason, `embedding-failed` →
-    502), 237 (admission's mixed-dimension neighbour fallback), 238 (fold
-    OTHER `occurredAt` at the observer's last line), 239 (the instance lock
-    gains an optional `port` — v5's `quilltap-host/src/lock.rs` writes the
-    SAME shared file; and three CLI tools' `--instance` / `--data-dir` /
-    `--passphrase`), 240 (a chats-only `.qtap`'s memories attach to existing
-    characters), 241 (the send-failure stream error frame tells the Salon
-    whether the user row persisted — `SubmissionLedger` — and the SPA
-    restores composer / draft / attachments; a buffered SSE reader). 235 is
-    a Next.js per-bundle module-state bug (`processSingleton`) — NO-PORT
-    candidate in itself. **Bug 242 filed OPEN** (a depth-0 `turnStart` on
-    every first turn sends single-character turns down the chain path) —
-    v5's `chat-stream.reducer.ts:296` likewise sets `inChain` on ANY
-    `turnStart`; whether v5 shares it is a dogfood measurement, not assumed.
-  - `584d28164` (Phase E, 12:01, `.166`; 132 files, +23,460 / −4,300 —
-    18,012 of it the recall-probe fixture JSON) — recall rebuilt as a
-    pipeline under `lib/memory/recall/` (query → gather → score → select →
-    hydrate → assemble → render → deliver); `memory-service.ts` (−1,016) and
-    `lib/chat/context/memory-injector.ts` (−822) DELETED, `context-manager.ts`
-    −885; ONE query embedding per turn; cross-pool dedup (archive / head /
-    inter-character); **the model-visible recall text loses every debug
-    label** (`[m_xxxx]` tags, importance / relevance / weight numbers,
-    `recall:` multipliers, targeting keywords) — request bytes move on every
-    turn with memories; delivery stamps `lastAccessedAt` / the anti-
-    repetition ring only for lines that SURVIVE compression; the turn's
-    recall record written to the assistant message's `debugMemoryLogs`;
-    `recall-replay` gains `fallbackPath` / `trace` / `pools` / `ring` /
-    `ringSource`; the Memories API search stamps nothing.
-
-  Eleven were already in §3 before that check. Six were already
-  in §3 at round start, compressed (the rows carry the full classification):
-  - `545e299bb` scenarios from anywhere (PORT-NEW + PORT, the EIGHTH D23
-    move — `chats.scenarioSource` / `scenarioNotes`); `124c8aca3` memory
-    Phase 0, bugs 199–201 (PORT — the trailing-only recall, the gate's
-    orphan widen, the chat wipe sparing manual / cold / digest rows);
-    `69d38dd60` bug 227, the deferred mail flip + one trailing-section list
-    (PORT); `8050958be` bug 228, reminted message ids on a fresh-id `.qtap`
-    chat import (PORT); `97f0d8cb8` bug 229, the folder picker (PORT, SPA —
-    PORTED by P4.D285 with the round, the row stays until the baseline
-    passes it); `4ce64fa1e` the merge renumbering the picker bug to 229
-    (NO-PORT?).
-
-  **Plus five — v4's memory system refactor, shipped** (classified by the
-  same-day `/driftcheck` `732eebcd7`; each a squashed PR; every one moves
-  behaviour on the memory programme v5 absorbed at `01a83539d`, and four of
-  the five move the SCHEMA):
-  - `c2795733f` ("Fix bugs 203–226: memory system defects from the refactor
-    audit (#90)", 2026-10-12 17:02, `.157`; 154 files, +10,585 / −1,247) —
-    24 bug fixes, each with an implementing hunk, and **FIVE migrations**
-    (the message names three): `add-episode-extraction-watermark-v1`
-    (`chats.episodeExtractionWatermarkMessageId TEXT DEFAULT NULL`,
-    backfilled from each chat's last `summaryAnchorMessageIds` entry),
-    `add-memories-superseded-by-index-v1` (partial `idx_memories_
-    supersededById … WHERE "supersededById" IS NOT NULL`),
-    `add-memory-superseded-at-v1` (`memories.supersededAt TEXT DEFAULT
-    NULL`, backfilled from `updatedAt` where `supersededById` is set),
-    `recompute-reinforced-importance-v1` (EVERY row → `min(1, importance +
-    log2(max(1, count)) × 0.05)` — v5 computes `log2(count + 1)`,
-    `memory_gate.rs:45-46`), `rezone-legacy-memory-occurred-at-v1` (every
-    UTC-midnight `occurredAt` re-stamped at local midnight on the memory
-    calendar).
-  - `e0ac7493a` ("Memory refactor Phase A: scoring, clock, settings,
-    candidate (#91)", 19:23, `.160`; 166 files, +5,887 / −2,781) — scoring
-    to `lib/memory/scoring/*` (the floored `calculateEffectiveWeight` and
-    `rankMemoriesByWeight` DELETED — orderings move), the per-turn recall
-    floor .5 → .3, every `minImportance` filter on reinforced importance,
-    `lib/memory/time/*` (write side stamps the window START), the Zod
-    candidate, bugs 230–234, the fold-episode catch-up job; **migration
-    `move-memory-maintenance-settings-v1`** — copies `autoHousekeepingSettings`
-    into `instance_settings.memoryMaintenance`, deletes the
-    `memoryExtractionConcurrency` instance key, then `ALTER TABLE
-    "chat_settings" DROP COLUMN` `autoHousekeepingSettings`,
-    `memoryExtractionLimits`, `memoryExtractionConcurrency` (each if
-    present); `?action=maintenance-config` replaces the housekeeping config
-    and `extraction-concurrency` is GONE.
-  - `af48f6cc2` ("Memory refactor Phase B: index owns vectors, one deletion
-    path (#92)", 22:31, `.161`; 117 files, +3,576 / −3,878) — vectors live
-    ONLY on `memories.embedding`; ONE deletion path (`retireMemories` /
-    `retireChatMemories`, the repository's bare `delete` now THROWS); backups
-    stop writing `vector-entries.json` / `vector-index-metas.json`; **migration
-    `retire-memory-vector-entries-v1`** — a verify-and-copy of each mirror
-    vector onto a row with no embedding, then `DROP TABLE IF EXISTS`
-    `vector_entries` AND `vector_indices`. **RULED 2026-10-13 (the human): MIRROR v4** — port `retire-memory-vector-entries-v1` as a boot ensure (verify-and-copy each mirror vector onto a row with no embedding, then `DROP TABLE IF EXISTS` both), differentially compared against v4's real `MigrationRunner`; every v5 reader / writer moves onto `memories.embedding`.
-  - `8af764514` ("Memory refactor Phase C: admission in parent, one combine
-    (#93)", 2026-10-13 00:08, `.163`; 87 files, +4,011 / −3,588) — NO
-    migration; the gate and the merge DELETED for `lib/memory/admission/*`
-    (same thresholds, a new decide: subject / kind / source eligibility,
-    excluded neighbours become links, cold promote-and-reinforce, AUTO never
-    promoted to MANUAL, a per-character lock + idempotency ledger) and ONE
-    combine (`foldInto` / `applyFold`) for reinforce, merge and dedup; every
-    `[MemoryGate]` / `[MemoryMerge]` / `[Gate]` line gone; **wire:** POST
-    `/memories`' `action` is now the lowercase kind (`insert` /
-    `insert-linked` / `reinforce` / `absorb` / `promote-and-reinforce`).
-  - `ac6348c5f` (Phase D, above; 152 files, +10,498 / −9,320) — extraction
-    rebuilt under `lib/memory/extraction/` (one context per unit, four
-    passes, the fold catch-ups, a live rate-limit counter, cursors);
-    **migrations** `add-memory-extraction-cursors-v1` (NEW table
-    `memory_extraction_cursors` — `UNIQUE ("chatId","pass")`, FK to `chats`
-    ON DELETE CASCADE — fed from both chats watermark columns as passes
-    `other-fold` / `episode-fold`, then `ALTER TABLE "chats" DROP COLUMN`
-    BOTH: `otherExtractionWatermarkMessageId` — the column v5's P4.D265
-    ensure ADDS — and `c2795733f`'s `episodeExtractionWatermarkMessageId`)
-    and `drop-inter-character-memory-jobs-v1` (deletes queued
-    `INTER_CHARACTER_MEMORY` jobs; the type is retired); `MEMORY_EXTRACTION`
-    payloads gain `pass` / `cursor` / `ignoreIdle` / `backfill`.
-  - **CONVERGENCE check: NONE.** Every bug the five touch — 199–234 — reads
-    `Provenance: Original to v4` (the audit of 2026-10-12 and PR 90's
-    follow-ups); the port's filings (180, 183, 184, 185) are all absorbed by
-    earlier baselines. v5 carries v4's PRE-fix shape on every surface they
-    touch. **Re-checked for the two new commits: still NONE** — bugs
-    236–241 read `Original to v4` or name a Phase B–D commit as their
-    provenance (235's names the old singleton, 242's v4's own `5a99e4b8f`);
-    no port filing returns. **Re-checked for the six (late evening): still
-    NONE** — bugs 243–246 all read `Original to v4` (242's `5a99e4b8f`).
-    One RULED-DIVERGENCE trip instead: bug 244 fixes the clobber v5's
-    `PARTIAL_DEFAULTS_CLOBBER` table pins on both sides (above).
+  widens to `'trigger'`; one run service replaces two ported entrances).
 - **v4 `bugfix` tip at check:** `489b228b6` ("bugfix: started 4.10.0 bug
   branch", 2026-10-14; parent `1a2b2164c`, the 4.9.2 bug-branch start — the
   squash-like topology §4 step 2 describes; `origin/bugfix` the same).
@@ -280,10 +77,9 @@ probe verifies against._
   bugfix -- lib app packages plugins` = exactly main's two post-release code
   commits (`7458ff94e`, `362426c8f`) seen backwards. **Bugfix carries ZERO
   unabsorbed content.** **`release` tip:** `2432b9057` (`release: 4.10.0`;
-  `origin/release` the same) — **the 4.10.0 squash EXISTS** (the earlier "still
-  no `release: 4.10.0` squash" notes here and in CLAUDE.md's baseline bullet are
-  superseded). Was, at the 2026-10-14 check: bugfix `1a2b2164c` UNMOVED,
-  release `8fbf2afe0` (`release: 4.9.2`).
+  `origin/release` the same) — **the 4.10.0 squash EXISTS** (every earlier
+  "still no `release: 4.10.0` squash" note is superseded; re-probe BOTH
+  branches every time as before).
 - **Checkout at check:** branch **`main`**, tree **DIRTY** at `362426c8f` —
   41 paths (+1,634 / −121; 38 modified, one rename, three untracked): the
   human's in-flight **Pascal wardrobe effects** (the `936a34720` spec —
@@ -298,377 +94,145 @@ probe verifies against._
   249 fixed; 247 open"). **It POISONS any regen from the live checkout** —
   `lib/pascal/*`, `wear-ops.ts`, `tool-executor.ts`,
   `turn-orchestrator.service.ts`, `chat.types.ts` are all oracle-imported.
-  Read by NOTHING: every regen runs from a pin (§5.1). The §2 probe reads
-  `362426c8f..main` and EXPECTS this dirt (its commit is the next
-  `/driftcheck`'s row — classify from the commit, not from the dirt). Was, at
-  the 2026-10-14 check: CLEAN at `01f508d4e` (the dead-code dirt committed as
-  `7417e9a1b`). Recorded at the earlier probe: tree **DIRTY** — 11 modified
-  (+9 / −87, deletions almost only) + 2 STAGED DELETIONS (`lib/memory/
-  index.ts`, `lib/memory/recall/index.ts` — barrel files): `lib/memory/
-  extraction/prompts/shared.ts`, `lib/memory/time/calendar.ts`,
-  `lib/schemas/memory-extraction-cursor.types.ts`, `lib/mount-index/sync/
-  {manifest,types}.ts`, `lib/progressions/engine.ts`,
-  `lib/services/dangerous-content/refusal.ts`, `lib/database/repositories/
-  vault-overlay/wardrobe-writes.ts` + three tests — the human's in-flight
-  release-checklist dead-code removal (the next `Release checklist` commit,
-  presumably). Read by NOTHING: every regen runs from a pin (§5.1). Local
-  `main` = `origin/main` = `83334b9a5`. The §2 probe reads
-  `83334b9a5..main` and EXPECTS this dirt (a commit of it is the next
-  `/driftcheck`'s row).
-- **Verdict: DRIFT PENDING — 39 commits (§3).** The seventeen past the
-  `83334b9a5` pin (all UNPROCESSED): **8 NO-PORT?** (`2432b9057` the release
-  squash, `f573a7576`, `37246654d`, `1e1712a12`, `3f64d3a6c` README +
+  Read by NOTHING: every regen of this unification ran from the pin (§5.1).
+  The §2 probe reads `362426c8f..main` and EXPECTS this dirt (its commit is
+  the next `/driftcheck`'s row — classify from the commit, not from the dirt).
+- **Verdict: DRIFT PENDING — 19 commits (§3), all UNPROCESSED: 9 NO-PORT?**
+  (`7417e9a1b` the dead-code sweep, `2432b9057` the release squash,
+  `f573a7576`, `37246654d`, `1e1712a12`, `3f64d3a6c` README +
   `docs/FEATURES.md` — itself a doc-convergence on this port's Phase-0 cipher
   finding —, `936a34720` the three specs, `052659624` + `809e5104d` bug 247's
-  filing), **7 PORT** (`a42c282b8` one SPA class, `a8b2d2861` plugin-utils
-  2.7.1's cache-hit exclusion on the `OpenAiCompatible` flavor, `49f8906c3` the
-  restore remapper's participant-id arrays, `75d094e63` Tier R bytes + the CLI
-  README, `8489d08b9` the About blurbs + a docs re-vendor with moves and
-  deletes, `b82037d75` bug 248, `7458ff94e` the hair precedence note), **2
-  PORT-NEW + PORT** (`bbbcd2388` copy-to-folder + the components ask;
-  `362426c8f` Pascal trigger phrases **WITH THE TENTH D23 MOVE**). ⚠ Live-data
-  note for the next round: a v4 4.11-dev boot ALTERs live `chat_settings`
-  (`customToolTriggers`) and writes `pascalMeta.invokedBy: 'trigger'` rows a v5
-  at the `83334b9a5` baseline refuses on read / restore / import — the §1
-  copy-before-pull rule for dogfood copies continues past this round. **Regen
-  rule: PIN REQUIRED** (HEAD past the baseline AND the checkout dirty) — every
-  regen of the `83334b9a5` unification runs from
-  `/tmp/qt-v4-pin-unify-83334b9a5` (its own `npm ci --offline` tree). The
-  twenty-two from the previous check: 4 NO-PORT? (`4ce64fa1e`,
-  `9ec4fa2e9`, `83334b9a5`, `7417e9a1b`), 1 PORT past the round's pin
-  (`01f508d4e`, DEBUG lines), 16 PORT (`124c8aca3`, `69d38dd60`, `8050958be`,
-  `97f0d8cb8`, the five — `c2795733f`, `e0ac7493a`, `af48f6cc2`,
-  `ac6348c5f` each WITH a schema move, `8af764514` with a wire change —
-  `93c5af6ad`, `584d28164`, and the five new: `4ae0c4ca6` WITH the NINTH
-  D23 move, `104e986c7` with a job-row migration, `b045dd986`, `48790fb73`
-  (labels riding Phase G's new surfaces), `64743ee13`), 1 PORT-NEW + PORT
-  (`545e299bb`).** Nineteen are UNPROCESSED; `97f0d8cb8` is
-  PORTED(P4.D285) — baseline not yet past. **Pin for the memory catch-up:
-  `64743ee13` or later** — v4 declares the refactor CLOSED (`48790fb73`
-  moved its spec to `complete/`), the first HEAD where the memory programme
-  is not mid-rewrite.
-- **Where the seven land** (the five + `93c5af6ad` + `584d28164`; Phase E
-  adds `memory_injector.rs`, `recall_tuning.rs`, `api/recall_replay.rs`, the
-  context builder's recall block and `debugMemoryLogs`; `93c5af6ad` adds
-  `quilltap-host/src/lock.rs`, the `.qtap` memory import, the Salon
-  stream-error frame + the SPA composer): the whole memory programme v5 absorbed at
-  `01a83539d` (P4.D265–P4.D276) and the surfaces under it — `memory_gate.rs`
-  (the reinforced-importance formula; the Phase-1 `memory_weighting`
-  tier-1), `services/memory_gate.rs` + `memory_merge.rs` (P4.D266),
-  `services/housekeeping.rs` + the recall / search scoring (P4.D266 /
-  P4.D267), `services/episodic.rs` + the anchors + the embedding text
-  (P4.d14 / P4.D267 / P4.D269; bug 212's one zone sits beside P4.119's
-  host-zone dates), the fold passes + the idle catch-up
-  (`services/fold_{other,episode}_pass.rs`, P4.D270),
-  `services/carina_memory_extraction.rs`, `services/memory_processor.rs`,
-  `services/consolidation.rs` (P4.D271), `db/memories.rs`
-  (`delete_with_unlink`, P4.d12) + `services/memory_service.rs`'s
-  `*_with_vectors` (P4.D126 / P4.D270), `db/vector_indices.rs` +
-  `db/vector_store.rs` (Phase 2; the tier stamp P4.D265), the embedding
-  jobs (`embedding_generate_job.rs` P4.6BL, `embedding_reindex_job.rs`;
-  the embedding-status marks P4.D25), `services/cascade_delete.rs`,
-  `db/chat_settings.rs` (the three columns + `find_auto_housekeeping_
-  settings_by_user_id`) + `db/instance_settings.rs` (the concurrency key),
-  `db/chats.rs` / `chats_read.rs` + `db/memory_tiers_repair.rs` (the
-  watermark column, P4.D265), `api/memories.rs` (every action touched),
-  the job runner / queue / scheduled maintenance / activity kinds / job
-  topics (`INTER_CHARACTER_MEMORY`), the backup / restore / `.qtap`
-  carriers (P4.9G, P4.D264, P4.D272), the Almanack's memory lines, the
-  `search_scriptorium` / `self_inventory` tools, the anchor probe +
-  `quilltap anchor-probe` (P4.D269), and the SPA `memory/` cards (P4.D276).
-  The six new add: `db/tfidf_vocabulary.rs` + `fresh_schema.json` (the
-  D23 re-dump) + the TF-IDF builtin provider and the embedding service
-  (P4 provider layer), the job types / queue / scheduler (P4.D266 /
-  P4.D271's housekeeping + consolidation jobs and triggers → one
-  maintenance job), the `memory-dedup` tool's retirement from the tool
-  table, `api/memories.rs` (four actions retired, `maintain` /
-  `maintenance-status` / `repair` new),
-  `PARTIAL_DEFAULTS_CLOBBER` (`memory_consolidation_routes_equivalence`),
-  the SPA reducer (bug 242) and `memory/` cards (P4.D276), the per-turn
-  extraction + turn transcript (P4.D270), the bundle carriers (P4.D272),
-  the CLI (`anchor-probe`'s note; the `memories` verbs v5 has not ported),
-  and `help/` (p4.9i2 — 132 → 131 files).
-  **Order them as ONE memory catch-up with `124c8aca3` + `69d38dd60`** (and
-  now `93c5af6ad` + `584d28164` + the six — Phase E rewrites the recall half the
-  earlier phases left standing, so a pin short of it ports `memory-service.ts`
-  / `memory-injector.ts`, both deleted at HEAD)
-  (Phase 0 + bug 227) — each later phase rewrites the previous one's
-  modules (B deletes what A renamed; C deletes the gate 203–226 fixed; D
-  drops the column `c2795733f` added), so absorbing a prefix means porting
-  code v4 deleted hours later. The planner decides whether the scenarios D23
-  move (`545e299bb` + bug 228) shares that round or precedes it.
+  filing), **8 PORT** (`01f508d4e` DEBUG lines, `a42c282b8` one SPA class,
+  `a8b2d2861` plugin-utils 2.7.1's cache-hit exclusion on the
+  `OpenAiCompatible` flavor, `49f8906c3` the restore remapper's participant-id
+  arrays, `75d094e63` Tier R bytes + the CLI README, `8489d08b9` the About
+  blurbs + a docs re-vendor with moves and deletes, `b82037d75` bug 248,
+  `7458ff94e` the hair precedence note), **2 PORT-NEW + PORT** (`bbbcd2388`
+  copy-to-folder + the components ask; `362426c8f` Pascal trigger phrases
+  **WITH THE TENTH D23 MOVE**). **Regen rule: PIN REQUIRED at `83334b9a5`**
+  (§5.1 — HEAD past the baseline AND the checkout dirty): every regen, the
+  whole sweep and every live-checkout guard of this unification ran from
+  `/tmp/qt-v4-pin-unify-83334b9a5` with its own `npm ci --offline` tree; the
+  next round's pin is the planner's (at or past `362426c8f` for the TENTH
+  re-dump).
 
-### ⚠ LIVE-DATA HAZARDS — read before any v5 build touches real data
+### ⚠ LIVE-DATA — what stands after this round
 
-**FIRED (2026-10-13 22:24 UTC): v4 ran the refactor migrations on LIVE
-FRIDAY** (`48790fb73`'s spec, "Friday backfill (E2)": ten migrations in
-2.96 s, 44,240 memories, `retire-memory-vector-entries-v1` copied 0 and
-DROPPED the mirror, 3,166 importances recomputed, 1,862 `occurredAt`
-re-zoned; then real maintenance runs — ~120 digests created, ~250 members
-superseded, **913 rows demoted** at a 2,500 cap). Live Friday — and every
-copy taken from it from now on — is POST-migration. HEAD adds two more
-migrations past the nine (`add-tfidf-text-shape-version-v1`,
-`drop-housekeeping-consolidation-jobs-v1`), eleven in all; three of them
-DROP COLUMN / DROP TABLE, which cannot be undone. Once v4 at
-or past `c2795733f` has migrated an instance, **a v5 build at the current
-baseline must NOT open it** — not live Friday, not a copy of it taken
-afterwards:
-
-1. **The dropped `chat_settings` columns** (`e0ac7493a`). v5's
-   `db/chat_settings.rs` reads and writes `autoHousekeepingSettings` and
-   `memoryExtractionLimits` by name: `find_auto_housekeeping_settings_by_
-   user_id`'s SELECT fails (`no such column`), and so do the settings row's
-   writes. v4 now holds those knobs in `instance_settings.memoryMaintenance`,
-   which v5 does not read.
-2. **The dropped vector tables** (`af48f6cc2`). Every `vector_entries`
-   statement fails `no such table`: a gated memory CREATE fails AFTER the row
-   is written (the embedded-create closure's `Db::write` is autocommit — an
-   Err with the row persisted); a character's cascade delete fails at
-   `cascade_delete.rs:376` after its chats and memories are gone and before
-   the character row — a HALF-COMPLETED delete answering 500; semantic recall
-   errors and silently falls back to text search on every turn (WARN each
-   time); EMBEDDING_GENERATE and the `all` reindex fail; the optimizer and
-   the anchor probe error. `/health`'s structural pass does NOT notice (no
-   vector table in `STRUCTURAL_TABLES`). A v4-HEAD backup restored into v5
-   brings embeddings on the rows and no mirror, so recall stays cold until a
-   reindex.
-3. **The dropped chats watermark column, RE-ADDED by v5** (`ac6348c5f`).
-   v5's P4.D265 boot ensure (`db/memory_tiers_repair.rs`) puts
-   `chats.otherExtractionWatermarkMessageId` back as NULL — so every chat's
-   OTHER-fold position reads empty and v5's fold OTHER / idle catch-up
-   RE-READS EVERY CHAT'S WHOLE HISTORY (mass re-extraction, cheap-LLM spend,
-   duplicate memories). v4 never looks at the re-added column (its
-   migration is ledgered) and v5 never looks at `memory_extraction_cursors`
-   — two independent positions, DOUBLE EXTRACTION on alternating builds
-   (the shared-instance ping-pong; **RULED 2026-10-13 (the human): RETIRE P4.D265's chat-column arm** (the P4.D251-supersedes-P4.D179 precedent) — port `add-memory-extraction-cursors-v1` as a boot ensure (copy both watermark columns into `memory_extraction_cursors`, then DROP both columns; carry both v4 table shapes — generateDDL's bare one and the migration's `UNIQUE` + FK — as the informs ensure did), differentially compared against v4's real migration; v5 reads only the cursors). v4's new catch-up
-   jobs (`pass: 'other-fold' | 'episode-fold'`, null opener) claimed by v5
-   are misread as per-turn jobs — a wrong anchored-turn extraction.
-4. **The reinforced-importance formula** (`c2795733f`). v4 rewrote every
-   row to `log2(max(1, count))`; v5 writes `log2(count + 1)` on every
-   reinforce and create — v5-written rows drift back up by up to 0.05,
-   mixing two scales in the recall floors and the recap bands.
-5. **Cursor loss through v5 bundles** (`ac6348c5f`). v4's backups / `.qtap`
-   carry the cursors under the legacy chat keys; a v5 restore / import
-   writes only the OTHER one into the re-added column and a v5 export
-   carries only that (NULL-filled) column — the episode cursor is lost on a
-   v5 round trip.
-
-**Earlier hazards, still standing** (the older §3 rows cite them as
-"real-instance note (1) / (3)" — (a) / (b) here): (a) `545e299bb` — v4's
-boot adds `chats.scenarioSource` / `scenarioNotes`; a v5 chat UPDATE
-rewriting `scenarioText` leaves a stale source, and a v5 backup / `.qtap`
-export drops both keys (measure the read on a copy rather than assume). (b)
-`124c8aca3` — v5's chat wipe deletes EVERY row with the `chatId` where v4
-spares manual, cold and digest rows (bug 201's data loss), and v5's
-per-row deletes orphan vectors (bug 200): **no v5 chat wipe at all** until
-the memory catch-up lands. **RETIRED by this round:** the wardrobe-folders
-hazard (the old note (2) — `4a38222e6`, v5's flat projection not seeing the
-items v4 files into `Wardrobe/<sub>/*.md`, a v5 projection duplicating
-them): v5 now reads `Wardrobe/<sub>/*.md` recursively (P4.D279).
-Bug 228 adds none (v5's Create New import fails as pre-fix v4 did — do not
-rely on it).
-
-**Dogfood ONLY on a COPY taken BEFORE 2026-10-13 22:24 UTC** (when v4 past
-`c2795733f` migrated live Friday — any newer copy is post-migration; until
-the memory catch-up lands there is no Friday data v5 may open except a
-pre-migration copy already on disk)
-(the owed dogfood pass's copy qualifies if it predates that launch — check
-for `memory_extraction_cursors` / `vector_entries` in it before the first v5
-boot: a copy WITH the cursor table or WITHOUT `vector_entries` is
-post-migration and must not be opened). **No v5 build against live Friday
-until the memory catch-up round lands.** The P4.D274 store-name plan probe
-on the copy, the `52d6e7ecd` / `07b8f0209` notes (the
-`chat_informs.permanent` ALTER, the voice-mode translation) stand.
+**The LIVE-DATA HAZARDS block of the `4a38222e6` round is RETIRED by
+measurement.** Hazards (1)–(5) and (a)–(b) each closed by a named family on
+this baseline: (1) the dropped `chat_settings` columns — the settings move
+re-homed as a boot ensure (`memory_maintenance_settings_move_ensure_equivalence`)
+and every v5 reader on `instance_settings.memoryMaintenance`
+(`chat_settings_column_sites_guard`); (2) the dropped vector tables — the
+verify-and-copy-then-DROP ensure (`memory_vector_mirror_retire_ensure_equivalence`)
+and the index over rows (`memory_index_tier2_equivalence`,
+`vector_store_tiers_equivalence`); (3) the dropped chats watermark columns —
+P4.D265's chat-column arm RETIRED, the cursor table + chain
+(`memory_extraction_cursors_ensure_equivalence`) and ZERO v4 re-runs after
+v5's chain on planted, fresh and v4-migrated instances
+(`zero_migrations_rerun_equivalence` — with `add-memory-tiers-v1` stamped in
+the settled-chain arm since this unification, so a v5-provisioned instance
+never ping-pongs the column with v4); (4) the reinforced-importance formula
+(`memory_scoring_equivalence`, the stamped recompute in
+`memory_rewrite_heals_ensure_equivalence`); (5) the cursor carriers
+(`cursor_bundle_equivalence`, the backup / restore / `.qtap` families); (a)
+the scenario columns (`chats_scenario_source_ensure_equivalence`, the chat
+carriers); (b) the chat wipe sparing manual / cold / digest rows
+(`memories_routes_equivalence`'s wipe rows, the ONE retire path). Live Friday
+and every post-migration copy are openable by a v5 at this baseline again
+(the round's 💸 headline: the first boot runs every ensure as a measured
+NO-OP). Two notes REPLACE the block (R-AI): **a v5 build from BEFORE this
+round must not open an instance this round's ensures have migrated** (the
+same destructive moves, now v5's own); and **the extraction rate ledger is
+per-process**, so a v4 and a v5 sharing one instance each keep their own
+hourly count. **NEW, from the commits past the pin:** a v4 at `4.11.0-dev`
+(past `362426c8f`) ALTERs live `chat_settings` (`customToolTriggers`) and
+writes `pascalMeta.invokedBy: 'trigger'` rows a v5 at THIS baseline refuses
+on read / restore / import (the two-value enum) — **dogfood only on a copy
+taken BEFORE v4 ran past `362426c8f` on live Friday**, until the TENTH move is
+absorbed. The P4.D274 store-name plan probe on the copy, the `52d6e7ecd` /
+`07b8f0209` notes (the `chat_informs.permanent` ALTER, the voice-mode
+translation) stand.
 
 ### Schema / D23
 
-- **NO D23 move this round** — `4a38222e6` carries no DDL; the wardrobe
-  folders live in the document store.
-- **The EIGHTH re-dump is still PENDING** (`545e299bb`:
-  `chats.scenarioSource` / `scenarioNotes` after `"scenarioText" TEXT`, from
-  a pin at or past `545e299bb`; `add-chat-scenario-source-v1` re-homed as an
-  unstamped boot ensure).
-- **The memory programme forces at least ONE MORE** (from a pin at or past
-  `ac6348c5f` if absorbed whole — an intermediate pin would carry
-  `episodeExtractionWatermarkMessageId` and the vector tables, both gone by
-  HEAD): `fresh_schema.json` LOSES `vector_entries` + `vector_indices` (two
-  CREATE TABLEs + `idx_vector_{entries,indices}_createdAt`, today lines
-  35-36 / 85-86) and `chats."otherExtractionWatermarkMessageId"`; GAINS
-  `memories.supersededAt` and the NEW `memory_extraction_cursors` table —
-  likely in TWO v4 shapes (generateDDL's bare `"id" TEXT PRIMARY KEY NOT
-  NULL …` with no UNIQUE / FK vs the migration's `UNIQUE ("chatId","pass")`
-  + `FOREIGN KEY … ON DELETE CASCADE`; confirm by re-dump, as with
-  `chat_informs.permanent`); `chat_settings` LOSES `autoHousekeepingSettings`
-  + `memoryExtractionLimits` (and `memoryExtractionConcurrency` where an
-  instance carries it). `migration_indexes.json` GAINS the partial
-  `idx_memories_supersededById` and LOSES `idx_vector_entries_characterId`
-  + `idx_vector_indices_characterId` (today lines 58-59) — 63 → 62.
-- **Boot ensures re-homing the NINE migrations**, each differentially
-  compared against v4's REAL `MigrationRunner` (the `add-memory-tiers-v1` /
-  `impersonation-voice-mode-v1` shape): the two ADD COLUMNs with their
-  backfills, the partial index, the two data rewrites (reinforced importance;
-  the occurredAt rezone), the settings move + three DROP COLUMNs, the
-  cursor table + copy + two DROP COLUMNs (which REPLACES P4.D265's chat-column
-  arm — kept, it would ping-pong a shared instance with v4, the P4.D179
-  precedent), the job-type delete, and the vector retirement (**RULED 2026-10-13: mirror** the destructive
-  verify-and-copy-then-DROP as a boot ensure). The two DATA rewrites
-  (`recompute-reinforced-importance-v1`, `rezone-legacy-memory-occurred-at-v1`)
-  are not idempotent: gate them once-only over v4's own `migrations_state`
-  ledger (the cross-app heal precedent), never as unstamped ensures. Every committed
-  `*-main.db` pair WIDENS / NARROWS in place through v4's real migrations at
-  the pin. The restore mirror-boot list grows with each ensure.
-- **The NINTH move rides the same re-dump** (`4ae0c4ca6`):
-  `tfidf_vocabularies."textShapeVersion" INTEGER DEFAULT 0` — in
-  generateDDL's dump it sits in `TfidfVocabularySchema` order (after
-  `"fittedAt"`, before `"createdAt"`); the migration
-  `add-tfidf-text-shape-version-v1` APPENDS it on an existing table — two
-  shapes, carried as the `chat_informs.permanent` ensure did (P4.D249). A
-  TENTH migration re-homes as an ensure (eleven past the baseline in all):
-  `drop-housekeeping-consolidation-jobs-v1` (`104e986c7`, a row DELETE, no
-  DDL). `64743ee13`'s `turn` cursor pass is free text — no DDL.
-- `public/schemas/qtap-export.schema.json` moves again: chat
-  `episodeExtractionWatermarkMessageId` + memory `supersededAt`
-  (`c2795733f`), description text for the two chat keys (`ac6348c5f`), and chat
-  `turnExtractionWatermarkMessageId` (`64743ee13`).
+- **LANDED this round (P4.D288):** ONE `fresh_schema.json` re-dump from the
+  pin carrying the EIGHTH (`545e299bb`: `chats.scenarioSource` /
+  `scenarioNotes`), the NINTH (`4ae0c4ca6`: `tfidf_vocabularies.
+  textShapeVersion`) and the memory programme's moves (`memories.supersededAt`
+  gained; `vector_entries` + `vector_indices` + `chats.
+  otherExtractionWatermarkMessageId` gone; the NEW `memory_extraction_cursors`
+  table in the migration's UNIQUE + FK shape at first boot; `chat_settings`
+  without `autoHousekeepingSettings` / `memoryExtractionLimits`);
+  `migration_indexes.json` 63 → 62 (+ the partial `idx_memories_supersededById`,
+  − the two vector indexes); the TWELVE migrations re-homed as boot ensures in
+  v4's registration order (three DESTRUCTIVE, the two data rewrites ledgered +
+  stamped over v4's `migrations_state`), each differentially compared against
+  v4's REAL `MigrationRunner`; the settled-chain arm stamps the episode,
+  cursor AND tiers ids on a v5-provisioned instance; every committed `*-main.db`
+  pair widened / narrowed in place through v4's real migrations;
+  `provisioning_equivalence` REQUIRES `QT_FRESH_SCHEMA_LIVE` dumped FROM THE
+  PIN; `restore_vintage_state`'s boot-align list carries every new ensure.
+- **PENDING — the TENTH move** (`362426c8f`, past the pin):
+  `chat_settings."customToolTriggers" INTEGER DEFAULT 0` between
+  `"customTools"` and `"compositionModeDefault"` (`ChatSettingsSchema`
+  `customToolTriggers: z.boolean().default(false)`); the migration
+  `add-custom-tool-triggers-field-v1` (`addColumnIfMissing`, no backfill,
+  `dependsOn add-custom-tools-field-v1`) re-homes as an UNSTAMPED table-gated
+  boot ensure in the `chat_settings_*_repair.rs` shape, `chat_settings_seed.json`
+  gains `customToolTriggers: 0`, and `pascalMeta.invokedBy` widens to
+  `'trigger'` (+ `triggerPhrase`) in the row and event schemas (JSON-column
+  only). `public/schemas/qtap-custom-tool.schema.json` gains `triggers`.
+- No other DDL past the pin: `bbbcd2388`'s `wardrobe.types.ts` hunk is
+  request-body Zod; `49f8906c3` touches the remapper only.
 
 ### Regen, dependencies, help
 
-- **Regen rule: PIN REQUIRED at `4a38222e6`** (§5.1), UNCHANGED by the
-  2026-10-13 late-evening check. HEAD (`64743ee13`) is nineteen
-  commits past the baseline, so **a pinned worktree is mandatory for EVERY
-  regen, no exceptions** — every regen, the whole sweep and every
-  live-checkout guard of the `4a38222e6` unification ran from
-  `/tmp/qt-v4-pin-unify-4a38222e6` with its own `npm ci --offline` tree.
-  ⚠ **IMPORT-DEAD at HEAD** — beyond the remaining rows' moved shapes (the
-  scenario location's three deleted tier modules, the Phase-0 gate / wipe,
-  bug 228's reminted ids), a HEAD regen FAILS TO IMPORT: `lib/memory/memory-
-  weighting.ts` (v5's Phase-1 `memory-weighting` oracle case), `reinforced-
-  importance.ts`, `day-references.ts`, `memory-calendar.ts` (renamed under
-  `time/`), `episodic-anchors.ts`, `memory-gate.ts`, `memory-merge.ts`,
-  `memory-edit.ts`, `memory-processor.ts`, the fold-pass / catch-up /
-  extraction-route modules, `lib/schemas/vector-indices.types.ts` +
-  `VectorIndicesRepository` (`harness/oracle/cases/vector-indices.ts`, the
-  vector / consolidation fixture builders, ~18 builders using
-  `repos.vectorIndices`), and the removed exports (`createMemoryWithGate`,
-  `runMemoryGate`, `reinforceMemory`, `deleteMemoryWithUnlink*`,
-  `deleteMemoriesBy*WithVectors`, `needsHousekeeping`,
-  `processTurnForMemory`, `batchExtractMemories`, `handleInterCharacterMemory`,
-  …), and since the six: `lib/memory/housekeeping.ts`,
-  `consolidation-triggers.ts`, `housekeeping-outcome-cache.ts`,
-  `admission/after-insert.ts`, `lib/tools/memory-dedup.ts`,
-  `background-jobs/scheduled-housekeeping.ts` and both housekeeping /
-  consolidation handlers (Phase F). `provisioning_equivalence` REQUIRES `QT_FRESH_SCHEMA_LIVE` dumped FROM
-  THE PIN. ⚠ **The dependency trap:** the root tree last moved at
-  `a9c99a4a0` (inside the baseline); still build the pin's own tree
-  (`npm ci --offline`, §5.1 — at `4a38222e6` `openai` 7.30.0, the pin's
-  lockfile differing from HEAD's only in version stamps).
-- **Dependencies: NONE moved** past the baseline (each `package.json` hunk is
-  the stamp — `.157` / `.160` / `.161` / `.163` / `.164` on the five, `.165`
-  / `.166` on `93c5af6ad` / `584d28164`, `.169`–`.175` on the six; no
-  lockfile hunk beyond the stamps; Phase B deletes only the npm script
-  `oneoff:rebuild-vector-indices` and its `scripts/` file).
-- **Help / docs past the baseline (cumulative):** `help/` **131 → 132
-  files** (NEW `help/scenario-browser.md`, `545e299bb`; the five add none —
-  HEAD counted 132, the pin 131). Pages touched (`4a38222e6..main`, 19
-  files): the scenarios set (`chats`, `general-scenarios`, `groups`,
-  `project-scenarios`), `chat-participants`, `memory-regenerate`,
-  `system-tools`, `post-office`, `system-import-export`, and from the five:
-  `characters`, `chat-settings`, `cli-memories`, `episodic-memory`,
-  `memory-consolidation`, `memory-housekeeping`, `chat-message-actions`,
-  `memory-recall-relevance`, `embedding-profiles`; the two new add
-  `chats`, `embedding-profiles`, `system-import-export` (`93c5af6ad`) and
-  `episodic-memory`, `memory-recall-relevance` (`584d28164`); the six
-  take it to **131 files at HEAD** (`b045dd986`: `memory-maintenance.md`
-  NEW, `memory-consolidation.md` + `memory-housekeeping.md` DELETED; edits
-  to `characters`, `cli-memories`, `conversation-summary-regenerate`,
-  `data-retention`, `embedding-profiles`, `episodic-memory`,
-  `memory-playing-a-character`, `memory-recall-relevance`,
-  `memory-regenerate`, `settings`, `system-tools`, `the-almanack`) — the
-  same count as the pin, different files. Docs: `API.md`, `DDL.md`
-  (the vector tables "retired"), `BACKGROUND_JOBS_CHILD.md`,
-  `DATABASE_ABSTRACTION.md`, `DEVELOPMENT.md`, `SYSTEM_FLOWCHARTS.md`,
-  `features/memory-system-refactor.md` (phases marked done),
-  `features/memory-consolidation-and-tiers.md`, `bugs.md` (1–246 fixed, none open
-  past 241's era), `features/memory-system-refactor.md` → `complete/`,
-  NEW `features/builtin-tfidf-memory-tuning.md`, `CLI.md`, `DEAD-CODE-REPORT.md` +
-  45 bug-file changes. Each catch-up round re-vendors what it absorbs.
+- **Regen rule: PIN REQUIRED at `83334b9a5`** (§5.1) — HEAD is nineteen
+  commits past the baseline and the checkout is dirty. ⚠ **IMPORT-DEAD at
+  HEAD** for the memory family's oracle cases is no longer the issue it was
+  (the round re-aimed every case at the pin's modules); past the pin, HEAD
+  renames nothing the cases import, but `362426c8f` moves the Pascal run
+  entrances (`run-custom-handler.ts` / the manual-run route → `run-service.ts`)
+  — the Pascal oracle cases import the handler, not the route, and still
+  load; their captured log lines will MOVE at the next pin.
+- **Dependencies: ONE moved past the pin** — `@quilltap/plugin-utils` 2.6.3 →
+  **2.7.1** (`a8b2d2861`; root `package.json` + all fifteen `plugins/dist/*/
+  package.json` want `^2.7.1`; `openai-compatible` 1.0.49, DeepSeek 1.0.28,
+  NanoGPT 1.2.10 rebuilt). The pin's own `npm ci --offline` tree is at 2.6.3;
+  the provider recorders resolve plugin-utils from the plugin dirs'
+  `node_modules` — at the NEXT pin those must be 2.7.1 or a regen silently
+  replays 2.6.3 (`provider_sdk_version_guard` is the tripwire).
+- **Help / docs:** `help/` is **131 files at the pin**, vendored WHOLE and
+  byte-identical (P4.D303: `memory-maintenance.md` + `scenario-browser.md` in,
+  `memory-consolidation.md` + `memory-housekeeping.md` out). Past the pin
+  (count stays 131): `bbbcd2388` edits 2 pages, `7458ff94e` `wardrobe.md`,
+  `362426c8f` `custom-tools.md` (+30) / `chat-settings.md` / `pascals-
+  workbench.md` / `rng-tool.md`. Docs past the pin: `8489d08b9`'s 17 spec
+  moves to `features/complete/` + 4 deletions (incl. the two native-port
+  specs and `MCP.md`) + `API.md` +98; `3f64d3a6c`'s README rewrite + NEW
+  `docs/FEATURES.md`; `75d094e63`'s CLI README (+14); `1e1712a12` +
+  `7458ff94e` moving CHANGELOG sections to `CHANGELOG_V4.md`; `936a34720`'s
+  three specs; `362426c8f`'s `API.md` / `DDL.md` / `FEATURES.md` /
+  `features/complete/pascal-*`. Each catch-up round re-vendors what it absorbs.
 
 ### Rounds, guards, state
 
-- **The `83334b9a5` memory-refactor + scenarios drift catch-up round
-  ORDERED 2026-10-14 (P4.D288–P4.D303 — sixteen lanes, three stacking points
-  `SCORING` → `KEYSTONE` → `ADMISSION`; `phase-4.md` ORDERED section).** ALL
-  TWENTY rows through `83334b9a5` are `ORDERED(…)` (`97f0d8cb8` stays
-  `PORTED(P4.D285)` and retires with the baseline move); the two rows past
-  the pin (`7417e9a1b`, `01f508d4e`) stay UNPROCESSED for the next
-  `/driftcheck`. **Regen rule for the round: PIN REQUIRED at `83334b9a5`**
-  (lane-unique pins `/tmp/qt-v4-pin-<order>-83334b9a5`). At its unification
-  the baseline moves to `83334b9a5` and the LIVE-DATA HAZARDS block retires
-  by measurement (its §S.6).
-- **The `4a38222e6` wardrobe-programme drift catch-up round (P4.D279 →
-  {P4.D280 ∥ P4.D281 ∥ P4.D282 ∥ P4.D283 ∥ P4.D284} ∥ P4.D285 ∥ P4.D286 ∥
-  P4.D287) UNIFIED on main 2026-10-13 — all nine lanes landed; the baseline
-  MOVED `01a83539d` → `4a38222e6`.** Eight rows retired to §6 (four docs
-  rows NO-PORT-RATIFIED; `7a8d6dacc`, `9ecebf986`, `e23fb095b`,
-  `4a38222e6` ABSORBED, bug 197's `analyze-image` half DEFERRED by name —
-  R-L, the route stays a loud refusal); `97f0d8cb8` PORTED ahead of the
-  baseline (R-P) and kept in §3. The standing ruling (2026-10-09) held: the
-  work followed the PIN, not later v4 commits.
-- **Live-checkout guards at HEAD (predicted, not run):** the six earlier
-  rows' set (the scenarios routes + chat-create + `chat_scenario` + `.qtap`
-  chat families, the Phase-0 gate / wipe / dedup / housekeeping /
-  delete-chokepoint / buildContext / mail families, bug 228's fresh-id
-  import families, `provisioning_equivalence`, `system_backup_equivalence`,
-  the help and schema guards) PLUS, from the five: every memory tier-1 / 2 /
-  3 family (reinforced importance, scoring, ranking, recall floors, the
-  gate → admission decisions and lines, merge → fold, dedup, housekeeping,
-  consolidation, the fold passes, Carina, the episodic anchors and zone,
-  the embedding text), the memories route families (POST `action`, PUT
-  re-embed, `maintenance-config`, the removed `extraction-concurrency`,
-  `embeddings` `batchSize`), the chat-settings and instance-settings
-  families, the vector-indices tier-2, the cascade-delete and
-  character-archive families, the embedding job families, the backup /
-  restore / `.qtap` carriers (no vector files; cursors), the job-type
-  families (`INTER_CHARACTER_MEMORY`), the Almanack memory lines,
-  `migration_indexes` (one gained, two lost), `qtap_schema_embed_guard` +
-  `public_schemas_vendor_guard`, `help_tree_equivalence` — and every case
-  that IMPORTS a deleted module fails outright, not red but dead.
-  **Predicted GREEN:** `provider_sdk_version_guard`, `zod_version_guard`,
-  `builtin_prompt_templates_guard`.
-- **The workspace gate at the baseline:** the round record in
-  `status-log.md` has the counts.
-- **Schema state (`4a38222e6`):** UNCHANGED from `01a83539d` —
-  `fresh_schema.json` is the SEVENTH D23 re-dump (P4.D265: the four
-  `memories` tier columns, `chats."otherExtractionWatermarkMessageId"` after
-  `timelineMode`, the NOCASE store-name index); `migration_indexes.json` 63
-  statements (+ `idx_memories_character_tier`), dumped through v4's REAL
-  `MigrationRunner`. `add-memory-tiers-v1` is the unstamped table-gated boot
-  ensure `db::memory_tiers_repair`; the NOCASE index on an existing instance
-  is `ensure_mount_point_name_unique_index` (P4.D274). Earlier re-dumps (the
-  SIXTH — `wardrobe_wear_stats` + `wardrobeImageSettings`; the FIFTH —
-  `impersonationVoiceMode`) unchanged. There is NO `migration_tables.json`.
-  The EIGHTH (scenarios) and the memory programme's re-dump are PENDING —
-  "Schema / D23" above.
-- **Recommended next:** (1) the owed dogfood pass — the `01a83539d` and
-  `4a38222e6` rounds' rows, on a COPY taken BEFORE v4 passed `c2795733f`
-  (verify it per the hazards block first; the store-name plan probe on the
-  copy FIRST); (2) the catch-up rounds — the scenarios D23 move
-  (`545e299bb` + `8050958be` bug 228) and the memory programme (`124c8aca3`
-  + `69d38dd60` + `c2795733f` + `e0ac7493a` + `af48f6cc2` + `8af764514` +
-  `ac6348c5f` + `93c5af6ad` + `584d28164` — pin at or past `584d28164`,
-  or the round ports `memory-service.ts` / `memory-injector.ts`, which
-  Phase E deleted), the planner deciding the grouping and the order (the memory
-  programme carries the heavier live-data hazard; the two share
-  `fresh_schema.json`, the chats row and the `.qtap` chat carrier). **Both
-  rulings MADE (the human, 2026-10-13):** the vector-table retirement —
-  MIRROR v4's destructive copy-then-DROP as a boot ensure; the
-  shared-instance watermark-column ping-pong — RETIRE P4.D265's chat-column
-  arm for v4's cursor-table migration (as P4.D251 superseded P4.D179's
-  ensure). Nothing now blocks planning the memory round.
-- **`help/**`:** whole at `4a38222e6` (131 files, md5-identical to the
-  pin's tree — measured at the unification). Past the pin: the pages listed under "Help /
-  docs" above and ONE new (`help/scenario-browser.md`); each catch-up round
-  re-vendors its own.
+- **The `83334b9a5` memory-refactor + scenarios drift catch-up round —
+  UNIFIED 2026-10-15** (the §6 bullet; the round record in `status-log.md`).
+- **Next:** the owed dogfood pass (`/dogfood`) on a Friday copy taken BEFORE v4
+  ran past `362426c8f` — the round's 💸 headline first (a post-migration copy's
+  first v5 boot: every ensure a NO-OP, measured); then the follow-ups smalls
+  round (the review's recorded should-fixes: the repository-fallback `?`
+  reads, `OFFSET_OCCURRED_AT_ROW_SCHEMA`'s ruling, the two unclassified
+  admission / cascade divergences, P4.D291's probe fixture, P4.D298's
+  `create_project_explicit_wins`, the lock's closed-enum read + v4's three
+  lock lines, the D301 toast duration, the Almanack / API-doc smalls); then
+  the `362426c8f` drift catch-up round — the TENTH D23 move (Pascal trigger
+  phrases), plugin-utils 2.7.1's cache-hit exclusion, the restore remapper,
+  bug 248, the hair precedence note, copy-to-folder, the Tier R bytes, the
+  About blurbs — and the NO-PORT ratifications of the release-squash row and
+  its siblings (`/setupphase`; `/driftcheck` first, the dirt's commit expected).
 
 ## §2 The freshness probe
 
@@ -709,26 +273,6 @@ passes the commit.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `545e299bb` | 2026-10-12 | Scenarios from anywhere: location, browser, and source tracking (#86) | **PORT-NEW + PORT — WITH A D23 MOVE (the EIGHTH re-dump)** (classified 2026-10-12 from the hunks, §5.3; 88 files, +5,003 / −2,114 — a squashed PR of four commits: the feature, the control's review fixes, the heal / honest-count fixes, the read-only character location; `__tests__/` + `components/` are roughly half). **SCHEMA / MIGRATION:** NEW `migrations/scripts/add-chat-scenario-source-v1.ts` (registered in `index.ts`; `dependsOn: ['add-chat-scenario-text-field-v1']`; `introducedInVersion: '4.10.0'`; `shouldRun` when either column is missing; `addColumnIfMissing('chats', 'scenarioSource', 'TEXT DEFAULT NULL')` + `('chats', 'scenarioNotes', 'TEXT DEFAULT NULL')`, no backfill; INFO `Added the scenario source columns to chats` / ERROR `Failed to add the scenario source columns`, `context: 'migration.add-chat-scenario-source'`; `prettify.ts` label "Noting where each chat's scene was found"). `lib/schemas/chat.types.ts`: `ScenarioSourceSchema` `{ mountPointId: UUID, path: string.min(1).max(500) — \`Scenarios/<file>.md\`, bodySha256: string.length(64) — hex SHA-256 of the body as resolved, frontmatter stripped, before notes }`, `ScenarioRefSchema` `{ mountPointId, path }`; `scenarioSource: ScenarioSourceSchema.nullable().optional()` + `scenarioNotes: z.string().nullable().optional()` added to BOTH `ChatMetadataSchema` and `ChatMetadataBaseSchema` immediately after `scenarioText`, so v4's `generateDDL` (`schema-translator.ts`: a `ZodObject` field → `TEXT`, stored as JSON; nullable-optional → `DEFAULT NULL`) renders a fresh `chats` with `"scenarioSource" TEXT DEFAULT NULL, "scenarioNotes" TEXT DEFAULT NULL` after `"scenarioText" TEXT` — `fresh_schema.json` must be RE-DUMPED from a pin at or past `545e299bb` (D23, never by hand) and the migration re-homed as an UNSTAMPED table-gated boot ensure differentially compared against v4's REAL migration (the `add-memory-tiers-v1` shape, P4.D265). No index. `DDL.md` +2 column lines (`scenarioSource` "written only beside `scenarioText` by `resolveScenarioSelection`'s two callers; NULL = custom scene or pre-source chat"). **No dependency move** (stamps `.149`; no lockfile hunk). **NOT a convergence** (no bug number). **(a) The chokepoint:** NEW `lib/scenarios/location.ts` (566 lines) — `resolveScenarioLocation(scope: 'character' \| 'project' \| 'group' \| 'general', id, repos, userId, { ensure })` (overloaded: a store scope returns a `StoreScenarioLocation` with writes; the CHARACTER location is READ-ONLY — `list` reads the vault's `Scenarios/` documents through `parseScenarioFile` so paths are the files' real paths, the default from the row's `defaultScenarioId`; archived and other users' characters resolve null), `classifyScenarioMount` (a mount is a scenario owner when it is a live character's vault, a project's or group's OFFICIAL store, or General — NOT linked stores, NOT arbitrary Scriptorium stores), `lookupScenarioRef` → `ok \| missing \| refused` (one row read per character ref — the location is built from the row that classified the mount), `characterScenarioIdForPath`, `parseScenarioForScope`, `normalizeScenarioPath`, `ScenarioConflictError` / `NotFoundError` / `FilenameError`, `GENERAL_OWNER_NAME = 'Quilltap General'`; NEW `everywhere.ts` (`listScenariosEverywhere` — one document query, name / description / flags / a 240-char excerpt ending `…`, `scenarioId` on character rows; NO bodies) and `source-remap.ts` (client-safe). **DELETED:** `lib/mount-index/general-scenarios.ts` (−115), `project-scenarios.ts` (−91), `group-scenarios.ts` (−104), `resolveStoreScenarioTier`; `scenarios-common.ts` −147 (the test-only `listScenariosInFolder` / `readScenarioByPath` / `resolveScenarioBody` gone); the group tier's `Knowledge/` helper → `lib/mount-index/group-knowledge.ts`. NEW raw finders `characters.findByDocumentMountPointIdRaw`, `AbstractStoreBackedRepository.findByOfficialMountPointIdRaw` (projects + groups share it). `instrumentation.ts`'s General heal → `resolveScenarioLocation('general', null, repos, SINGLE_USER_ID, { ensure: true })`; `ensure-project-scenarios.ts` / `ensure-group-scenarios.ts` report `{ total, provisioned, healed, failed }` (an `ensure: true` folder failure RETHROWS — was swallowed); the project / group create hooks go through the location. **(b) Routes:** `scenario-item-route-factory.ts` (431 lines rewritten) serves General as well as projects and groups + `createScenarioCollectionBodies` (list + create); all six route files are thin configs (`scenarios/route.ts` −167 → `GET ?action=everywhere[&includeArchived=true]` `{ sources }`, `GET ?action=read&mountPointId=&path=` — 400 `mountPointId and path are required` / `Invalid scenario ref: <reason>`, 404 `Scenario`; `scenarios/[scenarioPath]/route.ts` −251; the project / group collection routes −150 / −148; `groups/scenarios` the union); item routes resolve with `ensure: true` on PUT / rename / DELETE (plus the group's `Knowledge/` via `afterEnsure`) while GET stays a probe and an owner with no store is still 404; the character scenarios route (`/characters/[id]/scenarios`) is UNCHANGED (id-addressed, through the repository); a character location update carries `defaultScenarioId` across a retitle and refuses a retitle onto an existing file. `chats` POST (`route.ts`, 66 lines changed): `scenarioRef: ScenarioRefSchema.optional()` in the body; `resolveScenarioSelection` takes `{ repos, userId, projectId, characterId, logTag }` (was `character`) and RETURNS `ResolvedScenario { scenarioText, scenarioSource, scenarioNotes }` (was a string) — precedence `scenarioRef` FIRST, then `scenarioId` > project > group > general, each failing soft; a refused ref throws `ScenarioRefRefusedError` → 400; the row is written with all three. `chats/[id]/actions/scenario.ts` (206 lines changed): `scenarioRef: ScenarioRefSchema.nullish()`, `reload: z.boolean().optional()` — WITHOUT `reload`, a request that resolves to the chat's OWN source file, revised since it was picked, keeps the stored preset body (`recoverPresetBody` from `scenarioText` minus the `\n\n<notes>` suffix, verified against the source hash) with the new notes beneath (debug `[Chats v1] Source file revised; keeping the chat's scene (no reload asked)`); `reload: true` pulls the revision; the no-op check `sameResolvedScenario` compares text + source + notes — a change of provenance or notes with byte-identical text is WRITTEN but neither recompiles nor announces; INFO `[Chats v1] Scenario changed` gains `source`. NEW `GET /chats/[id]?action=scenario-source` (`handleGetScenarioSource`: the source, `scenarioName`, `scenarioId` for a character source; debug `[Chats v1] Scenario source checked`). `lib/chat/scenario-text.ts` `recoverPresetBody`. `topic-map.ts`: the `chats` topic also invalidates `queryKeys.chats.scenarioSource(id)`. **(c) Carriers:** `qtap-export.schema.json` chat `scenarioSource` (object \| null; `mountPointId` "remapped with the document stores on import; dropped to null when that store did not come across") + `scenarioNotes` (string \| null); `quilltap-import/reconcile.ts` remaps `scenarioSource.mountPointId` in `reconcileRelationships` (mapped → new id; unmapped but present in this instance → kept; else → null; debug `Remapped chat scenario source`) — chats import BEFORE document stores; `restore/uuid-remap.ts` (new-account mode) through `remapScenarioSource` + the shared `UuidRemapper`. Backup: whole-table, nothing to do. SillyTavern export: not represented. **(d) SPA (Phases C–D):** NEW `components/scenario/ScenarioBrowserDialog.tsx` (399 lines — every character vault / project / group / General, searchable, a preview fetched for the highlighted row, `staleTime: 0`, no polling), `ScenarioSelect.tsx` gains **Browse all scenarios…** beside Custom (a pick outside the hierarchy shows under an **Elsewhere** optgroup as *Owner › Name*; one inside snaps to its native kind) and ALWAYS renders the dropdown; `ChatScenarioControl.tsx` (+201: the provenance line "From: *Owner* › *Name*", **Reload from source** when the file exists and its hash differs, a notes box under presets — the text box is the notes under a preset and the whole scene under Custom, always sent as `scenario`; a source whose file is gone is not selectable; leaving Custom for a preset clears the box); `NewChatForm.tsx` / `useNewChat.ts` / `types.ts`: ONE `scenarioSelection: ScenarioSelection` replaces the four pointer fields in form state (the wire still accepts all four + `scenarioRef`), seeded once by `seedScenarioSelection` (character default > project default > general default; continuation mode skips the character default; not re-seeded once `scenarioTouched`) — which FIXES the form showing the project default while submitting the character's; the project-default override note only when the project default is the selection and the character has one of its own; `useScenarioRefBody`; `lib/query/keys.ts` (+12). **(e) Help / docs:** NEW `help/scenario-browser.md` (52 lines — the help tree goes 131 → 132), `help/chats.md`, `general-scenarios.md`, `groups.md`, `project-scenarios.md`; `API.md` (+28), `DDL.md`, v4 `CLAUDE.md` (the chokepoint rule), `features/{ => complete}/scenarios-from-anywhere.md` §7 As built, `features/scenario-builder.md` (one line — the Builder is UNTOUCHED: its mount pool and `SaveScenarioDialog` already know all four owner kinds). **Its own lane group** — shares nothing with the wardrobe set | `db/scenarios.rs` (the chokepoint — `ParsedScenario`, P4.6n / P4.D208 / P4.D219) + `api/scenarios.rs` + `api/projects.rs` / `api/groups.rs`'s scenario arms + `services/builtin_mounts.rs` (General's folder heal) + `quilltap-host/src/host.rs` (the startup heals) — the P4.6n scenarios round (2026-07-11, the three tier modules v5 ported as they were) + P4.D129's smalls; `services/scenario_selection.rs` (P4.D115 unit 1 — returns the TEXT) + `services/chat_scenario.rs` (the `?action=scenario` verb, P4.D115 units 3–4 / P4.155 unit 3) + `scenario_text.rs`; `services/chat_create.rs` (P4.4 unit 2 — the create's scenario resolve); `db/chats.rs` + `chats_read.rs` (the row — no `scenarioSource` / `scenarioNotes` columns); `services/quilltap_import/reconcile.rs` (P4.155) + `entities.rs` + `services/backup/uuid_remap.rs` + `uuid_remapper.rs` + `restore/orchestrator.rs` (P4.9G / P4.D264); `provisioning/fresh_schema.json` (the SEVENTH re-dump — P4.D265; EIGHTH pending); the SPA `scenario/scenario-select.ts` + `scenario.api.ts` + `scenario.types.ts`, `chat/sidebar/chat-scenario-control.ts` (P4.D116 — no `reload` / `scenarioSource` / `scenarioRef` today), `screens/new-chat/new-chat.state.ts` + `new-chat.logic.ts` + `new-chat-form.ts` (the New-Chat vertical — four pointer fields), `core/realtime-topic-map.ts`, `help/` (p4.9i2 / P4.D278). Reddens (predicted, on a HEAD regen): the general / project / group scenario routes families (the modules are GONE; `?action=everywhere` / `read` NEW), the chat-create route (`scenarioRef`; the two new row keys), the `chat_scenario` action family (`reload`, the kept-scene arm, the no-op compare, the `source` field), the chat GET dispatch (`scenario-source`), the `.qtap` chat export / import / reconcile families + the new-account restore remap, `provisioning_equivalence` (two columns — the D23 tripwire firing as designed), `system_backup_equivalence` (the chat row), `help_tree_embed_guard` (132) / `help_tree_equivalence` / `host_help_docs_boot`, `qtap_schema_embed_guard` / `public_schemas_vendor_guard`, the realtime topic-map spec. ⚠ Live-data hazard once v4 runs past this on Friday: §1's real-instance note (1) | **ORDERED(P4.D288 (the D23 columns + `add-chat-scenario-source-v1` ensure + C2), P4.D295 (the server), P4.D302 (the SPA), P4.D293 / P4.D294 (the carriers), P4.D303 (help))** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `124c8aca3` | 2026-10-12 | Fix bugs 199–201: memory gate, continue turns, chat wipe (#87) | **PORT** (classified 2026-10-12 from the hunks, §5.3 — read from `origin/main`, NOT yet pulled into the human's checkout; 56 files, +2,697 / −288 — a squashed PR of three commits: Phase 0, a version bump after merging main, the review fixes; 24 NEW open bug files 203–226 + four `fixed/` 199–202 + `bugs.md` +32 are 29 of the 56; nine code files). **NO schema / DDL / migration / index move; no dependency move** (stamps `.151`; no lockfile hunk). **NOT a convergence** — bugs 199–202 are v4's own 2026-10-12 memory audit, each `Original to v4` (the port's filings are 180, 183, 184, 185); 203–226 stay OPEN, each naming the refactor phase that closes it. ⚠ **Bug 199's trailing-only fix here is REWRITTEN by `69d38dd60` an hour later** (the one list) — port the two together. **199** `context-manager.ts` `buildContext`: the no-new-user-message branch (`else if (userNarrationAnchor \|\| coreWhisperLLMContext \|\| llmRecallText \|\| suparnaMailLLMContext \|\| turnSkipInstruction \|\| progressionsLLMContext \|\| informBlock)`) now pushes `[userNarrationAnchor, coreWhisperLLMContext, llmRecallText, suparnaMailLLMContext, progressionsLLMContext, informBlock, turnSkipInstruction]` (was `[userNarrationAnchor, progressionsLLMContext, informBlock, turnSkipInstruction]` — recall, mail and the Core whisper were POSTED, the rows stamped accessed and recorded in the anti-repetition ring, the letters marked alerted, and the model never saw them on continue / chained / autonomous turns); debug `[CommonplaceWhisper] Delivering recall in the trailing-only message (no new user message)` `{ chatId, participantId, length }`. **200** `memory-gate.ts`: `GATE_MAX_SEARCH_K = GATE_TOP_K * 4`; the gate searches, loads the matched rows (`findByIds`), and if fewer than `GATE_TOP_K` are LIVE widens `k` by the shortfall and searches again until live ≥ K, the store is exhausted (`results.length < k`) or `k ≥ 4K`; `results` = live hits only, sliced to K; orphans WARN `[MemoryGate] Vector index holds entries with no memory row; ignoring them` `{ characterId, orphanIds, searchedK }` + `debugInfo` `[Gate] Ignored N orphan vector(s)`; orphans are NOT pruned there (in the job child a row this job inserted is invisible to the snapshot — bug 209 — and would look like one); `bestMemory` is non-null by construction (the `bestMemory !== undefined` / `&& bestMemory` guards on the distinct-occasion, near-duplicate and merge branches and the `.filter(r => r.memory)` DROPPED). The delete chokepoint grows `removeDeletedVectors(idsByCharacter)` (best-effort per character: `removeVector` each, `save()` when any removed; WARN `[MemoryGate] Failed to remove vectors for deleted memories`): `deleteMemoryWithUnlink` removes the vector and logs `vectorsRemoved`; NEW `deleteMemoriesWithUnlinkBatchReport(ids, options) → { deleted, vectorsRemoved }` with `deleteMemoriesWithUnlinkBatch` as its `.deleted` wrapper; `DeleteBatchOptions` exported. Callers simplified: `memory-service.ts` `deleteMemoryWithVector` = `deleteMemoryWithUnlink` (its own vector removal gone), `deleteMemoriesBySourceMessageWithVectors` / `…BySourceMessagesWithVectors` through the report (their per-character loops gone; `characterCount` from a Set), `housekeeping.ts` runHousekeeping's vector cleanup DELETED, `memory-dedup.ts`'s vector cleanup DELETED, `DELETE /memories/[id]` calls the chokepoint directly (no second read) and answers 404 `Memory` when it returns false. **201** NEW client-safe `lib/memory/policy-protection.ts`: `policyProtectionOf({ source, tier })` → `'manual'` (source MANUAL) \| `'digest'` (source CONSOLIDATED) \| `'cold'` (tier cold) \| null, `partitionByPolicyProtection(rows) → { actionable, spared, sparedBy: { manual, digest, cold } }`. `deleteMemoriesByChatIdWithVectors` returns `{ deleted, vectorsRemoved, characterCount, spared }`: partitions `findByChatId`, then a spared DIGEST goes too when NO member not being wiped still names it (`consolidatedFrom` minus the doomed ids → `findByIds` once → `supersededById` set; a member re-promoted or re-consolidated elsewhere no longer speaks for it); INFO `[Memory] Chat wipe spared manual, cold and digest rows` `{ chatId, spared, manual, cold, digests }`; `handleDeleteByChatId` answers `sparedCount` and its debug is retitled `[Memories API] Wiped a chat's extracted memories` `{ chatId, deleted, spared }` (was `Deleted every memory for a chat`); `memory-regenerate-chat.ts` logs `spared` at both sites. `deduplicateCharacterMemories` folds only `actionable` rows (`originalCount` = total; `sparedCount` on every result incl. the `< 2` early returns and `deduplicateAllMemories`' per-character rows; debug `[MemoryDedup] Candidate rows for folding` `{ total, candidates, sparedBy }`); the card shows "Kept aside"; `useMemoryActions.ts` / `SalonListView.tsx` / `character-conversations-tab.tsx` wording. **202** comments only (`searchMemoriesSemantic`: anchor hits widen the pool and face the floor — R5). `help/chat-participants.md`, `memory-regenerate.md`, `system-tools.md` one line each; `features/memory-system-refactor.md` (+10 — Phase 0 marked done); v4 `CLAUDE.md` | `services/build_context.rs:3937-3955` (P4.D254's trailing-only list — EXACTLY the pre-fix four-item list: scene note, progressions, inform, turn note; `core_whisper` / `llm_recall_text` / the mail are computed above it and dropped on that branch — v5 REPRODUCES bug 199), `services/memory_gate.rs:444` (`store.search(embedding, GATE_TOP_K)` once; `:471` `if let Some(best_memory) = best_mem.as_ref()` — the pre-fix optional guard; P4.D266), `db/memories.rs:1052` / `:1141` (`delete_with_unlink` / `delete_many_with_unlink` — rows + neighbour scrub, NO vector removal; P4.d12), `services/memory_service.rs:189` (`delete_memories_by_chat_id_with_vectors` — every row with the `chatId`, no partition; `cascade_delete` + `remove_vectors_grouped` per caller; P4.D126 / P4.D270), `services/housekeeping.rs` (its own vector cleanup; P4.D267), `services/memory_dedup.rs:229` + `:461` (`deduplicate_character_memories`, every tier and source folded, its own `remove_vector`; P4.43 / P4.D268), `api/memories.rs:706` (the wipe route — no `sparedCount`) + `:644` (the item DELETE), the regenerate-chat job, the SPA `memory/` dedup card + the Salon list wipe wording (P4.D271). Reddens (predicted): the memory-gate tier-3 family (the orphan widen + WARN; the dropped guards), the chat-wipe + regenerate-chat families (`spared`), the dedup family (`sparedCount` + the debug), the housekeeping family, the memories item DELETE family (404), the delete-chokepoint tier-2 (`vectorsRemoved`), the buildContext families on a continue / chained / autonomous turn (the trailing-only content). **Order TOGETHER with `69d38dd60`**; ⚠ live-data hazard (the wipe): §1's real-instance note (3) | **ORDERED(P4.D288 (bugs 200 / 201 in the ONE retire path), P4.D290 (the orphan widen as it survives), P4.D291 (the trailing-only recall; bug 199), P4.D298 (the chat wipe route))** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `69d38dd60` | 2026-10-12 | Fix bug 227: mail marked announced before its turn succeeds; one trailing-section list (#88) | **PORT** (classified 2026-10-12 from the hunks, §5.3 — read from `origin/main`, NOT yet pulled; 17 files, +635 / −56 — a squashed PR of three commits: 227, the 199 completion, the review follow-up; six code files, four tests, `help/post-office.md`, the 227 bug file + the 199 file's +7). **NO schema / dependency move** (stamps `.153`; no lockfile hunk). **NOT a convergence** — bug 227 is `Original to v4. Present since the Post Office's mail check was added to buildContext`, found 2026-10-12 in review of the 199 fix. **(a) The mail flip is deferred to delivery:** `buildContext` no longer imports `markAlerted`; `BuiltContext` gains `mailAlertsOwed: MailAlertsOwed \| null` (`{ vaultId, paths }` — the letters Suparṇā announced this turn, "like `informRowIds`, marked only once the turn has delivered them"); the mail block runs only when `mailVaultId && !isRegeneration` (`isRegeneration = (regenerationOfMessageIds?.length ?? 0) > 0` — **a swipe skips the mail check altogether**: a re-roll of a line already spoken must not carry a letter that arrived since, and the swipe path never reaches the finalizer that would mark it); on announce, debug `[Suparna] Mail announced; alerted flip deferred to delivery` `{ chatId, characterId, vaultId, letters }`. NEW `mailbox.ts` `markMailAlertsDelivered(owed, { chatId, via })` — `markAlerted` per path, warn-only per letter (`markMailAlertsDelivered: could not mark letter alerted`), debug `markMailAlertsDelivered` `{ chatId, vaultId, via, requested, marked }`. Call sites: `message-finalizer.service.ts` after the inform mark (`via: 'finalizer'`); `primary-stream.service.ts` `makePreservePartialOnError` takes `mailAlertsOwed` and marks `via: 'preserved-partial'`; `orchestrator.service.ts` passes it to the preserve-partial options at both sites, marks `via: 'tool-only'` after a tool-only save ("the model read this turn's mail and acted"), and `handleTurnSkip` takes `mailAlertsOwed` and marks `via: 'turn-skip'` ("a pass is an answer"). A failed or aborted turn therefore announces the letters AGAIN next attempt — at the cost of a second whisper, "the honest record of a letter re-announced". **(b) One trailing-section list:** `trailingContextSections = [coreWhisperLLMContext, llmRecallText, suparnaMailLLMContext, progressionsLLMContext, informBlock, turnSkipInstruction].filter(Boolean)` is built ONCE before the branch and used by BOTH — the new-user-message branch's hand-kept six-push copy DELETED, and the no-new-message branch becomes a plain `else` pushing `[userNarrationAnchor, ...trailingContextSections]` ONLY when non-empty (was pushed whenever any section existed; the PR's review note that "the Core whisper was also missing from turns with no new user message" describes the pre-Phase-0 list — `124c8aca3`'s seven-item line already carried it, and the one list keeps it); the comment carries the adjacent-user-message note (a chained turn's history routinely ends in a `user`-attributed line from another seat; OpenAI-compatible APIs accept adjacent user messages, Anthropic's combines them, the Google plugin merges them before sending). `help/post-office.md`: the check runs "whether the character is answering you or simply carrying on unprompted", and "the one exception is a turn that comes to nothing … Suparṇā will read it again on the character's next turn". Tests pin the order on both paths, the Core whisper case, the deferral and the swipe skip | `services/suparna_mail.rs:101` (`mark_alerted` AT COLLECT TIME inside the mail check — v4's pre-fix shape; P4.9E2A / P4.D234's Post Office, the P4.D45 string table), `services/suparna_notifications.rs:265`, `post_office/mailbox.rs:395` (`mark_alerted`; no `mark_mail_alerts_delivered`), `services/build_context.rs:3937-3955` (the trailing-only branch; the new-message branch's own list above it — two hand-kept copies, as v4 had; P4.D254), `services/message_finalizer.rs:1047-1090` (the inform mark — `inform_row_ids` empty on a swipe; the mail mark goes beside it), `services/primary_stream.rs:677` (`inform_row_ids` on the preserve-partial options), `services/orchestrator.rs` (the tool-only save + the turn skip), `tools/read_mail.rs:166` (the tool's own mark — unchanged by v4). Reddens (predicted): the buildContext tier-3 families on both branches (the one list; `mailAlertsOwed` in the built context; the deferred-flip debug; the swipe's missing mail block), the mail tier-3 family (the `alerted` flip's timing — it now happens AFTER the model call: a mocked-LLM failure must leave the letter unalerted), the finalizer / preserved-partial / turn-skip families (the four `via` lines), `help_tree_equivalence` on `post-office.md`. **Order TOGETHER with `124c8aca3`** (it rewrites that commit's `trailingOnly` line) | **ORDERED(P4.D291 (bug 227 — the deferred mail flip, one trailing-section list), P4.D303 (help))** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `8050958be` | 2026-10-12 | Fix bug 228: importing a chat with "Create New" dropped every message (#89) | **PORT** (classified 2026-10-12 evening from the hunks, §5.3; 20 files, +910 / −69; `4.10.0-dev.154`, parent `69d38dd60`. `lib/` hunks ONLY in `lib/import/quilltap-import/`: NEW `message-id-remap.ts` (169 lines — `remintChatMessageIds`, `remapImportedMessageId`), `import-entities.ts` (`importChats`: the `duplicate` and fresh-id create paths made ONE; a chat created under a fresh id gets fresh message ids, each occurrence its own even when a bundle repeats a source id; `swipeGroupId` rewritten only in its `swipe-<messageId>` form; `summaryAnchorMessageIds` remapped, an unresolvable anchor CLEARING the summary + anchors + `lastSummaryTurn` together as rebuild-summary does; `otherExtractionWatermarkMessageId`; `courierCheckpoints[*].lastResolvedMessageId`, the JSON-string form read, unreadable entries dropped; the duplicate branch now maps the source chat to the REAL created id — the phantom `idMaps.chats` entry is gone), `types.ts` (NEW `IdMappingState.messages: Map<sourceChatId, Map<sourceMsgId, newId>>`, written only after an insert lands), `execute.ts` (annotation `sourceMessageId` through the remap), `reconcile.ts` (`remapChatInform`: `recordMessageId` / `consumedByMessageId` through the remap; a `null` = reminted-but-never-landed treated as missing; the refusal `reason` keeps the SOURCE id), `import-files.ts` (`remapLinkedTo` resolves a message only through a chat named in the same `linkedTo` array). The memories import `sourceMessageId` follows the same map. `help/system-import-export.md` +1 sentence (the "(imported)" copy keeps its transcript). Tests: NEW `duplicate-chat-message-ids.test.ts` (445 lines) + five touched. NO DDL, NO migration, NO dependency (stamps only). **CONVERGENCE check: NONE** — `Provenance: Original to v4`, found live on `V4test`, `v5 status: Not assessed`.) | **v5 SHARES the defect**: `services/quilltap_import/entities.rs:791` `import_chats` adds each message under its bundle id (`ChatMessagesRepository::add_message` with the decoded event) and keeps v4's ruled "Phantom-map quirk" (`entities.rs:829-834` + the module header, `DUPLICATE_MINTS`) — ported faithfully in the `.qtap` import family (P4.9G-era import EXECUTE; the bare-tail warnings P4.147/#140, P4.155 whole-entity refusal, P4.161 whole-row validation), so the phantom-map pins and every duplicate-strategy chat row flip by design. Sidecars to follow: `quilltap_import/reconcile.rs` (the inform remap, P4.155 / P4.D249's `permanent` carrier), `quilltap_import/files.rs` (`linkedTo`), `quilltap_import/memories.rs` (`sourceMessageId`; P4.161 / P4.D272's up-front id minting), the annotation import; the restore path (`backup/`) is NOT touched — restore preserves ids. Shares `reconcile.rs` + the chat import with `545e299bb`'s scenario reconcile — fold into or sequence with that lane (§1). `help/` re-vendor of one page. | **ORDERED(P4.D294 (bug 228 — reminted message ids on a fresh-id `.qtap` chat import))** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `97f0d8cb8` | 2026-10-12 | fix(wardrobe): a click inside the folder picker no longer closes the wardrobe dialog (bug 199 → renumbered 229 by `4ce64fa1e`) | **PORT** (SPA-only rider on `4a38222e6`; classified 2026-10-12 evening from the hunks; 10 files, +167 / −26; `4.10.0-dev.150`, parent `545e299bb` — the close probe's recorded dirt, committed: `components/wardrobe/WardrobeBrowser.tsx` drops its local `picker` state for `actions.folderPicker`; `hooks/useWardrobeItemActions.ts` owns the picker state and counts it in `overlayOpen`, so a mousedown inside the portalled listbox no longer reaches the dialog's click-outside close; the jsdom folders test +1 case; `bugs.md` + the bug file; `package-lock.json` hunk = the root `version` lines only. No `lib/` / `app/` / `packages/` / `plugins/` hunk. **CONVERGENCE check: NONE** — v4's own SPA defect in a feature v5 has not ported.) | None today — v5 has no wardrobe folder browser or Move-to-folder picker; the SPA half of `4a38222e6` lands it in `apps/web/src/app/wardrobe/*` (P4.D261 / P4.D277's browser + dialog). Port the picker with its state in the actions service and counted by the dialog's overlay gate from the start, and carry the bug-229 test as a Playwright / component beat. | PORTED(P4.D285) — baseline not yet past (R-P: ported AHEAD of the baseline from its SPA hunks — the picker landed WITH the bug-229 fix in the `4a38222e6` round, unified 2026-10-13; the row stays until a later round passes it) — the `83334b9a5` round (ordered 2026-10-14) carries the baseline past it: retires as `ABSORBED(P4.D285)` at that unification (§S.6) |
-| `4ce64fa1e` | 2026-10-12 | Merge origin/main; renumber the folder-picker bug to 229 | **NO-PORT?** (merge of `97f0d8cb8` and `8050958be`; classified from its OWN resolution, `git show --cc`: the README badge, the version stamp `.155` (both `package.json`s + the lockfile's root `version` lines), and the picker fix RENUMBERED 199 → 229 — the bug file renamed to `bugs/fixed/bug-229-folder-picker-closes-dialog.md`, `bugs.md`, two code comments and one test title. `git diff 8050958be 4ce64fa1e` equals `97f0d8cb8`'s content plus that renumber; no behaviour of its own. Resolves the close probe's predicted bug-199 collision in favour of the memory audit's 199.) | None — ratify with `97f0d8cb8` in the wardrobe round. | **ORDERED(P4.D303 — NO-PORT ratification)** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `c2795733f` | 2026-10-12 | Fix bugs 203–226: memory system defects from the refactor audit (#90) | **PORT — WITH A SCHEMA MOVE (FIVE migrations)** (classified 2026-10-13 from the hunks, §5.3; 154 files, +10,585 / −1,247; `4.10.0-dev.157`, parent `4ce64fa1e`; 24 bug fixes, every one with an implementing hunk — the message names three migrations, FIVE ship, all `introducedInVersion '4.10.0'` with PRETTY labels in `lib/startup/prettify.ts`). **Migrations:** `add-episode-extraction-watermark-v1` (bug 207, `dependsOn add-memory-tiers-v1`) — `chats.episodeExtractionWatermarkMessageId TEXT DEFAULT NULL`, backfilled from the LAST entry of each chat's `summaryAnchorMessageIds` (no anchors → NULL; DROPPED again by `ac6348c5f`); `add-memories-superseded-by-index-v1` — `CREATE INDEX IF NOT EXISTS "idx_memories_supersededById" ON "memories" ("supersededById") WHERE "supersededById" IS NOT NULL` (partial; moves `migration_indexes.json`); `add-memory-superseded-at-v1` (bug 225) — `memories.supersededAt TEXT DEFAULT NULL`, backfilled from `updatedAt` where `supersededById` is set, then stamped / cleared by `updateTierBulk`; `recompute-reinforced-importance-v1` (bug 216, `dependsOn add-memory-gate-fields-v1`) — EVERY row's `reinforcedImportance` rewritten to `min(1, importance + log2(max(1, count)) × 0.05)` in batches of 500 (was `log2(count + 1)`: a count-1 row sat at importance + 0.05); `rezone-legacy-memory-occurred-at-v1` (bug 212, `dependsOn add-episodic-memory-fields-v1`) — every `occurredAt` that is exactly a UTC midnight re-stamped at local midnight on the instance's memory calendar. `chat.types.ts` + `memory.types.ts` gain the two columns (generateDDL moves); the `.qtap` export schema gains chat `episodeExtractionWatermarkMessageId` and memory `supersededAt`. **Per bug:** 203 `editMemory` embeds BEFORE the write (`MemoryReembedError`; PUT 502, 400 on `relatedMemoryIds`); 204 re-embeds through `buildMemoryEmbeddingText(…, tz)`; 205 rebuild / missing-embeddings keep the tier; 206/207 NEW `fold-window.ts` (watermarks, slices of 60, ≤ 4 per run, `continue:<id>` follow-ups) + the episode watermark; 208 NEW `commonplace-mirror.ts` — the parent mirrors after commit (the child refuses, an emptied bucket file is removed, a digest delete re-mirrors; host-RPC `writeCommonplaceDigestsToVault` REMOVED); 209 a per-job memory overlay in the child proxy; 210 `countCapBreakdown { hotTotal, demotable, protected, cold }`, housekeeping demotes AUTO only, lowest protection first ("Exceeded demotable-memory limit (N)"); 211 the consolidation corpus admits unsuperseded cold rows (`demotedCandidates`); 212 NEW `memory-calendar.ts` — ONE zone (ChatSettings.timezone → `QUILLTAP_TIMEZONE` → system) through anchors, day refs, the extraction clock, `timeRange` and the embedding text (`isoDateFromMs` removed); 213/222 `extraction-route.ts` (the fold episode's `uncensoredFallback`; Carina passes projectId / projectDescription / chatContextSummary); 214 the text fallback takes the full semantic options; 215 recap bands on reinforced importance (≥ .7, [.3, .7), < .3); 217 NEW `host/vector-store-invalidation.ts` (owners resolved before commit); 218 POST `/memories` MANUAL-only (`source` / `skipGate` stripped; projectId / kind / occurredAt / entities; 404s; `{ memory, action }` 201 / 200) + `promoteMatchedMemory`; 219 GET no longer stamps access time; 220 `createMemoryDirect` embeds first, retries once after 500 ms, null on failure (`SKIP_EMBEDDING_FAILED`); 221 `enqueueMemoryHousekeepingSweep` (one job per character; `housekeep-sweep` → `{ success, jobId, jobIds }`); 223 consolidate passes `clusterThreshold` (a PENDING duplicate adopts, PROCESSING warns); 224 the inter-character block skips memories already whispered; 225 cold retention ages by `COALESCE(supersededAt, updatedAt)` + `scrubDigestLinks` on delete; 226 a merge writes a DELTA (`incrementReinforcement { by, at }`, never rewinds `lastReinforcedAt`). SPA: the memory editor drops `source`; the 200-create toast "Already on file — the existing memory has been reinforced instead"; the housekeeping card "N counted · M protected". `help/` seven pages (characters, chat-settings, cli-memories, episodic-memory, memory-consolidation, memory-housekeeping, memory-regenerate); `bugs.md` 1–229 fixed, 230–234 open. **No dependency move** (stamp only). **NOT a convergence** — 203–226 are v4's own audit, each `Original to v4`. Every later memory commit builds on it (Phase A renames / deletes `memory-calendar.ts`, `reinforced-importance.ts`, `fold-window.ts` hours later) | v5 carries v4's PRE-fix shape on nearly every surface — the memory programme P4.D265–P4.D276 and its predecessors: `memory_gate.rs:45-46` (`calculate_reinforced_importance` = `log2(count + 1)` — the Phase-1 `memory_weighting` tier-1 pins the PRE-fix formula), `api/memories.rs` (POST / GET / PUT; P4.D269 / P4.D276), `services/memory_gate.rs` + `memory_merge.rs` (P4.D266), `services/housekeeping.rs` (P4.D266 / P4.D267 — demote order, no cap breakdown), `db/memories_read.rs` (the GET access stamp), `services/memory_service.rs`, `services/embedding_{generate,reindex}_job.rs` (P4.6BL; the embedding-status marks P4.D25), `services/episodic.rs` (anchors, day refs, the embedding text — P4.d14 / P4.D267 / P4.D269; bug 212's zone sits beside P4.119's host-zone dates), `services/fold_{other,episode}_pass.rs` (P4.D270), `services/carina_memory_extraction.rs`, `services/consolidation.rs` + the Commonplace canon (P4.D271 / P4.D270), the SPA `memory/` cards (P4.D276); `fresh_schema.json` + `migration_indexes.json` (P4.D265's SEVENTH re-dump); the `.qtap` carriers (P4.D272); backup / restore (P4.9G / P4.D264). Reddens at a HEAD regen (predicted): every family touching reinforced importance, the gate / merge / housekeeping / consolidation / fold / Carina families, the memories routes, `provisioning_equivalence` (two columns), `migration_indexes` (one partial index), `qtap_schema_embed_guard` + `public_schemas_vendor_guard`, `help_tree_equivalence`. ⚠ LIVE-DATA HAZARDS: §1 (4) the formula, (3) the watermark positions. Order WITH `124c8aca3` + `69d38dd60` and Phases A–D as ONE memory catch-up | **ORDERED(P4.D288 (five migrations as ensures; repository verbs), P4.D289 (the formula, bug 212's calendar), P4.D290, P4.D291, P4.D293 / P4.D294 (`supersededAt`), P4.D296, P4.D297 (bugs 208 / 210), P4.D298, P4.D300 (the editor's dropped `source` + the reinforced-instead toast — measured: they landed here, not in Phase C), P4.D303)** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `e0ac7493a` | 2026-10-12 | Memory refactor Phase A: scoring, clock, settings, candidate (#91) | **PORT — WITH A SCHEMA MOVE (one migration, three DROP COLUMNs)** (classified 2026-10-13 from the hunks, §5.3; 166 files, +5,887 / −2,781; `4.10.0-dev.160`, parent `c2795733f`). **Migration `move-memory-maintenance-settings-v1`** (`'4.10.0'`): copies the single user's `chat_settings.autoHousekeepingSettings` (else the latest row's) into `instance_settings.memoryMaintenance` (keeping `enabled` / caps; never overwriting an existing key), DELETES the `memoryExtractionConcurrency` instance key, then `ALTER TABLE "chat_settings" DROP COLUMN` `autoHousekeepingSettings`, `memoryExtractionLimits`, `memoryExtractionConcurrency` (each if present); `restore.ts` +4 / −4 translates old backups the same way; its two predecessors' edits here are import-path moves only. **Behaviour:** scoring moves to `lib/memory/scoring/*` (same formulas: protection score, the .75 / .25 ranking blend, min cosine .30 / .10, reinforced importance, salience = the old raw weight) and the FLOORED `calculateEffectiveWeight` (max(raw, .70 · base)) and `rankMemoriesByWeight` (the < .05 filter) are DELETED — orderings change in the memory injector (the primary sort, the inter-character half, the dynamic head's fallback), the frozen-archive fill, the optimizer, and first-message context (salience, was raw importance); `RECALL_MIN_IMPORTANCE` .3, `TOOL_MIN_IMPORTANCE` 0, bands high ≥ .7 / low < .3; EVERY `minImportance` filter compares `reinforcedImportance ?? importance`; the per-turn recall floor .5 → .3; the medium band boundary .4 → .3 (`search_scriptorium`, the card / editor). Time (`lib/memory/time/*`): read windows close 1 ms before the next boundary; the WRITE side stamps the window START ("today" → local midnight, "this week" → Monday 00:00); number words 11–14, "a couple / few … earlier"; `search_scriptorium` since / until in instance-zone local days (was UTC). NEW Zod `MemoryCandidateSchema` (the old type renamed `MemoryDraft`; importance clamped [0, 1] — a 0 stays 0, was `\|\| 0.5`; blank content / summary fall back to each other, both blank skipped; entities ≤ 12). Maintenance instance-wide (`resolveMemoryMaintenance` / `capFor` override → global → 2000; caps 100–100k). Bugs 230 (the dry run passes project context), 231 / 234 (SQL-delta link methods, `appendCappedFootnotes` skips existing lines, `neighboursTouched`), 232 (NEW fold-episode catch-up job — scheduled-maintenance step 9, `continue-episode:<wm>`), 233 (search-replace through `editMemory` per row; `replaceInMemories` removed). Prompts: the extraction clock drops "Current in-story time"; the fold-episode prompt drops `participants`. **Wire:** `?action=maintenance-config` GET / POST (the housekeeping-config alias kept) answering `{ success, settings: { enabled, perCharacterCap, perCharacterCapOverrides } }`; `extraction-concurrency` REMOVED (unknown-action 400); housekeep POST `maxMemories` 100–100,000 defaulting to the character's cap (was 2000), `merged` / `mergedIds` dropped; the GET preview's new 400 "maxMemories must be an integer between 100 and 100000", `wouldMerge` dropped, `capUsed` added; search `minImportance` default 0. Tools: `search_scriptorium` (`effectiveWeight` → `salience`), `self_inventory` ("weight X" → "salience X", unfloored). Almanack: the "**Memory maintenance**" line; "Memory Cascade & Housekeeping" → "Memory Cascade", four lines removed. SPA: the housekeeping dialog (`capUsed`, 100–100k, no merged), the band, the card on `maintenance-config`. `help/` five pages; `bugs.md` 1–234 fixed. No dependency move. **IMPORT-DEAD at HEAD:** `lib/memory/memory-weighting.ts` (v5's Phase-1 `memory-weighting` oracle case), `reinforced-importance.ts`, `day-references.ts`; `episodic-anchors` / `memory-calendar` / `memory-calendar-refresh` renamed under `time/`; removed exports `resolveWhenPhrase`, `needsHousekeeping`, the extraction-concurrency setters, `replaceInMemories`, `DeleteBatchOptions`, the `AutoHousekeeping*` schemas, `effectiveWeight` / `rawWeight`, `FoldEpisode.participants`, `ExtractionClock.narrativeNow` | `db/chat_settings.rs` (reads / writes `autoHousekeepingSettings` + `memoryExtractionLimits` by name — `:1053-1055`, `:1118-1119`, `:1408`, `:1496`; `find_auto_housekeeping_settings_by_user_id` `:1740`) + `db/instance_settings.rs:527` (the concurrency key) + `fresh_schema.json`'s `chat_settings` (both columns; P4.D265's dump); `memory_weighting.rs` + the ranking blend (Phase 1 tier-1 — the floored weight v4 deleted); the memory injector / frozen archive (P4.D268), recall + search floors (P4.D267), `services/episodic.rs` + the anchors (P4.d14 / P4.D269), the candidate parse in the extraction passes (P4.D270), `services/housekeeping.rs` + the scheduled maintenance (P4.D266 / P4.D267), `api/memories.rs` (housekeeping-config, extraction-concurrency, housekeep, preview, search), the `search_scriptorium` / `self_inventory` tools, the Almanack memory lines, the SPA housekeeping dialog + card + band (P4.D276), restore's settings translation (P4.9G). ⚠ LIVE-DATA HAZARD: §1 (1) — the dropped columns break v5's settings reads and writes | **ORDERED(P4.D288 (`move-memory-maintenance-settings-v1` + the settings document), P4.D289 (scoring / clock / candidate), P4.D291 (the .3 floor), P4.D296 (the fold-episode catch-up, the clock), P4.D298, P4.D300, P4.D303)** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `af48f6cc2` | 2026-10-12 | Memory refactor Phase B: index owns vectors, one deletion path (#92) | **PORT — WITH A SCHEMA MOVE (a destructive migration; RULED: MIRROR, 2026-10-13)** (classified 2026-10-13 from the hunks, §5.3; 117 files, +3,576 / −3,878 — a squash of seven; 59 production files; `4.10.0-dev.161`, parent `e0ac7493a`; no SPA, CLI or `bugs.md` change; `qtap-export.schema.json` untouched). **Migration `retire-memory-vector-entries-v1`** (`'4.10.0'`, registered LAST; `dependsOn` the six vector migrations from `sqlite-initial-schema-v1` to `quantize-embeddings-v1`; `shouldRun` while either table exists): pages `vector_entries` 500 rows a transaction and copies each vector onto a memory row with NO embedding (`UPDATE memories SET embedding = ? WHERE id = ? AND embedding IS NULL`; JSON-text vectors through `parseLegacyEmbeddingText` → `float32ToBlob`; counts `orphaned` / `alreadyOnRow` / `unusable`), then `DROP TABLE IF EXISTS` `vector_entries` AND `vector_indices`. INFO `Verifying memory vectors against their rows before retiring the mirror` / `Retired the memory vector mirror` {copied, alreadyOnRow, orphaned, unusable, tablesDropped}; ERROR `Retiring the memory vector mirror failed`. `normalize-vector-storage` no longer re-creates the mirror. **generateDDL:** `vector-indices.types.ts` + `VectorIndicesRepository` DELETED, so a fresh v4 instance ends with neither table. **Behaviour:** vectors live ONLY on `memories.embedding` (NEW `lib/memory/index-store/` — an in-process `memoryIndex`; `CharacterVectorStore.load` reads `SELECT id, embedding, tier FROM memories WHERE characterId = ? AND embedding IS NOT NULL`); ONE deletion path — NEW `lib/memory/retire.ts` `retireMemories(ids, { reason, keep? })` / `retireChatMemories` (ten reasons; `keep: 'manual'` spares MANUAL, cold and any digest with a living member; NEW: a digest whose `consolidatedFrom` empties is retired with its last member, except under `retention`; links scrubbed by SQL delta) REPLACING `deleteMemoryWithUnlink`, `deleteMemoriesWithUnlinkBatch[Report]`, `deleteMemoryWithVector`, `deleteMemoriesBy{SourceMessage,SourceMessages,ChatId}WithVectors`; the repository's bare `delete` THROWS (ERROR `Refused a bare memory delete; memories are deleted through retireMemories`), `bulkDelete` → `bulkDeleteUnsafe`, three delete helpers gone; `editMemory` → `admission/update-memory.ts` `updateMemory`. **Backup / restore:** no `vector-entries.json` / `vector-index-metas.json`, manifest counts dropped; restore step 22j gone — a legacy `vector-entries.json` only fills a row that arrived without an embedding (`legacyVectorsAdopted`); `embeddingReconcile` loses two keys; the delete-all service stops wiping the tables. **Wire:** `POST /memories?action=embeddings` drops `batchSize` (stripped — no longer a 400); the PUT rebuild's `failed` now means "memories without an embedding"; two re-attribution ERROR texts. Logs: INFO `Chat wipe spared manual, cold and digest rows` (the `[Memory]` prefix dropped); WARNs `Retirement rewrote an unusually large neighbour set`, `Memory index cache update failed; …`, `Skipped memory embeddings that could not be decoded`; the dispatcher's owner-lookup failure debug → WARN; ~20 `[MemoryGate]` / repository lines removed. `help/embedding-profiles.md`, `memory-consolidation.md`. No dependency move (the npm script `oneoff:rebuild-vector-indices` + its script deleted). **IMPORT-DEAD at HEAD:** `harness/oracle/cases/vector-indices.ts`, `build-vector-indices-fixture.ts`, `build-consolidation-fixture.ts`, ~18 builders using `repos.vectorIndices`; the memory delete / cascade / read / episodic / dedup / regenerate / fold-episode cases calling removed APIs | `db/vector_indices.rs` (whole; Phase 2, `vector_indices_tier2_equivalence`) + `db/mod.rs`; `db/vector_store.rs:124-127` (`load` reads `vector_entries`; P4.D265's tier stamp); `db/memories.rs:1052` / `:1141` (`delete_with_unlink` / `delete_many_with_unlink`, P4.d12) + `services/memory_service.rs`'s `*_with_vectors` (P4.D126 / P4.D270) and its search; `services/memory_gate.rs` (the gate search; P4.D266), `episodic.rs` (`build_memory_embedding_text`), `housekeeping.rs`, `memory_dedup.rs` (P4.43 / P4.D268), `consolidation.rs` (P4.D271), `anchor_gate_probe.rs` (P4.D269), `generators/optimizer.rs`, `embedding_generate_job.rs` (P4.6BL) + `embedding_reindex_job.rs`, `services/cascade_delete.rs:376` + `character_archive/service.rs`, `embedding_dimension_reconcile.rs` (table-guarded), `delete_all.rs`; backup `collect.rs` / `manifest.rs` / `staging.rs` + restore 22j (`restore/orchestrator.rs:1766-1800`) / `archive.rs` / `uuid_remap.rs` (P4.9G); `api/memories.rs:1838-1855` (`batchSize` 1–50); SPA `core-contract.ts` (`batchSize`). D23: `fresh_schema.json` loses two tables + two `createdAt` indexes, `migration_indexes.json` two `characterId` indexes. ⚠ LIVE-DATA HAZARD: §1 (2) — gate creates fail after writing the row, the character cascade half-completes with a 500, recall silently falls to text, embedding jobs fail. **RULED 2026-10-13 (the human): MIRROR v4** — port `retire-memory-vector-entries-v1` as a boot ensure (verify-and-copy each mirror vector onto a row with no embedding, then `DROP TABLE IF EXISTS` both), differentially compared against v4's real `MigrationRunner`; every v5 reader / writer moves onto `memories.embedding` | **ORDERED(P4.D288 (`retire-memory-vector-entries-v1` — MIRROR, ruled; the index store over rows; the ONE retire path), P4.D292 (the embedding jobs), P4.D293 / P4.D294 (no vector files; legacy adoption), P4.D298)** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `8af764514` | 2026-10-13 | Memory refactor Phase C: admission in parent, one combine (#93) | **PORT — NOT a pure refactor; a WIRE change, NO migration** (classified 2026-10-13 from the hunks, §5.3; 87 files, +4,011 / −3,588; `4.10.0-dev.163`, parent `af48f6cc2`; no migration file, no DDL). Thresholds UNCHANGED (`ADMISSION_THRESHOLDS` nearDuplicate .90 / reinforce .85 / related .70 / dateGuardDays 7 / footnoteCap 8; `ADMISSION_TOP_K` 5); `extractNovelDetails` moved byte-identical. **The decide moves behaviour:** a close neighbour (≥ .85) is eligible only for the same subject (`aboutCharacterId \|\| holder`), the same kind (default semantic), not a MANUAL candidate on an AUTO row, and not date-guarded — excluded rows become LINK targets and the loop continues (it used to take the best match only); `insert-linked` links every band + excluded neighbour (reason `date-guard` / `mismatch` / `band`); the date guard reads the HYDRATED row (the digest when redirected); digest collapse over all top-5; cold: unsuperseded / dangling-digest → `promote-and-reinforce` (footnotes when cos < .90), via a digest → absorb + `redirectedFrom`, ≥ .90 absorb, else reinforce; a multi-hop dangling intermediate is now promoted; NEW reject reason `empty`; `embeddingProfileId` dropped; `promoteOnMatch` / `promoteMatchedMemory` GONE (AUTO never promoted to MANUAL; MANUAL folding into MANUAL / digest raises importance). `admit.ts`: a per-character promise lock, an idempotency ledger (`jobId:sha1(…):n`, 24 h TTL / 5,000 entries), a vanished target re-decided once then force-inserted; admissions commit OUTSIDE the job batch (host-RPC `admitMemory` + IPC `memory-index-patch` — Node plumbing, but the semantics matter: a failed job no longer rolls admissions back); the consolidation watermark at admission. **One combine** (`fold.ts` `foldInto` + `apply.ts` `applyFold`) replaces the gate's `reinforceMemory` and `planMemoryMerge` / `applyMemoryMerge`: earliest `occurredAt` now for reinforce too; entities (case-insensitive, ≤ 12) + `narrativeTime` fill now for dedup too; links by `addLinks` delta (no removal); delta `max(1, count ?? 1)`; re-embed on ANY content / anchor change INCLUDING at the footnote cap (the code contradicts v4's CHANGELOG — port the code); write order footnotes → anchor patch → links → `incrementReinforcement` (the first landed write is the commit point). **Logs:** every `[MemoryGate]` / `[MemoryMerge]` / `[Gate]` string GONE; child loggers `memory:admission` / `:neighbours` / `:apply` ("Memory admitted", "Admission target vanished; deciding again", "Folded into survivor", `[Admission] Linked memory to neighbours both ways`, `[Admission] Name-presence check collapsed the subject to the holder`); `memory-processor.ts`'s debug through `describeAdmission` (new heads: `REINFORCED…`, `(promoted from cold, count N)`, `Created … (linked to N related, band\|date-guard\|mismatch)`, `SKIPPED near-duplicate … absorbed into id (similarity X[, via id])`, `SKIPPED label — no usable text`). The anchor-gate probe decides per side (`anchoredAction` / `anchorFreeAction`); the CLI `anchor-probe` labels renamed ("would fold", "near-dup absorbed", "Fold only without anchors"). **Wire:** POST `/api/v1/memories`' `action` is now the lowercase kind (`insert` / `insert-linked` / `reinforce` / `absorb` / `promote-and-reinforce`), 201 on insert else 200. `help/characters.md`, `episodic-memory.md`; notes appended to fixed bugs 200, 209, 216, 218, 226, 231, 234; no dependency move. **IMPORT-DEAD at HEAD:** `lib/memory/memory-gate.ts`, `memory-merge.ts` (+ five test files) and `createMemoryWithGate`, `createMemoryWithEmbedding`, `CreateMemoryOptions`, `runMemoryGate`, `reinforceMemory`, `linkRelatedMemories`, the three threshold constants, `GateDecision` / `GateResult` / `MemoryGateOutcome` | `services/memory_gate.rs` (the whole gate, its tier-3 family and every `[MemoryGate]` / `[Gate]` line pin; P4.D266 + the earlier gate ports), `services/memory_merge.rs` + `memory_dedup.rs` (P4.43 / P4.D268), `services/memory_processor.rs`'s outcome debug, `services/fold_episode_pass.rs` (P4.D270), `services/anchor_gate_probe.rs` + `quilltap anchor-probe` (P4.D269 — the probe's row fields and labels), `api/memories.rs`'s POST (the `action` wire; P4.D269 / P4.D276) + the SPA's create toast, the job runner's commit boundary (the single-writer runtime — admissions committed outside the job's batch is a writer-task decision for v5, not a Node workaround to drop) | **ORDERED(P4.D289 (the pure decide / fold), P4.D290 (admission in the parent), P4.D298 (POST `action` kinds), P4.D300)** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `ac6348c5f` | 2026-10-13 | Memory refactor Phase D: extraction — one context, four passes (#94) | **PORT — WITH A SCHEMA MOVE (two migrations; a NEW table; two DROP COLUMNs, one of them v5's ensure's)** (classified 2026-10-13 from the hunks, §5.3; 152 files, +10,498 / −9,320 — 90 production files +5,377 / −5,412, NEW `lib/memory/extraction/` 22 files +3,578; `4.10.0-dev.164`, parent `8af764514`; v4 HEAD at this check). **Migrations** (both `'4.10.0'`, registered LAST after the vector retirement): `add-memory-extraction-cursors-v1` (`dependsOn add-memory-tiers-v1, add-episode-extraction-watermark-v1`; PRETTY "Gathering every chronicle's bookmarks into one drawer…"; `shouldRun` while the cursor table is absent or either legacy column present) — `CREATE TABLE IF NOT EXISTS "memory_extraction_cursors" ("id" TEXT PRIMARY KEY, "chatId" TEXT NOT NULL, "pass" TEXT NOT NULL, "messageId" TEXT NOT NULL, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL, UNIQUE ("chatId","pass"), FOREIGN KEY ("chatId") REFERENCES "chats"("id") ON DELETE CASCADE)`, copies non-empty `chats.otherExtractionWatermarkMessageId` → pass `other-fold` and `episodeExtractionWatermarkMessageId` → `episode-fold` (id `<chatId>:<pass>`, `ON CONFLICT("id") DO NOTHING`, one transaction per column), then `ALTER TABLE "chats" DROP COLUMN` each present column (INFO `memory_extraction_cursors table in place`, `Copied watermark column into cursors` {column, pass, rows}, `Dropped chats.<column>`; ERROR `Extraction-cursor migration failed`); `drop-inter-character-memory-jobs-v1` — `DELETE FROM "background_jobs" WHERE "type" = 'INTER_CHARACTER_MEMORY'` (INFO `Deleted retired INTER_CHARACTER_MEMORY jobs`). **generateDDL:** `ChatMetadataSchema` / `BaseSchema` drop both watermark fields; the NEW `memoryExtractionCursors` repository materialises the table in generateDDL's bare shape (no UNIQUE / FK expected — TWO v4 shapes again; confirm by re-dump); `BackgroundJobTypeEnum` loses `INTER_CHARACTER_MEMORY`. **Behaviour:** `memory-processor.ts`, both fold passes, `fold-window.ts`, both catch-ups, `extraction-route.ts`, `handlers/inter-character-memory.ts` and the extraction half of `cheap-llm-tasks/memory-tasks.ts` (−1,664) DELETED → `lib/memory/extraction/` (`buildExtractionContext` once per unit; four passes `self-turn` / `other-turn` / `other-fold` / `episode-fold`; `runTurnExtraction`, `runCarinaExtraction`, `runFoldPass`, `runFoldCatchup`, `runExtractionDryRun`, `cursor-bundle`); prompt bodies verbatim (only `batchExtractMemories`' is gone). Real changes: the cheap LLM honours the global default cheap profile; a per-pass cap `min(base, ceil(maxTokens / 8000))` incl. fold OTHER; memory `createdAt` = the source message's time on every path; the rate limit a LIVE counter (an in-memory parent ledger, host-RPC `countRecentAdmissions`; now applies to the episode pass; a restart forgets), `backfill: true` exempt (regenerate / queue-memories / ST import / dry run), a rate-limited fold slice deferred (`skippedReason 'rate-limited'`, cursor not advanced); Carina provenance `pass: 'carina'`; regenerate clears the cursors and enqueues anchored turn jobs for autonomous rooms + an immediate episode catch-up; queue-memories tries a seat profile first; the greeting kept as a null-opener turn. `MEMORY_EXTRACTION` payload gains `pass` (`turn` / `other-fold` / `episode-fold`), `cursor`, `ignoreIdle`, `backfill` (the old `foldOtherCatchup` / `foldEpisodeCatchup` / `foldOtherIgnoreIdle` read as deprecated); the dedupe key (chat, opener, anchor, pass, cursor). ~57 log lines added, ~76 removed (`[Memory] Extraction context built`, `[Memory] Pass complete`, `[ExtractionCursors] …`, `[FoldCatchup] …`; every `[FoldOtherPass]` / `[FoldEpisodePass]` / `[CarinaMemoryExtraction]` line gone). **Wire:** the dry run's two new 400 sentences, `decision` / `extractionPass` on candidates, an NDJSON `fold` event, embedding calls; `system/tools` drops the INTER_CHARACTER estimate; backup / export append the cursors at the END of the chat object under the legacy key names (absent, not null, when no cursor), restore / import strip and write them, a `replace` restore clears the table; CLI `memory-diff` prints `fold` lines. `help/` four pages; no `bugs.md` change; no dependency move. **IMPORT-DEAD at HEAD:** `processTurnForMemory`, `extractSelfMemoriesFromTurn`, `extractOtherMemoriesFromTurn`, `batchExtractMemories`, every fold-pass / catch-up / route module, `handleInterCharacterMemory`. Not absorbable alone — built on `c2795733f` and Phases A–C | `db/chats_read.rs:96,322` + `db/chats.rs` (the column read, the INSERT, the watermark UPDATE) and **`db/memory_tiers_repair.rs:105`** (P4.D265's ensure ADDS `chats.otherExtractionWatermarkMessageId` when absent — on a v4-migrated instance it RE-ADDS what v4 dropped: the ping-pong); `services/fold_other_pass.rs` + `fold_episode_pass.rs` + the idle catch-up (P4.D270 / P4.6bj's extraction wiring), `services/memory_processor.rs`, `services/carina_memory_extraction.rs`, `services/memory_extraction_job.rs` (reads only `foldOtherCatchup`), `services/queue_service.rs`, `services/scheduled_maintenance.rs`, `memory_tasks.rs` + `memory_tasks/prompt_text.rs`, `services/job_runner.rs` + `activity_kinds.rs` + `realtime/job_topics.rs` + `api/system_data.rs` (`INTER_CHARACTER_MEMORY`), `api/memories.rs` (the dry run — a standing v5 deferral, `services/turn_transcript.rs:73`), backup `uuid_remap.rs` + `qtap_export/key_order.rs` + `generators/qtap_schema.rs` (P4.D272 / P4.D264), `services/provisioning/mod.rs` + `fresh_schema.json`; fixtures in `enclave/lifecycle.rs`, `enclave/step.rs`, `almanack/phase3_ledgers.rs`. SPA: no hit. ⚠ LIVE-DATA HAZARDS: §1 (3) the re-added column → mass re-extraction + double extraction, v4's `pass:` catch-up jobs misread as turn jobs; (5) cursor loss through v5 bundles. **RULED 2026-10-13 (the human): RETIRE P4.D265's chat-column arm** (the P4.D251-supersedes-P4.D179 precedent) — port `add-memory-extraction-cursors-v1` as a boot ensure (copy both watermark columns into `memory_extraction_cursors`, then DROP both columns; carry both v4 table shapes — generateDDL's bare one and the migration's `UNIQUE` + FK — as the informs ensure did), differentially compared against v4's real migration; v5 reads only the cursors | **ORDERED(P4.D288 (`add-memory-extraction-cursors-v1` — P4.D265's chat-column arm RETIRED, ruled; `drop-inter-character-memory-jobs-v1`), P4.D296 (extraction whole), P4.D293 / P4.D294 (cursor carriage))** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `93c5af6ad` | 2026-10-13 | Fix bugs 235–241 from the memory refactor dogfood; file bug 242 | **PORT — NO migration** (classified 2026-10-13 afternoon from the hunks, §5.3; 56 files, +2,253 / −217; `4.10.0-dev.165`, parent `ac6348c5f`; the 51-path dirt the previous check recorded, committed). **236:** `app/api/v1/memories/route.ts` + `[id]/route.ts` trim and require `content` (400) on manual create / edit; an admission `reject` is mapped by reason (`empty` → 400, `embedding-failed` → 502) instead of a 500. **237:** `lib/memory/admission/neighbours.ts` (+147) — a dimension-mismatched index reloads once, then the rows it cannot compare are word-matched and the likeliest few re-embedded and scored, so a re-embed no longer disables duplicate detection (`admit.ts`, `rate-ledger.ts`). **238:** `extraction/passes/other-fold.ts` — an undated draft's `occurredAt` falls back to the observer's last line, not the stretch end. **239:** `lib/database/backends/sqlite/instance-lock.ts` — `LockFileContent.port?` (from `PORT`, default 3000; dropped on takeover when invalid) on the SHARED `quilltap.lock`; v5's `quilltap-host/src/lock.rs` `LockFileContent` (no `deny_unknown_fields`) reads a v4 lock with `port` fine but a v5 rewrite drops the key, so v4's CLI tools cannot find a v5 server by instance name; `packages/quilltap/lib/lock-helpers.js` (NEW) + `anchor-probe` / `recall-replay` / `memory-diff` accept `--instance` / `--data-dir` / `--passphrase` (CLI Tier R; v5's `quilltap anchor-probe` from P4.D269). **240:** `lib/import/quilltap-import/import-entities.ts` — a chats-only bundle's memories resolve characters that already exist locally (`.qtap` carriers, P4.D272). **241:** `orchestrator.service.ts` + `streaming.service.ts` — a `SubmissionLedger` (`userMessagePersisted`, `pendingToolResultsPersisted`) rides `handleStreamError`, so the error frame says whether the typed text has a row; `app/salon/[id]/hooks/useSSEStreaming.ts` (453 lines changed) restores composer / draft / attachments / tool results with a toast, buffers split SSE frames, and treats an early close as an error (v5: the Salon spine's error frame, `api/salon.rs`, and the SPA `chat-stream.reducer.ts` / composer). **235:** `lib/utils/process-singleton.ts` — module state on `globalThis` because Next.js evaluates a module once per bundle; a Node-bundling defect — **NO-PORT candidate** for that half (v5 has one process-wide cache by construction; measure, don't assume). **Bug 242 filed OPEN** (`5a99e4b8f`'s depth-0 `turnStart` on every first turn routes single-character turns through the chain's intermediate path) — no fix hunk; v5's reducer sets `inChain` on any `turnStart` (`chat-stream.reducer.ts:296`), so whether v5 shares it is a dogfood measurement. `help/chats.md`, `embedding-profiles.md`, `system-import-export.md`; `DDL.md` (the lock line); `API.md`. CONVERGENCE: none. | **ORDERED(P4.D290 (237), P4.D294 (240), P4.D296 (238), P4.D298 (236), P4.D299 (239), P4.D301 (241), P4.D303 (235 NO-PORT; help))** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `584d28164` | 2026-10-13 | Memory refactor Phase E: recall as a pipeline; delivery (#95) | **PORT — NO migration; model-visible TEXT moves** (classified 2026-10-13 afternoon from the hunks, §5.3; 132 files, +23,460 / −4,300 — 18,012 lines are `__tests__/fixtures/recall-probes/probe-set.json`; `4.10.0-dev.166`, parent `93c5af6ad`; read from `origin/main`, NOT yet pulled). NEW `lib/memory/recall/` stages — `query.ts` (`buildRecallQuery`: distil, choose the text, embed ONCE; retrospective probes beside it), `gather.ts`, `score.ts`, `select.ts`, `hydrate.ts`, `assemble.ts` (617), `render.ts` (322), `deliver.ts` (198), `search.ts`, `types.ts`; moved in: `recall-tags` → `tags`, `recall-tuning` → `tuning`, `recall-history` → `history`, `memory-subject` → `subject`, `frozen-archive-cache` → `archive`, `memory-recap` → `recap`, `conversation-summary-search` → `conversations`, `recall-replay` → `replay`; `lib/memory/scoring/rank.ts` NEW. DELETED: `lib/memory/memory-service.ts` (−1,016; search → `recall/search.ts`, `generateMissingEmbeddings` / `rebuildVectorIndex` → `index-store/backfill.ts`, `markMemoriesAccessed` → `deliver`'s `stampAccessed`) and `lib/chat/context/memory-injector.ts` (−822); `context-manager.ts` −885 (the scene state to NEW `lib/chat/context/scene-state.ts`). **Behaviour:** one query embedding per turn shared by the head, the inter-character half, the recap's relevant-conversations list, the per-turn conversation list and the retrospective mini-recap; cross-pool dedup (a row in at most one of archive / head / inter-character; the recap narrative excludes what the archive rendered); **the recall lines lose every debug label** (`[m_xxxx]` ids, importance / relevance / weight numbers, `recall:` labels, targeting keywords) — the request body moves on every turn that recalls; delivery (after the body is built and Phase-2 compression ran) stamps `lastAccessedAt` and the anti-repetition ring only for lines still present; `buildContext` takes the proactive pass's query + pool as `preRecall`; `message-finalizer.service.ts` writes the recall record to the assistant message's `debugMemoryLogs` (extraction appends after it, no longer overwrites); `?action=recall-replay` + `quilltap recall-replay` gain `fallbackPath`, `trace`, `pools`, `ring`, `ringSource`; the Memories API `search` stamps nothing. Callers re-pointed: `carina.service.ts`, `voice-rewrite-core.ts`, `pre-compute.service.ts`, `context-builder.service.ts`, `search-scriptorium-handler.ts`, `relevant-conversations-refresh.ts`, `first-message-context.ts`, `memory-extraction.ts` handler. v5: `memory_injector.rs`, `recall_tuning.rs`, the recall / recap / frozen-archive services (P4.D267 / P4.D268), `api/recall_replay.rs` (P4.D267), the context builder + `debugMemoryLogs` (`chats_messages.rs`), the anchor / proactive paths, `search_scriptorium`, Carina, the voice rewrite, the CLI `recall-replay`. ⚠ IMPORT-DEAD at HEAD grows: every oracle importing `memory-service`, `memory-injector`, `recall-tags` / `recall-tuning` / `memory-recap` / `recall-replay` / `frozen-archive-cache` / `memory-subject` / `conversation-summary-search` by their old paths. `help/memory-recall-relevance.md` (two new sections), `episodic-memory.md`; `SYSTEM_FLOWCHARTS.md`, `features/memory-system-refactor.md`. CONVERGENCE: none. | **ORDERED(P4.D291 (Phase E whole), P4.D303 (help))** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `4ae0c4ca6` | 2026-10-13 | Built-in TF-IDF tuning: refit policy, text shape, admission thresholds (#96) | **PORT — WITH A SCHEMA MOVE (the NINTH D23 re-dump; one migration)** (classified 2026-10-13 late evening from the hunks, §5.3; 69 files, +1,655 / −122 — a squash of three; `4.10.0-dev.169`, parent `584d28164`). ⚠ The squash's first paragraph says "No migrations, no schema change" — FALSE for the shipped tree: the PR-review commit inside it adds migration `add-tfidf-text-shape-version-v1` (`tfidf_vocabularies.textShapeVersion INTEGER DEFAULT 0` via `addColumnIfMissing`, APPENDED; no backfill — 0 means "fitted with anchor lines, refit once") AND `textShapeVersion: z.number().int().nonnegative().default(0)` on `TfidfVocabularySchema` between `fittedAt` and `createdAt` — the repository registers that schema, so generateDDL's fresh table carries the column in SCHEMA order: two shapes (the `chat_informs.permanent` precedent, P4.D249). **Behaviour:** `lexicalEmbeddingTextFor` (`index-store/embedding-text.ts`) — BUILTIN embeds leave out the anchor line, passed by every memory writer as `lexicalText` to `generateEmbeddingForUser` (neural providers ignore it); `isLexicalEmbeddingProvider` (`lib/embedding/cosine-scale.ts`) the one predicate for the recall floor, the R1 gate, admission and consolidation; `ADMISSION_THRESHOLDS_TFIDF` (0.80 / 0.40 / 0.20) carried on the candidate's `embeddingProvider`; `memoryConsolidation.tfidfClusterThreshold` (0.30, a new settings key + card field); `builtin-refit-policy.ts` (refit only when due: no vocabulary / `textShapeVersion` < `LEXICAL_TEXT_SHAPE_VERSION` / drift of max(25, 10%) new memories; `enqueueRefitIfDue` serialised; import forces; boot + the maintenance pass check), `embedding-refit.ts` gathers by `findDistinctCharacterIds`; new repo reads `backgroundJobs.findActiveByType`, `embeddingProfiles.findInstanceDefault`, `memories.countCorpusSince`; the anchor probe's `lexicalProfile` + note (CLI prints it). **Bug 243** (`child-entry.ts` + NEW `plugin-readiness.ts`: the forked job child ran jobs before its plugin registry loaded) — NO-PORT candidate: v5's runner is in-process over static provider manifests (measure, don't assume — the help-doc embed on a BUILTIN instance at first boot is the probe). v5: `db/tfidf_vocabulary.rs` + `fresh_schema.json` (D23 — re-dump from v4's live generateDDL, never by hand) + a boot ensure for the migration shape, the TF-IDF builtin + embedding service (the provider layer), admission (still the pre-Phase-C gate in v5 — this rides the Phase C port), `services/consolidation.rs` (P4.D271), the anchor probe + `quilltap anchor-probe` (P4.D269), the embedding jobs (P4.6BL), `api/embedding_profiles.rs`. `help/embedding-profiles.md`, `memory-consolidation.md` (deleted again by `b045dd986`). CONVERGENCE: none (243 `Original to v4`). | **ORDERED(P4.D288 (`add-tfidf-text-shape-version-v1` + the seam), P4.D289 (thresholds, `isLexicalEmbeddingProvider`, the lexical text), P4.D290 (the probe note), P4.D292 (the refit policy), P4.D297 (`tfidfClusterThreshold`), P4.D303 (bug 243 NO-PORT))** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `104e986c7` | 2026-10-13 | Memory refactor Phase F: one maintenance job, ordered phases (#97) | **PORT — job-row migration, NO DDL** (classified 2026-10-13 late evening from the hunks, §5.3; 88 files, +4,235 / −3,696 — a squash of three; `4.10.0-dev.172`, parent `4ae0c4ca6`). `BackgroundJobTypeEnum`: `MEMORY_HOUSEKEEPING` + `MEMORY_CONSOLIDATION` → ONE `MEMORY_MAINTENANCE`; migration `drop-housekeeping-consolidation-jobs-v1` DELETEs both retired types' rows (any status — a row would fail the job schema's parse). NEW `lib/memory/maintenance/` (`run.ts` 385, `fold-near-duplicates.ts` 304 — LLM-free, survivor-first, host-RPC `foldNearDuplicates` under admission's lock, stops at 40% of the job budget; `consolidate.ts`, `demote.ts` — exactly demotable − cap, lowest protection first; `ledger.ts` 282 — the parent-side `shouldEnqueue`, `setJobResult` summaries; `scheduler.ts` — one daily sweep, the startup tick cancelled on stop; `triggers.ts`, `corpus.ts`, `types.ts`); payloads carry `exemptPhases`; a PROCESSING job never absorbs a request. DELETED: `lib/memory/housekeeping.ts` (−428), `consolidation-triggers.ts` (−198), `housekeeping-outcome-cache.ts`, `admission/after-insert.ts`, `background-jobs/scheduled-housekeeping.ts` (−200), both handlers, **the `memory-dedup` TOOL** (`lib/tools/memory-dedup.ts`, −464), `system/tools` route's dedup actions (−74); `consolidation.ts` −265 (keeps the planner + model route). Settings: `memoryMaintenance.phases {foldNearDuplicates, demote, retire}` (`.prefault({})` — a stored value without it reads every phase on); the three retention knobs GONE. API: `?action=maintain`, `?action=maintenance-status`; a live `housekeep` enqueues. Activity kinds, `job-topics.ts`, `queue-service.ts` (−371/+), the CLI `memories status` ledger. v5: `services/housekeeping.rs` + `memory_merge.rs` dedup (P4.D266), `services/consolidation.rs` + its triggers (P4.D271), the job runner / queue / scheduled maintenance / activity kinds / job topics, the tool table (the dedup tool + its census), `api/memories.rs` + the `system/tools` dispatch, `db/memories.rs`, the SPA's dedup / housekeeping / consolidation cards (P4.D276). `help/memory-housekeeping.md` + `memory-consolidation.md` + `system-tools.md` + `cli-memories.md` (the first two deleted by `b045dd986`). CONVERGENCE: none. | **ORDERED(P4.D288 (`drop-housekeeping-consolidation-jobs-v1`; the job types), P4.D297 (Phase F whole), P4.D298, P4.D303)** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `b045dd986` | 2026-10-13 | Memory refactor Phase G: unified maintenance card and CLI (#98) | **PORT — NO migration; bug 244 trips a RULED table; bug 242 is shared** (classified 2026-10-13 late evening from the hunks, §5.3; 87 files, +4,135 / −2,441 — a squash of six; parent `104e986c7`). `add-memory-tiers-v1` gains a doc-path COMMENT only (no shape change — v5's ensure unaffected). **API:** `housekeep` / `housekeep-sweep` / `consolidate` / `housekeeping-config` RETIRED (`maintain` covers them; naming `consolidate` brings the mirror — `withImpliedPhases`); NEW `POST ?action=repair` (`lib/memory/repair.ts` `findDanglingLinks` over `relatedMemoryIds` / `consolidatedFrom` / `supersededById` — no fallback, a failed scan is a 500; `retire.ts` `scrubDanglingMemoryLinks` per row, a digest whose members are all gone retired with reason `graph-repair`; `enqueueMissingEmbeddings` / `enqueueEmbeddingGenerateMany` one batch insert; `findIdsWithoutEmbedding`); `memoryExtractionLimits.maxPerHour` `.max(10_000)`. **Bug 244** — NEW `lib/schemas/patch-schema.ts` `patchSchemaOf` (strips `.default()` / `.prefault()`, then `.optional()`), used by every `*-config` write, `maintain`'s run overrides and `TextReplacementRulePatchSchema`: **v5's `PARTIAL_DEFAULTS_CLOBBER` (P4.D271 R-A, `memory_consolidation_routes_equivalence.rs:355-396`, `api/memory_consolidation.rs:8`) pinned v4's clobber on BOTH sides — its three rows TRIP BY DESIGN at a pin past this (the assertion text already says "a v4 fix? re-measure"); retire the table by measurement (§5.4), and audit v5's text-replacement PATCH for the same shape.** **Bug 242** — `useSSEStreaming.ts`: `inChain` only for a `turnStart` with `chainDepth > 0`; v5's `apps/web/src/app/core/chat-stream.reducer.ts:296-299` sets `inChain: true` on ANY `frame.turnStart` — the PRE-fix shape, so v5 SHARES it if its server emits the depth-0 event (`services/orchestrator.rs` / `chat_events.rs` — measure). **SPA:** ONE Maintenance card (`memory-maintenance-card.tsx` 383, `-ledger.tsx`, `memory-consolidation-particulars.tsx`) + `maintenance-dialog.tsx` / `-report.tsx` replace the housekeeping / consolidation / dedup cards and the cleanup dialog; `memory-extraction-limits-section.tsx` on the Extraction Grain card; `useMemorySettingsDocument`; old `section=` deep links open the new card. **CLI:** `memories maintain` (replaces `consolidate`), `validate --repair`, `db memories --tier hot\|cold`, `--instance` port resolution, completions. **help/:** `memory-maintenance.md` NEW (`section=memory-maintenance`), `memory-housekeeping.md` + `memory-consolidation.md` DELETED, ten edited, `help-guide/categories.ts`. v5: `api/memories.rs`, `api/memory_consolidation.rs`, the SPA `memory/` cards (P4.D276) + the stream reducer, the CLI (v5 has `db memories`? — `db_cmd.rs`; no `memories` verb family), the vendored `help/` (p4.9i2). CONVERGENCE: none (242 / 244 `Original to v4`). | **ORDERED(P4.D288 (the retired verbs deleted, the new ones registered), P4.D297 (repair, bug 244), P4.D298, P4.D300 (the Maintenance card + dialog), P4.D301 (bug 242), P4.D303)** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `48790fb73` | 2026-10-13 | Close the memory refactor: record the Friday backfill; fix three report labels | **PORT (labels, riding Phase G's new surfaces) + ⚠ LIVE-DATA FACT** (classified 2026-10-13 late evening from the hunks; 32 files, +105 / −65; parent `b045dd986`). Code: `maintenance-report.tsx` ("Clusters found" → "Clusters worth folding", `clustersQualified`; "Protected" → "exempt"), `memory-maintenance-card.tsx`, `memory-maintenance-ledger.tsx` (a no-excess demotion reads "Within the cap", muted), the CLI `memories-maintain-command.js` — all on surfaces `b045dd986` created, so they port WITH it. Docs: the refactor spec → `features/complete/`, link fixes across `bugs/fixed/*`, `help/cli-memories.md` + `memory-maintenance.md` (one word each), ROADMAP. **The spec's "Friday backfill (E2) — done 2026-10-13" records v4 migrating LIVE FRIDAY at 22:24 UTC** — ten refactor migrations, 44,240 memories, the vector mirror dropped, 3,166 importances recomputed, 1,862 `occurredAt` re-zoned, then maintenance: ~120 digests, ~250 members superseded, 913 demoted (cap override lowered 10,000 → 2,500). The §1 LIVE-DATA HAZARDS block moved ARMED → FIRED on this. CONVERGENCE: none. | **ORDERED(P4.D297 (server labels), P4.D300 (SPA labels), P4.D303 (docs))** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `9ec4fa2e9` | 2026-10-13 | Memory refactor V4test dogfood; file bugs 245 and 246 | **NO-PORT?** (classified 2026-10-13 late evening from the hunks; 10 files, +187 / −7; parent `48790fb73`). Docs (bugs 245 / 246 filed OPEN, the phase B–G acceptance walks), version stamps, and ONE code hunk: `packages/quilltap/lib/memories-commands.js` — `memories status` prints a no-excess demotion as "within the cap". v5's CLI has no `memories` verb family (Tier R ported `db` / `docs` / `instances` / `sync` / `anchor-probe` / `recall-replay`), so the line has no v5 home today — it rides whichever order ports `memories status`. Ratify at the round that does. | **ORDERED(P4.D303 — NO-PORT ratification)** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `64743ee13` | 2026-10-13 | Fix bugs 245 and 246: reopened turns re-extracted; consolidation token budget | **PORT — NO migration (a new free-text cursor `pass`); a bundle KEY added** (classified 2026-10-13 late evening from the hunks, §5.3; 38 files, +637 / −95; `4.10.0-dev.175`, parent `9ec4fa2e9`). **Bug 245:** `ExtractionCursorPassEnum` gains `'turn'` (`FoldCursorPass` excludes it); `extraction/turn.ts` + `window.ts` + `passes/other-turn.ts` — a live turn job reads past the forward-only `turn` cursor, earlier lines of the turn (opener included) become context under "EARLIER IN THIS TURN" (`turn-transcript.ts` +131, `priorSlices`), SELF only for speakers with new lines, OTHER for everyone (earlier speakers on new lines only), a bound outside the turn ignored; `memory-regenerate-chat.ts` clears it and never reads it; regenerate / `queue-memories` bound each autonomous speaker by the previous anchor (`listExtractionTurns`); `cursor-bundle.ts` + `uuid-remap.ts` + `message-id-remap.ts` carry / remap `turnExtractionWatermarkMessageId`; `qtap-export.schema.json` gains the key (re-vendor). **Bug 246:** `consolidation-tasks.ts` `profileMaxTokensFor` — the routed profile's `resolveMaxTokens` with 4,000 as a floor; an empty answer logged as empty. v5: the per-turn extraction + turn transcript (`services/carina_memory_extraction.rs`, `memory_processor.rs`, the P4.D270 passes — v5 is still pre-Phase-D, so this rides the cursor-table port ruled 2026-10-13), the backup / restore / `.qtap` carriers (P4.D264 / P4.D272), `services/consolidation.rs` (P4.D271), `docs/v4/` + the vendored export schema. CONVERGENCE: none (`Original to v4`). | **ORDERED(P4.D288 (the `turn` cursor pass), P4.D296 (bug 245), P4.D297 (bug 246), P4.D293 / P4.D294 (`turnExtractionWatermarkMessageId`))** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
-| `83334b9a5` | 2026-10-13 | Release checklist 4: API standard audit; use successResponse in new handlers | **NO-PORT?** (classified 2026-10-14 from the hunks, §5.3; 15 files, +41 / −35; `4.10.0-dev.176`, parent `64743ee13`). Every `app/` / `lib/` hunk line is a `NextResponse.json(x)` / `NextResponse.json(x, { status })` → `successResponse(x[, status])` swap or the import widening that brings `successResponse` in — measured by `git show 83334b9a5 -- app lib \| grep -E '^[-+]' \| grep -v 'NextResponse.json\|successResponse'` returning ONLY the five import lines; `successResponse` (`lib/api/responses.ts:63-68`) IS `NextResponse.json(data, { status })` with `status = 200`, so every response is byte-identical (status, body, headers). Sites: `chats/[id]/actions/{impersonation-voice-preview,inform,rebuild-summary,story-background}.ts`, `chats/[id]/handlers/get.ts`, `connection-profiles/[id]/route.ts`, `memories/route.ts` (manual create's 201/200, `maintain` both arms, `maintenance-status`, `repair`, the maintenance / consolidation config reads + writes), `plugins/[name]/route.ts`, `lib/mount-index/scenario-item-route-factory.ts`. Plus `memories-manual-create.test.ts`'s mock now honouring `status` (tests-only), CHANGELOG, README badge, version stamps (no lockfile hunk beyond the root `version` lines). No dependency, schema, help or `docs/` (beyond CHANGELOG) move. | v5 effect: NONE in behaviour; pin line numbers in the touched files shift by zero lines (one-for-one swaps). Rides the memory + scenarios round's pin. | **ORDERED(P4.D303 — NO-PORT ratification)** — the `83334b9a5` memory-refactor + scenarios round, 2026-10-14 |
 | `7417e9a1b` | 2026-10-13 | Release checklist 5: dead code sweep | **NO-PORT?** (classified 2026-10-14 from the hunks; 21 files, +80 / −338; `4.10.0-dev.177`, parent `83334b9a5`; the dirt the earlier probe recorded, committed). Every `lib/` hunk deletes an export with NO production caller: the `lib/memory/index.ts` (189) and `lib/memory/recall/index.ts` (47) BARRELS, `createMountWardrobeItem` / `deleteMountWardrobeItem` (`wardrobe-writes.ts`), `withMemoryTimeZone` + its `[Memory] Extraction clock zone resolved` DEBUG (`extraction/prompts/shared.ts` — no caller, as the extraction survey measured; the prompt bodies untouched), `MEMORY_CALENDAR_DAY_MS` (`time/calendar.ts`), `emptyBase` + two sync type aliases moved inline (`mount-index/sync`), `ProgressionIssue`, `EXTRACTION_CURSOR_PASSES`, `isModerationRefusal`; tests, `knip.json`, `DEAD-CODE-REPORT.md`, CHANGELOG, the refactor spec (one line), stamps. ⚠ **Oracle effect at a later pin:** any `harness/oracle` case importing the `@/lib/memory` or `@/lib/memory/recall` BARREL, or one of the deleted names, goes IMPORT-DEAD — measure at the next pin. | None in behaviour; the `83334b9a5` round's pin predates it. | **UNPROCESSED** — past the `83334b9a5` round's pin |
 | `01f508d4e` | 2026-10-13 | Release checklist 6: prune leftover debug logging | **PORT — log lines only** (classified 2026-10-14 from the hunks; 9 files, +12 / −17; `4.10.0-dev.178`, parent `7417e9a1b`). DEBUG lines REMOVED: `[Transcript] Projecting chat transcript` (`lib/chat/transcript-projection.ts`), `[Sync] Reading disk file` (`lib/mount-index/sync/apply-disk.ts`), the SPA `console.debug('[useWardrobeItemActions] Duplicating wardrobe item', …)`. RENAMED: `markMailAlertsDelivered` → `Mail alerts marked delivered`, `discardLetter` → `Letter discarded` (`lib/post-office/mailbox.ts`, fields unchanged). | The `83334b9a5` round ports `markMailAlertsDelivered` with its PIN text (P4.D291 — the mail deferral); v5's transcript projection, the sync disk read and the Post Office letter discard carry the pre-commit lines where ported. A small catch-up (or rider) re-pins them. | **UNPROCESSED** — past the `83334b9a5` round's pin |
 | `a42c282b8` | 2026-10-13 | Release checklist 7: qt-* theme classes | **PORT — one SPA class attribute** (classified 2026-10-15 from the hunks, §5.3; 6 files, +11 / −6; `4.10.0-dev.179`, parent `01f508d4e`). The message says 158 components were REVIEWED; exactly ONE ships a hunk: `components/memory/memory-card.tsx` — the archived card's "Superseded by a digest" `<button>` `className="text-primary hover:underline"` → `className="qt-link"` ("so themes control its color"). Everything else is `docs/CHANGELOG.md` (+5), the README badge, the three version stamps (`package.json`, `packages/quilltap/package.json`, the lockfile's two root `version` lines). No `lib/`, `app/api/`, schema, migration, dependency, `help/` or bug-file hunk. | v5 `apps/web/src/app/memory/memory-card.ts:70` (the P4.D276 memory-SPA card; last touched in the `01a83539d` round) carries the PRE-commit `class="text-primary hover:underline"` on that exact button, and `memory-card.spec.ts:253` asserts `classList.contains('text-primary')` — a one-token swap + one spec line. `.qt-link` already exists in the SPA (`styles/qt-components/_typography.css:157`, `_interactive.css:221/:227`; 19 other `class="qt-link…"` sites). The other `text-primary hover:underline` buttons in `memory-card.ts` (`:77` expand, `:114`, `:125` edit) and `memory-list.ts:143` are UNCHANGED in v4 — do not over-port. | **UNPROCESSED — past the `83334b9a5` round's pin** |
@@ -911,6 +455,71 @@ the disposable copy proves the mechanism but is a weaker claim — offer it,
 don't silently swap it in.
 
 ## §6 History
+
+- **The `83334b9a5` memory-refactor + scenarios drift catch-up round
+  (2026-10-15, baseline `4a38222e6` → `83334b9a5`; {P4.D289 → P4.D288} →
+  {P4.D290 → {P4.D296 ∥ P4.D297 ∥ P4.D298}} ∥ P4.D291 ∥ P4.D292 ∥ P4.D293 ∥
+  P4.D294 ∥ P4.D295, with P4.D299 ∥ P4.D300 ∥ P4.D301 ∥ P4.D302 ∥ P4.D303 —
+  sixteen lanes):** the twenty rows retired. **NO-PORT-RATIFIED(P4.D303):**
+  `4ce64fa1e` (the merge renumbering the picker bug to 229 — v5 already 229),
+  `9ec4fa2e9` (the V4test dogfood — docs + one `memories status` line with
+  no v5 home), `83334b9a5` (identical-output `successResponse` swaps).
+  `97f0d8cb8` (bug 229, the folder picker) ABSORBED(P4.D285) — ported ahead
+  of the baseline in the `4a38222e6` round (R-P). **ABSORBED:** `545e299bb`
+  (scenarios from anywhere — the EIGHTH D23 move, `chats.scenarioSource` /
+  `scenarioNotes`, the location + browser + source tracking) ABSORBED(P4.D288,
+  P4.D293, P4.D294, P4.D295, P4.D302, P4.D303); `124c8aca3` (memory Phase 0,
+  bugs 199–201 — the trailing-only recall, the gate's orphan widen, the chat
+  wipe sparing manual / cold / digest rows) ABSORBED(P4.D288, P4.D291,
+  P4.D298); `69d38dd60` (bug 227, the deferred mail flip + one trailing-
+  section list) ABSORBED(P4.D291); `8050958be` (bug 228, reminted message
+  ids on a fresh-id `.qtap` chat import) ABSORBED(P4.D294); `c2795733f` (bugs
+  203–226, five migrations) ABSORBED(P4.D288, P4.D289, P4.D290, P4.D291,
+  P4.D292, P4.D296, P4.D297, P4.D298); `e0ac7493a` (Phase A — scoring, the
+  memory calendar, the settings move with its three DROP COLUMNs, the
+  candidate, bugs 230–234) ABSORBED(P4.D288, P4.D289, P4.D293, P4.D298,
+  P4.D300); `af48f6cc2` (Phase B — the index owns the vectors, ONE deletion
+  path, the vector tables DROPPED after verify-and-copy — the human's MIRROR
+  ruling) ABSORBED(P4.D288, P4.D292, P4.D293, P4.D298); `8af764514` (Phase
+  C — admission in the parent, one combine, the lowercase `action` wire)
+  ABSORBED(P4.D289, P4.D290, P4.D298); `ac6348c5f` (Phase D — extraction as
+  one context and four passes, the cursor table, BOTH chat watermark columns
+  DROPPED — P4.D265's chat-column ensure RETIRED by the human's ruling)
+  ABSORBED(P4.D288, P4.D293, P4.D294, P4.D296); `93c5af6ad` (bugs 236–241:
+  the manual create, admission's mixed-dimension neighbours, the fold OTHER
+  date, the lock `port`, the chats-only import's memories, the submission
+  ledger) ABSORBED(P4.D290, P4.D294, P4.D296, P4.D298, P4.D299, P4.D301) with
+  bug 235 (`processSingleton`) NO-PORT by name (P4.D303) and bug 241's
+  transport halves NO-PORT (R-AC); `584d28164` (Phase E — recall as a
+  pipeline, delivery as the one access writer, the debug labels gone from the
+  model-visible text, `debugMemoryLogs`, the replay's trace) ABSORBED(P4.D291,
+  P4.D298); `4ae0c4ca6` (the TF-IDF tuning — the NINTH D23 move
+  `tfidf_vocabularies.textShapeVersion`, the refit policy, per-provider
+  admission thresholds, the lexical embedding text) ABSORBED(P4.D288,
+  P4.D289, P4.D290, P4.D292, P4.D293) with bug 243 (the forked child's
+  plugin race) NO-PORT by name (P4.D303); `104e986c7` (Phase F — ONE
+  `MEMORY_MAINTENANCE` job, the housekeeping / consolidation jobs and the
+  `memory-dedup` tool DELETED, the job-row migration) ABSORBED(P4.D288,
+  P4.D297, P4.D300); `b045dd986` (Phase G — the Maintenance card + dialog +
+  CLI, `?action=repair`, bug 242's `inChain`, bug 244's `patchSchemaOf` —
+  v5's ruled `PARTIAL_DEFAULTS_CLOBBER` CONVERGED to `PATCH_PRESERVES_STORED`)
+  ABSORBED(P4.D297, P4.D298, P4.D300, P4.D301); `48790fb73` (the refactor's
+  close — three labels, the Friday backfill record) ABSORBED(P4.D300,
+  P4.D303); `64743ee13` (bugs 245 / 246 — the `turn` cursor pass, the turn
+  transcript, the bundles' `turnExtractionWatermarkMessageId`, the
+  consolidation budget floor) ABSORBED(P4.D294, P4.D296, P4.D297). Deferred
+  by name and carried in the orders' headers: R-W (extraction's Tier-3 loud
+  refusals), the CLI `memories` family (R-O, OUT), P4.D291's Tier 2 #24
+  recall-probe fixture, P4.D298's `create_project_explicit_wins`, the
+  repository-fallback `?` reads the review listed for the follow-ups round.
+  The SEVENTEEN commits past the pin (`a42c282b8` … `362426c8f`, incl. the
+  `release: 4.10.0` squash and the TENTH D23 move) and the two the orders'
+  commit recorded (`7417e9a1b`, `01f508d4e`) stay in §3; every regen, the
+  whole sweep and every live-checkout guard ran from the pin
+  `/tmp/qt-v4-pin-unify-83334b9a5` with its own `npm ci --offline` tree. The
+  LIVE-DATA HAZARDS block RETIRED by measurement (§1). Round record:
+  `status-log.md` → "The `83334b9a5` memory-refactor + scenarios drift
+  catch-up round — UNIFICATION record".
 
 - **The `4a38222e6` wardrobe-programme drift catch-up round (2026-10-13,
   baseline `01a83539d` → `4a38222e6`; P4.D279 → {P4.D280 ∥ P4.D281 ∥

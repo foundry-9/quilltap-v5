@@ -9,11 +9,11 @@ disposition. **Generated** — regenerate with:
 
 | disposition | meaning | count |
 |---|---|---|
-| `PORTED-PINNED` | a v5 tracing site carries the sentence AND a test asserts it | 23 |
-| `PORTED-UNPINNED` | a v5 tracing site carries it; nothing asserts it | 95 |
+| `PORTED-PINNED` | a v5 tracing site carries the sentence AND a test asserts it | 25 |
+| `PORTED-UNPINNED` | a v5 tracing site carries it; nothing asserts it | 115 |
 | `NO-PORT-RECORDED` | no v5 site, but a v5 comment records the decision | 8 |
-| `NO-SITE` | neither | 127 |
-| **total** | | **253** |
+| `NO-SITE` | neither | 95 |
+| **total** | | **243** |
 
 A match inside a v5 comment never counts as a port: several sites quote a v4
 sentence precisely to record that it was deliberately not ported.
@@ -123,19 +123,14 @@ sentence precisely to record that it was deliberately not ported.
 | 138 | info | `Autonomous run-start: run begun` | — | NO-SITE |
 | 154 | debug | `Autonomous run-start: routing scheduled start to host via RPC` | — | NO-SITE |
 
-### `lib/background-jobs/handlers/carina-memory-extraction.ts` — 9 line(s) (NO-SITE 8, PORTED-UNPINNED 1)
+### `lib/background-jobs/handlers/carina-memory-extraction.ts` — 4 line(s) (PORTED-UNPINNED 4)
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 49 | warn | `[CarinaMemoryExtraction] Chat not found at job execution; skipping` | — | NO-SITE |
-| 58 | warn | `[CarinaMemoryExtraction] Answerer character not found; skipping` | — | NO-SITE |
-| 75 | warn | `[CarinaMemoryExtraction] Carina message not found; skipping` | — | NO-SITE |
-| 86 | info | `[CarinaMemoryExtraction] Carina message has no answer text; skipping` | — | NO-SITE |
-| 154 | error | `[CarinaMemoryExtraction] Extraction passes lost to a cheap-LLM timeout; failing the job for retry` | `services/carina_memory_extraction.rs:275` | PORTED-UNPINNED |
-| 164 | warn | `[CarinaMemoryExtraction] Processing did not succeed` | — | NO-SITE |
-| 170 | info | `[CarinaMemoryExtraction] Reference answer processed` | — | NO-SITE |
-| 190 | warn | `[CarinaMemoryExtraction] Failed to store debug logs` | — | NO-SITE |
-| 215 | warn | `[CarinaMemoryExtraction] Failed to emit token tracking event` | — | NO-SITE |
+| 32 | warn | `[CarinaMemoryExtraction] Answerer character not found; skipping` | `services/carina_memory_extraction.rs:83` | PORTED-UNPINNED |
+| 42 | warn | `[CarinaMemoryExtraction] Carina message not found; skipping` | `services/carina_memory_extraction.rs:99` | PORTED-UNPINNED |
+| 52 | info | `[CarinaMemoryExtraction] Carina message has no answer text; skipping` | `services/carina_memory_extraction.rs:116` | PORTED-UNPINNED |
+| 60 | info | `[CarinaMemoryExtraction] Reference answer processed` | `services/carina_memory_extraction.rs:130` | PORTED-UNPINNED |
 
 ### `lib/background-jobs/handlers/character-avatar.ts` — 18 line(s) (NO-SITE 2, PORTED-UNPINNED 16)
 
@@ -186,45 +181,48 @@ sentence precisely to record that it was deliberately not ported.
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 56 | warn | `[ContextSummary] Summary update did not run` | `services/context_summary_job.rs:163` | PORTED-UNPINNED |
+| 56 | warn | `[ContextSummary] Summary update did not run` | `services/context_summary_job.rs:171` | PORTED-UNPINNED |
 | 68 | info | `[ContextSummary] Summary updated` | — | NO-SITE |
-| 80 | debug | `[ContextSummary] Summary classification off for this chat; not chaining` | `services/context_summary_job.rs:192` | PORTED-UNPINNED |
+| 80 | debug | `[ContextSummary] Summary classification off for this chat; not chaining` | `services/context_summary_job.rs:200` | PORTED-UNPINNED |
 | 96 | warn | `[ContextSummary] Failed to chain danger classification job` | — | NO-SITE |
 
-### `lib/background-jobs/handlers/conversation-render.ts` — 4 line(s) (PORTED-UNPINNED 4)
+### `lib/background-jobs/handlers/conversation-render.ts` — 6 line(s) (NO-SITE 2, PORTED-UNPINNED 4)
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
 | 27 | warn | `[ConversationRender] Chat not found, skipping` | `services/conversation_render_job.rs:144` | PORTED-UNPINNED |
 | 39 | debug | `[ConversationRender] Chat has no events, nothing to render` | `services/conversation_render_job.rs:157` | PORTED-UNPINNED |
-| 92 | warn | `[ConversationRender] Failed to enqueue embedding, continuing` | `services/conversation_render_job.rs:197` | PORTED-UNPINNED |
-| 101 | info | `[ConversationRender] Conversation rendered successfully` | `services/conversation_render_job.rs:210` | PORTED-UNPINNED |
+| 79 | debug | `[ConversationRender] Chunks upserted` | — | NO-SITE |
+| 107 | debug | `[ConversationRender] No default embedding profile; chunks left for the startup reconcile` | — | NO-SITE |
+| 115 | warn | `[ConversationRender] Failed to enqueue embedding, continuing` | `services/conversation_render_job.rs:197` | PORTED-UNPINNED |
+| 124 | info | `[ConversationRender] Conversation rendered successfully` | `services/conversation_render_job.rs:210` | PORTED-UNPINNED |
 
-### `lib/background-jobs/handlers/embedding-generate.ts` — 21 line(s) (NO-SITE 4, PORTED-UNPINNED 17)
+### `lib/background-jobs/handlers/embedding-generate.ts` — 22 line(s) (NO-SITE 4, PORTED-PINNED 3, PORTED-UNPINNED 15)
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 62 | warn | `[EmbeddingGenerate] Skipping empty entity` | `services/embedding_generate_job.rs:607` | PORTED-UNPINNED |
+| 62 | warn | `[EmbeddingGenerate] Skipping empty entity` | `services/embedding_generate_job.rs:637` | PORTED-UNPINNED |
 | 82 | warn | `[EmbeddingGenerate] Skipping oversize entity` | — | NO-SITE |
-| 128 | warn | `[EmbeddingGenerate] Memory not found` | `services/embedding_generate_job.rs:296` | PORTED-UNPINNED |
-| 196 | info | `[EmbeddingGenerate] Embedding generated successfully` | `services/embedding_generate_job.rs:410` | PORTED-UNPINNED |
-| 216 | warn | `[EmbeddingGenerate] Permanent embedding error — marked failed, skipping retry` | `services/embedding_generate_job.rs:237` | PORTED-UNPINNED |
-| 225 | error | `[EmbeddingGenerate] Failed to generate embedding` | `services/embedding_generate_job.rs:246` | PORTED-UNPINNED |
-| 248 | warn | `[EmbeddingGenerate] Conversation chunk not found` | `services/embedding_generate_job.rs:440` | PORTED-UNPINNED |
-| 281 | info | `[EmbeddingGenerate] Conversation chunk embedding generated` | `services/embedding_generate_job.rs:526` | PORTED-UNPINNED |
-| 301 | warn | `[EmbeddingGenerate] Permanent embedding error — marked failed, skipping retry` | `services/embedding_generate_job.rs:237` | PORTED-UNPINNED |
-| 311 | error | `[EmbeddingGenerate] Failed to generate conversation chunk embedding` | — | NO-SITE |
-| 371 | debug | `[EmbeddingGenerate] Embedding help doc sections` | `services/embedding_generate_job.rs:753` | PORTED-UNPINNED |
-| 404 | warn | `[EmbeddingGenerate] Help doc section embedding failed — skipping section` | `services/embedding_generate_job.rs:898` | PORTED-UNPINNED |
-| 469 | warn | `[EmbeddingGenerate] Help doc not found` | `services/embedding_generate_job.rs:550` | PORTED-UNPINNED |
-| 491 | warn | `[EmbeddingGenerate] Skipping empty entity` | `services/embedding_generate_job.rs:607` | PORTED-UNPINNED |
-| 517 | info | `[EmbeddingGenerate] Help doc embedding generated` | `services/embedding_generate_job.rs:651` | PORTED-UNPINNED |
-| 540 | warn | `[EmbeddingGenerate] Permanent embedding error — marked failed, skipping retry` | `services/embedding_generate_job.rs:237` | PORTED-UNPINNED |
-| 549 | error | `[EmbeddingGenerate] Failed to generate help doc embedding` | — | NO-SITE |
-| 572 | warn | `[EmbeddingGenerate] Mount chunk not found` | `services/embedding_generate_job.rs:932` | PORTED-UNPINNED |
-| 614 | info | `[EmbeddingGenerate] Mount chunk embedding generated` | `services/embedding_generate_job.rs:1019` | PORTED-UNPINNED |
-| 633 | warn | `[EmbeddingGenerate] Permanent embedding error — marked failed, skipping retry` | `services/embedding_generate_job.rs:237` | PORTED-UNPINNED |
-| 642 | error | `[EmbeddingGenerate] Failed to generate mount chunk embedding` | — | NO-SITE |
+| 128 | warn | `[EmbeddingGenerate] Memory not found` | `services/embedding_generate_job.rs:336` | PORTED-PINNED |
+| 153 | debug | `[EmbeddingGenerate] Built memory embedding text` | `services/embedding_generate_job.rs:379` | PORTED-PINNED |
+| 186 | info | `[EmbeddingGenerate] Embedding generated successfully` | `services/embedding_generate_job.rs:439` | PORTED-PINNED |
+| 206 | warn | `[EmbeddingGenerate] Permanent embedding error — marked failed, skipping retry` | `services/embedding_generate_job.rs:274` | PORTED-UNPINNED |
+| 215 | error | `[EmbeddingGenerate] Failed to generate embedding` | `services/embedding_generate_job.rs:283` | PORTED-UNPINNED |
+| 238 | warn | `[EmbeddingGenerate] Conversation chunk not found` | `services/embedding_generate_job.rs:469` | PORTED-UNPINNED |
+| 271 | info | `[EmbeddingGenerate] Conversation chunk embedding generated` | `services/embedding_generate_job.rs:556` | PORTED-UNPINNED |
+| 291 | warn | `[EmbeddingGenerate] Permanent embedding error — marked failed, skipping retry` | `services/embedding_generate_job.rs:274` | PORTED-UNPINNED |
+| 301 | error | `[EmbeddingGenerate] Failed to generate conversation chunk embedding` | — | NO-SITE |
+| 361 | debug | `[EmbeddingGenerate] Embedding help doc sections` | `services/embedding_generate_job.rs:783` | PORTED-UNPINNED |
+| 394 | warn | `[EmbeddingGenerate] Help doc section embedding failed — skipping section` | `services/embedding_generate_job.rs:929` | PORTED-UNPINNED |
+| 459 | warn | `[EmbeddingGenerate] Help doc not found` | `services/embedding_generate_job.rs:580` | PORTED-UNPINNED |
+| 481 | warn | `[EmbeddingGenerate] Skipping empty entity` | `services/embedding_generate_job.rs:637` | PORTED-UNPINNED |
+| 507 | info | `[EmbeddingGenerate] Help doc embedding generated` | `services/embedding_generate_job.rs:681` | PORTED-UNPINNED |
+| 530 | warn | `[EmbeddingGenerate] Permanent embedding error — marked failed, skipping retry` | `services/embedding_generate_job.rs:274` | PORTED-UNPINNED |
+| 539 | error | `[EmbeddingGenerate] Failed to generate help doc embedding` | — | NO-SITE |
+| 562 | warn | `[EmbeddingGenerate] Mount chunk not found` | `services/embedding_generate_job.rs:963` | PORTED-UNPINNED |
+| 604 | info | `[EmbeddingGenerate] Mount chunk embedding generated` | `services/embedding_generate_job.rs:1051` | PORTED-UNPINNED |
+| 623 | warn | `[EmbeddingGenerate] Permanent embedding error — marked failed, skipping retry` | `services/embedding_generate_job.rs:274` | PORTED-UNPINNED |
+| 632 | error | `[EmbeddingGenerate] Failed to generate mount chunk embedding` | — | NO-SITE |
 
 ### `lib/background-jobs/handlers/embedding-reapply-profile.ts` — 3 line(s) (NO-SITE 3)
 
@@ -234,18 +232,18 @@ sentence precisely to record that it was deliberately not ported.
 | 35 | info | `[EmbeddingReapplyProfile] Profile has no truncateToDimensions; nothing to do` | — | NO-SITE |
 | 43 | info | `[EmbeddingReapplyProfile] Completed` | — | NO-SITE |
 
-### `lib/background-jobs/handlers/embedding-refit.ts` — 8 line(s) (NO-SITE 8)
+### `lib/background-jobs/handlers/embedding-refit.ts` — 8 line(s) (NO-SITE 1, PORTED-UNPINNED 7)
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 27 | error | `[EmbeddingRefit] Failed to load TF-IDF vectorizer` | — | NO-SITE |
-| 42 | info | `[EmbeddingRefit] Starting vocabulary refit` | — | NO-SITE |
-| 56 | warn | `[EmbeddingRefit] Profile is not BUILTIN, skipping refit` | — | NO-SITE |
-| 69 | info | `[EmbeddingRefit] No characters found, skipping refit` | — | NO-SITE |
-| 85 | info | `[EmbeddingRefit] No memories found, skipping refit` | — | NO-SITE |
-| 103 | warn | `[EmbeddingRefit] Failed to load help docs for corpus, continuing without them` | — | NO-SITE |
-| 134 | info | `[EmbeddingRefit] Vocabulary fitted and saved` | — | NO-SITE |
-| 147 | info | `[EmbeddingRefit] Enqueued reindex job` | — | NO-SITE |
+| 28 | error | `[EmbeddingRefit] Failed to load TF-IDF vectorizer` | — | NO-SITE |
+| 43 | info | `[EmbeddingRefit] Starting vocabulary refit` | `services/embedding_refit_job.rs:87` | PORTED-UNPINNED |
+| 57 | warn | `[EmbeddingRefit] Profile is not BUILTIN, skipping refit` | `services/embedding_refit_job.rs:105` | PORTED-UNPINNED |
+| 76 | debug | `[EmbeddingRefit] Corpus gathered` | `services/embedding_refit_job.rs:134` | PORTED-UNPINNED |
+| 84 | info | `[EmbeddingRefit] No memories found, skipping refit` | `services/embedding_refit_job.rs:143` | PORTED-UNPINNED |
+| 106 | warn | `[EmbeddingRefit] Failed to load help docs for corpus, continuing without them` | `services/embedding_refit_job.rs:166` | PORTED-UNPINNED |
+| 138 | info | `[EmbeddingRefit] Vocabulary fitted and saved` | `services/embedding_refit_job.rs:206` | PORTED-UNPINNED |
+| 151 | info | `[EmbeddingRefit] Enqueued reindex job` | `services/embedding_refit_job.rs:225` | PORTED-UNPINNED |
 
 ### `lib/background-jobs/handlers/embedding-reindex.ts` — 7 line(s) (NO-SITE 4, PORTED-UNPINNED 3)
 
@@ -254,10 +252,10 @@ sentence precisely to record that it was deliberately not ported.
 | 86 | info | `[EmbeddingReindexAll] Starting reindex` | — | NO-SITE |
 | 125 | info | `[EmbeddingReindexAll] Cancelled stale embedding jobs` | — | NO-SITE |
 | 196 | info | `[EmbeddingReindexAll] Help docs synced from disk` | — | NO-SITE |
-| 225 | error | `[EmbeddingReindexAll] Failed to process help docs` | `services/embedding_reindex_job.rs:276` | PORTED-UNPINNED |
-| 279 | error | `[EmbeddingReindexAll] Failed to process conversation chunks` | `services/embedding_reindex_job.rs:349` | PORTED-UNPINNED |
-| 301 | error | `[EmbeddingReindexAll] Failed to process document mount chunks` | `services/embedding_reindex_job.rs:363` | PORTED-UNPINNED |
-| 325 | info | `[EmbeddingReindexAll] Reindex jobs enqueued` | — | NO-SITE |
+| 225 | error | `[EmbeddingReindexAll] Failed to process help docs` | `services/embedding_reindex_job.rs:277` | PORTED-UNPINNED |
+| 272 | error | `[EmbeddingReindexAll] Failed to process conversation chunks` | `services/embedding_reindex_job.rs:344` | PORTED-UNPINNED |
+| 294 | error | `[EmbeddingReindexAll] Failed to process document mount chunks` | `services/embedding_reindex_job.rs:358` | PORTED-UNPINNED |
+| 318 | info | `[EmbeddingReindexAll] Reindex jobs enqueued` | — | NO-SITE |
 
 ### `lib/background-jobs/handlers/llm-log-cleanup.ts` — 3 line(s) (NO-SITE 1, PORTED-UNPINNED 2)
 
@@ -267,47 +265,34 @@ sentence precisely to record that it was deliberately not ported.
 | 59 | info | `[LLMLogCleanup] Cleanup completed` | `services/llm_log_cleanup_job.rs:178` | PORTED-UNPINNED |
 | 66 | error | `[LLMLogCleanup] Cleanup failed` | — | NO-SITE |
 
-### `lib/background-jobs/handlers/memory-extraction.ts` — 9 line(s) (NO-SITE 7, PORTED-PINNED 1, PORTED-UNPINNED 1)
+### `lib/background-jobs/handlers/memory-extraction.ts` — 8 line(s) (NO-SITE 1, PORTED-UNPINNED 7)
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 56 | info | `[MemoryExtraction] Fold-grain OTHER catch-up processed` | `services/memory_extraction_job.rs:189` | PORTED-PINNED |
-| 76 | warn | `[MemoryExtraction] Chat not found at job execution; skipping` | — | NO-SITE |
-| 116 | info | `[MemoryExtraction] Turn has no character contributions; skipping` | — | NO-SITE |
-| 140 | debug | `[MemoryExtraction] Project description unavailable; continuing without it` | — | NO-SITE |
-| 202 | error | `[MemoryExtraction] Extraction passes lost to a cheap-LLM timeout; failing the job for retry` | `services/memory_extraction_job.rs:433` | PORTED-UNPINNED |
-| 212 | warn | `[MemoryExtraction] Processing did not succeed` | — | NO-SITE |
-| 218 | info | `[MemoryExtraction] Turn processed` | — | NO-SITE |
-| 238 | warn | `[MemoryExtraction] Failed to store debug logs` | — | NO-SITE |
-| 263 | warn | `[MemoryExtraction] Failed to emit token tracking event` | — | NO-SITE |
+| 53 | error | `[MemoryExtraction] Extraction passes lost to a cheap-LLM timeout; failing the job for retry` | `services/memory_extraction_job.rs:174` | PORTED-UNPINNED |
+| 71 | warn | `[MemoryExtraction] Failed to store debug logs` | `services/memory_extraction_job.rs:208` | PORTED-UNPINNED |
+| 90 | warn | `[MemoryExtraction] Failed to emit token tracking event` | — | NO-SITE |
+| 114 | warn | `[MemoryExtraction] Chat not found at job execution; skipping` | `services/memory_extraction_job.rs:298` | PORTED-UNPINNED |
+| 132 | info | `[MemoryExtraction] Fold catch-up processed` | `services/memory_extraction_job.rs:373` | PORTED-UNPINNED |
+| 159 | debug | `[MemoryExtraction] Fold catch-up continues in a follow-up job` | `services/memory_extraction_job.rs:417` | PORTED-UNPINNED |
+| 176 | info | `[MemoryExtraction] Turn has no character contributions; skipping` | `services/memory_extraction_job.rs:441` | PORTED-UNPINNED |
+| 183 | info | `[MemoryExtraction] Turn processed` | `services/memory_extraction_job.rs:457` | PORTED-UNPINNED |
 
-### `lib/background-jobs/handlers/memory-housekeeping.ts` — 5 line(s) (NO-SITE 5)
-
-| v4 line | level | sentence | v5 site | disposition |
-|---|---|---|---|---|
-| 44 | error | `[Housekeeping] Failed to enumerate characters for user` | — | NO-SITE |
-| 83 | debug | `[Housekeeping] Non-finite deleted count; using deleted id count` | — | NO-SITE |
-| 109 | info | `[Housekeeping] Completed sweep for character` | — | NO-SITE |
-| 124 | error | `[Housekeeping] Sweep failed for character` | — | NO-SITE |
-| 134 | info | `[Housekeeping] Job complete` | — | NO-SITE |
-
-### `lib/background-jobs/handlers/memory-regenerate-all.ts` — 3 line(s) (NO-SITE 3)
+### `lib/background-jobs/handlers/memory-regenerate-all.ts` — 3 line(s) (PORTED-UNPINNED 3)
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 73 | error | `[MemoryRegenerateAll] Failed to enqueue per-chat wipe` | — | NO-SITE |
-| 100 | error | `[MemoryRegenerateAll] Failed to enqueue orphan wipe` | — | NO-SITE |
-| 107 | info | `[MemoryRegenerateAll] Fan-out complete` | — | NO-SITE |
+| 73 | error | `[MemoryRegenerateAll] Failed to enqueue per-chat wipe` | `services/memory_regenerate_job.rs:293` | PORTED-UNPINNED |
+| 100 | error | `[MemoryRegenerateAll] Failed to enqueue orphan wipe` | `services/memory_regenerate_job.rs:320` | PORTED-UNPINNED |
+| 107 | info | `[MemoryRegenerateAll] Fan-out complete` | `services/memory_regenerate_job.rs:333` | PORTED-UNPINNED |
 
-### `lib/background-jobs/handlers/memory-regenerate-chat.ts` — 5 line(s) (NO-SITE 5)
+### `lib/background-jobs/handlers/memory-regenerate-chat.ts` — 3 line(s) (PORTED-UNPINNED 3)
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 37 | info | `[MemoryRegenerateChat] Chat no longer exists; deleted orphan memories` | — | NO-SITE |
-| 90 | info | `[MemoryRegenerateChat] Wiped chat and enqueued greeting extraction` | — | NO-SITE |
-| 112 | info | `[MemoryRegenerateChat] Wiped chat and enqueued per-turn extractions` | — | NO-SITE |
-| 135 | debug | `[MemoryRegenerateChat] Extraction mode is per-turn; no fold-grain rebuild` | — | NO-SITE |
-| 158 | debug | `[MemoryRegenerateChat] Reset fold-grain watermark and enqueued catch-up` | — | NO-SITE |
+| 39 | info | `[MemoryRegenerateChat] Chat no longer exists; deleted orphan memories` | `services/memory_regenerate_job.rs:122` | PORTED-UNPINNED |
+| 60 | debug | `[MemoryRegenerateChat] Cleared extraction cursors` | `services/memory_regenerate_job.rs:150` | PORTED-UNPINNED |
+| 107 | info | `[MemoryRegenerateChat] Wiped chat and enqueued its rebuild` | `services/memory_regenerate_job.rs:221` | PORTED-UNPINNED |
 
 ### `lib/background-jobs/handlers/regenerate-conversation-summaries.ts` — 2 line(s) (PORTED-UNPINNED 2)
 

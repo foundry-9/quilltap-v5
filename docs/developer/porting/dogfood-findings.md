@@ -641,6 +641,44 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+### From the `83334b9a5` unification (2026-10-15): the owed dogfood pass's queue and one check carried from the review
+
+1. **The copy rule tightened once more.** Dogfood ONLY on a Friday copy taken
+   BEFORE the human ran v4 past `362426c8f` (Pascal trigger phrases — v4 at
+   `4.11.0-dev` ALTERs live `chat_settings` with `customToolTriggers` and
+   writes `pascalMeta.invokedBy: 'trigger'` rows a v5 at the `83334b9a5`
+   baseline refuses on read / restore / import). A copy taken after v4's
+   memory-refactor migration (2026-10-13 22:24 UTC) is FINE now — the round's
+   headline row is exactly that: **the first v5 boot of a post-migration
+   copy runs every one of the twelve ensures as a measured NO-OP** (the boot
+   log's ensure lines, the ledger rows unchanged, `zero_migrations_rerun`'s
+   `v4-migrated` mode live).
+2. **The §S.8 queue** (each lane's own 💸 rows are in the lane records): a
+   PRE-round v5 instance (a planted pre-migration clone) migrated by v5's
+   ensures and then opened by v4 HEAD with ZERO migrations re-run — including
+   `add-memory-tiers-v1` on a `quilltap setup`-provisioned instance (the
+   unification's own fix: the settled-chain arm stamps it); a real turn with
+   memories (the new recall text without debug labels, the `debugMemoryLogs`
+   record, delivery stamps); an extraction turn writing the `turn` cursor —
+   then the extraction job's debug lines APPENDED under the turn's `[Recall]`
+   record (the review's blocking find: the union had erased it); a manual
+   `maintain` dry run then a real run (💸 cheap-LLM spend); the ledger card
+   refreshing; a chat wipe sparing manual / cold / digest rows; a backup →
+   restore round trip carrying cursors; a `.qtap` fresh-id chat import with
+   reminted message ids; a chats-only `.qtap` import under a BUILTIN default
+   profile → the forced refit job appearing ~5 s after the import (the
+   P4.D62 deferral retired at unification); a scenario chosen from the
+   browser, edited at its source, and reloaded; the send-failure composer
+   restore (kill the provider mid-send); an offset `occurredAt` manual create
+   (v4 400 / v5 201 until ruled); the Almanack's `Memory maintenance` line
+   (replacing the four retired housekeeping lines).
+3. **Bug 242's check (carried from the review, §S.7):** a single-character
+   turn on a FIRST turn (depth-0 `turnStart`) must refetch at `done`, notify
+   the queue and show the empty-response toast — the Salon reducer no longer
+   enters a chain on a depth-0 `turnStart`. Watch for the pre-fix symptom: a
+   one-character reply leaving an empty bubble with no toast.
+
+
 ### From the 2026-10-09 walk (the `f5e953a3f` round + the owed `94fbb1ae3` round): two orders, one ruling, three v4-side candidates
 
 1. **#156 → the follow-ups round: `with_both_conns` on a degraded mount index.** `services/image_job_common.rs:541-557` refuses with `DbError::Internal("image job requires the mount-index database")` for all 115 callers, and `db_error_response` has no `PartitionUnavailable` arm. Classify the callers against v4 surface by surface (the project / group / character routes reach v4's overlay-hydrate 503 `… document store unavailable` + #151's middleware ERROR — `handleAddChat` `chats.ts:137` is the measured case), give the helper a neutral refusal, and pin a degraded-clone row per family. Measured: `projectChatAdd`, `projectAestheticSet`.
