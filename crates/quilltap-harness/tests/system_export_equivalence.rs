@@ -756,5 +756,7 @@ fn assert_cursor_logs(name: &str, oracle: &Value, v5: &[String], failed: &mut Ve
 /// [P4.D294 Tier 2 #19] The oracle's `SCENARIO_TEXT_CELL_SQL`: `CHAT_1`'s stored
 /// `scenarioSource` a non-object TEXT cell (valid JSON — a string). v4's chats
 /// read refuses the row (`ScenarioSourceSchema` wants an object), so its export
-/// SKIPS the chat; the byte diff pins that v5's does the same.
+/// SKIPS the chat silently; v5's STRICT export (the 2026-10-02 ruling) FAILS
+/// whole with the ZodError — MEASURED DIFFERENT and pinned both ways below
+/// (P4.D294 item 19; flagged for the human: keep or converge).
 const SCENARIO_TEXT_CELL_SQL: &str = r#"UPDATE "chats" SET "scenarioSource" = '"Scenarios/Harbour.md"' WHERE "id" = 'c1000000-0000-4000-8000-000000000001'"#;

@@ -251,12 +251,12 @@ version bumps), and their findings are recorded here and in
 ```bash
 # 1. generate oracle output from the v4 checkout (imports real lib/ code)
 cd ~/source/quilltap-server
-npx tsx ~/source/quilltap-v5/harness/oracle/cases/memory-weighting.ts > /tmp/oracle-weighting.ndjson
-npx tsx ~/source/quilltap-v5/harness/oracle/cases/ranking-blend.ts    > /tmp/oracle-ranking.ndjson
+npx tsx ~/source/quilltap-v5/harness/oracle/cases/memory-scoring.ts > /tmp/oracle-memory-scoring.ndjson
+npx tsx ~/source/quilltap-v5/harness/oracle/cases/ranking-blend.ts  > /tmp/oracle-ranking.ndjson
 
 # 2. run the Rust diff (env vars point at the NDJSON; tests skip if unset)
 cd ~/source/quilltap-v5
-QT_ORACLE_WEIGHTING=/tmp/oracle-weighting.ndjson \
+QT_ORACLE_MEMORY_SCORING=/tmp/oracle-memory-scoring.ndjson \
 QT_ORACLE_RANKING=/tmp/oracle-ranking.ndjson \
   cargo test -p quilltap-harness
 ```
@@ -920,18 +920,58 @@ records THERE. Update this summary only when a phase or round completes.
   it), then the scenarios + memory-programme catch-up rounds (`/driftcheck`
   first; the two memory rulings MADE 2026-10-13 — ledger §1), then the follow-ups smalls round** —
   `phase-4.md`. Round record: `status-log.md`.
-- **Oracle baseline: `4a38222e6` (2026-10-12, v4 main — "Wardrobe folders —
-  file items into a tier's closet (#85)", `4.10.0-dev.148`), adopted at the
-  `4a38222e6` wardrobe-programme round's unification (2026-10-13).** **Drift state, the drift-check method, and the
-  pinned-worktree regen recipe live in `docs/developer/porting/drift-ledger.md`**
-  — maintained by `/driftcheck` and by `/unify` at baseline moves; the other
-  porting commands run the ledger's §2 freshness probe instead of
-  re-deriving drift, and lanes never write it. **Never restate the drift
-  count here — read the ledger's §1** (this bullet restated it once, went
-  stale within hours, and the restatement is gone for good). Still no
-  `release: 4.10.0` squash as of the 2026-10-13 check — re-probe BOTH
-  branches every time. The sweep driver remains the sanctioned per-family
-  regen path — never run two sweeps concurrently; it needs Python ≥ 3.12
+- **The `83334b9a5` memory-refactor + scenarios drift catch-up round
+  ({P4.D289 → P4.D288} → {P4.D290 → {P4.D296 ∥ P4.D297 ∥ P4.D298}} ∥ P4.D291 ∥
+  P4.D292 ∥ P4.D293 ∥ P4.D294 ∥ P4.D295, with P4.D299 ∥ P4.D300 ∥ P4.D301 ∥
+  P4.D302 ∥ P4.D303): UNIFIED on main (2026-10-15) — ALL SIXTEEN LANES
+  LANDED; the oracle baseline MOVES to `83334b9a5`; the ledger's LIVE-DATA
+  HAZARDS block RETIRES by measurement; NINETEEN commits past the pin stay in
+  §3 (v4 RELEASED 4.10.0 mid-round, started 4.11-dev, and landed the TENTH
+  D23 move — Pascal trigger phrases, `362426c8f`), PIN REQUIRED.** v4's memory
+  refactor whole: the eighth + ninth D23 re-dumps in ONE `fresh_schema.json`
+  (scenario source columns, `textShapeVersion`, `supersededAt`, the cursor
+  table; the vector tables and the chat watermark columns GONE), twelve
+  migrations as boot ensures (three DESTRUCTIVE, two data rewrites stamped),
+  scoring / the memory calendar / the candidate / pure admission (P4.D289),
+  the keystone (P4.D288), stateful admission with the lock + SHA-1 ledger +
+  one combine (P4.D290), recall as a pipeline + delivery as the one access
+  writer (P4.D291), the TF-IDF refit policy + the index backfill (P4.D292),
+  the backup / restore + `.qtap` carriers (P4.D293 / P4.D294), scenarios from
+  anywhere (P4.D295 server, P4.D302 SPA), extraction as one context + four
+  passes + cursors (P4.D296), maintenance as ONE job with repair (P4.D297),
+  the Memories API through admission (P4.D298), the lock `port` (P4.D299),
+  the memory SPA's one Maintenance card (P4.D300), bugs 241 / 242 (P4.D301),
+  `help/` 131 + `docs/v4/` + the NO-PORT record (P4.D303). **The §3 review
+  (ten readers + the unifier): FOUR findings that would have shipped —
+  `add-memory-tiers-v1` left unstamped on a v5-provisioned instance (v4 would
+  re-add the dropped chat column: the ping-pong class — the settled-chain arm
+  now stamps it); the paginated list + `findByImportance` filtering the RAW
+  `importance` where v4 filters `reinforcedImportance`; every extraction job
+  ERASING the turn's `[Recall]` record on the union (P4.D291's record,
+  P4.D296's unwired handoff); V8's NaN comparator read as a descending run —
+  all fixed red-first**, plus a dozen should-fixes (the swap-remove key order,
+  a NULL `reinforcedImportance` 500, the Almanack's dropped-column lines, the
+  in-loop fold zone, the dead refusal scaffold). Gate: <<GATE_SHORT>>.
+  Versions: core 0.0.1305, host 0.0.207, SPA 0.5.862. **Next: the owed
+  dogfood pass (a post-migration Friday copy's first boot — every ensure a
+  NO-OP — taken BEFORE v4 ran past `362426c8f`), then the follow-ups round
+  (the review's recorded items + two human rulings: `OFFSET_OCCURRED_AT_ROW_
+  SCHEMA`, the strict-export consequence), then the `362426c8f` catch-up
+  (the TENTH D23 move)** — `phase-4.md`. Round record: `status-log.md`.
+- **Oracle baseline: `83334b9a5` (2026-10-13, v4 main — "Release checklist 4:
+  API standard audit; use successResponse in new handlers",
+  `4.10.0-dev.176`), adopted at the `83334b9a5` memory-refactor + scenarios
+  round's unification (2026-10-15).** **Drift state, the drift-check method,
+  and the pinned-worktree regen recipe live in
+  `docs/developer/porting/drift-ledger.md`** — maintained by `/driftcheck`
+  and by `/unify` at baseline moves; the other porting commands run the
+  ledger's §2 freshness probe instead of re-deriving drift, and lanes never
+  write it. **Never restate the drift count here — read the ledger's §1.**
+  **v4 released 4.10.0 on 2026-10-14 (`release: 4.10.0` = `2432b9057`; the
+  `4.10.0` bug branch started at `489b228b6`) and now stamps `4.11.0-dev` —
+  re-probe BOTH branches every time; bugfix is measured by CONTENT.** The
+  sweep driver remains the sanctioned per-family regen path — never run two
+  sweeps concurrently; it needs Python ≥ 3.12
   (`/opt/homebrew/bin/python3.13`; the system 3.9 cannot parse it); since
   P4.53 it refuses empty-stage families by name, `--self-test` guards recipe
   headers against cross-alias defaults, and it pins the `--nocapture` splice

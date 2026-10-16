@@ -6148,6 +6148,10 @@ const REPO_LEVEL_MESSAGES: &[&str] = &[
     "Error creating prompt template",
     "Error creating folder",
     "Error creating tag",
+    // [P4.D293 22l] the tf-idf vocabulary repository's own rethrow line beneath
+    // a refused restore create (the `83334b9a5` unification: the lane claimed
+    // the pair byte-equal, but the line was on neither side's list).
+    "Error creating TF-IDF vocabulary",
 ];
 const REPO_LEVEL_CASES: &[&str] = &[
     "restore_informs_replace",

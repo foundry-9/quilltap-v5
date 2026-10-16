@@ -193,7 +193,7 @@ pub fn render_other_canon_block(canon: &CanonSource) -> String {
 /// lookup. In v4 the `?? null` normalises absent fields; the Rust `Option`
 /// inputs already carry that distinction, so this is a straight construction.
 /// `commonplace` is `None` — the vault-reading variant is
-/// [`crate::services::memory_processor::load_canon_for_self_with_commonplace`].
+/// [`crate::services::canon_loaders::load_canon_for_self_with_commonplace`].
 #[allow(clippy::too_many_arguments)]
 pub fn load_canon_for_self(
     id: &str,

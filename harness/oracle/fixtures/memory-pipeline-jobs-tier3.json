@@ -63,7 +63,8 @@
       ],
       "messages": [
         { "id": "e1000001-0000-4000-8000-000000000001", "role": "USER", "content": "Ada, how went the morning at the gate?", "participantId": null, "createdAt": "2023-06-01T10:00:00.000Z" },
-        { "id": "e1000002-0000-4000-8000-000000000002", "role": "ASSISTANT", "content": "I greeted a traveler warmly and fixed his pocket watch.", "participantId": "a1000001-0000-4000-8000-000000000001", "createdAt": "2023-06-01T10:00:05.000Z" }
+        { "id": "e1000002-0000-4000-8000-000000000002", "role": "ASSISTANT", "content": "I greeted a traveler warmly and fixed his pocket watch.", "participantId": "a1000001-0000-4000-8000-000000000001", "createdAt": "2023-06-01T10:00:05.000Z",
+          "debugMemoryLogs": ["[Recall] planted recall record (the 83334b9a5 unification's L-12 row)", "[Memory] planted stale extraction line"] }
       ]
     },
     {

@@ -2614,6 +2614,39 @@
    "expectThrow": true
   },
   {
+   "name": "mid_stream_error_staged_tools",
+   "kind": "single",
+   "chatId": "6bcba106-5fa1-4b0e-869c-4fab3470f450",
+   "content": "Trigger an error with rolls.",
+   "continueMode": false,
+   "streamLabel": "mid_stream_error",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "expectThrow": true,
+   "pendingToolResults": [
+    {
+     "tool": "roll_dice",
+     "success": true,
+     "result": "Rolled 1d20: [17] = 17",
+     "prompt": "roll 1d20",
+     "arguments": {
+      "notation": "1d20"
+     },
+     "createdAt": "2026-01-02T03:04:05.000Z"
+    },
+    {
+     "tool": "roll_dice",
+     "success": true,
+     "result": "Rolled 2d6: [3, 5] = 8",
+     "prompt": "roll 2d6",
+     "arguments": {
+      "notation": "2d6"
+     },
+     "createdAt": "2026-01-02T03:04:06.000Z"
+    }
+   ]
+  },
+  {
    "name": "summary_fold",
    "kind": "single",
    "chatId": "c860cf74-128f-4a81-9a5c-6c2275f24302",

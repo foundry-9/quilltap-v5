@@ -304,6 +304,7 @@ pub async fn run_import_execute(
                 "Import failed: Cannot read properties of undefined (reading 'tags')".to_string(),
             ],
             imported_character_ids: Vec::new(),
+            refit_profile_id: None,
         };
         return Response::System(result.to_value());
     }
@@ -340,7 +341,33 @@ pub async fn run_import_execute(
         .await;
 
     match out {
-        Ok(result) => Response::System(result.to_value()),
+        Ok(result) => {
+            // v4 `execute.ts:402-415`: a BUILTIN default profile's FORCED
+            // vocabulary refit, scheduled once the import's write has returned
+            // (the debounce is the host driver's); a failure is v4's WARN
+            // `Failed to schedule vocabulary refit after import {userId,
+            // profileId, error}`, never the import's. (§S.5 (2), the
+            // `83334b9a5` unification — P4.D62's deferral retires.)
+            if let Some(profile_id) = result.refit_profile_id.as_deref() {
+                if let Err(e) = crate::services::embedding_job_scheduler::schedule_refit(
+                    db,
+                    user_id,
+                    Some(profile_id),
+                    true,
+                    crate::clock::now_unix_ms(),
+                )
+                .await
+                {
+                    tracing::warn!(
+                        userId = %user_id,
+                        profileId = %profile_id,
+                        error = %crate::db::fallback::error_text(&e),
+                        "Failed to schedule vocabulary refit after import"
+                    );
+                }
+            }
+            Response::System(result.to_value())
+        }
         // v4's catch → `serverError('Failed to execute import')`.
         Err(e) => {
             tracing::error!(error = %e, "Import execution failed");

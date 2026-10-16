@@ -31,6 +31,19 @@ pub fn js_array_sort_by<T, F>(items: &mut [T], mut compare: F)
 where
     F: FnMut(&T, &T) -> f64,
 {
+    // V8 `SortCompareUserFn` (`array-sort.tq`): the comparator's result goes
+    // through `ToNumber`, and a NaN is mapped to +0 BEFORE any run or merge
+    // reads it — so a NaN never reads as "descending" below. (The `83334b9a5`
+    // unification, P4.D289's review: a raw NaN turned `[c .75, b .95, a NaN]`
+    // into a reversed run.)
+    let mut compare = |a: &T, b: &T| {
+        let order = compare(a, b);
+        if order.is_nan() {
+            0.0
+        } else {
+            order
+        }
+    };
     let n = items.len();
     if n < 2 {
         return;

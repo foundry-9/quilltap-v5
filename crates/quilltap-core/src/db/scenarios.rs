@@ -428,7 +428,7 @@ pub enum ScenarioPathResolution {
 /// into a clean `<folder>/<file>.md` relative path; reject empty / `..` / `//` /
 /// nested paths. **Boundary seam:** v4 `decodeURIComponent`s the raw Next.js route
 /// segment first; the v5 dispatch transport delivers an already-decoded JSON
-/// string, so (like [`resolve_scenario_body`]) no decode is applied here.
+/// string, so (as the retired `resolve_scenario_body` did) no decode is applied here.
 pub fn resolve_scenario_path(scenario_path: &str, folder_name: &str) -> ScenarioPathResolution {
     let candidate = js_trim(scenario_path);
     if candidate.is_empty() {

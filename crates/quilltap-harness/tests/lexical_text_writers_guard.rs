@@ -48,7 +48,26 @@ fn calls(code: &str) -> Vec<usize> {
     out
 }
 
+/// The call's surroundings, BOTH ways: the seam's `lexical_text` is built
+/// before the embed call at some writers (admission's neighbours build the
+/// `EmbeddingCallOptions` first) and after it at others — a forward-only window
+/// read the former as offenders (the `83334b9a5` unification's review).
 fn window(code: &str, at: usize) -> &str {
+    let mut start = at.saturating_sub(WINDOW);
+    while !code.is_char_boundary(start) {
+        start -= 1;
+    }
+    let mut end = (at + WINDOW).min(code.len());
+    while !code.is_char_boundary(end) {
+        end -= 1;
+    }
+    &code[start..end]
+}
+
+/// The text AFTER the call: a writer EMBEDS it (`generate_embedding*` or the
+/// probe's `.embed(`); a text comparison (`has_anchors` renders both texts and
+/// compares them) embeds nothing and is no writer.
+fn forward(code: &str, at: usize) -> &str {
     let mut end = (at + WINDOW).min(code.len());
     while !code.is_char_boundary(end) {
         end -= 1;
@@ -74,9 +93,18 @@ fn every_memory_writer_hands_the_seam_its_lexical_text() {
         let code = code_only(&production_zone(&src));
         for at in calls(&code) {
             let line = code[..at].matches('\n').count() + 1;
+            let fwd = forward(&code, at);
+            if !(fwd.contains("generate_embedding") || fwd.contains(".embed(")) {
+                // Rendered, not embedded (a text compare) — not a writer.
+                continue;
+            }
             let w = window(&code, at);
             let lexical = w.contains("lexical_embedding_text_for(");
-            let field = w.contains("lexical_text") || w.contains("with_lexical_text");
+            // The seam's field by name, the builder method, or the probe's
+            // `embed(text, Some(lexical))` positional hand-off.
+            let field = w.contains("lexical_text")
+                || w.contains("with_lexical_text")
+                || w.contains("Some(lexical_embedding_text_for(");
             writers.push(format!("{rel} (code line ~{line})"));
             if !(lexical && field) {
                 offenders.push(format!(

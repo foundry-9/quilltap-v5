@@ -1639,14 +1639,17 @@ pub enum Request {
         message_id: String,
     },
     /// v4 GET `?action=character-memory-counts` — `{success, characters: [{id,
-    /// name, memoryCount}]}` (memoryCount desc).
+    /// name, memoryCount, hotTotal, demotable, protected, cold}]}` sorted
+    /// `demotable` desc then `memoryCount` desc (P4.D298, the `83334b9a5` pin).
     MemoryCharacterCounts,
-    /// v4 POST `/api/v1/memories` (no action) — the gate-driven create; 201
-    /// `{memory}`. Embedding failure → server-error (no row).
+    /// v4 POST `/api/v1/memories` (no action) — the manual create through
+    /// admission; `{memory, action}` (201 ⇔ `insert` / `insert-linked`, else
+    /// 200); `embedding-failed` → `Internal` + `details.status: 502` (P4.D298).
     MemoryCreate {
         memory: serde_json::Value,
     },
-    /// v4 PUT `/api/v1/memories/[id]` — `{memory}` (NO re-embed).
+    /// v4 PUT `/api/v1/memories/[id]` — `{memory}` through `update_memory`
+    /// (bug 203: a text change re-derives the embedding and the derived fields).
     #[serde(rename_all = "camelCase")]
     MemoryUpdate {
         memory_id: String,
@@ -2853,9 +2856,9 @@ pub enum Request {
 
     // === P4.D288: the 83334b9a5 round's wire (C2) ===
     // The eight NEW variants of the round (contract C2, binding). Bodies that v4
-    // Zod-parses ride RAW so the handlers run the ported Zod. Until its owner
-    // fills it, an arm answers `Internal` `The '<action>' action is recognized
-    // but not yet available (<owner>).` (`engine::p4d288_not_yet_available`);
+    // Zod-parses ride RAW so the handlers run the ported Zod. Every arm is
+    // FILLED by its owner on the union (the lanes' `not yet available` refusal
+    // helper left at the `83334b9a5` unification);
     // the two maintenance-config arms are FILLED here (P4.D297's after KEYSTONE).
     // The ten retired memory verbs are DELETED (R-G: serde's `unknown variant`
     // 400 answers them, `dispatch.rs:69-78`).

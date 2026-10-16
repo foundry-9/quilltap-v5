@@ -37,6 +37,9 @@ where
     pub completion: &'a C,
     pub embedding: &'a E,
     pub executor: &'a CheapLlmTaskExecutor,
+    /// The memory calendar's host fallback (the host's display-zone NAME) for
+    /// the in-loop fold passes (P4.D296's HANDOFF (3)).
+    pub host_zone_fallback: &'a str,
 }
 
 /// Parse the stored `cheapLLMSettings` sub-object into the summary service's
@@ -103,6 +106,7 @@ where
             embedding: self.embedding,
             completion: self.completion,
             executor: self.executor,
+            host_zone_fallback: self.host_zone_fallback,
         };
         crate::services::context_summary::check_and_generate_summary_if_needed_with_seams(
             db,

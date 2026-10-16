@@ -42,7 +42,7 @@ import { MOCK_LLM_REPLY, startMockLlm, type MockLlm } from './support/mock-llm';
  * `chatSetScenario` / `chatCreate`). ACTIVATE-AT-UNIFY (§S.9, the
  * `P4D279_SERVER_LANDED` precedent): the unifier flips the constant to `true`.
  */
-const P4D288_SERVER_LANDED = false;
+const P4D288_SERVER_LANDED = true;
 const GATE_REASON =
   'awaits P4.D295’s scenarioEverywhere / scenarioReadByRef / chatGetScenarioSource bodies and scenarioRef + reload (wired at unification)';
 

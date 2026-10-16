@@ -28,7 +28,7 @@
 //!      (`services/carriers/cursor_bundle.rs`) and the chat regenerate's wipe
 //!      (`services/memory_regenerate_job.rs`, v4 `memory-regenerate-chat.ts`'s
 //!      `clearForChat`). Standing on the shared
-//! source-census lexer (`source_census`).
+//!      source-census lexer (`source_census`).
 //!
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test memory_extraction_cursors_writers_census

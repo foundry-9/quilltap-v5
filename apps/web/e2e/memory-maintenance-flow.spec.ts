@@ -55,7 +55,7 @@ import {
  * dogfood row, never a beat.
  */
 
-const P4D288_SERVER_LANDED = false;
+const P4D288_SERVER_LANDED = true;
 const GATE_REASON =
   'awaits the 83334b9a5 round server (P4.D288 wire: memoryMaintain / memoryMaintenanceStatus / memoryMaintenanceConfigGet+Set + the widened counts + tfidfClusterThreshold; P4.D297 maintain / maintenance-status / the MEMORY_MAINTENANCE job and its memories publish; P4.D298 the create action) — §S.9 flips it on the union';
 

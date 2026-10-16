@@ -1138,26 +1138,10 @@ pub fn render_almanack_markdown(data: &AlmanackReportData, zone: &TimeZone) -> S
         "- **On Message Delete**: {}",
         fc.memory_cascade.on_message_delete
     ));
-    push!(format!(
-        "- **On Swipe/Regenerate**: {}",
-        fc.memory_cascade.on_swipe_regenerate
-    ));
-    push!(format!(
-        "- **Auto Housekeeping**: {}",
-        yes_no(fc.auto_housekeeping.enabled)
-    ));
-    push!(format!(
-        "- **Per-Character Cap**: {}",
-        js_num(fc.auto_housekeeping.per_character_cap)
-    ));
-    push!(format!(
-        "- **Merge Similar**: {}",
-        yes_no(fc.auto_housekeeping.merge_similar)
-    ));
     push!(
         format!(
-            "- **Merge Threshold**: {}",
-            js_num(fc.auto_housekeeping.auto_merge_similar_threshold)
+            "- **On Swipe/Regenerate**: {}",
+            fc.memory_cascade.on_swipe_regenerate
         ),
         ""
     );
@@ -1239,6 +1223,12 @@ pub fn render_almanack_markdown(data: &AlmanackReportData, zone: &TimeZone) -> S
         js_num(is.memory_extraction_limits.max_per_hour),
         js_num(is.memory_extraction_limits.soft_start_fraction),
         js_num(is.memory_extraction_limits.soft_floor)
+    ));
+    push!(format!(
+        "- **Memory maintenance**: {} (per-character cap {}, {} override(s))",
+        yes_no(is.memory_maintenance.enabled),
+        js_num(is.memory_maintenance.per_character_cap),
+        js_num(is.memory_maintenance.cap_overrides)
     ));
     push!(
         format!(

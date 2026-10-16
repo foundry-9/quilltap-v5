@@ -204,6 +204,24 @@ fn marshal_row(row: &Row, keep_nulls: bool) -> Result<Value, rusqlite::Error> {
         );
         Ok(())
     };
+    // A `.default(<v>)` number column (`reinforcedImportance`): NULL reads `<v>`
+    // on the filter path and stays `null` (refused) on the raw path.
+    let defaulted_num = |m: &mut Map<String, Value>,
+                         key: &str,
+                         idx: usize,
+                         default: f64|
+     -> Result<(), rusqlite::Error> {
+        let v: Option<f64> = row.get(idx)?;
+        m.insert(
+            key.to_string(),
+            match (v, keep_nulls) {
+                (Some(n), _) => js_number_to_json(n),
+                (None, true) => Value::Null,
+                (None, false) => js_number_to_json(default),
+            },
+        );
+        Ok(())
+    };
     // A `.default(<v>)` string column: NULL reads `<v>` on the filter path and
     // stays `null` (refused) on the raw path.
     let defaulted_str = |m: &mut Map<String, Value>,
@@ -266,7 +284,11 @@ fn marshal_row(row: &Row, keep_nulls: bool) -> Result<Value, rusqlite::Error> {
     num(&mut m, "reinforcementCount", 19)?;
     put_nullable_str(&mut m, "lastReinforcedAt", row.get(20)?, keep_nulls);
     arr(&mut m, "relatedMemoryIds", 21)?;
-    num(&mut m, "reinforcedImportance", 22)?;
+    // v4 `MemorySchema.reinforcedImportance` is `.default(0.5)`: a NULL cell
+    // hydrates `0.5` there, where a strict read failed the whole list (the
+    // dogfood-#144 class; the `83334b9a5` unification, P4.D298's
+    // `search_min_importance_default` measurement).
+    defaulted_num(&mut m, "reinforcedImportance", 22, 0.5)?;
     // P4.D265 (v4 `d58548051`): the tier columns. `tier` is
     // `MemoryTierEnum.default('hot')` — NULL reads `"hot"` on the filter path
     // and stays `null` (refused) on the raw path; `consolidatedFrom` is a
@@ -537,7 +559,10 @@ pub fn find_by_character_id_paginated(
                 params.push(Box::new(src.to_string()));
             }
             if let Some(min) = opts.min_importance {
-                where_clause.push_str(" AND importance >= ?");
+                // v4 `memories.repository.ts:258-259`: the paginated filter is on
+                // `reinforcedImportance` (the `83334b9a5` unification, P4.D298's
+                // `list_min_importance_reinforced_paginated` finding).
+                where_clause.push_str(" AND reinforcedImportance >= ?");
                 params.push(Box::new(min));
             }
             if let Some(tier) = opts.tier {
@@ -629,7 +654,9 @@ pub fn find_by_importance(
     }
     query_memories(
         conn,
-        "WHERE characterId = ?1 AND importance >= ?2",
+        // v4 `memories.repository.ts:341`: `findByImportance` filters on
+        // `reinforcedImportance` (the `83334b9a5` unification).
+        "WHERE characterId = ?1 AND reinforcedImportance >= ?2",
         &[&character_id, &min_importance],
     )
 }
@@ -1002,20 +1029,6 @@ pub fn count_by_character_id(conn: &Connection, character_id: &str) -> Result<i6
 // fallback value with its ERROR line, strict-aware (R-I).
 // ============================================================================
 
-// LANE-REMOVE(P4.D297): v4 deleted countHotByCharacterId in c2795733f
-/// v4 `countHotByCharacterId` (`:758-771`): `SELECT COUNT(*) AS n FROM
-/// memories WHERE characterId = ? AND` [`HOT_TIER_SQL`] — the number the
-/// housekeeping cap and the consolidation watermark are measured against.
-pub fn count_hot_by_character_id(conn: &Connection, character_id: &str) -> Result<i64, DbError> {
-    super::fallback::hot_memory_count_or_zero(character_id, || {
-        query_count(
-            conn,
-            &format!("WHERE characterId = ?1 AND {HOT_TIER_SQL}"),
-            &[&character_id],
-        )
-    })
-}
-
 /// v4 `countUnconsideredHot` (`:777-794`): hot, non-digest rows the
 /// consolidator has never considered (`consolidatedAt IS NULL AND source !=
 /// 'CONSOLIDATED'`) — the watermark trigger's count.
@@ -1090,37 +1103,6 @@ pub fn find_hot_digests(
         let rows = query_raw_memories(conn, &sql, &params)?;
         Ok(hydrate_raw_rows(rows, "hot digest fetch"))
     })
-}
-
-// LANE-REMOVE(P4.D297): v4 deleted findExpiredColdIds in 104e986c7
-/// v4 `findExpiredColdIds(characterId, olderThan)` (`:947-965`): superseded,
-/// cold, non-MANUAL rows last touched before `olderThan` (a STRING compare on
-/// `updatedAt`) — the only rows `coldRetentionDays` may delete. CONSOLIDATED
-/// rows are included (`source != 'MANUAL'`, §R.4(e)).
-pub fn find_expired_cold_ids(
-    conn: &Connection,
-    character_id: &str,
-    older_than: &str,
-) -> Result<Vec<String>, DbError> {
-    super::fallback::expired_cold_ids_or_empty(character_id, older_than, || {
-        query_ids(
-            conn,
-            "SELECT id FROM memories WHERE characterId = ?1 AND tier = 'cold' \
-             AND supersededById IS NOT NULL AND source != 'MANUAL' AND updatedAt < ?2",
-            &[&character_id, &older_than],
-        )
-    })
-}
-
-/// Run a `SELECT id FROM memories …` and collect the ids.
-fn query_ids(conn: &Connection, sql: &str, params: &[&dyn ToSql]) -> Result<Vec<String>, DbError> {
-    let mut stmt = conn.prepare(sql)?;
-    let rows = stmt.query_map(params, |r| r.get::<_, String>(0))?;
-    let mut out = Vec::new();
-    for r in rows {
-        out.push(r?);
-    }
-    Ok(out)
 }
 
 /// `countCreatedSince` — `{ characterId, createdAt: { $gte: since } }`.
@@ -1418,11 +1400,13 @@ pub fn find_index_rows_by_character_id(
 pub fn count_corpus_since(conn: &Connection, since: Option<&str>) -> Result<(i64, i64), DbError> {
     super::fallback::corpus_count_or_zero(since, || {
         let total = super::fallback::count_strict_aware("memories", || query_count(conn, "", &[]))?;
+        // v4 `since ? … : 0` — a JS-falsy EMPTY string counts nothing (P4.D292's
+        // handoff to this reader, the `83334b9a5` unification).
         let created_since = match since {
-            Some(s) => super::fallback::count_strict_aware("memories", || {
+            Some(s) if !s.is_empty() => super::fallback::count_strict_aware("memories", || {
                 query_count(conn, "WHERE createdAt >= ?1", &[&s])
             })?,
-            None => 0,
+            _ => 0,
         };
         Ok((total, created_since))
     })

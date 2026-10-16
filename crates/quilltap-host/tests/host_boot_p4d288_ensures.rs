@@ -262,7 +262,7 @@ async fn a_fresh_instance_stamps_the_settled_chain_and_runs_the_two_rewrites_onc
     assert_eq!(
         settled_or_ours(&lines),
         [
-            "INFO quilltap::boot Recorded the settled extraction-cursor chain episodeMigrationId=add-episode-extraction-watermark-v1 cursorsMigrationId=add-memory-extraction-cursors-v1 episodeBackfilled=0 cursorsCarried=0",
+            "INFO quilltap::boot Recorded the settled extraction-cursor chain episodeMigrationId=add-episode-extraction-watermark-v1 cursorsMigrationId=add-memory-extraction-cursors-v1 episodeBackfilled=0 cursorsCarried=0 tiersStamped=true",
             "INFO quilltap::boot Recomputed reinforced importance migrationId=recompute-reinforced-importance-v1 rewritten=0 total=0",
             "INFO quilltap::boot Re-stamped legacy UTC-midnight memory dates migrationId=rezone-legacy-memory-occurred-at-v1 timeZone=UTC rewritten=0 candidates=0",
         ],

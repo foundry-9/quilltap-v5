@@ -350,6 +350,14 @@ pub fn generate_almanack_data(
                 soft_start_fraction: 0.7,
                 soft_floor: 0.7,
             },
+            // v4 `MEMORY_SETTING_DEFAULTS.maintenance` — the parsed-empty schema.
+            memory_maintenance: MemoryMaintenanceInfo {
+                enabled: crate::db::instance_settings::MemoryMaintenanceSettings::default().enabled,
+                per_character_cap: crate::db::instance_settings::MemoryMaintenanceSettings::default(
+                )
+                .per_character_cap as f64,
+                cap_overrides: 0.0,
+            },
             last_maintenance_sweep_at: None,
         },
         || phase3_ledgers::collect_instance_settings(d, user, ctx.now_ms),

@@ -9,7 +9,8 @@
 //!   * `dbkey` — recovers the master pepper from the on-disk `quilltap.dbkey`
 //!     file (AES-256-GCM + PBKDF2). NB: this unwraps the FILE; the DATABASES
 //!     themselves are ChaCha20/sqleet, not SQLCipher — see CLAUDE.md.
-//!   * `memory_weighting` — pure scoring functions ported from v4 and verified
+//!   * `memory_scoring` — the memory programme's scoring (salience, protection,
+//!     the ranking blend), pure functions ported from v4 and verified
 //!     against the differential oracle.
 //!   * `recall_tags` — recall-side targeting-tag multipliers (scope/project
 //!     gating, temporal/context/participant/anti-repetition), likewise
@@ -210,14 +211,12 @@ pub mod memory_candidate;
 pub mod memory_embedding_text;
 pub mod memory_extraction; // P4.D296
 pub mod memory_format;
-pub mod memory_gate;
 pub mod memory_injector;
 pub mod memory_pools;
 pub mod memory_scoring;
 pub mod memory_settings; // P4.D288 (C1-5)
 pub mod memory_tasks;
 pub mod memory_time;
-pub mod memory_weighting;
 pub mod mentioned_characters;
 pub mod message_attribution;
 pub mod message_formatter;

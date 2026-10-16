@@ -557,6 +557,7 @@ pub async fn resolve_external_turn<C: CompletionProvider + Sync, E: EmbeddingPro
     reply_content: &str,
     user_id: &str,
     now_ms: i64,
+    host_zone_fallback: &str,
 ) -> Result<ResolveExternalTurnOutcome, DbError> {
     // --- read chat + message ---
     let chat_id_owned = chat_id.to_string();
@@ -704,6 +705,7 @@ pub async fn resolve_external_turn<C: CompletionProvider + Sync, E: EmbeddingPro
                 &profile,
                 chat_settings.as_ref(),
                 &chat,
+                host_zone_fallback,
             )
             .await?;
         }
@@ -819,6 +821,7 @@ async fn run_summary_check<C: CompletionProvider + Sync, E: EmbeddingProvider + 
     profile: &Value,
     settings: Option<&Value>,
     chat: &Value,
+    host_zone_fallback: &str,
 ) -> Result<(), DbError> {
     // The `current` connection profile is the responder's (v4 passes
     // `connectionProfile` as the selection's basis).
@@ -857,6 +860,7 @@ async fn run_summary_check<C: CompletionProvider + Sync, E: EmbeddingProvider + 
         embedding,
         completion,
         executor,
+        host_zone_fallback,
     };
     crate::services::context_summary::check_and_generate_summary_if_needed_with_seams(
         db,

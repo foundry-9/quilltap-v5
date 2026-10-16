@@ -433,6 +433,7 @@ fn anchor_gate_probe_matches_v4() {
                     &corpus.user_id,
                     &character_id,
                     limit,
+                    "UTC",
                 ))
             });
             lines = captured;

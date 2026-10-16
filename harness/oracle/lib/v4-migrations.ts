@@ -70,6 +70,11 @@ export interface RunV4MigrationsOptions {
  * the narrowed runner (`runner: true`) under `TZ=UTC QUILLTAP_TIMEZONE=UTC`.
  */
 export const P4D288_SPAN_MIGRATIONS: V4MigrationRef[] = [
+  // `add-memory-tiers-v1` is P4.D265's (pre-span), but its `shouldRun` holds on a
+  // v5-provisioned instance through the chat watermark column the span's cursor
+  // migration drops — the narrowed runner must SEE that re-run (the `83334b9a5`
+  // unification's review: v5 now stamps it in the settled-chain arm).
+  { file: 'migrations/scripts/add-memory-tiers-v1.ts', exportName: 'addMemoryTiersMigration' },
   { file: 'migrations/scripts/add-memory-superseded-at-v1.ts', exportName: 'addMemorySupersededAtMigration' },
   { file: 'migrations/scripts/add-chat-scenario-source-v1.ts', exportName: 'addChatScenarioSourceMigration' },
   { file: 'migrations/scripts/add-episode-extraction-watermark-v1.ts', exportName: 'addEpisodeExtractionWatermarkMigration' },

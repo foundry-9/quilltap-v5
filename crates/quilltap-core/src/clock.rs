@@ -69,18 +69,6 @@ pub(crate) fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
-/// Floored days-since-epoch for a Unix-milliseconds instant (JS
-/// `Math.floor(ms / 86400000)` — `div_euclid` floors for negatives too).
-pub(crate) fn floor_div_ms_days(ms: i64) -> i64 {
-    ms.div_euclid(86_400_000)
-}
-
-/// UTC civil (year, month 1-12, day 1-31) of a Unix-milliseconds instant —
-/// the `getUTCFullYear`/`getUTCMonth`/`getUTCDate` triple.
-pub(crate) fn utc_parts(ms: i64) -> (i64, u32, u32) {
-    civil_from_days(floor_div_ms_days(ms))
-}
-
 /// Parse a stored ISO-8601 UTC timestamp (`YYYY-MM-DDTHH:MM:SS[.mmm]Z` — the only
 /// shape the repos ever mint) to Unix milliseconds, matching JS
 /// `new Date(s).getTime()` on that shape. Returns `None` for anything else (the

@@ -1956,6 +1956,7 @@ where
             completion: &*self.completion,
             embedding: &*self.embedding,
             executor: &executor,
+            host_zone_fallback: quilltap_core::host_zone::zone_name(&self.display_zone),
         };
         let mut deps = HelpSendDeps {
             db: &db,
@@ -2828,6 +2829,10 @@ where
         reply_content: String,
     ) -> quilltap_core::api::chat_media::CourierResolveFuture<'_> {
         let state = self.clone_state();
+        // The memory calendar's host fallback for the fold's in-loop passes —
+        // owned, since the resolve runs on its own thread (P4.D296 HANDOFF (3)).
+        let host_zone_fallback =
+            quilltap_core::host_zone::zone_name(&self.display_zone).to_string();
         Box::pin(async move {
             // The dedicated-thread bridge (the chat-send/swipe idiom): the resolve
             // settle re-enters the cheap-LLM triggers, whose futures are non-`Send`.
@@ -2855,6 +2860,7 @@ where
                             &message_id,
                             &reply_content,
                             now_unix_ms(),
+                            &host_zone_fallback,
                         )
                         .await
                     }),

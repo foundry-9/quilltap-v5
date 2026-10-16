@@ -36,8 +36,10 @@ use crate::model::tool_wire::normalize_js_numbers;
 use crate::services::memory_retire::{
     announce_retirement, retire_chat_memories, retire_memories, RetireOptions, RetireReason,
 };
-use crate::services::memory_service::{search_memories_semantic, SemanticSearchOptions};
 use crate::services::queue_service::{enqueue_memory_extraction_batch, MemoryExtractionBatchEntry};
+use crate::services::recall::search::{
+    search_memories, RecallSearchOptions, SearchMemoriesOptions,
+};
 
 use super::types::{ErrorKind, Response};
 
@@ -951,9 +953,24 @@ pub async fn memory_create<P: EmbeddingProvider + Sync>(
 
     // v4: "Schedule vocabulary refit for BUILTIN profiles (debounced). This
     // runs in the background and doesn't block the response" —
-    // `scheduleRefit(user.id)`, WARN `[Memories API] Failed to schedule refit`
-    // `{error}` on a rejection. P4.D292's (R-Q); the call here lands with
-    // §S.5 (2).
+    // `scheduleRefit(user.id)` (P4.D292's R-Q debounce: armed here, fired by
+    // the host's driver), WARN `[Memories API] Failed to schedule refit`
+    // `{error}` on a rejection (a profile read failure). Landed at the
+    // `83334b9a5` unification (§S.5 (2)).
+    if let Err(e) = crate::services::embedding_job_scheduler::schedule_refit(
+        db,
+        user_id,
+        None,
+        false,
+        now_ms as i64,
+    )
+    .await
+    {
+        tracing::warn!(
+            error = %crate::db::fallback::error_text(&e),
+            "[Memories API] Failed to schedule refit"
+        );
+    }
 
     // "201 only when a row was created; a reinforcement or near-duplicate
     // absorption returns 200 with the existing row, and `action` says which."
@@ -1068,6 +1085,7 @@ pub async fn memory_update<P: EmbeddingProvider + Sync>(
     user_id: &str,
     memory_id: &str,
     host_zone_fallback: &str,
+    now_ms: f64,
     bag: Value,
 ) -> Response {
     // Ownership: find existing + its character.
@@ -1154,8 +1172,23 @@ pub async fn memory_update<P: EmbeddingProvider + Sync>(
     );
     // v4: "Schedule refit for BUILTIN profiles (non-blocking)" —
     // `scheduleRefit(user.id)`, WARN `[Memories API v1] Failed to schedule
-    // refit after update` `{memoryId, error}` on a rejection. P4.D292's (R-Q);
-    // the call here lands with §S.5 (2).
+    // refit after update` `{memoryId, error}` on a rejection. P4.D292's R-Q
+    // debounce; landed at the `83334b9a5` unification (§S.5 (2)).
+    if let Err(e) = crate::services::embedding_job_scheduler::schedule_refit(
+        db,
+        user_id,
+        None,
+        false,
+        now_ms as i64,
+    )
+    .await
+    {
+        tracing::warn!(
+            memoryId = memory_id,
+            error = %crate::db::fallback::error_text(&e),
+            "[Memories API v1] Failed to schedule refit after update"
+        );
+    }
     Response::Memory(json!({ "memory": memory }))
 }
 
@@ -1172,7 +1205,7 @@ pub async fn memory_update<P: EmbeddingProvider + Sync>(
 /// 404. The announcement runs after the commit (R-AF). A thrown error is v4's
 /// catch: ERROR `[Memories API v1] Error deleting memory` + 500 `Failed to
 /// delete memory`.
-pub async fn memory_delete(db: &Db, memory_id: &str) -> Response {
+pub async fn memory_delete(db: &Db, user_id: &str, memory_id: &str, now_ms: f64) -> Response {
     let mid = memory_id.to_string();
     let owner: Result<Option<String>, DbError> = db.read_main(move |main| {
         let Some(existing) = memories_read::find_by_id(main, &mid)? else {
@@ -1211,10 +1244,36 @@ pub async fn memory_delete(db: &Db, memory_id: &str) -> Response {
 
     // v4: "Clean up embedding status (non-blocking)" — `handleEntityDeletion(
     // 'MEMORY', memoryId)`, WARN `[Memories API v1] Failed to handle entity
-    // deletion` `{memoryId, error}` on a rejection — then "Schedule refit for
-    // BUILTIN profiles (non-blocking)" — `scheduleRefit(user.id)`, WARN
-    // `[Memories API v1] Failed to schedule refit after delete` `{memoryId,
-    // error}`. Both are P4.D292's (R-Q); their calls here land with §S.5 (2).
+    // deletion` `{memoryId, error}` on a rejection (after the repository's own
+    // rethrow ERROR) — then "Schedule refit for BUILTIN profiles
+    // (non-blocking)" — `scheduleRefit(user.id)`, WARN `[Memories API v1]
+    // Failed to schedule refit after delete` `{memoryId, error}`. Both
+    // P4.D292's (R-Q); landed at the `83334b9a5` unification (§S.5 (2)).
+    if let Err(e) =
+        crate::services::embedding_job_scheduler::handle_entity_deletion(db, "MEMORY", memory_id)
+            .await
+    {
+        tracing::warn!(
+            memoryId = memory_id,
+            error = %crate::db::fallback::error_text(&e),
+            "[Memories API v1] Failed to handle entity deletion"
+        );
+    }
+    if let Err(e) = crate::services::embedding_job_scheduler::schedule_refit(
+        db,
+        user_id,
+        None,
+        false,
+        now_ms as i64,
+    )
+    .await
+    {
+        tracing::warn!(
+            memoryId = memory_id,
+            error = %crate::db::fallback::error_text(&e),
+            "[Memories API v1] Failed to schedule refit after delete"
+        );
+    }
 
     tracing::info!(
         memoryId = memory_id,
@@ -1461,30 +1520,34 @@ pub async fn memory_search<P: EmbeddingProvider + Sync>(
         Ok(false) => return not_found("Character"),
         Err(e) => return internal(e),
     }
-    let options = SemanticSearchOptions {
+    // §S.5 (4), landed at the `83334b9a5` unification: the route reads
+    // P4.D291's one-shot `searchMemories` directly (v4 `route.ts:655-672`);
+    // the pre-round `search_memories_semantic` shim is gone with it.
+    let options = SearchMemoriesOptions {
+        search: RecallSearchOptions {
+            limit: Some(bag.limit as usize),
+            min_score: bag.min_score,
+            // v4 `minImportance ?? TOOL_MIN_IMPORTANCE` (`route.ts:660`). Not a
+            // no-op: with `0` the recall search filters on the
+            // `reinforcedImportance` COLUMN, which excludes a NULL row (§R.4(f)).
+            min_importance: Some(bag.min_importance.unwrap_or(TOOL_MIN_IMPORTANCE)),
+            source: bag.source,
+            about_character_id: None,
+            literal_phrase: false,
+            now_ms,
+            // The Commonplace Book browses the whole archive, cold rows included.
+            include_cold: true,
+            ..Default::default()
+        },
         user_id: user_id.to_string(),
         embedding_profile_id: None,
-        limit: Some(bag.limit as usize),
-        min_score: bag.min_score,
-        // v4 `minImportance ?? TOOL_MIN_IMPORTANCE` (`route.ts:660`). Not a
-        // no-op: with `0` the recall search filters on the
-        // `reinforcedImportance` COLUMN, which excludes a NULL row (§R.4(f)).
-        min_importance: Some(bag.min_importance.unwrap_or(TOOL_MIN_IMPORTANCE)),
-        source: bag.source,
-        about_character_id: None,
-        apply_literal_phrase_boost: false,
-        now_ms,
-        // The Commonplace Book browses the whole archive, cold rows included.
-        include_cold: true,
         ..Default::default()
     };
-    let results =
-        match search_memories_semantic(db, provider, &bag.character_id, &bag.query, &options, None)
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => return internal(e),
-        };
+    let results = match search_memories(db, provider, &bag.character_id, &bag.query, &options).await
+    {
+        Ok(r) => r,
+        Err(e) => return internal(e),
+    };
     let used_embedding = results.first().map(|r| r.used_embedding).unwrap_or(false);
     let query = bag.query.clone();
     let body: Result<Value, DbError> = db.read_main(move |main| {
@@ -2059,6 +2122,8 @@ pub async fn memory_generate_embeddings<P: crate::model::embedding::EmbeddingPro
     provider: &P,
     user_id: &str,
     character_id: &str,
+    host_zone_fallback: &str,
+    now_ms: f64,
 ) -> Response {
     if !super::chat_outfits::is_zod_uuid(character_id) {
         return bad_request("Validation error");
@@ -2104,13 +2169,18 @@ pub async fn memory_generate_embeddings<P: crate::model::embedding::EmbeddingPro
             "total": memories.len(),
         }));
     }
-    let result = match crate::services::memory_service::generate_missing_embeddings(
+    // §S.5 (3), landed at the `83334b9a5` unification: the route reads
+    // P4.D292's `memory_index_backfill` pair directly (v4 `route.ts:1005`
+    // calls the index backfill's `generateMissingEmbeddings`); the per-call
+    // `batchSize` left with v4's `af48f6cc2`.
+    let result = match crate::services::memory_index_backfill::generate_missing_embeddings(
         db,
         provider,
-        user_id,
         character_id,
+        user_id,
         None,
-        GENERATE_EMBEDDINGS_SWEEP_BATCH,
+        host_zone_fallback,
+        now_ms as i64,
     )
     .await
     {
@@ -2127,10 +2197,6 @@ pub async fn memory_generate_embeddings<P: crate::model::embedding::EmbeddingPro
     }))
 }
 
-/// The base backfill service's per-call batch (the retired `batchSize`
-/// prefault) — gone with §S.5 (3)'s re-point.
-const GENERATE_EMBEDDINGS_SWEEP_BATCH: usize = 10;
-
 /// v4 PUT `?action=embeddings` → `handleRebuildIndex`
 /// (`app/api/v1/memories/route.ts:1047`): Zod parse (uuid + `confirm` literal
 /// true), character ownership, then the synchronous `rebuildVectorIndex`.
@@ -2144,7 +2210,11 @@ pub async fn memory_rebuild_index(db: &Db, character_id: &str, confirm: bool) ->
         Ok(false) => return not_found("Character"),
         Err(e) => return internal(e),
     }
-    let result = match crate::services::memory_service::rebuild_vector_index(db, character_id).await
+    let result = match crate::services::memory_index_backfill::rebuild_vector_index(
+        db,
+        character_id,
+    )
+    .await
     {
         Ok(r) => r,
         Err(e) => return internal(e),
@@ -2303,7 +2373,7 @@ use crate::services::turn_transcript::{list_extraction_turns, load_chat_message_
 // === P4.D269: anchor-gate probe (append-only) ===
 
 use super::zod_issues::{key as zod_key, zod_issue_details, zod_uuid_ok, ZodIssue};
-use crate::services::anchor_gate_probe::{run_anchor_gate_probe, RunAnchorGateProbeInput};
+use crate::services::anchor_gate_probe::{run_anchor_gate_probe_in_zone, RunAnchorGateProbeInput};
 
 /// The issues of v4's `anchorGateProbeSchema` (`route.ts:585-588` —
 /// `z.object({ characterId: z.string().uuid(), limit:
@@ -2359,6 +2429,7 @@ pub async fn memory_anchor_gate_probe<P: EmbeddingProvider + Sync>(
     user_id: &str,
     character_id: &str,
     limit: Option<f64>,
+    host_zone_fallback: &str,
 ) -> Response {
     let issues = anchor_gate_probe_issues(character_id, limit);
     if !issues.is_empty() {
@@ -2386,7 +2457,9 @@ pub async fn memory_anchor_gate_probe<P: EmbeddingProvider + Sync>(
         limit,
         embedding_profile_id: None,
     };
-    match run_anchor_gate_probe(db, provider, &input).await {
+    // The memory calendar's host fallback is the host's display-zone NAME
+    // (P4.D290's HANDOFF to the route, landed at the `83334b9a5` unification).
+    match run_anchor_gate_probe_in_zone(db, provider, &input, host_zone_fallback).await {
         Ok(result) => match serde_json::to_value(&result) {
             Ok(body) => Response::Memory(body),
             Err(e) => anchor_gate_probe_failed(character_id, &e.to_string()),
@@ -2578,7 +2651,7 @@ mod tests {
         let (_dir, db) = provisioned_with_character();
         for (limit, tail) in [(Some(4.0), " limit=4"), (None, "")] {
             let (guard, logs) = capture_guard();
-            let resp = memory_anchor_gate_probe(&db, &OneDim, "u", CHAR_A, limit).await;
+            let resp = memory_anchor_gate_probe(&db, &OneDim, "u", CHAR_A, limit, "UTC").await;
             drop(guard);
             assert!(matches!(resp, Response::Memory(_)), "{resp:?}");
             assert_eq!(
@@ -2604,7 +2677,7 @@ mod tests {
             ),
         ] {
             let (guard, logs) = capture_guard();
-            let resp = memory_anchor_gate_probe(&db, &OneDim, "u", id, limit).await;
+            let resp = memory_anchor_gate_probe(&db, &OneDim, "u", id, limit, "UTC").await;
             drop(guard);
             assert!(
                 matches!(&resp, Response::Error(e) if e.kind == status),

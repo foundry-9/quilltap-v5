@@ -647,6 +647,7 @@ fn courier_images_routes_match_oracle() {
             MSG_PENDING,
             "Lora nods and steps forward.",
             NOW_MS,
+            "UTC",
         ));
         let tables = dump_message_and_chat(&db, CHAT_PENDING, MSG_PENDING);
         check("resolve", &r, Some(tables));
@@ -666,6 +667,7 @@ fn courier_images_routes_match_oracle() {
             MSG_SETTLED,
             "noop",
             NOW_MS,
+            "UTC",
         ));
         check("resolve_not_pending", &r, None);
     }
@@ -747,6 +749,7 @@ fn courier_images_routes_match_oracle() {
             MSG_CAD_PENDING,
             "Lora pins the final lantern code to the board.",
             NOW_MS,
+            "UTC",
         ));
         let tables = json!({
             "message": dump_message_and_chat(&db, CHAT_CADENCE, MSG_CAD_PENDING)["message"],

@@ -629,6 +629,8 @@ async fn embedding_generate_jobs_match_oracle() {
                     &embedding,
                     &spec.user_id,
                     &case.body.character_id,
+                    "UTC",
+                    quilltap_core::clock::now_unix_ms() as f64,
                 )
                 .await
             }

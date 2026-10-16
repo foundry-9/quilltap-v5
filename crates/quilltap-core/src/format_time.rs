@@ -239,7 +239,7 @@ pub fn locale_date_time_us(iso: &str, zone: &TimeZone) -> Option<String> {
 ///
 /// v4's why, carried: this is the ladder for things that happened days or
 /// months ago — a memory's age in recall, a garment last worn. The memory
-/// label ([`crate::memory_weighting::format_relative_age`]) delegates here so
+/// label ([`crate::memory_time::format_memory_age`]) delegates here so
 /// the two readings cannot drift. `now_ms` is the caller's clock (v4's
 /// injectable `nowMs`; production passes [`crate::clock::now_unix_ms`]).
 ///
@@ -290,7 +290,7 @@ pub fn format_relative_days(ts_ms: f64, now_ms: f64) -> String {
 /// for the 7–13 and 30–59 day rungs, which read "last last week" after the
 /// line's own "last", so those two become "a week ago" and "a month ago".
 /// Every other rung passes through unchanged, and the memory-recall labels
-/// that share the ladder ([`crate::memory_weighting::format_relative_age`])
+/// that share the ladder ([`crate::memory_time::format_memory_age`])
 /// are untouched.
 pub fn format_worn_relative(ts_ms: f64, now_ms: f64) -> String {
     let phrase = format_relative_days(ts_ms, now_ms);
@@ -310,7 +310,7 @@ mod tests {
     /// The eight rungs of v4's `formatRelativeDays` at their boundaries
     /// (the differential over v4's real function is
     /// `tool_image_generation_equivalence`'s `formatRelativeDays` rows; the
-    /// memory label's delegation is pinned by Phase-1 `memory_weighting`).
+    /// memory label's delegation is pinned by `memory_time`'s age family).
     #[test]
     fn format_relative_days_walks_v4s_ladder() {
         const DAY: f64 = 86_400_000.0;

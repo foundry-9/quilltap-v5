@@ -43,7 +43,11 @@ fn id_of(memory: &Value) -> &str {
 pub fn without_embedding(memory: Value) -> Value {
     match memory {
         Value::Object(mut m) => {
-            m.remove("embedding");
+            // `shift_remove`: a preserve-order `Map`'s `remove` is a swap-remove,
+            // which would drop the LAST key into `embedding`'s slot; v4's
+            // `withoutEmbedding` keeps `MemorySchema` order (the `83334b9a5`
+            // unification, P4.D298's `CREATE_KEY_ORDER_RESIDUE` finding).
+            m.shift_remove("embedding");
             Value::Object(m)
         }
         other => other,
@@ -570,10 +574,11 @@ mod tests {
 
     #[test]
     fn without_embedding_drops_only_the_vector() {
-        let m = serde_json::json!({ "id": "a", "embedding": { "0": 1 }, "content": "x" });
+        let m = serde_json::json!({ "id": "a", "embedding": { "0": 1 }, "content": "x", "updatedAt": "t" });
+        // By BYTES: `Value ==` is key-order-blind, and the order is the point.
         assert_eq!(
-            without_embedding(m),
-            serde_json::json!({ "id": "a", "content": "x" })
+            serde_json::to_string(&without_embedding(m)).unwrap(),
+            r#"{"id":"a","content":"x","updatedAt":"t"}"#
         );
     }
 

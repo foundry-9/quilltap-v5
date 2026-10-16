@@ -204,36 +204,11 @@ async fn the_edge_answers_the_deleted_verbs_and_the_refusals() {
         );
     }
     // P4.D297 FILLED `maintain` / `maintenance-status` / `repair` (their bytes
-    // are `memory_maintenance_routes_equivalence`'s); the refusal rows left are
-    // the arms still awaiting their owner.
-    for (req, action, owner) in [
-        (
-            json!({"type":"scenarioEverywhere"}),
-            "everywhere",
-            "P4.D295",
-        ),
-        (
-            json!({"type":"scenarioReadByRef","mountPointId":"m","path":"p"}),
-            "read",
-            "P4.D295",
-        ),
-        (
-            json!({"type":"chatGetScenarioSource","chatId":"c1"}),
-            "scenario-source",
-            "P4.D295",
-        ),
-    ] {
-        let (status, body) = dispatch(req.clone()).await;
-        assert_eq!(status, 500, "{req}: {body}");
-        assert_eq!(
-            body["data"]["message"],
-            json!(format!(
-                "The '{action}' action is recognized but not yet available ({owner})."
-            )),
-            "{req}"
-        );
-        assert_eq!(body["data"]["kind"], json!("internal"));
-    }
+    // are `memory_maintenance_routes_equivalence`'s) and P4.D295 FILLED
+    // `scenarioEverywhere` / `scenarioReadByRef` / `chatGetScenarioSource`
+    // (`scenarios_routes_equivalence` / `chat_scenario_routes_equivalence`):
+    // no `not yet available` refusal row is left at the `83334b9a5`
+    // unification — every verb the keystone added answers through its owner.
 }
 
 fn status_and_body(resp: &Response) -> (u16, Value) {

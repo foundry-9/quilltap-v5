@@ -704,6 +704,29 @@ async fn restore_archive_bundle(
         })
         .await?;
 
+    // v4 `execute.ts:402-415`: the bundle's memories under a BUILTIN default
+    // profile get the FORCED vocabulary refit once the write has returned (the
+    // import answers the profile; the debounce is the host driver's). A failure
+    // is v4's WARN, never the rehydrate's (§S.5 (2), the `83334b9a5` unification).
+    if let Some(profile_id) = result.refit_profile_id.as_deref() {
+        if let Err(e) = crate::services::embedding_job_scheduler::schedule_refit(
+            db,
+            user_id,
+            Some(profile_id),
+            true,
+            crate::clock::now_unix_ms(),
+        )
+        .await
+        {
+            tracing::warn!(
+                userId = %user_id,
+                profileId = %profile_id,
+                error = %crate::db::fallback::error_text(&e),
+                "Failed to schedule vocabulary refit after import"
+            );
+        }
+    }
+
     if !result.success {
         // Failing before the tombstone clear is the whole contract (§6): the
         // character stays archived, the bundle stays put, and because the import

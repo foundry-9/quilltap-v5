@@ -151,7 +151,9 @@ pub fn reset_builtins(
     }
     let remapped = remap_export(&export, &id_mapping);
 
-    // 4. Re-import with the same seed options.
+    // 4. Re-import with the same seed options. (The built-in seed bundle carries
+    // no memories, so the BUILTIN refit v4's `executeImport` schedules after an
+    // import is a no-op here — `refit_profile_id` is `None` and not read.)
     let import = execute_import(
         main,
         mount,

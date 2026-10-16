@@ -1009,6 +1009,7 @@ where
             &responding_participant_id,
             &chat,
             settings,
+            crate::host_zone::zone_name(sdeps.display_zone),
         )
         .await;
         // v4 catch → warn + continue.
@@ -1045,6 +1046,7 @@ async fn run_summary_fold<C: CompletionProvider + Sync, E: EmbeddingProvider + S
     responding_participant_id: &str,
     chat: &Value,
     settings: &Value,
+    host_zone_fallback: &str,
 ) -> Result<(), DbError> {
     let uid = user_id.to_string();
     let available = db.read_main(move |conn| connection_profiles::find_by_user_id(conn, &uid))?;
@@ -1117,6 +1119,7 @@ async fn run_summary_fold<C: CompletionProvider + Sync, E: EmbeddingProvider + S
         embedding,
         completion,
         executor,
+        host_zone_fallback,
     };
     crate::services::context_summary::check_and_generate_summary_if_needed_with_seams(
         db,

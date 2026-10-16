@@ -630,13 +630,12 @@ const P4D298_STALE_JOBS_PLANT: &[&str] = &[
 /// loudly ("the residue closed — move the row to the strict set"). (3) the
 /// embeddings pair's re-point onto P4.D292's `memory_index_backfill`; (4) the
 /// search route's re-point onto P4.D291's recall search.
-const S5_RESIDUE: &[(&str, &str)] = &[
-    ("search_min_importance_default", "§S.5 (4)"),
-    (
-        "list_min_importance_reinforced_paginated",
-        "P4.D288 — `memories_read`'s paginated filter compares `importance`, v4 the `reinforcedImportance` column",
-    ),
-];
+/// EMPTY at the `83334b9a5` unification: §S.5 (4) landed (the search route on
+/// P4.D291's `search_memories`) and the paginated filter now compares
+/// `reinforcedImportance` as v4's does — both rows compare strictly. The table
+/// stays so a future residue has a home (and the judge below keeps the
+/// "residue closed" tripwire for it).
+const S5_RESIDUE: &[(&str, &str)] = &[];
 
 /// A minted value inside a captured line (`jobId=<uuid>`) → `<minted>`.
 fn mask_field(line: &str, key: &str) -> String {
@@ -1020,7 +1019,7 @@ fn memories_routes_match_oracle() {
     // --- Delete (+ unlink scrub) ---
     {
         let db = fresh_db(&spec, "del");
-        let resp = rt.block_on(memories::memory_delete(&db, MEM_REL_B));
+        let resp = rt.block_on(memories::memory_delete(&db, &uid, MEM_REL_B, FIXED_NOW_MS));
         check_body("delete", &resp, &mut failed);
         check_tables(
             "delete",
@@ -1669,8 +1668,9 @@ fn memories_routes_match_oracle() {
         // Item DELETE through the ONE retire path; the INFO.
         {
             let db = fresh_db(&spec, "del-d298");
-            let (resp, lines) =
-                global_capture::capture(|| rt.block_on(memories::memory_delete(&db, MEM_REL_B)));
+            let (resp, lines) = global_capture::capture(|| {
+                rt.block_on(memories::memory_delete(&db, &uid, MEM_REL_B, FIXED_NOW_MS))
+            });
             check_row("delete", &resp, &lines, None, &mut failed);
             expect_sibling("delete", "memory:retire|Retired memories", &mut failed);
         }
@@ -1679,8 +1679,9 @@ fn memories_routes_match_oracle() {
             let name = "delete_race_retired_zero";
             let db = fresh_db(&spec, name);
             plant(&rt, &db, P4D298_DELETE_RACE_PLANT);
-            let (resp, lines) =
-                global_capture::capture(|| rt.block_on(memories::memory_delete(&db, MEM_REL_B)));
+            let (resp, lines) = global_capture::capture(|| {
+                rt.block_on(memories::memory_delete(&db, &uid, MEM_REL_B, FIXED_NOW_MS))
+            });
             let tables = dump_rows(&db, &["b2000000-0000-4000-8000-0000000000e0", MEM_REL_B]);
             // `dump_rows` sorts nothing — the oracle's `dumpMemoryRows` shape.
             let mut t = tables;
@@ -2311,6 +2312,7 @@ fn memories_routes_match_oracle() {
                     &uid,
                     id,
                     "UTC",
+                    FIXED_NOW_MS,
                     body,
                 ))
             });
@@ -2629,6 +2631,8 @@ fn memories_routes_match_oracle() {
                 &p,
                 &uid,
                 &character_id,
+                "UTC",
+                FIXED_NOW_MS,
             ));
             check_row(name, &resp, &[], None, &mut failed);
         }

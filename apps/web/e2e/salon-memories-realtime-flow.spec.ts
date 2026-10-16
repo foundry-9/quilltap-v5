@@ -32,7 +32,7 @@ const P4D175_SERVER_LANDED = true;
  * §S.9 (the `83334b9a5` round): the trigger is P4.D288's `memoryMaintain` wire,
  * P4.D297's maintenance job and its `memories` publish. The unifier flips it.
  */
-const P4D288_SERVER_LANDED = false;
+const P4D288_SERVER_LANDED = true;
 
 async function maybeUnlock(page: Page): Promise<void> {
   const passphrase = page.locator('#qt-passphrase');

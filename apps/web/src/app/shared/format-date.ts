@@ -201,7 +201,7 @@ export function formatRelativeAge(ts: number, nowMs: number = Date.now()): strin
  * for a readout that ticks. This is the ladder for things that happened days
  * or months ago — a garment last worn (`wardrobe/wear-display.ts`). v4's
  * memory injector delegates its label here too; v5's twin of THAT reading is
- * Rust (`memory_weighting.rs`), so the SPA's only consumer is the wardrobe.
+ * Rust (`memory_time`'s age label), so the SPA's only consumer is the wardrobe.
  * Ported from the CODE: no rung ever prints a weekday (the help's `last Tue`
  * is not what v4 prints).
  *

@@ -72,6 +72,7 @@ pub fn run_span_ensures(main: &Connection, host_fallback: &str) -> Result<(), Db
             cursorsMigrationId = super::memory_extraction_cursors_repair::MIGRATION_ID,
             episodeBackfilled = settled.episode_backfilled,
             cursorsCarried = settled.cursors_carried,
+            tiersStamped = settled.tiers_stamped,
             "Recorded the settled extraction-cursor chain"
         );
     }

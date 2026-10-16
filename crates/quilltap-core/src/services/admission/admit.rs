@@ -519,7 +519,7 @@ async fn admit_prepared<P: EmbeddingProvider + Sync>(
     host_zone_fallback: &str,
 ) -> Result<AdmissionOutcome, DbError> {
     let character_id = request.row.character_id.clone();
-    with_admission_lock(&character_id, async {
+    let outcome = with_admission_lock(&character_id, async {
         let now = now_ms();
         if let Some(key) = &idempotency_key {
             if let Some(mut earlier) = recall_admission(key, now) {
@@ -658,13 +658,6 @@ async fn admit_prepared<P: EmbeddingProvider + Sync>(
         {
             record_admission_insert(&character_id, now_ms());
         }
-        if admission_inserted(&outcome.action) {
-            // The maintenance watermarks (the cap and consolidation's backlog)
-            // count the row just written; the ledger they consult lives here in
-            // the parent.
-            // (§R.10(h): the `maybe_enqueue_maintenance(db, &[character_id])`
-            // call lands at unification with P4.D297's trigger.)
-        }
         let keyed = idempotency_key.is_some();
         if let Some(key) = idempotency_key {
             record_admission(key, outcome.clone(), now);
@@ -688,9 +681,26 @@ async fn admit_prepared<P: EmbeddingProvider + Sync>(
             thresholdScale = scale,
             "Memory admitted"
         );
-        Ok(outcome)
+        Ok::<AdmissionOutcome, DbError>(outcome)
     })
-    .await
+    .await?;
+    if admission_inserted(&outcome.action) {
+        // The maintenance watermarks (the cap and consolidation's backlog)
+        // count the row just written; the ledger they consult lives here in
+        // the parent. v4 `admit.ts:405-409` fires it `void` after `Memory
+        // admitted`, outside the lock, with a catch DEBUG `Maintenance
+        // watermark check skipped after admission` for a failed dynamic
+        // import; `maybe_enqueue_maintenance` never fails (its own WARN covers
+        // the check), so that arm has no v5 twin. Landed at the `83334b9a5`
+        // unification (§R.10(h), §S.5 (1)).
+        let _enqueued = crate::services::memory_maintenance::triggers::maybe_enqueue_maintenance(
+            db,
+            std::slice::from_ref(&character_id),
+            now_ms(),
+        )
+        .await;
+    }
+    Ok(outcome)
 }
 
 /// The dry run's parent half: search and decide as live admission would, and

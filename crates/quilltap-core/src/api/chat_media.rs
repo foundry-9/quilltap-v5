@@ -187,6 +187,7 @@ pub async fn message_resolve_external_turn<
     message_id: &str,
     reply_content: &str,
     now_ms: i64,
+    host_zone_fallback: &str,
 ) -> Response {
     match crate::services::courier_transport::resolve_external_turn(
         db,
@@ -198,6 +199,7 @@ pub async fn message_resolve_external_turn<
         reply_content,
         user_id,
         now_ms,
+        host_zone_fallback,
     )
     .await
     {

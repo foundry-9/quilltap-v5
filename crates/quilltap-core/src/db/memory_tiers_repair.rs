@@ -34,7 +34,12 @@
 //! copies that column into `memory_extraction_cursors` and DROPS it — a v5 boot
 //! that kept re-adding it would ping-pong with the cursor ensure on every
 //! instance it had already migrated. v4 never re-runs the tiers migration on
-//! such an instance (its ledger row is written), so the column stays gone there;
+//! an instance IT migrated (its ledger row is written), so the column stays
+//! gone there; on a v5-PROVISIONED instance (born at the post-chain shape, no
+//! ledger row) `shouldRun` would hold through `needsChatWatermark` alone and
+//! v4 would re-add the column — so the settled-chain arm
+//! (`memory_extraction_cursors_repair::stamp_settled_chain`) stamps this id
+//! with the row v4 would write (the `83334b9a5` unification's review);
 //! the chain this ensure belongs to (`memory_extraction_cursors_repair`) is the
 //! one home of the OTHER pass's position. The `memory_tiers_ensure_equivalence`
 //! family compares the CHAIN (tiers → episode watermark → cursors), not this

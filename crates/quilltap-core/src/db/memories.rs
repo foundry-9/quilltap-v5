@@ -1623,7 +1623,7 @@ mod tests {
         assert_eq!(r.reinforcement_count, 2.0);
         assert_eq!(
             r.reinforced_importance,
-            crate::memory_gate::calculate_reinforced_importance(0.5, 2.0)
+            crate::memory_scoring::reinforced_importance(0.5, 2.0)
         );
         assert_eq!(r.last_reinforced_at, "2026-05-03T00:00:00.000Z");
         assert_eq!(lines.len(), 1, "{lines:?}");

@@ -1020,6 +1020,9 @@ const REPO_LEVEL_MESSAGES = [
   'Error creating prompt template',
   'Error creating folder',
   'Error creating tag',
+  // [P4.D293 22l] the tf-idf vocabulary repository's rethrow line (the
+  // `83334b9a5` unification — captured on both sides).
+  'Error creating TF-IDF vocabulary',
 ];
 
 /**

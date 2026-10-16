@@ -631,12 +631,6 @@ pub fn default_feature_config() -> FeatureConfigInfo {
         },
         answer_confirmation: AnswerConfirmationConfig { enabled: false },
         autonomous_room_defaults: Value::Object(Default::default()),
-        auto_housekeeping: AutoHousekeepingConfig {
-            enabled: false,
-            per_character_cap: 2000.0,
-            merge_similar: false,
-            auto_merge_similar_threshold: 0.9,
-        },
         text_replacements: TextReplacementsConfig {
             enabled: true,
             rules: 0.0,
@@ -775,16 +769,6 @@ pub fn collect_feature_config(db: &Db, user_id: &str) -> Result<FeatureConfigInf
         autonomous_room_defaults: jget(s, &["autonomousRoomSettings"])
             .cloned()
             .unwrap_or_else(|| Value::Object(Default::default())),
-        auto_housekeeping: AutoHousekeepingConfig {
-            enabled: jbool(s, &["autoHousekeepingSettings", "enabled"], false),
-            per_character_cap: jnum(s, &["autoHousekeepingSettings", "perCharacterCap"], 2000.0),
-            merge_similar: jbool(s, &["autoHousekeepingSettings", "mergeSimilar"], false),
-            auto_merge_similar_threshold: jnum(
-                s,
-                &["autoHousekeepingSettings", "autoMergeSimilarThreshold"],
-                0.9,
-            ),
-        },
         text_replacements: TextReplacementsConfig {
             enabled: jbool(s, &["textReplacementsEnabled"], true),
             rules,
@@ -822,6 +806,10 @@ pub fn collect_instance_settings(
     let (scope_policy, expand_related) = (recall.scope_policy, recall.expand_related);
     let extraction = db.read_main(instance_settings::get_memory_extraction_limits)?;
     let last_sweep = db.read_main(instance_settings::get_last_maintenance_sweep_at)?;
+    // v4 `getMemoryMaintenanceSettings()` (Phase F): the switch, the cap and the
+    // override count (`Object.keys(perCharacterCapOverrides).length`).
+    let maintenance =
+        db.read_main(|c| Ok(instance_settings::get_memory_maintenance_settings(c)))?;
     // v4 also awaits `getDataRetentionSettings()` and immediately voids it —
     // `resolveStaleChatDays` already folds it in. Not re-read here.
 
@@ -868,6 +856,11 @@ pub fn collect_instance_settings(
             max_per_hour: jnum(&extraction, &["maxPerHour"], 20.0),
             soft_start_fraction: jnum(&extraction, &["softStartFraction"], 0.7),
             soft_floor: jnum(&extraction, &["softFloor"], 0.7),
+        },
+        memory_maintenance: MemoryMaintenanceInfo {
+            enabled: maintenance.enabled,
+            per_character_cap: maintenance.per_character_cap as f64,
+            cap_overrides: maintenance.per_character_cap_overrides.len() as f64,
         },
         last_maintenance_sweep_at: last_sweep.map(crate::clock::iso_from_unix_ms),
     })

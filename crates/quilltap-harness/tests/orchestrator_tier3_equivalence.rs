@@ -1368,6 +1368,9 @@ fn filter_events(events: &[Value]) -> Vec<Value> {
 // Oracle NDJSON.
 // ---------------------------------------------------------------------------
 
+/// P4.D301: an `error` frame's `(userMessagePersisted, pendingToolResultsPersisted)`.
+type ErrorFlags = (Option<bool>, Option<bool>);
+
 #[derive(Deserialize)]
 struct OracleLine {
     kind: String,
@@ -1455,6 +1458,13 @@ fn orchestrator_tier3_matches_oracle() {
     // filtered event comparison drops the frame; the requires-gate arms compare
     // its message against `process_message`'s `Err`).
     let mut want_error_details: HashMap<String, Vec<String>> = HashMap::new();
+    // P4.D301 (bug 241; landed at the `83334b9a5` unification as P4.D291's
+    // HANDOFF (6)): v4's `error` frame carries the submission ledger —
+    // `userMessagePersisted` / `pendingToolResultsPersisted` — per failing call.
+    // `mid_stream_error` (throws on the stream AFTER the user save) expects
+    // `{true, false}`; `mid_stream_error_staged_tools` `{true, true}`; the
+    // requires-gate calls fail before any save, `{false, false}`.
+    let mut want_error_flags: HashMap<String, Vec<ErrorFlags>> = HashMap::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let parsed: OracleLine = serde_json::from_str(line).expect("oracle line parses");
         match parsed.kind.as_str() {
@@ -1467,6 +1477,19 @@ fn orchestrator_tier3_matches_oracle() {
                         .filter(|e| e.get("error").is_some())
                         .filter_map(|e| e.get("details").and_then(Value::as_str))
                         .map(str::to_string)
+                        .collect(),
+                );
+                want_error_flags.insert(
+                    parsed.call.clone().unwrap(),
+                    arr.iter()
+                        .filter(|e| e.get("error").is_some())
+                        .map(|e| {
+                            (
+                                e.get("userMessagePersisted").and_then(Value::as_bool),
+                                e.get("pendingToolResultsPersisted")
+                                    .and_then(Value::as_bool),
+                            )
+                        })
                         .collect(),
                 );
                 want_events.insert(parsed.call.clone().unwrap(), filter_events(&arr));
@@ -1681,6 +1704,8 @@ fn orchestrator_tier3_matches_oracle() {
     // `Err` message (if any).
     let mut got_stream_keys: HashMap<String, Vec<String>> = HashMap::new();
     let mut got_errors: HashMap<String, String> = HashMap::new();
+    // P4.D301: the submission ledger v5 hands the transport shell per failing call.
+    let mut got_error_flags: HashMap<String, ErrorFlags> = HashMap::new();
     // P4.81 item 4: the three `execute_turn_chain` chain-stop log lines,
     // captured per case (thread-scoped — `rt` is current-thread, so the whole
     // `block_on` below runs on this thread and cannot steal a sibling test's
@@ -1911,10 +1936,13 @@ fn orchestrator_tier3_matches_oracle() {
         // Initial processMessage. P4.D186: captured, so the paused-hold info line
         // (a log-only change every frame and row diff is blind to) is pinned per
         // case — on its own branch AND silent on every sibling.
+        // P4.D301: driven through the ledger-bearing entry so a failing call's
+        // persistence flags are compared against v4's `error` frame below.
+        let ledger = std::cell::Cell::new(orchestrator::SubmissionLedger::default());
         let initial = {
             let mut out = None;
             let initial_lines = quilltap_core::test_support::captured(|| {
-                out = Some(rt.block_on(orchestrator::process_message(
+                out = Some(rt.block_on(orchestrator::process_message_with_ledger(
                     &mut deps,
                     &make_input(
                         &call.chat_id,
@@ -1922,6 +1950,7 @@ fn orchestrator_tier3_matches_oracle() {
                         call.continue_mode,
                         call.responding_participant.as_deref(),
                     ),
+                    &ledger,
                 )));
             });
             initial_logs.insert(call.name.clone(), initial_lines);
@@ -2031,6 +2060,16 @@ fn orchestrator_tier3_matches_oracle() {
                         quilltap_core::db::DbError::Internal(m) => m.clone(),
                         other => other.to_string(),
                     },
+                );
+                // P4.D301: the submission ledger v5 hands the transport shell
+                // (the `error` frame's two flags), compared below against v4's
+                // first error frame for the call.
+                got_error_flags.insert(
+                    call.name.clone(),
+                    (
+                        Some(ledger.get().user_message_persisted),
+                        Some(ledger.get().pending_tool_results_persisted),
+                    ),
                 );
                 // The mid-stream-error case surfaces the stream error to the caller;
                 // v4's `handleSendMessage` catch emits an `error` frame at the
@@ -2202,6 +2241,19 @@ fn orchestrator_tier3_matches_oracle() {
             got_errors.get(case).map(String::as_str),
             Some("No API key configured for this connection profile"),
             "{case}: process_message must refuse with v4's requires-gate sentence"
+        );
+    }
+    // P4.D301 (bug 241): every call v5 failed hands the shell the flags v4's
+    // `error` frame carries — `mid_stream_error` `{true, false}` (the stream
+    // threw AFTER the user save), `mid_stream_error_staged_tools` `{true, true}`,
+    // the requires-gate refusals `{false, false}`. A frame WITHOUT the flags (an
+    // oracle older than bug 241) reads `None` and fails here.
+    for (name, got) in &got_error_flags {
+        let want = want_error_flags.get(name).and_then(|f| f.first().copied());
+        assert_eq!(
+            Some(*got),
+            want,
+            "{name}: the submission ledger v5 hands the shell vs v4's error frame flags"
         );
     }
     // Silence leg: no other case refuses with the gate's sentence.

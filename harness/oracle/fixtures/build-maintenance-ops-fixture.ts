@@ -146,7 +146,7 @@ async function main(): Promise<void> {
     await repos.backgroundJobs.create(
       {
         userId: spec.userId,
-        type: 'MEMORY_HOUSEKEEPING',
+        type: 'MEMORY_MAINTENANCE', // v4 `104e986c7` retired MEMORY_HOUSEKEEPING (the `83334b9a5` unification)
         status,
         payload: { marker: id },
         priority: 0,

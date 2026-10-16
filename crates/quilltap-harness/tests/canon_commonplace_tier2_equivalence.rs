@@ -38,7 +38,7 @@ use quilltap_core::canon::{render_other_canon_block, render_self_canon_block};
 use quilltap_core::commonplace_file::CommonplaceSubject;
 use quilltap_core::db::characters_read;
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::services::memory_processor::{
+use quilltap_core::services::canon_loaders::{
     load_canon_for_observer_about_subject, load_canon_for_self_with_commonplace,
     load_commonplace_canon, CanonSubject,
 };

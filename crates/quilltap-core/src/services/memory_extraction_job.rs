@@ -49,21 +49,6 @@ use crate::services::queue_service::{
     enqueue_memory_extraction_with, MemoryExtractionEnqueue, MemoryExtractionPass,
 };
 
-/// JS `String(value)` for a raw pass value (a string as itself; anything
-/// else as JS renders it in a template literal).
-fn js_string(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Number(n) => {
-            crate::pascal::js_value::number_to_string(n.as_f64().unwrap_or(f64::NAN))
-        }
-        Value::Bool(b) => b.to_string(),
-        Value::Null => "null".to_string(),
-        Value::Array(a) => a.iter().map(js_string).collect::<Vec<_>>().join(","),
-        Value::Object(_) => "[object Object]".to_string(),
-    }
-}
-
 /// A payload's grain (work order P4.D296 L-4): v4's `memoryExtractionPassOf`
 /// lets any TRUTHY `pass` through unvalidated, so an unknown one is carried
 /// raw — it takes the EPISODE branch (v4 `catchup.ts` tests only
@@ -144,7 +129,7 @@ impl MemoryExtractionPayload {
     pub fn pass_of(&self) -> PassOf {
         match crate::services::queue_service::pass_of(&self.raw) {
             Ok(p) => PassOf::Known(p),
-            Err(raw) => PassOf::Unknown(js_string(&raw)),
+            Err(raw) => PassOf::Unknown(crate::pascal::js_value::to_js_string(&raw)),
         }
     }
 }
@@ -152,14 +137,18 @@ impl MemoryExtractionPayload {
 /// The debug-log write's merge (L-12): v4 writes `withRecallLines(existing,
 /// lines)` — the turn's recall record (`[Recall]` / `[Recall:ring]` lines,
 /// written by the finalizer) kept FIRST, this job's lines replacing any
-/// earlier extraction's. That helper is P4.D291's port (`recall/deliver.ts:
-/// 195-198`), not under this lane's base, so this ONE call site keeps
-/// pre-round v5's write (the job's lines alone) until the unifier re-points
-/// it. HANDOFF: services/memory_extraction_job.rs finish_extraction_job —
-/// call P4.D291's with_recall_lines (its recorded spelling); append, recall
-/// record first (§S.5 named handoff (5)).
-fn debug_memory_logs_for(_existing: Option<&Value>, lines: &[String]) -> Vec<String> {
-    lines.to_vec()
+/// earlier extraction's. P4.D291's port (`recall/deliver.ts:195-198`), wired
+/// here at the `83334b9a5` unification (§S.5 named handoff (5)). A stored
+/// `debugMemoryLogs` that is not an array of strings reads as no record (v4
+/// would throw on a non-string entry's `startsWith`).
+fn debug_memory_logs_for(existing: Option<&Value>, lines: &[String]) -> Vec<String> {
+    let existing: Option<Vec<String>> = existing.and_then(Value::as_array).map(|a| {
+        a.iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect()
+    });
+    crate::services::recall::deliver::with_recall_lines(existing.as_deref(), lines)
 }
 
 /// What every extraction job does after its passes (v4

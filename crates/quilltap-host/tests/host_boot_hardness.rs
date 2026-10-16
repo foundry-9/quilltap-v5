@@ -633,6 +633,19 @@ async fn a_repaired_table_clears_the_record_on_the_next_assemble() {
     );
 }
 
+/// P4.D295's HANDOFF (§S.5 item 7): a host-side capture row for the General
+/// scenarios ensure's failure — the location's own line (v4's L2,
+/// `[ScenarioLocation] Failed to ensure Scenarios folder`) and THEN the host
+/// arm's WARN (`Error ensuring general scenarios folder, continuing startup`,
+/// v4 `instrumentation.ts:809-819`, L37) — is NOT reachable from a static
+/// plant: phase 3.4's built-in seed creates `Scenarios/` first and treats its
+/// own failure as FATAL (`engine assembly failed: built-in seed failed`), so a
+/// trigger refusing the folder's insert kills the boot before 3.4c, and with
+/// the folder present 3.4c's `ensure_folder_path` is a no-op. The order of the
+/// two lines is pinned at the unit level (`builtin_mounts`'s L2 test + the
+/// propagated `Err`) and the arm's text by `GUARDED_MESSAGES`' silence leg;
+/// a host row needs a failure injected BETWEEN the two phases (recorded at the
+/// `83334b9a5` unification, OPEN).
 /// 25c — the #134 failure itself: the file-links case repair's SELECT names
 /// `relativePath`. v4's links-repository `ensureTable` line; the boot goes on,
 /// the provisions after it run, and the `state.json` ensure (which reads links

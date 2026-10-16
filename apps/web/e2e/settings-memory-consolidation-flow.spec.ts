@@ -53,7 +53,7 @@ import {
 
 const P4D265_SERVER_LANDED = true;
 const GATE_REASON =
-  'awaits the P4.D265 round server (P4.D265 wire + P4.D266 housekeeping + P4.D269 tier + P4.D271 consolidation verbs) — §S.9 flips it on the union';
+  'awaits the P4.D265 round server (P4.D265 wire + P4.D269 tier + the consolidation verbs — since the 83334b9a5 round ONE maintenance job, P4.D297) — §S.9 flipped it on the union';
 
 const PORT = 4335;
 const BASE_URL = `http://127.0.0.1:${PORT}`;

@@ -158,6 +158,11 @@ pub struct SettledChainStamp {
     pub episode_backfilled: usize,
     /// Cursor rows v4's cursor migration would insert (`N carried over`).
     pub cursors_carried: usize,
+    /// `add-memory-tiers-v1` stamped too: its `shouldRun` holds on this
+    /// instance through `needsChatWatermark` alone (the chat column the cursor
+    /// migration dropped), so v4 would re-run it — and re-add the column — on
+    /// a v5-provisioned instance (the `83334b9a5` unification's review).
+    pub tiers_stamped: bool,
 }
 
 /// P4.D288 unit 13 (R-E's stamp rule, §R.13(a)) — the chain on an instance
@@ -183,11 +188,26 @@ pub struct SettledChainStamp {
 ///   `<chatId>:episode-fold` cursor (v4's `ON CONFLICT DO NOTHING` counts only
 ///   inserts).
 ///
+/// - **tiers** (`add-memory-tiers-v1`, when its row is absent — the
+///   `83334b9a5` unification's review): v4's `shouldRun` holds on this instance
+///   through `needsChatWatermark` ALONE (`add-memory-tiers-v1.ts:83,96-105` —
+///   the memory columns and the index are provisioned, no NULL tiers), so v4
+///   would re-run it, re-add `chats.otherExtractionWatermarkMessageId`, stamp
+///   it, then SKIP the stamped cursor migration — and NEITHER app would ever
+///   drop the column again (the ping-pong class). Stamped with the row v4
+///   would write here: `itemsAffected` 1, `Memory tiers in place (1 changes)`
+///   (`:147-156`). With tiers in the chain the cursor row reads `from 2
+///   watermark column(s)` — v4's real fresh-boot chain (tiers adds `other`,
+///   the episode migration adds `episode`, cursors moves BOTH); `from 1`
+///   when tiers was already recorded (an instance tiers ran on before the
+///   cursor table existed is the half-migrated arm, never this one).
+///
 /// `None` when the state is anything else (either id recorded; a legacy column
 /// present — the cursor ensure's half-migrated arm; no `chats`; no cursor
-/// table — the real chain's). ONE savepoint around both stamps.
+/// table — the real chain's). ONE savepoint around the stamps.
 pub fn stamp_settled_chain(main: &Connection) -> Result<Option<SettledChainStamp>, DbError> {
     use super::memory_episode_watermark_repair as episode;
+    use super::memory_tiers_repair as tiers;
     if ledger_has(main, episode::MIGRATION_ID)?
         || ledger_has(main, MIGRATION_ID)?
         || !table_exists(main, "chats")?
@@ -231,8 +251,20 @@ pub fn stamp_settled_chain(main: &Connection) -> Result<Option<SettledChainStamp
             }
         }
     }
+    let tiers_absent = !ledger_has(main, tiers::MIGRATION_ID)?;
+    let watermark_columns = if tiers_absent { 2 } else { 1 };
     let now = crate::clock::now_iso();
     in_savepoint(main, "memory_extraction_cursors_settled", |conn| {
+        if tiers_absent {
+            // v4's registration order: tiers before the episode watermark.
+            stamp_completed(
+                conn,
+                tiers::MIGRATION_ID,
+                &now,
+                1,
+                "Memory tiers in place (1 changes)",
+            )?;
+        }
         stamp_completed(
             conn,
             episode::MIGRATION_ID,
@@ -246,12 +278,13 @@ pub fn stamp_settled_chain(main: &Connection) -> Result<Option<SettledChainStamp
             &now,
             cursors_carried as i64,
             &format!(
-                "Extraction cursors in place ({cursors_carried} carried over from 1 watermark column(s))"
+                "Extraction cursors in place ({cursors_carried} carried over from {watermark_columns} watermark column(s))"
             ),
         )?;
         Ok(Some(SettledChainStamp {
             episode_backfilled,
             cursors_carried,
+            tiers_stamped: tiers_absent,
         }))
     })
 }

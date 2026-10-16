@@ -3824,6 +3824,7 @@ impl CoreEngine {
                             SINGLE_USER_ID,
                             &memory_id,
                             crate::host_zone::zone_name(&self.inner.config.display_zone),
+                            wall_clock_ms(),
                             memory,
                         )
                         .await
@@ -3832,7 +3833,10 @@ impl CoreEngine {
                 }
             }
             Request::MemoryDelete { memory_id } => match self.ready_db() {
-                Ok(db) => super::memories::memory_delete(&db, &memory_id).await,
+                Ok(db) => {
+                    super::memories::memory_delete(&db, SINGLE_USER_ID, &memory_id, wall_clock_ms())
+                        .await
+                }
                 Err(r) => r,
             },
             Request::MemoryDeleteByChat { chat_id } => match self.ready_db() {
@@ -3918,6 +3922,8 @@ impl CoreEngine {
                         &provider,
                         SINGLE_USER_ID,
                         &character_id,
+                        crate::host_zone::zone_name(&self.inner.config.display_zone),
+                        wall_clock_ms(),
                     )
                     .await
                 }
@@ -5556,6 +5562,7 @@ impl CoreEngine {
                         SINGLE_USER_ID,
                         &character_id,
                         limit,
+                        crate::host_zone::zone_name(&self.inner.config.display_zone),
                     )
                     .await
                 }
@@ -5632,10 +5639,10 @@ impl CoreEngine {
             // === end P4.D265 ===
 
             // === P4.D288: the 83334b9a5 round's wire (C2) ===
-            // The refusals answer `p4d288_not_yet_available` (v4's action
-            // name + the owning order) until the owner fills the body; the two
-            // maintenance-config arms are FILLED (P4.D297's after KEYSTONE).
-            // P4.D297 filled the three maintenance verbs' bodies.
+            // Every arm the keystone added is FILLED by its owner (P4.D295 the
+            // scenario verbs, P4.D297 the maintenance verbs); the lanes'
+            // `not yet available` refusal helper left with the last refusal at
+            // the `83334b9a5` unification.
             Request::MemoryMaintain { options } => match self.ready_db() {
                 Ok(db) => {
                     Box::pin(super::memory_maintenance_routes::memory_maintain(
@@ -7611,21 +7618,6 @@ fn read_auto_lock_minutes(db: &Db) -> Option<f64> {
         None
     }
 }
-
-// === P4.D288: the 83334b9a5 round's wire (C2) — the ONE refusal helper ===
-
-/// The C2 refusal body (§R.14's agreed, loud, typed `not_available`): `Internal`
-/// `The '<action>' action is recognized but not yet available (<owner>).` —
-/// `action` is v4's action name, `owner` the order that fills the arm this
-/// round.
-pub(crate) fn p4d288_not_yet_available(action: &str, owner: &str) -> Response {
-    Response::error(
-        ErrorKind::Internal,
-        format!("The '{action}' action is recognized but not yet available ({owner})."),
-    )
-}
-
-// === end P4.D288 ===
 
 #[cfg(test)]
 mod tests {

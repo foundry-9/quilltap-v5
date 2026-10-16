@@ -1958,9 +1958,13 @@ fn seed_built_ins(db: &Db, tz: &str) -> Result<EnsureFailures, String> {
                     mount_index,
                     builtin_mounts::LazyRepairFailures::LogAndContinue,
                 )?);
-                // v4's phase 3.4c. The folder failure is logged INSIDE (v4's
-                // `[GeneralScenarios]` catch); this arm is v4's
-                // `instrumentation.ts:766-776` WARN for anything else.
+                // v4's phase 3.4c. Since P4.D295 the ensure is the scenario
+                // location's `resolve_scenario_location(General, None,
+                // ensure)`: a folder failure logs the location's own line
+                // (`[ScenarioLocation] Failed to ensure Scenarios folder`, v4's
+                // L2) and propagates as `DbError::Internal(<bare message>)`,
+                // and THIS arm is v4's `instrumentation.ts:809-819` WARN (L37)
+                // for it and for anything else — L2 then L37, in that order.
                 if let Err(e) = builtin_mounts::ensure_general_scenarios_folder(main, mount_index) {
                     tracing::warn!(
                         target: "quilltap::boot",

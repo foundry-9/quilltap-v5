@@ -361,16 +361,6 @@ async fn run_fold_memory_passes_live<C, E>(
     .await;
 }
 
-/// The memory-calendar host fallback of the in-loop fold
-/// ([`FoldEpisodePassSeams`]): its four constructors (the orchestrator, the
-/// Courier, the help chat and the enclave step — files outside this lane)
-/// carry no host zone yet, so the memory zone there is the instance zone,
-/// else UTC (v4 falls back to `QUILLTAP_TIMEZONE`, then the system zone).
-/// RECORDED DIVERGENCE + HANDOFF (work order P4.D296 lane record): give
-/// `FoldEpisodePassSeams` the host's calendar name and pass it from the four
-/// constructors.
-const IN_LOOP_FOLD_ZONE_FALLBACK: &str = "UTC";
-
 /// The default no-op seams (matches the oracle's mocks).
 #[derive(Clone, Copy, Debug, Default)]
 pub struct NoopSeams;
@@ -413,6 +403,12 @@ pub struct FoldEpisodePassSeams<'a, C: CompletionProvider, E: EmbeddingProvider>
     pub embedding: &'a E,
     pub completion: &'a C,
     pub executor: &'a CheapLlmTaskExecutor,
+    /// The memory calendar's host fallback — the host's display-zone NAME
+    /// (`host_zone::zone_name`), as every other memory-calendar site threads it
+    /// (v4 falls back to `QUILLTAP_TIMEZONE`, then the system zone). Passed by
+    /// the four constructors — the orchestrator, the Courier, the enclave step
+    /// and the help chat (P4.D296's HANDOFF (3), the `83334b9a5` unification).
+    pub host_zone_fallback: &'a str,
 }
 
 impl<C: CompletionProvider + Sync, E: EmbeddingProvider + Sync> ContextSummarySeams
@@ -446,7 +442,7 @@ impl<C: CompletionProvider + Sync, E: EmbeddingProvider + Sync> ContextSummarySe
             self.embedding,
             self.executor,
             input,
-            IN_LOOP_FOLD_ZONE_FALLBACK,
+            self.host_zone_fallback,
             None,
         )
         .await;

@@ -504,15 +504,6 @@ pub struct AnswerConfirmationConfig {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AutoHousekeepingConfig {
-    pub enabled: bool,
-    pub per_character_cap: f64,
-    pub merge_similar: bool,
-    pub auto_merge_similar_threshold: f64,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct TextReplacementsConfig {
     pub enabled: bool,
     pub rules: f64,
@@ -539,7 +530,6 @@ pub struct FeatureConfigInfo {
     pub answer_confirmation: AnswerConfirmationConfig,
     /// v4 `Record<string, unknown>` — carried opaquely (nothing renders it).
     pub autonomous_room_defaults: serde_json::Value,
-    pub auto_housekeeping: AutoHousekeepingConfig,
     pub text_replacements: TextReplacementsConfig,
     pub composer_spellcheck: bool,
     /// v4 `07b8f0209` (P4.D251) — the impersonated-line voice MODE
@@ -581,7 +571,18 @@ pub struct InstanceSettingsInfo {
     pub max_concurrent_jobs: f64,
     pub memory_recall: MemoryRecallConfig,
     pub memory_extraction_limits: MemoryExtractionLimitsConfig,
+    /// v4 `instanceSettings.memoryMaintenance` (`104e986c7`, Phase F): the
+    /// maintenance switch, the global cap and the override COUNT.
+    pub memory_maintenance: MemoryMaintenanceInfo,
     pub last_maintenance_sweep_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryMaintenanceInfo {
+    pub enabled: bool,
+    pub per_character_cap: f64,
+    pub cap_overrides: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

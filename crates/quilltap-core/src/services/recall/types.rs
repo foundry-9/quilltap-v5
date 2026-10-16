@@ -66,7 +66,7 @@ pub struct RecallAdjustment {
 /// A ranked recall candidate: the row, its relevance (`score`), its salience
 /// and, when a turn's recall context drove the ranking, the adjustment record
 /// (v4 `RecallCandidate`, which replaced `SemanticSearchResult` —
-/// `effectiveWeight` / `rawWeight` are gone). The row stays the net-JSON
+/// the floored weight and `rawWeight` are gone). The row stays the net-JSON
 /// `Value` the memory reads return (R-L13), so no caller re-models it.
 #[derive(Clone, Debug)]
 pub struct RecallCandidate {

@@ -51,6 +51,9 @@ interface MessageSeed {
   content: string;
   participantId: string | null;
   createdAt: string;
+  /** A planted `debugMemoryLogs` (the turn's recall record the finalizer wrote) —
+   *  the extraction job must keep its `[Recall]` lines FIRST (v4 `withRecallLines`). */
+  debugMemoryLogs?: string[];
 }
 interface ChatSpec {
   id: string;
@@ -227,6 +230,11 @@ async function main(): Promise<void> {
         systemKind: null,
         targetParticipantIds: null,
       } as never);
+      if (m.debugMemoryLogs) {
+        getRawDatabase()
+          .prepare('UPDATE "chat_messages" SET "debugMemoryLogs" = ? WHERE "id" = ?')
+          .run(JSON.stringify(m.debugMemoryLogs), m.id);
+      }
     }
   }
 

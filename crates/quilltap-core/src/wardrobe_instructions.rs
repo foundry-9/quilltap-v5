@@ -25,7 +25,7 @@ use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::instance_settings::get_general_mount_point_id;
 use crate::db::DbError;
 use crate::jsstr::js_trim;
-use crate::services::memory_processor::read_vault_text_file_conn;
+use crate::services::canon_loaders::read_vault_text_file_conn;
 
 /// The `Wardrobe/` folder every tier's garments (and this file) live in — v4
 /// `CHARACTER_WARDROBE_FOLDER`.

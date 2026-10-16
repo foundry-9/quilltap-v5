@@ -947,6 +947,7 @@ async fn context_summary_service_tier3_matches_oracle() {
                     embedding: &embedding,
                     completion: &completion,
                     executor: &executor,
+                    host_zone_fallback: "UTC",
                 };
                 let (outcome, lines) =
                     capture_lines(check_and_generate_summary_if_needed_with_seams(

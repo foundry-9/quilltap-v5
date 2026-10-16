@@ -229,7 +229,7 @@ const VALUE_SITES: &[(&str, &str, usize, &str)] = &[
     (
         "api/engine.rs",
         "&self.inner.config.display_zone",
-        12,
+        15,
         "`CoreConfig.display_zone` — the Compose reply preface, the Salon-load \
          whispers (`salon::chat_get`), the markdown export's zone-less offsets \
          (P4.140 item (g)), the five autonomous-room routes' cron NAME \
@@ -237,7 +237,9 @@ const VALUE_SITES: &[(&str, &str, usize, &str)] = &[
          `maintain` dry run's memory-calendar fallback NAME (P4.D297), and \
          P4.D298's manual memory create, item PUT and the two search-replace \
          arms (the memory calendar's host fallback, `zone_name` of it, handed \
-         to admission / `update_memory` as a VALUE)",
+         to admission / `update_memory` as a VALUE), the embeddings backfill's \
+         memory-calendar fallback NAME (§S.5 (3)) and the anchor probe's \
+         (P4.D290's handoff) — both the `83334b9a5` unification",
     ),
     (
         "services/conversation_render_job.rs",
@@ -310,7 +312,10 @@ const UTC_ALLOWED: &[(&str, usize, &str)] = &[
 const UTC_ARITHMETIC_ALLOWED: &[(&str, usize, &str)] = &[
     (
         "clock.rs",
-        5,
+        // 5 → 3 at the `83334b9a5` unification: `floor_div_ms_days` and
+        // `utc_parts` left with the deleted when-phrase resolver (P4.D289's
+        // `memory_time` owns the calendar now).
+        3,
         "the civil-day arithmetic itself (`civil_from_days` lives here)",
     ),
     (

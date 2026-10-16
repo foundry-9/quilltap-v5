@@ -893,7 +893,7 @@ fn created_at_ms(m: &Value) -> Option<i64> {
 }
 
 /// v4 `sortBySalience(candidateMemories)` (`character-optimizer.service.ts:775`,
-/// Phase A `e0ac7493a` — it replaced `rankMemoriesByWeight`): "Rank by
+/// Phase A `e0ac7493a` — it replaced `the deleted weight ranking`): "Rank by
 /// salience (reinforced importance × time decay)" — STABLE, descending, and
 /// it drops NOTHING (the old weight threshold is gone). The row is v4's
 /// `SalienceInput`: a missing `importance` is JS `undefined` (→ `NaN`, which
@@ -1830,7 +1830,7 @@ async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
     }
 
     // Rank by salience (reinforced importance × time decay) and filter by
-    // reinforcement (v4 `:774-776`, P4.D292 — was `rankMemoriesByWeight`).
+    // reinforcement (v4 `:774-776`, P4.D292 — was `the deleted weight ranking`).
     let ranked = rank_by_salience(candidate_memories, now_ms);
     let reinforced: Vec<Value> = ranked.into_iter().filter(is_reinforced).collect();
     let filtered_count = reinforced.len();
@@ -2237,7 +2237,7 @@ mod tests {
     }
 
     /// `sortBySalience` (P4.D292) — descending by salience, ties STABLE, and
-    /// NOTHING dropped (the old weight floor is gone with `rankMemoriesByWeight`):
+    /// NOTHING dropped (the old weight floor is gone with `the deleted weight ranking`):
     /// a sub-floor importance and an unparsable `createdAt` both stay.
     #[test]
     fn rank_by_salience_orders_and_keeps_every_row() {

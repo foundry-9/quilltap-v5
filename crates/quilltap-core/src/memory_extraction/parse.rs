@@ -104,7 +104,11 @@ pub fn pass_cap(base: f64, max_tokens: Option<f64>) -> usize {
     let budget =
         (max_tokens.unwrap_or(TOKENS_PER_CANDIDATE_SLOT) / TOKENS_PER_CANDIDATE_SLOT).ceil();
     let cap = math_max(1.0, math_min(math_max(1.0, base.floor()), budget));
-    if cap.is_finite() {
+    // A NaN cap (a NaN `base` or budget — unreachable from v4's validated
+    // settings) is `drafts.slice(0, NaN)` in v4: ZERO drafts, not every draft.
+    if cap.is_nan() {
+        0
+    } else if cap.is_finite() {
         cap as usize
     } else {
         usize::MAX

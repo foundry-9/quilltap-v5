@@ -3777,6 +3777,7 @@ where
                     &cheap_settings,
                     &available_cheap_profiles,
                     Some(&concierge_policy),
+                    crate::host_zone::zone_name(&input.display_zone),
                 )
                 .await?;
             }
@@ -4214,6 +4215,7 @@ async fn run_summary_check<EMB, CMP, STR, SNK, BCS, ORC, RTR, CONF, ACOMP, COST,
     cheap_settings: &crate::services::context_summary::CheapLlmSettings,
     available_profiles: &[crate::cheap_llm::CheapLlmProfile],
     danger: Option<&ResolvedConciergePolicy>,
+    host_zone_fallback: &str,
 ) -> Result<(), DbError>
 where
     EMB: EmbeddingProvider + Sync,
@@ -4262,6 +4264,7 @@ where
         embedding: deps.embedding,
         completion: deps.completion,
         executor: deps.executor,
+        host_zone_fallback,
     };
     super::context_summary::check_and_generate_summary_if_needed_with_seams(
         deps.db,

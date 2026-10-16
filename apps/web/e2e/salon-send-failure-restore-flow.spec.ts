@@ -39,7 +39,7 @@ import {
  * CLI writes on that copy. GATED behind {@link P4D288_SERVER_LANDED} (§S.9 —
  * the unifier flips it on the union, where the fixture pair is widened).
  */
-const P4D288_SERVER_LANDED = false;
+const P4D288_SERVER_LANDED = true;
 
 const PORT = 4339;
 const BASE = `http://127.0.0.1:${PORT}`;

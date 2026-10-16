@@ -211,6 +211,10 @@ const decideCases: DecideCase[] = [
   ['nan-before-eligible', [n(mem('a'), NaN), n(mem('b'), 0.88)], {}, 'neural'],
   ['nan-after-eligible', [n(mem('b'), 0.88), n(mem('a'), NaN)], {}, 'neural'],
   ['nan-middle', [n(mem('c'), 0.75), n(mem('a'), NaN), n(mem('b'), 0.95), n(mem('d'), 0.2)], {}, 'neural'],
+  // V8 maps a NaN comparator result to +0 (`SortCompareUserFn`) — a NaN LAST
+  // after a rising pair must not read as a descending run (the `83334b9a5`
+  // unification's row; a raw NaN reversed the run and picked `a`).
+  ['nan-descending-run', [n(mem('c'), 0.75), n(mem('b'), 0.95), n(mem('a'), NaN)], {}, 'neural'],
   ['nan-excluded', [n(mem('a', { aboutCharacterId: BOB }), NaN)], {}, 'neural'],
   ['nan-two', [n(mem('a'), NaN), n(mem('b'), NaN), n(mem('c'), 0.9)], {}, 'neural'],
   ['infinity-cosine', [n(mem('a'), Infinity), n(mem('b'), 0.95)], {}, 'neural'],

@@ -259,7 +259,7 @@ pub struct TokenUsage {
 }
 
 // v4 `BuiltContext.debugMemories[]` — the *declared* type is
-// `{summary, importance, score, effectiveWeight}`, but at runtime v4 assigns the
+// `{summary, importance, score, <the floored weight>}`, but at runtime v4 assigns the
 // full `DebugMemoryInfo[]` (from the archive + dynamic-head formatters) straight
 // through, so `JSON.stringify` emits every present field (`memoryId`/`rawWeight`/
 // `recallMultiplier`/`recallFired`/`blendedBefore`/`blendedAfter`) and drops the

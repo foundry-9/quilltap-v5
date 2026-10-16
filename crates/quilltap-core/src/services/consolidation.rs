@@ -98,13 +98,13 @@ use crate::memory_embedding_text::{
 };
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
+use crate::services::canon_loaders::load_canon_for_self_with_commonplace;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::dangerous_content::chat_override::{
     get_concierge_state, should_use_uncensored_route, ConciergeState,
 };
 use crate::services::dangerous_content::resolver::resolve_concierge_settings;
 use crate::services::memory_maintenance::types::MaintenanceReason;
-use crate::services::memory_processor::load_canon_for_self_with_commonplace;
 
 const MODULE: &str = "memory:consolidation";
 
@@ -776,27 +776,26 @@ fn describe_buckets(
                 // R-F: the OTHER subject canon with `includeCommonplace: false`
                 // — EXACTLY the extraction pass's hand canon (P4.D270's `pub`
                 // loader; the cluster is handed its digest directly).
-                let source =
-                    crate::services::memory_processor::load_canon_for_observer_about_subject(
-                        db,
-                        holder
-                            .get("characterDocumentMountPointId")
-                            .and_then(Value::as_str),
-                        &holder_id,
-                        &crate::services::memory_processor::CanonSubject {
-                            id: id_of(&subject),
-                            name: subject_name.clone(),
-                            identity: subject
-                                .get("identity")
-                                .and_then(Value::as_str)
-                                .map(str::to_string),
-                            description: subject
-                                .get("description")
-                                .and_then(Value::as_str)
-                                .map(str::to_string),
-                        },
-                        false,
-                    );
+                let source = crate::services::canon_loaders::load_canon_for_observer_about_subject(
+                    db,
+                    holder
+                        .get("characterDocumentMountPointId")
+                        .and_then(Value::as_str),
+                    &holder_id,
+                    &crate::services::canon_loaders::CanonSubject {
+                        id: id_of(&subject),
+                        name: subject_name.clone(),
+                        identity: subject
+                            .get("identity")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                        description: subject
+                            .get("description")
+                            .and_then(Value::as_str)
+                            .map(str::to_string),
+                    },
+                    false,
+                );
                 canon.insert(bucket.key.clone(), Some(render_other_canon_block(&source)));
             }
         }

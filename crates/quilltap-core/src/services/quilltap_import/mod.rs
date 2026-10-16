@@ -211,6 +211,18 @@ pub struct ImportResult {
     pub skipped: ImportCounts,
     pub warnings: Vec<String>,
     pub imported_character_ids: Vec<String>,
+    /// NOT on the wire. v4 `execute.ts:402-415`: after the per-row embedding
+    /// enqueues of a BUILTIN default profile, `scheduleRefit(userId, profile.id,
+    /// { force: true })` — "the corpus just grew … Forced, because imported
+    /// rows keep their original `createdAt`". That debounce is an async call on
+    /// `&Db` that cannot run inside the `Db::write` closure the import runs in,
+    /// so the import ANSWERS the profile to refit and the caller schedules it
+    /// once the write returns (`api/system_qtap.rs`, the character archive's
+    /// import). `None` when nothing was imported, no default profile, or the
+    /// profile is not BUILTIN. (P4.D62's deferral and P4.D294's handoff, landed
+    /// at the `83334b9a5` unification — §S.5 (2).)
+    #[serde(skip)]
+    pub refit_profile_id: Option<String>,
 }
 
 impl ImportResult {
@@ -1118,6 +1130,7 @@ fn execute_import_strict(
                 skipped,
                 warnings,
                 imported_character_ids: Vec::new(),
+                refit_profile_id: None,
             });
         }
         None => &empty,
@@ -1145,10 +1158,12 @@ fn execute_import_strict(
             skipped,
             warnings,
             imported_character_ids: id_maps.characters.values(),
+            refit_profile_id: None,
         });
     }
 
     // The one-big-try body: a chokepoint error → success:false (v4's catch).
+    let mut refit_profile_id: Option<String> = None;
     let outcome = import_body(
         main,
         mount,
@@ -1160,6 +1175,7 @@ fn execute_import_strict(
         &mut skipped,
         &mut warnings,
         &mut id_maps,
+        &mut refit_profile_id,
     );
 
     match outcome {
@@ -1169,6 +1185,7 @@ fn execute_import_strict(
             skipped,
             warnings,
             imported_character_ids: id_maps.characters.values(),
+            refit_profile_id,
         }),
         Err(e) => {
             // v4's catch: success:false with the error appended to warnings —
@@ -1183,6 +1200,7 @@ fn execute_import_strict(
                 skipped,
                 warnings,
                 imported_character_ids: id_maps.characters.values(),
+                refit_profile_id: None,
             })
         }
     }
@@ -1215,9 +1233,9 @@ fn enqueue_imported_memory_embeddings(
     user_id: &str,
     memory_refs: &[(String, String)],
     warnings: &mut Vec<String>,
-) {
+) -> Option<String> {
     if memory_refs.is_empty() {
-        return;
+        return None;
     }
 
     // v4 `getDefaultEmbeddingProfile(userId)` → `findDefault(userId)`:
@@ -1264,39 +1282,21 @@ fn enqueue_imported_memory_embeddings(
                  embedding profile is configured; they will be indexed once one is.",
                 memory_refs.len()
             ));
-            return;
+            return None;
         }
     };
-    // ⚠ DEFERRED LOUDLY — v4's BUILTIN follow-up (`scheduleRefit`).
-    //
-    // After the per-row enqueues v4 calls `scheduleRefit(userId, profile.id,
-    // { force: true })` for a BUILTIN default (`execute.ts:402-415`, `4ae0c4ca6`):
-    // "BUILTIN TF-IDF vocabularies are corpus-derived and the corpus just grew:
-    // schedule the debounced refit-with-reindex. Forced, because imported rows
-    // keep their original `createdAt`, so the drift count that gates a manual
-    // edit's refit cannot see them." A throw is v4's WARN `Failed to schedule
-    // vocabulary refit after import {userId, profileId, error}`, never the
-    // import's failure. That helper is a 5-second debounce driven by the host
-    // (R-Q — P4.D292's `services::embedding_job_scheduler::schedule_refit(db,
-    // user_id, Some(profile_id), true, now_ms)`), an ASYNC call on `&Db` that
-    // cannot run inside the `Db::write` closure this runs in. So the call is a
-    // HANDOFF (L-E, §S.5 (2)): it lands in `api/system_qtap.rs` after the
-    // import's `db.write` returns. Nothing is stubbed: the per-row enqueues
-    // below run for BUILTIN exactly as v4's do, so imported rows are embedded;
-    // only the vocabulary refit that would improve those vectors waits for the
-    // handoff, and the boot refit check (PHASE 3.8) remains the backstop.
-    //
-    // The differential cannot see it either way — v4's debounce means the job
-    // row does not exist when `executeImport` returns and the state is dumped.
-    // Recorded in the P4.D62 and P4.D294 lane records.
-    if provider == "BUILTIN" {
-        tracing::debug!(
-            profile_id = %profile_id,
-            "Imported memories embed under the BUILTIN default; the forced \
-             vocabulary refit v4 schedules here is not ported (P4.D62 deferral, \
-             the P4.D294 handoff)"
-        );
-    }
+    // v4 `execute.ts:402-415` (`4ae0c4ca6`): after the per-row enqueues, a
+    // BUILTIN default profile gets `scheduleRefit(userId, profile.id, { force:
+    // true })` — "BUILTIN TF-IDF vocabularies are corpus-derived and the corpus
+    // just grew … Forced, because imported rows keep their original
+    // `createdAt`". That debounce is an async call on `&Db` (P4.D292's
+    // `embedding_job_scheduler::schedule_refit`) that cannot run inside the
+    // `Db::write` closure this runs in, so this function ANSWERS the profile
+    // to refit and the caller schedules it once the write returns (L-E, §S.5
+    // (2) — landed at the `83334b9a5` unification; the differential cannot see
+    // it either way: v4's debounce means no job row exists when `executeImport`
+    // returns and the state is dumped).
+    let refit_profile_id = (provider == "BUILTIN").then(|| profile_id.clone());
 
     let jobs = crate::db::background_jobs::BackgroundJobsRepository::new(main);
     let mut enqueued = 0usize;
@@ -1361,6 +1361,7 @@ fn enqueue_imported_memory_embeddings(
             memory_refs.len()
         ));
     }
+    refit_profile_id
 }
 
 #[cfg(test)]
@@ -1425,6 +1426,7 @@ fn import_body(
     skipped: &mut ImportCounts,
     warnings: &mut Vec<String>,
     id_maps: &mut IdMaps,
+    refit_profile_id: &mut Option<String>,
 ) -> Result<(), DbError> {
     // 1. Tags (no dependencies).
     if let Some(items) = non_empty_array(data, "tags") {
@@ -2053,7 +2055,8 @@ fn import_body(
     // Re-embed what we just inserted (v4 `execute.ts:532`, AFTER the
     // reconcile). Imported memories carry no vector, and without this their
     // semantic search stays broken until the next boot's reconcile sweep runs.
-    enqueue_imported_memory_embeddings(main, user_id, &imported_memory_refs, warnings);
+    *refit_profile_id =
+        enqueue_imported_memory_embeddings(main, user_id, &imported_memory_refs, warnings);
     Ok(())
 }
 
@@ -2196,6 +2199,7 @@ mod tests {
             skipped: ImportCounts::default(),
             warnings: vec![],
             imported_character_ids: vec![],
+            refit_profile_id: None,
         };
         let v = result.to_value();
         let keys: Vec<&str> = v.as_object().unwrap().keys().map(|s| s.as_str()).collect();
@@ -2818,7 +2822,7 @@ mod import_warn_pins {
         let refs = vec![("m-1".to_string(), "c-1".to_string())];
         let run = |main: &Connection| {
             let mut w = Vec::new();
-            let ((), lines) = crate::test_support::captured_with(|| {
+            let (_refit, lines) = crate::test_support::captured_with(|| {
                 enqueue_imported_memory_embeddings(main, "u1", &refs, &mut w)
             });
             lines
