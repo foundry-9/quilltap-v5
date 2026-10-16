@@ -187641,3 +187641,257 @@ union; it imports no deleted name).
 Order status header → LANE COMPLETE on this branch; the pin worktree
 removed (`git worktree remove`); this lane's `target/` deleted; `/tmp/p4d313/`
 scratch removed after the record; nothing pushed to `main`.
+
+## P4.D307 — the Pascal SPA: trigger phrases + wardrobe effects in the twins, the Workbench, the Automation card, the run-dialog wardrobe lines (lane `claude/p4.d307-pascal-spa-19fb707e6`, pin `25b8fab6a`, 2026-10-16)
+
+Stage A from `main` `19fb707e6` (the orders' commit). The session started in
+the app's worktree `claude/nice-noyce-107bcb` sitting clean on `19fb707e6`
+with no commits of its own; the lane branch was cut there in place
+(`git switch -c claude/p4.d307-pascal-spa-19fb707e6 19fb707e6`). Pin worktree
+`/tmp/qt-v4-pin-p4d307-25b8fab6a`: HEAD `25b8fab6aa58636c6885ba63684c7f8fbfca9c3b`,
+`package.json` `4.11.0-dev.10`, the three symlink classes (root, `packages/
+quilltap`, 15 `plugins/dist/*/node_modules`), root `openai` **7.34.0**, resolved
+`zod` **4.6.7**. Node 24.13.1. No `crates/` hunk; no Rust crate bumped. Target
+cloned from main (`cp -cR`); the e2e served this branch's `dist` through main's
+release `quilltap-web` (built 07:15 today, after main's last crate commit — the
+lane moves no crate source).
+
+**§R.2 probe at lane start (2026-10-16 08:15 CDT) — an OBSERVATION, lane
+continued:** branch `main`, tree CLEAN; `25b8fab6a..main` = **v4 moved:
+`5cb0e0190`** (feat(pascal): wardrobe picker in the Workbench, the commit §R.1
+names) observed at 08:15; `489b228b6..bugfix` EMPTY. Out of scope by the pin
+rule — none of its bytes ported.
+
+### Commits (SPA 0.5.862 → 0.5.866)
+
+| commit | unit | SPA |
+|---|---|---|
+| `3f3299621` | unit 1 — the `pascal/*` definition + draft twins, `trigger-phrases.ts`, the Carina strip, both corpora re-recorded, v4's describes transcribed | 0.5.863 |
+| `4af963090` | unit 2 — the trigger field + mount, the Kind select + `qt-wardrobe-fields`, the bench's "would attempt", the phrase badge, the contract keys, the bench wire arm | 0.5.864 |
+| `b7afe63f4` | unit 3 — the Automation card's row table + trigger row, `wardrobeReferenceLines` + `qt-custom-tool-wardrobe-lines`, `CustomToolReferences`' three keys, the `pascalMeta` type-only proof | 0.5.865 |
+| `9e9d6eb22` | unit 4 — the e2e file (4343 / 45341) | 0.5.866 |
+| (docs) | this record + the order’s status header | — |
+
+### Red-first (counts)
+
+1. **Main's unmodified generator re-run at the pin:** 362 = 362 lines, TWO rows
+   moved — `effect-target-missing` / `effect-value-missing` now read v4
+   `f0db8cbb8`'s refine sentence `a write needs both target and value` (the write
+   halves became optional). BY DESIGN, not a Zod-version move: no older row
+   moved from 4.6.5 → 4.6.7. (The order expected IDENTICAL; the two moves are
+   `f0db8cbb8`'s own.) sha-256 of that regen
+   `b9626b0ddd17fa78a95ae8d99cd6e2ed3ba5670e95384d1cc675c22113273fd4`.
+2. **The grown corpus (416 rows at that point) against unported `main`'s twin:
+   56 red / 396 green** — the 54 new rows + the 2 moved; the other 360 old rows
+   green.
+3. **Carina:** the 83 old rows re-record BYTE-IDENTICAL (`diff <(head -83 new)
+   old` empty — the extraction's proof); the oracle spec on `main` **62 red**
+   (61 `strip` rows + the export check) / 88 green.
+4. **Transcriptions on `main`:** `custom-tool-types.triggers.spec.ts` 6 / 6 red;
+   `custom-tool-types.effects.spec.ts` 11 red / 83 green (the 3 re-measured
+   rows + 8 new; four new cases are green on `main` by construction — three
+   reject-assertions vacuous against a twin that rejects every wardrobe effect,
+   and the slot-enum tripwire); `tool-draft.spec.ts` and `trigger-phrases.spec.ts`
+   COMPILE-red (the Angular unit-test builder type-checks the whole spec
+   program — 20 and 7 TS errors: the new names absent).
+5. **Components, measured against the unit-1 commit `3f3299621`** (twins ported,
+   components not — on bare `main` these specs cannot compile): builder-form
+   2 red / 35 (the three self-echo rows GREEN at unit 1 — Tier 2 item 19
+   confirmed: the existing `chipLabelWarnings` / `llmWarnings` /
+   `messageWarnings` lists already read by section, NO new plumbing);
+   side-effects-section 5 red / 11 (Add-via-`newDraftEffect()` green: unit 1
+   switched `addEffect` for the type); proving-bench 2 red / 37;
+   workbench-library, trigger-phrases-field, wardrobe-fields COMPILE-red (6, 4,
+   6 errors).
+6. **Automation, against the unit-2 commit `4af963090`:** 7 red / 17 green (the
+   three first-row cases green; the count case rewritten 1 → 2 rows is one of
+   the 7).
+7. `custom-tool-wardrobe-lines.spec.ts` and `pascal-meta-trigger.spec.ts`
+   COMPILE-red on `main` (a new module; `'trigger'` not in the union).
+
+### The corpora
+
+- **`pascal-custom-tool-definition.oracle.ndjson` — 362 → 425 rows** (10
+  `title` + 363 `definition` + 52 `gate`), sha-256
+  `633c837f33bd59fa4be0bda3d00001cca6c39a71680fb57594378bf7a1398f3f`. The
+  generator's ONE fenced block (`// ---- P4.D307 rows (the SPA twin's; MERGE BY
+  ID with P4.D305 §4.1 / P4.D306 §4.1 at unification) ----` … `// ---- end
+  P4.D307 rows ----`) carries 63 definition rows: 20 `triggers-*` (every name
+  of the trigger survey §4.1 + `triggers-empty-string`,
+  `triggers-nine-bad-elements`), `shape-order-chip-triggers-description`,
+  `unknown-keys-triggers-known`, 30 `effects-wardrobe-*`, the four
+  effect-union rows (`effects-both-halves`, `-empty-object`,
+  `-write-no-value`, `-write-no-target`), `effects-cap-mixed`,
+  `effects-write-when-order`, and four Zod-4.6.7 rows (`effects-over-cap-bad-
+  elements`, `outcomes-over-cap-bad-elements`, `effects-string-over-cap`,
+  `outcomes-string-over-cap`, `outcomes-empty-string`). The six per-action rows
+  the effects survey names only by description carry ids of this lane's
+  choosing: `effects-wardrobe-add-to-slot-no-slot`, `-slot-without-add-to-slot`,
+  `-wear-no-items`, `-take-off-with-mode`, `-clear-slot-no-slot`,
+  `-clear-slot-with-items` (+ `-take-off-no-items`, `-clear-slot-everything-
+  wrong`). The corpus spec's header names the new count; a greppable
+  `P4D307_ROW_FLOORS` (`triggers-` ≥ 20, `effects-wardrobe-` ≥ 18) is asserted.
+- **`carina-parser.ndjson` — 83 → 144 rows**, sha-256 `87a2e489679d7744cb19fcafeaaedf466bc343d848e3c87957933b9d34a3b86a`. 61
+  `{ id, kind: 'strip', content, out }` rows AFTER the 34 name rows: twelve
+  hand-written vectors (L-J's list) + the strip of every parse vector.
+- `custom-tool-types.effects.spec.ts`'s three hand-captured rows re-measured
+  through v4's real schema at the pin (a scratch capture, the rows are the
+  artifact): `effect-target-missing`, `effect-value-missing`,
+  `effects-past-cap-and-broken` (now Zod 4.6.7's lone cap sentence) — and its
+  header's "fires ALONGSIDE" bullet, false at 4.6.7, rewritten.
+
+**Regen recipes** (canonical; lane outputs staged under `/tmp/p4d307/`):
+
+```bash
+PIN=/tmp/qt-v4-pin-<order>-25b8fab6a   # git -C ~/source/quilltap-server worktree add --detach "$PIN" 25b8fab6a (+ the three symlink classes)
+V5W=${V5W:-$HOME/source/quilltap-v5}
+export PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH
+rm -f "$V5W/apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson"
+cd "$PIN" && TZ=UTC npx tsx "$V5W/harness/oracle/cases/pascal-custom-tool-definition.ts" \
+  > "$V5W/apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson"   # expect >= 425
+cp "$V5W/apps/web/oracle/carina-parser.recorder.ts" "$PIN/" && cd "$PIN" && \
+  npx tsx carina-parser.recorder.ts > "$V5W/apps/web/src/testing/fixtures/carina-parser.ndjson"   # expect 144, 61 strip
+```
+
+### FINDING — Zod 4.6.7 reaches the Pascal definition's arrays (both twins)
+
+Measured at the pin: `capSize` makes an array over its `.max(N)` fail with
+ONLY that `too_big`, ABORTING, before any element parses (no later refine
+reads it); and the length checks' own `when` (`_whenHasLength`) runs them on a
+STRING where the array belongs, after the type issue, with the string origin
+(`triggers: Invalid input: expected array, received string; triggers: Too big:
+expected string to have <=8 characters`). P4.D311's census names four Rust
+twins; it misses `effects` (`.max(16, …)`) and `outcomes` (`.min(1, …)
+.max(32, …)`) of the definition — in the SPA twin (ported here,
+`parseSizedArray`, applied to `triggers`, `items`, `effects`, `outcomes`) AND
+in the Rust `pascal/custom_tool_types.rs` (`:2596-2636`, element issues then
+the cap, the 4.5.4 order). **HANDOFF:** the five Zod-4.6.7 rows sit in the
+shared corpus, so on the union the Rust `pascal_custom_tool_definition_
+equivalence` reddens on them until the Rust arms port the same rule (P4.D306
+owns the effect arms of that file; `outcomes` has no owner this round —
+the unifier routes it). Not modelled (no corpus row poses it, recorded): a
+JSON object carrying a `length` key where an array belongs, and a string-field
+given an array (`_whenHasLength` would run the string's length checks with the
+array origin — pre-existing across every string field of both twins).
+
+### Recorded items
+
+- **L-B:** `wardrobe/slot-meta.ts` exports `WARDROBE_SLOT_TYPES` but not the
+  `WardrobeSlotType` TYPE (it imports it from `core-contract.ts`); the twin
+  imports the list from `wardrobe/slot-meta` and the type from
+  `core/core-contract` (`wardrobe/**` not edited). The tripwire (v4's five in
+  order) sits in `custom-tool-types.effects.spec.ts` and `wardrobe-fields.spec.ts`.
+- **L-K / Tier 3 item 26:** the badge renders `tool.triggerCount > 0` as v4
+  writes it — `undefined > 0` hides it against a server without the key; no
+  `?? 0`; pinned by a spec case.
+- **L-O / Tier 3 item 23:** v4's sixteen JSON-Schema-mirror rows (`:639-644` six
+  `triggers`, `:725-734` ten wardrobe) and the mirror halves of the two
+  "deliberately weaker than Zod" cases are NOT transcribed — the schema file is
+  served, not imported (P4.D313's byte guards). Their Zod halves are.
+- **Tier 3 item 21:** the run dialog's wardrobe sentences on a LIVE roster are
+  the unifier's wire (HANDOFF below); nothing renders in the popup until then.
+- **Tier 3 item 22:** `scanTriggerPhrases` has NO SPA caller — ported whole,
+  spec-only (v4's nine scanner cases transcribed).
+- **Tier 3 item 24:** `useChatSettings.ts` / `ChatTabContent.tsx` — NO-PORT as
+  files; the behaviour (the partial PUT body, `Failed to update trigger phrase
+  setting`) lives in the card (`ChatSettingsCard.save` is the one chokepoint).
+- **Tier 3 item 25:** `tool-vocabulary.ts` server-only; the SPA reads its output
+  as `references`.
+- **Tier 3 item 27:** the `01f508d4e` `console.debug` removal is P4.D309's.
+- **R-9:** `git grep -n 'custom-tools.md\|pascals-workbench.md' 25b8fab6a --
+  components/custom-tools components/settings` → EMPTY (rc 1); nothing linked.
+- **Tier 2 item 20:** NO SPA reader keys on `invokedBy`, and NONE reads
+  `pascalMeta.effects` (measured: only `chat/system-message-labels.ts` reads
+  `chipLabel` / `toolTitle` / `tool` / `state`). Proof:
+  `pascal/pascal-meta-trigger.spec.ts` drives those three exported readers
+  with a trigger-run wardrobe record (read-only use; the file not edited).
+- `ChatSettingsDto` declared no `customTools`; the two new booleans sit in a
+  fenced `// === P4.D307 … ===` block before the index signature.
+- `KNOWN_TOP_LEVEL_KEYS` is now EXPORTED (v4 exports it; its test imports it),
+  16 keys.
+- `custom-tools-settings.ts` keeps its inline `?? true` (R-6).
+- The six-file Workbench spec fixtures (`tool-draft.spec.ts`,
+  `side-effects-section.spec.ts`, `workbench-progress.spec.ts`) gained
+  `kind: 'write'` + `wardrobe: emptyDraftWardrobeGesture()` — type-forced.
+
+### e2e — `e2e/workbench-triggers-effects-flow.spec.ts`, port 4343 / mock 45341
+
+Own instance from the salon pair (`workbench-triggers-instance` under
+`ARTIFACTS_DIR`). BY FILE: **3 passed / 3 skipped** ((a), (c), (e) LIVE; (b),
+(d), (f) gated `P4D305` / `P4D306` / `P4D304_SERVER_LANDED = false`). The
+gates were flipped ONCE, uncommitted, against `main`'s server to prove the
+premises (the memory note's flip lesson): the first flip found TWO gesture
+faults, both fixed — the pair has no `groups` / `group_doc_mount_links`, so
+the save picker answered `no such table: groups` (now planted from
+`fresh_schema.json` as global-setup does on the shared copy), and (f)'s restore
+`finally` waited forever on an uncheck of an already-unticked box (now guarded,
+so the beat's own assertion is the failure). On the second flip each gated beat
+failed EXACTLY at its server-dependent assertion: (b) the `✦ 1 phrase` badge
+(the save itself filed the definition), (d) the `→ wardrobe: … (would attempt)`
+line, (f) `toBeChecked` after the reload. Beat (e) toggles `customTools` off and
+back through the existing PUT arm and restores it in a `finally`.
+
+### HANDOFFs (the unifier, §S)
+
+1. **The definition corpus merge** (item 2): merge the generator's `P4.D307
+   rows` block BY ID with P4.D305's and P4.D306's §4.1 blocks (a same-id row
+   whose bytes differ is a finding), take ONE pin regen, copy it to BOTH
+   consumers; the Rust family runs from it via the sweep. The five Zod-4.6.7
+   rows need the Rust `effects` / `outcomes` arms ported (the FINDING above).
+2. **The popup wire** (item 14), three edits in P4.D308's
+   `chat/custom-tools-popup.ts` as it lands: (1) add `CustomToolWardrobeLines`
+   (from `./custom-tool-wardrobe-lines`) to the component's `imports`; (2)
+   extend the reference-panel `@if` (main `:209-213`) with `||
+   wardrobeLines().length > 0`, where `wardrobeLines = computed(() =>
+   wardrobeReferenceLines(this.selectedTool()?.references))`; (3) place
+   `<qt-custom-tool-wardrobe-lines [references]="tool.references" />`
+   immediately AFTER the writes `@if` (main `:258-267`), inside the
+   `<details>`. Then ONE popup spec case (a roster entry with `wears: ['Cloak of
+   Night']` → `It may dress the running character in Cloak of Night. Only when
+   you run it as a character — a run made as nobody dresses nobody.`) and ONE e2e
+   beat on a seeded tool whose server-side vocabulary carries `wears`.
+3. **§S.9:** flip `P4D304_SERVER_LANDED` / `P4D305_SERVER_LANDED` /
+   `P4D306_SERVER_LANDED` in `e2e/workbench-triggers-effects-flow.spec.ts`; run
+   the file alone (4343 free), then the full suite.
+
+### 💸 for the dogfood pass
+
+The order's five rows, verbatim in intent: a trigger phrase authored → saved →
+`✦ 1 phrase` → said in a chat with the setting ON (Pascal's row `invokedBy:
+'trigger'`); a wardrobe effect through the Kind select → the bench's `would
+attempt` → a real run as a character + the dialog's `It may dress …` sentence
+(after the popup wire); the Automation row dead / live / persisted, unticked on
+the first boot after P4.D304's ensure; the field's cap and a raw-JSON padded
+phrase showing `a trigger phrase must not begin or end with a space` as chip
+title AND line; `clear a slot` sans slot → `clear_slot needs a slot`, `layer
+into one slot` sans slot → `mode add_to_slot needs a slot`.
+
+### Gate
+
+- SPA: `npm run lint` clean; `npm run build` clean; `npm test` (the whole
+  suite) **514 files / 10,523 tests, all passed**; the lane's corpora by name
+  (`custom-tool-types.corpus.spec.ts` 461 / 461, `carina-parser.oracle.spec.ts`
+  150 / 150).
+- Playwright BY FILE: `e2e/workbench-triggers-effects-flow.spec.ts` 3 passed /
+  3 skipped (the gated beats).
+- Rust (no crate source moved — a no-change confirmation against this
+  branch's `dist`): `cargo fmt --all --check` clean; `cargo clippy --workspace
+  --all-targets -- -D warnings` clean, and again with `--features
+  quilltap-core/native-transport` clean; `cargo test --workspace --no-fail-fast`
+  (`CARGO_INCREMENTAL=0`) **806 binaries / 5,230 passed / 4 failed / 3
+  ignored**. The four reds are the §R.3 live-checkout guards red BY DESIGN
+  against v4's moved live tree until their owners land:
+  `provider_sdk_version_guard` + `zod_version_guard` (P4.D311),
+  `public_schemas_vendor_guard` + `qtap_schema_embed_guard` (P4.D313). No other
+  red. `pascal_custom_tool_definition_equivalence` SKIPs without
+  `QT_ORACLE_PASCAL_DEFINITION` (expected — the Rust twin lacks the rows until
+  P4.D305 / P4.D306; the unifier's).
+
+### Versions at close
+
+SPA `apps/web` **0.5.866** (from 0.5.862). Rust crates: none bumped.
+
+### Cleanup
+
+The pin worktree `/tmp/qt-v4-pin-p4d307-25b8fab6a` and the scratch red-check
+worktree removed; the lane's `target/` deleted; nothing pushed to `main`.

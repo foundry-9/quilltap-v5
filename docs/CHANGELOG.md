@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — docs(porting): P4.D307 lane record and LANE COMPLETE status
+
+_Docs-only change._
+
+Appends the P4.D307 lane record to the status log: the red-first counts, the corpus shas, the Zod 4.6.7 finding on the definition's arrays, the recorded items, the gate, and the three unifier handoffs (the corpus merge, the popup wire, the gate flips). The order's status header now reads LANE COMPLETE.
+
 #### 2026-10-16 — test(e2e): the Workbench's trigger phrases and wardrobe effects, and the Automation trigger row (P4.D307 unit 4)
 
 _Versions: SPA 0.5.866._
