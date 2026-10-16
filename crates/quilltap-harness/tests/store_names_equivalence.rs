@@ -10,11 +10,12 @@
 //! The suffixer rows also cover restore 22a's free-name pick (C1 §14, P4.D265),
 //! which calls the same fn: the `js_trim` convergence moved that caller too.
 //!
-//! `STORE_STAMP_UNREACHABLE_FORMS` (R-E) is a both-ways table: V8's legacy
-//! `Date.parse` forms and its extended years cannot reach the plan (a store
-//! whose `createdAt` fails `TimestampSchema` is dropped first), so v5 does not
-//! port them. The table pins v4's ACTUAL output and v5's own, so a future
-//! reachability (or a v4 change) trips it.
+//! The four V8 legacy `Date.parse` forms (`Oct 9 2026`, the RFC-1123 one, the
+//! two expanded years) were R-E's both-ways `STORE_STAMP_UNREACHABLE_FORMS`
+//! table while v5's parser was the ISO subset; P4.D289's `js_date_parse_ms`
+//! (V8's whole `Date.parse`) and `iso_from_unix_ms`'s expanded years (the
+//! `83334b9a5` unification) converged every row, so they are plain stamp rows
+//! of the corpus now — equality, no divergence pinned.
 //!
 //! Regenerate + run (a pure tsx oracle, the committed corpus):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -34,28 +35,6 @@ use quilltap_core::store_names::{
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-
-/// v4's output for the V8 date forms no Zod-valid `createdAt` can take, and
-/// v5's (the `iso.replace(/:/g, '')` fallback, since v5's parser is the ISO
-/// subset only). `(input, v4, v5)`.
-const STORE_STAMP_UNREACHABLE_FORMS: &[(&str, &str, &str)] = &[
-    ("Oct 9 2026", "2026-10-09T000000Z", "Oct 9 2026"),
-    (
-        "Fri, 09 Oct 2026 16:45:06 GMT",
-        "2026-10-09T164506Z",
-        "Fri, 09 Oct 2026 164506 GMT",
-    ),
-    (
-        "+010000-01-01T00:00:00.000Z",
-        "+010000-01T010000Z",
-        "+010000-01-01T000000.000Z",
-    ),
-    (
-        "-000001-01-01T00:00:00.000Z",
-        "-000001-01T010000Z",
-        "-000001-01-01T000000.000Z",
-    ),
-];
 
 fn s(v: &Value) -> String {
     v.as_str().expect("string").to_string()
@@ -213,36 +192,12 @@ fn store_names_match_oracle() {
         }
     }
 
-    // STORE_STAMP_UNREACHABLE_FORMS, both ways.
-    let unreachable = oracle["unreachableStamps"].as_array().unwrap();
-    assert_eq!(unreachable.len(), STORE_STAMP_UNREACHABLE_FORMS.len());
-    for (r, (input, v4, v5)) in unreachable.iter().zip(STORE_STAMP_UNREACHABLE_FORMS) {
-        assert_eq!(r["in"], json!(input), "unreachable-form order");
-        assert_eq!(
-            r["out"],
-            json!(v4),
-            "STORE_STAMP_UNREACHABLE_FORMS: v4's output for {input:?} moved — re-measure the table"
-        );
-        assert_eq!(
-            store_name_timestamp(input),
-            *v5,
-            "STORE_STAMP_UNREACHABLE_FORMS: v5's output for {input:?} moved"
-        );
-        assert_ne!(
-            v4, v5,
-            "a row that converged is no longer a divergence: retire it"
-        );
-    }
-
     assert!(
         failures.is_empty(),
         "{} mismatches:\n{}",
         failures.len(),
         failures.join("\n")
     );
-    assert_eq!(rows, 117, "the corpus row count");
-    eprintln!(
-        "OK: store names matched oracle ({rows} rows; {} unreachable stamp forms pinned both ways).",
-        STORE_STAMP_UNREACHABLE_FORMS.len()
-    );
+    assert_eq!(rows, 121, "the corpus row count");
+    eprintln!("OK: store names matched oracle ({rows} rows).");
 }

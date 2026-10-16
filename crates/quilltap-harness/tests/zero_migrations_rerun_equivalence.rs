@@ -24,12 +24,26 @@
 //! BY ID, kept as a permanent pin): each base but `v4-migrated` has an
 //! `-unstamped` twin — the instance after v5's chain with the span's ledger
 //! rows DELETED. v4 re-runs on it EXACTLY the ids v5 stamped, in v4's order
-//! (measured: the episode watermark, the two data rewrites, the cursor
-//! migration — on all three), so every stamp is necessary and no unstamped
-//! ensure needs one. On `fresh` / `fresh-used` the row v4 writes on the twin is
-//! also byte-compared with v5's stamp — there v5 stamped the settled chain
-//! WITHOUT running it (`memory_extraction_cursors_repair::stamp_settled_chain`),
-//! so the twin's row IS v4's row for the same migration on the same instance.
+//! (measured: `add-memory-tiers-v1`, the episode watermark, the two data
+//! rewrites, the cursor migration — on all three), so every stamp is necessary
+//! and no unstamped ensure needs one. On `fresh` / `fresh-used` the row v4
+//! writes on the twin is also byte-compared with v5's stamp — there v5 stamped
+//! the settled chain WITHOUT running it
+//! (`memory_extraction_cursors_repair::stamp_settled_chain`), so the twin's
+//! row IS v4's row for the same migration on the same instance.
+//!
+//! **The ping-pong id** (the `83334b9a5` unification's review): none of the
+//! bases carries an `add-memory-tiers-v1` row (P4.D265's ensure never stamped
+//! it), and v4's one pass on the planted base never runs it — its chat column
+//! is still there. It becomes due only AFTER the cursor migration drops that
+//! column, so measured with tiers in the narrowed runner v4 re-ran it on
+//! `planted` AND on `v4-migrated` after v5's chain (re-adding the dead column
+//! for good). v5 stamps it on every shape
+//! (`memory_extraction_cursors_repair::stamp_tiers_after_cursor_move`); the
+//! row v4 writes for it is read from the `planted-unstamped` twin — v4's own
+//! re-run on the post-chain instance of that base — for `planted` and
+//! `v4-migrated` alike (`v4-migrated` has no twin, and with the stamp in place
+//! v4 runs nothing there to measure).
 //! Before that arm the `fresh` mode re-ran the episode watermark + the cursor
 //! migration (P4.D288 unit 7's `FRESH_INSTANCE_UNLEDGERED`; on `fresh-used`
 //! that inserts `episode-fold` cursors at the last summary anchor).
@@ -55,8 +69,15 @@ use quilltap_core::db::Writer;
 use serde_json::Value;
 
 const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
-/// v4's twelve span ids in registration order (`P4D288_SPAN_MIGRATIONS`).
-const SPAN: [&str; 12] = [
+/// The ping-pong id: v4's `shouldRun` for it holds through the chat watermark
+/// column the span's cursor migration drops, on every base whose tiers row is
+/// absent (a v5 instance P4.D265's unstamped ensure tiered).
+const TIERS: &str = "add-memory-tiers-v1";
+/// `P4D288_SPAN_MIGRATIONS`: `add-memory-tiers-v1` (P4.D265's, pre-span — the
+/// ping-pong id, see the header) then v4's twelve span ids in registration
+/// order.
+const SPAN: [&str; 13] = [
+    TIERS,
     "add-memory-superseded-at-v1",
     "add-chat-scenario-source-v1",
     "add-episode-extraction-watermark-v1",
@@ -207,6 +228,12 @@ fn no_migration_reruns_after_the_v5_chain() {
             .collect()
     };
     let mut failures = Vec::new();
+    // v4's row for the ping-pong id: its re-run on the post-chain planted
+    // instance (the twin), the one place v4 writes it.
+    let planted_twin_tiers: Option<(String, Value)> =
+        span_rows(&row_of("planted-unstamped")["after"]["ledger"])
+            .into_iter()
+            .find(|(id, _)| id == TIERS);
     for mode in BASES {
         let row = row_of(mode);
         // (1) After v5's chain v4's runner runs NOTHING and changes nothing.
@@ -226,7 +253,13 @@ fn no_migration_reruns_after_the_v5_chain() {
         match mode {
             "planted" => {
                 for (id, v5_row) in &v5_rows {
-                    match v4_ledger.iter().find(|(i, _)| i == id) {
+                    // The ping-pong id's v4 row is the twin's (see the header).
+                    let v4_row = v4_ledger.iter().find(|(i, _)| i == id).or_else(|| {
+                        (id == TIERS)
+                            .then_some(())
+                            .and_then(|_| planted_twin_tiers.as_ref())
+                    });
+                    match v4_row {
                         None => {
                             failures.push(format!("planted: v5 stamped {id}, which v4 never ran"))
                         }
@@ -238,11 +271,22 @@ fn no_migration_reruns_after_the_v5_chain() {
                 }
             }
             "v4-migrated" => {
-                if span_rows(&row["before"]["ledger"]) != span_rows(&build[0]["ledger"]) {
+                // v5 adds EXACTLY the ping-pong row (the header), nothing else.
+                let (tiers, rest): (Vec<_>, Vec<_>) =
+                    v5_rows.iter().cloned().partition(|(id, _)| id == TIERS);
+                if rest != span_rows(&build[0]["ledger"]) {
                     failures.push(format!(
                         "v4-migrated: v5 moved the ledger (a duplicate or changed stamp)\n  v5 {:?}\n  v4 {:?}",
                         v5_rows, v4_ledger
                     ));
+                }
+                match (tiers.as_slice(), &planted_twin_tiers) {
+                    ([(_, v5_row)], Some((_, v4_row)))
+                        if serde_json::to_string(v4_row).unwrap()
+                            == serde_json::to_string(v5_row).unwrap() => {}
+                    other => failures.push(format!(
+                        "v4-migrated: the ping-pong stamp is not v4's row for {TIERS}\n  {other:?}"
+                    )),
                 }
                 continue;
             }

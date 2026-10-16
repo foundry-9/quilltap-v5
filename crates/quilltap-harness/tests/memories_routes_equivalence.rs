@@ -291,6 +291,10 @@ fn fresh_db(spec: &Spec, tag: &str) -> ScratchDb {
         // the widened committed pair (§R.3). P4.D266 / P4.D269 inherit this
         // hunk and never edit it.
         quilltap_core::test_support::ensure_memory_tiers_columns(w.connection());
+        // The `83334b9a5` unification: the pair predates `embedding_status`, which
+        // v4's repository creates lazily on the oracle's per-case copy and the
+        // route's `handleEntityDeletion` now touches on both sides.
+        quilltap_core::test_support::ensure_embedding_status_table(w.connection());
     }
     let db = Db::open(
         DbPaths {
@@ -451,19 +455,6 @@ const REATTRIBUTION_LINES: &[&str] = &[
     "[Chats v1] Failed to delete memories during bulk re-attribution",
 ];
 
-/// A MEASURED retire-path difference under the cascade line (P4.D288's
-/// retire path, not this lane's line): with Mnemo's index LOADED first (L-2,
-/// `MEMORY_INDEX_ALWAYS_LOADED` — size 46 measured), v4's message-cascade
-/// retire still reports `vectorsRemoved: 0` for the swipe pair's two embedded
-/// rows, where v5's reports 2. The line's bytes are pinned with the value
-/// masked; this table pins the two values both ways, so a convergence on
-/// either side trips it. `(row, v4, v5)`.
-const CASCADE_VECTORS_REMOVED: &[(&str, &str, &str)] = &[(
-    "message_delete_cascade_line",
-    "vectorsRemoved=0",
-    "vectorsRemoved=2",
-)];
-
 /// §R.7 `RETIRED_MEMORY_VERB_UNKNOWN_VARIANT` (R-G, L-4) — the seven retired
 /// memories verbs, both ways. v4's half: each oracle row answers 400
 /// `{"error":"Unknown action: <verb>","availableActions":[…]}` with the verb
@@ -543,17 +534,12 @@ const RETIRED_MEMORY_VERB_UNKNOWN_VARIANT: &[(&str, &str, &str)] = &[
 const MEMORY_BAD_GATEWAY_AS_INTERNAL: &[&str] =
     &["create_embedding_failed_502", "update_text_no_profile_502"];
 
-/// RESIDUE (P4.D290 — a HANDOFF): admission's `without_embedding`
-/// (`services/admission/apply.rs:43-51`) drops the vector with serde_json's
-/// `Map::remove`, which under `preserve_order` is a `swap_remove` — the row's
-/// LAST key moves into `embedding`'s slot (`updatedAt`, or
-/// `lastReinforcedAt` on a fold). v4's `withoutEmbedding` keeps
-/// `MemorySchema` order. The hunk: `m.remove("embedding")` →
-/// `m.shift_remove("embedding")`. Until it lands, the create rows compare
-/// their VALUES strictly (keys sorted) and their key ORDER here, both ways: a
-/// row whose order already matches fails loudly ("residue closed").
-const CREATE_KEY_ORDER_RESIDUE: &str =
-    "P4.D290 — `without_embedding`'s swap_remove (HANDOFF: shift_remove)";
+// The create rows' key ORDER was a §S.5 residue at the lane (P4.D290's
+// `without_embedding` dropped the vector with serde_json's `Map::remove` — a
+// `swap_remove` under `preserve_order`, so the row's LAST key moved into
+// `embedding`'s slot where v4's `withoutEmbedding` keeps `MemorySchema` order).
+// `shift_remove` landed at the `83334b9a5` unification; every 200 create row
+// now compares by BYTES (values AND order) below.
 
 /// §R.7-style named table `OFFSET_OCCURRED_AT_ROW_SCHEMA` (MEASURED; a
 /// finding, not this lane's code): v4's route schema admits an offset
@@ -568,17 +554,6 @@ const OFFSET_OCCURRED_AT_ROW_SCHEMA: &[(&str, u64, &str)] = &[(
     400,
     "insert-linked",
 )];
-
-/// A MEASURED admission divergence (P4.D290's decision over P4.D292's BUILTIN
-/// vector — a FINDING, not this lane's code): `create_plain_lamp_text` ("The
-/// lamp oil is kept under the third stair.") shares exactly one vocabulary
-/// term with the fixture's AUTO row `f1` ("kept" — in the stored
-/// vocabulary). v4's admission logs `Memory admitted {neighbours: 5,
-/// bestCosine: 0, thresholdScale: 'tfidf'}` and INSERTS; v5's links `f1`
-/// (`insert-linked`, the TF-IDF related band ≥ 0.20). Pinned both ways:
-/// `(row, v4 action, v5 action)`.
-const ADMISSION_SINGLE_TERM_LINK: &[(&str, &str, &str)] =
-    &[("create_plain_lamp_text", "insert", "insert-linked")];
 
 /// The keys a create / edit mints (masked to `<minted>` on both sides).
 const MINTED_MEMORY_KEYS: &[&str] = &["id", "createdAt", "updatedAt", "lastReinforcedAt"];
@@ -1806,26 +1781,11 @@ fn memories_routes_match_oracle() {
                     .map(|l| without_target(l))
                     .filter(|l| is_reattribution_line(l.split_once(' ').map_or("", |x| x.1)))
                     .collect();
+                // `vectorsRemoved` compares WHOLE: the lane's `CASCADE_VECTORS_REMOVED`
+                // pin (v4 `0`, v5 `2`) measured v4's PROCESS-singleton index cache
+                // leaking across the oracle's per-case copies; with the cache
+                // reloaded per case v4 answers `2` too (the `83334b9a5` unification).
                 let mut bad = Vec::new();
-                let (want_lines, got_lines) = match CASCADE_VECTORS_REMOVED
-                    .iter()
-                    .find(|(n, _, _)| *n == name)
-                {
-                    Some((_, v4_value, v5_value)) => {
-                        if !want_lines.iter().any(|l| l.ends_with(v4_value))
-                            || !got_lines.iter().any(|l| l.ends_with(v5_value))
-                        {
-                            bad.push(format!(
-                                "CASCADE_VECTORS_REMOVED moved (v4 {v4_value}, v5 {v5_value} recorded):\n{want_lines:?}\n{got_lines:?}"
-                            ));
-                        }
-                        let mask = |ls: Vec<String>| -> Vec<String> {
-                            ls.iter().map(|l| mask_field(l, "vectorsRemoved")).collect()
-                        };
-                        (mask(want_lines), mask(got_lines))
-                    }
-                    None => (want_lines, got_lines),
-                };
                 let (gt, wt) = (
                     serde_json::to_string_pretty(&dump_all_memories(&db)).unwrap(),
                     serde_json::to_string_pretty(&rec["tables"]).unwrap(),
@@ -2051,7 +2011,6 @@ fn memories_routes_match_oracle() {
                 true,
             ),
         ]);
-        let mut order_residue: Vec<(&str, bool)> = Vec::new();
         for (name, body, plant_sql, with_provider) in create_cases {
             let db = fresh_db(&spec, &format!("{name}-d298"));
             if let Some(sql) = plant_sql {
@@ -2080,24 +2039,11 @@ fn memories_routes_match_oracle() {
             let rec = &oracle[name];
             let mut bad = Vec::new();
             let want_status = rec["status"].as_u64().unwrap();
-            if let Some((_, v4_action, v5_action)) = ADMISSION_SINGLE_TERM_LINK
-                .iter()
-                .find(|(n, _, _)| *n == name)
-            {
-                let got_action = response_data(&resp)["action"].clone();
-                if rec["body"]["action"] == json!(v4_action) && got_action == json!(v5_action) {
-                    eprintln!(
-                        "[{name}] ADMISSION_SINGLE_TERM_LINK holds (v4 {v4_action}, v5 {v5_action})."
-                    );
-                } else {
-                    eprintln!(
-                        "[{name}] ADMISSION_SINGLE_TERM_LINK moved: v4 {}, v5 {got_action}",
-                        rec["body"]["action"]
-                    );
-                    failed.push(format!("{name}:single-term-link"));
-                }
-                continue;
-            }
+            // `create_plain_lamp_text` compares like every create row: the lane's
+            // `ADMISSION_SINGLE_TERM_LINK` pin (v4 `insert` at `bestCosine: 0`, v5
+            // `insert-linked`) measured v4's neighbour search over the PROCESS-
+            // singleton index cache another case's copy had loaded; reloaded per
+            // case, v4 links `f1` too (the `83334b9a5` unification).
             if let Some((_, v4_status, v5_action)) = OFFSET_OCCURRED_AT_ROW_SCHEMA
                 .iter()
                 .find(|(n, _, _)| *n == name)
@@ -2143,9 +2089,15 @@ fn memories_routes_match_oracle() {
                     canon_numbers(&mut got);
                     canon_numbers(&mut want);
                     let (g, w) = (norm(&got), norm(&want));
-                    let order_matches = serde_json::to_string(&got).unwrap()
-                        == serde_json::to_string(&want).unwrap();
-                    order_residue.push((name, order_matches));
+                    // By BYTES: `MemorySchema` key order (strict since the
+                    // `83334b9a5` unification — `shift_remove` landed).
+                    let (gs, ws) = (
+                        serde_json::to_string(&got).unwrap(),
+                        serde_json::to_string(&want).unwrap(),
+                    );
+                    if gs != ws {
+                        bad.push(format!("key order / bytes:\n  v5 {gs}\n  v4 {ws}"));
+                    }
                     if want_status != 200 && want_status != 201 {
                         bad.push(format!("v5 answered 200, v4 {want_status}"));
                     }
@@ -2211,24 +2163,6 @@ fn memories_routes_match_oracle() {
                 eprintln!("[{name}] MISMATCH (P4.D298):\n{}", bad.join("\n"));
                 failed.push(format!("{name}:d298"));
             }
-        }
-
-        // The key-order residue, both ways (every 200 create row).
-        let closed: Vec<&str> = order_residue
-            .iter()
-            .filter(|(_, ok)| *ok)
-            .map(|(n, _)| *n)
-            .collect();
-        if closed.is_empty() {
-            eprintln!(
-                "[create key order] RESIDUE ({CREATE_KEY_ORDER_RESIDUE}) on {} rows.",
-                order_residue.len()
-            );
-        } else {
-            eprintln!(
-                "[create key order] the residue CLOSED for {closed:?} — compare the create bodies by bytes"
-            );
-            failed.push("create_key_order:residue-closed".into());
         }
 
         // --- The item PUT through `update_memory` (bug 203 / 236). The provider
@@ -2784,28 +2718,12 @@ fn memories_routes_match_oracle() {
     }
     // === end ===
 
-    // === P4.D298: the search rows' §S.5 (4) residue (append-only) ===
-    // The pre-P4.D298 search rows run the base's `memory_service` search (the
-    // `LANE-REMOVE(P4.D291)` shim on the union); v4's route at the pin runs
-    // the recall search (`lib/memory/recall/search`) — P4.D291's port, which
-    // the unifier re-points this route onto (§S.5 (4)). Both ways: each label
-    // must be RED on this branch; one that passes means the residue closed
-    // and the row belongs back in the strict set.
-    const SEARCH_ROWS_RESIDUE: &[&str] =
-        &["search", "search_min_importance", "search_include_cold"];
-    for label in SEARCH_ROWS_RESIDUE {
-        if failed.iter().any(|f| f == label) {
-            failed.retain(|f| f != label);
-            eprintln!(
-                "[{label}] RESIDUE (§S.5 (4) — P4.D291's recall search, lands at the unification)."
-            );
-        } else {
-            eprintln!(
-                "[{label}] the §S.5 (4) residue CLOSED — move the row back to the strict set"
-            );
-            failed.push(format!("{label}:residue-closed"));
-        }
-    }
+    // The search rows (`search`, `search_min_importance`, `search_include_cold`)
+    // were the §S.5 (4) residue at the lane (the base's `memory_service` shim
+    // against v4's recall search); the route rides P4.D291's `search_memories`
+    // since the `83334b9a5` unification and the rows are strict — once the
+    // oracle case reloaded v4's process-singleton index cache per case (see
+    // `memories-routes.test.ts`), they agree row for row.
     // === end ===
 
     assert!(failed.is_empty(), "mismatched cases: {failed:?}");

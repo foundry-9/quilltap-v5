@@ -85,6 +85,16 @@ const COLS: &str = "id, characterId, aboutCharacterId, chatId, projectId, conten
      tier, supersededById, supersededAt, consolidatedFrom, consolidatedAt, \
      createdAt, updatedAt";
 
+/// [`COLS`] as keys, in schema order — v4's parsed `Memory` object's key
+/// order. v4 keeps EVERY schema key on that object (a NULL column as
+/// `undefined`, which `JSON.stringify` drops), so a `{ ...memory, key: v }`
+/// spread lands a value at the key's position; a preserve-order `Map` omits
+/// the NULL keys and would append — the writers that patch a row Value read
+/// this to find the position (`admission::apply::with_key`).
+pub fn schema_keys() -> impl Iterator<Item = &'static str> {
+    COLS.split(',').map(str::trim)
+}
+
 /// v4's `HOT_TIER_SQL` (`memories.repository.ts:33`, `d58548051`): a NULL
 /// tier reads HOT. One of v4's THREE hot-tier semantics (§R.4(b)) — the raw
 /// reads and the counts use this; `find_recent_by_importance_tier` and the

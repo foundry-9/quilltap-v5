@@ -267,6 +267,17 @@ fn cursors_of(db: &Db) -> Value {
     .unwrap()
 }
 
+/// The oracle case stubs `@/lib/memory/maintenance/triggers` to
+/// `maybeEnqueueMaintenance: async () => []`, so v4's admission fires a trigger
+/// that reads nothing and says nothing. v5 runs the real one (wired at the
+/// `83334b9a5` unification, v4 `admit.ts:405-409`); with both switches off its
+/// only observable is `resolveMemorySettings()`'s line with NO user — dropped
+/// here as the stub's twin. The trigger's own lines are the maintenance
+/// families' business.
+fn is_stubbed_maintenance_trigger_line(line: &str) -> bool {
+    line.starts_with("DEBUG [MemorySettings] Resolved memory settings userId=null")
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn extraction_catchup_tier3_matches_oracle() {
     let env = |k: &str| std::env::var(k).ok();
@@ -543,7 +554,11 @@ async fn extraction_catchup_tier3_matches_oracle() {
             .filter(|l| l["message"] != "[ExtractionCursors] Cursor set")
             .map(|l| want_norm.ids(&render_v4(l)))
             .collect();
-        let got_lines: Vec<String> = captured.iter().map(|l| got_norm.ids(l)).collect();
+        let got_lines: Vec<String> = captured
+            .iter()
+            .filter(|l| !is_stubbed_maintenance_trigger_line(l))
+            .map(|l| got_norm.ids(l))
+            .collect();
         if got_lines != want_lines {
             failures.push(format!(
                 "{name}: captured lines diverge\n  rust:\n    {}\n  oracle:\n    {}",

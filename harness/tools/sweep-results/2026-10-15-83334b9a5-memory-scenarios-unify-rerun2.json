@@ -1,0 +1,61 @@
+{
+  "label": "unify-83334b9a5 memories_routes strict + schema-position merges",
+  "v5w": "/Users/csebold/source/quilltap-v5",
+  "venue_is_worktree": false,
+  "requested": [
+    "memories_routes_equivalence",
+    "admission_tier3_equivalence"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "api_key_read_sites_census",
+    "blob_path_normaliser_census",
+    "concierge_legacy_settings_census",
+    "concierge_state_writers_census",
+    "doc_mount_fallback_sites_census",
+    "generation_key_travels_as_is_guard",
+    "get_messages_caller_census",
+    "moderation_refusal_ledger_isolation_guard",
+    "nanogpt_lora_wire_log",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "photo_side_effects_wiring",
+    "route_trail_continuation_guard",
+    "salon_fixture_p4d171_ensure",
+    "tool_loop_leg_logging",
+    "transcript_version_isolation_guard",
+    "character_prompt_set_default_dispatch_wire",
+    "graceful_shutdown",
+    "images_edge_routes",
+    "lock_conflict_boot_status",
+    "qtap_import_large_multipart",
+    "completion_behavior"
+  ],
+  "families": [
+    {
+      "family": "memories_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json\n M harness/oracle/fixtures/store-names-corpus.json"
+      ]
+    },
+    {
+      "family": "admission_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json\n M harness/oracle/fixtures/store-names-corpus.json"
+      ]
+    }
+  ],
+  "totals": {
+    "ok": 2
+  }
+}

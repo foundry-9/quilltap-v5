@@ -795,12 +795,13 @@ struct Applied {
     linked_ids: Vec<String>,
 }
 
-/// `{ ...target, ...patch }` on a row's JSON.
+/// `{ ...target, ...patch }` on a row's JSON — each key at its `MemorySchema`
+/// position (`apply::with_key`: v4's parsed row carries a NULL column's key
+/// `undefined`, so its spread lands `lastReinforcedAt` in place where a `Map`
+/// would append it — the `83334b9a5` unification's `create_reinforce_200`).
 fn merged(mut memory: Value, fields: &[(&str, Value)]) -> Value {
-    if let Some(m) = memory.as_object_mut() {
-        for (k, v) in fields {
-            m.insert((*k).to_string(), v.clone());
-        }
+    for (k, v) in fields {
+        memory = super::apply::with_key(memory, k, v.clone());
     }
     memory
 }

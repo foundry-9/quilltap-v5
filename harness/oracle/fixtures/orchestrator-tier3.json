@@ -3524,6 +3524,14 @@
     {
      "error": "upstream connection reset"
     }
+   ],
+   [
+    {
+     "content": "partial reply that"
+    },
+    {
+     "error": "upstream connection reset"
+    }
    ]
   ],
   "summary_fold": [

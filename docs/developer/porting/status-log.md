@@ -184921,8 +184921,7 @@ deleted helpers; the seven scoring-census offenders reworded).
 where v4 falls back (P4.D290 / P4.D296 / P4.D297 — regenerate-all's chat list
 is a RULING candidate: v5 fails where v4 would wipe every chat as orphans);
 `OFFSET_OCCURRED_AT_ROW_SCHEMA` (v5 stores an offset `occurredAt` v4's own
-readers refuse — a human ruling + a v4 filing); `ADMISSION_SINGLE_TERM_LINK`
-/ `CASCADE_VECTORS_REMOVED` unclassified; P4.D294 item 19's strict-export
+readers refuse — a human ruling + a v4 filing); P4.D294 item 19's strict-export
 consequence (a chat with a string `scenarioSource` cell: v4 skips it silently,
 v5 fails the export whole — keep or converge); P4.D291 #24's probe fixture;
 P4.D298's `create_project_explicit_wins` and `Error listing memories`; the
@@ -184969,6 +184968,68 @@ example re-pointed at `memory-scoring.ts`; `ai_import_tier3`'s
   /tmp/qt-v4-pin-unify-83334b9a5`; artifact
   `harness/tools/sweep-results/2026-10-15-83334b9a5-memory-scenarios-unify.json`):
   <<SWEEP>>.
+- **The sweep's thirteen `run_failed`, classified:** two standing
+  (`ariel_writers_tier3`, `search_replace`; `memory_processor_tier3`, red
+  since P4.D296's lane, is GREEN again — the fold trio below) and ELEVEN
+  union reds, each fixed red-first and green by name from the pin (artifacts
+  `…-unify-rerun.json` 12 of 13, `…-unify-rerun2.json` the last): (1)
+  `admission_decide` — the corpus row count 85 → 86 (the unifier's
+  NaN-descending row); (2)–(3) `almanack_render` / `almanack_tier2` — the
+  heading `#### Memory Cascade & Housekeeping` where v4 `render.ts:740` says
+  `#### Memory Cascade` (P4.D297 dropped the housekeeping lines, kept the
+  heading); (4)–(6) `fold_episode_tier3` / `fold_other_pass_tier3` /
+  `memory_processor_tier3` — the admission → maintenance trigger wired at
+  §S.5 (1) emits `resolveMemorySettings()`'s no-user line where the oracle
+  cases doMock `maybeEnqueueMaintenance` to `async () => []`; the Rust side
+  drops exactly that line as the stub's twin; (7) `zero_migrations_rerun` —
+  the ping-pong id on TWO more shapes: with `add-memory-tiers-v1` in the
+  narrowed runner, v4 re-ran it after v5's chain on the PLANTED and the
+  V4-MIGRATED bases too (its `shouldRun` flips the moment the cursor
+  migration drops the chat column, whichever app ran the chain) —
+  `stamp_tiers_after_cursor_move` stamps it after the move on every shape
+  (the settled-chain arm keeps the v5-provisioned one), the test's `SPAN`
+  carries thirteen ids (the `-unstamped` twins had kept v5's tiers row, so
+  v4's cursor row read `from 1 watermark column(s)` where a real no-rows
+  boot writes `from 2`), and the planted / v4-migrated rows read v4's row
+  from the planted twin; (8) `orchestrator_tier3` — the unifier's
+  `mid_stream_error_staged_tools` case re-used the `mid_stream_error` stream
+  label, whose script had ONE attempt: v4's mock threw `exhausted attempts`
+  before the request (no `cannedStream` row), v5 streamed — the label
+  carries two attempts; (9) `store_names` — R-E's
+  `STORE_STAMP_UNREACHABLE_FORMS` (four V8 legacy forms pinned both ways as
+  divergences) CONVERGED: P4.D289's whole `Date.parse` took the two legacy
+  forms, and `iso_from_unix_ms` now writes `toISOString`'s expanded years
+  (`+010000` / `-000001`; the four-digit form had mis-sliced v4's stamp) for
+  the other two — the table is retired, the forms are plain stamp rows of
+  `store-names-corpus.json`; (10) `query_param_semantics` — v4 `83334b9a5`'s
+  chat GET gained `scenario-source` before `cost`; the web edge's
+  `CHAT_GET_ACTIONS` (the `availableActions` of the unknown / bare refusal)
+  carries it (three refusal rows; the 110 / 15 count caught it); (11)
+  `memories_routes` — the `search` / `search_min_importance` rows disagreed
+  in BOTH directions with identical top-row scores; a scratch copy of the
+  oracle case dumping `buildRecallQuery` + `gather` + `searchRecall`'s trace
+  showed v4's `vectorStoreManager` is a PROCESS singleton
+  (`processSingleton`, `vector-store.ts:482`) surviving
+  `jest.resetModules()`, so the `delete` case's cache removal and the update
+  cases' re-embeddings leaked into the search cases' fresh fixture copies —
+  `memoryIndex.reloadAll()` per case, after which v4 answers v5's rows and
+  scores; the same leak had produced the lane's two "measured divergences"
+  `ADMISSION_SINGLE_TERM_LINK` and `CASCADE_VECTORS_REMOVED` (reloaded, v4
+  links `f1` and reports `vectorsRemoved=2` as v5 does) — both RETIRED to
+  equality; and the landed `handleEntityDeletion` call found the committed
+  pair without `embedding_status` (v4's repository creates the collection
+  table lazily on its per-case copy) — `test_support::
+  ensure_embedding_status_table` heals the Rust copy from the DDL dump; and
+  with both §S.5 residues closed (`CREATE_KEY_ORDER_RESIDUE`,
+  `SEARCH_ROWS_RESIDUE`) and the create rows compared by BYTES, the absorb
+  row (`create_reinforce_200`) exposed one more v5 defect: the apply's
+  `with_key` landed `lastReinforcedAt` LAST where v4's `{ ...current,
+  ...counted }` keeps `MemorySchema` order — v4's parsed `Memory` carries a
+  NULL column's key as `undefined` (dropped by JSON) at its position, a
+  preserve-order `Map` omits it and appends; `apply::with_key` (and the
+  admit side's `merged` through it) now inserts an absent schema key before
+  the first present key that follows it (`memories_read::schema_keys`),
+  unit-pinned by bytes.
 - **Tier R (`cli_differential`):** <<TIER_R>>.
 - **The workspace suite** (`QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin + the
   harvested env block, `cargo test --workspace --no-fail-fast`): <<WORKSPACE>>.

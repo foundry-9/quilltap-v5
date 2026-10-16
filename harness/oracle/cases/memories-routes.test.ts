@@ -237,6 +237,18 @@ async function runCase(
   await applyMemoryTiersMigration(mainWork, { pepperBase64: spec.testPepperBase64 });
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
+  // The `83334b9a5` unification: v4's memory index cache is a PROCESS singleton
+  // (`processSingleton('embedding.vectorStoreManager')`, `vector-store.ts:482`)
+  // that survives `jest.resetModules()`, while every case runs on a FRESH copy
+  // of the fixture pair — so the `delete` case's removal of `MEM_REL_B` and the
+  // update cases' re-embeddings leaked into the `search*` cases through the
+  // cache (one row missing, one row scored on a stale vector), pinning rows no
+  // single v4 process ever answers. Drop every cached store so each case's
+  // first search reloads from ITS copy, as a v4 process does from its own rows.
+  {
+    const { memoryIndex } = await import('@/lib/memory/index-store');
+    memoryIndex.reloadAll();
+  }
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(

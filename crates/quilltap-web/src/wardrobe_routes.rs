@@ -487,7 +487,7 @@ pub async fn chat_action_get(
 ) -> AxumResponse {
     // v4 `68da64d9b` put the chat GET's old `if (action === '…')` ladder (whose
     // fallthrough served the full chat payload for absent / `?action=` /
-    // unknown alike) behind `dispatchAction` with the FOURTEEN-key thunk map:
+    // unknown alike) behind `dispatchAction` with the thunk map (fifteen keys at `83334b9a5`):
     // a bare or unknown action is now the `Unknown action` envelope, answered
     // BEFORE any chat read (v4's test asserts `findById` is not called — so an
     // unknown action on a MISSING chat is 400, never 404). The absent action is
@@ -585,8 +585,10 @@ pub async fn chat_action_get(
 }
 
 /// v4's chat-GET thunk map, in literal order (`chats/[id]/handlers/get.ts:60-82`
-/// at `68da64d9b` — the old if-ladder's order): the `availableActions` of the
-/// unknown/bare refusal.
+/// at `68da64d9b` — the old if-ladder's order; `83334b9a5` adds
+/// `scenario-source` before `cost`, P4.D295's read, served over
+/// `/api/dispatch` like the rest): the `availableActions` of the unknown/bare
+/// refusal.
 const CHAT_GET_ACTIONS: &[&str] = &[
     "export",
     "export-markdown",
@@ -601,6 +603,7 @@ const CHAT_GET_ACTIONS: &[&str] = &[
     "accessible-stores",
     "get-background",
     "gallery",
+    "scenario-source",
     "cost",
 ];
 

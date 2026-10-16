@@ -289,6 +289,44 @@ pub fn stamp_settled_chain(main: &Connection) -> Result<Option<SettledChainStamp
     })
 }
 
+/// The ping-pong stamp on the OTHER two instance shapes (the `83334b9a5`
+/// unification's review, measured by `zero_migrations_rerun_equivalence`'s
+/// `planted` and `v4-migrated` modes — v4 re-ran `add-memory-tiers-v1` on
+/// both after v5's chain): the cursor table present, NEITHER legacy watermark
+/// column left (the move is done — by v5's half-migrated arm above, or by v4's
+/// own cursor migration), and NO `add-memory-tiers-v1` row. That is an
+/// instance P4.D265's unstamped ensure tiered (v4's runner stamps the id when
+/// IT tiers one). With the chat column gone, v4's `shouldRun` holds through
+/// `needsChatWatermark` ALONE (`add-memory-tiers-v1.ts:83,96-105`), so v4's
+/// next boot would re-add `chats.otherExtractionWatermarkMessageId`, stamp
+/// tiers, then skip the stamped cursor migration — the dead column back for
+/// good. Stamps the row v4 would write there — `itemsAffected` 1, `Memory
+/// tiers in place (1 changes)` (`:147-156`, the one column) — and nothing
+/// else. `false` when the row exists, the move has not happened (the real
+/// arms' business), or tiers still has work of its own on `memories` (then v4
+/// WOULD run it for that reason — the unstamped ensure's business, not this
+/// one's). A no-op after [`stamp_settled_chain`], which writes the same row.
+pub fn stamp_tiers_after_cursor_move(main: &Connection) -> Result<bool, DbError> {
+    use super::memory_tiers_repair as tiers;
+    if ledger_has(main, tiers::MIGRATION_ID)?
+        || !table_exists(main, "chats")?
+        || !table_exists(main, TABLE)?
+        || !legacy_columns_present(main)?.is_empty()
+        || !tiers::only_the_chat_watermark_remains(main)?
+    {
+        return Ok(false);
+    }
+    let now = crate::clock::now_iso();
+    stamp_completed(
+        main,
+        tiers::MIGRATION_ID,
+        &now,
+        1,
+        "Memory tiers in place (1 changes)",
+    )?;
+    Ok(true)
+}
+
 /// v4's repository first touch: generateDDL's `createdAt` index on the cursor
 /// table, `IF NOT EXISTS`, whenever the table exists. `true` when it was
 /// created by this call.

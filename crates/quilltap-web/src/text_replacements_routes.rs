@@ -305,7 +305,7 @@ pub async fn chat_get_background(
     // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
     // so the pair list collapses to the map the rest of the handler expects.
     let query = crate::query::first_map(&pairs);
-    // Reached from `wardrobe_routes::chat_action_get` AFTER its fourteen-key
+    // Reached from `wardrobe_routes::chat_action_get` AFTER its fifteen-key
     // gate, so the action here is absent or a v4-known name.
     let req = match crate::query::action_param(&pairs) {
         Some("get-background") => CoreRequest::ChatGetBackground { chat_id: id },

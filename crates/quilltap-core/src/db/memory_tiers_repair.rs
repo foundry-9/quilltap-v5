@@ -183,6 +183,16 @@ fn assess_work(main: &Connection) -> Result<WorkNeeded, DbError> {
     Ok(work)
 }
 
+/// `true` when v4's `assessWork` (`:53-87`) finds NOTHING left on `memories` —
+/// every tier column, the index, no NULL-tier row — so its `shouldRun` (`:96-
+/// 105`) can hold only through `needsChatWatermark`: the chat column the span's
+/// cursor migration moved away. The cursor repair's ping-pong stamp
+/// (`memory_extraction_cursors_repair::stamp_tiers_after_cursor_move`) reads it.
+pub fn only_the_chat_watermark_remains(main: &Connection) -> Result<bool, DbError> {
+    let work = assess_work(main)?;
+    Ok(work.memory_columns.is_empty() && !work.needs_index && work.null_tier_rows == 0)
+}
+
 /// Run v4's `add-memory-tiers-v1` against the main partition when its
 /// `shouldRun` would (`:96-105`) — idempotent, table-gated, unstamped, silent
 /// (see the module doc). A fully-migrated instance (live Friday, a fresh v5

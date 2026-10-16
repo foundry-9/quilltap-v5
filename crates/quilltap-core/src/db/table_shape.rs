@@ -386,7 +386,7 @@ static FRESH_SCHEMA: std::sync::LazyLock<serde_json::Value> = std::sync::LazyLoc
 /// WITHOUT its sha256 index — a v5-only schema difference, caught at the
 /// `e5c6bd0c0` unification (the tier-1 substrate test had filtered v4's side
 /// the same way, so both sides dropped it).
-fn fresh_ddl_for(partition: Partition, collection: &str) -> Vec<String> {
+pub(crate) fn fresh_ddl_for(partition: Partition, collection: &str) -> Vec<String> {
     let key = match partition {
         Partition::Main => "main",
         Partition::MountIndex => "mountIndex",

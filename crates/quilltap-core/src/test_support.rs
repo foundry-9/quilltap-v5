@@ -201,6 +201,34 @@ pub fn ensure_wear_ledger_on(conn: &rusqlite::Connection) {
 /// (C1 §13). The committed `*-main.db` pairs are WIDENED in place (§R.3), so
 /// this is for BUILDER outputs and in-case PLANTS; idempotent — harmless on a
 /// widened copy or a table-less partition.
+/// The committed fixture pairs predate `embedding_status`. v4's repository
+/// ensures its collection table lazily on first access
+/// (`BaseRepository.getCollection`), so an oracle case's per-case copy grows
+/// it the moment a route touches it; v5 only provisions it (D23) and never
+/// creates a main-partition table at boot. The twin on a fixture COPY: the
+/// table from v4's own DDL dump, only when no table of the name exists (the
+/// `83334b9a5` unification — the Memories API's `handleEntityDeletion` call
+/// landed and found the pair without it).
+pub fn ensure_embedding_status_table(conn: &rusqlite::Connection) {
+    let taken: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE name = 'embedding_status'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("sqlite_master");
+    if taken > 0 {
+        return;
+    }
+    for sql in crate::db::table_shape::fresh_ddl_for(
+        crate::db::table_shape::Partition::Main,
+        "embedding_status",
+    ) {
+        conn.execute_batch(&sql)
+            .expect("embedding_status DDL from the dump");
+    }
+}
+
 pub fn ensure_memory_tiers_columns(conn: &rusqlite::Connection) {
     crate::db::memory_tiers_repair::ensure_memory_tiers(conn)
         .expect("ensure the memory-tiers columns on a test fixture");

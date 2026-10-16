@@ -1,0 +1,173 @@
+{
+  "label": "unify-83334b9a5 by-name re-run after the union-red fixes",
+  "v5w": "/Users/csebold/source/quilltap-v5",
+  "venue_is_worktree": false,
+  "requested": [
+    "admission_decide_equivalence",
+    "almanack_render_equivalence",
+    "almanack_tier2_equivalence",
+    "fold_episode_tier3_equivalence",
+    "fold_other_pass_tier3_equivalence",
+    "memory_processor_tier3_equivalence",
+    "memories_routes_equivalence",
+    "orchestrator_tier3_equivalence",
+    "store_names_equivalence",
+    "zero_migrations_rerun_equivalence",
+    "query_param_semantics_equivalence",
+    "memory_tiers_ensure_equivalence",
+    "memory_extraction_cursors_ensure_equivalence"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "api_key_read_sites_census",
+    "blob_path_normaliser_census",
+    "concierge_legacy_settings_census",
+    "concierge_state_writers_census",
+    "doc_mount_fallback_sites_census",
+    "generation_key_travels_as_is_guard",
+    "get_messages_caller_census",
+    "moderation_refusal_ledger_isolation_guard",
+    "nanogpt_lora_wire_log",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "photo_side_effects_wiring",
+    "route_trail_continuation_guard",
+    "salon_fixture_p4d171_ensure",
+    "tool_loop_leg_logging",
+    "transcript_version_isolation_guard",
+    "character_prompt_set_default_dispatch_wire",
+    "graceful_shutdown",
+    "images_edge_routes",
+    "lock_conflict_boot_status",
+    "qtap_import_large_multipart",
+    "completion_behavior"
+  ],
+  "families": [
+    {
+      "family": "admission_decide_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json\n M harness/oracle/fixtures/store-names-corpus.json"
+      ]
+    },
+    {
+      "family": "almanack_render_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json\n M harness/oracle/fixtures/store-names-corpus.json"
+      ]
+    },
+    {
+      "family": "almanack_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json\n M harness/oracle/fixtures/store-names-corpus.json"
+      ]
+    },
+    {
+      "family": "fold_episode_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json\n M harness/oracle/fixtures/store-names-corpus.json"
+      ]
+    },
+    {
+      "family": "fold_other_pass_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json\n M harness/oracle/fixtures/store-names-corpus.json"
+      ]
+    },
+    {
+      "family": "memory_processor_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json\n M harness/oracle/fixtures/store-names-corpus.json"
+      ]
+    },
+    {
+      "family": "memories_routes_equivalence",
+      "status": "run_failed",
+      "cause": "[backfill_start_skips_queued] OK (P4.D298).\n[backfill_start_all_characters] OK (P4.D298).\n[backfill_start_bad_character_id] OK (P4.D298).\n[regenerate_all] OK (P4.D298).\n[regenerate_all_keeps_retired_type] OK (P4.D298).\n[search] the \u00a7S.5 (4) residue CLOSED \u2014 move the row back to the strict set\n[search_min_importance] the \u00a7S.5 (4) residue CLOSED \u2014 move the row back to the strict set\n[search_include_cold] the \u00a7S.5 (4) residue CLOSED \u2014 move the row back to the strict set\nthread 'memories_routes_match_oracle' (12991053) panicked at crates/quilltap-harness/tests/memories_routes_equivalence.rs:2811:5:\nmismatched cases: [\"delete\", \"message_delete_cascade_line\", \"create_plain_lamp_text:single-term-link\", \"create_key_order:residue-closed\", \"search:residue-closed\", \"search_min_importance:residue-closed\", \"search_include_cold:residue-closed\"]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test memories_routes_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "orchestrator_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json\n M harness/oracle/fixtures/store-names-corpus.json"
+      ]
+    },
+    {
+      "family": "store_names_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json\n M harness/oracle/fixtures/store-names-corpus.json"
+      ]
+    },
+    {
+      "family": "zero_migrations_rerun_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "external_tmp_input /tmp/qt-zero-rerun",
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json\n M harness/oracle/fixtures/store-names-corpus.json"
+      ]
+    },
+    {
+      "family": "query_param_semantics_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json\n M harness/oracle/fixtures/store-names-corpus.json"
+      ]
+    },
+    {
+      "family": "memory_tiers_ensure_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "external_tmp_input /tmp/qt-memory-tiers-ensure",
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json\n M harness/oracle/fixtures/store-names-corpus.json"
+      ]
+    },
+    {
+      "family": "memory_extraction_cursors_ensure_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "external_tmp_input /tmp/qt-p4d288-ensures",
+        "tracked fixture bytes modified by this family's stages:\nM harness/oracle/fixtures/orchestrator-tier3.json\n M harness/oracle/fixtures/store-names-corpus.json"
+      ]
+    }
+  ],
+  "totals": {
+    "ok": 12,
+    "run_failed": 1
+  }
+}

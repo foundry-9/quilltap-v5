@@ -9,7 +9,7 @@
  * Inputs: the committed corpus `harness/oracle/fixtures/store-names-corpus.json`
  * (path in `QT_STORE_NAMES_CORPUS`). Output: ONE NDJSON line
  *   {case: "store-names", corpusSha256, vaultNames: [{in, out}],
- *    baseNames: [{in, out}], stamps: [{in, out}], unreachableStamps: [{in, out}],
+ *    baseNames: [{in, out}], stamps: [{in, out}],
  *    retired: [{base, createdAt, out}], unique: [{taken, desired, out}],
  *    plans: [{label, renames, idempotent}]}
  * where `renames` is `planStoreNames(stores, characters)` verbatim (order and
@@ -18,7 +18,7 @@
  *
  * `TZ=UTC` is load-bearing: `storeNameTimestamp` runs `Date.parse`, which reads
  * a zone-less datetime as LOCAL time (the corpus's `2026-10-09` date-only and
- * the legacy forms in `unreachableStamps`).
+ * the V8 legacy forms among the stamps — `Oct 9 2026`, the RFC-1123 one).
  *
  * Run (Node 24, from the round's pin or the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -47,7 +47,6 @@ const corpus = JSON.parse(bytes.toString('utf8')) as {
   vaultNames: string[];
   baseNames: string[];
   stamps: string[];
-  unreachableStamps: string[];
   retired: { base: string; createdAt: string }[];
   unique: { taken: string[]; desired: string }[];
   plans: { label: string; stores: StoreNameRow[]; characters: VaultOwnerRow[] }[];
@@ -59,7 +58,6 @@ const out = {
   vaultNames: corpus.vaultNames.map((s) => ({ in: s, out: characterVaultName(s) })),
   baseNames: corpus.baseNames.map((s) => ({ in: s, out: vaultBaseName(s) })),
   stamps: corpus.stamps.map((s) => ({ in: s, out: storeNameTimestamp(s) })),
-  unreachableStamps: corpus.unreachableStamps.map((s) => ({ in: s, out: storeNameTimestamp(s) })),
   retired: corpus.retired.map((r) => ({ ...r, out: retiredVaultName(r.base, r.createdAt) })),
   unique: corpus.unique.map((u) => ({ ...u, out: nextUniqueMountPointName(new Set(u.taken), u.desired) })),
   plans: corpus.plans.map((p) => {

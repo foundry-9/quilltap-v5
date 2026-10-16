@@ -29,8 +29,11 @@ pub(crate) fn civil_from_days(z: i64) -> (i64, u32, u32) {
 }
 
 /// Format a Unix timestamp in milliseconds as v4's `toISOString()` string:
-/// `YYYY-MM-DDTHH:MM:SS.mmmZ`. Pure and total for non-negative inputs (the only
-/// regime a repo create reaches); negative pre-epoch inputs are not used.
+/// `YYYY-MM-DDTHH:MM:SS.mmmZ`. Pure and total over JS's whole time range,
+/// pre-epoch included; a year outside `0000..=9999` takes ECMA-262's expanded
+/// form `±YYYYYY` (`+010000-01-01T00:00:00.000Z`, `-000001-…`), which is what
+/// `Date.prototype.toISOString` writes — the `83334b9a5` unification found
+/// the four-digit form mis-slicing v4's store-name stamp for those years.
 pub fn iso_from_unix_ms(ms: i64) -> String {
     let days = ms.div_euclid(86_400_000);
     let rem = ms.rem_euclid(86_400_000);
@@ -39,7 +42,18 @@ pub fn iso_from_unix_ms(ms: i64) -> String {
     let min = (rem / 60_000) % 60;
     let sec = (rem / 1000) % 60;
     let milli = rem % 1000;
-    format!("{y:04}-{mo:02}-{d:02}T{hour:02}:{min:02}:{sec:02}.{milli:03}Z")
+    let year = js_iso_year(y);
+    format!("{year}-{mo:02}-{d:02}T{hour:02}:{min:02}:{sec:02}.{milli:03}Z")
+}
+
+/// `toISOString()`'s year field (ECMA-262 "Date Time String Format", expanded
+/// years): four digits inside `0000..=9999`, else a sign and six digits.
+fn js_iso_year(y: i64) -> String {
+    if (0..=9999).contains(&y) {
+        format!("{y:04}")
+    } else {
+        format!("{}{:06}", if y < 0 { '-' } else { '+' }, y.abs())
+    }
 }
 
 /// The current wall-clock instant as an ISO-8601 string (v4's
@@ -112,6 +126,20 @@ mod tests {
         // Vectors confirmed against Node `new Date(ms).toISOString()`.
         assert_eq!(iso_from_unix_ms(0), "1970-01-01T00:00:00.000Z");
         assert_eq!(iso_from_unix_ms(1), "1970-01-01T00:00:00.001Z");
+        // ECMA-262's expanded years, as `new Date(ms).toISOString()` writes
+        // them (`Date.parse("+010000-01-01T00:00:00.000Z")` = 253402300800000).
+        assert_eq!(
+            iso_from_unix_ms(253_402_300_800_000),
+            "+010000-01-01T00:00:00.000Z"
+        );
+        assert_eq!(
+            iso_from_unix_ms(days_from_civil(-1, 1, 1) * 86_400_000),
+            "-000001-01-01T00:00:00.000Z"
+        );
+        assert_eq!(
+            iso_from_unix_ms(days_from_civil(0, 1, 1) * 86_400_000),
+            "0000-01-01T00:00:00.000Z"
+        );
         assert_eq!(iso_from_unix_ms(1_000), "1970-01-01T00:00:01.000Z");
         // 2026-07-02T12:34:56.789Z
         assert_eq!(

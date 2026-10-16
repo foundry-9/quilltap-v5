@@ -1133,7 +1133,9 @@ pub fn render_almanack_markdown(data: &AlmanackReportData, zone: &TimeZone) -> S
         ""
     );
 
-    push!("#### Memory Cascade & Housekeeping", "");
+    // v4 `render.ts:740` at the `83334b9a5` pin: the housekeeping half left with
+    // Phase F (its four lines moved to `Memory maintenance` under Instance Settings).
+    push!("#### Memory Cascade", "");
     push!(format!(
         "- **On Message Delete**: {}",
         fc.memory_cascade.on_message_delete

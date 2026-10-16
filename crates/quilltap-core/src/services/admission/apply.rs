@@ -289,11 +289,41 @@ fn missed(landed: bool, survivor_id: &str, character_id: &str, step: &str) -> bo
 }
 
 /// `{ ...a, key: value }` on a row's JSON.
-fn with_key(mut memory: Value, key: &str, value: Value) -> Value {
-    if let Some(m) = memory.as_object_mut() {
+/// v4 `{ ...current, key: value }`. v4's parsed `Memory` carries every schema
+/// key (a NULL column as `undefined`, which JSON drops), so the spread lands
+/// a value the row did not yet have at the key's SCHEMA position; a
+/// preserve-order `Map` omits NULL keys and would append it. A present key is
+/// replaced in place; an absent schema key is inserted before the first
+/// present key that follows it in schema order (the `83334b9a5` unification —
+/// `create_reinforce_200`'s `lastReinforcedAt` had landed last).
+pub(crate) fn with_key(memory: Value, key: &str, value: Value) -> Value {
+    let mut m = match memory {
+        Value::Object(m) => m,
+        other => return other,
+    };
+    if m.contains_key(key) {
         m.insert(key.to_string(), value);
+        return Value::Object(m);
     }
-    memory
+    let order: Vec<&str> = memories_read::schema_keys().collect();
+    let rank = |k: &str| order.iter().position(|x| *x == k);
+    let Some(key_rank) = rank(key) else {
+        m.insert(key.to_string(), value);
+        return Value::Object(m);
+    };
+    let mut out = Map::new();
+    let mut placed = false;
+    for (k, v) in m {
+        if !placed && rank(&k).is_some_and(|r| r > key_rank) {
+            out.insert(key.to_string(), value.clone());
+            placed = true;
+        }
+        out.insert(k, v);
+    }
+    if !placed {
+        out.insert(key.to_string(), value);
+    }
+    Value::Object(out)
 }
 
 /// v4's `Number.isInteger(by) && by >= 1` for the repository's `by`, else
@@ -571,6 +601,26 @@ pub async fn raise_importance(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn with_key_lands_an_absent_schema_key_at_its_position() {
+        let m = serde_json::json!({
+            "id": "a", "reinforcementCount": 1, "relatedMemoryIds": [], "createdAt": "t"
+        });
+        let out = with_key(m, "lastReinforcedAt", serde_json::json!("r"));
+        // By BYTES: the order is the point.
+        assert_eq!(
+            serde_json::to_string(&out).unwrap(),
+            r#"{"id":"a","reinforcementCount":1,"lastReinforcedAt":"r","relatedMemoryIds":[],"createdAt":"t"}"#
+        );
+        // A present key stays where it is; a non-schema key appends.
+        let out = with_key(out, "reinforcementCount", serde_json::json!(2));
+        let out = with_key(out, "score", serde_json::json!(0.5));
+        assert_eq!(
+            serde_json::to_string(&out).unwrap(),
+            r#"{"id":"a","reinforcementCount":2,"lastReinforcedAt":"r","relatedMemoryIds":[],"createdAt":"t","score":0.5}"#
+        );
+    }
 
     #[test]
     fn without_embedding_drops_only_the_vector() {

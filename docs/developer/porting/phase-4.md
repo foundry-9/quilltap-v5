@@ -7195,8 +7195,7 @@ carries its Unification paragraph and exactly what stays OPEN.
    list + the lanes' own 💸 rows + bug 242's single-character check).
 2. **The follow-ups smalls round** (`/setupphase`): the review's recorded
    items — the repository-fallback `?` reads (P4.D290 / P4.D296 / P4.D297;
-   regenerate-all's chat list a RULING), `ADMISSION_SINGLE_TERM_LINK` and
-   `CASCADE_VECTORS_REMOVED` to classify, P4.D291 #24's recall-probe fixture,
+   regenerate-all's chat list a RULING), P4.D291 #24's recall-probe fixture,
    P4.D298's `create_project_explicit_wins` + `Error listing memories`, the
    lock's closed-enum read + v4's three lock lines, the scenario parser WARNs,
    the host L2 → L37 capture row (needs an injected failure between phases),

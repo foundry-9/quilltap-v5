@@ -153,6 +153,17 @@ pub fn run_span_ensures(main: &Connection, host_fallback: &str) -> Result<(), Db
     }
     // v4's repository first touch: the cursor table's `createdAt` index.
     super::memory_extraction_cursors_repair::ensure_cursor_created_at_index(main)?;
+    // The ping-pong stamp (the `83334b9a5` unification's review): the watermark
+    // column moved and no tiers row — v4's next boot would re-run tiers to
+    // re-add it. `stamp_settled_chain` covers the v5-provisioned shape above;
+    // this covers the half-migrated and the v4-migrated ones.
+    if super::memory_extraction_cursors_repair::stamp_tiers_after_cursor_move(main)? {
+        tracing::info!(
+            target: "quilltap::boot",
+            migrationId = super::memory_tiers_repair::MIGRATION_ID,
+            "Recorded add-memory-tiers-v1 after the watermark move"
+        );
+    }
     // Slot 10 — `drop-inter-character-memory-jobs-v1`.
     let inter = super::retired_job_rows_purge::purge_inter_character_memory_jobs(main)?;
     if inter > 0 {

@@ -248,7 +248,8 @@ fn admission_decide_matches_oracle() {
     // Corpus drift guard: the case's exact row counts.
     assert_eq!(
         (constants, providers, distincts, decides, describes),
-        (3, 7, 17, 85, 28),
+        // 85 → 86 decides at the `83334b9a5` unification: the `nan-descending-run` row.
+        (3, 7, 17, 86, 28),
         "row counts (constant, provider, distinct, decide, describe)"
     );
     eprintln!(
