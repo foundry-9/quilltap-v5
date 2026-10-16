@@ -20,6 +20,14 @@
 //! - `v4-migrated` — the planted instance already migrated by v4's runner
 //!   (every ensure a no-op, no duplicate or changed stamp).
 //!
+//! **P4.D304 (the `25b8fab6a` round):** the narrowed runner also carries the
+//! two 4.11 `chat_settings` migrations after the span
+//! (`CHAT_SETTINGS_4_11_MIGRATIONS`), the planted base takes both columns
+//! back, and `run_chain` runs `run_chat_settings_4_11_ensures` after the span
+//! chain (the host's order). v4 runs both on the planted base (14 in all) and
+//! NEITHER after v5's chain on any base; v5 stamps neither — the `-unstamped`
+//! twins re-run exactly what they re-ran before, which proves no stamp is owed.
+//!
 //! **`STAMP_RULE_RED_FIRST`** (a named both-ways row, §R.13(a)'s red-first set
 //! BY ID, kept as a permanent pin): each base but `v4-migrated` has an
 //! `-unstamped` twin — the instance after v5's chain with the span's ledger
@@ -102,11 +110,23 @@ fn dir() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-/// Run v5's span chain on `path` (a caller-thread writer).
+/// P4.D304: the two 4.11 `chat_settings` migrations the narrowed runner runs
+/// after the span (`CHAT_SETTINGS_4_11_MIGRATIONS`) — UNSTAMPED on v5's side,
+/// so v4's `shouldRun` (false once v5's chain added both columns) is the whole
+/// zero-rerun proof for them.
+const CHAT_SETTINGS_4_11: [&str; 2] = [
+    "add-custom-tool-triggers-field-v1",
+    "add-composer-slash-commands-field-v1",
+];
+
+/// Run v5's span chain, then the 4.11 `chat_settings` chain (the host's boot
+/// order), on `path` (a caller-thread writer).
 fn run_chain(path: &Path) {
     let w = Writer::open_writable(path, PEPPER).expect("open");
     quilltap_core::db::p4d288_span::run_span_ensures(w.connection(), "UTC")
         .expect("the span chain");
+    quilltap_core::db::chat_settings_4_11_repair::run_chat_settings_4_11_ensures(w.connection())
+        .expect("the 4.11 chat_settings chain");
 }
 
 /// A fresh v5-provisioned main partition at `out` (its first boot not yet run).
@@ -211,9 +231,17 @@ fn no_migration_reruns_after_the_v5_chain() {
     let v4_ledger = ledger_by_id(&build[0]["ledger"]);
     assert_eq!(
         build[0]["ran"].as_array().unwrap().len(),
-        12,
-        "v4 ran the twelve on the planted base"
+        14,
+        "v4 ran the twelve + the two 4.11 chat_settings migrations on the planted base"
     );
+    // P4.D304: v4 stamped the two 4.11 ids on its own migrated base; v5 never
+    // stamps them on any base (R-B).
+    for id in CHAT_SETTINGS_4_11 {
+        assert!(
+            v4_ledger.iter().any(|(i, _)| i == id),
+            "v4's build stamped {id}"
+        );
+    }
     let row_of = |mode: &str| -> &Value {
         v4.iter()
             .find(|r| r["mode"] == mode)
@@ -250,6 +278,18 @@ fn no_migration_reruns_after_the_v5_chain() {
             }
         }
         let v5_rows = span_rows(&row["before"]["ledger"]);
+        // P4.D304 (R-B): v5 stamps neither 4.11 id; only v4's own migrated
+        // base carries them (its build ran them).
+        if mode != "v4-migrated" {
+            for id in CHAT_SETTINGS_4_11 {
+                if ledger_by_id(&row["before"]["ledger"])
+                    .iter()
+                    .any(|(i, _)| i == id)
+                {
+                    failures.push(format!("{mode}: a ledger row for the unstamped {id}"));
+                }
+            }
+        }
         match mode {
             "planted" => {
                 for (id, v5_row) in &v5_rows {

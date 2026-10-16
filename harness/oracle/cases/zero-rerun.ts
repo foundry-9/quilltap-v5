@@ -11,7 +11,9 @@
  *           (`migration_indexes.json`) with the round's moves UNDONE: no
  *           `memories.supersededAt`, no `chats` scenario pair, the OTHER
  *           watermark column, no cursor table, no `idx_memories_supersededById`,
- *           no `tfidf_vocabularies.textShapeVersion`, the three dead
+ *           no `tfidf_vocabularies.textShapeVersion`, no 4.11 `chat_settings`
+ *           toggles (P4.D304: `customToolTriggers` / `composerSlashCommands`,
+ *           whose two migrations follow the span in the narrowed runner), the three dead
  *           `chat_settings` columns + the dead instance key, the vector mirror
  *           (rows a memory lacks and holds), retired job rows, legacy
  *           UTC-midnight `occurredAt`s and stale `reinforcedImportance`s.
@@ -50,7 +52,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { P4D288_SPAN_MIGRATIONS } from '../lib/v4-migrations';
+import { CHAT_SETTINGS_4_11_MIGRATIONS, P4D288_SPAN_MIGRATIONS } from '../lib/v4-migrations';
 
 const PEPPER = 'dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=';
 const KEY_PRAGMA = `key = "x'${Buffer.from(PEPPER, 'base64').toString('hex')}'"`;
@@ -129,7 +131,11 @@ async function runTwelve(path: string): Promise<string[]> {
   process.env.QUILLTAP_DATA_DIR = scratch;
   const utils = await import(join(v4Root, 'migrations/lib/database-utils.ts'));
   const migrations = [];
-  for (const ref of P4D288_SPAN_MIGRATIONS) migrations.push((await import(join(v4Root, ref.file)))[ref.exportName]);
+  // P4.D304: the span, then the two 4.11 chat_settings migrations (v4's
+  // registration order — both unstamped on v5's side, R-B).
+  for (const ref of [...P4D288_SPAN_MIGRATIONS, ...CHAT_SETTINGS_4_11_MIGRATIONS]) {
+    migrations.push((await import(join(v4Root, ref.file)))[ref.exportName]);
+  }
   const ran: string[] = [];
   utils.closeSQLite();
   try {
@@ -173,6 +179,10 @@ function buildPlanted(path: string): void {
     if (s.startsWith('CREATE TABLE "memories" (')) s = strip(s, [`  "supersededAt" TEXT,\n`]);
     if (s.startsWith('CREATE TABLE "chats" (')) s = strip(s, [`  "scenarioSource" TEXT,\n`, `  "scenarioNotes" TEXT,\n`]);
     if (s.startsWith('CREATE TABLE "tfidf_vocabularies" (')) s = strip(s, [`  "textShapeVersion" REAL DEFAULT 0,\n`]);
+    // P4.D304: the 4.11 chat_settings toggles taken back too.
+    if (s.startsWith('CREATE TABLE "chat_settings" (')) {
+      s = strip(s, [`  "customToolTriggers" INTEGER DEFAULT 0,\n`, `  "composerSlashCommands" INTEGER DEFAULT 1,\n`]);
+    }
     db.exec(s);
   }
   for (const stmt of migrationIndexes.main) {

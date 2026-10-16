@@ -185361,3 +185361,49 @@ five are §R.3's by-design owners: `provider_sdk_version_guard` +
 (`main help`, `completion zsh`, `completion fish` — P4.D312, §R.4(k)).
 
 Versions at `KEYSTONE`: core 0.0.1306, host 0.0.208.
+
+### P4.D304 Tier 2 (after `KEYSTONE`)
+
+- **Item 15 — the committed pairs (R-7), measured.** The census
+  (`--report-only --module …#addCustomToolTriggersFieldMigration --module
+  …#addComposerSlashCommandsFieldMigration` from the pin over all **51**
+  `*-main.db`): `WOULD RUN` 22 (every pair with a `chat_settings` table),
+  `not needed` 29 (no table). The write-set — pairs whose ORACLE writes
+  `chat_settings` through v4's repository — measured both by grep (only
+  `memories-config.test.ts` and `chat-regenerate-title-tier3.test.ts` call
+  `updateForUser` over a committed pair; `salon-reads` only GETs a present
+  row; `attach-mount-file` / `images-generate-route` write raw SQL on one
+  column; `chat-rebuild-summary` raw UPDATE / DELETE) and by sweep 1 (exactly
+  `memories_routes` and `chat_regenerate_title_tier3` died `SqliteError: no
+  such column: customToolTriggers`). **The 2 widened:** `memories-main.db`,
+  `chat-admin-main.db` — each `+RAN` both, zero `.db-journal` residue, the
+  re-run `--report-only` `not needed` ×2; no unguarded `ADD COLUMN` plant over
+  either (grep); `chat-admin-main.db.meta.json` is an id map, unchanged.
+  **The 20 left alone:** `almanack`, `attach-file`, `autonomous`,
+  `chat-delete`, `chat-dialogs`, `chat-scenario`, `chat-send`,
+  `cost-background`, `courier-images`, `embedding-remainder`,
+  `episodic-recall`, `headshoulders`, `help-chat`, `images`,
+  `in-scene-voiced`, `llm-log-cleanup`, `pascal-run-custom`, `salon-long`,
+  `salon`, `system-data` (v4's Zod defaults and v5's tolerant read agree on
+  the absent columns; no oracle writes the table through the repo). Sweep 2
+  over every family reading the two pairs, from the pin: **all ok** —
+  `chat_admin_routes`, `chat_rebuild_summary`, `chat_regenerate_title_tier3`,
+  `frozen_archive_tier2`, `memories_routes`, `memory_consolidation_routes`,
+  `memory_maintenance_routes`, `p4_d288_wire_contract`, `web_search_runner_wire`.
+- **Item 14 — `zero_migrations_rerun_equivalence` widened:**
+  `CHAT_SETTINGS_4_11_MIGRATIONS` beside (not inside) `P4D288_SPAN_MIGRATIONS`;
+  the planted base strips both columns; `run_chain` runs the 4.11 chain after
+  the span. v4's build runs 14; after v5's chain v4 runs NOTHING on any base;
+  v5 stamps neither id (asserted); the `-unstamped` twins re-run exactly the
+  ids they did before (`STAMP_RULE_RED_FIRST` unchanged). Red-first by
+  mutation: without the 4.11 chain v4 re-runs both ids on `planted` (and its
+  twin). Green in sweep 2.
+- **Item 16 — `uuid-remap-corpus.json` NOT touched (deferred, loud):** the
+  corpus is P4.D312's this round (§R.13(i) grows it and regenerates
+  `backup_uuid_remap`); a keystone edit to the same JSON would collide at the
+  union. The pass-through is structural (`remap_chat_settings` copies scalars
+  through `fields_owned`); HANDOFF to P4.D312: add `customToolTriggers` /
+  `composerSlashCommands` to the corpus's settings row when it re-records.
+- **Item 17 — the guard's doc comment** landed in `KEYSTONE` (the predicates /
+  indices sentence pointing at the by-name unit tests).
+- Sweep 2 announced and closed in the shared notes.

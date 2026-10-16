@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — test(harness): P4.D304 Tier 2 — zero_migrations_rerun widened to the two 4.11 chat_settings migrations; memories-main.db and chat-admin-main.db widened through v4's real migrations
+
+_No crate versions bumped._
+
+`v4-migrations.ts` gains `CHAT_SETTINGS_4_11_MIGRATIONS` beside the span list. `zero-rerun.ts` loads both lists into the narrowed runner and strips the two columns from the planted base, and `run_chain` runs `run_chat_settings_4_11_ensures` after the span chain. v4 runs both on the planted base (14 in all) and neither after v5's chain; v5 stamps neither. Removing the 4.11 chain from `run_chain` makes v4 re-run both ids.
+
+The two committed pairs whose oracles write `chat_settings` through v4's repository (`memories-main.db`, `chat-admin-main.db`) are widened in place through v4's real migrations at the pin; before that both regens died on `no such column: customToolTriggers`. Every family over either pair is green from the pin.
+
 #### 2026-10-16 — docs(porting): P4.D304 records its KEYSTONE sha and ensure names in the order's status header
 
 _Docs-only change._

@@ -90,6 +90,19 @@ export const P4D288_SPAN_MIGRATIONS: V4MigrationRef[] = [
   { file: 'migrations/scripts/drop-housekeeping-consolidation-jobs-v1.ts', exportName: 'dropHousekeepingConsolidationJobsMigration' },
 ];
 
+/**
+ * P4.D304 — the two 4.11 `chat_settings` migrations, in v4's registration
+ * order (`migrations/scripts/index.ts:909`, `:911` at the `25b8fab6a` pin —
+ * appended right after the span's slot 12): triggers, then slash. NOTE the
+ * file names carry NO `-v1` suffix, unlike the ids. Kept beside — never inside
+ * — `P4D288_SPAN_MIGRATIONS`, which the widener's `--p4d288-span` flag reads
+ * by name.
+ */
+export const CHAT_SETTINGS_4_11_MIGRATIONS: V4MigrationRef[] = [
+  { file: 'migrations/scripts/add-custom-tool-triggers-field.ts', exportName: 'addCustomToolTriggersFieldMigration' },
+  { file: 'migrations/scripts/add-composer-slash-commands-field.ts', exportName: 'addComposerSlashCommandsFieldMigration' },
+];
+
 const ENV_KEYS = ['SQLITE_PATH', 'ENCRYPTION_MASTER_PEPPER', 'QUILLTAP_DATA_DIR'] as const;
 
 function keyHex(pepperBase64: string): string {
