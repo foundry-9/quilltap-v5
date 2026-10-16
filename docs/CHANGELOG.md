@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — docs(porting): the `25b8fab6a` round's planning rulings APPROVED by the human; recorded in every order's §R.11 and the phase plan
+
+_Docs-only change._
+
+The human approved every planning ruling of the `25b8fab6a` round (§R.11 R-A … R-V and the lanes' local calls). The round block spliced into the eleven orders carries the approval line; the phase plan's ORDERED section records it with the three wave-0 lanes (P4.D314, P4.D313, P4.D307) started from the orders' commit.
+
 #### 2026-10-16 — docs(porting): order the `25b8fab6a` Pascal-programme + composer-slash-commands + 4.10.0-release drift catch-up round — eleven work orders (P4.D314 → {P4.D304 → {P4.D305 → P4.D306}} ∥ P4.D309 ∥ P4.D310 ∥ P4.D311 ∥ P4.D312, with P4.D307 ∥ P4.D308 ∥ P4.D313)
 
 _Docs-only change._

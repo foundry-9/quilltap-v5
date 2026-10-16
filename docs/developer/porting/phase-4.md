@@ -7255,8 +7255,10 @@ P4.D304 → P4.D305 → P4.D306 → P4.D310 → P4.D312 → P4.D309 → P4.D311 
 → P4.D307 → P4.D308. **The oracle baseline MOVES to `25b8fab6a` at the
 unification.**
 
-**For the human before lane start:** every planning ruling above (§R.11 and
-the lanes' local calls); no new dependency is asked for.
+**APPROVED by the human 2026-10-16:** every planning ruling of the round
+(§R.11 R-A … R-V and the lanes' local calls); no new dependency was asked
+for. The three wave-0 lanes P4.D314, P4.D313 and P4.D307 started the same
+day from the orders' commit `19fb707e6`.
 
 **Left out of the round, deliberately:** the owed dogfood pass (the
 `83334b9a5` unification's NEXT item 1 — it wants a Friday copy taken before
