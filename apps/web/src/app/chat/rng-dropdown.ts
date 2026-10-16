@@ -9,25 +9,17 @@ import {
   signal,
 } from '@angular/core';
 
-import { rollRng, type RngKind } from './chat-cast.api';
+import type { RngKind } from './chat-cast.api';
+import { requestRngPendingResult, type RngPendingResult } from './rng-request';
 import { CoreClient } from '../core/core-client';
 import { Icon } from '../ui/icon';
 
 /**
- * A rolled result waiting in the composer (v4 `RngDropdown.tsx:31-40`
- * `RngPendingResult`). The Salon turns it into a `pendingToolResults` entry on
- * the next send, which the spine writes as a TOOL message ahead of the user's.
+ * The chip type moved to `rng-request.ts` with v4 `4877fc2da` (shared with the
+ * composer's `/d6`-style quick rolls); re-exported so every importer keeps
+ * compiling.
  */
-export interface RngPendingResult {
-  tool: 'rng';
-  displayName: string;
-  icon: string;
-  summary: string;
-  formattedResult: string;
-  requestPrompt: string;
-  arguments: Record<string, unknown>;
-  success: boolean;
-}
+export type { RngPendingResult } from './rng-request';
 
 /** v4 `OTHER_OPTIONS` (`:19-22`). */
 const OTHER_OPTIONS: ReadonlyArray<{ label: string; kind: RngKind }> = [
@@ -303,19 +295,9 @@ export class RngDropdown {
     this.loading.set(true);
     this.error.set(null);
     try {
-      const result = await rollRng(this.core, this.chatId(), kind, rolls, true);
-      if (result) {
-        this.pendingResult.emit({
-          tool: 'rng',
-          displayName: 'Random Number Generator',
-          icon: '🎲',
-          summary: result.summary,
-          formattedResult: result.formattedText,
-          requestPrompt: result.requestPrompt,
-          arguments: result.arguments,
-          success: true,
-        });
-      }
+      // v4 `executeRng` (`4877fc2da`): the shared request shapes the chip and
+      // throws when the reply is not a preview.
+      this.pendingResult.emit(await requestRngPendingResult(this.core, this.chatId(), { type: kind, rolls }));
       this.open.set(false);
       this.customOpen.set(false);
     } catch (err) {

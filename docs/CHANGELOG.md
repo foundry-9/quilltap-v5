@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(spa): the shared RNG request and the slash-command runner (P4.D308)
+
+_Versions: SPA 0.5.866._
+
+New `chat/rng-request.ts` (v4 `4877fc2da`) holds the dice request and its chip: `RngPendingResult` moves there from the dropdown (re-exported for existing importers), and `requestRngPendingResult` rolls in preview mode and builds the eight-key chip, throwing `RNG did not return a preview` when the reply is not a preview. The RNG dropdown now emits what that request returns, so a non-preview reply shows that error instead of closing silently, as in v4. New `chat/slash-command-runner.ts` ports `useSlashCommandRunner`: `runBuiltInNow` runs a Prospero tool with no arguments as the default character (`Prospero has run <id>.`), `runCustomNow` runs a Pascal tool with `parameters` and `private` omitted (`Pascal has settled <name>.`, then invalidates the chat and the roster), and failures toast the server's text or v4's fallback. `buildQuickRollActions` gives `/d6`, `/d20`, `/coin` and `/bottle` the dice button's request. v4's legacy non-preview `requestRngDirect` has no v5 caller and is not ported.
+
 #### 2026-10-16 — feat(spa): the composer / command menu as a ProseMirror plugin, mounted behind a slashCommands input (P4.D308)
 
 _Versions: SPA 0.5.865._

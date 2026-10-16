@@ -251,6 +251,20 @@ describe('RngDropdown (v4 components/chat/RngDropdown.tsx, gutter variant)', () 
     expect(seen).toEqual([]);
   });
 
+  it('says so when the reply is not a preview (v4 4877fc2da — the shared request throws)', async () => {
+    // Before `4877fc2da` a non-preview reply closed the menu silently; v4's
+    // `executeRng` now goes through `requestRngPendingResult`, which throws.
+    const s = stub({ success: true, message: 'rolled', result: { formattedText: 'x' } });
+    const fixture = mount(s);
+    const seen: RngPendingResult[] = [];
+    fixture.componentInstance.pendingResult.subscribe((r) => seen.push(r));
+    open(fixture);
+    menuItem(fixture, 'Roll 1d20').click();
+    await settle(fixture);
+    expect(text(fixture)).toContain('RNG did not return a preview');
+    expect(seen).toEqual([]);
+  });
+
   it('dismisses on a press outside, closing the custom panel with it (v4 useClickOutside)', () => {
     const fixture = mount(stub());
     open(fixture);
