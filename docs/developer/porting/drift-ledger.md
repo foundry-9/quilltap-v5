@@ -28,9 +28,17 @@ probe verifies against._
   P4.D313. CLAUDE.md's Status bullet for the round and its "Oracle baseline"
   bullet both name `25b8fab6a`, and they AGREE with this file (checked
   2026-10-17).
-- **Checked:** 2026-10-17, at the `25b8fab6a` unification's close. This was
-  the §4 procedure: one reader classified the nine commits past the pin from
-  the hunks, and the unifier re-probed both branches.
+- **Checked:** 2026-10-17, by a standalone `/driftcheck` after the
+  unification commit (`da92651fa`). Both branches re-probed locally AND
+  against the remote (`git ls-remote origin`: `main` = `f46cf40a2`, `bugfix`
+  = `489b228b6`), so the local checkout is not hiding unpulled work. NOTHING
+  moved since the unification's close probe: zero new commits on either
+  branch, the tree clean, the nine §3 rows unchanged (classifications stand;
+  no re-classification needed). CLAUDE.md's "Oracle baseline" bullet still
+  names `25b8fab6a` — AGREES.
+  - **Earlier the same day:** at the `25b8fab6a` unification's close. This
+    was the §4 procedure: one reader classified the nine commits past the pin
+    from the hunks, and the unifier re-probed both branches.
   - **Before that:** 2026-10-16 twice (`25b8fab6a` itself; then the six rows
     `362426c8f` … `4877fc2da`); 2026-10-15 (`/unify` of the `83334b9a5`
     round); and the earlier checks the §6 bullets record.

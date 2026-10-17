@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-17 — docs(porting): drift check after the `25b8fab6a` unification — no movement
+
+_Docs-only change._
+
+Re-probed v4 `main` (`f46cf40a2`) and `bugfix` (`489b228b6`) locally and against the remote; no new commits, clean checkout, `bugfix` content-equal to `release`. The ledger stays DRIFT PENDING at 9 commits (all already classified, UNPROCESSED); regen rule unchanged (pin required at `25b8fab6a`). Only §1's check record changed.
+
 #### 2026-10-17 — unify: the `25b8fab6a` Pascal-programme + composer-slash-commands + 4.10.0-release drift catch-up round — eleven lanes (P4.D304–P4.D314), the baseline moves `83334b9a5` → `25b8fab6a`
 
 _Versions: quilltap-core 0.0.1313, quilltap-host 0.0.210, quilltap-web 0.0.241, quilltap-cli 0.0.34, SPA 0.5.873._
