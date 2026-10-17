@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — test(guards): provider SDK root openai 7.34.0, zod 4.6.7, and a plugin-utils read with an OAC corpus tripwire (P4.D311)
+
+_No crate versions bumped._
+
+Harness-only. Absorbs v4 `eb5d42338`'s dependency move. `provider_sdk_version_guard`'s `INSTALLED_ROOT_OPENAI_SDK` moves 7.30.0 → 7.34.0 alone: the six plugin dirs that bundle `openai` stay at 7.23.0, no recorder resolves the root copy, and every provider corpus re-recorded from the pin byte-identical, so no recorded stamp moves. `zod_version_guard`'s `RECORDED_ZOD_VERSION` moves 4.6.5 → 4.6.7, with the re-measurement in its doc: no sentence, regex or issue shape changed, but an oversized array now fails with only its `too_big` before any element is parsed. Both were red against the live checkout and are green at the `25b8fab6a` pin with no SKIP.
+
+New: `RECORDED_PLUGIN_UTILS = "2.7.1"`, checked at the 14 plugin dirs that declare `@quilltap/plugin-utils` (`builtin-embeddings` exempt), and a checkout-free test that every OAC stream final chunk carrying `usage` also carries `rawProviderUsage`. That is the check whose absence let the OAC corpus sit stale under 2.6.3; it fails on the pre-re-record bytes (five rows).
+
 #### 2026-10-16 — feat(provider): openai-compatible normalizeUsage on both send paths — cache-hit exclusion, cacheUsage, the conditional rawProviderUsage, the DEBUG line; OAC corpora re-recorded from the 25b8fab6a pin (P4.D311)
 
 _Versions: core 0.0.1306._

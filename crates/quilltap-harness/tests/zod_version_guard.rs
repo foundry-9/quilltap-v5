@@ -43,11 +43,54 @@ use std::path::PathBuf;
 // P4.157 R-H: the ONE v4-checkout locator (`common::v4_root`).
 mod common;
 
-/// v4's installed `zod`, measured 2026-09-21 from the `f45a517a9` pin
-/// (`node -p "require('./node_modules/zod/package.json').version"` — `4.6.5`,
-/// post-`6b0615807`). Previously `4.5.4` at the `d883a5ee1` baseline
+/// v4's installed `zod`, measured 2026-10-16 from the `25b8fab6a` pin's own
+/// `npm ci --offline` root tree (`node -p
+/// "require('./node_modules/zod/package.json').version"` — `4.6.7`,
+/// post-`eb5d42338`). Previously `4.6.5` (measured 2026-09-21 from the
+/// `f45a517a9` pin, post-`6b0615807`), `4.5.4` at the `d883a5ee1` baseline
 /// (post-`6e1a64ea6`, measured 2026-09-05) and `4.4.3` before that. Bump this
 /// ONLY alongside the re-measurement + regen the module doc above describes.
+///
+/// # The `4.6.5 -> 4.6.7` re-measurement (P4.D311, 2026-10-16)
+///
+/// `diff -rq` of the only 4.6.5 copy on the machine
+/// (`~/source/quilltap-website/node_modules/zod`) against the pin's 4.6.7
+/// (declaration files and maps excluded). **Not one sentence, regex or issue
+/// shape moved — but ONE behaviour change did.**
+///
+/// - **IDENTICAL:** `v4/locales/en.js` (zero sentences), `v4/core/regexes.js`,
+///   `v4/core/errors.js`, `core.js`, `to-json-schema.js`, and every other
+///   `v4/**` file not named below.
+/// - **`v4/core/versions.js`:** `patch: 5 -> 7`.
+/// - **`v4/core/util.js`:** NEW `sizeCaps(defChecks)` — the LEADING checks of
+///   a container whose name matches `/_(length|size)$|_equals$/` with a finite
+///   upper bound (the walk stops at the first non-size check, which may
+///   rewrite the value).
+/// - **`v4/core/schemas.js`:** NEW `capSize` + `arraySize` / `mapSize` /
+///   `setSize`, applied in `ZodArray` / `ZodMap` / `ZodSet` init (and
+///   `compile.js`'s NEW `generateSizeGate` for the JIT paths). **The one
+///   behaviour change:** a container whose size exceeds a leading
+///   `.max(N)` / `.length(n)` / `.size(n)` now fails with ONLY its own
+///   `too_big` (same `code` / `origin` / `maximum` / `inclusive` / message
+///   bytes, `continue = false`) BEFORE any element is parsed, so element
+///   issues and any later `.refine` on the container no longer appear. A
+///   within-bounds container, an oversized one whose elements are all valid,
+///   and every string / number / object check are byte-identical.
+/// - **Where it reaches v5:** the four hand-written twins that emitted
+///   "element issues THEN the array's `too_big`" — `services/chat_create.rs`
+///   `check_opt_subprompt_ids` (`selectedSubpromptIds`, `.max(100)`),
+///   `memory_candidate.rs` `array_of` (`entities`, `.max(MEMORY_ENTITY_CAP)`),
+///   `api/memories.rs` (`entities`), `services/scenario_builder/
+///   request_schema.rs` `uuid_array_field` (`characterIds` / `groupIds`,
+///   `.max(32)`) — each now returns the lone `too_big` early, pinned red-first
+///   by rows recorded through v4's REAL schemas at the pin in
+///   `chat_create_capstone_equivalence`, `memories_routes_equivalence`,
+///   `memories_tier2_equivalence` and `scenario_build_request_schema_
+///   equivalence`. v4 uses no `.length(n)` / `.size(n)` / `Map` / `Set` size
+///   cap on a v5-transcribed schema (grep in the P4.D311 lane record).
+/// - **Regression ring:** every Zod-text family re-run from the pin through
+///   the sweep driver (the lane record lists them) — no red attributable to
+///   zod.
 ///
 /// # The `4.5.4 -> 4.6.5` re-measurement (P4.D211, 2026-09-21)
 ///
@@ -93,7 +136,7 @@ mod common;
 /// only `zod` swapped — see the lane record's control recipe): the two
 /// hand-rolled engines' shared corpus (`pascal-custom-tool-definition.oracle
 /// .ndjson`, 362 rows) and all nine provider recorders' corpora.
-const RECORDED_ZOD_VERSION: &str = "4.6.5";
+const RECORDED_ZOD_VERSION: &str = "4.6.7";
 
 /// Read `<checkout>/node_modules/zod/package.json`'s `"version"` field
 /// without pulling in a JSON dependency this test alone would need — the

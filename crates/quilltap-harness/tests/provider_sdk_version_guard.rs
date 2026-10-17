@@ -67,6 +67,35 @@
 //! version`, 24 `gl-node/`). (`google_parts.rs` cites `@google/genai@1.52.0`
 //! too.)
 //!
+//! Re-measured 2026-10-16 by P4.D311 (v4 `eb5d42338`, the dependency safe
+//! batch, and `a8b2d2861`, at the `25b8fab6a` pin; measured BEFORE any
+//! constant moved). The ROOT `openai` moved again, **7.30.0 → 7.34.0**
+//! (the pin's own `npm ci --offline` root tree, and the live checkout's);
+//! `zod` 4.6.5 → 4.6.7 (`zod_version_guard.rs`); `@openrouter/sdk` stays
+//! 1.4.25. The six SDK-bundling plugin dirs are UNMOVED at `openai` 7.23.0
+//! (measured with `createRequire` from each dir under Node 24.13.1 — the
+//! nine others resolve the root's 7.34.0 and build no recorded request
+//! through it), and every plugin dir that declares `@quilltap/plugin-utils`
+//! (14 of 15; `builtin-embeddings` declares none) carries **2.7.1** (live
+//! since 2026-10-13 23:04, `a8b2d2861`). `eb5d42338` re-bundled EIGHT
+//! plugins' `index.js` with the root SDK (`anthropic`, `curl`,
+//! `default-system-prompts`, `google`, `mcp`, `ollama`, `openrouter`,
+//! `search-serper`: `VERSION` 7.30.0 → 7.34.0) — not ten; the six OpenAI
+//! dirs plus `builtin-embeddings` were not rebuilt. No recorder reads a
+//! bundle. Every corpus re-recorded from the pin BYTE-IDENTICAL (no stamp
+//! moved: 7.23.0 ×242 + 0.115.0 ×46 in `request-envelopes`, 7.23.0 ×8 in
+//! `image-dialects`, `google-genai-sdk/1.52.0` ×24 in `google-wire`), so
+//! `INSTALLED_ROOT_OPENAI_SDK` moved ALONE (the P4.D260 R-F shape).
+//!
+//! P4.D311 also adds the plugin-utils read this guard never had (the
+//! survey's §7.4 hardening): the committed OAC stream corpus went STALE for
+//! three days because nothing compared the recorders' `@quilltap/plugin-utils`
+//! with the corpus's. `RECORDED_PLUGIN_UTILS` is checked at every plugin dir
+//! that declares it (test 1), and a corpus CONTENT tripwire
+//! (`the_oac_stream_corpus_was_recorded_under_plugin_utils_2_7`) proves the
+//! corpus was recorded under ≥ 2.7.1 — every OAC final chunk carrying a usage
+//! frame carries `rawProviderUsage`.
+//!
 //! Locator: the shared `common::v4_root` (`QT_V4_CHECKOUT`, then the
 //! `QT_V4_ROOT` alias, then `$HOME/source/quilltap-server`). An
 //! absent checkout prints a loud `SKIP:`; a moved version is a FAIL.
@@ -96,7 +125,7 @@ const RECORDED_OPENROUTER_SDK: &str = "1.3.28";
 /// (every OpenAI-SDK provider plugin ships its own `RECORDED_OPENAI_SDK`), so
 /// it is pinned apart from the recorded constant: a root move is a regen
 /// event to MEASURE (does a recorder now resolve the root?), not a re-record.
-const INSTALLED_ROOT_OPENAI_SDK: &str = "7.30.0";
+const INSTALLED_ROOT_OPENAI_SDK: &str = "7.34.0";
 /// The ROOT `node_modules`' `@openrouter/sdk` (the root lockfile's, since
 /// `a9c99a4a0`); the openrouter plugin records through its own
 /// `RECORDED_OPENROUTER_SDK`.
@@ -107,6 +136,15 @@ const INSTALLED_ROOT_OPENROUTER_SDK: &str = "1.4.25";
 /// other Node 24s and Homebrew 26, and a regen under any of them would churn
 /// all 320 stamps silently — this constant turns that into a red.
 const RECORDED_NODE: &str = "v24.13.1";
+
+/// `@quilltap/plugin-utils` — the shared base class (`OpenAICompatibleProvider`,
+/// `createPluginLogger`) every recorder's plugin imports from its OWN
+/// `node_modules`. 2.7.1 since v4 `a8b2d2861` (`normalizeUsage`); a move is a
+/// re-record of every provider corpus (P4.D311).
+const RECORDED_PLUGIN_UTILS: &str = "2.7.1";
+/// The plugin dirs that declare no `@quilltap/plugin-utils` dependency, so
+/// carry no install of it (measured at the `25b8fab6a` pin).
+const PLUGIN_UTILS_EXEMPT_DIRS: [&str; 1] = ["qtap-plugin-builtin-embeddings"];
 
 /// (package, recorded version) — the four SDKs this guard pins.
 const SDKS: [(&str, &str); 4] = [
@@ -221,6 +259,49 @@ fn every_installed_provider_sdk_matches_the_recorded_version() {
             }
         }
     }
+
+    // P4.D311: `@quilltap/plugin-utils` at every plugin dir that declares it —
+    // the copy each recorder's plugin resolves its base class (and its
+    // usage normalisation) from.
+    let mut plugin_utils_dirs = 0usize;
+    for loc in install_locations(&checkout)
+        .into_iter()
+        .filter(|l| *l != root)
+    {
+        let dir_name = loc
+            .parent()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let pkg_json = loc.join("@quilltap/plugin-utils/package.json");
+        if PLUGIN_UTILS_EXEMPT_DIRS.contains(&dir_name.as_str()) {
+            continue;
+        }
+        if !pkg_json.is_file() {
+            mismatches.push(format!(
+                "  @quilltap/plugin-utils: expected {RECORDED_PLUGIN_UTILS} \
+                 (RECORDED_PLUGIN_UTILS), NOT INSTALLED at {} — a plugin dir that declares it \
+                 resolves no copy (or a new plugin dir needs an exemption entry)",
+                pkg_json.display()
+            ));
+            continue;
+        }
+        plugin_utils_dirs += 1;
+        let installed = package_version(&pkg_json);
+        if installed != RECORDED_PLUGIN_UTILS {
+            mismatches.push(format!(
+                "  @quilltap/plugin-utils: expected {RECORDED_PLUGIN_UTILS} (RECORDED_PLUGIN_UTILS), \
+                 installed {installed} at {} — the recorders' base class moved: re-record every \
+                 provider corpus (the OAC usage normalisation lives there)",
+                pkg_json.display()
+            ));
+        }
+    }
+    assert!(
+        plugin_utils_dirs > 0,
+        "`@quilltap/plugin-utils` is installed in NO plugin dir under {}",
+        checkout.display()
+    );
 
     // Each SDK must be installed SOMEWHERE — an SDK that vanished from every
     // location is as much a regen event as one that moved.
@@ -440,4 +521,53 @@ fn the_recorded_corpora_carry_the_recorded_node_runtime() {
         let stamps = corpus_stamps(corpus);
         assert_all(corpus, "node runtime", &stamps.node, RECORDED_NODE, true);
     }
+}
+
+/// P4.D311 — the corpus CONTENT tripwire for `RECORDED_PLUGIN_UTILS`. Since
+/// plugin-utils 2.7.1 (v4 `a8b2d2861`) the openai-compatible base's stream
+/// final chunk carries `rawProviderUsage` whenever a usage frame arrived (and
+/// only then); a corpus recorded under 2.6.3 has `usage` with no
+/// `rawProviderUsage`. The committed corpus sat in exactly that state for
+/// three days because no check compared the two — this test is that check,
+/// and it needs no checkout, so it runs everywhere.
+#[test]
+fn the_oac_stream_corpus_was_recorded_under_plugin_utils_2_7() {
+    let path =
+        fixtures_dir().join("streams/chat_completions_sse/openai-compatible.recorded.ndjson");
+    let text =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let mut with_usage = 0usize;
+    let mut stale = Vec::new();
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let row: serde_json::Value = serde_json::from_str(line).expect("corpus row parses");
+        let Some(last) = row["chunks"].as_array().and_then(|c| c.last()) else {
+            continue;
+        };
+        if last.get("done").and_then(serde_json::Value::as_bool) != Some(true) {
+            continue;
+        }
+        if last.get("usage").is_some() {
+            with_usage += 1;
+            if !last
+                .get("rawProviderUsage")
+                .is_some_and(serde_json::Value::is_object)
+            {
+                stale.push(row["case"].as_str().unwrap_or("?").to_string());
+            }
+        }
+    }
+    assert!(
+        with_usage > 0,
+        "{}: no OAC row carries a usage frame — the tripwire has nothing to read",
+        path.display()
+    );
+    assert!(
+        stale.is_empty(),
+        "{}: {} OAC final chunk(s) carry `usage` but no `rawProviderUsage` ({stale:?}) — the \
+         corpus was recorded under @quilltap/plugin-utils < {RECORDED_PLUGIN_UTILS}; re-record it \
+         with regenerate-stream-fixtures.sh from a pin whose plugin dirs carry \
+         {RECORDED_PLUGIN_UTILS}",
+        path.display(),
+        stale.len()
+    );
 }
