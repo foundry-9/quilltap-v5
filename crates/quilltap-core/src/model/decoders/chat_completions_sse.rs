@@ -21,8 +21,9 @@
 //! - **usage** captured from any frame carrying it (last wins).
 //! - the terminal **`done`** chunk: cache-read-adjusted usage, the assembled
 //!   `raw_response` (flavor-shaped), `cache_usage`, `raw_provider_usage`
-//!   (openai-sdk flavor only — the raw fetch flavor never sets it), and
-//!   cumulative `reasoning_content`.
+//!   (z-ai / nanogpt always as a key; the openai-compatible base — v4
+//!   `a8b2d2861` — only when a usage frame arrived; deepseek and the raw fetch
+//!   flavor never set it), and cumulative `reasoning_content`.
 
 use serde_json::{json, Value};
 
@@ -39,7 +40,14 @@ pub enum Flavor {
     /// assemble a terminal `raw_response` — but only when the stream carried
     /// tool calls (an empty one on every ordinary turn "would be noise in the
     /// logs for no gain"), and in its own shape: no `usage` inside it, no
-    /// reasoning, no cache usage.
+    /// reasoning. Since v4 `a8b2d2861` its terminal chunk's `usage` is the
+    /// last frame through [`oac_normalize_usage`] (prompt-cache reads
+    /// excluded, `cache_usage` when the cached count is > 0, one DEBUG line),
+    /// and it carries `raw_provider_usage` = that whole frame — but ONLY when
+    /// a usage frame arrived (absent otherwise, never an explicit `null`:
+    /// z-ai / nanogpt's unconditional habit is not this flavor's).
+    ///
+    /// [`oac_normalize_usage`]: crate::model::response_parse::oac_normalize_usage
     OpenAiCompatible,
     /// deepseek via the OpenAI SDK: reasoning is `delta.reasoning_content`; the
     /// terminal `raw_response` is `{ choices:[{ index:0, message:{ role,
@@ -315,6 +323,9 @@ impl ChatCompletionsSseDecoder {
     /// Flavor difference on an ABSENT usage frame: deepseek/z-ai (OpenAiSdk)
     /// ALWAYS emit a usage object (`usage?.x ?? 0` → all-zero), while openrouter
     /// (OpenRouterRaw) and the plain base leave `usage` undefined (omitted).
+    /// With a frame present the plain base routes it through the shared
+    /// [`crate::model::response_parse::oac_normalize_usage`] (v4 `a8b2d2861`),
+    /// NOT the `> 0`-filtered tail below — it subtracts the cached count raw.
     fn build_usage(&self) -> (Option<StreamUsage>, Option<StreamCacheUsage>) {
         let raw = match &self.usage_raw {
             Some(v) => v,
@@ -327,6 +338,11 @@ impl ChatCompletionsSseDecoder {
                 };
             }
         };
+        if self.flavor == Flavor::OpenAiCompatible {
+            // v4 `...this.normalizeUsage(accumulatedUsage)` on the final chunk.
+            let (usage, cache_usage) = crate::model::response_parse::oac_normalize_usage(Some(raw));
+            return (Some(usage), cache_usage);
+        }
         let get = |k: &str| raw.get(k).and_then(|v| v.as_i64());
         let cached_from_details = || {
             raw.get("prompt_tokens_details")
@@ -352,7 +368,7 @@ impl ChatCompletionsSseDecoder {
                     cu.and_then(|c| c.cache_creation_input_tokens),
                 )
             }
-            Flavor::OpenAiCompatible => (None, None),
+            Flavor::OpenAiCompatible => unreachable!("returned through oac_normalize_usage above"),
         };
         // v4 `cacheUsage?.cacheReadInputTokens ?? 0` — a write-only turn
         // subtracts nothing.
@@ -496,13 +512,20 @@ impl ChatCompletionsSseDecoder {
         };
         match self.flavor {
             Flavor::OpenAiCompatible => {
-                // No reasoning, no raw_provider_usage. `raw_response` only when
-                // the stream carried tool calls (v4 `93ed8abf`); the host's tool
-                // detection reads it, and an empty one on every ordinary turn
-                // would be log noise for no gain.
+                // No reasoning. `raw_response` only when the stream carried
+                // tool calls (v4 `93ed8abf`); the host's tool detection reads
+                // it, and an empty one on every ordinary turn would be log
+                // noise for no gain.
                 let raw = self.build_raw_response();
                 if !raw.is_null() {
                     chunk.raw_response = Some(raw);
+                }
+                // v4 `a8b2d2861`: `...(accumulatedUsage ? { ...normalizeUsage,
+                // rawProviderUsage: accumulatedUsage } : {})` — the whole last
+                // usage frame, and only when one arrived (absent, never
+                // `Some(Null)`).
+                if let Some(u) = &self.usage_raw {
+                    chunk.raw_provider_usage = Some(u.clone());
                 }
             }
             Flavor::DeepSeek | Flavor::ZAi | Flavor::NanoGpt => {

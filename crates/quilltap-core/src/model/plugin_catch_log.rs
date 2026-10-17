@@ -3,6 +3,12 @@
 //! catch shape, serving both the streaming composer (`streaming_provider.rs`)
 //! and the non-streaming one (`completion_provider.rs`).
 //!
+//! (A text-provider DEBUG line now exists too — v4 `a8b2d2861`'s
+//! `OpenAICompatible usage: excluding prompt-cache hits from prompt/total`,
+//! P4.D311. It is not a catch line, so it lives with the normalisation it
+//! narrates: `response_parse::oac_normalize_usage`, target
+//! `quilltap::model::response_parse`.)
+//!
 //! Per v4 plugin (`f6426e196`; recorded through the REAL plugins by
 //! `harness/oracle/providers/record-text-errors.mjs` — the `pluginErrorLog` /
 //! `pluginWarnLog` fields; the field ORDER is v4's `context` object's key order,

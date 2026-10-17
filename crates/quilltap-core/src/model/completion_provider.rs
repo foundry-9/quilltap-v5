@@ -583,6 +583,51 @@ mod tests {
         assert_eq!(resp.usage.unwrap().prompt_tokens, 772);
     }
 
+    /// P4.D311 (v4 `a8b2d2861`) — the OAC twin of
+    /// `composes_completion_and_carries_cache_usage`: the base's
+    /// `normalizeUsage` gives OPENAI_COMPATIBLE a cache usage too (it had
+    /// none before), and the composition carries it — so the enclave
+    /// budget's `budgetExcludeCacheHits = 0` add-back has a
+    /// `cacheReadInputTokens` to add back on an OAC row.
+    async fn run_oac_body(body: &[u8]) -> CompletionResponse {
+        let transport = FakeTransport {
+            body: body.to_vec(),
+            seen: std::sync::Mutex::new(None),
+        };
+        execute_completion(
+            &transport,
+            "OPENAI_COMPATIBLE",
+            Some("http://localhost:8080/v1"),
+            "",
+            &params("local-model"),
+            &TransportPolicy::default(),
+            "Quilltap/test",
+            None,
+            None,
+        )
+        .await
+        .expect("completion")
+    }
+
+    #[tokio::test]
+    async fn composes_oac_completion_and_carries_cache_usage() {
+        let resp = run_oac_body(br#"{"choices":[{"message":{"content":"answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1000,"completion_tokens":50,"total_tokens":1050,"prompt_tokens_details":{"cached_tokens":800}}}"#).await;
+        let cache = resp
+            .cache_usage
+            .expect("the composition must carry the OAC cache usage");
+        assert_eq!(cache.cache_read_input_tokens, Some(800));
+        assert_eq!(cache.cached_tokens, Some(800));
+        let usage = resp.usage.unwrap();
+        assert_eq!((usage.prompt_tokens, usage.total_tokens), (200, 250));
+    }
+
+    #[tokio::test]
+    async fn composes_oac_completion_with_zero_cached_tokens_has_no_cache_usage() {
+        let resp = run_oac_body(br#"{"choices":[{"message":{"content":"answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":5,"total_tokens":17,"prompt_tokens_details":{"cached_tokens":0}}}"#).await;
+        assert!(resp.cache_usage.is_none());
+        assert_eq!(resp.usage.unwrap().prompt_tokens, 12);
+    }
+
     #[tokio::test]
     async fn composes_deepseek_completion_and_injects_bearer() {
         let body = br#"{"choices":[{"message":{"content":"answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":3,"total_tokens":13}}"#.to_vec();

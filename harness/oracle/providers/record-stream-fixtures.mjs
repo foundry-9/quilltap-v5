@@ -51,7 +51,19 @@
  * the Quilltap host uses to route plugin logs into its logger), installed
  * BEFORE any plugin module loads so module-level loggers route through it
  * too. Non-error levels are forwarded to the console exactly as the
- * standalone logger printed them. */
+ * standalone logger printed them.
+ *
+ * P4.D311 — every row also records `pluginDebugLog` when the plugin logged at
+ * DEBUG level while the case ran (`[{ plugin, message, context }]`, the same
+ * bridge, the context merged exactly as `pluginErrorLog`'s), and ONLY when
+ * non-empty, so a row whose plugin logged nothing at DEBUG stays
+ * byte-identical. Its first line is v4 `a8b2d2861`'s `OpenAICompatible usage:
+ * excluding prompt-cache hits from prompt/total` (plugin-utils 2.7.1's
+ * `normalizeUsage`, fired when `prompt_tokens_details.cached_tokens > 0`).
+ * The sink is armed ONLY for the providers in `DEBUG_CAPTURE_PROVIDERS`: the
+ * Ollama plugin's own `Ollama stream carried reasoning` DEBUG (five rows) has
+ * no v5 twin yet, so capturing it would grow a corpus nothing compares —
+ * add a provider here together with the v5 line and its capture pin. */
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -209,6 +221,10 @@ function thrownFields(e) {
 
 // The per-case ERROR-level plugin log (see the header). `null` between cases.
 let pluginErrorSink = null;
+// The per-case DEBUG-level plugin log (P4.D311 — see the header). `null`
+// between cases.
+let pluginDebugSink = null;
+const DEBUG_CAPTURE_PROVIDERS = new Set(['openai-compatible']);
 function captureLogger(prefix, baseContext = {}) {
   const fmt = (context) => {
     const merged = { ...baseContext, ...context };
@@ -219,7 +235,12 @@ function captureLogger(prefix, baseContext = {}) {
     return entries ? ` ${entries}` : '';
   };
   return {
-    debug: (m, c) => console.debug(`[${prefix}] ${m}${fmt(c)}`),
+    debug: (m, c) => {
+      console.debug(`[${prefix}] ${m}${fmt(c)}`);
+      if (pluginDebugSink) {
+        pluginDebugSink.push({ plugin: prefix, message: m, context: { ...baseContext, ...(c ?? {}) } });
+      }
+    },
     info: (m, c) => console.info(`[${prefix}] ${m}${fmt(c)}`),
     warn: (m, c) => console.warn(`[${prefix}] ${m}${fmt(c)}`),
     error: (m, c, e) => {
@@ -281,6 +302,7 @@ async function main() {
     let error = null;
     let thrownValue = null;
     pluginErrorSink = [];
+    pluginDebugSink = DEBUG_CAPTURE_PROVIDERS.has(provider) ? [] : null;
     try {
       const inst = await spec.make();
       const params = {
@@ -319,7 +341,9 @@ async function main() {
       row.trigger = classifyFallbackTrigger(thrownValue);
       if (pluginErrorSink.length > 0) row.pluginErrorLog = pluginErrorSink;
     }
+    if (pluginDebugSink && pluginDebugSink.length > 0) row.pluginDebugLog = pluginDebugSink;
     pluginErrorSink = null;
+    pluginDebugSink = null;
     lines.push(JSON.stringify(row));
   }
 

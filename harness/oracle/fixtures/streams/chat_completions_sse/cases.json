@@ -1026,6 +1026,101 @@
   },
   {
     "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-cached",
+    "wire": "openai-compatible-cached.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-cached-exceeds-prompt",
+    "wire": "openai-compatible-cached-exceeds-prompt.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-cached-zero",
+    "wire": "openai-compatible-cached-zero.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-cached-negative",
+    "wire": "openai-compatible-cached-negative.wire",
+    "model": "local-model",
+    "temperature": 0.7,
+    "note": "P4.D311: out of any real server's domain; here ONLY to make v4 normalizeUsage's raw (unfiltered) cached_tokens subtraction falsifiable — -5 ADDS 5 to prompt/total, no cacheUsage, no DEBUG. A port filtering > 0 first passes every other row."
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-usage-two-frames",
+    "wire": "openai-compatible-usage-two-frames.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-usage-empty-object",
+    "wire": "openai-compatible-usage-empty-object.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-usage-null-then-none",
+    "wire": "openai-compatible-usage-null-then-none.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-usage-details-extra",
+    "wire": "openai-compatible-usage-details-extra.wire",
+    "model": "local-model",
+    "temperature": 0.7
+  },
+  {
+    "decoder": "chat_completions_sse",
+    "flavor": "OpenAiCompatible",
+    "provider": "openai-compatible",
+    "case": "openai-compatible-cached-tools",
+    "wire": "openai-compatible-cached-tools.wire",
+    "model": "local-model",
+    "temperature": 0.7,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "w",
+          "parameters": {
+            "type": "object",
+            "properties": {}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "decoder": "chat_completions_sse",
     "flavor": "OpenRouterRaw",
     "provider": "openrouter",
     "case": "openrouter-sdk-id-only",

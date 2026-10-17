@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(provider): openai-compatible normalizeUsage on both send paths — cache-hit exclusion, cacheUsage, the conditional rawProviderUsage, the DEBUG line; OAC corpora re-recorded from the 25b8fab6a pin (P4.D311)
+
+_Versions: core 0.0.1306._
+
+Ports v4 `a8b2d2861`. The `openai-compatible` provider now normalizes its Chat Completions `usage` block through one function, `response_parse::oac_normalize_usage`, called by the non-streaming parse and by the streaming decoder's terminal chunk. It subtracts the raw `prompt_tokens_details.cached_tokens` from prompt and total tokens (each floored at 0; a non-positive value still shifts the counts, as v4 does), reports `cacheUsage { cacheReadInputTokens, cachedTokens }` only when the cached count is positive, and logs v4's `OpenAICompatible usage: excluding prompt-cache hits from prompt/total` DEBUG line at target `quilltap::model::response_parse`. The stream's final chunk also carries the whole last usage frame as `rawProviderUsage`, only when a usage frame arrived. DeepSeek, NanoGPT and every other provider are unchanged.
+
+Corpora: re-recorded from the pin under plugin-utils 2.7.1. The five usage-carrying OAC stream rows gain `rawProviderUsage` by design (the committed rows were recorded under 2.6.3); every other provider corpus re-recorded byte-identical. Nine new OAC stream wires (15 → 24 rows, `cases.json` 87 → 96) and nine new OAC response bodies (60 → 69), including a `cached_tokens: -5` row that is the only falsifier of the raw subtraction. Both recorders gain a DEBUG sink (`pluginDebugLog`, armed for openai-compatible only; Ollama's own unported DEBUG line stays out of the corpus). `streaming_composer_equivalence` and `response_parse_equivalence` now pin the DEBUG line and its silence on every other row. Two OAC unit twins in `completion_provider.rs`. Stale rustdoc in the decoder and parser moved with the code; `provider-manifest.md` and the `plugin_catch_log.rs` header note the new line.
+
 #### 2026-10-16 — test(web): the typed-only construction total counts WardrobeItemsCopy; the P4.D309 lane record and status header (P4.D309)
 
 _No crate versions bumped._

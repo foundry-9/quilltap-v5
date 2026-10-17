@@ -1,0 +1,8 @@
+data: {"id":"oacc1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"}}]}
+
+data: {"id":"oacc1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":""},"finish_reason":"stop"}]}
+
+data: {"id":"oacc1","object":"chat.completion.chunk","choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":50,"total_tokens":1050,"prompt_tokens_details":{"cached_tokens":800}}}
+
+data: [DONE]
+

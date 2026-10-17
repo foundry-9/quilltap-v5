@@ -1,0 +1,8 @@
+data: {"id":"oacc6","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"}}]}
+
+data: {"id":"oacc6","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":""},"finish_reason":"stop"}]}
+
+data: {"id":"oacc6","object":"chat.completion.chunk","choices":[],"usage":{}}
+
+data: [DONE]
+

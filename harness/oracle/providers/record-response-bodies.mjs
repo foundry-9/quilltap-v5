@@ -32,6 +32,16 @@
  *              exactly what survives v4's own serialization boundaries)
  *   error    = the thrown message when sendMessage refused/threw (loud line —
  *              a missing capture reading as "no case" is how #23/#24 hid)
+ *
+ * P4.D311 — a row also records `pluginDebugLog` (`[{ plugin, message,
+ * context }]`) when the plugin logged at DEBUG level while `sendMessage` ran,
+ * ONLY when non-empty, so every other row stays byte-identical. The capture is
+ * `@quilltap/plugin-utils`' own host bridge (`globalThis.__quilltap_logger_factory`),
+ * installed below BEFORE any provider module loads — the
+ * `record-stream-fixtures.mjs` bridge, copied. Armed for the providers in
+ * `DEBUG_CAPTURE_PROVIDERS` only (today the one line with a v5 twin: v4
+ * `a8b2d2861`'s `OpenAICompatible usage: excluding prompt-cache hits from
+ * prompt/total`, plugin-utils 2.7.1's `normalizeUsage`).
  */
 
 import { writeFileSync } from 'node:fs';
@@ -44,6 +54,33 @@ function parseArgs() {
   for (let i = 0; i < args.length; i += 2) out[args[i].replace(/^--/, '')] = args[i + 1];
   return out;
 }
+
+// The per-case DEBUG-level plugin log (see the header). `null` between cases.
+let pluginDebugSink = null;
+const DEBUG_CAPTURE_PROVIDERS = new Set(['openai-compatible']);
+function captureLogger(prefix, baseContext = {}) {
+  const fmt = (context) => {
+    const merged = { ...baseContext, ...context };
+    const entries = Object.entries(merged)
+      .filter(([key]) => key !== 'context')
+      .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+      .join(' ');
+    return entries ? ` ${entries}` : '';
+  };
+  return {
+    debug: (m, c) => {
+      console.debug(`[${prefix}] ${m}${fmt(c)}`);
+      if (pluginDebugSink) {
+        pluginDebugSink.push({ plugin: prefix, message: m, context: { ...baseContext, ...(c ?? {}) } });
+      }
+    },
+    info: (m, c) => console.info(`[${prefix}] ${m}${fmt(c)}`),
+    warn: (m, c) => console.warn(`[${prefix}] ${m}${fmt(c)}`),
+    error: (m, c, e) => console.error(`[${prefix}] ${m}${fmt(c)}`, e ? `\n${e.stack || e.message}` : ''),
+    child: (extra) => captureLogger(prefix, { ...baseContext, ...extra }),
+  };
+}
+globalThis.__quilltap_logger_factory = (pluginName) => captureLogger(pluginName);
 
 const PROVIDERS = {
   anthropic: async () => new (await import(pathToFileURL(resolve('provider.ts')))).AnthropicProvider(),
@@ -133,6 +170,30 @@ function bodiesFor(provider) {
       return [
         { name: 'plain', model: 'local-model', body: j({ id: 'oc1', object: 'chat.completion', created: 1700000000, model: 'local-model', choices: [{ index: 0, message: { role: 'assistant', content: 'Hello from a compatible host.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 9, completion_tokens: 5, total_tokens: 14 } }) },
         { name: 'no-usage', model: 'local-model', body: j({ id: 'oc2', object: 'chat.completion', created: 1700000001, model: 'local-model', choices: [{ index: 0, message: { role: 'assistant', content: 'Bare-bones reply.' }, finish_reason: 'length' }] }) },
+        // P4.D311 (v4 `a8b2d2861`) — the base class's `normalizeUsage`: a
+        // RAW `prompt_tokens_details.cached_tokens ?? 0` subtracted from
+        // prompt / total (each floored at 0, completion untouched),
+        // `cacheUsage { cacheReadInputTokens, cachedTokens }` only when the
+        // cached count is > 0, and one DEBUG line then. Jest #1 verbatim:
+        { name: 'cached-800-of-1000', model: 'local-model', body: j({ id: 'oc3', object: 'chat.completion', created: 1700000002, model: 'local-model', choices: [{ index: 0, message: { role: 'assistant', content: 'Cached reply.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1000, completion_tokens: 50, total_tokens: 1050, prompt_tokens_details: { cached_tokens: 800 } } }) },
+        // Jest #4: cached > prompt floors both at 0 — and `cacheUsage { 20, 20 }`
+        // IS produced (the jest case asserts `usage` only).
+        { name: 'cached-exceeds-prompt', model: 'local-model', body: j({ id: 'oc4', object: 'chat.completion', created: 1700000003, model: 'local-model', choices: [{ index: 0, message: { role: 'assistant', content: 'Over-cached.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 0, total_tokens: 10, prompt_tokens_details: { cached_tokens: 20 } } }) },
+        { name: 'cached-equals-prompt', model: 'local-model', body: j({ id: 'oc5', object: 'chat.completion', created: 1700000004, model: 'local-model', choices: [{ index: 0, message: { role: 'assistant', content: 'All cached.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110, prompt_tokens_details: { cached_tokens: 100 } } }) },
+        // A PRESENT zero: no `cacheUsage`, no DEBUG, counts unchanged.
+        { name: 'cached-zero-present', model: 'local-model', body: j({ id: 'oc6', object: 'chat.completion', created: 1700000005, model: 'local-model', choices: [{ index: 0, message: { role: 'assistant', content: 'Nothing cached.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17, prompt_tokens_details: { cached_tokens: 0 } } }) },
+        { name: 'details-without-cached', model: 'local-model', body: j({ id: 'oc7', object: 'chat.completion', created: 1700000006, model: 'local-model', choices: [{ index: 0, message: { role: 'assistant', content: 'Audio only.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17, prompt_tokens_details: { audio_tokens: 3 } } }) },
+        { name: 'details-null', model: 'local-model', body: j({ id: 'oc8', object: 'chat.completion', created: 1700000007, model: 'local-model', choices: [{ index: 0, message: { role: 'assistant', content: 'Null details.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17, prompt_tokens_details: null } }) },
+        // OUT OF ANY REAL SERVER'S DOMAIN, here to make the "subtract RAW"
+        // choice falsifiable (the equivalent-mutant trap): v4 subtracts the
+        // unfiltered value, so -5 ADDS 5 to prompt and total (1005 / 1055),
+        // with no `cacheUsage` and no DEBUG. A port that filters `> 0` before
+        // subtracting passes every other row and fails only this one.
+        { name: 'cached-negative', model: 'local-model', body: j({ id: 'oc9', object: 'chat.completion', created: 1700000008, model: 'local-model', choices: [{ index: 0, message: { role: 'assistant', content: 'Negative cache.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1000, completion_tokens: 50, total_tokens: 1050, prompt_tokens_details: { cached_tokens: -5 } } }) },
+        // `total_tokens` absent: `0 - 300` floors to 0 while prompt is 600.
+        { name: 'total-missing', model: 'local-model', body: j({ id: 'oc10', object: 'chat.completion', created: 1700000009, model: 'local-model', choices: [{ index: 0, message: { role: 'assistant', content: 'No total.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 900, completion_tokens: 20, prompt_tokens_details: { cached_tokens: 300 } } }) },
+        // `completion_tokens_details` is not read (the `raw` carries it).
+        { name: 'completion-details-ignored', model: 'local-model', body: j({ id: 'oc11', object: 'chat.completion', created: 1700000010, model: 'local-model', choices: [{ index: 0, message: { role: 'assistant', content: 'Reasoned and cached.' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1000, completion_tokens: 50, total_tokens: 1050, prompt_tokens_details: { cached_tokens: 800 }, completion_tokens_details: { reasoning_tokens: 7 } } }) },
       ];
     case 'openrouter':
       // The OpenRouter REST wire (snake_case; the @openrouter/sdk's inbound
@@ -263,6 +324,7 @@ async function main() {
     let failure = null;
     const origFetch = globalThis.fetch;
     globalThis.fetch = async () => makeResponse(c.body);
+    pluginDebugSink = DEBUG_CAPTURE_PROVIDERS.has(provider) ? [] : null;
     // A case carrying `attachments` rides them on the (single) user message —
     // for OpenRouter this routes sendMessage onto v4 bug 31's raw-wire vision
     // path (sendViaChatCompletions), whose LLMResponse differs from the SDK
@@ -297,8 +359,10 @@ async function main() {
         response,
         error: failure,
         ...(visionPath ? { visionPath: true } : {}),
+        ...(pluginDebugSink && pluginDebugSink.length > 0 ? { pluginDebugLog: pluginDebugSink } : {}),
       }),
     );
+    pluginDebugSink = null;
     if (failure) console.error(`  [${provider}/${c.name}] sendMessage threw: ${failure}`);
   }
   writeFileSync(outPath, lines.join('\n') + '\n');

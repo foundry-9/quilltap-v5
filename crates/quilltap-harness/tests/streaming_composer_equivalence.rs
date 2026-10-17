@@ -30,6 +30,16 @@
 //! test; the flag only gates the terminal `finalContent` fallback, inert on
 //! every text-streaming wire).
 //!
+//! P4.D311 — the first text-provider DEBUG pin: v4 `a8b2d2861`'s
+//! `OpenAICompatible usage: excluding prompt-cache hits from prompt/total`,
+//! recorded per row as `pluginDebugLog` (only on the rows whose plugin logged
+//! at DEBUG — the recorder arms that sink for openai-compatible alone) and
+//! captured on the v5 side at target `quilltap::model::response_parse` (the
+//! home of the ONE `oac_normalize_usage`, which the decoder's terminal chunk
+//! calls). `assert_debug_lines` checks it on EVERY row: the cached > 0 rows
+//! log exactly v4's line, every other row (`cached-zero`, `cached-negative`,
+//! `usage-two-frames` among them) logs none at that target.
+//!
 //! No env vars needed — the fixtures + recordings are committed; regenerate
 //! with `harness/oracle/providers/regenerate-stream-fixtures.sh` after a v4
 //! provider drift.
@@ -67,6 +77,9 @@ struct OracleCase {
     /// P4.122 item 6: the ERROR lines v4's plugin logged while the case ran
     /// (`record-stream-fixtures.mjs` `pluginErrorLog`); empty when none.
     plugin_error_log: Vec<Value>,
+    /// P4.D311: the DEBUG lines v4's plugin logged while the case ran
+    /// (`pluginDebugLog`, openai-compatible rows only); empty when none.
+    plugin_debug_log: Vec<Value>,
 }
 
 fn load_recorded(decoder: &str) -> Vec<OracleCase> {
@@ -92,6 +105,11 @@ fn load_recorded(decoder: &str) -> Vec<OracleCase> {
                 thrown: v.get("thrown").cloned(),
                 plugin_error_log: v
                     .get("pluginErrorLog")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default(),
+                plugin_debug_log: v
+                    .get("pluginDebugLog")
                     .and_then(Value::as_array)
                     .cloned()
                     .unwrap_or_default(),
@@ -422,6 +440,38 @@ fn assert_catch_lines(oracle: &OracleCase, chunking: &str, lines: &[String]) {
 /// A v4 context value as the capture renders a `%`-sigil field: a string
 /// unquoted, anything else as its JSON text (copied from
 /// `text_http_errors_equivalence.rs`'s `render_value`).
+/// P4.D311 — v4 `a8b2d2861`'s `normalizeUsage` DEBUG line, by the same
+/// render rule as [`assert_catch_lines`] (the message, then every `context`
+/// key in v4's order): the captured DEBUG lines at the
+/// `quilltap::model::response_parse` target must be exactly v4's recorded
+/// `pluginDebugLog`, so a cached > 0 row logs ONE line and every other row —
+/// the silence leg — logs none.
+fn assert_debug_lines(oracle: &OracleCase, chunking: &str, lines: &[String]) {
+    const PREFIX: &str = "DEBUG quilltap::model::response_parse ";
+    let got: Vec<&String> = lines.iter().filter(|l| l.starts_with(PREFIX)).collect();
+    let want: Vec<String> = oracle
+        .plugin_debug_log
+        .iter()
+        .map(|e| {
+            let mut out = format!("{PREFIX}{}", e["message"].as_str().unwrap());
+            if let Some(ctx) = e["context"].as_object() {
+                for (k, v) in ctx {
+                    out.push_str(&format!(" {k}={}", render_value(v)));
+                }
+            }
+            out
+        })
+        .collect();
+    assert_eq!(
+        got.iter().map(|l| l.as_str()).collect::<Vec<_>>(),
+        want.iter().map(String::as_str).collect::<Vec<_>>(),
+        "{}/{} [{}]: the plugin DEBUG line",
+        oracle.provider,
+        oracle.case,
+        chunking
+    );
+}
+
 fn render_value(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -468,6 +518,7 @@ fn run_decoder_fixture(decoder: &str) {
         .build()
         .unwrap();
     let mut checked = 0;
+    let mut debug_cases = 0;
     let mut chunkings_run = 0usize;
     // P4.D78 — a composition-level witness that reasoning survives the FULL
     // compose path (build → transport → manifest-selected decoder → the pump
@@ -497,6 +548,7 @@ fn run_decoder_fixture(decoder: &str) {
                 rt.block_on(drive_composer(provider, model, pieces))
             });
             assert_catch_lines(oracle, chunking, &lines);
+            assert_debug_lines(oracle, chunking, &lines);
             if chunks.iter().any(|c| {
                 c.reasoning_content
                     .as_deref()
@@ -509,7 +561,21 @@ fn run_decoder_fixture(decoder: &str) {
         if saw_reasoning_here {
             reasoning_cases += 1;
         }
+        if !oracle.plugin_debug_log.is_empty() {
+            debug_cases += 1;
+        }
         checked += 1;
+    }
+    if decoder == "chat_completions_sse" {
+        // P4.D311: the DEBUG pin proves the line only while v4's recorded
+        // line is in the corpus — a re-record that lost `pluginDebugLog`
+        // (the sink disarmed, plugin-utils < 2.7.1) would leave every
+        // silence leg green with the line untested.
+        assert!(
+            debug_cases >= 4,
+            "composer/chat_completions_sse: only {debug_cases} row(s) carry v4's \
+             `pluginDebugLog` — the normalizeUsage DEBUG line is untested"
+        );
     }
     if decoder == "ollama_ndjson" {
         // The reasoning corpus can only prove the wiring while it is present:

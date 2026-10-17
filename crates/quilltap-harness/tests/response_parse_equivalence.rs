@@ -26,6 +26,17 @@
 //! HTTP headers there, so its contents depend on the transport, not the body —
 //! unpinnable by a body corpus (and unused: tool detection reads `candidates`).
 //!
+//! P4.D311 — the OPENAI_COMPATIBLE rows exercise v4 `a8b2d2861`'s
+//! `normalizeUsage` (the raw cache-hit subtraction, `cacheUsage` when > 0)
+//! and its DEBUG line, recorded per row as `pluginDebugLog` (the recorder's
+//! bridge, openai-compatible only). Every row's parse runs inside the
+//! thread-scoped capture rig; the DEBUG lines at target
+//! `quilltap::model::response_parse` must equal v4's recorded `pluginDebugLog`
+//! (the message, then every `context` key in v4's order — the
+//! `streaming_composer_equivalence.rs` render rule), and every row WITHOUT
+//! one — every other provider, and the OAC `cached-zero-present` /
+//! `cached-negative` / `details-*` rows — must log none there.
+//!
 //! The corpus is committed, so no env var is needed — the family runs in every
 //! plain `cargo test`. Run (by name — the committed corpus IS the whole recipe;
 //! recording is a deliberate by-hand step, never a sweep stage):
@@ -151,6 +162,8 @@ fn response_parse_matches_v4_recorded_llm_responses() {
     });
 
     let mut cases = 0;
+    // P4.D311 — rows carrying v4's recorded `pluginDebugLog`.
+    let mut debug_rows = 0;
     let mut failures: Vec<String> = Vec::new();
     // Coverage guard: every provider family must appear — a family silently
     // missing from the corpus is how a parse gap hides (#24's lesson).
@@ -194,7 +207,47 @@ fn response_parse_matches_v4_recorded_llm_responses() {
             .and_then(Value::as_bool)
             .unwrap_or(false);
         let mut want = rec["response"].clone();
-        let mut got = to_v4_json(&parse_for_provider_ex(provider, &body, openrouter_vision));
+        let (parsed, lines) = quilltap_core::test_support::captured_with(|| {
+            parse_for_provider_ex(provider, &body, openrouter_vision)
+        });
+        let mut got = to_v4_json(&parsed);
+        // P4.D311 — the DEBUG line, and its silence leg on every other row.
+        let debug_prefix = "DEBUG quilltap::model::response_parse ";
+        let got_debug: Vec<&str> = lines
+            .iter()
+            .filter(|l| l.starts_with(debug_prefix))
+            .map(String::as_str)
+            .collect();
+        let want_debug: Vec<String> = rec
+            .get("pluginDebugLog")
+            .and_then(Value::as_array)
+            .map(|entries| {
+                entries
+                    .iter()
+                    .map(|e| {
+                        let mut out = format!("{debug_prefix}{}", e["message"].as_str().unwrap());
+                        if let Some(ctx) = e["context"].as_object() {
+                            for (k, v) in ctx {
+                                let v = match v {
+                                    Value::String(s) => s.clone(),
+                                    other => other.to_string(),
+                                };
+                                out.push_str(&format!(" {k}={v}"));
+                            }
+                        }
+                        out
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !want_debug.is_empty() {
+            debug_rows += 1;
+        }
+        if got_debug != want_debug.iter().map(String::as_str).collect::<Vec<_>>() {
+            failures.push(format!(
+                "{provider}/{case}: the plugin DEBUG line\n  rust:   {got_debug:?}\n  oracle: {want_debug:?}"
+            ));
+        }
 
         // attachmentResults is request-side (see the module note).
         want.as_object_mut().unwrap().remove("attachmentResults");
@@ -326,6 +379,13 @@ fn response_parse_matches_v4_recorded_llm_responses() {
         nanogpt_cache_excluded_from_prompt,
         "corpus lost the nanogpt row where the cache read actually REDUCES \
          promptTokens — the house rule is untested"
+    );
+    // P4.D311 — the DEBUG pin proves the line only while v4's recorded line
+    // is in the corpus (the five cached > 0 OAC rows).
+    assert!(
+        debug_rows >= 5,
+        "corpus carries only {debug_rows} row(s) with v4's `pluginDebugLog` — \
+         the normalizeUsage DEBUG line is untested"
     );
     assert!(
         failures.is_empty(),

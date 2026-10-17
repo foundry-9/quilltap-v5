@@ -9,7 +9,9 @@
 //!
 //!   - **chat-completions JSON** ([`parse_chat_completions`], flavored per the
 //!     W4.7b [`ChatFlavor`] split): `OpenAiCompatible` (the base — content /
-//!     finishReason / usage / raw only), `DeepSeek` (+ `reasoning_content`, tool
+//!     finishReason / usage / raw, tool calls since bug 71, and since v4
+//!     `a8b2d2861` the prompt-cache-hit exclusion + `cacheUsage` of
+//!     [`oac_normalize_usage`]), `DeepSeek` (+ `reasoning_content`, tool
 //!     calls, and the `prompt_cache_hit_tokens` cache-read subtraction), `ZAi`
 //!     (+ reasoning / tools / `prompt_tokens_details.cached_tokens` subtraction),
 //!     `OpenRouter` (the SNAKE_CASE wire normalized through the reproduced
@@ -80,7 +82,9 @@ pub struct NonStreamingResponse {
 /// The chat-completions non-streaming flavor (mirrors the W4.7b decoder split).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChatFlavor {
-    /// The `openai-compatible` base: content / finishReason / usage / raw only.
+    /// The `openai-compatible` base: content / finishReason / usage / raw, the
+    /// bug-71 tool calls, and (v4 `a8b2d2861`) the usage block normalised by
+    /// [`oac_normalize_usage`] — cache reads excluded, `cacheUsage` when > 0.
     OpenAiCompatible,
     /// DeepSeek: reasoning + tools + `prompt_cache_hit_tokens` cache-read.
     DeepSeek,
@@ -113,6 +117,83 @@ fn i64_at(v: &Value, key: &str) -> i64 {
 /// v4 `Math.max(0, a - b)`.
 fn sub_floor(a: i64, b: i64) -> i64 {
     (a - b).max(0)
+}
+
+/// v4 `OpenAICompatibleProvider.normalizeUsage` (plugin-utils 2.7.1, v4
+/// `a8b2d2861`; `packages/plugin-utils/src/providers/openai-compatible.ts:432-463`
+/// at the `25b8fab6a` pin) — the ONE normalisation both OAC send paths share:
+/// the non-streaming arm of [`parse_chat_completions`] and the streaming
+/// decoder's terminal chunk (`chat_completions_sse.rs`). v4 has one method
+/// serving both, so v5 has one function; two copies would be two places to
+/// drift. `usage` is the raw Chat Completions block (`None` / `null` when
+/// absent — every count then reads 0).
+///
+/// v4's why, carried: OpenAI-compatible endpoints fold prompt-cache hits into
+/// `prompt_tokens` (reported separately as `prompt_tokens_details.cached_tokens`).
+/// Quilltap's convention is that `promptTokens` / `totalTokens` EXCLUDE cache
+/// reads, so cached input never counts against token budgets; `cacheUsage`
+/// still carries the cache reads for display. Endpoints that report no
+/// `cached_tokens` are unaffected.
+///
+/// ```text
+/// const cachedTokens = usage?.prompt_tokens_details?.cached_tokens ?? 0;
+/// if (cachedTokens > 0) this.logger.debug(`${providerName} usage: excluding …`, {…});
+/// return { usage: { promptTokens: Math.max(0, (usage?.prompt_tokens ?? 0) - cachedTokens),
+///                   completionTokens: usage?.completion_tokens ?? 0,
+///                   totalTokens: Math.max(0, (usage?.total_tokens ?? 0) - cachedTokens) },
+///          ...(cachedTokens > 0 ? { cacheUsage: { cacheReadInputTokens: cachedTokens, cachedTokens } } : {}) };
+/// ```
+///
+/// Load-bearing details:
+///
+///   - `cachedTokens` is subtracted RAW — UNFILTERED. A non-positive value is
+///     not `> 0`, so there is no `cacheUsage` and no DEBUG line, yet it still
+///     moves the counts (`-5` ADDS 5 to prompt and total). The `> 0`-filtered
+///     readers the other flavors use (the decoder's `cached_from_details`, the
+///     Z.AI arm below) would silently diverge here; the corpus's
+///     `cached-negative` rows are the only falsifiers of that choice.
+///   - prompt and total are floored at 0 INDEPENDENTLY; completion never is.
+///   - The DEBUG line's `promptTokens` is the RAW `prompt_tokens`, before the
+///     subtraction. Provider name `OpenAICompatible` (the plugin builds the
+///     base with no `providerName`), so the message and `context` are fixed.
+///     It fires once per call, only when the cached count is > 0, at target
+///     `quilltap::model::response_parse` — the first text-provider DEBUG line
+///     in v5 (`plugin_catch_log.rs` holds the ERROR / WARN catch lines).
+pub(crate) fn oac_normalize_usage(
+    usage: Option<&Value>,
+) -> (StreamUsage, Option<StreamCacheUsage>) {
+    let get = |k: &str| {
+        usage
+            .and_then(|u| u.get(k))
+            .and_then(Value::as_i64)
+            .unwrap_or(0)
+    };
+    let cached = usage
+        .and_then(|u| u.get("prompt_tokens_details"))
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    if cached > 0 {
+        tracing::debug!(
+            target: "quilltap::model::response_parse",
+            context = "OpenAICompatibleProvider.normalizeUsage",
+            promptTokens = get("prompt_tokens"),
+            cachedTokens = cached,
+            "OpenAICompatible usage: excluding prompt-cache hits from prompt/total"
+        );
+    }
+    (
+        StreamUsage {
+            prompt_tokens: sub_floor(get("prompt_tokens"), cached),
+            completion_tokens: get("completion_tokens"),
+            total_tokens: sub_floor(get("total_tokens"), cached),
+        },
+        (cached > 0).then_some(StreamCacheUsage {
+            cached_tokens: Some(cached),
+            cache_read_input_tokens: Some(cached),
+            ..Default::default()
+        }),
+    )
 }
 
 /// v4 NanoGPT `extractCacheUsage` (P4.D105, `f8973813`) — the only ported
@@ -399,8 +480,10 @@ pub fn parse_chat_completions(response: &Value, flavor: ChatFlavor) -> NonStream
             let (reasoning, tool_calls, cache_usage) = match flavor {
                 // Bug 71 (v4 `93ed8abf`): the OAC base normalizes `tool_calls`
                 // on the non-streaming path too, with its own filter (see
-                // `normalize_oac_tool_calls`). No reasoning channel, no cache
-                // usage — v4's base `sendMessage` reads neither.
+                // `normalize_oac_tool_calls`). No reasoning channel. Its usage
+                // and cache usage come from `oac_normalize_usage` below (v4
+                // `a8b2d2861`), NOT this arm — the shared tail's `read` is the
+                // `> 0`-filtered cache read, which the OAC raw subtraction is not.
                 ChatFlavor::OpenAiCompatible => (None, normalize_oac_tool_calls(msg), None),
                 ChatFlavor::DeepSeek => {
                     let reasoning = msg
@@ -471,17 +554,26 @@ pub fn parse_chat_completions(response: &Value, flavor: ChatFlavor) -> NonStream
                 }
                 ChatFlavor::OpenRouter | ChatFlavor::OpenRouterVision => unreachable!(),
             };
-            let read = cache_usage
-                .and_then(|c| c.cache_read_input_tokens)
-                .unwrap_or(0);
+            let (usage, cache_usage) = if flavor == ChatFlavor::OpenAiCompatible {
+                // v4 `sendMessage`: `...this.normalizeUsage(response.usage)`.
+                oac_normalize_usage(Some(&usage))
+            } else {
+                let read = cache_usage
+                    .and_then(|c| c.cache_read_input_tokens)
+                    .unwrap_or(0);
+                (
+                    StreamUsage {
+                        prompt_tokens: sub_floor(i64_at(&usage, "prompt_tokens"), read),
+                        completion_tokens: i64_at(&usage, "completion_tokens"),
+                        total_tokens: sub_floor(i64_at(&usage, "total_tokens"), read),
+                    },
+                    cache_usage,
+                )
+            };
             NonStreamingResponse {
                 content,
                 finish_reason,
-                usage: StreamUsage {
-                    prompt_tokens: sub_floor(i64_at(&usage, "prompt_tokens"), read),
-                    completion_tokens: i64_at(&usage, "completion_tokens"),
-                    total_tokens: sub_floor(i64_at(&usage, "total_tokens"), read),
-                },
+                usage,
                 tool_calls,
                 reasoning_content: reasoning,
                 thought_signature: None,
@@ -1204,7 +1296,11 @@ pub fn parse_for_provider_ex(
                 .expect("every remaining kind is a chat-completions flavor"),
         ),
         // An unknown provider falls back to the chat-completions base (v4's
-        // default plugin shape).
+        // default plugin shape). A v5-only default (v4 would have thrown
+        // earlier, with no plugin to dispatch to), so since P4.D311 the OAC
+        // usage normalisation — the cache-hit exclusion and its DEBUG line —
+        // applies to an unrecognised provider id too. No behaviour change
+        // beyond that; recorded so the reach is not a surprise.
         None => parse_chat_completions(response, ChatFlavor::OpenAiCompatible),
     }
 }
