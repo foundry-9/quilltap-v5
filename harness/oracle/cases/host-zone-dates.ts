@@ -115,6 +115,16 @@ out({ op: 'formatWebSearchResults', label: 'all', result: formatWebSearchResults
 // date-rendering slot the fixture populates.
 const data = makeAlmanackFixture();
 data.featureConfig.impersonationVoiceMode = 'off';
+// P4.D304's `almanack-render.test.ts` fill, applied to this second consumer of
+// v4's fixture at the `25b8fab6a` unification: v4 `362426c8f` added
+// `FeatureConfigInfo.customToolTriggers` everywhere but
+// `__tests__/helpers/almanack/fixture.ts`, and the Rust model types it as a
+// required `bool`. v4's own default (`defaultFeatureConfig()`'s `false`) — the
+// same bytes v4 renders for the absent key. Tripwire when v4's fixture grows it.
+if ('customToolTriggers' in data.featureConfig) {
+  throw new Error("v4's Almanack fixture now sets customToolTriggers — drop this fill and re-measure");
+}
+data.featureConfig.customToolTriggers = false;
 const a = corpus.almanackDates;
 data.generatedAt = a.generatedAt;
 data.migrationState.lastMigrationAt = a.lastMigrationAt;
