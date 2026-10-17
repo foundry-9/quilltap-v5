@@ -212,6 +212,14 @@ Pascal SPA lane), from the lane's pinned worktree
 
 **`pascal-custom-tool-definition.oracle.ndjson` — 362 → 425 rows** (10 `title`
 + 363 `definition` + 52 `gate`), sha-256 `633c837f33bd59fa4be0bda3d00001cca6c39a71680fb57594378bf7a1398f3f`.
+**Superseded at the round's unification (2026-10-17):** the generator's three
+lane blocks were merged BY ID and the corpus regenerated ONCE from the
+`25b8fab6a` pin for both consumers — **449 rows** (10 `title` + 387
+`definition` + 52 `gate`), sha-256
+`48765f04b4132131f044758e116afb59fb5338000aeacfe86f0c82abf4780427`. Three ids
+this block recorded over a different input than the server lanes' kept the
+server input; this block's input survives under a suffixed id
+(`-wrong-types`, `-bogus-key`, `-literal-value`).
 v4 `362426c8f` (`triggers`) and `f0db8cbb8` (the write | wardrobe effect
 union) grew the format; the shared generator
 `harness/oracle/cases/pascal-custom-tool-definition.ts` gained ONE fenced block,

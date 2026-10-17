@@ -16,8 +16,8 @@ import { ChatSettingsCard } from './chat-settings.api';
  *
  * v4's `useChatSettings.handleComposerSlashCommandsChange` + the tab's prop
  * plumbing have no file here: a v5 card is self-contained, so the partial body
- * and the failure text live in `onChange` below. The key is read through
- * `ChatSettingsDto`'s index signature (its declaration is a sibling lane's).
+ * and the failure text live in `onChange` below. The key is declared on
+ * `ChatSettingsDto` (`customToolTriggers` / `composerSlashCommands`, P4.D307).
  */
 @Component({
   selector: 'qt-composer-slash-commands-settings',

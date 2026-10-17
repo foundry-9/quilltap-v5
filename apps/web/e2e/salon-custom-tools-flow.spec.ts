@@ -221,6 +221,71 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
   });
 
   /**
+   * P4.D307 item 14 (v4 `f0db8cbb8`, `CustomToolRunDialog.tsx:926-1001`) — the
+   * run dialog says what a tool's wardrobe effects may do, from the SERVER's
+   * tool vocabulary (P4.D306's `references.wears` / `clearsSlots`), not from
+   * anything the client parses. The beat authors its own definition through the
+   * mount-file verb, as the `chipLabel` beat does, and never runs it: the claim
+   * is the panel, and a run would dress a character on the shared server.
+   */
+  test("the run dialog names a tool's wardrobe effects (server vocabulary)", async ({ page }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, 'Group Expedition');
+
+    const chatId = new URL(page.url()).pathname.split('/').pop()!;
+    const ctx = await pwRequest.newContext();
+    const rosterRes = await ctx.post(`${BASE_URL}/api/dispatch`, {
+      data: { type: 'chatCustomToolsList', chatId },
+    });
+    const roster = (await rosterRes.json()) as {
+      data?: { tools?: Array<{ mountPointId: string }> };
+    };
+    const mountPointId = roster.data?.tools?.[0]?.mountPointId;
+    expect(mountPointId, 'the seeded Tools roster should resolve').toBeTruthy();
+
+    const definition = {
+      $schema: '/schemas/qtap-custom-tool.schema.json',
+      name: 'e2e_wardrobe',
+      title: 'Wardrobe Contrivance',
+      description: 'A contrivance that dresses whoever runs it.',
+      roll: { min: 1, max: 1 },
+      effects: [
+        { wardrobe: { action: 'wear', items: ['Cloak of Night'] } },
+        { wardrobe: { action: 'clear_slot', slot: 'hair' } },
+      ],
+      outcomes: [{ when: true, message: 'The wardrobe obliges.', state: 'info' }],
+    };
+    const write = await ctx.post(`${BASE_URL}/api/dispatch`, {
+      data: {
+        type: 'mountFileWrite',
+        mountPointId,
+        path: 'Tools/e2e_wardrobe.tool.json',
+        content: `${JSON.stringify(definition, null, 2)}\n`,
+      },
+    });
+    expect(write.ok()).toBe(true);
+    await ctx.dispose();
+
+    // The roster re-resolves on every open, so the new definition is offered.
+    await page.getByRole('button', { name: 'Custom tools' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button').filter({ hasText: 'Wardrobe Contrivance' }).first().click();
+    await expect(dialog.getByRole('button', { name: 'Run Wardrobe Contrivance' })).toBeVisible();
+
+    await expect(dialog.getByText('What this tool can quote')).toBeVisible();
+    const wears = dialog.locator('p', { hasText: 'It may dress the running character in' });
+    await expect(wears).toContainText('Cloak of Night');
+    await expect(wears).toContainText('Only when you run it as a character');
+    await expect(dialog.locator('p', { hasText: 'It may clear their' })).toContainText('hair slot.');
+    await expect(dialog.getByText('It may undress them of')).toHaveCount(0);
+
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
+  /**
    * P4.D43 (v4 `c988fbd2`) — run presets, end to end against a real vault.
    *
    * The seeded roster's three tools take no parameters, so this beat authors its

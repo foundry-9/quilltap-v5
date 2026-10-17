@@ -216,14 +216,18 @@ test.describe('Composer / slash commands (P4.D308, v4 4877fc2da)', () => {
     // (a) The bare-slash browse: every command, actions first.
     await typeInComposer(page, '/');
     await expect(menu(page)).toBeVisible({ timeout: 15_000 });
-    const all = await labels(page).allTextContents();
+    // Retrying reads: the `/pascal` row joins only once the popup's roster
+    // query has resolved, so a one-shot `allTextContents()` races it.
     for (const expected of [
       '/attach — Attach file',
       '/tool — Run Tool',
       '/roll — Roll dice',
       "/pascal — Pascal's Table",
     ]) {
-      expect(all, `the bare menu lists ${expected}`).toContain(expected);
+      await expect(
+        labels(page).filter({ hasText: expected }),
+        `the bare menu lists ${expected}`,
+      ).toHaveCount(1);
     }
     const attachRow = menu(page).locator('[role="option"]', { hasText: '/attach —' });
     await expect(attachRow.locator('.qt-typeahead-option-detail')).toHaveText('Composer');

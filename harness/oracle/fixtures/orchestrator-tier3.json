@@ -304,7 +304,7 @@
    "name": "Ringer",
    "description": "The user's bell-ringer.",
    "aliases": [],
-   "controlledBy": "user",
+   "controlledBy": "llm",
    "talkativeness": 0.5,
    "connectionProfileId": "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221"
   }

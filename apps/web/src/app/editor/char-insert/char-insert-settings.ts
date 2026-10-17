@@ -32,9 +32,9 @@ export interface CharInsertSettings {
   /**
    * `chat_settings.composerSlashCommands ?? true` — the `/` command menu (v4
    * `SlashCommandPlugin`'s own `useChatSettingsQuery`). Gates the menu ONLY:
-   * the gutter buttons and the sidebar are never affected. Read through the
-   * DTO's index signature with this file's own cast until the key is declared
-   * on `ChatSettingsDto` (a sibling lane's file).
+   * the gutter buttons and the sidebar are never affected. Read with this
+   * file's cast idiom, like its two siblings above (the key is declared on
+   * `ChatSettingsDto` since the `25b8fab6a` round's unification).
    */
   slashCommands: Signal<boolean>;
 }

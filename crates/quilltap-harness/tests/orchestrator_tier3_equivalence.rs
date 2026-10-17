@@ -2129,9 +2129,12 @@ fn orchestrator_tier3_matches_oracle() {
     // seat's `bell` (gated on the SEAT's sheet, so the responder is offered no
     // `run_custom`), and Pascal's post lands BETWEEN the user message and the
     // reply, live on `pascalResult` and spliced into the model's context.
-    // Proven HERE — before the sibling residue below (P4.D310's mailbox
-    // lines; the pin's `users` read on the persona-less chained calls) can stop
-    // the walk — so this row is green or red by name on any branch.
+    // Proven HERE, by name, ahead of the whole-corpus compare below. Ringer
+    // is user-driven through its PARTICIPANT row only (character-level
+    // `controlledBy: 'llm'`, the builder's mixed shape): a second
+    // user-controlled CHARACTER would make `findUserControlled` return two and
+    // move every persona-less call to the `users` profile read (the §3
+    // review's catch at the `25b8fab6a` unification — 22 calls changed premise).
     {
         const ROOM: &str = "e0000305-0000-4000-8000-000000000305";
         const PASCAL_LINE: &str = "The bell rings out over the square.";
