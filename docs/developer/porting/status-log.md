@@ -186340,3 +186340,70 @@ Branch `claude/p4.d312-data-cli-smalls-e89421`, cut from `REAIM`
   honoured only beside `/^\s*id:\s*MIGRATION_ID\b/m`, else the literal form
   `/^\s*id:\s*['"]([^'"]+)['"]/m`. Standing note: a future v5 `migrations
   status` must read BOTH id forms from day one.
+
+### P4.D312 lane close
+
+- **Commits:** `7956d13b6` bug 247 (core 0.0.1306); `af70b0ec7` the hair note +
+  `describe_outfit` (core 0.0.1307); `8f2d39d05` the remapper (core
+  0.0.1308); `fe6661c69` the CLI bytes (cli 0.0.34); this close.
+- **§2 probe at lane start (2026-10-16 21:24 CDT), an observation:** branch
+  `main`, tree clean, `25b8fab6a..main` = `5cb0e0190`, `a05c6f755`, bugfix log
+  empty. **v4 moved: `a05c6f755` ("feat(pascal): {{character}} placeholder;
+  character-announced custom tools") observed at 21:24** — not ported.
+- **Gate** (`CARGO_INCREMENTAL=0`, lane-private oracles, `QT_V4_CHECKOUT` /
+  `QT_V4_ROOT` = the pin): fmt clean; clippy `--workspace --all-targets` and
+  with `--features quilltap-core/native-transport` clean; `cargo test
+  --workspace --no-fail-fast` **807 binaries / 5,240 passed / 5 failed / 3
+  ignored**, every red a named sibling's: `provider_sdk_version_guard` +
+  `zod_version_guard` (P4.D311), `public_schemas_vendor_guard` +
+  `qtap_schema_embed_guard` (P4.D313), `system_restore_state` (55 FAILURE
+  lines, all `main.chat_settings` — P4.D304's two 4.11 columns; zero other
+  tables). My families RAN (env set, none SKIP): `describe_outfit`,
+  `memory_time`, `backup_uuid_remap`, the four hair families, Aurora (36
+  rows), `restore_vintage_state` 9/9, `cli_differential` (Tier R 422/0,
+  344.6 s), `completion_behavior` 12/12. In-crate: `--lib wardrobe` 137,
+  `--test unreported_if_blank_slots` 12, `--lib memory_time` 61, `--lib
+  services::backup` 69. `recipe_sweep.py --self-test` 0. Per-commit gates
+  were fmt + targeted clippy + the touched families; the one full workspace
+  gate ran at close.
+- **Sweeps (announced in the shared notes, one at a time; sweep 4 queued
+  behind P4.D311's PID):** 1 hair red-first, 2 `memory_time`, 3 hair green,
+  4 `backup_uuid_remap` (refused by the driver — by-hand pin regen is its
+  proof) + `system_restore_state`.
+- **Fixtures changed:** `harness/oracle/fixtures/uuid-remap-corpus.json`
+  (regenerated from the pin + grown, sha `c1a01f6b…`), NEW
+  `harness/oracle/fixtures/describe-outfit.json`. No restore archive, no
+  `system-data-*` db, no committed pair touched. Dependents: only
+  `backup_uuid_remap_equivalence` reads the corpus.
+- **Regen recipes:** `describe_outfit` — the `.rs` header (tsx, pure;
+  `QT_ORACLE_DESCRIBE_OUTFIT`); `backup_uuid_remap` — its `.ts` header by
+  hand (jest + `/tmp` mirror; writes the corpus; the driver refuses it);
+  `memory_time` / the hair families / Aurora / `system_restore_state` —
+  their existing headers through the sweep driver from a `25b8fab6a` pin.
+- **Findings against the order:** (1) the predicted ~17-case
+  `system_restore_state` red set does not exist — the message-append
+  chokepoint refolds `spokenThisCycleParticipantIds` on both sides, so the
+  restore families are blind to the remapper's JSON arm on the committed
+  archives; (2) `wide`'s mapping does NOT shift and a loop-after-participants
+  mutation leaves `wide` green — the mint-order hand rows are the guard;
+  (3) the sweep driver does not rewrite recipe `/tmp` paths (it wrote the
+  shared defaults) and refuses `backup_uuid_remap`; (4)
+  `completion_behavior.rs:653` pinned the old fish phrase.
+- **Recorded divergence classes (no rows):** `JSON_LONE_SURROGATE_ID`; v4's
+  invalid-zone fallback in `resolveEpisodicAnchors` (out of contract).
+- **NO-PORT:** `extractMigrationId` / `migrations status`;
+  `restore-field-fidelity.test.ts`; v4's `anchors.test.ts` test (a); the
+  `ago` arm's `lookupWord` reads (unobservable). P4.D313's bytes untouched.
+- **HANDOFF closed:** P4.D304 item 16 (the corpus settings row's two keys)
+  — closed by the regen itself.
+- **💸 Owed to the next `/dogfood`:** the order's rows — a `new-account`
+  restore of a fresh full Friday backup into a fresh instance with a
+  multi-character chat mid-rotation (turn queue / spoken roster / cycle order
+  name restored seats; a whisper keeps its audience — note the message
+  refold heals `spokenThisCycle` regardless, so check `turnQueue` /
+  `cycleOrder` first); a wardrobe turn with a styled hair slot (the note on
+  `wardrobe_read`, the Lantern / avatar prompt and Aurora's whisper; a
+  take-off leaving only the hairdo); `quilltap --help` / `completion zsh` /
+  `completion fish`; an extraction turn whose `when` is `constructor 5`.
+- **Versions at close:** core 0.0.1308, cli 0.0.34; harness frozen 0.0.1110;
+  host / web / tauri / SPA untouched.

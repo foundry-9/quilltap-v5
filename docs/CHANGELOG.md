@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — docs(porting): P4.D312 lane close — the lane record and the order's status header
+
+_Docs-only change._
+
+Records the P4.D312 lane: the red-first measurements, the four units, the gate (807 binaries, 5 reds all owned by sibling lanes), the findings against the order (the predicted restore red set does not exist; the mint-order rows, not `wide`, guard the remapper's order), the recorded divergence classes, the NO-PORTs and the dogfood rows.
+
 #### 2026-10-16 — fix(cli): the anchor-probe help and completion lines say "reinforcement at admission", re-captured from v4 25b8fab6a (P4.D312)
 
 _Versions: cli 0.0.34._
