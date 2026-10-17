@@ -276,18 +276,21 @@ pub struct ToolExecutionContext {
     /// `self_inventory` landed) — the orchestrator fills it from the built context.
     pub loaded_memories: Option<LoadedMemoriesContext>,
     /// Character IDs whose wardrobe was modified during this turn (v4's
-    /// `pendingWardrobeAnnouncements` Set). Wardrobe tool handlers (W4.1d batch 2)
-    /// add to it; the orchestrator drains it once at end-of-turn (the drain is a
-    /// documented deferral — batch 2 only populates).
+    /// OPTIONAL `pendingWardrobeAnnouncements?: Set<string>`). Wardrobe tool
+    /// handlers and `run_custom`'s wardrobe gestures add to it; the orchestrator
+    /// drains it once at end-of-turn.
     ///
     /// It is `Arc<Mutex<…>>` (not a plain `HashSet`) so the handlers can record an
     /// announcement through the [`ToolRunner::run`] boundary's shared
-    /// `&ToolExecutionContext` WITHOUT changing the trait signature (W4.1e consumes
-    /// that trait concurrently). Cloning the context shares the same set, matching
-    /// v4's shared-Set-by-reference semantics. The legacy "no set present → enqueue
-    /// immediately" fallback (v4 `scheduleWardrobeAnnouncement`) is not ported: the
-    /// ported context always carries a set.
-    pub pending_wardrobe_announcements: Arc<Mutex<HashSet<String>>>,
+    /// `&ToolExecutionContext` WITHOUT changing the trait signature. Cloning the
+    /// context shares the same set, matching v4's shared-Set-by-reference
+    /// semantics. `None` is v4's absent set — the announcement is enqueued NOW
+    /// (`recordPendingWardrobeAnnouncement`'s fallback): the operator's Run Tool
+    /// (`actions/run-tool.ts` passes none) has no turn end to drain a set at, so
+    /// a minted one there swallowed Aurora's announcement (the `25b8fab6a`
+    /// unification's §3 review catch). [`create_tool_context`] and the Brahma
+    /// Console mint one, as v4's do.
+    pub pending_wardrobe_announcements: Option<Arc<Mutex<HashSet<String>>>>,
     /// The Brahma Console operator surface (v4 `operatorSurface`). Character tool
     /// handlers never set this.
     pub operator_surface: bool,
@@ -301,7 +304,7 @@ pub struct ToolExecutionContext {
 }
 
 /// Create a tool-execution context (v4 `createToolContext`, :269–292). Mints an
-/// empty `pending_wardrobe_announcements` set; leaves the carina callback and
+/// empty `pending_wardrobe_announcements` set (v4 `:320`); leaves the carina callback and
 /// `operator_surface` absent (v4's `createToolContext` sets neither).
 #[allow(clippy::too_many_arguments)]
 pub fn create_tool_context(
@@ -331,7 +334,7 @@ pub fn create_tool_context(
         project_id: project_id.filter(|s| !s.is_empty()),
         browser_user_agent,
         loaded_memories,
-        pending_wardrobe_announcements: Arc::new(Mutex::new(HashSet::new())),
+        pending_wardrobe_announcements: Some(Arc::new(Mutex::new(HashSet::new()))),
         operator_surface: false,
         // v4's `createToolContext` never sets `mountPool` either (`d1c06cd9d`).
         mount_pool: None,

@@ -211,7 +211,9 @@ pub fn scenario_tool_context(
         project_id: project_id.map(str::to_string),
         mount_pool: Some(mount_pool),
         operator_surface: false,
-        pending_wardrobe_announcements: Arc::new(Mutex::new(std::collections::HashSet::new())),
+        pending_wardrobe_announcements: Some(Arc::new(
+            Mutex::new(std::collections::HashSet::new()),
+        )),
         ..Default::default()
     }
 }

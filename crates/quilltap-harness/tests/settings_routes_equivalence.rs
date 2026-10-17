@@ -574,6 +574,23 @@ fn settings_routes_match_v4() {
                 "[{name}] response body mismatch\noracle: {oracle_body}\ngot:    {got_body}"
             );
         }
+        // P4.D304's two families pin the chat-settings row's KEY ORDER too
+        // (`customToolTriggers` right after `customTools`, `composerSlashCommands`
+        // right after `composerUnicode` — v4's schema order): `serde_json::Value`
+        // equality ignores key order under `preserve_order`, so compare bytes
+        // (the `25b8fab6a` unification's §3 review catch: P4.D304's Tier 1 item 8
+        // asked for it and no row did it).
+        let byte_family = matches!(
+            row["family"].as_str(),
+            Some("custom_tool_triggers" | "composer_slash_commands")
+        );
+        if byte_family && !is_ack {
+            assert_eq!(
+                serde_json::to_string(&oracle_body).unwrap(),
+                serde_json::to_string(&got_body).unwrap(),
+                "[{name}] response body KEY ORDER mismatch"
+            );
+        }
         // The wire status on ERROR rows (P4.47 §3 at the help-drift
         // unification: v4's `includes('Invalid') ? 400 : 500` split was
         // invisible to a body-only diff — a threshold-only Zod message answers
@@ -595,6 +612,13 @@ fn settings_routes_match_v4() {
                 oracle_after, got_after,
                 "[{name}] after-refetch mismatch\noracle: {oracle_after}\ngot:    {got_after}"
             );
+            if byte_family {
+                assert_eq!(
+                    serde_json::to_string(&oracle_after).unwrap(),
+                    serde_json::to_string(&got_after).unwrap(),
+                    "[{name}] after-refetch KEY ORDER mismatch"
+                );
+            }
         }
         n += 1;
         if row["family"].as_str() == Some("data_retention") {

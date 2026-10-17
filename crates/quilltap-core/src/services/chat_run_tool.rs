@@ -158,6 +158,33 @@ fn truthy_str(v: Option<&Value>) -> Option<String> {
 /// loud refusal AFTER the deny-list + chat arms. `message_id` / `now_iso` are the
 /// two minted values, injected so the differential can pin them.
 /// `operator_name` is v4's `user.name || user.username`.
+/// The operator's execution context (v4 `run-tool.ts:75-82`'s literal). It
+/// carries NO wardrobe announcement set — v4 passes none, so an outfit change
+/// enqueues Aurora's announcement NOW; a minted set would have no turn end to
+/// drain it and the announcement would be lost (the `25b8fab6a` unification's
+/// §3 review catch, reachable from the Run Tool modal and the composer's
+/// `/wardrobe_*` / `/<custom tool>` commands).
+fn operator_tool_context(
+    user_id: &str,
+    chat_id: &str,
+    chat: &Value,
+    character_id: Option<&str>,
+) -> ToolExecutionContext {
+    let participant = pick_participant(chat, character_id);
+    ToolExecutionContext {
+        chat_id: chat_id.to_string(),
+        user_id: user_id.to_string(),
+        // v4 `chat.imageProfileId || characterParticipant?.imageProfileId || undefined`.
+        image_profile_id: truthy_str(chat.get("imageProfileId"))
+            .or_else(|| participant.and_then(|p| truthy_str(p.get("imageProfileId")))),
+        character_id: participant.and_then(|p| truthy_str(p.get("characterId"))),
+        calling_participant_id: participant.and_then(|p| truthy_str(p.get("id"))),
+        project_id: truthy_str(chat.get("projectId")),
+        pending_wardrobe_announcements: None,
+        ..Default::default()
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn chat_run_tool(
     db: &Db,
@@ -209,18 +236,7 @@ pub async fn chat_run_tool(
         );
     };
 
-    let participant = pick_participant(&chat, character_id);
-    let ctx = ToolExecutionContext {
-        chat_id: chat_id.to_string(),
-        user_id: user_id.to_string(),
-        // v4 `chat.imageProfileId || characterParticipant?.imageProfileId || undefined`.
-        image_profile_id: truthy_str(chat.get("imageProfileId"))
-            .or_else(|| participant.and_then(|p| truthy_str(p.get("imageProfileId")))),
-        character_id: participant.and_then(|p| truthy_str(p.get("characterId"))),
-        calling_participant_id: participant.and_then(|p| truthy_str(p.get("id"))),
-        project_id: truthy_str(chat.get("projectId")),
-        ..Default::default()
-    };
+    let ctx = operator_tool_context(user_id, chat_id, &chat, character_id);
 
     let result = runner
         .run(
@@ -301,4 +317,27 @@ pub async fn chat_run_tool(
         "message": message,
         "result": Value::Object(out),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// v4 `run-tool.ts:75-82` hands the executor no `pendingWardrobeAnnouncements`,
+    /// so a wardrobe change (a `wardrobe_*` tool, a `run_custom` gesture) takes
+    /// `recordPendingWardrobeAnnouncement`'s enqueue-now arm.
+    #[test]
+    fn the_operator_context_carries_no_announcement_set() {
+        let chat = json!({
+            "projectId": "proj-1",
+            "participants": [
+                { "id": "p1", "type": "CHARACTER", "isActive": true, "characterId": "c1" }
+            ]
+        });
+        let ctx = operator_tool_context("u1", "chat-1", &chat, None);
+        assert!(ctx.pending_wardrobe_announcements.is_none());
+        assert_eq!(ctx.character_id.as_deref(), Some("c1"));
+        assert_eq!(ctx.calling_participant_id.as_deref(), Some("p1"));
+        assert_eq!(ctx.project_id.as_deref(), Some("proj-1"));
+    }
 }

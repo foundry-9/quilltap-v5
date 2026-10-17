@@ -606,6 +606,8 @@ fn pascal_wardrobe_effects_match_oracle() {
         let members = |ctx: &ToolExecutionContext| {
             let mut v: Vec<String> = ctx
                 .pending_wardrobe_announcements
+                .as_ref()
+                .expect("create_tool_context mints the turn's set")
                 .lock()
                 .unwrap()
                 .iter()
@@ -675,7 +677,7 @@ fn pascal_wardrobe_effects_match_oracle() {
             &db,
             &spec.user_id,
             &spec.chat_id,
-            Some(&ctx.pending_wardrobe_announcements),
+            ctx.pending_wardrobe_announcements.as_ref(),
         ));
         assert_eq!(jobs(&db), 1, "ONE Aurora announcement for the turn");
         assert!(members(&ctx).is_empty(), "the drain empties the set");

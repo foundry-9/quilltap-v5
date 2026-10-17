@@ -437,9 +437,6 @@ fn assert_catch_lines(oracle: &OracleCase, chunking: &str, lines: &[String]) {
     );
 }
 
-/// A v4 context value as the capture renders a `%`-sigil field: a string
-/// unquoted, anything else as its JSON text (copied from
-/// `text_http_errors_equivalence.rs`'s `render_value`).
 /// P4.D311 — v4 `a8b2d2861`'s `normalizeUsage` DEBUG line, by the same
 /// render rule as [`assert_catch_lines`] (the message, then every `context`
 /// key in v4's order): the captured DEBUG lines at the
@@ -472,6 +469,9 @@ fn assert_debug_lines(oracle: &OracleCase, chunking: &str, lines: &[String]) {
     );
 }
 
+/// A v4 context value as the capture renders a `%`-sigil field: a string
+/// unquoted, anything else as its JSON text (copied from
+/// `text_http_errors_equivalence.rs`'s `render_value`).
 fn render_value(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),

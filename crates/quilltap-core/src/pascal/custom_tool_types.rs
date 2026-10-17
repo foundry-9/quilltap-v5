@@ -3548,16 +3548,6 @@ fn validate_operand_refs(
     }
 }
 
-/// Zod ≥ 4.6's length checks carry a `when` (`val.length !== undefined`), so
-/// they run even after the array's own `invalid_type` aborted — on ANY input
-/// with a `.length` (measured at the pin): a string is measured by the
-/// code-point rule `$ZodCheckMinLength` / `MaxLength` apply to strings
-/// (`"abracadabra"` → `Too big: expected string to have <=8 characters`), and
-/// an object carrying a numeric `length` key reports origin `unknown`
-/// (`Too big: expected unknown to be <=8`). Declaration order: `.min` before
-/// `.max`. A `null` is nullish and runs neither; a number or boolean has no
-/// `.length`. (An object whose `length` is a non-number — which JS would coerce
-/// in the comparison — is not modelled; no definition file reaches it.)
 /// [`length_checks_past_invalid_type`] for an array whose `.min` / `.max`
 /// carry AUTHORED messages (`effects`, `outcomes`): Zod reports the authored
 /// text whatever the input's origin, so only the measured length differs.
@@ -3592,6 +3582,16 @@ fn authored_length_checks_past_invalid_type(
     out
 }
 
+/// Zod ≥ 4.6's length checks carry a `when` (`val.length !== undefined`), so
+/// they run even after the array's own `invalid_type` aborted — on ANY input
+/// with a `.length` (measured at the pin): a string is measured by the
+/// code-point rule `$ZodCheckMinLength` / `MaxLength` apply to strings
+/// (`"abracadabra"` → `Too big: expected string to have <=8 characters`), and
+/// an object carrying a numeric `length` key reports origin `unknown`
+/// (`Too big: expected unknown to be <=8`). Declaration order: `.min` before
+/// `.max`. A `null` is nullish and runs neither; a number or boolean has no
+/// `.length`. (An object whose `length` is a non-number — which JS would coerce
+/// in the comparison — is not modelled; no definition file reaches it.)
 fn length_checks_past_invalid_type(v: &Value, min: usize, max: usize) -> Vec<Issue> {
     let mut out = Vec::new();
     match v {

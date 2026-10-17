@@ -73,20 +73,26 @@ mod common;
 ///   `.max(N)` / `.length(n)` / `.size(n)` now fails with ONLY its own
 ///   `too_big` (same `code` / `origin` / `maximum` / `inclusive` / message
 ///   bytes, `continue = false`) BEFORE any element is parsed, so element
-///   issues and any later `.refine` on the container no longer appear. A
-///   within-bounds container, an oversized one whose elements are all valid,
-///   and every string / number / object check are byte-identical.
+///   issues and any later `.refine` on the container no longer appear —
+///   even when every element is valid (the `too_big` aborts, so a following
+///   refine is skipped). A within-bounds container and every string / number /
+///   object check are byte-identical.
 /// - **Where it reaches v5:** the four hand-written twins that emitted
 ///   "element issues THEN the array's `too_big`" — `services/chat_create.rs`
 ///   `check_opt_subprompt_ids` (`selectedSubpromptIds`, `.max(100)`),
-///   `memory_candidate.rs` `array_of` (`entities`, `.max(MEMORY_ENTITY_CAP)`),
+///   `memory_candidate.rs` `string_array` (`entities`, `.max(MEMORY_ENTITY_CAP)`),
 ///   `api/memories.rs` (`entities`), `services/scenario_builder/
 ///   request_schema.rs` `uuid_array_field` (`characterIds` / `groupIds`,
 ///   `.max(32)`) — each now returns the lone `too_big` early, pinned red-first
 ///   by rows recorded through v4's REAL schemas at the pin in
 ///   `chat_create_capstone_equivalence`, `memories_routes_equivalence`,
-///   `memories_tier2_equivalence` and `scenario_build_request_schema_
-///   equivalence`. v4 uses no `.length(n)` / `.size(n)` / `Map` / `Set` size
+///   `memory_candidate_equivalence` and `scenario_build_request_schema_
+///   equivalence` — and a FIFTH twin the census missed, the Pascal
+///   definition's `outcomes` / `effects` / `triggers` / wardrobe `items`
+///   arrays in `pascal/custom_tool_types.rs` (P4.D306 ported `effects`;
+///   `outcomes` and the string-input length checks landed at the
+///   `25b8fab6a` unification, pinned by `pascal_custom_tool_definition_
+///   equivalence`). v4 uses no `.length(n)` / `.size(n)` / `Map` / `Set` size
 ///   cap on a v5-transcribed schema (grep in the P4.D311 lane record).
 /// - **Regression ring:** every Zod-text family re-run from the pin through
 ///   the sweep driver (the lane record lists them) — no red attributable to

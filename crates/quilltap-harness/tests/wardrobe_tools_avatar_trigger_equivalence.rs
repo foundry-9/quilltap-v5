@@ -266,6 +266,12 @@ fn wardrobe_tools_avatar_trigger_matches_oracle() {
             chat_id: sc.chat_id.clone(),
             user_id: base.user_id.clone(),
             character_id: Some(base.caller.clone()),
+            // The turn's set, as the oracle hands v4's handlers one (the
+            // context's default is v4's ABSENT set since the `25b8fab6a`
+            // unification — the operator Run Tool's enqueue-now path).
+            pending_wardrobe_announcements: Some(std::sync::Arc::new(std::sync::Mutex::new(
+                std::collections::HashSet::new(),
+            ))),
             ..Default::default()
         };
         let mut successes = Vec::new();
@@ -282,6 +288,8 @@ fn wardrobe_tools_avatar_trigger_matches_oracle() {
         }
         let mut ann: Vec<String> = ctx
             .pending_wardrobe_announcements
+            .as_ref()
+            .expect("the context carries the turn's set")
             .lock()
             .unwrap()
             .iter()

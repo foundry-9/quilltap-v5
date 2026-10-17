@@ -292,7 +292,9 @@ where
         chat_id: chat_id.to_string(),
         user_id: user_id.to_string(),
         operator_surface: true,
-        pending_wardrobe_announcements: Arc::new(Mutex::new(std::collections::HashSet::new())),
+        pending_wardrobe_announcements: Some(Arc::new(
+            Mutex::new(std::collections::HashSet::new()),
+        )),
         ..Default::default()
     };
 

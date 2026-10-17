@@ -680,7 +680,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             // v4 `tool-executor.ts:625` — the SAME set the wardrobe tools get
             // (`run_wardrobe_tool`), so a tool's gesture and the model's own
             // wardrobe calls produce one Aurora announcement.
-            pending_wardrobe_announcements: Some(Arc::clone(&ctx.pending_wardrobe_announcements)),
+            pending_wardrobe_announcements: ctx.pending_wardrobe_announcements.clone(),
         };
         let mut source = rng::OsRandomBytes;
         // The handler posts Pascal's bubble itself — that message is the run's
@@ -1676,7 +1676,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
                 user_id: &user_id,
                 chat_id: &chat_id,
                 character_id: &character_id,
-                pending_wardrobe_announcements: Some(&ctx.pending_wardrobe_announcements),
+                pending_wardrobe_announcements: ctx.pending_wardrobe_announcements.as_ref(),
             },
             stage,
         )

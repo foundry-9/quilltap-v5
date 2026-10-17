@@ -3409,7 +3409,7 @@ where
         project_id: json_str(&chat, "projectId").as_deref(),
         loaded_memories: Some(&turn_loaded_memories),
     });
-    loop_tool_context.pending_wardrobe_announcements = pending_wardrobe.clone();
+    loop_tool_context.pending_wardrobe_announcements = Some(pending_wardrobe.clone());
     native_tool_loop::run_native_tool_loop(
         db,
         deps.streaming,
@@ -3475,7 +3475,7 @@ where
             project_id: json_str(&chat, "projectId").as_deref(),
             loaded_memories: Some(&turn_loaded_memories),
         });
-        c.pending_wardrobe_announcements = pending_wardrobe.clone();
+        c.pending_wardrobe_announcements = Some(pending_wardrobe.clone());
         c
     };
 

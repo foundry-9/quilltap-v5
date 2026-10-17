@@ -554,9 +554,9 @@ fn min1_string(
 
 /// `z.array(z.string())` with `.default([])`, and `.max(cap)` when given:
 /// absent defaults; anything but an array (`null` included — a default
-/// replaces `undefined` only) is `invalid_type array`; each non-string
-/// element its own issue at `[k, index]`, and the size check still runs
-/// after them.
+/// replaces `undefined` only) is `invalid_type array`; an array past `cap`
+/// answers ONLY its `too_big` before any element (Zod 4.6.7's `capSize`);
+/// otherwise each non-string element is its own issue at `[k, index]`.
 fn string_array(
     obj: &Map<String, Value>,
     k: &str,
