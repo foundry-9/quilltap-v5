@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — fix(cli): the anchor-probe help and completion lines say "reinforcement at admission", re-captured from v4 25b8fab6a (P4.D312)
+
+_Versions: cli 0.0.34._
+
+Ports the CLI half of v4 `75d094e63`. `quilltap --help`, `quilltap completion zsh` and `quilltap completion fish` now describe `anchor-probe` as probing whether anchor lines suppress reinforcement at admission (the Memory Gate wording is gone). Tier R, which byte-diffs the binary against v4's live launcher, goes from 3 failures to 0 of 422 cases. One `completion_behavior` assertion that pinned the old fish phrase follows the new bytes. v4's `migrations status` id-parsing fix is not ported: v5's `migrations` subcommand is not available yet.
+
 #### 2026-10-16 — fix(restore): a new-account restore remaps the seat ids in the turn queue, the cycle lists and a whisper's audience (P4.D312)
 
 _Versions: core 0.0.1308._

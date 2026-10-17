@@ -651,7 +651,8 @@ fn fish_and_zsh_carry_the_p4d269_template_lines() {
         "fish template lost recall-replay's --as-of"
     );
     assert!(
-        FISH_TEMPLATE.contains("Probe anchor-line effect on Memory Gate"),
+        // P4.D312: v4 `75d094e63`'s wording (re-captured at `25b8fab6a`).
+        FISH_TEMPLATE.contains("Probe anchor-line effect on admission"),
         "fish template lost the anchor-probe top-level line"
     );
     assert!(

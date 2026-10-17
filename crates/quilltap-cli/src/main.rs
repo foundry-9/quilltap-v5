@@ -21,7 +21,10 @@
 //! `recall_replay_help.txt` and `anchor_probe_help.txt` again at v4
 //! `83334b9a5` (P4.D299 — bug 239's port flags, the `memories --character`
 //! flag block, the two tools' admission / text-fallback paragraphs), where
-//! `main_help.txt` re-captured byte-identical.
+//! `main_help.txt` re-captured byte-identical. `main_help.txt` (the
+//! `anchor-probe` line) and the `zsh` / `fish` completion templates
+//! re-captured at v4 `25b8fab6a` (P4.D312 — `75d094e63`'s 'reinforcement at
+//! admission' wording).
 
 mod anchor_probe_cmd;
 mod completion_cmd;

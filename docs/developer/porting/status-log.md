@@ -186308,3 +186308,35 @@ Branch `claude/p4.d312-data-cli-smalls-e89421`, cut from `REAIM`
   neither key and v5 has no `merge` mode: the restore-side gap is recorded
   for a later archive-growing lane. `restore-field-fidelity.test.ts` NO-PORT
   (tests-only, mocked repos, `mode: 'merge'`).
+
+### Unit 4 — `75d094e63`'s three CLI help bytes (cli 0.0.34)
+
+- **Red-first Tier R** (`QT_V4_CHECKOUT` = the pin, `QT_NODE` Node 24,
+  `--nocapture`, 351.7 s, no SKIP): 422 cases, exactly 3 failures —
+  `[main help]` (v4 `…suppress reinforcement at admission` vs v5
+  `…suppress Memory Gate reinforcement`), `[completion zsh]` (the same phrase
+  in the `anchor-probe:` describe line), `[completion fish]` (`-d 'Probe
+  anchor-line effect on admission'` vs `… on Memory Gate'`).
+- **Port:** `main_help.txt:19`, `zsh.template:46`, `fish.template:64` OLD →
+  NEW verbatim; both templates are now `cmp`-identical to the pin's whole
+  files. `main.rs`'s provenance comment names the `25b8fab6a` re-capture.
+- **After:** Tier R 422 cases, 0 failures (376.9 s, no SKIP). NO regen —
+  Tier R byte-diffs v5's binary against the LIVE launcher at
+  `QT_V4_CHECKOUT`; there is no stored oracle.
+- **A v5-literal pin the survey missed:** `completion_behavior`'s
+  `fish_and_zsh_carry_the_p4d269_template_lines` (`completion_behavior.rs:653`)
+  asserted the OLD fish phrase — the survey's "it reads flags, not the
+  summary string" was wrong for this one test. Updated to the new bytes;
+  12/12.
+- **Tier 2 item 16:** `anchor_probe_help.txt` is byte-equal to `node
+  "$PIN/packages/quilltap/bin/quilltap.js" anchor-probe --help` (empty
+  diff) — untouched.
+- **`migrations status` / `extractMigrationId` — NO-PORT (evidence for
+  P4.D313's record):** `"migrations"` is in `SUBCOMMANDS` (`main.rs:69`), has
+  no `match` arm, and falls to `other => not_yet_available(other)`
+  (`main.rs:265`) → `fn not_yet_available` (`main.rs:109`, exit 1). v4's fix
+  at the pin (`packages/quilltap/lib/migrations-commands.js:46-57`): the
+  const form `/^\s*const\s+MIGRATION_ID\s*(?::\s*\w+\s*)?=\s*['"]([^'"]+)['"]/m`,
+  honoured only beside `/^\s*id:\s*MIGRATION_ID\b/m`, else the literal form
+  `/^\s*id:\s*['"]([^'"]+)['"]/m`. Standing note: a future v5 `migrations
+  status` must read BOTH id forms from day one.
