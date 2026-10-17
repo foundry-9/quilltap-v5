@@ -188160,3 +188160,238 @@ prose that never opens, the Slash Commands card off and on once P4.D304 lands,
 the help page's deep link, bug 251's whitespace line kept, the About
 sentences, the digest link's colour in dark mode) — plus the new row icons
 taking the theme's icon set.
+
+## The `25b8fab6a` Pascal-programme + composer-slash-commands + 4.10.0-release drift catch-up round — UNIFICATION record (2026-10-17)
+
+**P4.D314 → {P4.D304 → {P4.D305 → P4.D306}} ∥ P4.D309 ∥ P4.D310 ∥ P4.D311
+∥ P4.D312, with P4.D307 ∥ P4.D308 ∥ P4.D313 — ALL ELEVEN LANES LANDED; the
+oracle baseline MOVES `83334b9a5` → `25b8fab6a`** (v4 `main`, 2026-10-16
+07:07, `4.11.0-dev.10`, "fix: month-word prototype keys (bug 247); orphaned
+typeahead menu (bug 250)").
+- **The branch.** `unify/25b8fab6a` was cut from `main` `6f78aa3d7`. The lanes
+  were CHERRY-PICKED in §S.1's order over the three stacking points — P4.D314
+  (`REAIM`) → P4.D304 (`KEYSTONE` + Tier 2) → P4.D305 (`TRIGGERS`) → P4.D306 →
+  P4.D310 → P4.D312 → P4.D309 → P4.D311 → P4.D313 → P4.D307 → P4.D308 — 47
+  commits.
+- **Conflicts.**
+  - The version files and `Cargo.lock` kept HEAD's values and were recounted
+    once.
+  - The CHANGELOG (newest first) and this log (appended in pick order) were
+    unioned both-sides.
+  - The SPA fixtures README took both lanes' end sections.
+  - ONE source merge: the shared generator
+    `harness/oracle/cases/pascal-custom-tool-definition.ts`, where P4.D307's
+    fenced block met P4.D305's / P4.D306's (below).
+  - Nothing else conflicted. `wardrobe.rs` (P4.D309 + P4.D312) and
+    `core-contract.ts` (P4.D307 + P4.D309) unioned by themselves.
+- **Build.** The raw union compiled with zero warnings.
+
+### The §2 probe, the pin, `/driftcheck`
+
+- **The probe FAILED at the start:** v4 `main` stood NINE commits past the
+  pin (`5cb0e0190`, as the orders recorded, then `a05c6f755` and the
+  outfit-history programme `fcab3f112` … `f46cf40a2`), and the tree was CLEAN.
+  `bugfix` (`489b228b6`) and `release` (`2432b9057`) had not moved.
+- **The pin stood (§R.1).** `/tmp/qt-v4-pin-unify-25b8fab6a` was a detached
+  worktree with its OWN `npm ci --offline` root tree (openai 7.34.0, zod
+  4.6.7, the cipher-less `better-sqlite3` native build verified), the
+  `packages/quilltap` link, and the plugin dirs symlinked from the live
+  checkout (plugin-utils 2.7.1 ×14). The lockfile diff `25b8fab6a..f46cf40a2`
+  moves only the version stamp.
+- **The nine new commits** were classified from the hunks by one reader in
+  parallel with the gate. They are recorded at the close as §3 UNPROCESSED
+  rows; the `5cb0e0190` `--stat`-only row is replaced. The TWELFTH D23 move
+  (`chat_wardrobe_history`) is among them, and v4's generateDDL never renders
+  it — a planning ruling is owed.
+
+### The wires (§S.5 / §S.9)
+
+1. **The run dialog's wardrobe sentences.** P4.D307's
+   `qt-custom-tool-wardrobe-lines` is wired into P4.D308's
+   `custom-tools-popup.ts` with the three edits C4 spells out, in v4's
+   `CustomToolRunDialog.tsx:926-1001` order. One popup spec case was added,
+   RED with the component line removed (1 failed / 48), and one e2e beat in
+   `salon-custom-tools-flow.spec.ts` (P4.D307 item 14's beat). The beat
+   authors a wardrobe-effect definition through `mountFileWrite`, reads the
+   panel, and never runs the tool.
+2. **The definition corpus, ONCE.** The merge at the P4.D307 pick, BY ID:
+   - 15 ids were new.
+   - 5 same-id rows differed only by a named constant against its literal
+     (identical inputs).
+   - THREE ids carried a different input on each side. The server lanes'
+     inputs keep the ids; P4.D307's survive as `-wrong-types`, `-bogus-key`
+     and `-literal-value`.
+   - It was regenerated from the pin for both consumers: 449 rows, sha-256
+     `48765f04…`, the 431 kept rows byte-identical to P4.D306's copy.
+3. **`pascal_run_custom_equivalence`** is green whole (sweep).
+4. **The `.qtap` `'trigger'` row** (`qtap_schema_validate_equivalence`) is
+   green against P4.D313's vendored export schema.
+5. **The signature moves.** `folder_action(…, blob_webp)` has six engine call
+   sites; `collect_container_components` is array-form at both production
+   callers. Neither meets P4.D306's `wear_ops`.
+6. **The mailbox renames.** P4.D310's renames have no pin site left in
+   P4.D305's fence.
+7. **`wardrobe.rs` and `core-contract.ts`** unioned cleanly (disjoint fences).
+8. **Skipped, as permitted.** P4.D308's accessor keeps its file's cast idiom,
+   as its two sibling keys do.
+9. **P4.D313's three HANDOFF checks** are byte-equal against the vendored
+   copy: the `composer-slash-commands` section id, P4.D309's help / docs
+   text, and P4.D312's hair sentence.
+10. **`memory-time`** carries both P4.D314's constants re-aim and P4.D312's
+    retired table, and the constants row still emits 86400000.
+11. **`handler-logging-inventory.md`** was regenerated from the pin on the
+    union (PORTED-PINNED 25 → 27: bug 248's two render lines).
+
+**§S.9:** `P4D304/305/306_SERVER_LANDED` were flipped to `true`.
+
+### The §3 review — seven parallel readers + the unifier
+
+**ONE BLOCKING finding, and it was misattributed by two lane records.**
+- **What happened.** P4.D305's `TRIGGERS` added "Ringer" to
+  `orchestrator-tier3.json` with character-level `controlledBy: "user"`. With
+  two user-controlled CHARACTERS, v4's step 2 (`findUserControlled(userId)
+  .length === 1`) no longer resolves. Every persona-less call (22) fell to
+  step 3's `users` profile read: v4 answers it by CREATING the table through
+  `ensureCollection`, and v5's strict read failed `no such table: users`.
+- **The attributions.** P4.D305's lane note said "present with the trigger
+  site OFF — NOT P4.D305's", but turning the site off does not remove Ringer.
+  P4.D310 said "KEYSTONE-side", but KEYSTONE touches no orchestrator fixture.
+  The 22 calls had also silently changed premise on BOTH sides (`{{user}}`
+  "Operator" → "User").
+- **Caught by** the union reader reading v4's resolver against the fixture.
+- **Fixed:** Ringer is user-driven through its PARTICIPANT row only (the
+  builder's mixed shape). `orchestrator_tier3_equivalence` is green whole,
+  with `trigger_phrase` green by name.
+
+**Should-fixes that would have shipped, all fixed with tests:**
+1. **An `llm` custom tool never consulted in a chat.** The per-turn
+   `build_turn_tool_runner` wired no `ConsultRunner` (true of the model's
+   `run_custom` since its port), and P4.D305's two trigger sites inherited it
+   (`consult: None`). v4 builds `buildCustomToolLlmInvoker` for every entrance
+   whose definition declares `llm` (`run-service.ts:133`).
+   - **Fix:** `OrchestratorDeps.consult` / `FinalizeOptions.consult` carry the
+     spine's runner into the tool runner and both sites.
+   - **Pinned by** the `consult_wired` wiring probe.
+   - **Gaps:** the enclave passes `None` (recorded, like its web search). ⚠
+     LIVE: one consult completion per in-chat run of an `llm` tool.
+2. **The operator's Run Tool lost Aurora's announcement.** `chat_run_tool`
+   built its context with `..Default::default()`, which minted a
+   `pending_wardrobe_announcements` set nothing on that path drains. v4's
+   `run-tool.ts:75-82` passes none, so the change is `enqueued now`. The bug
+   predates the round for `wardrobe_*`; P4.D306 widened it to `run_custom`
+   gestures, and P4.D308's `/wardrobe_*` made it one keystroke.
+   - **Fix:** `ToolExecutionContext.pending_wardrobe_announcements` is
+     `Option` (v4's `?: Set`). `create_tool_context`, the Brahma Console and
+     the scenario builder still mint one.
+   - **Pinned by** `operator_tool_context`, extracted and unit-pinned. The
+     avatar-trigger family's context now hands its set explicitly, as its
+     oracle does.
+3. **The Rust definition twin lacked Zod 4.6.7's `capSize` on `outcomes` and
+   the string-input length checks on `effects` / `outcomes`.** The merged
+   corpus reddened 4 rows. This is the HANDOFF P4.D306 and P4.D307 both
+   recorded, and the FIFTH hand-written twin that P4.D311's census ruled out
+   with a false "no array-max text".
+   - **Fix:** the authored-message helper is now in `custom_tool_types.rs`.
+4. **An empty rendered `chipLabel` was written** as `"chipLabel":""`, where
+   v4 spreads on truthiness (`run-service.ts:186`).
+   - **Fix:** a red-first unit test.
+
+**Also fixed:**
+- **The key-order pin.** P4.D304's Tier 1 item 8 asked for a byte compare of
+  the row's key order and no row did one. `settings_routes` now pins the
+  TOP-LEVEL key sequence of the two new families, mutation-proven (moving
+  `customToolTriggers` reddens `s_get_4_11_defaults`). The whole-body compare
+  also measured a pre-existing nested divergence, recorded as
+  `CHEAP_LLM_KEY_ORDER`.
+- **Docs.** `zod_version_guard`'s capSize note had two false claims and wrong
+  names. Two doc comments were re-attached to the right function, one of them
+  the unifier's own.
+- **The SPA.** The composer spec read the menu once (it raced the roster's
+  `/pascal` row). Two comments claimed the `composerSlashCommands` key was
+  undeclared. Stale corpus counts were corrected in the spec header and the
+  README.
+
+**Recorded, not fixed (the follow-ups round; each in its order's Unification
+paragraph):**
+- `CHEAP_LLM_KEY_ORDER`.
+- `ZOD_STRING_LENGTH_PAST_INVALID_TYPE` — the four zod twins stop at
+  `invalid_type` for a string; pre-existing since zod 4.6.5.
+- The strict `users` read in `user_identity_resolver`.
+- `run_custom`'s two v4 WARNs.
+- The enclave's consult runner.
+- The stale L8 note.
+- The `wardrobe-folders.api.ts` cast.
+- The OAC falsy-usage frame (NO-PORT).
+
+**v4 filing candidate:** `{{params.constructor}}` passes v4's wardrobe-
+reference validation through an Object-prototype read (the bug-247 family).
+
+### Union reds the gate caught
+
+- **`host_zone_dates_equivalence`.** P4.D304 filled v4's Almanack fixture's
+  missing `customToolTriggers` in `almanack-render.test.ts`, but missed the
+  second consumer, `host-zone-dates.ts`. It now carries the same fill and
+  tripwire, and is green by name.
+- **`extraction_context_degrade`.** A sweep-ORDER artifact: it reads the
+  fixture `memory_processor_tier3` builds, and runs earlier alphabetically.
+  Green by name after.
+- **`memory_maintenance_routes_equivalence`.** v4 recorded
+  `scheduledDelayMs: -1` on one row, a millisecond-boundary race on v4's
+  side. It did not reproduce, and is green by name.
+
+### The gate (final tree)
+
+- **fmt / clippy / release:** `cargo fmt --all --check`, `cargo clippy
+  --workspace --all-targets -D warnings` plain AND with
+  `--features quilltap-core/native-transport`, and `cargo build --release`
+  are all clean on the final tree.
+- **The full sweep from the `25b8fab6a` pin** (`/tmp/unify-25b8fab6a-
+  sweep.json`, 724 families, before the review fixes): **716 ok / 5 red / 3
+  refused**.
+  - The reds: the two standing (`ariel_writers_tier3`, `search_replace`) and
+    the three classified above (`host_zone_dates`, `extraction_context_
+    degrade`, `memory_maintenance_routes`).
+  - The refusals: `backup_uuid_remap`'s repo write and the two
+    non-extractable families, both by design.
+  - Every §R.13 family is `ok` by name, with ZERO IMPORT-DEAD loads.
+  - `orchestrator_tier3` was green in this sweep, with the Ringer fixture fix
+    in before the sweep reached it.
+- **By name after the fixes:**
+  - 24 families re-run from the pin (`rerun1`–`rerun3`), all `ok`: every
+    family the review fixes touched, the three union reds, the three
+    env-block artifacts below, and `settings_routes` with its new pin.
+  - `pascal_custom_tool_definition` green on 449 rows.
+- **Tier R** (`cli_differential`): **422 cases / 0 failures**.
+- **`cargo test --workspace --no-fail-fast`** (`CARGO_INCREMENTAL=0`, the env
+  block harvested from the sweep's run recipes, 922 vars): **816 binaries /
+  5,314 passed / 5 failed / 3 ignored, zero SKIP.**
+  - The five: the two standing, plus three env-block artifacts. Shared
+    `QT_FIXTURE_*` names point at another family's fixture in a one-env
+    gate: `brahma_console_tier3`, `characters_update_tier2`, and
+    `doc_mount_files_tier2` on the shared `/tmp/qt-dmf-fixture.db`. Each is
+    green by name from the pin.
+- **SPA:** lint + build clean; **521 files / 10,938 tests**.
+- **Full Playwright:** **412 passed / 0 failed / 7 skipped (13.6 m)**.
+  - The seven: the six standing parks plus `composer-slash-commands-flow`'s
+    own premise skip (`no zero-parameter self_inventory is invocable here`).
+  - The three gated beats are LIVE and green.
+  - **One LIVE beat caught a real SPA defect before this run.** Workbench
+    beat (a) lost 1–3 chips of 8 on every by-file run (3 of 3): the trigger
+    field read the parent's input, which zoneless change detection lands
+    only on the next render, so a second Enter before it overwrote the first
+    add.
+  - **Fixed** with a `linkedSignal` of the field's last emission, plus a
+    red-first component case. The spec is 6/6 twice by file, then green in
+    the full run.
+
+### Versions
+
+core 0.0.1313, host 0.0.210, web 0.0.241, cli 0.0.34, SPA 0.5.873; tauri
+0.0.9 and harness 0.0.1110 unchanged; `quilltap-sqlite3mc-sys` pinned.
+
+### 💸 Owed to the next `/dogfood`
+
+`dogfood-findings.md`'s standing note of 2026-10-17 (the §S.8 queue; the
+copy-before rule RETIRES; ⭐ the in-chat consult and the Run Tool's Aurora
+announcement) rides with the `83334b9a5` round's owed pass.
+

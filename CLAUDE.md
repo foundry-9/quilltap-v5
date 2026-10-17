@@ -958,10 +958,68 @@ records THERE. Update this summary only when a phase or round completes.
   (the review's recorded items + two human rulings: `OFFSET_OCCURRED_AT_ROW_
   SCHEMA`, the strict-export consequence), then the `362426c8f` catch-up
   (the TENTH D23 move)** — `phase-4.md`. Round record: `status-log.md`.
-- **Oracle baseline: `83334b9a5` (2026-10-13, v4 main — "Release checklist 4:
-  API standard audit; use successResponse in new handlers",
-  `4.10.0-dev.176`), adopted at the `83334b9a5` memory-refactor + scenarios
-  round's unification (2026-10-15).** **Drift state, the drift-check method,
+- **The `25b8fab6a` Pascal-programme + composer-slash-commands + 4.10.0-
+  release drift catch-up round (P4.D314 → {P4.D304 → {P4.D305 → P4.D306}} ∥
+  P4.D309 ∥ P4.D310 ∥ P4.D311 ∥ P4.D312, with P4.D307 ∥ P4.D308 ∥ P4.D313):
+  UNIFIED on main (2026-10-17) — ALL ELEVEN LANES LANDED; the oracle
+  baseline MOVES to `25b8fab6a`. The ledger's §3 holds the NINE commits v4
+  landed past the pin, recorded UNPROCESSED at the close probe (the
+  Workbench wardrobe picker, `{{character}}`, and the outfit-history
+  programme WITH THE TWELFTH D23 MOVE — `chat_wardrobe_history`, a table
+  v4's generateDDL never renders, so a provisioning ruling is owed).
+  - **Absorbed:**
+    - the TENTH + ELEVENTH D23 moves in ONE `fresh_schema.json` re-dump
+      (`chat_settings.customToolTriggers` / `composerSlashCommands`, two
+      UNSTAMPED boot ensures, the two PUT arms, the Almanack line — P4.D304);
+    - Pascal trigger phrases on ONE run service with the never-failing
+      runner and the two spine sites (P4.D305);
+    - wardrobe effects as a write XOR gesture, plus the composite take-off by
+      leaves (P4.D306);
+    - the Workbench / Automation / run-dialog SPA (P4.D307);
+    - composer `/` slash commands + bug 251's trim + the About blurbs
+      (P4.D308);
+    - copy-to-folder with the components ask (P4.D309);
+    - bugs 248 / 249 + the log prune (P4.D310);
+    - openai-compatible `normalizeUsage`, openai 7.34.0, zod 4.6.7 `capSize`
+      (P4.D311);
+    - the seat-id remap, the hair note, the Tier R bytes, and bug 247
+      CONVERGED (P4.D312);
+    - `help/` 131 + both public schemas + `docs/v4/` 491 + the NO-PORT record
+      (P4.D313);
+    - the IMPORT-DEAD re-aims (P4.D314).
+  - **The §3 review (seven readers + the unifier): ONE BLOCKING finding,
+    misattributed by two lane records.** P4.D305's fixture made "Ringer" a
+    second user-controlled CHARACTER, so 22 `orchestrator_tier3` calls left
+    v4's single-user-character step for the `users` read. It is fixed by
+    making Ringer user-driven through its participant only.
+  - **Should-fixes that would have shipped, all fixed with tests:**
+    - an `llm` custom tool NEVER consulted in a chat — the per-turn runner
+      wired no consult runner (`OrchestratorDeps.consult` now; ⚠ LIVE spend);
+    - the operator Run Tool silently dropped Aurora's announcement (the
+      context's set is now v4's optional one);
+    - the Rust definition twin lacked Zod 4.6.7 `capSize` on `outcomes`
+      (the fifth twin P4.D311's census falsely ruled out);
+    - an empty `chipLabel` was written;
+    - and, caught LIVE by Playwright, the Workbench trigger field dropped a
+      phrase on a second Enter before re-render (`linkedSignal`).
+  - **Gate:** fmt / clippy (both feature sets) / release clean; the sweep
+    from the pin 716 ok / 5 / 3 refused of 724 (the two standing + three
+    union / order / race reds, each fixed or green by name); Tier R 422 / 0;
+    816 binaries / 5,314 / 5 (the standing + three env-block artifacts) / 3
+    ignored, zero SKIP; SPA 521 / 10,938; Playwright 412 / 0 / 7 (13.6 m),
+    all gated beats LIVE.
+  - **Versions:** core 0.0.1313, host 0.0.210, web 0.0.241, cli 0.0.34, SPA
+    0.5.873.
+  - **Next:** the owed dogfood pass for BOTH rounds (the copy-before rule
+    RETIRES); then the follow-ups smalls round (`CHEAP_LLM_KEY_ORDER`,
+    `ZOD_STRING_LENGTH_PAST_INVALID_TYPE`, the strict `users` read, plus the
+    `83334b9a5` round's items and two rulings); then the `f46cf40a2`
+    outfit-history catch-up (its D23 ruling first) — `phase-4.md`. Round
+    record: `status-log.md`.
+- **Oracle baseline: `25b8fab6a` (2026-10-16, v4 main — "fix: month-word
+  prototype keys (bug 247); orphaned typeahead menu (bug 250)",
+  `4.11.0-dev.10`), adopted at the `25b8fab6a` round's unification
+  (2026-10-17).** **Drift state, the drift-check method,
   and the pinned-worktree regen recipe live in
   `docs/developer/porting/drift-ledger.md`** — maintained by `/driftcheck`
   and by `/unify` at baseline moves; the other porting commands run the

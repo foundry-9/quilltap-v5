@@ -7151,7 +7151,111 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `25b8fab6a` Pascal-programme + composer-slash-commands + 4.10.0-release drift catch-up round (P4.D314 → {P4.D304 → {P4.D305 → P4.D306}} ∥ P4.D309 ∥ P4.D310 ∥ P4.D311 ∥ P4.D312, with P4.D307 ∥ P4.D308 ∥ P4.D313) — ORDERED 2026-10-16
+## The `25b8fab6a` Pascal-programme + composer-slash-commands + 4.10.0-release drift catch-up round (P4.D314 → {P4.D304 → {P4.D305 → P4.D306}} ∥ P4.D309 ∥ P4.D310 ∥ P4.D311 ∥ P4.D312, with P4.D307 ∥ P4.D308 ∥ P4.D313) — UNIFIED 2026-10-17 (ordered 2026-10-16)
+
+**UNIFIED on main (2026-10-17). ALL ELEVEN LANES LANDED, and the oracle
+baseline MOVES `83334b9a5` → `25b8fab6a`.**
+- **Ledger.** The twenty-six absorbed / ratified rows retire to §6. The NINE
+  commits v4 landed past the pin stay in §3 as UNPROCESSED rows, recorded by
+  the close `/driftcheck`: the Workbench wardrobe picker, `{{character}}` +
+  `announceAsCharacter`, and the outfit-history programme WITH THE TWELFTH D23
+  MOVE (`chat_wardrobe_history`, a table v4's generateDDL never renders).
+- **The probe.** The §2 probe found v4 nine commits past the pin (clean,
+  `bugfix` unmoved), so the pin stood. Every regen, the whole sweep and every
+  live-checkout guard ran from `/tmp/qt-v4-pin-unify-25b8fab6a`, with its own
+  `npm ci --offline` tree (openai 7.34.0, zod 4.6.7, plugin-utils 2.7.1 ×14).
+- **The picks.** The lanes were CHERRY-PICKED in §S.1's order: 47 commits.
+  Only version, CHANGELOG, log and README unions conflicted, plus ONE source
+  merge — the shared definition corpus, merged BY ID.
+- **§S.5 / §S.9.**
+  - The wardrobe-lines component is wired into the popup, red-first.
+  - The definition corpus was regenerated once for both consumers (449 rows).
+  - `pascal_run_custom` is green whole.
+  - The `.qtap` `'trigger'` row is green against the vendored schema.
+  - `wardrobe.rs` and `core-contract.ts` union cleanly.
+  - P4.D313's three HANDOFF byte checks match.
+  - The `memory-time` constants row still emits 86400000.
+  - The logging inventory was regenerated (PINNED 25 → 27).
+  - Wire (8) was skipped as permitted.
+  - The three gated beats are LIVE.
+
+**The §3 review (seven readers + the unifier): ONE BLOCKING finding,
+misattributed by two lane records, and four should-fixes that would have
+shipped, all fixed with tests.**
+- **The blocker.** P4.D305's fixture made "Ringer" a second user-controlled
+  CHARACTER, moving 22 `orchestrator_tier3` calls off v4's single-user-
+  character step. That is the `no such table: users` residue P4.D305 called
+  "not mine" and P4.D310 called KEYSTONE's. Ringer is now user-driven by its
+  participant only.
+- **The should-fixes:**
+  - The in-chat turn held no consult runner, so an `llm` custom tool NEVER
+    consulted in a chat (the model's `run_custom` since its port, and both new
+    trigger sites). `OrchestratorDeps` / `FinalizeOptions` now carry the
+    spine's runner, pinned by a wiring probe. ⚠ LIVE spend.
+  - The operator's Run Tool minted a wardrobe announcement set nothing drains,
+    so Aurora's announcement was silently lost. Now v4's optional set: `None`
+    means enqueue now.
+  - The merged corpus reddened the Rust definition twin's `outcomes` /
+    string-input arms: Zod 4.6.7 `capSize`, the FIFTH twin that P4.D311's
+    census falsely ruled out.
+  - An empty rendered `chipLabel` was kept where v4 omits it.
+- **Also fixed:** a key-order pin P4.D304's order asked for and no row did
+  (mutation-proven); P4.D304's missed second consumer of v4's Almanack fixture
+  (`host_zone_dates`); a flaky one-shot menu read; false / misplaced doc
+  comments.
+
+**Gate on the final tree:**
+- fmt / clippy (both feature sets) / release are clean.
+- The sweep from the pin: 716 ok / 5 red / 3 refused of 724. The reds are
+  the two standing plus three union / order / race reds, each fixed or green
+  by name.
+- Tier R: 422 / 0.
+- `cargo test --workspace`: 816 binaries / 5,314 / 5 (the two standing +
+  three env-block artifacts, each green by name) / 3 ignored, zero SKIP.
+- SPA: 521 files / 10,938.
+- Full Playwright: **412 / 0 / 7 (13.6 m)**. A live beat caught one more real
+  SPA defect first: the Workbench trigger field dropped a phrase on a second
+  Enter before re-render. It is fixed with a red-first case.
+
+**Versions:** core 0.0.1313, host 0.0.210, web 0.0.241, cli 0.0.34, SPA
+0.5.873. Round record: `status-log.md` → "The `25b8fab6a` … round —
+UNIFICATION record (2026-10-17)". Each order's status header carries its
+Unification paragraph and exactly what stays OPEN.
+
+**NEXT (in order):**
+1. **The owed dogfood pass** (`/dogfood`) covers BOTH this round and the
+   `83334b9a5` round, on a Friday COPY taken at any v4 point up to
+   `f46cf40a2` (the copy-before rule RETIRES).
+   - **Headline row:** the copy's first v5 boot, with every ensure — the two
+     4.11 `chat_settings` ALTERs and the `83334b9a5` round's twelve — a
+     measured NO-OP.
+   - **Queue:** `dogfood-findings.md`'s standing notes of 2026-10-17 and
+     2026-10-15. The ⭐ rows are the in-chat consult (💸) and the Run Tool's
+     Aurora announcement.
+2. **The follow-ups smalls round** (`/setupphase`):
+   - **This review's recorded items:** `CHEAP_LLM_KEY_ORDER`;
+     `ZOD_STRING_LENGTH_PAST_INVALID_TYPE` on the four zod twins; the strict
+     `users` read in `user_identity_resolver`; `run_custom`'s two v4 WARNs;
+     the enclave turn's missing consult runner; the stale L8 note.
+   - **Carried from the `83334b9a5` round's NEXT item 2:** the repository-
+     fallback `?` reads, P4.D291 #24's probe fixture, P4.D298's smalls, the
+     lock's lines, the scenario parser WARNs, the D301 toast,
+     `DQS_QUOTED_IDENTIFIER_FALLBACK`, and the two human rulings
+     `OFFSET_OCCURRED_AT_ROW_SCHEMA` / P4.D294 item 19.
+   - **Also:** the earlier OPEN lists (the `4a38222e6` and `01a83539d`
+     headers, the P4.D273 ruling, dogfood #156 / #157).
+3. **The `f46cf40a2` drift catch-up round** (`/driftcheck` first if v4 has
+   moved further): the Workbench wardrobe picker (`5cb0e0190`),
+   `{{character}}` + `announceAsCharacter` (`a05c6f755`), and the
+   outfit-history programme (`83387d0e5` … `f46cf40a2`: storage, provenance
+   recording, `wardrobe_rollback` / `wardrobe_history` (57 → 59 tools), the
+   History tab, the backup / restore / `.qtap` carriers).
+   - **A planning RULING is owed FIRST:** the TWELFTH D23 move's table is
+     created by migration only, so `fresh_schema.json` cannot carry it. Either
+     a `migration_tables.json` dumped through v4's real `MigrationRunner` (the
+     R-A route, overruled once for the wear ledger) or a boot-ensure create.
+     Until then `zero_migrations_rerun` is the only family that trips.
+
 
 **Baseline `83334b9a5`. The round is PINNED at v4 `25b8fab6a`** ("fix:
 month-word prototype keys (bug 247); orphaned typeahead menu (bug 250)",

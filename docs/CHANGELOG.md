@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-17 — unify: the `25b8fab6a` Pascal-programme + composer-slash-commands + 4.10.0-release drift catch-up round — eleven lanes (P4.D304–P4.D314), the baseline moves `83334b9a5` → `25b8fab6a`
+
+_Versions: quilltap-core 0.0.1313, quilltap-host 0.0.210, quilltap-web 0.0.241, quilltap-cli 0.0.34, SPA 0.5.873._
+
+All eleven lanes of the `25b8fab6a` round were cherry-picked onto `main` in the planned order, 47 commits. Absorbed:
+- the TENTH and ELEVENTH schema moves (`chat_settings.customToolTriggers` / `composerSlashCommands`, with two boot ensures);
+- Pascal trigger phrases and wardrobe effects (server and Workbench);
+- composer slash commands;
+- wardrobe copy-to-folder;
+- bugs 247–251;
+- the new-account seat-id remap and the hair precedence note;
+- the openai 7.34.0 / zod 4.6.7 move;
+- `help/`, the public schemas and `docs/v4/` at the pin;
+- the NO-PORT record.
+
+**Unification wires.** The run dialog's wardrobe sentences are now in the custom-tools popup, with a spec case and an e2e beat. The shared definition corpus was merged by id and regenerated once (449 rows). The three gated e2e beats are live, and the logging inventory was regenerated.
+
+**Review fixes.**
+- **Tier-3 fixture.** The orchestrator fixture added a second user-controlled character, which moved 22 calls onto the `users` read.
+- **In-chat consult.** The turn had no consult runner, so `llm` custom tools never consulted in a chat (the model's `run_custom` and both trigger sites).
+- **Run Tool announcements.** The operator Run Tool dropped Aurora's outfit announcement; the context's set is now optional, as in v4.
+- **Zod 4.6.7.** `capSize` and the string-input length checks were added to the Pascal definition's `outcomes` / `effects`.
+- **Empty `chipLabel`.** An empty rendered `chipLabel` is no longer written.
+- **Key-order pin.** A top-level key-order pin was added on the chat-settings routes.
+- **Almanack fixture.** A missed consumer of v4's Almanack fixture got the same fill.
+- **Workbench trigger field.** The field lost a phrase on a second Enter before re-render.
+- **Minor.** A flaky menu read and stale docs.
+
+**Gate.**
+- Sweep from the pin: 716 ok / 5 red (2 standing, 3 fixed or green by name) / 3 refused, of 724.
+- Tier R: 422 / 0.
+- `cargo test --workspace`: 816 binaries / 5,314 passed / 5 failed (2 standing, 3 env-block artifacts green by name), zero SKIP.
+- SPA: 521 files / 10,938.
+- Playwright: 412 passed / 0 failed / 7 skipped.
+
 #### 2026-10-16 — test(e2e): the composer / commands flow; P4.D308 lane record (P4.D308)
 
 _Versions: SPA 0.5.871._

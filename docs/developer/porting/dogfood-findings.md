@@ -641,9 +641,79 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+### From the `25b8fab6a` unification (2026-10-17): the owed dogfood pass's queue, the review's checks, and two v4 filing candidates
+
+1. **The copy rule RETIRES.** A v5 at the `25b8fab6a` baseline carries both
+   4.11 `chat_settings` columns (`customToolTriggers`, `composerSlashCommands`),
+   reads `pascalMeta.invokedBy: 'trigger'` rows and the `wardrobe.*` effect
+   records, so **a Friday copy taken at ANY v4 point up to `f46cf40a2` opens**.
+   The only standing rule is the general one: a v5 build from BEFORE this round
+   must not open an instance this round's ensures altered. ⚠ v4 past the pin
+   (the outfit-history programme, `83387d0e5` …) adds `chat_wardrobe_history`,
+   which v5 at this baseline never reads. Nothing breaks, but a v5 backup /
+   restore / `.qtap` round trip LOSES the history, and a tool using
+   `{{character}}` (`a05c6f755`) is refused at load, so it drops off v5's
+   roster. Expect both; neither is a v5 defect at this baseline.
+2. **Headline row:** the first v5 boot of a Friday copy taken AFTER v4 ran
+   past `4877fc2da`. Both `chat_settings` ALTERs should be measured NO-OP
+   ensures, and the `83334b9a5` round's twelve ensures should be NO-OPs too
+   (that round's owed pass rides this one; its queue below still stands).
+3. **The §S.8 queue** (each lane's own 💸 rows are in its lane record):
+   - **Trigger phrase:** with the setting ON, a phrase on a real turn puts
+     Pascal's row BETWEEN the user message and the reply, with `invokedBy:
+     'trigger'` and `triggerPhrase` on the row; the Almanack shows
+     `Auto-Run on Trigger Phrases`.
+   - **⭐ NEW at unification — a consult-bearing (`llm`) tool fired by a
+     phrase AND called by the model in a chat now consults for real** (💸 one
+     cheap completion per run; `pascalMeta.llm` carries the answer, never
+     `no LLM invoker was available`).
+   - **Wardrobe effect:** a custom tool dresses the rolling character, giving
+     ONE Aurora announcement and wear-ledger credit once per transition.
+   - **⭐ NEW at unification — the operator's Run Tool** (the modal, or
+     `/wardrobe_wear` from the composer) now ENQUEUES Aurora's announcement at
+     once. Before the fix it was silently lost; watch for the announcement
+     job, and the DEBUG `enqueued now`.
+   - **Composite take-off:** a composite is taken off by its leaves.
+   - **Slash commands:** `/d20`, `/<custom tool>` and `/wardrobe_w` run from
+     the composer, and the Slash Commands card turns the typeahead off.
+   - **Copy to folder:** an outfit with `components: 'copy'` gets the `(copy)`
+     titles and carries its pictures.
+   - **Bug 249:** on a persona-less one-on-one chat, the lone character
+     returns the floor.
+   - **Bug 248:** embeddings are queued at render (💸 cheap embedding spend).
+   - **Hair note:** the note appears in a real avatar prompt (💸 one image).
+   - **`new-account` restore:** a real backup restored with the seat-id lists
+     remapped keeps the turn queue intact.
+   - **OAC prompt-cache hits:** a turn on an openai-compatible provider shows
+     the budget's cache exclusion in the cost display (💸).
+   - **Small SPA checks:** the About page's four blurbs; the memory card's
+     `qt-link`; the run dialog's wardrobe sentences for a tool with a wardrobe
+     effect.
+4. **v4 filing candidates (the human's call):**
+   - **(a) `{{params.constructor}}` / `{{params.toString}}`** pass v4's
+     wardrobe-reference placeholder validation through an Object-prototype
+     read (`custom-tool.types.ts:1357`, `!declared[ref.name]`), probed at the
+     pin. v5 refuses them. This is the bug-247 family.
+   - **(b) The composite take-off's pre-fix symptom** (`f0db8cbb8` fixed it
+     upstream), if the human wants it on record.
+   - **(c) Not filed — the lone user-seat decision** (R-5 measured it away:
+     v4's `buildResult` rewrites the seat to `user_turn`).
+5. **Recorded for the follow-ups round (from the §3 review; each also named
+   in its order's Unification paragraph):**
+   - `CHEAP_LLM_KEY_ORDER`: the chat-settings GET's nested `cheapLLMSettings`
+     key order (v4 re-parses into schema order; v5 returns the stored bag's).
+   - `ZOD_STRING_LENGTH_PAST_INVALID_TYPE`: the four zod twins stop at
+     `invalid_type` for a string where v4 also runs the length checks.
+   - `user_identity_resolver`'s strict `users` read where v4 falls back.
+   - `run_custom`'s two v4 WARN lines.
+   - The enclave turn's missing consult runner.
+   - The stale L8 note in `turn-orchestrator-tier2.json`.
+
 ### From the `83334b9a5` unification (2026-10-15): the owed dogfood pass's queue and one check carried from the review
 
-1. **The copy rule tightened once more.** Dogfood ONLY on a Friday copy taken
+1. **The copy rule tightened once more** (**SUPERSEDED 2026-10-17** — the
+   `25b8fab6a` unification absorbed `362426c8f`; see that section's item 1).
+   Dogfood ONLY on a Friday copy taken
    BEFORE the human ran v4 past `362426c8f` (Pascal trigger phrases — v4 at
    `4.11.0-dev` ALTERs live `chat_settings` with `customToolTriggers` and
    writes `pascalMeta.invokedBy: 'trigger'` rows a v5 at the `83334b9a5`
