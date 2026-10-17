@@ -186676,3 +186676,417 @@ Branch `claude/p4.d309-wardrobe-copy-to-folder-d7a12a`, cut from P4.D314's
 - **Cleanup:** the pin worktree removed; the lane's `target/` and
   `apps/web/node_modules` / `dist` deleted; the red-first scratch worktree
   removed earlier; nothing pushed to main.
+
+## P4.D311 — the provider lane: `normalizeUsage` for openai-compatible, the SDK 7.34.0 / zod 4.6.7 guards, the corpus re-record, zod 4.6.7's `capSize` twins — LANE RECORD (2026-10-16)
+
+**Branch** `claude/p4.d311-oac-normalize-usage-330830` (worktree
+`.claude/worktrees/awesome-mirzakhani-330830`), cut from P4.D314's `REAIM`
+`abea3f336` (confirmed in P4.D314's lane-branch status header). The session
+opened on `claude/awesome-mirzakhani-330830` at `main` `6f78aa3d7` with no
+commits of its own; it was switched onto a fresh branch from `abea3f336`
+before the first edit (`/carryout` rule 2). Nothing pushed to `main`.
+
+### The pin and the §2 probe (Tier 1 item 1; §R.1 / §R.2)
+
+- **§2 probe (observation, 2026-10-16 21:24 CDT):** v4 on `main`, tree CLEAN,
+  `log 25b8fab6a..main` = **two commits** — `5cb0e0190` (the Workbench
+  wardrobe picker, recorded at planning) and **`a05c6f755`** ("feat(pascal):
+  {{character}} placeholder; character-announced custom tools") — **v4
+  moved: `a05c6f755` observed at 21:24**; `log 489b228b6..bugfix` empty. Out
+  of scope by the pin rule; recorded for `/driftcheck`.
+- **Pin** `PIN=/tmp/qt-v4-pin-p4d311-25b8fab6a` (no other lane shared the
+  path): `rev-parse HEAD` = `25b8fab6aa58636c6885ba63684c7f8fbfca9c3b`;
+  `show 25b8fab6a:package.json | jq -r .version` = `4.11.0-dev.10`.
+- **R-7, the FIRST measurement:** `(cd "$PIN" && npm ci --offline --no-audit
+  --no-fund)` → **rc 0, `added 1044 packages in 6s` — no `ENOTCACHED`**; the
+  `openai-7.34.0` / `zod-4.6.7` tarballs were in `~/.npm/_cacache`. The R-7
+  symlink fallback was NOT used. The user npm config skips install scripts
+  (`allow-scripts`), so `better-sqlite3`'s `build/` was absent; copied from the
+  live tree at the SAME version 12.11.1 (memory note
+  `tier-r-vacuous-equal-rows`'s pin side-note). Root: `openai` **7.34.0**,
+  `zod` **4.6.7**, `@quilltap/plugin-utils` **2.7.1**.
+- Symlink classes 2 (`packages/quilltap/node_modules`) and 3 (every
+  `plugins/dist/*/node_modules`, from the live checkout — **never `npm
+  install`ed**).
+- **The per-dir resolution table — MEASURED** (the survey §4.1
+  `createRequire` script verbatim, Node 24.13.1, from each pin plugin dir):
+
+  | plugin dir | `openai` | from | `@quilltap/plugin-utils` |
+  |---|---|---|---|
+  | deepseek, grok, nanogpt, openai-compatible, openai, z-ai | **7.23.0** | the dir's own (live) `node_modules` | 2.7.1 (own) |
+  | anthropic, curl, default-system-prompts, google, mcp, ollama, openrouter, search-serper | 7.34.0 | the PIN root | 2.7.1 (own) |
+  | builtin-embeddings | 7.34.0 | the PIN root | 2.7.1 (the PIN root; declares none) |
+
+  None of the six resolves 7.34.0 — no STOP. `grep -c normalizeUsage` on
+  `$PIN/plugins/dist/qtap-plugin-openai-compatible/node_modules/@quilltap/plugin-utils/dist/index.js`
+  = **4** (≥ 1).
+
+### Red-first A — the re-record from the pin BEFORE any v5 edit (Tier 1 item 2; R-3)
+
+From the lane worktree, `V4="$PIN" V5=<worktree>`, ONE script at a time,
+`git diff --stat` after each (logs `/tmp/p4d311/regen-*.log`):
+
+| recorder | files | `git diff --stat` |
+|---|---|---|
+| `regenerate-stream-fixtures.sh` (all ten) | `streams/chat_completions_sse/{deepseek,z-ai,openrouter,openai-compatible,nanogpt}`, `responses_api_sse/{openai,grok}`, `anthropic_sse/anthropic`, `google_parts/google`, `ollama_ndjson/ollama` `.recorded.ndjson` | **`openai-compatible` 5 + / 5 −; the other nine EMPTY** |
+| `regenerate-response-bodies.sh` | `response-bodies.recorded.ndjson` (60) | EMPTY |
+| `regenerate-request-envelopes.sh` | `request-envelopes.recorded.ndjson` (399) | EMPTY |
+| `regenerate-google-wire.sh` | `google-wire.recorded.ndjson` (24) | EMPTY |
+| `regenerate-image-fixtures.sh` | `image-dialects.recorded.ndjson` (185) | EMPTY |
+| `regenerate-text-errors.sh` | `text-http-errors.recorded.ndjson` | EMPTY |
+| `regenerate-tool-wire.sh` | `tool-wire.recorded.ndjson` | EMPTY |
+| `record-google-request.mjs` (+ `dump-wardrobe-tool-params.mjs` from the pin root for `--wardrobe-params`) | `google-request.recorded.ndjson` (13) | EMPTY |
+| `record-web-search-wire.mjs` (`TZ=UTC`, from search-serper) | `web-search-wire.recorded.ndjson` (19) | EMPTY |
+| `record-moderation-wire.mjs` (from openai) | `moderation-wire.recorded.ndjson` (7) | EMPTY |
+
+Every file's mtime moved (each recorder really wrote). The guard's stamp
+censuses are therefore unchanged (242 × 7.23.0 + 46 × 0.115.0, 8 × 7.23.0,
+24 × `google-genai-sdk/1.52.0`) — no stamp moved, no STOP.
+
+**The five BY-DESIGN rows** (classified: usage, not stamp / request shape):
+`openai-compatible-basic` (11/4/15), `-tools` (50/15/65),
+`-midstream-error-null` (6/2/8), `-sdk-after-done` (9/3/12), `-sdk-id-only`
+(9/3/12) — each final chunk gains exactly `"rawProviderUsage":{…}` (the raw
+frame), `usage` unchanged (no cached tokens). The other ten OAC rows
+byte-identical. **Never "fix" them back.**
+
+**Red on unported code:** `stream_decoders_equivalence` and
+`streaming_composer_equivalence` each red at `openai-compatible-basic`
+(`chunk 2 mismatch` — v4 has `rawProviderUsage`, v5 lacks it). Proven to be
+EXACTLY the five rows: the same corpus with `rawProviderUsage` stripped by
+`jq` is byte-identical to the committed file and runs **5/5 + 5/5 green**.
+
+### Red-first B — the new rows (Tier 1 item 3)
+
+Nine new body rows (`record-response-bodies.mjs` `case 'openai-compatible'`,
+`oc3`…`oc11`: `cached-800-of-1000` [jest #1], `cached-exceeds-prompt` [jest
+#4], `cached-equals-prompt`, `cached-zero-present`, `details-without-cached`,
+`details-null`, `cached-negative`, `total-missing`,
+`completion-details-ignored`) — 60 → **69** rows, the 58 non-OAC + 2 OAC
+rows byte-identical (the diff is additions only). Nine new wires + specs
+(`cases.json` 87 → **96**; `openai-compatible.recorded.ndjson` 15 → **24**):
+`-cached`, `-cached-exceeds-prompt`, `-cached-zero`, `-cached-negative` (the
+spec carries a `note` saying why — R-L4), `-usage-two-frames`,
+`-usage-empty-object`, `-usage-null-then-none`, `-usage-details-extra`,
+`-cached-tools`. v4's recorded answers confirm every survey prediction
+(`cached-negative` → 1005/50/1055, no `cacheUsage`; `two-frames` → 500/20/520
+raw = frame B; `empty-object` → 0/0/0 + `rawProviderUsage: {}`;
+`null-then-none` → no usage / cache / raw; `cached-tools` → `rawResponse`
+still without `usage`; `total-missing` → 600/20/0 + `{300,300}`).
+
+**The DEBUG sinks.** `pluginDebugSink` in both recorders (the
+`__quilltap_logger_factory` bridge; `record-response-bodies.mjs` gains the
+bridge before any provider import), `pluginDebugLog` ONLY when non-empty. A
+MEASURED twist: with the sink armed for every provider, the ollama corpus
+grew `pluginDebugLog` on five rows — v4's Ollama plugin logs its own DEBUG
+(`Ollama stream carried reasoning`, context `OllamaProvider.streamMessage` +
+`model, enableThinking, reasoningChars, inlineChars`), which **v5 has never
+ported** (grep: no twin). Recording it would grow a corpus nothing compares,
+so the sink is armed by `DEBUG_CAPTURE_PROVIDERS = ['openai-compatible']`
+(header-documented: add a provider together with its v5 line + pin) and the
+ollama corpus stays byte-identical. **FINDING (not this lane's — banked):**
+v4's `Ollama stream carried reasoning` DEBUG has no v5 twin; a follow-ups
+candidate. `pluginDebugLog` rows: stream **4** (`cached`, `cached-exceeds-prompt`,
+`usage-details-extra`, `cached-tools`), bodies **5** (`cached-800-of-1000`,
+`cached-exceeds-prompt`, `cached-equals-prompt`, `total-missing`,
+`completion-details-ignored`); none on `cached-zero(-present)` /
+`cached-negative` / `two-frames` / `details-*` / `plain` / `no-usage`.
+
+**Red on unported code (measured):** `response_parse_equivalence` **6 of 69**
+diverge (the five cached > 0 rows + `cached-negative`, the latter on the
+counts). The two stream families, counted per row with a temporary,
+never-committed `catch_unwind` around each case: **13 rows red in BOTH**
+(decoder all chunkings, composer whole/byte) — the five BY-DESIGN rows + 8 of
+the 9 new; `usage-null-then-none` green (v5's absent-frame arm was already
+right for OAC, as the survey said).
+
+### The port (Tier 1 item 4; R-1 / R-L1 / R-L3)
+
+`model/response_parse.rs` `pub(crate) fn oac_normalize_usage(usage:
+Option<&Value>) -> (StreamUsage, Option<StreamCacheUsage>)` — the survey §7.1
+spelling, v4's why-comment carried; the RAW unfiltered `cached_tokens ?? 0`;
+`sub_floor` on prompt/total independently; `cacheUsage { cached_tokens,
+cache_read_input_tokens }` only when > 0; the DEBUG emitted once from it.
+**Three call sites:** `chat_completions_sse.rs` `build_usage` (the OAC flavor
+returns early through it with a present frame; the absent-frame arm unchanged
+`(None, None)`; the old `Flavor::OpenAiCompatible => (None, None)` cache arm
+is now `unreachable!` with a message), `build_done`'s OAC arm
+(`raw_provider_usage = self.usage_raw.clone()` only `if let Some` — never
+`Some(Null)`), and `parse_chat_completions` (the OAC branch bypasses the
+shared `> 0`-filtered `read` tail). Stale rustdoc moved in the same commit
+(the module doc, the `Flavor` / `ChatFlavor` docs, `build_usage`,
+`build_done`, `response_parse.rs:11-14` and the OAC arm comment).
+**Green:** all three families, every row (96 / 69).
+
+**The DEBUG target: `quilltap::model::response_parse`** (the house
+`quilltap::model::…` form; the function's home module). Fields camelCase
+(`context`, `promptTokens` RAW, `cachedTokens`).
+
+### Red-first C — the DEBUG pins (Tier 1 item 5; R-L2)
+
+`streaming_composer_equivalence.rs`: `assert_debug_lines` beside
+`assert_catch_lines` (filter `DEBUG quilltap::model::response_parse `, the
+same render rule), on EVERY row of every decoder (the silence leg), plus a
+coverage floor (≥ 4 chat-completions rows carry `pluginDebugLog`).
+`response_parse_equivalence.rs`: each parse inside
+`test_support::captured_with` on the test thread, the same render, the
+silence leg on all 69 rows, a ≥ 5 floor. `global_capture` was NOT needed
+(both families green across repeated runs; the parse / decode never crosses
+a `Db::write`). **Red measured** with the `tracing::debug!` suppressed
+(`cached > 0 && false`, reverted): composer RED at `openai-compatible-cached
+[whole]` (`left: []`, right: v4's line); response-parse **5 of 69** RED
+(exactly the five DEBUG rows). Green restored.
+
+**What could not fail without these rows (for the §3 review):** the
+`cached-negative` rows (stream + body) are the ONLY falsifiers of the
+raw-subtract choice — a port that filters `> 0` first passes every in-domain
+row; `usage-null-then-none` + every pre-existing OAC row without a usage
+frame are the ONLY falsifiers of the absent-vs-`Some(Null)` split (z-ai /
+nanogpt's unconditional key); `cached-exceeds-prompt` pins that `cacheUsage`
+IS produced when cached > prompt (jest #4 asserts `usage` only);
+`usage-two-frames` pins last-wins (no summing). Two OAC unit twins of
+`composes_completion_and_carries_cache_usage` in `completion_provider.rs`
+(cache read `Some(800)` → 200/250; `cached_tokens: 0` → `None`).
+
+**R-6 — downstream, no change:** `LegUsage::observe`, `llm_logging.rs`,
+`db/llm_logs.rs`, `enclave/step.rs`, `message_finalizer.rs`, the SPA
+Inspector read the new `usage` / `cacheUsage` / `rawProviderUsage` as they
+already read NanoGPT's — no `CONTRACT`, SPA, boundary or schema edit. The
+budget's default exclusion AND the `budgetExcludeCacheHits = 0` add-back
+both follow from the one port (the add-back reads `cacheUsage`, which the
+port supplies — the unit twin pins it on the completion path).
+
+### The guards (Tier 1 item 6; R-2) + the Tier 2 hardening (item 12)
+
+- **RED on the live tree first** (`QT_V4_CHECKOUT=~/source/quilltap-server`,
+  HEAD `a05c6f755`, clean): `provider_sdk_version_guard` —
+  `openai: expected 7.30.0 (INSTALLED_ROOT_OPENAI_SDK), installed 7.34.0 at
+  …/quilltap-server/node_modules/openai/package.json — the ROOT install moved`
+  (tests 2 + 3 green); `zod_version_guard` — `v4's installed zod moved 4.6.5 ->
+  4.6.7`.
+- `INSTALLED_ROOT_OPENAI_SDK` → **7.34.0**, `RECORDED_ZOD_VERSION` →
+  **4.6.7**; every `RECORDED_*` and every corpus stamp UNCHANGED. The SDK
+  guard's header gains the dated 2026-10-16 paragraph; the zod guard's doc the
+  4.6.5 → 4.6.7 table (re-measured by `diff -rq` against
+  `~/source/quilltap-website/node_modules/zod` 4.6.5: only `package.json`,
+  `v4/core/{versions,util,schemas,compile}` and the three new array / map /
+  set tests differ; `locales/en.js`, `regexes.js`, `errors.js` identical).
+- **Tier 2 (item 12) LANDED:** `RECORDED_PLUGIN_UTILS = "2.7.1"` checked at
+  every plugin dir that declares it (`PLUGIN_UTILS_EXEMPT_DIRS =
+  [builtin-embeddings]`), and a checkout-free corpus tripwire
+  `the_oac_stream_corpus_was_recorded_under_plugin_utils_2_7`. **Red-first:**
+  the tripwire on the PRE-re-record bytes (`git show abea3f336:…`) → `5 OAC
+  final chunk(s) carry usage but no rawProviderUsage`; the location check
+  with the constant temporarily `2.6.3` → **14** dirs red (confirming 14
+  declare it).
+- **GREEN at the pin** (`QT_V4_CHECKOUT` = `QT_V4_ROOT` = `$PIN`): SDK guard
+  **4/4**, zod guard **1/1**, **zero `SKIP:`** (the third symlink class
+  present). Gotcha: a `.bak` restored with `mv` keeps its OLD mtime and cargo
+  does not rebuild — `touch` the file.
+
+### zod 4.6.7's `capSize` — the four twins (Tier 1 item 7; R-5)
+
+Rows recorded through v4's REAL schemas at the pin (zod 4.6.7), each RED on
+the unported twin, then the early return:
+
+| twin | family | rows | red on unported | after |
+|---|---|---|---|---|
+| `chat_create.rs` `check_opt_subprompt_ids` (`selectedSubpromptIds`, 100) | `chat_create_capstone_equivalence` | `sp_empty_and_101_items_two_issues_400` RENAMED `…_one_issue_400` (the existing row P4.D314 saw red at the pin) + NEW `sp_number_first_and_101_items_one_issue_400` (`[7, …100]`, progressId `…d311001`) | **2** (the family stops at the first; the second measured by substituting the first row's 4.6.5-shape answer) | 3/3 |
+| `memory_candidate.rs` `string_array` (`entities`, 12) | `memory_candidate_equivalence` | the EXISTING `13 non-string entities` (RED at the pin before any edit — nobody had run it since zod moved) + NEW `13 entities, a non-string first` / `…, an empty string first` | **1** (existing) | 1/1, `parse` 49 → 51 |
+| `api/memories.rs` manual create (`entities`, 12) | `memories_routes_equivalence` | NEW `create_entities_over_cap_non_string_first_400` / `…_empty_first_400` (both v4 and the Rust case list) | **0 — wire-blind**: the route's 400 carries no `details` (P4.D298 L-1 ruled no-details class; the family compares status + `error` only) | a core unit test pins v4's recorded `details` bytes off `parse_create_bag`: RED with the port reverted, GREEN with it |
+| `scenario_builder/request_schema.rs` `uuid_array_field` (`characterIds` / `groupIds`, 32) | `scenario_build_request_schema_equivalence` | the EXISTING `cast-33-with-bad`, `groups-33-with-bad`, `refine-fails-plus-array-too-big` + NEW `cast-33-bad-first`, `groups-33-bad-first`, `cast-33-valid-refine-skipped`, `groups-33-valid-refine-skipped` | **7** | 107 rows (35 parsed / 72 refused), 0 differ |
+
+**A FINDING beyond the survey (measured, ported):** the `capSize` issue is
+NON-continuable (`continue = false`), and zod 4 skips an object's `.refine`
+when the payload carries a non-continuable issue — so an oversized array of
+ALL-VALID elements is NOT byte-identical at the object level: v4's
+`scenarioBuildRequestSchema` with 33 valid `characterIds` + a lone
+`priorDraft` answers ONLY the `too_big` on 4.6.7 (on 4.6.5 it answered the
+`too_big` AND the "travel together" custom). Probed through v4's real schema
+at the pin, and the committed `refine-fails-plus-array-too-big` row went red
+for exactly that reason. The scenario twin sets `aborted` on the cap issue.
+The other three v4 schemas carry no refine downstream of the capped array
+(`git grep refine` over `chats/route.ts`, `memories/route.ts`,
+`candidate.ts` at the pin — none).
+
+Doc updates: `chat_create.rs` "MEASURED on Zod 4.6.7 at the `25b8fab6a` pin
+(P4.D311)"; the scenario module doc's two Zod-behaviour bullets;
+`zod_issues.rs`'s `too_big_array` version note (bytes unchanged);
+`chat_participants.rs`'s update-validator comment (it emits no issue text —
+unaffected — but the comment stated the 4.6.5 order). **Unaffected, by
+grep:** `wardrobe_route_factory.rs` `parse_move_body` (`Err(())`, no text),
+`pascal/custom_tool_types.rs` (no array-max text), the
+`chat_participants.rs` update validator (no issue list). **No `.length(n)` /
+`.size(n)` / `Map` / `Set` container cap at the pin:** `git grep -nE
+"z\.(map|set)\(|\.length\([0-9A-Z_]+\)|\.size\([0-9A-Z_]+\)" 25b8fab6a --
+lib app packages/plugin-utils/src` → only `z.string().length(64)` (seven
+sha256 fields — strings, not containers; `sizeCaps` applies to array / map /
+set only).
+
+### The byte-identical proofs (Tier 1 item 8; R-3 / R-8)
+
+`gen-provider-manifests.mjs` from the pin root → `generated 11 manifests`,
+`git diff --stat crates/quilltap-core/src/provider_manifest/manifests`
+**EMPTY**; `provider-registry.ts` from the pin (278 rows) →
+`provider_registry_equivalence` **1/1 ok**.
+
+### R-4 — the usage-count convergence candidate RETIRED by measurement (Tier 1 item 9)
+
+No code, no divergence row. (1) `git grep -nE
+'\.(runTools|runToolsStream)\(|chat\.completions\.(stream|parse)\(|responses\.(stream|parse)\(|totalUsage|\.finalChatCompletion|beta\.chat'
+25b8fab6a -- lib app packages 'plugins/dist/*/*.ts' 'plugins/dist/*/*/*.ts'`
+→ ONLY unrelated `totalUsage` locals (`app/api/v1/tags/route.ts:76`,
+`tags/[id]/route.ts:64`, the Brahma and Help-chat orchestrators' own
+accumulators) — zero SDK-runner callers. (2) The `*_tokens_details` summing
+hunk of `AbstractChatCompletionRunner.#calculateTotalUsage` (survey §1.7a,
+`@@ -11228,6 +11244,26 @@`) is present in exactly the EIGHT re-bundled
+`index.js` (anthropic, curl, default-system-prompts, google, mcp, ollama,
+openrouter, search-serper — `grep -c 'for (const key of
+["completion_tokens_details", "prompt_tokens_details"])'` = 1 each, 0 in the
+other seven), and none of those eight makes an OpenAI chat call (anthropic /
+google / openrouter speak their own SDKs, Ollama `fetch`, the rest are not
+text providers); every v4 OpenAI-SDK call is `client.chat.completions.create`
+(plugin-utils `:480` / `:520`, deepseek `:253` / `:354`, nanogpt `:308` /
+`:360`, z-ai `:340` / `:443`) or `client.responses.create` (openai
+`:495/:518/:558/:576`, grok `:420/:515`), iterated raw with the LAST usage
+frame kept. (3) v5's decoders read the last usage frame themselves
+(`chat_completions_sse.rs` the `usage_raw` capture, `build_usage`, the z-ai /
+nanogpt raw arm; `responses_api_sse.rs:211-276`) — no SDK on the v5 side.
+`eb5d42338`'s SDK half is NO-PORT by evidence; `a8b2d2861` is the PORT.
+
+### R-8 — the manifest versions (Tier 1 item 10)
+
+Measured `jq .version` of `plugins/dist/qtap-plugin-*/manifest.json` at
+`83334b9a5` vs `25b8fab6a`: openai-compatible 1.0.48 → 1.0.49, deepseek
+1.0.27 → 1.0.28, nanogpt 1.2.9 → 1.2.10, anthropic 1.0.61 → 1.0.62, curl
+1.0.30 → 1.0.31, default-system-prompts 1.1.25 → 1.1.26, google 1.1.55 →
+1.1.56, mcp 1.1.43 → 1.1.44, ollama 1.0.52 → 1.0.53, openrouter 1.0.66 →
+1.0.67, search-serper 1.0.25 → 1.0.26. **No v5 home:** `grep -l '"version"'
+crates/quilltap-core/src/provider_manifest/manifests/*.json` → nothing (11
+files); item 8's empty diff is the proof the rebuilt bundles moved nothing v5
+generates.
+
+### Tier 2 / Tier 3
+
+- **Item 12** landed (above). **Item 13** `provider-manifest.md`: the
+  `chat-completions-sse` table row and the W4.7b row carry the OAC
+  normalisation + the conditional `rawProviderUsage`. **Item 14**
+  `plugin_catch_log.rs` header: one paragraph pointing at the DEBUG's home.
+  **Item 15** the `parse_for_provider_ex` unknown-provider fallback comment.
+- **Tier 3, recorded as written:** (16) `eb5d42338`'s non-v5 halves NO-PORT
+  — `katex` 0.18.10 → 0.19.0 (v5 renders through ProseMirror), `next` /
+  `@next/*` / `eslint-config-next` 16.4.0 → 16.4.2, `react` / `react-dom`
+  19.3.0 → 19.3.1, `@tanstack/*` (react-query 5.104.1 → 5.104.3,
+  react-virtual 3.14.13 → 3.14.20), `@playwright/test` / `playwright` 1.63.0
+  → 1.64.1 (v4's e2e; v5's is `apps/web`), `@testing-library/jest-dom` 6.9.1
+  → 7.0.1 / `user-event` 14.6.7 → 14.6.8, `@types/*`, `@typescript-eslint/*`
+  8.71.1 → 8.71.2, `dotenv` 17.4.2 → 18.0.8, the patch-level tooling rows, the
+  removed `@vitest/mocker` / `@vitest/spy` / `estree-walker` — none has a v5
+  counterpart (survey §1.6; P4.D313's NO-PORT record cites this). (17) The
+  `2c` vision-arrival sum (`llm/vision_request.rs:141-146`, mirroring v4
+  `lib/llm/vision-request.ts:106-110`) — NO CHANGE; OAC now feeds it `2c`
+  exactly as v4 does. (18) String / float counts — NO ROW (`as_i64()`
+  throughout; the SDK's wire type is integer). (19) `help/` / `docs/v4/` /
+  `public/schemas` — P4.D313's (neither commit has a `help/` hunk). (20) The
+  non-streaming `LLMResponse` key order (`content, finishReason, usage,
+  cacheUsage, raw, attachmentResults, toolCalls` — v4's, recorded) is not
+  byte-pinned; `response_parse_equivalence` compares parsed Values.
+
+### The gate (final tree)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean; the same `--features quilltap-core/native-transport`
+  clean (`apps/web/dist` built first: `npm ci --offline` + `npm run build`
+  in `apps/web`).
+- **The lane's families by name from the pin** (`QT_V4_CHECKOUT` =
+  `QT_V4_ROOT` = `$PIN`, Node 24.13.1, oracles under `/tmp/p4d311/`), every
+  one `ok`, zero `SKIP:`: `stream_decoders_equivalence` 5/5,
+  `streaming_composer_equivalence` 5/5, `response_parse_equivalence` 1/1,
+  `provider_sdk_version_guard` 4/4, `zod_version_guard` 1/1,
+  `request_builder_equivalence` 1/1, `request_builder_google_equivalence`
+  1/1, `request_builder_google_wire_equivalence` 1/1, `tool_wire_call_site`
+  7/7, `image_dialects_equivalence` 1/1, `text_http_errors_equivalence` 1/1,
+  `tool_wire_equivalence` 2/2, `web_search_wire_equivalence` 1/1,
+  `moderation_wire_equivalence` 1/1, `provider_registry_equivalence` 1/1,
+  `chat_create_capstone_equivalence` 3/3, `memories_routes_equivalence` 1/1
+  (⚠ its CONFIG oracle needs P4.D304's widened `memories-main.db` at this
+  pin — generated from a `git show` copy of P4.D304's branch blob into
+  `/tmp`, never committed; the ROUTES oracle from this branch's own pair),
+  `memories_tier2_equivalence` 2/2, `scenario_build_request_schema_equivalence`
+  1/1, `memory_candidate_equivalence` 1/1; `cargo test -p quilltap-core --lib
+  model::` 288/288.
+- **The Zod-text regression ring** — ONE sweep (announced in the shared notes
+  folder, start 22:11, done ~22:47 CDT): `recipe_sweep.py --run-all
+  --families <34> --v4 "$PIN" --v5w <this worktree> --force`
+  (`--self-test` 0 first). The survey §5.3's 31 + `memory_candidate`,
+  `scenario_build_request_schema`, `image_profiles_routes`: **29 ok / 5
+  not, none attributable to zod and none this lane's**:
+  `memories_routes` regen_failed (`no such column: customToolTriggers` — the
+  config half needs P4.D304's widened pair), `settings_routes` +
+  `system_restore_state` (the 4.11 `chat_settings` columns — P4.D304),
+  `pascal_custom_tools_route` (`references.wears/takesOff/clearsSlots` —
+  P4.D306), and **`system_import_state` — a FINDING, named by NO order**:
+  `[execute_scenario_source_local] main.background_jobs row count rust 7 vs
+  oracle 8` (+ the minted-id shift it causes) — v4 enqueues one
+  `EMBEDDING_REFIT {"triggerReindex":true}` on that import; `git log
+  -SEMBEDDING_REFIT 83334b9a5..25b8fab6a -- lib app` names only `b82037d75`
+  (bug 248, P4.D310's commit). **HANDOFF:** to P4.D310 / the unifier (note
+  `p4d311-finding-import-state-bug248.md` in the shared folder).
+- **`cargo test --workspace`** (`CARGO_INCREMENTAL=0`, the env block above,
+  the only workspace gate on the machine at launch): **806 binaries / 5,235
+  passed / 3 failed / 3 ignored, zero SKIP** — the three reds are §R.13
+  owners: `cli_differential` (Tier R `main help`, `completion zsh`,
+  `completion fish` — P4.D312), `public_schemas_vendor_guard`'s
+  `the_vendored_schemas_equal_the_v4_checkouts` and `qtap_schema_embed_guard`'s
+  `the_embedded_schema_equals_the_v4_checkouts` (P4.D313).
+- No SPA source touched (no lint / vitest / Playwright owed); no
+  `quilltap-cli` / `-host` / `-web` source moved (Tier R not owed).
+
+### HANDOFFs, findings, deferrals
+
+- **HANDOFF → P4.D310 / the unifier:** `system_import_state` (above).
+- **FINDING (banked, follow-ups):** v4's Ollama plugin DEBUG `Ollama stream
+  carried reasoning` (`OllamaProvider.streamMessage`, `model`,
+  `enableThinking`, `reasoningChars`, `inlineChars`) has no v5 twin; the
+  recorders' `DEBUG_CAPTURE_PROVIDERS` is where it would be armed.
+- **FINDING (ported):** zod 4.6.7's cap issue is non-continuable — the
+  scenario refine skip (above). The survey's "an oversized array of
+  all-valid elements is byte-identical" holds at the ARRAY level only.
+- **Wire-blind by ruling:** the memories manual-create route's two new rows
+  (P4.D298 L-1 no-details) — pinned by a core unit test instead.
+- **Sibling residue for the unifier:** `memories_routes_equivalence`'s
+  CONFIG oracle (P4.D304's widened pair) — green on the union.
+- Not done, by order: no SPA / boundary / schema / `help/` change (R-6,
+  Tier 3 item 19); every Tier 3 deferral recorded above.
+
+### 💸 for the dogfood pass
+
+As the order lists: an OAC turn against a local endpoint reporting
+`prompt_tokens_details.cached_tokens` (streaming and non-streaming — the
+`llm_logs` row's cache-excluded `usage`, `cacheUsage.cacheReadInputTokens`,
+`rawProviderUsage`, the Inspector's cache row, the DEBUG line in the file
+log); the same endpoint uncached (no `cacheUsage`, `rawProviderUsage`
+present, no DEBUG); an autonomous room on an OAC profile with and without
+`budgetExcludeCacheHits`; one DeepSeek and one NanoGPT turn unchanged in
+shape.
+
+### Commits and versions at close
+
+`2db0abcb6` feat(provider) normalizeUsage + the corpora (core 0.0.1306);
+`069f0c558` test(guards) (no bump); `4d8173d22` fix(zod) the capSize twins
+(core 0.0.1307); the docs commit with this record. **Versions at close:
+core 0.0.1307**; harness frozen 0.0.1110; host / web / cli / tauri / SPA
+untouched.
+
+**Regen recipes (lane-private paths; the committed headers stay canonical):**
+stream + bodies + every provider corpus: `V4="$PIN" V5=<worktree> bash
+harness/oracle/providers/regenerate-<name>.sh` (one at a time); capstone:
+the header recipe with `QT_FIXTURE_CC_*` = `/tmp/p4d311/cc/*.db`,
+`QT_ORACLE_OUT=/tmp/p4d311/cc/oracle.ndjson`, `TMPO=/tmp/p4d311/cc/tmpo`;
+memories routes: the header recipe on a COPY of the pair, config half from
+P4.D304's widened `memories-main.db`; memory-candidate / scenario: the
+header `npx tsx` lines to `/tmp/p4d311/oracle-*.ndjson`.
+
+**Cleanup:** the pin worktree removed, `/tmp/p4d311/` deleted, the lane
+`target/` and `apps/web/{node_modules,dist}` deleted; nothing pushed to
+`main`.

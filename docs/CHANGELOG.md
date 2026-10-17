@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — docs(porting): P4.D311 lane record — the provider lane LANE COMPLETE
+
+_Docs-only change._
+
+Appends the P4.D311 lane record to `status-log.md` and marks the order LANE COMPLETE. The record covers: the pin and its measured per-plugin-dir resolution table, with the six OpenAI-SDK dirs at 7.23.0 and `npm ci --offline` succeeding; the per-file re-record diff table; the red-first counts; the retirement of the SDK usage-count convergence candidate by measurement; the eleven manifest version moves with no v5 home; the 34-family Zod sweep (29 ok, 5 sibling residue); and the workspace gate (806 binaries, 3 reds owned by P4.D312 and P4.D313). It also records two findings: v4's Ollama `Ollama stream carried reasoning` DEBUG has no v5 twin, and `system_import_state` goes red at the pin from v4 bug 248's extra `EMBEDDING_REFIT` job, which no order names.
+
 #### 2026-10-16 — fix(zod): zod 4.6.7's capSize on the four hand-written array twins — an over-cap array answers only its too_big, before any element is parsed (P4.D311)
 
 _Versions: core 0.0.1307._
