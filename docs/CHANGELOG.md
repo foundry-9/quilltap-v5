@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — feat(wardrobe): the hair-styling precedence note on the rendered outfit's hair line, proven by a new tier-1 describe_outfit family (P4.D312)
+
+_Versions: core 0.0.1307._
+
+Ports v4 `7458ff94e`. A rendered outfit's hair line now ends with `(current styling — overrides the natural hair's texture and style in the physical description)`, so image prompts, scene text, the wardrobe tools and Aurora's outfit whispers say which hair is showing. The note is `wardrobe::HAIR_STYLING_PRECEDENCE_NOTE`, keyed on the group's slot names exactly as v4 does. A new `describe_outfit_equivalence` family drives v4's real `describeOutfit` over a shared 323-row corpus (all 243 slot combinations, hand rows, every omit subset). The four hair-bearing corpora were measured red before the change and green after; the Aurora oracle gains three styled-hair rows.
+
 #### 2026-10-16 — test(memory-time): bug 247 converges — PROTOTYPE_KEY_MONTH_THROWS retired by measurement, v4's five new phrases in the corpus (P4.D312)
 
 _Versions: core 0.0.1306._

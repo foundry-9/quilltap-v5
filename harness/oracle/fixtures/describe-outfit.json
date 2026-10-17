@@ -1,0 +1,6294 @@
+{
+  "$note": "P4.D312 R-L3: the shared describeOutfit corpus. Both sides read the SAME rows; v4 drives lib/wardrobe/outfit-description.ts describeOutfit(slots, { omit }), v5 describe_outfit_with_omit. 243 product rows (each slot empty / one / two items) + hand rows + every omit subset over a hair-styled and a hair-only outfit. Generated once by hand (P4.D312); edit rows here, never in either driver.",
+  "rows": [
+    {
+      "name": "product-00000",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00001",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00002",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00010",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00011",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00012",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00020",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00021",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00022",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00100",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00101",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00102",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00110",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00111",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00112",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00120",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00121",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00122",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00200",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00201",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00202",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00210",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00211",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00212",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00220",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00221",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-00222",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01000",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01001",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01002",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01010",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01011",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01012",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01020",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01021",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01022",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01100",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01101",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01102",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01110",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01111",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01112",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01120",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01121",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01122",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01200",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01201",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01202",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01210",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01211",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01212",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01220",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01221",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-01222",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02000",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02001",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02002",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02010",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02011",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02012",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02020",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02021",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02022",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02100",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02101",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02102",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02110",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02111",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02112",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02120",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02121",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02122",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02200",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02201",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02202",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02210",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02211",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02212",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02220",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02221",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-02222",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10000",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10001",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10002",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10010",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10011",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10012",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10020",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10021",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10022",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10100",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10101",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10102",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10110",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10111",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10112",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10120",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10121",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10122",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10200",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10201",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10202",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10210",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10211",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10212",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10220",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10221",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-10222",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11000",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11001",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11002",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11010",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11011",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11012",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11020",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11021",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11022",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11100",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11101",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11102",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11110",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11111",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11112",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11120",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11121",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11122",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11200",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11201",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11202",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11210",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11211",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11212",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11220",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11221",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-11222",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12000",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12001",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12002",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12010",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12011",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12012",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12020",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12021",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12022",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12100",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12101",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12102",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12110",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12111",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12112",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12120",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12121",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12122",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12200",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12201",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12202",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12210",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12211",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12212",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12220",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12221",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-12222",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20000",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20001",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20002",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20010",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20011",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20012",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20020",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20021",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20022",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20100",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20101",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20102",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20110",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20111",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20112",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20120",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20121",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20122",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20200",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20201",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20202",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20210",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20211",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20212",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20220",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20221",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-20222",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21000",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21001",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21002",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21010",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21011",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21012",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21020",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21021",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21022",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21100",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21101",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21102",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21110",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21111",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21112",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21120",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21121",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21122",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21200",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21201",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21202",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21210",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21211",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21212",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21220",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21221",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-21222",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22000",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22001",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22002",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22010",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22011",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22012",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22020",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22021",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22022",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22100",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22101",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22102",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22110",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22111",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22112",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22120",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22121",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22122",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22200",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22201",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22202",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22210",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22211",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22212",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22220",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22221",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "product-22222",
+      "slots": {
+        "top": [
+          "linen shirt",
+          "wool waistcoat"
+        ],
+        "bottom": [
+          "tweed trousers",
+          "silk petticoat"
+        ],
+        "footwear": [
+          "oxford brogues",
+          "spats"
+        ],
+        "accessories": [
+          "pocket watch",
+          "monocle"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "hand-hair-alone",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "hand-hair-with-everything",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "oxford brogues"
+        ],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "braided crown",
+          "silver pins"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "hand-hair-shares-accessories",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "jewelled tiara"
+        ],
+        "hair": [
+          "jewelled tiara"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "hand-hair-shares-top-and-accessories",
+      "slots": {
+        "top": [
+          "feathered cloak"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [
+          "feathered cloak"
+        ],
+        "hair": [
+          "feathered cloak"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "hand-hair-omitted-while-populated",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "hair"
+      ]
+    },
+    {
+      "name": "hand-hair-omitted-only-hair-populated",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "hair"
+      ]
+    },
+    {
+      "name": "hand-others-omitted-hair-populated",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "footwear",
+        "accessories"
+      ]
+    },
+    {
+      "name": "hand-others-omitted-hair-empty",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "footwear",
+        "accessories"
+      ]
+    },
+    {
+      "name": "hand-completely-naked",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": []
+    },
+    {
+      "name": "hand-em-dash-and-non-bmp",
+      "slots": {
+        "top": [
+          "coat — the long one"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "chignon 🌸 with pins — pearl"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "hand-hair-equals-footwear-fallback",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "barefoot"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "hand-hair-equals-accessories-fallback",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [],
+        "hair": [
+          "no accessories"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "hand-omit-already-empty-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      },
+      "omit": [
+        "hair"
+      ]
+    },
+    {
+      "name": "hand-omit-already-empty-top",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided"
+        ]
+      },
+      "omit": [
+        "top"
+      ]
+    },
+    {
+      "name": "hand-omit-top-bottom-hair-populated",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom"
+      ]
+    },
+    {
+      "name": "hand-avatar-crop-omit-bottom-footwear",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "updo"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "footwear"
+      ]
+    },
+    {
+      "name": "hand-bare-top-omit",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "pocket watch"
+        ],
+        "hair": [
+          "updo"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "footwear"
+      ]
+    },
+    {
+      "name": "hand-v4-naked-with-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "braided"
+        ]
+      },
+      "omit": []
+    },
+    {
+      "name": "omit-top-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top"
+      ]
+    },
+    {
+      "name": "omit-top-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top"
+      ]
+    },
+    {
+      "name": "omit-bottom-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom"
+      ]
+    },
+    {
+      "name": "omit-bottom-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom"
+      ]
+    },
+    {
+      "name": "omit-footwear-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "footwear"
+      ]
+    },
+    {
+      "name": "omit-footwear-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "footwear"
+      ]
+    },
+    {
+      "name": "omit-accessories-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-accessories-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+bottom-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom"
+      ]
+    },
+    {
+      "name": "omit-top+bottom-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom"
+      ]
+    },
+    {
+      "name": "omit-top+footwear-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "footwear"
+      ]
+    },
+    {
+      "name": "omit-top+footwear-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "footwear"
+      ]
+    },
+    {
+      "name": "omit-top+accessories-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-top+accessories-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-top+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-bottom+footwear-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "footwear"
+      ]
+    },
+    {
+      "name": "omit-bottom+footwear-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "footwear"
+      ]
+    },
+    {
+      "name": "omit-bottom+accessories-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-bottom+accessories-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-bottom+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-bottom+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-footwear+accessories-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "footwear",
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-footwear+accessories-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "footwear",
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-footwear+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "footwear",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-footwear+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "footwear",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-accessories+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-accessories+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+bottom+footwear-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "footwear"
+      ]
+    },
+    {
+      "name": "omit-top+bottom+footwear-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "footwear"
+      ]
+    },
+    {
+      "name": "omit-top+bottom+accessories-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-top+bottom+accessories-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-top+bottom+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+bottom+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+footwear+accessories-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "footwear",
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-top+footwear+accessories-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "footwear",
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-top+footwear+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "footwear",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+footwear+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "footwear",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+accessories+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+accessories+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-bottom+footwear+accessories-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "footwear",
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-bottom+footwear+accessories-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "footwear",
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-bottom+footwear+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "footwear",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-bottom+footwear+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "footwear",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-bottom+accessories+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-bottom+accessories+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-footwear+accessories+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "footwear",
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-footwear+accessories+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "footwear",
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+bottom+footwear+accessories-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "footwear",
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-top+bottom+footwear+accessories-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "footwear",
+        "accessories"
+      ]
+    },
+    {
+      "name": "omit-top+bottom+footwear+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "footwear",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+bottom+footwear+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "footwear",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+bottom+accessories+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+bottom+accessories+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+footwear+accessories+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "footwear",
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+footwear+accessories+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "footwear",
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-bottom+footwear+accessories+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "footwear",
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-bottom+footwear+accessories+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "bottom",
+        "footwear",
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+bottom+footwear+accessories+hair-hair",
+      "slots": {
+        "top": [
+          "linen shirt"
+        ],
+        "bottom": [
+          "tweed trousers"
+        ],
+        "footwear": [
+          "spats"
+        ],
+        "accessories": [
+          "monocle"
+        ],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "footwear",
+        "accessories",
+        "hair"
+      ]
+    },
+    {
+      "name": "omit-top+bottom+footwear+accessories+hair-naked-hair",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "marcel waves"
+        ]
+      },
+      "omit": [
+        "top",
+        "bottom",
+        "footwear",
+        "accessories",
+        "hair"
+      ]
+    }
+  ]
+}

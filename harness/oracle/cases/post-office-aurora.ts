@@ -5,7 +5,8 @@
  *
  * Covers the four outfit builders (opening/change × content/opaque) over the
  * describeOutfit branches (empty / one item / full / accessories-only /
- * multi-per-slot) and a Unicode/em-dash character name. The Core-whisper content
+ * multi-per-slot), a Unicode/em-dash character name, and (P4.D312) three
+ * styled-hair rows — the hair line's precedence note. The Core-whisper content
  * builders are already differential-verified in `context_feeders_leaves_equivalence`
  * (W4.6a); the POST functions' `chat_messages` rows are covered by the parent's
  * central tier-3.
@@ -34,18 +35,19 @@ interface OutfitSlotValues {
   bottom: string[];
   footwear: string[];
   accessories: string[];
+  hair: string[];
 }
 
 const cases: Array<{ id: string; characterName: string; outfit: OutfitSlotValues }> = [
   {
     id: 'empty',
     characterName: 'Ada',
-    outfit: { top: [], bottom: [], footwear: [], accessories: [] },
+    outfit: { top: [], bottom: [], footwear: [], accessories: [], hair: [] },
   },
   {
     id: 'one-top',
     characterName: 'Bea',
-    outfit: { top: ['a blue silk blouse'], bottom: [], footwear: [], accessories: [] },
+    outfit: { top: ['a blue silk blouse'], bottom: [], footwear: [], accessories: [], hair: [] },
   },
   {
     id: 'full',
@@ -55,22 +57,53 @@ const cases: Array<{ id: string; characterName: string; outfit: OutfitSlotValues
       bottom: ['grey flannel trousers'],
       footwear: ['oxford brogues'],
       accessories: ['a pocket watch', 'a signet ring'],
+      hair: [],
     },
   },
   {
     id: 'accessories-only',
     characterName: 'Dot',
-    outfit: { top: [], bottom: [], footwear: [], accessories: ['a long string of pearls'] },
+    outfit: { top: [], bottom: [], footwear: [], accessories: ['a long string of pearls'], hair: [] },
   },
   {
     id: 'multi-per-slot',
     characterName: 'Ezra',
-    outfit: { top: ['a greatcoat', 'a woollen scarf'], bottom: ['a long tweed skirt'], footwear: [], accessories: [] },
+    outfit: { top: ['a greatcoat', 'a woollen scarf'], bottom: ['a long tweed skirt'], footwear: [], accessories: [], hair: [] },
   },
   {
     id: 'unicode-name',
     characterName: 'Élodie — the Frankish',
-    outfit: { top: ['une chemise blanche'], bottom: [], footwear: [], accessories: [] },
+    outfit: { top: ['une chemise blanche'], bottom: [], footwear: [], accessories: [], hair: [] },
+  },
+  // [P4.D312] v4 `7458ff94e`: a styled hair slot's line carries the
+  // styling-precedence note through every builder.
+  {
+    id: 'styled-hairdo',
+    characterName: 'Fenella',
+    outfit: {
+      top: ['a beaded flapper dress'],
+      bottom: [],
+      footwear: ['T-strap heels'],
+      accessories: ['a long cigarette holder'],
+      hair: ['a sleek finger-waved bob'],
+    },
+  },
+  {
+    // The same garments as `styled-hairdo`; only the hair changed.
+    id: 'hair-only-change',
+    characterName: 'Fenella',
+    outfit: {
+      top: ['a beaded flapper dress'],
+      bottom: [],
+      footwear: ['T-strap heels'],
+      accessories: ['a long cigarette holder'],
+      hair: ['marcel waves', 'a jewelled bandeau'],
+    },
+  },
+  {
+    id: 'naked-with-hairdo',
+    characterName: 'Gussie',
+    outfit: { top: [], bottom: [], footwear: [], accessories: [], hair: ['a braided crown'] },
   },
 ];
 

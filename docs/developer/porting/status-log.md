@@ -186194,3 +186194,41 @@ Branch `claude/p4.d312-data-cli-smalls-e89421`, cut from `REAIM`
   it wrote the shared default `/tmp/oracle-memory-time.ndjson` (the order's
   "the sweep driver rewrites them itself" is false). No collision this round
   (the family is this lane's alone).
+
+### Unit 2 — `7458ff94e`'s hair-styling precedence note + the NEW tier-1 `describe_outfit` family (core 0.0.1307)
+
+- **Red-first (pin, unported `wardrobe.rs`, sweep 1):** `wardrobe_item_image_prompt`
+  RED, 6 divergences = 2 rows × (prompt, cue, utf16Length) —
+  `outfit_hair_only_worn`, `outfit_hair_only_catalogue`;
+  `avatar_job_tier3` RED at `bare_top_hairdo_only` (v5's prompt missed the
+  oracle's canned key — the first assert, masking later rows);
+  `wardrobe_tools` RED at op[45] `wear_hairdo`;
+  `wardrobe_item_image_generation_tier3` GREEN (its one `"hair"` reference
+  never renders a hair line — 0 `current styling` in the regenerated NDJSON);
+  `post_office_aurora` GREEN (no hair slot). The committed corpora did not
+  move on regen. The NEW family on unported code (the note as a test-local
+  literal): 205 differences = exactly the 205 note-bearing rows of 323.
+- **Port:** `pub const HAIR_STYLING_PRECEDENCE_NOTE` inside the fenced
+  `// === P4.D312: hair precedence note ===` region beside the three `HAIR_*`
+  constants (v4's why-comment carried); `describe_outfit_with_omit`'s emit
+  keys the note on the group's SLOT NAMES (R-L2). No other v5 caller changed
+  (the eight inherit it). Unit tests amended red-first — with the constant
+  alone, 4 red (`describe_outfit_rule_13_…`, `…renders_a_styled_hairdo…`, and
+  two new) — then green: the byte pin (`\u{2014}` at byte 16, `'` at byte
+  46, no U+2019), a shared accessories+hair group carrying the note once, the
+  empty / omitted hair slot forming no group, v4's naked-with-braided-hair
+  outfit byte for byte. `tests/unreported_if_blank_slots.rs` green untouched
+  (12).
+- **NEW `describe_outfit_equivalence`** (`harness/oracle/cases/describe-outfit.ts`
+  over v4's REAL `describeOutfit`, the shared corpus
+  `harness/oracle/fixtures/describe-outfit.json`: the 243-row product + 18
+  hand rows + every `omit` subset over a styled outfit and a hair-only one —
+  62 rows, Tier 2 item 15 taken in whole): 323 rows equal, 205 carrying the
+  note. Mutation — the constant blanked: 205 red.
+- **Aurora:** `post-office-aurora.ts`'s `OutfitSlotValues` gains `hair`; three
+  rows (`styled-hairdo`, `hair-only-change`, `naked-with-hairdo`) × four
+  builders; the Rust side mirrors them; the four builders needed NO edit.
+- **Sweep 3 (from the pin, announced):** all six ok —
+  `grep -c 'current styling'`: describe_outfit 205 / 323, WIIP 2 / 28,
+  avatar_job 6 / 32, wardrobe_tools 1 / 3, WIIG 0 / 32 (never renders hair),
+  Aurora 12 / 36. `recipe_sweep.py --self-test` 0 with the new header.

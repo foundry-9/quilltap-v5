@@ -5,7 +5,8 @@
 //! Covers `buildOpeningOutfitContent` / `buildOpeningOutfitOpaqueContent` /
 //! `buildOutfitChangeContent` / `buildOutfitChangeOpaqueContent` over the
 //! describeOutfit branches (empty / one item / full / accessories-only /
-//! multi-per-slot) and a Unicode/em-dash character name. The Core-whisper content
+//! multi-per-slot), a Unicode/em-dash character name, and (P4.D312) three
+//! styled-hair rows — the hair line's precedence note. The Core-whisper content
 //! builders are proven in `context_feeders_leaves_equivalence`; the POST
 //! functions' `chat_messages` rows are covered by the parent's central tier-3.
 //!
@@ -32,13 +33,23 @@ fn slots(
     footwear: &[&str],
     accessories: &[&str],
 ) -> OutfitSlotValues {
+    with_hair(top, bottom, footwear, accessories, &[])
+}
+
+fn with_hair(
+    top: &[&str],
+    bottom: &[&str],
+    footwear: &[&str],
+    accessories: &[&str],
+    hair: &[&str],
+) -> OutfitSlotValues {
     let v = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect();
     OutfitSlotValues {
         top: v(top),
         bottom: v(bottom),
         footwear: v(footwear),
         accessories: v(accessories),
-        hair: Vec::new(),
+        hair: v(hair),
     }
 }
 
@@ -69,6 +80,31 @@ fn case(id: &str) -> (&'static str, OutfitSlotValues) {
         "unicode-name" => (
             "Élodie — the Frankish",
             slots(&["une chemise blanche"], &[], &[], &[]),
+        ),
+        // [P4.D312] the styled-hair rows (v4 `7458ff94e`'s precedence note).
+        "styled-hairdo" => (
+            "Fenella",
+            with_hair(
+                &["a beaded flapper dress"],
+                &[],
+                &["T-strap heels"],
+                &["a long cigarette holder"],
+                &["a sleek finger-waved bob"],
+            ),
+        ),
+        "hair-only-change" => (
+            "Fenella",
+            with_hair(
+                &["a beaded flapper dress"],
+                &[],
+                &["T-strap heels"],
+                &["a long cigarette holder"],
+                &["marcel waves", "a jewelled bandeau"],
+            ),
+        ),
+        "naked-with-hairdo" => (
+            "Gussie",
+            with_hair(&[], &[], &[], &[], &["a braided crown"]),
         ),
         other => panic!("unknown aurora outfit case {other}"),
     }

@@ -168,6 +168,20 @@ pub const HAIR_PHYSICAL_BOUNDARY: &str = "Anything permanently part of the body 
 /// otherwise claim all hair. (Same unported-surface note as above.)
 pub const HAIR_PHYSICAL_DESCRIPTION_NOTE: &str = "Natural hair — colour, length, texture — belongs here; a deliberate hairSTYLE (braids, an updo, a wig) belongs in the WARDROBE's \"hair\" slot instead. Describe the hair itself, not its styling.";
 
+// === P4.D312: hair precedence note ===
+
+/// v4 `HAIR_STYLING_PRECEDENCE_NOTE` (`7458ff94e`, `slot-guidance.ts:44-53`) —
+/// the trailing note on a rendered outfit's hair line
+/// ([`describe_outfit_with_omit`]). "A styled hairdo and the natural hair in
+/// the physical description sit side by side in image prompts, scene text and
+/// the photo catalogue; without this a reader (or an image model) sees
+/// 'perfectly straight hair' and 'voluminous curls' with nothing to say which
+/// one is showing." Bytes: U+2014 EM DASH, a straight U+0027 in `hair's`.
+pub const HAIR_STYLING_PRECEDENCE_NOTE: &str =
+    "current styling — overrides the natural hair's texture and style in the physical description";
+
+// === end P4.D312: hair precedence note ===
+
 // ===========================================================================
 // composite-types.ts — unionTypes
 // ===========================================================================
@@ -377,8 +391,22 @@ pub fn describe_outfit_with_omit(slots: &OutfitSlotValues, omit: &[OutfitSlotNam
         }
     }
 
+    // v4 `7458ff94e` (`outfit-description.ts:150-153`): a group whose slot
+    // list contains `hair` carries the styling-precedence note — keyed on the
+    // SLOT NAMES (`slotsForValue.includes('hair')`), never on the value, so a
+    // hair value equal to another slot's text rides the merged line once.
     for (value, slots_for_value) in &groups.entries {
-        lines.push(format!("- **{}:** {}", slots_for_value.join(", "), value));
+        let note = if slots_for_value.iter().any(|s| *s == "hair") {
+            format!(" ({HAIR_STYLING_PRECEDENCE_NOTE})")
+        } else {
+            String::new()
+        };
+        lines.push(format!(
+            "- **{}:** {}{}",
+            slots_for_value.join(", "),
+            value,
+            note
+        ));
     }
 
     format!("{}\n", lines.join("\n"))
@@ -1009,7 +1037,7 @@ mod tests {
         };
         assert_eq!(
             describe_outfit(&s),
-            "- naked\n- **footwear:** barefoot\n- **accessories:** no accessories\n- **hair:** marcel waves\n"
+            "- naked\n- **footwear:** barefoot\n- **accessories:** no accessories\n- **hair:** marcel waves (current styling — overrides the natural hair's texture and style in the physical description)\n"
         );
     }
 
@@ -1024,7 +1052,7 @@ mod tests {
         };
         assert_eq!(
             describe_outfit(&dressed),
-            "- **top:** linen shirt\n- **bottom:** wool trousers\n- **footwear:** oxfords\n- **accessories:** pocket watch\n- **hair:** braided crown\n"
+            "- **top:** linen shirt\n- **bottom:** wool trousers\n- **footwear:** oxfords\n- **accessories:** pocket watch\n- **hair:** braided crown (current styling — overrides the natural hair's texture and style in the physical description)\n"
         );
         // Same outfit, no hairdo → the hair line vanishes entirely (never
         // "(empty)", never a fallback).
@@ -1035,6 +1063,86 @@ mod tests {
         assert_eq!(
             describe_outfit(&unstyled),
             "- **top:** linen shirt\n- **bottom:** wool trousers\n- **footwear:** oxfords\n- **accessories:** pocket watch\n"
+        );
+    }
+
+    /// P4.D312 (v4 `7458ff94e`): the note's bytes — U+2014 EM DASH and a
+    /// straight U+0027 apostrophe (`hair's`), the P4.D87 byte-check precedent
+    /// beside the sibling constants.
+    #[test]
+    fn hair_styling_precedence_note_bytes() {
+        assert_eq!(
+            HAIR_STYLING_PRECEDENCE_NOTE,
+            "current styling \u{2014} overrides the natural hair\u{27}s texture and style in the physical description"
+        );
+        assert_eq!(HAIR_STYLING_PRECEDENCE_NOTE.find('\u{2014}'), Some(16));
+        assert_eq!(HAIR_STYLING_PRECEDENCE_NOTE.find('\''), Some(46));
+        assert!(!HAIR_STYLING_PRECEDENCE_NOTE.contains('\u{2019}'));
+    }
+
+    /// P4.D312: v4 keys the note on the group's SLOT NAMES
+    /// (`slotsForValue.includes('hair')`) — a value shared by accessories and
+    /// hair renders ONE line carrying the note once.
+    #[test]
+    fn describe_outfit_hair_note_rides_a_shared_group_once() {
+        let s = OutfitSlotValues {
+            top: vec!["linen shirt".into()],
+            bottom: vec!["wool trousers".into()],
+            footwear: vec!["oxfords".into()],
+            accessories: vec!["jewelled tiara".into()],
+            hair: vec!["jewelled tiara".into()],
+        };
+        let out = describe_outfit(&s);
+        assert_eq!(
+            out,
+            format!(
+                "- **top:** linen shirt\n- **bottom:** wool trousers\n- **footwear:** oxfords\n- **accessories, hair:** jewelled tiara ({HAIR_STYLING_PRECEDENCE_NOTE})\n"
+            )
+        );
+        assert_eq!(out.matches(HAIR_STYLING_PRECEDENCE_NOTE).count(), 1);
+    }
+
+    /// P4.D312: an empty hair slot forms no group (no line, no note) and still
+    /// lets rule 13 route an otherwise-empty outfit to the full collapse; an
+    /// OMITTED populated hair slot forms no group either.
+    #[test]
+    fn describe_outfit_hair_note_needs_a_visible_styled_hair_group() {
+        let unstyled = OutfitSlotValues {
+            top: vec!["linen shirt".into()],
+            ..Default::default()
+        };
+        let out = describe_outfit(&unstyled);
+        assert!(!out.contains("**hair:**") && !out.contains(HAIR_STYLING_PRECEDENCE_NOTE));
+        assert_eq!(
+            describe_outfit(&OutfitSlotValues::default()),
+            "- completely naked and unadorned\n"
+        );
+        let styled = OutfitSlotValues {
+            top: vec!["linen shirt".into()],
+            bottom: vec!["wool trousers".into()],
+            hair: vec!["marcel waves".into()],
+            ..Default::default()
+        };
+        let omitted = describe_outfit_with_omit(&styled, &[OutfitSlotName::Hair]);
+        assert_eq!(
+            omitted,
+            "- **top:** linen shirt\n- **bottom:** wool trousers\n- **footwear:** barefoot\n- **accessories:** no accessories\n"
+        );
+    }
+
+    /// P4.D312: v4's own `outfit-utils.test.ts` naked-with-hair outfit, byte
+    /// for byte.
+    #[test]
+    fn describe_outfit_naked_with_braided_hair_matches_v4s_test() {
+        let s = OutfitSlotValues {
+            hair: vec!["braided".into()],
+            ..Default::default()
+        };
+        assert_eq!(
+            describe_outfit(&s),
+            format!(
+                "- naked\n- **footwear:** barefoot\n- **accessories:** no accessories\n- **hair:** braided ({HAIR_STYLING_PRECEDENCE_NOTE})\n"
+            )
         );
     }
 
