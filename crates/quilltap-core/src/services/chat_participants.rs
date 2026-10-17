@@ -220,8 +220,10 @@ impl ParticipantUpdateData {
         }
         // `z.array(z.string().min(1).max(120)).max(100)` — the string bounds
         // count CODE POINTS (Zod 4.5, `jsstr::zod_len_*`), the array bound
-        // items. Zod checks every element before the array size; the whole
-        // parse fails either way, so the order is invisible here.
+        // items. Since Zod 4.6.7 (`capSize`, P4.D311) an oversized array fails
+        // its size cap BEFORE any element is parsed (4.6.5 checked elements
+        // first); the whole parse fails either way and this answer carries no
+        // issue list, so the order is invisible here.
         if let Some(ids) = &self.selected_subprompt_ids {
             if ids.len() > SELECTED_SUBPROMPT_IDS_MAX_ITEMS {
                 return Err(bad());

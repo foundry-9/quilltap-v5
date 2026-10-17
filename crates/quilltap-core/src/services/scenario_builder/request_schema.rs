@@ -27,20 +27,25 @@
 //! ## What the oracle measured that the schema text does not say
 //!
 //! `scenario_build_request_schema_equivalence` diffs this twin against v4's
-//! REAL schema (zod 4.6.5 at the `08c49319d` pin), and three behaviours are
-//! Zod's, not the schema's:
+//! REAL schema (zod 4.6.7 at the `25b8fab6a` pin since P4.D311; 4.6.5 at the
+//! `08c49319d` pin before), and three behaviours are Zod's, not the schema's:
 //!
 //! - **The refine runs on a dirty object — unless an issue ABORTED.** Zod 4
 //!   skips a refinement only when the payload carries a non-continuable
 //!   issue. Measured per code: `invalid_type` and `invalid_value` abort it;
 //!   `too_small`, `too_big` and `invalid_format` do not (so a too-long `time`
-//!   plus a lone `priorDraft` answers BOTH issues, the `custom` one last).
+//!   plus a lone `priorDraft` answers BOTH issues, the `custom` one last) —
+//!   EXCEPT an array's size-cap `too_big`, which zod 4.6.7's `capSize` marks
+//!   non-continuable (33 valid `characterIds` + a lone `priorDraft` answers
+//!   ONLY the `too_big`; on 4.6.5 it answered both).
 //!   And the refine reads the RAW value of a field that itself failed a
 //!   continuable check (`priorDraft` 20,001 chars + no `revision` → the size
 //!   issue AND the refine).
-//! - **Array elements are checked before the array's size**
-//!   (`characterIds` of 33 with a bad 33rd entry → the element's
-//!   `invalid_format` at `["characterIds", 32]`, then `too_big`). `groupIds`
+//! - **An array past its cap is not element-checked at all** (zod 4.6.7's
+//!   `capSize`, P4.D311): `characterIds` of 33 with a bad entry anywhere →
+//!   the array's `too_big` alone (4.6.5 reported the element's
+//!   `invalid_format` first, then `too_big`). Within bounds, elements are
+//!   checked in order. `groupIds`
 //!   (v4 `08c49319d` — the builder launched from a group's Scenarios card) is
 //!   the same shape and sits between `characterIds` and `chatId` in both the
 //!   output and the issue order.
@@ -227,8 +232,13 @@ fn uuid_at(issues: &mut Issues, path: Vec<Value>, v: &Value) -> Option<String> {
 }
 
 /// `z.array(UUIDSchema).max(32).default([])` — `characterIds` and
-/// `groupIds`. Elements first, then the array's own size check; a non-array is
-/// the non-continuable `invalid_type` (the refine is then skipped).
+/// `groupIds`. A non-array is the non-continuable `invalid_type` (the refine is
+/// then skipped). Zod 4.6.7's `capSize` (P4.D311, measured at the `25b8fab6a`
+/// pin): MORE than 32 items answers ONLY the array's `too_big`, before any
+/// element is parsed, and that issue is NON-continuable (`continue = false`) —
+/// so the root refine is skipped too, even when every id is valid (4.6.5
+/// checked the elements first and its `too_big` let the refine run). Within
+/// bounds, each element is checked in order.
 fn uuid_array_field(
     issues: &mut Issues,
     obj: &Map<String, Value>,
@@ -236,6 +246,11 @@ fn uuid_array_field(
 ) -> Option<Vec<String>> {
     match obj.get(name) {
         None => Some(Vec::new()),
+        Some(Value::Array(items)) if items.len() > 32 => {
+            issues.push(ZodIssue::too_big_array(Value::from(32), vec![key(name)]));
+            issues.aborted = true;
+            None
+        }
         Some(Value::Array(items)) => {
             let mut out = Vec::with_capacity(items.len());
             let mut ok = true;
@@ -244,9 +259,6 @@ fn uuid_array_field(
                     Some(id) => out.push(id),
                     None => ok = false,
                 }
-            }
-            if items.len() > 32 {
-                issues.push(ZodIssue::too_big_array(Value::from(32), vec![key(name)]));
             }
             ok.then_some(out)
         }

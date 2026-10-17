@@ -234,6 +234,12 @@ const PARSES: Array<[string, unknown, ResolvedCandidateTime?]> = [
   ['empty summary + wrong-type content', { ...BASE, content: 5, summary: '' }],
   ['13 entities', { ...BASE, entities: ENT13 }],
   ['13 non-string entities', { ...BASE, entities: Array(13).fill(1) }],
+  // P4.D311 — zod 4.6.7's `capSize`: an array past its `.max(MEMORY_ENTITY_CAP)`
+  // fails with ONLY the array's `too_big`, before any element is parsed (4.6.5
+  // reported the element issues first). A non-string at [0] is the falsifier;
+  // an empty string at [0] is valid here (`z.string()`, no `.min(1)`).
+  ['13 entities, a non-string first', { ...BASE, entities: [7, ...ENT13.slice(1)] }],
+  ['13 entities, an empty string first', { ...BASE, entities: ['', ...ENT13.slice(1)] }],
   ['keywords null', { ...BASE, keywords: null }],
   ['keywords a string', { ...BASE, keywords: 'tea' }],
   ['mixed keywords + tags', { ...BASE, keywords: ['a', 1, null], tags: [true] }],

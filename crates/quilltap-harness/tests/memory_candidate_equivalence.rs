@@ -350,7 +350,7 @@ fn memory_candidate_matches_v4_oracle() {
         ("const", 1),
         ("draft", 37),
         ("normalise", 14),
-        ("parse", 49),
+        ("parse", 51), // P4.D311: +2 capSize rows
         ("parse_nonfinite", 3),
         ("split", 8),
         ("tkw", 3),

@@ -456,7 +456,9 @@ impl ZodIssue {
     // === P4.D217 ===
     /// `z.array(...).max(n)` — the size issue with `origin: "array"` and Zod's
     /// `items` sentence (measured at 4.6.5: `Too big: expected array to have
-    /// <=32 items`).
+    /// <=32 items`; byte-identical at 4.6.7, P4.D311). Since 4.6.7 (`capSize`)
+    /// an array past the cap answers this issue ALONE, before any element is
+    /// parsed — each caller returns early on it.
     pub fn too_big_array(maximum: Value, path: Vec<Value>) -> Self {
         let message = format!("Too big: expected array to have <={maximum} items");
         Self::TooBig {

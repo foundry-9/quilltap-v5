@@ -852,6 +852,17 @@ async function main(): Promise<void> {
           ...base,
           entities: Array.from({ length: 13 }, (_, i) => `entity-${i}`),
         }),
+        // P4.D311 — zod 4.6.7's `capSize`: an `entities` past its
+        // `.max(MEMORY_ENTITY_CAP)` answers ONLY the array's `too_big`, before
+        // any element is parsed (4.6.5 reported the element issue first).
+        create('create_entities_over_cap_non_string_first_400', {
+          ...base,
+          entities: [7, ...Array.from({ length: 12 }, (_, i) => `entity-${i}`)],
+        }),
+        create('create_entities_over_cap_empty_first_400', {
+          ...base,
+          entities: ['', ...Array.from({ length: 12 }, (_, i) => `entity-${i}`)],
+        }),
       ];
     })(),
     // --- The item PUT through the edit chokepoint (bug 203 / 236).

@@ -2010,6 +2010,28 @@ fn memories_routes_match_oracle() {
                 None,
                 true,
             ),
+            // P4.D311 — zod 4.6.7's `capSize`: past the cap, ONLY the array's
+            // `too_big`; no element issue first.
+            (
+                "create_entities_over_cap_non_string_first_400",
+                with(json!({
+                    "entities": std::iter::once(json!(7))
+                        .chain((0..12).map(|i| json!(format!("entity-{i}"))))
+                        .collect::<Vec<_>>(),
+                })),
+                None,
+                true,
+            ),
+            (
+                "create_entities_over_cap_empty_first_400",
+                with(json!({
+                    "entities": std::iter::once(String::new())
+                        .chain((0..12).map(|i| format!("entity-{i}")))
+                        .collect::<Vec<_>>(),
+                })),
+                None,
+                true,
+            ),
         ]);
         for (name, body, plant_sql, with_provider) in create_cases {
             let db = fresh_db(&spec, &format!("{name}-d298"));

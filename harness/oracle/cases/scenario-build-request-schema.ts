@@ -144,10 +144,16 @@ add('cast-duplicates-kept', withKey('characterIds', [C1, C1]));
 add('cast-32', withKey('characterIds', Array.from({ length: 32 }, () => C1)));
 add('cast-33', withKey('characterIds', Array.from({ length: 33 }, () => C1)));
 add('cast-33-with-bad', withKey('characterIds', [...Array.from({ length: 32 }, () => C1), 'bad']));
+// P4.D311 — zod 4.6.7's `capSize`: past `.max(32)` ONLY the array's `too_big`,
+// before any element is parsed, and NON-continuable — so the root refine is
+// skipped even when every id is valid (4.6.5: elements first, refine ran).
+add('cast-33-bad-first', withKey('characterIds', ['bad', ...Array.from({ length: 32 }, () => C1)]));
+add('cast-33-valid-refine-skipped', { ...withKey('characterIds', Array.from({ length: 33 }, () => C1)), priorDraft: 'Draft.' });
 
 // --- groupIds: z.array(UUIDSchema).max(32).default([]) (v4 `08c49319d`) --------
 // Between `characterIds` and `chatId` in both the output and the issue order;
-// the same semantics as `characterIds` (elements before size; a non-array is a
+// the same semantics as `characterIds` (within bounds, elements in order; past
+// the cap only the non-continuable `too_big` — zod 4.6.7; a non-array is a
 // non-continuable `invalid_type` that skips the refine).
 add('groups-null', withKey('groupIds', null));
 add('groups-string', withKey('groupIds', 'x'));
@@ -158,6 +164,8 @@ add('groups-duplicates-kept', withKey('groupIds', [G1, G1]));
 add('groups-32', withKey('groupIds', Array.from({ length: 32 }, () => G1)));
 add('groups-33', withKey('groupIds', Array.from({ length: 33 }, () => G1)));
 add('groups-33-with-bad', withKey('groupIds', [...Array.from({ length: 32 }, () => G1), 'bad']));
+add('groups-33-bad-first', withKey('groupIds', ['bad', ...Array.from({ length: 32 }, () => G1)]));
+add('groups-33-valid-refine-skipped', { ...withKey('groupIds', Array.from({ length: 33 }, () => G1)), priorDraft: 'Draft.' });
 add('groups-with-cast', { ...base(), characterIds: [C1], groupIds: [G1] });
 add('refine-fails-plus-groups-type', { ...base(), groupIds: 'x', priorDraft: 'Draft.' });
 add('refine-fails-plus-groups-element', { ...base(), groupIds: ['g'], priorDraft: 'Draft.' });
@@ -193,6 +201,8 @@ add('refine-fails-plus-too-big', { ...base(), time: 't'.repeat(201), priorDraft:
 add('refine-fails-plus-invalid-format', { ...base(), connectionProfileId: 'p', priorDraft: 'Draft.' });
 add('refine-fails-plus-element-format', { ...base(), characterIds: ['r'], priorDraft: 'Draft.' });
 add('refine-fails-plus-element-type', { ...base(), characterIds: [1], priorDraft: 'Draft.' });
+// zod 4.6.7 (P4.D311): an array's size-cap `too_big` is NON-continuable
+// (`capSize`), so this row now answers the `too_big` ALONE.
 add('refine-fails-plus-array-too-big', {
   ...base(),
   characterIds: Array.from({ length: 33 }, () => C1),

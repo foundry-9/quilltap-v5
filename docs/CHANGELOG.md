@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — fix(zod): zod 4.6.7's capSize on the four hand-written array twins — an over-cap array answers only its too_big, before any element is parsed (P4.D311)
+
+_Versions: core 0.0.1307._
+
+Absorbs the one behaviour change in v4 `eb5d42338`'s zod 4.6.5 → 4.6.7 move. An array past its leading `.max(N)` now fails with only its own `too_big`, and no element is parsed. The four v5 twins that reported element issues first and the array's `too_big` last now return early: `chat_create.rs` `check_opt_subprompt_ids` (`selectedSubpromptIds`, 100), `memory_candidate.rs` `string_array` (`entities`, 12), `api/memories.rs` manual create (`entities`, 12), and `scenario_builder/request_schema.rs` `uuid_array_field` (`characterIds` / `groupIds`, 32). The issue is also non-continuable, which the survey missed: measured through v4's real schema, 33 valid `characterIds` plus a lone `priorDraft` now answer only the `too_big` and the "travel together" refine is skipped. The scenario twin marks the payload aborted to match.
+
+Rows recorded through v4's real schemas at the `25b8fab6a` pin, each red on the unported twin: capstone `sp_empty_and_101_items_one_issue_400` (renamed from `…two_issues…`) and `sp_number_first_and_101_items_one_issue_400`; memory-candidate's existing `13 non-string entities` plus two new rows; scenario's existing `cast-33-with-bad`, `groups-33-with-bad`, `refine-fails-plus-array-too-big` plus four new rows. The memories manual-create route answers its 400 without `details` (the P4.D298 L-1 class), so its two new route rows cannot see the issue order; a core unit test pins v4's recorded `details` bytes instead. Doc notes in `chat_participants.rs` and `zod_issues.rs` updated. v4 puts no size cap on a `Map`, `Set`, or `.length(n)` container on any v5-transcribed schema.
+
 #### 2026-10-16 — test(guards): provider SDK root openai 7.34.0, zod 4.6.7, and a plugin-utils read with an OAC corpus tripwire (P4.D311)
 
 _No crate versions bumped._

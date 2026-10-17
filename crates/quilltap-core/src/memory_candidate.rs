@@ -571,6 +571,15 @@ fn string_array(
             return None;
         }
     };
+    // Zod 4.6.7's `capSize` (P4.D311, measured at the `25b8fab6a` pin): an
+    // array PAST its leading `.max(cap)` answers ONLY its own `too_big`, before
+    // any element is parsed (4.6.5 reported the element issues first).
+    if let Some(cap) = cap {
+        if items.len() > cap {
+            issues.push(ZodIssue::too_big_array(json!(cap), vec![key(k)]));
+            return None;
+        }
+    }
     let mut ok = true;
     let mut out = Vec::with_capacity(items.len());
     for (i, item) in items.iter().enumerate() {
@@ -584,12 +593,6 @@ fn string_array(
                 ));
                 ok = false;
             }
-        }
-    }
-    if let Some(cap) = cap {
-        if items.len() > cap {
-            issues.push(ZodIssue::too_big_array(json!(cap), vec![key(k)]));
-            ok = false;
         }
     }
     ok.then_some(out)

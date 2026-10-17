@@ -607,22 +607,39 @@ fn check_participant(v: &Value, index: usize, issues: &mut Vec<CreateZodIssue>) 
     );
 }
 
-/// `z.array(z.string().min(1).max(120)).max(100).optional()` — every shape
-/// MEASURED on Zod 4.5.4 at the `2f4254b42` pin (P4.D163): a non-array is
-/// `invalid_type` `expected: "array"` (an explicit `null` included — the rule is
-/// `.optional()`, never `.nullable()`); each element is checked IN ORDER, a
-/// non-string as `invalid_type` `expected: "string"` at `[…, i]`, an empty
-/// string as `too_small` (`origin: "string"`, minimum 1), an over-long one as
-/// `too_big` (`origin: "string"`, maximum 120 — CODE POINTS, `jsstr::zod_len_*`);
-/// and the array's own `too_big` (`origin: "array"`, maximum 100) comes LAST,
-/// after every element issue (`['', …100 more]` answers two issues in that
-/// order).
+/// `z.array(z.string().min(1).max(120)).max(100).optional()` — MEASURED on
+/// Zod 4.6.7 at the `25b8fab6a` pin (P4.D311; first measured on 4.5.4 at the
+/// `2f4254b42` pin, P4.D163): a non-array is `invalid_type` `expected: "array"`
+/// (an explicit `null` included — the rule is `.optional()`, never
+/// `.nullable()`). An array of MORE than 100 items answers ONLY the array's own
+/// `too_big` (`origin: "array"`, maximum 100) and no element is parsed — zod
+/// 4.6.7's `capSize`: a leading size cap fails before the element pass, so
+/// `['', …100 more]` and `[7, …100 more]` each answer ONE issue (on 4.5.4 /
+/// 4.6.5 the element issues came first and the `too_big` LAST). Within bounds,
+/// each element is checked IN ORDER, a non-string as `invalid_type`
+/// `expected: "string"` at `[…, i]`, an empty string as `too_small`
+/// (`origin: "string"`, minimum 1), an over-long one as `too_big` (`origin:
+/// "string"`, maximum 120 — CODE POINTS, `jsstr::zod_len_*`).
 fn check_opt_subprompt_ids(v: Option<&Value>, at: &[Value], issues: &mut Vec<CreateZodIssue>) {
     let Some(v) = v else { return };
     let Some(list) = v.as_array() else {
         issues.push(ZodIssue::invalid_type("array", at.to_vec(), Some(v)));
         return;
     };
+    if list.len() > crate::services::chat_participants::SELECTED_SUBPROMPT_IDS_MAX_ITEMS {
+        issues.push(CreateZodIssue::TooBig {
+            origin: "array",
+            code: "too_big",
+            maximum: json!(crate::services::chat_participants::SELECTED_SUBPROMPT_IDS_MAX_ITEMS),
+            inclusive: true,
+            path: at.to_vec(),
+            message: format!(
+                "Too big: expected array to have <={} items",
+                crate::services::chat_participants::SELECTED_SUBPROMPT_IDS_MAX_ITEMS
+            ),
+        });
+        return;
+    }
     for (i, item) in list.iter().enumerate() {
         let mut at_i = at.to_vec();
         at_i.push(json!(i));
@@ -657,19 +674,6 @@ fn check_opt_subprompt_ids(v: Option<&Value>, at: &[Value], issues: &mut Vec<Cre
                 ),
             });
         }
-    }
-    if list.len() > crate::services::chat_participants::SELECTED_SUBPROMPT_IDS_MAX_ITEMS {
-        issues.push(CreateZodIssue::TooBig {
-            origin: "array",
-            code: "too_big",
-            maximum: json!(crate::services::chat_participants::SELECTED_SUBPROMPT_IDS_MAX_ITEMS),
-            inclusive: true,
-            path: at.to_vec(),
-            message: format!(
-                "Too big: expected array to have <={} items",
-                crate::services::chat_participants::SELECTED_SUBPROMPT_IDS_MAX_ITEMS
-            ),
-        });
     }
 }
 

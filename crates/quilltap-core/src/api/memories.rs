@@ -676,27 +676,31 @@ fn parse_create_bag(bag: &Value) -> Result<ManualCreate, Vec<ZodIssue>> {
             None
         }
     };
-    // `z.array(z.string().min(1)).max(MEMORY_ENTITY_CAP)`.
-    let entities = array_of(obj, "entities", &mut issues, |v, path, issues| match v {
-        Value::String(s) => {
-            if s.is_empty() {
-                issues.push(ZodIssue::too_small_string(json!(1), path));
-            }
-            Some(s.clone())
-        }
-        other => {
-            issues.push(ZodIssue::invalid_type("string", path, Some(other)));
-            None
-        }
-    });
-    if let Some(Value::Array(a)) = obj.get("entities") {
-        if a.len() > crate::memory_candidate::MEMORY_ENTITY_CAP {
+    // `z.array(z.string().min(1)).max(MEMORY_ENTITY_CAP)`. Zod 4.6.7's
+    // `capSize` (P4.D311, measured at the `25b8fab6a` pin): an array PAST the
+    // cap answers ONLY its own `too_big` and no element is parsed (4.6.5
+    // reported the element issues first, then the `too_big`).
+    let entities = match obj.get("entities") {
+        Some(Value::Array(a)) if a.len() > crate::memory_candidate::MEMORY_ENTITY_CAP => {
             issues.push(ZodIssue::too_big_array(
                 json!(crate::memory_candidate::MEMORY_ENTITY_CAP),
                 vec![zod_key("entities")],
             ));
+            None
         }
-    }
+        _ => array_of(obj, "entities", &mut issues, |v, path, issues| match v {
+            Value::String(s) => {
+                if s.is_empty() {
+                    issues.push(ZodIssue::too_small_string(json!(1), path));
+                }
+                Some(s.clone())
+            }
+            other => {
+                issues.push(ZodIssue::invalid_type("string", path, Some(other)));
+                None
+            }
+        }),
+    };
     if !issues.is_empty() {
         return Err(issues);
     }
@@ -2483,6 +2487,36 @@ fn anchor_gate_probe_failed(character_id: &str, error: &str) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// P4.D311 — zod 4.6.7's `capSize` on `entities`. The route answers its
+    /// 400 WITHOUT `details` (the P4.D298 L-1 no-details class), so
+    /// `memories_routes_equivalence` cannot see the issue list; these are v4's
+    /// recorded `details` bytes from that family's oracle at the `25b8fab6a`
+    /// pin (`create_entities_over_cap_non_string_first_400` /
+    /// `create_entities_over_cap_empty_first_400`): the array's `too_big`
+    /// ALONE, no element issue first.
+    #[test]
+    fn entities_past_the_cap_answer_only_the_arrays_too_big() {
+        const V4_DETAILS: &str = r#"[{"origin":"array","code":"too_big","maximum":12,"inclusive":true,"path":["entities"],"message":"Too big: expected array to have <=12 items"}]"#;
+        for first in [json!(7), json!("")] {
+            let mut entities = vec![first];
+            entities.extend((0..12).map(|i| json!(format!("entity-{i}"))));
+            let bag = json!({
+                "characterId": "b1000000-0000-4000-8000-000000000001",
+                "content": "c",
+                "summary": "s",
+                "entities": entities,
+            });
+            let issues = match parse_create_bag(&bag) {
+                Err(issues) => issues,
+                Ok(_) => panic!("an over-cap entities list must refuse"),
+            };
+            assert_eq!(
+                super::super::zod_issues::zod_issue_details(&issues).to_string(),
+                V4_DETAILS
+            );
+        }
+    }
     use crate::db::runtime::DbPaths;
 
     /// Throwaway pepper for a fresh encrypted instance (never a real one).
