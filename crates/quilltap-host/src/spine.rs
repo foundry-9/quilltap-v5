@@ -1584,6 +1584,7 @@ where
             // + the photo-tool bytes store (the §3 review's catch).
             image_describe: self.image_describe.clone(),
             photo_bytes: Some(Arc::clone(&self.file_bytes) as _),
+            consult: self.consult.clone(),
         };
 
         let input = ProcessMessageInput {
@@ -2141,6 +2142,7 @@ where
             // + the photo-tool bytes store (the §3 review's catch).
             image_describe: self.image_describe.clone(),
             photo_bytes: Some(Arc::clone(&self.file_bytes) as _),
+            consult: self.consult.clone(),
         };
 
         let now_fn = quilltap_core::enclave::announce::system_now_ms;

@@ -1915,6 +1915,10 @@ mod tests {
                 web_search: None,
                 image_describe: None,
                 photo_bytes: None,
+                // The enclave's autonomous turn holds no consult runner (as it
+                // holds no web-search provider): a consult-bearing tool takes
+                // the no-invoker fail-soft here — recorded, not silent.
+                consult: None,
             };
             let now_ms = crate::enclave::announce::system_now_ms;
             let mint = crate::enclave::announce::system_mint_uuid;

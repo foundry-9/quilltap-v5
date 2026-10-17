@@ -717,6 +717,7 @@ fn answer_confirmation_tier3_matches_oracle() {
             confirmation: confirmation_inputs,
             // P4.D172: `[0]` reproduces the frozen 0.0 this family always pinned.
             draws: DrawSource::sequence(vec![0.0]),
+            consult: None,
         };
 
         let sink = RecordingSink::new();

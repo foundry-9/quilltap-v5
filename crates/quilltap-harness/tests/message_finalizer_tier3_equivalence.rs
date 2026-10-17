@@ -924,6 +924,7 @@ fn message_finalizer_tier3_matches_oracle() {
             // P4.D172: the finalizer's next-speaker pick now takes an ordered draw
             // source. `[0]` reproduces the frozen 0.0 this family always pinned.
             draws: DrawSource::sequence(vec![0.0]),
+            consult: None,
         };
 
         let result = rt

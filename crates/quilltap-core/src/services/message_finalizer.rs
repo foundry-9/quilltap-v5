@@ -653,6 +653,10 @@ pub struct FinalizeOptions {
     /// (`ProcessClock.random01`) instead — a pre-existing v5 divergence closed
     /// by P4.D172.
     pub draws: crate::weighted_random::DrawSource,
+    /// The turn's custom-tool consult runner (`OrchestratorDeps::consult`), for
+    /// the reply trigger site — v4 builds the invoker for every entrance whose
+    /// definition declares `llm`. `None` keeps the no-invoker fail-soft.
+    pub consult: Option<std::sync::Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
 }
 
 /// The answer-confirmation inputs the finalizer forwards to the runner (v4's
@@ -726,6 +730,7 @@ where
         connection_profile_id,
         confirmation: confirmation_inputs,
         draws,
+        consult,
     } = opts;
 
     // --- Content cleaning (message-finalizer.service.ts:96–133) ---
@@ -1345,7 +1350,7 @@ where
                 chat_settings: trigger_settings,
                 now_ms: crate::clock::now_unix_ms(),
             },
-            None,
+            consult.as_deref(),
             &mut on_posted,
         )
         .await;

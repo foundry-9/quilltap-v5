@@ -531,6 +531,13 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         self.file_bytes_wired
     }
 
+    /// Wiring probe for the custom-tool consult runner (same rationale): `false`
+    /// means `run_custom` on a tool that declares `llm` takes the no-invoker
+    /// fail-soft (`no LLM invoker was available in this context`).
+    pub fn consult_wired(&self) -> bool {
+        self.consult.is_some()
+    }
+
     /// Inject the recorded photo save side-effects (mount invalidation + embedding
     /// enqueue). Production wires the host cache/scheduler.
     pub fn with_photo_side_effects(

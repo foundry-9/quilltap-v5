@@ -349,7 +349,9 @@ fn build_pascal_meta(
     let mut pascal_meta = Map::new();
     pascal_meta.insert("tool".into(), json!(result.tool));
     pascal_meta.insert("toolTitle".into(), json!(tool_title));
-    if let Some(chip_label) = &result.chip_label {
+    // v4 spreads it on truthiness (`...(result.chipLabel ? …)`): a label that
+    // rendered empty leaves no key.
+    if let Some(chip_label) = result.chip_label.as_deref().filter(|c| !c.is_empty()) {
         pascal_meta.insert("chipLabel".into(), json!(chip_label));
     }
     pascal_meta.insert(
@@ -593,6 +595,53 @@ mod tests {
         assert!(
             user.ends_with(r#""invokedBy":"user","callerParticipantId":"p1"}"#),
             "{user}"
+        );
+    }
+
+    /// v4 `run-service.ts:186` spreads `chipLabel` on TRUTHINESS: a label
+    /// template that renders empty (a string parameter defaulting to `""` —
+    /// every triggered run deals defaults) leaves no key, where a present
+    /// `Some("")` would write `"chipLabel":""` (the `25b8fab6a` unification's
+    /// §3 review catch).
+    #[test]
+    fn an_empty_rendered_chip_label_is_omitted() {
+        let entry = entry();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let mut result = rt
+            .block_on(crate::pascal::custom_tools::execute_custom_tool(
+                &entry.definition,
+                None,
+                None,
+                None,
+                None,
+                &mut crate::tools::rng::FixedBytes::new(vec![]),
+                None,
+                None,
+                0,
+            ))
+            .expect("dealt");
+        let meta = |result: &CustomToolRunResult| {
+            serde_json::to_string(&build_pascal_meta(
+                result,
+                "Coin",
+                &entry,
+                &[],
+                InvokedBy::Trigger,
+                None,
+                None,
+            ))
+            .unwrap()
+        };
+        result.chip_label = Some(String::new());
+        let empty = meta(&result);
+        assert!(!empty.contains("chipLabel"), "{empty}");
+        result.chip_label = Some("Heads".into());
+        let labelled = meta(&result);
+        assert!(
+            labelled.contains(r#""toolTitle":"Coin","chipLabel":"Heads","definitionTier""#),
+            "{labelled}"
         );
     }
 }

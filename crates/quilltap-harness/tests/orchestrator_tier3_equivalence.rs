@@ -1860,6 +1860,7 @@ fn orchestrator_tier3_matches_oracle() {
             web_search: None,
             image_describe: None,
             photo_bytes: None,
+            consult: None,
         };
         // The spine now constructs the real registry-backed tool detector +
         // provider-text strategy internally (W4.7c). Exactly ONE corpus case

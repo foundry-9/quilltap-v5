@@ -233,6 +233,7 @@ fn build_turn_tool_runner(
     web_search: Option<std::sync::Arc<dyn crate::tools::web_search::WebSearchProvider>>,
     image_describe: Option<std::sync::Arc<dyn crate::api::chat_media::ImageDescribeDriver>>,
     photo_bytes: Option<std::sync::Arc<dyn crate::photos::save_image_to_album::FileBytesStore>>,
+    consult: Option<std::sync::Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
     display_zone: crate::host_zone::TimeZone,
 ) -> BuiltInToolRunner {
     // P4.127: the tools' dates (letter dates, transcript renders, web-search
@@ -256,6 +257,11 @@ fn build_turn_tool_runner(
     // this, the vision tier starves on `no-bytes` with the driver wired).
     if let Some(photo_bytes) = &photo_bytes {
         tool_runner = tool_runner.with_file_bytes(std::sync::Arc::clone(photo_bytes));
+    }
+    // …and the model's `run_custom` on a tool that declares `llm` consults for
+    // real (v4 `run-service.ts:133`), through the host's consult runner.
+    if let Some(consult) = &consult {
+        tool_runner = tool_runner.with_consult(std::sync::Arc::clone(consult));
     }
     tool_runner
 }
@@ -615,6 +621,16 @@ pub struct OrchestratorDeps<
     /// the store unwired, `describe_image`'s vision tier answered `no-bytes` in
     /// production even with a configured describer.
     pub photo_bytes: Option<std::sync::Arc<dyn crate::photos::save_image_to_album::FileBytesStore>>,
+    /// The custom-tool consult runner (P4.6bd's host seam) the turn's
+    /// `run_custom` and BOTH trigger sites consult through — v4's run service
+    /// builds `buildCustomToolLlmInvoker` for every entrance whose definition
+    /// declares `llm` (`run-service.ts:133`). The spine wires the host's
+    /// timeout-decorated runner; `None` (the enclave, canned differentials)
+    /// keeps `execute_custom_tool`'s no-invoker fail-soft. The `25b8fab6a`
+    /// unification's §3 review catch: the per-turn runner wired none, so an
+    /// `llm` tool never consulted in a chat. ⚠ LIVE when wired: one consult
+    /// completion per run of a tool that declares `llm`.
+    pub consult: Option<std::sync::Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
 }
 
 /// Build the [`PricingContext`] `checkModelSupportsTools` consults on the
@@ -1993,10 +2009,9 @@ where
     // the ONE settings read above and the seat the resolver already returned;
     // it adds no read of its own. Pascal's posts are spliced onto
     // `existing_messages` so the responding model hears them, and each surfaces
-    // live on the existing `pascalResult` event. The consult seam: the in-chat
-    // turn holds no `ConsultRunner` (the per-turn tool runner wires none — the
-    // same state the in-chat `run_custom` is in), so a consult-bearing trigger
-    // tool takes `execute_custom_tool`'s no-invoker fail-soft arm here.
+    // live on the existing `pascalResult` event. The consult seam: the turn's
+    // `deps.consult` (the host's runner — v4 builds the invoker for every
+    // entrance), so a consult-bearing trigger tool consults for real.
     {
         let trigger_settings =
             chat_settings
@@ -2026,7 +2041,7 @@ where
                 chat_settings: trigger_settings,
                 now_ms: input.clock.now_ms,
             },
-            None,
+            deps.consult.as_deref(),
             &mut existing_messages,
             &mut on_posted,
         )
@@ -3342,6 +3357,7 @@ where
         deps.web_search.clone(),
         deps.image_describe.clone(),
         deps.photo_bytes.clone(),
+        deps.consult.clone(),
         // P4.140 (Option V): the host's display zone VALUE, threaded — never
         // re-derived from the `server_tz` NAME (a POSIX `TZ` has none).
         input.display_zone.clone(),
@@ -3797,6 +3813,7 @@ where
                 // which drives the finalizer directly with the feature ON.
                 confirmation: message_finalizer::FinalizerConfirmationInputs::default(),
                 draws: input.clock.random01.clone(),
+                consult: deps.consult.clone(),
             },
             deps.confirmation,
             deps.compression,
@@ -5269,6 +5286,24 @@ mod tests {
     /// regression an unpinned wiring invites — flips the wired probe false.
     #[test]
     fn turn_tool_runner_threads_the_image_describe_driver() {
+        struct NeverConsult;
+        impl crate::pascal::llm_consult::ConsultRunner for NeverConsult {
+            fn consult<'a>(
+                &'a self,
+                _db: &'a Db,
+                _context: crate::pascal::llm_consult::CustomToolConsultContext,
+                _prompt: &'a str,
+                _options: crate::pascal::custom_tools::LlmInvokeOptions,
+            ) -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<Output = crate::pascal::custom_tools::LlmInvokeResult>
+                        + Send
+                        + 'a,
+                >,
+            > {
+                unreachable!("wiring probe only — never invoked")
+            }
+        }
         struct NeverDescribe;
         impl crate::api::chat_media::ImageDescribeDriver for NeverDescribe {
             fn describe<'a>(
@@ -5294,6 +5329,7 @@ mod tests {
             Some(std::sync::Arc::new(
                 crate::photos::save_image_to_album::NotConfiguredBytes,
             )),
+            Some(std::sync::Arc::new(NeverConsult)),
             crate::host_zone::TimeZone::get("America/Chicago").unwrap(),
         );
         assert_eq!(
@@ -5305,9 +5341,11 @@ mod tests {
         );
         assert!(wired.image_describe_wired(), "the driver must be threaded");
         assert!(wired.file_bytes_wired(), "the bytes store must be threaded");
+        assert!(wired.consult_wired(), "the consult runner must be threaded");
         let bare = build_turn_tool_runner(
             db,
             ErasedAskCarina::not_available(),
+            None,
             None,
             None,
             None,
@@ -5315,6 +5353,7 @@ mod tests {
         );
         assert!(!bare.image_describe_wired(), "None stays the loud default");
         assert!(!bare.file_bytes_wired(), "None stays the loud default");
+        assert!(!bare.consult_wired(), "None stays the fail-soft default");
     }
 
     #[tokio::test]
@@ -5400,6 +5439,7 @@ mod tests {
                 web_search: None,
                 image_describe: None,
                 photo_bytes: None,
+                consult: None,
             };
             let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
             {
