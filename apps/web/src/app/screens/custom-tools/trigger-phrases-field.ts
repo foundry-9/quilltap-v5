@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+  linkedSignal,
+  output,
+  signal,
+} from '@angular/core';
 
 import {
   MAX_TRIGGERS,
@@ -103,6 +111,18 @@ export class TriggerPhrasesField {
   /** The input's text — drives `canAdd` and nothing the add path trusts. */
   protected readonly pending = signal('');
 
+  /**
+   * The list as THIS field last emitted it, re-linked whenever the parent's
+   * `triggers` input moves. `add` / `remove` build from it rather than from the
+   * input: zoneless change detection lands the parent's new list on the next
+   * render, so a second Enter before that render would read the stale input
+   * and overwrite the first add (measured by the e2e cap beat at the
+   * `25b8fab6a` unification: 5–7 chips of 8 on a fast fill/Enter loop). v4's
+   * React field re-renders synchronously on the event, so it never sees a
+   * stale list.
+   */
+  private readonly current = linkedSignal(() => this.triggers());
+
   /** Errors anchored to the field — `validateDraft`'s `{ section: 'triggers' }`. */
   private readonly triggerErrors = computed(() =>
     this.issues().filter((i) => i.severity === 'error' && i.where.section === 'triggers'),
@@ -115,7 +135,7 @@ export class TriggerPhrasesField {
         ?.message ?? null,
   );
 
-  protected readonly atCap = computed(() => this.triggers().length >= MAX_TRIGGERS);
+  protected readonly atCap = computed(() => this.current().length >= MAX_TRIGGERS);
 
   protected readonly canAdd = computed(
     () =>
@@ -145,16 +165,19 @@ export class TriggerPhrasesField {
   /** Append the TRIMMED candidate (so a padded phrase never enters from here) and clear. */
   protected add(el: HTMLInputElement): void {
     const candidate = el.value.trim();
-    const triggers = this.triggers();
+    const triggers = this.current();
     if (this.disabled() || triggers.length >= MAX_TRIGGERS) return;
     if (candidate.length < MIN_TRIGGER_PHRASE_LENGTH) return;
-    this.triggersChange.emit([...triggers, candidate]);
+    const next = [...triggers, candidate];
+    this.current.set(next);
+    this.triggersChange.emit(next);
     el.value = '';
     this.pending.set('');
   }
 
   protected remove(index: number): void {
-    const triggers = this.triggers();
-    this.triggersChange.emit(triggers.filter((_, i) => i !== index));
+    const next = this.current().filter((_, i) => i !== index);
+    this.current.set(next);
+    this.triggersChange.emit(next);
   }
 }

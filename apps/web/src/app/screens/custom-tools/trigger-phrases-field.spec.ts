@@ -76,6 +76,23 @@ describe('TriggerPhrasesField (v4 TriggerPhrasesField.tsx)', () => {
     expect(input(fixture).value).toBe('');
   });
 
+  it('two Enters before the parent re-renders keep BOTH phrases (no stale-input overwrite)', async () => {
+    // The parent echoes each emission back through `triggers` only on its next
+    // render; a second Enter before that render must build on the FIRST add,
+    // not on the stale input (the e2e cap beat lost chips at the `25b8fab6a`
+    // unification). No detectChanges between the two adds.
+    const { fixture, emitted } = await render(['open sesame']);
+    const el = input(fixture);
+    el.value = 'abracadabra';
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+    el.value = 'hocus pocus';
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+    expect(emitted).toEqual([
+      ['open sesame', 'abracadabra'],
+      ['open sesame', 'abracadabra', 'hocus pocus'],
+    ]);
+  });
+
   it('reads the input element at call time, not a signal that may lag', async () => {
     const { fixture, emitted } = await render([]);
     // Set the value with NO input event — the pending signal never sees it.
