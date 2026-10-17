@@ -80,7 +80,7 @@ pub fn resolve_episodic_anchors(input: &EpisodicAnchorInput<'_>) -> EpisodicAnch
 #[cfg(test)]
 mod jest_twins {
     //! Case-for-case port of v4 `lib/memory/time/__tests__/anchors.test.ts`
-    //! (pin `83334b9a5`). v4's cases pass no `timeZone`, so `when` resolves on
+    //! (pin `83334b9a5`; the bug-247 case at `25b8fab6a`). v4's cases pass no `timeZone`, so `when` resolves on
     //! `getMemoryTimeZone()` — with no cached instance zone and no
     //! `QUILLTAP_TIMEZONE`, the runner's system zone, `UTC` under v4's jest
     //! config. v5's zone is required, so these pass `"UTC"` explicitly.
@@ -192,5 +192,26 @@ mod jest_twins {
                 "{mode}"
             );
         }
+    }
+
+    /// `describe('resolveEpisodicAnchors — never throws (bug 247)')` →
+    /// `it('resolves "constructor 5" to the fallback through the real parser')`
+    /// (v4 `25b8fab6a`). Its sibling — a `jest.doMock`ed parser that throws,
+    /// caught by v4's new bare `catch` — has no Rust analogue: nothing here
+    /// throws (NO-PORT, P4.D312).
+    #[test]
+    fn resolves_constructor_5_to_the_fallback_through_the_real_parser() {
+        assert_eq!(
+            resolve_episodic_anchors(&input(
+                Some("constructor 5"),
+                Some(ANCHOR),
+                Some(WINDOW_START),
+                "realtime",
+            )),
+            EpisodicAnchors {
+                occurred_at: Some(WINDOW_START.to_string()),
+                narrative_time: None
+            }
+        );
     }
 }

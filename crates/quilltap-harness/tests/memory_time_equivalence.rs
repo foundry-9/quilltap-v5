@@ -21,7 +21,11 @@
 //! foot of this file): the day-reference table read both ways, the write-only
 //! rules, the read scan, `normaliseTimeRange`, `clockFor`, and
 //! `resolveEpisodicAnchors`, with the ruled `ZONELESS_PARSE_AS_UTC` table
-//! (LR-10) and the `PROTOTYPE_KEY_MONTH_THROWS` pin.
+//! (LR-10).
+//!
+//! `PROTOTYPE_KEY_MONTH_THROWS` RETIRED at `25b8fab6a` (bug 247 converged — v4
+//! reads its word tables through `Object.hasOwn`); the phrases stay in the
+//! corpus as plain equality rows.
 //!
 //! Generate the oracle output (both legs in ONE go), then run:
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -214,11 +218,11 @@ fn memory_time_matches_oracle() {
         assert_eq!(
             per,
             vec![
-                ("anchors", 3457),
+                ("anchors", 3841), // P4.D312: +384 — `constructor 5` (bug 247)
                 ("bounds", 161),
                 ("clock", 126),
                 ("constants", 1),
-                ("event", 4455),
+                ("event", 4630), // P4.D312: +175 — v4 `25b8fab6a`'s five phrases
                 ("mtz", 24),
                 ("normalise", 177),
                 ("read", 1715),
@@ -302,19 +306,6 @@ const ZONELESS_PARSE_AS_UTC: &[(&str, &str)] = &[
     // resolveEpisodicAnchors → resolveWhenPhrase's anchor.
     ("anchors", "zoneless-reference"),
 ];
-
-/// v4 THROWS on these `when` phrases and v5 answers "no event time": v4's
-/// `MONTH_NAMES` is a plain object, so `MONTH_NAMES['constructor']` is
-/// `Object` (not `undefined`), the named-date arm hands a function to
-/// `zonedTimeToUtcMs` as the month, `Date.UTC` answers NaN and `formatToParts`
-/// throws `RangeError: Invalid time value`. A panic is no port of an
-/// exception its one caller does not catch deliberately, and v5's closed
-/// month table cannot reach it. Filed upstream as **v4 bug 247**
-/// (`docs/developer/bugs/bug-247-month-name-prototype-key.md`, 2026-10-14 —
-/// the human's ruling: file it), so this table RETIRES when v4's fix lands.
-/// Pinned both ways: each phrase must still throw in v4 on every zone /
-/// anchor, and v5 must answer nothing.
-const PROTOTYPE_KEY_MONTH_THROWS: &[&str] = &["constructor 5", "5 constructor"];
 
 fn ms_of(v: &Value) -> f64 {
     match v.as_str() {
@@ -550,7 +541,6 @@ fn check_rules_clock_anchors(rows: &[Value]) {
     }
 
     let mut zoneless_measured: BTreeSet<(String, String)> = BTreeSet::new();
-    let mut throws_measured: BTreeSet<String> = BTreeSet::new();
     let mut compared = 0usize;
     for ((kind, key), legs) in &by_key {
         let utc = legs
@@ -560,29 +550,6 @@ fn check_rules_clock_anchors(rows: &[Value]) {
             .get("America/Chicago")
             .unwrap_or_else(|| panic!("{kind} {key}: no Chicago leg"));
         let (v4_utc, v4_chi) = (v4_outputs(utc), v4_outputs(chi));
-
-        // v4's throw rows: v5 answers nothing.
-        if v4_utc["out"].get("throws").is_some() || v4_chi["out"].get("throws").is_some() {
-            for (leg, row) in legs {
-                let v4 = &row["out"];
-                assert!(
-                    v4["throws"]
-                        .as_str()
-                        .is_some_and(|t| t.starts_with("RangeError")),
-                    "[{leg}] {key}: v4 threw on one leg only, or something else: {v4}"
-                );
-                assert!(
-                    same(
-                        &v5_for(row),
-                        &json!({"out": event_json(&EventTime::default())})
-                    ),
-                    "[{leg}] {key}"
-                );
-            }
-            throws_measured.insert(utc["phrase"].as_str().unwrap().to_string());
-            compared += 2;
-            continue;
-        }
 
         if !leg_dependent(utc) && !same(&v4_utc, &v4_chi) {
             // A zone-less Date.parse row: v5 equals the UTC leg on both legs.
@@ -615,17 +582,8 @@ fn check_rules_clock_anchors(rows: &[Value]) {
         zoneless_measured, table,
         "ZONELESS_PARSE_AS_UTC drifted — rows whose v4 output differs between the TZ legs, measured vs ruled"
     );
-    let throws_table: BTreeSet<String> = PROTOTYPE_KEY_MONTH_THROWS
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    assert_eq!(
-        throws_measured, throws_table,
-        "PROTOTYPE_KEY_MONTH_THROWS drifted — v4's throwing phrases"
-    );
     eprintln!(
-        "OK: rules/clock/anchors — {compared} rows compared, {} zone-less, {} v4-throw phrases.",
-        table.len(),
-        throws_table.len()
+        "OK: rules/clock/anchors — {compared} rows compared, {} zone-less.",
+        table.len()
     );
 }

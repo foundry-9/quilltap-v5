@@ -173,7 +173,11 @@ import {
 } from '@/lib/memory/time/clock';
 import { resolveEpisodicAnchors } from '@/lib/memory/time/anchors';
 
-/** v4 output, or `{ throws }` when v4 throws (the Rust side pins which). */
+/**
+ * v4 output, or `{ throws }` when v4 throws. Since v4 `25b8fab6a` (bug 247
+ * converged) no corpus phrase throws; a `throws` row now fails the Rust side's
+ * ordinary equality loudly.
+ */
 const attempt = (f: () => unknown): unknown => {
   try {
     return f();
@@ -266,8 +270,9 @@ const EVENT_PHRASES: Array<string | null> = [
   'October 1', 'December 25', 'on July 14th', '14 July 2026', '14th of July', 'July 14, 2026', 'July 14 2026',
   'on 3rd of march', 'july 4, 0000', 'July 4, 0099', 'February 30', 'July 32', 'June 0', 'Smarch 5',
   'January 1', 'december 31', 'March 8', 'November 1',
-  // v4 throws: MONTH_NAMES is a plain object
+  // v4 25b8fab6a (bug 247): own-key lookups — none of these is a month or a number; the two "ago" phrases match no regex at all (no unit word) and are v4's table, kept vacuous on purpose
   'constructor 5', '5 constructor',
+  'on constructor 5', 'constructor 5th', 'constructor 5, 2026', 'a constructor ago', 'two constructor ago',
   // nothing
   'the third night at sea', 'when the moons align', '', '   ', null, 'yesterday!', 'not yet',
 ];
@@ -396,7 +401,10 @@ delete process.env.QUILLTAP_TIMEZONE;
 const A_ANCHOR = '2026-07-20T09:05:00.000Z';
 const A_WINDOW_START = '2026-07-19T18:00:00.000Z';
 const ABSENT = '__absent__';
-for (const when of [null, '', 'last Tuesday', 'when the moons align', 'yesterday', 'the third night of the siege', 'last night', '2026-07-14', 'tomorrow']) {
+// [P4.D312] `constructor 5` resolves to the fallback only at or after v4
+// `25b8fab6a` (bug 247 — before it, the parser threw out of this loop, which is
+// NOT `attempt`-wrapped); the round's pin is past the fix.
+for (const when of [null, '', 'last Tuesday', 'when the moons align', 'yesterday', 'the third night of the siege', 'last night', '2026-07-14', 'tomorrow', 'constructor 5']) {
   for (const referenceIso of [A_ANCHOR, null, '', 'not a date']) {
     for (const fallbackIso of [A_ANCHOR, A_WINDOW_START, null]) {
       for (const timelineMode of ['realtime', 'narrative'] as const) {

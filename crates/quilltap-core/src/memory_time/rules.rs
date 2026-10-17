@@ -327,7 +327,7 @@ mod tests {
 #[cfg(test)]
 mod jest_twins {
     //! Case-for-case port of v4 `lib/memory/time/__tests__/rule-table.test.ts`
-    //! (pin `83334b9a5`). v4's clock objects (`{ timeZone, nowMs }`) become
+    //! (pin `83334b9a5`; the bug-247 `it.each` at `25b8fab6a`). v4's clock objects (`{ timeZone, nowMs }`) become
     //! the explicit `(time_zone, now_ms)` arguments of the Rust API; v4's
     //! `clockFor` env rung (`QUILLTAP_TIMEZONE`) is the host fallback the
     //! caller hands [`memory_time_zone`].
@@ -490,6 +490,31 @@ mod jest_twins {
         );
         assert!(stamped > parse(&two_days_ago.to));
         assert_eq!(parse(&yesterday.from) - parse(&two_days_ago.to), 1.0);
+    }
+
+    /// `describe('write-only rules')` → `it.each([...])('a word naming an
+    /// inherited property is not a month or a number: %s (bug 247)')` — v4
+    /// `25b8fab6a`'s seven phrases, at Monday 14:00 CDT. v5's closed word
+    /// tables never reached v4's throw; the two `ago` phrases match no pattern
+    /// at all (no unit word) and are v4's table, kept as written.
+    #[test]
+    fn a_word_naming_an_inherited_property_is_not_a_month_or_a_number() {
+        let now_ms = parse("2026-10-12T19:00:00.000Z");
+        for phrase in [
+            "constructor 5",
+            "5 constructor",
+            "on constructor 5",
+            "constructor 5th",
+            "constructor 5, 2026",
+            "a constructor ago",
+            "two constructor ago",
+        ] {
+            assert_eq!(
+                resolve_event_time(Some(phrase), now_ms, TZ),
+                EventTime::default(),
+                "{phrase}"
+            );
+        }
     }
 
     /// `describe('write-only rules')` → `it.each([...])('%s → %s')` — all ten

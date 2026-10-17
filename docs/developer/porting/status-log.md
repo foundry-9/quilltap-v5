@@ -186147,3 +186147,50 @@ default cleared, a full re-render's `needingEmbedding = interchangeCount
 fullReembed=true`; no `[Sync] Reading disk file` on a disk-side sync; `Mail
 alerts marked delivered` on a delivering turn; `Letter discarded` on a
 discard.
+
+## P4.D312 — the data / CLI / memory-time smalls of the `25b8fab6a` round (lane, 2026-10-16)
+
+Branch `claude/p4.d312-data-cli-smalls-e89421`, cut from `REAIM`
+`abea3f336` (the session opened on `claude/dazzling-heyrovsky-e89421` at main
+`6f78aa3d7`; no commits there — switched before the first edit). Pin
+`/tmp/qt-v4-pin-p4d312-25b8fab6a` = `25b8fab6aa58…`, `4.11.0-dev.10`, root
+`openai` 7.34.0, `zod` 4.6.7.
+
+### Unit 1 — bug 247 CONVERGES: `PROTOTYPE_KEY_MONTH_THROWS` retired by measurement (core 0.0.1306)
+
+- **Red-first (pin, harness UNCHANGED):** the regen held 25,072 rows and ZERO
+  `throws` rows; the first red was the table's own assert —
+  `PROTOTYPE_KEY_MONTH_THROWS drifted — v4's throwing phrases`, left `{}`,
+  right `{"5 constructor", "constructor 5"}`. The two phrases' 70 rows had
+  already passed through the ordinary plain-equality arm (v4
+  `{occurredAt: null, window: null}`), so nothing else reddened. Ledger §5.4
+  honoured: v4's actual post-fix rows dumped before retiring.
+- **Retired:** the const + its doc, the module-doc mention (now the "RETIRED
+  at `25b8fab6a`" sentence), the throws branch, `throws_measured` /
+  `throws_table`, the assert and the `eprintln!` count.
+- **Corpus grown (`memory-time.ts`):** v4's five new phrases after the
+  existing pair, in v4's order, under R-L4's comment (`a constructor ago` /
+  `two constructor ago` match NO pattern — no unit word — kept vacuous on
+  purpose as v4's table); `constructor 5` joins the `anchors` `when` list
+  with a header note that it is valid only at or after the fix (the loop is
+  not `attempt`-wrapped). Row counts per leg: event 4455 → 4630 (+175),
+  anchors 3457 → 3841 (+384), pinned in the count table.
+- **Regenerated through the sweep driver** (sweep 2, announced): OK, 24,524
+  rules/clock/anchors rows compared, 7 zone-less; `grep -c 'two constructor
+  ago'` = 70 (2 legs × 5 anchors × 7 `ZONES`); 0 `throws` rows.
+- **No v5 code change.** `clock.rs`'s `month_index` / `word_number` docs gain
+  the converged clause (`formatToParts` kept). Jest twins:
+  `rules::jest_twins::a_word_naming_an_inherited_property_is_not_a_month_or_a_number`
+  (v4's seven-phrase `it.each`), `anchors::jest_twins::resolves_constructor_5_to_the_fallback_through_the_real_parser`
+  (v4's test (b)); v4's test (a) — a `jest.doMock`ed parser throw — NO-PORT
+  (nothing in v5 throws).
+- **Recorded, no row, no change (R-6):** v4's new bare `catch` in
+  `resolveEpisodicAnchors` is wider than its cause — an INVALID zone string
+  now falls to the fallback in v4 while v5's `zoned_parts` reads an unknown
+  zone as UTC and resolves. No production path reaches it (`run.ts:308`
+  passes a validated clock zone); for the human (a `MEMORY_ZONE_VALIDITY`-style
+  ruled row if ever wanted).
+- **Gotcha:** the sweep driver did NOT rewrite the recipe's `/tmp` output —
+  it wrote the shared default `/tmp/oracle-memory-time.ndjson` (the order's
+  "the sweep driver rewrites them itself" is false). No collision this round
+  (the family is this lane's alone).

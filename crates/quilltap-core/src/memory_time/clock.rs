@@ -108,12 +108,14 @@ fn collapse_ws(s: &str) -> String {
 // Write side
 // ---------------------------------------------------------------------------
 
-/// v4 `MONTH_NAMES` (january … december → 0–11). v4 indexes a plain object,
-/// so `MONTH_NAMES['constructor']` is `Object` (not `undefined`) and a phrase
-/// like `constructor 5` reaches `zonedTimeToUtcMs` with a function for a
-/// month and THROWS (`RangeError: Invalid time value` from `formatToParts`).
-/// This table is a closed list: v5 answers such a phrase like any other
-/// unknown word (the `memory_time` family pins v4's throw both ways).
+/// v4 `MONTH_NAMES` (january … december → 0–11). Before v4 `25b8fab6a` v4
+/// indexed a plain object, so `MONTH_NAMES['constructor']` was `Object` (not
+/// `undefined`) and a phrase like `constructor 5` reached `zonedTimeToUtcMs`
+/// with a function for a month and THREW (`RangeError: Invalid time value`
+/// from `formatToParts`). This table is a closed list: v5 answers such a
+/// phrase like any other unknown word — and v4 `25b8fab6a` converged (bug 247:
+/// its word tables are read through `Object.hasOwn`), so the `memory_time`
+/// family now compares those phrases as plain equality rows.
 fn month_index(name: &str) -> Option<i64> {
     const MONTHS: [&str; 12] = [
         "january",
@@ -144,8 +146,10 @@ fn unit_days(unit: &str) -> Option<i64> {
 }
 
 /// v4 `WORD_NUMBERS` (`a`/`an` 1, one … fourteen, `couple` 2, `few` 3). v4's
-/// plain-object lookup answers `Object` for `constructor`, which then fails
-/// `n > 0` (NaN) exactly as `None` does here.
+/// plain-object lookup answered `Object` for `constructor`, which then failed
+/// `n > 0` (NaN) exactly as `None` does here; v4 `25b8fab6a` converged (bug
+/// 247 — an own-key lookup now answers `undefined`), an unobservable change on
+/// this arm.
 fn word_number(word: &str) -> Option<f64> {
     Some(match word {
         "a" | "an" | "one" => 1.0,

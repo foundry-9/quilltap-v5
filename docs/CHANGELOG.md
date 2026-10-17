@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — test(memory-time): bug 247 converges — PROTOTYPE_KEY_MONTH_THROWS retired by measurement, v4's five new phrases in the corpus (P4.D312)
+
+_Versions: core 0.0.1306._
+
+v4 `25b8fab6a` fixed bug 247 (filed by this port): its month and number word tables are now read through `Object.hasOwn`, so `constructor 5` no longer throws. Regenerating `memory_time` from the pin with the harness unchanged tripped the `PROTOTYPE_KEY_MONTH_THROWS` both-ways pin first (no v4 row threw). The table, its throws branch and its count are retired; the phrases now compare as plain equality rows. The corpus gains v4's five new phrases (`on constructor 5`, `constructor 5th`, `constructor 5, 2026`, `a constructor ago`, `two constructor ago` — the last two match no pattern and are kept as v4's table) and `constructor 5` as an `anchors` `when`. No v5 behavior change: v5's closed word tables never reached the throw. `clock.rs` doc comments record the convergence; two new jest twins pin v4's new rule-table and anchors cases.
+
 #### 2026-10-16 — docs(porting): P4.D310 lane record + status header (LANE COMPLETE)
 
 _Docs-only change._
