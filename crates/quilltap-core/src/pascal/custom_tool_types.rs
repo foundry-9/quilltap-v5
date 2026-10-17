@@ -3076,16 +3076,33 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
             }
         }
         Some(v) => {
-            issues.extend(prefix(
-                "effects",
-                vec![Issue::hard(invalid_type("array", Some(v)))],
+            // Zod ≥ 4.6.7: a non-array that HAS a `.length` (a string) fails
+            // the type check AND still runs the array's length checks, here the
+            // authored `.max` message (`effects-string-over-cap`).
+            let mut arr_issues = vec![Issue::hard(invalid_type("array", Some(v)))];
+            arr_issues.extend(authored_length_checks_past_invalid_type(
+                v,
+                None,
+                (MAX_EFFECTS, &format!("at most {MAX_EFFECTS} effects")),
             ));
+            issues.extend(prefix("effects", arr_issues));
             None
         }
         None => None,
     };
 
     let outcomes = match obj.get("outcomes") {
+        // Zod ≥ 4.6.7, as `effects` / `triggers` above: an oversized array fails
+        // with ONLY its `too_big` — the authored `at most 32 outcomes` — before
+        // an element is parsed, and that issue aborts
+        // (`outcomes-over-cap-bad-elements`).
+        Some(Value::Array(items)) if items.len() > MAX_OUTCOMES => {
+            issues.extend(prefix(
+                "outcomes",
+                vec![Issue::hard(format!("at most {MAX_OUTCOMES} outcomes"))],
+            ));
+            None
+        }
         Some(Value::Array(items)) => {
             let mut list = Vec::new();
             let mut arr_issues = Vec::new();
@@ -3096,14 +3113,10 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
                     list.push(o);
                 }
             }
-            // `.min(1, …)` / `.max(MAX_OUTCOMES, …)` are checks with authored
-            // messages, so they are skipped once an element aborted.
-            if !aborted(&arr_issues) {
-                if items.is_empty() {
-                    arr_issues.push(Issue::check("at least one outcome is required"));
-                } else if items.len() > MAX_OUTCOMES {
-                    arr_issues.push(Issue::check(format!("at most {MAX_OUTCOMES} outcomes")));
-                }
+            // `.min(1, …)` is a check with an authored message, so it is skipped
+            // once an element aborted (the `.max` arm is the capSize one above).
+            if !aborted(&arr_issues) && items.is_empty() {
+                arr_issues.push(Issue::check("at least one outcome is required"));
             }
             let ok = !aborted(&arr_issues);
             issues.extend(prefix("outcomes", arr_issues));
@@ -3114,10 +3127,17 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
             }
         }
         other => {
-            issues.extend(prefix(
-                "outcomes",
-                vec![Issue::hard(invalid_type("array", other))],
-            ));
+            // A string still runs the authored length checks past the type
+            // failure (`outcomes-string-over-cap`, `outcomes-empty-string`).
+            let mut arr_issues = vec![Issue::hard(invalid_type("array", other))];
+            if let Some(v) = other {
+                arr_issues.extend(authored_length_checks_past_invalid_type(
+                    v,
+                    Some((1, "at least one outcome is required")),
+                    (MAX_OUTCOMES, &format!("at most {MAX_OUTCOMES} outcomes")),
+                ));
+            }
+            issues.extend(prefix("outcomes", arr_issues));
             None
         }
     };
@@ -3538,6 +3558,40 @@ fn validate_operand_refs(
 /// `.max`. A `null` is nullish and runs neither; a number or boolean has no
 /// `.length`. (An object whose `length` is a non-number — which JS would coerce
 /// in the comparison — is not modelled; no definition file reaches it.)
+/// [`length_checks_past_invalid_type`] for an array whose `.min` / `.max`
+/// carry AUTHORED messages (`effects`, `outcomes`): Zod reports the authored
+/// text whatever the input's origin, so only the measured length differs.
+fn authored_length_checks_past_invalid_type(
+    v: &Value,
+    min: Option<(usize, &str)>,
+    max: (usize, &str),
+) -> Vec<Issue> {
+    let mut out = Vec::new();
+    let (min_ok, max_ok) = match v {
+        Value::String(s) => (
+            min.is_none_or(|(n, _)| crate::jsstr::zod_len_min_ok(s, n)),
+            crate::jsstr::zod_len_max_ok(s, max.0),
+        ),
+        Value::Object(o) => match o.get("length").and_then(Value::as_f64) {
+            Some(len) => (
+                min.is_none_or(|(n, _)| len >= n as f64),
+                len <= max.0 as f64,
+            ),
+            None => (true, true),
+        },
+        _ => (true, true),
+    };
+    if !min_ok {
+        if let Some((_, message)) = min {
+            out.push(Issue::check(message));
+        }
+    }
+    if !max_ok {
+        out.push(Issue::check(max.1));
+    }
+    out
+}
+
 fn length_checks_past_invalid_type(v: &Value, min: usize, max: usize) -> Vec<Issue> {
     let mut out = Vec::new();
     match v {

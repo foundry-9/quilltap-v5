@@ -24,6 +24,7 @@ import {
   type ParameterFormValues,
 } from './custom-tool-params-form';
 import { CustomToolPresets } from './custom-tool-presets';
+import { CustomToolWardrobeLines, wardrobeReferenceLines } from './custom-tool-wardrobe-lines';
 import {
   customToolsKeys,
   fetchCustomToolsRoster,
@@ -86,7 +87,7 @@ interface ReferenceRow {
 @Component({
   selector: 'qt-custom-tools-popup',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, Modal, CustomToolParamsForm, CustomToolPresets],
+  imports: [Icon, Modal, CustomToolParamsForm, CustomToolPresets, CustomToolWardrobeLines],
   host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     @if (available()) {
@@ -212,7 +213,8 @@ interface ReferenceRow {
               @if (
                 referenceRows().length > 0 ||
                 writeTargets().length > 0 ||
-                readsProgress().length > 0
+                readsProgress().length > 0 ||
+                wardrobeLines().length > 0
               ) {
                 <details class="rounded-lg qt-border p-5" open>
                   <summary
@@ -265,6 +267,8 @@ interface ReferenceRow {
                       }. The record of what actually changed rides with the roll itself.
                     </p>
                   }
+
+                  <qt-custom-tool-wardrobe-lines [references]="tool.references" />
                 </details>
               }
             </div>
@@ -839,6 +843,15 @@ export class CustomToolsPopup {
       ...(refs?.progressWrites ?? []).map((id) => `progress.${id}`),
     ];
   });
+
+  /**
+   * The wardrobe sentences (v4 `CustomToolRunDialog.tsx:926-932`) — computed
+   * here only for the panel's presence test; the lines themselves render
+   * through `qt-custom-tool-wardrobe-lines` over the same pure function.
+   */
+  protected readonly wardrobeLines = computed(() =>
+    wardrobeReferenceLines(this.selectedTool()?.references),
+  );
 
   /**
    * The progressions the tool consults, by ID.

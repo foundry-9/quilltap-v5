@@ -621,6 +621,43 @@ describe('CustomToolRunDialog — the reference panel', () => {
     expect(text(fixture)).toContain('state.wheel.spins');
   });
 
+  it('opens the panel for a tool that only dresses, and says what it wears (v4 f0db8cbb8)', async () => {
+    // A wardrobe gesture is a promise of its own: a tool that quotes nothing
+    // and writes nothing but dresses the running character still earns the
+    // panel, and its sentences follow the writes paragraph.
+    const fixture = await mount(
+      stub({
+        tools: [
+          {
+            ...WHEEL,
+            references: {
+              value: false,
+              roll: false,
+              dice: false,
+              llm: false,
+              params: [],
+              metadata: [],
+              state: [],
+              wears: ['Cloak of Night', 'Ribbon'],
+              clearsSlots: ['hair'],
+            },
+          },
+        ],
+        errors: [],
+      }),
+    );
+    await open(fixture);
+    await click(fixture, buttons(fixture, 'Spin the Wheel')[0]);
+
+    const body = text(fixture);
+    expect(body).toContain('What this tool can quote');
+    expect(body).toContain('It may dress the running character in');
+    expect(body).toContain('Cloak of Night, Ribbon');
+    expect(body).toContain('It may clear their');
+    expect(body).toContain('hair slot. Only when you run it as a character — a run made as nobody dresses nobody.');
+    expect(body).not.toContain('It may undress them of');
+  });
+
   it('reads a roster without the write vocabulary as "writes nothing"', async () => {
     // Older servers send neither key; that must read as silence, not an error.
     const fixture = await mount(stub({ tools: [UNLOCK, WHEEL], errors: [] }));

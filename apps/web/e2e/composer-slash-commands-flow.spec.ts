@@ -52,7 +52,7 @@ import {
  * save would answer 200 with nothing written and a capability probe would lie.
  * ACTIVATE-AT-UNIFY: the unifier flips {@link P4D304_SERVER_LANDED}.
  */
-const P4D304_SERVER_LANDED = false;
+const P4D304_SERVER_LANDED = true;
 
 const SLASH_PORT = 4344;
 /** Reserved for this spec by the round's port table; no beat needs a model. */

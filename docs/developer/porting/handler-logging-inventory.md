@@ -9,10 +9,10 @@ disposition. **Generated** — regenerate with:
 
 | disposition | meaning | count |
 |---|---|---|
-| `PORTED-PINNED` | a v5 tracing site carries the sentence AND a test asserts it | 25 |
+| `PORTED-PINNED` | a v5 tracing site carries the sentence AND a test asserts it | 27 |
 | `PORTED-UNPINNED` | a v5 tracing site carries it; nothing asserts it | 115 |
 | `NO-PORT-RECORDED` | no v5 site, but a v5 comment records the decision | 8 |
-| `NO-SITE` | neither | 95 |
+| `NO-SITE` | neither | 93 |
 | **total** | | **243** |
 
 A match inside a v5 comment never counts as a port: several sites quote a v4
@@ -186,16 +186,16 @@ sentence precisely to record that it was deliberately not ported.
 | 80 | debug | `[ContextSummary] Summary classification off for this chat; not chaining` | `services/context_summary_job.rs:200` | PORTED-UNPINNED |
 | 96 | warn | `[ContextSummary] Failed to chain danger classification job` | — | NO-SITE |
 
-### `lib/background-jobs/handlers/conversation-render.ts` — 6 line(s) (NO-SITE 2, PORTED-UNPINNED 4)
+### `lib/background-jobs/handlers/conversation-render.ts` — 6 line(s) (PORTED-PINNED 2, PORTED-UNPINNED 4)
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 27 | warn | `[ConversationRender] Chat not found, skipping` | `services/conversation_render_job.rs:144` | PORTED-UNPINNED |
-| 39 | debug | `[ConversationRender] Chat has no events, nothing to render` | `services/conversation_render_job.rs:157` | PORTED-UNPINNED |
-| 79 | debug | `[ConversationRender] Chunks upserted` | — | NO-SITE |
-| 107 | debug | `[ConversationRender] No default embedding profile; chunks left for the startup reconcile` | — | NO-SITE |
-| 115 | warn | `[ConversationRender] Failed to enqueue embedding, continuing` | `services/conversation_render_job.rs:197` | PORTED-UNPINNED |
-| 124 | info | `[ConversationRender] Conversation rendered successfully` | `services/conversation_render_job.rs:210` | PORTED-UNPINNED |
+| 27 | warn | `[ConversationRender] Chat not found, skipping` | `services/conversation_render_job.rs:149` | PORTED-UNPINNED |
+| 39 | debug | `[ConversationRender] Chat has no events, nothing to render` | `services/conversation_render_job.rs:162` | PORTED-UNPINNED |
+| 79 | debug | `[ConversationRender] Chunks upserted` | `services/conversation_render_job.rs:243` | PORTED-PINNED |
+| 107 | debug | `[ConversationRender] No default embedding profile; chunks left for the startup reconcile` | `services/conversation_render_job.rs:301` | PORTED-PINNED |
+| 115 | warn | `[ConversationRender] Failed to enqueue embedding, continuing` | `services/conversation_render_job.rs:257` | PORTED-UNPINNED |
+| 124 | info | `[ConversationRender] Conversation rendered successfully` | `services/conversation_render_job.rs:270` | PORTED-UNPINNED |
 
 ### `lib/background-jobs/handlers/embedding-generate.ts` — 22 line(s) (NO-SITE 4, PORTED-PINNED 3, PORTED-UNPINNED 15)
 

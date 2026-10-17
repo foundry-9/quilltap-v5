@@ -43,9 +43,9 @@ import { MOCK_LLM_REPLY, startMockLlm, type MockLlm } from './support/mock-llm';
  * definition or settings key reaches a DEFINED verb and is dropped or refused,
  * so a probe would lie.
  */
-const P4D304_SERVER_LANDED = false;
-const P4D305_SERVER_LANDED = false;
-const P4D306_SERVER_LANDED = false;
+const P4D304_SERVER_LANDED = true;
+const P4D305_SERVER_LANDED = true;
+const P4D306_SERVER_LANDED = true;
 const P4D304_GATE_REASON =
   'awaits P4.D304’s chatSettingsUpdate `customToolTriggers` arm (C1) — wired at unification';
 const P4D305_GATE_REASON =
