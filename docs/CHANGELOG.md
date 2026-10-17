@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-16 — fix(restore): a new-account restore remaps the seat ids in the turn queue, the cycle lists and a whisper's audience (P4.D312)
+
+_Versions: core 0.0.1308._
+
+Ports v4 `49f8906c3`. The new-account remapper now rewrites `chats.turnQueue`, `spokenThisCycleParticipantIds` and `cycleOrderParticipantIds` (JSON strings holding participant ids) and each message's `targetParticipantIds`, so a restored rotation and a restored whisper name seats that exist. The JSON pass runs after the scenario-source remap and before the participants, as v4 orders it; a value that is not a JSON string list is left exactly as it came, and a valid list is written back compact. The uuid-remap corpus grows from 41 to 44 cases (v4's own test, the JSON edge cases with a mint-order proof, and whisper audiences), regenerated from the pin; `system_restore_state` was re-measured from the pin before and after (its only reds are the two 4.11 `chat_settings` columns another lane adds).
+
 #### 2026-10-16 — feat(wardrobe): the hair-styling precedence note on the rendered outfit's hair line, proven by a new tier-1 describe_outfit family (P4.D312)
 
 _Versions: core 0.0.1307._

@@ -1228,6 +1228,96 @@ function edgeCases(): Case[] {
         ],
       }),
     },
+    // [P4.D312] v4 `49f8906c3` (`uuid-remap.ts:174-198`, `:352-361`, `:373-381`):
+    // the three turn-manager columns are JSON STRINGS naming seats, remapped by
+    // `remapJsonIdList` AFTER the scenario-source arm and BEFORE the
+    // participants (mint order is observable through the counter ids); a
+    // message's `targetParticipantIds` (a whisper's audience) joins
+    // `attachments` as an array field.
+    {
+      name: 'chat_turn_state_json_ids',
+      note: "[P4.D312] v4's own uuid-remapper test 1 verbatim: turnQueue names seat-b FIRST, so seat-b is minted before seat-a (the participants' order) — the mint-order proof a loop placed after the participants fails; the whisper audience follows its seat",
+      targetUserId: t,
+      data: bag({
+        chats: [
+          {
+            id: 'chat-old',
+            participants: [{ id: 'seat-a' }, { id: 'seat-b' }],
+            turnQueue: JSON.stringify(['seat-b']),
+            spokenThisCycleParticipantIds: JSON.stringify(['seat-a']),
+            cycleOrderParticipantIds: JSON.stringify(['seat-b', 'seat-a']),
+            messages: [{ id: 'msg-old', participantId: 'seat-a', targetParticipantIds: ['seat-b'] }],
+          },
+        ],
+      }),
+    },
+    {
+      name: 'chat_turn_state_json_edges',
+      note: '[P4.D312] one chat per edge: a non-JSON / empty / JSON-null / object / number-array / mixed-array string is returned UNTOUCHED (byte for byte); a pretty-printed list comes back COMPACT; a duplicate mints once; a non-seat id is minted anyway; a list naming a seat before the participants mints it first; a non-string value (null, a number, a REAL array) is untouched; an absent key stays absent',
+      targetUserId: t,
+      data: bag({
+        chats: [
+          { id: 'edge-not-json', participants: [], messages: [], turnQueue: 'not json' },
+          { id: 'edge-empty-string', participants: [], messages: [], spokenThisCycleParticipantIds: '' },
+          { id: 'edge-json-null', participants: [], messages: [], cycleOrderParticipantIds: 'null' },
+          { id: 'edge-object', participants: [], messages: [], turnQueue: '{"a":"b"}' },
+          { id: 'edge-numbers', participants: [], messages: [], turnQueue: '[1,2]' },
+          { id: 'edge-mixed', participants: [{ id: 'seat-m' }], messages: [], turnQueue: '["seat-m",1]' },
+          {
+            id: 'edge-pretty',
+            participants: [{ id: 'seat-p1' }, { id: 'seat-p2' }],
+            messages: [],
+            turnQueue: '[ "seat-p1" , "seat-p2" ]',
+          },
+          { id: 'edge-duplicate', participants: [], messages: [], spokenThisCycleParticipantIds: '["x","x"]' },
+          {
+            id: 'edge-not-a-seat',
+            participants: [{ id: 'seat-n' }],
+            messages: [],
+            cycleOrderParticipantIds: '["ghost-seat","seat-n"]',
+          },
+          {
+            id: 'edge-mint-order',
+            participants: [{ id: 'seat-o1' }, { id: 'seat-o2' }, { id: 'seat-o3' }],
+            messages: [],
+            turnQueue: '["seat-o3"]',
+            spokenThisCycleParticipantIds: '["seat-o2"]',
+            cycleOrderParticipantIds: '["seat-o3","seat-o1"]',
+          },
+          { id: 'edge-null-value', participants: [], messages: [], turnQueue: null },
+          { id: 'edge-number-value', participants: [], messages: [], turnQueue: 5 },
+          { id: 'edge-real-array', participants: [{ id: 'seat-r' }], messages: [], turnQueue: ['seat-r'] },
+          { id: 'edge-absent', participants: [{ id: 'seat-q' }], messages: [] },
+        ],
+      }),
+    },
+    {
+      name: 'message_whisper_audience',
+      note: "[P4.D312] targetParticipantIds is an ARRAY field beside attachments: a seat, an empty list, an unknown id (minted), null / a string / absent (untouched); one message with BOTH lists mints its attachment ids BEFORE its audience ids (`['attachments','targetParticipantIds']` order, after the scalars)",
+      targetUserId: t,
+      data: bag({
+        chats: [
+          {
+            id: 'whisper-chat',
+            participants: [{ id: 'seat-w1' }, { id: 'seat-w2' }],
+            messages: [
+              { id: 'w-msg-1', participantId: 'seat-w1', targetParticipantIds: ['seat-w2'] },
+              { id: 'w-msg-2', participantId: 'seat-w1', targetParticipantIds: [] },
+              { id: 'w-msg-3', participantId: 'seat-w1', targetParticipantIds: ['unknown-seat'] },
+              { id: 'w-msg-4', participantId: 'seat-w2', targetParticipantIds: null },
+              { id: 'w-msg-5', participantId: 'seat-w2', targetParticipantIds: 'seat-w2' },
+              { id: 'w-msg-6', participantId: 'seat-w2' },
+              {
+                id: 'w-msg-7',
+                participantId: 'seat-w1',
+                attachments: ['att-new-1', 'att-new-2'],
+                targetParticipantIds: ['aud-new-1'],
+              },
+            ],
+          },
+        ],
+      }),
+    },
     {
       name: 'user_id_position',
       note: 'trap 1: an EXISTING userId keeps its position with the new value; an absent one is APPENDED',
@@ -1287,6 +1377,38 @@ async function main(): Promise<void> {
     },
     ...edgeCases(),
   ];
+
+  // [P4.D312] Self-check the planted turn-state strings (memory note
+  // `tier-r-vacuous-equal-rows`): a malformed plant that both sides leave alone
+  // would pass vacuously, so assert each edge really is the shape it claims.
+  {
+    const byName = (n: string) => cases.find((c) => c.name === n)!;
+    const chatOf = (c: Case, id: string) =>
+      (c.data.chats as Array<Record<string, unknown>>).find((x) => x.id === id)!;
+    const edges = byName('chat_turn_state_json_edges');
+    const isJson = (v: string): boolean => {
+      try {
+        JSON.parse(v);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const check = (ok: boolean, what: string) => {
+      if (!ok) throw new Error(`P4.D312 corpus self-check failed: ${what}`);
+    };
+    check(!isJson(chatOf(edges, 'edge-not-json').turnQueue as string), "'not json' parses");
+    check(chatOf(edges, 'edge-empty-string').spokenThisCycleParticipantIds === '', "'' is not empty");
+    check(JSON.parse(chatOf(edges, 'edge-json-null').cycleOrderParticipantIds as string) === null, "'null' is not JSON null");
+    check(!Array.isArray(JSON.parse(chatOf(edges, 'edge-object').turnQueue as string)), 'the object row is an array');
+    check((JSON.parse(chatOf(edges, 'edge-numbers').turnQueue as string) as unknown[]).every((x) => typeof x === 'number'), 'the number row holds a non-number');
+    const pretty = chatOf(edges, 'edge-pretty').turnQueue as string;
+    check(pretty.includes(' ') && pretty !== JSON.stringify(JSON.parse(pretty)), 'the pretty row is already compact');
+    check(Array.isArray(chatOf(edges, 'edge-real-array').turnQueue), 'the real-array row is not an array');
+    check(!('turnQueue' in chatOf(edges, 'edge-absent')), 'the absent row carries turnQueue');
+    const lone = byName('chat_turn_state_json_ids');
+    check(JSON.parse(chatOf(lone, 'chat-old').turnQueue as string)[0] === 'seat-b', 'test 1 no longer names seat-b first');
+  }
 
   // The committed corpus — the INPUT half of the contract.
   const corpus = {

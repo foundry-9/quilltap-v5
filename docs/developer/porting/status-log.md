@@ -186232,3 +186232,79 @@ Branch `claude/p4.d312-data-cli-smalls-e89421`, cut from `REAIM`
   `grep -c 'current styling'`: describe_outfit 205 / 323, WIIP 2 / 28,
   avatar_job 6 / 32, wardrobe_tools 1 / 3, WIIG 0 / 32 (never renders hair),
   Aurora 12 / 36. `recipe_sweep.py --self-test` 0 with the new header.
+
+### Unit 3 — `49f8906c3`'s seat ids on the new-account remapper + the grown corpus + the restore re-measure (core 0.0.1308)
+
+- **Red-first `backup_uuid_remap` (pin, generator unchanged, 41 cases):** 40
+  OK; `wide` RED on `chats` only, first byte 905 — rust
+  `"spokenThisCycleParticipantIds":"[\"e1000000-0000-4000-8000-000000000001\"]"`,
+  oracle `"[\"00000000-0000-4000-8000-000000000023\"]"`. **`getMapping()` and
+  `getSize()` (163) were EQUAL** — the cell names the chat's FIRST
+  participant, which v4 mints at counter 23 in the JSON pass and v5 at counter
+  23 at the participants; nothing mints between the two points. The order's
+  "minted EARLIER, shifting every later counter id" is false for `wide`, and
+  so is its consequence: a loop moved after the participants leaves `wide`
+  GREEN. The regen alone also added `customToolTriggers: false` /
+  `composerSlashCommands: true` to `wide`'s settings row (the pin's
+  `createBackup` over the fixture's Zod defaults) — **P4.D304's HANDOFF (item
+  16) closed by the regen**, no hand edit.
+- **Red-first `system_restore_state` (pin, unported):** 55 FAILURE lines,
+  EVERY one `main.chat_settings differs` (the two 4.11 columns — KEYSTONE's,
+  absent on `REAIM`), across replace AND new-account cases; **ZERO `chats`
+  differences. R-2's predicted 17-case red set did NOT materialise.**
+  Instrumented (a `QT_DEBUG` dump, reverted) on `restore_new_account`: v4
+  spoken `["<new participant id>"]` by the remap, v5 spoken `["<new
+  participant id>"]` too — the restore's message phase goes through the
+  message-append chokepoint, which REFOLDS `spokenThisCycleParticipantIds`
+  over the archive's messages (`compute_spoken_this_cycle_after_message`; a
+  one-character chat resets the cycle to `[speaker]` on every message), and
+  the archives' `turnQueue` / `cycleOrder` cells are `"[]"`. The restore
+  families are therefore BLIND to the JSON-list arm on the committed
+  archives; the tier-1 mint-order rows are the discriminating guard. Tier 2
+  item 13 (a v5-side `wide`-shaped assertion) would pass on unported code —
+  NOT added (a test of nothing, §R.7), recorded.
+- **Port (`uuid_remap.rs`, R-1):** `PARTICIPANT_ID_JSON_FIELDS` +
+  `remap_json_id_list` (v4's why-comment; `serde_json::to_string` compact; the
+  original value back for a non-string / unparsable / non-array / non-string
+  element), the loop by key PRESENCE between the scenario-source arm and the
+  participants (`insert` — position kept), the messages' array list
+  `["attachments", "targetParticipantIds"]`. In-crate `seat_id_tests`: v4's
+  two cases one for one (the lists hold the NEW ids, `seatA != "seat-a"`,
+  seat-b minted first; `'not json'` kept, absent `turnQueue` absent), the
+  compact bytes in place, a present `null` / number / real array untouched.
+- **Corpus grown (`backup-uuid-remap.test.ts`, 41 → 44):**
+  `chat_turn_state_json_ids` (v4's test 1 verbatim — itself a mint-order
+  proof), `chat_turn_state_json_edges` (14 chats: `'not json'`, `''`,
+  `'null'`, an object, numbers, a mixed array, the pretty list → compact, a
+  duplicate, a non-seat id, the dedicated mint-order chat, `null` / `5` / a
+  real array, an absent key), `message_whisper_audience` (seat / `[]` /
+  unknown / `null` / a string / absent, and attachments-before-audience); a
+  generator self-check block asserts each plant's shape before the corpus is
+  written. Regenerated from the pin by hand (the sweep driver REFUSES this
+  family — `refused_repo_write`: its recipe writes the committed corpus):
+  44/44 OK, corpus sha `c1a01f6b…`, `grep -c targetParticipantIds` corpus 8
+  / NDJSON 2. **Mutation** (the loop after the participants): 4 differences —
+  `chat_turn_state_json_ids` and `chat_turn_state_json_edges`, chats +
+  getMapping each; `wide` green.
+- **The restore families after the port (sweep 4, from the pin):**
+  `system_restore_state` — the SAME 55 `main.chat_settings` reds and nothing
+  else (P4.D304 residue; green only on the union, §R.13); its three sibling
+  suites ok. `restore_vintage_state` re-run whole: 9/9 ok, incl.
+  `no_restore_phase_names_a_column_a_migrated_table_lacks`. Classification:
+  the chat_settings reds are a **union red of the baseline move** (KEYSTONE's
+  columns), not this lane's.
+- **Recorded divergence class `JSON_LONE_SURROGATE_ID` (R-3, no row, no
+  tolerant parser):** V8's `JSON.parse` accepts `'["\ud800"]'`, `serde_json`
+  refuses it — remapped by v4, untouched by v5; no real seat id is a lone
+  surrogate.
+- **Tier 2 item 14:** `replace` never remaps (`orchestrator.rs` calls
+  `remap_backup_data` only for `RestoreMode::NewAccount`); pinned by the
+  `replace` `system_restore_state` cases' `chats` tables comparing equal
+  against v4's unremapped rows — named, no test added.
+- **Tier 2 item 17 / R-7:** `system_export_equivalence` and
+  `system_import_state` already plant NON-DEFAULT `chats.cycleOrderParticipantIds`
+  and `chat_messages.routeTrail` (`plant_p4d171_values`, P4.88) and prove the
+  `.qtap` round trip — no audit row. The committed restore archives carry
+  neither key and v5 has no `merge` mode: the restore-side gap is recorded
+  for a later archive-growing lane. `restore-field-fidelity.test.ts` NO-PORT
+  (tests-only, mocked repos, `mode: 'merge'`).

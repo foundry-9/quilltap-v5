@@ -808,6 +808,44 @@ fn remap_character(r: &mut UuidRemapper, char_row: &Value, target_user_id: &str)
     remapped
 }
 
+/// v4 `PARTICIPANT_ID_JSON_FIELDS` (`49f8906c3`, pin `uuid-remap.ts:178-182`) —
+/// the chat columns that hold participant ids as a JSON-encoded string array
+/// rather than a real array, so `remap_array_fields` cannot see them.
+const PARTICIPANT_ID_JSON_FIELDS: [&str; 3] = [
+    "turnQueue",
+    "spokenThisCycleParticipantIds",
+    "cycleOrderParticipantIds",
+];
+
+/// v4 `remapJsonIdList(value, remapper)` (`49f8906c3`, pin
+/// `uuid-remap.ts:189-197`) — remap a JSON-encoded array of ids. "A value that
+/// is not a JSON string array is returned untouched — the turn manager already
+/// reads a malformed value as empty, so there is nothing to gain by rewriting
+/// it." A non-string, an unparsable string, a parsed non-array, or an array
+/// holding any non-string comes back as the ORIGINAL value (the original
+/// string, whitespace and all); a valid list is re-serialised COMPACT, as
+/// `JSON.stringify` writes it, every element through the remapper in order.
+///
+/// Recorded divergence class `JSON_LONE_SURROGATE_ID` (P4.D312 R-3, no row):
+/// V8's `JSON.parse` accepts a lone-surrogate `\u` escape where `serde_json`
+/// refuses it, so such a list is remapped by v4 and left untouched here. No
+/// real seat id is a lone surrogate.
+fn remap_json_id_list(value: &Value, r: &mut UuidRemapper) -> Value {
+    let Some(text) = value.as_str() else {
+        return value.clone();
+    };
+    let Ok(parsed) = serde_json::from_str::<Value>(text) else {
+        return value.clone();
+    };
+    match parsed.as_array() {
+        Some(ids) if ids.iter().all(Value::is_string) => {
+            let remapped = r.remap_array(&parsed);
+            Value::String(serde_json::to_string(&remapped).expect("a string array serialises"))
+        }
+        _ => value.clone(),
+    }
+}
+
 /// v4 `:176-211` — the chat pass. `participants` and `messages` are read from
 /// the ORIGINAL chat and assigned onto the remapped copy, so both keep their
 /// original positions (trap 1).
@@ -861,6 +899,21 @@ fn remap_chat(r: &mut UuidRemapper, chat: &Value, target_user_id: &str) -> Value
         }
     }
 
+    // P4.D312 (v4 `49f8906c3`, pin `uuid-remap.ts:352-361`): "Turn-manager
+    // state names participants inside JSON strings; left alone, the rotation
+    // and turn queue would name seats the restore has renamed." Key PRESENCE
+    // (`field in chat`), assigned onto the existing key so it keeps its
+    // place; AFTER the scenario source and BEFORE the participants — the mint
+    // order the counter ids make observable.
+    for field in PARTICIPANT_ID_JSON_FIELDS {
+        if let Some(value) = chat.get(field) {
+            let remapped_list = remap_json_id_list(value, r);
+            if let Some(obj) = remapped.as_object_mut() {
+                obj.insert(field.to_string(), remapped_list);
+            }
+        }
+    }
+
     let participants: Vec<Value> = chat
         .get("participants")
         .and_then(Value::as_array)
@@ -882,11 +935,14 @@ fn remap_chat(r: &mut UuidRemapper, chat: &Value, target_user_id: &str) -> Value
         .map(|ms| {
             ms.iter()
                 .map(|m| {
+                    // `targetParticipantIds` is a whisper's audience:
+                    // unremapped, a whisper would address seats that no
+                    // longer exist (v4 `49f8906c3`, pin `:373-381`).
                     chain(
                         r,
                         m,
                         &["id", "swipeGroupId", "participantId"],
-                        &["attachments"],
+                        &["attachments", "targetParticipantIds"],
                     )
                 })
                 .collect()
@@ -1030,4 +1086,111 @@ fn remap_nested_bag(
         }
     }
     obj.insert(bag_key.to_string(), Value::Object(bag));
+}
+
+#[cfg(test)]
+mod seat_id_tests {
+    //! P4.D312 — v4 `49f8906c3`'s two `uuid-remapper.test.ts` cases (`@@
+    //! -524`), transcribed one for one through the chat pass, plus the compact
+    //! re-serialisation and the present-`null` arm.
+
+    use super::*;
+    use serde_json::json;
+
+    fn counting() -> UuidRemapper {
+        let mut n = 0u32;
+        UuidRemapper::with_id_source(Box::new(move || {
+            n += 1;
+            format!("00000000-0000-4000-8000-{n:012}")
+        }))
+    }
+
+    fn parse_list(v: &Value) -> Vec<String> {
+        serde_json::from_str(v.as_str().expect("a JSON string")).expect("a JSON list")
+    }
+
+    /// `it('re-points the turn rotation, turn queue and whisper audiences at
+    /// the renamed seats')`
+    #[test]
+    fn re_points_the_turn_rotation_turn_queue_and_whisper_audiences_at_the_renamed_seats() {
+        let chat = json!({
+            "id": "chat-old",
+            "participants": [{ "id": "seat-a" }, { "id": "seat-b" }],
+            "turnQueue": "[\"seat-b\"]",
+            "spokenThisCycleParticipantIds": "[\"seat-a\"]",
+            "cycleOrderParticipantIds": "[\"seat-b\",\"seat-a\"]",
+            "messages": [{ "id": "msg-old", "participantId": "seat-a", "targetParticipantIds": ["seat-b"] }],
+        });
+        let out = remap_chat(&mut counting(), &chat, "target-user");
+        let seat_a = out["participants"][0]["id"].as_str().unwrap().to_string();
+        let seat_b = out["participants"][1]["id"].as_str().unwrap().to_string();
+
+        assert_ne!(seat_a, "seat-a");
+        assert_eq!(parse_list(&out["turnQueue"]), vec![seat_b.clone()]);
+        assert_eq!(
+            parse_list(&out["spokenThisCycleParticipantIds"]),
+            vec![seat_a.clone()]
+        );
+        assert_eq!(
+            parse_list(&out["cycleOrderParticipantIds"]),
+            vec![seat_b.clone(), seat_a]
+        );
+        assert_eq!(
+            out["messages"][0]["targetParticipantIds"],
+            json!([seat_b.clone()])
+        );
+        // The mint order: the turn queue names seat-b before the participants
+        // are reached, so seat-b's counter is the LOWER one.
+        assert!(seat_b.as_str() < out["participants"][0]["id"].as_str().unwrap());
+    }
+
+    /// `it('leaves a malformed or absent turn-rotation value as it found it')`
+    #[test]
+    fn leaves_a_malformed_or_absent_turn_rotation_value_as_it_found_it() {
+        let chat = json!({
+            "id": "chat-old",
+            "participants": [],
+            "messages": [],
+            "cycleOrderParticipantIds": "not json",
+        });
+        let out = remap_chat(&mut counting(), &chat, "target-user");
+        assert_eq!(out["cycleOrderParticipantIds"], json!("not json"));
+        assert!(out.get("turnQueue").is_none());
+    }
+
+    /// A valid list comes back COMPACT (`JSON.stringify`), whitespace dropped,
+    /// with the key in its original position.
+    #[test]
+    fn a_pretty_list_is_re_serialised_compact_in_place() {
+        let chat = json!({
+            "id": "c",
+            "turnQueue": "[ \"x\" , \"y\" ]",
+            "title": "after",
+            "participants": [],
+            "messages": [],
+        });
+        let out = remap_chat(&mut counting(), &chat, "u");
+        assert_eq!(
+            out["turnQueue"],
+            json!("[\"00000000-0000-4000-8000-000000000002\",\"00000000-0000-4000-8000-000000000003\"]")
+        );
+        let keys: Vec<&str> = out
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(keys[..3], ["id", "turnQueue", "title"]);
+    }
+
+    /// A present `null` is visited (key presence, not truthiness) and left
+    /// `null`; so are a number and a REAL array (not an array field here).
+    #[test]
+    fn a_present_non_string_value_is_left_as_it_came() {
+        for value in [json!(null), json!(5), json!(["seat-r"])] {
+            let chat = json!({ "id": "c", "turnQueue": value, "participants": [], "messages": [] });
+            let out = remap_chat(&mut counting(), &chat, "u");
+            assert_eq!(out["turnQueue"], value);
+        }
+    }
 }
