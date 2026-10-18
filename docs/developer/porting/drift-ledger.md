@@ -28,50 +28,57 @@ probe verifies against._
   P4.D313. CLAUDE.md's Status bullet for the round and its "Oracle baseline"
   bullet both name `25b8fab6a`, and they AGREE with this file (checked
   2026-10-17).
-- **Checked:** 2026-10-17, by a standalone `/driftcheck` after the
-  unification commit (`da92651fa`). Both branches re-probed locally AND
-  against the remote (`git ls-remote origin`: `main` = `f46cf40a2`, `bugfix`
-  = `489b228b6`), so the local checkout is not hiding unpulled work. NOTHING
-  moved since the unification's close probe: zero new commits on either
-  branch, the tree clean, the nine §3 rows unchanged (classifications stand;
-  no re-classification needed). CLAUDE.md's "Oracle baseline" bullet still
-  names `25b8fab6a` — AGREES.
-  - **Earlier the same day:** at the `25b8fab6a` unification's close. This
-    was the §4 procedure: one reader classified the nine commits past the pin
-    from the hunks, and the unifier re-probed both branches.
-  - **Before that:** 2026-10-16 twice (`25b8fab6a` itself; then the six rows
+- **Checked:** 2026-10-18, by a standalone `/driftcheck`. Both branches
+  re-probed locally AND against the remote (`git ls-remote origin`: `main` =
+  `1cfc9b504`, `bugfix` = `489b228b6`, `release` = `2432b9057` — local equals
+  remote). The two new `main` commits were classified from the hunks; the
+  nine earlier §3 rows stand unchanged. CLAUDE.md's "Oracle baseline" bullet
+  still names `25b8fab6a` — AGREES.
+  - **Before that:** 2026-10-17 twice (the `25b8fab6a` unification's close
+    probe, then a standalone `/driftcheck` at `da92651fa` that found no
+    movement); 2026-10-16 twice (`25b8fab6a` itself; then the six rows
     `362426c8f` … `4877fc2da`); 2026-10-15 (`/unify` of the `83334b9a5`
     round); and the earlier checks the §6 bullets record.
-- **v4 `main` HEAD at check: `f46cf40a2`** ("docs(wardrobe): outfit history
-  docs, spec to complete (phase 6)", 2026-10-16 22:44, `4.11.0-dev.19`).
-  - **NINE commits past the baseline:**
-    - `5cb0e0190`, the Workbench wardrobe picker (07:47).
+- **v4 `main` HEAD at check: `1cfc9b504`** ("feat(aurora): wardrobe pictures
+  section in the character gallery", 2026-10-17 15:51, `4.11.0-dev.21`).
+  - **ELEVEN commits past the baseline:**
+    - `5cb0e0190`, the Workbench wardrobe picker (10-16 07:47).
     - `a05c6f755`, the `{{character}}` placeholder + character-announced
-      custom tools (14:45).
-    - The outfit-history programme, 21:57 → 22:44: `fcab3f112` the spec,
-      `83387d0e5` phase 1 storage **WITH THE TWELFTH D23 MOVE**, `05005c562`
-      phase 2 recording, `ebb480edd` phase 3 `wardrobe_rollback` /
-      `wardrobe_history`, `8d8618819` phase 4 the API + History tab,
+      custom tools (10-16 14:45).
+    - The outfit-history programme, 10-16 21:57 → 22:44: `fcab3f112` the
+      spec, `83387d0e5` phase 1 storage **WITH THE TWELFTH D23 MOVE**,
+      `05005c562` phase 2 recording, `ebb480edd` phase 3 `wardrobe_rollback`
+      / `wardrobe_history`, `8d8618819` phase 4 the API + History tab,
       `7953da3a0` phase 5 the backup / restore / `.qtap` carriers, and
       `f46cf40a2` phase 6 docs + a model-visible summary fix.
-  - **Stamps:** dev.11 → dev.19 (`fcab3f112` stamps nothing; `83387d0e5`
+    - **NEW 2026-10-18:** `4ae20977f`, outfit history records who did the
+      dressing — `chat_wardrobe_history."actorToolName"` + a THIRD migration,
+      widening the still-pending TWELFTH move (10-17 09:02).
+    - **NEW 2026-10-18:** `1cfc9b504`, the Aurora gallery's Wardrobe
+      Pictures section + `GET /api/v1/characters/[id]/wardrobe-images`
+      (10-17 15:51).
+  - **Stamps:** dev.11 → dev.21 (`fcab3f112` stamps nothing; `83387d0e5`
     skips dev.13).
 - **v4 `bugfix` tip at check:** `489b228b6` ("bugfix: started 4.10.0 bug
   branch", 2026-10-14). It has not moved: `489b228b6..bugfix` is EMPTY, and by
   content `git diff 2432b9057 bugfix -- lib app packages plugins` is EMPTY.
   **`release` tip:** `2432b9057` (`release: 4.10.0`), unchanged. Re-probe BOTH
   branches every time.
-- **Checkout at check:** branch **`main`**, tree **CLEAN** at `f46cf40a2`.
-  HEAD is nine commits past the baseline, so it poisons a regen by DRIFT.
-- **Verdict: DRIFT PENDING — 9 commits (§3), all UNPROCESSED.**
+- **Checkout at check:** branch **`main`**, tree **CLEAN** at `1cfc9b504`.
+  HEAD is eleven commits past the baseline, so it poisons a regen by DRIFT.
+- **Verdict: DRIFT PENDING — 11 commits (§3), all UNPROCESSED.**
   - **Classes:**
     - 2 PORT-NEW + PORT (`5cb0e0190`, `a05c6f755`).
-    - 1 PORT-NEW **WITH THE TWELFTH D23 MOVE** (`83387d0e5`).
-    - 2 PORT-NEW (`ebb480edd`, `8d8618819`).
+    - 1 PORT-NEW **WITH THE TWELFTH D23 MOVE** (`83387d0e5`), widened by
+      1 PORT **inside the same move** (`4ae20977f` — a column + a migration).
+    - 3 PORT-NEW (`ebb480edd`, `8d8618819`, `1cfc9b504`).
     - 3 PORT (`05005c562`, `7953da3a0`, `f46cf40a2`).
     - 1 NO-PORT? (`fcab3f112`, the spec).
-  - **No CONVERGENCE:** no `bugs.md` / `bugs/` hunk in the span.
-  - **Production surface:** 88 files, +2,859 / −119.
+  - **No CONVERGENCE:** no `bugs.md` / `bugs/` hunk in the span (re-checked
+    through `1cfc9b504`).
+  - **Production surface:** 88 files, +2,859 / −119 through `f46cf40a2`;
+    the two new commits add 56 files, +1,059 / −60 (tests and docs
+    included).
   - **Regen rule: PIN REQUIRED at `25b8fab6a`** (§5.1).
 
 ### ⚠ LIVE-DATA — what stands at this baseline
@@ -85,7 +92,9 @@ probe verifies against._
   open an instance this round's ensures have altered (the P4.D288 note
   restated).
 - **Past the pin — NO boot-blocking, NO ping-pong, NO NOT-NULL-insert hazard
-  (classified 2026-10-17).** A v5 at this baseline never reads, writes or
+  (classified 2026-10-17; re-checked through `1cfc9b504` 2026-10-18 — the
+  `actorToolName` column is NULLABLE on a table v5 never touches, and the
+  gallery route is read-only).** A v5 at this baseline never reads, writes or
   re-runs `chat_wardrobe_history` or its two `migrations_state` rows. Its
   `chats` deletes cascade the timelines as v4's do. Two non-corrupting notes:
   1. **Outfit history does not survive a v5 round trip.** v5's backup omits
@@ -137,6 +146,15 @@ probe verifies against._
     `migration_tables.json` through v4's real runner (the R-A route, overruled
     once for the wear ledger) or a boot-created table.
   - The full DDL is in the `83387d0e5` §3 row.
+  - **WIDENED by `4ae20977f` (2026-10-17):** an eleventh column
+    `"actorToolName" TEXT` (nullable, LAST in the shared DDL so a fresh table
+    and an ALTERed one agree on column order) and a THIRD migration,
+    `add-chat-wardrobe-history-tool-name-v1` (`dependsOn` the table
+    migration; `shouldRun` = SQLite + table present + column absent;
+    `addColumnIfMissing(..., 'TEXT')`). The seed now `dependsOn` BOTH (the
+    shared INSERT spells the new column). Registration order: table →
+    tool-name → seed. Port the table at its FINAL shape and carry all three
+    ensures in that order; the provisioning ruling covers the column too.
 
 ### Regen, dependencies, help
 
@@ -147,7 +165,7 @@ probe verifies against._
     `@quilltap/plugin-utils` 2.7.1 in fourteen dirs. The lockfile diff
     `25b8fab6a..f46cf40a2` moves only the version stamp.
   - **Past the pin:** `05005c562` re-shapes `OutfitChangeContext` (a REQUIRED
-    `provenance`). The wardrobe / Pascal oracle cases that build one will
+    `provenance`; `4ae20977f` adds an optional `toolName` to it). The wardrobe / Pascal oracle cases that build one will
     need re-aiming at the next pin (an IMPORT-DEAD census at `/setupphase`).
 - **Dependencies:** `openai` 7.34.0 at the root, re-bundled into the ten
   `plugins/dist` bundles; `zod` 4.6.7; plugin-utils 2.7.1. `provider_sdk_
@@ -157,7 +175,9 @@ probe verifies against._
   (P4.D313); `docs/v4/` has 491 files, byte-identical. Past the pin,
   `a05c6f755` and the outfit-history phases edit help pages (`custom-tools.md`,
   `pascals-workbench.md`, `wardrobe.md`, with new history / rollback text) and
-  move the spec to `features/complete/`. Each catch-up round re-vendors what
+  move the spec to `features/complete/`; `4ae20977f` edits `wardrobe.md`
+  again and `1cfc9b504` adds a Wardrobe Pictures section to
+  `character-gallery.md` (+13). `docs/developer/API.md` / `DDL.md` move too. Each catch-up round re-vendors what
   it absorbs.
 
 ### Rounds, guards, state
@@ -167,9 +187,11 @@ probe verifies against._
 - **Next:**
   - The owed dogfood pass (both rounds, any copy up to `f46cf40a2`).
   - The follow-ups smalls round.
-  - Then the `f46cf40a2` drift catch-up round. The TWELFTH move's
-    provisioning ruling comes FIRST, then the outfit-history programme, the
-    Workbench picker and `{{character}}` (`phase-4.md`'s NEXT).
+  - Then the drift catch-up round (now through `1cfc9b504`). The TWELFTH
+    move's provisioning ruling comes FIRST (it now covers three migrations
+    and the `actorToolName` column), then the outfit-history programme with
+    `4ae20977f` folded in, the Workbench picker, `{{character}}`, and the
+    gallery's Wardrobe Pictures section (`phase-4.md`'s NEXT).
 
 ## §2 The freshness probe
 
@@ -219,6 +241,8 @@ passes the commit.
 | `8d8618819` | 2026-10-16 | feat(wardrobe): history API and the Wardrobe dialog's History tab (phase 4) | **PORT-NEW** (classified 2026-10-17 from the hunks; 22 files, +903 / −14; `4.11.0-dev.17`; parent `ebb480edd`; NO schema move). **Server:** `GET /api/v1/chats/[id]?action=wardrobe-history&characterId=…` (400 `characterId is required`; 404 `Chat`; no rows → `{ currentIndex: null, entries: [] }`; else entries `{ index, at, source, actorCharacterId, actorName, changedBy, isCurrent, summary, slots }` resolved against `loadWearablePool(repos, characterId, undefined, { chatId, operator: true })`, names via `findByIdRaw` (failure → null; self fallback `the character`); DEBUG `[Chats v1] Read wardrobe history`; ERROR → 500 `Failed to read wardrobe history`) and `POST …?action=wardrobe-rollback` `{ characterId, index }` (Zod 400 joined messages; operator provenance, ledger source `ui`; a refusal → 400 with rollback's sentence + INFO `[Chats v1] Wardrobe rollback refused`; success INFO `[Chats v1] Wardrobe rolled back`, body `{ equippedSlots, previousIndex, restoredIndex, skipped }`; 500 `Failed to roll back the outfit`); the action lists in `route.ts` / `get.ts` / `post.ts` / `actions/index.ts`. **Client:** query keys `wardrobe.histories(chatId)` / `wardrobe.history(chatId, characterId)`; the `chats` realtime topic refetches `wardrobe.histories(id)`; NEW `outfit-history-tab.tsx` (228 — newest first, *Wearing now*, *Wear again* with the stale-garment tooltip, the discard-staged-edits confirm), the dialog's third tab, `useStagedLiveOutfits` `isDirty` / `discard`. `docs/developer/API.md` +52. | `crates/quilltap-web/src/wardrobe_routes.rs` (the chat `?action=` dispatch + the `COLLAPSE_CENSUS` rows new routes need), `crates/quilltap-core/src/api/chat_outfits.rs` (the outfit / equip family — `chats_outfits_tier2_equivalence`), the chat action censuses; SPA `apps/web/src/app/wardrobe/{wardrobe-control-dialog,staged-live-outfits}.ts`, `apps/web/src/app/core/realtime-topic-map.ts`, `apps/web/src/app/chat/chat-keys.ts` (P4.D277 / P4.D285 wardrobe dialog; bug 198's refresh); `docs/v4/developer/API.md`. | **UNPROCESSED** — past the `25b8fab6a` round's pin; ORDER with the programme. |
 | `7953da3a0` | 2026-10-16 | feat(wardrobe): outfit history in .qtap exports and backups (phase 5) | **PORT — the backup / restore / `.qtap` carriers** (classified 2026-10-17 from the hunks; 22 files, +611 / −8; `4.11.0-dev.18`; parent `8d8618819`; NO schema move). **Backup:** `data/wardrobe-history.json` (`findAll` — by `chatId`, `characterId`, `entryIndex`), manifest count `wardrobeHistory`, DEBUG `Collected outfit history for backup`. **Restore:** `parseBackupZip` reads it optional; step `22n-ter` after the wear ledger (`upsertRows`; failure warning `Failed to restore the outfit history: <msg>` + WARN `Failed to restore outfit history`; DEBUG `Restored outfit history` `{ total, restored }`); `RestoreSummary` / preview counts; the replace-mode clear list gains `chat_wardrobe_history` after `wardrobe_wear_stats`; `remapBackupData` (new-account) remaps `id` / `chatId` / `characterId` / `actorCharacterId` through the remapper, slot ids through `wardrobeItemIdRemap`, and RECOMPUTES `slotsHash`. **`.qtap`:** `streamChats` yields `{ kind: 'wardrobe_history', chatId, data: row }` per chat AFTER the informs and BEFORE the annotations (WARN `Failed to load outfit history for export`), counts `wardrobeHistory`, `QtapWardrobeHistoryRecord`, `ChatsExportData.wardrobeHistory`; the stream assembler collects the kind; NEW `import-wardrobe-history.ts` (127 — step `7f` after characters / chats / stores / the wear ledger: rows Zod-validated whole (`Dropped N malformed outfit-history row(s).`), a FRESH id each, `chatId` / `characterId` / `actorCharacterId` + slot item ids remapped, hash recomputed, index / cursor / dates kept, a `(chat, character)` pair already holding rows NEVER merged into; INFO `Imported outfit history` `{ incoming, written, droppedInvalid, skippedTimelines }`; failure warning `Failed to import the outfit history: <msg>`). `public/schemas/qtap-export.schema.json` +33. | `crates/quilltap-core/src/services/backup/{collect,staging}.rs`, `backup/restore/{archive,orchestrator}.rs` (the restore census — `RESTORE_TS_MESSAGES` in BOTH TS + Rust), `services/delete_all.rs` (the replace-mode main-table list, beside `wardrobe_wear_stats`), the new-account remap (`backup_uuid_remap_equivalence`), `services/qtap_export/` + `key_order.rs`, `services/quilltap_import/ndjson.rs` (today the unknown-kind arm SILENTLY skips `wardrobe_history` — the P4.D264 `wardrobe_wear` precedent), the import executor + `import_warning_text_guard`; `crates/quilltap-core/src/generators/qtap-export.schema.json` (byte copy); families `system_backup` / `system_restore(_state)` / `chat_export` / `system_export` / `qtap_import` / `system_import(_state)`. P4.D264 / P4.D272 / P4.D293 / P4.D294 shapes. | **UNPROCESSED** — past the `25b8fab6a` round's pin; ORDER with the programme. |
 | `f46cf40a2` | 2026-10-16 | docs(wardrobe): outfit history docs, spec to complete (phase 6) | **PORT (one model-visible text fix) + docs** (classified 2026-10-17 from the hunks — the subject says docs, the hunks carry code (§5.3); 13 files, +149 / −19; `4.11.0-dev.19`; parent `7953da3a0`). `describe-entry.ts` `summarizeHistorySlots`: was `describeOutfit(values).replace(/\s*\n+\s*/g, '; ')` (kept the Markdown `- ` bullets and `**`), now per line strips a leading `- ` / `* ` and every `**`, trims, drops empties, joins `; ` — the `summary` of the `wardrobe_history` tool (MODEL-VISIBLE) and of `?action=wardrobe-history`. Help `wardrobe.md` (+29 / −4 — "Looking Back --- the Outfit Record", seven → nine tools, the `[[OUTFIT_HISTORY]]` / `[[ROLLBACK_OUTFIT]]` text-block tags, the `canDressThemselves` line, two front-matter tags). Docs: the spec MOVED to `features/complete/` with an As-built section, `BACKGROUND_JOBS_CHILD.md` (the settle override), ROADMAP, CHANGELOG, `update-documentation.md`, v4's own `CLAUDE.md` bullet (NO-PORT). | The v5 port of `describe-entry` is OWED by `ebb480edd` / `8d8618819` — port THIS shape only (no interim); `describeOutfit` itself unchanged (`describe_outfit_equivalence` does not move). Help → `p4.9i2`; `docs/v4/developer/BACKGROUND_JOBS_CHILD.md` + the spec at `features/complete/wardrobe-outfit-history.md`. | **UNPROCESSED** — past the `25b8fab6a` round's pin; ORDER with the programme. |
+| `4ae20977f` | 2026-10-17 | feat(wardrobe): outfit history records who did the dressing | **PORT — INSIDE the still-pending TWELFTH D23 move: a NEW nullable column + a THIRD migration; NOT destructive** (classified 2026-10-18 from the hunks; 33 files, +343 / −42; `4.11.0-dev.20`; parent `f46cf40a2`). **Schema:** `chat_wardrobe_history."actorToolName" TEXT` appended LAST in `CHAT_WARDROBE_HISTORY_DDL` (so a fresh table matches an ALTERed one); the one INSERT grows to 11 positional params (`actorToolName` between `actorCharacterId` and `isCurrent`). NEW migration `add-chat-wardrobe-history-tool-name-v1` (`introducedInVersion 4.11.0`, `dependsOn add-chat-wardrobe-history-table-v1`; `shouldRun` = SQLite + table present + column absent; `addColumnIfMissing(table, 'actorToolName', 'TEXT')`; INFO `Added actorToolName column to chat_wardrobe_history` only when added; ERROR `Failed to add actorToolName column to chat_wardrobe_history`, context `migration.<id>`), registered BETWEEN the table migration and the seed; `seed-chat-wardrobe-history-v1` now `dependsOn` BOTH and inserts `null` for the column; prettify label `Ruling a column for the contraption that did the dressing`. **Zod:** `ChatWardrobeHistoryRowSchema.actorToolName: z.string().nullable().default(null)` (pre-column bundles / backups still parse); `WardrobeHistoryProvenance.toolName?`. **Repository:** `settle` writes `actorToolName = source === 'pascal' ? toolName ?? null : null` on both append arms (incl. the first-touch seed's entry 1); `normalizeRow` `?? null`; `insertParams` now `actorCharacterId ?? null`; `upsertRows`' `ON CONFLICT` UPDATE sets it. **Provenance:** Pascal `applyWardrobeEffects` passes `toolName`; NEW `lib/wardrobe/history/operator-provenance.ts` `operatorWardrobeProvenance(chat)` → `{ source: 'operator', actorCharacterId? }` from `findActiveUserParticipant(participants, activeTypingParticipantId, impersonatingParticipantIds)` (DEBUG `Resolved operator for an outfit change`, context `wardrobe-history`); `?action=equip` now reads `chats.findById` first (absent → bare `{ source: 'operator' }`), and `?action=wardrobe-rollback` uses it too. **Model-visible / wire text:** `changedByLabel` — operator with an actor → `the operator, as <name>` (self falls back to `selfLabel`; no resolvable name → `the operator`); pascal → `Pascal's <tool>` and `Pascal's <tool> (rolled by <name>)`, plain `Pascal` for pre-column rows; `wardrobe_history`'s handler now NAMES the actor for an operator entry even when it is the character itself (`&& row.source !== 'operator'`); `?action=wardrobe-history` entries gain `actorToolName` between `actorName` and `changedBy` (order `index, at, source, actorCharacterId, actorName, actorToolName, changedBy, isCurrent, summary, slots`). `qtap-export.schema.json` gains the property + a reworded `actorCharacterId` description; the `.qtap` export / import copy it as-is (comment-only hunks). SPA: `OutfitHistoryEntry.actorToolName`. Help `wardrobe.md` (±1), the spec's As-built section, `API.md`, `DDL.md`. | Folds into the outfit-history programme (`83387d0e5` … `f46cf40a2`) — port the table, the settle writer, `describe-entry` and the history wire at THIS shape, never the interim one. **D23:** the same blindness as `83387d0e5` (generateDDL never renders the table) — the provisioning ruling must cover the column and the third ensure, registered table → tool-name → seed; `restore_vintage_state`'s boot-align list and `zero_migrations_rerun_equivalence` grow by one id. **v5 reuse:** `crates/quilltap-core/src/participant_filters.rs` `find_active_user_participant` (Phase 1 turn manager) is the resolver twin; `api/chat_outfits.rs` (equip — the extra chat read), `pascal/wardrobe_effects.rs`; the backup / `.qtap` carriers (`7953da3a0`'s row) carry the column; `qtap-export.schema.json` byte copy. | **UNPROCESSED** — past the `25b8fab6a` round's pin; ORDER with the outfit-history programme. |
+| `1cfc9b504` | 2026-10-17 | feat(aurora): wardrobe pictures section in the character gallery | **PORT-NEW — a read-only route + a gallery section; NO schema move** (classified 2026-10-18 from the hunks; 23 files, +716 / −18; `4.11.0-dev.21`; parent `4ae20977f`). **Server:** `GET /api/v1/characters/[id]/wardrobe-images` (`createContextParamsHandler`; 400 `Missing character id`; a thrown `Character not found…` → 404 `Character`; else ERROR `[Characters/WardrobeImages v1] Error listing wardrobe pictures` + 500 with the message; DEBUG `[Characters/WardrobeImages v1] Listed wardrobe pictures` `{ userId, characterId, total }`; body `{ entries, total }`). NEW `lib/wardrobe/gallery-images.ts` `listWardrobeGalleryImages`: `characters.findById` (null → throw `Character not found: <id>`; archived → `{ entries: [], total: 0 }` + DEBUG, pool never read); `loadWearablePool(repos, characterId, [])` (NO project tier, NOT operator mode); empty pool → empty without the file read; ONE `files.findByLinkedToAny(itemIds)`; keeps `category === 'IMAGE' && source === 'GENERATED'`; item = the first `linkedTo` id in the pool; entry `{ fileId, fileName, url, thumbnailUrl, mimeType, fileSizeBytes, width, height, createdAt: String(...), generationPrompt, generationModel, itemId, itemTitle, scope, locationLabel: wardrobeOriginLabel(origin) ?? 'Own wardrobe', itemArchived, isCurrentItemImage }`; sorted by `createdAt` string DESCENDING (a stable comparator — ties keep file-read order); DEBUG `[WardrobeGallery] Listed wardrobe pictures`. NEW `FilesRepository.findByLinkedToAny(ids)` (chunks of 500 through `findByFilter({ linkedTo: { $in } })`, de-duplicated by id in first-seen order, under `safeQuery` `Error finding files linked to entities`). **Client:** `WardrobeImagesSection` (collapsible third shelf under Avatar Rolls), `useWardrobeImages`, `GalleryGrid` / `GalleryImage` caption card (title + *(archived)*, location line), `EmbeddedPhotoGallery`, query key `characters.wardrobeImages(id)`, `_content.css` + the theme-storybook copy (+22 each). Help `character-gallery.md` +13; `API.md` +8. | **Server:** `crates/quilltap-web/src/characters_routes.rs` (a new collection route + its `COLLAPSE_CENSUS` row), `crates/quilltap-core/src/db/files.rs` (`find_by_linked_to` exists per-entity; the `$in` bulk read is new — its row order is v4's `findByFilter` order, measure it), `wearable_pool.rs` (the pool, P4.D279), `services/wardrobe_item_images/service.rs` (`wardrobe_image_url`; the thumbnail URL twin), `wardrobeOriginLabel` (P4.D285's SPA `wardrobe-container.ts` — a server-side twin is new). **SPA:** `apps/web/src/app/screens/characters/view/tabs/{gallery-tab,avatar-rolls-section}.ts` + `characters.api.ts` (the Aurora gallery — the Avatar Rolls vertical), `apps/web/src/app/images/image-detail-modal.ts` (P4.D277's shared full-screen frame: Copy / Download / Save to my gallery), the qt-components CSS. Help → `p4.9i2`. | **UNPROCESSED** — past the `25b8fab6a` round's pin; independent of the outfit-history programme (can be its own lane). |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

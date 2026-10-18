@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-18 — docs(porting): drift check — 11 commits past `25b8fab6a` (two new: outfit-history `actorToolName`, Aurora wardrobe pictures)
+
+_Docs-only change._
+
+v4 `main` moved two commits to `1cfc9b504` (`bugfix` unmoved, content-equal to `release`; checkout clean). New §3 rows, both UNPROCESSED: `4ae20977f` (PORT, inside the pending twelfth D23 move — `chat_wardrobe_history.actorToolName` plus a third migration, operator/Pascal provenance labels) and `1cfc9b504` (PORT-NEW — `GET /api/v1/characters/[id]/wardrobe-images` and the gallery's Wardrobe Pictures section). No convergence. Regen rule unchanged: pin required at `25b8fab6a`.
+
 #### 2026-10-17 — docs(porting): drift check after the `25b8fab6a` unification — no movement
 
 _Docs-only change._
