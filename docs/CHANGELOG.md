@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — docs(porting): P4.D316 lane record — LANE COMPLETE
+
+_Docs-only change._
+
+The lane record for the outfit-history recording / two tools / rollback POST lane (red-first counts, mutation proofs, the measured rulings R-4 / R-5 / R-7 / R-9, the gate, the deferrals, the HANDOFFs) and the order's status header set to LANE COMPLETE with the branch name.
+
 #### 2026-10-19 — test(harness): outfit-history timeline gaps + factory-minted containers in two more oracle cases (P4.D316 Tier 2)
 
 _No crate versions bumped._
