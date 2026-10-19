@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(pascal-spa): the wardrobe reference picker, its vantage loader and the whose-wardrobe select (P4.D320)
+
+_Versions: SPA 0.5.876._
+
+The `5cb0e0190` picker pieces (P4.D320), standalone ahead of their Workbench wiring. NEW `wardrobe/wardrobe-vantage-items.ts` — a signal loader over the existing character / container wardrobe reads (archived included, no project tier for a character, nothing read for `none`, a stale answer for an abandoned vantage discarded). NEW `wardrobe/wardrobe-reference-picker.ts` (`qt-wardrobe-reference-picker`, "Choose a garment or outfit"): outfits apart from garments grouped by first slot, search, Show archived (on by default for take-off), Covers <slot> only, composite expanders naming each piece or "a piece no longer in reach", origin and reach lines, the Reference by title / id radios and hint, Open the Wardrobe in the empty state, filters reset per open, Escape closing the picker alone. NEW `screens/custom-tools/wardrobe-vantage-select.ts` (`qt-wardrobe-vantage-select`): the vantage encoding, the Characters / Shared wardrobes options, and v4's label and reach hints byte for byte. v4's seven picker tests are transcribed name for name, plus the v5-added cases.
+
 #### 2026-10-19 — feat(pascal-spa): the character-announces toggle, the Character name insert, the run dialog's {{character}} row, and the Staff bar naming the announcer (P4.D320)
 
 _Versions: SPA 0.5.875._
