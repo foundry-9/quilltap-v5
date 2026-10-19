@@ -117,6 +117,8 @@ pub const BUILT_IN_TOOLS: &[&str] = &[
     "wardrobe_archive",
     "wardrobe_wear",
     "wardrobe_take_off",
+    "wardrobe_rollback",
+    "wardrobe_history",
     // DOC_EDIT_TOOL_NAMES (doc-edit-handler.ts:96)
     "doc_read_file",
     "doc_write_file",
@@ -184,6 +186,8 @@ pub const PORTED_TOOLS: &[&str] = &[
     "wardrobe_archive",
     "wardrobe_wear",
     "wardrobe_take_off",
+    "wardrobe_rollback",
+    "wardrobe_history",
     // W4.1d3b: doc-edit tools (the 23 non-photo `doc_*` tools, dispatched through
     // `execute_doc_edit_tool`). The photo trio (`keep_image`/`list_images`/
     // `attach_image`) is a tracked scoped deferral → the loud fallback.
@@ -2221,6 +2225,8 @@ mod tests {
             "wardrobe_archive",
             "wardrobe_wear",
             "wardrobe_take_off",
+            "wardrobe_rollback",
+            "wardrobe_history",
         ] {
             assert!(PORTED_TOOLS.contains(&name), "{name} must be dispatched");
             assert!(BuiltInToolRunner::<LoudFallbackRunner>::handles(name));

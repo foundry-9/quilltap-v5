@@ -34,9 +34,7 @@ use crate::db::wardrobe_wear_stats::EquipSource;
 use crate::services::wardrobe_item_mutations::{
     create_item, CreateItemOptions, WardrobeCreateBody,
 };
-use crate::wardrobe::{
-    describe_wardrobe_effect, is_composite, Slots, WardrobeEffect, WARDROBE_SLOT_TYPES,
-};
+use crate::wardrobe::{describe_wardrobe_effect, is_composite, Slots, WardrobeEffect};
 use crate::wear_ops::{wear_item, PutOnMode, WearEffect};
 use crate::wearable_pool::{build_wearable_pool, WearablePool};
 
@@ -694,34 +692,9 @@ pub fn format(output: &WardrobeCreateToolOutput) -> String {
         parts.push(format!("- Equipped immediately{on_recipient}"));
 
         if let Some(state) = &output.current_state {
-            let slot_summary = WARDROBE_SLOT_TYPES
-                .iter()
-                // An unreported-if-blank slot (hair) drops out when empty —
-                // never surfaced as "(empty)", which reads as "has no hair".
-                .filter(|slot| {
-                    let occupied = state
-                        .get(**slot)
-                        .and_then(Value::as_array)
-                        .map(|a| !a.is_empty())
-                        .unwrap_or(false);
-                    occupied || crate::wardrobe::is_slot_reported_when_empty(slot)
-                })
-                .map(|slot| {
-                    let ids = state
-                        .get(*slot)
-                        .and_then(Value::as_array)
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(|e| e.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        })
-                        .unwrap_or_default();
-                    let label = if ids.is_empty() { "(empty)" } else { &ids };
-                    format!("  {slot}: {label}")
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
+            // ONE slot presentation for every wardrobe tool (v4
+            // `formatEquippedSlotLines`).
+            let slot_summary = super::wardrobe_shared::format_equipped_slot_lines(state).join("\n");
             parts.push(format!("- Current outfit:\n{slot_summary}"));
         }
     } else {

@@ -153,6 +153,8 @@ async function main(): Promise<void> {
   const wa = await import('@/lib/tools/handlers/wardrobe-archive-handler');
   const ww = await import('@/lib/tools/handlers/wardrobe-wear-handler');
   const wt = await import('@/lib/tools/handlers/wardrobe-take-off-handler');
+  const wrb = await import('@/lib/tools/handlers/wardrobe-rollback-handler');
+  const whi = await import('@/lib/tools/handlers/wardrobe-history-handler');
 
   await initializeDatabase();
   const { plantChatWardrobeHistoryTable } = await import(join(here, '..', 'lib', 'v4-migrations.ts'));
@@ -190,6 +192,7 @@ async function main(): Promise<void> {
 
   const runOp = async (
     op: Op,
+    containers: Record<string, unknown> = { pendingWardrobeAnnouncements, pendingWardrobeHistory },
   ): Promise<{ name: string; tool: string; output: unknown; formatted: string; logs: unknown[] }> => {
     const characterId =
       op.characterId === 'recipient' ? spec.recipientCharacterId : spec.callerCharacterId;
@@ -200,8 +203,7 @@ async function main(): Promise<void> {
       chatId: spec.chatId,
       characterId,
       provenance: { source: 'character' as const, ...(characterId ? { actorCharacterId: characterId } : {}) },
-      pendingWardrobeAnnouncements,
-      pendingWardrobeHistory,
+      ...containers,
     };
     captured.length = 0;
     let output: unknown;
@@ -234,6 +236,14 @@ async function main(): Promise<void> {
       case 'wardrobe_take_off':
         output = await wt.executeWardrobeTakeOffTool(op.args, base);
         formatted = wt.formatWardrobeTakeOffResults(output as never);
+        break;
+      case 'wardrobe_rollback':
+        output = await wrb.executeWardrobeRollbackTool(op.args, base as never);
+        formatted = wrb.formatWardrobeRollbackResults(output as never);
+        break;
+      case 'wardrobe_history':
+        output = await whi.executeWardrobeHistoryTool(op.args, base as never);
+        formatted = whi.formatWardrobeHistoryResults(output as never);
         break;
       default:
         throw new Error(`unknown tool ${op.tool}`);
@@ -295,6 +305,50 @@ async function main(): Promise<void> {
     })(),
   };
 
+  // [P4.D316] The history scenario — a planted timeline, then the two tools.
+  const historyRows = async (): Promise<unknown[]> => {
+    const { rawQuery } = await import('@/lib/database/manager');
+    return ((await rawQuery(
+      'SELECT "chatId", "characterId", "entryIndex", "slots", "slotsHash", "source", "actorCharacterId", "actorToolName", "isCurrent" FROM chat_wardrobe_history ORDER BY "chatId", "characterId", "entryIndex"',
+    )) as Array<Record<string, unknown>>).map((r) => ({ ...r, isCurrent: Number(r.isCurrent) }));
+  };
+  const redHat = (
+    (await repos.wardrobe.findByCharacterId(spec.callerCharacterId, true)) as Array<{ id: string; title: string }>
+  ).find((i) => i.title === 'Red Hat');
+  if (!redHat) throw new Error('historyScenario: the main ops minted no Red Hat');
+  const history: unknown[] = [];
+  for (const step of (spec as unknown as { historyScenario: { steps: Array<Record<string, any>> } })
+    .historyScenario.steps) {
+    if (step.step === 'plant' || step.step === 'dress') {
+      const slots = { top: [], bottom: [], footwear: [], accessories: [], hair: [], ...step.slots };
+      if (step.redHatIn) slots[step.redHatIn] = [...slots[step.redHatIn], redHat.id];
+      await repos.chats.setEquippedOutfit(spec.chatId, spec.callerCharacterId, slots as never);
+      if (step.step === 'plant') {
+        await repos.wardrobeHistory.settle(spec.chatId, spec.callerCharacterId, {
+          kind: 'append',
+          provenance: step.provenance,
+        } as never);
+      }
+      continue;
+    }
+    if (step.step === 'cursor') {
+      await repos.wardrobeHistory.settle(spec.chatId, spec.callerCharacterId, {
+        kind: 'cursor',
+        index: step.index,
+      } as never);
+      continue;
+    }
+    const turn = newWardrobeTurnContainers();
+    const r = await runOp(step as never, step.outside ? {} : turn);
+    history.push({
+      ...r,
+      set: Array.from(turn.pendingWardrobeAnnouncements).sort(),
+      map: Array.from(turn.pendingWardrobeHistory.entries()).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+      historyRows: await historyRows(),
+      equipped: (await repos.chats.getEquippedOutfitForCharacter(spec.chatId, spec.callerCharacterId)) ?? null,
+    });
+  }
+
   // [P4.D262] The picture scenario — the operator switch ON.
   const { ensureCollection } = await import('@/lib/database/manager');
   const { ChatSettingsSchema } = await import('@/lib/schemas/settings.types');
@@ -326,6 +380,7 @@ async function main(): Promise<void> {
   lines.push(JSON.stringify({ case: 'wardrobe-tools', returns }));
   lines.push(JSON.stringify({ case: 'wardrobe-tools', readback }));
   lines.push(JSON.stringify({ case: 'wardrobe-tools', pictures, jobs }));
+  lines.push(JSON.stringify({ case: 'wardrobe-tools', history }));
   process.stdout.write(lines.join('\n') + '\n');
   process.exit(0);
 }

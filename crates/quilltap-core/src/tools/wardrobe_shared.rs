@@ -95,6 +95,62 @@ pub fn find_equipped_slots(item_id: &str, equipped: Option<&Value>) -> Vec<Strin
     slots
 }
 
+/// v4 `formatEquippedSlotLines(state)` (`wardrobe-handler-shared.ts:120-130`,
+/// "so the slot presentation … can never drift") — `  <slot>: <ids>` per slot
+/// in `WARDROBE_SLOT_TYPES` order, `(empty)` for a slot with no ids, and an
+/// empty unreported-if-blank slot (hair) omitted entirely: the model must
+/// never read that as baldness. The emptiness test is v4's `ids.length === 0`
+/// over the id LIST, not the joined text.
+pub fn format_equipped_slot_lines(state: &Value) -> Vec<String> {
+    let mut lines = Vec::new();
+    for slot in crate::wardrobe::WARDROBE_SLOT_TYPES {
+        let ids: Vec<&str> = state
+            .get(slot)
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        if ids.is_empty() && !crate::wardrobe::is_slot_reported_when_empty(slot) {
+            continue;
+        }
+        let label = if ids.is_empty() {
+            "(empty)".to_string()
+        } else {
+            ids.join(", ")
+        };
+        lines.push(format!("  {slot}: {label}"));
+    }
+    lines
+}
+
+/// v4 `buildWardrobeCoverageSummaryFromState(pool, slots)` =
+/// `describeOutfit(resolveEquippedOutfitForCharacter(pool, slots).outfitValues)`
+/// — pure over the pool the tool already loaded (no second read).
+pub fn coverage_summary_from_state(
+    pool: &crate::wearable_pool::WearablePool,
+    state: &Slots,
+) -> String {
+    crate::wardrobe::describe_outfit(
+        &crate::services::resolve_equipped::resolve_equipped_outfit_for_character(pool, state)
+            .outfit_values,
+    )
+}
+
+/// Zod 4's `z.number().int()` over a tool input value: the integer it carries,
+/// or `None` for anything `.int()` refuses — a non-number (a string `"2"`
+/// included), a fractional or non-finite value, or one outside the SAFE
+/// integer range (Zod 4's `.int()` is `safeint`). An integral float (`2.0`)
+/// is admitted, as `Number.isInteger(2.0)` is true.
+pub fn zod_safe_integer(value: &Value) -> Option<i64> {
+    let n = value.as_number()?;
+    let max = crate::api::zod_issues::MAX_SAFE_INTEGER_I64;
+    if let Some(i) = n.as_i64() {
+        return (-max..=max).contains(&i).then_some(i);
+    }
+    let f = n.as_f64()?;
+    (f.is_finite() && f.fract() == 0.0 && f.abs() <= crate::api::zod_issues::MAX_SAFE_INTEGER)
+        .then_some(f as i64)
+}
+
 /// A fresh empty equipped state (v4 `emptyEquippedState`).
 pub fn empty_equipped_state() -> Slots {
     Slots::fresh()

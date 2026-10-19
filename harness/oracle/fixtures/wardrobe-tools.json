@@ -866,5 +866,211 @@
         }
       }
     ]
+  },
+  "historyScenario": {
+    "comment": "P4.D316 Tier 1 item 17 — run AFTER the main ops' read-back and BEFORE the picture scenario, on the same copy. Plants a five-entry timeline for the caller in spec.chatId through each side's REAL repositories (the slots written through setEquippedOutfit, then settle with the plant's provenance — entry 0 an arrival, 1 an operator speaking as the recipient, 2 the caller's own tool, 3 Pascal's dice, 4 the operator speaking as the caller); `cursor` steps move the cursor through settle; `dress` writes slots without a settle. `op` steps run the REAL nine-tool table entry with a FRESH pair of turn containers per op (or none with `outside: true`), dumping the set, the map, the history rows and the equipped outfit after each. `redHatByTitle` marks the caller's archived Red Hat (minted by the main ops) by title.",
+    "steps": [
+      {
+        "step": "plant",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-000000000001"
+          ],
+          "bottom": [
+            "a0000000-0000-4000-8000-000000000002"
+          ]
+        },
+        "provenance": {
+          "source": "chat-start"
+        }
+      },
+      {
+        "step": "plant",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-000000000005"
+          ],
+          "footwear": [
+            "a0000000-0000-4000-8000-000000000003"
+          ]
+        },
+        "provenance": {
+          "source": "operator",
+          "actorCharacterId": "33333333-3333-4333-8333-333333333333"
+        }
+      },
+      {
+        "step": "plant",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-0000000000ff"
+          ],
+          "accessories": [
+            "b0000000-0000-4000-8000-000000000001"
+          ]
+        },
+        "provenance": {
+          "source": "character",
+          "actorCharacterId": "22222222-2222-4222-8222-222222222222"
+        }
+      },
+      {
+        "step": "plant",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-000000000001"
+          ]
+        },
+        "redHatIn": "accessories",
+        "provenance": {
+          "source": "pascal",
+          "actorCharacterId": "22222222-2222-4222-8222-222222222222",
+          "toolName": "Dressing Dice"
+        }
+      },
+      {
+        "step": "plant",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-000000000006"
+          ]
+        },
+        "provenance": {
+          "source": "operator",
+          "actorCharacterId": "22222222-2222-4222-8222-222222222222"
+        }
+      },
+      {
+        "step": "op",
+        "name": "history_all",
+        "tool": "wardrobe_history",
+        "args": {}
+      },
+      {
+        "step": "cursor",
+        "index": 1
+      },
+      {
+        "step": "op",
+        "name": "history_window_gap",
+        "tool": "wardrobe_history",
+        "args": {
+          "limit": 2
+        }
+      },
+      {
+        "step": "cursor",
+        "index": 4
+      },
+      {
+        "step": "op",
+        "name": "history_limit_zero_invalid",
+        "tool": "wardrobe_history",
+        "args": {
+          "limit": 0
+        }
+      },
+      {
+        "step": "op",
+        "name": "history_recipient_empty",
+        "tool": "wardrobe_history",
+        "args": {},
+        "characterId": "recipient"
+      },
+      {
+        "step": "op",
+        "name": "rollback_default_steps_back",
+        "tool": "wardrobe_rollback",
+        "args": {}
+      },
+      {
+        "step": "op",
+        "name": "rollback_already_current_in_turn",
+        "tool": "wardrobe_rollback",
+        "args": {
+          "index": 4
+        }
+      },
+      {
+        "step": "op",
+        "name": "rollback_out_of_range",
+        "tool": "wardrobe_rollback",
+        "args": {
+          "index": 9
+        }
+      },
+      {
+        "step": "op",
+        "name": "rollback_forward_missing_item",
+        "tool": "wardrobe_rollback",
+        "args": {
+          "index": 2
+        }
+      },
+      {
+        "step": "dress",
+        "slots": {
+          "top": [
+            "a0000000-0000-4000-8000-000000000005"
+          ],
+          "bottom": [
+            "a0000000-0000-4000-8000-000000000002"
+          ]
+        }
+      },
+      {
+        "step": "op",
+        "name": "rollback_archived_worn_same_slot",
+        "tool": "wardrobe_rollback",
+        "args": {
+          "index": 1
+        }
+      },
+      {
+        "step": "op",
+        "name": "rollback_negative_invalid",
+        "tool": "wardrobe_rollback",
+        "args": {
+          "index": -1
+        }
+      },
+      {
+        "step": "op",
+        "name": "rollback_string_index_invalid",
+        "tool": "wardrobe_rollback",
+        "args": {
+          "index": "2"
+        }
+      },
+      {
+        "step": "op",
+        "name": "rollback_no_history_recipient",
+        "tool": "wardrobe_rollback",
+        "args": {},
+        "characterId": "recipient"
+      },
+      {
+        "step": "op",
+        "name": "rollback_outside_turn_to_first",
+        "tool": "wardrobe_rollback",
+        "args": {
+          "index": 0
+        },
+        "outside": true
+      },
+      {
+        "step": "op",
+        "name": "rollback_at_first_outside_turn",
+        "tool": "wardrobe_rollback",
+        "args": {},
+        "outside": true
+      },
+      {
+        "step": "op",
+        "name": "history_after_outside_rollback",
+        "tool": "wardrobe_history",
+        "args": {}
+      }
+    ]
   }
 }

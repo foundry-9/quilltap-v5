@@ -1,8 +1,8 @@
-//! The seven `wardrobe_*` tools as ONE table (v4 `lib/tools/handlers/
+//! The nine `wardrobe_*` tools as ONE table (v4 `lib/tools/handlers/
 //! wardrobe-tool-table.ts` + the new halves of `wardrobe-handler-shared.ts`,
-//! `9ecebf986`).
+//! `9ecebf986`; `wardrobe_rollback` / `wardrobe_history`, `ebb480edd`).
 //!
-//! v4 builds ONE `WardrobeToolContext` for all seven tools, so the turn's
+//! v4 builds ONE `WardrobeToolContext` for all nine tools, so the turn's
 //! announcement set reaches every tool that changes an outfit — none can be
 //! the one that forgets it (bug 193: `wardrobe_create` + `equip_now` had fired
 //! the avatar alone). Every tool reads ONE wearable pool per call
@@ -82,12 +82,12 @@ use crate::services::tool_image_generation::{
 
 use super::wardrobe_read::WardrobeReadToolOutput;
 use super::{
-    wardrobe_archive, wardrobe_create, wardrobe_list, wardrobe_read, wardrobe_take_off,
-    wardrobe_update, wardrobe_wear,
+    wardrobe_archive, wardrobe_create, wardrobe_history, wardrobe_list, wardrobe_read,
+    wardrobe_rollback, wardrobe_take_off, wardrobe_update, wardrobe_wear,
 };
 
-/// The seven `wardrobe_*` tools, the table's keys in v4's order.
-pub const WARDROBE_TOOL_NAMES: [&str; 7] = [
+/// The nine `wardrobe_*` tools, the table's keys in v4's order.
+pub const WARDROBE_TOOL_NAMES: [&str; 9] = [
     "wardrobe_list",
     "wardrobe_read",
     "wardrobe_create",
@@ -95,6 +95,8 @@ pub const WARDROBE_TOOL_NAMES: [&str; 7] = [
     "wardrobe_archive",
     "wardrobe_wear",
     "wardrobe_take_off",
+    "wardrobe_rollback",
+    "wardrobe_history",
 ];
 
 /// v4 `WardrobeToolContext` (= `Omit<OutfitChangeContext, 'historyIntent'>`)
@@ -128,6 +130,8 @@ pub enum WardrobeToolOutput {
     Archive(wardrobe_archive::WardrobeArchiveToolOutput),
     Wear(wardrobe_wear::WardrobeWearToolOutput),
     TakeOff(wardrobe_take_off::WardrobeTakeOffToolOutput),
+    Rollback(wardrobe_rollback::WardrobeRollbackToolOutput),
+    History(wardrobe_history::WardrobeHistoryToolOutput),
 }
 
 /// What [`run_wardrobe_tool_handler`] hands out of the write.
@@ -164,6 +168,8 @@ pub fn source_context(name: &str) -> Option<&'static str> {
         "wardrobe_archive" => "wardrobe-archive-handler",
         "wardrobe_wear" => "wardrobe-wear-handler",
         "wardrobe_take_off" => "wardrobe-take-off-handler",
+        "wardrobe_rollback" => wardrobe_rollback::CONTEXT,
+        "wardrobe_history" => wardrobe_history::CONTEXT,
         _ => return None,
     })
 }
@@ -239,6 +245,29 @@ pub fn run_wardrobe_tool_handler(
                 wardrobe_take_off::execute(main, mount, user_id, chat_id, character_id, args);
             (WardrobeToolOutput::TakeOff(out), changed)
         }
+        // The rollback's ONE change carries its CURSOR intent; a refusal or a
+        // failure changes nothing.
+        "wardrobe_rollback" => {
+            let (out, stage) = wardrobe_rollback::execute(main, mount, chat_id, character_id, args);
+            let changed = stage
+                .map(|stage| vec![(character_id.to_string(), Some(stage.intent))])
+                .unwrap_or_default();
+            return Some(WardrobeToolStage {
+                output: WardrobeToolOutput::Rollback(out),
+                changed,
+            });
+        }
+        // A history call changes nothing.
+        "wardrobe_history" => (
+            WardrobeToolOutput::History(wardrobe_history::execute(
+                main,
+                mount,
+                chat_id,
+                character_id,
+                args,
+            )),
+            Vec::new(),
+        ),
         _ => return None,
     };
     let changed = changed.into_iter().map(|id: String| (id, None)).collect();
@@ -265,6 +294,8 @@ pub async fn finish_wardrobe_tool(
         WardrobeToolOutput::Archive(_) => "wardrobe-archive-handler",
         WardrobeToolOutput::Wear(_) => "wardrobe-wear-handler",
         WardrobeToolOutput::TakeOff(_) => "wardrobe-take-off-handler",
+        WardrobeToolOutput::Rollback(_) => wardrobe_rollback::CONTEXT,
+        WardrobeToolOutput::History(_) => wardrobe_history::CONTEXT,
     };
     for (character_id, intent) in &changed {
         notify_wardrobe_changed(
@@ -281,6 +312,26 @@ pub async fn finish_wardrobe_tool(
             source,
         )
         .await;
+    }
+    // v4 logs `Rolled a wardrobe back` AFTER `notifyWardrobeChanged` — here,
+    // once the effects above ran (the rollback module's one line).
+    if let (WardrobeToolOutput::Rollback(out), Some((character_id, _))) = (&output, changed.first())
+    {
+        crate::wardrobe::rollback::log_rolled_back(
+            source,
+            &OutfitChangeContext {
+                user_id: ctx.user_id,
+                chat_id: ctx.chat_id,
+                character_id,
+                provenance: ctx.provenance,
+                history_intent: None,
+                pending_wardrobe_announcements: ctx.pending_wardrobe_announcements,
+                pending_wardrobe_history: ctx.pending_wardrobe_history,
+            },
+            out.previous_index.unwrap_or_default(),
+            out.restored_index.unwrap_or_default(),
+            out.skipped.as_ref().map_or(0, Vec::len),
+        );
     }
     match &mut output {
         // v4 `b3f937076`: a new garment is drawn by default when the operator
@@ -355,6 +406,8 @@ impl WardrobeToolOutput {
             WardrobeToolOutput::Archive(o) => serde_json::to_value(o),
             WardrobeToolOutput::Wear(o) => serde_json::to_value(o),
             WardrobeToolOutput::TakeOff(o) => serde_json::to_value(o),
+            WardrobeToolOutput::Rollback(o) => serde_json::to_value(o),
+            WardrobeToolOutput::History(o) => serde_json::to_value(o),
         };
         v.unwrap_or(Value::Null)
     }
@@ -369,6 +422,8 @@ impl WardrobeToolOutput {
             WardrobeToolOutput::Archive(o) => wardrobe_archive::format(o),
             WardrobeToolOutput::Wear(o) => wardrobe_wear::format(o),
             WardrobeToolOutput::TakeOff(o) => wardrobe_take_off::format(o),
+            WardrobeToolOutput::Rollback(o) => wardrobe_rollback::format(o),
+            WardrobeToolOutput::History(o) => wardrobe_history::format(o),
         }
     }
 
@@ -442,6 +497,22 @@ impl WardrobeToolOutput {
                 }),
                 error: if o.success { None } else { o.error.clone() },
             },
+            // v4: `{ formattedText, previous_index, restored_index,
+            // current_state, coverage_summary, skipped }`, in that order.
+            WardrobeToolOutput::Rollback(o) => row(
+                o.success,
+                json!({
+                    "formattedText": formatted,
+                    "previous_index": o.previous_index,
+                    "restored_index": o.restored_index,
+                    "current_state": o.current_state,
+                    "coverage_summary": o.coverage_summary,
+                    "skipped": o.skipped,
+                }),
+                &o.error,
+            ),
+            // v4's spread: `success` rides INSIDE the result, as `wardrobe_read`.
+            WardrobeToolOutput::History(o) => row(o.success, spread(formatted, o), &o.error),
         }
     }
 }
@@ -453,11 +524,11 @@ mod tests {
     // The 32-byte all-`testpepper` base64 used across the core write tests.
     const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
-    /// v4 `wardrobe-tool-table.test.ts` — "covers exactly the seven
-    /// wardrobe_* tools": the table answers each of the seven and nothing
+    /// v4 `wardrobe-tool-table.test.ts` — "covers exactly the nine
+    /// wardrobe_* tools": the table answers each of the nine and nothing
     /// else, each with its handler's `context`.
     #[test]
-    fn covers_exactly_the_seven_wardrobe_tools() {
+    fn covers_exactly_the_nine_wardrobe_tools() {
         let (main, mount) = (
             Connection::open_in_memory().unwrap(),
             Connection::open_in_memory().unwrap(),

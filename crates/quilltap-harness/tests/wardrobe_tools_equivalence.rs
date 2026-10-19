@@ -63,7 +63,10 @@ use std::collections::HashMap;
 
 use quilltap_core::db::archetype_wardrobe::read_general_wardrobe;
 use quilltap_core::db::chat_settings::{update_for_user, SettingsColVal};
-use quilltap_core::db::chat_wardrobe_history::{WardrobeHistoryProvenance, WardrobeHistorySource};
+use quilltap_core::db::chat_wardrobe_history::{
+    ChatWardrobeHistoryRepository, WardrobeHistoryIntent, WardrobeHistoryProvenance,
+    WardrobeHistorySource,
+};
 use quilltap_core::db::chats_outfits::ChatOutfitsRepository;
 use quilltap_core::db::doc_mount_documents::DocMountDocumentsRepository;
 use quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository;
@@ -109,6 +112,9 @@ struct Spec {
     picture_plant: PicturePlant,
     #[serde(rename = "pictureScenario")]
     picture_scenario: PictureScenario,
+    /// [P4.D316] the planted timeline + the two tools' ops.
+    #[serde(rename = "historyScenario")]
+    history_scenario: Value,
 }
 
 #[derive(Deserialize)]
@@ -389,7 +395,7 @@ fn wardrobe_tools_match_oracle() {
                 &spec.chat_id,
                 character_id,
                 &op.args,
-                &turn,
+                Some(&turn),
             )
         });
         let formatted = output.format_at(now);
@@ -480,6 +486,190 @@ fn wardrobe_tools_match_oracle() {
         failed.push("readback".to_string());
     }
 
+    // ── [P4.D316] the history scenario: a planted timeline, then the tools ──
+    {
+        // v4's repository creates `background_jobs` lazily on first touch (the
+        // outside-turn rollback's announcement); v5 provisions it at boot, so
+        // this un-booted copy gets it from the D23 dump first.
+        let fresh: Value = serde_json::from_str(include_str!(
+            "../../quilltap-core/src/services/provisioning/fresh_schema.json"
+        ))
+        .unwrap();
+        let jobs_ddl = fresh["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"background_jobs\" ("))
+            .unwrap();
+        main_c
+            .execute_batch(&jobs_ddl.replacen("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1))
+            .unwrap();
+        let red_hat = find_by_character_id(main_c, &docs, &spec.caller_character_id, true)
+            .expect("caller items")
+            .into_iter()
+            .find(|i| i["title"] == "Red Hat")
+            .expect("the main ops minted a Red Hat")["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let want_history = parse_oracle_history(&oracle_text);
+        let oracle_red_hat = oracle_readback["callerItems"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["title"] == "Red Hat")
+            .expect("v4's Red Hat")["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let history_repo = ChatWardrobeHistoryRepository::new(main_c);
+        let mut got_history: Vec<(Value, Vec<String>)> = Vec::new();
+        for step in spec.history_scenario["steps"].as_array().unwrap() {
+            match step["step"].as_str().unwrap() {
+                kind @ ("plant" | "dress") => {
+                    let mut slots = json!({ "top": [], "bottom": [], "footwear": [], "accessories": [], "hair": [] });
+                    for (k, v) in step["slots"].as_object().unwrap() {
+                        slots[k] = v.clone();
+                    }
+                    if let Some(slot) = step["redHatIn"].as_str() {
+                        slots[slot].as_array_mut().unwrap().push(json!(red_hat));
+                    }
+                    ChatOutfitsRepository::new(main_c)
+                        .set_equipped_outfit(&spec.chat_id, &spec.caller_character_id, &slots)
+                        .expect("plant slots");
+                    if kind == "plant" {
+                        let p = &step["provenance"];
+                        let source: WardrobeHistorySource =
+                            serde_json::from_value(p["source"].clone()).unwrap();
+                        let mut prov = WardrobeHistoryProvenance::new(source);
+                        if let Some(a) = p["actorCharacterId"].as_str() {
+                            prov = prov.with_actor(a);
+                        }
+                        if let Some(t) = p["toolName"].as_str() {
+                            prov = prov.with_tool_name(t);
+                        }
+                        history_repo.settle(
+                            &spec.chat_id,
+                            &spec.caller_character_id,
+                            &WardrobeHistoryIntent::Append { provenance: prov },
+                        );
+                    }
+                }
+                "cursor" => {
+                    history_repo.settle(
+                        &spec.chat_id,
+                        &spec.caller_character_id,
+                        &WardrobeHistoryIntent::Cursor {
+                            index: step["index"].as_i64().unwrap(),
+                        },
+                    );
+                }
+                _ => {
+                    let character_id = if step["characterId"] == "recipient" {
+                        &spec.recipient_character_id
+                    } else {
+                        &spec.caller_character_id
+                    };
+                    let tool = step["tool"].as_str().unwrap();
+                    let turn = new_wardrobe_turn_containers();
+                    let outside = step["outside"] == true;
+                    let (output, lines) = global_capture::capture(|| {
+                        run_tool(
+                            &rt,
+                            &db,
+                            tool,
+                            &main,
+                            &mount,
+                            &spec.user_id,
+                            &spec.chat_id,
+                            character_id,
+                            &step["args"],
+                            (!outside).then_some(&turn),
+                        )
+                    });
+                    let mut set: Vec<String> = turn.0.lock().unwrap().iter().cloned().collect();
+                    set.sort();
+                    let mut map: Vec<(String, Value)> = turn
+                        .1
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .map(|(k, v)| (k.clone(), serde_json::to_value(v).unwrap()))
+                        .collect();
+                    map.sort_by(|a, b| a.0.cmp(&b.0));
+                    let equipped = ChatOutfitsRepository::new(main_c)
+                        .get_equipped_outfit_for_character(&spec.chat_id, &spec.caller_character_id)
+                        .unwrap_or(Value::Null);
+                    got_history.push((
+                        json!({
+                            "name": step["name"],
+                            "tool": tool,
+                            "output": output.to_value(),
+                            "formatted": output.format_at(now),
+                            "set": set,
+                            "map": map,
+                            "historyRows": dump_history(main_c),
+                            "equipped": equipped,
+                        }),
+                        lines,
+                    ));
+                }
+            }
+        }
+        assert_eq!(got_history.len(), want_history.len(), "history op count");
+        for ((got, lines), want) in got_history.iter().zip(&want_history) {
+            let mut want = want.clone();
+            let want_logs = want.as_object_mut().unwrap().shift_remove("logs").unwrap();
+            let name = want["name"].as_str().unwrap().to_string();
+            // A row whose slots carry the main ops' MINTED Red Hat id hashes
+            // a different id on each side by construction: its `slotsHash`
+            // is masked (the hash itself is pinned over fixed ids by the
+            // recording families).
+            let mask = |v: &Value, minted: &str| -> Value {
+                let mut v = v.clone();
+                if let Some(rows) = v["historyRows"].as_array_mut() {
+                    for r in rows {
+                        if r["slots"].as_str().is_some_and(|s| s.contains(minted)) {
+                            r["slotsHash"] = json!("<minted>");
+                        }
+                    }
+                }
+                v
+            };
+            let (g, w) = (
+                normalize(&mask(got, &red_hat)),
+                normalize(&mask(&want, &oracle_red_hat)),
+            );
+            if serde_json::to_string(&g).unwrap() != serde_json::to_string(&w).unwrap() {
+                eprintln!("history op {name} diverged\n  rust:   {g}\n  oracle: {w}");
+                failed.push(format!("history:{name}"));
+            }
+            if let Some(diff) = compare_logs(lines, &want_logs) {
+                eprintln!("history op {name} LOGS diverged\n{diff}");
+                failed.push(format!("history:{name}:logs"));
+            }
+        }
+        // The scenario reached each arm it was written for.
+        let all = serde_json::to_string(&want_history).unwrap();
+        for marker in [
+            "Now wearing:",
+            "gap_before_window",
+            "Wearing now: 1.",
+            "is already wearing outfit",
+            "There is no outfit 9",
+            "No outfit history yet",
+            "is already in the first outfit",
+            "the operator, as",
+            "Rollback left a stale item off",
+        ] {
+            assert!(
+                all.contains(marker),
+                "the history scenario never reached {marker:?}"
+            );
+        }
+    }
+
     // ── [P4.D262] the picture scenario: the operator switch ON ──
     let fresh: Value = serde_json::from_str(include_str!(
         "../../quilltap-core/src/services/provisioning/fresh_schema.json"
@@ -553,7 +743,7 @@ fn wardrobe_tools_match_oracle() {
                 &spec.chat_id,
                 character_id,
                 &op.args,
-                &turn,
+                Some(&turn),
             )
         });
         pictures.push(json!({
@@ -620,7 +810,17 @@ fn wardrobe_tools_match_oracle() {
     assert!(failed.is_empty(), "wardrobe tools diverged: {failed:?}");
     // A queued picture is PENDING (no runner on either side) and tried once.
     assert!(!jobs.is_empty(), "the switch-ON scenario queued no picture");
-    for job in &jobs {
+    // [P4.D316] the history scenario's outside-turn rollback queued ONE
+    // announcement before the pictures; every other job is a picture.
+    let announcements = jobs
+        .iter()
+        .filter(|j| j["type"] == json!("WARDROBE_OUTFIT_ANNOUNCEMENT"))
+        .count();
+    assert_eq!(announcements, 1, "the outside-turn rollback's announcement");
+    for job in jobs
+        .iter()
+        .filter(|j| j["type"] != json!("WARDROBE_OUTFIT_ANNOUNCEMENT"))
+    {
         assert_eq!(job["type"], json!("WARDROBE_ITEM_IMAGE_GENERATION"));
         assert_eq!(job["status"], json!("PENDING"));
         assert_eq!(job["maxAttempts"], json!(1.0));
@@ -704,6 +904,17 @@ fn wear_readback(
     Value::Array(rows.into_iter().map(|(_, v)| v).collect())
 }
 
+/// [P4.D316] the fourth oracle line: `{ history }`.
+fn parse_oracle_history(text: &str) -> Vec<Value> {
+    for line in text.lines() {
+        let v: Value = serde_json::from_str(line.trim()).unwrap_or(Value::Null);
+        if let Some(h) = v.get("history") {
+            return h.as_array().expect("history array").clone();
+        }
+    }
+    panic!("the oracle predates P4.D316 — no `history` line; regenerate it");
+}
+
 /// The third oracle line: `{ pictures, jobs }`.
 fn parse_oracle_pictures(text: &str) -> (Vec<Value>, Vec<Value>) {
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -730,7 +941,7 @@ fn run_tool(
     chat_id: &str,
     character_id: &str,
     args: &Value,
-    turn: &(PendingWardrobeAnnouncements, PendingWardrobeHistory),
+    turn: Option<&(PendingWardrobeAnnouncements, PendingWardrobeHistory)>,
 ) -> WardrobeToolOutput {
     let stage = run_wardrobe_tool_handler(
         tool,
@@ -757,8 +968,8 @@ fn run_tool(
             chat_id,
             character_id,
             provenance: &provenance,
-            pending_wardrobe_announcements: Some(&turn.0),
-            pending_wardrobe_history: Some(&turn.1),
+            pending_wardrobe_announcements: turn.map(|t| &t.0),
+            pending_wardrobe_history: turn.map(|t| &t.1),
         },
         stage,
     ))
@@ -791,8 +1002,8 @@ fn dump_history(c: &rusqlite::Connection) -> Value {
     Value::Array(rows)
 }
 
-/// The seven handlers' `context`s — their lines compare whole.
-const HANDLER_CONTEXTS: [&str; 7] = [
+/// The nine handlers' `context`s — their lines compare whole.
+const HANDLER_CONTEXTS: [&str; 9] = [
     "wardrobe-list-handler",
     "wardrobe-read-handler",
     "wardrobe-create-handler",
@@ -800,6 +1011,8 @@ const HANDLER_CONTEXTS: [&str; 7] = [
     "wardrobe-archive-handler",
     "wardrobe-wear-handler",
     "wardrobe-take-off-handler",
+    "wardrobe-rollback-handler",
+    "wardrobe-history-handler",
 ];
 
 /// The keystone's tags — their lines compare by TAG only (R-H: the bytes are

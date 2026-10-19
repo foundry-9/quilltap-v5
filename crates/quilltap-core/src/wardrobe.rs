@@ -20,6 +20,7 @@
 //!   layer order for a default outfit.
 
 pub mod operator_provenance;
+pub mod rollback;
 
 use std::collections::HashSet;
 

@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(wardrobe): the ONE rollback + the wardrobe_rollback / wardrobe_history tools in the wardrobe tool table (P4.D316)
+
+_Versions: core 0.0.1316._
+
+Ports v4 `ebb480edd` (minus `describe-entry.ts`, the keystone's, and `ToolMessage.tsx`, P4.D318's) at the `e8e17b2d9` pin. New `wardrobe::rollback`: an in-write half (`rollback_in_write` — the timeline, v4's four refusal sentences verbatim with the name read lazily, `filter_stale_items`, the INFO `Rollback left a stale item off` per stale item before the commit, ONE `commit_equipped_outfit` with no bundles, a cursor intent) and an after-commit half (`finish_rollback` — the effects with the cursor intent, then DEBUG `Rolled a wardrobe back`). A timeline gap at the target answers V8's `Cannot read properties of undefined (reading 'slots')`.
+
+New `tools::wardrobe_rollback` (the character's pool, ledger source `tool`; Zod-faithful validation; `Now wearing:` last line; truthy-title rule) and `tools::wardrobe_history` (`window_history`, actor names from the raw row with the operator-as-self clause, the keystone's describe-entry renderer, `Wearing now: null`, the `…` / `←` / `—` code points). The tool table goes from seven to nine; a rollback's one change carries its cursor intent, and the DEBUG logs after the notify. Both executor lists gain the two names. One `format_equipped_slot_lines` in `wardrobe_shared` replaces the inline slot loops in the wear, take-off and create formatters (no row moved).
+
+New tier-1 family `wardrobe_history_tools_format_equivalence` (v4's real `filterStaleItems`, `windowHistory` and both formatters; three mutation proofs). `wardrobe_tools_equivalence` gains a history scenario: a five-entry timeline planted through each side's real `settle`, then 17 history / rollback ops in a turn and outside one (all four refusals, archived and missing stale items, an archived item kept in its slot, the gap, operator-as-self named).
+
 #### 2026-10-19 — feat(wardrobe): record outfit history on every outfit change — provenance, the per-turn history map, arrivals, the operator seat (P4.D316)
 
 _Versions: core 0.0.1315._

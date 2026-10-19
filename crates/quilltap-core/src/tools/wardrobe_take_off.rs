@@ -363,31 +363,10 @@ pub fn format(output: &WardrobeTakeOffToolOutput) -> String {
     }
     lines.push(String::new());
     lines.push("Current outfit:".to_string());
-    for slot in crate::wardrobe::WARDROBE_SLOT_TYPES {
-        let ids = output
-            .current_state
-            .get(slot)
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(|e| e.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            })
-            .unwrap_or_default();
-        // An unreported-if-blank slot (hair) is omitted entirely when empty
-        // rather than listed as "(empty)" — the model must never read that as
-        // baldness.
-        if ids.is_empty() && !crate::wardrobe::is_slot_reported_when_empty(slot) {
-            continue;
-        }
-        let label = if ids.is_empty() {
-            "(empty)".to_string()
-        } else {
-            ids
-        };
-        lines.push(format!("  {slot}: {label}"));
-    }
+    // ONE slot presentation for every wardrobe tool (v4 `formatEquippedSlotLines`).
+    lines.extend(super::wardrobe_shared::format_equipped_slot_lines(
+        &output.current_state,
+    ));
     lines.push(String::new());
     lines.push(format!("Summary: {}", output.coverage_summary));
     lines.join("\n")
