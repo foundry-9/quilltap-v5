@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — docs(porting): P4.D323 lane record — the `e8e17b2d9` round's vendored trees and NO-PORT record
+
+_Docs-only change._
+
+The vendor lane's record in the status log: the probe observation (v4 three commits past the ledger), the pin and its own `npm ci` tree, the red-first measurements, the help and mirror md5 tables, the `docs/v4` census with its two named Inventory deferrals, the HANDOFF section md5s for the unifier's byte-compare, the NO-PORT evidence for three docs-only commits and ten halves, the dependency facts, and the gate. The order's status header reads LANE COMPLETE.
+
 #### 2026-10-19 — vendor(docs): `docs/v4/` to v4 `e8e17b2d9` — 8 overwrites + 3 adds (P4.D323)
 
 _Docs-only change._
