@@ -31,7 +31,7 @@ API reference for Quilltap v4.3 and later.
 > - **Connection-profile fallback chains** — `fallbackProfileId` (the understudy) and `allowTierFallback` on connection profiles. Chains are capped at three attempts and never recurse. See [Connection Profiles](#connection-profiles).
 > - **Image-profile LoRA adapters and model options** — the reserved `loras` parameter key (validated by `ImageLoraSpecSchema`), the per-model `loraSupport` block on the models response, and `POST /api/v1/image-profiles?action=lora-metadata` for reading a LoRA source's public HuggingFace card.
 > - **Four-state Concierge** — `conciergeState` (`'monitored' | 'flagged' | 'vouched' | 'uncensored'`) on `POST /api/v1/chats` and `PUT /api/v1/chats/[id]`, applied through the one transition chokepoint `applyConciergeFlip`. *Superseded in 4.10 by the three states; see below.*
-> - **Chat-action set (current)** — `accessible-stores`, `agent-mode`, `announcement`, `announcement-preview`, `avatars`, `bulk`, `cost`, `danger-classification`, `documents`, `export`, `export-markdown`, `group-stores`, `mailbox`, `memories`, `merge`, `outfit`, `outfit-summary`, `participants`, `impersonation-voice-preview`, `inform`, `photo-albums`, `rebuild-summary`, `recall-replay`, `regenerate-avatar`, `render-conversation`, `retry-image-uncensored`, `rng`, `run-tool`, `save-image`, `scenario`, `send-mail`, `state`, `story-background`, `tags`, `title`, `toggle-avatar-generation`, `tools`, `turn`. This supersedes the v4.3 list above.
+> - **Chat-action set (current)** — `accessible-stores`, `agent-mode`, `announcement`, `announcement-preview`, `avatars`, `bulk`, `cost`, `danger-classification`, `documents`, `export`, `export-markdown`, `group-stores`, `mailbox`, `memories`, `merge`, `outfit`, `outfit-summary`, `participants`, `impersonation-voice-preview`, `inform`, `photo-albums`, `rebuild-summary`, `recall-replay`, `regenerate-avatar`, `render-conversation`, `retry-image-uncensored`, `rng`, `run-tool`, `save-image`, `scenario`, `send-mail`, `state`, `story-background`, `tags`, `title`, `toggle-avatar-generation`, `tools`, `turn`, `wardrobe-history`, `wardrobe-rollback`. This supersedes the v4.3 list above.
 > - **Scenario changed mid-chat** — `POST /api/v1/chats/[id]?action=scenario`; the Host announces the change as a revision.
 > - **Archivable scenarios and wardrobe items** — archived rows drop out of every listing unless `includeArchived` is passed.
 
@@ -2221,6 +2221,14 @@ Discard a roll. Scrubs every pointer first — `chats.characterAvatars`, the cha
 
 ---
 
+### Character Wardrobe Pictures
+
+#### `GET /api/v1/characters/[id]/wardrobe-images`
+
+Every GENERATED image file linked to a wardrobe item in the character's wearable pool — own vault, group stores and Quilltap General (no project tier: there is no chat) — archived items included, newest first. Read-only; backed by `lib/wardrobe/gallery-images.ts`. Answers `{ entries, total }`; each entry carries `fileId`, `fileName`, `url`, `thumbnailUrl`, `mimeType`, `fileSizeBytes`, `width`, `height`, `createdAt`, `generationPrompt`, `generationModel`, `itemId`, `itemTitle`, `scope`, `locationLabel` (`Own wardrobe`, `Group · X`, `Shared · Quilltap General`), `itemArchived`, and `isCurrentItemImage`. An archived character answers an empty list; an unknown one 404s.
+
+---
+
 ### Chats
 
 #### `GET /api/v1/chats`
@@ -2920,6 +2928,60 @@ Every mode writes through the wear ledger's chokepoint (`wardrobeWear.commitEqui
   "itemId": "item-uuid"
 }
 ```
+
+Every mode also records the change in the outfit history as an `operator` entry (see below).
+
+#### `GET /api/v1/chats/[id]?action=wardrobe-history&characterId=…`
+
+One character's numbered outfit timeline in this chat, ascending by index. Entry `0` is what they
+arrived in; one entry is recorded per Aurora announcement, and `isCurrent` marks the one they are
+wearing now. Each entry's slots resolve against the character's wearable pool (operator view, archived
+items included); an id the pool no longer holds comes back `{ "title": null, "missing": true }`.
+
+**Response**: `200 OK`
+
+```json
+{
+  "currentIndex": 2,
+  "entries": [
+    {
+      "index": 0,
+      "at": "2026-10-16T10:00:00.000Z",
+      "source": "chat-start",
+      "actorCharacterId": null,
+      "actorName": null,
+      "actorToolName": null,
+      "changedBy": "chat opened",
+      "isCurrent": false,
+      "summary": "Green Dress; Riding Boots",
+      "slots": {
+        "top": [{ "itemId": "item-uuid", "title": "Green Dress", "archived": false, "missing": false }],
+        "bottom": [], "footwear": [], "accessories": [], "hair": []
+      }
+    }
+  ]
+}
+```
+
+`source` is one of `chat-start`, `participant-added`, `merge`, `operator`, `character`, `pascal`,
+`seeded`. `actorCharacterId` / `actorName` name the calling character (`character`), the rolling
+character (`pascal`), or the character the user was speaking as (`operator`; null when they drove
+none). `actorToolName` is the custom tool's name for `pascal` entries, null otherwise. `changedBy`
+is the ready-made label ("the operator, as Bertie", "Pascal's dress_for_dinner"). An empty record answers `{ "currentIndex": null, "entries": [] }`. `400` without
+`characterId`; `404` for an unknown chat.
+
+#### `POST /api/v1/chats/[id]?action=wardrobe-rollback`
+
+Return a character to a recorded outfit, as an operator change: one commit through the wear
+ledger's chokepoint, the avatar refresh and Aurora's announcement, and the history cursor moved to
+`index` (nothing is appended). Items in the entry that are archived or no longer exist are left off
+and reported in `skipped` — except an archived item already worn in the same slot, which stays.
+
+**Request Body**: `{ "characterId": "char-uuid", "index": 3 }` (`index` required).
+
+**Response**: `200 OK` — `{ equippedSlots, previousIndex, restoredIndex, skipped: [{ itemId, title, reason: "archived" | "missing" }] }`.
+`400` when there is no history, `index` is outside `0..max`, or it is already current (the message
+says which); `404` for an unknown chat.
 
 ---
 

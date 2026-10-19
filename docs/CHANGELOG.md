@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — vendor(docs): `docs/v4/` to v4 `e8e17b2d9` — 8 overwrites + 3 adds (P4.D323)
+
+_Docs-only change._
+
+The v4 docs mirror brought to the round's pin: `CHANGELOG.md`, `FEATURES.md`, `developer/API.md`, `developer/BACKGROUND_JOBS_CHILD.md`, `developer/DDL.md`, `developer/bugs.md`, `developer/features/ROADMAP.md` and `developer/features/complete/pascal-custom-tools.md` overwritten; the bug-252 page, `pascal-wardrobe-effect-picker.md` and `wardrobe-outfit-history.md` (at its final `complete/` path) added. 494 files tracked, each byte-equal to the pin. The two Inventory spec docs are deliberately deferred to the Inventory round, where they will be vendored at their final paths.
+
 #### 2026-10-19 — vendor(help): `help/` WHOLE at v4 `e8e17b2d9` — four pages re-vendored (P4.D323)
 
 _No crate versions bumped._
