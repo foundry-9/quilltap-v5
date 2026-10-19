@@ -485,5 +485,6 @@ fn system_import_read_matches_oracle() {
     // planted read-failure arms (P4.48).
     // P4.D264: + the three `read_ndjson_wardrobe_wear_*` cases.
     // P4.D264 (ruled fix): + `read_ndjson_chat_documents_and_informs_order`.
-    assert_eq!(ran, 33, "expected 33 cases to run, ran {ran}");
+    // P4.D317: + the two `read_ndjson_wardrobe_history_*` cases.
+    assert_eq!(ran, 35, "expected 35 cases to run, ran {ran}");
 }

@@ -1001,6 +1001,8 @@ const IMPORT_WARN_MESSAGES: &[&str] = &[
     "Imported memories left unembedded",
     // [P4.D264] phase 7e's catch.
     "Failed to import wardrobe wear ledger",
+    // [P4.D317] phase 7f's catch.
+    "Failed to import outfit history",
 ];
 
 /// [P4.D264] The oracle's `WEAR_LIVE_ROWS_SQL`, byte for byte: live rows on
@@ -1023,6 +1025,8 @@ const WARDROBE_LOG_MESSAGES: &[&str] = &[
     "Imported wardrobe wear ledger",
     "Imported wardrobe item pictures",
     "No imported vault for character; wardrobe pictures not carried",
+    // [P4.D317] phase 7f's INFO.
+    "Imported outfit history",
 ];
 
 /// v5's captured `INFO` / `DEBUG` lines for [`WARDROBE_LOG_MESSAGES`], in the
@@ -1036,6 +1040,17 @@ fn v5_wardrobe_logs(lines: &[String]) -> Vec<String> {
                 return None;
             }
             let (_target, rest) = rest.split_once(' ')?;
+            // [P4.D317] v4's child-logger binding (`module`) is invisible to
+            // the oracle's `Logger.prototype` capture; v5 carries it as a
+            // field (7f's `module=import:wardrobe-history`) — dropped here.
+            let rest = match rest.find(" module=") {
+                Some(at) => {
+                    let after = &rest[at + 1..];
+                    let end = after.find(' ').map_or(rest.len(), |e| at + 1 + e);
+                    format!("{}{}", &rest[..at], &rest[end..])
+                }
+                None => rest.to_string(),
+            };
             WARDROBE_LOG_MESSAGES
                 .iter()
                 .any(|m| rest == *m || rest.starts_with(&format!("{m} ")))
@@ -1808,7 +1823,8 @@ fn system_import_execute_state_equivalence() {
     // …+ P4.D294's eighteen carrier arms (bug 228's seven, the cursor table's
     // five, bug 240's one, L-A's one, the scenario source's four) (65 + 18 =
     // 83).
-    assert_eq!(ran, 83, "expected 83 cases, ran {ran}");
+    // …+ P4.D317's four outfit-history arms (83 + 4 = 87).
+    assert_eq!(ran, 87, "expected 87 cases, ran {ran}");
     // [P4.D294] Non-vacuity of the carrier-line compare: every execute case
     // compared it, and each message fired somewhere.
     assert!(
@@ -1818,6 +1834,15 @@ fn system_import_execute_state_equivalence() {
     {
         let fired = CARRIER_LOGS_FIRED.lock().unwrap();
         for m in CARRIER_LOG_MESSAGES.iter().chain(CARRIER_TAG_ONLY.iter()) {
+            if *m == CARRIER_UNREACHABLE {
+                assert_eq!(
+                    fired.get(*m).copied().unwrap_or(0),
+                    0,
+                    "`{m}` fired in the oracle — R-10's unreachable arm is reachable now: \
+                     measure the v5 side"
+                );
+                continue;
+            }
             assert!(
                 fired.get(*m).copied().unwrap_or(0) > 0,
                 "`{m}` never fired in the oracle — its compare is vacuous"
@@ -2531,14 +2556,16 @@ fn system_import_execute_state_equivalence() {
     // `Failed to import wardrobe item` lines (47).
     // [P4.D294] + the seventeen single-run carrier arms (69; the twice arm
     // records only `carrierLogs`); none fires one of these WARNs (47).
+    // [P4.D317] + the three single-run outfit-history arms (72); the no-table
+    // arm's phase-7f WARN (48).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        69,
+        72,
         "cases comparing the import WARNs"
     );
     assert_eq!(
         IMPORT_WARNS_FIRED.load(Ordering::SeqCst),
-        47,
+        48,
         "v4 import WARN lines fired"
     );
     // [P4.D264] every execute case compares `wardrobeLogs`; six lines fire
@@ -2546,14 +2573,16 @@ fn system_import_execute_state_equivalence() {
     // pictures arm's ledger INFO + picture INFO). [P4.D272] 48 → 51 cases.
     // [P4.D284] 51 → 52 (`execute_wardrobe_folders` fires none — a silence leg).
     // [P4.D294] 52 → 69 (the carrier arms fire none).
+    // [P4.D317] 69 → 72; 6 → 8 (7f's INFO on the cross-instance arm and the
+    // never-merge hole; the no-table arm's 7f fails before it logs).
     assert_eq!(
         WARDROBE_LOG_CASES.load(Ordering::SeqCst),
-        69,
+        72,
         "cases comparing the wardrobe carriers' import lines"
     );
     assert_eq!(
         WARDROBE_LOGS_FIRED.load(Ordering::SeqCst),
-        6,
+        8,
         "v4 wardrobe carrier import lines fired"
     );
     // [P4.D272] every execute case compares `memoryLogs` (51); v4's DEBUG
@@ -2565,9 +2594,10 @@ fn system_import_execute_state_equivalence() {
     // `execute_duplicate_remint` and `execute_message_insert_fails` — the
     // lesson memory and the empty-map interlude memory — and four on
     // `execute_chats_only_memories`, bug 240's local characters).
+    // [P4.D317] 69 → 72 cases (the outfit-history arms import no memory).
     assert_eq!(
         MEMORY_LOG_CASES.load(Ordering::SeqCst),
-        69,
+        72,
         "cases comparing the `Imported memory` lines"
     );
     assert_eq!(
@@ -3536,12 +3566,24 @@ fn plant_p4d171_values(conn: &rusqlite::Connection) {
 // === P4.D294 (append-only) — the carriers' lines + the bug-228 corpus ===
 
 /// [P4.D294] The oracle's `CARRIER_LOG_MESSAGES` — compared with their fields.
-const CARRIER_LOG_MESSAGES: [&str; 4] = [
+const CARRIER_LOG_MESSAGES: [&str; 6] = [
     "Importing chat messages",
     "Failed to import chat message",
     "Memory names an archived local character; not reviving it",
     "Remapped chat scenario source",
+    // [P4.D317] bug 252's reconcile pass (`reconcile.ts:430-440`).
+    "Remapped character-keyed chat fields",
+    CARRIER_UNREACHABLE,
 ];
+
+/// [P4.D317 R-10] The reconcile's "unreadable" WARN is UNREACHABLE through an
+/// import on BOTH sides (measured): v4's `ChatMetadataSchema` makes all four
+/// character-keyed columns `z.record`, so the chat create refuses a non-object
+/// column (`expected record, received string` — the chat does not import) and
+/// a created chat's column is always an object or `null`. Compared like the
+/// rest (both sides silent), and pinned NEVER to fire in the oracle — a v4
+/// that loosens the schema trips the non-vacuity check below.
+const CARRIER_UNREACHABLE: &str = "Chat character-keyed columns unreadable; left as imported";
 
 /// [P4.D294] The oracle's `CARRIER_TAG_ONLY` — C1-11's restore lines,
 /// compared as `<level> <message>` ALONE (P4.D288 owns their bytes).
@@ -3568,9 +3610,30 @@ fn v5_carrier_logs(lines: &[String]) -> Vec<String> {
             CARRIER_LOG_MESSAGES
                 .iter()
                 .any(|m| rest == *m || rest.starts_with(&format!("{m} ")))
-                .then(|| format!("{level} {rest}"))
+                .then(|| format!("{level} {}", fields_json_as_js_string(rest)))
         })
         .collect()
+}
+
+/// [P4.D317] The oracle's `carrierLine` renders an array field through
+/// `String(v)` — comma-joined, no brackets (bug 252's `fields`). v5 logs it
+/// through the house `…Json` convention (`fieldsJson=["a","b"]`), rendered
+/// back here as `fields=a,b`.
+fn fields_json_as_js_string(rest: &str) -> String {
+    let Some(at) = rest.find(" fieldsJson=") else {
+        return rest.to_string();
+    };
+    let value = &rest[at + " fieldsJson=".len()..];
+    let mut it = serde_json::Deserializer::from_str(value).into_iter::<Value>();
+    let Some(Ok(Value::Array(items))) = it.next() else {
+        return rest.to_string();
+    };
+    let tail = &value[it.byte_offset()..];
+    let joined: Vec<String> = items
+        .iter()
+        .map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_string))
+        .collect();
+    format!("{} fields={}{tail}", &rest[..at], joined.join(","))
 }
 
 /// Every UUID in `lines` that is not a literal of the case (the pre-import

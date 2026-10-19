@@ -773,6 +773,15 @@ pub struct ChatUpdate {
     /// per-character `{ imageId, generatedAt, afterMessageCount }` map). Stored as
     /// compact JSON text. No `updatedAt` bump (v4 `_update` preserves it).
     pub character_avatars: Option<Value>,
+    // === P4.D317: character-keyed chat fields ===
+    /// v4 `repos.chats.update({ pendingOutfitNotifications })` — the fourth
+    /// character-keyed column (legacy, keyed only), written by the `.qtap`
+    /// import's bug-252 re-key (`reconcile.ts:423-441`, `e8e17b2d9`) beside
+    /// its three siblings. The `character_avatars` shape: `Some(obj)` stores
+    /// compact JSON text, `Some(Value::Null)` clears, `None` leaves it unset.
+    /// No `updatedAt` bump.
+    pub pending_outfit_notifications: Option<Value>,
+    // === end P4.D317 ===
     /// v4 `repos.chats.update({ storyBackgroundImageId })` (the story-background
     /// job's newly-generated image id). No `updatedAt` bump beyond an explicit
     /// `updated_at`.
@@ -1373,6 +1382,18 @@ impl<'c> ChatsRepository<'c> {
             };
             set_col!("characterAvatars", Box::new(text));
         }
+        // === P4.D317: character-keyed chat fields ===
+        if let Some(v) = &patch.pending_outfit_notifications {
+            // v4 `repos.chats.update({ pendingOutfitNotifications })` — a JSON
+            // object stored as compact text; a JSON `null` clears the column.
+            let text: Option<String> = if v.is_null() {
+                None
+            } else {
+                Some(json_text(v)?)
+            };
+            set_col!("pendingOutfitNotifications", Box::new(text));
+        }
+        // === end P4.D317 ===
         if let Some(v) = &patch.story_background_image_id {
             // v4 `repos.chats.update({ storyBackgroundImageId })` (the story job).
             set_col!("storyBackgroundImageId", Box::new(v.clone()));
@@ -1964,6 +1985,69 @@ mod subprompt_carry_tests {
         );
     }
 }
+
+// === P4.D317: character-keyed chat fields ===
+#[cfg(test)]
+mod character_keyed_update_tests {
+    //! P4.D317 (R-11) — the `.qtap` reconcile's bug-252 patch writes the four
+    //! character-keyed columns through ONE `ChatUpdate`; each lands as compact
+    //! JSON text, an unset column is untouched, and `updatedAt` is preserved.
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn all_four_character_keyed_columns_write_through_one_update() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chats (id TEXT PRIMARY KEY, updatedAt TEXT, equippedOutfit TEXT, \
+             characterAvatars TEXT, courierCheckpoints TEXT, pendingOutfitNotifications TEXT); \
+             INSERT INTO chats VALUES ('c1', '2026-01-01T00:00:00.000Z', NULL, NULL, NULL, '{\"old\":1}');",
+        )
+        .unwrap();
+        let patch = ChatUpdate {
+            equipped_outfit: Some(Some(json!({"new-a": {"top": ["i1"]}}))),
+            character_avatars: Some(json!({"new-a": {"imageId": "f2"}})),
+            courier_checkpoints: Some(json!({"new-a": {"lastResolvedMessageId": "m2"}})),
+            pending_outfit_notifications: Some(json!({"new-a": {"text": "changed"}})),
+            ..ChatUpdate::default()
+        };
+        assert!(ChatsRepository::new(&conn).update("c1", &patch).unwrap());
+        let row: (String, String, String, String, String) = conn
+            .query_row(
+                "SELECT equippedOutfit, characterAvatars, courierCheckpoints, \
+                 pendingOutfitNotifications, updatedAt FROM chats WHERE id = 'c1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            row,
+            (
+                r#"{"new-a":{"top":["i1"]}}"#.to_string(),
+                r#"{"new-a":{"imageId":"f2"}}"#.to_string(),
+                r#"{"new-a":{"lastResolvedMessageId":"m2"}}"#.to_string(),
+                r#"{"new-a":{"text":"changed"}}"#.to_string(),
+                "2026-01-01T00:00:00.000Z".to_string(),
+            )
+        );
+        // `None` leaves the column alone; `Some(null)` clears it.
+        let clear = ChatUpdate {
+            pending_outfit_notifications: Some(Value::Null),
+            ..ChatUpdate::default()
+        };
+        ChatsRepository::new(&conn).update("c1", &clear).unwrap();
+        let (pending, avatars): (Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT pendingOutfitNotifications, characterAvatars FROM chats WHERE id = 'c1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(pending, None);
+        assert_eq!(avatars.as_deref(), Some(r#"{"new-a":{"imageId":"f2"}}"#));
+    }
+}
+// === end P4.D317 ===
 
 #[cfg(test)]
 mod refusal_ledger_tests {

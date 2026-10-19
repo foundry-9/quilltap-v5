@@ -2477,6 +2477,98 @@ function remintBundle(base: Bundle, o: RemintOpts = {}): Bundle {
   return p;
 }
 
+/**
+ * [P4.D317] Phase 7f + bug 252's reconcile pass, over a bundle grown from the
+ * cross-instance merged payload (`rewriteIds`, mounts preserved): characters,
+ * chats and document stores import under fresh ids, so `idMaps.characters`,
+ * `idMaps.chats` and the item map are populated. Added AFTER the rewrite (so a
+ * not-carried character id survives verbatim):
+ *   - `wardrobeHistory`: Lorian's three entries on the lesson chat
+ *     INTERLEAVED with Riya's (write order ≠ mint order), a `pascal` row with
+ *     `actorToolName`, an `operator` row whose actor is Riya, an `""` actor
+ *     (→ null), a NOT-CARRIED character's row (kept under its own id), a row
+ *     on the interlude chat, and ONE malformed row (a non-UUID slot element);
+ *   - the lesson chat's four character-keyed columns (Lorian + the
+ *     not-carried character in the outfit, Lorian's avatar on the coat's
+ *     document link, Lorian's Courier checkpoint at a chat message, Riya's
+ *     queued notice). (The reconcile's "unreadable" arm is unreachable
+ *     through an import: v4's `ChatMetadataSchema` makes all four columns
+ *     `z.record`, so the chat create REFUSES a non-object column — measured,
+ *     `expected record, received string` — and a created chat's column is
+ *     always an object or null. P4.D317 R-10.)
+ * `source` overrides the base bundle (the never-merge hole uses the
+ * UNREWRITTEN payload).
+ */
+const P4D317_NOT_CARRIED = 'a1000000-0000-4000-8000-0000000000ff';
+function outfitHistoryBundle(base: Bundle): Bundle {
+  const p = JSON.parse(JSON.stringify(base)) as Bundle;
+  const byName = (n: string) => {
+    const c = (p.data.characters as Row[]).find((x) => x.name === n);
+    if (!c) throw new Error(`outfit history bundle: no character ${n}`);
+    return c.id as string;
+  };
+  const chatByTitle = (t: string) => {
+    const c = (p.data.chats as Row[]).find((x) => x.title === t);
+    if (!c) throw new Error(`outfit history bundle: no chat ${t}`);
+    return c;
+  };
+  const lorian = byName('Lorian');
+  const riya = byName('Riya');
+  const lesson = chatByTitle('A Lesson in Lift');
+  const interlude = chatByTitle('Quiet Interlude');
+  const coatDoc = (p.data.documents as Row[]).find((d) => d.relativePath === 'Wardrobe/Travelling Coat.md');
+  if (!coatDoc) throw new Error('outfit history bundle: the coat document is gone');
+  const coat = /\nid: ([0-9a-f-]{36})\n/.exec(coatDoc.content as string)?.[1];
+  if (!coat) throw new Error('outfit history bundle: the coat has no frontmatter id');
+  const message = ((lesson.messages as Row[]) ?? [])[0]?.id as string | undefined;
+  if (!message) throw new Error('outfit history bundle: the lesson chat has no message');
+  const slots = (o: Record<string, unknown[]> = {}) => ({
+    top: [], bottom: [], footwear: [], accessories: [], hair: [], ...o,
+  });
+  let n = 0;
+  const row = (over: Row): Row => ({
+    id: `7e170000-0000-4000-8000-${String(++n).padStart(12, '0')}`,
+    chatId: lesson.id,
+    characterId: lorian,
+    entryIndex: 0,
+    slots: slots(),
+    slotsHash: '0000000000000000',
+    source: 'character',
+    actorCharacterId: lorian,
+    actorToolName: null,
+    isCurrent: false,
+    createdAt: `2026-03-0${n}T00:00:00.000Z`,
+    ...over,
+  });
+  p.data.wardrobeHistory = [
+    row({ entryIndex: 0, source: 'chat-start', actorCharacterId: null }),
+    row({ characterId: riya, entryIndex: 0, actorCharacterId: riya, isCurrent: true }),
+    row({ entryIndex: 1, source: 'operator', actorCharacterId: riya, slots: slots({ top: [coat] }) }),
+    row({
+      entryIndex: 2,
+      source: 'pascal',
+      actorToolName: 'dress_for_dinner',
+      isCurrent: true,
+      slots: slots({ accessories: [coat, 'ae000000-0000-4000-8000-0000000000aa'] }),
+    }),
+    row({ characterId: P4D317_NOT_CARRIED, actorCharacterId: '', isCurrent: true }),
+    row({ chatId: interlude.id, characterId: riya, actorCharacterId: null, isCurrent: true }),
+    row({ characterId: riya, entryIndex: 1, slots: slots({ top: ['not-a-uuid'] }) }),
+  ];
+  lesson.equippedOutfit = {
+    [lorian]: { top: [coat], bottom: [], footwear: [], accessories: [] },
+    [P4D317_NOT_CARRIED]: slots(),
+  };
+  lesson.characterAvatars = {
+    [lorian]: { imageId: coatDoc.linkId, generatedAt: '2026-03-02T00:00:00.000Z', afterMessageCount: 1 },
+  };
+  lesson.courierCheckpoints = {
+    [lorian]: { lastResolvedMessageId: message, resolvedAt: '2026-03-03T00:00:00.000Z' },
+  };
+  lesson.pendingOutfitNotifications = { [riya]: { text: 'Riya changed.' } };
+  return p;
+}
+
 /** The (rewritten) id of the bundle chat titled `title`. */
 function chatByTitle(p: Bundle, title: string): Row {
   const chat = (p.data.chats as Row[]).find((c) => c.title === title);
@@ -2746,6 +2838,8 @@ const IMPORT_WARN_MESSAGES = new Set([
   'Imported memories left unembedded',
   // [P4.D264] phase 7e's catch (`execute.ts:910-913`).
   'Failed to import wardrobe wear ledger',
+  // [P4.D317] phase 7f's catch (`execute.ts:937-942`).
+  'Failed to import outfit history',
 ]);
 
 /**
@@ -2758,6 +2852,8 @@ const WARDROBE_LOG_MESSAGES = new Set([
   'Imported wardrobe wear ledger',
   'Imported wardrobe item pictures',
   'No imported vault for character; wardrobe pictures not carried',
+  // [P4.D317] phase 7f's INFO (`import-wardrobe-history.ts:120-125`).
+  'Imported outfit history',
 ]);
 
 /**
@@ -2783,6 +2879,9 @@ const CARRIER_LOG_MESSAGES = new Set([
   'Failed to import chat message',
   'Memory names an archived local character; not reviving it',
   'Remapped chat scenario source',
+  // [P4.D317] bug 252's reconcile pass (`reconcile.ts:430-440`).
+  'Remapped character-keyed chat fields',
+  'Chat character-keyed columns unreadable; left as imported',
 ]);
 const CARRIER_TAG_ONLY = [
   '[ExtractionCursors] Could not restore a bundled cursor; the pass will re-read',
@@ -4164,6 +4263,61 @@ async function main(): Promise<void> {
         ]),
       { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
       true,
+    ),
+    // ── P4.D317 (v4 `7953da3a0` + `e8e17b2d9`): phase 7f and bug 252's
+    // reconcile pass (`outfitHistoryBundle`). Cross-instance: fresh history
+    // ids (matched by first encounter), chat / character / actor remapped,
+    // the interleaved pairs WRITTEN grouped by pair, `actorToolName` copied,
+    // the not-carried character kept, ONE malformed row dropped (`Dropped 1
+    // malformed outfit-history row(s).`); the lesson chat's four columns
+    // re-keyed to the imported characters; the interlude's unreadable notice
+    // WARNed and left as imported.
+    executeCase(
+      'execute_outfit_history',
+      () =>
+        outfitHistoryBundle(
+          rewriteIds(
+            mergedPayload,
+            ((mergedPayload.data.mountPoints ?? []) as Array<{ id: string }>).map((m) => m.id),
+          ) as Bundle,
+        ),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+    ),
+    // The never-merge rule: the SAME unrewritten bundle twice under `skip`.
+    // Run 1 is the hole below (the rows land in the local chats); run 2 finds
+    // every timeline live and skips it (`skippedTimelines` = the pair count,
+    // `written` 0). (`preserveIds` cannot run this bundle: its preserved
+    // mount ids collide and the import refuses before writing.)
+    executeTwiceCase(
+      'execute_outfit_history_twice',
+      () => outfitHistoryBundle(mergedPayload as Bundle),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+    ),
+    // R-9 (c), v4-faithful (a filing candidate): the UNREWRITTEN bundle under
+    // `skip` — both chats exist locally, so they are skipped as duplicates and
+    // `idMaps.chats` lacks them; the rows keep the SOURCE chat id, which names
+    // a LOCAL chat whose timeline is EMPTY — and the bundle's history is
+    // written into it.
+    executeCase(
+      'execute_outfit_history_never_merge_hole',
+      () => outfitHistoryBundle(mergedPayload as Bundle),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+    ),
+    // The table absent on the target: 7f's catch — `Failed to import the
+    // outfit history: no such table: chat_wardrobe_history` + its WARN.
+    executePreppedCase(
+      'execute_outfit_history_no_table',
+      'plant-sql',
+      () =>
+        outfitHistoryBundle(
+          rewriteIds(
+            mergedPayload,
+            ((mergedPayload.data.mountPoints ?? []) as Array<{ id: string }>).map((m) => m.id),
+          ) as Bundle,
+        ),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      false,
+      ['DROP TABLE "chat_wardrobe_history"'],
     ),
   ];
 

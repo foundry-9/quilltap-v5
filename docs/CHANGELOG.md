@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(import): `.qtap` imports carry the outfit history (phase 7f) and re-key the chats' character-keyed columns (bug 252) (P4.D317)
+
+_Versions: core 0.0.1321._
+
+Ports `7953da3a0`'s import half and `e8e17b2d9`'s reconcile hunk. The stream assembler collects `wardrobe_history` records and stitches `wardrobeHistory` last onto a chats bundle (it used to drop them silently). New phase 7f (`quilltap_import::wardrobe_history`, a whole port of `import-wardrobe-history.ts`) validates each row whole against v4's schema and mints a fresh id per valid row. It remaps the chat, character, actor (an empty actor becomes null) and slot item ids and recomputes the hash. It counts malformed rows in `Dropped N malformed outfit-history row(s).` and never merges into a timeline that already has rows here; v4's gap there, writing into a local chat that shares a skipped bundle chat's id, is ported as is and flagged. 7f logs `Imported outfit history` and adds `imported.wardrobeHistory`; a failure warns `Failed to import the outfit history: …`. The post-import reconcile re-keys each imported chat's `equippedOutfit`, `characterAvatars`, `courierCheckpoints` and `pendingOutfitNotifications` to the imported characters (a character the bundle did not carry keeps its id), with item ids through the imported item map and avatar pictures through the link map. `ChatUpdate` gains `pending_outfit_notifications`. `system_import_state` adds four cases and `system_import_equivalence` two. New tier-1 family `wardrobe_history_import_remap_equivalence` covers the remap and v4's whole Zod schema in 56 rows; Zod 4.6.7 measures `slotsHash` in code points. `import_warning_text_guard` pins the three new warning texts.
+
 #### 2026-10-19 — feat(export): `.qtap` chats exports carry each chat's outfit history (P4.D317)
 
 _Versions: core 0.0.1320._

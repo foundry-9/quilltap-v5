@@ -388,6 +388,53 @@ function buildCases(): CaseSpec[] {
     },
   });
 
+  // ── P4.D317 (v4 `7953da3a0`): the `wardrobe_history` records ──────────────
+  // COLLECTED (`quilltap-import-stream.ts:330-334`) and stitched onto the
+  // CHATS `data` as `wardrobeHistory`, LAST (after `chatInforms`) and only
+  // when non-empty (`:609`); no other export type carries them (the
+  // characters bundle's record lands nowhere). Before the collector a v5
+  // reader dropped them with the unknown kinds. v4's `previewImport` carries
+  // no `wardrobeHistory` (untouched) — the negative row, compared.
+  const historyRecord = (id: string, chatId: string, entryIndex: number) =>
+    `{"kind":"wardrobe_history","chatId":"${chatId}","data":{"id":"${id}","chatId":"${chatId}",` +
+    `"characterId":"zz000000-0000-4000-8000-000000000061","entryIndex":${entryIndex},` +
+    `"slots":{"top":[],"bottom":[],"footwear":[],"accessories":[],"hair":[]},"slotsHash":"ef4cf671632b17d7",` +
+    `"source":"character","actorCharacterId":null,"actorToolName":null,"isCurrent":${entryIndex === 1},` +
+    `"createdAt":"2026-03-0${entryIndex + 1}T00:00:00.000Z"}}\n`;
+  for (const [name, exportType, body] of [
+    [
+      'read_ndjson_wardrobe_history_chats',
+      'chats',
+      '{"kind":"chat","data":{"id":"zz000000-0000-4000-8000-000000000060","title":"Dressed"}}\n' +
+        '{"kind":"chat_inform","data":{"id":"zz000000-0000-4000-8000-000000000062","chatId":"zz000000-0000-4000-8000-000000000060","batchId":"zz000000-0000-4000-8000-000000000063","participantId":"zz000000-0000-4000-8000-000000000064","contentMarkdown":"A note."}}\n' +
+        historyRecord('zz000000-0000-4000-8000-000000000065', 'zz000000-0000-4000-8000-000000000060', 0) +
+        historyRecord('zz000000-0000-4000-8000-000000000066', 'zz000000-0000-4000-8000-000000000060', 1) +
+        '{"kind":"__footer__","counts":{"chats":1,"chatInforms":1,"wardrobeHistory":2}}\n',
+    ],
+    [
+      'read_ndjson_wardrobe_history_not_chats',
+      'characters',
+      '{"kind":"character","data":{"id":"zz000000-0000-4000-8000-000000000067","name":"Mara"}}\n' +
+        historyRecord('zz000000-0000-4000-8000-000000000068', 'zz000000-0000-4000-8000-000000000060', 0) +
+        '{"kind":"__footer__","counts":{"characters":1}}\n',
+    ],
+  ] as const) {
+    cases.push({
+      name,
+      run: async (spec) => {
+        const bytes = Buffer.from(
+          `{"kind":"__envelope__","format":"qtap-ndjson","version":1,"manifest":{"exportType":"${exportType}"}}\n` +
+            body,
+          'utf8',
+        );
+        const assembled = await loadQtap(bytes);
+        const { previewImport } = await import('@/lib/import/quilltap-import-service');
+        const preview = await previewImport(spec.userId, assembled as never);
+        return { kind: 'read', qtapBase64: bytes.toString('base64'), assembled, preview };
+      },
+    });
+  }
+
   // ── [P4.48] planted read failures ──────────────────────────────────────────
   //
   // The preview's existence checks used to swallow repository read errors to

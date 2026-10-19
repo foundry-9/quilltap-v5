@@ -307,3 +307,37 @@ fn the_wardrobe_carrier_warnings_are_v4s_text() {
     }
 }
 // === end P4.D264 ===
+
+// === P4.D317 (the outfit-history carriers) ===
+/// P4.D317 item 22 — the outfit-history carriers' three warning literals,
+/// VERBATIM in the production source: v4 `import-wardrobe-history.ts:99`,
+/// `execute.ts:938`, `restore.ts:1164`. The importer's tail renders through
+/// `item_error_text` (`{msg}`), the restore's through `WarnText` (`{error}`) —
+/// the rule above holds them to the helpers. (The restore one sits on 22n-ter's
+/// outer catch, unreachable from an archive — its text is pinned anyway.)
+#[test]
+fn the_outfit_history_warnings_are_v4s_text() {
+    let core = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-core/src/services");
+    let read = |rel: &str| std::fs::read_to_string(core.join(rel)).expect("read source");
+    for (file, literal) in [
+        (
+            "quilltap_import/wardrobe_history.rs",
+            "\"Dropped {} malformed outfit-history row(s).\"",
+        ),
+        (
+            "quilltap_import/mod.rs",
+            "\"Failed to import the outfit history: {msg}\"",
+        ),
+        (
+            "backup/restore/orchestrator.rs",
+            "\"Failed to restore the outfit history: {error}\"",
+        ),
+    ] {
+        assert_eq!(
+            read(file).matches(literal).count(),
+            1,
+            "{file} must carry v4's warning text exactly once: {literal}"
+        );
+    }
+}
+// === end P4.D317 ===

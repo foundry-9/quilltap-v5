@@ -157,12 +157,16 @@ fn discard_scaffold_vault(
     }
 }
 
-/// v4 `reconcileRelationships`.
+/// v4 `reconcileRelationships`. P4.D317 (v4 `e8e17b2d9`, `reconcile.ts:
+/// 176-189`): the fifth argument is v4's `options.wardrobeItemIds` — source
+/// wardrobe item id → the imported id (`buildImportedWardrobeItemIdMap`), for
+/// the chats' character-keyed `equippedOutfit` slots.
 pub(super) fn reconcile_relationships(
     main: &Connection,
     mount: &Connection,
     id_maps: &IdMaps,
     warnings: &mut Vec<String>,
+    wardrobe_item_ids: &std::collections::HashMap<String, String>,
 ) {
     // ── Characters ─────────────────────────────────────────────────────────
     for (backup_id, new_id) in id_maps.characters.iter() {
@@ -424,6 +428,76 @@ pub(super) fn reconcile_relationships(
                     has_updates = true;
                 }
             }
+
+            // === P4.D317 (v4 `e8e17b2d9`, `reconcile.ts:418-442`) — bug 252 ===
+            // "Outfits, outfit avatars, Courier checkpoints and queued outfit
+            // notices are keyed by character id; carry them to the imported
+            // characters. Message ids were already reminted at create
+            // (`remintChatMessageIds`), and an avatar picture follows the link
+            // map as a character's avatar does." AFTER the participants, BEFORE
+            // the tags (v4's position — not after the scenario re-point). A
+            // character the bundle did not carry KEEPS its own id (nothing is
+            // dropped here, unlike the restore). Any readable non-null column
+            // sets `has_updates` — an identity re-key and `{}` included.
+            {
+                let character_id = |id: &str| {
+                    Some(
+                        id_maps
+                            .characters
+                            .get(id)
+                            .map_or_else(|| id.to_string(), str::to_string),
+                    )
+                };
+                let wardrobe_item_id = |id: &str| {
+                    wardrobe_item_ids
+                        .get(id)
+                        .cloned()
+                        .unwrap_or_else(|| id.to_string())
+                };
+                let file_id = |id: &str| {
+                    id_maps
+                        .doc_mount_file_links
+                        .get(id)
+                        .map_or_else(|| id.to_string(), str::to_string)
+                };
+                let message_id = |id: &str| id.to_string();
+                let keyed = crate::chat::character_keyed_fields::remap_character_keyed_chat_fields(
+                    &chat,
+                    &crate::chat::character_keyed_fields::CharacterKeyedRemaps {
+                        character_id: &character_id,
+                        wardrobe_item_id: &wardrobe_item_id,
+                        file_id: &file_id,
+                        message_id: &message_id,
+                    },
+                );
+                if !keyed.unreadable.is_empty() {
+                    let fields = serde_json::to_string(&keyed.unreadable).unwrap_or_default();
+                    tracing::warn!(
+                        chatId = %new_id,
+                        fieldsJson = %fields,
+                        "Chat character-keyed columns unreadable; left as imported"
+                    );
+                }
+                if !keyed.patch.is_empty() {
+                    let fields: Vec<&String> = keyed.patch.keys().collect();
+                    let fields = serde_json::to_string(&fields).unwrap_or_default();
+                    for (field, value) in keyed.patch {
+                        match field.as_str() {
+                            "equippedOutfit" => patch.equipped_outfit = Some(Some(value)),
+                            "characterAvatars" => patch.character_avatars = Some(value),
+                            "courierCheckpoints" => patch.courier_checkpoints = Some(value),
+                            _ => patch.pending_outfit_notifications = Some(value),
+                        }
+                    }
+                    has_updates = true;
+                    tracing::debug!(
+                        chatId = %new_id,
+                        fieldsJson = %fields,
+                        "Remapped character-keyed chat fields"
+                    );
+                }
+            }
+            // === end P4.D317 ===
 
             let tags = str_array_of(&chat, "tags");
             if !tags.is_empty() {
@@ -799,7 +873,7 @@ mod tests {
         let mut warnings = Vec::new();
         let ((), lines) = crate::test_support::captured_with(|| {
             discard_scaffold_vault(&mount, "mp-scaffold", "mp-vault", "c-new", &mut warnings);
-            reconcile_relationships(&main, &mount, &id_maps, &mut warnings);
+            reconcile_relationships(&main, &mount, &id_maps, &mut warnings, &Default::default());
         });
         let warns: Vec<&String> = lines.iter().filter(|l| l.starts_with("WARN ")).collect();
         const T: &str = "WARN quilltap_core::services::quilltap_import::reconcile";
@@ -832,7 +906,13 @@ mod tests {
         );
         // Silence leg: an empty id map reconciles nothing and warns nothing.
         let ((), quiet) = crate::test_support::captured_with(|| {
-            reconcile_relationships(&main, &mount, &IdMaps::default(), &mut Vec::new());
+            reconcile_relationships(
+                &main,
+                &mount,
+                &IdMaps::default(),
+                &mut Vec::new(),
+                &Default::default(),
+            );
         });
         assert!(quiet.iter().all(|l| !l.starts_with("WARN ")), "{quiet:?}");
     }
@@ -920,7 +1000,7 @@ mod tests {
         id_maps.connection_profiles = cps;
 
         let mut warnings = Vec::new();
-        reconcile_relationships(&main, &mount, &id_maps, &mut warnings);
+        reconcile_relationships(&main, &mount, &id_maps, &mut warnings, &Default::default());
 
         assert_eq!(understudy_of(&main, "new-a").as_deref(), Some("new-b"));
         assert!(warnings.is_empty(), "{warnings:?}");
@@ -942,7 +1022,7 @@ mod tests {
         id_maps.connection_profiles = cps;
 
         let mut warnings = Vec::new();
-        reconcile_relationships(&main, &mount, &id_maps, &mut warnings);
+        reconcile_relationships(&main, &mount, &id_maps, &mut warnings, &Default::default());
 
         assert_eq!(
             understudy_of(&main, "new-a").as_deref(),
@@ -974,7 +1054,7 @@ mod tests {
         id_maps.connection_profiles = cps;
 
         let mut warnings = Vec::new();
-        reconcile_relationships(&main, &mount, &id_maps, &mut warnings);
+        reconcile_relationships(&main, &mount, &id_maps, &mut warnings, &Default::default());
 
         let after: String = main
             .query_row(

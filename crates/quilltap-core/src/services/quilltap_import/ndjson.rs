@@ -199,6 +199,8 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
     // === end P4.D205 ===
     // P4.D264 (v4 `3ee3b1342`, `quilltap-import-stream.ts:152`).
     let mut wardrobe_wear: Vec<Value> = Vec::new();
+    // P4.D317 (v4 `7953da3a0`, `quilltap-import-stream.ts:154`).
+    let mut wardrobe_history: Vec<Value> = Vec::new();
 
     // The `7189a968` additions. General-library folders are a DISTINCT typed
     // field from the doc-store `folders` above (v4's own hazard note endorses
@@ -619,6 +621,11 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
             // ledger fell through to the unknown-kind skip below — silently
             // lost on v5).
             "wardrobe_wear" => wardrobe_wear.push(data()),
+            // P4.D317 (v4 `7953da3a0`, `:330-334`): "Outfit-history rows.
+            // Source-instance ids; the executor remaps them once every chat and
+            // character has landed." (Before this arm a v4-written chats
+            // bundle's history fell through to the silent skip below.)
+            "wardrobe_history" => wardrobe_history.push(data()),
             // Unknown kind — v4 warns and skips.
             _ => {}
         }
@@ -740,6 +747,7 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
             chat_documents,
             chat_informs,
             wardrobe_wear,
+            wardrobe_history,
             file_folders,
             files: files.into_iter().map(|(_, f)| Value::Object(f)).collect(),
             prompt_templates,
@@ -779,6 +787,9 @@ struct Collected {
     /// P4.D264: the `wardrobe_wear` records, stitched LAST onto the
     /// characters and document-stores `data` (`:590`, `:621`).
     wardrobe_wear: Vec<Value>,
+    /// P4.D317: the `wardrobe_history` records, stitched LAST onto the chats
+    /// `data` (`:602-610`).
+    wardrobe_history: Vec<Value>,
     /// General file-library folders — a DISTINCT typed field from the
     /// doc-store `folders` (v4's `fileFolders`; see the assembler note).
     file_folders: Vec<Value>,
@@ -848,6 +859,11 @@ fn build_export_data_for_type(export_type: &str, c: Collected) -> Result<Value, 
             }
             if !c.chat_informs.is_empty() {
                 d.insert("chatInforms".into(), Value::Array(c.chat_informs));
+            }
+            // P4.D317 (v4 `7953da3a0`, `:609`): the outfit history, LAST, only
+            // when non-empty. No other export type carries it.
+            if !c.wardrobe_history.is_empty() {
+                d.insert("wardrobeHistory".into(), Value::Array(c.wardrobe_history));
             }
         }
         "roleplay-templates" => {

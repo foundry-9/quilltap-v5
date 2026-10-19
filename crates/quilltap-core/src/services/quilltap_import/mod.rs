@@ -37,6 +37,7 @@ pub mod message_id_remap;
 pub mod ndjson;
 pub mod preview;
 mod profiles;
+pub mod wardrobe_history;
 mod wardrobe_images;
 pub mod wardrobe_wear;
 // P4.D205: `pub` so `chat_informs_remap_equivalence` can drive
@@ -184,6 +185,12 @@ pub struct ImportCounts {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wardrobe_wear: Option<u32>,
     // === end P4.D264 ===
+    // === P4.D317 (v4 `7953da3a0`, `execute.ts:925-944`) ===
+    // `imported.wardrobeHistory` exists ONLY when phase 7f ran without
+    // throwing; assigned after 7e's `wardrobeWear`, before the file library.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wardrobe_history: Option<u32>,
+    // === end P4.D317 ===
     // The five `7189a968` additions (steps 9-10) — assigned only when their
     // phase runs, exactly like the sidecar/document-store extras above.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1962,6 +1969,30 @@ fn import_body(
         }
     }
 
+    // 7f. Outfit history — P4.D317, v4 `7953da3a0` `execute.ts:925-944`.
+    //    "After the chats and characters (whose id maps it reads) and the
+    //    wardrobe phases (whose item-id map remaps the slots). A timeline
+    //    already live on this instance is never merged into."
+    if let Some(rows) = non_empty_array(data, "wardrobeHistory") {
+        let documents = data
+            .get("documents")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        match wardrobe_history::import_wardrobe_history(main, rows, documents, id_maps, warnings) {
+            Ok(written) => imported.wardrobe_history = Some(written as u32),
+            Err(e) => {
+                let msg = item_error_text(&e);
+                warnings.push(format!("Failed to import the outfit history: {msg}"));
+                tracing::warn!(
+                    rowCount = rows.len(),
+                    error = %msg,
+                    "Failed to import outfit history"
+                );
+            }
+        }
+    }
+
     // 8. Memories (if includeMemories is enabled).
     let mut imported_memory_refs: Vec<(String, String)> = Vec::new();
     if options.include_memories {
@@ -2022,8 +2053,29 @@ fn import_body(
         skipped.instance_settings = Some(c.skipped);
     }
 
-    // Post-import reconciliation.
-    reconcile::reconcile_relationships(main, mount, id_maps, warnings);
+    // Post-import reconciliation. P4.D317 (v4 `e8e17b2d9`, `execute.ts:
+    // 1005-1007`): with the imported wardrobe item map, for bug 252's re-key
+    // of the chats' character-keyed `equippedOutfit` slots.
+    let wardrobe_item_ids: std::collections::HashMap<String, String> = {
+        let pairs = |m: &IdMap| -> Vec<(String, String)> {
+            m.iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect()
+        };
+        let documents = data
+            .get("documents")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        wardrobe_wear::build_imported_wardrobe_item_id_map(
+            documents,
+            &pairs(&id_maps.mount_points),
+            &pairs(&id_maps.wardrobe_items),
+        )
+        .into_iter()
+        .collect()
+    };
+    reconcile::reconcile_relationships(main, mount, id_maps, warnings, &wardrobe_item_ids);
 
     // Wardrobe pictures — P4.D264, v4 `7c8572869` `execute.ts:979-984`. "After
     // reconciliation: the character must already point at the vault the
