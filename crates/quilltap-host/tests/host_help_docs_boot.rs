@@ -119,6 +119,10 @@ async fn boot_syncs_the_embedded_help_tree_and_reindex_reads_it() {
     // added or retired — `custom-tools`, `chat-settings-composer`, `wardrobe`,
     // `rng-tool`, `pascals-workbench`, `chat-settings`, `chats`, `run-tool`,
     // `project-wardrobe`. Measured GREEN before and after.
+    //
+    // 131 at v4 `e8e17b2d9` (131, P4.D323): four pages re-vendored, none
+    // added or retired — `character-gallery`, `custom-tools`,
+    // `pascals-workbench`, `wardrobe`. Measured GREEN before and after.
     assert_eq!(expected, 131, "the vendored tree at v4 01a83539d");
 
     // ── 1. The boot ensure. ──

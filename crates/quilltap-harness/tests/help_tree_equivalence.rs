@@ -137,7 +137,13 @@ async fn shipped_help_tree_matches_oracle() {
     // `url:` moved to `section=composer-slash-commands`, `rng-tool.md` +1, six
     // prose-only); measured RED on content alone (`docs[28]`, `chunks[191]` —
     // the composer page's `url:`) before the nine were re-vendored
-    // byte-exact; green after (chunks 779 → 786).
+    // byte-exact; green after (chunks 779 → 786). P4.D323 (v4 `e8e17b2d9`):
+    // the count UNMOVED at 131 = 131 (the SAME set — four pages re-vendored:
+    // `character-gallery.md`, `custom-tools.md`, `wardrobe.md` +1 H2 each,
+    // `pascals-workbench.md` prose-only; `wardrobe.md`'s `tags:` widened);
+    // measured RED on content alone (`docs[13]`, `chunks[80]` — the gallery
+    // page's new Wardrobe Pictures section) before the four were re-vendored
+    // byte-exact; green after (chunks 786 → 790).
     assert_eq!(
         files.len(),
         want.count,

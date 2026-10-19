@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — vendor(help): `help/` WHOLE at v4 `e8e17b2d9` — four pages re-vendored (P4.D323)
+
+_No crate versions bumped._
+
+`help/character-gallery.md` (the Wardrobe Pictures shelf), `help/custom-tools.md` (`{{character}}` and `announceAsCharacter`), `help/pascals-workbench.md` (the wardrobe lens and "who announces it") and `help/wardrobe.md` (the Outfit Record, nine tools, two new tags) copied byte-exact from v4's object store at the pin; the tree stays 131 files with the same names, every file md5-equal to the pin. `help_tree_equivalence` and `help_section_size_equivalence` were red against the pin's oracles before the copy and green after (chunks 786 → 790, sections 790, largest 775 tokens). History comments added to the three help tests; no constant moved.
+
 #### 2026-10-19 — docs(porting): P4.D321 lane record — the gallery's Wardrobe Pictures, LANE COMPLETE
 
 _Docs-only change._
