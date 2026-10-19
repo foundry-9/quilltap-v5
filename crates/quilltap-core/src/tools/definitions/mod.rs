@@ -88,6 +88,8 @@ mod tests {
 
     #[test]
     fn catalog_is_complete_and_parses() {
+        // 63 since P4.D316 (v4 `ebb480edd`): + `wardrobeRollback` +
+        // `wardrobeHistory` (the latter the catalog's first `exclusiveMinimum`).
         // 61 since P4.D234 (v4 `39bc98ffc` + `12c336fad`): 59 − `listEmail`
         // (renamed, NO alias) + `listMail` + `readMail` + `discardMail`.
         // 59 since P4.D216 added `searchScriptoriumScenario` (v4 `d1c06cd9d` —
@@ -98,7 +100,7 @@ mod tests {
         // — the old memory-only tool collided with the Scriptorium `search` on
         // the wire name `search`). The count is the tripwire for a regenerated
         // catalog silently gaining or losing a tool.
-        assert_eq!(TOOL_DEFINITIONS.len(), 61);
+        assert_eq!(TOOL_DEFINITIONS.len(), 63);
         for d in TOOL_DEFINITIONS {
             let v: Value = serde_json::from_str(d.json).expect("valid JSON");
             assert_eq!(v.get("name").and_then(Value::as_str), Some(d.name));

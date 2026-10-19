@@ -107,6 +107,8 @@ fn tool_name_alias(normalized: &str) -> Option<&'static str> {
         "set_outfit" | "wear_outfit" | "outfit" | "wear" | "change_item" | "equip" | "layer"
         | "swap" => "wardrobe_wear",
         "take_off" | "unequip" | "remove" | "undress" => "wardrobe_take_off",
+        "rollback_outfit" | "undo_outfit" => "wardrobe_rollback",
+        "outfit_history" => "wardrobe_history",
         "create_wardrobe_item" => "wardrobe_create",
         "update_wardrobe_item" | "edit_wardrobe" => "wardrobe_update",
         "archive_wardrobe_item" | "discard" => "wardrobe_archive",

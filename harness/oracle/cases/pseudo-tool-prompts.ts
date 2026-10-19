@@ -65,10 +65,18 @@ const combos: Array<[string, Record<string, boolean>]> = [
       wardrobeRead: true,
       wardrobeWear: true,
       wardrobeTakeOff: true,
+      wardrobeRollback: true,
+      wardrobeHistory: true,
       wardrobeCreate: true,
       wardrobeUpdate: true,
       wardrobeArchive: true,
     },
+  ],
+  // P4.D316 — the two outfit-history tools sit in OPPOSITE orders in the two
+  // prompts (simple-JSON: rollback then history; text-block: history then rollback).
+  [
+    'wardrobe-history-rollback',
+    { wardrobeTakeOff: true, wardrobeRollback: true, wardrobeHistory: true, wardrobeCreate: true },
   ],
 ];
 

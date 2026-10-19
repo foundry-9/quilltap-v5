@@ -70,6 +70,8 @@ const BUILT_IN_TOOLS: &[BuiltInTool] = &[
     BuiltInTool { id: "wardrobe_archive", name: "Archive Wardrobe Item", description: "Retire a wardrobe item (own items only; restorable by a human)", category: "wardrobe" },
     BuiltInTool { id: "wardrobe_wear", name: "Wear Wardrobe Items", description: "Put on one or more wardrobe items (single garments or composite outfits)", category: "wardrobe" },
     BuiltInTool { id: "wardrobe_take_off", name: "Take Off Wardrobe Items", description: "Take off worn wardrobe items or empty slots", category: "wardrobe" },
+    BuiltInTool { id: "wardrobe_rollback", name: "Return to an Earlier Outfit", description: "Return to an outfit worn earlier in this chat, by its number", category: "wardrobe" },
+    BuiltInTool { id: "wardrobe_history", name: "Outfit History", description: "List the numbered outfits worn in this chat", category: "wardrobe" },
     BuiltInTool { id: "doc_read_file", name: "Read Document", description: "Read file contents from document stores or project files", category: "documents" },
     BuiltInTool { id: "doc_write_file", name: "Write Document", description: "Write or create a file in document stores or project files", category: "documents" },
     BuiltInTool { id: "doc_str_replace", name: "Find & Replace in Document", description: "Find and replace exact text in a file (unique match required)", category: "documents" },
@@ -120,6 +122,8 @@ const SCHEMA_KEYS: &[(&str, &str)] = &[
     ("wardrobe_archive", "wardrobeArchive"),
     ("wardrobe_wear", "wardrobeWear"),
     ("wardrobe_take_off", "wardrobeTakeOff"),
+    ("wardrobe_rollback", "wardrobeRollback"),
+    ("wardrobe_history", "wardrobeHistory"),
     ("doc_read_file", "docReadFile"),
     ("doc_write_file", "docWriteFile"),
     ("doc_str_replace", "docStrReplace"),
@@ -346,7 +350,8 @@ pub fn tools_list(
                         unavailable("Whisper requires a multi-character chat with more than one active character");
                     }
                 }
-                "wardrobe_list" | "wardrobe_read" | "wardrobe_wear" | "wardrobe_take_off" => {
+                "wardrobe_list" | "wardrobe_read" | "wardrobe_wear" | "wardrobe_take_off"
+                | "wardrobe_rollback" | "wardrobe_history" => {
                     if !ctx.can_dress_themselves {
                         unavailable("Character does not have wardrobe self-dressing enabled");
                     }
@@ -393,13 +398,15 @@ mod tests {
                 "schema-map id {id} did not resolve in the definitions catalog"
             );
         }
+        // 41 / 45 since P4.D316 (v4 `ebb480edd`): + `wardrobe_rollback` +
+        // `wardrobe_history`, both with schema-map entries (39 + 2, 43 + 2).
         // 39 / 43 since P4.D234 (v4 `39bc98ffc` + `12c336fad`): `list_email`
         // renamed `list_mail`, `read_mail` + `discard_mail` added (37 + 2,
         // 41 + 2).
-        assert_eq!(SCHEMA_KEYS.len(), 39);
+        assert_eq!(SCHEMA_KEYS.len(), 41);
         // 41 since P4.D108 added the describe_image row (v4 a14a1811, bug 92);
         // like the other photo tools it has NO schema-map entry, so
         // SCHEMA_KEYS stays at 37.
-        assert_eq!(BUILT_IN_TOOLS.len(), 43);
+        assert_eq!(BUILT_IN_TOOLS.len(), 45);
     }
 }

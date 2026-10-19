@@ -154,6 +154,8 @@ fn text_block_name_alias(n: &str) -> Option<&'static str> {
         "wardrobe_wear" | "wear" | "equip" | "layer" | "swap" | "set_outfit" | "wear_outfit"
         | "outfit" | "change_item" => "wardrobe_wear",
         "wardrobe_take_off" | "take_off" | "unequip" | "remove" | "undress" => "wardrobe_take_off",
+        "wardrobe_rollback" | "rollback_outfit" | "undo_outfit" => "wardrobe_rollback",
+        "wardrobe_history" | "outfit_history" => "wardrobe_history",
         "wardrobe_create" | "create_wardrobe_item" => "wardrobe_create",
         "wardrobe_update" | "update_wardrobe_item" | "edit_wardrobe" => "wardrobe_update",
         "wardrobe_archive" | "archive_wardrobe_item" | "discard" => "wardrobe_archive",

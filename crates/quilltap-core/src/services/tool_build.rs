@@ -227,6 +227,8 @@ pub struct BuildToolsForProviderOptions {
     pub wardrobe_read: bool,
     pub wardrobe_wear: bool,
     pub wardrobe_take_off: bool,
+    pub wardrobe_rollback: bool,
+    pub wardrobe_history: bool,
     pub wardrobe_create: bool,
     pub wardrobe_update: bool,
     pub wardrobe_archive: bool,
@@ -352,6 +354,12 @@ pub fn build_tools_for_provider(options: &BuildToolsForProviderOptions) -> Vec<V
     }
     if options.wardrobe_take_off {
         push_key(&mut universal, "wardrobeTakeOff");
+    }
+    if options.wardrobe_rollback {
+        push_key(&mut universal, "wardrobeRollback");
+    }
+    if options.wardrobe_history {
+        push_key(&mut universal, "wardrobeHistory");
     }
     if options.wardrobe_create {
         push_key(&mut universal, "wardrobeCreate");
@@ -611,6 +619,8 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
         wardrobe_read: input.can_dress_themselves,
         wardrobe_wear: input.can_dress_themselves,
         wardrobe_take_off: input.can_dress_themselves,
+        wardrobe_rollback: input.can_dress_themselves,
+        wardrobe_history: input.can_dress_themselves,
         wardrobe_create: input.can_create_outfits,
         wardrobe_update: input.can_create_outfits,
         wardrobe_archive: input.can_create_outfits,

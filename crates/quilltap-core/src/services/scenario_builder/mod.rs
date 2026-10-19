@@ -400,6 +400,8 @@ where
                 wardrobe_read: false,
                 wardrobe_wear: false,
                 wardrobe_take_off: false,
+                wardrobe_rollback: false,
+                wardrobe_history: false,
                 wardrobe_create: false,
                 wardrobe_update: false,
                 wardrobe_archive: false,

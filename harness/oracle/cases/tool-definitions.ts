@@ -85,6 +85,8 @@ import { wardrobeUpdateToolDefinition } from '@/lib/tools/wardrobe-update-tool';
 import { wardrobeArchiveToolDefinition } from '@/lib/tools/wardrobe-archive-tool';
 import { wardrobeWearToolDefinition } from '@/lib/tools/wardrobe-wear-tool';
 import { wardrobeTakeOffToolDefinition } from '@/lib/tools/wardrobe-take-off-tool';
+import { wardrobeRollbackToolDefinition } from '@/lib/tools/wardrobe-rollback-tool';
+import { wardrobeHistoryToolDefinition } from '@/lib/tools/wardrobe-history-tool';
 import { webSearchToolDefinition } from '@/lib/tools/web-search-tool';
 import { whisperToolDefinition } from '@/lib/tools/whisper-tool';
 
@@ -151,6 +153,8 @@ const ALL_TOOLS: Record<string, { type: string; function: { name: string; descri
   wardrobeArchive: wardrobeArchiveToolDefinition,
   wardrobeWear: wardrobeWearToolDefinition,
   wardrobeTakeOff: wardrobeTakeOffToolDefinition,
+  wardrobeRollback: wardrobeRollbackToolDefinition,
+  wardrobeHistory: wardrobeHistoryToolDefinition,
   webSearch: webSearchToolDefinition,
   whisper: whisperToolDefinition,
 };

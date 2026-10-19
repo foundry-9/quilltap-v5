@@ -208,6 +208,20 @@ tbParse('tb-numeric-conversion', '[[RNG type="d6" count="3" /]]');
 tbParse('tb-boolean-conversion', '[[STATE operation="set" key="flag" value="true" /]]');
 tbParse('tb-wardrobe-wear-wrap', '[[WEAR mode="wear" id="item-uuid" /]]');
 tbParse('tb-wardrobe-take-off-wrap', '[[TAKE_OFF mode="clear_slot" slot="top" /]]');
+// P4.D316 — the two outfit-history tools (v4 `ebb480edd`): tags + aliases; the
+// text-block converter numbers `index` / `limit`; no PARAM_ALIAS_MAP rows.
+tbParse('tb-outfit-history', '[[OUTFIT_HISTORY /]]');
+tbParse('tb-outfit-history-limit', '[[OUTFIT_HISTORY limit="5" /]]');
+tbParse('tb-rollback-outfit', '[[ROLLBACK_OUTFIT /]]');
+tbParse('tb-rollback-outfit-index', '[[ROLLBACK_OUTFIT index="2" /]]');
+tbParse('tb-undo-outfit-index-zero', '[[UNDO_OUTFIT index="0" /]]');
+tbParse('tb-wardrobe-rollback-canonical', '[[wardrobe_rollback /]]');
+tbParse('tb-wardrobe-history-canonical', '[[WARDROBE_HISTORY limit="3" /]]');
+sjParse('sj-rollback-outfit-alias', '<tool_call>{"name":"rollback_outfit","arguments":{"index":1}}</tool_call>');
+sjParse('sj-undo-outfit-alias', '<tool_call>{"name":"undo_outfit","arguments":{}}</tool_call>');
+sjParse('sj-outfit-history-alias', '<tool_call>{"name":"outfit_history","arguments":{"limit":5}}</tool_call>');
+sjParse('sj-wardrobe-rollback-canonical', '<tool_call>{"name":"wardrobe_rollback","arguments":{"index":"2"}}</tool_call>');
+sjParse('sj-wardrobe-history-canonical', '<tool_call>{"name":"wardrobe_history","arguments":{}}</tool_call>');
 tbParse('tb-self-close-after-content', '[[SEARCH]]query[[/SEARCH]] then [[RNG type="d6" /]]');
 tbParse('tb-astral-content', '[[GENERATE_IMAGE]]emoji 😀 scene[[/GENERATE_IMAGE]] after');
 tbParse('tb-query-not-numeric', '[[SEARCH]]12345[[/SEARCH]]');

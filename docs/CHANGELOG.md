@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(tools): wardrobe_rollback / wardrobe_history at every site that lists wardrobe_take_off (P4.D316)
+
+_Versions: core 0.0.1317._
+
+The tool catalog regenerated from v4's real definitions at the `e8e17b2d9` pin: 61 → 63 (`wardrobeRollback`, `wardrobeHistory` after `wardrobeTakeOff`; the history tool's `limit` carries the catalog's first `exclusiveMinimum`). `GET /api/v1/tools` lists `Return to an Earlier Outfit` and `Outfit History` (43 → 45; both unavailable without self-dressing). The simple-JSON prompt lists rollback then history and its parser takes `rollback_outfit` / `undo_outfit` / `outfit_history`; the text-block prompt lists history then rollback (v4's opposite order) and its parser takes `[[OUTFIT_HISTORY]]` / `[[ROLLBACK_OUTFIT]]` / `[[UNDO_OUTFIT]]` plus the canonical names. The pseudo-tool options, `build_tools` and the three Brahma / Scenario Builder tool sets gain both flags (`false` on those surfaces). Corpora grown: `pseudo_tool_prompts` (a combo pinning the opposite orders), `pseudo_tool_parsers` (12 rows); `tool_build` and `tools_inventory` regenerated.
+
 #### 2026-10-19 — feat(wardrobe): the ONE rollback + the wardrobe_rollback / wardrobe_history tools in the wardrobe tool table (P4.D316)
 
 _Versions: core 0.0.1316._

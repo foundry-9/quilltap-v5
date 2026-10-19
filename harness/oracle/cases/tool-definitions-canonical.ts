@@ -82,6 +82,8 @@ import { wardrobeUpdateToolDefinition } from '@/lib/tools/wardrobe-update-tool';
 import { wardrobeArchiveToolDefinition } from '@/lib/tools/wardrobe-archive-tool';
 import { wardrobeWearToolDefinition } from '@/lib/tools/wardrobe-wear-tool';
 import { wardrobeTakeOffToolDefinition } from '@/lib/tools/wardrobe-take-off-tool';
+import { wardrobeRollbackToolDefinition } from '@/lib/tools/wardrobe-rollback-tool';
+import { wardrobeHistoryToolDefinition } from '@/lib/tools/wardrobe-history-tool';
 import { webSearchToolDefinition } from '@/lib/tools/web-search-tool';
 import { whisperToolDefinition } from '@/lib/tools/whisper-tool';
 
@@ -146,6 +148,8 @@ const ALL: UniversalTool[] = [
   wardrobeArchiveToolDefinition,
   wardrobeWearToolDefinition,
   wardrobeTakeOffToolDefinition,
+  wardrobeRollbackToolDefinition,
+  wardrobeHistoryToolDefinition,
   webSearchToolDefinition,
   whisperToolDefinition,
 ] as unknown as UniversalTool[];

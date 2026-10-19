@@ -9,7 +9,7 @@
 
 use super::ToolDef;
 
-/// Every tool definition, in v4 `ALL_TOOLS` order. 61 entries.
+/// Every tool definition, in v4 `ALL_TOOLS` order. 63 entries.
 pub static TOOL_DEFINITIONS: &[ToolDef] = &[
     ToolDef {
         key: "askCarina",
@@ -305,6 +305,16 @@ pub static TOOL_DEFINITIONS: &[ToolDef] = &[
         key: "wardrobeTakeOff",
         name: "wardrobe_take_off",
         json: r#"{"name":"wardrobe_take_off","description":"Take off one or more worn wardrobe items, or empty slots, in a single call. Pass an ordered `operations` array. Per operation: mode=remove (default) takes a named item off across every slot it covers (other layers stay; pass a slot to restrict to one); mode=clear_slot empties a named slot entirely. To put items on, use wardrobe_wear.","parameters":{"type":"object","properties":{"operations":{"minItems":1,"type":"array","items":{"type":"object","properties":{"item_id":{"type":"string","description":"The worn item to take off. Required for mode=remove (with item_title as a fallback). For a composite outfit, this filters the outfit out of every slot it covers. Items from the character's own wardrobe, the project, and Quilltap General all resolve."},"item_title":{"type":"string","description":"Fallback lookup by title (case-insensitive) when item_id is unknown."},"mode":{"type":"string","enum":["remove","clear_slot"],"description":"\"remove\" (default) — take the named item off across every slot it covers; other layers in those slots stay. Pass a slot to restrict the removal to that one slot. \"clear_slot\" — empty one named slot entirely (requires slot)."},"slot":{"type":"string","enum":["top","bottom","footwear","accessories","hair"],"description":"Required for clear_slot. Optional for remove (restricts the removal to that single slot instead of every slot the item covers). The \"hair\" slot holds a hairstyle or hairdo (braided, permed, an updo, a wig) — the styling, not the hair itself; natural hair colour and length belong in the character's physical description, and an empty hair slot simply means unstyled hair."}},"additionalProperties":false},"description":"An ordered list of take-off changes applied in sequence. Apply multiple removals in one call rather than calling the tool repeatedly."}},"required":["operations"],"additionalProperties":false}}"#,
+    },
+    ToolDef {
+        key: "wardrobeRollback",
+        name: "wardrobe_rollback",
+        json: r#"{"name":"wardrobe_rollback","description":"Return to an outfit you wore earlier in this chat. Every outfit change is numbered from 0 (what you arrived in); wardrobe_history lists them. With no index this steps back one. Rolling back is itself a change of clothes: it is announced, and the next thing you put on becomes a new numbered outfit at the end of the list.","parameters":{"type":"object","properties":{"index":{"type":"integer","minimum":0,"maximum":9007199254740991,"description":"The outfit to return to, by its number in wardrobe_history. Omit to step back one outfit from the current one. Any recorded number is allowed, earlier or later than the current one."}},"additionalProperties":false}}"#,
+    },
+    ToolDef {
+        key: "wardrobeHistory",
+        name: "wardrobe_history",
+        json: r#"{"name":"wardrobe_history","description":"List the outfits you have worn in this chat, numbered from 0 (what you arrived in), with when each began, who made the change, and what it was. The one you are wearing now is marked. Use wardrobe_rollback with a number to return to one. A change made earlier in this same reply may not be listed yet.","parameters":{"type":"object","properties":{"limit":{"type":"integer","exclusiveMinimum":0,"maximum":100,"description":"How many of the most recent outfits to list. Default 20."}},"additionalProperties":false}}"#,
     },
     ToolDef {
         key: "webSearch",

@@ -27,6 +27,8 @@ pub struct TextBlockPromptOptions {
     pub wardrobe_read: Option<bool>,
     pub wardrobe_wear: Option<bool>,
     pub wardrobe_take_off: Option<bool>,
+    pub wardrobe_rollback: Option<bool>,
+    pub wardrobe_history: Option<bool>,
     pub wardrobe_create: Option<bool>,
     pub wardrobe_update: Option<bool>,
     pub wardrobe_archive: Option<bool>,
@@ -129,6 +131,17 @@ To take off a worn item across every slot it covers: [[TAKE_OFF mode="remove" id
 By name: [[TAKE_OFF mode="remove" title="Charcoal Sweater" /]]
 To clear a slot entirely: [[TAKE_OFF mode="clear_slot" slot="top" /]]"#;
 
+const WARDROBE_HISTORY: &str = r#"
+### Outfit History
+List the outfits you have worn in this chat, numbered from 0 (what you arrived in). The one you wear now is marked.
+[[OUTFIT_HISTORY /]]
+Only the most recent few: [[OUTFIT_HISTORY limit="5" /]]"#;
+
+const WARDROBE_ROLLBACK: &str = r#"
+### Return to an Earlier Outfit
+Step back one outfit: [[ROLLBACK_OUTFIT /]]
+Return to a numbered outfit from the history: [[ROLLBACK_OUTFIT index="2" /]]"#;
+
 const WARDROBE_CREATE: &str = r#"
 ### Create Wardrobe Item
 Design and add a new clothing item to your wardrobe, or gift one to another character. You can also build composite outfits that bundle existing items, and set a Portrait Cue (image_prompt) to steer image generation.
@@ -197,6 +210,14 @@ pub fn build_text_block_instructions(options: &TextBlockPromptOptions) -> String
     }
     if on(options.wardrobe_take_off) {
         tool_docs.push(WARDROBE_TAKE_OFF);
+    }
+    // v4 `text-block-prompt.ts:191-204`: history BEFORE rollback (the
+    // simple-JSON prompt orders them the other way round).
+    if on(options.wardrobe_history) {
+        tool_docs.push(WARDROBE_HISTORY);
+    }
+    if on(options.wardrobe_rollback) {
+        tool_docs.push(WARDROBE_ROLLBACK);
     }
     if on(options.wardrobe_create) {
         tool_docs.push(WARDROBE_CREATE);

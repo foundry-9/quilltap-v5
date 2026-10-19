@@ -31,6 +31,8 @@ pub struct SimpleJsonPromptOptions {
     pub wardrobe_read: Option<bool>,
     pub wardrobe_wear: Option<bool>,
     pub wardrobe_take_off: Option<bool>,
+    pub wardrobe_rollback: Option<bool>,
+    pub wardrobe_history: Option<bool>,
     pub wardrobe_create: Option<bool>,
     pub wardrobe_update: Option<bool>,
     pub wardrobe_archive: Option<bool>,
@@ -218,6 +220,14 @@ pub fn build_simple_json_tool_instructions(options: &SimpleJsonPromptOptions) ->
     }
     if on(options.wardrobe_take_off) {
         entries.push(entry_for("wardrobeTakeOff"));
+    }
+    // v4 `simple-json-prompt.ts:221-226`: rollback BEFORE history (the
+    // text-block prompt orders them the other way round).
+    if on(options.wardrobe_rollback) {
+        entries.push(entry_for("wardrobeRollback"));
+    }
+    if on(options.wardrobe_history) {
+        entries.push(entry_for("wardrobeHistory"));
     }
     if on(options.wardrobe_create) {
         entries.push(entry_for("wardrobeCreate"));
