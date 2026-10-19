@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — docs(porting): order the `e8e17b2d9` outfit-history + Workbench-picker + gallery + bug-252 drift catch-up round — nine lanes (P4.D315–P4.D323), one stacking point, pinned at `e8e17b2d9`
+
+_Docs-only change._
+
+Round (1) of the two-round split the drift ledger records: the fourteen contiguous v4 commits `5cb0e0190` … `e8e17b2d9` (the Workbench wardrobe picker, `{{character}}` + `announceAsCharacter`, the outfit-history programme whole with the twelfth D23 move boot-created through three ported ensures, the gallery's Wardrobe Pictures, bug 252, the three spec docs) plus two ahead-of-pin riders from later commits (bug 254's progressions guard; the `Inventory/` archive keep that closes the ledger's live-data hazard), each from its own second pin under an A/B rule. Nine orders under `docs/developer/porting/work-orders/` (P4.D315 the keystone → P4.D316 recording + tools + rollback ∥ P4.D317 carriers + bug 252; P4.D318 the History tab SPA; P4.D319 / P4.D320 the Pascal server / SPA pair; P4.D321 the gallery route + section; P4.D322 the riders; P4.D323 vendor + NO-PORT), each carrying the binding round block (§R, §S, contracts C1–C5, the Ownership table) and resting on six planning surveys under `work-orders/surveys/2026-10-19-setupphase-*.md`. The ledger's fourteen rows are marked ORDERED and the two rider rows annotated; the phase plan gains the round's ORDERED section. The pin is deliberately the last commit before the Inventory programme so no oracle imports Inventory code; round (2) (the Inventory, the scenario sort, bug 255 with the fifteenth D23 move and a terminal-emulator crate ruling) follows.
+
 #### 2026-10-19 — docs(porting): drift check — 20 commits past `25b8fab6a` (three new: scenario sort, a test, bug 255 with the fifteenth D23 move)
 
 _Docs-only change._

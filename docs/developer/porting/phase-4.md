@@ -7151,6 +7151,145 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `e8e17b2d9` outfit-history + Workbench-picker + gallery + bug-252 drift catch-up round (P4.D315 → {P4.D316 ∥ P4.D317} ∥ P4.D318 ∥ P4.D319 ∥ P4.D320 ∥ P4.D321 ∥ P4.D322 ∥ P4.D323) — ORDERED 2026-10-19
+
+**Baseline `25b8fab6a`. The round is PINNED at v4 `e8e17b2d9`** ("Fix:
+restore and import keep chat outfits (bug 252) (#101)", `package.json`
+`4.11.0-dev.26`, 2026-10-18 14:21) — deliberately NOT v4 HEAD. The
+`/setupphase` probe FAILED (v4 `main` had moved three commits past the
+ledger's record: `1d0a31132` the scenario sort, `cad017599` a test,
+`a6292f169` bug 255), so the `/driftcheck` procedure ran inline first and
+landed as `fb4a4c264` (DRIFT PENDING — 20 commits; bug 255 carries the
+FIFTEENTH D23 move and a NEW runtime dependency, `@xterm/headless`, so a Rust
+terminal-emulator crate ruling is owed before it can be ordered). The twenty
+rows are too many for one round and the Inventory programme sits BETWEEN the
+outfit-history span and the 10-19 commits, so the ledger's suggested split
+was adopted: **round (1), this one,** is the FOURTEEN contiguous rows
+`5cb0e0190` … `e8e17b2d9` (pinned at the last commit before the Inventory,
+so no oracle imports Inventory code) PLUS two ahead-of-pin riders; **round
+(2)** is the Inventory programme (`4fbdad186` → `e1872c94f` → `102a23648`,
+the THIRTEENTH + FOURTEENTH moves), the scenario sort, the test and bug 255
+(the FIFTEENTH move) in ONE `fresh_schema.json` re-dump at a later pin. **The
+human's ruling (2026-10-09): the work follows the PIN.** v4's `bugfix`
+`489b228b6` and `release` `2432b9057` are unmoved.
+
+**Scope — fourteen ledger §3 rows + two riders, as ONE round:** the
+Workbench wardrobe picker (`5cb0e0190`), `{{character}}` +
+`announceAsCharacter` (`a05c6f755`), the outfit-history programme whole
+(`83387d0e5` storage — the TWELFTH D23 move, BOOT-CREATED through three
+ported ensures per the human's 2026-10-19 standing ruling, NO
+`fresh_schema.json` re-dump; `05005c562` recording; `ebb480edd` the
+`wardrobe_rollback` / `wardrobe_history` tools, 57 → 59; `8d8618819` the
+history API + the History tab; `7953da3a0` the carriers; `f46cf40a2` the
+summary fix; `4ae20977f` `actorToolName`), the gallery's Wardrobe Pictures
+(`1cfc9b504`), bug 252 (`e8e17b2d9` — v5 HAS it in both carriers), the three
+spec docs (`fcab3f112`, `54bc17a3c`, `f5db10034` — NO-PORT; the two
+Inventory specs' vendoring DEFERRED to round (2) at their final paths),
+`help/` 131 whole (four pages moved) + 11 `docs/v4/` operations; and the two
+riders from LATER commits, each from a lane-unique second pin under an A/B
+rule: bug 254's one progressions guard (`102a23648`) and the `Inventory/`
+archive keep (`4fbdad186` — the ledger's live-data hazard: a v5 archive
+deletes a character's Inventory). The split is by FILE OWNERSHIP: nine
+lanes, nine worktrees, nine lane branches, ONE stacking point.
+
+**What the six planning surveys found that shaped the round** (under
+`work-orders/surveys/2026-10-19-setupphase-*.md`): NOTHING is import-dead at
+the pin (no deleted / renamed export), but three RUNTIME breaks exist —
+`recordPendingWardrobeAnnouncement`'s new leading `repos` argument garbles
+one oracle silently, a now-REQUIRED `provenance` adds v4's repository WARN to
+every wardrobe-driving case, and v4's `createBackup` reads the new table
+UNGUARDED so every backup / restore-archive regen dies until the table is
+planted — each owned by a lane, so no stage-0 REAIM lane; v4's fixtures lack
+the table (it is migration-only), so the keystone lands ONE shared
+fixture-plant helper and every sibling plants per case (no committed pair
+widened); `provisioning_equivalence`'s (1b) / (1c) WILL redden at the pin
+(v4's migrations-first boot creates the table) — the first boot-created-table
+tripwire, answered with both-ways rows; the record's key order is the
+repository's, not the DDL's; the seed has three surprises; the two Pascal
+commits and the recording commit share ONE v4 file (`run-service.ts`) and, in
+Rust, four struct literals — carved by a line rule; the History tab has a
+POSSIBLE v4 defect to measure first; the gallery help page claims a prompt
+the code never passes.
+
+Nine lanes split by FILE OWNERSHIP, one stacking point (`HISTORY`):
+
+- **Wave 0, from `main` at the orders' commit:**
+  - **P4.D315 — the outfit-history KEYSTONE** (`work-orders/p4.d315-outfit-history-keystone-table-ensures-repository-describe-entry-history-get.md`):
+    the table boot-created through three ensures (table → `actorToolName` →
+    seed; stamped as v4's runner would; the seed non-fatal), the repository
+    (`settle` savepoint-wrapped on the writer, typed + raw upserts, the
+    finds), the Zod twin with the row's field-order contract, the cascade
+    fold, the three Almanack labels, `describe-entry` at its final shape,
+    the GET `?action=wardrobe-history`, the two fixture-plant helpers — ends
+    in `HISTORY`.
+  - **P4.D318 — the outfit-history SPA** (`…/p4.d318-outfit-history-spa-history-tab-wear-again-tool-rows.md`):
+    the Wardrobe dialog's History tab, *Wear again*, the discard / reseed
+    semantics on the inline staging, the chat-scoped query keys, the two
+    tool rows in `tool-message.ts`; the R-L measurement first; gated beats.
+  - **P4.D319 — the Pascal server pair** (`…/p4.d319-pascal-server-workbench-wardrobe-lens-character-placeholder-announce-as-character.md`):
+    `bench_wardrobe.rs` + the preview's `wardrobeResolution`, the
+    `{ characterId: "" }` arm re-aimed, `wearable_ref.rs`, the
+    `{{character}}` family with the tri-state name, `announceAsCharacter` +
+    `customAnnouncer`, v4's three writer lines, the custom-tool schema +
+    guard.
+  - **P4.D320 — the Pascal SPA pair** (`…/p4.d320-pascal-spa-wardrobe-reference-picker-vantage-announcer-toggle-staff-bar.md`, e2e 4347):
+    the TS twins, `wearable-ref.ts`, the reference picker, the vantage
+    select, the side-effects chip / advisory, the bench's would-apply lines,
+    the toggle, the Insert entry, the Staff-bar attribution, three SPA
+    oracle corpora.
+  - **P4.D321 — the gallery's Wardrobe Pictures** (`…/p4.d321-aurora-gallery-wardrobe-pictures-route-section-server-spa.md`, e2e 4346):
+    `GET /characters/[id]/wardrobe-images` (a new `find_by_linked_to_any`,
+    the server-side tier label, a new routes family over the item-images
+    builder) + the gallery section after Avatar Rolls, LIVE in-lane.
+  - **P4.D322 — the ahead-of-pin riders** (`…/p4.d322-ahead-of-pin-riders-bug-254-progressions-every-turn-inventory-archive-keep.md`):
+    bug 254's one guard (from a `102a23648` pin; one corpus row flips) and
+    the `Inventory/` keep (from a `4fbdad186` pin; a new extend-by-mutation
+    archive case) — each A/B-proven at both pins before any port, deferred
+    loudly on contamination.
+  - **P4.D323 — vendor + NO-PORT** (`…/p4.d323-vendor-help-131-docs-v4-noport-record-outfit-history-round.md`):
+    `help/` whole at the pin, 11 `docs/v4/` operations, the NO-PORT
+    record; the two public schemas are their consumers' this round (R-E).
+- **Wave A, from `HISTORY`:**
+  - **P4.D316 — recording + the two tools + the rollback POST** (`…/p4.d316-outfit-history-recording-provenance-containers-rollback-history-tools-rollback-post.md`):
+    `provenance` + `historyIntent` on the context, both turn containers,
+    the two orders (announce-then-settle outside a turn; settle-then-schedule
+    at the drain), the provenance at every site, the arrival settles, the
+    rollback, the two tools at every listing site, the POST, the operator
+    provenance, the four re-aimed oracle cases + the table plants.
+  - **P4.D317 — the carriers + bug 252** (`…/p4.d317-outfit-history-carriers-backup-restore-qtap-bug-252-character-keyed-rekey.md`):
+    the `createBackup` plant FIRST, `data/wardrobe-history.json`, restore
+    `22n-ter` (the census 79 → 81), the replace-mode clear, the new-account
+    remap, the `.qtap` record + import `7f`, the export schema + its pins,
+    the pure bug-252 twin + the re-keying in both carriers, two derived
+    archives.
+
+The round-level rulings (§R.11 R-A … R-W in every order — the two-round
+split and the pin, one stacking point and no REAIM lane, the ensures' stamps
+and fatality, the both-ways provisioning rows, the schemas owned by their
+consumers, the shared definition corpus regenerated once, the struct-literal
+line rule, the chat-scoped history keys, the three writer lines ported, the
+backup's `[]` on an absent table, bug 252's three oddities ported faithfully
+as filing candidates, the History tab's defect measured first, the riders'
+A/B rule, bug 254's comment without "inventory", the gating flags, the
+NO-PORT list, the two deferred specs, `db/chats.rs` to the carriers, the
+per-case plant, `tool-message.ts` to the SPA lane, the scenario builder's
+`None`, the GET into `chat_export`, the filing candidates) are the planner's;
+**the human may overrule any before lane start.** Pick order (§S.1): P4.D315
+→ P4.D316 → P4.D317 → P4.D319 → P4.D322 → P4.D321 → P4.D323 → P4.D318 →
+P4.D320. **The oracle baseline MOVES to `e8e17b2d9` at the unification;**
+the six commits past it stay in the ledger's §3 (two annotated
+`PORTED(P4.D322)`).
+
+**Left out of the round, deliberately:** the Inventory programme, the
+scenario sort, the test commit and bug 255 (round (2) — `/driftcheck` first;
+the terminal-emulator crate ruling before bug 255's lane); the owed dogfood
+pass (the `25b8fab6a` unification's NEXT item 1 — it still wants a Friday
+copy, now at any v4 point up to `f46cf40a2` or later with this round's
+ensures; better run AFTER this round with its 💸 rows); the follow-ups smalls
+round (NEXT item 2 — the `25b8fab6a` review's recorded items and the two
+human rulings; next after this); the fourth-break class if a lane finds one
+(a STOP, not a port).
+
 ## The `25b8fab6a` Pascal-programme + composer-slash-commands + 4.10.0-release drift catch-up round (P4.D314 → {P4.D304 → {P4.D305 → P4.D306}} ∥ P4.D309 ∥ P4.D310 ∥ P4.D311 ∥ P4.D312, with P4.D307 ∥ P4.D308 ∥ P4.D313) — UNIFIED 2026-10-17 (ordered 2026-10-16)
 
 **UNIFIED on main (2026-10-17). ALL ELEVEN LANES LANDED, and the oracle
