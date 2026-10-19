@@ -4,12 +4,13 @@ import type { ChatDetail } from '../core/core-contract';
 import { TerminalEmbed } from '../terminal/terminal-embed';
 import { extractTerminalSessionId } from '../terminal/terminal-protocol';
 import { Icon } from '../ui/icon';
-import type { AnnouncementChip } from './chat-view-model';
+import { announcerNamesOf, type AnnouncementChip } from './chat-view-model';
 import { MessageContent } from './message-content';
 import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
 import {
   getAnnouncementAccentClasses,
   getAnnouncementOutcomeState,
+  getAnnouncementSenderName,
   type PascalOutcomeState,
 } from './system-message-labels';
 import { ToolMessage } from './tool-message';
@@ -45,7 +46,7 @@ import { isLanternBackgroundRefusal, type ConciergeRetryHandlers } from './conci
           (click)="toggle(chip.id)"
         >
           <span class="qt-chat-announcement-dot" [class]="dotClass(chip)" aria-hidden="true"></span>
-          <span class="qt-chat-system-bar-sender">{{ chip.sender }}</span>
+          <span class="qt-chat-system-bar-sender">{{ senderName(chip) }}</span>
           <!-- The state is carried by colour alone in the bar; name it for readers
                who can't see the accent (and for anyone skimming with a screen
                reader). -->
@@ -204,7 +205,20 @@ export class AnnouncementGroup {
    */
   protected chipLabel(chip: AnnouncementChip): string {
     const verb = this.isExpanded(chip.id) ? 'Collapse' : 'Expand';
-    return `${verb} ${chip.sender}${chip.kind ? ` ${chip.kind}` : ''} message`;
+    return `${verb} ${this.senderName(chip)}${chip.kind ? ` ${chip.kind}` : ''} message`;
+  }
+
+  /** Character id → name for the announcers this chat can name (memoised per chat). */
+  private readonly announcerNames = computed(() => announcerNamesOf(this.chat()));
+
+  /**
+   * The chip's sender, refined from the chat: a Staff row that also carries a
+   * character `customAnnouncer` is named for that character (v4 `a05c6f755`,
+   * `AnnouncementChip.tsx:67,109`); `chip.sender` is the name-less default
+   * `buildRenderItems` filled in.
+   */
+  protected senderName(chip: AnnouncementChip): string {
+    return getAnnouncementSenderName(chip.message, this.announcerNames());
   }
 
   protected toggle(id: string): void {

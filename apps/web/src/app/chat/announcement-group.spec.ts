@@ -385,3 +385,36 @@ describe('AnnouncementGroup — "Try uncensored" on the Lantern\'s refused backd
     expect(tryButtons(f)).toHaveLength(0);
   });
 });
+
+/**
+ * v4 `a05c6f755` (`AnnouncementChip.tsx:67,109`): a chipped Staff row that also
+ * carries a character announcer is named for that character, on the chip and
+ * in its `aria-label`. No writer produces one at the pin (a Pascal outcome is
+ * never a chip), so the row is planted.
+ */
+describe('AnnouncementGroup — a character announcer names the chip (P4.D320)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const chat = {
+    participants: [],
+    offSceneCharacters: [{ id: 'char-1', name: 'Imogen', title: null, avatarUrl: null }],
+  } as unknown as ChatDetail;
+
+  it('shows the announcer on the chip and in the aria-label', () => {
+    const fixture = render(
+      [chip({ message: message({ customAnnouncer: { kind: 'character', characterId: 'char-1' } }) })],
+      chat,
+    );
+    const button = fixture.nativeElement.querySelector('.qt-chat-announcement-chip');
+    expect(button.querySelector('.qt-chat-system-bar-sender').textContent.trim()).toBe('Imogen');
+    expect(button.getAttribute('aria-label')).toBe('Expand Imogen add message');
+  });
+
+  it('keeps the Staff name without an announcer', () => {
+    const fixture = render([chip()], chat);
+    const button = fixture.nativeElement.querySelector('.qt-chat-announcement-chip');
+    expect(button.querySelector('.qt-chat-system-bar-sender').textContent.trim()).toBe('The Host');
+    expect(button.getAttribute('aria-label')).toBe('Expand The Host add message');
+  });
+});
+

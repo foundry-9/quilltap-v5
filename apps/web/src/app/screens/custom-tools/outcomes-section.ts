@@ -850,6 +850,14 @@ export class ConditionList {
                 type="button"
                 role="menuitem"
                 class="block w-full text-left px-3 py-1 text-sm"
+                (click)="insertCharacter()"
+              >
+                Character name
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                class="block w-full text-left px-3 py-1 text-sm"
                 (click)="insertMetadataKey()"
               >
                 Metadata key…
@@ -997,6 +1005,11 @@ export class OutcomeMessageEditor {
 
   protected insertNow(): void {
     this.insertAtCursor('{{now}}');
+  }
+
+  /** v4 `a05c6f755` (`OutcomesSection.tsx:852`) — the `{{` lives here, never in the template. */
+  protected insertCharacter(): void {
+    this.insertAtCursor('{{character}}');
   }
 }
 

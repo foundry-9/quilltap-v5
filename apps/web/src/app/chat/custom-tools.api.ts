@@ -73,6 +73,8 @@ export interface CustomToolReferences {
   progressWrites?: string[];
   /** The tool quotes `{{now}}`. Absent on older servers. */
   now?: boolean;
+  /** The tool quotes `{{character}}`. Absent on older servers. */
+  character?: boolean;
   /** Item references this tool's wardrobe effects may put on, verbatim. Absent on older servers. */
   wears?: string[];
   /** Item references this tool's wardrobe effects may take off, verbatim. Absent on older servers. */

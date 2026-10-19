@@ -233,6 +233,20 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
               <option value="whisper">whispered</option>
             </select>
           </label>
+          <!-- v4 \`a05c6f755\` (\`BuilderForm.tsx:342-355\`). -->
+          <label
+            class="flex items-center gap-2"
+            title="On: the character who rolled announces the outcome under their own name and face. A roll nobody in particular made is still Pascal's to announce."
+          >
+            <input
+              type="checkbox"
+              class="qt-checkbox"
+              [checked]="draft().announceAsCharacter"
+              (change)="update({ announceAsCharacter: checkedValue($event) })"
+              [disabled]="disabled()"
+            />
+            The character announces it
+          </label>
         </div>
 
         <!-- v4 \`362426c8f\` (\`BuilderForm.tsx:344-349\`): the last thing in the identity section. -->

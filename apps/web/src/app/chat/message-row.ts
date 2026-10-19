@@ -13,7 +13,7 @@ import { Avatar } from '../ui/avatar';
 import { Icon } from '../ui/icon';
 import { Tooltip } from '../ui/tooltip';
 import { thumbnailUrl, fileUrl } from '../images/image-urls';
-import { resolveMessageAuthor, type SwipeState } from './chat-view-model';
+import { announcerNamesOf, resolveMessageAuthor, type SwipeState } from './chat-view-model';
 import { resolveWhisperTargetLabel } from './whisper-visibility';
 import { ConfirmationBadge } from './confirmation-badge';
 import { HiddenImageTile } from './hidden-image/hidden-image-tile';
@@ -29,8 +29,8 @@ import {
   getAnnouncementAccentClasses,
   getAnnouncementImportance,
   getAnnouncementOutcomeState,
+  getAnnouncementSenderName,
   getSystemKindDisplayLabel,
-  getSystemSenderDisplayName,
 } from './system-message-labels';
 import { ThinkingBlock } from './thinking-block';
 import { TokenBadge } from './token-badge';
@@ -639,9 +639,15 @@ export class MessageRow {
    * normal markdown pipeline either way.
    */
   protected readonly isStaffRow = computed(() => this.message().systemSender != null);
-  /** "Pascal", "Suparṇā", "Carina" — v4's staff display-name table. */
+  /** Character id → name for the announcers this chat can name (memoised per chat). */
+  private readonly announcerNames = computed(() => announcerNamesOf(this.chat()));
+  /**
+   * "Pascal", "Suparṇā", "Carina" — v4's staff display-name table — or, for a
+   * Pascal outcome its tool announced as the rolling character (v4
+   * `a05c6f755`), that character's name (`MessageRow.tsx:312`).
+   */
   protected readonly staffSender = computed(() =>
-    getSystemSenderDisplayName(this.message().systemSender),
+    getAnnouncementSenderName(this.message(), this.announcerNames()),
   );
   /** The kind chip — for a roll, the tool title (`toolTitle ?? tool`). */
   protected readonly staffKind = computed(() => getSystemKindDisplayLabel(this.message()));

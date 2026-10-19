@@ -765,6 +765,39 @@ describe('CustomToolsPopup — what a tool says about progressions', () => {
     expect(text(fixture)).toContain('the moment the run began, to the millisecond');
   });
 
+  it('gives {{character}} a row right after {{now}} (v4 a05c6f755)', async () => {
+    const fixture = await mount(
+      stub({
+        tools: [
+          { ...UNLOCK, references: { ...UNLOCK.references!, now: true, character: true } },
+        ],
+        errors: [],
+      }),
+    );
+    await open(fixture);
+    await click(fixture, buttons(fixture, 'Force the Lock')[0]);
+
+    const body = text(fixture);
+    expect(body).toContain('the name of the character the run is made for');
+    expect(body.indexOf('{{character}}')).toBeGreaterThan(
+      body.indexOf('the moment the run began, to the millisecond'),
+    );
+  });
+
+  it('gives no {{character}} row to a tool that does not quote it', async () => {
+    for (const character of [undefined, false]) {
+      const fixture = await mount(
+        stub({
+          tools: [{ ...UNLOCK, references: { ...UNLOCK.references!, character } }],
+          errors: [],
+        }),
+      );
+      await open(fixture);
+      await click(fixture, buttons(fixture, 'Force the Lock')[0]);
+      expect(text(fixture)).not.toContain('{{character}}');
+    }
+  });
+
   it('names the progressions it consults, by id, in its own sentence', async () => {
     const fixture = await mount(
       stub({

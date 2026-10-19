@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ChatDetail, MessageDto, ParticipantDetail } from '../core/core-contract';
 import {
+  announcerNamesOf,
   buildRenderItems,
   resolveMessageAuthor,
   resolveToolRowAttributionMessage,
@@ -548,3 +549,59 @@ describe('resolveToolRowAttributionMessage (v4 group-tool-messages.ts)', () => {
     expect(resolveToolRowAttributionMessage(ownedTool, 0, [ownedTool])).toBe(ownedTool);
   });
 });
+
+/**
+ * v4 `a05c6f755` (`SalonView.tsx:253-264`): the announcer-name map the Staff
+ * bar and the chip read. Off-scene cards first, then the participants
+ * OVERWRITE them.
+ */
+describe('announcerNamesOf', () => {
+  const card = (id: string, name: string) => ({ id, name, title: null, avatarUrl: null });
+  const cast = (id: string, name: string): ParticipantDetail =>
+    ({
+      id: `p-${id}`,
+      type: 'CHARACTER',
+      character: { id, name, title: null, avatarUrl: null, defaultImageId: null, defaultImage: null },
+    }) as ParticipantDetail;
+  const chat = (over: Partial<ChatDetail>): ChatDetail =>
+    ({ participants: [], offSceneCharacters: [], ...over }) as ChatDetail;
+
+  it('names an off-scene character', () => {
+    expect(announcerNamesOf(chat({ offSceneCharacters: [card('c1', 'Imogen')] }))).toEqual({
+      c1: 'Imogen',
+    });
+  });
+
+  it('names a participant', () => {
+    expect(announcerNamesOf(chat({ participants: [cast('c2', 'Bertie')] }))).toEqual({ c2: 'Bertie' });
+  });
+
+  it("lets the participant's name win when both carry the same id", () => {
+    expect(
+      announcerNamesOf(
+        chat({ offSceneCharacters: [card('c1', 'Old Name')], participants: [cast('c1', 'Imogen')] }),
+      ),
+    ).toEqual({ c1: 'Imogen' });
+  });
+
+  it('skips a participant without a character', () => {
+    const user = { id: 'p-user', type: 'USER', character: null } as unknown as ParticipantDetail;
+    expect(announcerNamesOf(chat({ participants: [user, cast('c2', 'Bertie')] }))).toEqual({
+      c2: 'Bertie',
+    });
+  });
+
+  it('leaves the chip its name-less default: a character announcer reads as the Staff member', () => {
+    const items = buildRenderItems([
+      msg({
+        id: 'a',
+        role: 'SYSTEM',
+        systemSender: 'host',
+        systemKind: 'add',
+        customAnnouncer: { kind: 'character', characterId: 'c1' },
+      }),
+    ]);
+    expect(items[0].type === 'announcement-group' && items[0].chips[0].sender).toBe('The Host');
+  });
+});
+

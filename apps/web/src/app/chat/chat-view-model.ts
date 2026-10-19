@@ -17,8 +17,8 @@ import { normalizeAvatarSrc } from '../ui/avatar-stack';
 import { groupToolMessagesIntoAssistants, readInitiatedBy } from './group-tool-messages';
 import {
   getAnnouncementImportance,
+  getAnnouncementSenderName,
   getSystemKindDisplayLabel,
-  getSystemSenderDisplayName,
   type AnnouncementImportance,
 } from './system-message-labels';
 
@@ -91,9 +91,11 @@ export interface MessageAuthor {
  * key off the sender label rather than an avatar.
  */
 export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): MessageAuthor {
-  // An ad-hoc announcement bubble (Insert Announcement). `customAnnouncer` takes
-  // precedence over `systemSender` by construction — the writer sets one or the
-  // other, never both (v4 `SalonView.tsx:1064-1097`).
+  // An ad-hoc announcement bubble (Insert Announcement), or a Pascal outcome
+  // whose tool sets `announceAsCharacter`. customAnnouncer takes precedence
+  // over systemSender: when both are set, the named speaker wears the bubble
+  // (v4 `SalonView.tsx:1321-1325` — since `a05c6f755` the Pascal writer sets
+  // BOTH, so the order of these checks is the rule, not a convenience).
   //
   // The character arm matters even though the bubble carries no `participantId`:
   // an announcement can be posted AS a character who is off-scene, and without
@@ -228,6 +230,22 @@ export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): Mes
   };
 }
 
+/**
+ * Character id → name for every character a Staff row may be announced by
+ * (v4 `SalonView.tsx:253-264`'s `announcerNames`): the off-scene cards first,
+ * then the participants OVERWRITE them — a participant announcer ships no
+ * off-scene card, and when both name the same id the cast's copy is the one
+ * the bubble shows. A participant with no character is skipped.
+ */
+export function announcerNamesOf(chat: ChatDetail): Record<string, string> {
+  const names: Record<string, string> = {};
+  for (const c of chat.offSceneCharacters ?? []) names[c.id] = c.name;
+  for (const p of chat.participants ?? []) {
+    if (p.character) names[p.character.id] = p.character.name;
+  }
+  return names;
+}
+
 /** A collapsed Staff announcement chip. */
 export interface AnnouncementChip {
   id: string;
@@ -351,7 +369,11 @@ export function buildRenderItems(messages: MessageDto[]): RenderItem[] {
     } else if (isAnnouncementChip(message)) {
       run.push({
         id: message.id,
-        sender: getSystemSenderDisplayName(message.systemSender),
+        // The name-less default: a `custom` announcer is named here, a
+        // character announcer falls back to the Staff member. The group
+        // refines it from its `chat` input (`announcerNamesOf`) — this
+        // signature stays one-argument (P4.D320 R-6).
+        sender: getAnnouncementSenderName(message),
         kind: getSystemKindDisplayLabel(message),
         importance: getAnnouncementImportance(message),
         createdAt: message.createdAt,

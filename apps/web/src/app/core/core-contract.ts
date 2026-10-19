@@ -9321,3 +9321,24 @@ export interface ScenarioReadByRefResult {
 }
 
 // === end P4.D302 ===
+
+// === P4.D320: the Workbench wardrobe lens (append-only) ===
+/** v4 `lib/pascal/workbench.ts:301-332` — one item reference, as the chair's wardrobe answers it. */
+export type PreviewWardrobeItemResolution =
+  | {
+      ref: string;
+      found: {
+        id: string;
+        title: string;
+        types: WardrobeSlotType[];
+        origin: WardrobeOrigin;
+        imageFileId: string | null;
+      };
+    }
+  | { ref: string; found: null; reason: 'not_found' | 'archived' | 'slot'; message: string };
+/** One wardrobe gesture's references; `index` is the definition effect's own index. */
+export interface PreviewWardrobeResolution {
+  index: number;
+  items: PreviewWardrobeItemResolution[];
+}
+// === end P4.D320 ===

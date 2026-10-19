@@ -801,6 +801,12 @@ export class CustomToolsPopup {
         meaning: 'the moment the run began, to the millisecond',
       });
     }
+    if (refs.character) {
+      rows.push({
+        placeholder: '{{character}}',
+        meaning: 'the name of the character the run is made for',
+      });
+    }
 
     for (const name of refs.params) {
       rows.push({

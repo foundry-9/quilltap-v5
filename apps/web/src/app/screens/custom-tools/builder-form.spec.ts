@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  definitionFromDraft,
   draftFromDefinition,
   newDraft,
   validateDraft,
@@ -587,5 +588,91 @@ describe('BuilderForm — trigger phrases (v4 362426c8f)', () => {
     draft.outcomes = draft.outcomes.map((o) => ({ ...o, message: 'You cry ABRACADABRA and the door opens.' }));
     const fixture = await renderOutcomes(draft);
     expect(text(fixture)).toContain('this message contains the trigger "abracadabra"');
+  });
+});
+
+/**
+ * v4 `a05c6f755`: the identity card's **The character announces it** toggle
+ * (`BuilderForm.tsx:342-355`) and the Insert value menu's **Character name**
+ * entry (`OutcomesSection.tsx:852`). v4 ships no component test for either.
+ */
+describe('the character announces it (v4 a05c6f755)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const toggle = (f: ComponentFixture<unknown>) =>
+    [...(f.nativeElement as HTMLElement).querySelectorAll('label')]
+      .find((l) => l.textContent?.trim() === 'The character announces it')!
+      .querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+
+  it('is unchecked by default, with v4 title text', async () => {
+    const fixture = await renderForm(draftWith());
+    const box = toggle(fixture);
+    expect(box.checked).toBe(false);
+    expect(box.closest('label')!.getAttribute('title')).toBe(
+      "On: the character who rolled announces the outcome under their own name and face. A roll nobody in particular made is still Pascal's to announce.",
+    );
+  });
+
+  it('emits the draft with announceAsCharacter on, which saves after defaultVisibility', async () => {
+    const fixture = await renderForm(draftWith({ defaultVisibility: 'whisper' }));
+    let next: ToolDraft | undefined;
+    fixture.componentInstance.draftChange.subscribe((d: ToolDraft) => (next = d));
+    const box = toggle(fixture);
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    expect(next?.announceAsCharacter).toBe(true);
+
+    const keys = Object.keys(definitionFromDraft(next!));
+    expect(keys.indexOf('announceAsCharacter')).toBe(keys.indexOf('defaultVisibility') + 1);
+  });
+
+  it('reflects a loaded definition that says true', async () => {
+    const fixture = await renderForm(
+      draftFromDefinition({
+        name: 'probe',
+        description: 'A probe.',
+        announceAsCharacter: true,
+        outcomes: [{ when: true, message: '-', state: 'info' }],
+      })!,
+    );
+    expect(toggle(fixture).checked).toBe(true);
+  });
+});
+
+describe('the Character name insert (v4 a05c6f755)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const withParam = () =>
+    draftFromDefinition({
+      name: 'probe',
+      description: 'A probe.',
+      parameters: { x: { type: 'number', default: 1 } },
+      outcomes: [{ when: true, message: 'Hello ', state: 'info' }],
+    })!;
+
+  const menuLabels = (f: ComponentFixture<unknown>) =>
+    [...(f.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('button[role="menuitem"]')].map(
+      (b) => b.textContent?.trim(),
+    );
+
+  it('sits between the parameters and Metadata key…', async () => {
+    const fixture = await renderOutcomes(withParam());
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('button[aria-expanded]')!.click();
+    fixture.detectChanges();
+    const labels = menuLabels(fixture);
+    expect(labels.indexOf('Character name')).toBe(labels.indexOf('Parameter: x') + 1);
+    expect(labels.indexOf('Metadata key…')).toBe(labels.indexOf('Character name') + 1);
+  });
+
+  it('inserts {{character}} into the message', async () => {
+    const fixture = await renderOutcomes(withParam());
+    let next: ToolDraft | undefined;
+    fixture.componentInstance.draftChange.subscribe((d: ToolDraft) => (next = d));
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('button[aria-expanded]')!.click();
+    fixture.detectChanges();
+    [...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('button[role="menuitem"]')]
+      .find((b) => b.textContent?.trim() === 'Character name')!
+      .click();
+    expect(next?.outcomes[0].message).toContain('{{character}}');
   });
 });

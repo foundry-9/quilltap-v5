@@ -1282,3 +1282,56 @@ describe('MessageRow — "Try uncensored"', () => {
     expect(handlers.onRetryPicture).toHaveBeenCalledWith('tool-1');
   });
 });
+
+/**
+ * v4 `a05c6f755`: a Pascal outcome whose tool sets `announceAsCharacter` is
+ * posted with `customAnnouncer` BESIDE `systemSender: 'pascal'`, and the Staff
+ * bar names the announcer (`MessageRow.tsx:312`). In v5 a `custom-tool-result`
+ * is never a chip, so this bar is the visible change (order "got wrong" 2).
+ */
+describe('MessageRow — a character-announced Pascal outcome (P4.D320)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const outcome = (customAnnouncer: MessageDto['customAnnouncer']) =>
+    message({
+      systemSender: 'pascal',
+      systemKind: 'custom-tool-result',
+      participantId: null,
+      content: '🎲 Lorian rolls 12.',
+      customAnnouncer,
+    });
+  const barSender = (f: ComponentFixture<MessageRow>) =>
+    (f.nativeElement as HTMLElement)
+      .querySelector('.qt-chat-system-bar .qt-chat-system-bar-sender')!
+      .textContent!.trim();
+
+  it('names the participant who announced it on the bar', () => {
+    const fixture = render(outcome({ kind: 'character', characterId: 'char1' }));
+    expect(barSender(fixture)).toBe('Lorian');
+  });
+
+  it('still says Pascal without an announcer', () => {
+    expect(barSender(render(outcome(null)))).toBe('Pascal');
+  });
+
+  it('names an off-scene announcer from offSceneCharacters', () => {
+    const fixture = render(outcome({ kind: 'character', characterId: 'char-off' }), {
+      chat: {
+        ...chatDetail(),
+        offSceneCharacters: [{ id: 'char-off', name: 'Imogen', title: null, avatarUrl: null }],
+      },
+    });
+    expect(barSender(fixture)).toBe('Imogen');
+  });
+
+  it('falls back to Pascal for an announcer it cannot name', () => {
+    expect(barSender(render(outcome({ kind: 'character', characterId: 'gone' })))).toBe('Pascal');
+  });
+
+  it("dresses the bubble as the announcer (resolveMessageAuthor, unchanged)", () => {
+    const fixture = render(outcome({ kind: 'character', characterId: 'char1' }));
+    const author = (fixture.componentInstance as unknown as { author: () => { name: string } }).author();
+    expect(author.name).toBe('Lorian');
+  });
+});
+

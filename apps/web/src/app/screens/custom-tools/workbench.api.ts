@@ -17,6 +17,7 @@ import type {
   CustomToolRunResult,
   MountFileReadResult,
   MountFileWriteResult,
+  PreviewWardrobeResolution,
 } from '../../core/core-contract';
 
 /**
@@ -120,6 +121,10 @@ export type BenchRoll = CustomToolRunResult & {
   chipLabel?: string;
   /** §P — the definition's effects, resolved (or skipped) against this run. */
   effects?: DryEffect[];
+  /** With a character in the chair: what each wardrobe gesture would have found (v4 `ProvingBench.tsx`). */
+  wardrobeResolution?: PreviewWardrobeResolution[];
+  /** The chair's name when the roll was dealt, for "not in Imogen's reach". SPA-local — never on the wire. */
+  chairName?: string | null;
 };
 
 export const workbenchKeys = {

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(pascal-spa): the character-announces toggle, the Character name insert, the run dialog's {{character}} row, and the Staff bar naming the announcer (P4.D320)
+
+_Versions: SPA 0.5.875._
+
+The `a05c6f755` SPA surfaces (P4.D320). The Workbench identity card gains **The character announces it** (`announceAsCharacter`, saved only when on); the outcome message's Insert value menu gains **Character name** (`{{character}}`); the Salon run dialog lists a `{{character}}` reference row after `{{now}}` when the roster says the tool quotes it. The Salon names a character-announced Pascal outcome's announcer on the Staff bar (and on any collapsed chip and its aria-label) through `getAnnouncementSenderName` over a new `announcerNamesOf(chat)` (off-scene cards, then participants overwrite); `buildRenderItems` keeps its one-argument signature and fills the chip's name-less default. The stale "never both" comment in `resolveMessageAuthor` is rewritten to v4's precedence note. `core-contract.ts` gains the fenced P4.D320 region with `PreviewWardrobeItemResolution` / `PreviewWardrobeResolution`; `BenchRoll` gains `wardrobeResolution?` and the SPA-local `chairName?`; the roster vocabulary gains `character?`.
+
 #### 2026-10-19 — feat(pascal-spa): the {{character}} / announceAsCharacter twins, the wearable-ref rule, the reach label, the vantage default and the announcer name, with four v4-recorded corpora (P4.D320)
 
 _Versions: SPA 0.5.874._
