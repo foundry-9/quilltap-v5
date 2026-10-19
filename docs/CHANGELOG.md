@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — docs(porting): P4.D321 lane record — the gallery's Wardrobe Pictures, LANE COMPLETE
+
+_Docs-only change._
+
+Appends the P4.D321 lane record to `status-log.md` (the §2 probe saw a seventh v4 commit past the pin, `7263105c6`, recorded for `/driftcheck`; red-first counts and three mutation proofs; the measured `findByLinkedToAny` row order; the 500 arm reachable through v4 via a missing vault keystone; the census moves; the e2e seed route; the HANDOFF to P4.D323; the gate) and marks the order LANE COMPLETE.
+
 #### 2026-10-19 — feat(gallery): the Wardrobe Pictures shelf in the character Photo Gallery tab (v4 1cfc9b504, P4.D321 SPA half)
 
 _Versions: SPA 0.5.874._

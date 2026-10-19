@@ -189517,3 +189517,241 @@ As the order's § "💸 for the dogfood pass": bug 254 live (a progression carri
 
 - The three pins removed (`git -C ~/source/quilltap-server worktree remove --force` ×3); `git worktree list` afterwards shows the main checkout (now at `a495faa26` — v4 moved again during the lane) and one SIBLING pin (`/private/tmp/qt-v4-pin-wrb-e8e17b2d9`, not this lane's), none of P4.D322's.
 - The lane's `target/` deleted at close; scratch under `/tmp/p4d322/` deleted. Nothing pushed to `main`.
+## P4.D321 — the gallery's Wardrobe Pictures, both halves (v4 `1cfc9b504`) — LANE RECORD (2026-10-19)
+
+**Branch** `claude/p4.d321-gallery-wardrobe-pictures-a0b35a` (worktree
+`.claude/worktrees/nifty-pascal-a0b35a`), cut from `main` at the orders'
+commit `e8b0cea6c`. The session opened in the app-made worktree on
+`claude/nifty-pascal-a0b35a` sitting exactly on `e8b0cea6c` with no commits of
+its own; it was switched onto the lane branch before the first edit
+(`/carryout` rule 2). Nothing pushed to `main`.
+
+### The §2 probe and the pin (§R.1 / §R.2)
+
+- **§2 probe (observation, 2026-10-19 ~11:00 CDT):** v4 on `main`, tree CLEAN;
+  `log e8e17b2d9..main` = **SEVEN** commits — the six the order expects plus
+  **`7263105c6`** ("Feature: Inventory title lint; Fix: published vault
+  addresses name the vault (bug 256)") — **v4 moved: recorded for
+  `/driftcheck`, out of scope by the pin rule**; `log 489b228b6..bugfix` empty.
+- **Pin** `/tmp/qt-v4-pin-p4d321-e8e17b2d9`: `rev-parse HEAD` =
+  `e8e17b2d92095bda008f03bb963eb4b1c470e680`; `package.json` `4.11.0-dev.26`;
+  `npm ci --offline` rc 0 (1044 packages; `better-sqlite3`'s native build
+  present); `openai` **7.34.0**. Symlink classes 2 + 3 from the live checkout.
+  Re-probed (HEAD + clean) before the sweep.
+
+### Red-first (Tier 1 item 1)
+
+- **Route family vs unported `main`** (a temporary stub copy of the family
+  dispatching nothing new — deleted): **35 divergences** — all **13 `route`
+  rows RED** (main's router has no `/wardrobe-images` and serves the SPA's HTML
+  fallback, status 200 / body HTML; `absent_char` / `read_failure` also red on
+  status) with every v4 line missing; **7 of 9 `repo` rows RED** (the stub
+  answers `[]`; `repo_empty` and `repo_unknown_id` match `[]` vacuously —
+  recorded, they are the empty-guard and no-match rows, green by construction).
+- **Mutations, after the port (each applied, run, reverted from a backup;
+  `cmp` confirmed the restore):**
+  - `ORDER BY id` added to `find_by_linked_to_any`'s SQL → **8 rows** flip
+    (`repo_single`, `repo_pool_order`, `repo_reversed`, `repo_interleaved`,
+    `repo_duplicate_link`, `repo_duplicate_query_id`, `repo_schema_failure`,
+    and `created_at_tie` — the tie order IS the scan order);
+  - the pool read moved ABOVE the archived short-circuit → `archived_char`
+    flips (v5 logs the extra `[WearablePool] Loaded wearable pool`);
+  - the empty-pool guard dropped → `empty_pool` flips (v5 logs a Listed line
+    v4 never reaches).
+  - **Equivalent mutants (recorded, not corpus gaps):** removing the
+    cross-chunk dedupe and swapping `by_id_ordered()` for `by_id()` are
+    unobservable below 500 pool items — one `IN (…)` answers each row once and
+    the first-in-pool caption is a map lookup — so they are pinned by the Rust
+    unit tests instead (`the_second_chunk_is_read_and_dedupe_spans_chunks`;
+    `captions_generated_pictures_across_tiers_newest_first` asserts the files
+    read is asked in pool order).
+- **SPA specs vs `main`:** compile-RED (no `wardrobeImages` key, no
+  `WardrobeGalleryImageEntry`, no `fetchWardrobeImages` /
+  `toWardrobeGalleryImage`, no `./wardrobe-pictures-section`).
+- **e2e vs `main`'s bins + SPA** (the cloned pre-lane release bins and a
+  `dist/` built before any SPA edit): RED at beat 1 — `qt-wardrobe-pictures-section`
+  not attached.
+
+### Measured
+
+- **`findByLinkedToAny` row order:** the TABLE's scan (rowid) order whatever
+  the argument order — `repo_pool_order`, `repo_reversed` and
+  `repo_interleaved` answer the same eleven ids in rowid order; a file naming
+  two queried ids, or an id queried twice, is one row.
+- **The 500 arm is REACHABLE through v4's real code** (the order allowed it
+  might not be): deleting the character vault's `properties.json` keystone
+  makes v4's `characters.findById` throw `CharacterVaultUnavailableError`,
+  which the route catches BEFORE the middleware's 503 mapping → **500 `{"error":
+  "Character <id> has no usable vault (characterDocumentMountPointId=<mp>):
+  properties.json missing"}`** + the ERROR line. v5's overlaid read surfaced
+  `DbError::StoreUnavailable` whose Display is
+  `applyDocumentStoreOverlayOne: vault unavailable …` — the service maps that
+  error to `WardrobeGalleryError::VaultUnavailable` and renders
+  `VaultUnavailable::message()` (v4's sentence), pinned both by the `read_failure`
+  row and a unit test.
+- **The negative pin:** `Error finding files linked to entities` — 0 in v4's
+  NDJSON, asserted absent from every v5 capture.
+- **The fixture is not what the order's case list assumed:** `cloak` is an
+  item in the ARCHIVED CHARACTER's vault, not an archived item; the live
+  character belongs to NO group; Quilltap General's only picture is IMPORTED;
+  `FileEntrySchema`'s category enum is not one of `file_row_issues`' arms. So
+  the corpus plants per op (never the builder): group membership
+  (`group_character_members` in the mount index), an archived ITEM (the scarf
+  document's frontmatter gains `archivedAt:`), GENERATED flips by `linkedTo`,
+  and the schema failure as a short `sha256` (a `FileEntrySchema` failure both
+  sides drop).
+
+### What landed (Tier 1)
+
+- `FilesRepository::find_by_linked_to_any` (`db/files.rs`) — chunks of 500,
+  `find_by_filter_or_empty` per chunk, the `file_row_issues` drop through a
+  NEW shared `file_row_passes` (which `find_by_linked_to` now uses too — the
+  same two lines, one home), first-seen dedupe; six unit tests incl. the
+  501-id second chunk.
+- NEW `services/wardrobe_gallery_images.rs` — the service over v4's three
+  seams (`list_with`: the character read, the pool load with `Some(&[])` +
+  default options iterated `by_id_ordered`, the files read), the server tier
+  label `wardrobe_gallery_location_label` + `OWN_WARDROBE_LABEL`, the error
+  type; v4's four `it`s transcribed name for name + five more unit tests.
+- `Request::CharacterWardrobeImages` / `Response::CharacterWardrobeImages` /
+  the engine arm (fenced); `api/characters.rs`'s `character_wardrobe_images`
+  (the prefix 404, the two route lines, the IPC-reachable `Missing character
+  id` 400) + four unit tests (fenced).
+- The web edge `wardrobe_images_get` + its mount (fenced).
+- NEW family `wardrobe_images_routes_equivalence` (22 ops: 9 `repo` + 13
+  `route`; bodies as bytes, the v4 lines matched in order by level, message,
+  every context key and every scalar value) + an oracle-free edge test (bare
+  body, `POST` 405, the 404 bytes).
+- SPA: the fenced `core-contract.ts` region (C5's DTO + request + the union
+  row), `characterKeys.wardrobeImages`, `WardrobeGalleryImage`,
+  `toWardrobeGalleryImage`, `fetchWardrobeImages`; NEW
+  `wardrobe-pictures-section.ts` (+ spec — the survey's nine `it`s verbatim +
+  `vanishes on a failed read, with no error text`); the gallery-tab mount
+  after Avatar Rolls (+ two spec cases); two appended `realtime-topic-map.spec.ts`
+  cases (unscoped reaches, scoped does not); the three caption rules appended
+  to `_content.css` — **byte-equal** to v4's 21 lines at the pin.
+- NEW LIVE e2e `character-wardrobe-pictures-flow.spec.ts` (port 4346; 45344
+  unused).
+
+### Censuses (item 11)
+
+- `dispatch_wrong_type_census`: `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE`
+  **483 → 484** (dated comment); no new ROW.
+- `web_edge_body_parse_guard`: `COLLAPSE_CENSUS` **UNMOVED** (a body-less GET).
+- `web_edge_action_sites_census`: unmoved (no `?action=`).
+- `fallback_home_guard`: no new home (the repository reuses
+  `find_by_filter_or_empty("files", …)`).
+- `spelling_guard`: green.
+(each green by name in the workspace gate — see below)
+
+### e2e seed route (R-9)
+
+**(b), with one materialization.** The instance is unlocked in the browser,
+then Aria's own garment (`POST /api/v1/characters/<aria>/wardrobe`) and a
+General one (`POST /api/v1/wardrobe`) are created and a real lossy WebP
+uploaded to each through `POST /api/v1/wardrobe/<item>/images?action=upload`;
+the shelf is asserted ABSENT (uploads are `UPLOADED`); the server is stopped,
+each `files` row flipped to `GENERATED` (+ prompt + a pinned `createdAt`, Aria's
+one second newer) with ONE `quilltap db --write` statement per call, and the
+server rebooted. `createdAt` set reliably — no fallback to (a). The committed
+`characters-*` pair lacks `instance_settings`, so boot never minted Quilltap
+General (`Quilltap General store is not provisioned yet` on the create): the
+spec creates the empty table before boot — the `wardrobe-flow.spec.ts` P4.D130
+materialization, verbatim. The modal is addressed through its overlay (the
+host element has no box of its own).
+
+### Dispositions
+
+- **Tier 2 #21** (the 404 prefix with a non-`CharacterNotFound` error) —
+  LANDED (`any_failure_starting_character_not_found_is_the_404`).
+- **Tier 2 #22** (a two-chunk `repo` row) — NOT landed: a 501-item vault plant
+  through the document store is out of proportion; Tier 3 #25 stands, with the
+  v5-only 501-id unit test as the chunk proof.
+- **Tier 2 #23** (an e2e group plate) — NOT landed: the committed characters
+  pair has no `groups` table at all (measured); the route family's `live` row
+  carries `Group · Images Group`.
+- **Tier 2 #24** — LANDED (`hands the Wardrobe Pictures section the tab's name
+  and thumbnail size`).
+- **Tier 3 #25–#30** — recorded as ordered (the >500 differential; nothing of
+  `isCurrentItemImage` / prompts / `scope` / `itemId` rendered; no prompt in
+  the modal; no CLI verb / Tier R; the theme-storybook mirror + CHANGELOG
+  NO-PORT; the IPC-only `Missing character id`).
+- **No SPA fixture vendored → no README section.**
+
+### HANDOFF: → P4.D323
+
+`help/character-gallery.md`'s section `## Wardrobe Pictures — likenesses of
+every garment within reach` (+13 at the pin) and `docs/v4/developer/API.md`'s
+`### Character Wardrobe Pictures` (+8) — byte-exact at the pin, nothing to
+change; the unifier byte-checks them (§S.5 (8)). The help's "with its
+generation prompt" sentence is R-7 / R-W (a v4 filing candidate for the
+human), not a change request.
+
+### Recipes
+
+- `wardrobe_images_routes_equivalence` — the canonical header in
+  `harness/oracle/cases/wardrobe-images-routes.test.ts` (the builder into
+  `/tmp/qt-wgi-*`, jest over a `/tmp/qt-wgi-oracle` mirror, `QT_ORACLE_OUT=
+  /tmp/oracle-wardrobe-images-routes.ndjson`) and the run line in the Rust
+  file's header (`QT_ORACLE_WGI`, `QT_FIXTURE_WGI_MAIN/MOUNT`). Through the
+  driver: `recipe_sweep.py --v5w <spaceless worktree> --v4 <pin> --force
+  --run-all --families wardrobe_images_routes_equivalence`. ⚠ the family
+  compares raw ids: the builder re-mints picture ids, so the regen and the
+  run must read the SAME build (the driver does both in one pass).
+- `recipe_sweep.py --self-test`: 0 failures.
+
+### Sweep from the pin (announced; one at a time)
+
+`wardrobe_images_routes_equivalence`, `wardrobe_item_images_routes_equivalence`,
+`wardrobe_item_images_tier2_equivalence`, `wearable_pool_equivalence`,
+`wearable_pool_tier2_equivalence`, `avatar_rolls_tier2_equivalence` — **6 ok of
+6**. The fresh NDJSON (22 lines): `"locationLabel"` 8, `Shared · Quilltap
+General` 3, `Group · ` 2, `"itemArchived":true` 1, `"isCurrentItemImage":true`
+8, `Character not found` 1, `Archived character — no wardrobe pictures` 1,
+`Error finding files linked to entities` **0**, `"op":"repo"` 9.
+`avatar_rolls_routes` (non-extractable, committed corpus) run by binary: 2/2.
+
+### The gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D
+  warnings` clean AND with `--features quilltap-core/native-transport` clean
+  (after building `apps/web/dist`). One clippy catch fixed: the API fn's test
+  module sat mid-file (`items after a test module`) — moved to the end of
+  `characters.rs` in its own fence.
+- `cargo test --workspace --no-fail-fast` (background, `CARGO_INCREMENTAL=0`,
+  `QT_V4_CHECKOUT`/`QT_V4_ROOT` = the pin, the family's three env vars set; full
+  log `/tmp/p4d321/workspace-gate.log`): **817 binaries / 5,339 passed / 3
+  failed / 3 ignored, zero `SKIP:` lines** — my family RAN
+  (`wardrobe_images_routes_match_oracle ... ok`). The three reds: the two
+  §R.13 by-design reds at the pin (`public_schemas_vendor_guard` — P4.D319's;
+  `qtap_schema_embed_guard` — P4.D317's), and ONE lane-caused census red —
+  `tri_state_edges_share_the_decoder`'s typed-only construction table: the new
+  edge hand-builds `CharacterWardrobeImages`, so `characters_routes.rs` 11 → 12
+  and the total 122 → 123; updated with dated notes and green by name
+  (11/11). Guards green by name: `dispatch_wrong_type_census` (484),
+  `web_edge_body_parse_guard` (`COLLAPSE_CENSUS` UNMOVED),
+  `web_edge_action_sites_census`, `fallback_home_guard`, `spelling_guard`.
+- SPA (`apps/web`): `npm run lint` 0; `npm run build` 0; the five named spec
+  files (`wardrobe-pictures-section` 10/10, `gallery-tab`, `avatar-rolls-section`
+  untouched and green, `characters.api`, `realtime-topic-map`) green; the WHOLE
+  suite **522 files / 10,957 tests passed**.
+- Playwright BY FILE, alone, on fresh release bins (the cloned pre-lane
+  `target/release/quilltap{,-web}` deleted and rebuilt): 
+  `character-wardrobe-pictures-flow` **1 passed (1.5 m)** LIVE;
+  `character-avatar-rolls-flow` **1 passed (1.2 m)**.
+
+### Versions at close
+
+core **0.0.1314**, web **0.0.242**, SPA **0.5.874**; host / cli / tauri
+untouched; harness frozen.
+
+### 💸 for the dogfood pass
+
+The order's list as written (no spend except the optional fresh garment
+picture): the shelf below Avatar Rolls on a Friday-copy character with
+generated garment pictures, collapsed, the count; captioned plates newest
+first, an archived garment `(archived)`; `Group · <name>` and `Shared ·
+Quilltap General` captions; NO project-wardrobe or uploaded picture; hover →
+only Download → the original file name; click → the shared modal with Prev /
+Next and no prompt; *Save to my gallery* twice; an archived character and a
+garment-less character → no shelf; the two server lines with plausible counts.
