@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-18 — docs(porting): drift check — 17 commits past `25b8fab6a` (six new: the Inventory programme, bugs 252–254)
+
+_Docs-only change._
+
+v4 `main` moved six commits to `102a23648` (`bugfix` unmoved, content-equal to `release`; checkout clean). New §3 rows, all UNPROCESSED: two spec commits (NO-PORT?); `e8e17b2d9` bug 252 (PORT — v5's new-account restore and `.qtap` reconcile also leave the four character-keyed chat columns un-rekeyed); `4fbdad186` the Inventory (PORT-NEW + six PORT hunks, the thirteenth D23 move `chats.equippedInventory`); `e1872c94f` nine `inventory_*` tools + Pascal inventory support (the fourteenth D23 move `characters.canManageInventory`; every `run_custom` description changes); `102a23648` bug 254 (PORT — v5 skips progressions in continue mode) plus Inventory fixes. New live-data hazard recorded: a v5 character archive deletes the vault's `Inventory/` files. No convergence. Regen rule unchanged: pin required at `25b8fab6a`.
+
 #### 2026-10-18 — docs(porting): drift check — 11 commits past `25b8fab6a` (two new: outfit-history `actorToolName`, Aurora wardrobe pictures)
 
 _Docs-only change._
