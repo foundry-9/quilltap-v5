@@ -157,6 +157,7 @@ pub mod canonicalize;
 pub mod carina_parser;
 pub mod char_count;
 pub mod characters;
+pub mod chat;
 pub mod chat_activity;
 pub mod chat_predicates;
 pub mod chat_tasks;

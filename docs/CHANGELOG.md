@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(chat): the pure bug-252 pass over the four character-keyed chat columns (P4.D317)
+
+_Versions: core 0.0.1315._
+
+New `chat::character_keyed_fields`, a whole port of v4's `lib/chat/character-keyed-fields.ts` (`e8e17b2d9`): `remap_character_keyed_chat_fields` re-keys `equippedOutfit`, `characterAvatars`, `courierCheckpoints` and `pendingOutfitNotifications` by a caller-supplied character remap (a `None` or empty new id drops the entry and counts it), moves the ids nested in them (outfit item ids rebuilt as a full five-slot bag, the avatar `imageId`, the Courier `lastResolvedMessageId`), reads a column stored as a JSON string, reports a non-object column as unreadable, and emits every object in V8 own-key order. Nothing calls it yet; the restore and the `.qtap` reconcile wire it in later commits. New tier-1 family `chat_keyed_fields_equivalence` against v4's real function (33 rows, byte-compared, mint order included; three rows record the `JSON.parse` classes V8 accepts and serde refuses).
+
 #### 2026-10-19 — test(harness): plant chat_wardrobe_history in every backup / restore / export / import / delete oracle case and archive builder (P4.D317 unit 1)
 
 _Harness-only change (`quilltap-harness` frozen); no crate version moves._
