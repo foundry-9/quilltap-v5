@@ -341,6 +341,40 @@ pub(super) fn stream_chats(
         }
         // === end P4.D205 ===
 
+        // === P4.D317 (v4 `7953da3a0`, `ndjson-writer.ts:423-437`) ===
+        // "Every character's outfit timeline in this chat, cursor included."
+        // After the informs, BEFORE the annotations. `data` is the repository
+        // row as read (`normalizeRow` key order — the row struct's declaration
+        // order; no Zod parse, so no key-order template: R-5), by character
+        // then entry index. The DEBUG fires per chat, a chat with no history
+        // included; a THROWING read (an absent table — v4's raw `rawQuery`)
+        // WARNS and the export carries on: not the strict export's abort, a
+        // history read failure is not a corrupt chat row.
+        match crate::db::chat_wardrobe_history::ChatWardrobeHistoryRepository::new(main)
+            .find_by_chat_id(id)
+        {
+            Ok(rows) => {
+                for row in &rows {
+                    let mut m = Map::new();
+                    m.insert("kind".into(), Value::String("wardrobe_history".into()));
+                    m.insert("chatId".into(), Value::String(id.clone()));
+                    m.insert(
+                        "data".into(),
+                        serde_json::to_value(row).expect("a history row serializes"),
+                    );
+                    out.push(Value::Object(m));
+                    counts.bump("wardrobeHistory");
+                }
+                tracing::debug!(chat_id = %id, count = rows.len(), "Exported outfit history");
+            }
+            Err(e) => tracing::warn!(
+                chat_id = %id,
+                error = %crate::db::fallback::error_text(&e),
+                "Failed to load outfit history for export",
+            ),
+        }
+        // === end P4.D317 ===
+
         // Annotations + chat documents AFTER the messages so importers can
         // resolve sourceMessageId / chatId against ids already seen.
         if let Ok(annotations) = conversation_annotations::find_full_json_by_chat_id(main, id) {

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(export): `.qtap` chats exports carry each chat's outfit history (P4.D317)
+
+_Versions: core 0.0.1320._
+
+Ports `7953da3a0`'s export half (`ndjson-writer.ts:423-437`). A `chats` export now emits one `{"kind":"wardrobe_history","chatId","data"}` record per history row, after the chat's informs and before its annotations, by character then entry index, with `data` in the repository row's key order (no key-order template; a guard test pins that). The footer counts `wardrobeHistory` by first bump. `Exported outfit history` logs per chat, a chat with no history included. A failing read logs `Failed to load outfit history for export` and the export carries on. No other export type emits the kind and `previewExport` is unchanged. `system_export_equivalence` gains four cases: the records, a characters export with history, the preview, and an export with no table.
+
 #### 2026-10-19 — feat(restore): restore the outfit history (step 22n-ter), count it in the preview and summary, wipe it in replace mode (P4.D317)
 
 _Versions: core 0.0.1319._

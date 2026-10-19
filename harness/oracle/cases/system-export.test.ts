@@ -157,6 +157,10 @@ interface CaseSpec {
   cursorThrow?: boolean;
   /** [P4.D294 Tier 2 #19] `CHAT_1`'s stored `scenarioSource` a non-object TEXT cell. */
   scenarioTextCell?: boolean;
+  /** [P4.D317] Outfit-history rows through v4's REAL `upsertRows` (`HISTORY_ROWS`). */
+  outfitHistory?: boolean;
+  /** [P4.D317] Do NOT plant `chat_wardrobe_history`: the per-chat read throws. */
+  noHistoryTable?: boolean;
 }
 
 function buildCases(spec: Spec): CaseSpec[] {
@@ -165,10 +169,11 @@ function buildCases(spec: Spec): CaseSpec[] {
     run: async () => {
       const { createNdjsonStream } = await import('@/lib/export/ndjson-writer');
       // [P4.D294] the `[ExtractionCursors]` lines, a silence leg on every case.
-      const { out: lines, cursorLogs } = await withCursorLogs(() =>
+      // [P4.D317] + the outfit-history lines (`historyLogs`).
+      const { out: lines, cursorLogs, historyLogs } = await withCursorLogs(() =>
         drain(createNdjsonStream(spec.userId, options as never)),
       );
-      return { kind: 'ndjson', options, lines, cursorLogs };
+      return { kind: 'ndjson', options, lines, cursorLogs, historyLogs };
     },
   });
 
@@ -402,6 +407,36 @@ function buildCases(spec: Spec): CaseSpec[] {
     ),
   );
 
+  // 10. [P4.D317] The outfit-history record (v4 `7953da3a0`,
+  //     `ndjson-writer.ts:423-437`): over `HISTORY_ROWS` (Lorian's two entries
+  //     — a `pascal` row with `actorToolName` — and Riya's null-actor entry in
+  //     CHAT_1; CHAT_2 has none) a `chats` export emits `wardrobe_history`
+  //     records after CHAT_1's informs and before its annotations, by
+  //     character then index, `data` in `normalizeRow` order, the footer count
+  //     by first bump; a `characters` export emits no such kind; the preview
+  //     carries no `wardrobeHistory`. Without the table every chat's read
+  //     THROWS: the WARN per chat, and the export carries on.
+  const history = (c: CaseSpec): CaseSpec => ({ ...c, outfitHistory: true });
+  cases.push(
+    history(streamCase('stream_chats_all_outfit_history', { type: 'chats', scope: 'all', includeMemories: false })),
+  );
+  cases.push(
+    history(
+      streamCase('stream_characters_all_outfit_history', {
+        type: 'characters',
+        scope: 'all',
+        includeMemories: false,
+      }),
+    ),
+  );
+  cases.push(
+    history(previewCase('preview_chats_outfit_history', { type: 'chats', scope: 'all', includeMemories: false })),
+  );
+  cases.push({
+    ...streamCase('stream_chats_all_no_history_table', { type: 'chats', scope: 'all', includeMemories: false }),
+    noHistoryTable: true,
+  });
+
   // 9. [P4.D294 Tier 2 #19] A non-object TEXT `scenarioSource` cell, exported.
   cases.push({
     ...streamCase('stream_chats_selected_one_scenario_text', {
@@ -604,6 +639,40 @@ const THROWING_CURSORS_SQL = [
  */
 const SCENARIO_TEXT_CELL_SQL = `UPDATE "chats" SET "scenarioSource" = '"Scenarios/Harbour.md"' WHERE "id" = 'c1000000-0000-4000-8000-000000000001'`;
 
+/**
+ * [P4.D317] The export's outfit-history plant (`stream_*_outfit_history`),
+ * through v4's REAL `upsertRows` (fixed ids and stamps; the hash recomputed):
+ * Lorian's entry 0 (`seeded`) and entry 1 (`pascal`, `actorToolName`, the
+ * cursor), and Riya's null-actor entry in CHAT_1 — so `findByChatId`'s
+ * `characterId` order shows. The Rust family writes the same cells through
+ * `upsert_raw_rows`.
+ */
+const EMPTY_SLOTS = { top: [], bottom: [], footwear: [], accessories: [], hair: [] };
+const HISTORY_ROWS = [
+  {
+    id: '7e0000e1-0000-4000-8000-0000000000e1', chatId: CHAT_1, characterId: 'a1000000-0000-4000-8000-000000000002',
+    entryIndex: 0, slots: EMPTY_SLOTS, slotsHash: '', source: 'chat-start', actorCharacterId: null,
+    actorToolName: null, isCurrent: true, createdAt: '2026-03-01T00:00:00.000Z',
+  },
+  {
+    id: '7e0000e2-0000-4000-8000-0000000000e2', chatId: CHAT_1, characterId: LORIAN,
+    entryIndex: 1, slots: { ...EMPTY_SLOTS, top: ['ac000000-0000-4000-8000-000000000001'] }, slotsHash: '',
+    source: 'pascal', actorCharacterId: LORIAN, actorToolName: 'dress_for_dinner', isCurrent: true,
+    createdAt: '2026-03-03T00:00:00.000Z',
+  },
+  {
+    id: '7e0000e3-0000-4000-8000-0000000000e3', chatId: CHAT_1, characterId: LORIAN,
+    entryIndex: 0, slots: EMPTY_SLOTS, slotsHash: '', source: 'seeded', actorCharacterId: null,
+    actorToolName: null, isCurrent: false, createdAt: '2026-03-02T00:00:00.000Z',
+  },
+];
+
+async function plantOutfitHistory(): Promise<void> {
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const written = await getRepositories().wardrobeHistory.upsertRows(HISTORY_ROWS as never);
+  if (written !== HISTORY_ROWS.length) throw new Error(`plantOutfitHistory: wrote ${written}`);
+}
+
 function plantThrowingCursors(db: { exec(sql: string): unknown }): void {
   for (const sql of THROWING_CURSORS_SQL) db.exec(sql);
 }
@@ -614,9 +683,14 @@ function plantThrowingCursors(db: { exec(sql: string): unknown }): void {
  * `cursorLogs` on every stream case, so a case where none fires is a silence
  * leg. The singleton and every child logger share the prototype.
  */
-async function withCursorLogs<T>(body: () => Promise<T>): Promise<{ out: T; cursorLogs: string[] }> {
+async function withCursorLogs<T>(
+  body: () => Promise<T>,
+): Promise<{ out: T; cursorLogs: string[]; historyLogs: string[] }> {
   const { Logger } = await import('@/lib/logger');
   const cursorLogs: string[] = [];
+  // [P4.D317] `ndjson-writer.ts`'s two outfit-history lines, same rendering.
+  const historyLogs: string[] = [];
+  const HISTORY = new Set(['Exported outfit history', 'Failed to load outfit history for export']);
   const originals = {
     error: Logger.prototype.error,
     warn: Logger.prototype.warn,
@@ -639,11 +713,19 @@ async function withCursorLogs<T>(body: () => Promise<T>): Promise<{ out: T; curs
         }
         cursorLogs.push(line);
       }
+      if (HISTORY.has(message)) {
+        let line = `${level} ${message}`;
+        for (const [k, v] of Object.entries(context ?? {})) {
+          if (k === 'module' || v === undefined) continue;
+          line += ` ${k}=${v instanceof Error ? v.message : String(v)}`;
+        }
+        historyLogs.push(line);
+      }
       return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
     } as never;
   }
   try {
-    return { out: await body(), cursorLogs };
+    return { out: await body(), cursorLogs, historyLogs };
   } finally {
     Object.assign(Logger.prototype, originals);
   }
@@ -688,8 +770,9 @@ async function runCase(
     // raw `rawQuery`, which THROWS on an absent table (a per-chat WARN + the
     // backend's `Raw query failed` ERROR). The Rust side runs
     // `ensure_chat_wardrobe_history_on` on its copy.
-    await plantChatWardrobeHistoryTable(getRawDatabase()!);
+    if (!c.noHistoryTable) await plantChatWardrobeHistoryTable(getRawDatabase()!);
   }
+  if (c.outfitHistory) await plantOutfitHistory();
   if (c.wardrobe) await plantWardrobe();
   if (c.cursorThrow) {
     const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');

@@ -26,7 +26,7 @@ use std::path::PathBuf;
 
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::qtap_export::{self, ExportError, ExportOptions};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
@@ -70,8 +70,15 @@ fn fresh_db(tag: &str) -> ScratchDb {
         quilltap_core::test_support::ensure_memory_tiers_columns(w.connection());
         plant_memory_tiers_values(w.connection());
         // [P4.D317] the outfit-history table on every copy — the oracle's
-        // `plantChatWardrobeHistoryTable` (v4's REAL DDL), table only.
-        quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
+        // `plantChatWardrobeHistoryTable` (v4's REAL DDL), table only — but
+        // the `…_no_history_table` case, which measures its absence; and the
+        // `…_outfit_history` cases' rows (the oracle's `HISTORY_ROWS`).
+        if !tag.ends_with("_no_history_table") {
+            quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
+        }
+        if tag.ends_with("_outfit_history") {
+            plant_outfit_history(w.connection());
+        }
         // [P4.D294] the oracle's `plantThrowingCursors`, for the
         // `…_cursor_throw` cases.
         // [P4.D294 Tier 2 #19] the oracle's `SCENARIO_TEXT_CELL_SQL`.
@@ -163,6 +170,11 @@ fn system_export_matches_oracle() {
     let throwing = fresh_db("reads_cursor_throw");
     // [P4.D294 Tier 2 #19] …and the `…_scenario_text` case its own.
     let scenario_text = fresh_db("reads_scenario_text");
+    // [P4.D317] the `…_outfit_history` cases read a copy with history rows;
+    // `…_no_history_table` one without the table.
+    let history = fresh_db("reads_outfit_history");
+    let no_history_table = fresh_db("reads_no_history_table");
+    let mut history_cases = 0usize;
     let mut failed: Vec<String> = Vec::new();
     let mut ran = 0usize;
     let mut wardrobe_cases = 0usize;
@@ -176,6 +188,12 @@ fn system_export_matches_oracle() {
             &throwing
         } else if name.ends_with("_scenario_text") {
             &scenario_text
+        } else if name.ends_with("_outfit_history") {
+            history_cases += 1;
+            &history
+        } else if name.ends_with("_no_history_table") {
+            history_cases += 1;
+            &no_history_table
         } else {
             &plain
         };
@@ -209,6 +227,7 @@ fn system_export_matches_oracle() {
                     .expect("read")
                 });
                 assert_cursor_logs(name, exp, &v5_cursor_lines(&lines), &mut failed);
+                assert_history_logs(name, exp, &lines, &mut failed);
                 match got {
                     Ok(records) => {
                         if let Some(msg) =
@@ -371,10 +390,16 @@ fn system_export_matches_oracle() {
     // P4.D264: 57 + 4 = 61 (the three `…_wardrobe` streams + the preview).
     // P4.D294: 61 + 2 = 63 (the two `…_cursor_throw` streams) + 1 = 64 (the
     // `…_scenario_text` stream, Tier 2 #19).
-    assert_eq!(ran, 64, "expected 64 cases to run, ran {ran}");
+    // P4.D317: 64 + 4 = 68 (three `…_outfit_history` cases + the
+    // `…_no_history_table` stream).
+    assert_eq!(ran, 68, "expected 68 cases to run, ran {ran}");
     assert_eq!(
         wardrobe_cases, 4,
         "the four P4.D264 wardrobe cases read the planted copy"
+    );
+    assert_eq!(
+        history_cases, 4,
+        "the four P4.D317 outfit-history cases read their own copies"
     );
 
     // [P4.D46, `7189a968`] The embedding strip is a MEASUREMENT, not a vacuous
@@ -691,6 +716,71 @@ fn v5_cursor_lines(lines: &[String]) -> Vec<String> {
         .filter(|l| l.contains("[ExtractionCursors]"))
         .cloned()
         .collect()
+}
+
+/// [P4.D317] The oracle's `HISTORY_ROWS`, cell for cell, through the keystone's
+/// `upsert_raw_rows` (v4's `upsertRows` semantics — the hash recomputed).
+fn plant_outfit_history(conn: &rusqlite::Connection) {
+    const CHAT_1: &str = "c1000000-0000-4000-8000-000000000001";
+    const LORIAN: &str = "a1000000-0000-4000-8000-000000000001";
+    let empty = json!({"top": [], "bottom": [], "footwear": [], "accessories": [], "hair": []});
+    let rows = vec![
+        json!({"id": "7e0000e1-0000-4000-8000-0000000000e1", "chatId": CHAT_1,
+               "characterId": "a1000000-0000-4000-8000-000000000002", "entryIndex": 0,
+               "slots": empty, "slotsHash": "", "source": "chat-start", "actorCharacterId": null,
+               "actorToolName": null, "isCurrent": true, "createdAt": "2026-03-01T00:00:00.000Z"}),
+        json!({"id": "7e0000e2-0000-4000-8000-0000000000e2", "chatId": CHAT_1,
+               "characterId": LORIAN, "entryIndex": 1,
+               "slots": {"top": ["ac000000-0000-4000-8000-000000000001"], "bottom": [],
+                         "footwear": [], "accessories": [], "hair": []},
+               "slotsHash": "", "source": "pascal", "actorCharacterId": LORIAN,
+               "actorToolName": "dress_for_dinner", "isCurrent": true,
+               "createdAt": "2026-03-03T00:00:00.000Z"}),
+        json!({"id": "7e0000e3-0000-4000-8000-0000000000e3", "chatId": CHAT_1,
+               "characterId": LORIAN, "entryIndex": 0, "slots": empty, "slotsHash": "",
+               "source": "seeded", "actorCharacterId": null, "actorToolName": null,
+               "isCurrent": false, "createdAt": "2026-03-02T00:00:00.000Z"}),
+    ];
+    let written =
+        quilltap_core::db::chat_wardrobe_history::ChatWardrobeHistoryRepository::new(conn)
+            .upsert_raw_rows(&rows);
+    assert_eq!(written, rows.len(), "plant every history row");
+}
+
+/// [P4.D317] `ndjson-writer.ts`'s two outfit-history lines (v4 `7953da3a0`,
+/// `:434` / `:436-440`), on EVERY stream case: `Exported outfit history`
+/// per chat of a `chats` export (0 rows included), `Failed to load outfit
+/// history for export` per chat when the read throws (the
+/// `…_no_history_table` case), nothing on any other type. v4's line renders
+/// `level message chatId=… count=…` (`module` dropped); v5's twin carries the
+/// file's `chat_id` spelling (the inform line's), mapped back here.
+fn assert_history_logs(name: &str, oracle: &Value, v5: &[String], failed: &mut Vec<String>) {
+    let Some(v4) = oracle["historyLogs"].as_array() else {
+        failed.push(format!(
+            "{name}: the oracle carries no `historyLogs` — regenerate it"
+        ));
+        return;
+    };
+    let v4: Vec<String> = v4.iter().map(|l| l.as_str().unwrap().to_string()).collect();
+    let got: Vec<String> = v5
+        .iter()
+        .filter(|l| {
+            l.contains(" Exported outfit history") || l.contains(" Failed to load outfit history")
+        })
+        .map(|l| {
+            // `LEVEL target message k=v …` → `level message k=v …`.
+            let mut parts = l.splitn(3, ' ');
+            let level = parts.next().unwrap_or("").to_lowercase();
+            let _target = parts.next();
+            let rest = parts.next().unwrap_or("").replace(" chat_id=", " chatId=");
+            format!("{level} {rest}")
+        })
+        .collect();
+    if got != v4 {
+        failed.push(format!(
+            "{name}: outfit-history lines differ\n  rust:   {got:?}\n  oracle: {v4:?}"
+        ));
+    }
 }
 
 /// [P4.D294] The bundle-cursor read arms, pinned BOTH WAYS against the

@@ -115,6 +115,10 @@ mod tests {
         // own order (never through a Zod parse) — neither is templated.
         assert!(template("doc_mount_blob").is_none());
         assert!(template("wardrobe_item").is_none());
+        // [P4.D317 R-5] the outfit-history record is the repository row as read
+        // (v4 emits `normalizeRow`'s object, never a Zod parse): the row
+        // struct's declaration order IS the key order — no template.
+        assert!(template("wardrobe_history").is_none());
     }
 
     /// [P4.D120 / v4 `d25dacc1`] The archived flags survive the export
