@@ -916,10 +916,12 @@ fn commit_plan(
 /// `character_id` is the caller's argument, not this function's business — the
 /// manual route passes `None` for a run nobody made, so an unattributed
 /// operator roll cannot edit an arbitrary character's sheet or wardrobe.
-/// `pending` is the turn's wardrobe announcement set, `Some` only when the run
-/// came through the model's `run_custom` (v4 threads it from the executor);
-/// the manual route and the trigger runner pass `None`, as v4's pass nothing,
-/// so their changes enqueue the announcement at once.
+/// `pending` / `pending_history` are the turn's wardrobe containers (v4's
+/// `turnContainersOf(params)`), `Some` only when the run came through the
+/// model's `run_custom` (v4 threads them from the executor); the manual route
+/// and the trigger runner pass `None`, as v4's pass nothing, so their changes
+/// enqueue the announcement and settle the outfit history at once. Each is
+/// forwarded only as given — a set without a map stays a set without a map.
 #[allow(clippy::too_many_arguments)]
 pub async fn apply_effects_for_run(
     db: &crate::db::runtime::Db,
@@ -933,6 +935,7 @@ pub async fn apply_effects_for_run(
     // the roster's gates, the progress sheet and `{{now}}` used.
     now_ms: i64,
     pending: Option<&Arc<Mutex<HashSet<String>>>>,
+    pending_history: Option<&crate::services::outfit_change_effects::PendingWardrobeHistory>,
 ) -> Vec<AppliedEffect> {
     let effects = match &result.effects {
         Some(e) if !e.is_empty() => e.clone(),
@@ -979,6 +982,7 @@ pub async fn apply_effects_for_run(
                     character_id,
                     &targets,
                     pending,
+                    pending_history,
                 )
                 .await;
             }

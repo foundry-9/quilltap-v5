@@ -144,6 +144,12 @@ fn open_copy(main: &str, mount: &str, pepper: &str, label: &str) -> (Db, tempfil
         pepper,
     )
     .expect("open two-db");
+    // [P4.D316] P4.D315's one v5-side plant, on this per-case copy (R-S).
+    db.write_blocking(|w| {
+        quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.main().connection());
+        Ok(())
+    })
+    .expect("plant chat_wardrobe_history");
     (db, scratch)
 }
 
@@ -262,16 +268,17 @@ fn wardrobe_tools_avatar_trigger_matches_oracle() {
         if sc.switch_on {
             plant_switch_on(&rt, &db, &base.user_id, &av.wardrobe_picture_profile);
         }
+        let turn = quilltap_core::services::outfit_change_effects::new_wardrobe_turn_containers();
         let ctx = ToolExecutionContext {
             chat_id: sc.chat_id.clone(),
             user_id: base.user_id.clone(),
             character_id: Some(base.caller.clone()),
-            // The turn's set, as the oracle hands v4's handlers one (the
-            // context's default is v4's ABSENT set since the `25b8fab6a`
-            // unification — the operator Run Tool's enqueue-now path).
-            pending_wardrobe_announcements: Some(std::sync::Arc::new(std::sync::Mutex::new(
-                std::collections::HashSet::new(),
-            ))),
+            // The turn's containers, as the oracle hands v4's handlers (the
+            // context's default is v4's ABSENT containers since the
+            // `25b8fab6a` unification — the operator Run Tool's enqueue-now
+            // path); [P4.D316] both from the ONE factory.
+            pending_wardrobe_announcements: Some(turn.0.clone()),
+            pending_wardrobe_history: Some(turn.1.clone()),
             ..Default::default()
         };
         let mut successes = Vec::new();
@@ -296,11 +303,20 @@ fn wardrobe_tools_avatar_trigger_matches_oracle() {
             .cloned()
             .collect();
         ann.sort();
+        let mut pending_history: Vec<(String, Value)> = turn
+            .1
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (k.clone(), serde_json::to_value(v).unwrap()))
+            .collect();
+        pending_history.sort_by(|a, b| a.0.cmp(&b.0));
         got_scen.push(json!({
             "name": sc.name,
             "chatId": sc.chat_id,
             "successes": successes,
             "pendingAnnouncements": ann,
+            "pendingHistory": pending_history,
         }));
     }
     assert_eq!(

@@ -12,7 +12,8 @@
 //! created-status difference, asserted directionally), the REDUCED body claim,
 //! the LLM request MESSAGES the provider saw (the outfit prompt's bytes —
 //! character fields, wardrobe listing, scenario — pinned end-to-end), and the
-//! target chat's `equippedOutfit` + reduced cast. Minted ids/timestamps are
+//! target chat's `equippedOutfit` + reduced cast + the wear ledger + the
+//! outfit-history rows (P4.D316). Minted ids/timestamps are
 //! deliberately outside this family (the chat-cast / chat-admin bytes).
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
@@ -178,6 +179,8 @@ fn fresh_db(spec: &Spec, tag: &str) -> ScratchDb {
         let w = Writer::open_writable(&main, &spec.test_pepper_base64)
             .expect("open main for the ledger ensure");
         quilltap_core::test_support::ensure_wear_ledger_on(w.connection());
+        // P4.D316: nor the outfit history — the ported boot ensure.
+        quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
     }
     let db = Db::open(
         DbPaths {
@@ -292,7 +295,40 @@ fn dump_tables_conn(c: &rusqlite::Connection, chat_id: &str) -> Value {
         .unwrap()
         .map(Result::unwrap)
         .collect();
-    json!({ "equippedOutfit": equipped, "participants": participants, "wardrobeWear": wardrobe_wear })
+    // P4.D316 (v4 `f46cf40a2`): every outfit-history row minus the minted
+    // id/createdAt — the oracle's `wardrobeHistory` (`participant-added` on
+    // add, `merge` on merge, `chat-start` on the direct apply; a failed
+    // resolve/commit records nothing).
+    let mut stmt = c
+        .prepare(
+            "SELECT \"chatId\", \"characterId\", \"entryIndex\", \"slots\", \"slotsHash\", \"source\", \
+             \"actorCharacterId\", \"actorToolName\", \"isCurrent\" FROM chat_wardrobe_history \
+             ORDER BY \"chatId\", \"characterId\", \"entryIndex\"",
+        )
+        .unwrap();
+    let wardrobe_history: Vec<Value> = stmt
+        .query_map([], |r| {
+            Ok(json!({
+                "chatId": r.get::<_, String>(0)?,
+                "characterId": r.get::<_, String>(1)?,
+                "entryIndex": r.get::<_, i64>(2)?,
+                "slots": r.get::<_, String>(3)?,
+                "slotsHash": r.get::<_, String>(4)?,
+                "source": r.get::<_, String>(5)?,
+                "actorCharacterId": r.get::<_, Option<String>>(6)?,
+                "actorToolName": r.get::<_, Option<String>>(7)?,
+                "isCurrent": r.get::<_, i64>(8)?,
+            }))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    json!({
+        "equippedOutfit": equipped,
+        "participants": participants,
+        "wardrobeWear": wardrobe_wear,
+        "wardrobeHistory": wardrobe_history,
+    })
 }
 
 #[test]
@@ -845,6 +881,8 @@ fn drive_apply_case(
     let mount_w = Writer::open_writable(&mount_path, &spec.test_pepper_base64).expect("open mount");
     // P4.D262: the committed pair predates the wear ledger — P4.D255's ensure.
     quilltap_core::test_support::ensure_wear_ledger_on(main_w.connection());
+    // P4.D316: nor the outfit history — the ported boot ensure.
+    quilltap_core::test_support::ensure_chat_wardrobe_history_on(main_w.connection());
     let main = main_w.connection();
     let mount = mount_w.connection();
 

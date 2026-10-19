@@ -50,8 +50,9 @@
 //!   QT_FIXTURE_CC_MAIN=/tmp/qt-cc-main.db QT_FIXTURE_CC_MOUNT=/tmp/qt-cc-mount.db \
 //!   QT_FIXTURE_CC_LLM=/tmp/qt-cc-llm.db \
 //!     $N/node --import tsx $V5W/harness/oracle/fixtures/build-chat-create-capstone.ts
-//!   TMPO=/tmp/qt-cc-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   TMPO=/tmp/qt-cc-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
 //!   cp $V5W/harness/oracle/cases/chat-create-capstone.test.ts "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"
 //!   cp $V5W/harness/oracle/fixtures/chat-create-capstone.json  "$TMPO/fixtures/"
 //!   TZ=UTC QT_FIXTURE_CC_MAIN=/tmp/qt-cc-main.db QT_FIXTURE_CC_MOUNT=/tmp/qt-cc-mount.db \
 //!   QT_FIXTURE_CC_LLM=/tmp/qt-cc-llm.db QT_ORACLE_OUT=/tmp/oracle-chat-create.ndjson \
@@ -64,6 +65,60 @@
 //!     cargo test -p quilltap-harness --test chat_create_capstone_equivalence
 
 mod sampling_capture;
+
+/// P4.D316 (v4 `e8e17b2d9`): the outfit-history rows, in the dump both sides
+/// use (ids and `createdAt` kept out). `applyOutfitSelections` appends a
+/// `chat-start` entry 0 for every seated character after its outfit commit.
+const WARDROBE_HISTORY_DUMP: &str =
+    "SELECT \"chatId\", \"characterId\", \"entryIndex\", \"slots\", \
+     \"slotsHash\", \"source\", \"actorCharacterId\", \"actorToolName\", \"isCurrent\" \
+     FROM chat_wardrobe_history ORDER BY \"chatId\", \"characterId\", \"entryIndex\"";
+
+fn dump_wardrobe_history(db: &Db) -> Value {
+    db.read_main(|conn| {
+        let mut stmt = conn.prepare(WARDROBE_HISTORY_DUMP)?;
+        let rows: Vec<Value> = stmt
+            .query_map([], |r| {
+                Ok(json!({
+                    "chatId": r.get::<_, String>(0)?,
+                    "characterId": r.get::<_, String>(1)?,
+                    "entryIndex": r.get::<_, i64>(2)?,
+                    "slots": r.get::<_, String>(3)?,
+                    "slotsHash": r.get::<_, String>(4)?,
+                    "source": r.get::<_, String>(5)?,
+                    "actorCharacterId": r.get::<_, Option<String>>(6)?,
+                    "actorToolName": r.get::<_, Option<String>>(7)?,
+                    "isCurrent": r.get::<_, i64>(8)?,
+                }))
+            })?
+            .collect::<Result<_, _>>()?;
+        Ok(Value::Array(rows))
+    })
+    .expect("dump chat_wardrobe_history")
+}
+
+/// Mask the MINTED created-chat id (each side's own `body.chat.id`) to
+/// `<created-chat>`, then order by the masked key — never by a minted id.
+/// Every other id in the rows is fixture-baked and compared RAW.
+fn mask_history(rows: &Value, created_chat_id: Option<&str>) -> String {
+    let mut rows: Vec<Value> = rows.as_array().cloned().unwrap_or_default();
+    for r in &mut rows {
+        if let (Some(id), Some(o)) = (created_chat_id, r.as_object_mut()) {
+            if o.get("chatId").and_then(Value::as_str) == Some(id) {
+                o.insert("chatId".into(), Value::String("<created-chat>".into()));
+            }
+        }
+    }
+    let key = |r: &Value| {
+        (
+            r["chatId"].as_str().unwrap_or("").to_string(),
+            r["characterId"].as_str().unwrap_or("").to_string(),
+            r["entryIndex"].as_i64().unwrap_or(-1),
+        )
+    };
+    rows.sort_by_key(key);
+    serde_json::to_string(&Value::Array(rows)).unwrap()
+}
 
 /// P4.D246 (v4 `9753d0eb2`): the fixture's one project — "The Lantern Project",
 /// `build-chat-create-capstone.ts` `W.projectId`, created with
@@ -726,6 +781,9 @@ fn chat_create_capstone_matches_oracle() {
             w
         };
         let main_w = open_w(&main_work);
+        // P4.D316: this copy's history table (v4's migration-only DDL, planted
+        // beside the oracle's `plantChatWardrobeHistoryTable`).
+        quilltap_core::test_support::ensure_chat_wardrobe_history_on(main_w.connection());
         if let Some(settings) = &c.concierge_settings {
             main_w
                 .connection()
@@ -1048,6 +1106,19 @@ fn chat_create_capstone_matches_oracle() {
                     c.name
                 );
             }
+            // P4.D316: a refusal appends no history entry, on both sides.
+            assert_eq!(
+                mask_history(&dump_wardrobe_history(&db), None),
+                mask_history(
+                    want.get("wardrobeHistory").unwrap_or_else(|| panic!(
+                        "case {}: oracle row lacks wardrobeHistory",
+                        c.name
+                    )),
+                    None
+                ),
+                "case {}: reject arm wrote different chat_wardrobe_history rows than v4",
+                c.name
+            );
             // P4.D246: the roster untouched by a refusal, on both sides.
             assert_eq!(
                 project_roster(main_w.connection(), mount_w.connection()),
@@ -1161,6 +1232,14 @@ fn chat_create_capstone_matches_oracle() {
         // P4.D148: the insertion-ordered message trace (position proof).
         let got_message_order = dump_message_order(&db);
 
+        // P4.D316: the outfit-history rows, each side's minted chat id masked.
+        let got_history = mask_history(&dump_wardrobe_history(&db), chat["id"].as_str());
+        let want_history = mask_history(
+            want.get("wardrobeHistory")
+                .unwrap_or_else(|| panic!("case {}: oracle row lacks wardrobeHistory", c.name)),
+            want["body"]["chat"]["id"].as_str(),
+        );
+
         // Frame trace (buffered replay), ts stripped.
         let mut got_frames: Vec<Value> = bus
             .replay(&replay_id)
@@ -1270,6 +1349,16 @@ fn chat_create_capstone_matches_oracle() {
         ];
 
         let mut failed: Vec<String> = Vec::new();
+
+        // P4.D316: the history rows, RAW bytes (serde_json::to_string — Map
+        // equality ignores key order).
+        if got_history != want_history {
+            eprintln!(
+                "[{}] section `wardrobe_history` MISMATCH:\n  GOT : {got_history}\n  WANT: {want_history}",
+                c.name
+            );
+            failed.push("wardrobe_history".into());
+        }
 
         // P4.D246: the roster, RAW (fixture-baked ids; the normalizing sections
         // would remap them to tokens and hide a same-length difference).

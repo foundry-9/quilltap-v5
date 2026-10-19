@@ -71,8 +71,11 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Map, Value};
 
+use crate::db::chat_wardrobe_history::{WardrobeHistoryIntent, WardrobeHistoryProvenance};
 use crate::db::runtime::Db;
-use crate::services::outfit_change_effects::{notify_wardrobe_changed, OutfitChangeContext};
+use crate::services::outfit_change_effects::{
+    notify_wardrobe_changed, OutfitChangeContext, PendingWardrobeHistory,
+};
 use crate::services::tool_image_generation::{
     maybe_queue_wardrobe_tool_image, QueueWardrobeToolImageArgs,
 };
@@ -94,15 +97,22 @@ pub const WARDROBE_TOOL_NAMES: [&str; 7] = [
     "wardrobe_take_off",
 ];
 
-/// v4 `WardrobeToolContext` — the ONE context every wardrobe tool runs in.
-/// The executor builds it once from the tool-execution context.
+/// v4 `WardrobeToolContext` (= `Omit<OutfitChangeContext, 'historyIntent'>`)
+/// — the ONE context every wardrobe tool runs in. The executor builds it once
+/// from the tool-execution context: the caller's `character` provenance and
+/// BOTH turn containers, so every change any of the tools makes is recorded
+/// as the calling character's.
 #[derive(Clone, Copy, Debug)]
 pub struct WardrobeToolContext<'a> {
     pub user_id: &'a str,
     pub chat_id: &'a str,
     pub character_id: &'a str,
+    /// Who is changing the outfit — `character`, naming the caller.
+    pub provenance: &'a WardrobeHistoryProvenance,
     /// The per-turn announcement queue the orchestrator threads through.
     pub pending_wardrobe_announcements: Option<&'a Arc<Mutex<HashSet<String>>>>,
+    /// The per-turn outfit-history intents, created beside the set.
+    pub pending_wardrobe_history: Option<&'a PendingWardrobeHistory>,
 }
 
 /// One tool's handler output (v4's `execute*` return value).
@@ -125,8 +135,12 @@ pub enum WardrobeToolOutput {
 pub struct WardrobeToolStage {
     pub output: WardrobeToolOutput,
     /// The characters whose outfit the tool changed (v4's
-    /// `notifyWardrobeChanged` targets) — at most one per call.
-    pub changed: Vec<String>,
+    /// `notifyWardrobeChanged` targets) — at most one per call — each with its
+    /// history intent: `None` is the context provenance's `append` (every
+    /// tool but the rollback), `Some(Cursor)` the rollback's cursor move. A
+    /// refusal or a no-op pushes nothing, so the effects fire once per
+    /// gesture and only when something landed.
+    pub changed: Vec<(String, Option<WardrobeHistoryIntent>)>,
 }
 
 /// v4 `WardrobeToolRun` — the executor's row for one call.
@@ -227,6 +241,7 @@ pub fn run_wardrobe_tool_handler(
         }
         _ => return None,
     };
+    let changed = changed.into_iter().map(|id: String| (id, None)).collect();
     Some(WardrobeToolStage { output, changed })
 }
 
@@ -251,14 +266,17 @@ pub async fn finish_wardrobe_tool(
         WardrobeToolOutput::Wear(_) => "wardrobe-wear-handler",
         WardrobeToolOutput::TakeOff(_) => "wardrobe-take-off-handler",
     };
-    for character_id in &changed {
+    for (character_id, intent) in &changed {
         notify_wardrobe_changed(
             db,
             &OutfitChangeContext {
                 user_id: ctx.user_id,
                 chat_id: ctx.chat_id,
                 character_id,
+                provenance: ctx.provenance,
+                history_intent: intent.as_ref(),
                 pending_wardrobe_announcements: ctx.pending_wardrobe_announcements,
+                pending_wardrobe_history: ctx.pending_wardrobe_history,
             },
             source,
         )
@@ -479,19 +497,26 @@ mod tests {
             Connection::open_in_memory().unwrap(),
             Connection::open_in_memory().unwrap(),
         );
+        let provenance = WardrobeHistoryProvenance::new(
+            crate::db::chat_wardrobe_history::WardrobeHistorySource::Character,
+        )
+        .with_actor("ch");
         for name in WARDROBE_TOOL_NAMES {
-            let pending: Arc<Mutex<HashSet<String>>> = Arc::default();
+            let (pending, history) =
+                crate::services::outfit_change_effects::new_wardrobe_turn_containers();
             // A refused input — no write, no picture; the stage then reports
             // an outfit change for `char-x`, as a landed call would.
             let mut stage =
                 run_wardrobe_tool_handler(name, &main, &mount, "u", "c", "ch", &json!(null))
                     .unwrap();
-            stage.changed = vec![format!("char-{name}")];
+            stage.changed = vec![(format!("char-{name}"), None)];
             let ctx = WardrobeToolContext {
                 user_id: "u",
                 chat_id: "c",
                 character_id: "ch",
+                provenance: &provenance,
                 pending_wardrobe_announcements: Some(&pending),
+                pending_wardrobe_history: Some(&history),
             };
             finish_wardrobe_tool(&db, &ctx, stage).await;
             let set = pending.lock().unwrap();
@@ -499,6 +524,17 @@ mod tests {
                 set.iter().cloned().collect::<Vec<_>>(),
                 vec![format!("char-{name}")],
                 "{name} must forward the turn's set"
+            );
+            // v4's `it.each` asserts the Map's identity and the provenance:
+            // the intent lands in the SAME map, as the caller's append.
+            let map = history.lock().unwrap();
+            assert_eq!(map.len(), 1, "{name} must forward the turn's map");
+            assert_eq!(
+                map.get(&format!("char-{name}")),
+                Some(&WardrobeHistoryIntent::Append {
+                    provenance: provenance.clone()
+                }),
+                "{name} records the caller's provenance"
             );
         }
     }

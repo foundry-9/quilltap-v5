@@ -59,11 +59,11 @@
 //! `[applyDisplacement]`, `[WardrobeLocation]`) by TAG only (R-H). Every
 //! diverged op is reported before the test fails.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 
 use quilltap_core::db::archetype_wardrobe::read_general_wardrobe;
 use quilltap_core::db::chat_settings::{update_for_user, SettingsColVal};
+use quilltap_core::db::chat_wardrobe_history::{WardrobeHistoryProvenance, WardrobeHistorySource};
 use quilltap_core::db::chats_outfits::ChatOutfitsRepository;
 use quilltap_core::db::doc_mount_documents::DocMountDocumentsRepository;
 use quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository;
@@ -75,6 +75,9 @@ use quilltap_core::db::vault_wardrobe_public::{update_vault_wardrobe_item, Wardr
 use quilltap_core::db::wardrobe_read::find_by_character_id;
 use quilltap_core::db::wardrobe_wear_stats::{WardrobeWearIncrement, WardrobeWearStatsRepository};
 use quilltap_core::db::Writer;
+use quilltap_core::services::outfit_change_effects::{
+    new_wardrobe_turn_containers, PendingWardrobeAnnouncements, PendingWardrobeHistory,
+};
 use quilltap_core::test_support::global_capture;
 use quilltap_core::tools::wardrobe_list;
 use quilltap_core::tools::wardrobe_tool_table::{
@@ -308,6 +311,8 @@ fn wardrobe_tools_match_oracle() {
 
     let main = Writer::open_writable(&work_main, &spec.test_pepper_base64).expect("open main");
     let mount = Writer::open_writable(&work_mount, &spec.test_pepper_base64).expect("open mount");
+    // [P4.D316] P4.D315's one v5-side plant, on this per-case copy (R-S).
+    quilltap_core::test_support::ensure_chat_wardrobe_history_on(main.connection());
     let now = quilltap_core::clock::iso_to_ms(&spec.now_ms).expect("nowMs") as f64;
 
     // [P4.D262] The ledger + picture plants — the oracle's rows, through the
@@ -363,9 +368,9 @@ fn wardrobe_tools_match_oracle() {
         .build()
         .unwrap();
 
-    // The turn's ONE announcement set, handed to all seven tools (v4's
-    // executor hands its `WardrobeToolContext` to every table entry).
-    let announce: Arc<Mutex<HashSet<String>>> = Arc::default();
+    // The turn's ONE pair of containers, handed to every tool (v4's executor
+    // hands its `WardrobeToolContext` to every table entry).
+    let turn = new_wardrobe_turn_containers();
     let mut failed: Vec<String> = Vec::new();
 
     for (i, op) in spec.ops.iter().enumerate() {
@@ -384,7 +389,7 @@ fn wardrobe_tools_match_oracle() {
                 &spec.chat_id,
                 character_id,
                 &op.args,
-                &announce,
+                &turn,
             )
         });
         let formatted = output.format_at(now);
@@ -445,8 +450,16 @@ fn wardrobe_tools_match_oracle() {
     // v4's readback is `readSharedWardrobe(generalMountPointId, true)`.
     let general_items = read_general_wardrobe(main_c, &docs, true).expect("general items");
     let equipped = ChatOutfitsRepository::new(main_c).get_equipped_outfit(&spec.chat_id);
-    let mut ann: Vec<String> = announce.lock().unwrap().iter().cloned().collect();
+    let mut ann: Vec<String> = turn.0.lock().unwrap().iter().cloned().collect();
     ann.sort();
+    let mut pending_history: Vec<(String, Value)> = turn
+        .1
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(k, v)| (k.clone(), serde_json::to_value(v).unwrap()))
+        .collect();
+    pending_history.sort_by(|a, b| a.0.cmp(&b.0));
 
     let wear = wear_readback(main_c, &spec, &caller_items, &recipient_items);
     let readback = json!({
@@ -456,6 +469,8 @@ fn wardrobe_tools_match_oracle() {
         "equippedOutfit": equipped.unwrap_or(Value::Null),
         "pendingAnnouncements": ann,
         "wardrobeWear": wear,
+        "pendingHistory": pending_history,
+        "history": dump_history(main_c),
     });
 
     let got = normalize(&readback);
@@ -538,7 +553,7 @@ fn wardrobe_tools_match_oracle() {
                 &spec.chat_id,
                 character_id,
                 &op.args,
-                &announce,
+                &turn,
             )
         });
         pictures.push(json!({
@@ -715,7 +730,7 @@ fn run_tool(
     chat_id: &str,
     character_id: &str,
     args: &Value,
-    announce: &Arc<Mutex<HashSet<String>>>,
+    turn: &(PendingWardrobeAnnouncements, PendingWardrobeHistory),
 ) -> WardrobeToolOutput {
     let stage = run_wardrobe_tool_handler(
         tool,
@@ -727,16 +742,53 @@ fn run_tool(
         args,
     )
     .unwrap_or_else(|| panic!("the table holds no `{tool}`"));
+    // v4's executor: the caller's `character` provenance (actor only when
+    // truthy) and BOTH turn containers.
+    let provenance = WardrobeHistoryProvenance::new(WardrobeHistorySource::Character);
+    let provenance = if character_id.is_empty() {
+        provenance
+    } else {
+        provenance.with_actor(character_id)
+    };
     rt.block_on(finish_wardrobe_tool(
         db,
         &WardrobeToolContext {
             user_id,
             chat_id,
             character_id,
-            pending_wardrobe_announcements: Some(announce),
+            provenance: &provenance,
+            pending_wardrobe_announcements: Some(&turn.0),
+            pending_wardrobe_history: Some(&turn.1),
         },
         stage,
     ))
+}
+
+/// [P4.D316] `chat_wardrobe_history` exactly as the oracle reads it back.
+fn dump_history(c: &rusqlite::Connection) -> Value {
+    let mut stmt = c
+        .prepare(
+            "SELECT \"chatId\", \"characterId\", \"entryIndex\", \"slots\", \"slotsHash\", \"source\", \"actorCharacterId\", \"actorToolName\", \"isCurrent\" FROM chat_wardrobe_history ORDER BY \"chatId\", \"characterId\", \"entryIndex\"",
+        )
+        .expect("prepare the history read-back");
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(json!({
+                "chatId": r.get::<_, String>(0)?,
+                "characterId": r.get::<_, String>(1)?,
+                "entryIndex": r.get::<_, i64>(2)?,
+                "slots": r.get::<_, String>(3)?,
+                "slotsHash": r.get::<_, String>(4)?,
+                "source": r.get::<_, String>(5)?,
+                "actorCharacterId": r.get::<_, Option<String>>(6)?,
+                "actorToolName": r.get::<_, Option<String>>(7)?,
+                "isCurrent": r.get::<_, i64>(8)?,
+            }))
+        })
+        .expect("read the history back")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("history rows");
+    Value::Array(rows)
 }
 
 /// The seven handlers' `context`s — their lines compare whole.

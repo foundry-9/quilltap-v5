@@ -17,8 +17,9 @@
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-cd-oracle
- *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
  *   cp "$V5W/harness/oracle/cases/chat-dialogs-llm-choose-tier3.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"
  *   cp "$V5W/harness/oracle/fixtures/chat-dialogs-web.json" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_CD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-dialogs-main.db \
@@ -33,6 +34,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
 
 interface Canned {
   content: string;
@@ -174,7 +176,18 @@ async function readTables(chatId: string): Promise<unknown> {
     'SELECT "itemId", "wearerCharacterId", "wearCount", "firstWornAt", "lastWornAt", "lastWornChatId" ' +
       'FROM "wardrobe_wear_stats" ORDER BY "itemId", COALESCE("wearerCharacterId", \'\')',
   );
-  return { equippedOutfit: equipped ?? {}, participants, wardrobeWear };
+  // [P4.D316 / v4 `f46cf40a2`] every outfit-history row minus the minted
+  // id/createdAt: an arrival settles AFTER that character's successful commit
+  // (`participant-added` on the add route, `merge` on the merge route,
+  // `chat-start` on the direct apply); a failed resolve/commit records nothing.
+  const wardrobeHistory = (
+    (await rawQuery(
+      'SELECT "chatId", "characterId", "entryIndex", "slots", "slotsHash", "source", ' +
+        '"actorCharacterId", "actorToolName", "isCurrent" FROM chat_wardrobe_history ' +
+        'ORDER BY "chatId", "characterId", "entryIndex"',
+    )) as Array<Record<string, unknown>>
+  ).map((r) => ({ ...r, isCurrent: Number(r.isCurrent) }));
+  return { equippedOutfit: equipped ?? {}, participants, wardrobeWear, wardrobeHistory };
 }
 
 interface CaseSpec {
@@ -253,6 +266,11 @@ async function runCase(
     const raw = getRawDatabase() as { exec: (sql: string) => void } | null;
     if (!raw) throw new Error('main DB handle unavailable for the wear ledger');
     for (const sql of WARDROBE_WEAR_STATS_DDL) raw.exec(sql);
+    // [P4.D316] The pair predates the outfit history too: v4's REAL DDL on
+    // THIS case's keyed connection (the Rust side runs the ported ensure).
+    await plantChatWardrobeHistoryTable(
+      raw as unknown as Parameters<typeof plantChatWardrobeHistoryTable>[0],
+    );
   }
 
   if (c.seedInstructions) {

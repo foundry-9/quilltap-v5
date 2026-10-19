@@ -275,6 +275,33 @@ fn normalize_ledger(rows: Value, pinned: &[String]) -> Value {
     )
 }
 
+/// [P4.D316] `chat_wardrobe_history` exactly as the oracle reads it back.
+fn history(c: &rusqlite::Connection) -> Value {
+    let mut stmt = c
+        .prepare(
+            r#"SELECT "chatId", "characterId", "entryIndex", "slots", "slotsHash", "source", "actorCharacterId", "actorToolName", "isCurrent" FROM chat_wardrobe_history ORDER BY "chatId", "characterId", "entryIndex""#,
+        )
+        .unwrap();
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(json!({
+                "chatId": r.get::<_, String>(0)?,
+                "characterId": r.get::<_, String>(1)?,
+                "entryIndex": r.get::<_, i64>(2)?,
+                "slots": r.get::<_, String>(3)?,
+                "slotsHash": r.get::<_, String>(4)?,
+                "source": r.get::<_, String>(5)?,
+                "actorCharacterId": r.get::<_, Option<String>>(6)?,
+                "actorToolName": r.get::<_, Option<String>>(7)?,
+                "isCurrent": r.get::<_, i64>(8)?,
+            }))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    Value::Array(rows)
+}
+
 fn ledger(main: &rusqlite::Connection) -> Value {
     let mut st = main
         .prepare(
@@ -360,6 +387,8 @@ fn wardrobe_wear_commit_matches_oracle() {
     let pepper = &base.test_pepper_base64;
     let main = Writer::open_writable(&work_main, pepper).expect("open main");
     let mount = Writer::open_writable(&work_mount, pepper).expect("open mount");
+    // [P4.D316] P4.D315's one v5-side plant, on this per-case copy (R-S).
+    quilltap_core::test_support::ensure_chat_wardrobe_history_on(main.connection());
     let db = Db::open(
         DbPaths {
             main: work_main.clone(),
@@ -569,6 +598,18 @@ fn wardrobe_wear_commit_matches_oracle() {
         }
         if normalize_ledger(ledger_before, &pinned) != got_ledger {
             credited_ops += 1;
+        }
+
+        // ── [P4.D316] the outfit history ──
+        let got_history = history(main.connection());
+        if serde_json::to_string(&got_history).unwrap()
+            != serde_json::to_string(&want["history"]).unwrap()
+        {
+            eprintln!(
+                "[{}] HISTORY\n   v5: {got_history}\n   v4: {}",
+                op.name, want["history"]
+            );
+            failed.push(format!("{}:history", op.name));
         }
 
         // ── the log lines ──

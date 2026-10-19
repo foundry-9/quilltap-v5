@@ -23,13 +23,22 @@
  *
  * Emits one NDJSON line per case:
  *   { name, status, ok, body, tables:{chats,chatMessages,projects,backgroundJobs},
- *     frames, messageOrder, recordings:[{kind,provider,model,temperature,messages,...}] }
+ *     frames, messageOrder, recordings:[{kind,provider,model,temperature,messages,...}],
+ *     wardrobeHistory:[{chatId,characterId,entryIndex,slots,slotsHash,source,
+ *                       actorCharacterId,actorToolName,isCurrent}] }
+ *
+ * P4.D316 (v4 `e8e17b2d9`): `applyOutfitSelections` appends a `chat-start`
+ * history entry 0 for every seated character after its outfit commit. The
+ * table is migration-only in v4 and absent from the baked fixture, so it is
+ * PLANTED on each per-case copy (after `initializeDatabase()`, through that
+ * copy's own manager) and dumped per case.
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-cc-oracle
- *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
  *   cp "$V5W/harness/oracle/cases/chat-create-capstone.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"
  *   cp "$V5W/harness/oracle/fixtures/chat-create-capstone.json"  "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_CC_MAIN=/tmp/qt-cc-main.db QT_FIXTURE_CC_MOUNT=/tmp/qt-cc-mount.db \
@@ -45,6 +54,7 @@ import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:f
 import { tmpdir } from 'node:os';
 
 import type { LLMStreamStalledError as LLMStreamStalledErrorType } from '@/lib/llm/stream-watchdog';
+import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
 
 /**
  * P4.D190 — the class the CURRENT module registry holds.
@@ -373,6 +383,8 @@ async function runCase(
   const { POST } = await import('@/app/api/v1/chats/route');
 
   await initializeDatabase();
+  // P4.D316: this copy's history table (v4's migration-only DDL).
+  await plantChatWardrobeHistoryTable();
   if (c.conciergeSettings) {
     getRawDatabase()
       .prepare('UPDATE chat_settings SET "conciergeSettings" = ? WHERE "userId" = ?')
@@ -435,6 +447,29 @@ async function runCase(
         .all() as Array<Record<string, unknown>>
     ).map((r) => [r.chatId, r.type, r.role, r.systemSender, r.systemKind, r.content].map(canonValue));
 
+    // P4.D316: the outfit-history rows the create appended (ids and
+    // `createdAt` kept out; the minted chat id is masked on the Rust side
+    // against `body.chat.id`).
+    const wardrobeHistory = (
+      mdb
+        .prepare(
+          'SELECT "chatId", "characterId", "entryIndex", "slots", "slotsHash", "source", ' +
+            '"actorCharacterId", "actorToolName", "isCurrent" FROM chat_wardrobe_history ' +
+            'ORDER BY "chatId", "characterId", "entryIndex"',
+        )
+        .all() as Array<Record<string, unknown>>
+    ).map((r) => ({
+      chatId: r.chatId,
+      characterId: r.characterId,
+      entryIndex: r.entryIndex,
+      slots: r.slots,
+      slotsHash: r.slotsHash,
+      source: r.source,
+      actorCharacterId: r.actorCharacterId ?? null,
+      actorToolName: r.actorToolName ?? null,
+      isCurrent: Number(r.isCurrent),
+    }));
+
     // P4.D246 (v4 `9753d0eb2`): the fixture project's hydrated roster + flag
     // AFTER the create, read through v4's REAL overlay-aware repository. The
     // roster lives in the project store's `properties.json` (MOUNT), which the
@@ -451,7 +486,18 @@ async function runCase(
         }
       : null;
 
-    return { name: c.name, status, ok, body, tables, frames, messageOrder, recordings, projectRoster };
+    return {
+      name: c.name,
+      status,
+      ok,
+      body,
+      tables,
+      frames,
+      messageOrder,
+      recordings,
+      projectRoster,
+      wardrobeHistory,
+    };
   } finally {
     Math.random = origRandom;
     await closeDatabase();

@@ -270,6 +270,7 @@ async fn run_triggered(
                 // v4's runner (`trigger-runner.ts:165`) passes no set: a
                 // triggered gesture enqueues its announcement at once.
                 pending_wardrobe_announcements: None,
+                pending_wardrobe_history: None,
             },
             &mut rng,
             invoker.as_ref().map(|i| i as &dyn LlmInvoker),

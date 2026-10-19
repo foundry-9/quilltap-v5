@@ -45,7 +45,6 @@
 //! across the streaming await.
 
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
@@ -710,11 +709,16 @@ where
 
             // Execute the tools — operator surface (character-less, all-stores).
             // `process_tool_calls` emits toolsDetected/status/toolResult on `sink`.
+            // v4 `orchestrator.service.ts:492` `...newWardrobeTurnContainers()`
+            // (cosmetic: every wardrobe tool is off and the console never flushes).
+            let (announcements, history) =
+                crate::services::outfit_change_effects::new_wardrobe_turn_containers();
             let tool_context = ToolExecutionContext {
                 chat_id: chat_id.to_string(),
                 user_id: user_id.to_string(),
                 operator_surface: true,
-                pending_wardrobe_announcements: Some(Arc::new(Mutex::new(HashSet::new()))),
+                pending_wardrobe_announcements: Some(announcements),
+                pending_wardrobe_history: Some(history),
                 ..Default::default()
             };
             let tool_result =

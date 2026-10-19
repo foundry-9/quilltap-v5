@@ -834,6 +834,7 @@ pub async fn chat_custom_tool_run(
             // v4's route (`route.ts:451`) passes no set: an operator-run
             // gesture enqueues its announcement at once.
             pending_wardrobe_announcements: None,
+            pending_wardrobe_history: None,
         },
         &mut rng,
         // The chat run attributes the consult to THIS chat, so a dangerous room

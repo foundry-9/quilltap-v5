@@ -37,6 +37,15 @@
  * spliced, so nothing reaches stdout; the harness compares the seven
  * handlers' own lines whole and the keystone's tagged lines by tag (R-H).
  *
+ * P4.D316 (v4 `05005c562` at the pin `e8e17b2d9`): the ONE context now carries
+ * the caller's REQUIRED `provenance` (`{ source: 'character', actorCharacterId }`
+ * — v4's executor's) and BOTH turn containers from `newWardrobeTurnContainers()`
+ * (the unchanged case handed a Set with no Map and no provenance, so every
+ * change settled AT ONCE with an undefined provenance — the repository's WARN).
+ * `chat_wardrobe_history` is planted on the per-case copy (P4.D315's
+ * `plantChatWardrobeHistoryTable`); the read-back gains the turn's history Map
+ * (sorted by character) and the table's rows.
+ *
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -146,6 +155,8 @@ async function main(): Promise<void> {
   const wt = await import('@/lib/tools/handlers/wardrobe-take-off-handler');
 
   await initializeDatabase();
+  const { plantChatWardrobeHistoryTable } = await import(join(here, '..', 'lib', 'v4-migrations.ts'));
+  await plantChatWardrobeHistoryTable();
   const NOW_MS = Date.parse(spec.nowMs);
 
   // [P4.D262] The ledger + picture plants (both sides plant the same rows).
@@ -171,17 +182,27 @@ async function main(): Promise<void> {
     );
   }
 
-  // A single per-turn announcement Set (as the orchestrator would supply). It
-  // absorbs the archive/wear/take_off announcements so nothing is enqueued.
-  const pendingWardrobeAnnouncements = new Set<string>();
+  // A single pair of per-turn containers (as the orchestrator would supply). The
+  // Set absorbs the archive/wear/take_off announcements so nothing is enqueued;
+  // the Map holds each character's last history intent.
+  const { newWardrobeTurnContainers } = await import('@/lib/wardrobe/outfit-change-effects');
+  const { pendingWardrobeAnnouncements, pendingWardrobeHistory } = newWardrobeTurnContainers();
 
   const runOp = async (
     op: Op,
   ): Promise<{ name: string; tool: string; output: unknown; formatted: string; logs: unknown[] }> => {
     const characterId =
       op.characterId === 'recipient' ? spec.recipientCharacterId : spec.callerCharacterId;
-    // [P4.D280] v4's executor hands EVERY wardrobe tool the turn's Set.
-    const base = { userId: spec.userId, chatId: spec.chatId, characterId, pendingWardrobeAnnouncements };
+    // [P4.D280] v4's executor hands EVERY wardrobe tool the turn's Set — and
+    // [P4.D316] the Map and the caller's provenance (`tool-executor.ts:725-738`).
+    const base = {
+      userId: spec.userId,
+      chatId: spec.chatId,
+      characterId,
+      provenance: { source: 'character' as const, ...(characterId ? { actorCharacterId: characterId } : {}) },
+      pendingWardrobeAnnouncements,
+      pendingWardrobeHistory,
+    };
     captured.length = 0;
     let output: unknown;
     let formatted: string;
@@ -262,6 +283,16 @@ async function main(): Promise<void> {
     equippedOutfit: (await repos.chats.getEquippedOutfit(spec.chatId)) ?? null,
     pendingAnnouncements: Array.from(pendingWardrobeAnnouncements).sort(),
     wardrobeWear: await wearReadback(),
+    // [P4.D316] the turn's history intents and the (in-turn: untouched) table.
+    pendingHistory: Array.from(pendingWardrobeHistory.entries()).sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    ),
+    history: await (async () => {
+      const { rawQuery } = await import('@/lib/database/manager');
+      return ((await rawQuery(
+        'SELECT "chatId", "characterId", "entryIndex", "slots", "slotsHash", "source", "actorCharacterId", "actorToolName", "isCurrent" FROM chat_wardrobe_history ORDER BY "chatId", "characterId", "entryIndex"',
+      )) as Array<Record<string, unknown>>).map((r) => ({ ...r, isCurrent: Number(r.isCurrent) }));
+    })(),
   };
 
   // [P4.D262] The picture scenario — the operator switch ON.

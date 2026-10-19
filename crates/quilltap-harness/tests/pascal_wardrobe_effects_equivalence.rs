@@ -72,7 +72,9 @@ use quilltap_core::pascal::custom_tools::{
     CustomToolRunResult, ResolvedEffect, ResolvedWardrobeGesture, RollForm,
 };
 use quilltap_core::pascal::side_effects::apply_effects_for_run;
-use quilltap_core::services::outfit_change_effects::flush_pending_wardrobe_announcements;
+use quilltap_core::services::outfit_change_effects::{
+    flush_pending_wardrobe_announcements, new_wardrobe_turn_containers,
+};
 use quilltap_core::services::tool_execution::{
     create_tool_context, ToolCall, ToolExecutionContext, ToolRunner,
 };
@@ -128,6 +130,10 @@ struct OracleRow {
     equipped: Value,
     wear: Value,
     set: Value,
+    /// [P4.D316] the turn's history Map (`null` without containers).
+    map: Value,
+    /// [P4.D316] `chat_wardrobe_history`, ids / createdAt not dumped.
+    history: Value,
     jobs: Value,
     logs: Vec<Value>,
 }
@@ -289,6 +295,32 @@ fn committed_tail(line: Line) -> Line {
     (level, message, fields)
 }
 
+/// [P4.D316] `chat_wardrobe_history` exactly as the oracle's `dumpHistory`.
+fn dump_history(db: &Db) -> Value {
+    db.read_main(|c| {
+        let mut stmt = c.prepare(
+            r#"SELECT "chatId", "characterId", "entryIndex", "slots", "slotsHash", "source", "actorCharacterId", "actorToolName", "isCurrent" FROM chat_wardrobe_history ORDER BY "chatId", "characterId", "entryIndex""#,
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(json!({
+                    "chatId": r.get::<_, String>(0)?,
+                    "characterId": r.get::<_, String>(1)?,
+                    "entryIndex": r.get::<_, i64>(2)?,
+                    "slots": r.get::<_, String>(3)?,
+                    "slotsHash": r.get::<_, String>(4)?,
+                    "source": r.get::<_, String>(5)?,
+                    "actorCharacterId": r.get::<_, Option<String>>(6)?,
+                    "actorToolName": r.get::<_, Option<String>>(7)?,
+                    "isCurrent": r.get::<_, i64>(8)?,
+                }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Value::Array(rows))
+    })
+    .expect("dump chat_wardrobe_history")
+}
+
 fn dump_jobs(db: &Db) -> Value {
     let dump = db
         .read_main(|c| quilltap_core::db::dump_table_json_conn(c, "background_jobs", "rowid"))
@@ -394,6 +426,12 @@ fn pascal_wardrobe_effects_match_oracle() {
         .enable_all()
         .build()
         .unwrap();
+    // [P4.D316] P4.D315's one v5-side plant, on this per-case copy (R-S).
+    rt.block_on(db.write(|w| {
+        quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.main().connection());
+        Ok(())
+    }))
+    .expect("plant chat_wardrobe_history");
 
     let mut failures: Vec<String> = Vec::new();
     let (mut applied_rows, mut module_lines, mut committed_lines) = (0usize, 0usize, 0usize);
@@ -418,8 +456,9 @@ fn pascal_wardrobe_effects_match_oracle() {
             None => Some(spec.character_id.clone()),
             Some(c) => c.clone(),
         };
-        let set: Option<Arc<Mutex<HashSet<String>>>> =
-            step.with_set.then(|| Arc::new(Mutex::new(HashSet::new())));
+        // [P4.D316] both turn containers from ONE factory, or neither.
+        let containers = step.with_set.then(new_wardrobe_turn_containers);
+        let set: Option<Arc<Mutex<HashSet<String>>>> = containers.as_ref().map(|c| c.0.clone());
         let result = run_result(&spec.tool_name, &step.gestures);
 
         logs.lock().unwrap().clear();
@@ -433,6 +472,7 @@ fn pascal_wardrobe_effects_match_oracle() {
             &Map::new(),
             0,
             set.as_ref(),
+            containers.as_ref().map(|c| &c.1),
         ));
         let lines: Vec<String> = std::mem::take(&mut *logs.lock().unwrap());
 
@@ -500,6 +540,31 @@ fn pascal_wardrobe_effects_match_oracle() {
             "background_jobs",
             serde_json::to_string(&dump_jobs(&db)).unwrap(),
             serde_json::to_string(&want.jobs).unwrap(),
+        );
+
+        // [P4.D316] the turn's history Map and the history table.
+        let got_map = match &containers {
+            Some(c) => {
+                let mut v: Vec<(String, Value)> =
+                    c.1.lock()
+                        .unwrap()
+                        .iter()
+                        .map(|(k, v)| (k.clone(), serde_json::to_value(v).unwrap()))
+                        .collect();
+                v.sort_by(|a, b| a.0.cmp(&b.0));
+                json!(v)
+            }
+            None => Value::Null,
+        };
+        check(
+            "the history map",
+            serde_json::to_string(&got_map).unwrap(),
+            serde_json::to_string(&want.map).unwrap(),
+        );
+        check(
+            "chat_wardrobe_history",
+            serde_json::to_string(&dump_history(&db)).unwrap(),
+            serde_json::to_string(&want.history).unwrap(),
         );
 
         // The lines: the module's whole, the chokepoint's by its tail.
@@ -594,6 +659,7 @@ fn pascal_wardrobe_effects_match_oracle() {
             None,
         );
         ctx.character_ids = Some(vec![spec.character_id.clone()]);
+        let history_before = dump_history(&db);
         let roll = rt.block_on(runner.run(
             &ToolCall {
                 name: "run_custom".into(),
@@ -673,14 +739,57 @@ fn pascal_wardrobe_effects_match_oracle() {
         assert_eq!(jobs(&db), 0, "the tool's change joined the same set");
 
         // The orchestrator's drain at the end of the turn.
+        // [P4.D316] inside the turn the history WAITS: Pascal's intent (the
+        // rolling character + the tool's name) was REPLACED by the model's own
+        // `wardrobe_wear` — the last intent wins.
+        let intents = ctx
+            .pending_wardrobe_history
+            .as_ref()
+            .expect("create_tool_context mints the turn's map")
+            .lock()
+            .unwrap()
+            .clone();
+        assert_eq!(intents.len(), 1, "{intents:?}");
+        assert_eq!(
+            serde_json::to_string(&intents[&spec.character_id]).unwrap(),
+            format!(
+                r#"{{"kind":"append","provenance":{{"source":"character","actorCharacterId":"{}"}}}}"#,
+                spec.character_id
+            ),
+            "the model's wear replaced Pascal's intent"
+        );
+        assert_eq!(
+            dump_history(&db),
+            history_before,
+            "nothing settled inside the turn"
+        );
         rt.block_on(flush_pending_wardrobe_announcements(
             &db,
             &spec.user_id,
             &spec.chat_id,
             ctx.pending_wardrobe_announcements.as_ref(),
+            ctx.pending_wardrobe_history.as_ref(),
         ));
         assert_eq!(jobs(&db), 1, "ONE Aurora announcement for the turn");
         assert!(members(&ctx).is_empty(), "the drain empties the set");
+        let settled = dump_history(&db);
+        let (before, after) = (
+            history_before.as_array().unwrap().len(),
+            settled.as_array().unwrap().len(),
+        );
+        let current: Vec<&Value> = settled
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["chatId"] == spec.chat_id.as_str() && r["isCurrent"] == 1)
+            .collect();
+        assert!(
+            after == before + 1
+                && current.len() == 1
+                && current[0]["source"] == "character"
+                && current[0]["actorToolName"].is_null(),
+            "ONE entry for the turn, the last intent's: {settled}"
+        );
     }
     let gestures = |wear: &str| {
         vec![
@@ -726,6 +835,7 @@ fn pascal_wardrobe_effects_match_oracle() {
         Some(spec.character_id.clone()),
         &Map::new(),
         0,
+        None,
         None,
     ));
     let lines: Vec<String> = std::mem::take(&mut *logs.lock().unwrap());
@@ -791,6 +901,7 @@ fn pascal_wardrobe_effects_match_oracle() {
         Some(spec.character_id.clone()),
         &Map::new(),
         0,
+        None,
         None,
     ));
     let lines: Vec<String> = std::mem::take(&mut *logs.lock().unwrap());

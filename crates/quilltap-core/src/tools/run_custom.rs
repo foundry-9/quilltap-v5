@@ -503,6 +503,10 @@ pub struct RunCustomToolContext {
     /// `wardrobe_wear` call (v4 `f0db8cbb8`). The executor hands its own
     /// context's `Arc` — the SAME set the wardrobe tools borrow.
     pub pending_wardrobe_announcements: Option<Arc<Mutex<HashSet<String>>>>,
+    /// The turn's outfit-history intents, created beside the set (v4
+    /// `05005c562`). The effects applier supplies the `'pascal'` provenance.
+    pub pending_wardrobe_history:
+        Option<crate::services::outfit_change_effects::PendingWardrobeHistory>,
 }
 
 /// The compact result handed back to the model (v4 `RunCustomToolOutput`).
@@ -759,6 +763,7 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
             trigger_phrase: None,
             now_ms: ctx.now_ms,
             pending_wardrobe_announcements: ctx.pending_wardrobe_announcements.as_ref(),
+            pending_wardrobe_history: ctx.pending_wardrobe_history.as_ref(),
         },
         rng,
         llm_invoke,

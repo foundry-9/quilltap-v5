@@ -1513,22 +1513,33 @@ pub async fn apply_outfit_for_added_participant(
     // v4 routes this through `applyOutfitSelections` with `source:
     // 'participant-added'` (`participants.ts:222`): the chokepoint writes and
     // credits, and a failure is its ERROR line — dressing never blocks a join.
+    // After a successful commit the arrival is recorded in the outfit history
+    // IN THE SAME closure (v4 `:544`'s settle, `participant-added`) — a failed
+    // commit records nothing (v4 `:538`).
     let (cid, chid) = (chat_id.to_string(), character_id.to_string());
     let committed = db
         .write(move |w| {
-            Ok(
-                crate::services::wardrobe_wear_commit::commit_equipped_outfit(
-                    w.main().connection(),
-                    crate::services::wardrobe_wear_commit::CommitEquippedOutfitInput {
-                        chat_id: &cid,
-                        character_id: &chid,
-                        next_slots: &resolved.slots,
-                        worn_bundles: &resolved.worn_bundles,
-                        source: crate::db::wardrobe_wear_stats::EquipSource::ParticipantAdded,
-                        at: None,
-                    },
-                ),
-            )
+            let main = w.main().connection();
+            let committed = crate::services::wardrobe_wear_commit::commit_equipped_outfit(
+                main,
+                crate::services::wardrobe_wear_commit::CommitEquippedOutfitInput {
+                    chat_id: &cid,
+                    character_id: &chid,
+                    next_slots: &resolved.slots,
+                    worn_bundles: &resolved.worn_bundles,
+                    source: crate::db::wardrobe_wear_stats::EquipSource::ParticipantAdded,
+                    at: None,
+                },
+            );
+            if committed.is_ok() {
+                crate::services::outfit_selections::settle_arrival(
+                    main,
+                    &cid,
+                    &chid,
+                    crate::db::wardrobe_wear_stats::EquipSource::ParticipantAdded,
+                );
+            }
+            Ok(committed)
         })
         .await;
     match committed {

@@ -31,6 +31,15 @@
  * (both sides mint fresh UUIDs), but the DEDUPE cases prove identity in-band by
  * emitting whether the two calls returned the same job id.
  *
+ * ⚠ Outfit history (P4.D316, pin `e8e17b2d9`): the committed pair predates
+ * `chat_wardrobe_history`, so every per-case COPY gets the table through the
+ * round's shared plant `plantChatWardrobeHistoryTable()` (v4's REAL DDL),
+ * through THAT case's own manager connection, right after its
+ * `initializeDatabase()`. The merge cases (`applyOutfitSelections`, source
+ * `merge`) and the run-tool cases (a built-in `wardrobe_wear` outside a turn
+ * settles at once, source `character`) dump the table — ids and `createdAt`
+ * kept out — and the Rust side compares it byte-for-byte.
+ *
  * **Must run under `TZ=UTC`** — the house convention for every clock-touching
  * oracle. The guard below fails loudly rather than emitting a locale-shifted
  * fixture.
@@ -38,8 +47,9 @@
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-ca-oracle
- *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
  *   cp "$V5W/harness/oracle/cases/chat-admin-routes.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"
  *   cp "$V5W/harness/oracle/fixtures/chat-admin-web.json" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_CA_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-admin-main.db \
@@ -54,6 +64,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
 
 interface Spec {
   testPepperBase64: string;
@@ -79,6 +90,8 @@ const CLIO = 'a1000000-0000-4000-8000-000000000003';
 const BEA = 'a1000000-0000-4000-8000-000000000002';
 const DORIAN = 'a1000000-0000-4000-8000-000000000004';
 const SOURCE_CHAT = 'c1000000-0000-4000-8000-000000000002';
+/** CLIO's one wardrobe item (the builder's `W_CLIO_ONLY`, accessories). */
+const W_CLIO_ONLY = '00000000-0000-4000-8000-0000000000c1';
 
 const RealDate = Date;
 
@@ -205,6 +218,19 @@ async function readMemories(): Promise<unknown> {
     .sort((a, b) => String(a.id).localeCompare(String(b.id)));
 }
 
+/** The outfit-history rows (P4.D316), minted ids and `createdAt` kept out —
+ *  the round's one dump SQL, byte-identical on the Rust side. */
+const HISTORY_DUMP_SQL =
+  'SELECT "chatId", "characterId", "entryIndex", "slots", "slotsHash", "source", ' +
+  '"actorCharacterId", "actorToolName", "isCurrent" FROM chat_wardrobe_history ' +
+  'ORDER BY "chatId", "characterId", "entryIndex"';
+
+async function readHistory(): Promise<unknown> {
+  const { rawQuery } = await import('@/lib/database/manager');
+  const rows = (await rawQuery(HISTORY_DUMP_SQL)) as Array<Record<string, unknown>>;
+  return rows.map((r) => ({ ...r, isCurrent: Number(r.isCurrent) }));
+}
+
 /** The user's background jobs, oldest first (the two enqueueing verbs). */
 async function readJobs(userId: string): Promise<unknown> {
   const { getRepositories } = await import('@/lib/repositories/factory');
@@ -259,6 +285,10 @@ interface CaseSpec {
   rng?: boolean;
   /** Raw SQL planted on the case's copy after the open (rebuild-summary). */
   plant?: string[];
+  /** P4.D316: create `wardrobe_wear_stats` on the copy (v4's own migration
+   *  statements, `WARDROBE_WEAR_STATS_DDL`) — the committed pair predates the
+   *  wear ledger, and `wardrobe_wear` fails at the ledger write without it. */
+  wearLedger?: boolean;
   run: () => Promise<{ status: number; body: unknown; tables?: unknown }>;
 }
 
@@ -298,6 +328,16 @@ async function runCase(
   );
   await initializeDatabase();
   rawExec(spec, mainWork, c.plant ?? []);
+  // Through THIS case's manager connection (the raw client is a cross-case
+  // singleton — never plant through a stale one).
+  await plantChatWardrobeHistoryTable();
+  if (c.wearLedger) {
+    const { WARDROBE_WEAR_STATS_DDL } = (await import(
+      '@/lib/database/backends/sqlite/wardrobe-wear-stats-ddl'
+    )) as { WARDROBE_WEAR_STATS_DDL: readonly string[] };
+    const { rawQuery } = await import('@/lib/database/manager');
+    for (const statement of WARDROBE_WEAR_STATS_DDL) await rawQuery(statement);
+  }
 
   // A TICKING frozen clock: each argless `new Date()` / `Date.now()` advances
   // 1 ms from `frozenNowMs`. A hard freeze would give every message written in
@@ -378,12 +418,18 @@ async function main(): Promise<void> {
     memories: await readMemories(),
   });
   const rngTables = async () => ({ messages: await readMessages(CHAT) });
+  // run-tool: the TOOL message plus the outfit history a wardrobe tool settles.
+  const toolTables = async () => ({
+    messages: await readMessages(CHAT),
+    history: await readHistory(),
+  });
   // The merge touches BOTH chats plus the target's participants, tags,
   // identity-stack cache and equipped outfits.
   const mergeTables = async () => ({
     chat: await readChat(CHAT),
     messages: await readMessages(CHAT),
     sourceMessages: await readMessages(SOURCE_CHAT),
+    history: await readHistory(),
   });
   const jobTables = async (chatId = CHAT) => ({
     chat: await readChat(chatId),
@@ -784,7 +830,7 @@ async function main(): Promise<void> {
         const { status, body } = await respond(
           await post(CHAT, 'run-tool', { toolName: 'no_such_tool', arguments: { a: 1 } }),
         );
-        return { status, body, tables: await rngTables() };
+        return { status, body, tables: await toolTables() };
       },
     },
     {
@@ -796,7 +842,7 @@ async function main(): Promise<void> {
             arguments: { interchanges: 2 },
           }),
         );
-        return { status, body, tables: await rngTables() };
+        return { status, body, tables: await toolTables() };
       },
     },
     {
@@ -811,7 +857,7 @@ async function main(): Promise<void> {
             private: true,
           }),
         );
-        return { status, body, tables: await rngTables() };
+        return { status, body, tables: await toolTables() };
       },
     },
     {
@@ -828,7 +874,7 @@ async function main(): Promise<void> {
             characterId: CLIO,
           }),
         );
-        return { status, body, tables: await rngTables() };
+        return { status, body, tables: await toolTables() };
       },
     },
     {
@@ -843,7 +889,7 @@ async function main(): Promise<void> {
             characterId: MISSING_ID,
           }),
         );
-        return { status, body, tables: await rngTables() };
+        return { status, body, tables: await toolTables() };
       },
     },
     {
@@ -854,7 +900,26 @@ async function main(): Promise<void> {
         const { status, body } = await respond(
           await post(CHAT, 'run-tool', { toolName: 'wardrobe_list', arguments: {} }),
         );
-        return { status, body, tables: await rngTables() };
+        return { status, body, tables: await toolTables() };
+      },
+    },
+    {
+      // A BUILT-IN `wardrobe_wear` from the operator's modal: v4 builds a plain
+      // ToolExecutionContext (no turn containers), so the outfit change settles
+      // AT ONCE — a `character` history entry with CLIO as the actor. CHAT has
+      // no equipped outfit, so putting on her sleeve-guards is a dress change
+      // and the settle appends (P4.D316).
+      name: 'run_tool_wardrobe_wear',
+      wearLedger: true,
+      run: async () => {
+        const { status, body } = await respond(
+          await post(CHAT, 'run-tool', {
+            toolName: 'wardrobe_wear',
+            arguments: { operations: [{ item_id: W_CLIO_ONLY }] },
+            characterId: CLIO,
+          }),
+        );
+        return { status, body, tables: await toolTables() };
       },
     },
     {

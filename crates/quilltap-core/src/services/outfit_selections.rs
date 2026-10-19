@@ -729,9 +729,52 @@ fn commit_selection(
             at: None,
         },
     );
-    if let Err(e) = committed {
-        log_persist_failure(chat_id, character_id, &e);
+    match committed {
+        Ok(_) => settle_arrival(main, chat_id, character_id, source),
+        // v4 `:538` — a failed commit `continue`s past the settle: nothing is
+        // recorded for an outfit that never landed.
+        Err(e) => log_persist_failure(chat_id, character_id, &e),
     }
+}
+
+/// v4 `apply-outfit-selections.ts:540-544` — after THAT character's
+/// successful commit, record the arrival in the outfit history: entry 0 for a
+/// first arrival (an empty outfit is an outfit), or max + 1 for a seat that
+/// returns. Settled DIRECTLY — no announcement, no avatar refresh — with the
+/// arrival's own source and no actor. Runs on the SAME writer connection as
+/// the commit, inside the repository's own savepoint: a settle failure is its
+/// WARN and never rolls the outfit back (v4 runs two transactions — the
+/// keystone's in-write `settle` contract, C1 §3). Shared by
+/// [`commit_selection`] (chat-start, merge) and the participant add, which
+/// inlines its commit.
+pub(crate) fn settle_arrival(
+    main: &Connection,
+    chat_id: &str,
+    character_id: &str,
+    source: EquipSource,
+) {
+    use crate::db::chat_wardrobe_history::{
+        ChatWardrobeHistoryRepository, WardrobeHistoryIntent, WardrobeHistoryProvenance,
+        WardrobeHistorySource,
+    };
+    // The identity of the wire strings for the three arrival members (v4's
+    // `source` is `Extract<EquipSource, 'chat-start' | 'participant-added' |
+    // 'merge'>`); the history enum does not depend on `EquipSource`.
+    let history_source = match source {
+        EquipSource::ChatStart => WardrobeHistorySource::ChatStart,
+        EquipSource::ParticipantAdded => WardrobeHistorySource::ParticipantAdded,
+        EquipSource::Merge => WardrobeHistorySource::Merge,
+        other => unreachable!(
+            "applyOutfitSelections' source is an arrival (chat-start / participant-added / merge), got {other:?}"
+        ),
+    };
+    ChatWardrobeHistoryRepository::new(main).settle(
+        chat_id,
+        character_id,
+        &WardrobeHistoryIntent::Append {
+            provenance: WardrobeHistoryProvenance::new(history_source),
+        },
+    );
 }
 
 /// v4's ERROR `[applyOutfitSelections] Failed to persist equipped outfit`

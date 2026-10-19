@@ -20,8 +20,9 @@
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-cast-oracle
- *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
  *   cp "$V5W/harness/oracle/cases/chat-cast-routes.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"
  *   cp "$V5W/harness/oracle/fixtures/chat-cast.json" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_CAST_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-cast-main.db \
@@ -36,6 +37,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
 
 interface Spec {
   testPepperBase64: string;
@@ -213,6 +215,31 @@ async function readWear(): Promise<unknown> {
   );
 }
 
+/** [P4.D316 / v4 `f46cf40a2`] Every `chat_wardrobe_history` row minus the
+ *  minted `id`/`createdAt` — the add-participant outfit records a
+ *  `participant-added` arrival: entry 0 for a first arrival, `max + 1` for a
+ *  seat that RETURNS wearing something else, nothing when it returns wearing
+ *  what its current entry already holds. */
+async function readHistory(): Promise<unknown> {
+  const { rawQuery } = await import('@/lib/database/manager');
+  const rows = (await rawQuery(
+    'SELECT "chatId", "characterId", "entryIndex", "slots", "slotsHash", "source", ' +
+      '"actorCharacterId", "actorToolName", "isCurrent" FROM chat_wardrobe_history ' +
+      'ORDER BY "chatId", "characterId", "entryIndex"',
+  )) as Array<Record<string, unknown>>;
+  return rows.map((r) => ({
+    chatId: r.chatId,
+    characterId: r.characterId,
+    entryIndex: Number(r.entryIndex),
+    slots: r.slots,
+    slotsHash: r.slotsHash,
+    source: r.source,
+    actorCharacterId: r.actorCharacterId ?? null,
+    actorToolName: r.actorToolName ?? null,
+    isCurrent: Number(r.isCurrent),
+  }));
+}
+
 interface CaseSpec {
   name: string;
   run: () => Promise<{ status: number; body: unknown; tables?: unknown }>;
@@ -262,6 +289,9 @@ async function runCase(
     const raw = getRawDatabase() as { exec: (sql: string) => void } | null;
     if (!raw) throw new Error('main DB handle unavailable for the wear ledger');
     for (const sql of WARDROBE_WEAR_STATS_DDL) raw.exec(sql);
+    // [P4.D316] Nor has it the outfit history (a migration-only table): plant
+    // v4's DDL on THIS case's handle (the Rust side runs the boot ensure).
+    await plantChatWardrobeHistoryTable(raw as never);
   }
 
   const RealDate = Date;
@@ -348,6 +378,7 @@ async function main(): Promise<void> {
     messages: await readMessages(chatId),
     jobs: await readJobs(),
     wardrobeWear: await readWear(),
+    wardrobeHistory: await readHistory(),
   });
 
   const addCase = (name: string, chatId: string, body: unknown, dump = true): CaseSpec => ({
@@ -421,6 +452,35 @@ async function main(): Promise<void> {
       accessories: [],
       hair: [],
     } as never);
+  };
+  // [P4.D316] arrive (manual coat) → remove → return with `second`; the
+  // measured call is the RETURN, the history dump shows every entry.
+  const erisManualCoat = {
+    characterId: I.eris,
+    mode: 'manual',
+    slots: { top: [I.wErisCoat], bottom: [], footwear: [], accessories: [] },
+  };
+  const returningSeat = async (second: unknown) => {
+    const first = await respond(
+      await post(I.chatMain, 'add-participant', {
+        type: 'CHARACTER',
+        characterId: I.eris,
+        outfitSelection: erisManualCoat,
+      }),
+    );
+    if (first.status >= 300) throw new Error(`returningSeat arrive: ${first.status}`);
+    const gone = await respond(
+      await post(I.chatMain, 'remove-participant', { participantId: I.pEris }),
+    );
+    if (gone.status >= 300) throw new Error(`returningSeat remove: ${gone.status}`);
+    const { status, body } = await respond(
+      await post(I.chatMain, 'add-participant', {
+        type: 'CHARACTER',
+        characterId: I.eris,
+        outfitSelection: second,
+      }),
+    );
+    return { status, body, tables: await castTables(I.chatMain) };
   };
   const removeCase = (name: string, chatId: string, body: unknown, dump = true): CaseSpec => ({
     name,
@@ -517,6 +577,18 @@ async function main(): Promise<void> {
       controlledBy: 'user',
       outfitSelection: { characterId: I.eris, mode: 'default' },
     }),
+    // ── P4.D316 / v4 `f46cf40a2`: a RETURNING seat's arrival entry ────────
+    // ERIS arrives in a manual coat (entry 0), is removed, and returns. In her
+    // defaults (a different outfit) the arrival appends at `max + 1`; in the
+    // same coat the settle finds the current entry already holds it — no row.
+    {
+      name: 'add_returning_seat_new_outfit_appends_max_plus_one',
+      run: async () => returningSeat({ characterId: I.eris, mode: 'default' }),
+    },
+    {
+      name: 'add_returning_seat_same_outfit_records_nothing',
+      run: async () => returningSeat(erisManualCoat),
+    },
     // ── P4.D238 / v4 `04d6c9d52`: the arriving character's avatar ─────────
     // Every CHAT_QUIET add above (generation on, a default image profile) now
     // queues one `CHARACTER_AVATAR_GENERATION` job with NO `force` key — incl.

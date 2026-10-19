@@ -1,5 +1,5 @@
 {
-  "comment": "P4.D279 keystone C1 §7 — the outfit-change side effects (v4 lib/wardrobe/outfit-change-effects.ts). Consumed by build-outfit-change-effects-fixture.ts (the main-DB fixture: a user, a default image profile WITH an apiKeyId so the avatar trigger resolves a usable profile, four chats — avatar auto-update ON / a second ON / OFF / an autonomous room with the flag ON — each seating both characters, and a materialized background_jobs table), by cases/outfit-change-effects-tier3.ts (drives the REAL module through this scripted matrix) and by outfit_change_effects_tier3_equivalence.rs (the same matrix through the Rust port). The two character ids are participants only: the module never reads characters, so no vault is provisioned and no mount index is needed. Steps run IN ORDER against one shared turn set; `dropBackgroundJobs` is destructive and everything after it exercises the schedule's catch leg. P4.D282 (the chat-spine half): two `equip` steps drive the chat outfit route's REAL `handleEquipSlot` (v5 `chat_equip`) on the flag-OFF chat — a take-off that reads no pool — so the route's `notifyWardrobeChanged(…, '[Chats v1] outfit-equip')` enqueues the announcement AT ONCE (no turn set) with its DEBUG, and, after the table is dropped, takes the catch leg's WARN while the route still answers 200 (`status` recorded on equip rows).",
+  "comment": "P4.D279 keystone C1 §7 — the outfit-change side effects (v4 lib/wardrobe/outfit-change-effects.ts). Consumed by build-outfit-change-effects-fixture.ts (the main-DB fixture: a user, a default image profile WITH an apiKeyId so the avatar trigger resolves a usable profile, four chats — avatar auto-update ON / a second ON / OFF / an autonomous room with the flag ON — each seating both characters, and a materialized background_jobs table), by cases/outfit-change-effects-tier3.ts (drives the REAL module through this scripted matrix) and by outfit_change_effects_tier3_equivalence.rs (the same matrix through the Rust port). The two character ids are participants only: the module never reads characters, so no vault is provisioned and no mount index is needed. Steps run IN ORDER against one shared turn set; `dropBackgroundJobs` is destructive and everything after it exercises the schedule's catch leg. P4.D282 (the chat-spine half): two `equip` steps drive the chat outfit route's REAL `handleEquipSlot` (v5 `chat_equip`) on the flag-OFF chat — a take-off that reads no pool — so the route's `notifyWardrobeChanged(…, '[Chats v1] outfit-equip')` enqueues the announcement AT ONCE (no turn set) with its DEBUG, and, after the table is dropped, takes the catch leg's WARN while the route still answers 200 (`status` recorded on equip rows). P4.D316 (outfit-history RECORDING, v4 05005c562 + 4ae20977f at e8e17b2d9): every notify / record step carries a `provenance` (default `{ source: 'character', actorCharacterId: <the step's character> }`) and optional `historyIntent`; a `withSet` step also carries the turn's history Map unless `withMap: false` (the 'predates the factory' branch); both come from ONE `newWardrobeTurnContainers()`; `record` passes `repos` FIRST (the pin's signature — the unchanged case garbled it). New ops: `dress` (the REAL chats repository's setEquippedOutfit — no effects), `seedMap` / `clearMap` (the turn Map directly, for the empty-Set-with-a-Map row). Three new chats: `hist` (avatar OFF, both characters LLM) and two operator-provenance chats (`opTyping` — a user seat for characterU selected as activeTypingParticipantId; `opImp` — B's LLM seat impersonated and selected) plus the seat-less `off` chat (the bare operator). A user seat whose characterId is '' is refused by v4's chat schema (UUID), so it is pinned in v5's unit tests only. Every step also dumps `chat_wardrobe_history` (ids / createdAt not dumped) and the turn Map; both sides plant the table on their per-case copy (P4.D315's helpers).",
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "seedTimestamp": "2026-02-01T00:00:00.000Z",
   "userId": "11111111-1111-4111-8111-111111111111",
@@ -41,6 +41,78 @@
       "title": "Outfit effects: autonomous room",
       "chatType": "autonomous",
       "avatarGenerationEnabled": true
+    },
+    "hist": {
+      "id": "aaaaaaaa-0000-4000-8000-0000000000e5",
+      "title": "Outfit effects: history",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false
+    },
+    "opTyping": {
+      "id": "aaaaaaaa-0000-4000-8000-0000000000e6",
+      "title": "Outfit effects: operator speaking as U",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false,
+      "participants": [
+        {
+          "id": "44444444-4444-4444-8444-444444444441",
+          "type": "CHARACTER",
+          "characterId": "22222222-2222-4222-8222-222222222222",
+          "controlledBy": "llm",
+          "status": "active",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "44444444-4444-4444-8444-444444444442",
+          "type": "CHARACTER",
+          "characterId": "33333333-3333-4333-8333-333333333333",
+          "controlledBy": "llm",
+          "status": "active",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "44444444-4444-4444-8444-444444444443",
+          "type": "CHARACTER",
+          "characterId": "55555555-5555-4555-8555-555555555555",
+          "controlledBy": "user",
+          "status": "active",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "activeTypingParticipantId": "44444444-4444-4444-8444-444444444443"
+    },
+    "opImp": {
+      "id": "aaaaaaaa-0000-4000-8000-0000000000e7",
+      "title": "Outfit effects: operator impersonating B",
+      "chatType": "salon",
+      "avatarGenerationEnabled": false,
+      "participants": [
+        {
+          "id": "44444444-4444-4444-8444-444444444441",
+          "type": "CHARACTER",
+          "characterId": "22222222-2222-4222-8222-222222222222",
+          "controlledBy": "llm",
+          "status": "active",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "44444444-4444-4444-8444-444444444442",
+          "type": "CHARACTER",
+          "characterId": "33333333-3333-4333-8333-333333333333",
+          "controlledBy": "llm",
+          "status": "active",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ],
+      "activeTypingParticipantId": "44444444-4444-4444-8444-444444444442",
+      "impersonatingParticipantIds": [
+        "44444444-4444-4444-8444-444444444442"
+      ]
     }
   },
   "steps": [
@@ -167,6 +239,280 @@
       }
     },
     {
+      "name": "hist_dress_a_shirt",
+      "op": "dress",
+      "chat": "hist",
+      "character": "A",
+      "slots": {
+        "top": [
+          "shirt"
+        ]
+      }
+    },
+    {
+      "name": "hist_notify_a_with_containers_defers",
+      "op": "notify",
+      "chat": "hist",
+      "character": "A",
+      "withSet": true,
+      "context": "wardrobe-wear-handler"
+    },
+    {
+      "name": "hist_dress_a_coat",
+      "op": "dress",
+      "chat": "hist",
+      "character": "A",
+      "slots": {
+        "top": [
+          "coat"
+        ]
+      }
+    },
+    {
+      "name": "hist_record_a_cursor_replaces",
+      "op": "record",
+      "chat": "hist",
+      "character": "A",
+      "withSet": true,
+      "historyIntent": {
+        "kind": "cursor",
+        "index": 0
+      },
+      "context": "wardrobe-rollback-handler"
+    },
+    {
+      "name": "hist_dress_a_scarf",
+      "op": "dress",
+      "chat": "hist",
+      "character": "A",
+      "slots": {
+        "top": [
+          "scarf"
+        ]
+      }
+    },
+    {
+      "name": "hist_notify_a_append_last_wins",
+      "op": "notify",
+      "chat": "hist",
+      "character": "A",
+      "withSet": true,
+      "context": "wardrobe-wear-handler"
+    },
+    {
+      "name": "hist_dress_b_boots",
+      "op": "dress",
+      "chat": "hist",
+      "character": "B",
+      "slots": {
+        "footwear": [
+          "boots"
+        ]
+      }
+    },
+    {
+      "name": "hist_notify_b_pascal_defers",
+      "op": "notify",
+      "chat": "hist",
+      "character": "B",
+      "withSet": true,
+      "provenance": {
+        "source": "pascal",
+        "actorCharacterId": "22222222-2222-4222-8222-222222222222",
+        "toolName": "Dressing Dice"
+      },
+      "context": "pascal.wardrobe-effects"
+    },
+    {
+      "name": "hist_flush_settles_both",
+      "op": "flush",
+      "chat": "hist"
+    },
+    {
+      "name": "hist_dress_a_hat",
+      "op": "dress",
+      "chat": "hist",
+      "character": "A",
+      "slots": {
+        "top": [
+          "hat"
+        ]
+      }
+    },
+    {
+      "name": "hist_record_a_set_without_map_settles_now",
+      "op": "record",
+      "chat": "hist",
+      "character": "A",
+      "withSet": true,
+      "withMap": false,
+      "context": "wardrobe-wear-handler"
+    },
+    {
+      "name": "hist_dress_a_beret",
+      "op": "dress",
+      "chat": "hist",
+      "character": "A",
+      "slots": {
+        "top": [
+          "beret"
+        ]
+      }
+    },
+    {
+      "name": "hist_flush_default_intent_appends_self",
+      "op": "flush",
+      "chat": "hist"
+    },
+    {
+      "name": "hist_seed_map_without_set",
+      "op": "seedMap",
+      "character": "B",
+      "historyIntent": {
+        "kind": "cursor",
+        "index": 0
+      }
+    },
+    {
+      "name": "hist_flush_empty_set_leaves_map",
+      "op": "flush",
+      "chat": "hist"
+    },
+    {
+      "name": "hist_clear_map",
+      "op": "clearMap"
+    },
+    {
+      "name": "hist_dress_a_gloves",
+      "op": "dress",
+      "chat": "hist",
+      "character": "A",
+      "slots": {
+        "top": [
+          "gloves"
+        ]
+      }
+    },
+    {
+      "name": "hist_record_a_outside_turn_settles_now",
+      "op": "record",
+      "chat": "hist",
+      "character": "A",
+      "withSet": false,
+      "context": "wardrobe-routes.equip"
+    },
+    {
+      "name": "hist_record_a_cursor_missing_index",
+      "op": "record",
+      "chat": "hist",
+      "character": "A",
+      "withSet": false,
+      "historyIntent": {
+        "kind": "cursor",
+        "index": 9
+      },
+      "context": "wardrobe-rollback-handler"
+    },
+    {
+      "name": "hist_record_a_cursor_back_to_1",
+      "op": "record",
+      "chat": "hist",
+      "character": "A",
+      "withSet": false,
+      "historyIntent": {
+        "kind": "cursor",
+        "index": 1
+      },
+      "context": "wardrobe-rollback-handler"
+    },
+    {
+      "name": "op_typing_dress_a_tie",
+      "op": "dress",
+      "chat": "opTyping",
+      "character": "A",
+      "slots": {
+        "top": [
+          "tie"
+        ]
+      }
+    },
+    {
+      "name": "op_typing_record_a",
+      "op": "record",
+      "chat": "opTyping",
+      "character": "A",
+      "withSet": false,
+      "context": "wardrobe-wear-handler"
+    },
+    {
+      "name": "op_typing_equip_clear_names_u",
+      "op": "equip",
+      "chat": "opTyping",
+      "character": "A",
+      "body": {
+        "mode": "clear_slot",
+        "slot": "top"
+      }
+    },
+    {
+      "name": "op_imp_dress_a_tie",
+      "op": "dress",
+      "chat": "opImp",
+      "character": "A",
+      "slots": {
+        "top": [
+          "tie"
+        ]
+      }
+    },
+    {
+      "name": "op_imp_record_a",
+      "op": "record",
+      "chat": "opImp",
+      "character": "A",
+      "withSet": false,
+      "context": "wardrobe-wear-handler"
+    },
+    {
+      "name": "op_imp_equip_clear_names_b",
+      "op": "equip",
+      "chat": "opImp",
+      "character": "A",
+      "body": {
+        "mode": "clear_slot",
+        "slot": "top"
+      }
+    },
+    {
+      "name": "op_none_dress_off_a_tie",
+      "op": "dress",
+      "chat": "off",
+      "character": "A",
+      "slots": {
+        "top": [
+          "tie"
+        ]
+      }
+    },
+    {
+      "name": "op_none_record_off_a",
+      "op": "record",
+      "chat": "off",
+      "character": "A",
+      "withSet": false,
+      "context": "wardrobe-wear-handler"
+    },
+    {
+      "name": "op_none_equip_clear_is_bare",
+      "op": "equip",
+      "chat": "off",
+      "character": "A",
+      "body": {
+        "mode": "clear_slot",
+        "slot": "top"
+      }
+    },
+    {
       "name": "drop_background_jobs",
       "op": "dropBackgroundJobs"
     },
@@ -178,9 +524,39 @@
       "context": "wardrobe-wear-handler"
     },
     {
+      "name": "dress_on2_b_after_drop",
+      "op": "dress",
+      "chat": "on2",
+      "character": "B",
+      "slots": {
+        "footwear": [
+          "clogs"
+        ]
+      }
+    },
+    {
+      "name": "record_on2_b_with_set_after_drop",
+      "op": "record",
+      "chat": "on2",
+      "character": "B",
+      "withSet": true,
+      "context": "wardrobe-wear-handler"
+    },
+    {
       "name": "flush_after_drop_warns_and_clears",
       "op": "flush",
       "chat": "on2"
+    },
+    {
+      "name": "dress_on2_a_after_drop",
+      "op": "dress",
+      "chat": "on2",
+      "character": "A",
+      "slots": {
+        "bottom": [
+          "skirt"
+        ]
+      }
     },
     {
       "name": "notify_after_drop_without_set_warns",
@@ -201,5 +577,6 @@
         "itemId": "a0000000-0000-4000-8000-0000000000ff"
       }
     }
-  ]
+  ],
+  "characterUId": "55555555-5555-4555-8555-555555555555"
 }

@@ -787,6 +787,7 @@ fn run_custom_handler_matches_oracle() {
             // `pendingWardrobeAnnouncements` is the executor's), so neither
             // does this one.
             pending_wardrobe_announcements: None,
+            pending_wardrobe_history: None,
         };
         let mut rng = FixedBytes::new(vec![]);
         // The REAL consult invoker, exactly as v4's handler builds one. For the

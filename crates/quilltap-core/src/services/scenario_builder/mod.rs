@@ -70,7 +70,6 @@ pub mod request_schema;
 pub mod system_prompt;
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
@@ -211,9 +210,11 @@ pub fn scenario_tool_context(
         project_id: project_id.map(str::to_string),
         mount_pool: Some(mount_pool),
         operator_surface: false,
-        pending_wardrobe_announcements: Some(Arc::new(
-            Mutex::new(std::collections::HashSet::new()),
-        )),
+        // v4 `scenario-builder.service.ts:231-236` carries NO announcement set
+        // (and no history map) — converged to v4's absent containers (P4.D316
+        // R-U; every wardrobe tool is off here, so nothing could land in them).
+        pending_wardrobe_announcements: None,
+        pending_wardrobe_history: None,
         ..Default::default()
     }
 }
@@ -534,6 +535,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     /// The executor refuses a context carrying BOTH a pool and the operator
     /// flag (P4.D216); the Scenario Builder's context must never set the flag,

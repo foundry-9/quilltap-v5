@@ -97,6 +97,32 @@ fn participants_of(chat: &Value) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+/// The chat's "Speaking As" seat — v4 `findActiveUserParticipant(
+/// chat.participants ?? [], activeTypingParticipantId,
+/// impersonatingParticipantIds)` — as an index into the chat's `participants`
+/// array. The ONE composition of the projection, the impersonation overlay
+/// (v4 Bug 44: an impersonated seat's durable `controlledBy` is still `'llm'`)
+/// and the finder, shared by [`resolve_user_identity`] and the outfit
+/// history's operator provenance (`wardrobe::operator_provenance`).
+pub(crate) fn speaking_as_seat_index(
+    chat: &Value,
+    active_typing_participant_id: Option<&str>,
+) -> Option<usize> {
+    let filter_participants: Vec<ParticipantView> = participants_of(chat)
+        .iter()
+        .map(to_filter_participant)
+        .collect();
+    let impersonating = crate::db::chats_impersonation::read_impersonating(chat);
+    let seat = find_active_user_participant(
+        &filter_participants,
+        active_typing_participant_id,
+        Some(&impersonating),
+    )?;
+    filter_participants
+        .iter()
+        .position(|p| std::ptr::eq(p, seat))
+}
+
 /// Read a character (vault-overlaid, v4 `repos.characters.findById`).
 fn read_character(db: &Db, id: &str) -> Result<Option<Value>, DbError> {
     let id = id.to_string();
@@ -139,20 +165,11 @@ pub async fn resolve_user_identity(
     // Step 1: a user-controlled character participant already in the chat.
     // Prefer the active-typing ("Speaking As") one over the first in order.
     let participants = participants_of(chat);
-    let filter_participants: Vec<ParticipantView> =
-        participants.iter().map(to_filter_participant).collect();
-    // v4 Bug 44: honour the impersonation overlay when resolving the "Speaking As"
-    // seat (its durable `controlledBy` is still `'llm'`).
-    let impersonating = crate::db::chats_impersonation::read_impersonating(chat);
-
-    let user_controlled = find_active_user_participant(
-        &filter_participants,
-        active_typing_participant_id,
-        Some(&impersonating),
-    );
+    let user_controlled =
+        speaking_as_seat_index(chat, active_typing_participant_id).map(|i| &participants[i]);
 
     if let Some(ucp) = user_controlled {
-        if let Some(cid) = &ucp.character_id {
+        if let Some(cid) = &nonempty_character_id(ucp) {
             if let Some(character) = read_character(db, cid)? {
                 return Ok(identity_from_character(
                     &character,

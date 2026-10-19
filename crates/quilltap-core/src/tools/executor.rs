@@ -65,6 +65,7 @@ use super::{
     project_info, read_conversation, read_mail, request_full_context, rng, run_custom, run_sql,
     search, self_inventory, send_mail, state, terminal, web_search, whisper,
 };
+use crate::db::chat_wardrobe_history::{WardrobeHistoryProvenance, WardrobeHistorySource};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
 use crate::host_zone::TimeZone;
@@ -677,10 +678,13 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             // of the handler). Every family that drives this path injects its
             // own frozen instant instead.
             now_ms: crate::clock::now_unix_ms(),
-            // v4 `tool-executor.ts:625` — the SAME set the wardrobe tools get
-            // (`run_wardrobe_tool`), so a tool's gesture and the model's own
-            // wardrobe calls produce one Aurora announcement.
+            // v4 `tool-executor.ts:633` `...turnContainersOf(context)` — the
+            // SAME containers the wardrobe tools get (`run_wardrobe_tool`), so a
+            // tool's gesture and the model's own wardrobe calls produce one
+            // Aurora announcement and one outfit-history entry. Each forwarded
+            // only as present.
             pending_wardrobe_announcements: ctx.pending_wardrobe_announcements.clone(),
+            pending_wardrobe_history: ctx.pending_wardrobe_history.clone(),
         };
         let mut source = rng::OsRandomBytes;
         // The handler posts Pascal's bubble itself — that message is the run's
@@ -1670,13 +1674,25 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             // The write itself failed (no mount-index, a writer error).
             return written;
         };
+        // v4 `tool-executor.ts:725-738`: every change any wardrobe tool makes is
+        // recorded as the calling character's — `{ source: 'character',
+        // ...(characterId ? { actorCharacterId: characterId } : {}) }`. Read off
+        // the CONTEXT's id, before `wardrobe_snapshot` flattens an absent one
+        // to `""`: a missing or empty caller names no actor.
+        let provenance = WardrobeHistoryProvenance::new(WardrobeHistorySource::Character);
+        let provenance = match ctx.character_id.as_deref().filter(|id| !id.is_empty()) {
+            Some(id) => provenance.with_actor(id),
+            None => provenance,
+        };
         let output = finish_wardrobe_tool(
             &db,
             &WardrobeToolContext {
                 user_id: &user_id,
                 chat_id: &chat_id,
                 character_id: &character_id,
+                provenance: &provenance,
                 pending_wardrobe_announcements: ctx.pending_wardrobe_announcements.as_ref(),
+                pending_wardrobe_history: ctx.pending_wardrobe_history.as_ref(),
             },
             stage,
         )

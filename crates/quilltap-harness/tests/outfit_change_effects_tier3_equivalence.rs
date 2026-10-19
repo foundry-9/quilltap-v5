@@ -41,7 +41,22 @@
 //! then `create` throws) where v5's `enqueue_wardrobe_outfit_announcement`
 //! returns the read's `Err` directly; the module's WARN is the same either way.
 //!
-//! Generate the fixture + oracle (Node 24, from the v4 checkout / a 4a38222e6 pin):
+//! P4.D316 (outfit-history RECORDING, v4 `05005c562` + `4ae20977f`, re-aimed at
+//! the pin `e8e17b2d9`): every step also compares the turn's history MAP
+//! (sorted, each intent byte-compared as v4's object JSON) and the whole
+//! `chat_wardrobe_history` table (ids / createdAt not dumped), planted on each
+//! side's per-case copy through P4.D315's helpers. The red-first measurement:
+//! the UNCHANGED case regenerated at the pin turned 8 of 22 steps red — its
+//! `record` op passed `(ctx, sourceContext)` where the pin wants `(repos, ctx,
+//! sourceContext)`, so v4 read the ctx as `repos` and the turn set never
+//! gained B. The captured allowlist grows to four: the settle guard's WARN
+//! (asserted ABSENT on both sides — unreachable through v4's real repository,
+//! pinned v5-side by the module's unit test) and the operator resolver's DEBUG
+//! on the `equip` rows (a Speaking-As seat, an impersonated seat, no seat).
+//! RECORDED (R-3): v5's sorted drain also orders the per-character settles; no
+//! row differs.
+//!
+//! Generate the fixture + oracle (Node 24, from the v4 checkout / an e8e17b2d9 pin):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUTFIT_EFFECTS_MAIN=/tmp/qt-outfit-effects-main.db \
@@ -58,9 +73,12 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use quilltap_core::db::chat_wardrobe_history::{
+    WardrobeHistoryIntent, WardrobeHistoryProvenance, WardrobeHistorySource,
+};
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::outfit_change_effects::{
-    flush_pending_wardrobe_announcements, notify_wardrobe_changed,
+    flush_pending_wardrobe_announcements, new_wardrobe_turn_containers, notify_wardrobe_changed,
     record_pending_wardrobe_announcement, refresh_avatar_for_outfit,
     schedule_wardrobe_announcement, OutfitChangeContext,
 };
@@ -95,6 +113,16 @@ struct Step {
     character: Option<String>,
     #[serde(default, rename = "withSet")]
     with_set: bool,
+    /// P4.D316: `false` passes the Set WITHOUT its history Map.
+    #[serde(default, rename = "withMap")]
+    with_map: Option<bool>,
+    #[serde(default)]
+    provenance: Option<Value>,
+    #[serde(default, rename = "historyIntent")]
+    history_intent: Option<Value>,
+    /// `dress` steps: the slots object written as-is.
+    #[serde(default)]
+    slots: Option<Value>,
     context: Option<String>,
     /// `equip` steps (P4.D282): the route body minus `characterId`.
     #[serde(default)]
@@ -105,6 +133,8 @@ struct Step {
 struct OracleRow {
     step: String,
     set: Vec<String>,
+    map: Value,
+    history: Value,
     jobs: Value,
     logs: Vec<Value>,
     /// The route's status, on `equip` rows only.
@@ -113,9 +143,11 @@ struct OracleRow {
 }
 
 /// The module's own messages — the only lines this family compares.
-const CAPTURED: [&str; 2] = [
+const CAPTURED: [&str; 4] = [
     "Wardrobe outfit announcement scheduled",
     "Failed to schedule wardrobe outfit announcement",
+    "Failed to settle wardrobe history",
+    "Resolved operator for an outfit change",
 ];
 
 fn fixtures_dir() -> PathBuf {
@@ -159,7 +191,70 @@ fn open_copy(main: &str, pepper: &str) -> (Db, tempfile::TempDir) {
         pepper,
     )
     .expect("open main");
+    // P4.D315's one v5-side plant, on this per-case copy (R-S).
+    db.write_blocking(|w| {
+        quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.main().connection());
+        Ok(())
+    })
+    .expect("plant chat_wardrobe_history");
     (db, scratch)
+}
+
+/// v4's provenance object → the keystone's type (its keys are v4's `?:`).
+fn provenance_of(v: &Value) -> WardrobeHistoryProvenance {
+    let source = match v["source"].as_str().expect("provenance.source") {
+        "operator" => WardrobeHistorySource::Operator,
+        "character" => WardrobeHistorySource::Character,
+        "pascal" => WardrobeHistorySource::Pascal,
+        other => panic!("a runtime provenance never names {other}"),
+    };
+    let mut p = WardrobeHistoryProvenance::new(source);
+    if let Some(a) = v["actorCharacterId"].as_str() {
+        p = p.with_actor(a);
+    }
+    if let Some(t) = v["toolName"].as_str() {
+        p = p.with_tool_name(t);
+    }
+    p
+}
+
+/// v4's intent object → the keystone's type.
+fn intent_of(v: &Value) -> WardrobeHistoryIntent {
+    match v["kind"].as_str().expect("intent.kind") {
+        "cursor" => WardrobeHistoryIntent::Cursor {
+            index: v["index"].as_i64().expect("cursor index"),
+        },
+        "append" => WardrobeHistoryIntent::Append {
+            provenance: provenance_of(&v["provenance"]),
+        },
+        other => panic!("unknown intent kind {other}"),
+    }
+}
+
+/// The history table exactly as the oracle's `dumpHistory` reads it.
+fn dump_history(db: &Db) -> Value {
+    db.read_main(|c| {
+        let mut stmt = c.prepare(
+            "SELECT \"chatId\", \"characterId\", \"entryIndex\", \"slots\", \"slotsHash\", \"source\", \"actorCharacterId\", \"actorToolName\", \"isCurrent\" FROM chat_wardrobe_history ORDER BY \"chatId\", \"characterId\", \"entryIndex\"",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(json!({
+                    "chatId": r.get::<_, String>(0)?,
+                    "characterId": r.get::<_, String>(1)?,
+                    "entryIndex": r.get::<_, i64>(2)?,
+                    "slots": r.get::<_, String>(3)?,
+                    "slotsHash": r.get::<_, String>(4)?,
+                    "source": r.get::<_, String>(5)?,
+                    "actorCharacterId": r.get::<_, Option<String>>(6)?,
+                    "actorToolName": r.get::<_, Option<String>>(7)?,
+                    "isCurrent": r.get::<_, i64>(8)?,
+                }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Value::Array(rows))
+    })
+    .expect("dump chat_wardrobe_history")
 }
 
 /// The `background_jobs` table projected and sorted exactly as the oracle's
@@ -294,8 +389,8 @@ fn outfit_change_effects_match_oracle() {
             .clone()
     };
 
-    // The one shared turn set (v4's `Set`), as the tool context carries it.
-    let turn_set: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+    // The one shared pair of turn containers (v4's `newWardrobeTurnContainers()`).
+    let (turn_set, turn_map) = new_wardrobe_turn_containers();
     let mut jobs_gone = false;
     let mut failures = Vec::new();
     let mut compared_lines = 0usize;
@@ -324,26 +419,53 @@ fn outfit_change_effects_match_oracle() {
                         other => panic!("{}: the route failed: {other:?}", step.name),
                     });
                 }
-                "notify" => {
+                "notify" | "record" => {
                     let (chat, character) = (chat_of(&step.chat), character_of(&step.character));
+                    let provenance =
+                        step.provenance
+                            .as_ref()
+                            .map(provenance_of)
+                            .unwrap_or_else(|| {
+                                WardrobeHistoryProvenance::new(WardrobeHistorySource::Character)
+                                    .with_actor(character.clone())
+                            });
+                    let intent = step.history_intent.as_ref().map(intent_of);
+                    let with_map = step.with_set && step.with_map != Some(false);
                     let ctx = OutfitChangeContext {
                         user_id: &spec.user_id,
                         chat_id: &chat,
                         character_id: &character,
+                        provenance: &provenance,
+                        history_intent: intent.as_ref(),
                         pending_wardrobe_announcements: step.with_set.then_some(&turn_set),
+                        pending_wardrobe_history: with_map.then_some(&turn_map),
                     };
-                    notify_wardrobe_changed(&db, &ctx, context).await;
+                    if step.op == "notify" {
+                        notify_wardrobe_changed(&db, &ctx, context).await;
+                    } else {
+                        record_pending_wardrobe_announcement(&db, &ctx, context).await;
+                    }
                 }
-                "record" => {
+                "dress" => {
                     let (chat, character) = (chat_of(&step.chat), character_of(&step.character));
-                    let ctx = OutfitChangeContext {
-                        user_id: &spec.user_id,
-                        chat_id: &chat,
-                        character_id: &character,
-                        pending_wardrobe_announcements: step.with_set.then_some(&turn_set),
-                    };
-                    record_pending_wardrobe_announcement(&db, &ctx, context).await;
+                    let slots = step.slots.clone().expect("dress needs slots");
+                    db.write(move |w| {
+                        quilltap_core::db::chats_outfits::ChatOutfitsRepository::new(
+                            w.main().connection(),
+                        )
+                        .set_equipped_outfit(&chat, &character, &slots)
+                        .map(|_| ())
+                    })
+                    .await
+                    .expect("dress");
                 }
+                "seedMap" => {
+                    turn_map.lock().unwrap().insert(
+                        character_of(&step.character),
+                        intent_of(step.history_intent.as_ref().expect("seedMap intent")),
+                    );
+                }
+                "clearMap" => turn_map.lock().unwrap().clear(),
                 "refresh" => {
                     refresh_avatar_for_outfit(
                         &db,
@@ -370,6 +492,7 @@ fn outfit_change_effects_match_oracle() {
                         &spec.user_id,
                         &chat_of(&step.chat),
                         Some(&turn_set),
+                        Some(&turn_map),
                     )
                     .await;
                 }
@@ -378,6 +501,7 @@ fn outfit_change_effects_match_oracle() {
                         &db,
                         &spec.user_id,
                         &chat_of(&step.chat),
+                        None,
                         None,
                     )
                     .await;
@@ -401,6 +525,16 @@ fn outfit_change_effects_match_oracle() {
         let mut got_set: Vec<String> = turn_set.lock().unwrap().iter().cloned().collect();
         got_set.sort();
         let got_jobs = dump_jobs(&db, jobs_gone);
+        let mut got_map: Vec<(String, Value)> = turn_map
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (k.clone(), serde_json::to_value(v).unwrap()))
+            .collect();
+        got_map.sort_by(|a, b| a.0.cmp(&b.0));
+        let got_map = serde_json::to_string(&got_map).unwrap();
+        let want_map = serde_json::to_string(&want.map).unwrap();
+        let got_history = dump_history(&db);
         let mut got_lines: Vec<Line> = lines.iter().filter_map(|l| rust_line(l)).collect();
         let mut want_lines: Vec<Line> = want.logs.iter().map(oracle_line).collect();
         // The recorded divergence: v4 drains in insertion order, v5 sorted.
@@ -412,10 +546,14 @@ fn outfit_change_effects_match_oracle() {
         let ok_set = got_set == want.set;
         let ok_jobs = got_jobs == want.jobs;
         let ok_lines = got_lines == want_lines && status == want.status;
-        if !(ok_set && ok_jobs && ok_lines) {
+        // Byte-compared (serde_json's Map `==` ignores key order).
+        let ok_map = got_map == want_map;
+        let ok_history = serde_json::to_string(&got_history).unwrap()
+            == serde_json::to_string(&want.history).unwrap();
+        if !(ok_set && ok_jobs && ok_lines && ok_map && ok_history) {
             failures.push(format!(
-                "{}: set {ok_set} jobs {ok_jobs} lines {ok_lines}\n  got set   {got_set:?}\n want set   {:?}\n  got jobs  {got_jobs}\n want jobs  {}\n  got lines {got_lines:?}\n want lines {want_lines:?}",
-                step.name, want.set, want.jobs
+                "{}: set {ok_set} jobs {ok_jobs} lines {ok_lines} map {ok_map} history {ok_history}\n  got set   {got_set:?}\n want set   {:?}\n  got map   {got_map}\n want map   {want_map}\n  got hist  {got_history}\n want hist  {}\n  got jobs  {got_jobs}\n want jobs  {}\n  got lines {got_lines:?}\n want lines {want_lines:?}",
+                step.name, want.set, want.history, want.jobs
             ));
         }
     }
@@ -432,6 +570,67 @@ fn outfit_change_effects_match_oracle() {
         .filter(|l| l["level"] == "warn")
         .collect();
     assert_eq!(warns.len(), 4, "four steps take the catch leg: {warns:?}");
+    // P4.D316 — the settle guard never fires through v4's real repository.
+    assert!(
+        oracle
+            .iter()
+            .flat_map(|r| r.logs.iter())
+            .all(|l| l["message"] != "Failed to settle wardrobe history"),
+        "the settle guard's WARN is v5-only reachable"
+    );
+    // The recording reached each provenance the matrix was written for: the
+    // caller's `character`, Pascal's rolling character + tool, the operator
+    // speaking as U, impersonating B, and bare — and a cursor move back.
+    let last_history = oracle.last().unwrap().history.as_array().unwrap().clone();
+    let has = |chat: &str, source: &str, actor: Value, tool: Value| {
+        last_history.iter().any(|r| {
+            r["chatId"] == spec.chats[chat].id.as_str()
+                && r["source"] == source
+                && r["actorCharacterId"] == actor
+                && r["actorToolName"] == tool
+        })
+    };
+    assert!(has(
+        "hist",
+        "character",
+        json!(spec.character_a),
+        Value::Null
+    ));
+    assert!(has(
+        "hist",
+        "pascal",
+        json!(spec.character_a),
+        json!("Dressing Dice")
+    ));
+    assert!(has(
+        "opTyping",
+        "operator",
+        json!("55555555-5555-4555-8555-555555555555"),
+        Value::Null
+    ));
+    assert!(has(
+        "opImp",
+        "operator",
+        json!(spec.character_b),
+        Value::Null
+    ));
+    assert!(has("off", "operator", Value::Null, Value::Null));
+    let cursor_back = oracle
+        .iter()
+        .find(|r| r.step == "hist_record_a_cursor_back_to_1")
+        .expect("the cursor row");
+    assert!(
+        cursor_back
+            .history
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["chatId"] == spec.chats["hist"].id.as_str()
+                && r["characterId"] == spec.character_a.as_str()
+                && r["entryIndex"] == 1
+                && r["isCurrent"] == 1),
+        "the cursor moved back to entry 1"
+    );
     // P4.D282 — the route's effects really are the route's: the announcement
     // DEBUG and the catch WARN both carry `context: '[Chats v1] outfit-equip'`,
     // and the route answered 200 both times (an effect never fails it).
@@ -483,8 +682,8 @@ fn outfit_change_effects_match_oracle() {
             .iter()
             .filter(|j| j["type"] == "WARDROBE_OUTFIT_ANNOUNCEMENT")
             .count(),
-        6,
-        "six announcements: on/A, on/B, off/A, autonomous/B, on2/A, off/B (reuses collapse)"
+        10,
+        "ten announcements: on/A, on/B, on2/A, off/A, off/B, autonomous/B, hist/A, hist/B, opTyping/A, opImp/A (reuses collapse)"
     );
     // v4's own drain order for the two-id flush is INSERTION order (B then A),
     // the recorded divergence from v5's sorted drain.
@@ -529,18 +728,25 @@ fn module_lines_fire_on_their_branches_only() {
     let off = spec.chats["off"].id.clone();
     let on = spec.chats["on"].id.clone();
     let set: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+    let provenance = WardrobeHistoryProvenance::new(WardrobeHistorySource::Character)
+        .with_actor(spec.character_b.clone());
 
     // Silence: a flag-OFF refresh, an empty flush, an absent-set flush, and a
     // record INTO the set log none of the module's lines.
     let ((), lines) = rt.block_on(global_capture::capture_async(async {
         refresh_avatar_for_outfit(&db, &spec.user_id, &off, &spec.character_a, "silent").await;
-        flush_pending_wardrobe_announcements(&db, &spec.user_id, &on, Some(&set)).await;
-        flush_pending_wardrobe_announcements(&db, &spec.user_id, &on, None).await;
+        flush_pending_wardrobe_announcements(&db, &spec.user_id, &on, Some(&set), None).await;
+        flush_pending_wardrobe_announcements(&db, &spec.user_id, &on, None, None).await;
         let ctx = OutfitChangeContext {
             user_id: &spec.user_id,
             chat_id: &on,
             character_id: &spec.character_b,
+            provenance: &provenance,
+            history_intent: None,
             pending_wardrobe_announcements: Some(&set),
+            // A set without its map settles the history at once — the
+            // repository's lines, not the module's: still silent here.
+            pending_wardrobe_history: None,
         };
         record_pending_wardrobe_announcement(&db, &ctx, "silent").await;
     }));
@@ -555,7 +761,7 @@ fn module_lines_fire_on_their_branches_only() {
 
     // The DEBUG line, with v4's three fields in its order.
     let ((), lines) = rt.block_on(global_capture::capture_async(async {
-        flush_pending_wardrobe_announcements(&db, &spec.user_id, &on, Some(&set)).await;
+        flush_pending_wardrobe_announcements(&db, &spec.user_id, &on, Some(&set), None).await;
     }));
     let got: Vec<Line> = lines.iter().filter_map(|l| rust_line(l)).collect();
     assert_eq!(got.len(), 1, "{lines:#?}");
@@ -663,4 +869,57 @@ fn the_orchestrator_drains_the_turn_through_the_effects_module() {
             .contains("fn flush_pending_wardrobe_announcements"),
         "the Aurora-side drain is folded into the effects module"
     );
+}
+
+/// P4.D316 — v4's outfit-history fence 4 ("no turn creates the announcement
+/// set by hand", `outfit-history-fence.test.ts`): the per-turn containers are
+/// minted ONLY by `new_wardrobe_turn_containers` — a set minted by hand would
+/// arrive without its history map and settle every change at once instead of
+/// at turn end. A source census over the core's production code: no
+/// `Arc`-wrapped `HashSet::new()` (one line, or wrapped onto the next) outside
+/// the factory. At `HISTORY` (`df642c2d6`) it counts exactly the five pre-round
+/// hand mints — `tool_execution.rs:337`, `orchestrator.rs:3376`, both Brahma
+/// surfaces and the scenario builder — all retired by this order.
+#[test]
+fn no_turn_mints_the_announcement_set_by_hand() {
+    fn walk(dir: &Path, out: &mut Vec<(PathBuf, String)>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let p = entry.unwrap().path();
+            if p.is_dir() {
+                walk(&p, out);
+            } else if p.extension().is_some_and(|e| e == "rs") {
+                out.push((p.clone(), std::fs::read_to_string(&p).unwrap()));
+            }
+        }
+    }
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-core/src");
+    let mut files = Vec::new();
+    walk(&root, &mut files);
+    let mut offenders = Vec::new();
+    let mut factory_mints = 0;
+    for (path, text) in &files {
+        // Production code only: stop at the file's test module.
+        let production = text.split("#[cfg(test)]").next().unwrap_or_default();
+        let lines: Vec<&str> = production.lines().collect();
+        let mut hits = 0;
+        for (i, line) in lines.iter().enumerate() {
+            if !line.contains("HashSet::new()") {
+                continue;
+            }
+            let window = format!("{} {}", if i > 0 { lines[i - 1] } else { "" }, line);
+            if window.contains("Arc::new(") {
+                hits += 1;
+                offenders.push(format!("{}:{}", path.display(), i + 1));
+            }
+        }
+        if path.ends_with("services/outfit_change_effects.rs") {
+            factory_mints = hits;
+            offenders.retain(|o| !o.contains("outfit_change_effects.rs"));
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "hand-minted announcement sets: {offenders:#?}"
+    );
+    assert_eq!(factory_mints, 1, "the factory is the one minter");
 }

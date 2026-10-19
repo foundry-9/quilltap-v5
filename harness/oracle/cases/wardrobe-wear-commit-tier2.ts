@@ -25,6 +25,13 @@
  * `updatedAt`), and the log lines the ledger work emits, captured by splicing a
  * transport into the singleton logger (child loggers share its transports).
  *
+ * P4.D316 (v4 `05005c562` + `4ae20977f` at the pin `e8e17b2d9`): every row also
+ * dumps `chat_wardrobe_history` (ids / createdAt not dumped), planted on the
+ * per-case copy through P4.D315's helper — the `route` ops now record the
+ * OPERATOR (`handleEquipSlot` reads the chat AFTER the write), the `apply` ops
+ * settle each arrival with its own source after THAT character's commit, and
+ * a failed commit (`apply_failed_write`) records nothing (`:538`'s `continue`).
+ *
  * Run (Node 24, from the v4 checkout or the round's pin):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
  *   cd ~/source/quilltap-server
@@ -144,6 +151,8 @@ async function main(): Promise<void> {
   const { resolveWardrobeLocation } = await import('@/lib/wardrobe/location');
 
   await initializeDatabase();
+  const { plantChatWardrobeHistoryTable } = await import(join(here, '..', 'lib', 'v4-migrations.ts'));
+  await plantChatWardrobeHistoryTable();
   const repos = getRepositories();
   const who = (w: 'caller' | 'recipient' | undefined): string =>
     w === 'recipient' ? base.recipientCharacterId : base.callerCharacterId;
@@ -207,6 +216,9 @@ async function main(): Promise<void> {
         result,
         equippedOutfit,
         ledger,
+        history: ((await rawQuery(
+          'SELECT "chatId", "characterId", "entryIndex", "slots", "slotsHash", "source", "actorCharacterId", "actorToolName", "isCurrent" FROM chat_wardrobe_history ORDER BY "chatId", "characterId", "entryIndex"',
+        )) as Array<Record<string, unknown>>).map((r) => ({ ...r, isCurrent: Number(r.isCurrent) })),
         logs: captured.map((c) => ({ ...c })),
       }),
     );

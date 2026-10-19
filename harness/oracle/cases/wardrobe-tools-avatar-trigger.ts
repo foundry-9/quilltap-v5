@@ -10,6 +10,12 @@
  * scenarios the whole `background_jobs` table and each chat's equipped outfit are
  * read back.
  *
+ * P4.D316 (v4 `05005c562` at the pin `e8e17b2d9`): the context carries the
+ * caller's REQUIRED `provenance` and BOTH turn containers
+ * (`newWardrobeTurnContainers()` — the unchanged case's Set-only context
+ * settled every change at once with an undefined provenance); the table is
+ * planted on the per-case copy; each scenario reports the turn's Map.
+ *
  * Run (Node 24, from the v4 checkout), AFTER building the flag-ON fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -84,12 +90,16 @@ async function main(): Promise<void> {
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
   const wc = await import('@/lib/tools/handlers/wardrobe-create-handler');
+  const { newWardrobeTurnContainers } = await import('@/lib/wardrobe/outfit-change-effects');
   const wa = await import('@/lib/tools/handlers/wardrobe-archive-handler');
   const ww = await import('@/lib/tools/handlers/wardrobe-wear-handler');
   const wt = await import('@/lib/tools/handlers/wardrobe-take-off-handler');
   const wu = await import('@/lib/tools/handlers/wardrobe-update-handler');
 
   await initializeDatabase();
+  // [P4.D316] P4.D315's one v4-side plant, on this per-case copy (R-S).
+  const { plantChatWardrobeHistoryTable } = await import(join(here, '..', 'lib', 'v4-migrations.ts'));
+  await plantChatWardrobeHistoryTable();
 
   const scenarios: unknown[] = [];
   for (const sc of av.scenarios) {
@@ -109,12 +119,15 @@ async function main(): Promise<void> {
         wardrobeImageSettings: { imageProfileId: wpId, generateFromTools: true },
       } as never);
     }
-    const pendingWardrobeAnnouncements = new Set<string>();
+    // [P4.D316] v4's executor: the caller's provenance + BOTH turn containers.
+    const { pendingWardrobeAnnouncements, pendingWardrobeHistory } = newWardrobeTurnContainers();
     const ctx = {
       userId: base.userId,
       chatId: sc.chatId,
       characterId: base.callerCharacterId,
+      provenance: { source: 'character' as const, actorCharacterId: base.callerCharacterId },
       pendingWardrobeAnnouncements,
+      pendingWardrobeHistory,
     };
     const successes: boolean[] = [];
     for (const op of sc.ops) {
@@ -145,6 +158,9 @@ async function main(): Promise<void> {
       chatId: sc.chatId,
       successes,
       pendingAnnouncements: Array.from(pendingWardrobeAnnouncements).sort(),
+      pendingHistory: Array.from(pendingWardrobeHistory.entries()).sort(([a], [b]) =>
+        a < b ? -1 : a > b ? 1 : 0,
+      ),
     });
   }
 

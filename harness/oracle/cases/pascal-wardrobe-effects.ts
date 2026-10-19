@@ -22,6 +22,14 @@
  * slot / source per commit). The logger's shared transports are spliced, so
  * nothing reaches stdout.
  *
+ * P4.D316 (v4 `05005c562` + `4ae20977f` at the pin `e8e17b2d9`): a `withSet`
+ * step hands the applier BOTH turn containers (`newWardrobeTurnContainers()` —
+ * the unchanged case passed a Set with no Map, so every in-turn step settled AT
+ * ONCE, the "predates the factory" branch, unlike production); `withSet: false`
+ * steps settle the history at once with the `pascal` provenance (the
+ * outside-a-turn entrances' shape). `chat_wardrobe_history` is planted on the
+ * per-case copy (P4.D315's helper) and dumped per step beside the Map.
+ *
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   cd ~/source/quilltap-server
@@ -119,7 +127,15 @@ async function main(): Promise<void> {
   const { applyWardrobeEffects } = await import('@/lib/pascal/wardrobe-effects');
 
   await initializeDatabase();
+  const { plantChatWardrobeHistoryTable } = await import(join(here, '..', 'lib', 'v4-migrations.ts'));
+  await plantChatWardrobeHistoryTable();
+  const { newWardrobeTurnContainers } = await import('@/lib/wardrobe/outfit-change-effects');
   const repos = getRepositories();
+  const dumpHistory = async (): Promise<unknown[]> =>
+    ((await rawQuery(
+      'SELECT "chatId", "characterId", "entryIndex", "slots", "slotsHash", "source", "actorCharacterId", "actorToolName", "isCurrent" FROM chat_wardrobe_history ORDER BY "chatId", "characterId", "entryIndex"',
+      [],
+    )) as Array<Record<string, unknown>>).map((r) => ({ ...r, isCurrent: Number(r.isCurrent) }));
 
   const dumpJobs = async (): Promise<unknown[]> => {
     const rows = (await rawQuery(
@@ -158,7 +174,8 @@ async function main(): Promise<void> {
     ]);
 
     const characterId = step.characterId === undefined ? spec.characterId : step.characterId;
-    const set = step.withSet === false ? null : new Set<string>();
+    const containers = step.withSet === false ? null : newWardrobeTurnContainers();
+    const set = containers ? containers.pendingWardrobeAnnouncements : null;
     captured.length = 0;
     const returned = await applyWardrobeEffects({
       userId: spec.userId,
@@ -166,7 +183,7 @@ async function main(): Promise<void> {
       toolName: spec.toolName,
       characterId,
       gestures: step.gestures as never,
-      ...(set ? { pendingWardrobeAnnouncements: set } : {}),
+      ...(containers ?? {}),
     });
 
     const logs = captured
@@ -180,6 +197,12 @@ async function main(): Promise<void> {
         equipped: (await repos.chats.getEquippedOutfitForCharacter(spec.chatId, spec.characterId)) ?? null,
         wear: await dumpWear(),
         set: set ? Array.from(set).sort() : null,
+        map: containers
+          ? Array.from(containers.pendingWardrobeHistory.entries()).sort(([a], [b]) =>
+              a < b ? -1 : a > b ? 1 : 0,
+            )
+          : null,
+        history: await dumpHistory(),
         jobs: await dumpJobs(),
         logs,
       }),

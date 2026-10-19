@@ -19,6 +19,8 @@
 //! - [`sort_for_default_outfit`] (v4 `default-outfit.ts`) — the deterministic
 //!   layer order for a default outfit.
 
+pub mod operator_provenance;
+
 use std::collections::HashSet;
 
 use serde_json::Value;

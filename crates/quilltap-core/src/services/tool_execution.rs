@@ -291,6 +291,13 @@ pub struct ToolExecutionContext {
     /// unification's §3 review catch). [`create_tool_context`] and the Brahma
     /// Console mint one, as v4's do.
     pub pending_wardrobe_announcements: Option<Arc<Mutex<HashSet<String>>>>,
+    /// Per-turn outfit-history intents, created beside the set — last intent
+    /// per character wins (v4's OPTIONAL `pendingWardrobeHistory?: Map<string,
+    /// WardrobeHistoryIntent>`, `05005c562`). Drained with the set at turn end;
+    /// `None` wherever the set is `None` (both come from ONE factory,
+    /// [`crate::services::outfit_change_effects::new_wardrobe_turn_containers`]).
+    pub pending_wardrobe_history:
+        Option<crate::services::outfit_change_effects::PendingWardrobeHistory>,
     /// The Brahma Console operator surface (v4 `operatorSurface`). Character tool
     /// handlers never set this.
     pub operator_surface: bool,
@@ -303,8 +310,9 @@ pub struct ToolExecutionContext {
     pub mount_pool: Option<crate::db::tiered_mount_pool::TieredMountPool>,
 }
 
-/// Create a tool-execution context (v4 `createToolContext`, :269–292). Mints an
-/// empty `pending_wardrobe_announcements` set (v4 `:320`); leaves the carina callback and
+/// Create a tool-execution context (v4 `createToolContext`, :269–292). Mints
+/// both per-turn wardrobe containers through the factory (v4 `:321`
+/// `...newWardrobeTurnContainers()`); leaves the carina callback and
 /// `operator_surface` absent (v4's `createToolContext` sets neither).
 #[allow(clippy::too_many_arguments)]
 pub fn create_tool_context(
@@ -318,6 +326,8 @@ pub fn create_tool_context(
     browser_user_agent: Option<String>,
     loaded_memories: Option<LoadedMemoriesContext>,
 ) -> ToolExecutionContext {
+    let (announcements, history) =
+        crate::services::outfit_change_effects::new_wardrobe_turn_containers();
     ToolExecutionContext {
         chat_id: chat_id.into(),
         user_id: user_id.into(),
@@ -334,7 +344,8 @@ pub fn create_tool_context(
         project_id: project_id.filter(|s| !s.is_empty()),
         browser_user_agent,
         loaded_memories,
-        pending_wardrobe_announcements: Some(Arc::new(Mutex::new(HashSet::new()))),
+        pending_wardrobe_announcements: Some(announcements),
+        pending_wardrobe_history: Some(history),
         operator_surface: false,
         // v4's `createToolContext` never sets `mountPool` either (`d1c06cd9d`).
         mount_pool: None,
@@ -868,6 +879,33 @@ mod tests {
         create_tool_context(
             "chat-1", "user-1", "char-1", "pp-1", None, None, None, None, None,
         )
+    }
+
+    /// v4 `tool-execution.service.test.ts` (+2, `05005c562`): `createToolContext`
+    /// mints BOTH per-turn wardrobe containers, empty.
+    #[test]
+    fn create_tool_context_mints_both_wardrobe_turn_containers() {
+        let c = ctx();
+        assert!(c
+            .pending_wardrobe_announcements
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .is_empty());
+        assert!(c
+            .pending_wardrobe_history
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .is_empty());
+        // A clone shares the same containers by reference (v4's Set / Map).
+        let d = c.clone();
+        assert!(Arc::ptr_eq(
+            c.pending_wardrobe_history.as_ref().unwrap(),
+            d.pending_wardrobe_history.as_ref().unwrap()
+        ));
     }
 
     #[test]

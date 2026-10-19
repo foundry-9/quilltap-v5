@@ -14,6 +14,10 @@
  *      job to dedupe against), OFF, and an autonomous room with the flag ON (the
  *      trigger's by-design skip). All through the REAL `repos.chats.create`.
  *   4. `background_jobs` materialized (v4 creates it lazily; the Rust side INSERTs).
+ *   P4.D316: a chat may name its own `participants` / `activeTypingParticipantId`
+ *   / `impersonatingParticipantIds` (the operator-provenance chats); the
+ *   `chat_wardrobe_history` table is NOT baked — each case plants it on its
+ *   per-case copy (R-S).
  *
  * The module never reads `characters`, so no character row or vault is
  * provisioned and the mount index v4 opens beside main is scratch, discarded.
@@ -35,6 +39,10 @@ interface ChatSpec {
   title: string;
   chatType: string;
   avatarGenerationEnabled: boolean;
+  /** P4.D316: a chat's own seats (default: A and B, both LLM-controlled). */
+  participants?: Array<Record<string, unknown>>;
+  activeTypingParticipantId?: string;
+  impersonatingParticipantIds?: string[];
 }
 interface Spec {
   testPepperBase64: string;
@@ -137,10 +145,16 @@ async function main(): Promise<void> {
       {
         userId: spec.userId,
         title: chat.title,
-        participants,
+        participants: chat.participants ?? participants,
         chatType: chat.chatType,
         contextSummary: null,
         avatarGenerationEnabled: chat.avatarGenerationEnabled,
+        ...(chat.activeTypingParticipantId
+          ? { activeTypingParticipantId: chat.activeTypingParticipantId }
+          : {}),
+        ...(chat.impersonatingParticipantIds
+          ? { impersonatingParticipantIds: chat.impersonatingParticipantIds }
+          : {}),
       } as never,
       { id: chat.id, createdAt: TS, updatedAt: TS },
     );

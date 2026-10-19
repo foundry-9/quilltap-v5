@@ -3368,12 +3368,16 @@ where
     // out of the raw response per the effective provider's wire format.
     let tool_detector = native_tool_loop::RegistryToolCallDetector::built_in();
 
-    // ONE shared pending-wardrobe-announcement set for the whole turn (v4's single
-    // `toolContext.pendingWardrobeAnnouncements`): the wardrobe handlers record
-    // affected character ids here across the native loop + text passes, and the
-    // end-of-turn drain (below) enqueues one Aurora announcement per character.
-    let pending_wardrobe: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>> =
-        std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
+    // ONE shared pair of per-turn wardrobe containers for the whole turn (v4's
+    // single `toolContext` minted by `createToolContext` →
+    // `newWardrobeTurnContainers()`): the wardrobe handlers record affected
+    // character ids in the set and their outfit-history intents in the map
+    // (last intent per character wins) across the native loop + text passes,
+    // and the end-of-turn drain (below) settles each intent and enqueues one
+    // Aurora announcement per character. Minted ONCE here and cloned into both
+    // tool contexts — a second mint would strand one pass's intents.
+    let (pending_wardrobe, pending_wardrobe_history) =
+        crate::services::outfit_change_effects::new_wardrobe_turn_containers();
 
     let loop_messages: Vec<ThreadedMessage> = formatted_messages
         .iter()
@@ -3410,6 +3414,7 @@ where
         loaded_memories: Some(&turn_loaded_memories),
     });
     loop_tool_context.pending_wardrobe_announcements = Some(pending_wardrobe.clone());
+    loop_tool_context.pending_wardrobe_history = Some(pending_wardrobe_history.clone());
     native_tool_loop::run_native_tool_loop(
         db,
         deps.streaming,
@@ -3476,6 +3481,7 @@ where
             loaded_memories: Some(&turn_loaded_memories),
         });
         c.pending_wardrobe_announcements = Some(pending_wardrobe.clone());
+        c.pending_wardrobe_history = Some(pending_wardrobe_history.clone());
         c
     };
 
@@ -3636,16 +3642,18 @@ where
     // --- End-of-turn wardrobe drain (orchestrator.service.ts:1406) ---
     // Collapse any wardrobe edits this turn's characters made into one Aurora
     // announcement each, regardless of which terminal branch we exit through. The
-    // handlers recorded affected character ids into the shared set; drain it before
-    // finalize (v4 fires one `WARDROBE_OUTFIT_ANNOUNCEMENT` job per character)
-    // through the outfit-change effects module (`outfit-change-effects.ts`'s
-    // `flushPendingWardrobeAnnouncements`, `9ecebf986`) — each schedule logs
-    // its DEBUG / WARN with `context: 'orchestrator-turn-end'`.
+    // handlers recorded affected character ids into the shared set and their
+    // outfit-history intents into the map; drain BOTH before finalize (v4 settles
+    // each intent, then fires one `WARDROBE_OUTFIT_ANNOUNCEMENT` job per
+    // character) through the outfit-change effects module (`outfit-change-
+    // effects.ts`'s `flushPendingWardrobeAnnouncements`, `05005c562`) — each
+    // schedule logs its DEBUG / WARN with `context: 'orchestrator-turn-end'`.
     crate::services::outfit_change_effects::flush_pending_wardrobe_announcements(
         db,
         &user_id,
         &chat_id,
         Some(&pending_wardrobe),
+        Some(&pending_wardrobe_history),
     )
     .await;
 

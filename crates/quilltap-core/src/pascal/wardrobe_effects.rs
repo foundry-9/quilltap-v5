@@ -426,10 +426,15 @@ fn item_ref(item: &Value) -> (String, String) {
 
 /// The AFTER-COMMIT half (v4 `applyWardrobeEffects`' tail): the ONE
 /// [`notify_wardrobe_changed`] with `sourceContext` [`CONTEXT`] — joining the
-/// turn's announcement set when one was passed, enqueuing at once otherwise —
-/// then the `applied` DEBUG. Call only when the in-write half reported a
-/// change. The `announcement` word is decided by whether a set was PASSED,
-/// never by whether an enqueue happened (v4's own test).
+/// turn's containers when they were passed, enqueuing + settling at once
+/// otherwise — then the `applied` DEBUG. Call only when the in-write half
+/// reported a change. The change is recorded as Pascal's, naming the ROLLING
+/// character and the custom tool (v4 `provenance: { source: 'pascal',
+/// actorCharacterId: characterId, toolName }`, `05005c562` + `4ae20977f`). The
+/// `announcement` word is decided by whether a SET was PASSED, never by
+/// whether an enqueue happened, and never by the history map (v4's own test;
+/// `wardrobe-effects.ts:237` still keys on the set alone).
+#[allow(clippy::too_many_arguments)]
 pub async fn finish_wardrobe_effects(
     db: &Db,
     user_id: &str,
@@ -438,14 +443,22 @@ pub async fn finish_wardrobe_effects(
     character_id: &str,
     applied_targets: &[&str],
     pending: Option<&Arc<Mutex<HashSet<String>>>>,
+    pending_history: Option<&crate::services::outfit_change_effects::PendingWardrobeHistory>,
 ) {
+    use crate::db::chat_wardrobe_history::{WardrobeHistoryProvenance, WardrobeHistorySource};
+    let provenance = WardrobeHistoryProvenance::new(WardrobeHistorySource::Pascal)
+        .with_actor(character_id)
+        .with_tool_name(tool_name);
     notify_wardrobe_changed(
         db,
         &OutfitChangeContext {
             user_id,
             chat_id,
             character_id,
+            provenance: &provenance,
+            history_intent: None,
             pending_wardrobe_announcements: pending,
+            pending_wardrobe_history: pending_history,
         },
         CONTEXT,
     )

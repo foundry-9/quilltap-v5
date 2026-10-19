@@ -42,6 +42,20 @@
 //! corpus is `chat_rebuild_summary_equivalence`. The planted SQL is asserted
 //! equal to the statements the oracle emitted for the row.
 //!
+//! ## Outfit history (P4.D316, pin `e8e17b2d9`)
+//!
+//! The committed pair predates `chat_wardrobe_history`, so every per-case copy
+//! gets the table through the round's shared plant
+//! (`test_support::ensure_chat_wardrobe_history_on`, beside the oracle's
+//! `plantChatWardrobeHistoryTable`). The merge cases (`applyOutfitSelections`,
+//! source `merge`) and every run-tool dump case carry a `history` dump
+//! ([`dump_history`], ids and `createdAt` kept out) compared byte-for-byte.
+//! `run_tool_wardrobe_wear` drives a BUILT-IN `wardrobe_wear` from the
+//! operator's modal (no turn containers): v4 settles at once — a `seeded`
+//! entry then a `character` entry with CLIO as the actor. It alone also gets
+//! the wear ledger (`ensure_wear_ledger_on`; the oracle's `wearLedger`), which
+//! the committed pair predates and `wardrobe_wear` writes before it settles.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-chat-admin.ndjson npx jest -- chat-admin-routes
 //! Run (no `TZ` needed since P4.127: the `read_conversation` transcript this
@@ -79,6 +93,8 @@ const CLIO: &str = "a1000000-0000-4000-8000-000000000003";
 const BEA: &str = "a1000000-0000-4000-8000-000000000002";
 const DORIAN: &str = "a1000000-0000-4000-8000-000000000004";
 const SOURCE_CHAT: &str = "c1000000-0000-4000-8000-000000000002";
+/// CLIO's one wardrobe item (the builder's `W_CLIO_ONLY`, accessories).
+const W_CLIO_ONLY: &str = "00000000-0000-4000-8000-0000000000c1";
 /// The instant the oracle's TICKING clock starts from (`chat-admin-web.json`).
 /// Each `new Date()` there advances 1 ms, so a v4 stamp is at-or-after this.
 const FROZEN_NOW_ISO: &str = "2026-05-05T00:00:00.000Z";
@@ -135,6 +151,7 @@ const MINTED_MESSAGE_CASES: &[&str] = &[
     "run_tool_named_character",
     "run_tool_unmatched_character",
     "run_tool_default_character",
+    "run_tool_wardrobe_wear",
     // The merge mints participant ids, Host bubble ids and their `createdAt`s
     // on both sides.
     "merge_all",
@@ -210,6 +227,18 @@ fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
 /// [`fresh_db`] plus raw SQL planted on the copy after the open (after the
 /// [`WIDEN`], which every case gets).
 fn fresh_db_planted(spec: &Spec, tag: &str, plant: &[&str]) -> (Db, tempfile::TempDir) {
+    fresh_db_with(spec, tag, plant, false)
+}
+
+/// [`fresh_db_planted`], optionally with the wear ledger (P4.D316's
+/// `run_tool_wardrobe_wear`; the oracle's `wearLedger`). Every copy gets the
+/// outfit-history table.
+fn fresh_db_with(
+    spec: &Spec,
+    tag: &str,
+    plant: &[&str],
+    wear_ledger: bool,
+) -> (Db, tempfile::TempDir) {
     let scratch_dir = tempfile::Builder::new()
         .prefix(&format!("qt-ca-{tag}-"))
         .tempdir()
@@ -251,6 +280,10 @@ fn fresh_db_planted(spec: &Spec, tag: &str, plant: &[&str]) -> (Db, tempfile::Te
         }
         for sql in &plant {
             c.execute_batch(sql)?;
+        }
+        quilltap_core::test_support::ensure_chat_wardrobe_history_on(c);
+        if wear_ledger {
+            quilltap_core::test_support::ensure_wear_ledger_on(c);
         }
         Ok(())
     }))
@@ -491,6 +524,38 @@ fn dump_messages(db: &Db, chat_id: &str) -> Value {
         db.read_main(move |c| quilltap_core::db::chats_messages_read::get_messages(c, &cid))
             .unwrap(),
     )
+}
+
+/// The round's one outfit-history dump (P4.D316) — byte-identical to the
+/// oracle's `HISTORY_DUMP_SQL`, minted ids and `createdAt` kept out.
+const HISTORY_DUMP_SQL: &str =
+    "SELECT \"chatId\", \"characterId\", \"entryIndex\", \"slots\", \"slotsHash\", \"source\", \
+     \"actorCharacterId\", \"actorToolName\", \"isCurrent\" FROM chat_wardrobe_history \
+     ORDER BY \"chatId\", \"characterId\", \"entryIndex\"";
+
+fn dump_history(db: &Db) -> Value {
+    let rows = db
+        .read_main(|c| {
+            let mut st = c.prepare(HISTORY_DUMP_SQL)?;
+            let rows = st
+                .query_map([], |r| {
+                    Ok(json!({
+                        "chatId": r.get::<_, String>(0)?,
+                        "characterId": r.get::<_, String>(1)?,
+                        "entryIndex": r.get::<_, i64>(2)?,
+                        "slots": r.get::<_, String>(3)?,
+                        "slotsHash": r.get::<_, String>(4)?,
+                        "source": r.get::<_, String>(5)?,
+                        "actorCharacterId": r.get::<_, Option<String>>(6)?,
+                        "actorToolName": r.get::<_, Option<String>>(7)?,
+                        "isCurrent": r.get::<_, i64>(8)?,
+                    }))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .unwrap();
+    Value::Array(rows)
 }
 
 /// Every memory row, id-sorted, reduced to the three columns the bulk delete
@@ -1062,9 +1127,18 @@ fn chat_admin_routes_match_oracle() {
             None,
             true,
         ),
+        // P4.D316: a BUILT-IN `wardrobe_wear` outside a turn settles at once.
+        (
+            "run_tool_wardrobe_wear",
+            "wardrobe_wear",
+            json!({ "operations": [{ "item_id": W_CLIO_ONLY }] }),
+            Some(CLIO),
+            None,
+            true,
+        ),
         ("run_tool_empty_name", "", json!({}), None, None, false),
     ] {
-        let (db, _scratch) = fresh_db(&spec, name);
+        let (db, _scratch) = fresh_db_with(&spec, name, &[], name == "run_tool_wardrobe_wear");
         let runner = ErasedToolRunner(BuiltInToolRunner::new(db.clone(), fixture_env()));
         let r = rt.block_on(chat_run_tool::chat_run_tool(
             &db,
@@ -1079,7 +1153,12 @@ fn chat_admin_routes_match_oracle() {
             "00000000-0000-4000-8000-0000000000ff".to_string(),
             frozen_iso.clone(),
         ));
-        let tables = dump.then(|| json!({ "messages": dump_messages(&db, CHAT) }));
+        let tables = dump.then(|| {
+            json!({
+                "messages": dump_messages(&db, CHAT),
+                "history": dump_history(&db),
+            })
+        });
         check(name, &r, tables);
     }
     {
@@ -1166,6 +1245,7 @@ fn chat_admin_routes_match_oracle() {
                 "chat": dump_chat(&db, CHAT),
                 "messages": dump_messages(&db, CHAT),
                 "sourceMessages": dump_messages(&db, SOURCE_CHAT),
+                "history": dump_history(&db),
             })
         });
         check(name, &r, tables);

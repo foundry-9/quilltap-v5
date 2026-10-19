@@ -178,6 +178,9 @@ fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
         let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64)
             .expect("open main for the ledger ensure");
         quilltap_core::test_support::ensure_wear_ledger_on(w.connection());
+        // P4.D316: nor has it the outfit history (a v4 migration-only table) —
+        // the boot ensure creates it; the oracle plants v4's DDL.
+        quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
     }
     let db = Db::open(
         DbPaths {
@@ -440,6 +443,35 @@ fn dump_wear(db: &Db) -> Value {
                     "firstWornAt": r.get::<_, String>(3)?,
                     "lastWornAt": r.get::<_, String>(4)?,
                     "lastWornChatId": r.get::<_, Option<String>>(5)?,
+                }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Value::Array(rows))
+    })
+    .unwrap()
+}
+
+/// P4.D316: every `chat_wardrobe_history` row minus the minted `id` /
+/// `createdAt` (the oracle's `readHistory`).
+fn dump_history(db: &Db) -> Value {
+    db.read_main(|c| {
+        let mut stmt = c.prepare(
+            "SELECT \"chatId\", \"characterId\", \"entryIndex\", \"slots\", \"slotsHash\", \"source\", \
+             \"actorCharacterId\", \"actorToolName\", \"isCurrent\" FROM chat_wardrobe_history \
+             ORDER BY \"chatId\", \"characterId\", \"entryIndex\"",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(json!({
+                    "chatId": r.get::<_, String>(0)?,
+                    "characterId": r.get::<_, String>(1)?,
+                    "entryIndex": r.get::<_, i64>(2)?,
+                    "slots": r.get::<_, String>(3)?,
+                    "slotsHash": r.get::<_, String>(4)?,
+                    "source": r.get::<_, String>(5)?,
+                    "actorCharacterId": r.get::<_, Option<String>>(6)?,
+                    "actorToolName": r.get::<_, Option<String>>(7)?,
+                    "isCurrent": r.get::<_, i64>(8)?,
                 }))
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -742,6 +774,7 @@ fn chat_cast_routes_match_oracle() {
                 "messages": dump_messages(db, chat),
                 "jobs": dump_jobs(db),
                 "wardrobeWear": dump_wear(db),
+                "wardrobeHistory": dump_history(db),
             })
         };
 
@@ -922,6 +955,65 @@ fn chat_cast_routes_match_oracle() {
                 false,
             );
         }
+
+        // ── P4.D316 / v4 `f46cf40a2`: a RETURNING seat's arrival entry ─────
+        // ERIS arrives in a manual coat (entry 0), is removed, and returns: in
+        // her defaults the arrival appends at `max + 1`; in the same coat the
+        // current entry already holds it, so nothing is recorded.
+        let eris_manual_coat = json!({
+            "characterId": id("eris"),
+            "mode": "manual",
+            "slots": { "top": [id("wErisCoat")], "bottom": [], "footwear": [], "accessories": [] },
+        });
+        let mut returning = |tag: &str, name: &str, second: Value| {
+            let (db, _scratch) = fresh_db(&spec, tag);
+            let arrive = add_data(json!({
+                "type": "CHARACTER",
+                "characterId": id("eris"),
+                "outfitSelection": eris_manual_coat.clone(),
+            }));
+            let first = rt.block_on(chat_cast::chat_add_participant(
+                &db,
+                &spec.user_id,
+                &chat_main,
+                &arrive,
+                None,
+            ));
+            assert!(
+                status_body(&first).0 < 300,
+                "[{name}] the arrival must land"
+            );
+            let gone = rt.block_on(chat_cast::chat_remove_participant(
+                &db,
+                &chat_main,
+                &id("pEris"),
+            ));
+            assert!(status_body(&gone).0 < 300, "[{name}] the removal must land");
+            let back = add_data(json!({
+                "type": "CHARACTER",
+                "characterId": id("eris"),
+                "outfitSelection": second,
+            }));
+            let r = rt.block_on(chat_cast::chat_add_participant(
+                &db,
+                &spec.user_id,
+                &chat_main,
+                &back,
+                None,
+            ));
+            let tables = Some(cast_tables(&db, &chat_main));
+            check(name, &r, tables);
+        };
+        returning(
+            "rs1",
+            "add_returning_seat_new_outfit_appends_max_plus_one",
+            json!({ "characterId": id("eris"), "mode": "default" }),
+        );
+        returning(
+            "rs2",
+            "add_returning_seat_same_outfit_records_nothing",
+            eris_manual_coat.clone(),
+        );
 
         // ── P4.D238 / v4 `04d6c9d52`: the arriving character's avatar ─────
         // The planted arms (the oracle's `plantedAddCase` — each plant mirrors
@@ -2094,6 +2186,9 @@ fn a_manual_join_with_claimed_bundles_is_dressed_when_the_pool_read_fails() {
         let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64)
             .expect("open main for the ledger ensure");
         quilltap_core::test_support::ensure_wear_ledger_on(w.connection());
+        // P4.D316: nor has it the outfit history (a v4 migration-only table) —
+        // the boot ensure creates it; the oracle plants v4's DDL.
+        quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
     }
     let db = Db::open(
         DbPaths {

@@ -45,7 +45,6 @@ pub mod prompt_text;
 pub mod turn_budget;
 
 use std::future::Future;
-use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
@@ -288,13 +287,17 @@ where
     // 5. Operator surface (character-less, all-stores). Tool side effects (SQL
     //    reads, doc writes) stand; the result MESSAGES are threaded in-memory
     //    only and never persisted to the Salon.
+    // v4 `one-shot.service.ts:153` `...newWardrobeTurnContainers()` — cosmetic
+    // here (every wardrobe tool is off, and the console never flushes), but
+    // minted through the factory as v4's fence requires.
+    let (announcements, history) =
+        crate::services::outfit_change_effects::new_wardrobe_turn_containers();
     let tool_context = ToolExecutionContext {
         chat_id: chat_id.to_string(),
         user_id: user_id.to_string(),
         operator_surface: true,
-        pending_wardrobe_announcements: Some(Arc::new(
-            Mutex::new(std::collections::HashSet::new()),
-        )),
+        pending_wardrobe_announcements: Some(announcements),
+        pending_wardrobe_history: Some(history),
         ..Default::default()
     };
 

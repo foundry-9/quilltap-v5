@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(wardrobe): record outfit history on every outfit change — provenance, the per-turn history map, arrivals, the operator seat (P4.D316)
+
+_Versions: core 0.0.1315._
+
+Ports v4 `05005c562` (minus the child-proxy line) and the recording hunks of `4ae20977f` at the `e8e17b2d9` pin. `OutfitChangeContext` gains a required `provenance` and a rollback-only `history_intent`. One factory, `new_wardrobe_turn_containers`, mints the per-turn announcement set together with a new per-turn history map (last intent per character wins). Every turn surface uses it: `create_tool_context`, the orchestrator (one pair, cloned into both tool contexts, both drained at turn end), and both Brahma surfaces. The Scenario Builder now passes no containers, matching v4.
+
+`record_pending_wardrobe_announcement` follows v4's three branches: set and map, the character joins the set and its intent replaces any earlier one; set without map, settle now; no set, announce then settle. The turn-end flush drains both containers before its first await and settles then announces per character, in v5's sorted order. A settle that fails after commit (writer gone) logs `Failed to settle wardrobe history` with the intent's JSON and never propagates.
+
+Provenance at each site: wardrobe tools record `character` with the caller as actor (a gift names the giver on the recipient's entry); Pascal's wardrobe effects record `pascal` with the rolling character and the tool name; `?action=equip` records `operator` with the chat's Speaking-As seat (new `wardrobe::operator_provenance`, sharing one composition with the identity resolver), reading the chat after the write through the fallback read, so an unreadable chat records a bare `operator` and never fails the route. `applyOutfitSelections` arrivals (`chat-start`, `merge`) and the participant add (`participant-added`) settle inside the commit's own write after a successful commit; a failed commit records nothing, and a failed settle never rolls the outfit back.
+
+Differentials re-aimed at the pin with the table planted per case and dumped both ways: `outfit_change_effects_tier3` (the `record` op's positional garble fixed; map + history per step; three new chats, operator rows), `wardrobe_tools`, `wardrobe_tools_avatar_trigger`, `pascal_wardrobe_effects`, `wardrobe_wear_commit_tier2`, `chat_create_capstone`, `chat_cast_routes` (+ a remove → re-add case), `chat_admin_routes` (+ an operator Run Tool of `wardrobe_wear`), `outfit_llm_choose_tier3`. New fence census: no hand-minted announcement set.
+
 #### 2026-10-19 — docs(porting): P4.D315 lane record — LANE COMPLETE
 
 _Docs-only change._

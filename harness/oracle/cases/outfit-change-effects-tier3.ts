@@ -11,9 +11,23 @@
  * `triggerAvatarGenerationIfEnabled` and the real
  * `enqueueWardrobeOutfitAnnouncement` run underneath.
  *
- * One shared per-turn `Set` stands for the orchestrator's; steps with
- * `withSet: false` (and the bare `schedule` / `refresh` ops) run without it.
- * `dropBackgroundJobs` is destructive — every later schedule takes the catch leg.
+ * One shared pair of per-turn containers (`newWardrobeTurnContainers()` — the
+ * Set AND the history Map) stands for the orchestrator's; steps with
+ * `withSet: false` (and the bare `schedule` / `refresh` ops) run without them,
+ * and `withMap: false` passes the Set alone (v4's "a caller that predates the
+ * factory" branch). `dropBackgroundJobs` is destructive — every later schedule
+ * takes the catch leg.
+ *
+ * P4.D316 (`05005c562`, re-aimed at the pin `e8e17b2d9`): every notify /
+ * record ctx carries a REQUIRED `provenance` (default the step character's own
+ * `character` provenance) and an optional `historyIntent`;
+ * `recordPendingWardrobeAnnouncement` takes `repos` FIRST (the unchanged case
+ * passed `(ctx, sourceContext)` and v4 read the ctx AS `repos` — a silent
+ * garble); `dress` writes a slots object through the REAL chats repository
+ * (no effects); `seedMap` / `clearMap` touch the turn Map directly. The
+ * `chat_wardrobe_history` table is planted on the per-case copy through
+ * P4.D315's `plantChatWardrobeHistoryTable` and dumped per step (ids /
+ * createdAt not dumped), beside the Map's contents.
  *
  * Emitted per step (one NDJSON line): the set's contents (sorted), the whole
  * `background_jobs` table projected to the columns both sides decide (`null`
@@ -47,10 +61,19 @@ interface Step {
     | 'flush'
     | 'flushNoSet'
     | 'dropBackgroundJobs'
-    | 'equip';
+    | 'equip'
+    | 'dress'
+    | 'seedMap'
+    | 'clearMap';
   chat?: string;
   character?: 'A' | 'B';
   withSet?: boolean;
+  /** P4.D316: `false` passes the Set WITHOUT its history Map. */
+  withMap?: boolean;
+  provenance?: Record<string, unknown>;
+  historyIntent?: Record<string, unknown>;
+  /** `dress` steps: the slots object written as-is. */
+  slots?: Record<string, string[]>;
   context?: string;
   /** `equip` steps (P4.D282): the route body minus `characterId`. */
   body?: Record<string, unknown>;
@@ -60,14 +83,19 @@ interface Spec {
   userId: string;
   characterAId: string;
   characterBId: string;
+  characterUId: string;
   chats: Record<string, { id: string }>;
   steps: Step[];
 }
 
-/** The module's own lines (message → compared). */
+/** The module's own lines (message → compared). P4.D316 adds the settle
+ * guard's WARN (unreachable through v4's real repository — its presence is
+ * asserted ABSENT on both sides) and the operator resolver's DEBUG. */
 const CAPTURED = new Set([
   'Wardrobe outfit announcement scheduled',
   'Failed to schedule wardrobe outfit announcement',
+  'Failed to settle wardrobe history',
+  'Resolved operator for an outfit change',
 ]);
 
 interface LogLine {
@@ -139,9 +167,17 @@ async function main(): Promise<void> {
   const { getRepositories } = await import('@/lib/repositories/factory');
   const effects = await import('@/lib/wardrobe/outfit-change-effects');
   const { handleEquipSlot } = await import('@/app/api/v1/chats/[id]/actions/outfit');
+  const { plantChatWardrobeHistoryTable } = await import(join(here, '..', 'lib', 'v4-migrations.ts'));
 
   await initializeDatabase();
+  await plantChatWardrobeHistoryTable();
   const repos = getRepositories();
+
+  const dumpHistory = async (): Promise<unknown> =>
+    ((await rawQuery(
+      'SELECT "chatId", "characterId", "entryIndex", "slots", "slotsHash", "source", "actorCharacterId", "actorToolName", "isCurrent" FROM chat_wardrobe_history ORDER BY "chatId", "characterId", "entryIndex"',
+      [],
+    )) as Array<Record<string, unknown>>).map((r) => ({ ...r, isCurrent: Number(r.isCurrent) }));
 
   let jobsTableGone = false;
   const dumpJobs = async (): Promise<unknown> => {
@@ -178,35 +214,48 @@ async function main(): Promise<void> {
     return chat.id;
   };
 
-  // The one shared turn set; `withSet: false` steps run without it.
-  const turnSet = new Set<string>();
+  // The one shared pair of turn containers; `withSet: false` steps run without
+  // them, `withMap: false` with the Set alone.
+  const { pendingWardrobeAnnouncements: turnSet, pendingWardrobeHistory: turnMap } =
+    effects.newWardrobeTurnContainers();
+  const ctxOf = (step: Step) => ({
+    userId: spec.userId,
+    chatId: chatOf(step.chat),
+    characterId: characterOf(step.character),
+    provenance: (step.provenance ?? {
+      source: 'character',
+      actorCharacterId: characterOf(step.character),
+    }) as never,
+    ...(step.historyIntent ? { historyIntent: step.historyIntent as never } : {}),
+    ...(step.withSet
+      ? step.withMap === false
+        ? { pendingWardrobeAnnouncements: turnSet }
+        : { pendingWardrobeAnnouncements: turnSet, pendingWardrobeHistory: turnMap }
+      : {}),
+  });
   const lines: string[] = [];
   for (const step of spec.steps) {
     captured.length = 0;
     let status: number | undefined;
     switch (step.op) {
       case 'notify':
-        await effects.notifyWardrobeChanged(
-          repos,
-          {
-            userId: spec.userId,
-            chatId: chatOf(step.chat),
-            characterId: characterOf(step.character),
-            ...(step.withSet ? { pendingWardrobeAnnouncements: turnSet } : {}),
-          },
-          step.context ?? '',
-        );
+        await effects.notifyWardrobeChanged(repos, ctxOf(step), step.context ?? '');
         break;
       case 'record':
-        await effects.recordPendingWardrobeAnnouncement(
-          {
-            userId: spec.userId,
-            chatId: chatOf(step.chat),
-            characterId: characterOf(step.character),
-            ...(step.withSet ? { pendingWardrobeAnnouncements: turnSet } : {}),
-          },
-          step.context ?? '',
+        await effects.recordPendingWardrobeAnnouncement(repos, ctxOf(step), step.context ?? '');
+        break;
+      case 'dress':
+        await repos.chats.setEquippedOutfit(
+          chatOf(step.chat),
+          characterOf(step.character),
+          step.slots as never,
         );
+        break;
+      case 'seedMap':
+        turnMap.set(characterOf(step.character), step.historyIntent as never);
+        break;
+      case 'clearMap':
+        turnMap.clear();
         break;
       case 'refresh':
         await effects.refreshAvatarForOutfit(
@@ -231,6 +280,7 @@ async function main(): Promise<void> {
           userId: spec.userId,
           chatId: chatOf(step.chat),
           pendingWardrobeAnnouncements: turnSet,
+          pendingWardrobeHistory: turnMap,
         });
         break;
       case 'flushNoSet':
@@ -264,6 +314,8 @@ async function main(): Promise<void> {
         case: 'outfit-change-effects-tier3',
         step: step.name,
         set: Array.from(turnSet).sort(),
+        map: Array.from(turnMap.entries()).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+        history: await dumpHistory(),
         jobs: await dumpJobs(),
         logs: captured.slice(),
         ...(status !== undefined ? { status } : {}),

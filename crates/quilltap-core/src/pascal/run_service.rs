@@ -112,6 +112,10 @@ pub struct RunCustomToolParams<'a> {
     /// the wardrobe-tool table carry (a `&mut` would need a std `MutexGuard`
     /// across an `.await`). `None` → the announcement is enqueued at once.
     pub pending_wardrobe_announcements: Option<&'a Arc<Mutex<HashSet<String>>>>,
+    /// The turn's outfit-history intents, created beside the set (v4
+    /// `05005c562`). The effects applier supplies the `'pascal'` provenance.
+    pub pending_wardrobe_history:
+        Option<&'a crate::services::outfit_change_effects::PendingWardrobeHistory>,
 }
 
 /// What one run came to (v4 `RunCustomToolOutcome`).
@@ -273,6 +277,7 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         metadata,
         now_ms,
         params.pending_wardrobe_announcements,
+        params.pending_wardrobe_history,
     )
     .await;
 
@@ -494,6 +499,7 @@ mod tests {
                 trigger_phrase: Some("flip it"),
                 now_ms: 0,
                 pending_wardrobe_announcements: None,
+                pending_wardrobe_history: None,
             },
             &mut crate::tools::rng::FixedBytes::new(vec![]),
             None,

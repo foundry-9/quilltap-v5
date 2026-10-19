@@ -964,13 +964,34 @@ pub async fn chat_equip(db: &Db, user_id: &str, chat_id: &str, body: Value) -> R
         }
     };
 
+    // v4 `outfit.ts:274-284` (`05005c562` + `4ae20977f`): the change is the
+    // OPERATOR's, recorded against the character the user is speaking as — the
+    // chat read AFTER the write. v4's `chats.findById` is a `safeQuery`
+    // FALLBACK read (`base.repository.ts:247-258`): a failed read logs its own
+    // `Error finding entity by ID` and answers `null`, so an absent or
+    // unreadable chat records the bare operator and the notify still runs —
+    // never a 500 (the route's catch is unreachable from here).
+    let cid = chat_id.to_string();
+    let chat = db
+        .read_main(move |c| Ok(crate::db::chats_read::find_by_id_or_none(c, &cid)))
+        .ok()
+        .flatten();
+    let provenance = match &chat {
+        Some(chat) => crate::wardrobe::operator_provenance::operator_wardrobe_provenance(chat),
+        None => crate::db::chat_wardrobe_history::WardrobeHistoryProvenance::new(
+            crate::db::chat_wardrobe_history::WardrobeHistorySource::Operator,
+        ),
+    };
     notify_wardrobe_changed(
         db,
         &OutfitChangeContext {
             user_id,
             chat_id,
             character_id: &character_id,
+            provenance: &provenance,
+            history_intent: None,
             pending_wardrobe_announcements: None,
+            pending_wardrobe_history: None,
         },
         "[Chats v1] outfit-equip",
     )
