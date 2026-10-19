@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(chats): POST ?action=wardrobe-rollback — the operator's Wear again (P4.D316)
+
+_Versions: core 0.0.1318, web 0.0.243._
+
+Ports `8d8618819`'s server POST half (+ `4ae20977f`'s operator provenance) at the `e8e17b2d9` pin. New `Request::ChatWardrobeRollback` (wire `chatWardrobeRollback`, the raw-flatten `ChatEquip` idiom) and `api::chat_outfits::chat_wardrobe_rollback`: v4's `rollbackBodySchema` parse first (the issue messages joined in Zod's order, each measured from the pin's zod 4.6.7 — a fraction stops at `int`, a value past the safe floor reports two issues), then the chat read (an absent or unreadable chat is a 404), the OPERATOR's pool, the ONE rollback with ledger source `ui` and the Speaking-As seat as provenance. Answers `{ equippedSlots, previousIndex, restoredIndex, skipped: [{ itemId, title, reason }] }`, a refusal's sentence as a 400, or `Failed to roll back the outfit` (500) with its ERROR. The REST edge serves `?action=wardrobe-rollback` after `equip` in its action list; a malformed JSON body is v4's 500 from the edge. The pointer sentence for actions served elsewhere now names it.
+
+`wardrobe_routes_equivalence` gains 21 `rb_*` rows driving v4's real `handlePost` (the 404 through its chat gate) and history read-backs on five equip / rollback rows (the operator named from a Speaking-As seat and from an impersonated seat), plus capture pins for the route's lines. Census moves: `dispatch_wrong_type_census`'s route-identifier count 485 → 486, the tri-state table's `wardrobe_routes.rs` 24 → 25 (total 124); `query_param_semantics_equivalence` regenerated (the four `chat_item_post` rows list the new key); `web_edge_body_parse_guard` unchanged.
+
 #### 2026-10-19 — feat(tools): wardrobe_rollback / wardrobe_history at every site that lists wardrobe_take_off (P4.D316)
 
 _Versions: core 0.0.1317._

@@ -36,6 +36,17 @@
  * how the ledger rows the wear-history and collection cases read are planted.
  * `action` adds `?action=<x>` to an item GET (`wear-history`).
  *
+ * P4.D316 (v4 `05005c562` + `ebb480edd` + `8d8618819` + `4ae20977f` at the pin
+ * `e8e17b2d9`): every case plants `chat_wardrobe_history` on its copy (P4.D315's
+ * `plantChatWardrobeHistoryTable`; the Rust side `ensure_chat_wardrobe_history_on`).
+ * `historyPlants` seed a character's timeline AFTER init through the REAL
+ * repositories (each step's slots via `setEquippedOutfit`, then `settle` with the
+ * step's provenance); `thenHistory: <chatId>` emits a `${name}__history` row with
+ * that chat's rows (ids / createdAt not dumped). The `wardrobeRollback` kind drives
+ * v4's REAL `handlePost` (`handlers/post.ts`) — the chat gate FIRST, then the
+ * action map — with `?action=wardrobe-rollback`; `rawBody` makes `req.json()`
+ * throw a SyntaxError (the malformed-JSON 500).
+ *
  * Chained rows: a case with `thenOutfit` emits a second `${name}__outfit` row,
  * and one with `thenGroupWardrobe` emits a `${name}__group` row (the group-tier
  * read-back that proves an item copied INTO a group store is now reachable —
@@ -48,8 +59,9 @@
  * .claude/ paths):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-wroutes-oracle
- *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
  *   cp "$V5W/harness/oracle/cases/wardrobe-routes.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"
  *   cp "$V5W/harness/oracle/fixtures/wardrobe-routes.json" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server   # (or the pinned worktree if v4 has drifted)
  *   QT_FIXTURE_WROUTES_MAIN=$V5W/crates/quilltap-web/tests/fixtures/wardrobe-routes-main.db \
@@ -95,6 +107,12 @@ interface CaseEntry {
    *  each id on the SAME copy → `${name}__wear_${i}` rows (the ledger left
    *  behind by a delete). */
   thenWearHistory?: string[];
+  /** [P4.D316] a timeline seeded after init: `{ characterId, steps: [{ slots, provenance }] }`. */
+  historyPlants?: { characterId: string; steps: Array<{ slots: Record<string, string[]>; provenance: unknown }> };
+  /** [P4.D316] after the case, that chat's `chat_wardrobe_history` rows → `${name}__history`. */
+  thenHistory?: string;
+  /** [P4.D316] a body `req.json()` cannot parse. */
+  rawBody?: string;
 }
 
 interface Spec {
@@ -111,15 +129,21 @@ let previewMode = 'ok';
 let previewCalls = 0;
 const PREVIEW_SAFETY = '400 Your request was rejected as a result of our safety system.';
 
-function mockRequest(url: string, method = 'GET', body?: unknown): unknown {
+function mockRequest(url: string, method = 'GET', body?: unknown, rawBody?: string): unknown {
   return {
     method,
     url,
     nextUrl: new URL(url),
     headers: new Headers({ 'Content-Type': 'application/json' }),
-    json: jest.fn().mockResolvedValue(body ?? {}),
+    json:
+      rawBody !== undefined
+        ? jest.fn().mockImplementation(async () => JSON.parse(rawBody))
+        : jest.fn().mockResolvedValue(body ?? {}),
   };
 }
+
+const HISTORY_DUMP_SQL =
+  'SELECT "chatId", "characterId", "entryIndex", "slots", "slotsHash", "source", "actorCharacterId", "actorToolName", "isCurrent" FROM chat_wardrobe_history WHERE "chatId" = ? ORDER BY "characterId", "entryIndex"';
 
 function applyMocks(spec: Spec): void {
   const cipherDriverPath = require('node:path').join(
@@ -332,6 +356,18 @@ async function runKind(c: CaseEntry): Promise<{ status: number; body: unknown }>
         ),
       );
     }
+    case 'wardrobeRollback': {
+      const mod = (await import('@/app/api/v1/chats/[id]/handlers/post')) as {
+        handlePost: (...a: unknown[]) => Promise<unknown>;
+      };
+      return respond(
+        await mod.handlePost(
+          mockRequest(`${B}/chats/${c.chatId}?action=wardrobe-rollback`, 'POST', c.body, c.rawBody),
+          await authedCtx(),
+          c.chatId,
+        ),
+      );
+    }
     case 'regenerateAvatar': {
       const mod = (await import('@/app/api/v1/chats/[id]/actions/regenerate-avatar')) as {
         handleRegenerateAvatar: (...a: unknown[]) => Promise<unknown>;
@@ -421,6 +457,20 @@ async function runCase(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+  const { plantChatWardrobeHistoryTable } = await import('../lib/v4-migrations');
+  await plantChatWardrobeHistoryTable();
+  if (c.historyPlants) {
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    const repos = getRepositories();
+    for (const step of c.historyPlants.steps) {
+      const slots = { top: [], bottom: [], footwear: [], accessories: [], hair: [], ...step.slots };
+      await repos.chats.setEquippedOutfit(c.chatId!, c.historyPlants.characterId, slots as never);
+      await repos.wardrobeHistory.settle(c.chatId!, c.historyPlants.characterId, {
+        kind: 'append',
+        provenance: step.provenance,
+      } as never);
+    }
+  }
 
   try {
     const rows: Array<Record<string, unknown>> = [];
@@ -460,6 +510,14 @@ async function runCase(
         ),
       );
       rows.push({ name: `${c.name}__group`, status: follow.status, body: follow.body });
+    }
+
+    if (c.thenHistory) {
+      const { rawQuery } = await import('@/lib/database/manager');
+      const historyRows = (
+        (await rawQuery(HISTORY_DUMP_SQL, [c.thenHistory])) as Array<Record<string, unknown>>
+      ).map((r) => ({ ...r, isCurrent: Number(r.isCurrent) }));
+      rows.push({ name: `${c.name}__history`, status: 200, body: historyRows });
     }
 
     if (c.emitBytes) {

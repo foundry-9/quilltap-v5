@@ -5430,6 +5430,13 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            Request::ChatWardrobeRollback { chat_id, body } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_outfits::chat_wardrobe_rollback(&db, SINGLE_USER_ID, &chat_id, body)
+                        .await
+                }
+                Err(r) => r,
+            },
             Request::ChatRegenerateAvatar { chat_id, body } => match self.ready_db() {
                 Ok(db) => {
                     super::chat_outfits::chat_regenerate_avatar(&db, SINGLE_USER_ID, &chat_id, body)

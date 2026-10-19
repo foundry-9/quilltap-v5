@@ -574,7 +574,10 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     // wardrobe-history` arm hand-builds `ChatWardrobeHistory { chat_id,
     // character_id }` (a path segment and a `query::first` read — typed-only,
     // no tri-state).
-    ("wardrobe_routes.rs", 24),
+    // P4.D316 (v4 `8d8618819`): 24 → 25 — the chat POST's `?action=
+    // wardrobe-rollback` arm hands the raw body to `ChatWardrobeRollback {
+    // chat_id, body }` (typed-only; v4's Zod parse runs in the core).
+    ("wardrobe_routes.rs", 25),
 ];
 
 #[test]
@@ -611,8 +614,10 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 123,
-        "123 = 122 + P4.D315's one (`wardrobe_routes.rs`'s `ChatWardrobeHistory`, the chat \
+        total, 124,
+        "124 = 123 + P4.D316's one (`wardrobe_routes.rs`'s `ChatWardrobeRollback`, the chat \
+         POST's raw-body arm); \
+         123 = 122 + P4.D315's one (`wardrobe_routes.rs`'s `ChatWardrobeHistory`, the chat \
          GET's `?action=wardrobe-history`, v4 `8d8618819`). \
          122 = 121 + P4.D309's one (`wardrobe_routes.rs`'s `WardrobeItemsCopy`, the copy \
          twin of `WardrobeItemsMove`, v4 `bbbcd2388`). \

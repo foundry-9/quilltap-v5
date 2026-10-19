@@ -426,7 +426,8 @@
         "mode": "wear",
         "itemId": "e1000000-0000-4000-8000-000000000001"
       },
-      "thenOutfit": "c1000000-0000-4000-8000-000000000002"
+      "thenOutfit": "c1000000-0000-4000-8000-000000000002",
+      "thenHistory": "c1000000-0000-4000-8000-000000000002"
     },
     {
       "name": "eq_wear_replaceflag",
@@ -511,7 +512,8 @@
         "characterId": "a1000000-0000-4000-8000-000000000001",
         "mode": "clear_slot",
         "slot": "accessories"
-      }
+      },
+      "thenHistory": "c1000000-0000-4000-8000-000000000001"
     },
     {
       "name": "eq_set_all",
@@ -533,7 +535,8 @@
           "accessories": []
         }
       },
-      "thenOutfit": "c1000000-0000-4000-8000-000000000001"
+      "thenOutfit": "c1000000-0000-4000-8000-000000000001",
+      "thenHistory": "c1000000-0000-4000-8000-000000000001"
     },
     {
       "name": "eq_set_all_partial",
@@ -3003,6 +3006,488 @@
       ],
       "thenWearHistory": [
         "e2000000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "name": "rb_ok_skipped_speaking_as",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "index": 1
+      },
+      "plants": [
+        {
+          "sql": "UPDATE \"chats\" SET \"participants\" = ?, \"activeTypingParticipantId\" = ?, \"impersonatingParticipantIds\" = ? WHERE \"id\" = ?",
+          "params": [
+            "[{\"id\": \"5a000000-0000-4000-8000-00000000000a\", \"type\": \"CHARACTER\", \"characterId\": \"a1000000-0000-4000-8000-000000000001\", \"controlledBy\": \"llm\", \"status\": \"active\", \"createdAt\": \"2026-01-01T00:00:00.000Z\", \"updatedAt\": \"2026-01-01T00:00:00.000Z\"}, {\"id\": \"5a000000-0000-4000-8000-00000000000b\", \"type\": \"CHARACTER\", \"characterId\": \"a1000000-0000-4000-8000-000000000002\", \"controlledBy\": \"user\", \"status\": \"active\", \"createdAt\": \"2026-01-01T00:00:00.000Z\", \"updatedAt\": \"2026-01-01T00:00:00.000Z\"}]",
+            "5a000000-0000-4000-8000-00000000000b",
+            null,
+            "c1000000-0000-4000-8000-000000000001"
+          ]
+        }
+      ],
+      "historyPlants": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "steps": [
+          {
+            "slots": {
+              "top": [
+                "e1000000-0000-4000-8000-000000000001"
+              ],
+              "footwear": [
+                "e1000000-0000-4000-8000-000000000003"
+              ]
+            },
+            "provenance": {
+              "source": "chat-start"
+            }
+          },
+          {
+            "slots": {
+              "top": [
+                "e2000000-0000-4000-8000-000000000004"
+              ],
+              "accessories": [
+                "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+                "e3000000-0000-4000-8000-000000000001"
+              ]
+            },
+            "provenance": {
+              "source": "operator"
+            }
+          },
+          {
+            "slots": {
+              "top": [
+                "e1000000-0000-4000-8000-000000000002"
+              ]
+            },
+            "provenance": {
+              "source": "character",
+              "actorCharacterId": "a1000000-0000-4000-8000-000000000001"
+            }
+          }
+        ]
+      },
+      "thenHistory": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "rb_ok_impersonated_seat",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "index": 0
+      },
+      "plants": [
+        {
+          "sql": "UPDATE \"chats\" SET \"participants\" = ?, \"activeTypingParticipantId\" = ?, \"impersonatingParticipantIds\" = ? WHERE \"id\" = ?",
+          "params": [
+            "[{\"id\": \"5a000000-0000-4000-8000-00000000000a\", \"type\": \"CHARACTER\", \"characterId\": \"a1000000-0000-4000-8000-000000000001\", \"controlledBy\": \"llm\", \"status\": \"active\", \"createdAt\": \"2026-01-01T00:00:00.000Z\", \"updatedAt\": \"2026-01-01T00:00:00.000Z\"}, {\"id\": \"5a000000-0000-4000-8000-00000000000b\", \"type\": \"CHARACTER\", \"characterId\": \"a1000000-0000-4000-8000-000000000002\", \"controlledBy\": \"llm\", \"status\": \"active\", \"createdAt\": \"2026-01-01T00:00:00.000Z\", \"updatedAt\": \"2026-01-01T00:00:00.000Z\"}]",
+            "5a000000-0000-4000-8000-00000000000b",
+            "[\"5a000000-0000-4000-8000-00000000000b\"]",
+            "c1000000-0000-4000-8000-000000000001"
+          ]
+        }
+      ],
+      "historyPlants": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "steps": [
+          {
+            "slots": {
+              "top": [
+                "e1000000-0000-4000-8000-000000000001"
+              ],
+              "footwear": [
+                "e1000000-0000-4000-8000-000000000003"
+              ]
+            },
+            "provenance": {
+              "source": "chat-start"
+            }
+          },
+          {
+            "slots": {
+              "top": [
+                "e2000000-0000-4000-8000-000000000004"
+              ],
+              "accessories": [
+                "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+                "e3000000-0000-4000-8000-000000000001"
+              ]
+            },
+            "provenance": {
+              "source": "operator"
+            }
+          },
+          {
+            "slots": {
+              "top": [
+                "e1000000-0000-4000-8000-000000000002"
+              ]
+            },
+            "provenance": {
+              "source": "character",
+              "actorCharacterId": "a1000000-0000-4000-8000-000000000001"
+            }
+          }
+        ]
+      },
+      "thenHistory": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "rb_ok_no_user_seat_bare",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "index": 0
+      },
+      "plants": [
+        {
+          "sql": "UPDATE \"chats\" SET \"participants\" = ?, \"activeTypingParticipantId\" = ?, \"impersonatingParticipantIds\" = ? WHERE \"id\" = ?",
+          "params": [
+            "[{\"id\": \"5a000000-0000-4000-8000-00000000000a\", \"type\": \"CHARACTER\", \"characterId\": \"a1000000-0000-4000-8000-000000000001\", \"controlledBy\": \"llm\", \"status\": \"active\", \"createdAt\": \"2026-01-01T00:00:00.000Z\", \"updatedAt\": \"2026-01-01T00:00:00.000Z\"}, {\"id\": \"5a000000-0000-4000-8000-00000000000b\", \"type\": \"CHARACTER\", \"characterId\": \"a1000000-0000-4000-8000-000000000002\", \"controlledBy\": \"llm\", \"status\": \"active\", \"createdAt\": \"2026-01-01T00:00:00.000Z\", \"updatedAt\": \"2026-01-01T00:00:00.000Z\"}]",
+            null,
+            null,
+            "c1000000-0000-4000-8000-000000000001"
+          ]
+        }
+      ],
+      "historyPlants": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "steps": [
+          {
+            "slots": {
+              "top": [
+                "e1000000-0000-4000-8000-000000000001"
+              ],
+              "footwear": [
+                "e1000000-0000-4000-8000-000000000003"
+              ]
+            },
+            "provenance": {
+              "source": "chat-start"
+            }
+          },
+          {
+            "slots": {
+              "top": [
+                "e2000000-0000-4000-8000-000000000004"
+              ],
+              "accessories": [
+                "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+                "e3000000-0000-4000-8000-000000000001"
+              ]
+            },
+            "provenance": {
+              "source": "operator"
+            }
+          },
+          {
+            "slots": {
+              "top": [
+                "e1000000-0000-4000-8000-000000000002"
+              ]
+            },
+            "provenance": {
+              "source": "character",
+              "actorCharacterId": "a1000000-0000-4000-8000-000000000001"
+            }
+          }
+        ]
+      },
+      "thenHistory": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "rb_refuse_no_history",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "index": 0
+      },
+      "thenHistory": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "rb_refuse_out_of_range",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "index": 9
+      },
+      "historyPlants": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "steps": [
+          {
+            "slots": {
+              "top": [
+                "e1000000-0000-4000-8000-000000000001"
+              ],
+              "footwear": [
+                "e1000000-0000-4000-8000-000000000003"
+              ]
+            },
+            "provenance": {
+              "source": "chat-start"
+            }
+          },
+          {
+            "slots": {
+              "top": [
+                "e2000000-0000-4000-8000-000000000004"
+              ],
+              "accessories": [
+                "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+                "e3000000-0000-4000-8000-000000000001"
+              ]
+            },
+            "provenance": {
+              "source": "operator"
+            }
+          },
+          {
+            "slots": {
+              "top": [
+                "e1000000-0000-4000-8000-000000000002"
+              ]
+            },
+            "provenance": {
+              "source": "character",
+              "actorCharacterId": "a1000000-0000-4000-8000-000000000001"
+            }
+          }
+        ]
+      },
+      "thenHistory": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "rb_refuse_already_current",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "index": 2
+      },
+      "historyPlants": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "steps": [
+          {
+            "slots": {
+              "top": [
+                "e1000000-0000-4000-8000-000000000001"
+              ],
+              "footwear": [
+                "e1000000-0000-4000-8000-000000000003"
+              ]
+            },
+            "provenance": {
+              "source": "chat-start"
+            }
+          },
+          {
+            "slots": {
+              "top": [
+                "e2000000-0000-4000-8000-000000000004"
+              ],
+              "accessories": [
+                "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+                "e3000000-0000-4000-8000-000000000001"
+              ]
+            },
+            "provenance": {
+              "source": "operator"
+            }
+          },
+          {
+            "slots": {
+              "top": [
+                "e1000000-0000-4000-8000-000000000002"
+              ]
+            },
+            "provenance": {
+              "source": "character",
+              "actorCharacterId": "a1000000-0000-4000-8000-000000000001"
+            }
+          }
+        ]
+      },
+      "thenHistory": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "rb_unknown_chat",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-0000000000ff",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "index": 0
+      }
+    },
+    {
+      "name": "rb_malformed_json",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "rawBody": "{not json"
+    },
+    {
+      "name": "rb_zod_empty_character",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "",
+        "index": 0
+      }
+    },
+    {
+      "name": "rb_zod_missing_character",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "index": 0
+      }
+    },
+    {
+      "name": "rb_zod_character_number",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": 5,
+        "index": 0
+      }
+    },
+    {
+      "name": "rb_zod_missing_index",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "rb_zod_string_index",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "index": "2"
+      }
+    },
+    {
+      "name": "rb_zod_float_index",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "index": 1.5
+      }
+    },
+    {
+      "name": "rb_zod_negative_index",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "index": -1
+      }
+    },
+    {
+      "name": "rb_zod_unsafe_index",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "index": 9007199254740992
+      }
+    },
+    {
+      "name": "rb_zod_below_safe_floor",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "index": -9007199254740992
+      }
+    },
+    {
+      "name": "rb_zod_both_missing",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {}
+    },
+    {
+      "name": "rb_zod_array_body",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": []
+    },
+    {
+      "name": "eq_set_all_speaking_as",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "set_all",
+        "slots": {
+          "top": [
+            "e1000000-0000-4000-8000-000000000002"
+          ],
+          "bottom": [
+            "e1000000-0000-4000-8000-000000000002"
+          ],
+          "footwear": [
+            "e1000000-0000-4000-8000-000000000003"
+          ],
+          "accessories": []
+        }
+      },
+      "thenOutfit": "c1000000-0000-4000-8000-000000000001",
+      "thenHistory": "c1000000-0000-4000-8000-000000000001",
+      "plants": [
+        {
+          "sql": "UPDATE \"chats\" SET \"participants\" = ?, \"activeTypingParticipantId\" = ?, \"impersonatingParticipantIds\" = ? WHERE \"id\" = ?",
+          "params": [
+            "[{\"id\": \"5a000000-0000-4000-8000-00000000000a\", \"type\": \"CHARACTER\", \"characterId\": \"a1000000-0000-4000-8000-000000000001\", \"controlledBy\": \"llm\", \"status\": \"active\", \"createdAt\": \"2026-01-01T00:00:00.000Z\", \"updatedAt\": \"2026-01-01T00:00:00.000Z\"}, {\"id\": \"5a000000-0000-4000-8000-00000000000b\", \"type\": \"CHARACTER\", \"characterId\": \"a1000000-0000-4000-8000-000000000002\", \"controlledBy\": \"user\", \"status\": \"active\", \"createdAt\": \"2026-01-01T00:00:00.000Z\", \"updatedAt\": \"2026-01-01T00:00:00.000Z\"}]",
+            "5a000000-0000-4000-8000-00000000000b",
+            null,
+            "c1000000-0000-4000-8000-000000000001"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "eq_set_all_impersonated",
+      "kind": "equip",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "mode": "set_all",
+        "slots": {
+          "top": [
+            "e1000000-0000-4000-8000-000000000002"
+          ],
+          "bottom": [
+            "e1000000-0000-4000-8000-000000000002"
+          ],
+          "footwear": [
+            "e1000000-0000-4000-8000-000000000003"
+          ],
+          "accessories": []
+        }
+      },
+      "thenOutfit": "c1000000-0000-4000-8000-000000000001",
+      "thenHistory": "c1000000-0000-4000-8000-000000000001",
+      "plants": [
+        {
+          "sql": "UPDATE \"chats\" SET \"participants\" = ?, \"activeTypingParticipantId\" = ?, \"impersonatingParticipantIds\" = ? WHERE \"id\" = ?",
+          "params": [
+            "[{\"id\": \"5a000000-0000-4000-8000-00000000000a\", \"type\": \"CHARACTER\", \"characterId\": \"a1000000-0000-4000-8000-000000000001\", \"controlledBy\": \"llm\", \"status\": \"active\", \"createdAt\": \"2026-01-01T00:00:00.000Z\", \"updatedAt\": \"2026-01-01T00:00:00.000Z\"}, {\"id\": \"5a000000-0000-4000-8000-00000000000b\", \"type\": \"CHARACTER\", \"characterId\": \"a1000000-0000-4000-8000-000000000002\", \"controlledBy\": \"llm\", \"status\": \"active\", \"createdAt\": \"2026-01-01T00:00:00.000Z\", \"updatedAt\": \"2026-01-01T00:00:00.000Z\"}]",
+            "5a000000-0000-4000-8000-00000000000b",
+            "[\"5a000000-0000-4000-8000-00000000000b\"]",
+            "c1000000-0000-4000-8000-000000000001"
+          ]
+        }
       ]
     }
   ],

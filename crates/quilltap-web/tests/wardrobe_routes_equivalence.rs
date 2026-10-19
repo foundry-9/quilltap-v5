@@ -42,7 +42,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use quilltap_core::api::characters::{character_wardrobe_get, character_wardrobe_list};
-use quilltap_core::api::chat_outfits::{chat_equip, chat_outfit_get, chat_regenerate_avatar};
+use quilltap_core::api::chat_outfits::{
+    chat_equip, chat_outfit_get, chat_regenerate_avatar, chat_wardrobe_rollback,
+};
 use quilltap_core::api::types::{ErrorKind, Response, WardrobeContainerScope};
 use quilltap_core::api::wardrobe::{
     wardrobe_create, wardrobe_delete, wardrobe_item_get, wardrobe_list, wardrobe_preview_avatar,
@@ -115,6 +117,30 @@ struct CaseEntry {
     /// `${name}__wear_${i}` rows (the ledger a delete left behind).
     #[serde(default)]
     then_wear_history: Vec<String>,
+    /// [P4.D316] a timeline seeded on the copy (each step's slots written,
+    /// then settled with the step's provenance).
+    #[serde(default)]
+    history_plants: Option<HistoryPlants>,
+    /// [P4.D316] after the case, this chat's `chat_wardrobe_history` rows →
+    /// `${name}__history`.
+    #[serde(default)]
+    then_history: Option<String>,
+    /// [P4.D316] a body `req.json()` cannot parse (the malformed-JSON 500).
+    #[serde(default)]
+    raw_body: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HistoryPlants {
+    character_id: String,
+    steps: Vec<HistoryStep>,
+}
+
+#[derive(Deserialize)]
+struct HistoryStep {
+    slots: Value,
+    provenance: Value,
 }
 
 #[derive(Deserialize)]
@@ -179,6 +205,8 @@ fn fresh_db(case: &CaseEntry) -> (Db, tempfile::TempDir) {
         if !case.pre_round {
             quilltap_core::test_support::ensure_wear_ledger_on(conn);
         }
+        // [P4.D316] P4.D315's one v5-side plant, on every per-case copy (R-S).
+        quilltap_core::test_support::ensure_chat_wardrobe_history_on(conn);
         for p in &case.plants {
             let params: Vec<rusqlite::types::Value> = p
                 .params
@@ -192,6 +220,37 @@ fn fresh_db(case: &CaseEntry) -> (Db, tempfile::TempDir) {
                 .collect();
             conn.execute(&p.sql, rusqlite::params_from_iter(params))
                 .unwrap_or_else(|e| panic!("{tag}: plant `{}`: {e}", p.sql));
+        }
+        // [P4.D316] the timeline, through the REAL repositories.
+        if let Some(h) = &case.history_plants {
+            use quilltap_core::db::chat_wardrobe_history::{
+                ChatWardrobeHistoryRepository, WardrobeHistoryIntent, WardrobeHistoryProvenance,
+                WardrobeHistorySource,
+            };
+            let chat_id = case
+                .chat_id
+                .as_deref()
+                .expect("historyPlants needs a chatId");
+            for step in &h.steps {
+                let mut slots = serde_json::json!({ "top": [], "bottom": [], "footwear": [], "accessories": [], "hair": [] });
+                for (k, v) in step.slots.as_object().unwrap() {
+                    slots[k] = v.clone();
+                }
+                quilltap_core::db::chats_outfits::ChatOutfitsRepository::new(conn)
+                    .set_equipped_outfit(chat_id, &h.character_id, &slots)
+                    .expect("plant slots");
+                let source: WardrobeHistorySource =
+                    serde_json::from_value(step.provenance["source"].clone()).unwrap();
+                let mut prov = WardrobeHistoryProvenance::new(source);
+                if let Some(a) = step.provenance["actorCharacterId"].as_str() {
+                    prov = prov.with_actor(a);
+                }
+                ChatWardrobeHistoryRepository::new(conn).settle(
+                    chat_id,
+                    &h.character_id,
+                    &WardrobeHistoryIntent::Append { provenance: prov },
+                );
+            }
         }
     }
     let db = Db::open(
@@ -626,7 +685,12 @@ async fn wardrobe_routes_equivalence() {
             .cases
             .iter()
             .map(|c| c.then_wear_history.len())
-            .sum::<usize>();
+            .sum::<usize>()
+        + spec
+            .cases
+            .iter()
+            .filter(|c| c.then_history.is_some())
+            .count();
     assert_eq!(
         oracle.len(),
         expected_rows,
@@ -709,6 +773,17 @@ async fn wardrobe_routes_equivalence() {
             "transferApply" => wardrobe_transfer_apply(&db, user, body, NOW).await,
             "outfitGet" => chat_outfit_get(&db, case.chat_id.as_deref().unwrap()),
             "equip" => chat_equip(&db, user, case.chat_id.as_deref().unwrap(), body).await,
+            // [P4.D316] the rollback POST. A malformed JSON body never reaches
+            // the core: the web edge's `parse_body` answers v4's 500 (pinned in
+            // `wardrobe_routes.rs`'s own unit test); here v4's row is held to
+            // that same answer.
+            "wardrobeRollback" if case.raw_body.is_some() => Response::error(
+                ErrorKind::Internal,
+                "Failed to roll back the outfit".to_string(),
+            ),
+            "wardrobeRollback" => {
+                chat_wardrobe_rollback(&db, user, case.chat_id.as_deref().unwrap(), body).await
+            }
             "regenerateAvatar" => {
                 chat_regenerate_avatar(&db, user, case.chat_id.as_deref().unwrap(), body).await
             }
@@ -795,6 +870,47 @@ async fn wardrobe_routes_equivalence() {
                 &[],
                 &mut failed,
             );
+            checks += 1;
+        }
+
+        if let Some(chat_id) = &case.then_history {
+            let name = format!("{}__history", case.name);
+            let want = oracle
+                .get(&name)
+                .unwrap_or_else(|| panic!("oracle has no '{name}' — regenerate the NDJSON"));
+            let cid = chat_id.clone();
+            let got = db
+                .read_main(move |c| {
+                    let mut stmt = c.prepare(
+                        r#"SELECT "chatId", "characterId", "entryIndex", "slots", "slotsHash", "source", "actorCharacterId", "actorToolName", "isCurrent" FROM chat_wardrobe_history WHERE "chatId" = ?1 ORDER BY "characterId", "entryIndex""#,
+                    )?;
+                    let rows = stmt
+                        .query_map([&cid], |r| {
+                            Ok(serde_json::json!({
+                                "chatId": r.get::<_, String>(0)?,
+                                "characterId": r.get::<_, String>(1)?,
+                                "entryIndex": r.get::<_, i64>(2)?,
+                                "slots": r.get::<_, String>(3)?,
+                                "slotsHash": r.get::<_, String>(4)?,
+                                "source": r.get::<_, String>(5)?,
+                                "actorCharacterId": r.get::<_, Option<String>>(6)?,
+                                "actorToolName": r.get::<_, Option<String>>(7)?,
+                                "isCurrent": r.get::<_, i64>(8)?,
+                            }))
+                        })?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(Value::Array(rows))
+                })
+                .expect("read the history back");
+            // Byte-compared (serde_json's Map `==` ignores key order).
+            if serde_json::to_string(&got).unwrap() != serde_json::to_string(&want["body"]).unwrap()
+            {
+                eprintln!(
+                    "[{name}] HISTORY MISMATCH:\n got  {got}\n want {}",
+                    want["body"]
+                );
+                failed.push(name);
+            }
             checks += 1;
         }
 
@@ -1263,4 +1379,126 @@ fn p4d281_transfer_line_is_v4s() {
             .any(|l| l.contains("Wardrobe item transferred")),
         "{lines:#?}"
     );
+}
+
+/// [P4.D316] Capture pins (§R.5) for the rollback POST's caller-thread lines,
+/// each with its silence leg: the success INFO `[Chats v1] Wardrobe rolled
+/// back` (v4's fields, `context` LAST), the module's DEBUG `Rolled a wardrobe
+/// back` AFTER the effects with the route's `sourceContext` and the operator
+/// provenance, the resolver's DEBUG `Resolved operator for an outfit change`
+/// naming the Speaking-As seat; a refusal's INFO `[Chats v1] Wardrobe rollback
+/// refused` with no success line; and the ERROR `[Chats v1] Error rolling back
+/// wardrobe` + 500 when the history read fails (the table dropped — v4's
+/// `findEntries` throws into the same catch). The in-write `Rollback left a
+/// stale item off` runs on the writer thread here; its bytes are pinned on
+/// the tool path (`wardrobe_tools_equivalence`, where the handler runs on the
+/// test thread).
+#[tokio::test(flavor = "current_thread")]
+async fn p4d316_rollback_route_lines_are_v4s() {
+    use quilltap_core::test_support::global_capture;
+    global_capture::install();
+    let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+    let case = |n: &str| spec.cases.iter().find(|c| c.name == n).unwrap();
+    let ok = case("rb_ok_skipped_speaking_as");
+    let (db, _s1) = fresh_db(ok);
+    let chat = ok.chat_id.clone().unwrap();
+    let (resp, lines) = global_capture::capture_async(chat_wardrobe_rollback(
+        &db,
+        &spec.user_id,
+        &chat,
+        ok.body.clone().unwrap(),
+    ))
+    .await;
+    assert!(success_body(&resp).is_some(), "{resp:?}");
+    let find = |lines: &[String], needle: &str| -> String {
+        let hits: Vec<&String> = lines.iter().filter(|l| l.contains(needle)).collect();
+        assert_eq!(hits.len(), 1, "{needle}: {lines:#?}");
+        hits[0].clone()
+    };
+    let aria = "a1000000-0000-4000-8000-000000000001";
+    let bram = "a1000000-0000-4000-8000-000000000002";
+    let done = find(&lines, "[Chats v1] Wardrobe rolled back");
+    assert!(
+        done.ends_with(&format!(
+            "[Chats v1] Wardrobe rolled back chatId={chat} characterId={aria} previousIndex=2 restoredIndex=1 skipped=2 context=wardrobe"
+        )),
+        "{done}"
+    );
+    let rolled = find(&lines, "Rolled a wardrobe back");
+    assert!(
+        rolled.ends_with(&format!(
+            "Rolled a wardrobe back context=[Chats v1] wardrobe-rollback chatId={chat} characterId={aria} previousIndex=2 restoredIndex=1 skipped=2 provenance=operator"
+        )),
+        "{rolled}"
+    );
+    let resolved = find(&lines, "Resolved operator for an outfit change");
+    assert!(
+        resolved.ends_with(&format!("chatId={chat} actorCharacterId={bram}")),
+        "{resolved}"
+    );
+    let order = |needle: &str| lines.iter().position(|l| l.contains(needle)).unwrap();
+    assert!(
+        order("Resolved operator") < order("Rolled a wardrobe back")
+            && order("Rolled a wardrobe back") < order("[Chats v1] Wardrobe rolled back"),
+        "v4's order: {lines:#?}"
+    );
+    assert!(!lines
+        .iter()
+        .any(|l| l.contains("Wardrobe rollback refused")));
+    assert!(!lines
+        .iter()
+        .any(|l| l.contains("Error rolling back wardrobe")));
+
+    // A refusal: the INFO with v4's fields, nothing else of the route's.
+    let refuse = case("rb_refuse_already_current");
+    let (db, _s2) = fresh_db(refuse);
+    let (resp, lines) = global_capture::capture_async(chat_wardrobe_rollback(
+        &db,
+        &spec.user_id,
+        &chat,
+        refuse.body.clone().unwrap(),
+    ))
+    .await;
+    assert!(matches!(resp, Response::Error(ref e) if e.kind == ErrorKind::BadRequest));
+    let refused = find(&lines, "[Chats v1] Wardrobe rollback refused");
+    assert!(
+        refused.ends_with(&format!(
+            "[Chats v1] Wardrobe rollback refused chatId={chat} characterId={aria} index=2 reason=already_current context=wardrobe"
+        )),
+        "{refused}"
+    );
+    assert!(!lines.iter().any(|l| l.contains("Wardrobe rolled back")));
+    assert!(!lines.iter().any(|l| l.contains("Rolled a wardrobe back")));
+
+    // The catch: a failed history read → the ERROR + 500, no success line.
+    db.write(|w| {
+        w.main()
+            .connection()
+            .execute_batch("DROP TABLE chat_wardrobe_history;")
+            .map_err(quilltap_core::db::DbError::from)
+    })
+    .await
+    .unwrap();
+    let (resp, lines) = global_capture::capture_async(chat_wardrobe_rollback(
+        &db,
+        &spec.user_id,
+        &chat,
+        refuse.body.clone().unwrap(),
+    ))
+    .await;
+    match &resp {
+        Response::Error(e) => {
+            assert_eq!(e.kind, ErrorKind::Internal);
+            assert_eq!(e.message, "Failed to roll back the outfit");
+        }
+        other => panic!("expected the 500: {other:?}"),
+    }
+    let error = find(&lines, "[Chats v1] Error rolling back wardrobe");
+    assert!(
+        error.ends_with(&format!(
+            "[Chats v1] Error rolling back wardrobe chatId={chat} error=no such table: chat_wardrobe_history"
+        )),
+        "{error}"
+    );
+    assert!(!lines.iter().any(|l| l.contains("Wardrobe rolled back")));
 }

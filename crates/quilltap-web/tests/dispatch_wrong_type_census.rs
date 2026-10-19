@@ -2709,7 +2709,11 @@ fn is_route_identifier(field: &str) -> bool {
 // QUERY / PATH-sourced in v4, so a JSON type cannot be wrong there; the rule
 // drops both and the census gains NO row. Measured (red at 485 against 483
 // first).
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 485;
+// **P4.D316 (+1): 485 → 486** — the rollback POST's
+// `ChatWardrobeRollback.chat_id` (the `[id]` segment); its body rides as a
+// flattened `Value` parsed by v4's `rollbackBodySchema` inside the handler,
+// so the census gains NO row. Measured (red at 486 against 485 first).
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 486;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus

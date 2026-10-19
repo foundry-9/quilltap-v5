@@ -2674,6 +2674,17 @@ pub enum Request {
         #[serde(flatten)]
         body: serde_json::Value,
     },
+    /// v4 `POST /api/v1/chats/{id}?action=wardrobe-rollback` (`8d8618819`) —
+    /// the operator's Wear again: return a character to a numbered outfit of
+    /// the chat's outfit history. The v4 route body (`{characterId, index}`)
+    /// rides FLATTENED and raw so the core's Zod-faithful parse sees exactly
+    /// what v4's did (the `ChatEquip` idiom).
+    #[serde(rename_all = "camelCase")]
+    ChatWardrobeRollback {
+        chat_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
     /// v4 `POST /api/v1/chats/{id}?action=regenerate-avatar` — queues the
     /// avatar job; body `{characterId, imageProfileId?, equippedSlots?}`
     /// flattened raw.

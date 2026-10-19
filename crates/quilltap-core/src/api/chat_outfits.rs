@@ -1068,6 +1068,219 @@ async fn put_on_or_fit(
     .await
 }
 
+// === P4.D316: wardrobe rollback ===
+
+/// The validated `?action=wardrobe-rollback` body.
+struct RollbackBody {
+    character_id: String,
+    index: i64,
+}
+
+/// v4 `rollbackBodySchema` (`outfit.ts:296-299`) — `z.object({ characterId:
+/// z.string().min(1, 'characterId is required'), index:
+/// z.number().int().nonnegative() })` — `Err` = the issue messages joined
+/// `", "` in Zod's order (`characterId` before `index`; every non-authored
+/// text measured from the pin's zod 4.6.7). `index` is REQUIRED here (it is
+/// optional on the tool). A fraction stops at the `int` issue; a safe-range
+/// overflow reports zod's `safeint` bound, and a negative one below the safe
+/// floor reports BOTH that bound and `>=0`, as zod does. Unknown keys are
+/// stripped.
+fn parse_rollback_body(body: &Value) -> Result<RollbackBody, String> {
+    use super::zod_issues::{ZodIssue, MAX_SAFE_INTEGER};
+    let Some(obj) = body.as_object() else {
+        return Err(format!(
+            "Invalid input: expected object, received {}",
+            received(Some(body))
+        ));
+    };
+    let mut issues: Vec<String> = Vec::new();
+    let character_id = match obj.get("characterId") {
+        Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+        Some(Value::String(_)) => {
+            issues.push("characterId is required".to_string());
+            None
+        }
+        v => {
+            issues.push(format!(
+                "Invalid input: expected string, received {}",
+                received(v)
+            ));
+            None
+        }
+    };
+    let index = match obj.get("index") {
+        Some(Value::Number(n)) => {
+            let f = n.as_f64().unwrap_or(f64::NAN);
+            if f.fract() != 0.0 || !f.is_finite() {
+                issues.push(
+                    ZodIssue::invalid_int_type(vec![], obj.get("index"))
+                        .message()
+                        .to_string(),
+                );
+                None
+            } else if f > MAX_SAFE_INTEGER {
+                issues.push(ZodIssue::too_big_int(vec![]).message().to_string());
+                None
+            } else {
+                if f < -MAX_SAFE_INTEGER {
+                    issues.push(ZodIssue::too_small_int(vec![]).message().to_string());
+                }
+                if f < 0.0 {
+                    issues.push(
+                        ZodIssue::too_small_number(serde_json::json!(0), vec![])
+                            .message()
+                            .to_string(),
+                    );
+                    None
+                } else {
+                    Some(f as i64)
+                }
+            }
+        }
+        v => {
+            issues.push(format!(
+                "Invalid input: expected number, received {}",
+                received(v)
+            ));
+            None
+        }
+    };
+    match (character_id, index) {
+        (Some(character_id), Some(index)) if issues.is_empty() => Ok(RollbackBody {
+            character_id,
+            index,
+        }),
+        _ => Err(issues.join(", ")),
+    }
+}
+
+/// v4 `handleWardrobeRollback` (`outfit.ts:366-416`, `8d8618819` +
+/// `4ae20977f`) — the operator's Wear again: return a character to a numbered
+/// outfit of the chat's history, through the ONE rollback
+/// ([`crate::wardrobe::rollback`]) with the OPERATOR's pool (`operator:
+/// true` — no project roster), ledger source `ui`, and the operator's
+/// provenance (the chat's Speaking-As seat). The body is parsed FIRST (Zod
+/// 400s), then the chat is read — v4's handler re-read after the parse, the
+/// only 404 v5's gate-less chat-POST edge can serve (P4.D316 R-5). v4's
+/// `chats.findById` is a fallback read, so an unreadable chat is a 404 too.
+/// A refusal is a 400 with its sentence (`at_first` is unreachable here —
+/// `index` is required); any other failure is the 500 + ERROR. The answer
+/// carries no history — the cursor move publishes the `chats` topic.
+pub async fn chat_wardrobe_rollback(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    body: Value,
+) -> Response {
+    use crate::wardrobe::rollback::{
+        finish_rollback, rollback_in_write, RollbackInput, RollbackOutcome,
+    };
+
+    let parsed = match parse_rollback_body(&body) {
+        Ok(p) => p,
+        Err(joined) => return bad_request(joined),
+    };
+    let cid = chat_id.to_string();
+    let chat = db
+        .read_main(move |c| Ok(crate::db::chats_read::find_by_id_or_none(c, &cid)))
+        .ok()
+        .flatten();
+    let Some(chat) = chat else {
+        return not_found("Chat");
+    };
+    // v4 evaluates `operatorWardrobeProvenance(chat)` while building the
+    // rollback's input — after the pool load, before the rollback's first
+    // read; it reads only the chat already loaded.
+    let provenance = crate::wardrobe::operator_provenance::operator_wardrobe_provenance(&chat);
+    const SOURCE_CONTEXT: &str = "[Chats v1] wardrobe-rollback";
+
+    let (cid, character_id, index) = (
+        chat_id.to_string(),
+        parsed.character_id.clone(),
+        parsed.index,
+    );
+    let outcome = with_both_conns(db, move |main, mount| {
+        let pool = load_wearable_pool(
+            main,
+            mount,
+            &character_id,
+            None,
+            LoadWearablePoolOptions {
+                operator: true,
+                chat_id: Some(&cid),
+                ..LoadWearablePoolOptions::default()
+            },
+        );
+        rollback_in_write(
+            main,
+            RollbackInput {
+                chat_id: &cid,
+                character_id: &character_id,
+                pool: &pool,
+                index: Some(index),
+                source: EquipSource::Ui,
+                source_context: SOURCE_CONTEXT,
+            },
+        )
+    })
+    .await;
+    let stage = match outcome {
+        Ok(RollbackOutcome::Rolled(stage)) => stage,
+        Ok(RollbackOutcome::Refused(refusal)) => {
+            tracing::info!(
+                chatId = chat_id,
+                characterId = parsed.character_id.as_str(),
+                index = parsed.index,
+                reason = refusal.reason.as_str(),
+                context = "wardrobe",
+                "[Chats v1] Wardrobe rollback refused"
+            );
+            return bad_request(refusal.message);
+        }
+        Err(e) => {
+            tracing::error!(
+                chatId = chat_id,
+                error = %crate::db::fallback::error_text(&e),
+                "[Chats v1] Error rolling back wardrobe"
+            );
+            return internal("Failed to roll back the outfit");
+        }
+    };
+
+    finish_rollback(
+        db,
+        &OutfitChangeContext {
+            user_id,
+            chat_id,
+            character_id: &parsed.character_id,
+            provenance: &provenance,
+            history_intent: None,
+            pending_wardrobe_announcements: None,
+            pending_wardrobe_history: None,
+        },
+        &stage,
+        SOURCE_CONTEXT,
+    )
+    .await;
+    tracing::info!(
+        chatId = chat_id,
+        characterId = parsed.character_id.as_str(),
+        previousIndex = stage.previous_index,
+        restoredIndex = stage.restored_index,
+        skipped = stage.skipped.len(),
+        context = "wardrobe",
+        "[Chats v1] Wardrobe rolled back"
+    );
+    Response::ChatOutfit(json!({
+        "equippedSlots": stage.slots.to_value(),
+        "previousIndex": stage.previous_index,
+        "restoredIndex": stage.restored_index,
+        "skipped": stage.skipped.iter().map(|s| s.to_route_value()).collect::<Vec<_>>(),
+    }))
+}
+
+// === end P4.D316 ===
+
 // ===========================================================================
 // POST ?action=regenerate-avatar (tier 2)
 // ===========================================================================

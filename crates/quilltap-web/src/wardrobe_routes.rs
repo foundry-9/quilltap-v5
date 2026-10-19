@@ -678,6 +678,7 @@ const CHAT_POST_ACTIONS: &[&str] = &[
     "retry-image-uncensored",
     "reclassify-danger",
     "equip",
+    "wardrobe-rollback",
     "toggle-avatar-generation",
     "regenerate-avatar",
     "render-conversation",
@@ -712,7 +713,7 @@ pub async fn chat_action_post(
     Query(pairs): Query<crate::query::QueryPairs>,
     body: String,
 ) -> AxumResponse {
-    // v4 `dispatchAction(req, { …forty-eight… })` with NO fallback
+    // v4 `dispatchAction(req, { …forty-nine… })` with NO fallback
     // (`ad1c4c37f`): absent → `Action parameter required`, bare / unknown →
     // `Unknown action`, answered here byte-for-byte. v4 looks the chat up
     // FIRST (`notFound('Chat')`); this edge gates without a lookup — the
@@ -733,6 +734,18 @@ pub async fn chat_action_post(
                 Err(r) => return *r,
             };
             CoreRequest::ChatEquip { chat_id, body }
+        }
+        // P4.D316 (v4 `8d8618819`): the operator's Wear again. A malformed
+        // JSON body is v4's 500 (`req.json()` throws a SyntaxError, not a
+        // ZodError); v4 also logs `[Chats v1] Error rolling back wardrobe`
+        // for it, which this edge does not (the `equip` arm's shape — a
+        // recorded edge-only gap; dispatch callers send JSON).
+        "wardrobe-rollback" => {
+            let body = match parse_body(&body, "Failed to roll back the outfit") {
+                Ok(v) => v,
+                Err(r) => return *r,
+            };
+            CoreRequest::ChatWardrobeRollback { chat_id, body }
         }
         "regenerate-avatar" => {
             let body = match parse_body(&body, "Failed to queue avatar regeneration") {
@@ -793,8 +806,9 @@ pub async fn chat_action_post(
         _ => {
             return error_json(
                 StatusCode::BAD_REQUEST,
-                "Only the equip, regenerate-avatar, inform and cancel-inform actions are \
-                 served on this route; the other chat actions ride POST /api/dispatch",
+                "Only the equip, wardrobe-rollback, regenerate-avatar, inform and \
+                 cancel-inform actions are served on this route; the other chat actions \
+                 ride POST /api/dispatch",
             )
         }
     };
@@ -901,5 +915,37 @@ mod preview_avatar_edge_tests {
             preview_avatar_status_and_body(CoreResponse::Wardrobe(json!({ "ok": 1 }))),
             Some((StatusCode::OK, json!({ "ok": 1 })))
         );
+    }
+}
+
+#[cfg(test)]
+mod p4d316_tests {
+    /// P4.D316 R-5 — the rollback POST's malformed-JSON arm: v4's `req.json()`
+    /// throws a SyntaxError (not a ZodError) into the handler's catch → 500
+    /// `Failed to roll back the outfit` (`wardrobe_routes_equivalence`'s
+    /// `rb_malformed_json` row holds v4 to it). The edge answers it before the
+    /// core is reached, without v4's ERROR line (a recorded edge-only gap).
+    #[tokio::test]
+    async fn a_malformed_rollback_body_is_v4s_500() {
+        let resp = match super::parse_body("{not json", "Failed to roll back the outfit") {
+            Err(r) => *r,
+            Ok(v) => panic!("parsed {v}"),
+        };
+        assert_eq!(resp.status(), axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(
+            std::str::from_utf8(&bytes).unwrap(),
+            r#"{"error":"Failed to roll back the outfit"}"#
+        );
+        assert!(super::CHAT_POST_ACTIONS.contains(&"wardrobe-rollback"));
+        let at = |a: &str| {
+            super::CHAT_POST_ACTIONS
+                .iter()
+                .position(|x| *x == a)
+                .unwrap()
+        };
+        assert_eq!(at("wardrobe-rollback"), at("equip") + 1, "v4's map order");
     }
 }
