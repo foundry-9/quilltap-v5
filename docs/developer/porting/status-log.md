@@ -188741,3 +188741,310 @@ Follow-up session to the P4.D316 lane, stacked on its branch (`a7fd191c6`; P4.D3
 **Item 25 — `orchestrator_tier3_equivalence` corpus ADD** (two calls, appended LAST so no earlier call's premise moves; one new chat `d3160006-…` with Friday alone on the OPENAI `cb110001` profile; a new `wardrobeItems` in-case plant — two items in Friday's vault through each side's REAL vault writer with pinned ids, not discarded; the history table + wear ledger planted on the run's copy; `chat_wardrobe_history` dumped and compared minus `id` / `createdAt`). `wardrobe_wear_then_take_off_one_turn`: ONE response, three native calls (wear the coat, wear the cap, take the coat off) → the flush settles ONE `character` entry (cap only) behind the empty `seeded` 0. `wardrobe_rollback_in_turn`: `wardrobe_rollback {}` then `wardrobe_rollback {index: 1}` in one response → the first returns to 0, the second is refused `Friday is already wearing outfit 1.` because the cursor still waits in the Map; the table ends with 0 current. Measured: v4 collapses the second turn's announcement onto the still-PENDING first (`queue-service.ts:1543-1559`), so ONE job — the count cannot see deferral; the history rows and the refused second rollback are the proof. A `wardrobe_history` probe was tried first and dropped: its entries carry the row's creation stamp, which v4 takes from the oracle's frozen clock and v5 from the real one, so the continuation's canned key cannot match (a recorded harness limit, not a divergence). Also measured: the tools take `operations: [...]` (the first regen's bare `item_id` was refused by both). Red-first: `record_pending_wardrobe_announcement` ignoring the map (settle at once inside a turn) → `wardrobe_rollback_in_turn` red (the second rollback goes through, the continuation diverges). The recipe header's staged mirror now copies `lib/v4-migrations.ts`.
 
 **Gate:** both families green from the pin, each through `recipe_sweep.py --run <family> --v4 /tmp/qt-v4-pin-wrb-e8e17b2d9 --force` ("recipe ran end-to-end": 15 ops / 42 log lines; the orchestrator corpus whole, 76 calls); `cargo fmt --all` clean; `cargo clippy -p quilltap-harness --tests -- -D warnings` clean. No core, web, SPA change. Remaining P4.D316 Tier 2 items: 30 (`history_dresser`) still not added.
+
+## P4.D317 lane record — the outfit-history carriers + bug 252 (2026-10-19)
+
+Branch `claude/p4.d317-outfit-history-carriers-2ce484`, worktree
+`.claude/worktrees/exciting-maxwell-2ce484`. **LANE COMPLETE.** Order:
+`work-orders/p4.d317-outfit-history-carriers-backup-restore-qtap-bug-252-character-keyed-rekey.md`.
+
+### Where the lane started, and the base
+
+- The session started in a fresh app worktree on `main` (`e8b0cea6c`) with no
+  commits of its own; it switched to the lane branch at **`HISTORY` =
+  `df642c2d6`**, found per `/carryout` rule 2 and confirmed against P4.D315's
+  lane-branch status header (`955c34a45` / `991d43e0e`).
+- **No pre-start on `main`; no mid-lane rebase.** Every commit sits on
+  `HISTORY`.
+
+### The §2 probe (an observation, §R.2)
+
+- 2026-10-19, at lane start: branch `main`, tree clean.
+- `log a6292f169..main` showed **three NEW commits**: `ea2cb60ab`
+  (edit_custom_tool), `406dbdd5a` (moderated image prompts, #103), and
+  `7263105c6` (Inventory title lint + bug 256).
+- `bugfix` was unmoved (`489b228b6`).
+- Recorded and carried on. The pin is unaffected.
+
+### The pin
+
+- `/tmp/qt-v4-pin-p4d317-e8e17b2d9` = `e8e17b2d92095bda…`.
+- `package.json` reads `4.11.0-dev.26`.
+- Root `node_modules` from `npm ci --offline` (1,044 packages): openai
+  7.34.0, zod 4.6.7.
+- The `packages/quilltap` and 15 plugin `node_modules` are symlinked.
+- `QT_V4_CHECKOUT` and `QT_V4_ROOT` both point at the pin.
+- Every oracle ran from the pin through a lane-private jest mirror, with
+  outputs under `/tmp/p4d317/` (the recipes' `/tmp/oracle-*` paths are
+  shared).
+
+### Commits
+
+| sha | unit |
+|---|---|
+| `630ad48c1` | unit 1 — the `chat_wardrobe_history` plant in every backup / restore / export / import / delete case + the six builders; `system_restore_state` summary key list both ways |
+| `e17004ecb` | the pure bug-252 twin `chat::character_keyed_fields` + NEW `chat_keyed_fields_equivalence` |
+| `33bf62e87` | the backup (`data/wardrobe-history.json`, the count, the DEBUG), R-J `BACKUP_ABSENT_HISTORY_TABLE`, the archive reads the file |
+| `630cad69d` | `qtap-export.schema.json` re-vendor + its size pins + five validator rows (R-E, one commit) |
+| `6e88051a8` | the new-account remap: the history arm + bug 252's chat pass + the `backup:uuid-remap` lines; `remap_backup_data` fallible; corpus regenerated |
+| `d56a7fb8a` | the restore: 22n-ter, preview / summary / counter, the replace-mode wipe, census 79 → 81, three derived archives, five restore cases + a preview case, delete-data +1 |
+| `1f705e543` | the `.qtap` export record |
+| `60ba4a9a2` | the `.qtap` import: assembler, phase 7f (`quilltap_import::wardrobe_history`), the reconcile's bug-252 pass, `ChatUpdate.pending_outfit_notifications`, NEW `wardrobe_history_import_remap_equivalence`, the three warning tails |
+| `ae503a502` | the validator family's header |
+| (this record) | the lane record + status header |
+
+### Item 1 — the dead set and the post-plant red set
+
+Dead set: from the pin, before any plant.
+
+| family | result |
+|---|---|
+| `system_backup` | **DIES**: `SqliteError: no such table: chat_wardrobe_history`, no NDJSON. |
+| `backup_uuid_remap` | **DIES** (in `wide`'s `createBackup`). |
+| `system_restore` | Survives but garbles: 127 `wardrobeHistory` keys (summary + preview). These were INVISIBLE to `system_restore_state`, whose summary diff walked v5's keys only. Fixed: the key list is now compared both ways. |
+| `system_export` | Survives. The per-chat WARN is not captured, and the bytes are unchanged. |
+| `system_import_execute` | Survives (7f is never reached). |
+| `system_delete_data` | Survives. The wipe's ERROR + DEBUG are not captured. |
+
+- **Builders:** **six** call `createBackup` (bug117, orphan-links, compact,
+  dedupe, memory-graph, archives). The order's "nine" counted files that
+  name it in docs only (bag-keys, duplicate-folders, legacy-profiles).
+- **Dry runs** into `/tmp/p4d317/builders/`:
+  - bug117, orphan-links, compact and archives load and write.
+  - dedupe writes its first `createBackup` archive, then fails a later gen-2
+    `files` count check (files=6 vs 2). That is past the plant and not about
+    history.
+  - memory-graph fails BEFORE `createBackup` on a pre-existing `no such
+    column: customToolTriggers` (the builder predates P4.D304).
+  - No committed archive was rebuilt.
+
+Post-plant red set (Rust against the planted pin oracles):
+
+| family | red set |
+|---|---|
+| `system_backup` | 24 diffs: every case is `missing data/wardrobe-history.json` plus its manifest. |
+| `backup_uuid_remap` | 44 / 44 cases: key set / order. |
+| `system_restore_equivalence` | 5 preview rows. |
+| `system_restore_state` | Every case: `summary key list differs`. |
+| `system_export` / `system_delete_data` / `system_import_state` | Green post-plant. |
+
+### Per unit — red-first, mutations, measurements
+
+- **`chat_keyed_fields_equivalence`** (NEW tier 1):
+  - 34 lines: the `fields` line, 33 remap rows, and R-2's three
+    EXPECTED-DIFFERENT rows (`1e400`, a lone surrogate, nesting 129). Green
+    on the first run.
+  - Mutations, each red by name:
+    - value remap before character remap → `mint_order_…` and
+      `mint_characters_before_values`;
+    - `{}` treated as unreadable → `edge_empty_object_is_readable`;
+    - no V8 key order → `array_index_keys_sort_first_at_every_depth`.
+  - `normalize_equipped_slots` agrees with v4 on a JSON-string outfit entry
+    (five empties), so no special case was needed.
+- **The backup**:
+  - 10 cases; the history case counts 5.
+  - **`BACKUP_ABSENT_HISTORY_TABLE`**, a NEW ruled table, pinned both ways:
+    v4 refuses `no such table: chat_wardrobe_history`, while v5 writes `[]`
+    with `counts.wardrobeHistory 0`.
+  - Mutation: dropping the absence guard trips the v5 leg.
+- **The schema**:
+  - 108,678 bytes, md5 `1d8e6546fbdb6ad3a48fee15d2932911`.
+  - Red-first: on the stale schema the three invalid rows' section sets
+    differed (v5 refused the unknown key outright).
+  - The embed guard (108,678) and the `qtap_schema.rs` pin are green.
+  - 87 oracle rows.
+- **The remap** (`backup_uuid_remap_equivalence`):
+  - 58 cases (44 + 14). **New `corpusSha256` = `67c05b36177d3331af3aa2e72d78691436cc8753d87bb708d937e8cd64df6e5c`.**
+  - Refusals compared both ways, with their text and the mapping minted
+    before them. V8's measured texts: `((intermediate value) ?? []).map is
+    not a function` (the transpiled `.map`) and `Cannot read properties of
+    null (reading 'slots')`.
+  - The `backup:uuid-remap` lines are captured per case and byte-compared
+    (`chat_keyed_edges`: 7 lines).
+- **The restore**:
+  - `system_restore_state` 61 → **66** cases:
+    - `restore_outfit_history_replace` (restored TWICE, no doubling);
+    - `_new_account` (history remapped; the phantom's row MINTED while its
+      outfit entry is DROPPED; the four columns re-keyed; the uuid-remap
+      DEBUG);
+    - `_row_skips_replace` (4 of 8 written, each skip's repository WARN by
+      count, no summary warning);
+    - `_bad_slot_replace` (salvaged by `upsertRows`);
+    - `_bad_slot_new_account` (**REFUSED** on both sides with the same text,
+      nothing written).
+  - Preview 7 → 8 (`preview_outfit_history`: 6).
+  - Mutation: 22n-bis's all-or-nothing count → `summary.wardrobeHistory:
+    rust 8 vs oracle 4`.
+  - Reused ruled residuals for `restore_outfit_history_new_account`:
+    `PHASE_ORDER_RESIDUAL` (the 3 doc-store tables) and `V5_STATS_GAP` (the
+    Uploads stats). It is the same `restore-archive.zip` portrait replay as
+    every derived new-account case.
+  - Harness hardening: the summary key list both ways; minted ids as JSON
+    object KEYS labelled; a twice-run case checks only its last `Restore
+    operation completed` line; the census is compared in the refusal arm.
+- **Census 79 → 81 in BOTH lists**, cross-checked against v4's `restore.ts`
+  at the pin by script: 81 messages = 51 warn / 7 info / 21 debug / 2 error,
+  with zero missing and zero extra.
+- **R-7 — the 22n-ter outer catch, MEASURED**:
+  - v4's `upsertRows` catch reads `row.id`, so a JSON `null` row throws out
+    of the loop.
+  - But v4's streaming `readJsonArrayFile` refuses a non-object/array
+    top-level element (`got "n"`, measured: the first null-row archive died
+    in the reader), and so does v5's `json_stream.rs`.
+  - So the catch is **unreachable from an archive on both sides**. It is
+    pinned NEGATIVE on all 66 restore cases by the census.
+  - **v5 home:** `restore_wardrobe_history_rows`' `Err` on a hand-built
+    `null` row (`outfit_history_restore_tests`: the prefix is written, the
+    rest is not, and v4's `TypeError` text). The recorded residual on that
+    unreachable path: the keystone's `Upserted …` DEBUG fires for the
+    prefix.
+- **Delete-data**:
+  - +1 case (`delete_data_clears_outfit_history`, an ORPHAN row planted with
+    FKs off so only the truncate list reaches it), 12 cases in all.
+  - Mutation: drop the list entry → `main.chat_wardrobe_history: rust 1 !=
+    oracle 0`.
+- **The export**:
+  - 64 → **68** cases: the 3-record chats export, a characters export (no
+    kind), the preview (no key), and the no-table export (per-chat WARN
+    `no such table: chat_wardrobe_history`, carries on).
+  - The two lines are compared on EVERY stream case.
+  - Red-first: the first run (v5 copy unplanted by mistake) showed `count=0`
+    vs `count=3` and no records.
+- **The import**:
+  - `system_import_equivalence` 33 → **35**. Mutation: drop the assembler
+    arm → the chats case is red.
+  - `system_import_state` 83 → **87**:
+    - `execute_outfit_history`: cross-instance; 5 written of 7 incoming;
+      `Dropped 1 malformed outfit-history row(s).`; the four columns
+      re-keyed; the not-carried character kept.
+    - `_twice`: run 2 writes 0, every timeline skipped.
+    - `_never_merge_hole`: R-9 (c), 6 rows written into LOCAL `c1…01` /
+      `c1…02`.
+    - `_no_table`: the 7f catch.
+  - Mutations: 7f off → `execute_outfit_history` red. Reconcile pass off →
+    10 carrier-line reds.
+  - **"What got wrong #2" re-measured:** the P4.D294 `remintBundle` cases
+    now carry `Remapped character-keyed chat fields … fields=
+    courierCheckpoints` on both sides, with identical state.
+- **`wardrobe_history_import_remap_equivalence`** (NEW tier 1, Tier 2 item
+  25 — landed because the state family reaches one malformed row):
+  - 56 rows covering the whole Zod matrix and the remap.
+  - **Measured: Zod 4.6.7's `.length(16)` counts CODE POINTS**
+    (`$ZodCheckLengthEquals` → `util.codePointLength`): 8 astral characters
+    FAIL. v5 counts `chars()`.
+  - Mutation: UTF-16 units → 2 astral rows red.
+- **R-10, MEASURED: unreachable on BOTH sides, not a divergence.**
+  - v4's `ChatMetadataSchema` makes all four columns `JsonSchema =
+    z.record`, so the chat create refuses a non-object column (`expected
+    record, received string`).
+  - A created chat's column is therefore always an object or null.
+  - `CARRIER_UNREACHABLE` is compared, and pinned never to fire in the
+    oracle.
+- **`import_warning_text_guard`**: +1 test (the three tails, verbatim).
+  `MAIN_OFFENDERS` did not move.
+- **Regressions, green from the pin:**
+  - `qtap_import_equivalence` (1 line);
+  - `chat_export_equivalence` (29 lines);
+  - `restore_vintage_state` (10 / 10: the replace / new-account runs carry
+    the key and `0/0`);
+  - `system_restore_guards_equivalence` (17 lines).
+- **R-5 guard:** `key_order.rs` asserts `template("wardrobe_history")
+  .is_none()`.
+
+### Derived archives (`harness/oracle/fixtures/derive-restore-archive-outfit-history.py`)
+
+| archive | md5 |
+|---|---|
+| `restore-archive-outfit-history.zip` | `e7bd9fd4b59d1ab8462ab7ec36bf6564` |
+| `restore-archive-outfit-history-skips.zip` | `6c986b0fef96d7f04be839f99ce8a2b7` |
+| `restore-archive-outfit-history-bad-slot.zip` | `97949bc11774ce1f22d400f01c3fca7d` |
+
+- The md5s are stable across reruns.
+- `restore-archive.zip` is md5-checked unchanged.
+- The order planned a `null`-row variant. It became `-bad-slot`, because the
+  reader refuses `null` (R-7, above).
+
+### v4 filing candidates (R-W)
+
+1. **R-9 (a):** the new-account history remap MINTS a phantom
+   `characterId` / `actorCharacterId` for a character the backup does not
+   carry, while bug 252's chat pass DROPS that character's entry
+   (`outfit_history_phantom_character`, `restore_outfit_history_new_account`).
+2. **R-9 (b):** a non-array slot value (or a `null` row) makes
+   `remapBackupData` THROW, so a new-account restore of a hand-edited archive
+   fails whole, while `replace` salvages it (`outfit_history_non_array_slot_
+   throws`, `restore_outfit_history_bad_slot_*`).
+3. **R-9 (c):** 7f's never-merge check guards only a NON-EMPTY local
+   timeline. A skipped-duplicate bundle chat's rows keep the SOURCE chat id
+   and are written into a LOCAL chat of that id whose timeline is empty
+   (`execute_outfit_history_never_merge_hole`).
+
+### Findings (out of slice — recorded, not fixed)
+
+- **v5's `.qtap` chat import accepts a non-record character-keyed column.**
+  For example, `pendingOutfitNotifications: "not json"` imports on v5, where
+  v4's `z.record` drops the whole chat with `Failed to import chat "…":
+  [ZodError … expected record, received string]`. Measured while authoring
+  `execute_outfit_history`; the plant was removed from the case.
+- **A pre-existing v4-oracle timing flake.** `system-import-execute`
+  occasionally adds an `EMBEDDING_REFIT` background job in
+  `execute_scenario_source_{local,dropped}` (2 of ~6 runs). Reruns are clean.
+
+### HANDOFF
+
+- **P4.D323:** `docs/v4/developer/bugs.md` and
+  `docs/v4/developer/bugs/fixed/bug-252-restored-outfit-keys-stale.md`
+  (`e8e17b2d9`).
+- **`docs/developer/API.md`:** the span carries only `8d8618819` /
+  `4ae20977f` / `1cfc9b504` hunks (the GET wire and the gallery). There is
+  no carrier text, so nothing is P4.D317's.
+- **P4.D315:** none needed. The `null`-row behaviour of `upsert_raw_rows` is
+  unreachable from an archive (R-7, above).
+
+### The gate
+
+On the lane tip, with `CARGO_INCREMENTAL=0`, and `QT_V4_CHECKOUT` /
+`QT_V4_ROOT` pointing at the pin.
+
+- **Lint:** `cargo fmt --all --check` was clean. `cargo clippy --workspace
+  --all-targets -D warnings` was clean in both feature sets (with
+  `apps/web/dist` built by `npm ci` + `npm run build`).
+- **`cargo test --workspace --no-fail-fast`:** 822 binaries, 5,372 passed,
+  1 failed, 3 ignored.
+  - The one failure is `public_schemas_vendor_guard`
+    (`qtap-custom-tool.schema.json`, 43,493 vs v4's 44,021). It is red by
+    design until P4.D319 lands (§R.3 / §R.13), and it is not this lane's
+    file.
+  - Every family of this lane ran with its env block (run times match real
+    runs: `system_restore_state` 11.2 s, `system_import_state` 11.3 s), and
+    each was green by name: `system_backup`, `backup_uuid_remap`,
+    `system_restore` + `_state`, `system_export`, `system_import` +
+    `_state`, `system_delete_data`, `qtap_schema_validate`,
+    `chat_keyed_fields`, `wardrobe_history_import_remap`,
+    `qtap_schema_embed_guard`, `import_warning_text_guard`,
+    `p4_9g6_seam_contract`, and the four regressions.
+- **The sweep driver:** `recipe_sweep.py --self-test` → 0 failures. Every
+  oracle of this lane was regenerated from the pin through a lane-private
+  jest mirror (`/tmp/p4d317/oracle.sh`), not the shared-path sweep, so no
+  sweep ran machine-wide.
+- **Not run:** the SPA, Playwright and Tier R. No `apps/web` source and no
+  CLI changed.
+
+### Versions at close
+
+core **0.0.1321** (from 0.0.1314 at `HISTORY`; +7). host 0.0.211, web
+0.0.242, cli, tauri and SPA are untouched; no web edge moved. Harness is
+frozen at 0.0.1110.
+
+### 💸 for the dogfood pass (no LLM spend)
+
+The order's three rows, all on a Friday copy taken after the keystone's
+ensures ran:
+
+- a full backup → `replace` restore keeping every timeline and cursor (the
+  `Restored outfit history total=N restored=N` DEBUG; a second restore does
+  not double rows);
+- a `.qtap` export / import of a chat with history (fresh ids; a second
+  import writes nothing);
+- a `new-account` restore with the four character-keyed columns re-keyed
+  (outfit, avatars, courier checkpoints).

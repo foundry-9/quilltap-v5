@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — docs(porting): P4.D317 lane record — LANE COMPLETE
+
+_Docs-only change._
+
+The outfit-history carriers + bug 252 lane closes on `claude/p4.d317-outfit-history-carriers-2ce484` (from `HISTORY` `df642c2d6`). The record in `status-log.md` holds the dead set and post-plant red set, every red-first count and mutation proof, R-7 and R-10 measured unreachable, the census at 81 in both lists, the derived archives' md5s, the new `corpusSha256`, three v4 filing candidates, two out-of-slice findings and the gate. The order's status header reads LANE COMPLETE.
+
 #### 2026-10-19 — docs(harness): record the outfit-history validator rows in `qtap_schema_validate_equivalence`'s header (P4.D317)
 
 _Harness-only change (`quilltap-harness` frozen); no crate version moves._
