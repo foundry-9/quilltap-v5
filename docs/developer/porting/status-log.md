@@ -190212,3 +190212,144 @@ regenerated (fixture-driven, tree-independent; they ran env-less in the
 workspace gate, as in P4.D313); `provisioning_equivalence` (1b) / (1c) — its
 oracle was not regenerated here, so P4.D315's by-design red was not
 exercised by this lane.
+
+## P4.D318 — the outfit-history SPA: the Wardrobe dialog's History tab, Wear again, the two tool rows (lane `claude/p4.d318-outfit-history-spa-b5d53f`, pin `e8e17b2d9`, 2026-10-19) — LANE RECORD
+
+**Branch / base.** The session opened in the app-made worktree `.claude/worktrees/interesting-jackson-b5d53f` on `claude/interesting-jackson-b5d53f` at the orders' commit `e8b0cea6c` with no commits of its own; it moved by `git switch -c claude/p4.d318-outfit-history-spa-b5d53f e8b0cea6c` (stage A, from `main`). Reached spacelessly through `~/source/quilltap-v5/.claude/worktrees/interesting-jackson-b5d53f` (the symlink); no sweep, so the spaced real path never mattered.
+
+**§2 probe (an OBSERVATION, §R.2).** v4 on `main`, tree clean; `log e8e17b2d9..main` = the six EXPECTED commits (`4fbdad186`, `e1872c94f`, `102a23648`, `1d0a31132`, `cad017599`, `a6292f169`); `log a6292f169..main` EMPTY; `log 489b228b6..bugfix` EMPTY; `release` = `2432b9057`. No seventh commit, no dirt. Pin `/tmp/qt-v4-pin-p4d318-e8e17b2d9`: HEAD `e8e17b2d92095bda008f03bb963eb4b1c470e680`, `package.json` `4.11.0-dev.26`, root `node_modules` by `npm ci --offline` (`openai` 7.34.0); the other two symlink classes linked. Used for reading and the ONE R-L measurement only (no harness family owned).
+
+### Tier 1 item 1 — R-L MEASURED in v4: CONFIRMED → RULED "fix in v5"
+
+Scratch test (never committed to v4; deleted with the pin) at `$PIN/components/wardrobe/__tests__/zz-p4d318-rl-measure.test.tsx`, run `cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx jest --runTestsByPath components/wardrobe/__tests__/zz-p4d318-rl-measure.test.tsx --testTimeout=180000 > /tmp/p4d318/rl-measure.log 2>&1` (rc 0, 2/2). v4's `jest.setup` silences `console`, so the recorder writes to `process.stderr`. Text:
+
+```tsx
+import { act, renderHook } from '@testing-library/react'
+import { createQueryWrapper } from '@/__tests__/helpers/renderWithQuery'
+import { useStagedLiveOutfits } from '@/components/wardrobe/hooks/useStagedLiveOutfits'
+import { makeEmptyEquippedSlots, type EquippedSlots } from '@/lib/schemas/wardrobe.types'
+import type { StagedGesture } from '@/lib/wardrobe/staged-live-outfits'
+
+const WORN: EquippedSlots = { ...makeEmptyEquippedSlots(), top: ['dress'] }
+const ROLLED_BACK: EquippedSlots = { ...makeEmptyEquippedSlots(), footwear: ['boots'] }
+const addScarf: StagedGesture = {
+  mutate: (prev) => ({ ...prev, accessories: [...prev.accessories, 'scarf'] }),
+  wornBundleIds: [],
+}
+function setup() {
+  const { wrapper } = createQueryWrapper()
+  return renderHook(
+    ({ wornSlots }: { wornSlots: EquippedSlots }) =>
+      useStagedLiveOutfits({ chatId: 'chat-1', characterId: 'char-1', wornSlots,
+        characterName: () => 'Bertie', requestConfirmation: async () => true }),
+    { wrapper, initialProps: { wornSlots: WORN } },
+  )
+}
+function rec(label: string, value: unknown) {
+  process.stderr.write(`RL ${label} = ${JSON.stringify(value)}\n`)
+}
+describe('P4.D318 R-L measurement — clean Wear again', () => {
+  it('order 1: snapshot then reseed', () => {
+    const { result, rerender } = setup()
+    rec('1a.isDirty', result.current.isDirty('char-1'))
+    rec('1a.displaySlots', result.current.displaySlots)
+    rerender({ wornSlots: ROLLED_BACK })
+    act(() => result.current.discard('char-1', { reseed: true }))
+    rec('1b.displaySlots', result.current.displaySlots)
+    rec('1b.isDirty', result.current.isDirty('char-1'))
+    act(() => result.current.apply(addScarf))
+    rec('1d.displaySlots', result.current.displaySlots)
+    rec('1d.isDirty', result.current.isDirty('char-1'))
+  })
+  it('order 2: reseed then snapshot', () => {
+    const { result, rerender } = setup()
+    rec('2a.isDirty', result.current.isDirty('char-1'))
+    act(() => result.current.discard('char-1', { reseed: true }))
+    rerender({ wornSlots: ROLLED_BACK })
+    rec('2c.displaySlots', result.current.displaySlots)
+    rec('2c.isDirty', result.current.isDirty('char-1'))
+    act(() => result.current.apply(addScarf))
+    rec('2d.displaySlots', result.current.displaySlots)
+    rec('2d.isDirty', result.current.isDirty('char-1'))
+  })
+})
+```
+
+The four states (WORN = `top:[dress]`, ROLLED_BACK = `footwear:[boots]`; the clean path — `wearAgain` skips confirm AND discard, the settle calls `discard(cid, { reseed: true })`):
+
+| state | order 1 (snapshot → reseed) | order 2 (reseed → snapshot) |
+|---|---|---|
+| (a) seeded: `isDirty` | `false` | `false` |
+| (b)/(c) after the rollback: `displaySlots` | `top:[dress]` — STALE | `top:[dress]` — STALE |
+| (b)/(c) `isDirty` | `false` | `false` |
+| (d) after `+scarf`: `displaySlots` | `top:[dress], accessories:[scarf]` | same |
+| (d) `isDirty` | `true` | `true` |
+
+**CONFIRMED** in both orders: after a clean *Wear again* v4's Live tab keeps the pre-rollback staging, and a later gesture + Done `set_all`s dress + scarf — UNDOING the rollback (the boots dropped). Lane STOPPED on the item and asked; **the human's ruling (2026-10-19, verbatim via the planning session): "fix it in v5 — wearAgain discards the staging unconditionally (confirm only when dirty), recorded as a divergence; I will file the v4 bug."** Landed as `5233dc3c1`: `wearAgain` confirms only when `hasStagedEdits`, then ALWAYS `await discardStagedEdits()` before the rollback. **RECORDED DIVERGENCE (R-L)** from v4 at `e8e17b2d9` (`outfit-history-tab.tsx:160-169` discards inside the confirm arm only); the v4 filing candidate (R-W) is the human's, this table its evidence. Red-first for the fix: 2 of 2 red (the dialog's re-pinned clean-path case `after a rollback the Live tab shows the restored outfit (R-L: RULED fix in v5 — a recorded divergence from v4)` + the new tab case `with nothing staged, Wear again still discards (unasked) before rolling back (R-L: ruled divergence)`), both green after.
+
+### Red-first (item 2), by file
+
+The Angular unit-test builder compiles EVERY spec in one bundle, so against unported `main` all six touched spec files were COMPILE-red together (18 `TS2339` / missing-export errors per run — `chatKeys.wardrobeHistory(ies)`, `fetchWardrobeHistory` / `postWardrobeRollback`, the missing `./outfit-history-tab` import). For RUNTIME counts the pure additions (contract types, keys, dispatch calls, the new tab) landed first and the two unported surfaces were run against them:
+- `tool-message.spec.ts`: **4 of 7** new rows red (`a successful wardrobe_rollback renders …`, `an empty-string title stays empty …`, `a rollback with only its first line still shows the notice …`, `the card's display names …`); the other 3 (`no restored_index → no notice`, `a failed wardrobe_rollback shows no notice`, `wardrobe_history shows no notice`) are NEGATIVE-arm guards, green before and after by nature — they pin that the port added nothing beyond v4's set.
+- `wardrobe-control-dialog.spec.ts`: **8 of 8** new cases red.
+- `outfit-history-tab.spec.ts` (14 cases incl. `staleCount`), `chat-keys.spec.ts` (+4 + 2 prefix rows), `realtime-topic-map.spec.ts` (+1), `wardrobe.api.spec.ts` (+2): compile-red (the import / property does not exist).
+- The R-L fix: 2 of 2 (above).
+
+### What landed (six commits, SPA 0.5.873 → 0.5.879)
+
+- `a47e3284e` — C4 §1's six types in `core-contract.ts` (fenced after `ChatEquipRequest`) + the two union rows (fenced after `| ChatEquipRequest`); `chatKeys.wardrobeHistories` / `wardrobeHistory` (fenced, R-1); `fetchWardrobeHistory` / `postWardrobeRollback` fenced after `dispatchWardrobe` (R-6; their type import in its own fenced line under the imports — `WardrobeLaneRequest` untouched).
+- `ae2e014e9` — NEW `wardrobe/outfit-history-tab.ts` (`qt-outfit-history-tab`), every string v4's byte for byte; `[attr.class]` on the badges; the `· ` + `changedBy` rendered as ONE interpolation (no whitespace-node drop); the spec's 12 cases + `staleCount`.
+- `4c592cebd` — the dialog: `RightTab` + `'history'`, v4's comment, the `History` button after *Outfit Builder* (`@if (isInChat)`), the body arm, `liveReseedTick` read at the top of the seeding effect, `isLiveDirty` (v4's predicate, inline — no `staged-live-outfits.ts` helper), `discardLive`, `historyConfirm` (a class field), `discardFor(cid)` (one cached closure per character). Dialog spec (8 cases incl. item 18) + race spec (2 rows, item 16).
+- `07191b56f` — `tool-message.ts` (R-7/R-T) + 7 spec rows.
+- `5233dc3c1` — the R-L ruled fix.
+- `d0d053603` — the two gated Playwright beats + the two flags.
+
+### What the order got wrong (measured)
+
+- **Item 5 / C4 §3's "keep the Live and Builder arms' conditions exactly as they are (both already exclude `'history'`)" is FALSE in v5.** v5's Live arm is `@if (rightTab() === 'live' && isInChat) {…} @else {<the Builder body>}` — the Builder COMPOSER is the `@else`; only the avatar pane sits in a separate `@if (rightTab() === 'builder')`. A History arm standing beside it left the Builder composer painted under the History tab (caught red by case (a): `expected <qt-outfit-composer> to be null`). Fixed by making History the HEAD of the same chain — `@if (history) {…} @else if (live) {…} @else {builder}` — which IS v4's ternary (`:537-546`).
+- `tool-message.ts`'s card shows `info().displayName` only on the EMBEDDED card (the un-embedded one is headed by the resolved author) — the display-name row renders `embedded: true`.
+
+### Choices recorded
+
+- **R-9:** the rollback is an awaited call + `rollbackPending = signal(false)`, not `injectMutation`. The flag spans the call AND the settled arm (the invalidate + the awaited `discardStagedEdits({ reseed: true })`), matching v4's `isPending`, which TanStack holds through an async `onSettled`. Pinned by case 11 (`every Wear again is disabled while a rollback is in flight`). Success OR error toast, THEN the settle (case 9 pins the settle on a refusal).
+- **R-5:** the tab invalidates `chatKeys.wardrobeHistories(chatId)` then awaits `discardStagedEdits({ reseed: true })`; the dialog's cached closure runs `void this.data.reload(); await this.outfit.refreshOutfit(); this.discardLive(cid, { reseed: true })`. Net order histories → lists + outfit → reseed.
+- **R-10:** `wearAgain` reads `chatId`, `characterId`, `characterName`, `hasStagedEdits`, `discardStagedEdits`, `requestConfirmation` into locals before the first await; the dialog's closure carries its character. Item 18's case pins it (Aria's rollback settles Aria while Zed is selected; Zed's staging untouched; Aria seeds from the RESTORED snapshot when reselected).
+- **`liveReseedTick` mutation proof (item 10 d):** deleting the effect's `this.liveReseedTick();` read turns EXACTLY `discard with reseed re-seeds at once when no new snapshot arrived` red (1 failed / 80 passed); restored.
+- **The `:868` (now `:897`) wear-target predicate** `!this.isInChat || this.rightTab() === 'builder'` is v4's `useFittingActions` (`:327`) verbatim; on the History tab a list Wear STAGES onto Live, as in v4.
+
+### Tier 2
+
+- **15** `equippedSlotsEqual`'s absent slot: UNREACHABLE from `isLiveDirty` — the baseline is `cloneSlots(wornSlots)` and the staging `rebaseStagedSlots` (also `cloneSlots`), and `cloneSlots` fills every slot with `?? []` (`slot-meta.ts:160-163`). No change.
+- **16** two race rows (`wardrobe-control-dialog.race.spec.ts`): the settle's re-read held → seeded once from RESTORED after release; the `chats` hint's re-read landing first → seeded once, the reseed a no-op.
+- **17** the all-untitled skipped toast (`… could not be put back on: id-a, id-b`) — a row in tab case 8.
+- **18** the character switch mid-rollback — landed (above).
+
+### Tier 3 (recorded)
+
+19 no `realtime-topic-map.ts` hunk (the item-7 assertion; R-H SPELLING divergence class); 20 dispatch errors carry no status — the tab shows the sentence (cases 9 / 12); 21 `wardrobe_history` shows no notice (a spec row); 22 R-L RULED fix (above); 23 no help sentence, no `HANDOFF:` to P4.D323; 24 no Rust / harness / Tier R; 25 `isCurrent` keys *Wearing now*, `currentIndex` unread (v4-faithful).
+
+### Recorded divergences
+
+- **R-L (RULED, 2026-10-19):** clean-path *Wear again* discards the Live staging (v4 does not — the table above).
+- **R-H spelling class:** `['chat', id, 'wardrobe-history'(, characterId)]` where v4 says `['wardrobe', 'history', id(, characterId)]`.
+- **R-2:** the confirm is `window.confirm` wrapped in a resolved Promise (the dialog's standing divergence).
+- **R-5:** `discardStagedEdits`' type widened to `=> void | Promise<void>` (the tab awaits; v4's tab calls it without awaiting).
+
+### HANDOFF: to the unifier (§S.9)
+
+Beat A's Aurora-announcement assertion is NOT written: the rendered Salon line cannot be measured on this branch (no rollback server). On the union, after flipping the flags, measure the line and pin a stable substring (or leave it to the 💸 row).
+
+### Gate
+
+- `npm run lint` 0; `npm run build` 0; touched specs (`outfit-history-tab`, `wardrobe-control-dialog`, `.race`, `staged-live-outfits`, `wardrobe.api`, `chat-keys`, `tool-message`, `realtime-topic-map`) green; **whole suite 522 files / 10,977 tests, 0 failed** on the final tree.
+- `CARGO_INCREMENTAL=0 cargo build --workspace` once, after `apps/web/dist` existed — **exit 0** (target cloned from main by `cp -cR`, 1 m 59 s; stale cloned `target/release/quilltap{,-web}` deleted first).
+- Playwright BY FILE, alone on the machine: `e2e/wardrobe-flow.spec.ts` flags `false` → **18 passed / 2 skipped** (the two new beats), 9.3 m; flags locally `true`, `-g "Wear again"` → both beats FAIL at the premise (the first entry never renders — the tab's error line reads `unknown variant \`chatWardrobeHistory\``), then restored to `false`.
+- No Rust, harness family, oracle corpus or fixture touched; nothing vendored (no `src/testing/fixtures/README.md` section — none owed).
+
+### 💸 for the dogfood pass
+
+The History tab on a real chat (the boot seed's `seeded` entry 0, operator / character / Pascal entries with their `changedBy` labels); *Wear again* (one commit, Aurora's announcement, the cursor moved with nothing appended, the avatar repaint — 💸 one image generation if avatar generation is on); *Wear again* with staged edits (the native confirm, the staging gone, Done flushing nothing); the ruled clean path (a Live gesture after a clean *Wear again*, then Done — the restored outfit SURVIVES); a stale-garment tooltip on an archived garment's entry; the `wardrobe_rollback` / `wardrobe_history` tool rows on a real turn (💸 one model call each — `Earlier Outfit` with `Returned to outfit N.`, `Outfit History` with no notice); the History tab refreshing under an open dialog when a tool call changes the outfit.
+
+### Versions at close
+
+SPA `0.5.879` (six bumps from `0.5.873`); no crate moved (core 0.0.1313, host 0.0.210, web 0.0.241, cli 0.0.34 — unchanged).

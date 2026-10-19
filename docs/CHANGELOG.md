@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — docs(porting): P4.D318 lane record — the outfit-history SPA, LANE COMPLETE
+
+_Docs-only change._
+
+The P4.D318 lane record (the §2 probe observation, the R-L measurement with its scratch test and four-state table, the human's "fix in v5" ruling, red-first counts by file, the reseed-tick mutation proof, the R-5 / R-9 / R-10 choices, the wear-target predicate measurement, the order's false Live/Builder-arm premise, Tier 2 / Tier 3, recorded divergences, the unifier HANDOFF for the Aurora line, the gate, the 💸 rows); the order's status header set to LANE COMPLETE.
+
 #### 2026-10-19 — test(e2e): the History tab's two gated wardrobe beats (P4.D318, ACTIVATE-AT-UNIFY P4.D315 / P4.D316)
 
 _Versions: SPA 0.5.879._
