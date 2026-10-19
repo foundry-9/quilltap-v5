@@ -194,3 +194,20 @@ describe('realtimeHintFromFrame (§B.5 discrimination + v4\'s safeParse)', () =>
     expect(Object.keys(hint!).sort()).toEqual(['at', 'id', 'topic', 'v']);
   });
 });
+
+// === P4.D321: the gallery's Wardrobe Pictures key (v4 `1cfc9b504`) ===
+describe('characterKeys.wardrobeImages reach (P4.D321, v4 topic-map.ts:96-104 unchanged)', () => {
+  const reaches = (topic: string, id: string | undefined, key: readonly unknown[]) =>
+    queryKeysForTopic(topic, id).some((prefix) =>
+      partialMatchKey(key as unknown[], prefix as unknown[]),
+    );
+
+  it('the UNSCOPED characters hint refetches the wardrobe pictures by prefix', () => {
+    expect(reaches('characters', undefined, characterKeys.wardrobeImages('c1'))).toBe(true);
+  });
+
+  it('a SCOPED characters hint does NOT — v4 adds no topic-map row for the key', () => {
+    expect(reaches('characters', 'c1', characterKeys.wardrobeImages('c1'))).toBe(false);
+  });
+});
+// === end P4.D321 ===

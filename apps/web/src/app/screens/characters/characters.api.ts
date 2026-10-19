@@ -28,6 +28,8 @@ import type {
   AvatarRollDeleteDto,
   AvatarRollEntry,
   AvatarRollsListDto,
+  WardrobeGalleryImageEntry,
+  WardrobeGalleryImagesDto,
 } from '../../core/core-contract';
 
 /**
@@ -79,6 +81,18 @@ export const characterKeys = {
    * mutations invalidate reaches both spellings identically.
    */
   avatarRolls: (id: string) => ['characters', 'avatar-rolls', id] as const,
+  /**
+   * Wardrobe pictures — "Generated pictures of every wardrobe item the
+   * character can reach." (v4 `queryKeys.characters.wardrobeImages`,
+   * `lib/query/keys.ts:39-40`, `1cfc9b504`). Segment ORDER follows this
+   * file's convention (`['characters', '<what>', id]`) rather than v4's
+   * `['characters', id, '<what>']` — the same recorded deviation as
+   * `avatarRolls` above; only the DISTINCTNESS is contractual. The
+   * `['characters']` prefix (the UNSCOPED `characters` hint) reaches it; the
+   * SCOPED hint does not, exactly as in v4, whose topic map gained no row for
+   * the key.
+   */
+  wardrobeImages: (id: string) => ['characters', 'wardrobe-images', id] as const,
 };
 
 export const tagKeys = {
@@ -243,6 +257,89 @@ export async function fetchAvatarRolls(
     entries: (data['entries'] as AvatarRollEntry[]) ?? [],
     total: (data['total'] as number) ?? 0,
     hasMore: (data['hasMore'] as boolean) ?? false,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Wardrobe pictures (P4.D321; v4 `hooks/useWardrobeImages.ts`, `1cfc9b504`)
+// ---------------------------------------------------------------------------
+
+/**
+ * One wardrobe picture as the shelf consumes it — v4's `WardrobeGalleryImage`
+ * (`embedded-gallery/types.ts:100-127`), which extends `GalleryImage`; the
+ * base fields are spelled out here as {@link AvatarRoll}'s are. `scope` is
+ * NOT carried: v4's client type omits it. `isCurrentItemImage`,
+ * `generationPrompt`, `generationModel` and `itemId` are carried and never
+ * rendered (v4 renders none of them at the pin).
+ */
+export interface WardrobeGalleryImage {
+  id: string;
+  filename: string;
+  /** The full-size picture URL (v4 `filepath: url`). */
+  filepath: string;
+  /** The THUMBNAIL — what the tile shows. */
+  url: string;
+  /** The full-size picture — the detail modal's and the download's. */
+  fullUrl: string;
+  mimeType: string | null;
+  size: number;
+  width?: number;
+  height?: number;
+  createdAt: string;
+  caption: null;
+  tags: string[];
+  itemId: string;
+  itemTitle: string;
+  locationLabel: string;
+  itemArchived: boolean;
+  isCurrentItemImage: boolean;
+  generationPrompt: string | null;
+  generationModel: string | null;
+}
+
+/**
+ * The wire row → the view row (v4 `toWardrobeGalleryImage`,
+ * `useWardrobeImages.ts:35-58`), field for field in v4's order. "The tile
+ * shows the thumbnail" — `url` is `thumbnailUrl`; `fullUrl` keeps the full
+ * size for the detail view and the download.
+ */
+export function toWardrobeGalleryImage(entry: WardrobeGalleryImageEntry): WardrobeGalleryImage {
+  return {
+    id: entry.fileId,
+    filename: entry.fileName,
+    filepath: entry.url,
+    url: entry.thumbnailUrl,
+    fullUrl: entry.url,
+    mimeType: entry.mimeType,
+    size: entry.fileSizeBytes,
+    width: entry.width ?? undefined,
+    height: entry.height ?? undefined,
+    createdAt: entry.createdAt,
+    caption: null,
+    tags: [],
+    itemId: entry.itemId,
+    itemTitle: entry.itemTitle,
+    locationLabel: entry.locationLabel,
+    itemArchived: entry.itemArchived,
+    isCurrentItemImage: entry.isCurrentItemImage,
+    generationPrompt: entry.generationPrompt,
+    generationModel: entry.generationModel,
+  };
+}
+
+/**
+ * v4 `useWardrobeImages`'s query fn — `GET …/wardrobe-images` (`:69-76`), no
+ * query parameters. v5 dispatches the verb; the body is the BARE `{ entries,
+ * total }`.
+ */
+export async function fetchWardrobeImages(
+  core: CoreClient,
+  characterId: string,
+): Promise<WardrobeGalleryImagesDto> {
+  const data = await core.dispatchData({ type: 'characterWardrobeImages', characterId });
+  return {
+    entries: (data['entries'] as WardrobeGalleryImageEntry[]) ?? [],
+    total: (data['total'] as number) ?? 0,
   };
 }
 

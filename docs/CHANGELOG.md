@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(gallery): the Wardrobe Pictures shelf in the character Photo Gallery tab (v4 1cfc9b504, P4.D321 SPA half)
+
+_Versions: SPA 0.5.874._
+
+The character view's Gallery tab gains a third collapsible section below Avatar Rolls, **Wardrobe Pictures**: absent when there is nothing to show (and on a failed read), collapsed by default, the count `…` / `1 picture` / `N pictures`, v4's description verbatim, and a grid of captioned plates (the item title with ` (archived)` over the tier label, tooltip `<title> — <tier>`). Each plate offers only Download (the full-size file under its original name); a click opens the shared image detail modal with Prev / Next and no generation prompt. New `characterKeys.wardrobeImages`, `fetchWardrobeImages`, `toWardrobeGalleryImage`, the fenced `core-contract.ts` types, v4's three `qt-gallery-caption*` CSS rules (byte-equal to v4), the transcribed component specs, two realtime-reach cases (the unscoped `characters` hint refetches the shelf; the scoped one does not, as in v4), and a LIVE Playwright walk (`character-wardrobe-pictures-flow.spec.ts`, port 4346).
+
 #### 2026-10-19 — feat(gallery): the character wardrobe-pictures read — GET /api/v1/characters/{id}/wardrobe-images (v4 1cfc9b504, P4.D321 server half)
 
 _Versions: core 0.0.1314, web 0.0.242._

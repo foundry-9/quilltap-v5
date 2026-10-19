@@ -36,6 +36,8 @@ function stubClient(options: {
   /** Avatar rolls for the mounted section (P4.D188); default: none. */
   rolls?: Record<string, unknown>[];
   rollActionReply?: Record<string, unknown>;
+  /** Wardrobe pictures for the mounted section (P4.D321); default: none. */
+  wardrobeImages?: Record<string, unknown>[];
   onRequest?: (req: SeenRequest) => void;
 }): Partial<CoreClient> {
   return {
@@ -50,6 +52,9 @@ function stubClient(options: {
       }
       if (req.type === 'characterAvatarRollAction') {
         return options.rollActionReply ?? {};
+      }
+      if (req.type === 'characterWardrobeImages' && options.wardrobeImages) {
+        return { entries: options.wardrobeImages, total: options.wardrobeImages.length };
       }
       if (req.type === 'characterGet') {
         return {
@@ -497,5 +502,60 @@ describe('CharacterGalleryTab (EmbeddedPhotoGallery parity)', () => {
     // `avatarChange` invalidates the shared detail query, so the character is
     // read again — v4 hands the section this tab's own `onAvatarChange`.
     expect(seen.filter((r) => r.type === 'characterGet').length).toBeGreaterThan(before);
+  });
+
+  // -------------------------------------------------------------------------
+  // The Wardrobe Pictures section (P4.D321) — v4 `EmbeddedPhotoGallery.tsx:187-192`
+  // -------------------------------------------------------------------------
+
+  it('mounts the Wardrobe Pictures section after Avatar Rolls', async () => {
+    const fixture = await render(
+      stubClient({
+        photos: [entry({ linkId: 'a' })],
+        wardrobeImages: [
+          {
+            fileId: 'wf1',
+            fileName: 'coat.webp',
+            url: '/api/v1/files/wf1',
+            thumbnailUrl: '/api/v1/files/wf1?action=thumbnail',
+            mimeType: 'image/webp',
+            fileSizeBytes: 10,
+            width: null,
+            height: null,
+            createdAt: '2026-10-17T00:00:00.000Z',
+            generationPrompt: null,
+            generationModel: null,
+            itemId: 'i1',
+            itemTitle: 'Velvet Coat',
+            scope: 'character',
+            locationLabel: 'Own wardrobe',
+            itemArchived: false,
+            isCurrentItemImage: true,
+          },
+        ],
+      }),
+    );
+    const host = fixture.nativeElement as HTMLElement;
+    const rolls = host.querySelector('qt-avatar-rolls-section')!;
+    const pictures = host.querySelector('qt-wardrobe-pictures-section');
+    expect(pictures).not.toBeNull();
+    expect(pictures!.textContent).toContain('Wardrobe Pictures');
+    // DOM order: the album grid, then Avatar Rolls, then Wardrobe Pictures —
+    // a sibling of the grid, not inside it.
+    const grid = host.querySelector('.grid')!;
+    expect(grid.compareDocumentPosition(rolls) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(rolls.compareDocumentPosition(pictures!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(grid.contains(pictures)).toBe(false);
+  });
+
+  it('hands the Wardrobe Pictures section the tab\'s name and thumbnail size', async () => {
+    const fixture = await render(stubClient({ photos: [entry({ linkId: 'a' })] }));
+    const section = fixture.debugElement.query((n) => n.name === 'qt-wardrobe-pictures-section');
+    expect(section).not.toBeNull();
+    expect(section.componentInstance.entityName()).toBe('Aria');
+    expect(section.componentInstance.thumbnailSize()).toBe(120);
+    expect(section.componentInstance.characterId()).toBe('c1');
+    // No pictures → the host mounts, its content does not.
+    expect((section.nativeElement as HTMLElement).textContent!.trim()).toBe('');
   });
 });

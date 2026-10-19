@@ -1500,6 +1500,60 @@ export interface CharacterAvatarRollDeleteRequest {
   fileId: string;
 }
 
+// === P4.D321: the gallery's Wardrobe Pictures (v4 `1cfc9b504`; C5) ===
+
+/**
+ * One wardrobe picture as the gallery's Wardrobe Pictures shelf reads it — v4
+ * `WardrobeGalleryImageEntry` (`lib/wardrobe/gallery-images.ts:33-54`), key
+ * order C5's (v4's literal at `:94-112`). Every GENERATED picture of every
+ * item the character can reach: own vault, group stores, Quilltap General —
+ * never a project tier.
+ *
+ * `scope`, `isCurrentItemImage`, `generationPrompt` and `generationModel` ride
+ * the wire and are NEVER rendered (v4's client renders none of them at the
+ * pin); `itemId` likewise. `mimeType` is never null in practice (a stored
+ * row always carries one) but the wire type keeps v4's `?? null`.
+ */
+export interface WardrobeGalleryImageEntry {
+  fileId: string;
+  fileName: string;
+  /** `/api/v1/files/<fileId>` — the full-size picture. */
+  url: string;
+  /** `/api/v1/files/<fileId>?action=thumbnail`. */
+  thumbnailUrl: string;
+  mimeType: string | null;
+  fileSizeBytes: number;
+  width: number | null;
+  height: number | null;
+  createdAt: string;
+  generationPrompt: string | null;
+  generationModel: string | null;
+  itemId: string;
+  itemTitle: string;
+  scope: 'character' | 'group' | 'general';
+  /** `Own wardrobe` | `Group · <name>` | `Shared · Quilltap General`. */
+  locationLabel: string;
+  itemArchived: boolean;
+  /** True when this is the item's chosen picture (`imageFileId`). */
+  isCurrentItemImage: boolean;
+}
+
+/**
+ * The `characterWardrobeImages` body — BARE, as {@link AvatarRollsListDto}
+ * is (v4's `successResponse` does not wrap in `data`). Newest first by
+ * `createdAt`.
+ */
+export interface WardrobeGalleryImagesDto {
+  entries: WardrobeGalleryImageEntry[];
+  total: number;
+}
+
+export interface CharacterWardrobeImagesRequest {
+  type: 'characterWardrobeImages';
+  characterId: string;
+}
+// === end P4.D321 ===
+
 /** Tags CRUD (v4 `/tags`). */
 export interface TagListRequest {
   type: 'tagList';
@@ -2749,6 +2803,9 @@ export type CoreRequest =
   | CharacterAvatarRollListRequest
   | CharacterAvatarRollActionRequest
   | CharacterAvatarRollDeleteRequest
+  // === P4.D321: the gallery's Wardrobe Pictures (C5) ===
+  | CharacterWardrobeImagesRequest
+  // === end P4.D321 ===
   | TagListRequest
   | TagCreateRequest
   | TagGetRequest

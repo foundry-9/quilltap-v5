@@ -27,6 +27,7 @@ import {
 } from '../../characters.api';
 import { ToastService } from '../../../../ui/toast.service';
 import { AvatarRollsSection } from './avatar-rolls-section';
+import { WardrobePicturesSection } from './wardrobe-pictures-section';
 
 /** v4 `EmbeddedPhotoGallery` THUMBNAIL_SIZES / DEFAULT_THUMBNAIL_INDEX (120px). */
 const THUMBNAIL_SIZES = [80, 100, 120, 150, 180, 200];
@@ -60,7 +61,7 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
 @Component({
   selector: 'qt-character-gallery-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, LoadingState, ImageDetailModal, AvatarRollsSection],
+  imports: [Icon, LoadingState, ImageDetailModal, AvatarRollsSection, WardrobePicturesSection],
   template: `
     <div class="space-y-4">
       <div class="flex items-center justify-between flex-wrap gap-2">
@@ -240,6 +241,17 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
       [entityName]="entityName()"
       [thumbnailSize]="thumbnailSize()"
       (avatarChange)="onRollAvatarChange()"
+      (refresh)="onRollRefresh()"
+    />
+
+    <!-- v4 EmbeddedPhotoGallery:187-192 — Wardrobe Pictures sits IMMEDIATELY
+         after Avatar Rolls and before the album's detail modal; a sibling of
+         the grid for the same mt-8 reason as the rolls section. v4 hands it
+         the same onRefresh. -->
+    <qt-wardrobe-pictures-section
+      [characterId]="characterId()"
+      [entityName]="entityName()"
+      [thumbnailSize]="thumbnailSize()"
       (refresh)="onRollRefresh()"
     />
 

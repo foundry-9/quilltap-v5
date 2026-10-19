@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { CoreClient } from '../../core/core-client';
-import type { AvatarRollEntry } from '../../core/core-contract';
+import type { AvatarRollEntry, WardrobeGalleryImageEntry } from '../../core/core-contract';
 import {
   archiveCharacter,
   avatarRollAction,
@@ -11,8 +11,10 @@ import {
   deleteAvatarRoll,
   fetchAvatarRolls,
   fetchCharacterList,
+  fetchWardrobeImages,
   rehydrateCharacter,
   toAvatarRoll,
+  toWardrobeGalleryImage,
 } from './characters.api';
 
 /** A `CoreClient` stub recording every dispatched request. */
@@ -243,5 +245,95 @@ describe('the three avatar-roll dispatch helpers', () => {
       fileId: 'f1',
     });
     expect(res.keptInAlbum).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Wardrobe pictures (P4.D321; v4 `useWardrobeImages.ts`, `1cfc9b504`)
+// ---------------------------------------------------------------------------
+
+/** C5's wire row, every key populated so a dropped rename is visible. */
+const WIRE_PICTURE: WardrobeGalleryImageEntry = {
+  fileId: 'file-9',
+  fileName: 'coat.webp',
+  url: '/api/v1/files/file-9',
+  thumbnailUrl: '/api/v1/files/file-9?action=thumbnail',
+  mimeType: 'image/webp',
+  fileSizeBytes: 2048,
+  width: null,
+  height: 768,
+  createdAt: '2026-10-17T00:00:00.000Z',
+  generationPrompt: 'a coat',
+  generationModel: 'gpt-image-1',
+  itemId: 'item-1',
+  itemTitle: 'Velvet Coat',
+  scope: 'group',
+  locationLabel: 'Group · The Guild',
+  itemArchived: true,
+  isCurrentItemImage: false,
+};
+
+describe('toWardrobeGalleryImage — the wire row → the view row (v4 `:35-58`)', () => {
+  it('maps every field in v4’s order: the tile shows the THUMBNAIL, fullUrl is full size', () => {
+    const view = toWardrobeGalleryImage(WIRE_PICTURE);
+    expect(view).toEqual({
+      id: 'file-9',
+      filename: 'coat.webp',
+      filepath: '/api/v1/files/file-9',
+      url: '/api/v1/files/file-9?action=thumbnail',
+      fullUrl: '/api/v1/files/file-9',
+      mimeType: 'image/webp',
+      size: 2048,
+      width: undefined,
+      height: 768,
+      createdAt: '2026-10-17T00:00:00.000Z',
+      caption: null,
+      tags: [],
+      itemId: 'item-1',
+      itemTitle: 'Velvet Coat',
+      locationLabel: 'Group · The Guild',
+      itemArchived: true,
+      isCurrentItemImage: false,
+      generationPrompt: 'a coat',
+      generationModel: 'gpt-image-1',
+    });
+    expect(Object.keys(view)).toEqual([
+      'id', 'filename', 'filepath', 'url', 'fullUrl', 'mimeType', 'size', 'width', 'height',
+      'createdAt', 'caption', 'tags', 'itemId', 'itemTitle', 'locationLabel', 'itemArchived',
+      'isCurrentItemImage', 'generationPrompt', 'generationModel',
+    ]);
+  });
+
+  it('does NOT carry `scope` into the view row (v4’s client type omits it)', () => {
+    expect('scope' in toWardrobeGalleryImage(WIRE_PICTURE)).toBe(false);
+  });
+});
+
+describe('characterKeys.wardrobeImages', () => {
+  it('is DISTINCT from the avatar-rolls and photos keys for the same character', () => {
+    expect(characterKeys.wardrobeImages('c1')).toEqual(['characters', 'wardrobe-images', 'c1']);
+    expect(JSON.stringify(characterKeys.wardrobeImages('c1'))).not.toEqual(
+      JSON.stringify(characterKeys.avatarRolls('c1')),
+    );
+    expect(JSON.stringify(characterKeys.wardrobeImages('c1'))).not.toEqual(
+      JSON.stringify(characterKeys.photos('c1')),
+    );
+  });
+});
+
+describe('fetchWardrobeImages', () => {
+  it('dispatches the verb with the character id and nothing else', async () => {
+    const { client, seen } = recorder({ entries: [WIRE_PICTURE], total: 1 });
+    const res = await fetchWardrobeImages(client as CoreClient, 'c1');
+    expect(seen[0]).toEqual({ type: 'characterWardrobeImages', characterId: 'c1' });
+    expect(res).toEqual({ entries: [WIRE_PICTURE], total: 1 });
+  });
+
+  it('defaults an empty body rather than throwing', async () => {
+    const { client } = recorder({});
+    expect(await fetchWardrobeImages(client as CoreClient, 'c1')).toEqual({
+      entries: [],
+      total: 0,
+    });
   });
 });
