@@ -1,4 +1,20 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+  untracked,
+} from '@angular/core';
+
+import { CoreClient } from '../../core/core-client';
+import type { CustomToolDestinations } from '../../core/core-contract';
 
 import {
   MAX_EFFECTS,
@@ -11,9 +27,29 @@ import {
   type DraftIssue,
   type DraftWardrobeGesture,
   type ToolDraft,
+  type WardrobeVantage,
 } from '../../pascal/tool-draft';
 import { Icon } from '../../ui/icon';
-import { WardrobeFields } from './wardrobe-fields';
+import {
+  WardrobeReferencePicker,
+  type WardrobeReferenceForm,
+} from '../../wardrobe/wardrobe-reference-picker';
+import { WardrobeVantageItemsLoader } from '../../wardrobe/wardrobe-vantage-items';
+import { WardrobeFields, slotIsCoupled } from './wardrobe-fields';
+import {
+  WardrobeVantageSelect,
+  encodeWardrobeVantage,
+  wardrobeVantageName,
+} from './wardrobe-vantage-select';
+
+/** Which item row the picker is filling, and the item it currently names. */
+interface PickTarget {
+  effectId: string;
+  index: number;
+  highlightId: string | null;
+}
+
+const NO_VANTAGE: WardrobeVantage = { kind: 'none' };
 
 /**
  * SideEffectsSection — the Workbench's "Side effects" card, between the
@@ -33,6 +69,19 @@ import { WardrobeFields } from './wardrobe-fields';
  * metadata, the oracle) is carried verbatim behind a read-only badge — the
  * `$state`-default precedent: the builder round-trips what it cannot author.
  * Everything else arrives as issues from `validateDraft` and renders inline.
+ *
+ * A wardrobe row's item references are read through a VANTAGE — whose
+ * wardrobe the author is browsing (editor state, never saved; v4
+ * `5cb0e0190`). Each reference resolves by the one rule (`resolveWearableRef`)
+ * against that pool and renders as a chip with the garment's picture, slots,
+ * origin and reach; a templated reference keeps its text box; an unresolved one
+ * keeps its text box under an advisory, never an error — the lens is partial and
+ * the applier fail-soft. The *Choose…* picker fills a reference by title (or by
+ * id, on request). Nothing is read until a wardrobe row exists.
+ *
+ * v4 offers the vantage select when an `onVantageChange` prop is bound; an
+ * Angular output cannot be asked whether anyone listens, so the host says so
+ * through `showVantage` (the editor sets it; P4.D320 item 11).
  */
 
 /** The hint's `{{…}}` would close an Angular interpolation early — hence a constant. */
@@ -71,7 +120,7 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
 @Component({
   selector: 'qt-side-effects-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, WardrobeFields],
+  imports: [Icon, WardrobeFields, WardrobeReferencePicker, WardrobeVantageSelect],
   template: `
     <section class="qt-card p-4 space-y-3">
       <div class="flex items-center justify-between">
@@ -88,6 +137,16 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
         </button>
       </div>
 
+      @if (hasWardrobe() && showVantage()) {
+        <qt-wardrobe-vantage-select
+          [vantage]="vantage()"
+          (vantageChange)="vantageChange.emit($event)"
+          [destinations]="destinations()"
+          [homeProjectName]="homeProjectName()"
+          [disabled]="disabled()"
+        />
+      }
+
       @if (effects().length === 0) {
         <p class="text-xs qt-text-secondary">
           None declared. An effect lets a roll record its consequences &mdash; tick a counter in the
@@ -98,7 +157,7 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
       }
 
       @for (effect of effects(); track effect.id) {
-        <div class="qt-card p-3 space-y-2">
+        <div class="qt-card p-3 space-y-2" [attr.data-effect-id]="effect.id">
           <div class="flex items-center gap-2 flex-wrap text-sm">
             <label class="flex items-center gap-2">
               Kind
@@ -153,6 +212,12 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
             [hasErrors]="effectErrors(effect.id).length > 0"
             [disabled]="disabled()"
             (gestureChange)="onGestureChange(effect.id, $event)"
+            [pool]="loader.items()"
+            [poolFetched]="loader.fetched()"
+            [vantage]="vantage()"
+            [vantageName]="vantageName()"
+            [characterName]="characterName()"
+            (choose)="onChoose(effect.id, $event)"
           />
           } @else {
           <div class="flex items-center gap-2 flex-wrap text-sm">
@@ -259,6 +324,29 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
       <p class="qt-hint">
         {{ EFFECTS_HINT }} <code class="font-mono">'broken pick'</code>{{ EFFECTS_HINT_TAIL }}
       </p>
+
+      <qt-wardrobe-reference-picker
+        [open]="pickerOpen()"
+        (closed)="onPickerClosed()"
+        [vantage]="vantage()"
+        [characterName]="characterName()"
+        [action]="pickerAction()"
+        [slot]="pickerSlot()"
+        [highlightId]="picking()?.highlightId ?? null"
+        [reference]="referenceForm()"
+        (referenceChange)="referenceForm.set($event)"
+        (picked)="onPicked($event.item, $event.reference)"
+      >
+        @if (showVantage()) {
+          <qt-wardrobe-vantage-select
+            qtPickerHeader
+            [vantage]="vantage()"
+            (vantageChange)="vantageChange.emit($event)"
+            [destinations]="destinations()"
+            [homeProjectName]="homeProjectName()"
+          />
+        }
+      </qt-wardrobe-reference-picker>
     </section>
   `,
 })
@@ -266,8 +354,110 @@ export class SideEffectsSection {
   readonly draft = input.required<ToolDraft>();
   readonly issues = input.required<DraftIssue[]>();
   readonly disabled = input(false);
+  /** Whose wardrobe the item references are read against. Default: none. */
+  readonly vantage = input<WardrobeVantage>(NO_VANTAGE);
+  /** Offer the vantage select (v4: an `onVantageChange` listener is bound). */
+  readonly showVantage = input(false);
+  /** The destinations payload — names for characters, projects and groups. */
+  readonly destinations = input<CustomToolDestinations | undefined>(undefined);
+  /** The project whose store holds this file, if any (named in the vantage hint). */
+  readonly homeProjectName = input<string | null>(null);
 
   readonly draftChange = output<ToolDraft>();
+  readonly vantageChange = output<WardrobeVantage>();
+
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
+  protected readonly loader = new WardrobeVantageItemsLoader(inject(CoreClient));
+
+  protected readonly hasWardrobe = computed(() =>
+    this.draft().effects.some((effect) => effect.kind === 'wardrobe'),
+  );
+  protected readonly vantageName = computed(() =>
+    wardrobeVantageName(this.vantage(), this.destinations()),
+  );
+  protected readonly characterName = computed(() =>
+    this.vantage().kind === 'character' ? this.vantageName() : null,
+  );
+  /** The picker's title / id switch — lasts the editor session. */
+  protected readonly referenceForm = signal<WardrobeReferenceForm>('title');
+  protected readonly picking = signal<PickTarget | null>(null);
+  private readonly pickingEffect = computed(() => {
+    const picking = this.picking();
+    return picking ? this.draft().effects.find((effect) => effect.id === picking.effectId) : undefined;
+  });
+  protected readonly pickerOpen = computed(
+    () => this.picking() !== null && this.pickingEffect()?.kind === 'wardrobe',
+  );
+  protected readonly pickerAction = computed(() => {
+    const action = this.pickingEffect()?.wardrobe.action;
+    return action === 'take_off' ? 'take_off' : action === 'wear' ? 'wear' : undefined;
+  });
+  protected readonly pickerSlot = computed(() => {
+    const effect = this.pickingEffect();
+    return effect && slotIsCoupled(effect.wardrobe) ? effect.wardrobe.slot || null : null;
+  });
+
+  /** The element that opened the picker, so focus can go home on close. */
+  private opener: HTMLElement | null = null;
+
+  /** Read nothing until a wardrobe row exists — keyed so a draft edit re-reads nothing. */
+  private readonly loadKey = computed(() =>
+    this.hasWardrobe() ? encodeWardrobeVantage(this.vantage()) : null,
+  );
+
+  constructor() {
+    effect(() => {
+      this.loadKey();
+      const vantage = this.hasWardrobe() ? this.vantage() : null;
+      untracked(() => void this.loader.load(vantage));
+    });
+  }
+
+  protected onChoose(effectId: string, target: { index: number; highlightId: string | null }): void {
+    this.opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    this.picking.set({ effectId, index: target.index, highlightId: target.highlightId });
+  }
+
+  protected onPicked(
+    item: { id: string; title: string },
+    reference: WardrobeReferenceForm,
+  ): void {
+    const picking = this.picking();
+    const effect = this.pickingEffect();
+    if (!picking || !effect) return;
+    const gesture = effect.wardrobe;
+    const items = gesture.items.length > 0 ? gesture.items : [''];
+    const value = reference === 'id' ? item.id : item.title;
+    this.updateEffect(effect.id, {
+      wardrobe: { ...gesture, items: items.map((ref, i) => (i === picking.index ? value : ref)) },
+    });
+  }
+
+  /**
+   * Close the picker and send focus home — to the control that opened it or,
+   * when a pick turned that row into a chip, to the row's chip.
+   */
+  protected onPickerClosed(): void {
+    const picking = this.picking();
+    const opener = this.opener;
+    this.picking.set(null);
+    this.opener = null;
+    afterNextRender(
+      () => {
+        if (opener?.isConnected) {
+          opener.focus();
+          return;
+        }
+        if (!picking) return;
+        const chip = this.host.nativeElement.querySelector<HTMLElement>(
+          `[data-effect-id="${picking.effectId}"] [data-testid="wardrobe-reference-chip"][aria-label^="Item ${picking.index + 1}: "]`,
+        );
+        chip?.focus();
+      },
+      { injector: this.injector },
+    );
+  }
 
   protected readonly MAX_EFFECTS = MAX_EFFECTS;
   protected readonly MAX_EFFECT_TARGET_LENGTH = MAX_EFFECT_TARGET_LENGTH;

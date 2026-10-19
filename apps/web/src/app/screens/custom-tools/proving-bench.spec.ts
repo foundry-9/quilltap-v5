@@ -145,7 +145,7 @@ describe('ProvingBench (v4 ProvingBench.tsx)', () => {
       validDraft(),
       stubClient({ onDispatch: (r) => seen.push(r), preview: previewResult() }),
     );
-    fixture.componentInstance.sheet.set({ mode: 'character', characterId: 'char-1' });
+    fixture.componentRef.setInput('vantage', { kind: 'character', characterId: 'char-1' });
     await fixture.componentInstance.roll();
 
     const req = seen.find((r) => r.type === 'customToolPreview');
@@ -160,7 +160,7 @@ describe('ProvingBench (v4 ProvingBench.tsx)', () => {
       validDraft(),
       stubClient({ onDispatch: (r) => seen.push(r), preview: previewResult() }),
     );
-    fixture.componentInstance.sheet.set({ mode: 'character', characterId: '' });
+    fixture.componentInstance.sheet.set({ mode: 'character' });
     await fixture.componentInstance.roll();
 
     expect(seen.find((r) => r.type === 'customToolPreview')?.['metadata']).toBeUndefined();
@@ -538,7 +538,7 @@ describe('ProvingBench (v4 ProvingBench.tsx)', () => {
     const fixture = await render(gatedDraft(), stubClient({ preview: previewResult() }));
     const bench = fixture.componentInstance;
 
-    bench.sheet.set({ mode: 'character', characterId: 'char1' });
+    fixture.componentRef.setInput('vantage', { kind: 'character', characterId: 'char1' });
     fixture.detectChanges();
     expect(bench.gateVerdict()).toBeNull();
     expect(text(fixture)).toContain(
@@ -554,7 +554,7 @@ describe('ProvingBench (v4 ProvingBench.tsx)', () => {
       }),
     );
     const bench = fixture.componentInstance;
-    bench.sheet.set({ mode: 'character', characterId: 'char1' });
+    fixture.componentRef.setInput('vantage', { kind: 'character', characterId: 'char1' });
 
     await bench.roll();
     fixture.detectChanges();
@@ -731,6 +731,241 @@ describe('the bench\u2019s wardrobe gestures (v4 f0db8cbb8)', () => {
     expect(lines).toContain('\u00b7 effect 3 skipped: every item reference rendered empty');
     // A gesture never reads as a write.
     expect(lines.filter((l) => l?.includes('(would write)'))).toHaveLength(1);
+  });
+});
+
+/**
+ * The wardrobe lens on the bench (v4 `5cb0e0190`, `ProvingBench.tsx`): with a
+ * character in the chair each gesture's items say "would apply" or "would
+ * skip" over C3 §1's `wardrobeResolution` (stubbed here with C3's bytes — the
+ * server lane lands it), and without one the bench still "would attempt".
+ */
+describe('the bench\u2019s wardrobe lens (v4 5cb0e0190)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const SUNDRESS = {
+    ref: 'Sundress',
+    found: {
+      id: 'dress',
+      title: 'Sundress',
+      types: ['top', 'bottom'],
+      origin: { scope: 'general', id: null, name: 'Quilltap General' },
+      imageFileId: null,
+    },
+  };
+  const OWN_SHIRT = {
+    ref: 'linen shirt',
+    found: {
+      id: 'shirt',
+      title: 'Linen Shirt',
+      types: ['top'],
+      origin: { scope: 'character', id: 'char-imogen', name: 'Imogen' },
+      imageFileId: null,
+    },
+  };
+  const MISSING = {
+    ref: 'Cloak of Nite',
+    found: null,
+    reason: 'not_found',
+    message: 'Wardrobe item not found with title "Cloak of Nite"',
+  };
+  const ARCHIVED = {
+    ref: 'Old Coat',
+    found: null,
+    reason: 'archived',
+    message: 'Item "Old Coat" is archived and cannot be worn',
+  };
+  const WRONG_SLOT = {
+    ref: 'Sundress',
+    found: null,
+    reason: 'slot',
+    message: 'Item "Sundress" (types: top, bottom) cannot be added to the "footwear" slot',
+  };
+
+  async function rollWith(
+    effects: unknown[],
+    wardrobeResolution: unknown[] | undefined,
+    seat = true,
+  ): Promise<{ lines: (string | undefined)[]; seen: Req[] }> {
+    const seen: Req[] = [];
+    const fixture = await render(
+      validDraft(),
+      stubClient({
+        onDispatch: (r) => seen.push(r),
+        preview: previewResult({ effects, ...(wardrobeResolution ? { wardrobeResolution } : {}) }),
+        destinations: { characters: [{ characterId: 'char-imogen', characterName: 'Imogen' }] },
+      }),
+    );
+    if (seat) {
+      fixture.componentRef.setInput('vantage', { kind: 'character', characterId: 'char-imogen' });
+      fixture.detectChanges();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    await fixture.componentInstance.roll();
+    fixture.detectChanges();
+    const lines = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.font-mono p'),
+    ).map((p) => p.textContent?.replace(/\s+/g, ' ').trim());
+    return { lines, seen };
+  }
+
+  // The detail is `formatSlotLabels` + `wardrobeOriginLabel` (v4 `:781-823`),
+  // so a General item reads "Shared · Quilltap General" — the order's prose
+  // ("Top, Bottom · Quilltap General") dropped the label's prefix; the code
+  // is what ports.
+  it('prints a found item with its slots and origin, "would apply"', async () => {
+    const { lines } = await rollWith(
+      [{ index: 0, wardrobe: { action: 'wear', items: ['Sundress'] } }],
+      [{ index: 0, items: [SUNDRESS] }],
+    );
+    expect(lines).toContain('\u2192 wardrobe: wear Sundress (Top, Bottom \u00b7 Shared \u00b7 Quilltap General) (would apply)');
+  });
+
+  it('prints an own item with its slots alone — an own garment has no origin label', async () => {
+    const { lines } = await rollWith(
+      [{ index: 0, wardrobe: { action: 'take_off', items: ['linen shirt'], slot: 'top' } }],
+      [{ index: 0, items: [OWN_SHIRT] }],
+    );
+    expect(lines).toContain('\u2192 wardrobe: take off Linen Shirt (Top) from top (would apply)');
+  });
+
+  it('names the chair in a not-found skip', async () => {
+    const { lines } = await rollWith(
+      [{ index: 0, wardrobe: { action: 'wear', items: ['Cloak of Nite'] } }],
+      [{ index: 0, items: [MISSING] }],
+    );
+    expect(lines).toContain(
+      '\u2192 wardrobe: wear \u201cCloak of Nite\u201d \u2014 not in Imogen\u2019s reach (would skip)',
+    );
+  });
+
+  it('says "the chair\u2019s reach" when the roll knew no chair name', () => {
+    const lines = bench.benchWardrobeLines(
+      { action: 'wear', items: ['Cloak of Nite'] },
+      { index: 0, items: [MISSING] as never },
+      null,
+    );
+    expect(lines).toEqual([
+      { kind: 'skip', text: 'wear \u201cCloak of Nite\u201d \u2014 not in the chair\u2019s reach' },
+    ]);
+  });
+
+  it('prints the server\u2019s archived and slot sentences verbatim', async () => {
+    const { lines } = await rollWith(
+      [{ index: 0, wardrobe: { action: 'wear', items: ['Old Coat', 'Sundress'], mode: 'add_to_slot', slot: 'footwear' } }],
+      [{ index: 0, items: [ARCHIVED, WRONG_SLOT] }],
+    );
+    expect(lines).toContain(
+      '\u2192 wardrobe: wear \u201cOld Coat\u201d (add to slot footwear) \u2014 Item "Old Coat" is archived and cannot be worn (would skip)',
+    );
+    expect(lines).toContain(
+      '\u2192 wardrobe: wear \u201cSundress\u201d (add to slot footwear) \u2014 Item "Sundress" (types: top, bottom) cannot be added to the "footwear" slot (would skip)',
+    );
+  });
+
+  it('keeps a clear_slot beside a wear on its own index', async () => {
+    const { lines } = await rollWith(
+      [
+        { index: 0, wardrobe: { action: 'clear_slot', items: [], slot: 'hair' } },
+        { index: 1, wardrobe: { action: 'wear', items: ['Sundress'] } },
+      ],
+      [{ index: 1, items: [SUNDRESS] }],
+    );
+    expect(lines).toContain('\u2192 wardrobe: clear hair (would attempt)');
+    expect(lines).toContain('\u2192 wardrobe: wear Sundress (Top, Bottom \u00b7 Shared \u00b7 Quilltap General) (would apply)');
+  });
+
+  it('still "would attempt" when the roll carries no resolution', async () => {
+    const { lines } = await rollWith(
+      [{ index: 0, wardrobe: { action: 'wear', items: ['Sundress'] } }],
+      undefined,
+      false,
+    );
+    expect(lines).toContain('\u2192 wardrobe: wear \u201cSundress\u201d (would attempt)');
+  });
+
+  it('seats the vantage\u2019s character and sends it as the sheet', async () => {
+    const { seen } = await rollWith([], undefined);
+    const req = seen.find((r) => r.type === 'customToolPreview');
+    expect(req?.['metadata']).toEqual({ characterId: 'char-imogen' });
+  });
+
+  it('opens on character mode when the editor seats a chair, and writes the vantage from its select', async () => {
+    const fixture = await render(
+      validDraft(),
+      stubClient({
+        destinations: { characters: [{ characterId: 'char-imogen', characterName: 'Imogen' }] },
+      }),
+    );
+    const changes: unknown[] = [];
+    fixture.componentInstance.vantageChange.subscribe((v) => changes.push(v));
+    fixture.componentRef.setInput('vantage', { kind: 'character', characterId: 'char-imogen' });
+    fixture.detectChanges();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.sheet()).toEqual({ mode: 'character' });
+    const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+      'select[aria-label="Character whose fact sheet to use"]',
+    )!;
+    expect(select.options[0].textContent).toBe('\u2014 nobody in particular \u2014');
+    expect(select.value).toBe('char-imogen');
+    // The fact-sheet textarea is gone in character mode (v4 :116).
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('textarea[aria-label^="Hand-typed fact sheet"]'),
+    ).toBeNull();
+
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
+    expect(changes).toEqual([{ kind: 'none' }]);
+  });
+
+  it('leaves a shared vantage alone when nobody in particular is chosen', async () => {
+    const fixture = await render(validDraft(), stubClient());
+    const changes: unknown[] = [];
+    fixture.componentInstance.vantageChange.subscribe((v) => changes.push(v));
+    fixture.componentRef.setInput('vantage', { kind: 'container', container: { scope: 'general', id: null } });
+    fixture.componentInstance.sheet.set({ mode: 'character' });
+    fixture.detectChanges();
+    const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+      'select[aria-label="Character whose fact sheet to use"]',
+    )!;
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
+    expect(changes).toEqual([]);
+  });
+
+  it('restores the hand-typed sheet with {} (v4 :180)', async () => {
+    const fixture = await render(validDraft(), stubClient());
+    fixture.componentRef.setInput('vantage', { kind: 'character', characterId: 'c' });
+    fixture.detectChanges();
+    const handTyped = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('button[role="radio"]'),
+    ).find((b) => b.textContent?.trim() === 'Hand-typed sheet')!;
+    handTyped.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.sheet()).toEqual({ mode: 'manual', text: '{}' });
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLTextAreaElement>(
+        'textarea[aria-label^="Hand-typed fact sheet"]',
+      )!.value,
+    ).toBe('{}');
+  });
+
+  it('holds its own vantage when the editor binds none', async () => {
+    const fixture = await render(
+      validDraft(),
+      stubClient({ destinations: { characters: [{ characterId: 'c1', characterName: 'Aria' }] } }),
+    );
+    fixture.componentInstance.sheet.set({ mode: 'character' });
+    fixture.detectChanges();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+      'select[aria-label="Character whose fact sheet to use"]',
+    )!;
+    select.value = 'c1';
+    select.dispatchEvent(new Event('change'));
+    expect(fixture.componentInstance.chairCharacterId()).toBe('c1');
   });
 });
 

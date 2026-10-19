@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(pascal-spa): the Workbench wardrobe lens — reference chips, the unresolved advisory, uncovered-slot flags, the picker in the Side-effects card, the bench's would apply / would skip, and the editor's latched vantage (P4.D320)
+
+_Versions: SPA 0.5.877._
+
+The `5cb0e0190` Workbench wiring (P4.D320). The Side-effects card shows the whose-wardrobe select once a wardrobe row exists and reads that vantage's wardrobe (nothing before); each item reference resolves through `resolveWearableRef` into a chip (thumbnail, `· outfit`, slot badges, origin, reach, `archived`, the `by title` / `by id` toggle with the reference hint), a templated reference keeps its text box under "chosen at run time", an unresolved one gets a `not in …` badge that is never a draft error, and `Choose…` (or the chip) opens the reference picker, which fills the row by title or id and returns focus home. Slots the chosen items do not cover read ` (not covered)` with a `⚠ “…” covers … — not …` line. The Proving Bench's character mode now reads and writes the shared vantage (the fact sheet seats a character chosen anywhere, latched on the id), and a roll that carries the server's `wardrobeResolution` prints each wardrobe item as `(would apply)` with its slots and origin or `(would skip)` with `not in <chair>’s reach` / the server's sentence; without one it still `(would attempt)`. The editor seeds the vantage from the file's store (a character vault beats group, project and General), follows the file after Save As…, stops following once chosen by hand, names the home project under a character vantage, and never writes the vantage into the file.
+
 #### 2026-10-19 — feat(pascal-spa): the wardrobe reference picker, its vantage loader and the whose-wardrobe select (P4.D320)
 
 _Versions: SPA 0.5.876._

@@ -1,12 +1,24 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { CoreClient } from '../../core/core-client';
+import type { CustomToolDestinations } from '../../core/core-contract';
 import {
+  GENERAL_ITEMS,
+  IMOGEN,
+  OWN_ITEMS,
+  wardrobeDispatchStub,
+  type WardrobeStubState,
+} from '../../wardrobe/__fixtures__/wardrobe-reference-pool';
+import {
+  draftFromDefinition,
   emptyDraftWardrobeGesture,
   newDraft,
+  serializeDraft,
   validateDraft,
   type DraftEffect,
   type ToolDraft,
+  type WardrobeVantage,
 } from '../../pascal/tool-draft';
 import { SideEffectsSection, whenChoiceOf } from './side-effects-section';
 
@@ -292,3 +304,281 @@ describe('SideEffectsSection — the Kind select and wardrobe rows (v4 f0db8cbb8
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// The wardrobe lens (v4 `5cb0e0190`)
+// ---------------------------------------------------------------------------
+
+const lensDestinations: CustomToolDestinations = {
+  general: { mountPointId: 'mp-general', mountName: 'General', existingToolNames: [] },
+  characters: [
+    {
+      characterId: IMOGEN,
+      characterName: 'Imogen',
+      mountPointId: 'mp-imogen',
+      mountName: 'Imogen',
+      existingToolNames: [],
+    },
+  ],
+  groups: [],
+  projects: [],
+  other: [],
+};
+const CHARACTER: WardrobeVantage = { kind: 'character', characterId: IMOGEN };
+
+function wardrobeDraft(wardrobeGesture: Record<string, unknown>): ToolDraft {
+  const draft = draftFromDefinition({
+    name: 'dresser',
+    description: 'x',
+    parameters: { garment: { type: 'string', default: 'Boots' } },
+    outcomes: [{ when: true, message: 'done', state: 'info' }],
+    effects: [{ wardrobe: wardrobeGesture }],
+  });
+  if (!draft) throw new Error('fixture failed to load');
+  return draft;
+}
+
+let lensState: WardrobeStubState;
+
+async function renderLens(
+  draft: ToolDraft,
+  vantage: WardrobeVantage = CHARACTER,
+): Promise<{ fixture: ComponentFixture<SideEffectsSection>; changes: ToolDraft[] }> {
+  TestBed.resetTestingModule();
+  TestBed.configureTestingModule({
+    imports: [SideEffectsSection],
+    providers: [{ provide: CoreClient, useValue: wardrobeDispatchStub(lensState) }],
+  });
+  const fixture = TestBed.createComponent(SideEffectsSection);
+  fixture.componentRef.setInput('draft', draft);
+  fixture.componentRef.setInput('issues', validateDraft(draft));
+  fixture.componentRef.setInput('vantage', vantage);
+  fixture.componentRef.setInput('showVantage', true);
+  fixture.componentRef.setInput('destinations', lensDestinations);
+  const changes: ToolDraft[] = [];
+  fixture.componentInstance.draftChange.subscribe((d: ToolDraft) => changes.push(d));
+  fixture.detectChanges();
+  await settleLens(fixture);
+  return { fixture, changes };
+}
+
+async function settleLens(fixture: ComponentFixture<unknown>): Promise<void> {
+  for (let i = 0; i < 4; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+  }
+}
+
+const q = (f: ComponentFixture<unknown>, sel: string) =>
+  (f.nativeElement as HTMLElement).querySelector<HTMLElement>(sel);
+const chip = (f: ComponentFixture<unknown>) => q(f, '[data-testid="wardrobe-reference-chip"]');
+
+/** v4 `wardrobe-reference-picker.test.tsx:203-280`, transcribed name for name. */
+describe('SideEffectsSection — wardrobe references', () => {
+  afterEach(() => TestBed.resetTestingModule());
+  const fresh = () => {
+    lensState = { own: OWN_ITEMS, general: GENERAL_ITEMS, calls: [] };
+  };
+
+  it('renders a resolved reference as a chip with its slots and origin', async () => {
+    fresh();
+    const { fixture } = await renderLens(wardrobeDraft({ action: 'wear', items: ['riding boots'] }));
+    const c = chip(fixture)!;
+    expect(c.textContent).toContain('Riding Boots');
+    expect(c.textContent).toContain('Footwear');
+    expect(c.textContent).toContain('Shared · Quilltap General');
+    expect(c.textContent).toContain('everyone');
+    expect(text(fixture)).toContain('Browsing Imogen’s wardrobe');
+  });
+
+  it('names a character-owned garment as theirs', async () => {
+    fresh();
+    const { fixture } = await renderLens(wardrobeDraft({ action: 'wear', items: ['Linen Shirt'] }));
+    const c = chip(fixture)!;
+    expect(c.textContent).toContain('Imogen’s own');
+    expect(c.textContent).toContain('Imogen only');
+  });
+
+  it('keeps a templated reference as text, chosen at run time', async () => {
+    fresh();
+    const { fixture } = await renderLens(
+      wardrobeDraft({ action: 'wear', items: ['{{params.garment}}'] }),
+    );
+    expect((q(fixture, 'input[aria-label="Item 1"]') as HTMLInputElement).value).toBe(
+      '{{params.garment}}',
+    );
+    expect(text(fixture)).toContain('chosen at run time');
+    expect(lensState.calls.length).toBeGreaterThan(0);
+    expect(q(fixture, '[data-testid="wardrobe-reference-unresolved"]')).toBeNull();
+  });
+
+  it('advises on an unresolved reference without making it a draft error', async () => {
+    fresh();
+    const draft = wardrobeDraft({ action: 'wear', items: ['Cloak of Nite'] });
+    const { fixture } = await renderLens(draft);
+    expect(q(fixture, '[data-testid="wardrobe-reference-unresolved"]')!.textContent).toBe(
+      'not in Imogen’s reach',
+    );
+    expect(validateDraft(draft).filter((issue) => issue.severity === 'error')).toEqual([]);
+  });
+
+  it('warns when an archived garment is to be worn', async () => {
+    fresh();
+    const { fixture } = await renderLens(wardrobeDraft({ action: 'wear', items: ['Old Coat'] }));
+    expect(text(fixture)).toContain('⚠ Item "Old Coat" is archived and cannot be worn');
+  });
+
+  it('flags slots the chosen items do not cover under add_to_slot', async () => {
+    fresh();
+    const { fixture } = await renderLens(
+      wardrobeDraft({ action: 'wear', items: ['Sundress'], mode: 'add_to_slot', slot: 'footwear' }),
+    );
+    expect(q(fixture, '[data-testid="wardrobe-slot-advisory"]')!.textContent).toBe(
+      '⚠ “Sundress” covers Top, Bottom — not Footwear',
+    );
+    const options = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll('select[aria-label="Wardrobe slot"] option'),
+    ].map((o) => o.textContent);
+    expect(options).toContain('Footwear (not covered)');
+    expect(options).toContain('Top');
+  });
+
+  it('switches a chip between title and id', async () => {
+    fresh();
+    const { fixture, changes } = await renderLens(wardrobeDraft({ action: 'wear', items: ['Sundress'] }));
+    q(fixture, 'button[aria-label="Reference by id instead"]')!.click();
+    expect(changes[0].effects[0].wardrobe.items).toEqual(['dress']);
+  });
+
+  it('fills a reference from the picker, and the vantage never reaches the file', async () => {
+    fresh();
+    const loaded = wardrobeDraft({ action: 'wear', items: ['placeholder'] });
+    const draft = {
+      ...loaded,
+      effects: loaded.effects.map((e) => ({ ...e, wardrobe: { ...e.wardrobe, items: [''] } })),
+    };
+    const { fixture, changes } = await renderLens(draft);
+    [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')]
+      .find((b) => b.textContent?.trim() === 'Choose…')!
+      .click();
+    fixture.detectChanges();
+    await settleLens(fixture);
+    q(fixture, 'button[aria-label="Pick Riding Boots"]')!.click();
+    const next = changes[0];
+    expect(next.effects[0].wardrobe.items).toEqual(['Riding Boots']);
+    const saved = JSON.parse(serializeDraft(next));
+    expect(saved.effects).toEqual([{ wardrobe: { action: 'wear', items: ['Riding Boots'] } }]);
+    expect(serializeDraft(next)).not.toContain(IMOGEN);
+  });
+
+  it('serializes byte-identically whatever the vantage', async () => {
+    fresh();
+    const draft = wardrobeDraft({ action: 'wear', items: ['Sundress'] });
+    const before = serializeDraft(draft);
+    const { fixture } = await renderLens(draft);
+    expect(chip(fixture)).not.toBeNull();
+    expect(serializeDraft(draft)).toBe(before);
+  });
+});
+
+/** The v5-added lens cases (P4.D320 item 11). */
+describe('SideEffectsSection — the wardrobe lens, v5 cases', () => {
+  afterEach(() => TestBed.resetTestingModule());
+  const fresh = () => {
+    lensState = { own: OWN_ITEMS, general: GENERAL_ITEMS, calls: [] };
+  };
+
+  it('spells an origin-less own garment Their own, with a curly apostrophe when named', async () => {
+    fresh();
+    lensState.own = OWN_ITEMS.map((i) => ({ ...i, origin: undefined }));
+    const named = await renderLens(wardrobeDraft({ action: 'wear', items: ['Linen Shirt'] }));
+    expect(chip(named.fixture)!.textContent).toContain('Imogen’s own');
+    fresh();
+    lensState.general = GENERAL_ITEMS.map((i) => ({ ...i, origin: undefined }));
+    const unnamed = await renderLens(wardrobeDraft({ action: 'wear', items: ['Riding Boots'] }), {
+      kind: 'container',
+      container: { scope: 'general', id: null },
+    });
+    // A shared vantage names no character: v4's `Their own`.
+    expect(chip(unnamed.fixture)!.textContent).toContain('Their own');
+  });
+
+  it('names a shared wardrobe in the advisory', async () => {
+    fresh();
+    const { fixture } = await renderLens(wardrobeDraft({ action: 'wear', items: ['Cloak of Nite'] }), {
+      kind: 'container',
+      container: { scope: 'general', id: null },
+    });
+    expect(q(fixture, '[data-testid="wardrobe-reference-unresolved"]')!.textContent).toBe(
+      'not in Quilltap General',
+    );
+  });
+
+  it('says nothing about a reference before the pool has answered', async () => {
+    fresh();
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [SideEffectsSection],
+      providers: [{ provide: CoreClient, useValue: { dispatchData: () => new Promise(() => undefined) } }],
+    });
+    const draft = wardrobeDraft({ action: 'wear', items: ['Cloak of Nite'] });
+    const fixture = TestBed.createComponent(SideEffectsSection);
+    fixture.componentRef.setInput('draft', draft);
+    fixture.componentRef.setInput('issues', validateDraft(draft));
+    fixture.componentRef.setInput('vantage', CHARACTER);
+    fixture.detectChanges();
+    await settleLens(fixture);
+    expect(q(fixture, '[data-testid="wardrobe-reference-unresolved"]')).toBeNull();
+  });
+
+  it('reads nothing without a wardrobe row, and offers no vantage select', async () => {
+    fresh();
+    const { fixture } = await renderLens(
+      draftWith([effect({ id: 'w', kind: 'write', target: 'state.x', value: '1' })]),
+    );
+    expect(lensState.calls).toEqual([]);
+    expect(q(fixture, 'qt-wardrobe-vantage-select')).toBeNull();
+  });
+
+  it('opens the picker from Choose… with nothing highlighted, and from a chip on its item', async () => {
+    fresh();
+    const blank = await renderLens(wardrobeDraft({ action: 'wear', items: ['Cloak of Nite'] }));
+    [...(blank.fixture.nativeElement as HTMLElement).querySelectorAll('button')]
+      .find((b) => b.textContent?.trim() === 'Choose…')!
+      .click();
+    blank.fixture.detectChanges();
+    await settleLens(blank.fixture);
+    expect(q(blank.fixture, '[aria-current="true"]')).toBeNull();
+    expect(text(blank.fixture)).toContain('Choose a garment or outfit');
+
+    fresh();
+    const chipped = await renderLens(wardrobeDraft({ action: 'wear', items: ['Sundress'] }));
+    chip(chipped.fixture)!.click();
+    chipped.fixture.detectChanges();
+    await settleLens(chipped.fixture);
+    expect(q(chipped.fixture, '[aria-current="true"]')!.getAttribute('aria-label')).toBe(
+      'Pick Sundress',
+    );
+  });
+
+  it('closes the picker on Escape and returns focus to the control that opened it', async () => {
+    fresh();
+    const { fixture } = await renderLens(wardrobeDraft({ action: 'wear', items: ['Cloak of Nite'] }));
+    const choose = [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === 'Choose…',
+    )!;
+    document.body.appendChild(fixture.nativeElement);
+    choose.focus();
+    choose.click();
+    fixture.detectChanges();
+    await settleLens(fixture);
+    expect(text(fixture)).toContain('Choose a garment or outfit');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    await settleLens(fixture);
+    expect(text(fixture)).not.toContain('Choose a garment or outfit');
+    expect(document.activeElement).toBe(choose);
+    (fixture.nativeElement as HTMLElement).remove();
+  });
+});
+

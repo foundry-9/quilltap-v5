@@ -6,8 +6,10 @@ import {
   effect,
   inject,
   input,
+  linkedSignal,
   output,
   signal,
+  untracked,
 } from '@angular/core';
 
 import {
@@ -22,13 +24,22 @@ import type {
   CustomToolMetadataInput,
   CustomToolParameterSpec,
   CustomToolRunResult,
+  PreviewWardrobeResolution,
 } from '../../core/core-contract';
 import { displayTitle, isStateRef } from '../../pascal/custom-tool-types';
 import { scanPlaceholders } from '../../pascal/placeholders';
-import { definitionFromDraft, gateFromConditions, type ToolDraft } from '../../pascal/tool-draft';
+import {
+  definitionFromDraft,
+  gateFromConditions,
+  type ToolDraft,
+  type WardrobeVantage,
+} from '../../pascal/tool-draft';
 import { flattenProgressions, type ProgressPrimitive } from '../../progressions/engine';
 import { evaluateToolGate, type ToolGateVerdict } from '../../pascal/tool-gate';
 import { Icon } from '../../ui/icon';
+import { formatSlotLabels } from '../../wardrobe/slot-meta';
+import { wardrobeOriginLabel } from '../../wardrobe/wardrobe-container';
+import { WardrobeItemThumbnail } from '../../wardrobe/wardrobe-item-thumbnail';
 import * as api from './workbench.api';
 import {
   isApplicableWardrobeEffect,
@@ -46,6 +57,11 @@ import {
  * Rolls and audits execute SERVER-SIDE through the same `executeCustomTool`
  * core a live chat uses, so the bench can never drift from what the table would
  * actually deal. The bench posts nothing and writes nothing.
+ *
+ * The fact sheet's *Pick a character* mode reads and writes the editor's
+ * shared wardrobe vantage (v4 `5cb0e0190`): a character chosen here is the one
+ * the side-effects card browses, and a character vantage chosen there seats
+ * them here. Without a bound vantage the bench holds its own.
  */
 
 /** A character eligible to lend the bench its fact sheet. */
@@ -54,8 +70,18 @@ interface BenchCharacter {
   name: string;
 }
 
-/** The fact sheet, in one of its two modes (§4.5 card 2). */
-type FactSheet = { mode: 'character'; characterId: string } | { mode: 'manual'; text: string };
+/**
+ * The fact sheet, in one of its two modes (§4.5 card 2). The character mode's
+ * character is the shared wardrobe vantage's, not the sheet's own (v4
+ * `5cb0e0190`).
+ */
+type FactSheet = { mode: 'character' } | { mode: 'manual'; text: string };
+
+/** One wardrobe line under a bench roll, as the template draws it. */
+export type BenchWardrobeLine =
+  | { kind: 'attempt'; text: string }
+  | { kind: 'apply'; verb: string; imageFileId: string | null; text: string }
+  | { kind: 'skip'; text: string };
 
 /**
  * The bench's oracle: script an answer, script a silence, or — for single rolls
@@ -96,7 +122,7 @@ export function extractErrorMessage(err: unknown): string {
 @Component({
   selector: 'qt-proving-bench',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, CustomToolParamsForm],
+  imports: [Icon, CustomToolParamsForm, WardrobeItemThumbnail],
   template: `
     <div class="space-y-3">
       <!-- Card 1 — Test roll -->
@@ -170,10 +196,27 @@ export function extractErrorMessage(err: unknown): string {
                       <em>(would write)</em>
                     </p>
                   } @else if (isWardrobe(effect)) {
-                    <p>
-                      → wardrobe: {{ effectGesture(effect) }}
-                      <em>(would attempt)</em>
-                    </p>
+                    @for (line of wardrobeLines(entry, effect); track $index) {
+                      @switch (line.kind) {
+                        @case ('apply') {
+                          <p>
+                            → wardrobe: {{ line.verb }} @if (applyImage(line); as fileId) {<span
+                                class="inline-block align-middle mr-1"
+                                ><qt-wardrobe-item-thumbnail [fileId]="fileId" [size]="28"
+                              /></span>}{{ line.text }} <em>(would apply)</em>
+                          </p>
+                        }
+                        @case ('skip') {
+                          <p>→ wardrobe: {{ line.text }} <em>(would skip)</em></p>
+                        }
+                        @default {
+                          <p>
+                            → wardrobe: {{ line.text }}
+                            <em>(would attempt)</em>
+                          </p>
+                        }
+                      }
+                    }
                   } @else {
                     <p>· effect {{ effect.index + 1 }} skipped: {{ effectSkipped(effect) }}</p>
                   }
@@ -228,14 +271,16 @@ export function extractErrorMessage(err: unknown): string {
 
         @if (sheet().mode === 'character') {
           <select
-            [value]="characterId()"
-            (change)="sheet.set({ mode: 'character', characterId: selectValue($event) })"
+            [value]="chairCharacterId()"
+            (change)="onChairChange(selectValue($event))"
             class="qt-select qt-select-sm w-full"
             aria-label="Character whose fact sheet to use"
           >
-            <option value="">— nobody in particular —</option>
+            <option value="" [selected]="chairCharacterId() === ''">— nobody in particular —</option>
             @for (character of characters(); track character.id) {
-              <option [value]="character.id">{{ character.name }}</option>
+              <option [value]="character.id" [selected]="character.id === chairCharacterId()">{{
+                character.name
+              }}</option>
             }
           </select>
         } @else {
@@ -486,10 +531,34 @@ export class ProvingBench {
 
   /** Reports which outcome row a bench roll landed on, for the form's flash. */
   readonly matched = output<string | null>();
+  /** The editor's shared wardrobe vantage; the bench holds its own when unbound. */
+  readonly vantage = input<WardrobeVantage | undefined>(undefined);
+  readonly vantageChange = output<WardrobeVantage>();
+
+  private readonly localVantage = signal<WardrobeVantage>({ kind: 'none' });
+  private readonly effectiveVantage = computed(() => this.vantage() ?? this.localVantage());
+  /** The character in the chair — the vantage's, or nobody. */
+  readonly chairCharacterId = computed(() => {
+    const vantage = this.effectiveVantage();
+    return vantage.kind === 'character' ? vantage.characterId : '';
+  });
 
   readonly values = signal<ParameterFormValues>({});
   readonly isPrivate = signal(false);
-  readonly sheet = signal<FactSheet>({ mode: 'manual', text: '{}' });
+  /**
+   * The sheet opens in character mode when a chair exists, and a character
+   * vantage chosen elsewhere (the side-effects card, or the editor's opening
+   * default) seats that character here — latched on the character id, as v4
+   * derives it during render. A `linkedSignal`, not an effect: an effect's write
+   * would land a render late under zoneless change detection (P4.D320 item 12).
+   */
+  readonly sheet = linkedSignal<string, FactSheet>({
+    source: this.chairCharacterId,
+    computation: (chairId, previous) => {
+      if (!previous) return chairId ? { mode: 'character' } : { mode: 'manual', text: '{}' };
+      return chairId && previous.value.mode !== 'character' ? { mode: 'character' } : previous.value;
+    },
+  });
   readonly mockStateText = signal('{}');
   readonly oracle = signal<BenchOracle>({ mode: 'scripted', answer: '' });
   readonly rolls = signal<api.BenchRoll[]>([]);
@@ -536,6 +605,13 @@ export class ProvingBench {
       timer = setInterval(() => this.benchNowMs.set(Date.now()), 1000);
     });
     inject(DestroyRef).onDestroy(stop);
+
+    // The roster the character select offers, read once the mode is in play —
+    // including a sheet that OPENED in character mode on a seated chair.
+    effect(() => {
+      if (this.sheet().mode !== 'character') return;
+      untracked(() => void this.loadRoster());
+    });
   }
 
   protected readonly short = formatShort;
@@ -579,10 +655,6 @@ export class ProvingBench {
     return s.mode === 'manual' ? s.text : '';
   });
 
-  readonly characterId = computed(() => {
-    const s = this.sheet();
-    return s.mode === 'character' ? s.characterId : '';
-  });
 
   readonly manualSheetError = computed(() => {
     const s = this.sheet();
@@ -714,7 +786,7 @@ export class ProvingBench {
     if (!this.testsMetadata()) return false;
     const s = this.sheet();
     if (s.mode === 'manual') return s.text.trim().replace(/\s/g, '') === '{}';
-    return !s.characterId;
+    return !this.chairCharacterId();
   });
 
   protected checkedValue(event: Event): boolean {
@@ -739,8 +811,15 @@ export class ProvingBench {
    * actually picked.
    */
   async pickCharacterMode(): Promise<void> {
-    this.sheet.set({ mode: 'character', characterId: '' });
-    if (this._characters().length > 0) return;
+    this.sheet.set({ mode: 'character' });
+    await this.loadRoster();
+  }
+
+  private rosterRequested = false;
+
+  private async loadRoster(): Promise<void> {
+    if (this.rosterRequested || this._characters().length > 0) return;
+    this.rosterRequested = true;
     try {
       const destinations = await api.fetchDestinations(this.core);
       this._characters.set(
@@ -750,7 +829,23 @@ export class ProvingBench {
       // A failed roster read leaves "nobody in particular" as the only option;
       // it is not an error the bench needs to shout about.
       this._characters.set([]);
+      this.rosterRequested = false;
     }
+  }
+
+  /**
+   * The select writes the VANTAGE, not the sheet: a character seats them (and
+   * the side-effects card browses them); "nobody in particular" clears a
+   * character vantage and leaves a shared one alone (v4 `:405-420`).
+   */
+  protected onChairChange(characterId: string): void {
+    if (characterId) this.setVantage({ kind: 'character', characterId });
+    else if (this.effectiveVantage().kind === 'character') this.setVantage({ kind: 'none' });
+  }
+
+  private setVantage(next: WardrobeVantage): void {
+    if (this.vantage() !== undefined) this.vantageChange.emit(next);
+    else this.localVantage.set(next);
   }
 
   /**
@@ -760,7 +855,10 @@ export class ProvingBench {
    */
   benchMetadata(): CustomToolMetadataInput | undefined {
     const s = this.sheet();
-    if (s.mode === 'character') return s.characterId ? { characterId: s.characterId } : undefined;
+    if (s.mode === 'character') {
+      const chair = this.chairCharacterId();
+      return chair ? { characterId: chair } : undefined;
+    }
     try {
       const parsed: unknown = JSON.parse(s.text);
       return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
@@ -827,7 +925,13 @@ export class ProvingBench {
         state: this.benchState(),
         llm: this.previewOracle(),
       });
-      this.rolls.update((prev) => [result, ...prev].slice(0, 10));
+      // The chair's name as the roll was dealt, for "not in Imogen’s reach" —
+      // from the bench's own roster (P4.D320 R-11). SPA-local, never on the wire.
+      const chairName =
+        this.sheet().mode === 'character'
+          ? (this._characters().find((c) => c.id === this.chairCharacterId())?.name ?? null)
+          : null;
+      this.rolls.update((prev) => [{ ...result, chairName }, ...prev].slice(0, 10));
       this.matched.emit(this.draft().outcomes[result.outcomeIndex]?.id ?? null);
     } catch (err) {
       this.rollError.set(extractErrorMessage(err));
@@ -930,9 +1034,18 @@ export class ProvingBench {
     return isApplicableWriteEffect(effect) ? JSON.stringify(effect.value) : '';
   }
 
-  /** The gesture in the bench's words (v4 `f0db8cbb8`). */
-  protected effectGesture(effect: DryEffect): string {
-    return isApplicableWardrobeEffect(effect) ? describeBenchGesture(effect.wardrobe) : '';
+  /** The wardrobe lines one dry gesture prints under a roll (v4 `BenchWardrobeLines`). */
+  protected wardrobeLines(roll: BenchRoll, effect: DryEffect): BenchWardrobeLine[] {
+    if (!isApplicableWardrobeEffect(effect)) return [];
+    return benchWardrobeLines(
+      effect.wardrobe,
+      roll.wardrobeResolution?.find((entry) => entry.index === effect.index),
+      roll.chairName ?? null,
+    );
+  }
+
+  protected applyImage(line: BenchWardrobeLine): string | null {
+    return line.kind === 'apply' ? line.imageFileId : null;
   }
 
   protected effectSkipped(effect: DryEffect): string {
@@ -949,24 +1062,75 @@ export class ProvingBench {
 }
 
 /**
- * A dry-run gesture, in the bench's words (v4 `ProvingBench.tsx:700-716`).
- * "Would attempt", never "would apply": the bench has no character, so it
- * cannot know the garment exists. The item list is built HERE, curly quotes
- * (U+201C / U+201D) and all, never interpolated in a template.
+ * The gesture's verb and mode, in the bench's words: "wear (add to slot top)",
+ * "take off … from top" (v4 `5cb0e0190`, `ProvingBench.tsx:750-765`).
+ */
+export function gestureVerb(gesture: ResolvedWardrobeGesture): { verb: string; suffix: string } {
+  switch (gesture.action) {
+    case 'wear':
+      return {
+        verb: 'wear',
+        suffix:
+          gesture.mode && gesture.mode !== 'wear'
+            ? ` (${gesture.mode.replace(/_/g, ' ')}${gesture.slot ? ` ${gesture.slot}` : ''})`
+            : '',
+      };
+    case 'take_off':
+      return { verb: 'take off', suffix: gesture.slot ? ` from ${gesture.slot}` : '' };
+    case 'clear_slot':
+      return { verb: 'clear', suffix: '' };
+  }
+}
+
+/**
+ * A dry-run gesture, in the bench's words. "Would attempt" when nobody sits in
+ * the chair — the bench cannot know a garment exists without a wardrobe to
+ * look in. With a character in the chair the server resolves each reference
+ * through the applier's own lookup, so each item says what it would have
+ * found ("would apply") or why it would be skipped ("would skip"). The item
+ * list is built HERE, curly quotes (U+201C / U+201D) and all, never
+ * interpolated in a template.
  */
 export function describeBenchGesture(gesture: ResolvedWardrobeGesture): string {
   const items = gesture.items.map((item) => `\u201c${item}\u201d`).join(', ');
-  switch (gesture.action) {
-    case 'wear': {
-      const mode =
-        gesture.mode && gesture.mode !== 'wear'
-          ? ` (${gesture.mode.replace(/_/g, ' ')}${gesture.slot ? ` ${gesture.slot}` : ''})`
-          : '';
-      return `wear ${items}${mode}`;
-    }
-    case 'take_off':
-      return `take off ${items}${gesture.slot ? ` from ${gesture.slot}` : ''}`;
-    case 'clear_slot':
-      return `clear ${gesture.slot ?? 'a slot'}`;
+  const { verb, suffix } = gestureVerb(gesture);
+  if (gesture.action === 'clear_slot') return `clear ${gesture.slot ?? 'a slot'}`;
+  return `${verb} ${items}${suffix}`;
+}
+
+/**
+ * v4 `BenchWardrobeLines` (`ProvingBench.tsx:781-823`): no resolution for the
+ * gesture (or a `clear_slot`) → the one "would attempt" line; else one line per
+ * item — found: `<verb> <thumb><title> (<slots · origin>)<suffix>` "would
+ * apply"; missed: `<verb> “<ref>”<suffix> — <why>` "would skip", where a
+ * not-found reads "not in <chair>’s reach" and the other reasons print the
+ * server's message verbatim.
+ */
+export function benchWardrobeLines(
+  gesture: ResolvedWardrobeGesture,
+  resolution: PreviewWardrobeResolution | undefined,
+  chairName: string | null,
+): BenchWardrobeLine[] {
+  if (!resolution || gesture.action === 'clear_slot') {
+    return [{ kind: 'attempt', text: describeBenchGesture(gesture) }];
   }
+  const { verb, suffix } = gestureVerb(gesture);
+  return resolution.items.map((entry): BenchWardrobeLine => {
+    if (entry.found) {
+      const origin = wardrobeOriginLabel(entry.found.origin);
+      const slots = formatSlotLabels(entry.found.types);
+      const detail = [slots, origin].filter(Boolean).join(' · ');
+      return {
+        kind: 'apply',
+        verb,
+        imageFileId: entry.found.imageFileId,
+        text: `${entry.found.title}${detail ? ` (${detail})` : ''}${suffix}`,
+      };
+    }
+    const why =
+      entry.reason === 'not_found'
+        ? `not in ${chairName ? `${chairName}\u2019s` : 'the chair\u2019s'} reach`
+        : entry.message;
+    return { kind: 'skip', text: `${verb} \u201c${entry.ref}\u201d${suffix} — ${why}` };
+  });
 }

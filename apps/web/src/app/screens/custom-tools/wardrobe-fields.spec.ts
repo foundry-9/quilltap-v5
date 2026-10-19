@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { emptyDraftWardrobeGesture, type DraftWardrobeGesture } from '../../pascal/tool-draft';
 import { WARDROBE_SLOT_TYPES } from '../../wardrobe/slot-meta';
-import { WARDROBE_ACTIONS, WARDROBE_MODES, WardrobeFields } from './wardrobe-fields';
+import { GENERAL_ITEMS, OWN_ITEMS } from '../../wardrobe/__fixtures__/wardrobe-reference-pool';
+import { WARDROBE_ACTIONS, WARDROBE_MODES, WardrobeFields, slotIsCoupled } from './wardrobe-fields';
 
 /**
  * WardrobeFields — asserted against v4 `SideEffectsSection.tsx:308-426`
@@ -169,3 +170,108 @@ describe('WardrobeFields (v4 SideEffectsSection.tsx WardrobeFields)', () => {
     expect(removes(off.fixture).every((b) => b.disabled)).toBe(true);
   });
 });
+
+/** The wardrobe lens on the fields themselves (v4 `5cb0e0190`, P4.D320 item 11). */
+describe('WardrobeFields — the lens', () => {
+  afterEach(() => TestBed.resetTestingModule());
+  const POOL = [...OWN_ITEMS, ...GENERAL_ITEMS];
+
+  async function lens(over: Partial<DraftWardrobeGesture>, vantageNone = false) {
+    const r = await render(over);
+    r.fixture.componentRef.setInput('pool', POOL);
+    r.fixture.componentRef.setInput('poolFetched', true);
+    r.fixture.componentRef.setInput(
+      'vantage',
+      vantageNone ? { kind: 'none' } : { kind: 'character', characterId: 'char-imogen' },
+    );
+    r.fixture.componentRef.setInput('vantageName', 'Imogen');
+    r.fixture.componentRef.setInput('characterName', 'Imogen');
+    r.fixture.detectChanges();
+    return r;
+  }
+  const slotOptions = (f: ComponentFixture<unknown>) =>
+    [...(select(f, 'Wardrobe slot')?.options ?? [])].map((o) => o.textContent);
+
+  it('couples the slot under add_to_slot and take_off only', () => {
+    const g = emptyDraftWardrobeGesture();
+    expect(slotIsCoupled({ ...g, action: 'wear', mode: 'add_to_slot' })).toBe(true);
+    expect(slotIsCoupled({ ...g, action: 'take_off' })).toBe(true);
+    expect(slotIsCoupled({ ...g, action: 'wear', mode: 'replace' })).toBe(false);
+    expect(slotIsCoupled({ ...g, action: 'clear_slot' })).toBe(false);
+  });
+
+  it('judges coverage on the concrete rows alone, a templated row left out', async () => {
+    // v4's code (not its comment): templated rows are filtered out of the
+    // concrete set, so a resolved Sundress beside one still couples the slot.
+    const { fixture } = await lens({
+      action: 'wear',
+      mode: 'add_to_slot',
+      slot: 'footwear',
+      items: ['Sundress', '{{params.garment}}'],
+    });
+    expect(slotOptions(fixture)).toContain('Footwear (not covered)');
+    expect(root(fixture).querySelectorAll('[data-testid="wardrobe-slot-advisory"]')).toHaveLength(1);
+  });
+
+  it('flags nothing while a concrete row is unresolved', async () => {
+    const { fixture } = await lens({
+      action: 'take_off',
+      slot: 'footwear',
+      items: ['Sundress', 'Cloak of Nite'],
+    });
+    expect(slotOptions(fixture).some((o) => o?.includes('(not covered)'))).toBe(false);
+  });
+
+  it('flags the uncovered slots for a take_off whose items all resolved', async () => {
+    const { fixture } = await lens({ action: 'take_off', slot: 'footwear', items: ['Sundress'] });
+    expect(slotOptions(fixture)).toContain('Footwear (not covered)');
+    expect(slotOptions(fixture)).toContain('Bottom');
+    expect(root(fixture).querySelector('[data-testid="wardrobe-slot-advisory"]')!.textContent).toBe(
+      '⚠ “Sundress” covers Top, Bottom — not Footwear',
+    );
+  });
+
+  it('resolves nothing under the none vantage', async () => {
+    const { fixture } = await lens({ action: 'wear', items: ['Sundress'] }, true);
+    expect(root(fixture).querySelector('[data-testid="wardrobe-reference-chip"]')).toBeNull();
+    expect(root(fixture).querySelector('[data-testid="wardrobe-reference-unresolved"]')).toBeNull();
+    expect(items(fixture)[0].value).toBe('Sundress');
+  });
+
+  it('keeps the archived warning to wear alone', async () => {
+    const worn = await lens({ action: 'wear', items: ['Old Coat'] });
+    expect(root(worn.fixture).textContent).toContain('⚠ Item "Old Coat" is archived and cannot be worn');
+    const removed = await lens({ action: 'take_off', items: ['Old Coat'] });
+    expect(root(removed.fixture).textContent).not.toContain('is archived and cannot be worn');
+    expect(root(removed.fixture).textContent).toContain('archived');
+  });
+
+  it('asks the host to open the picker, with the chip\'s item highlighted', async () => {
+    const { fixture } = await lens({ action: 'wear', items: ['Sundress', ''] });
+    const asks: Array<{ index: number; highlightId: string | null }> = [];
+    fixture.componentInstance.choose.subscribe((a) => asks.push(a));
+    root(fixture).querySelector<HTMLButtonElement>('[data-testid="wardrobe-reference-chip"]')!.click();
+    button(fixture, 'Choose…')!.click();
+    expect(asks).toEqual([
+      { index: 0, highlightId: 'dress' },
+      { index: 1, highlightId: null },
+    ]);
+    expect(
+      root(fixture)
+        .querySelector('[data-testid="wardrobe-reference-chip"]')!
+        .getAttribute('aria-label'),
+    ).toBe('Item 1: Sundress — choose another');
+  });
+
+  it('titles the toggle with the reference hint', async () => {
+    const { fixture } = await lens({ action: 'wear', items: ['dress'] });
+    const toggle = root(fixture).querySelector<HTMLButtonElement>(
+      'button[aria-label="Reference by title instead"]',
+    )!;
+    expect(toggle.textContent?.trim()).toBe('by id');
+    expect(toggle.title).toBe(
+      'Referenced by id — click to switch. An id names this exact garment and no other; a title names whichever garment of that name is nearest when the tool runs.',
+    );
+  });
+});
+

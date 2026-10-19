@@ -137,8 +137,13 @@ describe('WorkbenchEditor (v4 WorkbenchEditor.tsx)', () => {
     });
     const editor = fixture.componentInstance;
 
-    // §W2: the dispatch verb, never the refusal-armed REST JSON leg.
-    expect(seen[0]).toMatchObject({ type: 'mountFileRead', ...SOURCE });
+    // §W2: the dispatch verb, never the refusal-armed REST JSON leg. (Found by
+    // type: since P4.D320 the editor also reads the destinations for its
+    // wardrobe vantage, and that read may land first.)
+    expect(seen.find((r) => r.type === 'mountFileRead')).toMatchObject({
+      type: 'mountFileRead',
+      ...SOURCE,
+    });
     expect(editor.editorMode()).toBe('form');
     expect(editor.repairReason()).toBeNull();
     expect(editor.draft()?.name).toBe('unlock');
@@ -619,5 +624,127 @@ describe('CustomToolsPage (v4 page.tsx + CustomToolsView.tsx)', () => {
       mountPointId: undefined,
       template: VALID_DEFINITION,
     });
+  });
+});
+
+/**
+ * The editor's wardrobe vantage (v4 `5cb0e0190`, `WorkbenchEditor.tsx` +50;
+ * P4.D320 R-10): seeded from the store the file lives in, re-seeded when a
+ * Save As… moves it, latched the moment the author chooses by hand, and never
+ * written to the file. v4 ships no editor test for it.
+ */
+describe('WorkbenchEditor — the wardrobe vantage (v4 5cb0e0190)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const store = (mountPointId: string) => ({ mountPointId, mountName: mountPointId, existingToolNames: [] });
+  const DESTINATIONS = {
+    general: store('mp-general'),
+    characters: [{ characterId: 'char-imogen', characterName: 'Imogen', ...store('mp-imogen') }],
+    groups: [{ groupId: 'g-1', groupName: 'The Regulars', stores: [{ ...store('mp-group'), official: true }] }],
+    projects: [
+      { projectId: 'p-1', projectName: 'Thornfield', stores: [store('mp-proj'), store('mp-imogen')] },
+    ],
+    other: [],
+  };
+  const IMOGEN_SOURCE = { mountPointId: 'mp-imogen', path: 'Tools/unlock.tool.json' };
+
+  /** Reads answer only the opened file; any other path is free (a Save As target). */
+  function lensClient(seen: Req[] = []): Partial<CoreClient> {
+    return {
+      dispatchData: (async (req: Req) => {
+        seen.push(req);
+        if (req.type === 'mountFileRead') {
+          if (req['mountPointId'] === IMOGEN_SOURCE.mountPointId && req['path'] === IMOGEN_SOURCE.path) {
+            return { content: VALID_DEFINITION, mtime: 1000 };
+          }
+          throw notFoundError();
+        }
+        if (req.type === 'mountFileWrite') return { mtime: 2000 };
+        if (req.type === 'customToolsDestinations') return DESTINATIONS;
+        return {};
+      }) as CoreClient['dispatchData'],
+    };
+  }
+
+  it("opens a character vault's file on that character", async () => {
+    const fixture = await renderEditor(lensClient(), { source: IMOGEN_SOURCE });
+    expect(fixture.componentInstance.vantage()).toEqual({ kind: 'character', characterId: 'char-imogen' });
+  });
+
+  it('opens an unsaved file on nobody', async () => {
+    const fixture = await renderEditor(lensClient(), { create: {} });
+    expect(fixture.componentInstance.vantage()).toEqual({ kind: 'none' });
+  });
+
+  it('follows the file into a group store after Save As…', async () => {
+    const fixture = await renderEditor(lensClient(), { source: IMOGEN_SOURCE });
+    const editor = fixture.componentInstance;
+    editor.pickerOpen.set('save-as');
+    await editor.saveToStore({ mountPointId: 'mp-group', mountName: 'The Regulars' });
+    await settle(fixture);
+    expect(editor.location()?.mountPointId).toBe('mp-group');
+    expect(editor.vantage()).toEqual({ kind: 'container', container: { scope: 'group', id: 'g-1' } });
+  });
+
+  it('stops following once the author chooses by hand', async () => {
+    const fixture = await renderEditor(lensClient(), { source: IMOGEN_SOURCE });
+    const editor = fixture.componentInstance;
+    editor.chooseVantage({ kind: 'container', container: { scope: 'general', id: null } });
+    editor.pickerOpen.set('save-as');
+    await editor.saveToStore({ mountPointId: 'mp-group', mountName: 'The Regulars' });
+    await settle(fixture);
+    expect(editor.location()?.mountPointId).toBe('mp-group');
+    expect(editor.vantage()).toEqual({ kind: 'container', container: { scope: 'general', id: null } });
+  });
+
+  it('names the home project only under a character vantage', async () => {
+    const fixture = await renderEditor(lensClient(), { source: IMOGEN_SOURCE });
+    const editor = fixture.componentInstance;
+    expect(editor.homeProjectName()).toBe('Thornfield');
+    // Give the draft a wardrobe row so the section shows its vantage select.
+    const current = editor.draft()!;
+    editor.onDraftChange({
+      ...current,
+      effects: [
+        {
+          id: 'w1',
+          when: { kind: 'always' },
+          kind: 'wardrobe',
+          target: '',
+          valueKind: 'expression',
+          value: '',
+          wardrobe: { action: 'wear', items: [''], mode: 'wear', slot: '' },
+        },
+      ],
+    });
+    await settle(fixture);
+    const hint = () =>
+      (fixture.nativeElement as HTMLElement).querySelector('qt-side-effects-section qt-wardrobe-vantage-select p')!
+        .textContent!;
+    expect(hint()).toContain('This tool lives in Thornfield’s store');
+
+    editor.chooseVantage({ kind: 'container', container: { scope: 'general', id: null } });
+    await settle(fixture);
+    expect(hint()).not.toContain('This tool lives in');
+  });
+
+  it('never writes the vantage into the file', async () => {
+    const writes: string[] = [];
+    for (const vantage of [
+      { kind: 'character', characterId: 'char-imogen' },
+      { kind: 'container', container: { scope: 'group', id: 'g-1' } },
+      { kind: 'none' },
+    ] as const) {
+      const seen: Req[] = [];
+      const fixture = await renderEditor(lensClient(seen), { source: IMOGEN_SOURCE });
+      const editor = fixture.componentInstance;
+      editor.chooseVantage(vantage);
+      editor.pickerOpen.set('save-as');
+      await editor.saveToStore({ mountPointId: 'mp-proj', mountName: 'Thornfield' });
+      writes.push(seen.find((r) => r.type === 'mountFileWrite')!['content'] as string);
+      TestBed.resetTestingModule();
+    }
+    expect(new Set(writes).size).toBe(1);
+    expect(writes[0]).not.toContain('char-imogen');
   });
 });

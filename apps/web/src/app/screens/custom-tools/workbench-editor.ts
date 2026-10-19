@@ -5,12 +5,14 @@ import {
   effect,
   inject,
   input,
+  linkedSignal,
   output,
   signal,
+  untracked,
 } from '@angular/core';
 
 import { CoreClient, coreErrorMessage } from '../../core/core-client';
-import { CoreDispatchError } from '../../core/core-contract';
+import { CoreDispatchError, type CustomToolDestinations } from '../../core/core-contract';
 import {
   TOOLS_FOLDER,
   TOOL_FILE_SUFFIX,
@@ -21,12 +23,14 @@ import {
   safeParse,
 } from '../../pascal/custom-tool-types';
 import {
+  defaultWardrobeVantage,
   draftFromDefinition,
   draftIsValid,
   newDraft,
   serializeDraft,
   validateDraft,
   type ToolDraft,
+  type WardrobeVantage,
 } from '../../pascal/tool-draft';
 import { Icon } from '../../ui/icon';
 import { BuilderForm } from './builder-form';
@@ -216,6 +220,11 @@ function extractErrorMessage(err: unknown): string {
                   [issues]="issues()"
                   [disabled]="saving()"
                   (draftChange)="onDraftChange($event)"
+                  [vantage]="vantage()"
+                  [showVantage]="true"
+                  (vantageChange)="chooseVantage($event)"
+                  [destinations]="destinations()"
+                  [homeProjectName]="vantage().kind === 'character' ? homeProjectName() : null"
                 />
                 <qt-outcomes-section
                   [draft]="current"
@@ -265,6 +274,8 @@ function extractErrorMessage(err: unknown): string {
                   [draft]="current"
                   [valid]="formValid()"
                   (matched)="onMatched($event)"
+                  [vantage]="vantage()"
+                  (vantageChange)="chooseVantage($event)"
                 />
               </div>
             }
@@ -341,6 +352,54 @@ export class WorkbenchEditor {
   readonly conflictContent = signal<string | null>(null);
   readonly flashOutcomeId = signal<string | null>(null);
 
+  // -- Wardrobe vantage -----------------------------------------------------
+  //
+  // Whose wardrobe the side-effects card and the proving bench look through
+  // (v4 `5cb0e0190`, pascal-wardrobe-effect-picker §1). Editor state only —
+  // never on the draft, never in the file. It opens on the store the file
+  // lives in, follows the file after a Save As…, and stops following the
+  // moment the author picks one by hand.
+  //
+  // v4 derives it during render, latched on the seed key; here a
+  // `linkedSignal` over that key — an effect's write would land a render late
+  // under zoneless change detection (P4.D320 R-10). The destinations are read
+  // once with the same `fetchDestinations` the save dialog and the bench use
+  // (this screen keeps no TanStack cache — the destination picker and the
+  // bench read it directly too).
+
+  /** The destination tree — names for characters, projects and groups. */
+  readonly destinations = signal<CustomToolDestinations | undefined>(undefined);
+  private readonly vantageChosen = signal(false);
+  private readonly seedKey = computed(() =>
+    this.destinations() ? `loaded|${this.location()?.mountPointId ?? ''}` : null,
+  );
+  readonly vantage = linkedSignal<string | null, WardrobeVantage>({
+    source: this.seedKey,
+    computation: (key, previous) => {
+      if (key === null) return previous?.value ?? { kind: 'none' };
+      if (untracked(this.vantageChosen) && previous) return previous.value;
+      return defaultWardrobeVantage(
+        untracked(this.location)?.mountPointId ?? null,
+        untracked(this.destinations)!,
+      );
+    },
+  });
+  /** The project whose store holds this file — named under a character vantage. */
+  readonly homeProjectName = computed(() => {
+    const here = this.location();
+    if (!here) return null;
+    return (
+      this.destinations()?.projects.find((p) =>
+        p.stores.some((store) => store.mountPointId === here.mountPointId),
+      )?.projectName ?? null
+    );
+  });
+
+  chooseVantage(next: WardrobeVantage): void {
+    this.vantage.set(next);
+    this.vantageChosen.set(true);
+  }
+
   readonly initialized = signal(false);
   readonly loading = signal(false);
   readonly loadError = signal<string | null>(null);
@@ -361,6 +420,14 @@ export class WorkbenchEditor {
   private seeded = false;
 
   constructor() {
+    api
+      .fetchDestinations(this.core)
+      .then((destinations) => this.destinations.set(destinations))
+      .catch(() => {
+        // No destinations, no lens: the vantage stays on nobody, exactly as
+        // v4's failed query leaves `data` undefined.
+      });
+
     // v4 seeds from props at mount; here the inputs are read in an effect so
     // they are available, and the latch keeps it to exactly once per editor.
     effect(() => {

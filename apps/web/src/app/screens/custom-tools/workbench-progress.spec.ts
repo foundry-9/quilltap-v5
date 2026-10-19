@@ -317,7 +317,7 @@ describe('ProvingBench — the derived progressions', () => {
 
   it('declines to guess at a character-backed sheet — that one lives on the server', async () => {
     const fixture = await renderBench(draft(PLAIN_TOOL));
-    fixture.componentInstance.sheet.set({ mode: 'character', characterId: 'c-1' });
+    fixture.componentRef.setInput('vantage', { kind: 'character', characterId: 'c-1' });
     fixture.detectChanges();
     expect(fixture.componentInstance.derivedProgress()).toBeNull();
   });
