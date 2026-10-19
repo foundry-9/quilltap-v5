@@ -808,6 +808,13 @@ export interface QtapCustomTool {
   withheldWhen?: ToolGate;
   revealOdds?: boolean;
   defaultVisibility?: Visibility;
+  /**
+   * true: the rolling character announces the outcome under their own name and
+   * face, in place of Pascal. A run nobody made (the bare operator) is still
+   * announced by Pascal. Default false. (v4 `a05c6f755`,
+   * `custom-tool.types.ts:1013-1019`.)
+   */
+  announceAsCharacter?: boolean;
   parameters?: Record<string, CustomToolParameter>;
   roll?: Roll;
   llm?: CustomToolLlm;
@@ -1896,7 +1903,7 @@ export function safeParse(raw: unknown): SafeParseResult {
   const description = parseString(obj['description'], 1, MAX_DESCRIPTION_LENGTH, false);
   issues.push(...prefix('description', description.issues));
 
-  const optBool = (key: 'disabled' | 'revealOdds'): boolean | undefined => {
+  const optBool = (key: 'disabled' | 'revealOdds' | 'announceAsCharacter'): boolean | undefined => {
     if (!hasKey(obj, key)) return undefined;
     const r = parseBool(obj[key]);
     issues.push(...prefix(key, r.issues));
@@ -1923,6 +1930,11 @@ export function safeParse(raw: unknown): SafeParseResult {
     issues.push(...prefix('defaultVisibility', r.issues));
     defaultVisibility = r.value;
   }
+
+  // Between `defaultVisibility` and `parameters` in the schema's declaration
+  // order (v4 `a05c6f755`), so its issue is reported — and the key serialized —
+  // there. `optional()`, not `nullable()`: a `null` is refused.
+  const announceAsCharacter = optBool('announceAsCharacter');
 
   let parameters: Record<string, CustomToolParameter> | undefined;
   if (hasKey(obj, 'parameters')) {
@@ -2000,6 +2012,7 @@ export function safeParse(raw: unknown): SafeParseResult {
   if (withheldWhen !== undefined) tool.withheldWhen = withheldWhen;
   if (revealOdds !== undefined) tool.revealOdds = revealOdds;
   if (defaultVisibility !== undefined) tool.defaultVisibility = defaultVisibility;
+  if (announceAsCharacter !== undefined) tool.announceAsCharacter = announceAsCharacter;
   if (parameters !== undefined) tool.parameters = parameters;
   if (roll !== undefined) tool.roll = roll;
   if (llm !== undefined) tool.llm = llm;
@@ -2544,7 +2557,7 @@ function flattenIssues(issues: readonly Issue[]): string[] {
 /**
  * Top-level keys the v1 format knows about, in schema order. Anything else is
  * reserved for v2. v4 derives it from `QtapCustomToolSchema.shape`; the SPA has
- * no schema object, so it is written out (16 since `362426c8f`'s `triggers`).
+ * no schema object, so it is written out (17 since `a05c6f755`'s `announceAsCharacter`).
  */
 export const KNOWN_TOP_LEVEL_KEYS: readonly string[] = [
   '$schema',
@@ -2558,6 +2571,7 @@ export const KNOWN_TOP_LEVEL_KEYS: readonly string[] = [
   'withheldWhen',
   'revealOdds',
   'defaultVisibility',
+  'announceAsCharacter',
   'parameters',
   'roll',
   'llm',

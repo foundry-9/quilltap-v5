@@ -5,6 +5,7 @@ import {
   getAnnouncementAccentClasses,
   getAnnouncementImportance,
   getAnnouncementOutcomeState,
+  getAnnouncementSenderName,
   getSystemKindDisplayLabel,
   getSystemSenderDisplayName,
 } from './system-message-labels';
@@ -385,5 +386,34 @@ describe('the Concierge-overhaul kinds (v4 8bd080267 + ce2f1dabf)', () => {
         ann('concierge', 'danger', 'declined this conversation on grounds of propriety'),
       ),
     ).toBe('danger');
+  });
+});
+
+/** v4 `a05c6f755` `system-message-labels.test.ts:181-`, transcribed name for name. */
+describe('getAnnouncementSenderName', () => {
+  const names = { 'char-1': 'Tester' };
+
+  it('names the Staff member when nobody else announces it', () => {
+    expect(getAnnouncementSenderName({ systemSender: 'pascal', customAnnouncer: null }, names)).toBe(
+      'Pascal',
+    );
+  });
+
+  it('names the announcing character on a character-announced Pascal outcome', () => {
+    expect(
+      getAnnouncementSenderName(
+        { systemSender: 'pascal', customAnnouncer: { kind: 'character', characterId: 'char-1' } },
+        names,
+      ),
+    ).toBe('Tester');
+  });
+
+  it('falls back to the Staff member when the announcer cannot be named', () => {
+    expect(
+      getAnnouncementSenderName(
+        { systemSender: 'pascal', customAnnouncer: { kind: 'character', characterId: 'gone' } },
+        names,
+      ),
+    ).toBe('Pascal');
   });
 });

@@ -55,7 +55,9 @@ import {
   type Visibility,
   type WhenObject,
 } from './custom-tool-types';
+import type { CustomToolDestinations } from '../core/core-contract';
 import { parseProgressKey } from '../progressions/schema';
+import { GENERAL_CONTAINER, type WardrobeContainer } from '../wardrobe/wardrobe-container';
 import { parseDiceNotation } from './dice-notation';
 import { parseExpression } from './expressions';
 import { scanPlaceholders } from './placeholders';
@@ -255,6 +257,48 @@ export function newDraftEffect(kind: DraftEffect['kind'] = 'write'): DraftEffect
   };
 }
 
+/**
+ * Whose reach the Workbench shows when it displays or picks a wardrobe
+ * reference: a character, or one shared wardrobe. Editor state, like the
+ * roll form — never saved, never on {@link ToolDraft}, so `serializeDraft`
+ * cannot see it. A tool has no character until it is run; the vantage is a
+ * lens for the author, not a binding. (v4 `5cb0e0190`, `tool-draft.ts:255-266`.)
+ */
+export type WardrobeVantage =
+  | { kind: 'character'; characterId: string }
+  | { kind: 'container'; container: WardrobeContainer }
+  | { kind: 'none' };
+
+/**
+ * The opening vantage for a definition stored in `mountPointId`: the one
+ * character who can run a tool in their own vault, the shared wardrobe every
+ * member of a group or project store will certainly reach, Quilltap General
+ * for a General-store tool, and nothing for an unattached or unsaved file.
+ * A character's vault wins over any other attachment the same mount carries —
+ * it is the narrower, truer reach. (v4 `:268-288`, pinned row for row by
+ * `wardrobe-vantage.oracle.spec.ts`.)
+ */
+export function defaultWardrobeVantage(
+  mountPointId: string | null,
+  destinations: CustomToolDestinations,
+): WardrobeVantage {
+  if (!mountPointId) return { kind: 'none' };
+  const character = destinations.characters.find((c) => c.mountPointId === mountPointId);
+  if (character) return { kind: 'character', characterId: character.characterId };
+  const group = destinations.groups.find((g) =>
+    g.stores.some((store) => store.mountPointId === mountPointId),
+  );
+  if (group) return { kind: 'container', container: { scope: 'group', id: group.groupId } };
+  const project = destinations.projects.find((p) =>
+    p.stores.some((store) => store.mountPointId === mountPointId),
+  );
+  if (project) return { kind: 'container', container: { scope: 'project', id: project.projectId } };
+  if (destinations.general?.mountPointId === mountPointId) {
+    return { kind: 'container', container: GENERAL_CONTAINER };
+  }
+  return { kind: 'none' };
+}
+
 export interface ToolDraft {
   name: string;
   title: string;
@@ -270,6 +314,8 @@ export interface ToolDraft {
   gateConditions: DraftGateCondition[];
   revealOdds: boolean;
   defaultVisibility: Visibility;
+  /** The rolling character announces the outcome instead of Pascal. False = no key emitted. */
+  announceAsCharacter: boolean;
   parameters: DraftParameter[];
   rollForm: 'range' | 'dice';
   /** Dice-notation text. Kept even while `rollForm` is 'range' (§4.3). */
@@ -306,6 +352,7 @@ const KNOWN_KEY_ORDER = [
   'withheldWhen',
   'revealOdds',
   'defaultVisibility',
+  'announceAsCharacter',
   'parameters',
   'roll',
   'llm',
@@ -345,6 +392,7 @@ export function newDraft(): ToolDraft {
     gateConditions: [],
     revealOdds: true,
     defaultVisibility: 'public',
+    announceAsCharacter: false,
     parameters: [],
     rollForm: 'range',
     rollDice: '',
@@ -722,6 +770,7 @@ export function draftFromDefinition(raw: unknown): ToolDraft | null {
     gateConditions: gate ? gateConditionsFromGate(gate) : [],
     revealOdds: definition.revealOdds ?? true,
     defaultVisibility: definition.defaultVisibility ?? 'public',
+    announceAsCharacter: definition.announceAsCharacter ?? false,
     parameters: Object.entries(definition.parameters ?? {}).map(([name, spec]) =>
       parameterToDraft(name, spec),
     ),
@@ -929,6 +978,7 @@ export function definitionFromDraft(draft: ToolDraft): Record<string, unknown> {
   }
   if (!draft.revealOdds) doc['revealOdds'] = false;
   if (draft.defaultVisibility !== 'public') doc['defaultVisibility'] = draft.defaultVisibility;
+  if (draft.announceAsCharacter) doc['announceAsCharacter'] = true;
 
   if (draft.parameters.length > 0) {
     const parameters: Record<string, CustomToolParameter> = {};
@@ -1103,6 +1153,9 @@ function auditPlaceholders(
       // warned about from the draft the way an undeclared parameter can.
       case 'progress':
       case 'now':
+      // `{{character}}` names whoever rolls; a run nobody made renders it as
+      // written, which is the runtime's convention rather than an authoring slip.
+      case 'character':
         break;
       case 'dice':
         if (draft.rollForm !== 'dice') {

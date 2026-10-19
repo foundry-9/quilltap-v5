@@ -9,6 +9,7 @@ import {
   wardrobeOriginLabel,
   encodeWardrobeContainer,
   sameWardrobeContainer,
+  wardrobeReachLabel,
   type WardrobeContainer,
 } from './wardrobe-container';
 
@@ -151,5 +152,31 @@ describe('containerForListedItem (v4 `4a38222e6` `wardrobe-container.ts:97-102`)
     expect(containerForListedItem({ characterId: 'c1' })).toEqual({ scope: 'character', id: 'c1' });
     expect(containerForListedItem({ characterId: null, origin: null })).toEqual(GENERAL_CONTAINER);
     expect(containerForListedItem({})).toEqual(GENERAL_CONTAINER);
+  });
+});
+
+/** v4 `5cb0e0190` `wardrobe-container.test.ts`, transcribed name for name. */
+describe('wardrobeReachLabel', () => {
+  it('names who can reach each scope', () => {
+    expect(wardrobeReachLabel({ scope: 'character', id: 'c', name: 'Imogen' })).toBe('Imogen only');
+    expect(wardrobeReachLabel({ scope: 'character', id: 'c', name: '' }, 'Bertie')).toBe(
+      'Bertie only',
+    );
+    expect(wardrobeReachLabel({ scope: 'character', id: 'c', name: '' })).toBe(
+      'this character only',
+    );
+    expect(wardrobeReachLabel({ scope: 'group', id: 'g', name: 'The Regulars' })).toBe(
+      'members of The Regulars',
+    );
+    expect(wardrobeReachLabel({ scope: 'project', id: 'p', name: 'Thornfield' })).toBe(
+      'chats in Thornfield',
+    );
+    expect(wardrobeReachLabel({ scope: 'general', id: null, name: 'Quilltap General' })).toBe(
+      'everyone',
+    );
+  });
+
+  it('is null without an origin', () => {
+    expect(wardrobeReachLabel(undefined)).toBeNull();
   });
 });

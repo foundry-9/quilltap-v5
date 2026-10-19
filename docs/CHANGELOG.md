@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(pascal-spa): the {{character}} / announceAsCharacter twins, the wearable-ref rule, the reach label, the vantage default and the announcer name, with four v4-recorded corpora (P4.D320)
+
+_Versions: SPA 0.5.874._
+
+The SPA twins of v4 `5cb0e0190` / `a05c6f755`'s pure units (P4.D320). `placeholders.ts` classifies `{{character}}` by its exact key, so the effect grammar admits it and a v4-authored tool quoting it in an effect value loads in the Workbench again; `custom-tool-types.ts` parses `announceAsCharacter` (optional boolean, `null` refused) between `defaultVisibility` and `parameters`, and `KNOWN_TOP_LEVEL_KEYS` grows to 17; `tool-draft.ts` carries `announceAsCharacter` on the draft (emitted only when true, in schema position), never flags `{{character}}` in the placeholder audit, and gains the editor-only `WardrobeVantage` + `defaultWardrobeVantage`. NEW `wardrobe/wearable-ref.ts` (the one reference-lookup rule), `wardrobeReachLabel` in `wardrobe-container.ts`, and `getAnnouncementSenderName` in `chat/system-message-labels.ts`. Four new tier-1 corpora recorded from v4's real code at the `e8e17b2d9` pin (`wearable-ref` 53 rows, `wardrobe-vantage` 40, `announcement-sender-name` 32, `pascal-character` 18) with their recorders under `apps/web/oracle/`, plus v4's unit tests transcribed name for name. The shared definition corpus re-recorded from the pin is byte-identical (449 rows).
+
 #### 2026-10-19 — docs(porting): P4.D318 lane record — the outfit-history SPA, LANE COMPLETE
 
 _Docs-only change._

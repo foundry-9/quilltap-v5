@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest';
 import { safeParse, type WhenObject } from './custom-tool-types';
 import {
   conditionsFromWhen,
+  defaultWardrobeVantage,
   definitionFromDraft,
   draftFromDefinition,
   emptyDraftWardrobeGesture,
@@ -48,6 +49,7 @@ function normalize(parsed: Record<string, unknown>): Record<string, unknown> {
   if (out['disabled'] === false) delete out['disabled'];
   if (out['revealOdds'] === true) delete out['revealOdds'];
   if (out['defaultVisibility'] === 'public') delete out['defaultVisibility'];
+  if (out['announceAsCharacter'] === false) delete out['announceAsCharacter'];
   if (out['parameters'] && Object.keys(out['parameters'] as object).length === 0) {
     delete out['parameters'];
   }
@@ -102,6 +104,7 @@ describe('draft round-trip (§6.2 invariant)', () => {
       disabled: true,
       revealOdds: false,
       defaultVisibility: 'whisper',
+      announceAsCharacter: true,
       parameters: {
         baseline: { type: 'number', default: 0, description: 'Floor.', min: -10, max: 10 },
         scale: { type: 'integer', default: 2 },
@@ -158,6 +161,7 @@ describe('draft round-trip (§6.2 invariant)', () => {
       disabled: false,
       revealOdds: true,
       defaultVisibility: 'public',
+      announceAsCharacter: false,
       roll: { min: 0, max: 1, multiplier: 1, offset: 0, round: false },
       outcomes: [{ when: true, message: 'Done.', state: 'info' }],
     });
@@ -165,6 +169,7 @@ describe('draft round-trip (§6.2 invariant)', () => {
     expect(emitted['disabled']).toBeUndefined();
     expect(emitted['revealOdds']).toBeUndefined();
     expect(emitted['defaultVisibility']).toBeUndefined();
+    expect(emitted['announceAsCharacter']).toBeUndefined();
     expect(emitted['roll']).toBeUndefined();
   });
 
@@ -1559,5 +1564,152 @@ describe('trigger phrases in the draft', () => {
     expect(
       issues.some((i) => i.severity === 'warning' && i.where.section === 'llm' && i.message.includes('trigger')),
     ).toBe(true);
+  });
+});
+
+/**
+ * `announceAsCharacter` (v4 `a05c6f755`): emitted only when true, in schema
+ * position, and never carried as an unknown key (R-3 / T19).
+ */
+describe('announceAsCharacter in the draft', () => {
+  const BASE = {
+    name: 'probe',
+    description: 'A probe.',
+    outcomes: [{ when: true, message: '-', state: 'info' }],
+  };
+
+  it('is off, and absent from the file, for a new draft', () => {
+    expect(newDraft().announceAsCharacter).toBe(false);
+    expect('announceAsCharacter' in definitionFromDraft(newDraft())).toBe(false);
+  });
+
+  it('round-trips true in schema position, after defaultVisibility', () => {
+    const draft = draftFromDefinition({
+      ...BASE,
+      announceAsCharacter: true,
+      defaultVisibility: 'whisper',
+      parameters: { n: { type: 'number', default: 1 } },
+    });
+    expect(draft!.announceAsCharacter).toBe(true);
+    expect(draft!.unknownKeys).toEqual([]);
+    const keys = Object.keys(definitionFromDraft(draft!));
+    expect(keys.indexOf('announceAsCharacter')).toBe(keys.indexOf('defaultVisibility') + 1);
+    expect(keys.indexOf('parameters')).toBe(keys.indexOf('announceAsCharacter') + 1);
+  });
+
+  it('drops a file\'s false on save rather than writing it back', () => {
+    const draft = draftFromDefinition({ ...BASE, announceAsCharacter: false });
+    expect(draft!.announceAsCharacter).toBe(false);
+    expect(draft!.unknownKeys).toEqual([]);
+    expect('announceAsCharacter' in definitionFromDraft(draft!)).toBe(false);
+  });
+});
+
+/** `{{character}}` (v4 `a05c6f755`): the audit never flags it (R-4). */
+describe('{{character}} in the draft', () => {
+  it('audits to no placeholder issue anywhere it may appear', () => {
+    const draft = draftFromDefinition({
+      name: 'announced',
+      description: 'A probe.',
+      chipLabel: 'For {{character}}',
+      llm: { prompt: 'Describe {{character}} at work.', errorMessage: 'The wire went dead.' },
+      effects: [
+        { target: 'state.winner', value: "{{character}} + ' wins'" },
+        { wardrobe: { action: 'wear', items: ["{{character}}'s armour"] } },
+      ],
+      outcomes: [{ when: true, message: '{{character}} rolls {{value}}', state: 'info' }],
+    });
+    expect(draft).not.toBeNull();
+    const issues = validateDraft(draft!);
+    expect(issues.filter((issue) => issue.message.includes('character'))).toEqual([]);
+  });
+
+  it("loads a file whose effect value quotes {{character}}, and round-trips it", () => {
+    // T19: before the port the twin's grammar refused this file outright, so a
+    // v4-authored tool dropped off the Workbench.
+    const document = {
+      name: 'winner',
+      description: 'A probe.',
+      effects: [{ target: 'state.winner', value: "{{character}} + ' wins'" }],
+      outcomes: [{ when: true, message: '-', state: 'info' }],
+    };
+    expect(draftFromDefinition(document)).not.toBeNull();
+    expectRoundTrip(document);
+  });
+});
+
+/**
+ * `defaultWardrobeVantage` — the Workbench's opening wardrobe lens, derived
+ * from the store a definition lives in (v4 `5cb0e0190`,
+ * `__tests__/unit/lib/pascal/wardrobe-vantage.test.ts`, transcribed name for
+ * name; the corpus is `wardrobe-vantage.oracle.spec.ts`).
+ */
+describe('defaultWardrobeVantage', () => {
+  const store = (mountPointId: string) => ({
+    mountPointId,
+    mountName: mountPointId,
+    existingToolNames: [],
+  });
+  const destinations = {
+    general: store('mp-general'),
+    characters: [
+      { characterId: 'char-imogen', characterName: 'Imogen', ...store('mp-imogen') },
+      // A vault that is also linked to a group: the character wins.
+      { characterId: 'char-bertie', characterName: 'Bertie', ...store('mp-shared') },
+    ],
+    groups: [
+      {
+        groupId: 'group-regulars',
+        groupName: 'The Regulars',
+        stores: [
+          { ...store('mp-regulars'), official: true },
+          { ...store('mp-shared'), official: false },
+        ],
+      },
+    ],
+    projects: [
+      { projectId: 'proj-thornfield', projectName: 'Thornfield', stores: [store('mp-thornfield')] },
+    ],
+    other: [store('mp-loose')],
+  };
+
+  it("opens a character vault's tool on that character", () => {
+    expect(defaultWardrobeVantage('mp-imogen', destinations)).toEqual({
+      kind: 'character',
+      characterId: 'char-imogen',
+    });
+  });
+
+  it("opens a group store's tool on the group wardrobe", () => {
+    expect(defaultWardrobeVantage('mp-regulars', destinations)).toEqual({
+      kind: 'container',
+      container: { scope: 'group', id: 'group-regulars' },
+    });
+  });
+
+  it("opens a project store's tool on the project wardrobe", () => {
+    expect(defaultWardrobeVantage('mp-thornfield', destinations)).toEqual({
+      kind: 'container',
+      container: { scope: 'project', id: 'proj-thornfield' },
+    });
+  });
+
+  it('opens a General-store tool on Quilltap General', () => {
+    expect(defaultWardrobeVantage('mp-general', destinations)).toEqual({
+      kind: 'container',
+      container: { scope: 'general', id: null },
+    });
+  });
+
+  it('opens an unattached store or an unsaved file on nobody', () => {
+    expect(defaultWardrobeVantage('mp-loose', destinations)).toEqual({ kind: 'none' });
+    expect(defaultWardrobeVantage(null, destinations)).toEqual({ kind: 'none' });
+  });
+
+  it('prefers the character when a vault is also attached to a group', () => {
+    expect(defaultWardrobeVantage('mp-shared', destinations)).toEqual({
+      kind: 'character',
+      characterId: 'char-bertie',
+    });
   });
 });

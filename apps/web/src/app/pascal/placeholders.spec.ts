@@ -44,6 +44,15 @@ describe('classifyPlaceholder', () => {
     });
   });
 
+  it('names {{character}} by its exact key (v4 a05c6f755)', () => {
+    expect(classifyPlaceholder('character')).toEqual({ kind: 'character' });
+    expect(classifyPlaceholder('character.name')).toEqual({
+      kind: 'unknown',
+      key: 'character.name',
+    });
+    expect(classifyPlaceholder('Character')).toEqual({ kind: 'unknown', key: 'Character' });
+  });
+
   it('reads a bare family prefix as unknown, not as an empty name', () => {
     // THE correction. Pre-`0506517d3` the three draft audits reported
     // `{{params.}}` as "names no declared parameter" (the empty string is not a

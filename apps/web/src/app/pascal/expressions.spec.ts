@@ -318,6 +318,9 @@ describe('parseExpression — acceptance', () => {
     '{{params.bonus}}',
     '{{metadata.lockpicks}}',
     '{{state.encounter.count}}',
+    // v4 `a05c6f755`: `isKnownRef` admits `{{character}}` through the
+    // classifier; the refusal text below still omits it (v4 `:133`).
+    "{{character}} + ' wins'",
     '1 + 2 * 3',
     '({{value}} + 1) * 2',
     "-{{state.debt}} / 2 + 'gp'",
