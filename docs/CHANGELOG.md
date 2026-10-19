@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — test(e2e): the History tab's two gated wardrobe beats (P4.D318, ACTIVATE-AT-UNIFY P4.D315 / P4.D316)
+
+_Versions: SPA 0.5.879._
+
+P4.D318 item 13. Two Playwright beats in `e2e/wardrobe-flow.spec.ts`, after the in-chat staging beat, gated on `P4D315_SERVER_LANDED` / `P4D316_SERVER_LANDED` (both `false`, flipped at unification): History lists the operator's change and Wear again returns to the earlier outfit (the toast, `Wearing now` moved, the entry count unchanged); and with staged Live edits, Wear again confirms through the native dialog (handler registered before the click), discards the staging, and Done flushes nothing over the restored outfit. Indices are read from the DOM; assertions are rendered text. Run by file: flags `false` → 18 passed / 2 skipped; flags locally `true` → both fail at the premise (`unknown variant chatWardrobeHistory` on this branch).
+
 #### 2026-10-19 — fix(spa): Wear again discards the Live staging even when clean — the R-L ruled divergence from v4 (P4.D318)
 
 _Versions: SPA 0.5.878._

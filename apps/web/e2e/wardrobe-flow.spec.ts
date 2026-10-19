@@ -128,6 +128,24 @@ const P4D286_ROW_LANDED = true;
 const MOVE_TO_WARDROBE = P4D286_ROW_LANDED ? 'Move to another wardrobe…' : 'Move';
 const COPY_TO_WARDROBE = P4D286_ROW_LANDED ? 'Copy to another wardrobe…' : 'Copy';
 
+/**
+ * ACTIVATE-AT-UNIFY (P4.D318 → P4.D315). The History tab reads one
+ * character's outfit timeline through `chatWardrobeHistory` (the GET
+ * `?action=wardrobe-history`, C1 §7). Before the keystone lands the dispatch
+ * answers `unknown variant`, so the tab shows an error line forever. Flip to
+ * `true` at unification (§S.9).
+ */
+const P4D315_SERVER_LANDED = false;
+
+/**
+ * ACTIVATE-AT-UNIFY (P4.D318 → P4.D316). *Wear again* posts
+ * `chatWardrobeRollback` (C2 §5), and the timeline only has entries once the
+ * equip route RECORDS an operator change — both are P4.D316's. Without it no
+ * change is ever recorded, so the timeline is empty. Flip to `true` at
+ * unification (§S.9).
+ */
+const P4D316_SERVER_LANDED = false;
+
 /** The garment the wear-ledger beats create fresh, so its tally starts at zero. */
 const LEDGER_GARMENT = 'Ledger Spats';
 
@@ -1278,6 +1296,203 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
       .first();
     await expect(accessoriesRow).toContainText('Brass Goggles', { timeout: 10_000 });
     await expect(accessoriesRow).toContainText(SEEDED_ACCESSORY);
+    await page.getByRole('button', { name: 'Done' }).click();
+  });
+
+  /**
+   * The History tab (P4.D318 — v4 `8d8618819`), end to end against the real
+   * recording and rollback (P4.D315 / P4.D316). Every index is READ from the
+   * DOM — the boot seed may give Solo Voyage a `seeded` entry 0, and earlier
+   * beats in this file change its outfit — and every assertion is rendered
+   * text (the P4.D300 cache trap: never a `waitForResponse`).
+   */
+  async function reachSoloVoyage(page: Page): Promise<{ chatId: string; ariaId: string }> {
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await openAriaDetail(page);
+    await page.getByRole('button', { name: 'Conversations' }).click();
+    await page.getByRole('link', { name: /Solo Voyage/ }).click();
+    await expect(page).toHaveURL(/\/salon\//);
+    const chatId = /\/salon\/([^/?#]+)/.exec(page.url())?.[1];
+    expect(chatId, 'the Solo Voyage chat id, read from the URL').toBeTruthy();
+    const characters = ((await dispatch(page, { type: 'characterList' }))['characters'] ??
+      []) as Array<{ id: string; name: string }>;
+    const ariaId = characters.find((c) => c.name === 'Aria')?.id;
+    expect(ariaId, "Aria's character id").toBeTruthy();
+    return { chatId: chatId!, ariaId: ariaId! };
+  }
+
+  /** A beat-private garment in Aria's own wardrobe (never a shared seed). */
+  async function createGarment(
+    page: Page,
+    ariaId: string,
+    title: string,
+    slot: 'footwear' | 'accessories',
+  ): Promise<string> {
+    const created = (
+      await dispatch(page, {
+        type: 'characterWardrobeCreate',
+        characterId: ariaId,
+        item: {
+          title,
+          description: null,
+          imagePrompt: null,
+          types: [slot],
+          appropriateness: null,
+          isDefault: false,
+          componentItemIds: [],
+          replace: false,
+        },
+      })
+    )['wardrobeItem'] as { id: string } | undefined;
+    expect(created?.id, `the ${title} id`).toBeTruthy();
+    return created!.id;
+  }
+
+  /** The entry index a `outfit-history-entry-<n>` testid names. */
+  async function entryIndex(entry: ReturnType<Page['locator']>): Promise<number> {
+    const testid = await entry.getAttribute('data-testid');
+    const index = Number(/outfit-history-entry-(\d+)$/.exec(testid ?? '')?.[1]);
+    expect(Number.isInteger(index), `an entry index from ${testid}`).toBe(true);
+    return index;
+  }
+
+  test('in chat: History lists the operator\'s change; Wear again returns to the earlier outfit and Aurora says so', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D315_SERVER_LANDED || !P4D316_SERVER_LANDED,
+      'ACTIVATE-AT-UNIFY (P4.D318 → P4.D315 / P4.D316): the history GET and the rollback POST + recording are the server lanes\' — flipped at unification (§S.9)',
+    );
+    test.setTimeout(90_000);
+    const { chatId, ariaId } = await reachSoloVoyage(page);
+    const broguesId = await createGarment(page, ariaId, 'History Brogues', 'footwear');
+    await createGarment(page, ariaId, 'History Cravat', 'accessories');
+
+    // An operator change through the real equip route — recorded.
+    await dispatch(page, {
+      type: 'chatEquip',
+      chatId,
+      characterId: ariaId,
+      mode: 'set_all',
+      slots: { top: [], bottom: [], footwear: [broguesId], accessories: [], hair: [] },
+    });
+
+    await page.getByTitle('Wardrobe', { exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.qt-dialog-title')).toHaveText('Wardrobe');
+    // The deflake gate: the brogues painting proves the Live tab seeded.
+    const liveFootwear = dialog.locator('.qt-card').filter({ hasText: 'Footwear' }).first();
+    await expect(liveFootwear).toContainText('History Brogues', { timeout: 15_000 });
+    await dialog
+      .locator('qt-wardrobe-item-row')
+      .filter({ hasText: 'History Cravat' })
+      .first()
+      .getByRole('button', { name: 'Wear', exact: true })
+      .click();
+    await page.getByRole('button', { name: 'Done' }).click();
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+
+    // Reopen → History: the newest entry is the Done flush, the operator's.
+    await page.getByTitle('Wardrobe', { exact: true }).click();
+    await dialog.locator('.qt-tab-group').getByRole('button', { name: 'History', exact: true }).click();
+    const entries = dialog.locator('[data-testid^="outfit-history-entry-"]');
+    const newest = entries.first();
+    await expect(newest).toContainText('Wearing now', { timeout: 15_000 });
+    await expect(newest).toContainText('· the operator');
+    await expect(newest).toContainText('History Cravat');
+    const count = await entries.count();
+
+    // The brogues-only entry (the set_all above) — Wear again.
+    const earlier = entries.filter({ hasText: 'History Brogues' }).filter({ hasNotText: 'History Cravat' }).first();
+    const index = await entryIndex(earlier);
+    await earlier.getByRole('button', { name: 'Wear again', exact: true }).click();
+    await expect(
+      page.locator('[role="toast-container"]').getByText(`Back in outfit ${index}`, { exact: true }),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(dialog.getByTestId(`outfit-history-entry-${index}`)).toContainText('Wearing now');
+    // The cursor moved; nothing was appended.
+    await expect(entries).toHaveCount(count);
+    await page.getByRole('button', { name: 'Done' }).click();
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+    // Aurora's announcement in the Salon is the unifier's to MEASURE on the
+    // live run and pin (P4.D318 item 13 — not measurable on this lane's
+    // branch, which has no rollback server); until then the 💸 row carries it.
+  });
+
+  test('in chat: with staged Live edits, Wear again confirms and discards them', async ({ page }) => {
+    test.skip(
+      !P4D315_SERVER_LANDED || !P4D316_SERVER_LANDED,
+      'ACTIVATE-AT-UNIFY (P4.D318 → P4.D315 / P4.D316): the history GET and the rollback POST + recording are the server lanes\' — flipped at unification (§S.9)',
+    );
+    test.setTimeout(90_000);
+    const { chatId, ariaId } = await reachSoloVoyage(page);
+    const spatsId = await createGarment(page, ariaId, 'History Spats', 'footwear');
+    const glovesId = await createGarment(page, ariaId, 'History Gloves', 'accessories');
+    await createGarment(page, ariaId, 'History Monocle', 'accessories');
+
+    // Two recorded operator changes: spats alone, then spats + gloves.
+    await dispatch(page, {
+      type: 'chatEquip',
+      chatId,
+      characterId: ariaId,
+      mode: 'set_all',
+      slots: { top: [], bottom: [], footwear: [spatsId], accessories: [], hair: [] },
+    });
+    await dispatch(page, {
+      type: 'chatEquip',
+      chatId,
+      characterId: ariaId,
+      mode: 'set_all',
+      slots: { top: [], bottom: [], footwear: [spatsId], accessories: [glovesId], hair: [] },
+    });
+
+    await page.getByTitle('Wardrobe', { exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    const liveAccessories = dialog.locator('.qt-card').filter({ hasText: 'Accessories' }).first();
+    const liveFootwear = dialog.locator('.qt-card').filter({ hasText: 'Footwear' }).first();
+    await expect(liveAccessories).toContainText('History Gloves', { timeout: 15_000 });
+
+    // Stage (NOT Done): wear the monocle.
+    await dialog
+      .locator('qt-wardrobe-item-row')
+      .filter({ hasText: 'History Monocle' })
+      .first()
+      .getByRole('button', { name: 'Wear', exact: true })
+      .click();
+    await expect(liveAccessories).toContainText('History Monocle');
+
+    await dialog.locator('.qt-tab-group').getByRole('button', { name: 'History', exact: true }).click();
+    const entries = dialog.locator('[data-testid^="outfit-history-entry-"]');
+    await expect(entries.first()).toContainText('Wearing now', { timeout: 15_000 });
+    const earlier = entries.filter({ hasText: 'History Spats' }).filter({ hasNotText: 'History Gloves' }).first();
+    const index = await entryIndex(earlier);
+
+    // Trap 7: the native confirm's handler goes in BEFORE the click.
+    page.once('dialog', (d) => {
+      expect(d.message()).toBe(
+        `Discard the staged changes to Aria's outfit and return to outfit ${index}?`,
+      );
+      void d.accept();
+    });
+    await earlier.getByRole('button', { name: 'Wear again', exact: true }).click();
+    await expect(
+      page.locator('[role="toast-container"]').getByText(`Back in outfit ${index}`, { exact: true }),
+    ).toBeVisible({ timeout: 10_000 });
+
+    // Live: the staged monocle is GONE and the restored outfit paints.
+    await dialog.locator('.qt-tab-group').getByRole('button', { name: /Live outfit/ }).click();
+    await expect(liveFootwear).toContainText('History Spats', { timeout: 10_000 });
+    await expect(liveAccessories).not.toContainText('History Monocle');
+    await expect(liveAccessories).not.toContainText('History Gloves');
+
+    // Done flushes nothing over it; the reopened dialog shows the restored outfit.
+    await page.getByRole('button', { name: 'Done' }).click();
+    await expect(dialog).toBeHidden({ timeout: 10_000 });
+    await page.getByTitle('Wardrobe', { exact: true }).click();
+    await expect(liveFootwear).toContainText('History Spats', { timeout: 10_000 });
+    await expect(liveAccessories).not.toContainText('History Monocle');
+    await expect(liveAccessories).not.toContainText('History Gloves');
     await page.getByRole('button', { name: 'Done' }).click();
   });
 
