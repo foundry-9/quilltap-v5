@@ -122,6 +122,15 @@ const CASES: CaseSpec[] = [
   // The unposted arm: the roll happened (its effects stand), the announcement
   // did not land — the DEBUG, then Prospero (whose own post fails too).
   { name: 'trigger-unposted', speaker: A, content: 'abracadabra', chatSettings: ON, plant: PLANT_POST_FAILS },
+
+  // ---- P4.D319 (v4 `a05c6f755`): `{{character}}` + `announceAsCharacter` ----
+  // The runner supplies the OVERLAID row's name (no service read): Bertie, the
+  // row announced as CHAR_A. A padded RAW name (a per-case plant — `name` is not
+  // vault-managed, so the overlay carries it through) is trimmed. CHAR_D's
+  // broken vault still WARN-skips the scan before any name is read.
+  { name: 'announced-dresser-overlaid-name', speaker: A, content: 'Time to dress the part.', chatSettings: ON },
+  { name: 'announced-dresser-padded-name', speaker: A, content: 'Dress the part!', chatSettings: ON, plant: [`UPDATE "characters" SET "name" = '  Bertie  ' WHERE "id" = '${CHAR_A}'`] },
+  { name: 'announced-dresser-broken-vault', speaker: { participantId: P7_A, characterId: CHAR_D }, content: 'dress the part', chatSettings: ON },
 ];
 
 async function dumpStores(chatId: string): Promise<Record<string, unknown>> {

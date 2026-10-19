@@ -92,6 +92,11 @@ const GROUP: &str = "a2000000-0000-4000-8000-0000000000aa";
 const CHAR_D: &str = "a1000000-0000-4000-8000-00000000000d";
 const P_A: &str = "e1000000-0000-4000-8000-00000000000a";
 
+/// P4.D319: the per-case RAW-name plant (never baked — R-6): both trims.
+const PLANT_PADDED_BERTIE: &[&str] = &[
+    r#"UPDATE "characters" SET "name" = '  Bertie  ' WHERE "id" = 'a1000000-0000-4000-8000-00000000000a'"#,
+];
+
 #[derive(serde::Deserialize)]
 struct Spec {
     #[serde(rename = "testPepperBase64")]
@@ -705,6 +710,33 @@ fn run_custom_handler_matches_oracle() {
             profile: false,
             plant: Some(PLANT_POST_FAILS),
         },
+        // ---- P4.D319 (v4 `a05c6f755`): `{{character}}` + `announceAsCharacter`
+        // in the trigger room (the room comes from the oracle row's `room`).
+        // The handler passes no name, so the service reads the RAW row.
+        Case {
+            name: "announced-dresser-raw-name",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "announced_dresser" }),
+            profile: false,
+            plant: None,
+        },
+        Case {
+            name: "announced-dresser-padded-raw-name",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "announced_dresser" }),
+            profile: false,
+            plant: Some(PLANT_PADDED_BERTIE),
+        },
+        Case {
+            name: "announced-dresser-regression-spell",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "spell" }),
+            profile: false,
+            plant: None,
+        },
     ];
 
     // The corpus is declared on BOTH sides, so a case added to the oracle and
@@ -766,9 +798,12 @@ fn run_custom_handler_matches_oracle() {
         )
         .expect("open db");
 
+        // P4.D319: a case may run in another room (the oracle row's `room`).
+        let room = &want["room"];
+        let chat_id = room["chatId"].as_str().unwrap_or(CHAT).to_string();
         let ctx = RunCustomToolContext {
             user_id: spec.user_id.clone(),
-            chat_id: CHAT.to_string(),
+            chat_id: chat_id.clone(),
             character_id: case.character_id.map(str::to_string),
             character_mount_point_id: case.vault.clone(),
             character_ids: Some(vec![
@@ -776,8 +811,17 @@ fn run_custom_handler_matches_oracle() {
                 CHAR_B.to_string(),
                 CHAR_C.to_string(),
             ]),
-            project_id: None,
-            caller_participant_id: Some(P_A.to_string()),
+            project_id: if room.is_null() {
+                None
+            } else {
+                room["projectId"].as_str().map(str::to_string)
+            },
+            caller_participant_id: Some(
+                room["callerParticipantId"]
+                    .as_str()
+                    .unwrap_or(P_A)
+                    .to_string(),
+            ),
             // P4.D169: a case may pin its own instant (`nowMs`), and the jest
             // oracle freezes `Date.now()` to the same value for it. Every
             // clock-independent case takes the shared default, which is what
@@ -830,7 +874,7 @@ fn run_custom_handler_matches_oracle() {
         let got_stores = if want["stores"].is_null() {
             Value::Null
         } else {
-            common::dump_pascal_stores(&db, CHAT, GROUP, [CHAR_A, CHAR_B, CHAR_C])
+            common::dump_pascal_stores(&db, &chat_id, GROUP, [CHAR_A, CHAR_B, CHAR_C])
         };
         drop(db);
         let _ = std::fs::remove_dir_all(&scratch);

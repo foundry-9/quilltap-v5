@@ -826,6 +826,11 @@ async function main(): Promise<void> {
   // `extend-pascal-run-custom-triggers.ts`, which put it into the committed pair).
   const { addTriggerRoom } = await import('./pascal-run-custom-triggers');
   await addTriggerRoom({ repos, writeVaultFile, userId: spec.userId, ts: TS, mkParticipant });
+  // P4.D319: `announced_dresser` on the Trigger Shelf (shared with the in-place
+  // widen `extend-pascal-run-custom-announcer.ts`, which put it into the
+  // committed pair).
+  const { addAnnouncedDresser } = await import('./pascal-run-custom-announcer');
+  await addAnnouncedDresser(writeVaultFile);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

@@ -49,6 +49,11 @@ const GROUP = 'a2000000-0000-4000-8000-0000000000aa';
 /** P4.d19: the character whose vault is broken (no `properties.json`). */
 const CHAR_D = 'a1000000-0000-4000-8000-00000000000d';
 const P_A = 'e1000000-0000-4000-8000-00000000000a';
+/** P4.D319: P4.D305's trigger room — its Trigger Shelf (the room's project
+ *  tier) carries `announced_dresser`; CHAR_A sits in it as `P7_A`. */
+const CHAT_TRIGGERS = 'c1000000-0000-4000-8000-000000000007';
+const PROJECT_TRIGGERS = 'a3000000-0000-4000-8000-0000000000bb';
+const P7_A = 'e7000000-0000-4000-8000-00000000000a';
 
 interface CaseSpec {
   name: string;
@@ -79,6 +84,12 @@ interface CaseSpec {
    * planted case dumps no stores (the dump reads the chat).
    */
   plant?: string[];
+  /**
+   * P4.D319: run in ANOTHER room — the chat, its project and the caller's seat
+   * there. Recorded on the row only when set, so every earlier row keeps its
+   * bytes; the Rust side builds its context from the recorded values.
+   */
+  room?: { chatId: string; projectId: string | null; callerParticipantId: string };
 }
 
 /**
@@ -332,12 +343,12 @@ async function runCase(
   try {
     const context = {
       userId: spec.userId,
-      chatId: CHAT,
+      chatId: c.room?.chatId ?? CHAT,
       characterId: c.characterId,
       characterMountPointId: c.vaultKey ? meta[c.vaultKey] : null,
       characterIds: c.characterIds,
-      projectId: null,
-      callerParticipantId: P_A,
+      projectId: c.room ? c.room.projectId : null,
+      callerParticipantId: c.room?.callerParticipantId ?? P_A,
     };
     const realNow = Date.now;
     if (c.nowMs !== undefined) Date.now = () => c.nowMs as number;
@@ -407,11 +418,12 @@ async function runCase(
       // its clock FROM the row rather than from a constant the two sides would
       // have to keep in step by hand. Absent on a case that pins none.
       ...(c.nowMs === undefined ? {} : { nowMs: c.nowMs }),
+      ...(c.room ? { room: c.room } : {}),
       output,
       columns,
       rows,
       logs,
-      stores: c.plant ? null : await dumpStores(CHAT),
+      stores: c.plant ? null : await dumpStores(c.room?.chatId ?? CHAT),
       canned: Array.from(cannedRecorded.values()),
       llmLogs,
     };
@@ -570,6 +582,16 @@ async function main(): Promise<void> {
     // The chat reads fine but no message can be inserted: the cascade holds,
     // the deal lands, the post fails — the handler's unposted arm.
     { name: 'run-llm-unposted', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'coin' }, plant: PLANT_POST_FAILS },
+
+    // ---- P4.D319 (v4 `a05c6f755`): `{{character}}` + `announceAsCharacter` --
+    // `announced_dresser` says `{{character}} rolls {{value}}` and announces as
+    // the rolling character. The handler passes NO name, so the run service
+    // reads the RAW row: Bertie, and the row carries `customAnnouncer` LAST.
+    // The padded RAW name is a per-case plant (never baked): both trims.
+    { name: 'announced-dresser-raw-name', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'announced_dresser' }, room: { chatId: CHAT_TRIGGERS, projectId: PROJECT_TRIGGERS, callerParticipantId: P7_A } },
+    { name: 'announced-dresser-padded-raw-name', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'announced_dresser' }, room: { chatId: CHAT_TRIGGERS, projectId: PROJECT_TRIGGERS, callerParticipantId: P7_A }, plant: [`UPDATE "characters" SET "name" = '  Bertie  ' WHERE "id" = '${CHAR_A}'`] },
+    // A tool WITHOUT the key, in the same room, by the same character: Pascal's.
+    { name: 'announced-dresser-regression-spell', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'spell' }, room: { chatId: CHAT_TRIGGERS, projectId: PROJECT_TRIGGERS, callerParticipantId: P7_A } },
   ];
 
   const out = fs.createWriteStream(outPath);

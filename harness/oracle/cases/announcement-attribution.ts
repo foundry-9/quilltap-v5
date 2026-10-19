@@ -259,6 +259,61 @@ const attributeCases: Array<{ name: string; messages: Msg[]; twice?: boolean }> 
       },
     ],
   },
+  // ---- P4.D319 (v4 `a05c6f755`): a character-announced Pascal outcome -----
+  // `announceAsCharacter` puts a `customAnnouncer` on a Pascal row BESIDE
+  // `systemSender: 'pascal'`; the attribution has no hunk — the announcer arm
+  // already wins — so these are a consequence's corpus, green on unported v5.
+  {
+    name: 'pascal_outcome_announced_by_a_character',
+    messages: [
+      {
+        content: '🎲 **For Ariel**\n\nAriel rolls 0.4',
+        opaqueContent: '🎲 **For Ariel**\n\nAriel rolls 0.4',
+        systemSender: 'pascal',
+        systemKind: 'custom-tool-result',
+        customAnnouncer: { kind: 'character', characterId: ARIEL },
+      },
+    ],
+  },
+  {
+    // The announcer was deleted: no name, so the row is left alone (the staff
+    // fallback is only for `systemKind === 'announcement'`).
+    name: 'pascal_outcome_announcer_deleted',
+    messages: [
+      {
+        content: '🎲 **For Ariel**\n\nAriel rolls 0.4',
+        opaqueContent: '🎲 **For Ariel**\n\nAriel rolls 0.4',
+        systemSender: 'pascal',
+        systemKind: 'custom-tool-result',
+        customAnnouncer: { kind: 'character', characterId: 'gone' },
+      },
+    ],
+  },
+  {
+    name: 'pascal_outcome_announced_idempotent',
+    twice: true,
+    messages: [
+      {
+        content: '🎲 **For Ariel**\n\nAriel rolls 0.4',
+        opaqueContent: '🎲 **For Ariel**\n\nAriel rolls 0.4',
+        systemSender: 'pascal',
+        systemKind: 'custom-tool-result',
+        customAnnouncer: { kind: 'character', characterId: ARIEL },
+      },
+    ],
+  },
+  {
+    // Pascal's own outcome (no announcer) is untouched.
+    name: 'pascal_outcome_no_announcer_untouched',
+    messages: [
+      {
+        content: '🎲 **Coin**\n\nHeads.',
+        opaqueContent: '🎲 **Coin**\n\nHeads.',
+        systemSender: 'pascal',
+        systemKind: 'custom-tool-result',
+      },
+    ],
+  },
 ];
 
 for (const c of attributeCases) {

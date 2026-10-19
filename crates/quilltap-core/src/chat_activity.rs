@@ -173,4 +173,16 @@ mod tests {
         });
         assert_eq!(chat_activity_at(&chat), "2026-01-01T00:00:00.000Z");
     }
+
+    /// P4.D319 (v4 `a05c6f755`): a character-announced Pascal outcome is still
+    /// not character-authored — `systemSender` already skipped it, and the
+    /// `customAnnouncer` it now carries would too. Regression pin.
+    #[test]
+    fn a_character_announced_pascal_row_is_not_character_authored() {
+        assert!(!is_character_authored_message(&json!({
+            "type": "message", "role": "ASSISTANT", "systemSender": "pascal",
+            "systemKind": "custom-tool-result",
+            "customAnnouncer": { "kind": "character", "characterId": "a1" }
+        })));
+    }
 }

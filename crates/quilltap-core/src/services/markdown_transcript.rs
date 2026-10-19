@@ -612,3 +612,27 @@ pub fn chat_export_markdown(
         Err(_) => Response::error(ErrorKind::Internal, "Failed to export chat as Markdown"),
     }
 }
+
+#[cfg(test)]
+mod announcer_tests {
+    use super::*;
+
+    /// P4.D319 (v4 `a05c6f755`): a character-announced Pascal outcome carries
+    /// `customAnnouncer` BESIDE `systemSender: 'pascal'`; `customAnnouncer`
+    /// wins (v4 `markdown-transcript.ts:94-100`), so the export names the
+    /// character. Regression pin — the rule predates the pair.
+    #[test]
+    fn a_character_announced_pascal_row_names_the_character() {
+        let msg = serde_json::json!({
+            "type": "message", "role": "ASSISTANT", "systemSender": "pascal",
+            "systemKind": "custom-tool-result",
+            "customAnnouncer": { "kind": "character", "characterId": "a1" }
+        });
+        let mut names = HashMap::new();
+        names.insert("a1".to_string(), "Bertie".to_string());
+        assert_eq!(
+            resolve_speaker_name(&msg, &HashMap::new(), &names, "Operator", None),
+            "Bertie"
+        );
+    }
+}

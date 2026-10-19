@@ -80,6 +80,8 @@ const CHAT_TWO_OWN: &str = "c1000000-0000-4000-8000-000000000003";
 const CHAT_ALL_LLM: &str = "c1000000-0000-4000-8000-000000000004";
 const CHAT_SOLO: &str = "c1000000-0000-4000-8000-000000000005";
 const CHAT_REMOVED: &str = "c1000000-0000-4000-8000-000000000006";
+/// P4.D319: P4.D305's trigger room — its Trigger Shelf carries `announced_dresser`.
+const CHAT_TRIGGERS: &str = "c1000000-0000-4000-8000-000000000007";
 const CHAR_A: &str = "a1000000-0000-4000-8000-00000000000a";
 const CHAR_B: &str = "a1000000-0000-4000-8000-00000000000b";
 const CHAR_C: &str = "a1000000-0000-4000-8000-00000000000c";
@@ -840,6 +842,25 @@ async fn custom_tools_route_matches_oracle() {
             Some(
                 json!({ "tool": "whispered", "asCharacterId": "a1000000-0000-4000-8000-00000000000a", "parameters": { "nobody": 1 } }),
             ),
+            false,
+        ),
+        // ---- P4.D319 (v4 `a05c6f755`): `{{character}}` + `announceAsCharacter`
+        // in the trigger room: the listing's `references.character`, a run as
+        // CHAR_A (the RAW name + `customAnnouncer`), a run as nobody (Pascal's,
+        // as written).
+        ("list-trigger-room", CHAT_TRIGGERS, None, false),
+        (
+            "run-announced-dresser-as-a",
+            CHAT_TRIGGERS,
+            Some(
+                json!({ "tool": "announced_dresser", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
+            ),
+            false,
+        ),
+        (
+            "run-announced-dresser-no-character",
+            CHAT_TRIGGERS,
+            Some(json!({ "tool": "announced_dresser" })),
             false,
         ),
     ];

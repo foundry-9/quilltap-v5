@@ -1011,4 +1011,92 @@ mod tests {
         assert_eq!(cheap.default_cheap_profile_id, None);
         assert!(!cheap.fallback_to_local);
     }
+
+    /// P4.D319 (v4 `a05c6f755`, R-9): a character-announced Pascal outcome
+    /// carries `customAnnouncer` BESIDE `systemSender: 'pascal'`. The Courier
+    /// checks `systemSender` FIRST (`courier-transport.service.ts:250-262`), so
+    /// it still names the Staff sender — the commit message's "the Courier
+    /// attributes it to them" is not what v4's code does. Regression pin. The
+    /// label is v4's raw key `pascal` (v4's `COURIER_SYSTEM_SENDER_LABELS` has
+    /// no `pascal` entry, so `?? event.systemSender` answers it) — not the
+    /// capitalised `[Staff: Pascal]` the P4.D319 order's prose said.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_character_announced_pascal_row_stays_staff_pascal() {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        const CHAT: &str = "c3000000-0000-4000-8000-000000000001";
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
+            "userId": crate::api::SINGLE_USER_ID,
+            "title": "Courier Room",
+            "participants": [],
+        }))
+        .unwrap();
+        let opts = crate::db::chats::CreateOptions {
+            id: CHAT.to_string(),
+            created_at: "2026-05-01T00:00:00.000Z".to_string(),
+            updated_at: "2026-05-01T00:00:00.000Z".to_string(),
+        };
+        db.write(move |w| {
+            crate::db::chats::ChatsRepository::new(w.main().connection()).create(&create, &opts)
+        })
+        .await
+        .unwrap();
+        let body = crate::services::pascal_writer::build_pascal_result_content(
+            "Coin",
+            None,
+            "Bertie rolls 0.4",
+        );
+        crate::services::pascal_writer::post_pascal_result(
+            &db,
+            crate::services::pascal_writer::PostPascalResultParams {
+                chat_id: CHAT.to_string(),
+                content: body.content,
+                opaque_content: body.opaque_content,
+                pascal_meta: json!({
+                    "tool": "coin", "toolTitle": "Coin", "definitionTier": "character",
+                    "definitionMountId": "m1", "params": {}, "rollForm": "range", "raw": 0.4,
+                    "value": 0.4, "state": "info", "outcomeIndex": 0, "invokedBy": "llm"
+                }),
+                target_participant_ids: None,
+                announcer_character_id: Some("a1000000-0000-4000-8000-00000000000a".into()),
+            },
+        )
+        .await
+        .expect("posted");
+        let chat = db
+            .read_main(|c| Ok(chats_read::find_by_id_or_none(c, CHAT)))
+            .unwrap()
+            .unwrap();
+        let events = db
+            .read_main(|c| {
+                build_courier_delta_events(
+                    c,
+                    CHAT,
+                    &CourierCheckpoint {
+                        last_resolved_message_id: String::new(),
+                        resolved_at: "2000-01-01T00:00:00.000Z".into(),
+                    },
+                    &chat,
+                    &HashMap::new(),
+                    &json!({ "id": "x", "name": "X" }),
+                    "p",
+                    "Operator",
+                )
+            })
+            .unwrap();
+        let speakers: Vec<&str> = events.iter().map(|e| e.speaker.as_str()).collect();
+        assert_eq!(speakers, ["[Staff: pascal]"]);
+    }
 }

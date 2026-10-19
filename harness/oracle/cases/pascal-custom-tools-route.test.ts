@@ -46,6 +46,8 @@ const CHAT_TWO_OWN = 'c1000000-0000-4000-8000-000000000003';
 const CHAT_ALL_LLM = 'c1000000-0000-4000-8000-000000000004';
 const CHAT_SOLO = 'c1000000-0000-4000-8000-000000000005';
 const CHAT_REMOVED = 'c1000000-0000-4000-8000-000000000006';
+/** P4.D305's trigger room — its Trigger Shelf carries P4.D319's `announced_dresser`. */
+const CHAT_TRIGGERS = 'c1000000-0000-4000-8000-000000000007';
 const CHAR_A = 'a1000000-0000-4000-8000-00000000000a';
 const CHAR_B = 'a1000000-0000-4000-8000-00000000000b';
 /** P4.D35: the group tier the store dump reads back. */
@@ -588,6 +590,16 @@ async function main(): Promise<void> {
     // ...and its REFUSAL (a parameter nobody declared): the Prospero bubble is
     // whispered too — `body.private ?? defaultVisibility === 'whisper'`.
     { name: 'run-default-whisper-refused-no-private', method: 'POST', body: { tool: 'whispered', asCharacterId: CHAR_A, parameters: { nobody: 1 } } },
+
+    // ---- P4.D319 (v4 `a05c6f755`): `{{character}}` + `announceAsCharacter` --
+    // `announced_dresser` (the Trigger Shelf, `pascal-run-custom-announcer.ts`)
+    // says `{{character}} rolls {{value}}` and announces as the character. The
+    // operator route passes NO name, so the service reads the RAW row: run as
+    // CHAR_A, the row names Bertie and carries `customAnnouncer` LAST; run as
+    // nobody, Pascal announces it and the placeholder renders as written.
+    { name: 'list-trigger-room', method: 'GET', chat: CHAT_TRIGGERS },
+    { name: 'run-announced-dresser-as-a', method: 'POST', chat: CHAT_TRIGGERS, body: { tool: 'announced_dresser', asCharacterId: CHAR_A } },
+    { name: 'run-announced-dresser-no-character', method: 'POST', chat: CHAT_TRIGGERS, body: { tool: 'announced_dresser' } },
   ];
 
   const out = fs.createWriteStream(outPath);

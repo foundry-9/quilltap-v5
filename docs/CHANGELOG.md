@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — test(pascal): announced_dresser through the three entrances; announcer consequence pins (P4.D319)
+
+_Versions: core 0.0.1315._
+
+Widens the committed `pascal-run-custom` pair in place with one definition, `announced_dresser` (`announceAsCharacter: true`, a `{{character}}` message and chip, one trigger phrase) on the trigger room's Trigger Shelf, through a new shared module and an idempotent extender run from the `e8e17b2d9` pin (only the mount file moves). The run_custom handler, operator route and trigger runner families grow rows for the raw name, a padded raw name (a per-case plant), the overlaid name, a run by nobody, a broken-vault speaker and a no-announcer regression, all regenerated from the pin. The announcement-attribution corpus grows four character-announced Pascal rows. Unit pins confirm the Courier still labels such a row by its Staff sender (`[Staff: pascal]`, v4's raw key), the markdown transcript names the character, and chat activity and the conversation summary skip it.
+
 #### 2026-10-19 — feat(pascal): {{character}} placeholder and announceAsCharacter (v4 a05c6f755, P4.D319)
 
 _Versions: core 0.0.1314._

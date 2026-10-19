@@ -587,4 +587,16 @@ mod tests {
         assert_eq!(sanitize_leaf_name("__lead__"), "lead");
         assert_eq!(sanitize_leaf_name("///"), "unnamed");
     }
+
+    /// P4.D319 (v4 `a05c6f755`): a character-announced Pascal outcome is not
+    /// conversational (both its `systemSender` and its `customAnnouncer`
+    /// disqualify it). Regression pin.
+    #[test]
+    fn a_character_announced_pascal_row_is_not_conversational() {
+        assert!(!is_conversational_message(&serde_json::json!({
+            "type": "message", "role": "ASSISTANT", "systemSender": "pascal",
+            "systemKind": "custom-tool-result",
+            "customAnnouncer": { "kind": "character", "characterId": "a1" }
+        })));
+    }
 }
