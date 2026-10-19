@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — docs(harness): record the outfit-history validator rows in `qtap_schema_validate_equivalence`'s header (P4.D317)
+
+_Harness-only change (`quilltap-harness` frozen); no crate version moves._
+
+The family header now describes the five `wardrobeHistory` mutation rows and their red-first result on the stale schema.
+
 #### 2026-10-19 — feat(import): `.qtap` imports carry the outfit history (phase 7f) and re-key the chats' character-keyed columns (bug 252) (P4.D317)
 
 _Versions: core 0.0.1321._

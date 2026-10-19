@@ -82,6 +82,18 @@
 //! RECORDED count deltas, ajv vs the crate: 3/2 and 4/3 (the seed's `then`
 //! wrapper, one more each).
 //!
+//! **[P4.D317] The `wardrobeHistory` rows** (the schema re-vendored at
+//! `e8e17b2d9`, 108,678 B — `7953da3a0`'s `$defs.WardrobeHistory` and
+//! `chats.wardrobeHistory` under the `additionalProperties: false` chats data
+//! object; `4ae20977f`'s `actorToolName`). Five mutation rows from
+//! `chats_all_memories` setting `/data/wardrobeHistory`: `…_valid` and
+//! `…_missing_actor_tool_name_valid` add no path (the key is not required);
+//! `…_missing_actor_character_id_invalid`, `…_short_hash_invalid` (15 units)
+//! and `…_bogus_source_invalid` add their `/data/wardrobeHistory/0` path on
+//! both engines. Red-first on the stale schema: the three invalid rows'
+//! section sets differed (v5 refused the unknown `wardrobeHistory` key
+//! outright, `{chats}` vs v4's `{chats, wardrobeHistory}`).
+//!
 //! Regenerate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}
