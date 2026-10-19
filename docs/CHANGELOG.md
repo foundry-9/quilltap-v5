@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — docs(porting): drift check — 20 commits past `25b8fab6a` (three new: scenario sort, a test, bug 255 with the fifteenth D23 move)
+
+_Docs-only change._
+
+`/setupphase`'s freshness probe found v4 `main` three commits past the ledger's record, so the drift check ran first. v4 `main` is at `a6292f169` (`bugfix` unmoved, content-equal to `release`; checkout clean). New §3 rows, all UNPROCESSED: `1d0a31132` (PORT — every scenario list sorts by title, then filename, a leading "The" ignored; v5 sorts by path), `cad017599` (NO-PORT? — a test file only), and `a6292f169` bug 255 (PORT — `terminal_read` and Ariel's summaries render through a server-side terminal emulator instead of stripping escape codes; `terminal_sessions.cols`/`rows` is the fifteenth D23 move; `@xterm/headless` is a new runtime dependency, so a Rust emulator crate ruling is owed). No convergence: bug 255 was found by v4 live on Friday and v5 has the same defect. §1 now records the two-round split the planner adopted: round 1 pinned at `e8e17b2d9` (the last commit before the Inventory), round 2 the Inventory plus the three 10-19 commits. Regen rule unchanged: pin required.
+
 #### 2026-10-19 — docs(porting): record the boot-created ruling for v4's migration-only tables
 
 _Docs-only change._

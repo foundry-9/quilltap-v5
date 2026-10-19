@@ -28,26 +28,26 @@ probe verifies against._
   P4.D313. CLAUDE.md's Status bullet for the round and its "Oracle baseline"
   bullet both name `25b8fab6a`, and they AGREE with this file (checked
   2026-10-17).
-- **Checked:** 2026-10-18 (evening), by a standalone `/driftcheck`. Both
-  branches re-probed locally AND against the remote (`git ls-remote origin`:
-  `main` = `102a23648`, `bugfix` = `489b228b6`, `release` = `2432b9057` —
-  local equals remote). The SIX new `main` commits were classified from the
-  hunks (three parallel readers for the four code commits, the two docs
-  commits by the checker; the readers' load-bearing claims spot-verified
-  against v5: `build_context.rs`'s continue-mode progressions skip, the
-  `progressions_continue_mode` tier-3 op, `ChatUpdate` lacking
-  `pending_outfit_notifications`, `e1872c94f`'s migration registration, and
-  `character_archive`'s keep-set). The eleven earlier §3 rows stand
-  unchanged. CLAUDE.md's "Oracle baseline" bullet still names `25b8fab6a` —
-  AGREES.
-  - **Before that:** 2026-10-18 morning (`1cfc9b504`, two rows); 2026-10-17
+- **Checked:** 2026-10-19 (morning), by `/setupphase`'s §2 probe FAILING
+  (three new `main` commits) and the `/driftcheck` procedure run inline
+  before planning. Both branches re-probed locally AND against the remote
+  (`git ls-remote origin`: `main` = `a6292f169`, `bugfix` = `489b228b6`,
+  `release` = `2432b9057` — local equals remote). The THREE new `main`
+  commits were classified from the hunks by the checker (`1d0a31132`
+  whole; `a6292f169` whole — its `terminal_sessions` repository confirmed
+  an `AbstractBaseRepository`, so generateDDL RENDERS the two columns;
+  `cad017599` a test file + CHANGELOG only). The seventeen earlier §3 rows
+  stand unchanged. CLAUDE.md's "Oracle baseline" bullet still names
+  `25b8fab6a` — AGREES.
+  - **Before that:** 2026-10-18 evening (`102a23648`, six rows — the
+    Inventory programme + bugs 252–254, three parallel readers);
+    2026-10-18 morning (`1cfc9b504`, two rows); 2026-10-17
     twice (the `25b8fab6a` unification's close probe, then a no-movement
     check at `da92651fa`); 2026-10-16 twice; 2026-10-15 (`/unify` of the
     `83334b9a5` round); and the earlier checks the §6 bullets record.
-- **v4 `main` HEAD at check: `102a23648`** ("Fix: Inventory dogfood fixes,
-  bugs 253/254, and the project roster gate", 2026-10-18 22:47,
-  `4.11.0-dev.36`).
-  - **SEVENTEEN commits past the baseline:**
+- **v4 `main` HEAD at check: `a6292f169`** ("Fix: Ariel reads full-screen
+  programs (bug 255)", 2026-10-19 08:00, `4.11.0-dev.38`).
+  - **TWENTY commits past the baseline:**
     - `5cb0e0190`, the Workbench wardrobe picker (10-16 07:47).
     - `a05c6f755`, the `{{character}}` placeholder + character-announced
       custom tools (10-16 14:45).
@@ -75,18 +75,35 @@ probe verifies against._
         `characters.canManageInventory` (**the FOURTEENTH D23 move**).
       - `102a23648` Inventory dogfood fixes + bug 253 + **bug 254** (v5 HAS
         it — progressions skipped in continue mode) + the roster shelf gate.
-  - **Stamps:** dev.11 → dev.36 (`fcab3f112`, `54bc17a3c`, `f5db10034` stamp
-    nothing; `83387d0e5` skips dev.13; the squashes skip dev.22–25 and
-    dev.27–32).
+    - **NEW 2026-10-19 morning — scenario sort, a test, bug 255,** all on
+      10-19:
+      - `1d0a31132` **scenario lists sort by title** — NEW pure
+        `lib/scenarios/sort.ts` (the one comparator: title, then filename,
+        case-insensitive, a leading "The" ignored) applied at
+        `buildScenarioList`, the character vault readers
+        (`parseScenarioFilesSorted`) and `ScenarioSelect`'s optgroups;
+        default-conflict resolution stays on path order (v5 lists in PATH
+        order everywhere).
+      - `cad017599` a jest test only (`custom-tools-measure-twice.test.ts`,
+        an inventory-gated custom tool end to end) + CHANGELOG.
+      - `a6292f169` **bug 255** — `terminal_read` and Ariel's summaries
+        rendered through a server-side `@xterm/headless` emulator instead
+        of stripping escape codes (v5 HAS the defect: `terminal_clean.rs`
+        is the strip), `terminal_sessions.cols` / `rows` (**the FIFTEENTH
+        D23 move**) + `add-terminal-session-geometry-v1`, a NEW runtime
+        dependency.
+  - **Stamps:** dev.11 → dev.38 (`fcab3f112`, `54bc17a3c`, `f5db10034` and
+    `cad017599` stamp nothing; `83387d0e5` skips dev.13; the squashes skip
+    dev.22–25 and dev.27–32).
 - **v4 `bugfix` tip at check:** `489b228b6` ("bugfix: started 4.10.0 bug
   branch", 2026-10-14). It has not moved: `489b228b6..bugfix` is EMPTY, and by
   content `git diff 2432b9057 bugfix -- lib app packages plugins` is EMPTY.
   **`release` tip:** `2432b9057` (`release: 4.10.0`), unchanged. Re-probe BOTH
   branches every time.
-- **Checkout at check:** branch **`main`**, tree **CLEAN** at `102a23648`.
-  HEAD is seventeen commits past the baseline, so it poisons a regen by
+- **Checkout at check:** branch **`main`**, tree **CLEAN** at `a6292f169`.
+  HEAD is twenty commits past the baseline, so it poisons a regen by
   DRIFT.
-- **Verdict: DRIFT PENDING — 17 commits (§3), all UNPROCESSED.**
+- **Verdict: DRIFT PENDING — 20 commits (§3), all UNPROCESSED.**
   - **Classes:**
     - 2 PORT-NEW + PORT (`5cb0e0190`, `a05c6f755`).
     - 1 PORT-NEW **WITH THE TWELFTH D23 MOVE** (`83387d0e5`), widened by
@@ -96,17 +113,24 @@ probe verifies against._
     - 1 PORT-NEW + PORT **WITH THE FOURTEENTH D23 MOVE** (`e1872c94f`, nine
       tools + Pascal inventory — moves every `run_custom` description).
     - 3 PORT-NEW (`ebb480edd`, `8d8618819`, `1cfc9b504`).
-    - 5 PORT (`05005c562`, `7953da3a0`, `f46cf40a2`, `e8e17b2d9` bug 252,
-      `102a23648` bug 254 + Inventory fixes).
-    - 3 NO-PORT? (`fcab3f112`, `54bc17a3c`, `f5db10034` — specs).
-  - **No CONVERGENCE:** bugs 252 / 253 / 254 carry `bugs.md` hunks, but all
-    three were found by v4 itself (v5 status **Owed** in v4's rows; none
-    appears in v5's `status-log.md`, `dogfood-findings.md` or `CLAUDE.md`).
-    v5 shares 252 and 254 today, so their rows are PORTs, not convergences.
+    - 6 PORT (`05005c562`, `7953da3a0`, `f46cf40a2`, `e8e17b2d9` bug 252,
+      `102a23648` bug 254 + Inventory fixes, `1d0a31132` scenario sort).
+    - 1 PORT **WITH THE FIFTEENTH D23 MOVE** + a NEW runtime dependency
+      (`a6292f169`, bug 255 — `terminal_sessions.cols` / `rows`;
+      `@xterm/headless`).
+    - 4 NO-PORT? (`fcab3f112`, `54bc17a3c`, `f5db10034` — specs;
+      `cad017599` — a test).
+  - **No CONVERGENCE:** bugs 252 / 253 / 254 / 255 carry `bugs.md` hunks,
+    but all four were found by v4 itself (252–254 on `V4test`, 255 live on
+    `Friday`; v5 status **Owed** in v4's rows; none appears in v5's
+    `status-log.md`, `dogfood-findings.md` or `CLAUDE.md`). v5 shares 252,
+    254 and 255 today, so their rows are PORTs, not convergences.
   - **Production surface:** 88 files, +2,859 / −119 through `f46cf40a2`;
-    `4ae20977f` + `1cfc9b504` add 56 files, +1,059 / −60; the six new
-    commits add 347 files, +22,253 / −1,656 (tests, docs and SPA included —
-    `4fbdad186` alone is 151 files, +13,094).
+    `4ae20977f` + `1cfc9b504` add 56 files, +1,059 / −60; the six Inventory-
+    span commits add 347 files, +22,253 / −1,656 (tests, docs and SPA
+    included — `4fbdad186` alone is 151 files, +13,094); the three 10-19
+    commits add 37 files, +1,126 / −84 (tests, docs and the lockfile
+    included).
   - **Regen rule: PIN REQUIRED at `25b8fab6a`** (§5.1).
 
 ### ⚠ LIVE-DATA — what stands at this baseline
@@ -159,6 +183,17 @@ probe verifies against._
   2. **`a05c6f755` definitions.** A tool with `{{character}}` in an effect
      expression is refused at load, so it drops off v5's roster.
      `announceAsCharacter` rows render as Pascal.
+- **Past `a6292f169` (classified 2026-10-19) — NO boot-blocking, NO
+  ping-pong, NO NOT-NULL-insert hazard.** `terminal_sessions.cols` / `rows`
+  are NULLABLE, the migration is column-gated, and v5's `db/
+  terminal_sessions.rs` names its columns on insert and update. Two
+  non-corrupting notes: a v5 `terminal_read` (or Ariel summary) of a session
+  still strips escape codes (bug 255 — a full-screen program reads back as
+  fragments; v5 writes no geometry, so v4 replays such a transcript at
+  80×24); and `1d0a31132` makes v4 list scenarios by TITLE where v5 lists by
+  PATH, so a character vault's "first scenario" (the default promoted when
+  none is marked — `vault_read_overlay.rs:252`) can DIFFER between the two
+  until the sort is ported. Both are read-time only.
 - **Standing:** the extraction rate ledger is per-process (a v4 and a v5
   sharing an instance each keep their own hourly count). The `52d6e7ecd` /
   `07b8f0209` notes and the P4.D274 store-name plan probe on a copy also stand.
@@ -237,6 +272,26 @@ probe verifies against._
   add-character-wardrobe-flags-v1`, column-gated, registered LAST after
   `addChatEquippedInventoryMigration`) appends it. Two shapes again; ONE
   re-dump with the thirteenth.
+- **PENDING — the FIFTEENTH move (`a6292f169`, bug 255):
+  `terminal_sessions."cols" INTEGER DEFAULT NULL` + `"rows" INTEGER DEFAULT
+  NULL`.** generateDDL-RENDERED (`TerminalSessionsRepository extends
+  AbstractBaseRepository<TerminalSession>` over `TerminalSessionSchema`,
+  which gains `cols` / `rows` as `z.number().int().nullable().optional()`
+  after `transcriptPath` and before `createdAt` in BOTH the row schema and
+  `TerminalSessionCreateSchema`; v5's `fresh_schema.json` carries the table);
+  v4's `add-terminal-session-geometry-v1` (`introducedInVersion 4.11.0`,
+  `dependsOn add-terminal-sessions-table-v1`, `shouldRun` = SQLite + table
+  present + EITHER column absent, `addColumnIfMissing(... 'INTEGER DEFAULT
+  NULL')` ×2, INFO `Added geometry columns to terminal_sessions`
+  `{ added }` / ERROR `Failed to add geometry columns to terminal_sessions`,
+  registered LAST after `addCharacterInventoryFlagMigration`; prettify
+  `Measuring each of Ariel's terminal windows, the better to read them
+  back`) appends both. Two shapes; ONE re-dump with the thirteenth and
+  fourteenth. No backfill: a NULL reads back as 80×24. The D23 tripwire
+  FIRES (`provisioning_equivalence` 1d + `zero_migrations_rerun_
+  equivalence`); no ruling needed for the schema — but the port needs a
+  **terminal-emulator crate** (v4 adds `@xterm/headless ^6.0.0`), a NEW
+  dependency the human must approve at that round's planning.
 
 ### Regen, dependencies, help
 
@@ -251,8 +306,12 @@ probe verifies against._
     need re-aiming at the next pin (an IMPORT-DEAD census at `/setupphase`).
 - **Dependencies:** `openai` 7.34.0 at the root, re-bundled into the ten
   `plugins/dist` bundles; `zod` 4.6.7; plugin-utils 2.7.1. `provider_sdk_
-  version_guard` and `zod_version_guard` pin them (P4.D311). No dependency
-  moved past the pin.
+  version_guard` and `zod_version_guard` pin them (P4.D311). **Past the
+  pin: `a6292f169` adds `@xterm/headless ^6.0.0` to the root `package.json`
+  (lockfile +14 / −4)** — the first runtime dependency added since the
+  openai 7.34.0 move; the lockfile diff `25b8fab6a..e8e17b2d9` is the
+  version stamp alone (+2 / −2), so a pin at `e8e17b2d9` shares the
+  current pin's dependency tree.
 - **Help / docs:** `help/` is **131 files at the pin**, md5-identical
   (P4.D313); `docs/v4/` has 491 files, byte-identical. Past the pin,
   `a05c6f755` and the outfit-history phases edit help pages (`custom-tools.md`,
@@ -262,8 +321,14 @@ probe verifies against._
   `character-gallery.md` (+13). `docs/developer/API.md` / `DDL.md` move too. The Inventory commits add `help/inventory.md` and
   `help/project-inventory.md` (**131 → 133 at v4 HEAD**) and edit
   `custom-tools.md`, `pascals-workbench.md`, `project-characters.md`,
-  `projects.md`, `project-wardrobe.md`, `wardrobe.md`. Each catch-up round re-vendors what
-  it absorbs.
+  `projects.md`, `project-wardrobe.md`, `wardrobe.md`; `1d0a31132` adds a
+  "shelved by title" paragraph to `general-scenarios.md` (+2) and a line to
+  `scenario-browser.md` (+1); `a6292f169` edits `ariel.md` (+4) and adds
+  `docs/developer/bugs/fixed/bug-255-terminal-read-tui-garbled.md` + a
+  `DDL.md` hunk. At `e8e17b2d9` `help/` is 131 files with four edited
+  (`custom-tools.md`, `pascals-workbench.md`, `wardrobe.md`,
+  `character-gallery.md`: +60 / −10 in all) and `docs/` moves 13 files
+  (+1,750 / −4). Each catch-up round re-vendors what it absorbs.
 
 ### Rounds, guards, state
 
@@ -272,16 +337,21 @@ probe verifies against._
 - **Next:**
   - The owed dogfood pass (both rounds, any copy up to `f46cf40a2`).
   - The follow-ups smalls round.
-  - Then the drift catch-up — now 17 commits, too large for one round.
-    Suggested split: (1) the outfit-history + Workbench + gallery round
-    (`5cb0e0190` … `1cfc9b504` — the TWELFTH move's table boot-created per
-    the 2026-10-19 ruling, no planning ruling left owed — and `e8e17b2d9` bug 252 riding it — it shares the
-    restore / import carriers and the `bySlot` shape); then (2) the
-    Inventory round (`4fbdad186` → `e1872c94f` → `102a23648`, the
-    THIRTEENTH + FOURTEENTH moves in one re-dump; bug 254 can ride round 1
-    as a one-guard PORT). The `Inventory/` archive keep (the live-data
-    hazard above) is the most urgent single item — it could be a rider in
-    round 1 if the human wants the hazard closed sooner.
+  - Then the drift catch-up — now 20 commits, too large for one round, and
+    the Inventory commits sit BETWEEN the outfit-history span and the three
+    10-19 commits. **The split `/setupphase` adopted 2026-10-19:** (1) the
+    outfit-history + Workbench + gallery + bug 252 round, PINNED at
+    `e8e17b2d9` — the LAST commit before the Inventory, so its oracles
+    import no Inventory code: `5cb0e0190` … `e8e17b2d9` (fourteen
+    contiguous commits incl. the three spec docs; the TWELFTH move's table
+    boot-created per the 2026-10-19 ruling), with bug 254's one-guard PORT
+    and the `Inventory/` archive keep as AHEAD-OF-PIN riders (each from a
+    lane-unique second pin, each `PORTED(order) — baseline not yet past`
+    until round 2); then (2) the Inventory round pinned at v4 HEAD
+    (`4fbdad186` → `e1872c94f` → `102a23648` + `1d0a31132` + `cad017599` +
+    `a6292f169`: the THIRTEENTH + FOURTEENTH + FIFTEENTH moves in ONE
+    re-dump, the scenario sort, bug 255 — which needs a terminal-emulator
+    crate ruling first). Round 1's orders: ledger §3 `ORDERED(...)` rows.
 
 ## §2 The freshness probe
 
@@ -339,6 +409,9 @@ passes the commit.
 | `4fbdad186` | 2026-10-18 | Feature: The Inventory — objects a character carries (#100) | **PORT-NEW WITH THE THIRTEENTH D23 MOVE (`chats."equippedInventory"`, nullable, one additive migration; NOT destructive, no index) + SIX PORT hunks on ported surfaces; NO model-visible tool** (classified 2026-10-18 from the hunks; 151 files, +13,094 / −1,022; `4.11.0-dev.26` → `dev.33`; squash of #100, phases A–I + review; parent `e8e17b2d9`). **Schema:** `equippedInventory: JsonSchema.nullable().optional()` in BOTH `ChatMetadataSchema` and `ChatMetadataBaseSchema` after `equippedOutfit` — generateDDL renders `"equippedInventory" TEXT` at cid 66 (chats DDL 103 → 104 lines); `add-chat-equipped-inventory-v1` (`introducedInVersion 4.11.0`, `dependsOn add-equipped-outfit-field-v1`, column-gated, `addColumnIfMissing('chats','equippedInventory','TEXT DEFAULT NULL')` — APPENDED; INFO `Added equippedInventory column to chats` / ERROR `Failed to add equippedInventory column to chats`; registered LAST after `seedChatWardrobeHistoryMigration`; prettify `Fitting each chat with a croupier's ledger of what everyone is carrying`). Value `{ [characterId]: string[] }` sorted / de-duplicated. `patchOnlyFields()` adds it (never on a whole-row `_update`); ONE writer `setEquippedInventory` (DEBUG `Equipped inventory write`), `getEquippedInventory` (`{}` fallback), `normalizeEquippedInventory`. `LLMLogTypeEnum` + `INVENTORY_ITEM_IMAGE`; `IMAGE_SPEND_LOG_TYPES` gains it. **The objects are FILES, not tables:** one `.json` per object under each tier's `Inventory/` (character vault, Quilltap General, project / group official stores), `JSON.stringify(out, null, 2) + '\n'` in `INVENTORY_FILE_KEYS` order, `sanitizeFileName(title \|\| name \|\| stem \|\| 'object-<id8>').json`, pictures under `Inventory/images/<itemId>/`, folder depth 8 with `images` reserved; `lib/schemas/inventory.types.ts` (`kind item\|kit`, `name` 1–200, `title`, `description` ≤4000, `imageDescription` ≤2000, `equippedByDefault`, `maxEquipped` 1–999 default 1, `canCopy`, `isArchetype`, `parentId`, `itemIds` ≤200, `emoji` ≤16, `svg` ≤16 KiB, `imageFileId`, `metadata`, `archivedAt`; instances SPARSE — inheritable fields omitted). **Server PORT-NEW:** ONE route factory for `/api/v1/{characters,groups,projects}/[id]/inventory(/[itemId])` + `/api/v1/inventory(/[itemId])` (collection GET / folders / archetypes; POST create / instantiate / duplicate / create-, rename-, delete-folder / move- / copy-items; item GET / dependents / PUT / clear-override / detach / DELETE `?force`); `POST /api/v1/inventory/transfers`; `/api/v1/inventory/[itemId]/images` (generation SYNCHRONOUS — `Still-life product photograph of …` through `withArtDirection`); refusal codes `ARCHETYPE_IN_USE` / `ARCHIVED_DEPENDENTS` / `NOT_COPYABLE` / `CAP_EXCEEDED` / `INVALID_PARENT` / `KIT_NESTING` / `KIT_STRANDED` / `NOT_EQUIPPABLE` / `INVALID_SHAPE` / `NOT_A_PARTICIPANT` / `INVALID_SVG` (allowlist SVG sanitiser); chat GET `?action=inventory`, POST `inventory-equip` / `inventory-unequip` / `inventory-reset-defaults` (plan-then-write, kit expansion, archetype members INSTANTIATED as vault files, cap check before any write, per-chat lock, realtime `chats`); Pascal's `*<Name> sets down … and takes up …*` (`systemKind 'inventory-change'`, no `pascalMeta`, INFO `[Pascal] Inventory change posted`); `refreshAvatarForAppearance` (`refreshAvatarForOutfit` aliased). **Model-visible:** the trailing `## Carried and equipped\n- <Title (name)\|name>: <description>` section (after progressions, before inform; kits and undescribed skipped; continue mode skipped — reversed by `102a23648` bug 253); Carina `[question, progressions, inventory]` joined by `\n\n---\n\n`; the greeting user turn `<instruction>\n\n---\n\n<sections>`; `carrying <imageDescription, …>` in appearance resolution, the story background, `buildExpansionContext` and the avatar prompt. Arrival defaults at chat create / seat add / merge write `{charId: []}` EVEN WITH NO INVENTORY. Carriers: new-account restore step `22f-quater` repoints objects' `imageFileId`; `remapLinkId` keeps object ids VERBATIM in `files.linkedTo`; `equippedInventory` joins bug 252's `CHARACTER_KEYED_CHAT_FIELDS`; `.qtap` export spreads it, import creates it. `docMountDocuments.findManyInFolderContaining` (raw `instr`). **PORT hunks:** (1) the appearance-sanitizer classify text `${phys} ${cloth}` → `[phys,cloth,carry].filter(Boolean).join(' ')` — moves the moderation bytes whenever physical or clothing is EMPTY, inventory or not; (2) chat create / seat add / merge DB state (`{charId: []}`); (3) the archive prune keep-set adds `Inventory/`; (4) the new-account remap (`remapLinkId`, the repoint); (5) the wardrobe lift into generic `item-folders.ts` / `item-folder-ops.ts` + `imagesFolder` / `ext` options — strings preserved byte-for-byte (no behaviour); (6) `IMAGE_SPEND_LOG_TYPES`. Client: the Inventory dialog, a new `inventory` workspace tab kind (`The Inventory`, icon `dice`), the editor / transfer / folder dialogs, Carrying-now pane, Prospero `InventoryCard`, the ParticipantCard button, SaveImageDialog `inventory` target, `system-message-labels` `'inventory-change'` (Pascal `medium`), shared `components/item-browser/*`. Help NEW `inventory.md` (+149), `project-inventory.md` (+38) → **133 files**, plus four +1 cross-links; `API.md` +39; spec → `features/complete/inventory.md`; `qtap-export.schema.json` +8. §5.3: "patch-only, one writer" holds for `_update` only (`chats.create` writes it via import / restore); the message never mentions the classifier-join byte change or the empty arrival entries. | **D23:** `fresh_schema.json` re-dump — SEEN by `provisioning_equivalence` 1d + `zero_migrations_rerun_equivalence`; a boot ensure carrying BOTH shapes vs v4's REAL runner, on `restore_vintage_state`'s boot-align list; `db/chats_read.rs` (explicit column list), `db/chats.rs` (create INSERT, named `update`, a new `set_equipped_inventory` on the writer task); `chats_tier2_equivalence`, the committed `*-main.db` pairs; `services/qtap_export/schema-key-order.json` (`equippedInventory` between `equippedOutfit` and `characterAvatars`); the `generators/` schema copy. **PORT hunks:** `services/appearance_resolution.rs` (~l. 484, `appearance_sanitize_gate_tier3_equivalence`); `services/chat_create.rs` (`chat_create_capstone_equivalence`, `initial_greeting_equivalence`), `services/chat_participants.rs` / `api/chat_cast.rs` (`chat_cast_routes_equivalence`, `chats_participants_tier2_equivalence`), `services/chat_merge.rs`; **`services/character_archive/service.rs` `KEPT_MANAGED_PATHS` / `prune_empty_folders` (`character_archive_tier2_equivalence`) — the LIVE-DATA hazard**; `services/backup/uuid_remap.rs` `remap_link_id` + `restore/orchestrator.rs` (a step-22f-quater twin; `RESTORE_TS_MESSAGES` both sides); `services/llm_logging.rs` `IMAGE_SPEND_LOG_TYPES`, `almanack/phase6_wire_records.rs`; `wardrobe_folders.rs`, `vault_overlay.rs`, `db/vault_wardrobe_write.rs`, `services/wardrobe_image_bridge.rs` / `wardrobe_item_images/` (the generic lift — `wardrobe_folders_equivalence`, `wardrobe_folder_writes_tier2_equivalence`, `vault_projection_recursive_tier2_equivalence`); `services/outfit_change_effects.rs`. **PORT-NEW homes:** a new `inventory` module; `db/doc_mount_documents.rs`; `services/build_context.rs` (`build_context_tier3_equivalence`), `carina_query.rs`, `initial_greeting.rs`, `avatar_prompt.rs` / `character_avatar_job.rs`, `story_background_job.rs`, `tools/generate_image.rs`, `services/pascal_writer.rs`; `crates/quilltap-web` inventory / transfers / images routes + the chat actions, each with `COLLAPSE_CENSUS` rows. **SPA:** `apps/web/src/app/wardrobe/*` (the lift), `workspace/core/{tab-meta,reducer}.ts`, `core/realtime-topic-map.ts`, `chat/system-message-labels.ts`, `chat/sidebar/participant-card.ts`, `screens/prospero/project-detail.ts`. Help → `p4.9i2` (131 → 133). Tools: none. | **UNPROCESSED** — past the `25b8fab6a` round's pin; ORDER after `e8e17b2d9` (extends its keyed-field list). Keystone of the Inventory round. |
 | `e1872c94f` | 2026-10-18 | Feature: Inventory tools and Pascal inventory support (#102) | **PORT-NEW WITH THE FOURTEENTH D23 MOVE (`characters."canManageInventory"`, nullable, one additive migration; NOT destructive) + NINE model-visible tools + the Pascal inventory grammar + PORT on ported Pascal / tool-site / Almanack / realtime surfaces** (classified 2026-10-18 from the hunks; 131 files, +7,933 / −341; `4.11.0-dev.33` → `dev.35`; squash of #102; parent `4fbdad186`). **Schema:** `CharacterSchema.canManageInventory: z.boolean().nullable().optional()` after `canCreateOutfits` → generateDDL `"canManageInventory" INTEGER DEFAULT NULL` before `characterDocumentMountPointId`; `add-character-inventory-flag-v1` (`dependsOn add-character-wardrobe-flags-v1`, column-gated, appends; INFO `Added canManageInventory column to characters` / ERROR `Failed to add canManageInventory column to characters`; registered LAST after `addChatEquippedInventoryMigration`, verified; prettify `Granting characters leave to rummage through their own bags`); the characters PUT key; `qtap-export.schema.json` character property; `ChatsRepository.findChatIdsCarryingInventoryId` / `removeEquippedInventoryId`. `KNOWN_TOP_LEVEL_KEYS` unchanged. **Tools:** `inventory_list` (`equipped?`, `kind?`, `folder?`, `tier?`, `include_archived?`), `_read` (`ref`), `_equip` / `_unequip` (`refs` 1–8), `_pick_up` (`ref`, `title?`, `equip?` default true), `_create` (`name`, `title?`, `description?` ≤4000, `image_description?` ≤2000, `emoji?` ≤16, `max_equipped?` 1–999, `metadata?`, `equip?`), `_update` (refine `Name at least one field to change`), `_archive` (`ref`, `archived`), `_give` (`ref`, `to`); ONE `inventory-tool-flags.ts` (on unless `canManageInventory === false`); OFF for Brahma, the Scenario Builder, Carina and Help chat (a NEW positional `canManageInventory` in `buildTools` after `canCreateOutfits`); listed after `wardrobe_archive` in the plugin builder, `BUILT_IN_TOOLS` + ONE `INVENTORY_TOOL_TABLE` (no character → `The inventory tools need a character to act for.`), `GET /api/v1/tools` category `inventory` (`List Inventory` … `Give Object`; unavailable `Character does not have inventory management enabled`), simple-JSON aliases (`list_inventory`, `inventory`, `read_inventory`, `equip_item`, `unequip_item`, `pick_up`, `give_item`), nine text-block tags (`[[LIST_INVENTORY /]]` … `[[GIVE_ITEM ref= to=]]`, 19 name aliases; only `archived` / `equip` / `max_equipped` coerced), `determineTextBlockToolOptions` gains an 8th argument; the snapshot +310. Failures `Inventory Error: …` (`No object "<ref>" is in your inventory or within reach. Use inventory_list to see what there is.`, the shared-store sentence, `<display> [<id>] — <state\|archetype>, <tier>`); ONE `resolveInventoryRef` (id → title → name, own before shared); `pickUpItems` checks the cap before instantiating; give moves the file FIRST, then `dropCarriedEverywhere`; turn containers gain `pendingInventoryAnnouncements`, drained by `flushPendingInventoryAnnouncements` after the wardrobe flush (moved by `102a23648`); a give posts `*X hands the Y to Z.*`. **Pascal:** `InventoryRefSchema` `{ $inventory: "<ref>.metadata.<key>", fallback }` in every operand union; a WHOLE roll may be `$inventory` (fallback must be dice — `a roll drawn from $inventory needs a dice-notation fallback, like "1d4"`); `when.inventory` / `when.inventoryCount` (templated keys) and gate `inventory` / `inventoryCount` (LITERAL keys — `a gate's inventory key must be a literal object reference; …`); `{{inventory.<ref>.title\|name\|description\|state}}` / `.metadata.<key>` placeholders; the `effects[].inventory` gesture `{ action: equip\|unequip\|pick_up, items[1–8], equip? }` after the wardrobe gestures, record `inventory.<action>`; `collectToolVocabulary` APPENDS `inventoryReads`, `equips`, `unequips`, `picksUp` after `clearsSlots` on the `references` wire; preview / audit `inventory: MockInventorySchema.nullish()`. **PORT (ported behaviour that moves):** the `RUN_CUSTOM_PREAMBLE` side-effects sentence gains `, what they are wearing, or what they carry,` in EVERY `run_custom` description; `describeRoll` / `describeWhen` / `describeEffects` arms + a `    Reads: your inventory for …` line; FIVE loader refusal sentences reworded (the two `must test something: …` variants, the gate's `must test at least one metadata key, progress field, or inventory object`, `an effect is exactly one of a write (target + value), a wardrobe gesture, or an inventory gesture`, `an effect needs target + value, wardrobe, or inventory`); the Almanack `- **May manage their inventory**: N` line after `May create outfits`; `REALTIME_TOPICS` + `inventory`. NO-PORT: the job child's overlays. Client: Aurora Profiles "Inventory Management" select, nine `ToolMessage` rows, the run dialog, Workbench `InventoryEffectFields` / picker / chips / "From an object" roll / Mock inventory. Help `custom-tools.md` +68, `inventory.md` +31, `pascals-workbench.md` +15; `qtap-custom-tool.schema.json` +313; `CUSTOM_TOOL_SPEC.json`; spec → `features/complete/`. §5.3: the message's give order ("after removeEquippedInventoryId drops it from every chat") is wrong — move first, then `dropCarriedEverywhere`. | **Schema:** `fresh_schema.json` (ONE re-dump with `4fbdad186`), a column-gated boot ensure (mirror-boot list), `db/characters.rs` / `characters_read.rs` / `api/characters.rs` / `db/vault_character_update.rs` / `quilltap_import/characters.rs` / the restore orchestrator's character field list; `db/store_name_reconcile.rs` `read_vault_owner_rows` (`SELECT *` — measure); `characters_mutations_equivalence`, `characters_slim_tier2_equivalence`. **Tools:** `tools/definitions/` (`tool_definitions_equivalence`; `TOOL_DEFINITIONS.len()` 61 → 63 with `ebb480edd` → **72**; "all 57 tools" → 57 + 2 + 9), `tools/executor.rs` + a new inventory tool table, `text_block_parser.rs` / `_prompt.rs`, `simple_json_parser.rs` / `_prompt.rs` (`pseudo_tool_parsers_equivalence`, `pseudo_tool_prompts_equivalence`), `services/tool_build.rs` (`tool_build_equivalence`, `pascal_build_tools_roster`), `services/pseudo_tool.rs`, `services/tools_inventory.rs` (`tools_inventory_equivalence`), `services/orchestrator.rs`, `services/outfit_change_effects.rs`, the four off-sites (`brahma_console/`, `scenario_builder/`, `carina_query.rs`, `help_chat/`). v5's `tools/self_inventory.rs` is a different tool — no collision. **Pascal:** `pascal/{custom_tool_types,placeholders,custom_tools,tool_gate,roster,tool_vocabulary,side_effects,run_service,trigger_runner,workbench}.rs`, `tools/run_custom.rs` — `pascal_custom_tool_definition_equivalence`, `pascal_custom_tools_execution_equivalence`, `pascal_simulate_equivalence`, `pascal_roster_equivalence`, `pascal_tool_vocabulary_equivalence`, `pascal_side_effects_equivalence`, **`pascal_run_custom(_handler)_equivalence` (the preamble moves for every roster)**, `pascal_workbench(_route)_equivalence`, `pascal_custom_tools_route_equivalence`. **Other:** `almanack/{phase3_ledgers,render,types}.rs` (`almanack_tier2_equivalence`, `almanack_render_equivalence`), `realtime/types.rs` (`realtime_topics_equivalence`, `realtime_publish_sites_guard`). **SPA:** `pascal/tool-draft.ts`, `screens/custom-tools/*`, `chat/tool-message.ts`, the run dialog, `screens/characters/view/tabs/defaults-tab.ts`, `core/realtime-topic-map.ts`, `core/core-contract.ts`. Help → `p4.9i2`; both public schemas re-vendored. | **UNPROCESSED** — past the `25b8fab6a` round's pin; ORDER after `4fbdad186` (flag + D23 ensure as a keystone, then tools ∥ Pascal ∥ SPA). |
 | `102a23648` | 2026-10-18 | Fix: Inventory dogfood fixes, bugs 253/254, and the project roster gate | **PORT (bug 254 — v5 HAS IT) + PORT-NEW folded into the Inventory programme (bug 253, the roster shelf gate, dogfood fixes); NOT a convergence (253 / 254 found by v4's own Inventory dogfood; v5 status **Owed**). NO schema move** (classified 2026-10-18 from the hunks; 45 files, +850 / −284; `4.11.0-dev.35` → `dev.36`; parent `e1872c94f`). **Bug 254 (`lib/chat/context-manager.ts`):** `buildProgressionsSection` was built only when `!isContinueMode` — v4's ORIGINAL guard, ported faithfully — and is now built on EVERY turn (Continue, nudge, every chained speaker after the first, every autonomous-room turn), riding the trailing-only user message; the `isContinueMode` doc comment is rewritten; the Core whisper keeps its skip. Model-visible: the progressions report now reaches chained / nudged / autonomous turns on each progression's cadence. `PROMPT_ARCHITECTURE.md` + `features/complete/character-progressions.md` reworded. **Bug 253:** `buildInventorySection` ungated the same way (unported section — port it ungated). **Roster:** `lib/projects/roster-access.ts` is COMMENT-ONLY (±4 — the roster now gates "files, shared wardrobe and inventory shelf"); `projectRosterAdmits` and the policy UNCHANGED. NEW `lib/inventory/roster-gate.ts` (`isCharacterGesture` — provenance `!== 'operator'`; `projectShelfOpenTo` — a throw means CLOSED, WARN `[InventoryRoster] Roster lookup failed; the project shelf stays closed`; `isOnClosedShelf`); consumers Inventory-only (`loadInventoryContext` DEBUG `projectShelf: 'none' \| 'open' \| 'closed by roster'`; `assertShelfReach` before the cap in `equipItems` / `pickUpItems`); refusal `OFF_ROSTER` / 409 — model-visible `"<name>"[, …] is\|are on the project's shelf, and you are not on this project's character roster. Ask the user to add you to the roster in the project's Characters card.`; INFO `[InventoryEquip] Refused`. **Inventory fixes:** the inventory flush moves into a `try … finally` after every save branch (Pascal's line now posts AFTER the saved turn; the wardrobe flush unchanged, still before); `equip-effects.ts` `looksPlural` (`some <name>`) and `indefiniteArticle` (`/^(uni\|use\|usu\|uti\|eu\|one\|once)/i` → `a`); the pool's project-tier origin `name` from `projects.findById` (fallback `'Project'`, WARN `[InventoryPool] Project name lookup failed`); SPA fixes; the Workbench `WardrobeVantageSelect` `browsing` prop (default `'wardrobe'` — wording unchanged). Help `inventory.md`, `project-inventory.md`, `project-characters.md` +24, `projects.md` ±4; `bugs.md` + two `bugs/fixed/` files. §5.3 / unmeasured: "arrival defaults are ungated" holds only if arrival uses `operator` provenance or bypasses `assertShelfReach` — measure at port time. | **Bug 254:** `crates/quilltap-core/src/services/build_context.rs` (~l. 2907–2943 — drop the `is_continue_mode` guard and its "finishing its own sentence" comment; fix the "NO continue-mode gate, unlike progressions above" comment and the `BuildContextInput.is_continue_mode` doc); **`build_context_tier3_equivalence` op `progressions_continue_mode` (`harness/oracle/fixtures/build-context-tier3.json`) PINS the skip today and flips red on the regen** (verified 2026-10-18); measure `orchestrator_tier3`, `regenerate_swipe_tier3` and the enclave autonomous tier on chained legs. `trailing_context_sections` already lists progressions. **Roster:** `crates/quilltap-core/src/project_roster_access.rs` header ("seven sites") gains the inventory sites when the Inventory ports; `project_roster_access_equivalence` does NOT move. **Everything else** lands with the unported Inventory programme. Help (`help_tree_equivalence`): `project-characters.md`, `projects.md` re-vendored WITH the Inventory (they link `project-inventory.md`); `docs/v4/developer/` `PROMPT_ARCHITECTURE.md`, `character-progressions.md`, `bugs.md` + the two fixed-bug files. | **UNPROCESSED** — past the `25b8fab6a` round's pin. Bug 254 is a one-guard PORT that can ride an earlier round; the rest ORDER with the Inventory programme. |
+| `1d0a31132` | 2026-10-19 | Fix: scenario lists sort by title | **PORT — a display-order change on every list of scenario objects; NO D23 move, NO route, NO model-visible text** (classified 2026-10-19 from the hunks; 14 files, +257 / −27 incl. a 124-line test; `4.11.0-dev.36` → `dev.37`; parent `102a23648`). NEW pure, client-safe `lib/scenarios/sort.ts` (56): `SortableScenario { title, filename, path? }`; `scenarioSortKey(value)` = `trim()`, then `replace(/^the[\s_-]+/i, '')`, falling back to the trimmed value when the strip empties it (a title that is only "The" keeps itself); `compareScenarios` = `localeCompare(undefined, { sensitivity: 'base' })` on the two keys (title, then filename), then the UNTRIMMED titles with the same options, then `(a.path ?? '').localeCompare(b.path ?? '')` (DEFAULT options — the only case-sensitive leg); `sortScenarios(items, toSortable)` = map-to-key, V8 `Array.prototype.sort` (stable), map back. Applied at: `lib/mount-index/scenarios-common.ts` `buildScenarioList` (the list sorted AFTER default-conflict resolution, which still walks path order; a NEW DEBUG `Scenarios: built list` `{ ...logContext, count }`); NEW `lib/database/repositories/vault-overlay/parsers.ts` `parseScenarioFilesSorted(docs, characterId)` (parse every `Scenarios/*.md`, drop nulls, sort by `{ title: scenario.title, filename: doc.fileName.replace(/\.md$/i, ''), path: doc.relativePath }`) replacing the `relativePath.localeCompare` sort + `parseScenarioFile` map in BOTH `read-overlay.ts` `hydrateOne` (so `character.scenarios` and therefore the vault's "first scenario" changes order) and `vault-readers.ts` `readCharacterVaultScenarios`; `components/scenario/ScenarioSelect.tsx` sorts every optgroup locally too (`storeSortFields` = `{ title: name, filename, path }`, `characterSortFields` = `{ title, filename: title, path: id }`, the group map's arrays sorted in place). Help `general-scenarios.md` (+2, the "shelved by title" paragraph), `scenario-browser.md` (+1). | `crates/quilltap-core/src/db/scenarios.rs` (`build_scenario_list` sorts by `locale_compare(relative_path)` at `:232` — P4.6n / P4.D295), `db/vault_read_overlay.rs:398-402` (the vault `Scenarios/*.md` fold — `localeCompare(relativePath)`) and `:252` (the default promoted is the FIRST in sorted order — the order now moves), the `readCharacterVaultScenarios` twin in `vault_read_overlay.rs` / `vault_overlay.rs`, `scenarios/location.rs`; `collation::locale_compare_base` exists (`scenarios/everywhere.rs:72`) — the default-options leg needs `locale_compare`; families: the scenarios-common tier-2 (P4.6n), the vault read-overlay families (P4.6f / `4a38222e6` round), `scenarios_everywhere`, plus a NEW tier-1 family over v4's REAL `compareScenarios` / `scenarioSortKey` (the ICU `sensitivity: 'base'` + the V8 stable sort — memory note `v8-sort-and-memory-calendar-gotchas`); SPA `apps/web/src/app/scenario/scenario-select.ts` (P4.D302) + `scenario-browser.logic.ts`; help → `p4.9i2`. **LIVE-DATA:** read-time only — v5 lists in path order where v4 lists by title, and a character's promoted default can differ (§1). | **UNPROCESSED** — past the `25b8fab6a` round's pin and OUTSIDE the `e8e17b2d9` round (it sits after the Inventory commits); the Inventory round's. |
+| `cad017599` | 2026-10-19 | Test: inventory-gated custom tool end to end (Measure Twice) | **NO-PORT? — test-only, VERIFIED** (classified 2026-10-19 from the hunks; 2 files, +232; no stamp; parent `1d0a31132`): NEW `__tests__/unit/lib/pascal/custom-tools-measure-twice.test.ts` (228 — a title-keyed `availableWhen` inventory gate over the shared Inventory test store, `{{inventory.*}}` rendering of an apostrophed title and a metadata value) + CHANGELOG. `git show --stat cad017599 -- lib app packages plugins components help public migrations` EMPTY. | None in v5 today. Once the Inventory lands (`e1872c94f`), the case is a candidate tier-3 MIRROR for `pascal_run_custom_equivalence` (an inventory-gated `availableWhen` + `{{inventory.*}}` row) — record it in that lane's Tier 2, not here. | **UNPROCESSED** — past the `25b8fab6a` round's pin; NO-PORT ratification at the Inventory round's unification. |
+| `a6292f169` | 2026-10-19 | Fix: Ariel reads full-screen programs (bug 255) | **PORT WITH THE FIFTEENTH D23 MOVE (`terminal_sessions.cols` / `rows`, nullable, one additive column-gated migration; NOT destructive) + a NEW runtime dependency (`@xterm/headless ^6.0.0`) + model-visible text; v4-ORIGINATED bug 255 (found live on `Friday`; v5 status **Owed**) and v5 HAS THE DEFECT — NOT a convergence** (classified 2026-10-19 from the hunks; 21 files, +637 / −57 incl. a 107-line test and the lockfile; `4.11.0-dev.37` → `dev.38`; parent `cad017599`). **Schema:** `TerminalSessionSchema` + `TerminalSessionCreateSchema` gain `cols` / `rows: z.number().int().nullable().optional()` after `transcriptPath` (generateDDL-rendered — the repository is an `AbstractBaseRepository`); migration `add-terminal-session-geometry-v1` (details in §1 Schema / D23); `prettify.ts` +1 label; `DDL.md` +4. **The emulator:** NEW `lib/terminal/screen.ts` (196) — `TerminalScreen` over `new Terminal({ cols, rows, scrollback: 5000, allowProposedApi: true })` (`SCREEN_SCROLLBACK_LINES = 5000`; its `onData` is NEVER wired to the PTY — the browser answers device queries); `write`, `resize` (WARN `[TerminalScreen] Failed to resize emulator` `{ cols, rows, error }`), `settle()` (a `write('', resolve)`), `render()` → `{ buffer: 'normal' \| 'alternate', lines, cols, rows }` (`readLines(buffer, 0, length, joinWrapped = buffer === 'normal')`: `translateToString(true).trimEnd()` per row, soft-wrapped rows JOINED onto their row only on the normal buffer, the trailing run of blank rows trimmed); `takeSummary()` → `{ kind: 'screen', text }` while the alternate buffer is active (null when blank or equal to the last snapshot) else `{ kind: 'output', text }` from a `registerMarker(0)` summary marker (a disposed marker → from 0; the first line dropped when it equals `lastSummaryTail`; null when nothing non-blank); `dispose`; `renderTranscript(raw, cols, rows)` for exited sessions. **The PTY manager:** `PtySession` drops `arielFlushBuffer` for `screen: TerminalScreen`, `arielPending: boolean`, `arielFlush: Promise<void>` (a per-session CHAIN so summaries post in order); `onData` → `screen.write(data)` + `arielPending = true`; `flushArielBuffer` returns the chain (no-op when nothing pending) and `postArielSummary` awaits `takeSummary()` (WARN `[PTY] Failed to render terminal summary` `{ sessionId, reason, error }` → return; DEBUG `[PTY] Ariel summary taken` `{ sessionId, reason, kind, chars }`; null → return) then `postArielTerminalOutputAnnouncement({ …, cleanedOutput: summary.text, kind: summary.kind, reason })`; `onExit` AWAITS the final `session-closed` flush BEFORE `postArielSessionClosedAnnouncement`, then `screen.dispose()` in a `finally`; `meta.cols` / `rows` set at spawn and on `resize` (`screen.resize` too), and the exit-stamp `update` now writes `cols` / `rows` (comment: a session orphaned by a restart keeps its spawn-time geometry); NEW `renderScreen(id)`; `shutdown` AWAITS each session's flush. **The Ariel writer:** `ArielTerminalOutputAnnouncement.kind?: 'output' \| 'screen'`; the heading is `Screen of session \`<label>\` (a full-screen program has the terminal)<reasonNote>:` for `screen`, else the unchanged `Terminal output from session …`; the DEBUG log object gains `kind: params.kind ?? 'output'` after `reason`. **The tool:** `executeTerminalReadTool` renders through the emulator — live: `ptyManager.renderScreen(id)` + the ring buffer as `raw`; exited: `tailFile(transcriptPath, 4 MiB)` replayed by `renderTranscript(raw, session.cols ?? 80, session.rows ?? 24)` (`tailFile`'s default dropped — `maxBytes` REQUIRED); `allLines = rendering?.lines ?? []`; `cleanTerminalOutput` GONE from the tool (and from the manager — `clean-output.ts` keeps no production caller); DEBUG `Terminal read executed` gains `buffer`; `TerminalReadOutput.buffer: 'normal' \| 'alternate'` (between `truncated` and `scrollback`), `scrollback = result.text` (rendered), `rawScrollback = raw.slice(-65536)` (was the cleaned slice's raw twin); `formatTerminalReadResults` adds `\nScreen: a full-screen program has the terminal; these lines are its current screen, not scrollback.` after the `Lines:` line when `buffer === 'alternate'`; the `raw` parameter description and the `terminal_read` tool DESCRIPTION both change (model-visible; the snapshot moves). Help `ariel.md` +4; `bugs.md`; `bugs/fixed/bug-255-terminal-read-tui-garbled.md` (69). | `crates/quilltap-host/src/terminal/{mod,scrollback,protocol}.rs` (P4.1c — the ring buffer, the idle / max-age flush drivers, the exit sequence; `scrollback.rs` IS v4's old `executeTerminalReadTool` resolution, quoted in its module doc), `crates/quilltap-core/src/terminal_clean.rs` (the strip — loses both production callers), `tools/terminal.rs` (`execute_terminal_read` `:403`, `format_terminal_read` `:497`, `TerminalReadOutput` `:118-138`, `validate_terminal_read_input`), `tools/definitions/data.rs` (`tool_definitions_equivalence` — the description bytes), `services/ariel_notifications.rs` (`:264-269` the heading; the DEBUG object), `db/terminal_sessions.rs` (two columns on create + the exit update; `:86` the explicit column list), `services/provisioning/fresh_schema.json` (the FIFTEENTH move — ONE re-dump with the 13th / 14th), the Almanack label twin; families: `ariel_writers_tier3_equivalence` (a STANDING RED since the `25b8fab6a` round's gate — measure first), `terminal_tools` (P4.6u / P4.7b), the host terminal tests, `tool_definitions_equivalence`, `provisioning_equivalence` + `zero_migrations_rerun_equivalence`. **The dependency:** v4's emulator is `@xterm/headless`; v5 needs a Rust VT emulator crate (candidates to evaluate at planning: `vt100`, `alacritty_terminal`, `wezterm-term`) whose rendering of the SAME byte stream must match xterm's `translateToString` — a tier-1 family over recorded PTY streams; a human ruling on the crate is OWED before the lane. | **UNPROCESSED** — past the `25b8fab6a` round's pin and OUTSIDE the `e8e17b2d9` round (it sits after the Inventory commits); the Inventory round's, re-dumped with the 13th / 14th moves. |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
