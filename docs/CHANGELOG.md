@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(pascal): {{character}} placeholder and announceAsCharacter (v4 a05c6f755, P4.D319)
+
+_Versions: core 0.0.1314._
+
+Ports v4 `a05c6f755`'s server half. `{{character}}` classifies as its own placeholder kind (the exact key; `character.x` stays unknown), renders the rolling character's trimmed name in the consult prompt, outcome message, chip label, effect expressions and wardrobe item refs, and is a known ref in the effect grammar (the refusal sentence is unchanged). With nobody rolling it renders as written and logs v4's bare DEBUG. `execute_custom_tool` takes the name as a new last argument and applies v4's `trim() || undefined`. `ToolVocabulary` gains `character` between `now` and `wears`. The definition key `announceAsCharacter` (optional boolean, null refused) sits between `defaultVisibility` and `parameters`; `KNOWN_TOP_LEVEL_KEYS` is 17. The run service takes the name as a tri-state (`None` reads the raw character row; `Some(None)` is nobody; `Some(Some(name))` is the entrance's copy) and, when the tool says so and a character rolled, posts the Pascal row with `customAnnouncer: { kind: 'character', characterId }` after `pascalMeta`; `Custom tool dealt` gains `announcedBy`. The trigger runner supplies the overlaid name; `run_custom` and the operator route supply none. The Pascal writer now logs v4's three lines (the `dropped` DEBUG, the INFO with `announcerCharacterId`, the ERROR) and reads the chat through the fallback read. The public `qtap-custom-tool.schema.json` is re-vendored at the pin (44,021 bytes) with its guard constant. The definition, expressions, vocabulary and execution corpora grow the new rows (definition 449 → 458 rows).
+
 #### 2026-10-19 — docs(porting): P4.D317 lane record — LANE COMPLETE
 
 _Docs-only change._

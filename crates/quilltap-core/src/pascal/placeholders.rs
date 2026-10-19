@@ -61,6 +61,10 @@ pub enum PlaceholderRef {
     /// what lets an effect express "ten minutes from now" as
     /// `{{now}} + 600000` without the format growing a date grammar.
     Now,
+    /// The rolling character's name — the one whose metadata, progressions and
+    /// wardrobe the run reads and writes. A run nobody made has none, and the
+    /// placeholder then renders as written (v4 `a05c6f755`).
+    Character,
     Params {
         name: String,
     },
@@ -91,6 +95,11 @@ pub fn classify_placeholder(key: &str) -> PlaceholderRef {
         "dice" => return PlaceholderRef::Dice,
         "llm" => return PlaceholderRef::Llm,
         "now" => return PlaceholderRef::Now,
+        // `character` is the rolling character's name — the one whose
+        // metadata, progressions and wardrobe the run reads and writes. A run
+        // nobody made has none, and the placeholder then renders as written.
+        // The EXACT key: `character.x` stays `Unknown`.
+        "character" => return PlaceholderRef::Character,
         _ => {}
     }
     if let Some(name) = key.strip_prefix(PARAMS_PREFIX) {

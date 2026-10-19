@@ -41,6 +41,7 @@ use super::roster::DiscoveredCustomTool;
 use super::side_effects::{apply_effects_for_run, AppliedEffect};
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::jsstr::js_trim;
 use crate::progressions::flatten_progressions;
 use crate::services::pascal_writer::{
     build_pascal_result_content, post_pascal_result, PostPascalResultParams, PostedPascalMessage,
@@ -94,6 +95,13 @@ pub struct RunCustomToolParams<'a> {
     pub character_id: Option<&'a str>,
     /// The rolling character's hydrated fact sheet (`{}` for a run nobody made).
     pub metadata: &'a Map<String, Value>,
+    /// The rolling character's name, for `{{character}}`, when the entrance
+    /// already holds it. Absent with a `characterId` → read here. A TRI-STATE,
+    /// as v4's `characterName?: string | null` is (`a05c6f755`): `None` = the
+    /// entrance supplied none, read the RAW row (v4 `undefined`); `Some(None)`
+    /// = explicitly nobody, no read (v4 `null`); `Some(Some(name))` = the
+    /// entrance's copy, then `trim() || null`.
+    pub character_name: Option<Option<&'a str>>,
     /// Who the whisper goes to when the run is private. `None` → the post is
     /// not targeted.
     pub whisper_target_ids: Option<Vec<String>>,
@@ -153,6 +161,7 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         entry,
         character_id,
         metadata,
+        character_name,
         now_ms,
         ..
     } = params;
@@ -165,6 +174,9 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         now_ms,
         &mut |_, _| {},
     );
+
+    // v4 resolves the name right after the progress sheet, BEFORE the cascade.
+    let character_name = resolve_character_name(db, character_id, character_name, chat_id);
 
     // The group tier is scoped to the rolling character's own groups, or
     // skipped for a run nobody made rather than borrowing an arbitrary
@@ -244,6 +256,7 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         entry.definition.llm.as_ref().and(llm_invoke),
         Some(&progress),
         now_ms,
+        character_name.as_deref(),
     )
     .await
     {
@@ -302,6 +315,17 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         params.caller_participant_id,
     );
 
+    // `announceAsCharacter`: the rolling character speaks the outcome in
+    // Pascal's place. Still Pascal's record (systemSender, pascalMeta, the
+    // chip) — only the face and name on the bubble, and the speaker tag the
+    // model reads, change. A run nobody made has no one to speak it, so Pascal
+    // does. (v4 `=== true ? characterId : null`, then the truthy spread.)
+    let announcer_character_id = if entry.definition.announce_as_character == Some(true) {
+        character_id.filter(|c| !c.is_empty())
+    } else {
+        None
+    };
+
     let posted = post_pascal_result(
         db,
         PostPascalResultParams {
@@ -310,6 +334,7 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
             opaque_content: body.opaque_content,
             pascal_meta: Value::Object(pascal_meta),
             target_participant_ids,
+            announcer_character_id: announcer_character_id.map(str::to_string),
         },
     )
     .await;
@@ -325,6 +350,11 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         state = result.state.as_str(),
         effects = applied_effects.len() as u64,
         whispered,
+        announcedBy = if announcer_character_id.is_some() {
+            "character"
+        } else {
+            "pascal"
+        },
         posted = posted.is_some(),
         "Custom tool dealt",
     );
@@ -334,6 +364,58 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         posted,
         applied_effects,
     })
+}
+
+/// The rolling character's name for `{{character}}` (v4 `resolveCharacterName`,
+/// `a05c6f755`): the entrance's copy when it has one, else a RAW read (a broken
+/// vault costs the placeholder, never the run). `None` for a run nobody made.
+///
+/// v4's three branches, one-to-one: `if (!characterId) return null;` → no id;
+/// `if (supplied !== undefined) return supplied?.trim() || null;` → `Some(_)`;
+/// then `characters.findByIdRaw(characterId)` → `character?.name?.trim() ||
+/// null`. `findByIdRaw` is `_findById`, a `safeQuery` FALLBACK: a failed row
+/// read logs the repository's own ERROR and answers null, so it never reaches
+/// v4's catch — v4 reaches that DEBUG only by mock. Its v5 home is the one
+/// failure the read can still report: the connection itself (`read_main`
+/// `Err`). `name` is not vault-managed, so the RAW row names the character even
+/// when the vault is broken.
+fn resolve_character_name(
+    db: &Db,
+    character_id: Option<&str>,
+    supplied: Option<Option<&str>>,
+    chat_id: &str,
+) -> Option<String> {
+    let character_id = character_id.filter(|c| !c.is_empty())?;
+    let trimmed = |name: &str| {
+        let t = js_trim(name);
+        (!t.is_empty()).then(|| t.to_string())
+    };
+    if let Some(supplied) = supplied {
+        return supplied.and_then(trimmed);
+    }
+    match db.read_main(|main| {
+        Ok(crate::db::characters_read::find_by_id_raw_or_none(
+            main,
+            character_id,
+        ))
+    }) {
+        Ok(row) => row
+            .as_ref()
+            .and_then(|r| r.get("name"))
+            .and_then(Value::as_str)
+            .and_then(trimmed),
+        Err(error) => {
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = CONTEXT,
+                chatId = chat_id,
+                characterId = character_id,
+                error = %crate::db::fallback::error_text(&error),
+                "Custom tool run: rolling character name unavailable, {{{{character}}}} renders as written",
+            );
+            None
+        }
+    }
 }
 
 /// Assemble `pascalMeta` field-for-field with v4's service (`:183-203`) — the
@@ -493,6 +575,7 @@ mod tests {
                 private: None,
                 character_id: None,
                 metadata: &metadata,
+                character_name: None,
                 whisper_target_ids: Some(vec!["u".into()]),
                 invoked_by: InvokedBy::Trigger,
                 caller_participant_id: None,
@@ -513,7 +596,10 @@ mod tests {
     }
 
     /// A dealt run logs `Custom tool dealt` with v4's fields in v4's order —
-    /// and NOT the refused line, and (no chat) NOT the cascade line.
+    /// and NOT the refused line, and (no chat) NOT the cascade line. P4.D319:
+    /// `announcedBy` now rides between `whispered` and `posted` (v4
+    /// `a05c6f755`), and the writer's own `dropped` DEBUG (R-I — the writer
+    /// was silent before) precedes it, the chat being absent.
     #[tokio::test(flavor = "current_thread")]
     async fn a_dealt_run_logs_dealt_and_nothing_else() {
         global_capture::install();
@@ -526,9 +612,12 @@ mod tests {
         assert_eq!(
             lines,
             vec![
+                "DEBUG quilltap::pascal Pascal outcome dropped — no such chat context=pascal \
+                 chatId=c tool=coin"
+                    .to_string(),
                 "DEBUG quilltap::pascal Custom tool dealt context=pascal.run-service chatId=c \
                  tool=coin tier=character invokedBy=trigger state=info effects=0 \
-                 whispered=false posted=false"
+                 whispered=false announcedBy=pascal posted=false"
                     .to_string()
             ]
         );
@@ -575,6 +664,7 @@ mod tests {
                 None,
                 None,
                 0,
+                None,
             ))
             .expect("dealt");
         let meta = |by, phrase| {
@@ -626,6 +716,7 @@ mod tests {
                 None,
                 None,
                 0,
+                None,
             ))
             .expect("dealt");
         let meta = |result: &CustomToolRunResult| {
@@ -648,6 +739,316 @@ mod tests {
         assert!(
             labelled.contains(r#""toolTitle":"Coin","chipLabel":"Heads","definitionTier""#),
             "{labelled}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod rolling_character_tests {
+    //! P4.D319 (v4 `a05c6f755`): v4's six `run-service.test.ts` `the rolling
+    //! character` `it`s, over a real provisioned `Db` — the name's tri-state
+    //! (R-1), the RAW read (R-2) and the announcer.
+    use super::*;
+    use crate::db::tiered_mount_pool::MountTier;
+    use crate::test_support::global_capture;
+    use serde_json::json;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
+    const CHAR: &str = "a1000000-0000-4000-8000-00000000000a";
+    const SEAT: &str = "b1000000-0000-4000-8000-000000000001";
+
+    fn db() -> (Db, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (db, dir)
+    }
+
+    /// A one-seat chat and the rolling character's RAW row, named `raw_name`.
+    /// `characterDocumentMountPointId` names a mount that does not exist — a
+    /// vault the overlay could never read — so a run that names the character
+    /// proves the read was the RAW one (R-2).
+    async fn seed(db: &Db, raw_name: &'static str) {
+        let create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
+            "userId": crate::api::SINGLE_USER_ID,
+            "title": "The Rolling Room",
+            "participants": [
+                { "id": SEAT, "type": "CHARACTER", "controlledBy": "llm",
+                  "characterId": CHAR,
+                  "createdAt": "2026-05-01T00:00:00.000Z",
+                  "updatedAt": "2026-05-01T00:00:00.000Z" }
+            ],
+        }))
+        .expect("a ChatCreate");
+        let opts = crate::db::chats::CreateOptions {
+            id: CHAT.to_string(),
+            created_at: "2026-05-01T00:00:00.000Z".to_string(),
+            updated_at: "2026-05-01T00:00:00.000Z".to_string(),
+        };
+        db.write(move |w| {
+            crate::db::chats::ChatsRepository::new(w.main().connection()).create(&create, &opts)?;
+            w.main().connection().execute(
+                "INSERT INTO characters (id, userId, name, characterDocumentMountPointId, \
+                 createdAt, updatedAt) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+                rusqlite::params![
+                    CHAR,
+                    crate::api::SINGLE_USER_ID,
+                    raw_name,
+                    "f0000000-0000-4000-8000-0000000000ff",
+                    "2026-05-01T00:00:00.000Z"
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+        .expect("seed");
+    }
+
+    fn entry(announce: Option<bool>) -> DiscoveredCustomTool {
+        let mut raw = json!({
+            "name": "dresser",
+            "description": "Roll for it.",
+            "roll": { "min": 3, "max": 3 },
+            "chipLabel": "For {{character}}",
+            "outcomes": [{ "when": true, "message": "{{character}} rolls {{value}}", "state": "info" }],
+        });
+        if let Some(a) = announce {
+            raw["announceAsCharacter"] = json!(a);
+        }
+        let definition =
+            crate::pascal::custom_tool_types::safe_parse(&raw).expect("the definition loads");
+        DiscoveredCustomTool {
+            definition,
+            tier: MountTier::Character,
+            mount_point_id: "m1".into(),
+            mount_name: "Vault".into(),
+            definition_path: "Tools/dresser.tool.json".into(),
+        }
+    }
+
+    async fn run(
+        db: &Db,
+        entry: &DiscoveredCustomTool,
+        character_id: Option<&str>,
+        character_name: Option<Option<&str>>,
+    ) -> (PostedPascalMessage, Vec<String>) {
+        let metadata = Map::new();
+        let (outcome, lines) = global_capture::capture_async(run_custom_tool(
+            db,
+            RunCustomToolParams {
+                user_id: crate::api::SINGLE_USER_ID,
+                chat_id: CHAT,
+                chat: None,
+                entry,
+                parameters: None,
+                private: None,
+                character_id,
+                metadata: &metadata,
+                character_name,
+                whisper_target_ids: None,
+                invoked_by: InvokedBy::Llm,
+                caller_participant_id: None,
+                trigger_phrase: None,
+                now_ms: 0,
+                pending_wardrobe_announcements: None,
+            },
+            &mut crate::tools::rng::FixedBytes::new(vec![]),
+            None,
+        ))
+        .await;
+        let RunCustomToolOutcome::Ok {
+            posted: Some(posted),
+            ..
+        } = outcome.expect("never Err")
+        else {
+            panic!("dealt and posted");
+        };
+        let lines = lines
+            .into_iter()
+            .filter(|l| l.contains(" quilltap::pascal "))
+            .collect();
+        (posted, lines)
+    }
+
+    fn content(posted: &PostedPascalMessage) -> &str {
+        posted.message["content"].as_str().unwrap()
+    }
+
+    /// v4 `renders {{character}} with the name the entrance supplied, without
+    /// a read` — the RAW row says otherwise, and the supplied copy wins.
+    #[tokio::test(flavor = "current_thread")]
+    async fn renders_the_supplied_name_without_a_read() {
+        global_capture::install();
+        let (db, _dir) = db();
+        seed(&db, "Raw Bertie").await;
+        let (posted, _) = run(&db, &entry(None), Some(CHAR), Some(Some("  Supplied  "))).await;
+        assert_eq!(content(&posted), "🎲 **For Supplied**\n\nSupplied rolls 3");
+    }
+
+    /// v4 `reads the name when the entrance did not supply one` — the RAW row,
+    /// trimmed twice over, and named even though its vault cannot be read.
+    #[tokio::test(flavor = "current_thread")]
+    async fn reads_the_raw_name_when_none_is_supplied() {
+        global_capture::install();
+        let (db, _dir) = db();
+        seed(&db, "  Bertie  ").await;
+        let (posted, _) = run(&db, &entry(None), Some(CHAR), None).await;
+        assert_eq!(content(&posted), "🎲 **For Bertie**\n\nBertie rolls 3");
+    }
+
+    /// v4's `null` — the entrance said "nobody", so no read: as written.
+    #[tokio::test(flavor = "current_thread")]
+    async fn an_explicit_nobody_reads_nothing_and_renders_as_written() {
+        global_capture::install();
+        let (db, _dir) = db();
+        seed(&db, "Raw Bertie").await;
+        let (posted, _) = run(&db, &entry(None), Some(CHAR), Some(None)).await;
+        assert_eq!(
+            content(&posted),
+            "🎲 **For {{character}}**\n\n{{character}} rolls 3"
+        );
+    }
+
+    /// v4 `leaves {{character}} as written when the name cannot be read` —
+    /// v4 reaches its catch only by mock (`findByIdRaw` is a fallback read);
+    /// v5's home is the read connection itself failing (R-2). A fresh `Db` has
+    /// opened no read connection yet, so removing the main file makes the next
+    /// checkout fail.
+    #[tokio::test(flavor = "current_thread")]
+    async fn an_unreadable_name_renders_as_written_and_says_why() {
+        global_capture::install();
+        let (db, dir) = db();
+        std::fs::remove_file(dir.path().join("data").join("quilltap.db")).unwrap();
+        let (name, lines) =
+            global_capture::capture(|| resolve_character_name(&db, Some(CHAR), None, CHAT));
+        assert_eq!(name, None);
+        let lines: Vec<_> = lines
+            .into_iter()
+            .filter(|l| l.contains(" quilltap::pascal "))
+            .collect();
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with(&format!(
+                "DEBUG quilltap::pascal Custom tool run: rolling character name unavailable, \
+                 {{{{character}}}} renders as written context=pascal.run-service chatId={CHAT} \
+                 characterId={CHAR} error="
+            )),
+            "{}",
+            lines[0]
+        );
+        assert!(
+            !lines[0].contains("sqlite error"),
+            "the bare message: {}",
+            lines[0]
+        );
+    }
+
+    /// The silence legs: a supplied name and a readable row log nothing of
+    /// the name's own.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_resolved_name_logs_nothing() {
+        global_capture::install();
+        let (db, _dir) = db();
+        seed(&db, "Bertie").await;
+        for supplied in [None, Some(Some("Bertie")), Some(None)] {
+            let (_, lines) =
+                global_capture::capture(|| resolve_character_name(&db, Some(CHAR), supplied, CHAT));
+            assert!(lines.is_empty(), "{lines:?}");
+        }
+        // A run nobody made never reads either.
+        let (name, lines) =
+            global_capture::capture(|| resolve_character_name(&db, None, None, CHAT));
+        assert_eq!(name, None);
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// v4 `posts under Pascal unless the tool says the character announces it`.
+    #[tokio::test(flavor = "current_thread")]
+    async fn posts_under_pascal_by_default() {
+        global_capture::install();
+        let (db, _dir) = db();
+        seed(&db, "Bertie").await;
+        for announce in [None, Some(false)] {
+            let (posted, lines) = run(&db, &entry(announce), Some(CHAR), None).await;
+            assert!(posted.message.get("customAnnouncer").is_none());
+            assert_eq!(posted.message["systemSender"], "pascal");
+            assert!(
+                lines
+                    .iter()
+                    .any(|l| l.contains("Custom tool dealt") && l.contains(" announcedBy=pascal ")),
+                "{lines:?}"
+            );
+        }
+    }
+
+    /// v4 `hands the post to the rolling character when announceAsCharacter is
+    /// on` — `customAnnouncer` LAST, after `pascalMeta`; still Pascal's record.
+    #[tokio::test(flavor = "current_thread")]
+    async fn hands_the_post_to_the_rolling_character() {
+        global_capture::install();
+        let (db, _dir) = db();
+        seed(&db, "Bertie").await;
+        let (posted, lines) = run(&db, &entry(Some(true)), Some(CHAR), None).await;
+        let keys: Vec<&str> = posted
+            .message
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(&keys[keys.len() - 2..], &["pascalMeta", "customAnnouncer"]);
+        assert_eq!(
+            serde_json::to_string(&posted.message["customAnnouncer"]).unwrap(),
+            format!(r#"{{"kind":"character","characterId":"{CHAR}"}}"#)
+        );
+        assert_eq!(posted.message["systemSender"], "pascal");
+        assert_eq!(posted.message["systemKind"], "custom-tool-result");
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("Custom tool dealt") && l.contains(" announcedBy=character ")),
+            "{lines:?}"
+        );
+        // The persisted row carries the column, as `{kind, characterId}`.
+        let id = posted.id.clone();
+        let stored: Option<String> = db
+            .read_main(move |m| {
+                Ok(m.query_row(
+                    "SELECT customAnnouncer FROM chat_messages WHERE id = ?1",
+                    [&id],
+                    |r| r.get(0),
+                )?)
+            })
+            .unwrap();
+        assert_eq!(
+            stored.as_deref(),
+            Some(format!(r#"{{"kind":"character","characterId":"{CHAR}"}}"#).as_str())
+        );
+    }
+
+    /// v4 `leaves a run nobody made with Pascal, even when announceAsCharacter
+    /// is on`.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_run_nobody_made_stays_pascals() {
+        global_capture::install();
+        let (db, _dir) = db();
+        seed(&db, "Bertie").await;
+        let (posted, _) = run(&db, &entry(Some(true)), None, None).await;
+        assert!(posted.message.get("customAnnouncer").is_none());
+        assert_eq!(
+            content(&posted),
+            "🎲 **For {{character}}**\n\n{{character}} rolls 3"
         );
     }
 }

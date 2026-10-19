@@ -40,7 +40,8 @@ struct Vendored {
     v4: &'static str,
     /// The byte size at v4 `25f534c0b`; 43,493 for the custom-tool schema at
     /// v4 `25b8fab6a` (P4.D313 — `triggers`, the `$defs.Effect` `oneOf`,
-    /// `$defs.WardrobeGesture`).
+    /// `$defs.WardrobeGesture`); 44,021 at v4 `e8e17b2d9` (P4.D319 —
+    /// `announceAsCharacter` and the `{{character}}` clauses, `a05c6f755`).
     bytes: usize,
     /// The `$id` the file must carry.
     id: &'static str,
@@ -50,7 +51,7 @@ const SCHEMAS: &[Vendored] = &[
     Vendored {
         v5: "apps/web/public/schemas/qtap-custom-tool.schema.json",
         v4: "public/schemas/qtap-custom-tool.schema.json",
-        bytes: 43_493,
+        bytes: 44_021,
         id: "https://quilltap.ai/schemas/qtap-custom-tool.schema.json",
     },
     Vendored {

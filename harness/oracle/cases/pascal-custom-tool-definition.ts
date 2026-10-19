@@ -432,6 +432,25 @@ const corpus: Array<[string, unknown]> = [
   )],
   ['state-not-quite-a-ref', withWhen({ gt: { $state: 'a', fallbak: 1 } })],
 
+  // === P4.D319: announceAsCharacter + {{character}} (append-only) ===
+  // v4 `a05c6f755`: the definition key sits between `defaultVisibility` and
+  // `parameters` (Zod's issue ORDER is the shape's key order), is
+  // `z.boolean().optional()` (null refused), and is no longer reported by
+  // `collectUnknownKeys` (17 known keys). `{{character}}` is a known ref in
+  // an effect expression (the refusal sentence unchanged); a wardrobe ref is
+  // a template, kept verbatim at load. The ids are fixed by the P4.D319 order
+  // (R-3) so the SPA twin's regen writes the same bytes.
+  ['announce-as-character-true', { ...BASE, announceAsCharacter: true }],
+  ['announce-as-character-false', { ...BASE, announceAsCharacter: false }],
+  ['announce-as-character-string', { ...BASE, announceAsCharacter: 'yes' }],
+  ['announce-as-character-null', { ...BASE, announceAsCharacter: null }],
+  ['announce-as-character-issue-order', { ...BASE, defaultVisibility: 'loud', announceAsCharacter: 'yes', parameters: 5 }],
+  ['unknown-keys-announce-as-character-known', { ...BASE, announceAsCharacter: true, bogus: 1 }],
+  ['effect-value-character', withEffects([{ target: 'metadata.lastWinner', value: "{{character}} + ' wins'" }])],
+  ['effect-value-character-dotted', withEffects([{ target: 'metadata.lastWinner', value: "{{character.name}} + ' wins'" }])],
+  ['wardrobe-item-character', withEffects([{ wardrobe: { action: 'wear', items: ["{{character}}'s armour"] } }])],
+  // === end P4.D319 ===
+
   // ---- the 6864bf0e AVAILABILITY GATES ------------------------------------
   // accepted: one clause, literal operands, every comparator family.
   ['gate-available-when', { ...BASE, availableWhen: { metadata: { toolAbilities: { contains: 'programmable' } } } }],

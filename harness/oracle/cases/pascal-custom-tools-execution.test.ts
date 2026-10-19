@@ -303,6 +303,43 @@ describe('renderTemplate', () => {
         }),
       });
     }
+
+    // ---- P4.D319 (v4 `a05c6f755`): {{character}} -------------------------
+    //
+    // Its own block for the same reason as the one above: only these rows read
+    // the new var. `null` is "nobody in particular rolled" — the placeholder
+    // is left as written. v4's own two `renderTemplate` its lead the block.
+    const characterMessages: Array<[string, string, string | null]> = [
+      ['character-v4-substitutes', '{{character}} suits up.', 'Charlie'],
+      ['character-v4-as-written', '{{character}} suits up.', null],
+      ['character-whitespace-key', '{{  character  }} rolls', 'Charlie'],
+      ['character-repeated', '{{character}} and {{character}}', 'Charlie'],
+      ['character-with-value', '{{character}} rolled {{value}}', 'Charlie'],
+      ['character-dotted-unknown', 'x {{character.name}} y', 'Charlie'],
+      ['character-capitalised-unknown', 'x {{Character}} y', 'Charlie'],
+      // renderTemplate itself does not trim: `executeCustomTool` does.
+      ['character-untrimmed-as-given', '[{{character}}]', '  Charlie  '],
+    ];
+    for (const [id, message, character] of characterMessages) {
+      emit({
+        kind: 'renderTemplate',
+        id,
+        tool,
+        message,
+        metadata: META,
+        llm: LLM,
+        ...(character === null ? {} : { character }),
+        out: renderTemplate(message, {
+          value: 12.3456,
+          roll: 0.6789,
+          dice: '3d6: [4, 2, 6] = 12',
+          params,
+          metadata: META,
+          llm: LLM,
+          ...(character === null ? {} : { character }),
+        }),
+      });
+    }
   });
 });
 
@@ -694,6 +731,8 @@ describe('executeCustomTool', () => {
           metadata?: Record<string, unknown>;
           progress?: Record<string, unknown>;
           now?: number;
+          // P4.D319 (v4 `a05c6f755`): the rolling character's name.
+          character?: string;
         } | undefined,
         LlmScript?,
       ]
@@ -1633,6 +1672,93 @@ describe('executeCustomTool', () => {
         },
         {},
         { now: PROGRESS_START },
+      ],
+
+      // ---- P4.D319 (v4 `a05c6f755`): {{character}} through the run -------
+      // v4's own `reaches the message, the chip label and a wardrobe reference
+      // through executeCustomTool`, verbatim (supplied null, no clock read).
+      [
+        'character-v4-reaches-message-chip-and-wardrobe',
+        {
+          name: 'suit_up',
+          description: 'Suit up.',
+          chipLabel: 'Armour for {{character}}',
+          effects: [{ wardrobe: { action: 'wear', items: ["{{character}}'s armour"] } }],
+          outcomes: [{ when: true, message: '{{character}} is suited.', state: 'success' }],
+        },
+        null,
+        { character: 'Charlie' },
+      ],
+      // The consult prompt quotes it (the scripted invoker records the prompt).
+      [
+        'character-in-the-consult-prompt',
+        {
+          name: 'ask',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          llm: { prompt: 'Is {{character}} lucky at {{value}}?', errorMessage: 'Silence.' },
+          outcomes: [{ when: true, message: '{{llm}}', state: 'info' }],
+        },
+        {},
+        { character: 'Charlie' },
+        { answer: 'YES' },
+      ],
+      // An effect EXPRESSION concatenates it (a string subject).
+      [
+        'character-in-an-effect-expression',
+        {
+          name: 'crown',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          effects: [{ target: 'metadata.lastWinner', value: "{{character}} + ' wins'" }],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        { character: 'Charlie' },
+      ],
+      // Nobody rolled: every render as written, and the expression skips on an
+      // unresolved ref (the roll still stands).
+      [
+        'character-absent-renders-as-written',
+        {
+          name: 'crown',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          chipLabel: 'For {{character}}',
+          effects: [
+            { target: 'metadata.lastWinner', value: "{{character}} + ' wins'" },
+            { wardrobe: { action: 'wear', items: ["{{character}}'s armour"] } },
+          ],
+          outcomes: [{ when: true, message: '{{character}} rolls {{value}}', state: 'info' }],
+        },
+        {},
+        { now: PROGRESS_START },
+      ],
+      // `trim() || undefined`: whitespace alone is nobody; padding is trimmed.
+      [
+        'character-whitespace-only-is-absent',
+        {
+          name: 'crown',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          chipLabel: 'For {{character}}',
+          outcomes: [{ when: true, message: '{{character}} rolls {{value}}', state: 'info' }],
+        },
+        {},
+        { character: '   ' },
+      ],
+      [
+        'character-padded-is-trimmed',
+        {
+          name: 'crown',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          chipLabel: 'For {{character}}',
+          effects: [{ wardrobe: { action: 'wear', items: ["{{character}}'s armour"] } }],
+          outcomes: [{ when: true, message: '{{character}} rolls {{value}}', state: 'info' }],
+        },
+        {},
+        { character: '  Charlie  ' },
       ],
     ];
 

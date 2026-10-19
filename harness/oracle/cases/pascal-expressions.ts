@@ -40,6 +40,7 @@
  *     > /tmp/oracle-pascal-expressions.ndjson
  */
 
+import { classifyPlaceholder } from '@/lib/pascal/placeholders';
 import {
   parseExpression,
   evaluateExpression,
@@ -91,6 +92,9 @@ const parseCases: Array<[string, string]> = [
   ['ref-now-arithmetic', '{{now}} + 600000'],
   ['ref-progress-derived-field', '{{progress.cannon.percent}} / 100'],
   ['ref-progress-dotted-field-is-the-field', '{{progress.cannon.quantity.total}}'],
+  // P4.D319 (v4 `a05c6f755`): `{{character}}` is a known ref through the
+  // classifier — `expressions.ts` has NO hunk, the grammar learns it for free.
+  ['ref-character-concat', "{{character}} + ' wins'"],
   // `refs` is first-appearance order, DEDUPLICATED. Both properties need a row
   // that repeats a name — without one, a port that simply pushed every ref it
   // walked would pass the whole corpus (proven: that mutation went undetected
@@ -125,6 +129,10 @@ const parseCases: Array<[string, string]> = [
   ['ref-progress-names-only-an-id', '{{progress.cannon}}'],
   ['ref-progress-empty-field', '{{progress.cannon.}}'],
   ['ref-progress-empty-id', '{{progress..percent}}'],
+  // P4.D319: only the EXACT key is the character; the refusal sentence keeps
+  // its list unchanged (still no `character` in it — v4 `:133`).
+  ['ref-character-dotted', '{{character.x}}'],
+  ['ref-character-capitalised', '{{Character}}'],
   ['ref-empty-name', '{{}}'],
   ['ref-never-closes', '{{value'],
   ['ref-lone-brace', '{value}'],
@@ -195,6 +203,8 @@ const REFS: Record<string, ExprValue> = {
   'progress.cannon.state': 'active',
   'progress.cannon.complete': false,
   'progress.cannon.remainingMs': 300_000,
+  // P4.D319: the rolling character's name, a string subject.
+  character: 'Charlie',
 };
 
 const evalCases: Array<[string, string]> = [
@@ -254,6 +264,7 @@ const evalCases: Array<[string, string]> = [
   ['ref-progress-state-concat', "'the cannon is ' + {{progress.cannon.state}}"],
   ['ref-progress-absent-progression', '{{progress.zeppelin.percent}} + 1'],
   ['ref-progress-absent-field', '{{progress.cannon.trimester}} + 1'],
+  ['ref-character-concat', "{{character}} + ' wins'"],
   ['ref-string-state-concat', "{{state.name}} + ' owes ' + {{state.debt}}"],
 
   // ---- literals evaluate to themselves -----------------------------------
@@ -299,6 +310,26 @@ const formatCases: Array<[string, number]> = [
 
 for (const [id, input] of formatCases) {
   rows.push({ kind: 'format', id, input, output: formatValue(input) });
+}
+
+// --------------------------------------------------------- classify rows
+//
+// P4.D319 (v4 `a05c6f755`): `classifyPlaceholder` driven directly, the object
+// it returns carried whole. `character` is the EXACT key; a dotted or
+// capitalised spelling stays `unknown`.
+const classifyCases: Array<[string, string]> = [
+  ['character', 'character'],
+  ['character-dotted', 'character.x'],
+  ['character-capitalised', 'Character'],
+  ['character-name', 'character.name'],
+  ['now', 'now'],
+  ['value', 'value'],
+  ['params', 'params.bonus'],
+  ['progress', 'progress.cannon.percent'],
+];
+
+for (const [id, key] of classifyCases) {
+  rows.push({ kind: 'classify', id, key, refJson: JSON.stringify(classifyPlaceholder(key)) });
 }
 
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');

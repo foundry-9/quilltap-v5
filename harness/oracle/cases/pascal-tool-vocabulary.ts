@@ -275,6 +275,22 @@ const corpus: Array<[string, Record<string, unknown>]> = [
   // A gesture-only tool is NOT empty; an empty one carries the three `[]`s.
   ['wardrobe-gesture-only-is-not-empty', withEffects([{ wardrobe: { action: 'take_off', items: ['Gloves'] } }])],
   ['wardrobe-empty-shape-has-three-keys', def({})],
+
+  // ---- P4.D319 (v4 `a05c6f755`): the `character` boolean -------------------
+  // Between `now` and `wears` in the serialized object, set by the one scanner
+  // wherever a rendered string quotes `{{character}}` — and a conjunct of
+  // `isEmptyVocabulary` of its own. Every row above now carries
+  // `"character":false` in that position.
+  // v4's own `reports a tool that quotes {{character}}`, verbatim.
+  ['character-v4-suited', def({ outcomes: [{ when: true, message: '{{character}} is suited.', state: 'info' }] })],
+  ['character-in-a-message', withMessage('{{character}} rolls {{value}}.')],
+  ['character-in-a-chip-label', def({ chipLabel: 'For {{character}}' })],
+  ['character-in-a-consult-prompt', def({ llm: { prompt: 'Is {{character}} lucky today?', errorMessage: 'Silence.' } })],
+  ['character-in-a-wardrobe-item', withEffects([{ wardrobe: { action: 'wear', items: ["{{character}}'s armour"] } }])],
+  ['character-in-an-effect-expression', withEffects([{ target: 'metadata.lastWinner', value: "{{character}} + ' wins'" }])],
+  // Only the exact key: a dotted spelling is `unknown` and names nothing.
+  ['character-dotted-names-nothing', withMessage('Bare {{character.name}} key.')],
+  ['character-only-is-not-empty', withMessage('{{character}}')],
 ];
 
 for (const [id, doc] of corpus) {

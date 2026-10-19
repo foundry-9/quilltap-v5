@@ -826,6 +826,8 @@ pub async fn chat_custom_tool_run(
                 .as_ref()
                 .map(|_| perspective_character_id.as_str()),
             metadata: &metadata,
+            // v4's operator route passes no name → the service reads the RAW row.
+            character_name: None,
             whisper_target_ids: Some(vec![user_id.to_string()]),
             invoked_by: InvokedBy::User,
             caller_participant_id: None,
@@ -1349,6 +1351,7 @@ pub async fn custom_tool_preview(
         invoker,
         Some(&progress),
         now_ms,
+        None,
     )
     .await
     {

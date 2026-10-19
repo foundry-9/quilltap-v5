@@ -549,6 +549,12 @@ pub struct OutcomeSubjects<'a> {
     /// `$state` comparator operands resolve against. `None` → treated as `{}`,
     /// so every `$state` operand falls to its own fallback.
     pub state: Option<&'a Value>,
+    /// The rolling character's name, for `{{character}}`. Absent when nobody in
+    /// particular rolled — the placeholder then renders as written (v4
+    /// `a05c6f755`). v4's runtime literal places it between `state` and `llm`;
+    /// the object is never serialized, so the position is unobservable and the
+    /// field is appended here rather than reordering v5's struct (P4.D319 R-11).
+    pub character: Option<&'a str>,
 }
 
 /// A comparator operand as the evaluator sees it: a literal, a `$param`
@@ -1348,6 +1354,9 @@ fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Ve
         now: Some(subjects.now),
         llm: subjects.base.llm,
         state: subjects.base.state,
+        // v4 `EffectSubjects` spreads the run's subjects, so an expression and
+        // a wardrobe ref see the rolling character's name too.
+        character: subjects.base.character,
     };
     let mut resolve_ref = |refname: &str| -> Option<ResolvedValue> {
         resolve_placeholder_value(&classify_placeholder(refname), &template_vars)
@@ -1507,6 +1516,9 @@ pub struct TemplateVars<'a> {
     pub llm: Option<&'a LlmSubject>,
     /// The merged persistent state, for `{{state.path}}` placeholders.
     pub state: Option<&'a Value>,
+    /// The rolling character's name, for `{{character}}` (v4 `a05c6f755`).
+    /// `None` when nobody in particular rolled (the placeholder stands).
+    pub character: Option<&'a str>,
 }
 
 /// Substitute the four placeholder families. Plain string replacement — user
@@ -1586,6 +1598,14 @@ pub fn render_template(message: &str, vars: &TemplateVars) -> String {
                                 "Custom tool message references {{{{now}}}} with no run clock to render",
                             );
                         }
+                        PlaceholderRef::Character => {
+                            // v4 logs NO field but `context` here — the
+                            // `{{now}}` line's shape (v4 `a05c6f755`).
+                            tracing::debug!(
+                                target: "quilltap::pascal",
+                                "Custom tool message references {{{{character}}}} but nobody in particular rolled",
+                            );
+                        }
                         PlaceholderRef::State { path } => {
                             let empty = Value::Object(Map::new());
                             let state = vars.state.unwrap_or(&empty);
@@ -1660,6 +1680,8 @@ pub fn resolve_placeholder_value(
             .and_then(|m| m.get(&format!("{id}.{field}")))
             .and_then(js_primitive),
         PlaceholderRef::Now => vars.now.map(|n| ResolvedValue::Number(n as f64)),
+        // v4 `case 'character': return vars.character;` — a string subject.
+        PlaceholderRef::Character => vars.character.map(|c| ResolvedValue::String(c.to_string())),
         PlaceholderRef::State { path } => {
             // `state.` is stripped and the remainder is a full state path
             // (v4 `f48f34dc`).
@@ -1695,6 +1717,7 @@ mod comparator_subject_debug_tests {
             progress,
             llm: None,
             state: None,
+            character: None,
         }
     }
 
@@ -1806,6 +1829,7 @@ mod render_template_debug_tests {
             now: None,
             llm: None,
             state,
+            character: None,
         }
     }
 
@@ -1991,6 +2015,38 @@ mod render_template_debug_tests {
         );
     }
 
+    /// P4.D319 (v4 `a05c6f755`): nobody in particular rolled — the hole stays
+    /// visible and v4's bare line (no field but `context`, the `{{now}}`
+    /// line's shape) fires ONCE per unrenderable occurrence. Field list
+    /// asserted EMPTY, as for `{{now}}`.
+    #[test]
+    fn a_character_placeholder_with_nobody_rolling_logs_bare_once() {
+        let lines = captured(|| {
+            let out = render_template("{{character}} suits up.", &vars(None, None));
+            assert_eq!(out, "{{character}} suits up.", "the hole stays visible");
+        });
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!(
+            lines[0],
+            "DEBUG quilltap::pascal Custom tool message references {{character}} but nobody in particular rolled",
+            "v4 logs this line bare"
+        );
+    }
+
+    /// The silence leg: a named character renders quietly.
+    #[test]
+    fn a_rendered_character_logs_nothing() {
+        let mut v = vars(None, None);
+        v.character = Some("Charlie");
+        let lines = captured(|| {
+            assert_eq!(
+                render_template("{{character}} suits up.", &v),
+                "Charlie suits up."
+            );
+        });
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
     /// The silence half for both new arms: a run clock and a sheet that answer
     /// render quietly. Without this, a line wired to the wrong branch — firing
     /// on every render rather than on a miss — would still pass above.
@@ -2125,7 +2181,13 @@ pub async fn execute_custom_tool(
     // `Date.now()`; v5 makes every caller pass it, so a differential can freeze
     // it and no site can quietly take a second reading.
     now_ms: i64,
+    // The rolling character's name, for `{{character}}`. `None` for a run
+    // nobody made (v4 `overrides.character`, `a05c6f755`).
+    character: Option<&str>,
 ) -> Result<CustomToolRunResult, CustomToolRunError> {
+    // v4 `overrides?.character?.trim() || undefined` — whitespace alone is
+    // nobody, and the trim is JS's (`js_trim`, never `str::trim`).
+    let character = character.map(js_trim).filter(|c| !c.is_empty());
     let params = resolve_params(definition, supplied_params, state)?;
 
     let raw: f64;
@@ -2185,6 +2247,7 @@ pub async fn execute_custom_tool(
                     now: Some(now_ms),
                     llm: None,
                     state,
+                    character,
                 },
             );
             Some(resolve_llm_consult(spec, prompt, llm_invoke).await)
@@ -2201,6 +2264,7 @@ pub async fn execute_custom_tool(
         progress,
         llm: llm_subject.as_ref(),
         state,
+        character,
     };
     let mut outcome_index = None;
     for (i, o) in definition.outcomes.iter().enumerate() {
@@ -2231,6 +2295,7 @@ pub async fn execute_custom_tool(
             now: Some(now_ms),
             llm: llm_subject.as_ref(),
             state,
+            character,
         },
     );
     let metadata_tested = collect_metadata_tested(&outcome.when, metadata);
@@ -2251,6 +2316,7 @@ pub async fn execute_custom_tool(
                 now: Some(now_ms),
                 llm: llm_subject.as_ref(),
                 state,
+                character,
             },
         )
     });
@@ -2268,6 +2334,7 @@ pub async fn execute_custom_tool(
                     progress,
                     llm: llm_subject.as_ref(),
                     state,
+                    character,
                 },
                 outcome: WinningOutcome {
                     state: outcome.state,
@@ -2401,6 +2468,9 @@ pub fn simulate_outcomes(
             progress,
             llm,
             state,
+            // The audit never renders and never has a character (v4
+            // `simulateOutcomes` — no hunk).
+            character: None,
         };
         let mut outcome_index = None;
         for (i, o) in definition.outcomes.iter().enumerate() {
@@ -2549,6 +2619,7 @@ mod wardrobe_gesture_tests {
             now: Some(0),
             llm: None,
             state: None,
+            character: None,
         }
     }
 

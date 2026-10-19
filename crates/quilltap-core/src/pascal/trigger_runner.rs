@@ -141,12 +141,20 @@ async fn run_triggered(
     // gates fail closed and effects that need a character skip.
     let mut metadata: Map<String, Value> = Map::new();
     let mut character_mount_point_id: Option<String> = None;
+    // The overlaid row's name, for `{{character}}` (v4 `a05c6f755`:
+    // `characterName = character.name ?? null`). The runner ALWAYS supplies it
+    // — `None` here is v4's `null`, so the service never re-reads the raw row.
+    let mut character_name: Option<String> = None;
     if let Some(character_id) = &speaker.character_id {
         match crate::tools::run_custom::read_character_hydrated(db, character_id) {
             Ok(Some(character)) => {
                 if let Some(map) = character.get("metadata").and_then(Value::as_object) {
                     metadata = map.clone();
                 }
+                character_name = character
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
                 character_mount_point_id = character
                     .get("characterDocumentMountPointId")
                     .and_then(Value::as_str)
@@ -262,6 +270,7 @@ async fn run_triggered(
                 private: None,
                 character_id: speaker.character_id.as_deref(),
                 metadata: &metadata,
+                character_name: Some(character_name.as_deref()),
                 whisper_target_ids: Some(whisper_target_ids.clone()),
                 invoked_by: InvokedBy::Trigger,
                 caller_participant_id: speaker.participant_id.as_deref(),

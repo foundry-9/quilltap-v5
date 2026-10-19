@@ -28,6 +28,7 @@ use quilltap_core::pascal::expressions::{
     evaluate_expression, format_value, parse_expression, ExprValue,
 };
 use quilltap_core::pascal::js_value::json_stringify;
+use quilltap_core::pascal::placeholders::{classify_placeholder, PlaceholderRef};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -56,6 +57,34 @@ enum Row {
         input: f64,
         output: String,
     },
+    /// P4.D319 (v4 `a05c6f755`): `classifyPlaceholder` driven directly.
+    Classify {
+        id: String,
+        key: String,
+        #[serde(rename = "refJson")]
+        ref_json: String,
+    },
+}
+
+/// v4's `PlaceholderRef` object, in its own key order (`kind` first, then the
+/// family's one or two fields), as `JSON.stringify` writes it.
+fn placeholder_ref_json(r: &PlaceholderRef) -> String {
+    let v = match r {
+        PlaceholderRef::Value => serde_json::json!({ "kind": "value" }),
+        PlaceholderRef::Roll => serde_json::json!({ "kind": "roll" }),
+        PlaceholderRef::Dice => serde_json::json!({ "kind": "dice" }),
+        PlaceholderRef::Llm => serde_json::json!({ "kind": "llm" }),
+        PlaceholderRef::Now => serde_json::json!({ "kind": "now" }),
+        PlaceholderRef::Character => serde_json::json!({ "kind": "character" }),
+        PlaceholderRef::Params { name } => serde_json::json!({ "kind": "params", "name": name }),
+        PlaceholderRef::Metadata { key } => serde_json::json!({ "kind": "metadata", "key": key }),
+        PlaceholderRef::State { path } => serde_json::json!({ "kind": "state", "path": path }),
+        PlaceholderRef::Progress { id, field } => {
+            serde_json::json!({ "kind": "progress", "id": id, "field": field })
+        }
+        PlaceholderRef::Unknown { key } => serde_json::json!({ "kind": "unknown", "key": key }),
+    };
+    serde_json::to_string(&v).expect("a ref serializes")
 }
 
 /// The fixture ref table the oracle's evaluator reads. Kept in step with the
@@ -82,6 +111,8 @@ fn fixture_refs(name: &str) -> Option<ExprValue> {
         "progress.cannon.state" => ExprValue::String("active".to_string()),
         "progress.cannon.complete" => ExprValue::Bool(false),
         "progress.cannon.remainingMs" => ExprValue::Number(300_000.0),
+        // P4.D319: the rolling character's name, a string subject.
+        "character" => ExprValue::String("Charlie".to_string()),
         _ => return None,
     };
     Some(v)
@@ -103,6 +134,7 @@ fn pascal_expressions_match_oracle() {
     let (mut parse_ok, mut parse_rejected) = (0usize, 0usize);
     let (mut eval_ok, mut eval_failed) = (0usize, 0usize);
     let mut formats = 0usize;
+    let mut classified = 0usize;
     let mut seen_position_reason = false;
     let mut seen_string_value = false;
     let mut seen_bool_value = false;
@@ -202,6 +234,15 @@ fn pascal_expressions_match_oracle() {
                 formats += 1;
                 assert_eq!(format_value(input), output, "formatValue '{id}'");
             }
+
+            Row::Classify { id, key, ref_json } => {
+                classified += 1;
+                assert_eq!(
+                    placeholder_ref_json(&classify_placeholder(&key)),
+                    ref_json,
+                    "classifyPlaceholder '{id}' ({key:?})"
+                );
+            }
         }
     }
 
@@ -214,6 +255,10 @@ fn pascal_expressions_match_oracle() {
         "eval coverage thinned: {eval_ok} ok / {eval_failed} failed"
     );
     assert!(formats >= 5, "formatValue coverage thinned: {formats}");
+    assert!(
+        classified >= 4,
+        "classifyPlaceholder coverage thinned: {classified}"
+    );
     assert!(
         seen_position_reason,
         "no position-bearing tokenizer reason in the corpus — the UTF-16 arm is untested"

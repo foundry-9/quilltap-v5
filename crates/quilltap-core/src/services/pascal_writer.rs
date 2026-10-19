@@ -33,6 +33,9 @@ use crate::db::chats_messages::ChatEventInput;
 use crate::db::runtime::Db;
 use crate::jsstr::js_trim;
 
+/// v4 `writer.ts`'s `CONTEXT` (`:43`).
+const CONTEXT: &str = "pascal";
+
 /// The dual body of an outcome announcement (v4 `buildPascalResultContent`'s
 /// return). Both strings are the same — see the note on opacity in the header.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +90,14 @@ pub struct PostPascalResultParams {
     /// When set and non-empty, the outcome is whispered only to these
     /// participants (a private run). `None`/empty = the whole room sees it.
     pub target_participant_ids: Option<Vec<String>>,
+    /// The tool's `announceAsCharacter` (v4 `a05c6f755`): the rolling character
+    /// whose name and face the bubble wears instead of Pascal's, through
+    /// `customAnnouncer` — the one field the Salon, the LLM context's speaker
+    /// tag, the Courier and the transcript export already read for "who is
+    /// speaking this". The row stays Pascal's (`systemSender`, `pascalMeta`), so
+    /// nothing that keys on a Pascal outcome — the chip, the trigger scan's
+    /// blindness to it — changes. `None`/empty = Pascal announces it.
+    pub announcer_character_id: Option<String>,
 }
 
 /// The persisted Pascal message, returned so callers can splice it into the
@@ -107,6 +118,14 @@ pub struct PostedPascalMessage {
 pub fn build_pascal_message(
     params: &PostPascalResultParams,
 ) -> Option<(ChatEventInput, PostedPascalMessage)> {
+    try_build_pascal_message(params).ok()
+}
+
+/// [`build_pascal_message`] with the validation failure kept — the ERROR line's
+/// `error` (v4's `addMessage` Zod throw, caught by `postPascalResult`).
+fn try_build_pascal_message(
+    params: &PostPascalResultParams,
+) -> Result<(ChatEventInput, PostedPascalMessage), String> {
     let message_id = uuid::Uuid::new_v4().to_string();
     let now = crate::clock::now_iso();
 
@@ -116,7 +135,7 @@ pub fn build_pascal_message(
         .clone()
         .filter(|t| !t.is_empty());
 
-    let message = json!({
+    let mut message = json!({
         "type": "message",
         "id": message_id,
         "role": "ASSISTANT",
@@ -130,9 +149,19 @@ pub fn build_pascal_message(
         "targetParticipantIds": targets,
         "pascalMeta": params.pascal_meta,
     });
+    // v4's truthy spread, LAST (after `pascalMeta`), key order `kind,
+    // characterId`.
+    if let Some(id) = params
+        .announcer_character_id
+        .as_deref()
+        .filter(|id| !id.is_empty())
+    {
+        message["customAnnouncer"] = json!({ "kind": "character", "characterId": id });
+    }
 
-    let event: ChatEventInput = serde_json::from_value(message.clone()).ok()?;
-    Some((
+    let event: ChatEventInput =
+        serde_json::from_value(message.clone()).map_err(|e| e.to_string())?;
+    Ok((
         event,
         PostedPascalMessage {
             id: message_id,
@@ -143,26 +172,301 @@ pub fn build_pascal_message(
 }
 
 /// Persist a Pascal outcome announcement (v4 `postPascalResult`). Guards on the
-/// chat existing, then writes best-effort — `Err` → `None`, matching v4's
+/// chat existing, then writes best-effort — a failure → `None`, matching v4's
 /// catch-and-return-null. Returns the posted message on success.
+///
+/// v4's three lines (P4.D319 R-I — v5 was silent until then): the `dropped`
+/// DEBUG when there is no such chat, the INFO after a successful post (now
+/// carrying `announcerCharacterId`), and the ERROR for anything inside v4's ONE
+/// `try` that throws. v4's `chats.findById` is a `safeQuery` FALLBACK — an
+/// unreadable row logs the repository's ERROR and answers null — so it takes the
+/// `dropped` arm, never the catch; the catch's v5 homes are a failed read
+/// connection, a message that fails to validate (v4: `addMessage`'s Zod throw)
+/// and a failed write. Every line is emitted on the caller's task, after the
+/// `.await`, never inside the writer closure.
 pub async fn post_pascal_result(
     db: &Db,
     params: PostPascalResultParams,
 ) -> Option<PostedPascalMessage> {
-    // v4: `const chat = await repos.chats.findById(chatId); if (!chat) return null;`
+    let tool = params
+        .pascal_meta
+        .get("tool")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let failed = |error: &str| {
+        tracing::error!(
+            target: "quilltap::pascal",
+            context = CONTEXT,
+            chatId = params.chat_id.as_str(),
+            tool = tool.as_str(),
+            error = error,
+            "[Pascal] Failed to post custom-tool outcome",
+        );
+    };
+
+    // v4: `const chat = await repos.chats.findById(chatId); if (!chat) { … }`
     let cid = params.chat_id.clone();
-    match db.read_main(move |c| crate::db::chats_read::find_by_id(c, &cid)) {
+    match db.read_main(move |c| Ok(crate::db::chats_read::find_by_id_or_none(c, &cid))) {
         Ok(Some(_)) => {}
-        _ => return None,
+        Ok(None) => {
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = CONTEXT,
+                chatId = params.chat_id.as_str(),
+                tool = tool.as_str(),
+                "Pascal outcome dropped — no such chat",
+            );
+            return None;
+        }
+        Err(error) => {
+            failed(&crate::db::fallback::error_text(&error));
+            return None;
+        }
     }
 
-    let (event, posted) = build_pascal_message(&params)?;
+    let (event, posted) = match try_build_pascal_message(&params) {
+        Ok(built) => built,
+        Err(error) => {
+            failed(&error);
+            return None;
+        }
+    };
     let chat_id = params.chat_id.clone();
     match db
         .write(move |writers| writers.main().chat_messages().add_message(&chat_id, &event))
         .await
     {
-        Ok(()) => Some(posted),
-        Err(_) => None,
+        Ok(()) => {
+            let state = params
+                .pascal_meta
+                .get("state")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            tracing::info!(
+                target: "quilltap::pascal",
+                context = CONTEXT,
+                chatId = params.chat_id.as_str(),
+                messageId = posted.id.as_str(),
+                tool = tool.as_str(),
+                state = state,
+                whispered = posted.target_participant_ids.is_some(),
+                announcerCharacterId = params
+                    .announcer_character_id
+                    .as_deref()
+                    .unwrap_or("null"),
+                "[Pascal] Custom-tool outcome posted",
+            );
+            Some(posted)
+        }
+        Err(error) => {
+            failed(&crate::db::fallback::error_text(&error));
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+mod post_tests {
+    //! P4.D319 (v4 `a05c6f755`, R-I): v4's two `writer.test.ts`
+    //! `postPascalResult` `it`s, and the writer's three lines — each pinned on
+    //! the caller's thread (they log after the `.await`, never inside the
+    //! writer closure), each with its silence leg.
+    use super::*;
+    use crate::test_support::global_capture;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAT: &str = "c2000000-0000-4000-8000-000000000001";
+
+    fn db() -> (Db, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (db, dir)
+    }
+
+    async fn seed_chat(db: &Db) {
+        let create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
+            "userId": crate::api::SINGLE_USER_ID,
+            "title": "Pascal's Table",
+            "participants": [],
+        }))
+        .expect("a ChatCreate");
+        let opts = crate::db::chats::CreateOptions {
+            id: CHAT.to_string(),
+            created_at: "2026-05-01T00:00:00.000Z".to_string(),
+            updated_at: "2026-05-01T00:00:00.000Z".to_string(),
+        };
+        db.write(move |w| {
+            crate::db::chats::ChatsRepository::new(w.main().connection()).create(&create, &opts)
+        })
+        .await
+        .expect("seed the chat");
+    }
+
+    fn params(announcer: Option<&str>, targets: Option<Vec<String>>) -> PostPascalResultParams {
+        let body = build_pascal_result_content("Coin", None, "Heads.");
+        PostPascalResultParams {
+            chat_id: CHAT.to_string(),
+            content: body.content,
+            opaque_content: body.opaque_content,
+            pascal_meta: json!({
+                "tool": "coin", "toolTitle": "Coin", "definitionTier": "character",
+                "definitionMountId": "m1", "params": {}, "rollForm": "range", "raw": 1,
+                "value": 1, "state": "success", "outcomeIndex": 0, "invokedBy": "llm"
+            }),
+            target_participant_ids: targets,
+            announcer_character_id: announcer.map(str::to_string),
+        }
+    }
+
+    fn pascal_lines(lines: Vec<String>) -> Vec<String> {
+        lines
+            .into_iter()
+            .filter(|l| l.contains(" quilltap::pascal "))
+            .collect()
+    }
+
+    /// v4 `posts as Pascal, with no announcer, by default` — and the INFO line
+    /// with `announcerCharacterId=null` (v4's `?? null`).
+    #[tokio::test(flavor = "current_thread")]
+    async fn posts_as_pascal_with_no_announcer_by_default() {
+        global_capture::install();
+        let (db, _dir) = db();
+        seed_chat(&db).await;
+        let (posted, lines) =
+            global_capture::capture_async(post_pascal_result(&db, params(None, None))).await;
+        let posted = posted.expect("posted");
+        assert!(posted.message.get("customAnnouncer").is_none());
+        assert_eq!(posted.message["systemSender"], "pascal");
+        assert_eq!(
+            pascal_lines(lines),
+            vec![format!(
+                "INFO quilltap::pascal [Pascal] Custom-tool outcome posted context=pascal \
+                 chatId={CHAT} messageId={} tool=coin state=success whispered=false \
+                 announcerCharacterId=null",
+                posted.id
+            )]
+        );
+    }
+
+    /// v4 `wears the announcing character's name and face, and stays Pascal's
+    /// record` — `customAnnouncer` LAST, `kind, characterId`; `systemSender`,
+    /// `systemKind` and `pascalMeta` unchanged; the INFO names the announcer.
+    #[tokio::test(flavor = "current_thread")]
+    async fn wears_the_announcing_character_and_stays_pascals_record() {
+        global_capture::install();
+        let (db, _dir) = db();
+        seed_chat(&db).await;
+        let (posted, lines) = global_capture::capture_async(post_pascal_result(
+            &db,
+            params(Some("char-1"), Some(vec!["p1".into()])),
+        ))
+        .await;
+        let posted = posted.expect("posted");
+        let keys: Vec<&str> = posted
+            .message
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "type",
+                "id",
+                "role",
+                "content",
+                "opaqueContent",
+                "attachments",
+                "createdAt",
+                "participantId",
+                "systemSender",
+                "systemKind",
+                "targetParticipantIds",
+                "pascalMeta",
+                "customAnnouncer"
+            ]
+        );
+        assert_eq!(
+            serde_json::to_string(&posted.message["customAnnouncer"]).unwrap(),
+            r#"{"kind":"character","characterId":"char-1"}"#
+        );
+        assert_eq!(posted.message["systemSender"], "pascal");
+        assert_eq!(posted.message["systemKind"], "custom-tool-result");
+        assert_eq!(posted.message["pascalMeta"]["tool"], "coin");
+        assert_eq!(
+            pascal_lines(lines),
+            vec![format!(
+                "INFO quilltap::pascal [Pascal] Custom-tool outcome posted context=pascal \
+                 chatId={CHAT} messageId={} tool=coin state=success whispered=true \
+                 announcerCharacterId=char-1",
+                posted.id
+            )]
+        );
+    }
+
+    /// An empty announcer id is v4's falsy spread: no key.
+    #[test]
+    fn an_empty_announcer_adds_no_key() {
+        let (_, posted) = build_pascal_message(&params(Some(""), None)).expect("builds");
+        assert!(posted.message.get("customAnnouncer").is_none());
+    }
+
+    /// No such chat: v4's `dropped` DEBUG — and nothing else (no INFO).
+    #[tokio::test(flavor = "current_thread")]
+    async fn no_such_chat_drops_with_the_debug_alone() {
+        global_capture::install();
+        let (db, _dir) = db();
+        let (posted, lines) =
+            global_capture::capture_async(post_pascal_result(&db, params(None, None))).await;
+        assert!(posted.is_none());
+        assert_eq!(
+            pascal_lines(lines),
+            vec![format!(
+                "DEBUG quilltap::pascal Pascal outcome dropped — no such chat context=pascal \
+                 chatId={CHAT} tool=coin"
+            )]
+        );
+    }
+
+    /// A read connection that cannot open is inside v4's one `try`: the ERROR,
+    /// with the bare message — and neither the DEBUG nor the INFO. A fresh `Db`
+    /// has opened no read connection yet, so removing the main file makes the
+    /// first checkout fail.
+    #[tokio::test(flavor = "current_thread")]
+    async fn an_unreadable_chat_read_logs_the_error() {
+        global_capture::install();
+        let (db, dir) = db();
+        std::fs::remove_file(dir.path().join("data").join("quilltap.db")).unwrap();
+        let (posted, lines) =
+            global_capture::capture_async(post_pascal_result(&db, params(None, None))).await;
+        assert!(posted.is_none());
+        let lines = pascal_lines(lines);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with(&format!(
+                "ERROR quilltap::pascal [Pascal] Failed to post custom-tool outcome \
+                 context=pascal chatId={CHAT} tool=coin error="
+            )),
+            "{}",
+            lines[0]
+        );
+        assert!(
+            !lines[0].contains("sqlite error"),
+            "the bare message: {}",
+            lines[0]
+        );
     }
 }

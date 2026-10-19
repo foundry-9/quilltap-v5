@@ -94,6 +94,10 @@ pub struct ToolVocabulary {
     pub progress_writes: Vec<String>,
     /// True when some rendered string quotes `{{now}}`.
     pub now: bool,
+    /// True when some rendered string quotes `{{character}}` (v4 `a05c6f755`,
+    /// between `now` and `wears` in the interface AND the returned object —
+    /// wire order).
+    pub character: bool,
     /// Item references this tool's wardrobe effects may PUT ON the rolling
     /// character, verbatim (a `{{params.garment}}` stays as written — it is
     /// vocabulary, not a resolved garment). Sorted. (v4 `f0db8cbb8`, appended
@@ -121,6 +125,7 @@ pub fn is_empty_vocabulary(vocabulary: &ToolVocabulary) -> bool {
         && vocabulary.progress.is_empty()
         && vocabulary.progress_writes.is_empty()
         && !vocabulary.now
+        && !vocabulary.character
         && vocabulary.wears.is_empty()
         && vocabulary.takes_off.is_empty()
         && vocabulary.clears_slots.is_empty()
@@ -143,6 +148,7 @@ struct Found {
     progress: Vec<String>,
     progress_writes: Vec<String>,
     now: bool,
+    character: bool,
     wears: Vec<String>,
     takes_off: Vec<String>,
     clears_slots: Vec<String>,
@@ -301,6 +307,7 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
         progress: sorted(found.progress),
         progress_writes: sorted(found.progress_writes),
         now: found.now,
+        character: found.character,
         wears: sorted(found.wears),
         takes_off: sorted(found.takes_off),
         clears_slots: sorted(found.clears_slots),
@@ -332,6 +339,7 @@ fn collect_placeholders(text: &str, declared: &[&str], found: &mut Found) {
             PlaceholderRef::State { ref path } => add(&mut found.state, path),
             PlaceholderRef::Progress { ref id, .. } => add(&mut found.progress, id),
             PlaceholderRef::Now => found.now = true,
+            PlaceholderRef::Character => found.character = true,
             PlaceholderRef::Unknown { .. } => {}
         }
     }

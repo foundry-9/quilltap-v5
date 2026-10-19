@@ -312,6 +312,9 @@ fn pascal_custom_tools_execution_matches_oracle() {
                         now: row.get("now").and_then(Value::as_i64),
                         llm: llm.as_ref(),
                         state: state.as_ref(),
+                        // P4.D319: v4's `character` var, absent on every row
+                        // but the `{{character}}` block's.
+                        character: row.get("character").and_then(Value::as_str),
                     },
                 );
                 assert_eq!(got, row["out"].as_str().unwrap(), "renderTemplate '{id}'");
@@ -365,6 +368,7 @@ fn pascal_custom_tools_execution_matches_oracle() {
                     progress: progress.as_ref(),
                     llm: llm.as_ref(),
                     state: state.as_ref(),
+                    character: None,
                 };
                 match matches_when(when, &subjects, "probe") {
                     Ok(held) => {
@@ -412,6 +416,9 @@ fn pascal_custom_tools_execution_matches_oracle() {
                         .get("now")
                         .and_then(Value::as_i64)
                         .unwrap_or(PASCAL_NOW_MS),
+                    // P4.D319: v4's `overrides.character`, untrimmed — the core
+                    // applies `trim() || undefined` itself.
+                    row["overrides"].get("character").and_then(Value::as_str),
                 ));
 
                 // The byte cursor is the assertion inspection cannot make.

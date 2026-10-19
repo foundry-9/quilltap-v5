@@ -1257,6 +1257,16 @@ pub struct QtapCustomTool {
     pub reveal_odds: Option<bool>,
     #[serde(rename = "defaultVisibility", skip_serializing_if = "Option::is_none")]
     pub default_visibility: Option<Visibility>,
+    /// true: the rolling character announces the outcome under their own name
+    /// and face, in place of Pascal. A run nobody made (the bare operator) is
+    /// still announced by Pascal. Default false. (v4 `a05c6f755` — between
+    /// `defaultVisibility` and `parameters` in the shape, so in the parse's
+    /// issue order and the serialized key order too.)
+    #[serde(
+        rename = "announceAsCharacter",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub announce_as_character: Option<bool>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "ser_opt_parameters"
@@ -2993,6 +3003,9 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
         None => None,
     };
 
+    // `z.boolean().optional()` — `null` is refused (optional is not nullable).
+    let announce_as_character = opt_bool("announceAsCharacter", &mut issues);
+
     let parameters = match obj.get("parameters") {
         Some(Value::Object(p)) => {
             let r = parse_record(
@@ -3164,6 +3177,7 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
         withheld_when,
         reveal_odds,
         default_visibility,
+        announce_as_character,
         parameters,
         roll,
         llm,
@@ -3996,8 +4010,9 @@ fn flatten_issues(issues: &[Issue]) -> Vec<String> {
 /// v4 DERIVES this list (`Object.keys(QtapCustomToolSchema.shape)`), so a new
 /// key is known for free there; here it is written by hand, and the definition
 /// corpus's `unknown-keys-triggers-known` row is the tripwire for a key added
-/// to the shape but not to this list.
-const KNOWN_TOP_LEVEL_KEYS: [&str; 16] = [
+/// to the shape but not to this list (as is `unknown-keys-announce-as-
+/// character-known`, for the seventeenth — v4 `a05c6f755`).
+const KNOWN_TOP_LEVEL_KEYS: [&str; 17] = [
     "$schema",
     "name",
     "title",
@@ -4009,6 +4024,7 @@ const KNOWN_TOP_LEVEL_KEYS: [&str; 16] = [
     "withheldWhen",
     "revealOdds",
     "defaultVisibility",
+    "announceAsCharacter",
     "parameters",
     "roll",
     "llm",

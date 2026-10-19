@@ -753,6 +753,8 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
             private: is_private,
             character_id: ctx.character_id.as_deref(),
             metadata: &metadata,
+            // v4's handler passes no name → the service reads the RAW row.
+            character_name: None,
             // A private roll is whispered to the rolling character alone: every
             // other participant's context excludes it. The human operator sees
             // it regardless — Pascal is one of the operator-facing senders the
