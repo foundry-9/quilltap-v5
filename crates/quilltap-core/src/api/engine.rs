@@ -1710,6 +1710,19 @@ impl CoreEngine {
                 Ok(db) => super::chat_outfits::chat_outfit_summary(&db, &chat_id),
                 Err(r) => r,
             },
+            // === P4.D315: wardrobe history GET ===
+            Request::ChatWardrobeHistory {
+                chat_id,
+                character_id,
+            } => match self.ready_db() {
+                Ok(db) => super::chat_outfits::chat_wardrobe_history_get(
+                    &db,
+                    &chat_id,
+                    character_id.as_deref(),
+                ),
+                Err(r) => r,
+            },
+            // === end P4.D315 ===
             Request::ToolsList {
                 chat_id,
                 include_schemas,

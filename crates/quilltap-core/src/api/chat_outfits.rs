@@ -260,6 +260,135 @@ pub fn chat_outfit_summary(db: &Db, chat_id: &str) -> Response {
     }
 }
 
+// === P4.D315: wardrobe history GET ===
+
+/// v4 `handleGetWardrobeHistory` (`app/api/v1/chats/[id]/actions/outfit.ts:
+/// 301-364` at the `e8e17b2d9` pin) — `GET ?action=wardrobe-history&
+/// characterId=…`: one character's outfit timeline in this chat, ascending by
+/// index. Each entry's slots resolve against the character's pool (operator
+/// view — the project roster does not apply; archived items included); an id
+/// the pool no longer holds renders `{ title: null, missing: true }`.
+///
+/// Steps in v4's order: (1) an absent or EMPTY `characterId` → 400
+/// `characterId is required`, BEFORE any read; (2) the chat through v4's
+/// FALLBACK `findById` → absent → 404 `Chat not found`; (3) the rows
+/// (`findEntries` — a `rawQuery`, so a failure reaches the catch); none →
+/// `{"currentIndex":null,"entries":[]}` WITHOUT loading the pool; (4) the pool;
+/// (5) names from the RAW character rows (`findByIdRaw`, no vault overlay —
+/// R-6), memoised per request, the self name read AFTER the pool and
+/// defaulting to `the character`; (6) each entry in v4's key order `index, at,
+/// source, actorCharacterId, actorName, actorToolName, changedBy, isCurrent,
+/// summary, slots`; (7) DEBUG `[Chats v1] Read wardrobe history`; (8) a read
+/// failure → ERROR `[Chats v1] Error reading wardrobe history` + 500 `Failed
+/// to read wardrobe history` (reachable on v5 only with the table gone — the
+/// boot ensure makes it unreachable in production). v4's backend ERROR `Raw
+/// query failed` before it is the recorded NO-PORT class.
+pub fn chat_wardrobe_history_get(db: &Db, chat_id: &str, character_id: Option<&str>) -> Response {
+    let Some(character_id) = character_id.filter(|c| !c.is_empty()) else {
+        return bad_request("characterId is required");
+    };
+    let lookup = chat_id.to_string();
+    let chat = crate::db::fallback::find_by_id_or_none("chats", chat_id, || {
+        db.read_main(move |conn| crate::db::chats_read::find_by_id(conn, &lookup))
+    });
+    if chat.is_none() {
+        return not_found("Chat");
+    }
+    let out = db.read_main(|main| {
+        let rows = crate::db::chat_wardrobe_history::ChatWardrobeHistoryRepository::new(main)
+            .find_entries(chat_id, character_id)?;
+        if rows.is_empty() {
+            return Ok(None);
+        }
+        db.read_mount_index(|mount| {
+            let pool = load_wearable_pool(
+                main,
+                mount,
+                character_id,
+                None,
+                LoadWearablePoolOptions {
+                    operator: true,
+                    chat_id: Some(chat_id),
+                    ..Default::default()
+                },
+            );
+            let mut names: std::collections::HashMap<String, Option<String>> =
+                std::collections::HashMap::new();
+            let mut name_of = |id: &str| -> Option<String> {
+                names
+                    .entry(id.to_string())
+                    .or_insert_with(|| {
+                        crate::db::characters_read::find_by_id_raw_or_none(main, id)
+                            .and_then(|c| c.get("name").and_then(Value::as_str).map(str::to_string))
+                    })
+                    .clone()
+            };
+            let self_name = name_of(character_id).unwrap_or_else(|| "the character".to_string());
+            let mut entries = Vec::with_capacity(rows.len());
+            for row in &rows {
+                let actor_name = row.actor_character_id.as_deref().and_then(&mut name_of);
+                let slots = crate::wardrobe_history::resolve_history_slots(&pool, &row.slots);
+                let mut entry = Map::new();
+                entry.insert("index".into(), json!(row.entry_index));
+                entry.insert("at".into(), json!(row.created_at));
+                entry.insert("source".into(), json!(row.source));
+                entry.insert("actorCharacterId".into(), json!(row.actor_character_id));
+                entry.insert("actorName".into(), json!(actor_name));
+                entry.insert("actorToolName".into(), json!(row.actor_tool_name));
+                entry.insert(
+                    "changedBy".into(),
+                    json!(crate::wardrobe_history::changed_by_label(
+                        row,
+                        actor_name.as_deref(),
+                        &self_name
+                    )),
+                );
+                entry.insert("isCurrent".into(), json!(row.is_current));
+                entry.insert(
+                    "summary".into(),
+                    json!(crate::wardrobe_history::summarize_history_slots(&slots)),
+                );
+                entry.insert(
+                    "slots".into(),
+                    serde_json::to_value(&slots).unwrap_or(Value::Null),
+                );
+                entries.push(Value::Object(entry));
+            }
+            let current_index = rows.iter().find(|r| r.is_current).map(|r| r.entry_index);
+            Ok(Some((current_index, entries)))
+        })
+    });
+    match out {
+        Ok(found) => {
+            let (current_index, entries) = found.unwrap_or((None, Vec::new()));
+            if !entries.is_empty() {
+                tracing::debug!(
+                    chatId = chat_id,
+                    characterId = character_id,
+                    entries = entries.len(),
+                    context = "wardrobe",
+                    "[Chats v1] Read wardrobe history"
+                );
+            }
+            let mut body = Map::new();
+            body.insert("currentIndex".into(), json!(current_index));
+            body.insert("entries".into(), Value::Array(entries));
+            Response::ChatDialog(Value::Object(body))
+        }
+        Err(e) => {
+            tracing::error!(
+                chatId = chat_id,
+                characterId = character_id,
+                error = %crate::db::fallback::error_text(&e),
+                "[Chats v1] Error reading wardrobe history"
+            );
+            internal("Failed to read wardrobe history")
+        }
+    }
+}
+
+// === end P4.D315 ===
+
 // ===========================================================================
 // POST ?action=equip — the body parse (v4 equipBodySchema, message-faithful)
 // ===========================================================================

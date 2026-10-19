@@ -2179,6 +2179,54 @@ fn seed_built_ins(db: &Db, tz: &str) -> Result<EnsureFailures, String> {
             // `resumable`); each logs v5's ONE INFO when it added its column.
             quilltap_core::db::chat_settings_4_11_repair::run_chat_settings_4_11_ensures(main)?;
             // === end P4.D304 ===
+            // === P4.D315 (v4 83387d0e5 + 4ae20977f, migrations add-chat-wardrobe-history-table-v1 / add-chat-wardrobe-history-tool-name-v1 / seed-chat-wardrobe-history-v1) ===
+            // The chat wardrobe history — the table, then its `actorToolName`
+            // column, then the one-time seed — v4's registration order
+            // (`migrations/scripts/index.ts:916-919` at the `e8e17b2d9` pin),
+            // after the 4.11 chat_settings pair and BEFORE the P4.160 backfill,
+            // which does not carry these indexes — the table step makes both
+            // itself. v4's generateDDL never renders the table, so v5 makes it
+            // here (the human's 2026-10-19 ruling). Each step STAMPS
+            // `migrations_state` exactly as v4's runner would when it ran and is
+            // skipped when either app recorded it (R-C — the seed has no
+            // once-gate of its own). The table / column steps are FATAL like
+            // every table ensure in this chain; a failed SEED rolls back, logs,
+            // is not stamped and lets the boot continue (R-2). v4's migration
+            // lines are NO-PORT; v5 logs ONE INFO per step that did something.
+            let history =
+                quilltap_core::db::chat_wardrobe_history_repair::run_chat_wardrobe_history_ensures(
+                    main,
+                )?;
+            if history.table_created {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::chat_wardrobe_history_repair::TABLE_MIGRATION_ID,
+                    "Created the chat wardrobe history"
+                );
+            }
+            if history.column_added {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::chat_wardrobe_history_repair::TOOL_NAME_MIGRATION_ID,
+                    "Fitted the chat wardrobe history with its tool-name column"
+                );
+            }
+            if let quilltap_core::db::chat_wardrobe_history_repair::HistorySeedOutcome::Seeded {
+                entries,
+                chats_scanned,
+                pairs_skipped,
+            } = history.seed
+            {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::chat_wardrobe_history_repair::SEED_MIGRATION_ID,
+                    entriesSeeded = entries,
+                    chatsScanned = chats_scanned,
+                    pairsSkipped = pairs_skipped,
+                    "Seeded the chat wardrobe history from current outfits"
+                );
+            }
+            // === end P4.D315 ===
             // === P4.160 (P4.153's OPEN item) ===
             // v4's MIGRATION-created index family on an instance provisioned
             // before P4.153 (the 56 absent names + the PLAIN `mp_path`),

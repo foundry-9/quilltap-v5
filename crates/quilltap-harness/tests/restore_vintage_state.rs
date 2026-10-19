@@ -171,6 +171,21 @@ fn open(instance: &Path) -> Db {
     })
     .expect("boot-align the vintage main partition (P4.D304)");
     // === end P4.D304 ===
+    // === P4.D315: mirror-boot ensures ===
+    // The chat wardrobe history's three ensures through the host's OWN chain
+    // (`db::chat_wardrobe_history_repair::run_chat_wardrobe_history_ensures` —
+    // table, `actorToolName` column, seed, stamped as v4's runner would), after
+    // the 4.11 pair as the host runs them. The committed vintage fixture
+    // predates the table; a booted instance has it, and the restore's history
+    // step (P4.D317's `22n-ter`) needs a table to upsert into.
+    db.write_blocking(|writers| {
+        quilltap_core::db::chat_wardrobe_history_repair::run_chat_wardrobe_history_ensures(
+            writers.main().connection(),
+        )
+        .map(|_| ())
+    })
+    .expect("boot-align the vintage main partition (P4.D315)");
+    // === end P4.D315 ===
     db
 }
 

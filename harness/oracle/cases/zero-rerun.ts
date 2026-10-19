@@ -11,7 +11,9 @@
  *           (`migration_indexes.json`) with the round's moves UNDONE: no
  *           `memories.supersededAt`, no `chats` scenario pair, the OTHER
  *           watermark column, no cursor table, no `idx_memories_supersededById`,
- *           no `tfidf_vocabularies.textShapeVersion`, no 4.11 `chat_settings`
+ *           no `tfidf_vocabularies.textShapeVersion`, no `chat_wardrobe_history`
+ *           (P4.D315 — the narrowed runner's last three; `c1` carries an
+ *           `equippedOutfit` so the seed is not vacuous), no 4.11 `chat_settings`
  *           toggles (P4.D304: `customToolTriggers` / `composerSlashCommands`,
  *           whose two migrations follow the span in the narrowed runner), the three dead
  *           `chat_settings` columns + the dead instance key, the vector mirror
@@ -25,7 +27,8 @@
  *           (`planted`, `fresh`, `fresh-used`, `v4-migrated`, and each
  *           stamped base's `-unstamped` twin — the same instance after v5's
  *           chain with the span's ledger rows DELETED: which ids the stamps
- *           hold back, and the bytes v4 writes for each): dump the state, run v4's
+ *           hold back, and the bytes v4 writes for each; P4.D315 adds each
+ *           base's `-history-unstamped` twin, the HISTORY rows deleted): dump the state, run v4's
  *           narrowed runner on a COPY, dump again; emit `{phase: 'v4', mode,
  *           ran, before, after}` (`ran` = the ids v4 ran — `+RAN` in its
  *           result; the dumps = `sqlite_master` minus the two ledger tables +
@@ -52,7 +55,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CHAT_SETTINGS_4_11_MIGRATIONS, P4D288_SPAN_MIGRATIONS } from '../lib/v4-migrations';
+import {
+  CHAT_SETTINGS_4_11_MIGRATIONS,
+  CHAT_WARDROBE_HISTORY_MIGRATIONS,
+  P4D288_SPAN_MIGRATIONS,
+} from '../lib/v4-migrations';
 
 const PEPPER = 'dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=';
 const KEY_PRAGMA = `key = "x'${Buffer.from(PEPPER, 'base64').toString('hex')}'"`;
@@ -67,6 +74,8 @@ const TOUCHED = [
   'memory_extraction_cursors',
   'vector_entries',
   'vector_indices',
+  // P4.D315: the boot-created history table (absent on the planted base).
+  'chat_wardrobe_history',
 ];
 
 const Database = createRequire(process.cwd() + '/')('better-sqlite3');
@@ -132,8 +141,14 @@ async function runTwelve(path: string): Promise<string[]> {
   const utils = await import(join(v4Root, 'migrations/lib/database-utils.ts'));
   const migrations = [];
   // P4.D304: the span, then the two 4.11 chat_settings migrations (v4's
-  // registration order — both unstamped on v5's side, R-B).
-  for (const ref of [...P4D288_SPAN_MIGRATIONS, ...CHAT_SETTINGS_4_11_MIGRATIONS]) {
+  // registration order — both unstamped on v5's side, R-B); P4.D315: then the
+  // chat wardrobe history's three (table → tool-name column → seed — v5 stamps
+  // the table and the seed as v4's runner would, R-C).
+  for (const ref of [
+    ...P4D288_SPAN_MIGRATIONS,
+    ...CHAT_SETTINGS_4_11_MIGRATIONS,
+    ...CHAT_WARDROBE_HISTORY_MIGRATIONS,
+  ]) {
     migrations.push((await import(join(v4Root, ref.file)))[ref.exportName]);
   }
   const ran: string[] = [];
@@ -206,7 +221,13 @@ function buildPlanted(path: string): void {
       id, 'u1', 't', T0, T0, ...Object.values(extra),
     );
   };
-  chat('c1', { otherExtractionWatermarkMessageId: 'm9', summaryAnchorMessageIds: '["a1","a2"]' });
+  // P4.D315: c1 is DRESSED, so the history seed has a pair to seed (else it
+  // would be vacuous on the planted base).
+  chat('c1', {
+    otherExtractionWatermarkMessageId: 'm9',
+    summaryAnchorMessageIds: '["a1","a2"]',
+    equippedOutfit: '{"k1":{"top":["i1"],"hair":["i2"]}}',
+  });
   chat('c2', { summaryAnchorMessageIds: '["x"]' });
   const memory = (id: string, extra: Record<string, unknown>) => {
     const cols = ['id', 'characterId', 'content', 'summary', 'createdAt', 'updatedAt', ...Object.keys(extra)];
@@ -262,6 +283,8 @@ async function main(): Promise<void> {
     for (const mode of [
       'planted', 'fresh', 'fresh-used', 'v4-migrated',
       'planted-unstamped', 'fresh-unstamped', 'fresh-used-unstamped',
+      // P4.D315: each base after v5's chain with the HISTORY ledger rows deleted.
+      'planted-history-unstamped', 'fresh-history-unstamped', 'fresh-used-history-unstamped',
     ]) {
       const src = join(dir, `${mode}.after-v5.db`);
       if (!existsSync(src)) throw new Error(`${src} is missing — run the Rust write step first (header)`);

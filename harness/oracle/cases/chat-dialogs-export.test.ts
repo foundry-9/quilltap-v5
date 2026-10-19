@@ -13,6 +13,15 @@
  * P4.d28 added the `export-markdown` cases (v4 `b3ee00f1`); they also record
  * `Cache-Control`, which that route sends and no other arm of the fan-out does.
  *
+ * P4.D315 (pin `e8e17b2d9`) added the `?action=wardrobe-history` GET cases
+ * (`fixtures/chat-dialogs-wardrobe-history.json`, read by both sides): per
+ * case, on the per-run COPY, the table through the round's shared plant
+ * `plantChatWardrobeHistoryTable()` (v4's REAL DDL — never
+ * `ensureCollection`; the committed pair is never widened), the timelines
+ * through v4's REAL `getRepositories().wardrobeHistory.upsertRows` (fixed ids,
+ * FIXED `createdAt`s), and Pip's two extra items (an ARCHIVED top, a HAIR
+ * item) through the REAL character wardrobe location `create`.
+ *
  * **Must run under `TZ=UTC`** (the export filename + `send_date` embed
  * `Date.getTime()` values). The transcript cases are zone-independent by
  * construction — the fixture's chat settings carry an explicit timezone — but
@@ -24,12 +33,14 @@
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
  *   cp "$V5W/harness/oracle/cases/chat-dialogs-export.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/lib/p4d171-columns.ts" "$TMPO/lib/"
+ *   cp "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"
  *   cp "$V5W/harness/oracle/fixtures/chat-dialogs-web.json" "$TMPO/fixtures/"
+ *   cp "$V5W/harness/oracle/fixtures/chat-dialogs-wardrobe-history.json" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_CD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-dialogs-main.db \
  *   QT_FIXTURE_CD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/chat-dialogs-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-chat-export.ndjson TZ=UTC \
- *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+ *     $N/npx jest --silent --watchman=false --testTimeout=180000 \
  *       --roots "$PWD" --roots "$TMPO/cases" -- chat-dialogs-export
  */
 
@@ -38,6 +49,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { ensureP4D171Columns } from '../lib/p4d171-columns';
+import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
 import { tmpdir } from 'node:os';
 
 interface Spec {
@@ -120,9 +132,22 @@ function applyMocks(spec: Spec): void {
   });
 }
 
+/** P4.D315 — one `?action=wardrobe-history` case (`chat-dialogs-wardrobe-history.json`). */
+interface HistoryCase {
+  name: string;
+  chatId: string;
+  query: string;
+  plantItems?: boolean;
+  plantTable?: boolean;
+  dropTable?: boolean;
+  rows: unknown[];
+}
+
 interface CaseSpec {
   name: string;
-  action: 'export' | 'export-markdown' | 'outfit-summary' | 'group-stores';
+  action: 'export' | 'export-markdown' | 'outfit-summary' | 'group-stores' | 'wardrobe-history';
+  /** P4.D315: the history case's query tail (`&characterId=…`) and plants. */
+  history?: HistoryCase;
   chatId: string;
   /** P4.106 item 6: plant an Inform on the per-run COPY first (see below). */
   plantInform?: boolean;
@@ -234,11 +259,36 @@ async function plantOutfit(chatId: string, outfit: Record<string, unknown>): Pro
   await rawQuery('UPDATE chats SET "equippedOutfit" = ? WHERE id = ?', [JSON.stringify(outfit), chatId]);
 }
 
+/**
+ * P4.D315 — the history case's plants on the per-run COPY (see the header):
+ * Pip's two extra items, the table, the rows, and (the 500 arm) the table
+ * DROPPED again.
+ */
+async function plantHistory(spec: Spec, h: HistoryCase, items: unknown[]): Promise<void> {
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  if (h.plantItems) {
+    const { resolveWardrobeLocation } = await import('@/lib/wardrobe/location');
+    const location = await resolveWardrobeLocation('character', PIP, getRepositories(), spec.userId);
+    if (!location) throw new Error('plantHistory: Pip has no wardrobe location');
+    for (const item of items) await location.create(item as never);
+  }
+  if (h.plantTable) await plantChatWardrobeHistoryTable();
+  if (h.rows.length > 0) {
+    const written = await getRepositories().wardrobeHistory.upsertRows(h.rows as never);
+    if (written !== h.rows.length) throw new Error(`plantHistory: wrote ${written} of ${h.rows.length}`);
+  }
+  if (h.dropTable) {
+    const { rawQuery } = await import('@/lib/database/manager');
+    await rawQuery('DROP TABLE "chat_wardrobe_history"');
+  }
+}
+
 async function runCase(
   spec: Spec,
   c: CaseSpec,
   scratch: string,
   fixtures: { main: string; mount: string },
+  historyItems: unknown[] = [],
 ): Promise<Record<string, unknown>> {
   jest.resetModules();
   applyMocks(spec);
@@ -259,6 +309,7 @@ async function runCase(
   if (c.plantInform) await plantInform(c.chatId);
   if (c.plantDress) await plantDress(spec);
   if (c.plantOutfit) await plantOutfit(c.chatId, c.plantOutfit);
+  if (c.history) await plantHistory(spec, c.history, historyItems);
 
   // The ticking frozen clock (chain-depth-frozen-clock-artifact): nothing in
   // these READ paths mints a stamp that lands in the output, but the house
@@ -282,7 +333,9 @@ async function runCase(
       (...a: unknown[]) => Promise<unknown>
     >;
     const resp = (await route.GET(
-      mockRequest(`http://localhost/api/v1/chats/${c.chatId}?action=${c.action}`),
+      mockRequest(
+        `http://localhost/api/v1/chats/${c.chatId}?action=${c.action}${c.history?.query ?? ''}`,
+      ),
       { params: Promise.resolve({ id: c.chatId }) },
     )) as {
       status: number;
@@ -457,9 +510,17 @@ async function main(): Promise<void> {
     { name: 'group_stores_chat_missing', action: 'group-stores', chatId: MISSING_ID },
   ];
 
+  // P4.D315: the wardrobe-history GET cases (the shared spec both sides read).
+  const history = JSON.parse(
+    fs.readFileSync(join(here, '..', 'fixtures', 'chat-dialogs-wardrobe-history.json'), 'utf8'),
+  ) as { items: unknown[]; cases: HistoryCase[] };
+  for (const h of history.cases) {
+    cases.push({ name: h.name, action: 'wardrobe-history', chatId: h.chatId, history: h });
+  }
+
   const lines: string[] = [];
   for (const c of cases) {
-    lines.push(JSON.stringify(await runCase(spec, c, scratch, fixtures)));
+    lines.push(JSON.stringify(await runCase(spec, c, scratch, fixtures, history.items)));
   }
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   rmSync(scratch, { recursive: true, force: true });

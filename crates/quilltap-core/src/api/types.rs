@@ -3554,6 +3554,18 @@ pub enum Request {
     ChatOutfitSummary {
         chat_id: String,
     },
+    // === P4.D315: wardrobe history GET ===
+    /// One character's outfit timeline in a chat (v4 `GET …/chats/{id}?action=
+    /// wardrobe-history&characterId=…`, `8d8618819`). `character_id` is an
+    /// `Option` so a dispatch caller omitting it gets v4's 400 sentence
+    /// (`characterId is required`), not a serde refusal.
+    #[serde(rename_all = "camelCase")]
+    ChatWardrobeHistory {
+        chat_id: String,
+        #[serde(default)]
+        character_id: Option<String>,
+    },
+    // === end P4.D315 ===
     /// Search & replace dry-run (v4 `POST /api/v1/search-replace?action=preview`).
     /// `scope` is v4's discriminated union: {"type":"chat","chatId":…} |
     /// {"type":"character","characterId":…}. The two include flags default TRUE

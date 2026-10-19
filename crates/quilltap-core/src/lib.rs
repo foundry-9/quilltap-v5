@@ -290,6 +290,7 @@ pub mod weighted_random;
 // === end P4.D172 ===
 pub mod wardrobe;
 pub mod wardrobe_folders;
+pub mod wardrobe_history;
 pub mod wardrobe_instructions;
 pub mod wardrobe_tiers;
 pub mod wear_ops;

@@ -190,6 +190,18 @@ pub fn ensure_wear_ledger_on(conn: &rusqlite::Connection) {
         .expect("ensure the wardrobe wear ledger table on a test fixture");
 }
 
+/// C1 §5 (P4.D315): read a pre-round fixture pair as a booted instance would —
+/// v4's `add-chat-wardrobe-history-table-v1` TABLE at its final shape (the
+/// three DDL statements when the table is absent), never the column step,
+/// never the seed, never a `migrations_state` stamp. The round's ONE v5-side
+/// fixture plant (§R.3): every harness case that reaches a settle, a history
+/// read or a backup calls it on its per-case copy, beside the oracle's
+/// `plantChatWardrobeHistoryTable` (`harness/oracle/lib/v4-migrations.ts`).
+pub fn ensure_chat_wardrobe_history_on(conn: &rusqlite::Connection) {
+    crate::db::chat_wardrobe_history_repair::ensure_chat_wardrobe_history_table_only(conn)
+        .expect("ensure the chat wardrobe history table on a test fixture");
+}
+
 /// C1 §2 (P4.D265): heal a fixture's main partition with v4's
 /// `add-memory-tiers-v1` (`d58548051`) — the four `memories` tier columns, the
 /// `(characterId, tier)` index and the NULL-tier heal (v4's fourth step,

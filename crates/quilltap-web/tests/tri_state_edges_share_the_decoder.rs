@@ -570,7 +570,11 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     // P4.D309 (v4 `bbbcd2388`): 22 → 23 — `WardrobeItemsCopy`, the copy twin
     // of `WardrobeItemsMove` (both filing verbs' bodies RAW, no tri-state),
     // each its own explicit arm (no fall-through to the move).
-    ("wardrobe_routes.rs", 23),
+    // P4.D315 (v4 `8d8618819`): 23 → 24 — the chat GET's `?action=
+    // wardrobe-history` arm hand-builds `ChatWardrobeHistory { chat_id,
+    // character_id }` (a path segment and a `query::first` read — typed-only,
+    // no tri-state).
+    ("wardrobe_routes.rs", 24),
 ];
 
 #[test]
@@ -607,8 +611,10 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 122,
-        "122 = 121 + P4.D309's one (`wardrobe_routes.rs`'s `WardrobeItemsCopy`, the copy \
+        total, 123,
+        "123 = 122 + P4.D315's one (`wardrobe_routes.rs`'s `ChatWardrobeHistory`, the chat \
+         GET's `?action=wardrobe-history`, v4 `8d8618819`). \
+         122 = 121 + P4.D309's one (`wardrobe_routes.rs`'s `WardrobeItemsCopy`, the copy \
          twin of `WardrobeItemsMove`, v4 `bbbcd2388`). \
          121 = 123 − P4.D288's two (unit 5, R-G: the retired `system_data_routes.rs` dedup arms \
          `MemoryDedupPreview` / `MemoryDedupRun` deleted with their wire verbs). \

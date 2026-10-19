@@ -508,7 +508,7 @@ pub async fn chat_action_get(
 ) -> AxumResponse {
     // v4 `68da64d9b` put the chat GET's old `if (action === '…')` ladder (whose
     // fallthrough served the full chat payload for absent / `?action=` /
-    // unknown alike) behind `dispatchAction` with the thunk map (fifteen keys at `83334b9a5`):
+    // unknown alike) behind `dispatchAction` with the thunk map (sixteen keys at `e8e17b2d9`):
     // a bare or unknown action is now the `Unknown action` envelope, answered
     // BEFORE any chat read (v4's test asserts `findById` is not called — so an
     // unknown action on a MISSING chat is 400, never 404). The absent action is
@@ -541,6 +541,21 @@ pub async fn chat_action_get(
                 Err(r) => r,
             }
         }
+        // === P4.D315: wardrobe history GET ===
+        // `GET ?action=wardrobe-history&characterId=…` (v4 `8d8618819`) —
+        // `searchParams.get`'s first occurrence; `""` preserved (the core's
+        // 400).
+        Some("wardrobe-history") => {
+            let req = CoreRequest::ChatWardrobeHistory {
+                chat_id: path.0,
+                character_id: crate::query::first(&query.0, "characterId").map(str::to_string),
+            };
+            match dispatch_core(&state.0, req).await {
+                Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+                Err(r) => r,
+            }
+        }
+        // === end P4.D315 ===
         // === P4.D205 (v4 `e7d77bb60`) ===
         // `GET ?action=informs` — the pending batches for the composer's chip.
         Some("informs") => {
@@ -608,8 +623,9 @@ pub async fn chat_action_get(
 /// v4's chat-GET thunk map, in literal order (`chats/[id]/handlers/get.ts:60-82`
 /// at `68da64d9b` — the old if-ladder's order; `83334b9a5` adds
 /// `scenario-source` before `cost`, P4.D295's read, served over
-/// `/api/dispatch` like the rest): the `availableActions` of the unknown/bare
-/// refusal.
+/// `/api/dispatch` like the rest; `8d8618819` adds `wardrobe-history` after
+/// `outfit-summary` — sixteen keys at `e8e17b2d9`, `get.ts:66-88`, P4.D315):
+/// the `availableActions` of the unknown/bare refusal.
 const CHAT_GET_ACTIONS: &[&str] = &[
     "export",
     "export-markdown",
@@ -617,6 +633,7 @@ const CHAT_GET_ACTIONS: &[&str] = &[
     "get-state",
     "outfit",
     "outfit-summary",
+    "wardrobe-history",
     "photo-albums",
     "informs",
     "group-stores",

@@ -289,7 +289,7 @@ pub fn wears_from_equipped_outfit(raw: Option<&str>) -> Vec<(String, String)> {
 /// `Object.entries` order over a parsed JSON object: the array-index keys
 /// (canonical decimal integers below 2³² − 1) first, ascending, then every
 /// other key in insertion order (`serde_json`'s `preserve_order`).
-fn js_entries(map: &serde_json::Map<String, Value>) -> Vec<(&str, &Value)> {
+pub(crate) fn js_entries(map: &serde_json::Map<String, Value>) -> Vec<(&str, &Value)> {
     let is_index = |k: &str| {
         !k.is_empty()
             && (k == "0" || !k.starts_with('0'))
@@ -314,7 +314,7 @@ fn js_entries(map: &serde_json::Map<String, Value>) -> Vec<(&str, &Value)> {
 /// the row `(id, completedAt, quilltapVersion, itemsAffected, message)` and
 /// the two metadata keys — the heals' shape (`avatar_rolls_collapse_heal::
 /// stamp`). `quilltapVersion` is THIS app's version, as every heal writes.
-fn stamp(
+pub(crate) fn stamp(
     conn: &Connection,
     id: &str,
     now: &str,
@@ -337,7 +337,7 @@ fn stamp(
     Ok(())
 }
 
-fn ledger_has(conn: &Connection, id: &str) -> Result<bool, DbError> {
+pub(crate) fn ledger_has(conn: &Connection, id: &str) -> Result<bool, DbError> {
     if !table_exists(conn, "migrations_state")? {
         return Ok(false);
     }
@@ -345,7 +345,7 @@ fn ledger_has(conn: &Connection, id: &str) -> Result<bool, DbError> {
     Ok(stmt.exists([id])?)
 }
 
-fn table_exists(conn: &Connection, name: &str) -> Result<bool, DbError> {
+pub(crate) fn table_exists(conn: &Connection, name: &str) -> Result<bool, DbError> {
     let mut stmt =
         conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1")?;
     Ok(stmt.exists([name])?)

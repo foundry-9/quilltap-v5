@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — HISTORY: chat_wardrobe_history keystone — the table at boot, the repository, describe-entry, the history GET (P4.D315)
+
+_Versions: core 0.0.1314, host 0.0.211, web 0.0.242._
+
+Ports v4's outfit-history storage at the `e8e17b2d9` pin (`83387d0e5` whole, `4ae20977f`'s `actorToolName`, `8d8618819`'s GET, `describe-entry.ts` at its final shape). A boot now creates `chat_wardrobe_history` (11 columns, two UNIQUE indexes, one partial) through three ensures in v4's order — table, `actorToolName` column, one-time seed — each stamping `migrations_state` as v4's runner would; the table and column steps are fatal, a failed seed is logged, left unstamped and retried next boot. New `db::chat_wardrobe_history` (the DDL byte for byte, the row type in v4's field order, `settle` savepoint-wrapped on the writer and never failing observably, `settle_db`, typed and raw upserts with v4's per-row skip and better-sqlite3's bind semantics, `delete_by_character`, four finds), `db::chat_wardrobe_history_repair`, and `wardrobe_history` (slot resolution, stale items, the one-line summary, the thirteen "changed by" labels). Deleting a character drops its timelines. New `GET /api/v1/chats/{id}?action=wardrobe-history&characterId=…` (`chatWardrobeHistory` over dispatch) with v4's bytes and key order. Shared fixture plants for the round: `plantChatWardrobeHistoryTable` / `CHAT_WARDROBE_HISTORY_MIGRATIONS` and `test_support::ensure_chat_wardrobe_history_on`. Three new differential families (the ensures over v4's real runner in seven modes, the repository over v4's real repository in 52 ops, describe-entry over v4's real pool builder); `chat_export_equivalence`, `zero_migrations_rerun_equivalence` and `restore_vintage_state` grow; `provisioning_equivalence` and `host_boot_fresh_indexes` carve the boot-created table both ways (`BOOT_CREATED_HISTORY_TABLE`).
+
 #### 2026-10-19 — docs(porting): order the `e8e17b2d9` outfit-history + Workbench-picker + gallery + bug-252 drift catch-up round — nine lanes (P4.D315–P4.D323), one stacking point, pinned at `e8e17b2d9`
 
 _Docs-only change._

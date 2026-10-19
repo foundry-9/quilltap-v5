@@ -13,6 +13,21 @@
 //! Coverage is asserted by SHAPE (`harness-corpus-shape-constants-rot`): the
 //! driven case set must equal the oracle's exactly.
 //!
+//! P4.D315 (pin `e8e17b2d9`, R-V): the `?action=wardrobe-history` GET
+//! (`api::chat_outfits::chat_wardrobe_history_get`) over the cases of
+//! `harness/oracle/fixtures/chat-dialogs-wardrobe-history.json`, which both
+//! sides read — per case, on the per-run COPY, the table through
+//! `test_support::ensure_chat_wardrobe_history_on` (v4: the shared
+//! `plantChatWardrobeHistoryTable`), the rows through the typed `upsert_rows`
+//! (v4: its REAL `upsertRows`), Pip's archived top + hair item through the REAL
+//! character wardrobe location `create`, and (the 500 arm) the table dropped
+//! again. Status + body compared as BYTES (`serde_json::to_string` — the
+//! entry key order and `currentIndex` / `entries` order are the wire); its
+//! `[Chats v1] Read wardrobe history` / `[Chats v1] Error reading wardrobe
+//! history` lines are pinned below as v5 literals over v4's field names (the
+//! oracle records no log lines), with the silence legs: no line and NO pool
+//! read on an empty timeline (v4 does not load the pool there).
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-chat-export.ndjson npx jest -- chat-dialogs-export
 //! Run:
@@ -211,6 +226,65 @@ fn plant_dress(db: &Db, user_id: &str) {
     .expect("plant the smock on the fixture copy");
 }
 
+/// P4.D315 — the history cases' shared spec.
+fn history_spec() -> Value {
+    serde_json::from_str(
+        &std::fs::read_to_string(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../harness/oracle/fixtures/chat-dialogs-wardrobe-history.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+/// P4.D315 — the oracle's `plantHistory`, step for step, on the per-run COPY.
+fn plant_history(db: &Db, user_id: &str, case: &Value, items: &[Value]) {
+    use quilltap_core::db::chat_wardrobe_history::{
+        ChatWardrobeHistoryRepository, ChatWardrobeHistoryRow,
+    };
+    use quilltap_core::db::vault_wardrobe_public::WardrobeScope;
+    use quilltap_core::db::wardrobe_location::{
+        resolve_wardrobe_location, ResolveWardrobeLocationOptions,
+    };
+    let (user, case, items) = (user_id.to_string(), case.clone(), items.to_vec());
+    db.write_blocking(move |w| {
+        let main = w.main().connection();
+        let mount = w.mount_index().expect("mount-index writer").connection();
+        if case["plantItems"].as_bool() == Some(true) {
+            let location = resolve_wardrobe_location(
+                main,
+                mount,
+                WardrobeScope::Character,
+                Some(PIP),
+                &user,
+                ResolveWardrobeLocationOptions::default(),
+            )?
+            .expect("Pip has a wardrobe location");
+            for item in &items {
+                let item = quilltap_core::vault_overlay::WardrobeItem::from_read_value(item);
+                location
+                    .create(main, mount, &item)
+                    .map_err(|e| quilltap_core::db::DbError::Internal(e.message()))?;
+            }
+        }
+        if case["plantTable"].as_bool() == Some(true) {
+            quilltap_core::test_support::ensure_chat_wardrobe_history_on(main);
+        }
+        let rows: Vec<ChatWardrobeHistoryRow> =
+            serde_json::from_value(case["rows"].clone()).expect("typed history rows");
+        if !rows.is_empty() {
+            let written = ChatWardrobeHistoryRepository::new(main).upsert_rows(&rows);
+            assert_eq!(written, rows.len(), "plant_history wrote every row");
+        }
+        if case["dropTable"].as_bool() == Some(true) {
+            main.execute_batch("DROP TABLE \"chat_wardrobe_history\"")?;
+        }
+        Ok(())
+    })
+    .expect("plant the history on the fixture copy");
+}
+
 /// P4.D282 — the oracle's `plantOutfit`: the chat's stored `equippedOutfit`
 /// overwritten with a raw UPDATE on the per-run COPY.
 fn plant_outfit(db: &Db, chat_id: &str, outfit: &Value) {
@@ -371,7 +445,8 @@ fn chat_export_matches_oracle() {
             }
             // The summary's key order is part of the surface (the equipped
             // object's own entry order) — compare the raw serialization too.
-            if want["status"] == 200 {
+            // P4.D315: the history GET's 400 / 404 / 500 bodies by bytes too.
+            if want["status"] == 200 || name.starts_with("wardrobe_history_") {
                 let graw = got["body"].to_string();
                 // Reserialize the oracle's body with preserve_order intact.
                 let wraw = want["body"].to_string();
@@ -544,6 +619,82 @@ fn chat_export_matches_oracle() {
                 .any(|l| l.contains("Error fetching equipped outfit summary")),
             "{lines:#?}"
         );
+    }
+
+    // ── ?action=wardrobe-history (P4.D315) ─────────────────────────────────
+    let history = history_spec();
+    let items = history["items"].as_array().unwrap().clone();
+    for case in history["cases"].as_array().unwrap() {
+        let name = case["name"].as_str().unwrap();
+        let (db, _scratch) = fresh_db(&spec, name);
+        plant_history(&db, &spec.user_id, case, &items);
+        let (r, lines) = quilltap_core::test_support::captured_with(|| {
+            quilltap_core::api::chat_outfits::chat_wardrobe_history_get(
+                &db,
+                case["chatId"].as_str().unwrap(),
+                case["characterId"].as_str(),
+            )
+        });
+        check(name, &r);
+        // The lines (v5 literals over v4's field names): ONE Read DEBUG per
+        // answered timeline; nothing — and NO pool read — on an empty one or a
+        // refusal; the ERROR on the 500.
+        let read: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("[Chats v1] Read wardrobe history"))
+            .collect();
+        let pool: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("[WearablePool] Loaded wearable pool"))
+            .collect();
+        let error: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("[Chats v1] Error reading wardrobe history"))
+            .collect();
+        let rows = case["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["characterId"] == case["characterId"])
+            .count();
+        let answered = !matches!(
+            name,
+            "wardrobe_history_no_character_id"
+                | "wardrobe_history_empty_character_id"
+                | "wardrobe_history_chat_missing"
+                | "wardrobe_history_table_dropped"
+        ) && rows > 0;
+        if answered {
+            assert_eq!(read.len(), 1, "[{name}] {lines:#?}");
+            assert_eq!(
+                *read[0],
+                format!(
+                    "DEBUG quilltap_core::api::chat_outfits [Chats v1] Read wardrobe history \
+                     chatId={} characterId={} entries={rows} context=wardrobe",
+                    case["chatId"].as_str().unwrap(),
+                    case["characterId"].as_str().unwrap()
+                ),
+                "[{name}]"
+            );
+            assert_eq!(pool.len(), 1, "[{name}] the pool loads once: {lines:#?}");
+        } else {
+            assert!(read.is_empty(), "[{name}] {lines:#?}");
+            assert!(pool.is_empty(), "[{name}] no pool read: {lines:#?}");
+        }
+        if name == "wardrobe_history_table_dropped" {
+            assert_eq!(
+                error.iter().map(|l| l.as_str()).collect::<Vec<_>>(),
+                vec![format!(
+                    "ERROR quilltap_core::api::chat_outfits [Chats v1] Error reading wardrobe \
+                     history chatId={MERGE_SOURCE} characterId={PIP} \
+                     error=no such table: chat_wardrobe_history"
+                )
+                .as_str()],
+                "[{name}]"
+            );
+        } else {
+            assert!(error.is_empty(), "[{name}] {lines:#?}");
+        }
     }
 
     // ── ?action=group-stores (the P4.9E3B tier-2 audit port) ───────────────

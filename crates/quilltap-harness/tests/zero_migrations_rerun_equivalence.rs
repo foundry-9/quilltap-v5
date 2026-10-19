@@ -119,14 +119,29 @@ const CHAT_SETTINGS_4_11: [&str; 2] = [
     "add-composer-slash-commands-field-v1",
 ];
 
-/// Run v5's span chain, then the 4.11 `chat_settings` chain (the host's boot
-/// order), on `path` (a caller-thread writer).
+/// P4.D315: the chat wardrobe history's three migrations the narrowed runner
+/// runs after the 4.11 pair (`CHAT_WARDROBE_HISTORY_MIGRATIONS`) — v5 STAMPS the
+/// table and the seed as v4's runner would (R-C); the column step is "not
+/// needed" on a table created at its final shape, on both sides.
+const CHAT_WARDROBE_HISTORY: [&str; 3] = [
+    quilltap_core::db::chat_wardrobe_history_repair::TABLE_MIGRATION_ID,
+    quilltap_core::db::chat_wardrobe_history_repair::TOOL_NAME_MIGRATION_ID,
+    quilltap_core::db::chat_wardrobe_history_repair::SEED_MIGRATION_ID,
+];
+
+/// Run v5's span chain, then the 4.11 `chat_settings` chain, then the chat
+/// wardrobe history's (the host's boot order), on `path` (a caller-thread
+/// writer).
 fn run_chain(path: &Path) {
     let w = Writer::open_writable(path, PEPPER).expect("open");
     quilltap_core::db::p4d288_span::run_span_ensures(w.connection(), "UTC")
         .expect("the span chain");
     quilltap_core::db::chat_settings_4_11_repair::run_chat_settings_4_11_ensures(w.connection())
         .expect("the 4.11 chat_settings chain");
+    quilltap_core::db::chat_wardrobe_history_repair::run_chat_wardrobe_history_ensures(
+        w.connection(),
+    )
+    .expect("the chat wardrobe history chain");
 }
 
 /// A fresh v5-provisioned main partition at `out` (its first boot not yet run).
@@ -190,6 +205,16 @@ fn write_after_v5() {
                 .execute("DELETE FROM migrations_state WHERE id = ?1", [id])
                 .expect("unstamp");
         }
+        // P4.D315: the history twin — the HISTORY rows deleted instead.
+        let twin = dir.join(format!("{mode}-history-unstamped.after-v5.db"));
+        let _ = std::fs::remove_file(&twin);
+        std::fs::copy(&out, &twin).expect("copy history twin");
+        let w = Writer::open_writable(&twin, PEPPER).expect("open history twin");
+        for id in CHAT_WARDROBE_HISTORY {
+            w.connection()
+                .execute("DELETE FROM migrations_state WHERE id = ?1", [id])
+                .expect("unstamp history");
+        }
     }
 }
 
@@ -231,8 +256,22 @@ fn no_migration_reruns_after_the_v5_chain() {
     let v4_ledger = ledger_by_id(&build[0]["ledger"]);
     assert_eq!(
         build[0]["ran"].as_array().unwrap().len(),
-        14,
-        "v4 ran the twelve + the two 4.11 chat_settings migrations on the planted base"
+        16,
+        "v4 ran the twelve + the two 4.11 chat_settings migrations + the history table and \
+         seed on the planted base (the column is `not needed` on a table born at its final \
+         shape — P4.D315)"
+    );
+    let build_ran: Vec<&str> = build[0]["ran"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert!(
+        build_ran.contains(&CHAT_WARDROBE_HISTORY[0])
+            && !build_ran.contains(&CHAT_WARDROBE_HISTORY[1])
+            && build_ran.contains(&CHAT_WARDROBE_HISTORY[2]),
+        "v4's build ran the history table + seed, not the column: {build_ran:?}"
     );
     // P4.D304: v4 stamped the two 4.11 ids on its own migrated base; v5 never
     // stamps them on any base (R-B).
@@ -278,6 +317,65 @@ fn no_migration_reruns_after_the_v5_chain() {
             }
         }
         let v5_rows = span_rows(&row["before"]["ledger"]);
+        // P4.D315 (R-C): v5 stamps EXACTLY the history table + seed on a base
+        // its chain created them on, each byte-equal (bar the two masked
+        // columns) to v4's own row — the planted base against v4's build, the
+        // two v5-native bases against v4's re-run on their history twins (the
+        // seed; the table stamp is byte-checked on `planted`) — and adds NO row
+        // on v4's migrated base (its rows ARE v4's build rows).
+        let v5_history: Vec<(String, Value)> = ledger_by_id(&row["before"]["ledger"])
+            .into_iter()
+            .filter(|(id, _)| CHAT_WARDROBE_HISTORY.contains(&id.as_str()))
+            .collect();
+        let history_ids: Vec<&str> = v5_history.iter().map(|(id, _)| id.as_str()).collect();
+        let want_ids = [CHAT_WARDROBE_HISTORY[0], CHAT_WARDROBE_HISTORY[2]];
+        if history_ids != want_ids {
+            failures.push(format!(
+                "{mode}: the history ledger rows are {history_ids:?}, want {want_ids:?}"
+            ));
+        }
+        if matches!(mode, "planted" | "v4-migrated") {
+            for (id, v5_row) in &v5_history {
+                match v4_ledger.iter().find(|(i, _)| i == id) {
+                    Some((_, v4_row))
+                        if serde_json::to_string(v4_row).unwrap()
+                            == serde_json::to_string(v5_row).unwrap() => {}
+                    other => failures.push(format!(
+                        "{mode}: the history stamp for {id} is not v4's build row\n  v5 {v5_row}\n  v4 {other:?}"
+                    )),
+                }
+            }
+        }
+        if mode != "v4-migrated" {
+            // `HISTORY_STAMP_RED_FIRST`: on the history twin v4 re-runs EXACTLY
+            // the seed (its stamp is the only thing that stops it); the table
+            // and column steps are structural (`shouldRun` false on a present
+            // table) — the table stamp is byte-parity with v4's runner, not a
+            // once-gate.
+            let twin = row_of(&format!("{mode}-history-unstamped"));
+            let twin_ran = ran_of(twin);
+            if twin_ran != [CHAT_WARDROBE_HISTORY[2]] {
+                failures.push(format!(
+                    "HISTORY_STAMP_RED_FIRST {mode}: v4 re-ran {twin_ran:?}, want only the seed"
+                ));
+            }
+            if mode != "planted" {
+                let v4_seed = ledger_by_id(&twin["after"]["ledger"])
+                    .into_iter()
+                    .find(|(i, _)| i == CHAT_WARDROBE_HISTORY[2]);
+                let v5_seed = v5_history
+                    .iter()
+                    .find(|(i, _)| i == CHAT_WARDROBE_HISTORY[2]);
+                match (v4_seed, v5_seed) {
+                    (Some((_, a)), Some((_, b)))
+                        if serde_json::to_string(&a).unwrap()
+                            == serde_json::to_string(b).unwrap() => {}
+                    other => failures.push(format!(
+                        "{mode}: v5's seed stamp is not v4's twin row: {other:?}"
+                    )),
+                }
+            }
+        }
         // P4.D304 (R-B): v5 stamps neither 4.11 id; only v4's own migrated
         // base carries them (its build ran them).
         if mode != "v4-migrated" {

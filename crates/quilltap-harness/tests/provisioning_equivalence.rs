@@ -770,6 +770,12 @@ const ORACLE_ONLY_TABLES: &[(&str, &str, &str)] = &[
         "wardrobe_items",
         "legacy table only sqlite-initial-schema-v1 still makes",
     ),
+    // BOOT_CREATED_HISTORY_TABLE (one of three rows — the two indexes below).
+    (
+        "main",
+        "chat_wardrobe_history",
+        "v5 makes it at boot (db::chat_wardrobe_history_repair) — BOOT_CREATED_HISTORY_TABLE",
+    ),
 ];
 
 /// Per-table column asymmetries between v4's MIGRATION-built table (a real
@@ -890,11 +896,34 @@ const CURSOR_TABLE_MIGRATION_SHAPE: &[(&str, &str, &str)] = &[(
 
 /// Index names v4's real first boot carries that a v5 instance does not, with
 /// the reason. Both-ways.
-const ORACLE_ONLY_INDEXES: &[(&str, &str, &str)] = &[(
-    "main",
-    "idx_wardrobe_items_character",
-    "on the legacy wardrobe_items table v5 never makes (ORACLE_ONLY_TABLES)",
-)];
+///
+/// `BOOT_CREATED_HISTORY_TABLE` (P4.D315, R-D — the first boot-created-table
+/// tripwire): v4's migrations-first boot at the `e8e17b2d9` pin creates
+/// `chat_wardrobe_history` + `idx_chat_wardrobe_history_entry` +
+/// `idx_chat_wardrobe_history_current` (`add-chat-wardrobe-history-table-v1`);
+/// generateDDL never renders the table (its repository is a plain class), so a
+/// freshly PROVISIONED v5 instance has none of the three until its first boot
+/// runs the ensure (the human's 2026-10-19 ruling: boot-created, never a
+/// v4-dumped artifact). The three rows — the table in [`ORACLE_ONLY_TABLES`],
+/// the two indexes here — are answered together, by this ONE name; a v4 that
+/// stopped creating the table, or a v5 that began provisioning it, trips them.
+const ORACLE_ONLY_INDEXES: &[(&str, &str, &str)] = &[
+    (
+        "main",
+        "idx_wardrobe_items_character",
+        "on the legacy wardrobe_items table v5 never makes (ORACLE_ONLY_TABLES)",
+    ),
+    (
+        "main",
+        "idx_chat_wardrobe_history_entry",
+        "v5 makes it at boot (db::chat_wardrobe_history_repair) — BOOT_CREATED_HISTORY_TABLE",
+    ),
+    (
+        "main",
+        "idx_chat_wardrobe_history_current",
+        "v5 makes it at boot (db::chat_wardrobe_history_repair) — BOOT_CREATED_HISTORY_TABLE",
+    ),
+];
 
 /// Names BOTH v4 families create, where the MIGRATION's text (which a real v4
 /// boot keeps — it runs first, and generateDDL's `IF NOT EXISTS` is then a

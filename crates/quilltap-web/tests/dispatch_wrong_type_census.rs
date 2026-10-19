@@ -2703,7 +2703,13 @@ fn is_route_identifier(field: &str) -> bool {
 // **P4.D309 (+1): 482 → 483** — v4 `bbbcd2388`'s `WardrobeItemsCopy.
 // container_id` (the owner's `[id]` segment, as on `WardrobeItemsMove`);
 // its `scope` is the census's one new ROW.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 483;
+// **P4.D315 (+2): 483 → 485** — the `e8e17b2d9` round's history GET,
+// `ChatWardrobeHistory.{chat_id, character_id}`: the `[id]` segment and the
+// `?characterId=` QUERY param (`outfit.ts:311`, `searchParams.get`) — both
+// QUERY / PATH-sourced in v4, so a JSON type cannot be wrong there; the rule
+// drops both and the census gains NO row. Measured (red at 485 against 483
+// first).
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 485;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus

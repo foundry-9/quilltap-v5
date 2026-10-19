@@ -61,6 +61,19 @@ const PARTITIONS: [(&str, &str); 3] = [
     ("llmLogs", "quilltap-llm-logs.db"),
 ];
 
+/// `BOOT_CREATED_HISTORY_TABLE` (P4.D315, R-D — the human's 2026-10-19 ruling:
+/// v4's migration-only tables are BOOT-created through ported ensures, never a
+/// v4-dumped artifact): the first boot makes `chat_wardrobe_history` and its
+/// two UNIQUE indexes (`db::chat_wardrobe_history_repair`), which the
+/// provisioner deliberately does not — `migration_indexes.json` drops them by
+/// its "tables v5 never creates" filter (re-dumped at the `e8e17b2d9` pin:
+/// array-identical to the committed artifact). EXACTLY these two, both ways: a
+/// provisioner that began making them, or a boot that stopped, trips the arm.
+const BOOT_CREATED_INDEXES: [(&str, &str); 2] = [
+    ("main", "idx_chat_wardrobe_history_current"),
+    ("main", "idx_chat_wardrobe_history_entry"),
+];
+
 /// Boots run one at a time (each `Host` starts its own drivers).
 static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
@@ -188,12 +201,22 @@ async fn the_provisioner_leaves_the_boot_nothing_to_create() {
         .iter()
         .map(|(_, f)| index_names(&data, f))
         .collect();
-    // Every index the first boot ensures, the provisioner already made.
+    // Every index the first boot ensures, the provisioner already made —
+    // bar the boot-created history table's two (BOOT_CREATED_INDEXES).
     for (i, (partition, _)) in PARTITIONS.iter().enumerate() {
-        let created: Vec<_> = first_indexes[i].difference(&provisioned[i]).collect();
-        assert!(
-            created.is_empty(),
-            "{partition}: the first boot created index(es) the provisioner did not: {created:?}"
+        let created: Vec<&str> = first_indexes[i]
+            .difference(&provisioned[i])
+            .map(String::as_str)
+            .collect();
+        let carved: Vec<&str> = BOOT_CREATED_INDEXES
+            .iter()
+            .filter(|(p, _)| p == partition)
+            .map(|(_, name)| *name)
+            .collect();
+        assert_eq!(
+            created, carved,
+            "{partition}: the first boot created index(es) the provisioner did not \
+             (BOOT_CREATED_HISTORY_TABLE carves exactly {carved:?})"
         );
     }
 

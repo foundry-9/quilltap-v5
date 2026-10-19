@@ -1,0 +1,890 @@
+{
+  "_comment": "P4.D315 chat_wardrobe_history tier-2 op corpus (UUID-shaped ids, FIXED plant createdAts) \u2014 see harness/oracle/cases/chat-wardrobe-history-tier2.ts",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "chats": [
+    {
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "c1000000",
+      "createdAt": "2026-03-01T00:00:00.000Z",
+      "updatedAt": "2026-03-01T00:00:00.000Z",
+      "participants": []
+    },
+    {
+      "id": "c2000000-0000-4000-8000-000000000002",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "c2000000",
+      "createdAt": "2026-03-02T00:00:00.000Z",
+      "updatedAt": "2026-03-02T00:00:00.000Z",
+      "participants": []
+    },
+    {
+      "id": "c3000000-0000-4000-8000-000000000003",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "c3000000",
+      "createdAt": "2026-03-03T00:00:00.000Z",
+      "updatedAt": "2026-03-03T00:00:00.000Z",
+      "participants": []
+    }
+  ],
+  "fixedCreatedAts": [
+    "2026-04-01T00:00:00.000Z",
+    "2026-04-02T00:00:00.000Z"
+  ],
+  "ops": [
+    {
+      "kind": "setOutfit",
+      "label": "live A dress",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "slots": {
+        "top": [
+          "10000000-0000-4000-8000-0000000000d1"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "chat-start dressed",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "chat-start"
+        }
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "chat-start naked",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "b0000000-0000-4000-8000-00000000000b",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "chat-start"
+        }
+      }
+    },
+    {
+      "kind": "setOutfit",
+      "label": "live C hat",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "cc000000-0000-4000-8000-00000000000c",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "10000000-0000-4000-8000-0000000000a4"
+        ]
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "participant-added arrival",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "cc000000-0000-4000-8000-00000000000c",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "participant-added",
+          "actorCharacterId": "a0000000-0000-4000-8000-00000000000a"
+        }
+      }
+    },
+    {
+      "kind": "setOutfit",
+      "label": "live CHAT2 A",
+      "chatId": "c2000000-0000-4000-8000-000000000002",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "slots": {
+        "top": [
+          "10000000-0000-4000-8000-0000000000d1"
+        ],
+        "bottom": [],
+        "footwear": [
+          "10000000-0000-4000-8000-0000000000b2"
+        ],
+        "accessories": [],
+        "hair": []
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "merge arrival",
+      "chatId": "c2000000-0000-4000-8000-000000000002",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "merge"
+        }
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "non-arrival on empty, empty live",
+      "chatId": "c2000000-0000-4000-8000-000000000002",
+      "characterId": "b0000000-0000-4000-8000-00000000000b",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "operator",
+          "actorCharacterId": "a0000000-0000-4000-8000-00000000000a"
+        }
+      }
+    },
+    {
+      "kind": "setOutfit",
+      "label": "live CHAT2 C",
+      "chatId": "c2000000-0000-4000-8000-000000000002",
+      "characterId": "cc000000-0000-4000-8000-00000000000c",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [
+          "10000000-0000-4000-8000-000000000053"
+        ],
+        "hair": []
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "non-arrival on empty, dressed live",
+      "chatId": "c2000000-0000-4000-8000-000000000002",
+      "characterId": "cc000000-0000-4000-8000-00000000000c",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "character",
+          "actorCharacterId": "cc000000-0000-4000-8000-00000000000c"
+        }
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "pascal on empty, empty live (tool dropped)",
+      "chatId": "c2000000-0000-4000-8000-000000000002",
+      "characterId": "dd000000-0000-4000-8000-00000000000d",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "pascal",
+          "actorCharacterId": "a0000000-0000-4000-8000-00000000000a",
+          "toolName": "dress_for_dinner"
+        }
+      }
+    },
+    {
+      "kind": "setOutfit",
+      "label": "live A + boots",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "slots": {
+        "top": [
+          "10000000-0000-4000-8000-0000000000d1"
+        ],
+        "bottom": [],
+        "footwear": [
+          "10000000-0000-4000-8000-0000000000b2"
+        ],
+        "accessories": [],
+        "hair": []
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "pascal with tool, rolled by B",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "pascal",
+          "actorCharacterId": "b0000000-0000-4000-8000-00000000000b",
+          "toolName": "dress_for_dinner"
+        }
+      }
+    },
+    {
+      "kind": "setOutfit",
+      "label": "live A boots only",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "10000000-0000-4000-8000-0000000000b2"
+        ],
+        "accessories": [],
+        "hair": []
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "pascal without tool",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "pascal",
+          "actorCharacterId": "a0000000-0000-4000-8000-00000000000a"
+        }
+      }
+    },
+    {
+      "kind": "setOutfit",
+      "label": "live A + scarf",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "slots": {
+        "top": [],
+        "bottom": [],
+        "footwear": [
+          "10000000-0000-4000-8000-0000000000b2"
+        ],
+        "accessories": [
+          "10000000-0000-4000-8000-000000000053"
+        ],
+        "hair": []
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "pascal empty tool name",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "pascal",
+          "actorCharacterId": "a0000000-0000-4000-8000-00000000000a",
+          "toolName": ""
+        }
+      }
+    },
+    {
+      "kind": "setOutfit",
+      "label": "live B dress",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "b0000000-0000-4000-8000-00000000000b",
+      "slots": {
+        "top": [
+          "10000000-0000-4000-8000-0000000000d1"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "character by another",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "b0000000-0000-4000-8000-00000000000b",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "character",
+          "actorCharacterId": "a0000000-0000-4000-8000-00000000000a"
+        }
+      }
+    },
+    {
+      "kind": "setOutfit",
+      "label": "live B + hat",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "b0000000-0000-4000-8000-00000000000b",
+      "slots": {
+        "top": [
+          "10000000-0000-4000-8000-0000000000d1"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": [
+          "10000000-0000-4000-8000-0000000000a4"
+        ]
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "operator with none",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "b0000000-0000-4000-8000-00000000000b",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "operator"
+        }
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "unchanged re-settle",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "b0000000-0000-4000-8000-00000000000b",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "operator",
+          "actorCharacterId": "b0000000-0000-4000-8000-00000000000b"
+        }
+      }
+    },
+    {
+      "kind": "setOutfit",
+      "label": "live B back to dress",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "b0000000-0000-4000-8000-00000000000b",
+      "slots": {
+        "top": [
+          "10000000-0000-4000-8000-0000000000d1"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "live equal to an older entry appends",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "b0000000-0000-4000-8000-00000000000b",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "operator"
+        }
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "cursor back",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "cursor",
+        "index": 1
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "cursor forward",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "cursor",
+        "index": 3
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "cursor onto current",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "cursor",
+        "index": 3
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "cursor missing",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "cursor",
+        "index": 99
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "cursor to 0",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "cursor",
+        "index": 0
+      }
+    },
+    {
+      "kind": "setOutfit",
+      "label": "live A new",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "slots": {
+        "top": [],
+        "bottom": [
+          "10000000-0000-4000-8000-0000000000d1"
+        ],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "append after cursor move is max+1",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "operator",
+          "actorCharacterId": "cc000000-0000-4000-8000-00000000000c"
+        }
+      }
+    },
+    {
+      "kind": "execSql",
+      "label": "corrupt CHAT2 outfit cell",
+      "sql": "UPDATE chats SET \"equippedOutfit\" = 'not json' WHERE id = 'c2000000-0000-4000-8000-000000000002'"
+    },
+    {
+      "kind": "settle",
+      "label": "corrupt cell reads empty live",
+      "chatId": "c2000000-0000-4000-8000-000000000002",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "operator"
+        }
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "settle on a missing chat",
+      "chatId": "c9000000-0000-4000-8000-000000000009",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "operator"
+        }
+      }
+    },
+    {
+      "kind": "dump",
+      "label": "dump after settles"
+    },
+    {
+      "kind": "exportDeleteUpsert",
+      "label": "round trip CHAT1",
+      "chatId": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "upsertRows",
+      "label": "second current row skipped",
+      "rows": [
+        {
+          "id": "f0000001-0000-4000-8000-0000000000aa",
+          "chatId": "c1000000-0000-4000-8000-000000000001",
+          "characterId": "a0000000-0000-4000-8000-00000000000a",
+          "entryIndex": 50,
+          "slots": {
+            "top": [
+              "10000000-0000-4000-8000-0000000000a4"
+            ],
+            "bottom": [],
+            "footwear": [],
+            "accessories": [],
+            "hair": []
+          },
+          "slotsHash": "0000000000000000",
+          "source": "operator",
+          "actorCharacterId": null,
+          "actorToolName": null,
+          "isCurrent": true,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "kind": "upsertRows",
+      "label": "duplicate index under a new id skipped",
+      "rows": [
+        {
+          "id": "f0000002-0000-4000-8000-0000000000aa",
+          "chatId": "c1000000-0000-4000-8000-000000000001",
+          "characterId": "a0000000-0000-4000-8000-00000000000a",
+          "entryIndex": 0,
+          "slots": {
+            "top": [
+              "10000000-0000-4000-8000-0000000000a4"
+            ],
+            "bottom": [],
+            "footwear": [],
+            "accessories": [],
+            "hair": []
+          },
+          "slotsHash": "0000000000000000",
+          "source": "operator",
+          "actorCharacterId": null,
+          "actorToolName": null,
+          "isCurrent": false,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "kind": "upsertRows",
+      "label": "wrong stored hash recomputed",
+      "rows": [
+        {
+          "id": "f0000003-0000-4000-8000-0000000000aa",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "a0000000-0000-4000-8000-00000000000a",
+          "entryIndex": 0,
+          "slots": {
+            "top": [
+              "10000000-0000-4000-8000-0000000000a4"
+            ],
+            "bottom": [],
+            "footwear": [],
+            "accessories": [],
+            "hair": []
+          },
+          "slotsHash": "ffffffffffffffff",
+          "source": "operator",
+          "actorCharacterId": null,
+          "actorToolName": null,
+          "isCurrent": true,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "kind": "upsertRows",
+      "label": "existing id updates, chat and character kept",
+      "rows": [
+        {
+          "id": "f0000003-0000-4000-8000-0000000000aa",
+          "chatId": "c1000000-0000-4000-8000-000000000001",
+          "characterId": "b0000000-0000-4000-8000-00000000000b",
+          "entryIndex": 7,
+          "slots": {
+            "top": [
+              "10000000-0000-4000-8000-0000000000d1"
+            ],
+            "bottom": [],
+            "footwear": [],
+            "accessories": [],
+            "hair": []
+          },
+          "slotsHash": "0000000000000000",
+          "source": "pascal",
+          "actorCharacterId": "a0000000-0000-4000-8000-00000000000a",
+          "actorToolName": "t",
+          "isCurrent": true,
+          "createdAt": "2026-04-02T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "kind": "upsertRows",
+      "label": "fk miss skipped",
+      "rows": [
+        {
+          "id": "f0000004-0000-4000-8000-0000000000aa",
+          "chatId": "c9000000-0000-4000-8000-000000000009",
+          "characterId": "a0000000-0000-4000-8000-00000000000a",
+          "entryIndex": 0,
+          "slots": {
+            "top": [],
+            "bottom": [],
+            "footwear": [],
+            "accessories": [],
+            "hair": []
+          },
+          "slotsHash": "0000000000000000",
+          "source": "operator",
+          "actorCharacterId": null,
+          "actorToolName": null,
+          "isCurrent": false,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "kind": "execSql",
+      "label": "stale stored hash planted",
+      "sql": "UPDATE chat_wardrobe_history SET \"slotsHash\" = 'staleee000000000' WHERE \"id\" = 'f0000003-0000-4000-8000-0000000000aa'"
+    },
+    {
+      "kind": "setOutfit",
+      "label": "live CHAT3 A equals the current row's slots",
+      "chatId": "c3000000-0000-4000-8000-000000000003",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "slots": {
+        "top": [
+          "10000000-0000-4000-8000-0000000000d1"
+        ],
+        "bottom": [],
+        "footwear": [],
+        "accessories": [],
+        "hair": []
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "stale stored hash appends (the STORED hash compares)",
+      "chatId": "c3000000-0000-4000-8000-000000000003",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "operator"
+        }
+      }
+    },
+    {
+      "kind": "upsertRawRows",
+      "label": "raw rows, JS bind semantics",
+      "rows": [
+        {
+          "id": "e0000001-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000101-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": {
+            "top": [
+              "10000000-0000-4000-8000-0000000000d1"
+            ]
+          },
+          "source": "operator",
+          "actorCharacterId": null,
+          "isCurrent": true,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000002-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000102-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": {},
+          "source": "operator",
+          "actorCharacterId": null,
+          "isCurrent": 1,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000003-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000103-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": {},
+          "source": "operator",
+          "actorCharacterId": null,
+          "isCurrent": "yes",
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000004-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000104-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": {},
+          "source": "operator",
+          "actorCharacterId": null,
+          "isCurrent": 0,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000005-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000105-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": {},
+          "source": "operator",
+          "actorCharacterId": null,
+          "isCurrent": null,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000006-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000106-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": {},
+          "source": "operator",
+          "actorCharacterId": null,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000007-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000107-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": {},
+          "source": "bogus",
+          "actorCharacterId": null,
+          "isCurrent": true,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000008-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000108-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": null,
+          "source": "operator",
+          "actorCharacterId": null,
+          "isCurrent": true,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000009-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000109-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": "x",
+          "source": "operator",
+          "actorCharacterId": null,
+          "isCurrent": true,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000010-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000110-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": {
+            "top": [
+              "10000000-0000-4000-8000-0000000000d1"
+            ],
+            "hair": "x"
+          },
+          "source": "operator",
+          "actorCharacterId": null,
+          "isCurrent": true,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000011-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000111-0000-4000-8000-000000000000",
+          "entryIndex": "7",
+          "slots": {},
+          "source": "operator",
+          "actorCharacterId": null,
+          "isCurrent": true,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000112-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": {},
+          "source": "operator",
+          "actorCharacterId": null,
+          "isCurrent": true,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000013-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000113-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": {},
+          "source": 5,
+          "actorCharacterId": null,
+          "isCurrent": true,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000014-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000114-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": {},
+          "source": "operator",
+          "actorCharacterId": null,
+          "isCurrent": true
+        },
+        {
+          "id": true,
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000115-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": {},
+          "source": "operator",
+          "actorCharacterId": null,
+          "isCurrent": true,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000016-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000116-0000-4000-8000-000000000000",
+          "entryIndex": 0,
+          "slots": {},
+          "source": "pascal",
+          "actorCharacterId": "e0000101-0000-4000-8000-000000000000",
+          "actorToolName": "raw_tool",
+          "isCurrent": true,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "kind": "dump",
+      "label": "dump after upserts"
+    },
+    {
+      "kind": "deleteByCharacter",
+      "label": "delete by character",
+      "characterId": "cc000000-0000-4000-8000-00000000000c"
+    },
+    {
+      "kind": "execSql",
+      "label": "chat delete cascades",
+      "sql": "DELETE FROM chats WHERE id = 'c2000000-0000-4000-8000-000000000002'"
+    },
+    {
+      "kind": "dump",
+      "label": "dump after deletes"
+    },
+    {
+      "kind": "dropTable",
+      "label": "drop the table"
+    },
+    {
+      "kind": "settle",
+      "label": "settle on a table-less copy",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "append",
+        "provenance": {
+          "source": "pascal",
+          "actorCharacterId": "a0000000-0000-4000-8000-00000000000a",
+          "toolName": "t"
+        }
+      }
+    },
+    {
+      "kind": "settle",
+      "label": "cursor on a table-less copy",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "characterId": "a0000000-0000-4000-8000-00000000000a",
+      "intent": {
+        "kind": "cursor",
+        "index": 0
+      }
+    }
+  ]
+}

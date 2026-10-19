@@ -419,6 +419,10 @@ pub fn execute_cascade_delete(
 
     fold_departed_wearer(main, character_id);
 
+    // Drop the character's outfit timelines: a departed character's history
+    // has no reader.
+    drop_departed_wearer_history(main, character_id);
+
     // Finally the character (slim row) — through the wrapper that retires its
     // vault's name (v4 `CharactersRepository.delete`'s reconcile, bug 186).
     crate::db::character_vault::delete_character_and_reconcile(main, Some(mount), character_id)?;
@@ -454,6 +458,33 @@ fn fold_departed_wearer(main: &Connection, character_id: &str) {
             contextJson = %context_json,
             error = %crate::db::fallback::error_text(&e),
             "Failed to fold wear-ledger rows for character {character_id}"
+        ),
+    }
+}
+
+/// The cascade's outfit-history step (v4 `83387d0e5`, `cascade-delete.ts:
+/// 410-416`), after the wear fold and BEFORE the character row goes: drop the
+/// character's timelines through
+/// [`crate::db::chat_wardrobe_history::ChatWardrobeHistoryRepository::delete_by_character`]
+/// (its own DEBUG `Dropped wardrobe history for a deleted character` first).
+/// v4's DEBUG `[CascadeDelete] Dropped outfit history` on success; on a
+/// failure (a pre-history instance's `no such table` included) the ERROR
+/// `Failed to drop outfit history for character <id>`, and the delete
+/// PROCEEDS (v4's catch). `{ context: { characterId } }` renders as one
+/// `contextJson` field.
+fn drop_departed_wearer_history(main: &Connection, character_id: &str) {
+    let context_json = serde_json::json!({ "characterId": character_id }).to_string();
+    match crate::db::chat_wardrobe_history::ChatWardrobeHistoryRepository::new(main)
+        .delete_by_character(character_id)
+    {
+        Ok(_) => tracing::debug!(
+            contextJson = %context_json,
+            "[CascadeDelete] Dropped outfit history"
+        ),
+        Err(e) => tracing::error!(
+            contextJson = %context_json,
+            error = %crate::db::fallback::error_text(&e),
+            "Failed to drop outfit history for character {character_id}"
         ),
     }
 }
@@ -564,6 +595,72 @@ mod tests {
                 "ERROR quilltap_core::services::cascade_delete Failed to fold wear-ledger rows \
                  for character {ARIA} contextJson={{\"characterId\":\"{ARIA}\"}} \
                  error=no such table: wardrobe_wear_stats"
+            )
+        );
+    }
+
+    /// v4 `drops the character's outfit history before deleting the
+    /// character` (`cascade-delete.test.ts:712`): the repository's DEBUG,
+    /// THEN the cascade's; another character's timeline untouched.
+    #[test]
+    fn the_history_step_drops_the_timelines_and_logs_v4s_debug() {
+        use crate::db::chat_wardrobe_history::ChatWardrobeHistoryRepository;
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chats (id TEXT PRIMARY KEY); INSERT INTO chats VALUES ('chat-1');",
+        )
+        .unwrap();
+        crate::test_support::ensure_chat_wardrobe_history_on(&conn);
+        let row = |id: &str, character: &str| {
+            serde_json::json!({
+                "id": id, "chatId": "chat-1", "characterId": character, "entryIndex": 0,
+                "slots": {}, "source": "chat-start", "actorCharacterId": null,
+                "isCurrent": true, "createdAt": "2026-03-14T00:00:00.000Z"
+            })
+        };
+        let repo = ChatWardrobeHistoryRepository::new(&conn);
+        assert_eq!(
+            repo.upsert_raw_rows(&[row("h1", ARIA), row("h2", "other")]),
+            2
+        );
+        let ((), lines) = captured_with(|| drop_departed_wearer_history(&conn, ARIA));
+        assert_eq!(lines.len(), 2, "{lines:#?}");
+        assert_eq!(
+            lines[0],
+            format!(
+                "DEBUG quilltap::wardrobe_history Dropped wardrobe history for a deleted \
+                 character module=wardrobe-history characterId={ARIA}"
+            )
+        );
+        assert_eq!(
+            lines[1],
+            format!(
+                "DEBUG quilltap_core::services::cascade_delete [CascadeDelete] Dropped outfit \
+                 history contextJson={{\"characterId\":\"{ARIA}\"}}"
+            )
+        );
+        let left: Vec<String> = repo
+            .find_all()
+            .unwrap()
+            .into_iter()
+            .map(|r| r.character_id)
+            .collect();
+        assert_eq!(left, vec!["other".to_string()]);
+    }
+
+    /// No history table (a pre-round instance): v4's ERROR, and the step
+    /// returns so the delete proceeds.
+    #[test]
+    fn a_failed_history_drop_logs_v4s_error_and_does_not_stop_the_delete() {
+        let conn = Connection::open_in_memory().unwrap();
+        let ((), lines) = captured_with(|| drop_departed_wearer_history(&conn, ARIA));
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert_eq!(
+            lines[0],
+            format!(
+                "ERROR quilltap_core::services::cascade_delete Failed to drop outfit history \
+                 for character {ARIA} contextJson={{\"characterId\":\"{ARIA}\"}} \
+                 error=no such table: chat_wardrobe_history"
             )
         );
     }

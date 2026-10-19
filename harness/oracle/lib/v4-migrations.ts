@@ -103,6 +103,64 @@ export const CHAT_SETTINGS_4_11_MIGRATIONS: V4MigrationRef[] = [
   { file: 'migrations/scripts/add-composer-slash-commands-field.ts', exportName: 'addComposerSlashCommandsFieldMigration' },
 ];
 
+/**
+ * P4.D315 — the chat wardrobe history's three migrations, in v4's
+ * registration order (`migrations/scripts/index.ts:916-919` at the
+ * `e8e17b2d9` pin — after `CHAT_SETTINGS_4_11_MIGRATIONS`): the table, the
+ * `actorToolName` column, the one-time seed. These file names DO carry `-v1`.
+ * Kept beside — never inside — the lists above.
+ */
+export const CHAT_WARDROBE_HISTORY_MIGRATIONS: V4MigrationRef[] = [
+  { file: 'migrations/scripts/add-chat-wardrobe-history-table-v1.ts', exportName: 'addChatWardrobeHistoryTableMigration' },
+  { file: 'migrations/scripts/add-chat-wardrobe-history-tool-name-v1.ts', exportName: 'addChatWardrobeHistoryToolNameMigration' },
+  { file: 'migrations/scripts/seed-chat-wardrobe-history-v1.ts', exportName: 'seedChatWardrobeHistoryMigration' },
+];
+
+/**
+ * P4.D315 — the `e8e17b2d9` round's ONE shared fixture plant (§R.3, R-S).
+ *
+ * v4's fixtures are built from `generateDDL` (`initializeDatabase` runs no
+ * migrations) and `ChatWardrobeHistoryRepository` is a plain class, so NO
+ * committed v4 fixture carries `chat_wardrobe_history` at the pin — and v4's
+ * `createBackup` reads it UNGUARDED (`backup-service.ts:291`). Every case that
+ * reaches a settle, a history read or `createBackup` plants the table on its
+ * PER-RUN copy through this helper (never a rebake of a committed pair), beside
+ * the v5 side's `test_support::ensure_chat_wardrobe_history_on`. Consumers:
+ * P4.D315's tier-2 and GET cases; P4.D316's recording / tools / rollback
+ * cases (the recording survey §4.3's table); P4.D317's backup / restore /
+ * export / import cases.
+ *
+ * Runs v4's REAL `CHAT_WARDROBE_HISTORY_DDL` statements (the table at its
+ * final 11-column shape + both UNIQUE indexes) — never `ensureCollection`.
+ * Given a better-sqlite3 handle it `exec`s them on it; given none it runs them
+ * through v4's `rawQuery` (`@/lib/database/manager`, a DYNAMIC import so a
+ * case that never calls this loads clean) on the initialised per-run database
+ * — the `plantWardrobeWear` idiom (`cases/system-backup.test.ts`). Idempotent
+ * (`IF NOT EXISTS` is in v4's text) and self-checking: it throws unless
+ * `sqlite_master` holds the table afterwards.
+ */
+export async function plantChatWardrobeHistoryTable(db?: {
+  exec(sql: string): unknown;
+  prepare(sql: string): { get(...params: unknown[]): unknown };
+}): Promise<void> {
+  const { CHAT_WARDROBE_HISTORY_DDL } = await import(
+    '@/lib/database/backends/sqlite/chat-wardrobe-history-ddl'
+  );
+  const check = `SELECT sql FROM sqlite_master WHERE name = 'chat_wardrobe_history'`;
+  let planted: unknown;
+  if (db) {
+    for (const statement of CHAT_WARDROBE_HISTORY_DDL) db.exec(statement);
+    planted = (db.prepare(check).get() as { sql?: string } | undefined)?.sql;
+  } else {
+    const { rawQuery } = await import('@/lib/database/manager');
+    for (const statement of CHAT_WARDROBE_HISTORY_DDL) await rawQuery(statement);
+    planted = ((await rawQuery(check)) as Array<{ sql?: string }>)[0]?.sql;
+  }
+  if (typeof planted !== 'string' || planted.length === 0) {
+    throw new Error('plantChatWardrobeHistoryTable: chat_wardrobe_history is absent after the plant');
+  }
+}
+
 const ENV_KEYS = ['SQLITE_PATH', 'ENCRYPTION_MASTER_PEPPER', 'QUILLTAP_DATA_DIR'] as const;
 
 function keyHex(pepperBase64: string): string {
