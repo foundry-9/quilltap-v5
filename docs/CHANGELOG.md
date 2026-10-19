@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — docs(porting): record the boot-created ruling for v4's migration-only tables
+
+_Docs-only change._
+
+The drift ledger records the human's ruling for the twelfth D23 move: v5 creates `chat_wardrobe_history` through boot ensures ported from v4's three migrations, not from a v4-dumped `migration_tables.json`. Standing rule for any future table v4's generateDDL never renders, because v4 will eventually be retired.
+
 #### 2026-10-18 — docs(porting): drift check — 17 commits past `25b8fab6a` (six new: the Inventory programme, bugs 252–254)
 
 _Docs-only change._

@@ -195,9 +195,21 @@ probe verifies against._
     `dump-fresh-schema.ts` skips it, `dump-migration-indexes.ts` drops its
     indexes, and `provisioning_equivalence` stays GREEN. **The D23 tripwire
     will not fire; `zero_migrations_rerun_equivalence` is the family that
-    should.** A planning ruling is owed on how v5 provisions it: a
-    `migration_tables.json` through v4's real runner (the R-A route, overruled
-    once for the wear ledger) or a boot-created table.
+    should.**
+  - **RULED (the human, 2026-10-19): BOOT-CREATED — and as a STANDING rule,
+    not just for this table.** v5 creates the table through boot ensures
+    ported from v4's three migrations (table → `actorToolName` column →
+    seed, in v4's registration order), never from a v4-dumped
+    `migration_tables.json`. A fresh instance gets it on its first boot
+    (provisioning stamps no `migrations_state` row, so the ensures run). The
+    seed ensure STAMPS its `migrations_state` row (its only once-gate — else
+    v4 re-seeds); all three join `restore_vintage_state`'s boot-align list;
+    `zero_migrations_rerun_equivalence` grows by three ids; each ensure is
+    differentially compared against v4's REAL runner while v4 exists. The
+    human's reason: "Someday there won't even be a v4 any more" — v5's schema
+    must be self-sufficient, not provisioned from artifacts only v4 can
+    produce. R-A stays overruled for every table; for a future table v4's
+    generateDDL never renders, default to boot ensures without asking.
   - The full DDL is in the `83387d0e5` §3 row.
   - **WIDENED by `4ae20977f` (2026-10-17):** an eleventh column
     `"actorToolName" TEXT` (nullable, LAST in the shared DDL so a fresh table
@@ -207,7 +219,8 @@ probe verifies against._
     `addColumnIfMissing(..., 'TEXT')`). The seed now `dependsOn` BOTH (the
     shared INSERT spells the new column). Registration order: table →
     tool-name → seed. Port the table at its FINAL shape and carry all three
-    ensures in that order; the provisioning ruling covers the column too.
+    ensures in that order; the 2026-10-19 boot-created ruling covers the
+    column too.
 - **PENDING — the THIRTEENTH move (`4fbdad186`): `chats."equippedInventory"
   TEXT`.** generateDDL-RENDERED (`ChatsRepository` is a
   `TaggableBaseRepository`): a fresh table puts it at cid 66 between
@@ -261,8 +274,8 @@ probe verifies against._
   - The follow-ups smalls round.
   - Then the drift catch-up — now 17 commits, too large for one round.
     Suggested split: (1) the outfit-history + Workbench + gallery round
-    (`5cb0e0190` … `1cfc9b504`, with the TWELFTH move's provisioning
-    ruling FIRST, and `e8e17b2d9` bug 252 riding it — it shares the
+    (`5cb0e0190` … `1cfc9b504` — the TWELFTH move's table boot-created per
+    the 2026-10-19 ruling, no planning ruling left owed — and `e8e17b2d9` bug 252 riding it — it shares the
     restore / import carriers and the `bySlot` shape); then (2) the
     Inventory round (`4fbdad186` → `e1872c94f` → `102a23648`, the
     THIRTEENTH + FOURTEENTH moves in one re-dump; bug 254 can ride round 1
