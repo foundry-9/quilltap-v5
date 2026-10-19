@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — docs(porting): P4.D315 lane record — LANE COMPLETE
+
+_Docs-only change._
+
+Appends the keystone lane's record to the status log (the probe, the pin, every red-first count and mutation proof, the measurements the order asked for, the departures, the deferrals, the handoffs, the gate) and marks the order complete.
+
 #### 2026-10-19 — test(harness): chat wardrobe history write fence + the settle publish-site row (P4.D315 Tier 2)
 
 _Versions: none bumped (harness-only; `quilltap-harness` is frozen)._

@@ -188395,3 +188395,294 @@ core 0.0.1313, host 0.0.210, web 0.0.241, cli 0.0.34, SPA 0.5.873; tauri
 copy-before rule RETIRES; ⭐ the in-chat consult and the Run Tool's Aurora
 announcement) rides with the `83334b9a5` round's owed pass.
 
+
+## P4.D315 — the outfit-history KEYSTONE: `chat_wardrobe_history` boot-created through three ensures, the repository, describe-entry, the history GET (lane `claude/p4.d315-outfit-history-keystone-e8b0cea6`, pin `e8e17b2d9`, 2026-10-19)
+
+The round's ONE stacking point. Tier 1 landed whole as ONE commit (`HISTORY:`
+— sha in the order's status header); Tier 2 on top.
+
+**Venue.** The session started in the app-made worktree
+`.claude/worktrees/gifted-turing-243ad6` on branch
+`claude/gifted-turing-243ad6` at `e8b0cea6c` (the orders' commit, no commits of
+its own); moved in place with `git switch -c
+claude/p4.d315-outfit-history-keystone-e8b0cea6 e8b0cea6c` (rule 2). The
+spaceless path for `--v5w` is the `~/source/quilltap-v5/.claude/worktrees/
+gifted-turing-243ad6` symlink route. `target/` cloned from main (`cp -cR`,
+4 m on the External volume); `apps/web/dist` cloned from main (the lane touches
+no `apps/web`).
+
+### The §2 probe (observation, R-2) and the pin
+
+2026-10-19 09:35 CDT: v4 checkout on `main`, tree CLEAN, `log a6292f169..main`
+EMPTY, `log 489b228b6..bugfix` EMPTY, `log e8e17b2d9..main` = the six expected
+(`4fbdad186`, `e1872c94f`, `102a23648`, `1d0a31132`, `cad017599`,
+`a6292f169`). **v4 moved (observed 2026-10-19 13:18 CDT, at lane close):
+`7263105c6` (Inventory title lint; bug 256), `406dbdd5a` (image prompts for
+moderated painters, #103), `ea2cb60ab` (`edit_custom_tool`) — three commits
+past `a6292f169`, all past the pin; recorded for `/driftcheck`, nothing
+ported.** Pin
+`/tmp/qt-v4-pin-p4d315-e8e17b2d9`: `rev-parse` =
+`e8e17b2d92095bda008f03bb963eb4b1c470e680`, `package.json` `4.11.0-dev.26`,
+root `node_modules` by `npm ci --offline` (1,044 packages, exit 0) → `openai`
+7.34.0, `zod` 4.6.7; `packages/quilltap` + every `plugins/dist/*` symlinked.
+
+### Red-first (item 1)
+
+- **`provisioning_equivalence`** from the pin (main's own binary,
+  `provisioning_equivalence-18ebbc93ff0c1774`, over the pin-regenerated
+  `oracle-provision.json` + live `fresh_schema`): RED at (1b), verbatim
+  `main: v4 has table chat_wardrobe_history, v5 does not` (the arm stops
+  there; (1c) not reached on that run). GREEN with the three
+  `BOOT_CREATED_HISTORY_TABLE` rows, (1d) live-required and read.
+- **`chat_export_equivalence`** (main's binary over the grown oracle): RED —
+  case-set drift, all NINE `wardrobe_history_*` cases oracle-only (unported
+  main has no handler to drive). GREEN with the GET.
+- **`query_param_semantics_equivalence`** regenerated from the pin (224 rows):
+  on main's binary `chat_item_get__empty` / `__unknown` /
+  `__empty_then_known` BODY red (16 keys vs 15) — and `chat_item_post__bare`
+  / `__empty` / `__unknown` / `__empty_then_known` BODY red (v4's POST map
+  gains `wardrobe-rollback`). With this lane: the three GET rows GREEN; the
+  four POST rows stay red — **P4.D316's residue, by name** (R-8; this lane
+  adds no `wardrobe-rollback`), which also moves the family's
+  refusal/handler classification count (106 / 15 against 110 / 15) — green
+  only on the union.
+- **`zero_migrations_rerun_equivalence`** once the narrowed runner carries the
+  three ids: build (new `zero-rerun.ts`) → main's write step (binary
+  `…-49f462045b7b99f1`) → v4's runner: v4 re-ran
+  `[add-chat-wardrobe-history-table-v1, seed-chat-wardrobe-history-v1]` on
+  `planted`, `fresh` and `fresh-used`; nothing on `v4-migrated`. GREEN with
+  the chain (`planted` build `ran` 14 → 16).
+- **Mutation proofs** for the NEW families (each red, then restored):
+  the DDL with the partial index's `WHERE` dropped → the ensure family red at
+  `[A] sqlite_master`; `next = current + 1` → tier-2 red; comparing a
+  RECOMPUTED current hash → tier-2 stayed GREEN on the first corpus (an
+  equivalent mutant — a corpus gap), so a stale-stored-hash plant was added
+  (`stale stored hash appends`, op #43), after which it is red at #43;
+  `summarize_history_slots` over Rust `trim` → describe-entry red at
+  `[U+FEFF trailing] summary`; the operator self-actor fallback removed →
+  describe-entry red at label #27 (`the operator, as Madeline`).
+
+### What landed (Tier 1, the `HISTORY` commit)
+
+Items 2–18 whole (C1's final spellings are in the order's status header):
+the DDL / types / repository (`db/chat_wardrobe_history.rs`), the three
+stamped ensures (`db/chat_wardrobe_history_repair.rs`, the three prettify
+labels verbatim in its header), the host wiring (fenced `P4.D315`, between
+P4.D304 and P4.160, ONE v5 INFO per step that did something), the three NEW
+families (ensure 7 modes / tier-2 52 ops / describe-entry 21 + 756), the
+mirror-boot, the host-boot test (4 arms: pre-round, v4-booted mode B, fresh
+setup, mode E′ — the seed ERROR and an unstamped retry), `zero_migrations_
+rerun` (+2 planted, a `-history-unstamped` twin per base:
+`HISTORY_STAMP_RED_FIRST` — v4 re-runs EXACTLY the seed; the table stamp is
+byte-parity, not a once-gate), the provisioning both-ways rows, the cascade
+fold (`drop_departed_wearer_history`), the item-13 proof, `wardrobe_
+history.rs`, the GET (core + `Request::ChatWardrobeHistory` + the web arm +
+`CHAT_GET_ACTIONS` 16 keys) with `chat_export_equivalence`'s nine cases from
+a committed shared spec (`harness/oracle/fixtures/chat-dialogs-wardrobe-
+history.json`, read by both sides), the two plant helpers, every listed log
+line capture-pinned with its silence leg.
+
+### Measurements the order asked for
+
+- **R-10 (the live read):** `ChatOutfitsRepository::get_equipped_outfit_for_character`
+  answers `Option<Value>` through `chats_read::find_by_id_or_none` — a
+  fallback (a failed chat read logs v4's line and answers `None`); no `?`
+  path exists, so `settle` reads it directly (`?? Slots::fresh()`). Pinned by
+  tier-2 op `corrupt cell reads empty live` (an empty entry appended, not a
+  skip).
+- **R-12 (the bus):** `realtime::bus::publish_realtime` coalesces under a
+  250 ms trailing-edge debounce whose flush runs on a task the host's
+  spawner starts — never synchronous with the publish — so no subscriber can
+  see the hint before the writer closure commits. The publish stays inside
+  `settle`, after the savepoint is released.
+- **JS bind semantics (item 9's raw rows, measured with better-sqlite3 at the
+  pin and matched):** a string binds TEXT; EVERY number binds as a double (a
+  `5` lands in a TEXT column as `"5.0"`; an INTEGER column takes `7.0` as
+  `7`); `undefined` / `null` bind NULL; a boolean throws `SQLite3 can only
+  bind numbers, strings, bigints, buffers, and null`; an object is read as a
+  named-parameter bag (`Too few parameter values were provided`) and an array
+  is FLATTENED into the argument list — v5 refuses both with the boolean's
+  sentence (`NON_SCALAR_RAW_CELL`, recorded, unplanted). A row with NO `id`
+  is WRITTEN with a NULL id — v4's non-INTEGER `TEXT PRIMARY KEY` admits NULL
+  (two such rows coexist) — matched on write; on read v4 says `id: null`, v5
+  `""` (`NULL_ID_READS_EMPTY`, recorded, pinned both ways in the tier-2
+  family). A missing `createdAt` → `NOT NULL constraint failed` → skipped; a
+  boolean `id` → the bind refusal → skipped. Corpus: 16 raw rows, 14 written.
+- **Item 13 (`migration_indexes.json` non-move):** `dump-migration-indexes.ts`
+  re-run from the pin into `/tmp/p4d315/` (with an empty real-boot master, so
+  it wrote `.rejected` — the real-boot cross-check is not this item's
+  measure): `main` 52 / `mountIndex` 5 / `llmLogs` 5 statements, ARRAY-
+  IDENTICAL to the committed artifact (its `source` block names an older pin,
+  so the file is compared by partition); the dumper's own report names
+  `idx_chat_wardrobe_history_current` / `_entry` among the "3 on tables v5
+  never creates" — the keystone survey's reading holds, the riders survey's
+  §A.3 "a re-dump would pick them up" does not. **Classification:**
+  `migration_index_backfill_equivalence` GREEN from the pin (its v5 copy comes
+  through the boot chain; v4's full runner over it ran 29 migrations, none of
+  the history three); `host_boot_fresh_indexes`'
+  `the_provisioner_leaves_the_boot_nothing_to_create` went RED (`main: the
+  first boot created index(es) the provisioner did not:
+  ["idx_chat_wardrobe_history_current", "idx_chat_wardrobe_history_entry"]`)
+  — expected (R-D) and answered with a named both-ways carve
+  (`BOOT_CREATED_INDEXES`, exactly those two) — 9/9.
+- **The ALTERed text (survey §1.1 correction):** SQLite's ADD COLUMN on the
+  pre-column table stores `"createdAt" TEXT NOT NULL\n  , "actorToolName"
+  TEXT)` — the splice lands AFTER the closing-paren line's indentation, not
+  `"createdAt" TEXT NOT NULL, "actorToolName" TEXT\n  )` as the survey wrote;
+  measured on v4's real runner (mode B) and byte-equal on v5.
+- **Seed counts** (v4's runner, the ensure family): A `Seeded 3 outfit
+  record(s) across 2 chat(s)`; B `Seeded 2 … across 2` (+ the column `1`);
+  D `Seeded 2 … across 2` (one pair skipped); E `Seeded 7 outfit record(s)
+  across 10 chat(s)` (the `null` / `5` / malformed values seed EMPTY entries,
+  the `''` key skipped, the index keys first, `'[]'` / `'nope'` / `'null'` /
+  `'{}'` / an INTEGER cell counted, not seeded); E' the runner FAILS the seed
+  (`NOT NULL constraint failed: chat_wardrobe_history.createdAt`), table
+  stamped, seed not.
+
+### Commits (branch `claude/p4.d315-outfit-history-keystone-e8b0cea6`)
+
+- `df642c2d6` **HISTORY:** — Tier 1 items 2–18 whole (+ item 23's label table
+  as a unit test). P4.D316 / P4.D317 branch here.
+- `955c34a45` docs — the order's status header: the `HISTORY` sha + every C1
+  spelling.
+- `99505adbc` Tier 2 items 21 + 22 (`chat_wardrobe_history_writer_census_guard`
+  — red-first by a probe mutation: a stray `CHAT_WARDROBE_HISTORY_INSERT_SQL`
+  user in `services/cascade_delete.rs` reddened `only_the_repository_and_the_
+  seed_insert_rows`; the `realtime_publish_sites_guard` row).
+- the lane-record / LANE COMPLETE docs commit.
+
+### Departures from C1 / the order (recorded, not STOPs — names unchanged)
+
+- `changed_by_label`'s third parameter is v4's plain `self_label: &str` (the
+  order allowed either; recorded in the status header).
+- `settle` is a method on the borrowing repository (R-10), not `settle(conn,
+  …)`.
+- `upsert_rows` writes through `upsert_raw_rows` (ONE per-row writer); neither
+  is savepoint-wrapped — v4's per-row `rawQuery` is not either, and a failing
+  statement rolls back only itself (R-4's "the upserts use `in_savepoint`" read
+  as "no third helper"; there is none).
+- The `Recorded wardrobe history entry` DEBUG renders v4's `outcome` OBJECT as
+  `outcomeJson` (§R.5's object rule), not the kind alone as item 3 phrased it.
+- Mode E's "a pair with rows already" moved to mode D (a base holding history
+  rows has the table, so the table migration cannot run there).
+- The GET case `wardrobe_history_first_occurrence` added (v4's
+  `searchParams.get` first-occurrence rule over the real route).
+- `host_boot_fresh_indexes` (not in the Ownership row by name) gained the
+  `BOOT_CREATED_INDEXES` carve — item 13's sanctioned R-D answer.
+- `tri_state_edges_share_the_decoder` (`quilltap-web`) moved: `wardrobe_routes.
+  rs` 23 → 24, total 122 → 123 — the new GET arm's hand-built
+  `ChatWardrobeHistory` (found red by the workspace gate; fixed in HISTORY).
+  P4.D316's POST arm moves both again on the union.
+- `dispatch_wrong_type_census`: NO new row (both fields are route identifiers)
+  — `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` 483 → 485, measured red first.
+- `COLLAPSE_CENSUS` UNMOVED (`web_edge_body_parse_guard` green).
+
+### Recorded divergences / deferrals (Tier 3, never silent)
+
+- R-2 the seed non-fatal where v4's is fatal (the wear seed's class).
+- R-3 the NULL-`updatedAt` seed failure — ported faithfully (ensure mode E',
+  host-boot arm (d), unit test).
+- R-7 the one-row arm drops the actor and the tool name — pinned both sides
+  (tier-2 op `pascal on empty, empty live (tool dropped)`, unit test); a v4
+  filing candidate for the findings file.
+- `NULL_ID_READS_EMPTY` and `NON_SCALAR_RAW_CELL` (above) — raw-restore-only,
+  reachable through a hand-edited archive.
+- v4's backend `Raw query failed` before the upsert WARN and the GET's ERROR —
+  the standing NO-PORT class.
+- The child-proxy settle override and job-child buffering — NO-PORT.
+- `runAtomically`'s / `settleAppend`'s "not initialized" / "needs a chats
+  store" throws — structurally unreachable (module header).
+- v4's chats-repository lines on a corrupt `equippedOutfit` (`Corrupted JSON
+  in column…`) are outside the tier-2 comparand (the family compares the
+  history module's lines); the outcome on that op is compared.
+- The three migrations' INFO / ERROR lines + `reportProgress` + the prettify
+  labels — NO-PORT, the labels verbatim in the repair module's header (R-13).
+
+### HANDOFF
+
+- **To P4.D323 (item 19):** `help/wardrobe.md`'s Outfit Record section
+  (`4ae20977f` / `f46cf40a2` prose) and `docs/v4/developer/DDL.md`'s
+  `chat_wardrobe_history` section (pin `docs/developer/DDL.md:518-545`) —
+  vendored bytes must match the pin; nothing for this lane to change.
+- **To P4.D316:** `query_param_semantics_equivalence`'s four `chat_item_post`
+  rows (`__bare` / `__empty` / `__unknown` / `__empty_then_known`) and the
+  family's 110/15 classification count are yours (`wardrobe-rollback`); the
+  `tri_state_edges_share_the_decoder` counts move again with your POST arm.
+- **To P4.D316 / P4.D317:** the shared-notes file `p4d315-history-landed.md`
+  (the C1 departures above, the async plant).
+
+### The gate (the HISTORY tree)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -D warnings` clean, and with `--features quilltap-core/native-transport`
+  clean (`apps/web/dist` cloned from main — the lane touches no SPA).
+- `cargo test --workspace --no-fail-fast` (queued behind two sibling gates by
+  PID; 11:40 → 12:57 CDT, `/tmp/p4d315/gate/workspace-gate.log`, the env
+  block in `gate/env.sh` — every family env set, `QT_V4_CHECKOUT` /
+  `QT_V4_ROOT` = the pin): **820 binaries / 5,356 passed / 4 failed / 3
+  ignored**. The four: `public_schemas_vendor_guard` (P4.D319's by design,
+  §R.3), `qtap_schema_embed_guard` (P4.D317's by design), `query_param_
+  semantics_equivalence` (P4.D316's named residue), and
+  `tri_state_edges_share_the_decoder` — THIS lane's, fixed in HISTORY and green
+  by name (11/11). My families re-run by name with `--nocapture` under the
+  gate env: every `OK:` line printed, zero SKIP (bar the zero-rerun write
+  step, which runs only under `QT_ZERO_RERUN_WRITE` by design).
+- From the pin, by hand with lane-unique outputs and then through the sweep
+  driver (`--run-all --families …`, `totals: {'ok': 5}`): the three NEW
+  families, `chat_export_equivalence`, `zero_migrations_rerun_equivalence`.
+  Markers: `"changedBy"` 4 / `wardrobe_history_` 9 (chat export);
+  `add-chat-wardrobe-history-table-v1` 6, `Seeded` 6, `"actorToolName" TEXT` 7
+  (ensure); `"kind":"appended"` 32, `cursor-moved` 4, `Skipped a wardrobe
+  history row` 5 (tier 2); `rolled by` 9, `(no longer exists)` 3, `before
+  history was kept` 108 (describe-entry); `seed-chat-wardrobe-history-v1` 10
+  (zero-rerun v4 phase).
+- By hand from the pin (lane-unique `/tmp/p4d315/`): `provisioning_
+  equivalence` 3/3 (1d live-required); `query_param_semantics_equivalence`
+  (GET green, POST residue named); `wardrobe_wear_stats_ensure` + `_tier2`
+  (R-4's visibility change — unmoved), `describe_outfit` (323),
+  `wearable_pool` (25), `outfit_hash` (8); `migration_index_backfill_
+  equivalence` 2/2 + its runner measurement + `verify-v5-provisioned` OK.
+- Green by name: `restore_vintage_state` 10/10, `host_boot_p4d315_chat_
+  wardrobe_history` 4/4, `host_boot_p4d255` / `p4d288` / `p4d304` / `p4d225` /
+  `p4d249` / `p4d265`, `host_boot_fresh_indexes` 9/9, `dispatch_wrong_type_
+  census` 14/14, `web_edge_body_parse_guard`, `web_edge_action_sites_census`,
+  `fallback_home_guard`, `spelling_guard`, `realtime_publish_sites_guard`,
+  `set_equipped_outfit_census_guard`; the live-checkout guards against the
+  pin — `help_tree_embed_guard`, `host_help_docs_boot`, `builtin_prompt_
+  templates_guard`, `provider_sdk_version_guard`, `zod_version_guard` — GREEN.
+- Tier R once: `cli_differential` **422 cases, 0 failures** (pin, `QT_NODE`).
+- `recipe_sweep.py --self-test` → 0 failures.
+- Core unit tests: the repository (v4's 15 `it`s + R-7, R-10 atomicity, the
+  wire bytes, `normalizeRow`), the repair module (mode A / B / D, the ledger
+  skips, R-2 / R-3, `outfits_from_equipped_outfit`), describe-entry (the
+  thirteen labels as a literal table, the JS-whitespace marker strip), the
+  cascade fold (success two lines + the no-table ERROR) — 47 green.
+
+### Versions at close
+
+core **0.0.1314**, host **0.0.211**, web **0.0.242**; harness frozen 0.0.1110;
+cli 0.0.34, tauri unchanged; SPA untouched.
+
+### 💸 for the dogfood pass (no LLM spend in this slice)
+
+On a Friday copy: record the vintage FIRST (`SELECT sql FROM sqlite_master
+WHERE name = 'chat_wardrobe_history'` + the three `migrations_state` rows; the
+non-null `equippedOutfit` count and how many have a NULL `updatedAt`); the
+first v5 boot (a NO-OP on a v4-migrated copy; on a mode-A copy the exact
+`Seeded N outfit record(s) across M chat(s)`, a second boot silent); the
+History GET on a real chat (labels naming real characters, an archived garment
+marked, `currentIndex` the cursor; an empty timeline; `?characterId=` → 400;
+the `[Chats v1] Read wardrobe history` line); a character delete on a copy
+(the two DEBUGs, other timelines intact).
+
+### Memory-note candidates
+
+- SQLite's ADD COLUMN splices `\n  , "col" TYPE)` after the last line's
+  indentation, not before the closing paren's line.
+- better-sqlite3 binds every JS number as a double (TEXT columns read
+  `"5.0"`), `undefined` as NULL, and a non-INTEGER `TEXT PRIMARY KEY` admits
+  NULL ids.
+- `dump-migration-indexes.ts`' `source` block names its pin — compare a
+  re-dump by partition array, never `cmp`.
+- Main's own `target/debug/deps/<family>-<hash>` binaries (built at the
+  orders' commit) are a cheap red-first harness for a stage-A lane.
