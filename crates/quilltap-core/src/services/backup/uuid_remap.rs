@@ -39,7 +39,11 @@ use serde_json::{Map, Value};
 
 use super::collect::BackupData;
 use super::uuid_remapper::UuidRemapper;
+use crate::chat::character_keyed_fields::{
+    remap_character_keyed_chat_fields, CharacterKeyedRemaps,
+};
 use crate::vault_overlay::{is_wardrobe_item_document_path, wardrobe_item_id_for_document};
+use crate::wardrobe::WARDROBE_SLOT_TYPES;
 
 /// v4 `:61` — settings keys whose values are mount-point UUIDs. These need
 /// remapping in new-account mode so they keep pointing at the right mount
@@ -113,11 +117,19 @@ fn each(rows: &[Value], f: impl FnMut(&Value) -> Value) -> Vec<Value> {
 /// The manifest is NOT part of this transform: v5's [`BackupData`] carries no
 /// manifest field, so v4's `manifest: data.manifest` pass-through (`:406`) is
 /// the caller's business.
+///
+/// **Fallible since P4.D317 (v4 `7953da3a0`).** v4's outfit-history arm reads
+/// each row's slots with NO normalize — `(row.slots?.[slot] ?? []).map(…)` — so
+/// a non-array slot value (or a `null` row) throws a `TypeError` that aborts
+/// the WHOLE `remapBackupData`, and the new-account restore fails before it
+/// writes anything. Ported faithfully (R-K / R-9 (b) — a v4 filing candidate,
+/// not fixed): the `Err` carries the failure for the restore to refuse with;
+/// `replace` mode never remaps, and salvages such a row in `upsert_raw_rows`.
 pub fn remap_backup_data(
     data: &BackupData,
     target_user_id: &str,
     remapper: &mut UuidRemapper,
-) -> BackupData {
+) -> Result<BackupData, String> {
     let r = remapper;
 
     // Remap tags
@@ -187,7 +199,23 @@ pub fn remap_backup_data(
     });
 
     // Remap chats (complex due to participants and messages)
-    let chats = each(&data.chats, |c| remap_chat(r, c, target_user_id));
+    // P4.D317 (v4 `e8e17b2d9`, `uuid-remap.ts:331`): the characters the backup
+    // carries, built ONCE before the chats pass — bug 252's character-keyed
+    // pass drops an entry for any other character instead of minting.
+    let backup_character_ids: HashSet<String> = data
+        .characters
+        .iter()
+        .filter_map(|c| c.get("id").and_then(Value::as_str).map(str::to_string))
+        .collect();
+    let chats = each(&data.chats, |c| {
+        remap_chat(
+            r,
+            c,
+            target_user_id,
+            &wardrobe_item_id_remap,
+            &backup_character_ids,
+        )
+    });
 
     // Remap memories — note: NO `userId` rewrite. v4 leaves the backup's own
     // value in place for this collection.
@@ -435,6 +463,17 @@ pub fn remap_backup_data(
         out
     });
 
+    // === P4.D317 (v4 `7953da3a0`, `uuid-remap.ts:664-675`) ===
+    // "Outfit history. `id`, `chatId`, `characterId` and `actorCharacterId` go
+    // through the remapper; slot item ids follow the same item remap as the
+    // wear ledger (an id the backup carries no document for passes through and
+    // falls under the stale-item rule). Indices, cursor and dates are kept."
+    let mut wardrobe_history = Vec::with_capacity(data.wardrobe_history.len());
+    for row in &data.wardrobe_history {
+        wardrobe_history.push(remap_wardrobe_history_row(r, &wardrobe_item_id_remap, row)?);
+    }
+    // === end P4.D317 ===
+
     // Instance settings — only the mount-point keys carry UUIDs we need to
     // remap. Everything else is opaque text (numbers, JSON config blobs).
     let instance_settings = each(&data.instance_settings, |row| {
@@ -463,7 +502,7 @@ pub fn remap_backup_data(
         r.remap_fields(a, &["id", "chatId", "sourceMessageId"])
     });
 
-    BackupData {
+    Ok(BackupData {
         characters,
         chats,
         tags,
@@ -509,8 +548,9 @@ pub fn remap_backup_data(
         // P4.D264 (v4 `:629`): the 39th key, ALWAYS present (`[]` when the
         // archive has none).
         wardrobe_wear,
-        wardrobe_history: Vec::new(),
-    }
+        // P4.D317 (`:733`) — LAST, always present (`[]` when the backup had none).
+        wardrobe_history,
+    })
 }
 
 /// v4 `buildWardrobeItemIdRemap(data, remapper)` (`uuid-remap.ts:95-122`,
@@ -809,6 +849,99 @@ fn remap_character(r: &mut UuidRemapper, char_row: &Value, target_user_id: &str)
     remapped
 }
 
+/// P4.D317 — one row of v4's outfit-history arm (`uuid-remap.ts:664-675`):
+///
+/// ```ts
+/// const slots = bySlot((slot) => (row.slots?.[slot] ?? []).map((id) => wardrobeItemIdRemap.get(id) ?? id));
+/// return { ...remapper.remapFields(row, ['id', 'chatId', 'characterId', 'actorCharacterId']), slots, slotsHash: hashEquippedSlots(slots) };
+/// ```
+///
+/// - The slots are read with NO normalize: a missing / `null` slot reads `[]`,
+///   a non-string element passes through as given (a `Map.get` miss), and a
+///   non-array, non-nullish slot value makes the `.map` THROW — `Err`, which
+///   aborts the whole remap (R-9 (b), faithful). A `null` row throws too
+///   (`row.slots` on `null`).
+/// - `remapFields` rewrites STRING values only, in field order (the mint
+///   order): a `null` actor stays `null`, and a `characterId` the backup does
+///   not carry is MINTED — a phantom that names nobody, where bug 252's chat
+///   pass DROPS the same character's entry (R-9 (a), faithful; a filing
+///   candidate).
+/// - `slots` / `slotsHash` land on their EXISTING keys (the spread keeps a
+///   key's position) or are appended in that order; the hash is recomputed
+///   over the rebuilt five-slot bag, non-string elements and all. An absent
+///   `actorToolName` stays absent (the arm never adds it).
+fn remap_wardrobe_history_row(
+    r: &mut UuidRemapper,
+    item_remap: &HashMap<String, String>,
+    row: &Value,
+) -> Result<Value, String> {
+    let slots_value = match row {
+        Value::Null => return Err("Cannot read properties of null (reading 'slots')".to_string()),
+        Value::Object(m) => m.get("slots"),
+        // `"abc".slots` / `[].slots` / `(5).slots` — undefined.
+        _ => None,
+    };
+    let mut slots = Map::new();
+    for slot in WARDROBE_SLOT_TYPES {
+        // `row.slots?.[slot]` — only an object (an array, for an index-named
+        // key it never is) has the slot; anything else reads undefined.
+        let value = match slots_value {
+            Some(Value::Object(s)) => s.get(slot).filter(|v| !v.is_null()),
+            _ => None,
+        };
+        let ids = match value {
+            None => Vec::new(),
+            Some(Value::Array(ids)) => ids
+                .iter()
+                .map(|id| match id {
+                    Value::String(s) => item_remap
+                        .get(s)
+                        .map(|mapped| Value::String(mapped.clone()))
+                        .unwrap_or_else(|| id.clone()),
+                    other => other.clone(),
+                })
+                .collect(),
+            Some(_) => {
+                // V8's own text for the transpiled `(row.slots?.[slot] ?? [])
+                // .map(…)` (measured from the oracle).
+                return Err("((intermediate value) ?? []).map is not a function".to_string());
+            }
+        };
+        slots.insert(slot.to_string(), Value::Array(ids));
+    }
+    let slots = Value::Object(slots);
+    let hash: String = crate::db::doc_mount_file_links::sha256_of_string(
+        &crate::pascal::js_value::json_stringify(&slots),
+    )
+    .chars()
+    .take(16)
+    .collect();
+    let mut out = match r.remap_fields(row, &["id", "chatId", "characterId", "actorCharacterId"]) {
+        Value::Object(m) => m,
+        // `{ ...nonObject }`: an array spreads its elements under index keys,
+        // a string its UTF-16 units; a number or boolean spreads nothing.
+        Value::Array(items) => items
+            .into_iter()
+            .enumerate()
+            .map(|(i, v)| (i.to_string(), v))
+            .collect(),
+        Value::String(s) => s
+            .encode_utf16()
+            .enumerate()
+            .map(|(i, unit)| {
+                (
+                    i.to_string(),
+                    Value::String(String::from_utf16_lossy(&[unit])),
+                )
+            })
+            .collect(),
+        _ => Map::new(),
+    };
+    out.insert("slots".to_string(), slots);
+    out.insert("slotsHash".to_string(), Value::String(hash));
+    Ok(Value::Object(out))
+}
+
 /// v4 `PARTICIPANT_ID_JSON_FIELDS` (`49f8906c3`, pin `uuid-remap.ts:178-182`) —
 /// the chat columns that hold participant ids as a JSON-encoded string array
 /// rather than a real array, so `remap_array_fields` cannot see them.
@@ -850,7 +983,13 @@ fn remap_json_id_list(value: &Value, r: &mut UuidRemapper) -> Value {
 /// v4 `:176-211` — the chat pass. `participants` and `messages` are read from
 /// the ORIGINAL chat and assigned onto the remapped copy, so both keep their
 /// original positions (trap 1).
-fn remap_chat(r: &mut UuidRemapper, chat: &Value, target_user_id: &str) -> Value {
+fn remap_chat(
+    r: &mut UuidRemapper,
+    chat: &Value,
+    target_user_id: &str,
+    wardrobe_item_id_remap: &HashMap<String, String>,
+    backup_character_ids: &HashSet<String>,
+) -> Value {
     let mut remapped = chain_owned(
         r,
         chat,
@@ -899,6 +1038,70 @@ fn remap_chat(r: &mut UuidRemapper, chat: &Value, target_user_id: &str) -> Value
             );
         }
     }
+
+    // === P4.D317 (v4 `e8e17b2d9`, `uuid-remap.ts:360-380`) — bug 252 ===
+    // "Outfits, outfit avatars, Courier checkpoints and queued outfit notices
+    // are keyed by character id (bug 252); one pass carries them all. An entry
+    // for a character the backup does not carry is dropped rather than given a
+    // minted id that names nobody." Run on the ORIGINAL chat; each patched
+    // column assigned onto its EXISTING key (`Object.assign` keeps the slot; a
+    // null / absent column is never in the patch). AFTER the scenario source,
+    // BEFORE the participant-id lists — the mint order: an unseen avatar file
+    // and a Courier message id now mint HERE, and the chat's own messages
+    // reuse the message id below.
+    {
+        let remapper = std::cell::RefCell::new(&mut *r);
+        let character_id = |id: &str| {
+            backup_character_ids
+                .contains(id)
+                .then(|| remapper.borrow_mut().remap_str(id))
+        };
+        let wardrobe_item_id = |id: &str| {
+            wardrobe_item_id_remap
+                .get(id)
+                .cloned()
+                .unwrap_or_else(|| id.to_string())
+        };
+        let fresh = |id: &str| remapper.borrow_mut().remap_str(id);
+        let keyed = remap_character_keyed_chat_fields(
+            chat,
+            &CharacterKeyedRemaps {
+                character_id: &character_id,
+                wardrobe_item_id: &wardrobe_item_id,
+                file_id: &fresh,
+                message_id: &fresh,
+            },
+        );
+        let chat_id = chat.get("id").map(js_string);
+        if !keyed.unreadable.is_empty() {
+            let fields = serde_json::to_string(&keyed.unreadable).unwrap_or_default();
+            tracing::warn!(
+                target: "quilltap::backup::uuid_remap",
+                module = "backup:uuid-remap",
+                chatId = chat_id.as_deref(),
+                fieldsJson = %fields,
+                "Chat character-keyed columns unreadable; left as given"
+            );
+        }
+        if !keyed.patch.is_empty() {
+            let fields: Vec<&String> = keyed.patch.keys().collect();
+            let fields = serde_json::to_string(&fields).unwrap_or_default();
+            tracing::debug!(
+                target: "quilltap::backup::uuid_remap",
+                module = "backup:uuid-remap",
+                chatId = chat_id.as_deref(),
+                fieldsJson = %fields,
+                droppedEntries = keyed.dropped_entries,
+                "Remapped character-keyed chat fields"
+            );
+        }
+        if let Some(obj) = remapped.as_object_mut() {
+            for (field, value) in keyed.patch {
+                obj.insert(field, value);
+            }
+        }
+    }
+    // === end P4.D317 ===
 
     // P4.D312 (v4 `49f8906c3`, pin `uuid-remap.ts:352-361`): "Turn-manager
     // state names participants inside JSON strings; left alone, the rotation
@@ -1106,6 +1309,50 @@ mod seat_id_tests {
         }))
     }
 
+    /// P4.D317 (bug 252) — the patched columns land on their EXISTING keys
+    /// (v4's `Object.assign` onto the spread copy): a re-keyed column keeps
+    /// its position, a `null` one stays `null`, an absent one stays absent
+    /// (v4's "leaves a chat with no outfit alone").
+    #[test]
+    fn character_keyed_columns_keep_their_key_positions() {
+        let chat = json!({
+            "id": "chat-old",
+            "characterAvatars": { "char-a": { "imageId": "file-1" } },
+            "equippedOutfit": null,
+            "title": "kept",
+            "participants": [],
+            "messages": [],
+        });
+        let carried: HashSet<String> = ["char-a".to_string()].into_iter().collect();
+        let out = remap_chat(&mut counting(), &chat, "u", &HashMap::new(), &carried);
+        let keys: Vec<&str> = out
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "id",
+                "characterAvatars",
+                "equippedOutfit",
+                "title",
+                "participants",
+                "messages",
+                "userId"
+            ]
+        );
+        assert_eq!(out["equippedOutfit"], Value::Null);
+        assert!(out.get("courierCheckpoints").is_none());
+        let avatars = out["characterAvatars"].as_object().unwrap();
+        assert_eq!(avatars.len(), 1);
+        assert!(
+            !avatars.contains_key("char-a"),
+            "re-keyed off the archive id"
+        );
+    }
+
     fn parse_list(v: &Value) -> Vec<String> {
         serde_json::from_str(v.as_str().expect("a JSON string")).expect("a JSON list")
     }
@@ -1122,7 +1369,13 @@ mod seat_id_tests {
             "cycleOrderParticipantIds": "[\"seat-b\",\"seat-a\"]",
             "messages": [{ "id": "msg-old", "participantId": "seat-a", "targetParticipantIds": ["seat-b"] }],
         });
-        let out = remap_chat(&mut counting(), &chat, "target-user");
+        let out = remap_chat(
+            &mut counting(),
+            &chat,
+            "target-user",
+            &HashMap::new(),
+            &HashSet::new(),
+        );
         let seat_a = out["participants"][0]["id"].as_str().unwrap().to_string();
         let seat_b = out["participants"][1]["id"].as_str().unwrap().to_string();
 
@@ -1154,7 +1407,13 @@ mod seat_id_tests {
             "messages": [],
             "cycleOrderParticipantIds": "not json",
         });
-        let out = remap_chat(&mut counting(), &chat, "target-user");
+        let out = remap_chat(
+            &mut counting(),
+            &chat,
+            "target-user",
+            &HashMap::new(),
+            &HashSet::new(),
+        );
         assert_eq!(out["cycleOrderParticipantIds"], json!("not json"));
         assert!(out.get("turnQueue").is_none());
     }
@@ -1170,7 +1429,13 @@ mod seat_id_tests {
             "participants": [],
             "messages": [],
         });
-        let out = remap_chat(&mut counting(), &chat, "u");
+        let out = remap_chat(
+            &mut counting(),
+            &chat,
+            "u",
+            &HashMap::new(),
+            &HashSet::new(),
+        );
         assert_eq!(
             out["turnQueue"],
             json!("[\"00000000-0000-4000-8000-000000000002\",\"00000000-0000-4000-8000-000000000003\"]")
@@ -1190,7 +1455,13 @@ mod seat_id_tests {
     fn a_present_non_string_value_is_left_as_it_came() {
         for value in [json!(null), json!(5), json!(["seat-r"])] {
             let chat = json!({ "id": "c", "turnQueue": value, "participants": [], "messages": [] });
-            let out = remap_chat(&mut counting(), &chat, "u");
+            let out = remap_chat(
+                &mut counting(),
+                &chat,
+                "u",
+                &HashMap::new(),
+                &HashSet::new(),
+            );
             assert_eq!(out["turnQueue"], value);
         }
     }

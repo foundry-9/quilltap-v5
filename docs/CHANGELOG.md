@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — fix(restore): new-account restore remaps the outfit history and re-keys the chat's character-keyed columns (bug 252) (P4.D317)
+
+_Versions: core 0.0.1318._
+
+`remap_backup_data` gains v4's outfit-history arm (`7953da3a0`): each row's `id`, `chatId`, `characterId` and `actorCharacterId` go through the remapper, slot item ids follow the wear ledger's item remap, and `slotsHash` is recomputed. It also fixes bug 252 for restore (`e8e17b2d9`): a chat's `equippedOutfit`, `characterAvatars`, `courierCheckpoints` and `pendingOutfitNotifications` are re-keyed to the restored characters through the shared `chat::character_keyed_fields` pass, with nested item, file and message ids following (a Courier message id and an unseen avatar file now mint at the chat). An entry for a character the backup does not carry is dropped, logged on `quilltap::backup::uuid_remap` (`Remapped character-keyed chat fields` / `Chat character-keyed columns unreadable; left as given`). Three v4 behaviours are ported faithfully and flagged as v4 filing candidates: the history arm mints a phantom id for an uncarried character where the chat pass drops it, a non-array slot (or a null row) makes the whole remap refuse — so `remap_backup_data` now returns a `Result` and the new-account restore rejects before writing. `backup_uuid_remap_equivalence` regenerated through its hashed corpus writer (58 cases, 14 new; the remap's log lines and refusals compared).
+
 #### 2026-10-19 — chore(schema): re-vendor qtap-export.schema.json at v4 `e8e17b2d9` — outfit history (P4.D317)
 
 _Versions: core 0.0.1317._

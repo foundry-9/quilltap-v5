@@ -150,12 +150,15 @@ pub async fn restore(
             &extracted.data,
             &mut remapper,
         );
+        // P4.D317: the remap can THROW (v4's outfit-history arm `.map`s a
+        // non-array slot value) — v4's `restore` has no catch around it, so
+        // the restore REJECTS before a single write; so does v5's.
         (
             Some(crate::services::backup::uuid_remap::remap_backup_data(
                 &extracted.data,
                 target_user_id,
                 &mut remapper,
-            )),
+            )?),
             fixes,
         )
     } else {

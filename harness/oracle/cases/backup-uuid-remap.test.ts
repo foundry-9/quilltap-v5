@@ -121,6 +121,10 @@ const COLLECTIONS: ReadonlyArray<readonly [string, string]> = [
   // ALWAYS present (`uuid-remap.ts:629`); `data/wardrobe-wear.json` is written
   // on every backup (`backup-service.ts:722`).
   ['wardrobeWear', 'wardrobe-wear.json'],
+  // P4.D317 (v4 `7953da3a0`): the outfit history — the 40th returned key,
+  // ALWAYS present (`uuid-remap.ts:733`); `data/wardrobe-history.json` on
+  // every backup (`backup-service.ts:709-710`).
+  ['wardrobeHistory', 'wardrobe-history.json'],
 ];
 
 /** [P4.D293] Files a pin backup no longer writes but the remap still reads. */
@@ -1340,6 +1344,264 @@ function edgeCases(): Case[] {
         imageProfiles: [{ id: 'ip-1', apiKeyId: null, tags: [] }],
       }),
     },
+    ...outfitHistoryAndBug252Cases(),
+  ];
+}
+
+/**
+ * P4.D317 — the outfit-history arm (`7953da3a0`, `uuid-remap.ts:664-675`) and
+ * bug 252's character-keyed chat pass (`e8e17b2d9`, `:331`, `:360-380`). v4's
+ * own `uuid-remapper.test.ts` rows (`:1126`, `:1179`, `:1292`) plus the named
+ * hand cases of the carriers survey §4.2. `historyRow` hashes through v4's REAL
+ * `hashEquippedSlots`; path-derived item ids through v4's REAL parser.
+ */
+function outfitHistoryAndBug252Cases(): Case[] {
+  const t = TARGET_USER_ID;
+  const { hashEquippedSlots } = jest.requireActual('@/lib/wardrobe/outfit-hash') as {
+    hashEquippedSlots: (slots: unknown) => string;
+  };
+  const empty = { top: [], bottom: [], footwear: [], accessories: [], hair: [] };
+  const historyRow = (over: Record<string, unknown>): Record<string, unknown> => {
+    const slots = (over.slots as Record<string, unknown>) ?? empty;
+    return {
+      id: 'hist-x',
+      chatId: 'chat-old',
+      characterId: 'char-a',
+      entryIndex: 0,
+      slots,
+      slotsHash: hashEquippedSlots(slots),
+      source: 'character',
+      actorCharacterId: 'char-a',
+      actorToolName: null,
+      isCurrent: true,
+      createdAt: '2026-10-16T00:00:00.000Z',
+      ...over,
+    };
+  };
+  const FRONTMATTER_ITEM = '33333333-3333-4333-8333-333333333333';
+  const OLD_MOUNT = '44444444-4444-4444-8444-444444444444';
+  const spatsContent = '---\ntitle: Spats\ntypes: [footwear]\n---\n';
+  const oldSpats = pathDerivedItemId(OLD_MOUNT, 'Wardrobe/Spats.md', spatsContent);
+  const wardrobeDocs = {
+    docMountFileLinks: [
+      { id: 'link-1', fileId: 'file-1', mountPointId: OLD_MOUNT, relativePath: 'Wardrobe/Coat.md' },
+      { id: 'link-2', fileId: 'file-2', mountPointId: OLD_MOUNT, relativePath: 'Wardrobe/Spats.md' },
+    ],
+    docMountDocuments: [
+      { id: 'doc-1', fileId: 'file-1', content: `---\nid: ${FRONTMATTER_ITEM}\ntitle: Coat\ntypes: [top]\n---\n` },
+      { id: 'doc-2', fileId: 'file-2', content: spatsContent },
+    ],
+  };
+  return [
+    // ── v4's own rows ──
+    {
+      name: 'v4_outfit_history_five_entry_timeline',
+      note: "v4 uuid-remapper.test.ts:1133 — a five-entry timeline under remapped ids: indices, cursor, the null first actor kept, hashes recomputed (equal: the items carry no document); the rows carry NO actorToolName key and the remap does not add one",
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-old', name: 'Bertie' }],
+        chats: [{ id: 'chat-old', participants: [], messages: [] }],
+        wardrobeHistory: [0, 1, 2, 3, 4].map((entryIndex) => {
+          const row = historyRow({
+            id: `hist-${entryIndex}`,
+            characterId: 'char-old',
+            entryIndex,
+            slots: { ...empty, top: [`item-${entryIndex}`] },
+            source: entryIndex === 0 ? 'chat-start' : 'character',
+            actorCharacterId: entryIndex === 0 ? null : 'char-old',
+            isCurrent: entryIndex === 2,
+            createdAt: `2026-10-16T0${entryIndex}:00:00.000Z`,
+          });
+          delete row.actorToolName;
+          return row;
+        }),
+      }),
+    },
+    {
+      name: 'v4_bug252_re_keys_every_character',
+      note: 'v4 uuid-remapper.test.ts:1207 — both carried characters re-keyed; an item with no document passes through; the outfit becomes a full five-slot bag',
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-a', name: 'Bertie' }, { id: 'char-b', name: 'Jeeves' }],
+        chats: [{
+          id: 'chat-old', participants: [], messages: [],
+          equippedOutfit: { 'char-a': { ...empty, top: ['item-unknown'] }, 'char-b': { ...empty, footwear: ['item-other'] } },
+        }],
+      }),
+    },
+    {
+      name: 'v4_bug252_moves_slot_item_ids',
+      note: 'v4 uuid-remapper.test.ts:1227 — a frontmatter item kept, a path-derived item recomputed against the remapped mount',
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-a', name: 'Bertie' }, { id: 'char-b', name: 'Jeeves' }],
+        chats: [{
+          id: 'chat-old', participants: [], messages: [],
+          equippedOutfit: { 'char-a': { ...empty, top: [FRONTMATTER_ITEM], footwear: [oldSpats] } },
+        }],
+        ...wardrobeDocs,
+      }),
+    },
+    {
+      name: 'v4_bug252_agrees_with_the_history',
+      note: 'v4 uuid-remapper.test.ts:1262 — the chat outfit and the history row land on the SAME new character id and the same slots',
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-a', name: 'Bertie' }, { id: 'char-b', name: 'Jeeves' }],
+        chats: [{ id: 'chat-old', participants: [], messages: [], equippedOutfit: { 'char-a': { ...empty, top: ['item-1'] } } }],
+        wardrobeHistory: [(() => {
+          const r = historyRow({ id: 'hist-0', slots: { ...empty, top: ['item-1'] }, source: 'chat-start', actorCharacterId: null });
+          delete r.actorToolName;
+          return r;
+        })()],
+      }),
+    },
+    {
+      name: 'v4_bug252_leaves_a_chat_with_no_outfit_alone',
+      note: 'v4 uuid-remapper.test.ts:1281 — a null equippedOutfit stays null, an absent one stays absent; no DEBUG for either',
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-a', name: 'Bertie' }],
+        chats: [
+          { id: 'chat-null', participants: [], messages: [], equippedOutfit: null },
+          { id: 'chat-absent', participants: [], messages: [] },
+        ],
+      }),
+    },
+    {
+      name: 'v4_bug252_other_columns',
+      note: "v4 uuid-remapper.test.ts:1307-1360, one chat per `it`: the avatar follows its file (already minted by the files pass — no new mint), the Courier checkpoint follows its message (MINTED at the chat, reused by the message), a non-carried character's entry is DROPPED (droppedEntries), a queued notice re-keyed",
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-a', name: 'Bertie' }],
+        files: [{ id: 'file-old' }],
+        chats: [
+          { id: 'chat-avatar', participants: [], messages: [{ id: 'msg-a', type: 'message' }], characterAvatars: { 'char-a': { imageId: 'file-old', generatedAt: 't', afterMessageCount: 2 } } },
+          { id: 'chat-courier', participants: [], messages: [{ id: 'msg-old', type: 'message' }], courierCheckpoints: { 'char-a': { lastResolvedMessageId: 'msg-old', resolvedAt: 't' } } },
+          { id: 'chat-drop', participants: [], messages: [], equippedOutfit: { 'char-a': { top: ['x'] }, 'char-deleted': { top: ['y'] } } },
+          { id: 'chat-notice', participants: [], messages: [], pendingOutfitNotifications: { 'char-a': { text: 'changed' } } },
+        ],
+      }),
+    },
+    // ── the carriers survey §4.2 hand cases ──
+    {
+      name: 'outfit_history_timeline',
+      note: 'five entries, the cursor mid-timeline, a null actor, an actor, a pascal row WITH actorToolName (copied), a pre-4ae20977f row with NO actorToolName key (absent in the output); a stale stored hash recomputed',
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-a' }, { id: 'char-b' }],
+        chats: [{ id: 'chat-old', participants: [], messages: [] }],
+        wardrobeHistory: [
+          historyRow({ id: 'h-0', entryIndex: 0, source: 'chat-start', actorCharacterId: null, isCurrent: false }),
+          historyRow({ id: 'h-1', entryIndex: 1, source: 'operator', actorCharacterId: 'char-b', isCurrent: false, slots: { ...empty, top: ['item-1'] } }),
+          historyRow({ id: 'h-2', entryIndex: 2, source: 'pascal', actorCharacterId: 'char-a', actorToolName: 'dress_for_dinner', isCurrent: true, slotsHash: 'stalehash0000000' }),
+          (() => { const r = historyRow({ id: 'h-3', entryIndex: 3, isCurrent: false }); delete r.actorToolName; return r; })(),
+          historyRow({ id: 'h-4', entryIndex: 4, source: 'seeded', actorCharacterId: null, isCurrent: false }),
+        ],
+      }),
+    },
+    {
+      name: 'outfit_history_items',
+      note: 'slot item ids through the wear ledger\'s item remap: a frontmatter item kept, a path-derived item recomputed against the remapped mount, an unknown item passing through',
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-a' }],
+        chats: [{ id: 'chat-old', participants: [], messages: [] }],
+        ...wardrobeDocs,
+        wardrobeHistory: [historyRow({ id: 'h-items', slots: { ...empty, top: [FRONTMATTER_ITEM], footwear: [oldSpats], accessories: ['item-unknown'] } })],
+      }),
+    },
+    {
+      name: 'outfit_history_phantom_character',
+      note: "R-9 (a), v4-faithful: a characterId (and actor) the backup does not carry is MINTED by remapFields — after the row's id and chatId — where bug 252's chat pass DROPS the same character's entry",
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-a' }],
+        chats: [{ id: 'chat-old', participants: [], messages: [], equippedOutfit: { 'char-gone': { ...empty } } }],
+        wardrobeHistory: [historyRow({ id: 'h-phantom', characterId: 'char-gone', actorCharacterId: 'char-gone-too' })],
+      }),
+    },
+    {
+      name: 'outfit_history_slot_shapes',
+      note: 'NO normalize in the remap: a missing slot and a null slot read [], a four-slot pre-hair bag gains hair, a null / string / array `slots` reads every slot [], a non-string element passes through and is hashed as given',
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-a' }],
+        chats: [{ id: 'chat-old', participants: [], messages: [] }],
+        wardrobeHistory: [
+          historyRow({ id: 'h-missing', entryIndex: 0, isCurrent: false, slots: { top: ['item-1'], footwear: null } }),
+          historyRow({ id: 'h-four', entryIndex: 1, isCurrent: false, slots: { top: [], bottom: ['item-2'], footwear: [], accessories: [] } }),
+          historyRow({ id: 'h-null', entryIndex: 2, isCurrent: false, slots: null }),
+          historyRow({ id: 'h-string', entryIndex: 3, isCurrent: false, slots: 'not an object' }),
+          historyRow({ id: 'h-array', entryIndex: 4, isCurrent: false, slots: [['item-3']] }),
+          historyRow({ id: 'h-elements', entryIndex: 5, isCurrent: true, slots: { ...empty, top: ['item-1', 7, null, { k: 1 }] } }),
+        ],
+      }),
+    },
+    {
+      name: 'outfit_history_non_array_slot_throws',
+      note: "R-9 (b), v4-faithful: a non-array slot value makes the arm's `.map` THROW, aborting the WHOLE remapBackupData (a new-account restore of such an archive fails before any write); the mapping minted before the throw is recorded",
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-a' }],
+        chats: [{ id: 'chat-old', participants: [], messages: [] }],
+        wardrobeHistory: [historyRow({ id: 'h-ok', entryIndex: 0, isCurrent: false }), historyRow({ id: 'h-bad', entryIndex: 1, slots: { ...empty, top: 'item-1' } })],
+      }),
+    },
+    {
+      name: 'outfit_history_null_row_throws',
+      note: 'a null history row throws (`row.slots` on null) — the same whole-remap refusal',
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-a' }],
+        chats: [{ id: 'chat-old', participants: [], messages: [] }],
+        wardrobeHistory: [null],
+      }),
+    },
+    {
+      name: 'chat_keyed_bug252',
+      note: "all four columns on one chat: a carried character re-keyed, a NON-carried one DROPPED (droppedEntries), an avatar imageId for a carried file (no mint) and for an unseen file (MINTS at the chat), a Courier lastResolvedMessageId naming one of the chat's own messages (MINTS before the participants — the mint-order proof; the message reuses it), a four-slot outfit gaining hair, a malformed slot salvaged",
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-a' }, { id: 'char-b' }],
+        files: [{ id: 'file-carried' }],
+        chats: [{
+          id: 'chat-old',
+          participants: [{ id: 'seat-a', characterId: 'char-a' }, { id: 'seat-b', characterId: 'char-b' }],
+          messages: [{ id: 'msg-1', participantId: 'seat-a' }, { id: 'msg-2', participantId: 'seat-b' }],
+          equippedOutfit: {
+            'char-a': { top: ['item-1'], bottom: [], footwear: [], accessories: [] },
+            'char-gone': { ...empty, top: ['item-9'] },
+            'char-b': { ...empty, top: 'item-2', hair: ['item-3', 5] },
+          },
+          characterAvatars: {
+            'char-b': { imageId: 'file-unseen', generatedAt: 'g2', afterMessageCount: 4 },
+            'char-a': { imageId: 'file-carried', generatedAt: 'g1', afterMessageCount: 1 },
+            'char-gone': { imageId: 'file-gone' },
+          },
+          courierCheckpoints: { 'char-b': { lastResolvedMessageId: 'msg-2', resolvedAt: 'r' } },
+          pendingOutfitNotifications: { 'char-a': { text: 'changed' }, 'char-gone': 'x' },
+        }],
+      }),
+    },
+    {
+      name: 'chat_keyed_edges',
+      note: "one chat per edge of the pure pass: a column as a JSON string (parsed); 'null' as a string, a number, an array, true (each UNREADABLE — the WARN, the column left as given); {} (patch {}, the DEBUG fires); null and absent (skipped); an outfit entry that is a JSON string (five empty slots); an avatar entry that is a JSON string with a string imageId (an OBJECT, minted); an avatar imageId that is a number (kept)",
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-a' }],
+        chats: [
+          { id: 'edge-json-string', participants: [], messages: [], pendingOutfitNotifications: JSON.stringify({ 'char-a': 'n' }) },
+          { id: 'edge-null-string', participants: [], messages: [], characterAvatars: 'null' },
+          { id: 'edge-unreadable-many', participants: [], messages: [], equippedOutfit: 5, characterAvatars: [], courierCheckpoints: true },
+          { id: 'edge-empty-object', participants: [], messages: [], equippedOutfit: {} },
+          { id: 'edge-null-and-absent', participants: [], messages: [], equippedOutfit: null },
+          { id: 'edge-outfit-entry-string', participants: [], messages: [], equippedOutfit: { 'char-a': JSON.stringify({ ...empty, top: ['item-1'] }) } },
+          { id: 'edge-avatar-entry-string', participants: [], messages: [], characterAvatars: { 'char-a': JSON.stringify({ imageId: 'file-s', generatedAt: 'g' }) } },
+          { id: 'edge-avatar-number', participants: [], messages: [], characterAvatars: { 'char-a': { imageId: 42 } } },
+        ],
+      }),
+    },
   ];
 }
 
@@ -1443,9 +1705,28 @@ async function main(): Promise<void> {
     '@/lib/backup/restore/uuid-remap'
   );
 
+  // [P4.D317] The module's two `backup:uuid-remap` lines (`e8e17b2d9`), any
+  // level, recorded per case (`logs`) for the Rust side's capture compare.
+  const UUID_REMAP_LOGGED = new Set([
+    'Chat character-keyed columns unreadable; left as given',
+    'Remapped character-keyed chat fields',
+  ]);
+  const { Logger } = await import('@/lib/logger');
+  const levels = ['error', 'warn', 'info', 'debug'] as const;
+  const originals = Object.fromEntries(levels.map((l) => [l, Logger.prototype[l]]));
+  let caseLogs: Array<Record<string, unknown>> = [];
+  for (const level of levels) {
+    const original = originals[level];
+    Logger.prototype[level] = function (this: unknown, message: string, context?: Record<string, unknown>, ...rest: unknown[]) {
+      if (UUID_REMAP_LOGGED.has(message)) caseLogs.push({ level, message, ...(context ?? {}) });
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+
   const outLines: string[] = [];
   for (const c of cases) {
     counter = 0;
+    caseLogs = [];
     const remapper = new UuidRemapper();
     // A deep clone per case: `remapBackupData` must never mutate its input, and
     // the corpus we just wrote is the Rust side's input too.
@@ -1453,19 +1734,29 @@ async function main(): Promise<void> {
     // P4.D264: the restore's order — plan on the ORIGINAL data first, same
     // remapper (`restore.ts:98-104`).
     const fixes = c.restorePath ? planWardrobeImagePointerFixes(input, remapper) : undefined;
-    const output = remapBackupData(input, c.targetUserId, remapper);
+    // [P4.D317 R-9 (b)] the outfit-history arm can THROW: recorded as `error`
+    // (no `output`), with the mapping minted before the throw.
+    let output: unknown;
+    let error: string | undefined;
+    try {
+      output = remapBackupData(input, c.targetUserId, remapper);
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    }
     outLines.push(
       JSON.stringify({
         name: c.name,
         corpusSha256,
         ...(fixes !== undefined ? { fixes } : {}),
-        output,
+        ...(error !== undefined ? { error } : { output }),
         mapping: remapper.getMapping(),
         size: remapper.getSize(),
         inputUnchanged: JSON.stringify(input) === JSON.stringify(c.data),
+        logs: caseLogs,
       }),
     );
   }
+  for (const level of levels) Logger.prototype[level] = originals[level] as never;
   fs.writeFileSync(outPath, outLines.join('\n') + '\n');
   rmSync(scratchRoot, { recursive: true, force: true });
   process.stderr.write(

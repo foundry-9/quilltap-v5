@@ -65,7 +65,7 @@ use sha2::{Digest, Sha256};
 // P4.D205: 38 + 1 = 39 (`chatInforms`, v4 `e7d77bb60`).
 // P4.D264: 39 + 1 = 40 (`wardrobeWear`, v4 `3ee3b1342`, the LAST key).
 // P4.D293: 40 - 1 = 39 (`vectorIndexMetas`, v4 `af48f6cc2`).
-const COLLECTIONS: [&str; 39] = [
+const COLLECTIONS: [&str; 40] = [
     "characters",
     "chats",
     "tags",
@@ -108,6 +108,8 @@ const COLLECTIONS: [&str; 39] = [
     "groupCharacterMembers",
     "textReplacementRules",
     "wardrobeWear",
+    // [P4.D317] v4 `7953da3a0`: the 40th returned key, always present.
+    "wardrobeHistory",
 ];
 
 fn corpus_path() -> PathBuf {
@@ -177,7 +179,6 @@ fn backup_data(data: &Map<String, Value>) -> BackupData {
         group_character_members: rows(data, "groupCharacterMembers"),
         text_replacement_rules: rows(data, "textReplacementRules"),
         wardrobe_wear: rows(data, "wardrobeWear"),
-        // [P4.D317] absent from every pre-`7953da3a0` corpus case → `[]`.
         wardrobe_history: rows(data, "wardrobeHistory"),
     }
 }
@@ -227,7 +228,49 @@ fn produced(out: &BackupData, key: &str) -> Vec<Value> {
         "groupCharacterMembers" => out.group_character_members.clone(),
         "textReplacementRules" => out.text_replacement_rules.clone(),
         "wardrobeWear" => out.wardrobe_wear.clone(),
+        "wardrobeHistory" => out.wardrobe_history.clone(),
         other => panic!("unknown collection `{other}`"),
+    }
+}
+
+/// [P4.D317] The module's two `backup:uuid-remap` lines (v4 `e8e17b2d9`
+/// `uuid-remap.ts:367-379`), compared line for line in order: v4's
+/// `{ level, message, chatId, fields, droppedEntries? }` rendered as v5's
+/// capture rig renders the twin (`fields` through the `…Json` convention).
+fn compare_uuid_remap_logs(name: &str, lines: &[String], want: &Value, failures: &mut Vec<String>) {
+    const TARGET: &str = "quilltap::backup::uuid_remap";
+    let got: Vec<&String> = lines
+        .iter()
+        .filter(|l| l.split(' ').nth(1) == Some(TARGET))
+        .collect();
+    let want: Vec<String> = want
+        .as_array()
+        .expect("the oracle row's logs")
+        .iter()
+        .map(|l| {
+            let mut s = format!(
+                "{} {TARGET} {} module=backup:uuid-remap",
+                l["level"].as_str().unwrap().to_uppercase(),
+                l["message"].as_str().unwrap()
+            );
+            if let Some(chat_id) = l["chatId"].as_str() {
+                s.push_str(&format!(" chatId={chat_id}"));
+            }
+            s.push_str(&format!(
+                " fieldsJson={}",
+                serde_json::to_string(&l["fields"]).unwrap()
+            ));
+            if let Some(n) = l["droppedEntries"].as_u64() {
+                s.push_str(&format!(" droppedEntries={n}"));
+            }
+            s
+        })
+        .collect();
+    let got: Vec<String> = got.into_iter().cloned().collect();
+    if got != want {
+        failures.push(format!(
+            "[{name}] backup:uuid-remap lines differ\n  rust:   {got:#?}\n  oracle: {want:#?}"
+        ));
     }
 }
 
@@ -353,9 +396,46 @@ fn backup_uuid_remap_equivalence() {
                 ));
             }
         }
-        let out = remap_backup_data(&input, target, &mut remapper);
+        // [P4.D317] `backup:uuid-remap` lines, captured on this thread.
+        let (result, lines) = quilltap_core::test_support::captured_with(|| {
+            remap_backup_data(&input, target, &mut remapper)
+        });
+        compare_uuid_remap_logs(name, &lines, &expected["logs"], &mut failures);
+        // [P4.D317 R-9 (b)] v4 THROWS on a non-array slot / a null history row:
+        // the whole remap refuses. Compared: the refusal both ways, its text,
+        // and the mapping minted before it.
+        let out = match (result, expected.get("error").and_then(Value::as_str)) {
+            (Err(got), Some(want)) => {
+                if got != want {
+                    failures.push(format!(
+                        "[{name}] refusal text: rust {got:?} vs oracle {want:?}"
+                    ));
+                }
+                let got_map =
+                    serde_json::to_string(&Value::Object(remapper.mapping_object())).unwrap();
+                let want_map = serde_json::to_string(&expected["mapping"]).unwrap();
+                if got_map != want_map {
+                    failures.push(format!(
+                        "[{name}] getMapping() before the refusal differs\n  {}",
+                        first_diff(&got_map, &want_map)
+                    ));
+                } else {
+                    println!("OK {name}: refused as v4 does ({got})");
+                }
+                continue;
+            }
+            (Ok(out), None) => out,
+            (Err(got), None) => {
+                failures.push(format!("[{name}] rust refused ({got}) where v4 remapped"));
+                continue;
+            }
+            (Ok(_), Some(want)) => {
+                failures.push(format!("[{name}] rust remapped where v4 refused ({want})"));
+                continue;
+            }
+        };
 
-        // 1. The oracle's returned object carries exactly the 39 collections.
+        // 1. The oracle's returned object carries exactly the 40 collections.
         let want_obj = expected["output"].as_object().expect("oracle output");
         let want_keys: Vec<&str> = want_obj.keys().map(String::as_str).collect();
         if want_keys != COLLECTIONS.to_vec() {
@@ -399,7 +479,7 @@ fn backup_uuid_remap_equivalence() {
 
         if diffs == 0 {
             println!(
-                "OK {name}: 39 collections byte-identical, {} ids remapped",
+                "OK {name}: 40 collections byte-identical, {} ids remapped",
                 remapper.size()
             );
         }

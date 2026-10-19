@@ -43,7 +43,8 @@
       "groupDocMountLinks",
       "groupCharacterMembers",
       "textReplacementRules",
-      "wardrobeWear"
+      "wardrobeWear",
+      "wardrobeHistory"
     ]
   },
   "cases": [
@@ -2844,7 +2845,8 @@
             "updatedAt": "2026-03-01T00:00:00.000Z"
           }
         ],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -2890,7 +2892,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -2979,7 +2982,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -3044,7 +3048,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -3122,7 +3127,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -3188,7 +3194,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -3253,7 +3260,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -3322,7 +3330,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -3385,7 +3394,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -3441,7 +3451,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -3510,7 +3521,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -3579,7 +3591,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -3651,7 +3664,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -3734,7 +3748,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -3815,7 +3830,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -3893,7 +3909,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -3959,7 +3976,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -4018,7 +4036,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -4182,7 +4201,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -4270,7 +4290,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -4340,7 +4361,8 @@
           }
         ],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -4420,7 +4442,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -4492,7 +4515,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -4543,7 +4567,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -4602,7 +4627,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -4666,7 +4692,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -4731,7 +4758,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -4825,7 +4853,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -4893,7 +4922,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -4969,7 +4999,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -5028,7 +5059,8 @@
             "userId": "old-user"
           }
         ],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -5136,7 +5168,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -5209,7 +5242,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -5307,7 +5341,8 @@
             "createdAt": "2026-01-04T00:00:00.000Z",
             "updatedAt": "2026-01-04T00:00:00.000Z"
           }
-        ]
+        ],
+        "wardrobeHistory": []
       }
     },
     {
@@ -5487,7 +5522,8 @@
             "createdAt": "2026-01-01T00:00:00.000Z",
             "updatedAt": "2026-03-01T00:00:00.000Z"
           }
-        ]
+        ],
+        "wardrobeHistory": []
       }
     },
     {
@@ -5570,7 +5606,8 @@
             "createdAt": "2026-01-01T00:00:00.000Z",
             "updatedAt": "2026-02-01T00:00:00.000Z"
           }
-        ]
+        ],
+        "wardrobeHistory": []
       }
     },
     {
@@ -5667,7 +5704,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -5755,7 +5793,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -5848,7 +5887,8 @@
             "createdAt": "2026-01-01T00:00:00.000Z",
             "updatedAt": "2026-03-01T00:00:00.000Z"
           }
-        ]
+        ],
+        "wardrobeHistory": []
       }
     },
     {
@@ -5923,7 +5963,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -5993,7 +6034,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -6160,7 +6202,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -6264,7 +6307,8 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     },
     {
@@ -6347,7 +6391,1541 @@
         "groupDocMountLinks": [],
         "groupCharacterMembers": [],
         "textReplacementRules": [],
-        "wardrobeWear": []
+        "wardrobeWear": [],
+        "wardrobeHistory": []
+      }
+    },
+    {
+      "name": "v4_outfit_history_five_entry_timeline",
+      "note": "v4 uuid-remapper.test.ts:1133 — a five-entry timeline under remapped ids: indices, cursor, the null first actor kept, hashes recomputed (equal: the items carry no document); the rows carry NO actorToolName key and the remap does not add one",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-old",
+            "name": "Bertie"
+          }
+        ],
+        "chats": [
+          {
+            "id": "chat-old",
+            "participants": [],
+            "messages": []
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [],
+        "wardrobeHistory": [
+          {
+            "id": "hist-0",
+            "chatId": "chat-old",
+            "characterId": "char-old",
+            "entryIndex": 0,
+            "slots": {
+              "top": [
+                "item-0"
+              ],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "bc9b483e07bbc868",
+            "source": "chat-start",
+            "actorCharacterId": null,
+            "isCurrent": false,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          },
+          {
+            "id": "hist-1",
+            "chatId": "chat-old",
+            "characterId": "char-old",
+            "entryIndex": 1,
+            "slots": {
+              "top": [
+                "item-1"
+              ],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "b27304ec9f24e781",
+            "source": "character",
+            "actorCharacterId": "char-old",
+            "isCurrent": false,
+            "createdAt": "2026-10-16T01:00:00.000Z"
+          },
+          {
+            "id": "hist-2",
+            "chatId": "chat-old",
+            "characterId": "char-old",
+            "entryIndex": 2,
+            "slots": {
+              "top": [
+                "item-2"
+              ],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "0385b0012a885d38",
+            "source": "character",
+            "actorCharacterId": "char-old",
+            "isCurrent": true,
+            "createdAt": "2026-10-16T02:00:00.000Z"
+          },
+          {
+            "id": "hist-3",
+            "chatId": "chat-old",
+            "characterId": "char-old",
+            "entryIndex": 3,
+            "slots": {
+              "top": [
+                "item-3"
+              ],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "6ce9e6ed00bf8561",
+            "source": "character",
+            "actorCharacterId": "char-old",
+            "isCurrent": false,
+            "createdAt": "2026-10-16T03:00:00.000Z"
+          },
+          {
+            "id": "hist-4",
+            "chatId": "chat-old",
+            "characterId": "char-old",
+            "entryIndex": 4,
+            "slots": {
+              "top": [
+                "item-4"
+              ],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "d21f3a8f7973183c",
+            "source": "character",
+            "actorCharacterId": "char-old",
+            "isCurrent": false,
+            "createdAt": "2026-10-16T04:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "v4_bug252_re_keys_every_character",
+      "note": "v4 uuid-remapper.test.ts:1207 — both carried characters re-keyed; an item with no document passes through; the outfit becomes a full five-slot bag",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-a",
+            "name": "Bertie"
+          },
+          {
+            "id": "char-b",
+            "name": "Jeeves"
+          }
+        ],
+        "chats": [
+          {
+            "id": "chat-old",
+            "participants": [],
+            "messages": [],
+            "equippedOutfit": {
+              "char-a": {
+                "top": [
+                  "item-unknown"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              },
+              "char-b": {
+                "top": [],
+                "bottom": [],
+                "footwear": [
+                  "item-other"
+                ],
+                "accessories": [],
+                "hair": []
+              }
+            }
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [],
+        "wardrobeHistory": []
+      }
+    },
+    {
+      "name": "v4_bug252_moves_slot_item_ids",
+      "note": "v4 uuid-remapper.test.ts:1227 — a frontmatter item kept, a path-derived item recomputed against the remapped mount",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-a",
+            "name": "Bertie"
+          },
+          {
+            "id": "char-b",
+            "name": "Jeeves"
+          }
+        ],
+        "chats": [
+          {
+            "id": "chat-old",
+            "participants": [],
+            "messages": [],
+            "equippedOutfit": {
+              "char-a": {
+                "top": [
+                  "33333333-3333-4333-8333-333333333333"
+                ],
+                "bottom": [],
+                "footwear": [
+                  "4314f830-e69f-8147-addc-42e035c75a7f"
+                ],
+                "accessories": [],
+                "hair": []
+              }
+            }
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [
+          {
+            "id": "link-1",
+            "fileId": "file-1",
+            "mountPointId": "44444444-4444-4444-8444-444444444444",
+            "relativePath": "Wardrobe/Coat.md"
+          },
+          {
+            "id": "link-2",
+            "fileId": "file-2",
+            "mountPointId": "44444444-4444-4444-8444-444444444444",
+            "relativePath": "Wardrobe/Spats.md"
+          }
+        ],
+        "docMountChunks": [],
+        "docMountDocuments": [
+          {
+            "id": "doc-1",
+            "fileId": "file-1",
+            "content": "---\nid: 33333333-3333-4333-8333-333333333333\ntitle: Coat\ntypes: [top]\n---\n"
+          },
+          {
+            "id": "doc-2",
+            "fileId": "file-2",
+            "content": "---\ntitle: Spats\ntypes: [footwear]\n---\n"
+          }
+        ],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [],
+        "wardrobeHistory": []
+      }
+    },
+    {
+      "name": "v4_bug252_agrees_with_the_history",
+      "note": "v4 uuid-remapper.test.ts:1262 — the chat outfit and the history row land on the SAME new character id and the same slots",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-a",
+            "name": "Bertie"
+          },
+          {
+            "id": "char-b",
+            "name": "Jeeves"
+          }
+        ],
+        "chats": [
+          {
+            "id": "chat-old",
+            "participants": [],
+            "messages": [],
+            "equippedOutfit": {
+              "char-a": {
+                "top": [
+                  "item-1"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              }
+            }
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [],
+        "wardrobeHistory": [
+          {
+            "id": "hist-0",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 0,
+            "slots": {
+              "top": [
+                "item-1"
+              ],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "b27304ec9f24e781",
+            "source": "chat-start",
+            "actorCharacterId": null,
+            "isCurrent": true,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "v4_bug252_leaves_a_chat_with_no_outfit_alone",
+      "note": "v4 uuid-remapper.test.ts:1281 — a null equippedOutfit stays null, an absent one stays absent; no DEBUG for either",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-a",
+            "name": "Bertie"
+          }
+        ],
+        "chats": [
+          {
+            "id": "chat-null",
+            "participants": [],
+            "messages": [],
+            "equippedOutfit": null
+          },
+          {
+            "id": "chat-absent",
+            "participants": [],
+            "messages": []
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [],
+        "wardrobeHistory": []
+      }
+    },
+    {
+      "name": "v4_bug252_other_columns",
+      "note": "v4 uuid-remapper.test.ts:1307-1360, one chat per `it`: the avatar follows its file (already minted by the files pass — no new mint), the Courier checkpoint follows its message (MINTED at the chat, reused by the message), a non-carried character's entry is DROPPED (droppedEntries), a queued notice re-keyed",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-a",
+            "name": "Bertie"
+          }
+        ],
+        "chats": [
+          {
+            "id": "chat-avatar",
+            "participants": [],
+            "messages": [
+              {
+                "id": "msg-a",
+                "type": "message"
+              }
+            ],
+            "characterAvatars": {
+              "char-a": {
+                "imageId": "file-old",
+                "generatedAt": "t",
+                "afterMessageCount": 2
+              }
+            }
+          },
+          {
+            "id": "chat-courier",
+            "participants": [],
+            "messages": [
+              {
+                "id": "msg-old",
+                "type": "message"
+              }
+            ],
+            "courierCheckpoints": {
+              "char-a": {
+                "lastResolvedMessageId": "msg-old",
+                "resolvedAt": "t"
+              }
+            }
+          },
+          {
+            "id": "chat-drop",
+            "participants": [],
+            "messages": [],
+            "equippedOutfit": {
+              "char-a": {
+                "top": [
+                  "x"
+                ]
+              },
+              "char-deleted": {
+                "top": [
+                  "y"
+                ]
+              }
+            }
+          },
+          {
+            "id": "chat-notice",
+            "participants": [],
+            "messages": [],
+            "pendingOutfitNotifications": {
+              "char-a": {
+                "text": "changed"
+              }
+            }
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [
+          {
+            "id": "file-old"
+          }
+        ],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [],
+        "wardrobeHistory": []
+      }
+    },
+    {
+      "name": "outfit_history_timeline",
+      "note": "five entries, the cursor mid-timeline, a null actor, an actor, a pascal row WITH actorToolName (copied), a pre-4ae20977f row with NO actorToolName key (absent in the output); a stale stored hash recomputed",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-a"
+          },
+          {
+            "id": "char-b"
+          }
+        ],
+        "chats": [
+          {
+            "id": "chat-old",
+            "participants": [],
+            "messages": []
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [],
+        "wardrobeHistory": [
+          {
+            "id": "h-0",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 0,
+            "slots": {
+              "top": [],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "ef4cf671632b17d7",
+            "source": "chat-start",
+            "actorCharacterId": null,
+            "actorToolName": null,
+            "isCurrent": false,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          },
+          {
+            "id": "h-1",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 1,
+            "slots": {
+              "top": [
+                "item-1"
+              ],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "b27304ec9f24e781",
+            "source": "operator",
+            "actorCharacterId": "char-b",
+            "actorToolName": null,
+            "isCurrent": false,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          },
+          {
+            "id": "h-2",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 2,
+            "slots": {
+              "top": [],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "stalehash0000000",
+            "source": "pascal",
+            "actorCharacterId": "char-a",
+            "actorToolName": "dress_for_dinner",
+            "isCurrent": true,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          },
+          {
+            "id": "h-3",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 3,
+            "slots": {
+              "top": [],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "ef4cf671632b17d7",
+            "source": "character",
+            "actorCharacterId": "char-a",
+            "isCurrent": false,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          },
+          {
+            "id": "h-4",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 4,
+            "slots": {
+              "top": [],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "ef4cf671632b17d7",
+            "source": "seeded",
+            "actorCharacterId": null,
+            "actorToolName": null,
+            "isCurrent": false,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "outfit_history_items",
+      "note": "slot item ids through the wear ledger's item remap: a frontmatter item kept, a path-derived item recomputed against the remapped mount, an unknown item passing through",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-a"
+          }
+        ],
+        "chats": [
+          {
+            "id": "chat-old",
+            "participants": [],
+            "messages": []
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [
+          {
+            "id": "link-1",
+            "fileId": "file-1",
+            "mountPointId": "44444444-4444-4444-8444-444444444444",
+            "relativePath": "Wardrobe/Coat.md"
+          },
+          {
+            "id": "link-2",
+            "fileId": "file-2",
+            "mountPointId": "44444444-4444-4444-8444-444444444444",
+            "relativePath": "Wardrobe/Spats.md"
+          }
+        ],
+        "docMountChunks": [],
+        "docMountDocuments": [
+          {
+            "id": "doc-1",
+            "fileId": "file-1",
+            "content": "---\nid: 33333333-3333-4333-8333-333333333333\ntitle: Coat\ntypes: [top]\n---\n"
+          },
+          {
+            "id": "doc-2",
+            "fileId": "file-2",
+            "content": "---\ntitle: Spats\ntypes: [footwear]\n---\n"
+          }
+        ],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [],
+        "wardrobeHistory": [
+          {
+            "id": "h-items",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 0,
+            "slots": {
+              "top": [
+                "33333333-3333-4333-8333-333333333333"
+              ],
+              "bottom": [],
+              "footwear": [
+                "4314f830-e69f-8147-addc-42e035c75a7f"
+              ],
+              "accessories": [
+                "item-unknown"
+              ],
+              "hair": []
+            },
+            "slotsHash": "284d1c3094082b82",
+            "source": "character",
+            "actorCharacterId": "char-a",
+            "actorToolName": null,
+            "isCurrent": true,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "outfit_history_phantom_character",
+      "note": "R-9 (a), v4-faithful: a characterId (and actor) the backup does not carry is MINTED by remapFields — after the row's id and chatId — where bug 252's chat pass DROPS the same character's entry",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-a"
+          }
+        ],
+        "chats": [
+          {
+            "id": "chat-old",
+            "participants": [],
+            "messages": [],
+            "equippedOutfit": {
+              "char-gone": {
+                "top": [],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              }
+            }
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [],
+        "wardrobeHistory": [
+          {
+            "id": "h-phantom",
+            "chatId": "chat-old",
+            "characterId": "char-gone",
+            "entryIndex": 0,
+            "slots": {
+              "top": [],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "ef4cf671632b17d7",
+            "source": "character",
+            "actorCharacterId": "char-gone-too",
+            "actorToolName": null,
+            "isCurrent": true,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "outfit_history_slot_shapes",
+      "note": "NO normalize in the remap: a missing slot and a null slot read [], a four-slot pre-hair bag gains hair, a null / string / array `slots` reads every slot [], a non-string element passes through and is hashed as given",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-a"
+          }
+        ],
+        "chats": [
+          {
+            "id": "chat-old",
+            "participants": [],
+            "messages": []
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [],
+        "wardrobeHistory": [
+          {
+            "id": "h-missing",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 0,
+            "slots": {
+              "top": [
+                "item-1"
+              ],
+              "footwear": null
+            },
+            "slotsHash": "b27304ec9f24e781",
+            "source": "character",
+            "actorCharacterId": "char-a",
+            "actorToolName": null,
+            "isCurrent": false,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          },
+          {
+            "id": "h-four",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 1,
+            "slots": {
+              "top": [],
+              "bottom": [
+                "item-2"
+              ],
+              "footwear": [],
+              "accessories": []
+            },
+            "slotsHash": "d3c85eaa83fc0557",
+            "source": "character",
+            "actorCharacterId": "char-a",
+            "actorToolName": null,
+            "isCurrent": false,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          },
+          {
+            "id": "h-null",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 2,
+            "slots": null,
+            "slotsHash": "ef4cf671632b17d7",
+            "source": "character",
+            "actorCharacterId": "char-a",
+            "actorToolName": null,
+            "isCurrent": false,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          },
+          {
+            "id": "h-string",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 3,
+            "slots": "not an object",
+            "slotsHash": "ef4cf671632b17d7",
+            "source": "character",
+            "actorCharacterId": "char-a",
+            "actorToolName": null,
+            "isCurrent": false,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          },
+          {
+            "id": "h-array",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 4,
+            "slots": [
+              [
+                "item-3"
+              ]
+            ],
+            "slotsHash": "ef4cf671632b17d7",
+            "source": "character",
+            "actorCharacterId": "char-a",
+            "actorToolName": null,
+            "isCurrent": false,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          },
+          {
+            "id": "h-elements",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 5,
+            "slots": {
+              "top": [
+                "item-1",
+                7,
+                null,
+                {
+                  "k": 1
+                }
+              ],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "4df107a48fee5b95",
+            "source": "character",
+            "actorCharacterId": "char-a",
+            "actorToolName": null,
+            "isCurrent": true,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "outfit_history_non_array_slot_throws",
+      "note": "R-9 (b), v4-faithful: a non-array slot value makes the arm's `.map` THROW, aborting the WHOLE remapBackupData (a new-account restore of such an archive fails before any write); the mapping minted before the throw is recorded",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-a"
+          }
+        ],
+        "chats": [
+          {
+            "id": "chat-old",
+            "participants": [],
+            "messages": []
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [],
+        "wardrobeHistory": [
+          {
+            "id": "h-ok",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 0,
+            "slots": {
+              "top": [],
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "ef4cf671632b17d7",
+            "source": "character",
+            "actorCharacterId": "char-a",
+            "actorToolName": null,
+            "isCurrent": false,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          },
+          {
+            "id": "h-bad",
+            "chatId": "chat-old",
+            "characterId": "char-a",
+            "entryIndex": 1,
+            "slots": {
+              "top": "item-1",
+              "bottom": [],
+              "footwear": [],
+              "accessories": [],
+              "hair": []
+            },
+            "slotsHash": "08e7e69e45f57769",
+            "source": "character",
+            "actorCharacterId": "char-a",
+            "actorToolName": null,
+            "isCurrent": true,
+            "createdAt": "2026-10-16T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "outfit_history_null_row_throws",
+      "note": "a null history row throws (`row.slots` on null) — the same whole-remap refusal",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-a"
+          }
+        ],
+        "chats": [
+          {
+            "id": "chat-old",
+            "participants": [],
+            "messages": []
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [],
+        "wardrobeHistory": [
+          null
+        ]
+      }
+    },
+    {
+      "name": "chat_keyed_bug252",
+      "note": "all four columns on one chat: a carried character re-keyed, a NON-carried one DROPPED (droppedEntries), an avatar imageId for a carried file (no mint) and for an unseen file (MINTS at the chat), a Courier lastResolvedMessageId naming one of the chat's own messages (MINTS before the participants — the mint-order proof; the message reuses it), a four-slot outfit gaining hair, a malformed slot salvaged",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-a"
+          },
+          {
+            "id": "char-b"
+          }
+        ],
+        "chats": [
+          {
+            "id": "chat-old",
+            "participants": [
+              {
+                "id": "seat-a",
+                "characterId": "char-a"
+              },
+              {
+                "id": "seat-b",
+                "characterId": "char-b"
+              }
+            ],
+            "messages": [
+              {
+                "id": "msg-1",
+                "participantId": "seat-a"
+              },
+              {
+                "id": "msg-2",
+                "participantId": "seat-b"
+              }
+            ],
+            "equippedOutfit": {
+              "char-a": {
+                "top": [
+                  "item-1"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": []
+              },
+              "char-gone": {
+                "top": [
+                  "item-9"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              },
+              "char-b": {
+                "top": "item-2",
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": [
+                  "item-3",
+                  5
+                ]
+              }
+            },
+            "characterAvatars": {
+              "char-b": {
+                "imageId": "file-unseen",
+                "generatedAt": "g2",
+                "afterMessageCount": 4
+              },
+              "char-a": {
+                "imageId": "file-carried",
+                "generatedAt": "g1",
+                "afterMessageCount": 1
+              },
+              "char-gone": {
+                "imageId": "file-gone"
+              }
+            },
+            "courierCheckpoints": {
+              "char-b": {
+                "lastResolvedMessageId": "msg-2",
+                "resolvedAt": "r"
+              }
+            },
+            "pendingOutfitNotifications": {
+              "char-a": {
+                "text": "changed"
+              },
+              "char-gone": "x"
+            }
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [
+          {
+            "id": "file-carried"
+          }
+        ],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [],
+        "wardrobeHistory": []
+      }
+    },
+    {
+      "name": "chat_keyed_edges",
+      "note": "one chat per edge of the pure pass: a column as a JSON string (parsed); 'null' as a string, a number, an array, true (each UNREADABLE — the WARN, the column left as given); {} (patch {}, the DEBUG fires); null and absent (skipped); an outfit entry that is a JSON string (five empty slots); an avatar entry that is a JSON string with a string imageId (an OBJECT, minted); an avatar imageId that is a number (kept)",
+      "targetUserId": "11111111-2222-3333-4444-555555555555",
+      "data": {
+        "characters": [
+          {
+            "id": "char-a"
+          }
+        ],
+        "chats": [
+          {
+            "id": "edge-json-string",
+            "participants": [],
+            "messages": [],
+            "pendingOutfitNotifications": "{\"char-a\":\"n\"}"
+          },
+          {
+            "id": "edge-null-string",
+            "participants": [],
+            "messages": [],
+            "characterAvatars": "null"
+          },
+          {
+            "id": "edge-unreadable-many",
+            "participants": [],
+            "messages": [],
+            "equippedOutfit": 5,
+            "characterAvatars": [],
+            "courierCheckpoints": true
+          },
+          {
+            "id": "edge-empty-object",
+            "participants": [],
+            "messages": [],
+            "equippedOutfit": {}
+          },
+          {
+            "id": "edge-null-and-absent",
+            "participants": [],
+            "messages": [],
+            "equippedOutfit": null
+          },
+          {
+            "id": "edge-outfit-entry-string",
+            "participants": [],
+            "messages": [],
+            "equippedOutfit": {
+              "char-a": "{\"top\":[\"item-1\"],\"bottom\":[],\"footwear\":[],\"accessories\":[],\"hair\":[]}"
+            }
+          },
+          {
+            "id": "edge-avatar-entry-string",
+            "participants": [],
+            "messages": [],
+            "characterAvatars": {
+              "char-a": "{\"imageId\":\"file-s\",\"generatedAt\":\"g\"}"
+            }
+          },
+          {
+            "id": "edge-avatar-number",
+            "participants": [],
+            "messages": [],
+            "characterAvatars": {
+              "char-a": {
+                "imageId": 42
+              }
+            }
+          }
+        ],
+        "tags": [],
+        "connectionProfiles": [],
+        "imageProfiles": [],
+        "embeddingProfiles": [],
+        "memories": [],
+        "files": [],
+        "promptTemplates": [],
+        "roleplayTemplates": [],
+        "providerModels": [],
+        "projects": [],
+        "groups": [],
+        "llmLogs": [],
+        "pluginConfigs": [],
+        "chatSettings": [],
+        "folders": [],
+        "wardrobeItems": [],
+        "characterPluginData": [],
+        "conversationAnnotations": [],
+        "chatDocuments": [],
+        "chatInforms": [],
+        "instanceSettings": [],
+        "embeddingStatus": [],
+        "conversationChunks": [],
+        "tfidfVocabularies": [],
+        "vectorEntries": [],
+        "docMountPoints": [],
+        "docMountFolders": [],
+        "docMountFiles": [],
+        "docMountFileLinks": [],
+        "docMountChunks": [],
+        "docMountDocuments": [],
+        "docMountBlobs": [],
+        "projectDocMountLinks": [],
+        "groupDocMountLinks": [],
+        "groupCharacterMembers": [],
+        "textReplacementRules": [],
+        "wardrobeWear": [],
+        "wardrobeHistory": []
       }
     }
   ]

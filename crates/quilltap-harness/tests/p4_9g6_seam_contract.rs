@@ -49,7 +49,9 @@ use serde_json::Value;
 // to a `fn` pointer accepts only an identical signature, so a changed parameter
 // type, a changed order, or a changed return type is a build failure here.
 
-const _REMAP_BACKUP_DATA: fn(&BackupData, &str, &mut UuidRemapper) -> BackupData =
+// P4.D317: the return became `Result<_, String>` — v4's outfit-history arm
+// throws on a non-array slot (`7953da3a0`), refusing the whole remap.
+const _REMAP_BACKUP_DATA: fn(&BackupData, &str, &mut UuidRemapper) -> Result<BackupData, String> =
     remap_backup_data;
 
 #[allow(clippy::type_complexity)]
@@ -160,7 +162,9 @@ fn parse_then_remap_composes() {
         format!("00000000-0000-4000-8000-{n:012}")
     }));
 
-    let remapped = remap_backup_data(&parsed.data, "seam-target-user", &mut remapper);
+    // P4.D317: fallible since the outfit-history arm (a non-array slot throws).
+    let remapped = remap_backup_data(&parsed.data, "seam-target-user", &mut remapper)
+        .expect("the committed archive remaps");
 
     // Shape is preserved: the remap rewrites ids, it never adds or drops rows.
     assert_eq!(remapped.characters.len(), parsed.data.characters.len());
