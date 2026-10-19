@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(spa): the Wardrobe History tab component (P4.D318, v4 8d8618819)
+
+_Versions: SPA 0.5.875._
+
+P4.D318 unit 2. NEW `qt-outfit-history-tab`, v4 `8d8618819`'s `outfit-history-tab.tsx` ported whole: newest first, `Wearing now` on the current entry, `Wear again` (disabled for every entry while a rollback is in flight) with the stale-garment tooltip, the confirm-then-discard path when the Live tab holds staged edits, the `Back in outfit N` / skipped-item success toasts, the server's sentence on a refusal, the `· gone` / `· archived` badges with slot-label titles, `Nothing at all.`, the relative time with the full date as its title, and `changedBy` rendered verbatim. The read is `injectQuery` on `chatKeys.wardrobeHistory`; the rollback is an awaited call guarded by a `rollbackPending` signal that spans the settle (histories invalidated, then `discardStagedEdits({ reseed: true })`). Inputs are read into locals before the first await so a character switch mid-rollback settles the character clicked. Spec: v4's six cases name for name over v4's fixture, six v5-added cases for the strings v4 does not assert, and `staleCount`.
+
 #### 2026-10-19 — feat(spa): outfit-history contract types, chat-scoped query keys and the two dispatch calls (P4.D318)
 
 _Versions: SPA 0.5.874._
