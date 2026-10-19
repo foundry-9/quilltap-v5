@@ -400,6 +400,7 @@ fn workbench_route_matches_oracle() {
     let cases = corpus["cases"].as_array().expect("cases array");
 
     let mut checked = 0usize;
+    let mut wardrobe_resolutions = 0usize;
     let mut progress_sheets = 0usize;
     let mut gate_verdicts: Vec<serde_json::Value> = Vec::new();
     let mut statuses: Vec<u16> = Vec::new();
@@ -528,9 +529,40 @@ fn workbench_route_matches_oracle() {
                 progress_sheets += 1;
             }
         }
+        // P4.D319 (v4 `5cb0e0190`, C3 §1): `wardrobeResolution` is the body's
+        // LAST key — after `gate`, after `progress` — and present only for a
+        // seated preview. `canon` is order-blind, so the position is pinned on
+        // the serialized bytes of BOTH sides (the key order v5 sends is the
+        // order v4's spread produced). Success bodies only: an error
+        // envelope's `details` is `canon_reason`'s business.
+        if status == 200 {
+            let data = body.get("data").unwrap_or(&body);
+            let want_data = want["body"].get("data").unwrap_or(&want["body"]);
+            if let Some(obj) = data.as_object() {
+                let keys: Vec<&String> = obj.keys().collect();
+                let want_keys: Vec<&String> = want_data
+                    .as_object()
+                    .map(|o| o.keys().collect())
+                    .unwrap_or_default();
+                assert_eq!(keys, want_keys, "case '{name}': body key order");
+                if obj.contains_key("wardrobeResolution") {
+                    assert_eq!(
+                        keys.last().map(|k| k.as_str()),
+                        Some("wardrobeResolution"),
+                        "case '{name}': `wardrobeResolution` must be LAST"
+                    );
+                    wardrobe_resolutions += 1;
+                }
+            }
+        }
         statuses.push(status);
         checked += 1;
     }
+    // P4.D319: exactly the one seated wardrobe preview carries the key.
+    assert_eq!(
+        wardrobe_resolutions, 1,
+        "exactly one preview carries `wardrobeResolution` (saw {wardrobe_resolutions})"
+    );
     // The §C.4 floor: a corpus that stopped posing a progressions-carrying
     // bench body would leave the arms above vacuous.
     assert!(

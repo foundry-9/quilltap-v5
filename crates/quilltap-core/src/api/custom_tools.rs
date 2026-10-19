@@ -34,6 +34,7 @@ use crate::chat_predicates::{is_participant_present, ParticipantStatus};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, DbError};
 use crate::jsstr::js_trim;
+use crate::pascal::bench_wardrobe::resolve_bench_wardrobe;
 use crate::pascal::custom_tool_types::{
     display_title, Visibility, MAX_LLM_OUTPUT_CEILING, MAX_LLM_OUTPUT_LENGTH,
 };
@@ -946,6 +947,10 @@ struct BenchRequest {
     state: Option<Value>,
     definition: crate::pascal::custom_tool_types::QtapCustomTool,
     metadata: Map<String, Value>,
+    /// The seated character's name, for `{{character}}` — kept only when
+    /// non-empty (v4's truthy spread); `None` for a hand-typed sheet. Untrimmed:
+    /// `execute_custom_tool` trims (v4 `a05c6f755`). The audit ignores it.
+    character_name: Option<String>,
 }
 
 /// The steps both bench actions open with: read the params and the mock state,
@@ -964,12 +969,17 @@ fn parse_bench_request(
     metadata: Option<&Value>,
     state: Option<&Value>,
 ) -> Result<BenchRequest, Response> {
+    let params = parse_params(params)?;
+    // §B: mock merged state for `$state` refs (v4 `body.value.state ?? {}`).
+    let state = parse_state(state)?;
+    let definition = parse_definition(definition)?;
+    let (metadata, character_name) = resolve_metadata(db, metadata)?;
     Ok(BenchRequest {
-        params: parse_params(params)?,
-        // §B: mock merged state for `$state` refs (v4 `body.value.state ?? {}`).
-        state: parse_state(state)?,
-        definition: parse_definition(definition)?,
-        metadata: resolve_metadata(db, metadata)?,
+        params,
+        state,
+        definition,
+        metadata,
+        character_name: character_name.filter(|n| !n.is_empty()),
     })
 }
 
@@ -1041,36 +1051,38 @@ fn parse_state(raw: Option<&Value>) -> Result<Option<Value>, Response> {
 /// that character and uses their real `metadata.json` — the honest "what would
 /// happen if THEY rolled this".
 ///
-/// Two details are load-bearing and mirror v4 exactly:
+/// Three details are load-bearing and mirror v4 exactly:
 ///
-/// 1. **The `{ characterId }` test is `resolveMetadata`'s own**, not the
-///    schema's: exactly one key, named `characterId`, holding a string. The
-///    schema's first union branch additionally demands `min(1)`, so
-///    `{ characterId: "" }` falls through the union to the catch-all record —
-///    and then this check still treats it as a character reference, hydrating
-///    the empty id into a 404. Checking `min(1)` here would answer `{}` instead.
+/// 1. **The `{ characterId }` test is [`bench_character_id`]**, not the
+///    schema's: exactly one key, named `characterId`, holding a NON-EMPTY
+///    string. So `{ characterId: "" }` (which fails the schema's `min(1)`
+///    branch and lands in the record branch) is a HAND-TYPED sheet: 200 with
+///    the sheet as given (v4 `5cb0e0190` — it was a 404 before); preview and
+///    audit share it.
 /// 2. **A broken vault is surfaced honestly, never papered over with `{}`** —
 ///    the bench would otherwise report metadata rows declining for the wrong
 ///    reason. The hydration therefore goes through the overlay directly rather
 ///    than `characters_read::find_by_id`, which flattens the vault-unavailable
 ///    case into a generic DB error and loses the 422.
-fn resolve_metadata(db: &Db, metadata: Option<&Value>) -> Result<Map<String, Value>, Response> {
+/// 3. **The seated character's name answers `{{character}}`**; a hand-typed
+///    sheet names nobody, so the placeholder renders as written, as for a run
+///    nobody made (v4 `a05c6f755`). The name is the OVERLAID row's, untrimmed.
+fn resolve_metadata(
+    db: &Db,
+    metadata: Option<&Value>,
+) -> Result<(Map<String, Value>, Option<String>), Response> {
     let Some(metadata) = metadata else {
-        return Ok(Map::new());
+        return Ok((Map::new(), None));
     };
     if metadata.is_null() {
-        return Ok(Map::new());
+        return Ok((Map::new(), None));
     }
     let Some(obj) = metadata.as_object() else {
         return Err(bad_request("Invalid request body"));
     };
 
-    let character_id = match obj.len() == 1 {
-        true => obj.get("characterId").and_then(Value::as_str),
-        false => None,
-    };
-    let Some(character_id) = character_id else {
-        return Ok(obj.clone());
+    let Some(character_id) = bench_character_id(Some(metadata)) else {
+        return Ok((obj.clone(), None));
     };
 
     let character_id = character_id.to_string();
@@ -1094,12 +1106,31 @@ fn resolve_metadata(db: &Db, metadata: Option<&Value>) -> Result<Map<String, Val
             Err(unprocessable(u.message()))
         }
         Ok(Ok(None)) => Err(not_found("Character")),
-        Ok(Ok(Some(character))) => Ok(character
-            .get("metadata")
-            .and_then(Value::as_object)
-            .cloned()
-            .unwrap_or_default()),
+        Ok(Ok(Some(character))) => Ok((
+            character
+                .get("metadata")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default(),
+            character
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+        )),
     }
+}
+
+/// v4 `benchCharacterId` (`5cb0e0190`) — the character a bench request seats
+/// in the chair, when its fact sheet is the `{ characterId }` form: an object
+/// of EXACTLY one key, `characterId` a non-empty string.
+fn bench_character_id(metadata: Option<&Value>) -> Option<&str> {
+    let obj = metadata?.as_object()?;
+    if obj.len() != 1 {
+        return None;
+    }
+    obj.get("characterId")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
 }
 
 /// Serialize a run result to v4's `CustomToolRunResult` wire shape.
@@ -1257,7 +1288,10 @@ impl LlmInvoker for ScriptedBenchInvoker {
     }
 }
 
-/// v4 `handlePreview` — one deal through the shared execution core.
+/// v4 `handlePreview` — one deal through the shared execution core. Posts
+/// nothing, writes nothing. With a character in the chair, also says which
+/// garment each wardrobe gesture would have found (a read — v4 `5cb0e0190`'s
+/// `wardrobeResolution`, the body's LAST key).
 /// `consult` is the assembled seam behind the `{live:true}` bench arm
 /// (`CompletionProvider` itself is RPITIT and so not dyn-compatible — the
 /// erased object is the [`ConsultRunner`], per `pascal::llm_consult`). A live
@@ -1278,11 +1312,15 @@ pub async fn custom_tool_preview(
     // progress sheet, its gate verdict and `{{now}}`.
     now_ms: i64,
 ) -> Response {
+    // v4 reads the chair from the RAW body (`benchCharacterId(body.metadata)`),
+    // not the resolved sheet — taken before the sheet shadows it.
+    let chair = bench_character_id(metadata).map(str::to_string);
     let BenchRequest {
         params,
         state,
         definition,
         metadata,
+        character_name,
     } = match parse_bench_request(db, definition, params, metadata, state) {
         Ok(p) => p,
         Err(r) => return r,
@@ -1351,12 +1389,25 @@ pub async fn custom_tool_preview(
         invoker,
         Some(&progress),
         now_ms,
-        None,
+        character_name.as_deref(),
     )
     .await
     {
         Ok(result) => {
             let mut body = run_result_to_value(&result);
+            // With a character in the chair, say which garment each wardrobe
+            // gesture would have found — the applier's own lookup, and a read
+            // only. A hand-typed sheet names nobody, so it gets no resolution
+            // (v4 `5cb0e0190`). Runs AFTER the deal, so a `{{character}}` in a
+            // ref is already the seated name.
+            let wardrobe_resolution = chair.as_deref().and_then(|id| {
+                resolve_bench_wardrobe(
+                    db,
+                    id,
+                    result.effects.as_deref().unwrap_or_default(),
+                    &definition.name,
+                )
+            });
             // The bench always deals — a gate decides whether a character is
             // OFFERED a tool, not whether the author may test one they are
             // holding. The verdict rides along so the bench can say "and this
@@ -1384,6 +1435,12 @@ pub async fn custom_tool_preview(
                     obj.insert("progress".into(), Value::Object(progress.clone()));
                 }
             }
+            // ...and `wardrobeResolution` LAST, only when defined.
+            if let Some(resolution) = wardrobe_resolution {
+                if let Some(obj) = body.as_object_mut() {
+                    obj.insert("wardrobeResolution".into(), Value::Array(resolution));
+                }
+            }
             Response::CustomToolPreview(body)
         }
         Err(CustomToolRunError(reason)) => unprocessable(reason),
@@ -1404,12 +1461,14 @@ pub fn custom_tool_audit(
     // bench already states for a pretend consult.
     now_ms: i64,
 ) -> Response {
-    // §B's mock state is held fixed across every draw.
+    // §B's mock state is held fixed across every draw. The audit never
+    // renders, so it has no use for the seated name (v4 `handleAudit`).
     let BenchRequest {
         params,
         state,
         definition,
         metadata,
+        character_name: _,
     } = match parse_bench_request(db, definition, params, metadata, state) {
         Ok(p) => p,
         Err(r) => return r,
@@ -1542,5 +1601,36 @@ mod tests {
         let at = |k: &str| keys.iter().position(|s| *s == k).unwrap();
         assert_eq!(at("vaultMountPointId"), at("asCharacterId") + 1);
         assert_eq!(at("definitionPath"), at("vaultMountPointId") + 1);
+    }
+}
+
+#[cfg(test)]
+mod bench_character_id_tests {
+    //! v4 `benchCharacterId` (`5cb0e0190`): an object of EXACTLY one key,
+    //! `characterId` a NON-EMPTY string — the route family pins the 200s
+    //! (`preview-empty-character-id`, `audit-empty-character-id`,
+    //! `preview-character-id-plus-key`); these pin the predicate's corners.
+    use super::bench_character_id;
+    use serde_json::json;
+
+    #[test]
+    fn seats_only_a_lone_non_empty_character_id() {
+        assert_eq!(
+            bench_character_id(Some(&json!({ "characterId": "x" }))),
+            Some("x")
+        );
+        assert_eq!(
+            bench_character_id(Some(&json!({ "characterId": "" }))),
+            None
+        );
+        assert_eq!(
+            bench_character_id(Some(&json!({ "characterId": "x", "other": 1 }))),
+            None
+        );
+        assert_eq!(bench_character_id(Some(&json!({ "characterId": 5 }))), None);
+        assert_eq!(bench_character_id(Some(&json!({ "mood": "grim" }))), None);
+        assert_eq!(bench_character_id(Some(&json!(null))), None);
+        assert_eq!(bench_character_id(Some(&json!(["x"]))), None);
+        assert_eq!(bench_character_id(None), None);
     }
 }

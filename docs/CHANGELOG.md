@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(pascal): the Workbench wardrobe lens and the wearable-reference rule (v4 5cb0e0190, P4.D319)
+
+_Versions: core 0.0.1316._
+
+Ports v4 `5cb0e0190`'s server half. A new `pascal::bench_wardrobe` resolves each wardrobe gesture of a dry run against the seated character's wearable pool (no project tier, operator view) through the applier's own lookups: take-offs through `find_in_pool` (archived items found), put-ons through `resolve_wearable`; misses carry v4's reason and the re-spelled `Wardrobe item not found with title "<ref>"`. `?action=preview` appends `wardrobeResolution` as the body's last key when the raw sheet is exactly `{ characterId: <non-empty> }` and the run carries a gesture; a failed wardrobe read logs v4's WARN and drops the key, a successful one logs the counts. `{ "characterId": "" }` is now a hand-typed sheet (200 on preview and audit, was 404), and the seated character's name answers `{{character}}` on the bench. A new `wardrobe::wearable_ref` holds v4's one reference rule (id first, then trimmed case-insensitive title; templated refs never resolve); `find_by_title` is unchanged. New tier-1 family `pascal_bench_wardrobe_equivalence` over v4's real lens, pool, execution core and `wearable-ref.ts`; the workbench route corpus re-aims `preview-empty-character-id` and adds the `{{character}}` and wardrobe-lens rows, with the body's key order now byte-compared.
+
 #### 2026-10-19 — test(pascal): announced_dresser through the three entrances; announcer consequence pins (P4.D319)
 
 _Versions: core 0.0.1315._

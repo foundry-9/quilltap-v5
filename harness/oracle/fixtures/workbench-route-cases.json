@@ -353,6 +353,61 @@
           "state": "partial"
         }
       ]
+    },
+    "characterNamed": {
+      "name": "character_named",
+      "description": "Names whoever rolls.",
+      "chipLabel": "For {{character}}",
+      "roll": {
+        "min": 2,
+        "max": 2
+      },
+      "outcomes": [
+        {
+          "when": true,
+          "message": "{{character}} rolls {{value}}",
+          "state": "info"
+        }
+      ]
+    },
+    "wardrobeLens": {
+      "name": "wardrobe_lens",
+      "description": "Dresses whoever rolls.",
+      "roll": {
+        "min": 1,
+        "max": 1
+      },
+      "effects": [
+        {
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Sundress"
+            ]
+          }
+        },
+        {
+          "wardrobe": {
+            "action": "clear_slot",
+            "slot": "hair"
+          }
+        },
+        {
+          "wardrobe": {
+            "action": "take_off",
+            "items": [
+              "Old Coat"
+            ]
+          }
+        }
+      ],
+      "outcomes": [
+        {
+          "when": true,
+          "message": "done",
+          "state": "info"
+        }
+      ]
     }
   },
   "cases": [
@@ -435,6 +490,16 @@
       "name": "preview-empty-character-id",
       "method": "POST",
       "action": "preview",
+      "definition": "gated",
+      "metadata": {
+        "characterId": ""
+      },
+      "comment": "RE-AIMED BY DESIGN at P4.D319 (v4 5cb0e0190): benchCharacterId demands a NON-EMPTY id, so { characterId: \"\" } is a HAND-TYPED sheet - 200 with the sheet as given (the gated definition then declines its metadata row). It was a 404 before. Never 'fix' v5 back."
+    },
+    {
+      "name": "audit-empty-character-id",
+      "method": "POST",
+      "action": "audit",
       "definition": "gated",
       "metadata": {
         "characterId": ""
@@ -1003,6 +1068,54 @@
       },
       "nowMs": 1788004800000,
       "_comment": "The same audit against the charging character: the other outcome takes every run."
+    },
+    {
+      "name": "preview-character-name-as-imogen",
+      "method": "POST",
+      "action": "preview",
+      "definition": "characterNamed",
+      "metadataCharacter": "imogen"
+    },
+    {
+      "name": "preview-character-hand-typed",
+      "method": "POST",
+      "action": "preview",
+      "definition": "characterNamed",
+      "metadata": {
+        "mood": "x"
+      }
+    },
+    {
+      "name": "preview-wardrobe-seated",
+      "method": "POST",
+      "action": "preview",
+      "definition": "wardrobeLens",
+      "metadataCharacter": "imogen"
+    },
+    {
+      "name": "preview-wardrobe-hand-typed",
+      "method": "POST",
+      "action": "preview",
+      "definition": "wardrobeLens",
+      "metadata": {
+        "mood": "x"
+      }
+    },
+    {
+      "name": "preview-wardrobe-empty-character-id",
+      "method": "POST",
+      "action": "preview",
+      "definition": "wardrobeLens",
+      "metadata": {
+        "characterId": ""
+      }
+    },
+    {
+      "name": "audit-wardrobe-seated",
+      "method": "POST",
+      "action": "audit",
+      "definition": "wardrobeLens",
+      "metadataCharacter": "imogen"
     }
   ]
 }

@@ -21,6 +21,7 @@
 
 pub mod operator_provenance;
 pub mod rollback;
+pub mod wearable_ref;
 
 use std::collections::HashSet;
 
