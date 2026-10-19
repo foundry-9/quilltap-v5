@@ -28,6 +28,8 @@ describe('chatKeys (the swept chat query-key spellings)', () => {
       chatKeys.gallery('chat-1'),
       chatKeys.informs('chat-1'),
       chatKeys.scenarioSource('chat-1'),
+      chatKeys.wardrobeHistories('chat-1'),
+      chatKeys.wardrobeHistory('chat-1', 'char-1'),
     ]) {
       expect(sub.slice(0, detail.length)).toEqual([...detail]);
     }
@@ -99,6 +101,44 @@ describe('chatKeys (the swept chat query-key spellings)', () => {
 
     it('is a per-chat key, not reachable from the bare collection prefix', () => {
       expect(chatKeys.scenarioSource('chat-1')[0]).not.toBe(chatKeys.all[0]);
+    });
+  });
+
+  describe('wardrobeHistories / wardrobeHistory (P4.D318 — v4 queryKeys.wardrobe.histories / .history, 8d8618819)', () => {
+    it('is the raw shape the History tab reads and the rollback invalidates', () => {
+      expect(chatKeys.wardrobeHistories('chat-1')).toEqual(['chat', 'chat-1', 'wardrobe-history']);
+      expect(chatKeys.wardrobeHistory('chat-1', 'char-1')).toEqual([
+        'chat',
+        'chat-1',
+        'wardrobe-history',
+        'char-1',
+      ]);
+    });
+
+    it("the prefix property (v4's): one character's timeline sits under the chat's histories", () => {
+      expect(chatKeys.wardrobeHistory('chat-1', 'char-1').slice(0, 3)).toEqual([
+        ...chatKeys.wardrobeHistories('chat-1'),
+      ]);
+    });
+
+    it('is distinct from every other per-chat sub-key', () => {
+      const histories = chatKeys.wardrobeHistories('chat-1');
+      for (const other of [
+        ['chat', 'chat-1', 'outfit-summary'],
+        ['chat', 'chat-1', 'background'],
+        chatKeys.gallery('chat-1'),
+        chatKeys.informs('chat-1'),
+        chatKeys.scenarioSource('chat-1'),
+      ]) {
+        expect(other.slice(0, histories.length)).not.toEqual([...histories]);
+        expect(histories.slice(0, other.length)).not.toEqual([...other]);
+      }
+    });
+
+    it("sits under the 'chats' topic's row prefix, never the bare collection prefix", () => {
+      const [prefix] = queryKeysForTopic('chats', 'chat-1') as readonly (readonly unknown[])[];
+      expect(chatKeys.wardrobeHistory('chat-1', 'char-1').slice(0, prefix.length)).toEqual([...prefix]);
+      expect(chatKeys.wardrobeHistories('chat-1')[0]).not.toBe(chatKeys.all[0]);
     });
   });
 });

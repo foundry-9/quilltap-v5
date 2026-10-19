@@ -64,4 +64,27 @@ export const chatKeys = {
    * ASSERTION in the spec, no `realtime-topic-map.ts` hunk).
    */
   scenarioSource: (chatId: string) => ['chat', chatId, 'scenario-source'] as const,
+  // === P4.D318: outfit history (R-H) ===
+  /**
+   * The prefix of every character's outfit timeline in one conversation (v4
+   * `queryKeys.wardrobe.histories`, `8d8618819`) — what the History tab's
+   * rollback invalidates on settle.
+   *
+   * v4 spends a topic-map ROW on it (`['wardrobe', 'history', chatId]` in the
+   * row-scoped `chats` case); v5 spends an ASSERTION — like {@link
+   * scenarioSource} (P4.D302 L-D) it sits under {@link detail}'s prefix, so the
+   * `chats` topic already reaches it. The SPELLING differs from v4's — a
+   * recorded divergence class; only distinctness and that reach are
+   * contractual.
+   */
+  wardrobeHistories: (chatId: string) => ['chat', chatId, 'wardrobe-history'] as const,
+  /**
+   * One character's outfit timeline in a conversation (v4
+   * `queryKeys.wardrobe.history`, `8d8618819`) — the History tab's
+   * `chatWardrobeHistory` read. Under {@link wardrobeHistories}, so the
+   * rollback's prefix invalidation and the `chats` topic both reach it.
+   */
+  wardrobeHistory: (chatId: string, characterId: string) =>
+    ['chat', chatId, 'wardrobe-history', characterId] as const,
+  // === end P4.D318 ===
 };

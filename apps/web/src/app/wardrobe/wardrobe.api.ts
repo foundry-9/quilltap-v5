@@ -58,6 +58,9 @@ import type { ComponentMode } from './wardrobe-component-mode-fieldset';
 import type { EquippedSlots } from './equipped-slots';
 import { draftFromItem, draftToPayload } from './item-draft';
 import type { WardrobeContainer } from './wardrobe-container';
+// === P4.D318: outfit history (append-only) ===
+import type { OutfitHistoryResponse, WardrobeRollbackResponse } from '../core/core-contract';
+// === end P4.D318 ===
 
 // ---------------------------------------------------------------------------
 // §1 — lane P4.9f1's request types (FOLDED into core-contract at unification)
@@ -126,6 +129,46 @@ export function dispatchWardrobe(
 ): Promise<Record<string, unknown>> {
   return core.dispatchData(request);
 }
+
+// === P4.D318: outfit history (append-only) ===
+
+/**
+ * One character's outfit timeline in a chat (v4 `outfit-history-tab.tsx:
+ * 124-131`'s `?action=wardrobe-history` read; C1 §7). Entries come ASCENDING
+ * by index — the History tab sorts.
+ */
+export async function fetchWardrobeHistory(
+  core: CoreClient,
+  chatId: string,
+  characterId: string,
+): Promise<OutfitHistoryResponse> {
+  return (await core.dispatchData({
+    type: 'chatWardrobeHistory',
+    chatId,
+    characterId,
+  })) as unknown as OutfitHistoryResponse;
+}
+
+/**
+ * Return a character to an earlier outfit (v4 `outfit-history-tab.tsx:
+ * 133-139`'s `?action=wardrobe-rollback` POST; C2 §5). A refusal arrives as
+ * the dispatch error, its message the server's sentence.
+ */
+export async function postWardrobeRollback(
+  core: CoreClient,
+  chatId: string,
+  characterId: string,
+  index: number,
+): Promise<WardrobeRollbackResponse> {
+  return (await core.dispatchData({
+    type: 'chatWardrobeRollback',
+    chatId,
+    characterId,
+    index,
+  })) as unknown as WardrobeRollbackResponse;
+}
+
+// === end P4.D318 ===
 
 // ---------------------------------------------------------------------------
 // Transfer payload shapes (v4 `WardrobeTransferDialog.tsx:11-21`)

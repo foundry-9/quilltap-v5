@@ -9,8 +9,10 @@ import {
   containerUpdateRequest,
   deleteWardrobeItem,
   duplicateWardrobeItem,
+  fetchWardrobeHistory,
   loadCharacterWardrobeItems,
   loadWardrobeContainerItems,
+  postWardrobeRollback,
   setWardrobeItemArchived,
   toggleItemDefault,
 } from './wardrobe.api';
@@ -616,5 +618,22 @@ describe('the archived opt-in and the archive write (v4 d25dacc1)', () => {
       CHAR_CONTAINER,
     );
     expect((seen[0] as { item: Record<string, unknown> }).item).toEqual({ archived: false });
+  });
+});
+
+describe('the outfit-history calls (P4.D318 — C1 §7 / C2 §5)', () => {
+  it('fetchWardrobeHistory sends chatWardrobeHistory with the chat and the character', async () => {
+    const answer = { currentIndex: null, entries: [] };
+    const { core, seen } = stubCore(() => answer);
+    await expect(fetchWardrobeHistory(core, 'chat-1', 'char-1')).resolves.toEqual(answer);
+    expect(seen).toEqual([{ type: 'chatWardrobeHistory', chatId: 'chat-1', characterId: 'char-1' }]);
+  });
+
+  it('postWardrobeRollback sends chatWardrobeRollback with the index', async () => {
+    const { core, seen } = stubCore(() => ({ previousIndex: 1, restoredIndex: 0, skipped: [] }));
+    await postWardrobeRollback(core, 'chat-1', 'char-1', 0);
+    expect(seen).toEqual([
+      { type: 'chatWardrobeRollback', chatId: 'chat-1', characterId: 'char-1', index: 0 },
+    ]);
   });
 });

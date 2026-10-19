@@ -6675,6 +6675,10 @@ export type MemoryRequest =
   // round's Shared contract pins every name and payload below).
   | ChatOutfitGetRequest
   | ChatEquipRequest
+  // === P4.D318: outfit history (append-only) ===
+  | ChatWardrobeHistoryRequest
+  | ChatWardrobeRollbackRequest
+  // === end P4.D318 ===
   | ChatRegenerateAvatarRequest
   | WardrobeTransferDestinationsRequest
   | WardrobeTransferApplyRequest
@@ -8296,6 +8300,88 @@ export interface ChatEquipRequest {
    */
   wornBundleIds?: string[];
 }
+
+// === P4.D318: outfit history (C4 §1) ===
+
+/**
+ * One garment in a history entry's slot (v4 `outfit-history-tab.tsx:30`,
+ * `8d8618819`; the GET wire's item shape — C1 §7). A pool hit carries its
+ * title and archived flag; a garment that no longer exists is `missing` with a
+ * null title.
+ */
+export interface OutfitHistorySlotItem {
+  itemId: string;
+  title: string | null;
+  archived: boolean;
+  missing: boolean;
+}
+
+/**
+ * One numbered entry in a character's outfit timeline (v4
+ * `outfit-history-tab.tsx:31-46`, + `4ae20977f`'s `actorToolName`; C1 §7's key
+ * order). `source` stays v4's `string` (its seven values are C1 §2's);
+ * `changedBy` is the server's label, rendered verbatim.
+ */
+export interface OutfitHistoryEntry {
+  index: number;
+  at: string;
+  source: string;
+  actorCharacterId: string | null;
+  actorName: string | null;
+  /** Pascal entries: the custom tool that made the change. */
+  actorToolName: string | null;
+  changedBy: string;
+  isCurrent: boolean;
+  summary: string;
+  slots: Record<WardrobeSlotType, OutfitHistorySlotItem[]>;
+}
+
+/**
+ * The `chatWardrobeHistory` answer (v4 `outfit-history-tab.tsx:48-51`; C1 §7):
+ * entries ASCENDING by index; `{ currentIndex: null, entries: [] }` when
+ * nothing is recorded.
+ */
+export interface OutfitHistoryResponse {
+  currentIndex: number | null;
+  entries: OutfitHistoryEntry[];
+}
+
+/**
+ * The `chatWardrobeRollback` answer (v4's private `RollbackResponse`,
+ * `outfit-history-tab.tsx:53-58`; C2 §5's key order). `skipped` lists the
+ * garments left off — `missing` with a null title.
+ */
+export interface WardrobeRollbackResponse {
+  equippedSlots: EquippedSlots;
+  previousIndex: number;
+  restoredIndex: number;
+  skipped: Array<{ itemId: string; title: string | null; reason: 'archived' | 'missing' }>;
+}
+
+/**
+ * v4 `GET /api/v1/chats/[id]?action=wardrobe-history&characterId=…`
+ * (`actions/outfit.ts:307-364`; C1 §7). The Rust variant's `characterId` is
+ * optional so a caller omitting it gets v4's 400; the SPA always sends it.
+ */
+export interface ChatWardrobeHistoryRequest {
+  type: 'chatWardrobeHistory';
+  chatId: string;
+  characterId: string;
+}
+
+/**
+ * v4 `POST /api/v1/chats/[id]?action=wardrobe-rollback` body `{ characterId,
+ * index }` (`actions/outfit.ts:371-416`; C2 §5 — the Rust variant flattens the
+ * raw body, the `ChatEquip` idiom).
+ */
+export interface ChatWardrobeRollbackRequest {
+  type: 'chatWardrobeRollback';
+  chatId: string;
+  characterId: string;
+  index: number;
+}
+
+// === end P4.D318 ===
 
 /** v4 `GET /api/v1/wardrobe/transfers` (`transfers/route.ts:236-260`). */
 export interface WardrobeTransferDestinationsRequest {

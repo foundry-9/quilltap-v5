@@ -211,3 +211,24 @@ describe('characterKeys.wardrobeImages reach (P4.D321, v4 topic-map.ts:96-104 un
   });
 });
 // === end P4.D321 ===
+
+describe('the outfit timelines (P4.D318 — v4 8d8618819 topic-map.ts row, as an assertion)', () => {
+  it('refreshes every outfit timeline in the chat on the chats topic (P4.D318 — v4 8d8618819, as an assertion: no row)', () => {
+    // v4 adds `queryKeys.wardrobe.histories(id)` to the row-scoped `chats`
+    // case. v5's keys live under `chatKeys.detail` (R-H), so the ONE row
+    // prefix already reaches them — the spend is this assertion, not a row.
+    const scoped = queryKeysForTopic('chats', 'chat-7') as readonly (readonly unknown[])[];
+    expect(scoped).toHaveLength(1);
+    const [prefix] = scoped;
+    expect(partialMatchKey([...chatKeys.wardrobeHistory('chat-7', 'char-1')], [...prefix])).toBe(true);
+    expect(partialMatchKey([...chatKeys.wardrobeHistories('chat-7')], [...prefix])).toBe(true);
+    // Another chat's hint does not reach this chat's timelines.
+    const [other] = queryKeysForTopic('chats', 'other-chat') as readonly (readonly unknown[])[];
+    expect(partialMatchKey([...chatKeys.wardrobeHistory('chat-7', 'char-1')], [...other])).toBe(false);
+    // The unscoped hint (`chatKeys.all`) does not reach them — nor does v4's
+    // unscoped row reach `['wardrobe', …]`.
+    for (const unscoped of queryKeysForTopic('chats') as readonly (readonly unknown[])[]) {
+      expect(partialMatchKey([...chatKeys.wardrobeHistories('chat-7')], [...unscoped])).toBe(false);
+    }
+  });
+});

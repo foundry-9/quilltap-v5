@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(spa): outfit-history contract types, chat-scoped query keys and the two dispatch calls (P4.D318)
+
+_Versions: SPA 0.5.874._
+
+P4.D318 unit 1. The six outfit-history TS contract types (`OutfitHistorySlotItem`, `OutfitHistoryEntry` with `4ae20977f`'s `actorToolName`, `OutfitHistoryResponse`, `WardrobeRollbackResponse`, `ChatWardrobeHistoryRequest`, `ChatWardrobeRollbackRequest`) in fenced regions of `core-contract.ts` (C4 §1), the two `CoreRequest` union rows, `chatKeys.wardrobeHistories` / `wardrobeHistory` under `chatKeys.detail` (R-H — no topic-map row; a recorded spelling divergence from v4's `['wardrobe', 'history', …]`), and `fetchWardrobeHistory` / `postWardrobeRollback` in `wardrobe.api.ts` (R-6). Specs: the exact request objects, the raw key shapes, v4's prefix property, distinctness, and v4's `refreshes every outfit timeline in the chat on the chats topic` ported as a reach assertion in `realtime-topic-map.spec.ts`.
+
 #### 2026-10-19 — docs(porting): P4.D323 lane record — the `e8e17b2d9` round's vendored trees and NO-PORT record
 
 _Docs-only change._
