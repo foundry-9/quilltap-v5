@@ -136,6 +136,10 @@ fn data_files(data: &BackupData, compact: bool) -> Vec<(&'static str, &Vec<Value
         // not see it." Written on EVERY archive (`[]` when none), compact
         // included — it is not a derived embedding file.
         ("wardrobe-wear.json", &data.wardrobe_wear),
+        // P4.D317 (v4 `7953da3a0`, `backup-service.ts:709-710`): "Outfit
+        // history (4.11). Optional on the way back in, like the wear ledger."
+        // Every archive, compact included (`[]` when empty).
+        ("wardrobe-history.json", &data.wardrobe_history),
     ];
     files.into_iter().filter(|(name, _)| !omit(name)).collect()
 }

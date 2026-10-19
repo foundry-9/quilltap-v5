@@ -140,6 +140,13 @@ pub struct BackupData {
     // included; `data/wardrobe-wear.json` on EVERY archive.
     pub wardrobe_wear: Vec<Value>,
     // === end P4.D264 ===
+    // === P4.D317 (v4 `7953da3a0`) — `BackupData.wardrobeHistory`, LAST
+    // (`types.ts:426-431`, `backup-service.ts:399`). The whole
+    // `chat_wardrobe_history` table (`findAll` — by chat, character, entry
+    // index), each row in the repository's `normalizeRow` key order;
+    // `data/wardrobe-history.json` on EVERY archive.
+    pub wardrobe_history: Vec<Value>,
+    // === end P4.D317 ===
 }
 
 impl BackupData {
@@ -767,6 +774,9 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
                 .map(|row| serde_json::to_value(row).expect("a wear row serializes"))
                 .collect(),
             // === end P4.D264 ===
+            // === P4.D317 (v4 `backup-service.ts:290-292`) ===
+            wardrobe_history: collect_wardrobe_history(main)?,
+            // === end P4.D317 ===
         })
     })?;
     // === P4.D264 (v4 `:299`) — logged on the caller thread, outside the read.
@@ -776,6 +786,13 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
         "Collected wardrobe wear ledger for backup"
     );
     // === end P4.D264 ===
+    // === P4.D317 (v4 `:292`) — after the wear DEBUG, on the caller thread.
+    tracing::debug!(
+        target: "quilltap::backup",
+        rowCount = main_side.wardrobe_history.len(),
+        "Collected outfit history for backup"
+    );
+    // === end P4.D317 ===
 
     // v4 excludes prior backups from the file list (`:188`).
     let files: Vec<Value> = main_side
@@ -874,7 +891,36 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
         // === P4.D264 ===
         wardrobe_wear: main_side.wardrobe_wear,
         // === end P4.D264 ===
+        // === P4.D317 ===
+        wardrobe_history: main_side.wardrobe_history,
+        // === end P4.D317 ===
     })
+}
+
+/// P4.D317 — v4 `globalRepos.wardrobeHistory.findAll()` (`backup-service.ts:
+/// 291`, "The outfit history: every timeline in every chat, cursor included"),
+/// serialized in the row struct's declaration order (= v4's `normalizeRow`).
+///
+/// **`BACKUP_ABSENT_HISTORY_TABLE` (ruled, P4.D317 R-J).** v4's read is a raw
+/// `rawQuery` with no lazy create and no try/catch, so on an instance WITHOUT
+/// the table v4's whole `createBackup` throws `no such table:
+/// chat_wardrobe_history`. v5 answers `[]` there (the P4.D264 R-G precedent):
+/// unreachable on a booted v5 instance — the keystone's boot ensure creates the
+/// table — and pinned both ways by one `system_backup_equivalence` row so a v4
+/// convergence trips it. Only ABSENCE is softened: any other read failure
+/// still fails the backup.
+fn collect_wardrobe_history(main: &rusqlite::Connection) -> Result<Vec<Value>, DbError> {
+    use crate::db::chat_wardrobe_history::{
+        ChatWardrobeHistoryRepository, CHAT_WARDROBE_HISTORY_TABLE,
+    };
+    if !table_exists(main, CHAT_WARDROBE_HISTORY_TABLE) {
+        return Ok(Vec::new());
+    }
+    Ok(ChatWardrobeHistoryRepository::new(main)
+        .find_all()?
+        .iter()
+        .map(|row| serde_json::to_value(row).expect("a history row serializes"))
+        .collect())
 }
 
 struct MainSide {
@@ -906,6 +952,9 @@ struct MainSide {
     // === P4.D264 ===
     wardrobe_wear: Vec<Value>,
     // === end P4.D264 ===
+    // === P4.D317 ===
+    wardrobe_history: Vec<Value>,
+    // === end P4.D317 ===
 }
 
 struct MountSide {
@@ -1218,6 +1267,84 @@ mod wardrobe_wear_collect_tests {
         assert_eq!(exists, 0, "R-G: the backup writes no schema on the source");
     }
 
+    /// P4.D317 — the outfit history rides whole, by chat → character → index,
+    /// each row in `normalizeRow` key order (`actorToolName` BEFORE
+    /// `isCurrent`), the STORED hash kept (a four-key pre-hair `slots` reads
+    /// back five keys), a null actor kept; the DEBUG after the wear one.
+    #[test]
+    fn the_outfit_history_is_collected_whole_and_logged() {
+        // No `chats` table (the collect reads none on a bare copy), so the
+        // history FK is switched off for the plant.
+        let mut setup = String::from("PRAGMA foreign_keys = OFF;\n");
+        for statement in crate::db::chat_wardrobe_history::CHAT_WARDROBE_HISTORY_DDL {
+            setup.push_str(statement);
+            setup.push_str(";\n");
+        }
+        setup.push_str(
+            "INSERT INTO chat_wardrobe_history VALUES \
+             ('h3', 'c2', 'a', 0, '{\"top\":[],\"bottom\":[],\"footwear\":[],\"accessories\":[]}', \
+              'stalehash0000000', 'seeded', NULL, 1, '2026-03-03T00:00:00.000Z', NULL), \
+             ('h2', 'c1', 'b', 0, '{\"top\":[\"i1\"]}', 'aaaaaaaaaaaaaaaa', 'pascal', 'b', 1, \
+              '2026-03-02T00:00:00.000Z', 'dress_for_dinner'), \
+             ('h1', 'c1', 'a', 0, '{}', 'bbbbbbbbbbbbbbbb', 'operator', 'b', 1, \
+              '2026-03-01T00:00:00.000Z', NULL);",
+        );
+        let (_dir, db) = db_with(&setup);
+        let (data, lines) = crate::test_support::captured_with(|| collect_user_data(&db, "u-1"));
+        let data = data.expect("collect");
+        let ids: Vec<&str> = data
+            .wardrobe_history
+            .iter()
+            .map(|r| r["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, ["h1", "h2", "h3"], "chat, then character, then index");
+        assert_eq!(
+            serde_json::to_string(&data.wardrobe_history[2]).unwrap(),
+            "{\"id\":\"h3\",\"chatId\":\"c2\",\"characterId\":\"a\",\"entryIndex\":0,\
+             \"slots\":{\"top\":[],\"bottom\":[],\"footwear\":[],\"accessories\":[],\"hair\":[]},\
+             \"slotsHash\":\"stalehash0000000\",\"source\":\"seeded\",\"actorCharacterId\":null,\
+             \"actorToolName\":null,\"isCurrent\":true,\"createdAt\":\"2026-03-03T00:00:00.000Z\"}",
+            "normalizeRow key order, the stored hash, five slots"
+        );
+        let wear = lines
+            .iter()
+            .position(|l| l.contains("Collected wardrobe wear ledger for backup"))
+            .expect("the wear DEBUG");
+        let history = lines
+            .iter()
+            .position(|l| {
+                l == "DEBUG quilltap::backup Collected outfit history for backup rowCount=3"
+            })
+            .unwrap_or_else(|| panic!("{lines:#?}"));
+        assert!(wear < history, "the history DEBUG follows the wear DEBUG");
+    }
+
+    /// P4.D317 R-J (`BACKUP_ABSENT_HISTORY_TABLE`): no table → `[]` and the
+    /// DEBUG at zero (v4 throws — pinned both ways in
+    /// `system_backup_equivalence`); any OTHER read failure still fails.
+    #[test]
+    fn an_absent_history_table_collects_nothing_and_a_broken_one_fails() {
+        let (_dir, db) = db_with("CREATE TABLE stand_in (id TEXT);");
+        let (data, lines) = crate::test_support::captured_with(|| collect_user_data(&db, "u-1"));
+        assert!(data.expect("collect").wardrobe_history.is_empty());
+        assert!(
+            lines
+                .iter()
+                .any(|l| l
+                    == "DEBUG quilltap::backup Collected outfit history for backup rowCount=0"),
+            "{lines:#?}"
+        );
+        // A PRESENT table whose read throws (its `chatId` a VIRTUAL
+        // `json(id)` column over a non-JSON id — `malformed JSON`) is not
+        // absence: the backup fails.
+        let (_dir, db) = db_with(
+            "CREATE TABLE chat_wardrobe_history (id TEXT); \
+             INSERT INTO chat_wardrobe_history VALUES ('not json'); \
+             ALTER TABLE chat_wardrobe_history ADD COLUMN chatId TEXT AS (json(id)) VIRTUAL;",
+        );
+        assert!(collect_user_data(&db, "u-1").is_err());
+    }
+
     /// P4.D284 (v4 `9ecebf986`, `backup-service.ts:183-186`): the backup no
     /// longer reads the legacy `wardrobe_items` table — `wardrobeItems` is
     /// ALWAYS `[]` (and so `counts.wardrobeItems` is `0`), even when the table
@@ -1300,6 +1427,7 @@ mod p4d293_tests {
             group_character_members: rows.clone(),
             text_replacement_rules: rows.clone(),
             wardrobe_wear: rows.clone(),
+            wardrobe_history: rows.clone(),
         }
     }
 
@@ -1325,6 +1453,7 @@ mod p4d293_tests {
             &data.chats,
             &data.doc_mount_points,
             &data.wardrobe_wear,
+            &data.wardrobe_history,
         ] {
             assert_eq!(kept, &rows);
         }

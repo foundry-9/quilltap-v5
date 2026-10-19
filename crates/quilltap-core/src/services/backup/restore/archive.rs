@@ -201,6 +201,9 @@ fn parse_tree(root: &Path) -> Result<(BackupData, Value), String> {
     // P4.D264 (v4 `3ee3b1342`, `archive.ts:271`): the wear ledger, read
     // OPTIONALLY — an archive predating it restores with `wardrobeWear: 0`.
     let wardrobe_wear = opt("data/wardrobe-wear.json")?;
+    // P4.D317 (v4 `7953da3a0`, `archive.ts:275-276`): "Outfit history (4.11) —
+    // optional, so an older archive just has none." Raw rows, unvalidated.
+    let wardrobe_history = opt("data/wardrobe-history.json")?;
 
     Ok((
         BackupData {
@@ -244,8 +247,10 @@ fn parse_tree(root: &Path) -> Result<(BackupData, Value), String> {
             group_doc_mount_links,
             group_character_members,
             text_replacement_rules,
-            // P4.D264 (`archive.ts:320`) — the last key of the parsed `data`.
+            // P4.D264 (`archive.ts:320`).
             wardrobe_wear,
+            // P4.D317 (`archive.ts:325`) — the last key of the parsed `data`.
+            wardrobe_history,
         },
         manifest,
     ))

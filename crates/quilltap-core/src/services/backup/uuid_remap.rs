@@ -509,6 +509,7 @@ pub fn remap_backup_data(
         // P4.D264 (v4 `:629`): the 39th key, ALWAYS present (`[]` when the
         // archive has none).
         wardrobe_wear,
+        wardrobe_history: Vec::new(),
     }
 }
 

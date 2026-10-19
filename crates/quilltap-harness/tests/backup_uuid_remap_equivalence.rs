@@ -177,6 +177,8 @@ fn backup_data(data: &Map<String, Value>) -> BackupData {
         group_character_members: rows(data, "groupCharacterMembers"),
         text_replacement_rules: rows(data, "textReplacementRules"),
         wardrobe_wear: rows(data, "wardrobeWear"),
+        // [P4.D317] absent from every pre-`7953da3a0` corpus case → `[]`.
+        wardrobe_history: rows(data, "wardrobeHistory"),
     }
 }
 

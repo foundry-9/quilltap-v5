@@ -41,6 +41,14 @@
  *                           whose `SELECT *` throws (a VIRTUAL `json('not
  *                           json')` column): the backup succeeds, no chat
  *                           carries a cursor key.
+ *   `backup_with_wardrobe_history` — [P4.D317] five outfit-history rows
+ *                           through v4's REAL `upsertRows` + one raw pre-hair
+ *                           `slots` cell (`HISTORY_PLANT_ROWS`).
+ *   `backup_absent_history_table` — [P4.D317 R-J] the table NOT planted: v4's
+ *                           `createBackup` throws (`{ name, error }`); v5
+ *                           writes `[]` (`BACKUP_ABSENT_HISTORY_TABLE`).
+ *   (Every other case plants `chat_wardrobe_history` empty — v4 reads it
+ *   unguarded at the `e8e17b2d9` pin.)
  *
  * ── LOG LINES ([P4.D293]) ────────────────────────────────────────────────────
  * Every case records the `LOGGED` messages (any level, before the level
@@ -187,6 +195,14 @@ interface CaseSpec {
   plantMemoryCarriers?: boolean;
   /** [P4.D293 Tier 2] a cursor table whose every `SELECT *` throws. */
   plantThrowingCursors?: boolean;
+  /** [P4.D317] outfit-history rows through v4's REAL `upsertRows` (`HISTORY_PLANT_ROWS`). */
+  plantWardrobeHistory?: boolean;
+  /**
+   * [P4.D317 R-J] Do NOT plant `chat_wardrobe_history`: v4's `createBackup`
+   * throws `no such table`, recorded as `error` (v5 writes `[]` —
+   * `BACKUP_ABSENT_HISTORY_TABLE`).
+   */
+  withoutHistoryTable?: boolean;
 }
 
 /**
@@ -351,6 +367,99 @@ async function plantWardrobeWear(): Promise<void> {
   await getRepositories().wardrobeWear.upsertRows(WEAR_PLANT_ROWS as never);
 }
 
+/**
+ * [P4.D317] The outfit-history plant (`backup_with_wardrobe_history`), on the
+ * per-run COPY after the table plant: five rows through v4's REAL
+ * `upsertRows` (fixed ids and stamps; the repository RECOMPUTES each hash) —
+ * a three-entry Lorian timeline in CHAT_1 with the cursor on entry 1 (a
+ * `seeded` null-actor row, an `operator` row with an actor, a `pascal` row
+ * with `actorToolName`), Riya in the same chat (so the `characterId` order
+ * shows) and Riya in CHAT_2 — then ONE raw `UPDATE` giving the CHAT_2 row a
+ * four-key pre-hair `slots` text: `findAll` reads it back with five keys and
+ * the STORED (now stale) hash. The Rust family plants the same cells through
+ * `upsert_raw_rows` + the same `UPDATE`.
+ */
+const HISTORY_PLANT_ROWS = [
+  {
+    id: '7e000001-0000-4000-8000-000000000001',
+    chatId: CHAT_1,
+    characterId: 'a1000000-0000-4000-8000-000000000001',
+    entryIndex: 0,
+    slots: { top: [], bottom: [], footwear: [], accessories: [], hair: [] },
+    slotsHash: '',
+    source: 'seeded',
+    actorCharacterId: null,
+    actorToolName: null,
+    isCurrent: false,
+    createdAt: '2026-03-01T00:00:00.000Z',
+  },
+  {
+    id: '7e000002-0000-4000-8000-000000000002',
+    chatId: CHAT_1,
+    characterId: 'a1000000-0000-4000-8000-000000000001',
+    entryIndex: 1,
+    slots: { top: ['ac000000-0000-4000-8000-000000000001'], bottom: [], footwear: [], accessories: [], hair: [] },
+    slotsHash: '',
+    source: 'operator',
+    actorCharacterId: 'a1000000-0000-4000-8000-000000000002',
+    actorToolName: null,
+    isCurrent: true,
+    createdAt: '2026-03-02T00:00:00.000Z',
+  },
+  {
+    id: '7e000003-0000-4000-8000-000000000003',
+    chatId: CHAT_1,
+    characterId: 'a1000000-0000-4000-8000-000000000001',
+    entryIndex: 2,
+    slots: { top: [], bottom: [], footwear: [], accessories: ['ac000000-0000-4000-8000-000000000001'], hair: [] },
+    slotsHash: '',
+    source: 'pascal',
+    actorCharacterId: 'a1000000-0000-4000-8000-000000000001',
+    actorToolName: 'dress_for_dinner',
+    isCurrent: false,
+    createdAt: '2026-03-03T00:00:00.000Z',
+  },
+  {
+    id: '7e000004-0000-4000-8000-000000000004',
+    chatId: CHAT_1,
+    characterId: 'a1000000-0000-4000-8000-000000000002',
+    entryIndex: 0,
+    slots: { top: [], bottom: [], footwear: [], accessories: [], hair: [] },
+    slotsHash: '',
+    source: 'character',
+    actorCharacterId: 'a1000000-0000-4000-8000-000000000002',
+    actorToolName: null,
+    isCurrent: true,
+    createdAt: '2026-03-04T00:00:00.000Z',
+  },
+  {
+    id: '7e000005-0000-4000-8000-000000000005',
+    chatId: CHAT_2,
+    characterId: 'a1000000-0000-4000-8000-000000000002',
+    entryIndex: 0,
+    slots: { top: [], bottom: [], footwear: [], accessories: [], hair: [] },
+    slotsHash: '',
+    source: 'chat-start',
+    actorCharacterId: null,
+    actorToolName: null,
+    isCurrent: true,
+    createdAt: '2026-03-05T00:00:00.000Z',
+  },
+];
+const HISTORY_PRE_HAIR_SQL =
+  `UPDATE "chat_wardrobe_history" SET "slots" = '{"top":["ac000000-0000-4000-8000-000000000001"],"bottom":[],"footwear":[],"accessories":[]}' ` +
+  `WHERE "id" = '7e000005-0000-4000-8000-000000000005'`;
+
+async function plantWardrobeHistory(): Promise<void> {
+  const { rawQuery } = await import('@/lib/database/manager');
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const written = await getRepositories().wardrobeHistory.upsertRows(HISTORY_PLANT_ROWS as never);
+  if (written !== HISTORY_PLANT_ROWS.length) {
+    throw new Error(`plantWardrobeHistory: wrote ${written} of ${HISTORY_PLANT_ROWS.length}`);
+  }
+  await rawQuery(HISTORY_PRE_HAIR_SQL);
+}
+
 /** P4.149: the BLOB-named clone's id (both sides plant these statements). */
 const BLOB_PROFILE_ID = 'c0ffee00-0000-4000-8000-0000000000b2';
 
@@ -436,6 +545,12 @@ const CASES: CaseSpec[] = [
   { name: 'backup_with_memory_carriers', seedFileBytes: true, plantMemoryCarriers: true },
   // [P4.D293 Tier 2, L-10] a cursor read that throws never fails the backup.
   { name: 'backup_cursor_read_fails', seedFileBytes: true, plantThrowingCursors: true },
+  // [P4.D317] `data/wardrobe-history.json` over planted timelines: by chat →
+  // character → index, `normalizeRow` key order, the stored hash, and
+  // `counts.wardrobeHistory: 5` LAST.
+  { name: 'backup_with_wardrobe_history', seedFileBytes: true, plantWardrobeHistory: true },
+  // [P4.D317 R-J] no table at all: v4 throws (`BACKUP_ABSENT_HISTORY_TABLE`).
+  { name: 'backup_absent_history_table', seedFileBytes: true, withoutHistoryTable: true },
 ];
 
 async function runCase(
@@ -479,7 +594,8 @@ async function runCase(
   // create), so every case plants the table on its per-run COPY through the
   // round's shared plant (v4's REAL DDL; never `ensureCollection`, never the
   // seed migration). The Rust side runs `ensure_chat_wardrobe_history_on`.
-  await plantChatWardrobeHistoryTable();
+  if (!c.withoutHistoryTable) await plantChatWardrobeHistoryTable();
+  if (c.plantWardrobeHistory) await plantWardrobeHistory();
   if (c.plantInforms) await plantInforms(spec.userId);
   if (c.plantBlobProfile) await plantBlobProfile(spec.userId);
   if (c.plantWardrobeWear) await plantWardrobeWear();
@@ -489,6 +605,15 @@ async function runCase(
   const extractDir = mkdtempSync(join(scratchRoot, 'ex-'));
   try {
     const { createBackup } = await import('@/lib/backup/backup-service');
+    if (c.withoutHistoryTable) {
+      // [P4.D317 R-J] the whole backup refuses; record what it said.
+      try {
+        await createBackup(spec.userId);
+      } catch (error) {
+        return { name: c.name, error: error instanceof Error ? error.message : String(error) };
+      }
+      throw new Error(`${c.name}: v4's createBackup succeeded without the table`);
+    }
     const {
       out: { zipPath, manifest },
       logs,

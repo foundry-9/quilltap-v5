@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(backup): carry the outfit history in every backup (P4.D317)
+
+_Versions: core 0.0.1316._
+
+Ports `7953da3a0`'s backup half at the `e8e17b2d9` pin. A backup now writes `data/wardrobe-history.json` (after `wardrobe-wear.json`, on every archive, compact included, `[]` when empty) holding the whole `chat_wardrobe_history` table by chat, character and entry index, each row in v4's `normalizeRow` key order with the stored hash; `manifest.counts.wardrobeHistory` is the last count and `Collected outfit history for backup` logs after the wear line. On an instance without the table v5 writes `[]` where v4's `createBackup` throws (`BACKUP_ABSENT_HISTORY_TABLE`, ruled R-J, pinned both ways; any other read failure still fails the backup). The restore reads the file optionally (no restore step consumes it yet). `system_backup_equivalence` gains `backup_with_wardrobe_history` (five rows through v4's real `upsertRows` plus a pre-hair cell) and the absent-table row.
+
 #### 2026-10-19 — feat(chat): the pure bug-252 pass over the four character-keyed chat columns (P4.D317)
 
 _Versions: core 0.0.1315._

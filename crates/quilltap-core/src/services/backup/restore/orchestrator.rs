@@ -4700,6 +4700,7 @@ mod free_store_name_tests {
             group_character_members: Vec::new(),
             text_replacement_rules: Vec::new(),
             wardrobe_wear: Vec::new(),
+            wardrobe_history: Vec::new(),
         }
     }
 

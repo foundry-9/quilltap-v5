@@ -194,7 +194,7 @@ fn fresh_scratch(tag: &str) -> Scratch {
     Scratch { root }
 }
 
-fn open_fixture(scratch: &Path) -> Db {
+fn open_fixture(scratch: &Path, plant_history: bool) -> Db {
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     let llm = scratch.join("llm.db");
@@ -207,8 +207,9 @@ fn open_fixture(scratch: &Path) -> Db {
     // record) — the `ensure_*_column` heals that used to run here are dead
     // and removed.
     // [P4.D317] the outfit-history table on every copy — the oracle's
-    // `plantChatWardrobeHistoryTable` (v4's REAL DDL), table only.
-    {
+    // `plantChatWardrobeHistoryTable` (v4's REAL DDL), table only — except the
+    // R-J row (`BACKUP_ABSENT_HISTORY_TABLE`), which measures its absence.
+    if plant_history {
         let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
         quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
     }
@@ -513,6 +514,178 @@ fn plant_wardrobe_wear(db: &Db) {
     .expect("plant wardrobe_wear_stats on the fixture copy");
 }
 
+/// [P4.D317] The oracle's `HISTORY_PLANT_ROWS` + `HISTORY_PRE_HAIR_SQL`, cell
+/// for cell: the five rows through the keystone's `upsert_raw_rows` (v4's
+/// `upsertRows` semantics — the hash RECOMPUTED), then the same raw pre-hair
+/// `slots` UPDATE (the stored hash goes stale; `findAll` returns it as stored).
+fn plant_wardrobe_history(db: &Db) {
+    use quilltap_core::db::chat_wardrobe_history::ChatWardrobeHistoryRepository;
+    const C1: &str = "c1000000-0000-4000-8000-000000000001";
+    const C2: &str = "c1000000-0000-4000-8000-000000000002";
+    const LORIAN: &str = "a1000000-0000-4000-8000-000000000001";
+    const RIYA: &str = "a1000000-0000-4000-8000-000000000002";
+    const COAT: &str = "ac000000-0000-4000-8000-000000000001";
+    let row = |id: &str,
+               chat: &str,
+               character: &str,
+               index: i64,
+               slots: serde_json::Value,
+               source: &str,
+               actor: Option<&str>,
+               tool: Option<&str>,
+               current: bool,
+               at: &str| {
+        serde_json::json!({
+            "id": id, "chatId": chat, "characterId": character, "entryIndex": index,
+            "slots": slots, "slotsHash": "", "source": source,
+            "actorCharacterId": actor, "actorToolName": tool,
+            "isCurrent": current, "createdAt": at,
+        })
+    };
+    let empty =
+        serde_json::json!({"top": [], "bottom": [], "footwear": [], "accessories": [], "hair": []});
+    let rows = vec![
+        row(
+            "7e000001-0000-4000-8000-000000000001",
+            C1,
+            LORIAN,
+            0,
+            empty.clone(),
+            "seeded",
+            None,
+            None,
+            false,
+            "2026-03-01T00:00:00.000Z",
+        ),
+        row(
+            "7e000002-0000-4000-8000-000000000002",
+            C1,
+            LORIAN,
+            1,
+            serde_json::json!({"top": [COAT], "bottom": [], "footwear": [], "accessories": [], "hair": []}),
+            "operator",
+            Some(RIYA),
+            None,
+            true,
+            "2026-03-02T00:00:00.000Z",
+        ),
+        row(
+            "7e000003-0000-4000-8000-000000000003",
+            C1,
+            LORIAN,
+            2,
+            serde_json::json!({"top": [], "bottom": [], "footwear": [], "accessories": [COAT], "hair": []}),
+            "pascal",
+            Some(LORIAN),
+            Some("dress_for_dinner"),
+            false,
+            "2026-03-03T00:00:00.000Z",
+        ),
+        row(
+            "7e000004-0000-4000-8000-000000000004",
+            C1,
+            RIYA,
+            0,
+            empty.clone(),
+            "character",
+            Some(RIYA),
+            None,
+            true,
+            "2026-03-04T00:00:00.000Z",
+        ),
+        row(
+            "7e000005-0000-4000-8000-000000000005",
+            C2,
+            RIYA,
+            0,
+            empty,
+            "chat-start",
+            None,
+            None,
+            true,
+            "2026-03-05T00:00:00.000Z",
+        ),
+    ];
+    db.write_blocking(move |w| {
+        let conn = w.main().connection();
+        let written = ChatWardrobeHistoryRepository::new(conn).upsert_raw_rows(&rows);
+        assert_eq!(written, rows.len(), "plant every history row");
+        conn.execute_batch(
+            "UPDATE \"chat_wardrobe_history\" SET \"slots\" = \
+             '{\"top\":[\"ac000000-0000-4000-8000-000000000001\"],\"bottom\":[],\"footwear\":[],\"accessories\":[]}' \
+             WHERE \"id\" = '7e000005-0000-4000-8000-000000000005'",
+        )?;
+        Ok(())
+    })
+    .expect("plant chat_wardrobe_history rows on the fixture copy");
+}
+
+/// **`BACKUP_ABSENT_HISTORY_TABLE`** — a ruled divergence (P4.D317 R-J), the
+/// round's second new named table. On a copy WITHOUT `chat_wardrobe_history`
+/// v4's `createBackup` THROWS (`backup-service.ts:291` reads it through a raw
+/// `rawQuery`: no lazy create, no try/catch), while v5's collect answers `[]`
+/// — the P4.D264 R-G precedent, unreachable on a booted v5 instance (the
+/// keystone's boot ensure creates the table). Asserted BOTH ways: the oracle
+/// line must carry v4's refusal (a v4 that starts writing `[]` trips this) and
+/// v5 must stage `data/wardrobe-history.json` as `[]` with
+/// `counts.wardrobeHistory: 0` (a v5 that starts propagating trips it).
+const BACKUP_ABSENT_HISTORY_TABLE: &str = "backup_absent_history_table";
+const ABSENT_HISTORY_ERROR: &str = "no such table: chat_wardrobe_history";
+
+fn assert_backup_absent_history_table(case: &Value, root: &Path, failures: &mut Vec<String>) {
+    let name = BACKUP_ABSENT_HISTORY_TABLE;
+    if case["error"].as_str() != Some(ABSENT_HISTORY_ERROR) {
+        failures.push(format!(
+            "[{name}] BACKUP_ABSENT_HISTORY_TABLE (v4): expected createBackup to refuse with \
+             `{ABSENT_HISTORY_ERROR}`, oracle says {} — if v4 now writes `[]`, the ruled \
+             divergence has converged: retire this row",
+            case.get("error").unwrap_or(&case["manifest"])
+        ));
+    }
+    let db = open_fixture(root, false);
+    let data = match collect_user_data(&db, USER) {
+        Ok(d) => d,
+        Err(e) => {
+            failures.push(format!(
+                "[{name}] BACKUP_ABSENT_HISTORY_TABLE (v5): the collect failed ({e}) — v5 must \
+                 answer `[]` on an absent table"
+            ));
+            return;
+        }
+    };
+    let manifest = create_manifest(
+        USER,
+        &data,
+        NORMALIZED,
+        NORMALIZED,
+        HostCounts::default(),
+        false,
+    );
+    let backend = ScratchBackend {
+        root: root.join("files"),
+    };
+    let staging = root.join("staging");
+    stage_backup(
+        &db,
+        &backend,
+        &data,
+        &manifest,
+        &staging,
+        &HostDirs::default(),
+        false,
+    )
+    .expect("stage");
+    let file = std::fs::read_to_string(staging.join("data").join("wardrobe-history.json"))
+        .unwrap_or_default();
+    let count = &manifest["counts"]["wardrobeHistory"];
+    if file.trim() != "[]" || count != &serde_json::json!(0) {
+        failures.push(format!(
+            "[{name}] BACKUP_ABSENT_HISTORY_TABLE (v5): expected `data/wardrobe-history.json` \
+             `[]` and counts.wardrobeHistory 0, got {file:?} / {count}"
+        ));
+    }
+}
+
 /// Every regular file under `root`, `/`-joined and relative.
 fn walk(root: &Path) -> Vec<String> {
     fn rec(root: &Path, dir: &Path, out: &mut Vec<String>) {
@@ -726,7 +899,8 @@ fn system_backup_equivalence() {
             || name == "backup_with_blob_profile"
             || name == "backup_with_wardrobe_wear"
             || name == "backup_with_memory_carriers"
-            || name == "backup_cursor_read_fails";
+            || name == "backup_cursor_read_fails"
+            || name == "backup_with_wardrobe_history";
         // [P4.D46] `backup_compact` runs the same projection with the compact
         // flag: memory embeddings nulled, the four derived embedding data files
         // ABSENT from the tree (asserted below and by the oracle tree diff),
@@ -734,7 +908,12 @@ fn system_backup_equivalence() {
         let compact = name == "backup_compact";
 
         let scratch = fresh_scratch(name);
-        let db = open_fixture(&scratch.root);
+        // [P4.D317 R-J] `BACKUP_ABSENT_HISTORY_TABLE`, asserted both ways.
+        if name == BACKUP_ABSENT_HISTORY_TABLE {
+            assert_backup_absent_history_table(case, &scratch.root, &mut failures);
+            continue;
+        }
+        let db = open_fixture(&scratch.root, true);
         if name == "backup_with_informs" {
             plant_informs(&db);
         }
@@ -749,6 +928,9 @@ fn system_backup_equivalence() {
         }
         if name == "backup_cursor_read_fails" {
             plant_throwing_cursors(&db);
+        }
+        if name == "backup_with_wardrobe_history" {
+            plant_wardrobe_history(&db);
         }
 
         // The oracle seeds the user file's bytes into its data dir for the
