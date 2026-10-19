@@ -114,6 +114,18 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
          embedding failure) writes nothing and announces nothing.",
     ),
     (
+        "crates/quilltap-core/src/db/chat_wardrobe_history.rs",
+        "crate::realtime::types::RealtimeTopic::Chats,",
+        1,
+        "P4.D315 (v4 `chat-wardrobe-history.repository.ts:182-184`, R-12): `settle` \
+         announces `chats` / the chat id once, on `appended` and `cursor-moved` ONLY \
+         (never `unchanged` / `skipped`), after its savepoint is released. v4 publishes \
+         after its own transaction committed; v5's call sits inside the caller's writer \
+         closure, which is safe because the bus's 250 ms trailing-edge flush runs on a \
+         spawned task (measured). The behavioural half is \
+         `chat_wardrobe_history_tier2_equivalence`'s per-op publish comparand.",
+    ),
+    (
         "crates/quilltap-core/src/api/memories.rs",
         "publish_realtime",
         0,

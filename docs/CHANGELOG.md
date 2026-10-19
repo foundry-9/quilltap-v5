@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — test(harness): chat wardrobe history write fence + the settle publish-site row (P4.D315 Tier 2)
+
+_Versions: none bumped (harness-only; `quilltap-harness` is frozen)._
+
+New `chat_wardrobe_history_writer_census_guard`, the v5 twin of v4's outfit-history source fences: the table's DDL is spelled only in its module, history rows are inserted only by the repository and the seed ensure, and the repository's upserts are called only from restore and import code. `realtime_publish_sites_guard` gains the row for `settle`'s one `chats` publish.
+
 #### 2026-10-19 — docs(porting): P4.D315 status header — the `HISTORY` sha and C1's final spellings
 
 _Docs-only change._
