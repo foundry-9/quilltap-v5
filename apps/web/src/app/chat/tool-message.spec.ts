@@ -325,6 +325,119 @@ describe('ToolMessage (v4 components/chat/ToolMessage.tsx)', () => {
       const fixture = render({ message: msg({ content, participantId: 'p1' }) });
       expect(el(fixture).querySelector('.qt-chat-wardrobe-notice')).toBeNull();
     });
+
+    // P4.D318 (R-T) — v4 `ebb480edd`'s ToolMessage.tsx hunk: the rollback arm
+    // (:125-137) and the two toolInfo rows (:337-346).
+    const noticeLines = (fixture: ReturnType<typeof render>): string[] =>
+      [...el(fixture).querySelectorAll('.qt-chat-wardrobe-summary > div')].map((d) => d.textContent ?? '');
+
+    it('a successful wardrobe_rollback renders "Returned to outfit N." then each skipped item and the coverage summary', () => {
+      const content = JSON.stringify({
+        toolName: 'wardrobe_rollback',
+        success: true,
+        result: {
+          formattedText: 'ignored',
+          previous_index: 2,
+          restored_index: 0,
+          current_state: 'ignored',
+          coverage_summary: 'Covered: top, footwear.',
+          skipped: [
+            { item_id: 'coat', title: 'Greatcoat', reason: 'archived' },
+            { item_id: 'gone', title: null, reason: 'missing' },
+          ],
+        },
+      });
+      const fixture = render({ message: msg({ content, participantId: 'p1' }) });
+      const notice = el(fixture).querySelector('.qt-chat-wardrobe-notice')!;
+      expect(notice.querySelector('.qt-chat-wardrobe-label')!.textContent).toBe('Wardrobe');
+      expect(noticeLines(fixture)).toEqual([
+        'Returned to outfit 0.',
+        'Greatcoat could not be put back on (archived).',
+        'gone could not be put back on (no longer exists).',
+        'Covered: top, footwear.',
+      ]);
+    });
+
+    it("an empty-string title stays empty — the notice's rule is nullish", () => {
+      const content = JSON.stringify({
+        toolName: 'wardrobe_rollback',
+        success: true,
+        result: { restored_index: 1, skipped: [{ item_id: 'coat', title: '', reason: 'archived' }] },
+      });
+      const fixture = render({ message: msg({ content, participantId: 'p1' }) });
+      expect(noticeLines(fixture)).toEqual([
+        'Returned to outfit 1.',
+        ' could not be put back on (archived).',
+      ]);
+    });
+
+    it('a rollback with only its first line still shows the notice; an untitled, id-less item reads "An item"', () => {
+      const content = JSON.stringify({
+        toolName: 'wardrobe_rollback',
+        success: true,
+        result: { restored_index: 3, skipped: [{ reason: 'missing' }] },
+      });
+      const fixture = render({ message: msg({ content, participantId: 'p1' }) });
+      expect(noticeLines(fixture)).toEqual([
+        'Returned to outfit 3.',
+        'An item could not be put back on (no longer exists).',
+      ]);
+    });
+
+    it('no restored_index → no notice', () => {
+      const content = JSON.stringify({
+        toolName: 'wardrobe_rollback',
+        success: true,
+        result: { previous_index: 2, skipped: [] },
+      });
+      const fixture = render({ message: msg({ content, participantId: 'p1' }) });
+      expect(el(fixture).querySelector('.qt-chat-wardrobe-notice')).toBeNull();
+    });
+
+    it('a failed wardrobe_rollback shows no notice', () => {
+      const content = JSON.stringify({
+        toolName: 'wardrobe_rollback',
+        success: false,
+        result: null,
+        error: 'Bertie is already wearing outfit 0.',
+      });
+      const fixture = render({ message: msg({ content, participantId: 'p1' }) });
+      expect(el(fixture).querySelector('.qt-chat-wardrobe-notice')).toBeNull();
+    });
+
+    it('wardrobe_history shows no notice', () => {
+      const content = JSON.stringify({
+        toolName: 'wardrobe_history',
+        success: true,
+        result: {
+          formattedText: 'x',
+          success: true,
+          current_index: 2,
+          total: 3,
+          entries: [{ index: 0, at: 'a', source: 'chat-start', changed_by: 'chat opened', is_current: false, summary: 's' }],
+          restored_index: 0,
+        },
+      });
+      const fixture = render({ message: msg({ content, participantId: 'p1' }) });
+      expect(el(fixture).querySelector('.qt-chat-wardrobe-notice')).toBeNull();
+    });
+
+    it("the card's display names are Earlier Outfit / Outfit History, each with 👗", () => {
+      for (const [toolName, displayName] of [
+        ['wardrobe_rollback', 'Earlier Outfit'],
+        ['wardrobe_history', 'Outfit History'],
+      ]) {
+        const content = JSON.stringify({ toolName, success: true, result: { formattedText: 'x' } });
+        // The embedded card heads itself with the tool's icon + display name
+        // (the un-embedded one with its author's name).
+        TestBed.resetTestingModule();
+        const fixture = render({ message: msg({ content }), embedded: true });
+        const names = [...el(fixture).querySelectorAll('span.font-semibold')].map((s) => s.textContent);
+        expect(names).toContain(displayName);
+        const icon = el(fixture).querySelector('span.text-base.leading-none')!;
+        expect(icon.textContent!.trim()).toBe('👗');
+      }
+    });
   });
 
   describe('copy feedback (inline status; v5 has no toast — chat-section §2)', () => {

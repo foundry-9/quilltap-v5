@@ -39,23 +39,28 @@ interface ToolResult {
   images?: Array<{ id: string; filename: string }>;
 }
 
-/** Display name + emoji for a tool (v4 `ToolMessage.tsx:243-324`, the `toolInfo` map). */
+/** Display name + emoji for a tool (v4 `ToolMessage.tsx:271-362`, the `toolInfo` map). */
 interface ToolDisplay {
   displayName: string;
   icon: string;
 }
 
-/** v4's `WARDROBE_ACTION_TOOLS` (`ToolMessage.tsx:78-84`). */
+/**
+ * v4's `WARDROBE_ACTION_TOOLS` (`ToolMessage.tsx:90-97` at `e8e17b2d9`).
+ * `ebb480edd` adds ONLY `wardrobe_rollback` — `wardrobe_history` shows no
+ * notice (P4.D318, R-7).
+ */
 const WARDROBE_ACTION_TOOLS = new Set([
   'wardrobe_wear',
   'wardrobe_take_off',
+  'wardrobe_rollback',
   'wardrobe_create',
   'wardrobe_update',
   'wardrobe_archive',
 ]);
 
 /**
- * v4's `toolInfo` name/icon table (`ToolMessage.tsx:243-324`), transcribed
+ * v4's `toolInfo` name/icon table (`ToolMessage.tsx:271-362`), transcribed
  * field-for-field. The `bgColor` column is dropped — every entry carried the
  * identical `qt-bg-muted border qt-border-default`, which the card applies
  * unconditionally.
@@ -74,19 +79,22 @@ const TOOL_INFO: Record<string, ToolDisplay> = {
   wardrobe_read: { displayName: 'Wardrobe Item', icon: '👗' },
   wardrobe_wear: { displayName: 'Put On', icon: '👗' },
   wardrobe_take_off: { displayName: 'Take Off', icon: '👗' },
+  // P4.D318 (R-7) — v4 `ebb480edd` (:337-346).
+  wardrobe_rollback: { displayName: 'Earlier Outfit', icon: '👗' },
+  wardrobe_history: { displayName: 'Outfit History', icon: '👗' },
   wardrobe_create: { displayName: 'New Wardrobe Item', icon: '🧵' },
   wardrobe_update: { displayName: 'Edit Wardrobe Item', icon: '🧵' },
   wardrobe_archive: { displayName: 'Archive Wardrobe Item', icon: '🧵' },
 };
 
-/** A human-readable wardrobe action notice (v4 `buildWardrobeActionSummary` :90-146). */
+/** A human-readable wardrobe action notice (v4 `buildWardrobeActionSummary` :103-173 at `e8e17b2d9`). */
 interface WardrobeSummary {
   label: string;
   lines: string[];
 }
 
 /**
- * Build the wardrobe action summary (v4 `ToolMessage.tsx:90-146`). Returns null
+ * Build the wardrobe action summary (v4 `ToolMessage.tsx:103-173` at `e8e17b2d9`). Returns null
  * unless the tool is a successful wardrobe action tool whose result yields at
  * least one line.
  */
@@ -109,6 +117,30 @@ function buildWardrobeActionSummary(toolData: ToolResult): WardrobeSummary | nul
     }
     if (coverageSummary) lines.push(coverageSummary);
     return lines.length > 0 ? { label: 'Wardrobe', lines } : null;
+  }
+
+  // P4.D318 (R-7) — v4 `ebb480edd` (:125-137). The notice shows even when only
+  // the first line is present. The item name is NULLISH (`title ?? item_id`):
+  // an item titled `''` reads " could not be put back on …", unlike the
+  // model-visible formatter's truthy rule — port the SPA's, never the
+  // formatter's.
+  if (toolData.toolName === 'wardrobe_rollback') {
+    const restored = result['restored_index'] as number | undefined;
+    if (typeof restored !== 'number') return null;
+    lines.push(`Returned to outfit ${restored}.`);
+    const skipped =
+      (result['skipped'] as
+        | Array<{ title?: string | null; item_id?: string; reason?: string }>
+        | undefined) ?? [];
+    for (const item of skipped) {
+      const name = item.title ?? item.item_id ?? 'An item';
+      lines.push(
+        `${name} could not be put back on (${item.reason === 'archived' ? 'archived' : 'no longer exists'}).`,
+      );
+    }
+    const coverageSummary = result['coverage_summary'] as string | undefined;
+    if (coverageSummary) lines.push(coverageSummary);
+    return { label: 'Wardrobe', lines };
   }
 
   if (toolData.toolName === 'wardrobe_create') {

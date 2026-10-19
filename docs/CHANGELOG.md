@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(spa): wardrobe_rollback / wardrobe_history tool rows and the rollback notice (P4.D318, v4 ebb480edd)
+
+_Versions: SPA 0.5.877._
+
+P4.D318 unit 4 (R-T). `ebb480edd`'s `ToolMessage.tsx` hunk: `wardrobe_rollback` joins the wardrobe-notice tools (`wardrobe_history` does not), the rollback notice reads `Returned to outfit N.`, one line per skipped item (nullish name rule: `title ?? item_id ?? 'An item'`), then the coverage summary; the two cards are `Earlier Outfit` and `Outfit History`, both 👗. v4 line citations moved to the `e8e17b2d9` spans.
+
 #### 2026-10-19 — feat(spa): the Wardrobe dialog's History tab, isLiveDirty and discardLive with a reseed tick (P4.D318)
 
 _Versions: SPA 0.5.876._
