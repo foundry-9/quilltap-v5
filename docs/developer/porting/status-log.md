@@ -190353,3 +190353,196 @@ The History tab on a real chat (the boot seed's `seeded` entry 0, operator / cha
 ### Versions at close
 
 SPA `0.5.879` (six bumps from `0.5.873`); no crate moved (core 0.0.1313, host 0.0.210, web 0.0.241, cli 0.0.34 — unchanged).
+
+## P4.D320 — the Pascal SPA pair: the Workbench wardrobe picker + `{{character}}` / `announceAsCharacter` on the SPA side (lane `claude/p4.d320-pascal-spa-wardrobe-picker-0c3508`, pin `e8e17b2d9`, 2026-10-19)
+
+**Where it ran.** The session opened in the app-made worktree
+`.claude/worktrees/upbeat-colden-0c3508` on a fresh branch sitting exactly on
+the orders' commit `e8b0cea6c` (clean, no commits of its own). The branch was
+renamed in place to `claude/p4.d320-pascal-spa-wardrobe-picker-0c3508`; no
+move was needed. `target/` cloned from main's (`cp -cR`), `apps/web` given a
+fresh `npm ci`, `apps/web/dist` built from this branch before the Rust gates.
+
+**§2 probe (an observation — §R.2).** v4 checkout on `main`, tree clean;
+`log a6292f169..main` EMPTY; `log e8e17b2d9..main` = the six expected commits
+(`4fbdad186`, `e1872c94f`, `102a23648`, `1d0a31132`, `cad017599`,
+`a6292f169`); `log 489b228b6..bugfix` EMPTY. Nothing new; continued.
+
+**The pin.** `/tmp/qt-v4-pin-p4d320-e8e17b2d9`, HEAD
+`e8e17b2d92095bda008f03bb963eb4b1c470e680`, `package.json` `4.11.0-dev.26`;
+root `node_modules` rebuilt with `npm ci --offline` (zod **4.6.7**, openai
+**7.34.0**); `packages/quilltap` + 15 plugin `node_modules` symlinked. Every
+v4 read was `git show e8e17b2d9:` / `git show <sha> --`.
+
+### Red-first (unported `e8b0cea6c`)
+
+- **Compile red:** TS2305 `getAnnouncementSenderName`, `wardrobeReachLabel`,
+  `defaultWardrobeVantage`; TS2307 `./wearable-ref`.
+- **By structural cast, rows red:** `pascal-character` 11 / 18 (the 7 green
+  are the five non-`character` classify rows plus the wardrobe-ref and
+  dotted-value rows, whose verdicts did not move); `wardrobe-vantage` 40 / 40;
+  `announcement-sender-name` 32 / 32; `wearable-ref` 53 / 53 (module absent).
+- **The transcribed describes** (v4's picker 7, section 9, vantage 6,
+  wearable-ref 7, reach label 2, sender name 3, tool-draft +4) were all red
+  through the same compile red.
+- **R-F (a):** `main`'s shared generator re-run from the pin → 449 rows,
+  `cmp` IDENTICAL to the committed SPA copy, sha256
+  `48765f04b4132131f044758e116afb59fb5338000aeacfe86f0c82abf4780427` (not
+  re-committed; nothing moved).
+
+### What landed (five commits, SPA 0.5.873 → 0.5.878; no crate bumped)
+
+1. `7e835d3bd` — the twins (`placeholders.ts` `{ kind: 'character' }`;
+   `custom-tool-types.ts` `announceAsCharacter` in issue / schema order,
+   `KNOWN_TOP_LEVEL_KEYS` 17; `tool-draft.ts` `announceAsCharacter` emitted
+   only when true, `KNOWN_KEY_ORDER`, the never-flagged audit arm,
+   `WardrobeVantage` + `defaultWardrobeVantage`), NEW `wardrobe/wearable-ref.ts`,
+   `wardrobeReachLabel`, `getAnnouncementSenderName`; the four corpora +
+   recorders; v4's unit tests transcribed.
+2. `2333136e9` — the BuilderForm toggle, the Insert value `Character name`,
+   the run dialog's `{{character}}` row, `core-contract.ts`'s fenced P4.D320
+   region (the two new types only — R-9), `BenchRoll.wardrobeResolution?` /
+   `chairName?` and the vocabulary's `character?` in their home files; the
+   Salon attribution (`announcerNamesOf`, `staffSender`, the chip's
+   `senderName` + aria-label; `buildRenderItems` keeps one argument; the stale
+   "never both" comment rewritten to v4's precedence note).
+3. `1f93d245c` — NEW `wardrobe/wardrobe-vantage-items.ts` (R-2), NEW
+   `wardrobe/wardrobe-reference-picker.ts` (R-1 / R-8), NEW
+   `screens/custom-tools/wardrobe-vantage-select.ts`.
+4. `648896628` — `wardrobe-fields.ts` / `side-effects-section.ts` (the chip,
+   the advisory, ` (not covered)`, the slot advisory, the picker mounted once),
+   `proving-bench.ts` (vantage-seated chair as a `linkedSignal`, would apply /
+   would skip over C3 §1, `gestureVerb`, `chairName` from the bench roster —
+   R-11), `workbench-editor.ts` (the latched seed — R-10).
+5. `09d21b868` — the e2e spec, the README section, the `pascal-character`
+   id suffixes.
+
+**Shapes recorded.** The section's vantage select is gated by an explicit
+`[showVantage]` boolean (v4: an `onVantageChange` prop bound — an Angular
+output cannot be asked whether anyone listens); the editor sets it. The
+picker's header control is projected through `[qtPickerHeader]`. The editor
+reads destinations with one direct `fetchDestinations` (this screen keeps no
+TanStack cache — the destination picker and the bench read it directly too),
+so `workbenchKeys.destinations()` stays unused — the same divergence class as
+R-2. The picker closes on Escape (a document listener, `qt-modal` has none)
+and the section returns focus to the opener, or to the row's new chip after a
+pick (Tier 2 item 24).
+
+### The four corpora (all from the pin; a second run reproduces each byte for byte)
+
+| corpus | rows | sha256 |
+|---|---|---|
+| `wearable-ref.oracle.ndjson` | 53 (31 / 10 / 12) | `9a2de740d1b2a0eb9af00d519911eec30376edcff8addf2e6d823e4075c87d34` |
+| `wardrobe-vantage.oracle.ndjson` | 40 (20 / 20) | `2f2db54ec162bb5ac785eaef33ee38e9dfd31f56195f6c0833d75d347827c3ad` |
+| `announcement-sender-name.oracle.ndjson` | 32 (20 + 12 Staff) | `d9f75b6056ff19ad69314329ba4106c11f252438d2830220642281d5f167894b` |
+| `pascal-character.oracle.ndjson` | 18 (12 definition / 6 placeholder) | `0c1f6c56ad5bd1092be6247116be8b060020c0177651d47bdedce9fe8fa2c4e8` |
+
+Regen: the recorder headers (`PIN=<detached e8e17b2d9 worktree>`, `cp` the
+recorder into it, `npx tsx` there under Node 24.13.1, `rm -f` the output
+first, line counts in each header).
+
+### Findings
+
+- **Item 12's would-apply detail is v4's code, not the order's prose.** The
+  order says `Top, Bottom · Quilltap General`; v4's `BenchWardrobeLines`
+  joins `formatSlotLabels` with `wardrobeOriginLabel`, which spells a General
+  item `Shared · Quilltap General`. Ported the code; the spec pins `Top,
+  Bottom · Shared · Quilltap General`.
+- **Same-id, different-input rows against P4.D319 (R-F / R-5).** Measured
+  P4.D319's grown generator from its lane branch
+  (`claude/p4.d319-pascal-server-workbench-wardrobe-lens-2efa2e`, run from
+  this lane's pin): `announce-as-character-true` / `-false` / `-string` /
+  `-null` byte-identical; its `unknown-keys-announce-as-character-known`
+  (`"bogus":1`) and `announce-as-character-issue-order` (keys in schema order)
+  pose DIFFERENT inputs than this lane first did. No verdict disagreed; this
+  lane's two rows now ride suffixed ids
+  (`unknown-keys-announce-as-character-known-persist`,
+  `announce-as-character-issue-order-reversed`), the P4.D307 precedent, so the
+  unifier's union has no same-id conflict. P4.D319's branch carries the SPA
+  definition copy at the unchanged 449-row sha.
+- **v4's slot coupling ignores templated rows by CODE, not comment.** v4's
+  comment says "a templated row may yet cover the slot", but its `concrete`
+  set filters templated rows out, so a resolved garment beside a templated one
+  still couples the slot and flags ` (not covered)`. Ported the code (a
+  `wardrobe-fields.spec.ts` row pins it).
+- **Tier 2 item 26:** P4.D319's `apps/web/public/schemas/qtap-custom-tool.schema.json`
+  is byte-identical to the pin's (44,021); `announceAsCharacter` sits between
+  `defaultVisibility` and `parameters`.
+
+### Mutation proofs (Tier 2 item 23) — all killed
+
+`resolveWearableRef` with the templated check after the id lookup →
+`templated-as-id` red; `matchWearableTitle` without `trim` →
+`title-padded` + `title-padded-pool-title-exact` red; `defaultWardrobeVantage`
+groups before characters → `v4-character-beats-group` red;
+`wardrobeReachLabel` trimming the group name → `group-padded-untrimmed` red;
+`announcerNamesOf` without the participants overwrite → the
+`chat-view-model.spec.ts` row "lets the participant's name win" red (a spec
+row, not a corpus row — the corpus takes the names map as given).
+
+### The e2e (R-7)
+
+`e2e/workbench-wardrobe-picker-flow.spec.ts`, port 4347 / mock 45345, over the
+`characters-main.db` / `characters-mount.db` pair. **Measured first:** the
+destinations verb answered `no such table: projects` until `instance_settings`,
+`projects`, `groups` (main) and `group_doc_mount_links` (mount index) were
+planted from `fresh_schema.json`; then it listed Quilltap General and five
+character vaults (Aria, Bram, Cleo, Dax, Fenn), no projects, no groups. Aria's
+vault holds `Flight Jacket` (top, default) and `Goggles` (accessories); every
+other wardrobe and General is empty. Nothing was seeded. **LIVE, green by
+file:** (a) the lens after a save into Aria's vault, (b) the picker, (c) the
+slot flags, (d) the toggle through save + reopen (`main`'s server keeps the
+key), (e) the Insert value entry — 5 passed / 3 skipped. **Gated on
+`P4D319_SERVER_LANDED`:** (f) would apply / would skip, (g) a `{{character}}`
+roll, (h) a character-announced run in `Solo Voyage` through
+`chatCustomToolRun` with `asCharacterId` (authored blind against C3; the
+unifier verifies it at §S.9).
+
+**Regressions by file:** `workbench-triggers-effects-flow` 6 / 0,
+`workbench-flow` 7 / 0 / 2 skipped (standing), `salon-custom-tools-flow` —
+RED twice at first on its first beat (the passphrase screen still
+`Unlocking…` when `openChat` waited 5 s for the Chats heading), then A/B'd:
+`main`'s SPA source built and run by file → 5 / 0; this branch rebuilt and run
+→ 5 / 0 twice. Classified as the unlock outrunning a 5 s wait under machine
+load (a sibling lane's Playwright was running), not this lane's code.
+
+### Gates
+
+- SPA: `npm run lint` clean; touched + new specs green file by file; the whole
+  suite **529 files / 11,199 tests**; `npm run build` clean.
+- Rust (no crate source moved — a no-change confirmation): `cargo fmt --all
+  --check` clean; `recipe_sweep.py --self-test` exit 0; `cargo clippy
+  --workspace --all-targets -D warnings` clean plain AND with
+  `--features quilltap-core/native-transport` (with this branch's
+  `apps/web/dist`); `cargo test --workspace --no-fail-fast`
+  (`CARGO_INCREMENTAL=0`, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin, no
+  harvested oracle env — this lane owns no Rust family): **816 binaries /
+  5,316 passed / 3 failed / 3 ignored**. The three: `public_schemas_vendor_guard`
+  (43,493 vs the pin's 44,021 — §R.13, P4.D319's to turn green) and
+  `qtap_schema_embed_guard` (§R.13, P4.D317's), both by design on a non-owner
+  branch; and `api::mount_points::chunk_fallback_tests::a_failed_list_count_logs_v4s_line_and_counts_zero`
+  (its captured ERROR line came back empty inside the full core binary) —
+  green by name 1 / 1 and its family 6 / 6 three times alone: the capture
+  rig's callsite-interest race under a whole-binary run (memory note
+  `capture-rig-writer-thread`), on code this lane did not touch.
+
+### Recorded classes and deferrals
+
+R-2 (the loader reads fresh per vantage, no shared TanStack cache) and the
+editor's direct destinations read (same class); Tier 3 items 27–34 as the
+order states them (no server / Rust; help and spec docs are P4.D323's;
+`chat/message-list.ts` not threaded; the expressions refusal text unchanged;
+no client warning for `announceAsCharacter` without a chair; the barrel and
+the thumbnail doc comment NO-PORT).
+
+### 💸 for the dogfood pass
+
+As the order lists them: the lens on a tool in Friday's vault (chip, origin,
+wear line), `Choose…` over her real wardrobe, `Reference by: id`, a group-store
+tool opening on the group; 💸 the bench with Friday seated (would apply / would
+skip / the archived sentence); 💸 a character-announced run naming her on the
+Staff bar (and Pascal for the bare operator); 💸 the Character name insert run
+as her and as nobody; the run dialog's `{{character}}` row on a real roster.
+
+**Versions at close:** SPA 0.5.878; core / host / web / cli / tauri
+unchanged; harness frozen.

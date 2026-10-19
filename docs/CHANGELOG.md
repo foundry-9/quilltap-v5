@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — docs(porting): P4.D320 lane record — the Pascal SPA pair, LANE COMPLETE
+
+_Docs-only change._
+
+P4.D320's lane record in `status-log.md` (the probe, the pin, red-first counts, the five commits, the corpora and their shas, the findings, the mutation proofs, the e2e measurement and LIVE / gated split, the gates) and the order's status header set to LANE COMPLETE.
+
 #### 2026-10-19 — test(pascal-spa): the Workbench wardrobe-picker e2e walk, the fixtures README section, and the pascal-character ids kept distinct from P4.D319's (P4.D320)
 
 _Versions: SPA 0.5.878._
