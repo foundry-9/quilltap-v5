@@ -189048,3 +189048,282 @@ ensures ran:
   import writes nothing);
 - a `new-account` restore with the four character-keyed columns re-keyed
   (outfit, avatars, courier checkpoints).
+
+## P4.D319 — the Pascal pair, SERVER half: the Workbench wardrobe lens, `{{character}}`, `announceAsCharacter` (v4 `5cb0e0190` + `a05c6f755`) — LANE RECORD (2026-10-19)
+
+Branch `claude/p4.d319-pascal-server-workbench-wardrobe-lens-2efa2e`
+(worktree `~/source/quilltap-v5/.claude/worktrees/hopeful-goodall-2efa2e`).
+The session started in an app-made worktree on `claude/hopeful-goodall-2efa2e`
+at the orders' commit `e8b0cea6c` with no commits of its own; it was renamed
+in place to the lane branch (`git switch -c`), base verified `e8b0cea6c`.
+
+### The §2 probe (an observation) and the pin
+
+At lane start (2026-10-19 09:36 CDT): v4 on `main`, tree clean;
+`log a6292f169..main` EMPTY; `log e8e17b2d9..main` the six expected commits
+(`4fbdad186`, `e1872c94f`, `102a23648`, `1d0a31132`, `cad017599`,
+`a6292f169`); `log 489b228b6..bugfix` EMPTY. No seventh commit, no dirt.
+Pin `/tmp/qt-v4-pin-p4d319-e8e17b2d9`: `rev-parse` =
+`e8e17b2d92095bda008f03bb963eb4b1c470e680`, `package.json` `4.11.0-dev.26`,
+root `node_modules` by `npm ci --offline` (rc 0), `openai` 7.34.0, the
+`packages/quilltap` and fifteen `plugins/dist/*/node_modules` symlinks.
+
+### Commits
+
+1. `27e66f039` feat(pascal): `{{character}}` + `announceAsCharacter` (v4
+   `a05c6f755`) — core 0.0.1314. The R-E commit: the public schema
+   (44,021 bytes, md5 `cc205f92e1a7cbf9a485b49e31e6d413`) + the guard
+   constant + the definition key + the corpus rows together.
+2. `6e9db224a` test(pascal): `announced_dresser` through the three entrances;
+   announcer consequence pins — core 0.0.1315.
+3. `88c243787` feat(pascal): the Workbench wardrobe lens and the
+   wearable-reference rule (v4 `5cb0e0190`) — core 0.0.1316.
+4. the docs commit (this record + the order's status header).
+
+**v4 moved (§R.2 observation):** at 12:08 CDT `log a6292f169..main` showed
+THREE new commits, recorded for `/driftcheck` and not ported:
+`7263105c6` (10:46, Inventory title lint; bug 256), `406dbdd5a` (10:58, image
+prompt cleaning for moderated chats), `ea2cb60ab` (11:26, `edit_custom_tool`
+— a Pascal-adjacent feature, round (2)+'s business). Tree clean; `bugfix`
+unmoved. The pin is unaffected.
+
+### Red-first (§R.7), measured on unported `main` before any source edit
+
+- `pascal_custom_tool_definition_equivalence`: **7 rows red** —
+  `announce-as-character-{true,false,string,null,issue-order}` and
+  `unknown-keys-announce-as-character-known` (`unknownKeys` reported
+  `announceAsCharacter`), `effect-value-character` (v5 refused with the
+  grammar sentence, v4 loads).
+- `pascal_custom_tools_execution_equivalence`: red at
+  `character-v4-substitutes` (`{{character}}` rendered as written); nine
+  rows carry a name both sides render differently (five `renderTemplate`,
+  four `executeCustomTool`).
+- `pascal_expressions_equivalence`: red at `ref-character-concat` (parse +
+  eval) and the `character` classify row (`unknown` vs `character`).
+- `pascal_tool_vocabulary_equivalence`: red at `quotes-nothing` — EVERY row
+  (76) lacks `"character":false`.
+- The tier-2 entrances: red by construction on `main` (no announcer field, no
+  `character` argument — the rows did not exist); proven able to fail by a
+  mutation after the port (announcer forced off → `announced-dresser-raw-name`
+  red on the log line and the posted row).
+- `announcement_attribution_equivalence`: the four new rows GREEN on `main`
+  and after — a consequence family, the rule predates the pair (expected).
+- `pascal_workbench_route_equivalence`: `preview-empty-character-id` was a 404
+  on `main` (the old `resolve_metadata` doc pinned it); v4 at the pin answers
+  200. RE-AIMED BY DESIGN (the row carries the comment).
+- `public_schemas_vendor_guard` (`QT_V4_CHECKOUT=$PIN`): 43,493 ≠ 44,021.
+- NEW `pascal_bench_wardrobe_equivalence` (no Rust fn on `main`): three
+  mutations, each red — not-found message built `(Some(ref), Some(ref))` → 7
+  rows (`unknown-title-not-found`, `take-off-unknown`,
+  `multi-item-hit-and-miss-in-order`, `templated-ref-unrendered`,
+  `character-ref-nobody-misses-as-written`,
+  `title-with-trailing-space-in-pool`, `archived-general-by-title`);
+  `take_off` routed through `resolve_wearable` → 3 rows
+  (`archived-found-under-take-off`, `non-wardrobe-effect-between-gestures`,
+  `archived-general-by-id-take-off`); the index renumbered after skips → 3
+  rows (`clear-slot-beside-wear`, `non-wardrobe-effect-between-gestures`,
+  `skipped-effect-keeps-numbering`). No equivalent mutant.
+
+### What landed (Tier 1 items 1–21, Tier 2 items 22–23)
+
+- **`{{character}}`** — `PlaceholderRef::Character` after `Now` (exact key);
+  `TemplateVars.character`; the render miss arm (v4's bare DEBUG, capture
+  pinned + silence leg); `resolve_placeholder_value`; `OutcomeSubjects.
+  character` APPENDED after `state` (R-11); `EffectSubjects` carries it into
+  expressions and wardrobe refs; `execute_custom_tool(…, character)` LAST,
+  `js_trim` + empty filter inside. Grammar: no code change; the refusal text
+  byte-unchanged (pinned by `ref-character-dotted` / `-capitalised`).
+  Vocabulary: `character` between `now` and `wears`, `is_empty_vocabulary`,
+  the scanner. The operator route's GET `references` now carries the key too
+  (`list-trigger-room` row).
+- **`announceAsCharacter`** — the struct field between `default_visibility`
+  and `parameters`, `opt_bool` in issue order, `KNOWN_TOP_LEVEL_KEYS: [&str;
+  17]`. Zod bytes FROM THE ORACLE: `announceAsCharacter: Invalid input:
+  expected boolean, received string` / `… received null`; `opt_bool` needed no
+  change (the `disabled` / `revealOdds` rows stay green).
+- **The definition corpus (R-3 / R-F)** — nine rows in the fenced block before
+  the gate rows; 449 → **458 rows**, sha256
+  **`888f32ad231cc104ceb91d1d07cff8777a7bde33ed5a64a981c6048b515f639e`**.
+  `grep -c announce-as-character` = **6** (the order said 5 — the
+  `unknown-keys-announce-as-character-known` id also matches); `grep -c
+  '"announceAsCharacter"'` ≥ 3. (Note for P4.D320 left in the shared notes.)
+- **The writer (R-8 / R-I)** — `announcer_character_id`, `customAnnouncer`
+  LAST (`kind, characterId`, truthy); the chat read through
+  `chats_read::find_by_id_or_none`; v4's three lines, each capture-pinned with
+  a silence leg on the caller's thread: the `dropped` DEBUG (absent chat), the
+  INFO (`announcerCharacterId=null` / `=<id>`), the ERROR (a read connection
+  that cannot open — the main file removed before the first checkout). v4's
+  two `writer.test.ts` `it`s ported.
+- **The run service (R-1 / R-2)** — `character_name: Option<Option<&str>>`
+  after `metadata` (R-G); `resolve_character_name` (after `run_custom_tool`,
+  called after `progress`, before the cascade); the RAW read
+  `find_by_id_raw_or_none`. **R-2's DEBUG is PINNED, not NEGATIVE**: its v5
+  home is a `read_main` `Err`, reached in a unit test by removing the main
+  file from a fresh `Db` (no read connection yet), bare message asserted. v4's
+  six `the rolling character` `it`s ported over a real `Db` (a planted RAW
+  name with a vault that cannot be read is still named). `announcedBy` on
+  `Custom tool dealt`; the existing capture pin FLIPPED in the same commit
+  (now also seeing the writer's `dropped` DEBUG first).
+- **The entrances (R-G)** — `run_custom.rs` and the operator route
+  `character_name: None`; the trigger runner `Some(overlaid name)`. Each line
+  sits immediately after `metadata`. NOTE for the union: the run-service test
+  file now holds a SECOND `RunCustomToolParams` literal in the new
+  `rolling_character_tests` module (end of file) — P4.D316's
+  `pending_wardrobe_history` line must reach it too (`cargo build` will say
+  so).
+- **`wardrobe/wearable_ref.rs` (R-5)** — `RefTarget` (implemented for
+  `Value`), `match_wearable_title`, `is_templated_wearable_ref`,
+  `resolve_wearable_ref`; `pub mod wearable_ref;` at the top of `wardrobe.rs`.
+  No production caller (`find_by_title` unmoved). v4's seven `it`s as unit
+  tests over v4's own pool; the three delegation `it`s as `find_in_pool` /
+  `find_by_title` REGRESSION pins; differentially pinned by 16
+  `wearable_ref` rows in the new family. If the human prefers YAGNI, this is
+  the item to drop (R-5).
+- **`pascal/bench_wardrobe.rs` (R-4)** — `resolve_bench_wardrobe_against`
+  (pure) and `resolve_bench_wardrobe` (the read + the WARN + the DEBUG).
+  Unit pins over a real `Db`: the seated DEBUG with `found=0 missing=3`; **the
+  WARN at R-10's home** (a `Db` opened with no mount index → `read_mount_index`
+  `Err`), `None`, bare message; the silence legs (no gesture / only a cleared
+  slot / only a skipped effect → no read, no line).
+  **Measured, against the order's R-10:** the route-level "200 with no
+  `wardrobeResolution` key" on a degraded mount index is NOT reachable through
+  a SEATED preview in v5 — the sheet's hydration reads the mount index first
+  and answers 500 — so the arm is pinned at the lens, not the route.
+- **The bench route** — `bench_character_id` (+ a corner-case unit test);
+  `resolve_metadata → (Map, Option<String>)` with the doc comment rewritten to
+  v4's new rule + the name item; `BenchRequest.character_name` (kept only when
+  non-empty; the audit ignores it); `custom_tool_preview` reads the chair from
+  the RAW argument, deals with the seated name, and inserts
+  `wardrobeResolution` after `progress`. `quilltap-web` measured: **no web edge
+  moved** (`git diff e8b0cea6c -- crates/quilltap-web/src` empty), no web bump.
+- **`pascal_workbench_route_equivalence`** — 71 → 78 cases (fixture NOT
+  rebuilt, R-7): `preview-empty-character-id` RE-AIMED (200, the sheet as
+  given), `audit-empty-character-id`, `preview-character-name-as-imogen`
+  (`Imogen rolls 2` / `For Imogen`), `preview-character-hand-typed`,
+  `preview-wardrobe-seated` (the key LAST, `not_found` misses at indices 0 and
+  2 — the cleared slot at 1 skipped — with the re-spelled sentence),
+  `preview-wardrobe-hand-typed`, `preview-wardrobe-empty-character-id`,
+  `audit-wardrobe-seated`. `grep -c '"wardrobeResolution"'` = **1**. The Rust
+  side now byte-compares every 200 body's KEY ORDER against v4's and asserts
+  `wardrobeResolution` is last (`canon` is order-blind).
+- **NEW `pascal_bench_wardrobe_equivalence`** — 27 `lens` rows + 16
+  `wearable_ref` rows (+ the `meta` pool), `grep -c '\"found\":null'` = 12,
+  `grep -c '"kind":"wearable_ref"'` = 16. One corpus correction: the order's
+  `{{params.missing}}` ref is a LOAD-time refusal in v4 (`item references
+  undeclared parameter`), so the unrendered-template row uses an unknown
+  FAMILY (`{{mystery}} hat`), which loads and misses as written. Registered by
+  its header; `recipe_sweep.py --self-test` 0.
+- **The three tier-2 entrances (R-6)** — `announced_dresser` (trigger phrase
+  `dress the part`, chip `For {{character}}`, message `{{character}} rolls
+  {{value}}`, roll 0.4, no effects) lives on the trigger room's **Trigger
+  Shelf** (the project tier of `CHAT_TRIGGERS`), so all three entrances reach
+  it in one room and no other room's roster moves. NEW shared module
+  `harness/oracle/fixtures/pascal-run-custom-announcer.ts` (imported by the
+  builder) + NEW idempotent widen `extend-pascal-run-custom-announcer.ts`
+  (idempotency check: the shelf already links
+  `Tools/announced_dresser.tool.json`). Run from the pin on staged copies:
+  **only the mount file moves** — main `c795379a…` UNCHANGED, mount
+  `78857bff…` → **`41aec78328ff7974e7ad38153bdd7db765e6ec4ff07efd5d3dc26bd1c6d0e3f7`**;
+  a second run left both bytes identical. Rows: handler (37) —
+  `announced-dresser-raw-name` (Bertie, `customAnnouncer` LAST),
+  `-padded-raw-name` (per-case plant `'  Bertie  '`), `-regression-spell` (no
+  key); the handler case gained an optional per-case `room` (chat / project /
+  caller seat) recorded on the row only when set. Route (47) —
+  `list-trigger-room`, `run-announced-dresser-as-a`, `-no-character` (Pascal,
+  as written). Trigger runner (24) — `announced-dresser-overlaid-name`,
+  `-padded-name`, `-broken-vault` (the existing WARN-skip). `grep -c
+  customAnnouncer` > 0 in each. The union re-runs P4.D316's extender, then
+  this one (§S.5 (3)).
+- **`announcement_attribution_equivalence`** — four Pascal rows
+  (named → `[Ariel] ` on `content` AND `opaqueContent`; deleted announcer →
+  untouched; idempotent across a re-run; no announcer → untouched). The order
+  wrote `[Bertie] `; the corpus's existing name table (Ariel) was reused so no
+  earlier row's bytes move.
+- **Consequence pins (Tier 2 item 22)** — chat activity and the summary bridge
+  skip a character-announced Pascal row; the markdown transcript names the
+  character. **The Courier: the order's `[Staff: Pascal]` is wrong** — v4's
+  `COURIER_SYSTEM_SENDER_LABELS` has no `pascal` key, so v4 (and v5) say
+  **`[Staff: pascal]`** (the raw key). Pinned to v4's real bytes; no source
+  change (R-9 holds: `systemSender` first).
+- **T19 (Tier 2 item 23)** — proven on the fixture rather than a Friday copy:
+  an `announceAsCharacter` definition on a database store loads through v5's
+  real roster at all three entrances and lists in the GET (`list-trigger-room`,
+  no load error); `{{character}}` in an effect value loads
+  (`effect-value-character`). The Friday-copy proof is a 💸 row.
+
+### Deferred / recorded (Tier 3)
+
+- 24: v4's two mock-only arms have v5 homes, both PINNED (R-2's DEBUG on a
+  failed `read_main`; R-10's WARN on a degraded mount index, at the lens). No
+  oracle row exists or was invented.
+- 25: `OutcomeSubjects.character`'s position — appended after `state`;
+  unobservable; recorded, no pin.
+- 26: the SPA — P4.D320, against C3.
+- 27: v4 filing candidate (the human files): `a05c6f755`'s message says the
+  Courier credits the character; the code says `[Staff: pascal]`.
+- `HANDOFF:` to P4.D323 — `help/custom-tools.md`'s `## Letting the character
+  say it — announceAsCharacter` section + its `{{character}}` table row + the
+  "as written" sentence, and `help/pascals-workbench.md`'s **Who announces
+  it.** bullet + the Messages bullet's `{{character}}`. This lane wrote no help
+  text.
+
+### Fixtures changed, and what they invalidate
+
+- `crates/quilltap-web/tests/fixtures/pascal-run-custom-mount.db` (widened):
+  every family reading the pair was re-run green from the pin —
+  `pascal_run_custom_handler`, `pascal_custom_tools_route`,
+  `pascal_trigger_runner`, `pascal_build_tools_roster`,
+  `pascal_definition_reader`.
+- `harness/oracle/fixtures/workbench-route-cases.json` (grown): read only by
+  `pascal_workbench_route_equivalence`.
+- `apps/web/public/schemas/qtap-custom-tool.schema.json` (re-vendored).
+- The SPA copy of the definition corpus is NOT touched (P4.D320's).
+
+### Regen recipes (every output under `/tmp/p4d319/`, from the pin)
+
+Each family's committed `.rs` header carries its canonical recipe; the lane ran
+them by hand with outputs under `/tmp/p4d319/` (the definition corpus's shared
+`/tmp` path is also P4.D320's). The NEW family:
+`cd /tmp/qt-v4-pin-p4d319-e8e17b2d9 && $N/node --import tsx
+$V5W/harness/oracle/cases/pascal-bench-wardrobe.ts >
+/tmp/p4d319/oracle-pascal-bench-wardrobe.ndjson`, then
+`QT_ORACLE_PASCAL_BENCH_WARDROBE=… cargo test -p quilltap-harness --test
+pascal_bench_wardrobe_equivalence`. The tier-2 trio: `/tmp/p4d319/regen-
+tier2.sh` (a /tmp mirror of the three cases + the pair, jest
+`--testTimeout=300000`).
+
+### The gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D
+  warnings` clean plain AND with `--features quilltap-core/native-transport`
+  (`apps/web/dist` built first).
+- `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`, the lane's
+  env block — 15 oracle vars + `QT_V4_CHECKOUT` / `QT_V4_ROOT` = the pin):
+  **817 binaries / 5,352 passed / 1 failed / 3 ignored.** The one red is
+  `qtap_schema_embed_guard` (v4 108,678 vs vendored 105,774) — red BY DESIGN
+  at the pin, P4.D317's to turn green (§R.13). Green BY NAME with their
+  oracles set: the ten moving families + the new one + the guard
+  (`public_schemas_vendor_guard` 44,021), the five NOT-moving families
+  (`pascal_run_custom`, `pascal_writers`, `wearable_pool`,
+  `pascal_workbench`, `p4_6ay_workbench_wire_contract` — all green, as the
+  order measured), the other two pair readers (`pascal_build_tools_roster`,
+  `pascal_definition_reader`), and `fallback_home_guard`,
+  `zod_issues_home_guard`, `spelling_guard`, `host_zone_sites_census`.
+- `recipe_sweep.py --self-test` exit 0.
+- No SPA source touched (`git diff e8b0cea6c -- apps/web/src` empty); the one
+  `apps/web` change is the public schema.
+
+### 💸 for the dogfood pass
+
+The order's four rows stand: the lens on a seated Friday character (title /
+id / archived under wear and take-off / uncovered slot / unknown title; the
+hand-typed and empty-id sheets 200 with no key); a `{{character}}` roll on a
+real Salon turn at each entrance (💸 one model turn); a character-announced
+tool (the row's `customAnnouncer`, the INFO's `announcerCharacterId`, the next
+turn's `[<Name>] ` tag, the Courier's `[Staff: pascal]`); a v4-authored
+definition with `{{character}}` in an effect value loading on v5.
+
+### Versions at close
+
+core **0.0.1316** (from 0.0.1313, +1 per commit touching it); web 0.0.241,
+host 0.0.210, cli 0.0.34, SPA 0.5.873 unchanged; harness frozen 0.0.1110.

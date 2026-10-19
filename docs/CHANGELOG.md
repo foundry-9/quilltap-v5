@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — docs(porting): P4.D319 lane record and LANE COMPLETE
+
+_Docs-only change._
+
+Appends the P4.D319 lane record to the status log (red-first counts, the definition corpus sha, the widened fixture's hashes and extender, the measured corrections to the order, the gate) and marks the order LANE COMPLETE.
+
 #### 2026-10-19 — feat(pascal): the Workbench wardrobe lens and the wearable-reference rule (v4 5cb0e0190, P4.D319)
 
 _Versions: core 0.0.1316._
