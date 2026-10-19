@@ -204,6 +204,31 @@ describe('OutfitHistoryTab', () => {
     expect(order).toEqual(['discard', 'rollback', 'reseed']);
   });
 
+  it('with nothing staged, Wear again still discards (unasked) before rolling back (R-L: ruled divergence)', async () => {
+    // v4 at the pin skips the discard on the clean path, leaving the Live tab
+    // on the pre-rollback staging (measured — P4.D318 Tier 1 item 1). Ruled
+    // fix in v5 (2026-10-19): discard unconditionally, confirm only when dirty.
+    const order: string[] = [];
+    const { el, fixture, props } = await renderTab(
+      {
+        discardStagedEdits: vi.fn((options?: { reseed?: boolean }) => {
+          order.push(options?.reseed ? 'reseed' : 'discard');
+        }),
+      },
+      (req) => {
+        if ((req.type as string) === 'chatWardrobeRollback') {
+          order.push('rollback');
+          return { equippedSlots: EMPTY, previousIndex: 2, restoredIndex: 0, skipped: [] };
+        }
+        return HISTORY;
+      },
+    );
+    wearAgainButton(el, 0)!.click();
+    await settle(fixture);
+    expect(props.requestConfirmation).not.toHaveBeenCalled();
+    expect(order).toEqual(['discard', 'rollback', 'reseed']);
+  });
+
   it('does nothing when the operator keeps the staged edits', async () => {
     const { el, fixture, seen, props } = await renderTab({
       hasStagedEdits: true,

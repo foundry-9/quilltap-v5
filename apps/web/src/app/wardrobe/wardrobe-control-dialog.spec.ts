@@ -2040,12 +2040,13 @@ describe('Wardrobe dialog — the History tab and the Live staging discard (P4.D
     expect(closedSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("after a rollback the Live tab shows the restored outfit (R-L: v4's behaviour, pending ruling)", async () => {
-    // The CLEAN path: nothing staged, so Wear again neither confirms nor
-    // discards, and the settle's `{ reseed: true }` is a no-op for a character
-    // already seeded (v4 `useStagedLiveOutfits.ts:211-213`). Measured in v4 at
-    // the pin (P4.D318 Tier 1 item 1): the Live tab keeps the PRE-rollback
-    // staging, and a later gesture + Done set_all's over the rollback.
+  it("after a rollback the Live tab shows the restored outfit (R-L: RULED fix in v5 — a recorded divergence from v4)", async () => {
+    // The CLEAN path: nothing staged, so Wear again asks nothing. v4 at the pin
+    // also skips the discard there, and the settle's `{ reseed: true }` is a
+    // no-op for a character already seeded — so v4's Live tab keeps the
+    // PRE-rollback staging and a later gesture + Done set_all's over the
+    // rollback (measured, P4.D318 Tier 1 item 1). The human's ruling
+    // (2026-10-19): v5 discards unconditionally, confirming only when dirty.
     const state = { worn: WORN };
     const { fixture, component, seen } = await renderInner('chat-1', historyRoute(state));
     const confirm = vi.spyOn(window, 'confirm');
@@ -2056,16 +2057,22 @@ describe('Wardrobe dialog — the History tab and the Live staging discard (P4.D
 
     inner(component).rightTab.set('live');
     await settleLong(fixture);
-    // v4's behaviour: the stale pre-rollback staging paints, clean.
-    expect(surface(component).liveDisplaySlots()).toEqual(WORN);
+    expect(surface(component).liveDisplaySlots()).toEqual(RESTORED);
+    expect(inner(component).liveStagedByChar()['c1']).toEqual(RESTORED);
     expect(surface(component).isLiveDirty('c1')).toBe(false);
 
-    // …and a later gesture stages onto it, so Done would undo the rollback.
-    inner(component).handleSlotAdd('accessories', 'hat');
+    // A later gesture stages onto the RESTORED outfit, so Done keeps the rollback.
+    inner(component).handleSlotAdd('top', 'shirt');
     inner(component).requestClose();
     await settleLong(fixture);
     expect(equips(seen)).toHaveLength(1);
-    expect((equips(seen)[0] as { slots: EquippedSlots }).slots.top).toEqual(['shirt']);
+    expect((equips(seen)[0] as { slots: EquippedSlots }).slots).toEqual({
+      top: ['shirt'],
+      bottom: [],
+      footwear: [],
+      accessories: ['hat'],
+      hair: [],
+    });
   });
 
   it('a confirm the operator declines changes nothing', async () => {

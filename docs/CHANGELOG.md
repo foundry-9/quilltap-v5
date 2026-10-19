@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — fix(spa): Wear again discards the Live staging even when clean — the R-L ruled divergence from v4 (P4.D318)
+
+_Versions: SPA 0.5.878._
+
+P4.D318 R-L, by the human's ruling (2026-10-19). Measured in v4 at `e8e17b2d9` (a scratch jest test over the real `useStagedLiveOutfits`): with no staged edits, *Wear again* skips the discard, and the settle's `{ reseed: true }` is a no-op for an already-seeded character, so the Live tab keeps the pre-rollback staging and a later gesture + Done `set_all`s over the rollback — in both settle orders. v5 now discards the Live staging unconditionally before the rollback and still confirms only when it is dirty. Recorded divergence from v4 (the human files the v4 bug). Red-first: the dialog's clean-path case re-pinned to the restored outfit and a new tab case for the unasked discard — both red before the change, green after.
+
 #### 2026-10-19 — feat(spa): wardrobe_rollback / wardrobe_history tool rows and the rollback notice (P4.D318, v4 ebb480edd)
 
 _Versions: SPA 0.5.877._

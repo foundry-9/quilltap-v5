@@ -48,9 +48,11 @@ export function staleCount(entry: OutfitHistoryEntry): number {
  * timeline's cursor (nothing is appended), and Aurora announces the change.
  *
  * If the Live tab holds staged edits for this character, *Wear again* asks
- * first and throws the staging away BEFORE rolling back — otherwise Done would
- * flush the stale staging straight over the restored outfit — and asks the
- * dialog to re-seed the Live tab once the rollback's re-reads have settled.
+ * first. Either way it throws the staging away BEFORE rolling back — otherwise
+ * Done would flush the stale staging straight over the restored outfit — and
+ * asks the dialog to re-seed the Live tab once the rollback's re-reads have
+ * settled. (v4 discards only after the confirm, i.e. only when dirty — the
+ * ruled R-L divergence, see `wearAgain`.)
  *
  * v5 notes:
  *  - **The keys (R-H).** The read lives at `chatKeys.wardrobeHistory(chatId,
@@ -232,8 +234,14 @@ export class OutfitHistoryTab {
         `Discard the staged changes to ${characterName}'s outfit and return to outfit ${index}?`,
       );
       if (!ok) return;
-      await discardStagedEdits();
     }
+    // RULED DIVERGENCE (R-L, the human, 2026-10-19): v4 discards only inside
+    // the `hasStagedEdits` arm, so on the clean path the Live tab keeps its
+    // seeded (pre-rollback) staging — the settle's `{ reseed: true }` is a
+    // no-op for an already-seeded character — and a later gesture + Done
+    // `set_all`s over the rollback (measured in v4 at `e8e17b2d9`). v5
+    // discards unconditionally; the confirm still asks only when dirty.
+    await discardStagedEdits();
     void this.rollback(chatId, characterId, index, discardStagedEdits);
   }
 
