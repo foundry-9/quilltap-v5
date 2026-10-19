@@ -73,7 +73,15 @@ mod common;
 /// `"trigger"` (`362426c8f`), NEW `triggerPhrase`, the `effects` description
 /// (`f0db8cbb8`); the object stays open, so the move LOOSENS one enum and
 /// refuses nothing new.
-const VENDORED_BYTES: usize = 105_774;
+/// P4.D317: 108,678 at v4 `e8e17b2d9` — `7953da3a0` added `$defs.WardrobeHistory`
+/// (`additionalProperties: true`; required `id`, `chatId`, `characterId`,
+/// `entryIndex`, `slots`, `slotsHash` (16–16), `source` (the seven-value enum),
+/// `actorCharacterId`, `isCurrent`, `createdAt`), `chats.wardrobeHistory` LAST
+/// under the chats data object — `additionalProperties: false`, so a chats
+/// bundle carrying history was REFUSED before (the one acceptance change) —
+/// and `counts.wardrobeHistory`; `4ae20977f` added `actorToolName` (string or
+/// null, NOT required) and re-described `actorCharacterId`.
+const VENDORED_BYTES: usize = 108_678;
 
 #[test]
 fn the_embedded_schema_is_self_consistent() {

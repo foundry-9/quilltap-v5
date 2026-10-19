@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — chore(schema): re-vendor qtap-export.schema.json at v4 `e8e17b2d9` — outfit history (P4.D317)
+
+_Versions: core 0.0.1317._
+
+The vendored public export schema moves to v4's bytes at the `e8e17b2d9` pin (108,678 bytes, md5 `1d8e6546fbdb6ad3a48fee15d2932911`): `$defs.WardrobeHistory`, `chats.wardrobeHistory` under the chats data object, and `counts.wardrobeHistory` (`7953da3a0`), plus `actorToolName` (`4ae20977f`). Because the chats data object refuses unknown keys, a chats bundle carrying outfit history was invalid on the old schema and is valid now. The two size pins (`qtap_schema.rs`, `qtap_schema_embed_guard`) move with it, and `qtap_schema_validate_equivalence` gains five rows (valid; missing `actorCharacterId`; missing `actorToolName` still valid; a 15-unit hash; a bogus source), regenerated from the pin.
+
 #### 2026-10-19 — feat(backup): carry the outfit history in every backup (P4.D317)
 
 _Versions: core 0.0.1316._

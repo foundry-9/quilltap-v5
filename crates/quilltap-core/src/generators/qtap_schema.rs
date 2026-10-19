@@ -194,7 +194,10 @@ mod tests {
         // `Memory.supersededAt` after `supersededById`).
         // P4.D313: 105,774 at v4 `25b8fab6a` (`pascalMeta.invokedBy` gains
         // `"trigger"`, NEW `triggerPhrase`, the `effects` description).
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 105_774);
+        // P4.D317: 108,678 at v4 `e8e17b2d9` (`$defs.WardrobeHistory`,
+        // `chats.wardrobeHistory`, `counts.wardrobeHistory`; `4ae20977f`'s
+        // `actorToolName`).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 108_678);
     }
 
     /// The export with one memory of `minimal_characters_export`'s character.

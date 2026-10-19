@@ -939,6 +939,174 @@
           }
         }
       ]
+    },
+    {
+      "name": "chats_wardrobe_history_valid",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D317] v4 `7953da3a0`: `chats.wardrobeHistory` under the chats data object (`additionalProperties: false`) \u2014 RED on the stale schema (v4 valid, v5 invalid: the unknown key), green after the re-vendor.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/wardrobeHistory",
+          "value": [
+            {
+              "id": "7e000001-0000-4000-8000-000000000001",
+              "chatId": "c1000000-0000-4000-8000-000000000001",
+              "characterId": "a1000000-0000-4000-8000-000000000001",
+              "entryIndex": 0,
+              "slots": {
+                "top": [
+                  "ac000000-0000-4000-8000-000000000001"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              },
+              "slotsHash": "0123456789abcdef",
+              "source": "pascal",
+              "actorCharacterId": "a1000000-0000-4000-8000-000000000001",
+              "actorToolName": "dress_for_dinner",
+              "isCurrent": true,
+              "createdAt": "2026-03-01T00:00:00.000Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chats_wardrobe_history_missing_actor_character_id_invalid",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D317] `actorCharacterId` is `required` (nullable, but present).",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/wardrobeHistory",
+          "value": [
+            {
+              "id": "7e000001-0000-4000-8000-000000000001",
+              "chatId": "c1000000-0000-4000-8000-000000000001",
+              "characterId": "a1000000-0000-4000-8000-000000000001",
+              "entryIndex": 0,
+              "slots": {
+                "top": [
+                  "ac000000-0000-4000-8000-000000000001"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              },
+              "slotsHash": "0123456789abcdef",
+              "source": "pascal",
+              "actorToolName": "dress_for_dinner",
+              "isCurrent": true,
+              "createdAt": "2026-03-01T00:00:00.000Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chats_wardrobe_history_missing_actor_tool_name_valid",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D317] `4ae20977f`'s `actorToolName` is NOT required \u2014 a pre-column row stays valid.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/wardrobeHistory",
+          "value": [
+            {
+              "id": "7e000001-0000-4000-8000-000000000001",
+              "chatId": "c1000000-0000-4000-8000-000000000001",
+              "characterId": "a1000000-0000-4000-8000-000000000001",
+              "entryIndex": 0,
+              "slots": {
+                "top": [
+                  "ac000000-0000-4000-8000-000000000001"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              },
+              "slotsHash": "0123456789abcdef",
+              "source": "pascal",
+              "actorCharacterId": "a1000000-0000-4000-8000-000000000001",
+              "isCurrent": true,
+              "createdAt": "2026-03-01T00:00:00.000Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chats_wardrobe_history_short_hash_invalid",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D317] `slotsHash` is a string of length 16\u201316.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/wardrobeHistory",
+          "value": [
+            {
+              "id": "7e000001-0000-4000-8000-000000000001",
+              "chatId": "c1000000-0000-4000-8000-000000000001",
+              "characterId": "a1000000-0000-4000-8000-000000000001",
+              "entryIndex": 0,
+              "slots": {
+                "top": [
+                  "ac000000-0000-4000-8000-000000000001"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              },
+              "slotsHash": "0123456789abcde",
+              "source": "pascal",
+              "actorCharacterId": "a1000000-0000-4000-8000-000000000001",
+              "actorToolName": "dress_for_dinner",
+              "isCurrent": true,
+              "createdAt": "2026-03-01T00:00:00.000Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chats_wardrobe_history_bogus_source_invalid",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D317] `source` is the seven-value enum.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/wardrobeHistory",
+          "value": [
+            {
+              "id": "7e000001-0000-4000-8000-000000000001",
+              "chatId": "c1000000-0000-4000-8000-000000000001",
+              "characterId": "a1000000-0000-4000-8000-000000000001",
+              "entryIndex": 0,
+              "slots": {
+                "top": [
+                  "ac000000-0000-4000-8000-000000000001"
+                ],
+                "bottom": [],
+                "footwear": [],
+                "accessories": [],
+                "hair": []
+              },
+              "slotsHash": "0123456789abcdef",
+              "source": "bogus",
+              "actorCharacterId": "a1000000-0000-4000-8000-000000000001",
+              "actorToolName": "dress_for_dinner",
+              "isCurrent": true,
+              "createdAt": "2026-03-01T00:00:00.000Z"
+            }
+          ]
+        }
+      ]
     }
   ],
   "literals": [
