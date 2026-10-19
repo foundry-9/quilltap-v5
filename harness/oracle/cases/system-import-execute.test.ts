@@ -23,8 +23,9 @@
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-sysimportexec-oracle
- *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
  *   cp "$V5W/harness/oracle/cases/system-import-execute.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"
  *   cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
  *   cp "$V5W/harness/oracle/fixtures/apply-memory-tiers-migration.ts" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
@@ -43,6 +44,7 @@ import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { applyMemoryTiersMigration } from '../fixtures/apply-memory-tiers-migration';
+import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
 
 interface Spec {
   testPepperBase64: string;
@@ -1529,6 +1531,12 @@ async function runCase(
   const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
   plantP4d171Values(getRawDatabase()!);
   plantP4d182Values(getRawDatabase()!);
+  // [P4.D317] The outfit-history table on every copy — build copies (whose
+  // `chats` export reads it per chat) and import targets (step 7f writes it)
+  // alike: a BOOTED v4 / v5 instance carries it, the committed generateDDL
+  // pair does not. v4's REAL DDL through the round's shared plant (never the
+  // seed migration); the Rust side runs `ensure_chat_wardrobe_history_on`.
+  await plantChatWardrobeHistoryTable(getRawDatabase()!);
   const { getRawMountIndexDatabase } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );

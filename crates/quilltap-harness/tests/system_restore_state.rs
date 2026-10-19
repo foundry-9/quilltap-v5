@@ -1809,6 +1809,19 @@ fn align_uploads_pointer(instance: &Path, zip: &Path, temp_root: &Path) {
 fn fresh_instance(dir: &Path) -> Db {
     std::fs::create_dir_all(dir).unwrap();
     provision_fresh_instance(dir, TEST_PEPPER).expect("provision fresh instance");
+    // === P4.D317: the outfit-history table on every target ===
+    // A booted v5 instance carries `chat_wardrobe_history` (the keystone's
+    // boot ensures, `host.rs`), but `provision_fresh_instance` alone does not
+    // create it — so every target gets the table here, exactly as the oracle
+    // plants v4's REAL DDL on every case's target (`plantChatWardrobeHistoryTable`
+    // in `runRestoreCase`). Table only: never the seed ensure (a fresh target
+    // has no chats to seed, and the oracle never runs v4's seed).
+    {
+        let w = quilltap_core::db::Writer::open_writable(&dir.join("quilltap.db"), TEST_PEPPER)
+            .expect("open target for the outfit-history table");
+        quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
+    }
+    // === end P4.D317 ===
     Db::open(
         DbPaths {
             main: dir.join("quilltap.db"),
@@ -6881,6 +6894,26 @@ fn compare_case(
     let narrowed = REPLAY_DEDUPE_NARROWED.iter().any(|(c, _)| *c == name);
     let got_summary = serde_json::to_value(summary).expect("summary serializes");
     let want_summary = &case["summary"];
+    // === P4.D317: the summary's KEY LIST, compared both ways ===
+    // The loop below walks v5's keys only, so a counter v4 adds (the
+    // `e8e17b2d9` round's `wardrobeHistory`) was invisible — found by this
+    // lane's red-first run: the post-plant oracle carried the key in every
+    // case and the family stayed green. The key list (order included) is
+    // compared here first.
+    {
+        let keys = |v: &Value| -> Vec<String> {
+            v.as_object()
+                .map(|m| m.keys().cloned().collect())
+                .unwrap_or_default()
+        };
+        let (gk, wk) = (keys(&got_summary), keys(want_summary));
+        if gk != wk {
+            failures.push(format!(
+                "[{name}] summary key list differs\n  rust:   {gk:?}\n  oracle: {wk:?}"
+            ));
+        }
+    }
+    // === end P4.D317 ===
     for (k, gv) in got_summary.as_object().unwrap() {
         let wv = &want_summary[k];
         // [P4.147] `FRESH_TARGET_UPLOADS`: v5 restores exactly the carved

@@ -234,6 +234,11 @@ fn fresh_fixture(tag: &str) -> Scratch {
         // compare equal in `diff_states`, so every other arm is unmoved.
         quilltap_core::db::chat_informs::ensure_chat_informs_table(w.connection())
             .expect("ensure chat_informs on the vintage fixture");
+        // [P4.D317] The outfit-history table, as every booted v5 instance
+        // carries it (the keystone's boot ensures) — the oracle's
+        // `plantChatWardrobeHistoryTable` on its copy (v4's REAL DDL). Table
+        // only; never the seed ensure.
+        quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
         let touched = w
             .connection()
             .execute(

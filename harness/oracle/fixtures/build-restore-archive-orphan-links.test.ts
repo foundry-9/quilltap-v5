@@ -46,8 +46,9 @@
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   PIN=/private/tmp/qt-v4-pin-p4.28-c4d4b0de
  *   TMPO=/tmp/qt-restore-archive-orphans
- *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
  *   cp "$V5W/harness/oracle/fixtures/build-restore-archive-orphan-links.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"
  *   cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
  *   cd "$PIN"
  *   QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
@@ -63,6 +64,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
 
 interface Spec {
   testPepperBase64: string;
@@ -118,6 +120,12 @@ async function openInstance(work: string, userId: string): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   const { initializeDatabase } = await import('@/lib/database/manager');
   await initializeDatabase();
+  // [P4.D317] v4's `createBackup` reads `chat_wardrobe_history` UNGUARDED at
+  // the `e8e17b2d9` pin, so the builder plants the table (the round's shared
+  // plant — v4's REAL DDL, never the seed) or it cannot LOAD. The committed
+  // archive is NOT rebuilt for this (the P4.D264 rule): a rebuild now would add
+  // `data/wardrobe-history.json` to it.
+  await plantChatWardrobeHistoryTable();
 }
 
 async function closeInstance(): Promise<void> {

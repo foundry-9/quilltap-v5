@@ -36,8 +36,9 @@
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-sysdel-oracle
- *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
  *   cp "$V5W/harness/oracle/cases/system-delete-data.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"
  *   cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
@@ -53,6 +54,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
 
 interface Spec {
   testPepperBase64: string;
@@ -388,6 +390,12 @@ async function runCase(
     '@/lib/database/backends/sqlite/llm-logs-client'
   );
   await initializeDatabase();
+  // [P4.D317] The outfit-history table on every copy (a booted instance's
+  // shape; v4's REAL DDL through the round's shared plant — never the seed).
+  // At the `e8e17b2d9` pin `clearFormat3Entities` truncates it; on an absent
+  // table v4 logs ERROR + DEBUG and moves on. The Rust side runs
+  // `ensure_chat_wardrobe_history_on`.
+  await plantChatWardrobeHistoryTable();
 
   try {
     publishedTopics = [];

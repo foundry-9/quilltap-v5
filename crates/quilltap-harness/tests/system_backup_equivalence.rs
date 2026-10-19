@@ -206,6 +206,12 @@ fn open_fixture(scratch: &Path) -> Db {
     // P4.D171 columns natively (`pragma_table_info` proof: P4.117 lane
     // record) — the `ensure_*_column` heals that used to run here are dead
     // and removed.
+    // [P4.D317] the outfit-history table on every copy — the oracle's
+    // `plantChatWardrobeHistoryTable` (v4's REAL DDL), table only.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
+        quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
+    }
     Db::open(
         DbPaths {
             main,

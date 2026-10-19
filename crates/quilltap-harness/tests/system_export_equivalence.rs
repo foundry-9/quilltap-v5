@@ -69,6 +69,9 @@ fn fresh_db(tag: &str) -> ScratchDb {
         // pair P4.D265 widened in place), then the tier cells planted.
         quilltap_core::test_support::ensure_memory_tiers_columns(w.connection());
         plant_memory_tiers_values(w.connection());
+        // [P4.D317] the outfit-history table on every copy — the oracle's
+        // `plantChatWardrobeHistoryTable` (v4's REAL DDL), table only.
+        quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
         // [P4.D294] the oracle's `plantThrowingCursors`, for the
         // `…_cursor_throw` cases.
         // [P4.D294 Tier 2 #19] the oracle's `SCENARIO_TEXT_CELL_SQL`.

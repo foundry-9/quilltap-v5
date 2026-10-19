@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — test(harness): plant chat_wardrobe_history in every backup / restore / export / import / delete oracle case and archive builder (P4.D317 unit 1)
+
+_Harness-only change (`quilltap-harness` frozen); no crate version moves._
+
+At the `e8e17b2d9` pin v4's `createBackup` reads `chat_wardrobe_history` through a raw query with no lazy create, so `system_backup` and `backup_uuid_remap` (whose `wide` case is built by `createBackup`) died with `no such table` on every case. Every case of `system-backup`, `backup-uuid-remap`, `system-restore` (the target), `system-export`, `system-import-execute` and `system-delete-data`, and the six archive builders that call `createBackup`, now plant the table on the per-run copy through the round's shared `plantChatWardrobeHistoryTable` (v4's real DDL, never the seed migration); the Rust families plant it through `test_support::ensure_chat_wardrobe_history_on`, and every `system_restore_state` target gets it in `fresh_instance` (a booted v5 instance carries it; the provisioner alone does not). `system_restore_state` now compares the restore summary's key list both ways: it walked v5's keys only, so a counter v4 added stayed invisible. No committed archive is rebuilt.
+
 #### 2026-10-19 — test(harness): the rollback's Tier 2 family + two wardrobe turns in the orchestrator corpus (P4.D316 Tier 2 items 24–25)
 
 _No crate versions bumped._

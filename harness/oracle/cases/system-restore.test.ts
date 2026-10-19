@@ -22,8 +22,9 @@
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-sysrestore-oracle
- *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/lib"
  *   cp "$V5W/harness/oracle/cases/system-restore.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"
  *   cd ~/source/quilltap-server
  *   QT_RESTORE_ARCHIVES=$V5W/crates/quilltap-web/tests/fixtures/restore-archives \
  *   QT_ORACLE_OUT=/tmp/oracle-system-restore.ndjson \
@@ -35,6 +36,7 @@ import * as fs from 'fs';
 import { join, dirname } from 'node:path';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
 
 interface PreviewCase {
   name: string;
@@ -1229,6 +1231,15 @@ async function runRestoreCase(
       );
       for (const statement of WARDROBE_WEAR_STATS_DDL) await rawQuery(statement);
     }
+    // [P4.D317] The outfit-history table on EVERY target, before the baseline:
+    // v4's fresh generateDDL target never renders `chat_wardrobe_history` (the
+    // repository is a plain class — the repo touch above throws and is
+    // swallowed), while every booted v4 AND v5 instance carries it (v4's
+    // migration, v5's boot ensure). Without it 22n-ter skips every row with the
+    // repository WARN, and the two baselines' table sets differ (the v5 side
+    // plants the same table on every target in `fresh_instance`). v4's REAL
+    // DDL through the round's shared plant — never the seed migration.
+    await plantChatWardrobeHistoryTable();
     if (c.alignUploadsPointer) {
       const { parseBackupZip } = await import('@/lib/backup/restore/archive');
       const parsed = await parseBackupZip(join(archives, c.archive));

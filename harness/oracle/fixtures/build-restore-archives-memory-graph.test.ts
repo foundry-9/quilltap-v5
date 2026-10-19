@@ -62,8 +62,9 @@
  * Run (Node 24, from a v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-restore-archives-memgraph
- *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
  *   cp "$V5W/harness/oracle/fixtures/build-restore-archives-memory-graph.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"
  *   cp "$V5W/harness/oracle/fixtures/system-data.json" "$TMPO/fixtures/"
  *   cd /private/tmp/qt-v4-pin-p4d31-ff12f491
  *   QT_FIXTURE_SD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/system-data-main.db \
@@ -79,6 +80,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
 
 interface Spec {
   testPepperBase64: string;
@@ -326,6 +328,12 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/llm-logs-client'
   );
   await initializeDatabase();
+  // [P4.D317] v4's `createBackup` reads `chat_wardrobe_history` UNGUARDED at
+  // the `e8e17b2d9` pin, so the builder plants the table (the round's shared
+  // plant — v4's REAL DDL, never the seed) or it cannot LOAD. The committed
+  // archive is NOT rebuilt for this (the P4.D264 rule): a rebuild now would add
+  // `data/wardrobe-history.json` to it.
+  await plantChatWardrobeHistoryTable();
 
   try {
     // v4's REAL user-scoped memories repository — the one whose `CreateOptions`
