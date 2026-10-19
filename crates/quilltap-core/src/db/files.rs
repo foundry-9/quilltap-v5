@@ -61,6 +61,7 @@
 
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
+use std::collections::HashSet;
 
 use super::DbError;
 use crate::chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE};
@@ -506,27 +507,66 @@ impl<'c> FilesRepository<'c> {
             Ok(rows)
         })
         .into_iter()
-        .filter(|row| {
-            let issues = file_row_issues(row);
-            if issues.is_empty() {
-                return true;
-            }
-            let error = crate::api::zod_issues::zod_error_message(&issues);
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "files",
-                error = %error,
-                "Data validation failed"
-            );
-            tracing::warn!(
-                target: "quilltap::db",
-                collection = "files",
-                error = %error,
-                "Safe validation failed"
-            );
-            false
-        })
+        .filter(file_row_passes)
         .collect())
+    }
+
+    /// v4 `findByLinkedToAny(entityIds)` (`files.repository.ts`, +27,
+    /// `1cfc9b504`) — every `files` row linked to ANY of the entities, "in one
+    /// query per chunk of ids rather than one per entity" (v4's doc). P4.D321,
+    /// the gallery's Wardrobe Pictures read.
+    ///
+    /// An empty slice answers `[]` with NO query (v4's `entityIds.length === 0`
+    /// guard). Otherwise the ids go in chunks of 500 (v4's `CHUNK`, which v4
+    /// carries without a comment — SQLite's bound-parameter cap is the
+    /// evident reason), each chunk ONE `findByFilter({ linkedTo: { $in: chunk
+    /// } })`, which v4's `json-columns.ts:149` translates to the `EXISTS
+    /// (SELECT 1 FROM json_each("linkedTo") WHERE value IN (…))` below, with
+    /// NO `ORDER BY` — so a chunk answers in the TABLE's scan order whatever
+    /// the argument order (measured against v4's real repository:
+    /// `wardrobe_images_routes_equivalence`'s `repo_pool_order` /
+    /// `repo_reversed` / `repo_interleaved` all answer rowid order). Rows are
+    /// deduplicated by id across chunks, first seen wins (v4's `seen` Set).
+    ///
+    /// Per chunk, exactly [`Self::find_by_linked_to`]'s shape: the read is
+    /// `findByFilter`'s own fallback (`Error finding entities by filter`,
+    /// that chunk `[]`) and a row failing `FileEntrySchema` is DROPPED after
+    /// its two lines. Which is why v4's outer `safeQuery` wrap — `Error
+    /// finding files linked to entities`, with no fallback, so log-and-rethrow
+    /// — never fires through v4's real code: nothing inside it throws. It is
+    /// pinned NEGATIVE, not ported.
+    pub fn find_by_linked_to_any(&self, entity_ids: &[&str]) -> Result<Vec<FileRow>, DbError> {
+        const CHUNK: usize = 500;
+        if entity_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut out: Vec<FileRow> = Vec::new();
+        for chunk in entity_ids.chunks(CHUNK) {
+            let rows = super::fallback::find_by_filter_or_empty("files", || {
+                let cols = super::tolerant_select_list(self.conn, "files", FILE_ROW_COLUMNS)?;
+                let placeholders = (1..=chunk.len())
+                    .map(|i| format!("?{i}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let mut stmt = self.conn.prepare(&format!(
+                    "SELECT {cols} FROM files WHERE EXISTS (SELECT 1 FROM json_each(files.linkedTo) WHERE value IN ({placeholders}))"
+                ))?;
+                let rows = stmt
+                    .query_map(rusqlite::params_from_iter(chunk.iter()), map_file_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            });
+            for row in rows {
+                if !file_row_passes(&row) {
+                    continue;
+                }
+                if seen.insert(row.id.clone()) {
+                    out.push(row);
+                }
+            }
+        }
+        Ok(out)
     }
 
     /// v4 `findByLinkedTo(entityId)` reduced to the columns the W4.4b
@@ -1019,6 +1059,32 @@ impl FileRow {
             storage_key: self.storage_key.clone(),
         }
     }
+}
+
+/// v4 `findByFilter`'s per-row validation as the `files` reads apply it: a
+/// row with [`file_row_issues`] is DROPPED after v4's two lines (ERROR `Data
+/// validation failed`, WARN `Safe validation failed`, both `{collection:
+/// 'files', error}`). Shared by [`FilesRepository::find_by_linked_to`] and
+/// [`FilesRepository::find_by_linked_to_any`].
+fn file_row_passes(row: &FileRow) -> bool {
+    let issues = file_row_issues(row);
+    if issues.is_empty() {
+        return true;
+    }
+    let error = crate::api::zod_issues::zod_error_message(&issues);
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "files",
+        error = %error,
+        "Data validation failed"
+    );
+    tracing::warn!(
+        target: "quilltap::db",
+        collection = "files",
+        error = %error,
+        "Safe validation failed"
+    );
+    false
 }
 
 /// `FileEntrySchema`'s issues for a stored row, restricted (as
@@ -1652,5 +1718,154 @@ mod find_by_linked_to_tests {
         assert_eq!(lines.len(), 1, "{lines:#?}");
         assert!(lines[0]
             .starts_with("ERROR quilltap::db Error finding entities by filter collection=files"));
+    }
+}
+
+#[cfg(test)]
+mod find_by_linked_to_any_tests {
+    use super::*;
+
+    const SHA: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    fn uuid(n: usize) -> String {
+        format!("7d8c4a4e-5b1d-4f3a-9a2e-{n:012}")
+    }
+
+    fn table() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        let schema: serde_json::Value =
+            serde_json::from_str(include_str!("../services/provisioning/fresh_schema.json"))
+                .unwrap();
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s.as_str().unwrap())
+            .find(|s| s.starts_with("CREATE TABLE \"files\""))
+            .unwrap();
+        conn.execute_batch(ddl).unwrap();
+        conn
+    }
+
+    fn plant(conn: &Connection, id: &str, sha: &str, linked: &[String]) {
+        conn.execute(
+            "INSERT INTO files (id, userId, sha256, originalFilename, mimeType, size, linkedTo, \
+             source, category, tags, createdAt, updatedAt) VALUES (?1, 'u', ?2, 'coat.webp', \
+             'image/webp', 12, ?3, 'GENERATED', 'IMAGE', '[]', '2026-01-01T00:00:00.000Z', \
+             '2026-01-01T00:00:00.000Z')",
+            params![id, sha, serde_json::to_string(linked).unwrap()],
+        )
+        .unwrap();
+    }
+
+    fn ids(rows: &[FileRow]) -> Vec<&str> {
+        rows.iter().map(|r| r.id.as_str()).collect()
+    }
+
+    /// v4's `entityIds.length === 0` guard: `[]` with NO query — proved on a
+    /// connection with no `files` table, where any read would log
+    /// `findByFilter`'s fallback line.
+    #[test]
+    fn an_empty_slice_answers_nothing_without_a_query() {
+        let conn = Connection::open_in_memory().unwrap();
+        let (rows, lines) = crate::test_support::captured_with(|| {
+            FilesRepository::new(&conn)
+                .find_by_linked_to_any(&[])
+                .unwrap()
+        });
+        assert!(rows.is_empty());
+        assert!(lines.is_empty(), "{lines:#?}");
+    }
+
+    #[test]
+    fn one_id_reads_its_rows_in_table_order() {
+        let conn = table();
+        plant(&conn, "a", SHA, &[uuid(1)]);
+        plant(&conn, "b", SHA, &[uuid(2)]);
+        plant(&conn, "c", SHA, &[uuid(1)]);
+        let rows = FilesRepository::new(&conn)
+            .find_by_linked_to_any(&[&uuid(1)])
+            .unwrap();
+        assert_eq!(ids(&rows), vec!["a", "c"]);
+    }
+
+    /// The table's order, whatever the argument order (the measured v4 shape).
+    #[test]
+    fn the_argument_order_does_not_order_the_rows() {
+        let conn = table();
+        plant(&conn, "a", SHA, &[uuid(1)]);
+        plant(&conn, "b", SHA, &[uuid(2)]);
+        let rows = FilesRepository::new(&conn)
+            .find_by_linked_to_any(&[&uuid(2), &uuid(1)])
+            .unwrap();
+        assert_eq!(ids(&rows), vec!["a", "b"]);
+    }
+
+    /// A file naming two queried ids is ONE row.
+    #[test]
+    fn a_file_linked_to_two_queried_ids_is_one_row() {
+        let conn = table();
+        plant(&conn, "a", SHA, &[uuid(1), uuid(2)]);
+        let rows = FilesRepository::new(&conn)
+            .find_by_linked_to_any(&[&uuid(1), &uuid(2)])
+            .unwrap();
+        assert_eq!(ids(&rows), vec!["a"]);
+    }
+
+    /// A row failing `FileEntrySchema` is dropped after v4's two lines.
+    #[test]
+    fn a_schema_failure_is_dropped_with_both_lines() {
+        let conn = table();
+        plant(&conn, "a", SHA, &[uuid(1)]);
+        plant(&conn, "b", "short", &[uuid(1)]);
+        let (rows, lines) = crate::test_support::captured_with(|| {
+            FilesRepository::new(&conn)
+                .find_by_linked_to_any(&[&uuid(1)])
+                .unwrap()
+        });
+        assert_eq!(ids(&rows), vec!["a"]);
+        assert_eq!(lines.len(), 2, "{lines:#?}");
+        assert!(lines[0]
+            .starts_with("ERROR quilltap::db Data validation failed collection=files error=["));
+        assert!(lines[1]
+            .starts_with("WARN quilltap::db Safe validation failed collection=files error=["));
+    }
+
+    /// A read failure is each chunk's `findByFilter` fallback — never v4's
+    /// unreachable outer wrap.
+    #[test]
+    fn a_read_failure_is_the_chunk_fallback_never_the_outer_wrap() {
+        let conn = Connection::open_in_memory().unwrap();
+        let (rows, lines) = crate::test_support::captured_with(|| {
+            FilesRepository::new(&conn)
+                .find_by_linked_to_any(&[&uuid(1)])
+                .unwrap()
+        });
+        assert!(rows.is_empty());
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(lines[0]
+            .starts_with("ERROR quilltap::db Error finding entities by filter collection=files"));
+        assert!(!lines[0].contains("Error finding files linked to entities"));
+    }
+
+    /// v4's CHUNK = 500 (v5-only — the >500-id differential is a recorded
+    /// Tier 3 deferral): the 501st id rides a SECOND chunk and is still read,
+    /// and a row two chunks both answer is kept once, first seen.
+    #[test]
+    fn the_second_chunk_is_read_and_dedupe_spans_chunks() {
+        let conn = table();
+        plant(&conn, "only-501", SHA, &[uuid(501)]);
+        plant(&conn, "both", SHA, &[uuid(1), uuid(501)]);
+        let all: Vec<String> = (1..=501).map(uuid).collect();
+        let refs: Vec<&str> = all.iter().map(String::as_str).collect();
+        let (rows, lines) = crate::test_support::captured_with(|| {
+            FilesRepository::new(&conn)
+                .find_by_linked_to_any(&refs)
+                .unwrap()
+        });
+        // Chunk one answers `both`; chunk two answers `only-501` then `both`
+        // again (deduped).
+        assert_eq!(ids(&rows), vec!["both", "only-501"]);
+        assert!(lines.is_empty(), "{lines:#?}");
     }
 }

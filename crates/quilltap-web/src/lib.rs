@@ -668,6 +668,12 @@ pub fn build_router(state: SharedState) -> Router {
                 .delete(characters_routes::avatar_roll_item_delete),
         )
         // === end P4.D185 ===
+        // === P4.D321: the wardrobe-pictures REST edge (v4 `1cfc9b504`) ===
+        .route(
+            "/api/v1/characters/{id}/wardrobe-images",
+            get(characters_routes::wardrobe_images_get),
+        )
+        // === end P4.D321 ===
         // === P4.D163: the character-subprompts REST edges (v4 `2f4254b42`) ===
         .route(
             "/api/v1/characters/{id}/subprompts",

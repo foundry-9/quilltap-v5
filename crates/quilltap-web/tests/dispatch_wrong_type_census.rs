@@ -2713,7 +2713,12 @@ fn is_route_identifier(field: &str) -> bool {
 // `ChatWardrobeRollback.chat_id` (the `[id]` segment); its body rides as a
 // flattened `Value` parsed by v4's `rollbackBodySchema` inside the handler,
 // so the census gains NO row. Measured (red at 486 against 485 first).
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 486;
+// **P4.D321 (+1): 486 → 487** — `CharacterWardrobeImages.character_id`, the
+// `/api/v1/characters/[id]/wardrobe-images` route segment (v4 `1cfc9b504`),
+// never a body key; the variant has no other field, so the census gains no
+// ROW. (The lane measured 483 → 484 alone; the `e8e17b2d9` unification sums
+// the three lanes' +4.)
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 487;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus

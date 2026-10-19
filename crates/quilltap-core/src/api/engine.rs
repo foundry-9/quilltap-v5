@@ -2631,6 +2631,16 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // === P4.D321: wardrobe pictures (v4 `1cfc9b504`) ===
+            Request::CharacterWardrobeImages { character_id } => match self.ready_db() {
+                Ok(db) => super::characters::character_wardrobe_images(
+                    &db,
+                    SINGLE_USER_ID,
+                    &character_id,
+                ),
+                Err(r) => r,
+            },
+            // === end P4.D321 ===
             // === P4.D185: avatar rolls (v4 `4dcbe0d21`) ===
             Request::CharacterAvatarRollList {
                 character_id,

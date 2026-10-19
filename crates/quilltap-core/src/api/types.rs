@@ -789,6 +789,16 @@ pub enum Request {
         file_id: String,
     },
     // === end P4.D185 ===
+    // === P4.D321: wardrobe pictures (v4 `1cfc9b504`) ===
+    /// v4 `GET /characters/[id]/wardrobe-images` — every GENERATED picture of
+    /// every item in the character's wearable pool (own vault, group stores,
+    /// Quilltap General — never a project tier), newest first. The BARE
+    /// `{ entries, total }`.
+    #[serde(rename_all = "camelCase")]
+    CharacterWardrobeImages {
+        character_id: String,
+    },
+    // === end P4.D321 ===
     // --- Tags (v4 tags/route.ts + tags/[id]/route.ts) ---
     #[serde(rename_all = "camelCase")]
     TagList {
@@ -4548,6 +4558,10 @@ pub enum Response {
     /// `{ deleted, blobRemoved, chatsScrubbed, keptInAlbum }`.
     CharacterAvatarRollDelete(serde_json::Value),
     // === end P4.D185 ===
+    // === P4.D321: wardrobe pictures (v4 `1cfc9b504`) ===
+    /// The BARE `{ entries, total }` of `characterWardrobeImages`.
+    CharacterWardrobeImages(serde_json::Value),
+    // === end P4.D321 ===
     /// v4 tags list body (`{tags, count}`).
     Tags(serde_json::Value),
     /// v4 single-tag body (`{tag}`).

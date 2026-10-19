@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(gallery): the character wardrobe-pictures read — GET /api/v1/characters/{id}/wardrobe-images (v4 1cfc9b504, P4.D321 server half)
+
+_Versions: core 0.0.1314, web 0.0.242._
+
+Ports v4's `listWardrobeGalleryImages` and its route. New `Request::CharacterWardrobeImages` (wire `characterWardrobeImages`) and REST `GET /api/v1/characters/{id}/wardrobe-images` answer the bare `{ entries, total }`: every GENERATED image file linked to any item in the character's wearable pool (own vault, group stores, Quilltap General — the project tier passed explicitly empty), newest first by `createdAt` string with stable ties, each entry captioned with its item's title, scope, tier label (`Own wardrobe` / `Group · <name>` / `Shared · Quilltap General`), archived flag and whether it is the item's current picture. An archived character answers empty without reading the pool; an absent one is 404 `Character not found` (any failure whose message starts that way, as v4's prefix test); anything else is a 500 with the error's own message — a broken vault keystone answers v4's `has no usable vault` sentence. The route's two log lines live in the core API fn so both transports log them. New `FilesRepository::find_by_linked_to_any` (chunks of 500, the per-chunk `findByFilter` fallback and validation drop, first-seen dedupe; rows come back in table order, measured against v4). New tier-2 family `wardrobe_images_routes_equivalence` (22 ops over v4's real route and repository at `e8e17b2d9`, bodies as bytes, log lines by level, message and fields), v4's four service tests transcribed, the dispatch census 483 → 484 and the typed-only construction census 122 → 123.
+
 #### 2026-10-19 — docs(porting): P4.D322 lane record — both ahead-of-pin riders landed
 
 _Docs-only change._

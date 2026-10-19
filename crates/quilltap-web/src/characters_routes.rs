@@ -400,6 +400,29 @@ pub async fn avatar_rolls_collection_get(
     avatar_roll_dispatch(&state, req).await
 }
 
+/// v4 `GET /api/v1/characters/[id]/wardrobe-images` (`1cfc9b504`, P4.D321) —
+/// every generated picture of every wardrobe item the character can reach, the
+/// BARE `{ entries, total }`. No query parameters (v4 reads none); the route's
+/// lines are the core API fn's, so both transports log them.
+pub async fn wardrobe_images_get(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+) -> AxumResponse {
+    if id.is_empty() {
+        return bad_request("Missing character id");
+    }
+    let req = quilltap_core::api::Request::CharacterWardrobeImages { character_id: id };
+    match crate::text_replacements_routes::dispatch_core(&state, req).await {
+        Ok(Response::CharacterWardrobeImages(v)) => json_response(StatusCode::OK, &v),
+        Ok(Response::Error(e)) => crate::text_replacements_routes::error_to_http(e),
+        Ok(_) => error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unexpected core response",
+        ),
+        Err(resp) => resp,
+    }
+}
+
 /// v4 `POST /api/v1/characters/[id]/avatar-rolls/[fileId]?action=` — the
 /// `withActionDispatch` envelope is a ROUTE-layer artifact in v4 too (it is
 /// middleware, not service code), so it is rendered here through the shared

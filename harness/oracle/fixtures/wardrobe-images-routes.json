@@ -1,0 +1,196 @@
+{
+  "$comment": "P4.D321 — the gallery's Wardrobe Pictures (v4 1cfc9b504): v4's REAL FilesRepository.findByLinkedToAny ('repo' ops, run first — the row-order + dedupe proof) and v4's REAL GET /api/v1/characters/[id]/wardrobe-images ('route' ops) over the item-images tier-2 builder's fixture (built into /tmp/qt-wgi-*). Per-op plants only: 'sql' runs on main, 'mountSql' on the mount index (group membership, an archived item's frontmatter, a deleted vault keystone). 'ids' name spec.items keys or literal ids; 'character' is @character / @archived / @stranger or a literal id.",
+  "ops": [
+    {
+      "name": "repo_single",
+      "op": "repo",
+      "ids": [
+        "coat"
+      ]
+    },
+    {
+      "name": "repo_pool_order",
+      "op": "repo",
+      "ids": [
+        "coat",
+        "scarf",
+        "hat",
+        "bare",
+        "apron",
+        "smock",
+        "sash",
+        "cloak"
+      ]
+    },
+    {
+      "name": "repo_reversed",
+      "op": "repo",
+      "ids": [
+        "cloak",
+        "sash",
+        "smock",
+        "apron",
+        "bare",
+        "hat",
+        "scarf",
+        "coat"
+      ]
+    },
+    {
+      "name": "repo_interleaved",
+      "op": "repo",
+      "ids": [
+        "sash",
+        "coat",
+        "cloak",
+        "apron",
+        "scarf",
+        "smock"
+      ]
+    },
+    {
+      "name": "repo_duplicate_link",
+      "op": "repo",
+      "ids": [
+        "coat",
+        "scarf"
+      ],
+      "sql": [
+        "UPDATE files SET linkedTo = '[\"5e6f7081-0001-4000-8000-000000000001\",\"5e6f7081-0002-4000-8000-000000000002\"]' WHERE category = 'IMAGE' AND source = 'UPLOADED' AND linkedTo LIKE '%5e6f7081-0002-%'"
+      ]
+    },
+    {
+      "name": "repo_duplicate_query_id",
+      "op": "repo",
+      "ids": [
+        "coat",
+        "coat",
+        "sash"
+      ]
+    },
+    {
+      "name": "repo_empty",
+      "op": "repo",
+      "ids": []
+    },
+    {
+      "name": "repo_unknown_id",
+      "op": "repo",
+      "ids": [
+        "99999999-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "repo_schema_failure",
+      "op": "repo",
+      "ids": [
+        "coat"
+      ],
+      "sql": [
+        "UPDATE files SET sha256 = 'abc' WHERE source = 'IMPORTED' AND linkedTo LIKE '%5e6f7081-0001-%'"
+      ]
+    },
+    {
+      "name": "live",
+      "op": "route",
+      "character": "@character",
+      "sql": [
+        "UPDATE files SET source = 'GENERATED', generationPrompt = 'A canvas apron, product photograph', generationModel = 'gpt-image-1', width = 512, height = 768 WHERE category = 'IMAGE' AND linkedTo LIKE '%5e6f7081-0005-%'",
+        "UPDATE files SET source = 'GENERATED' WHERE category = 'IMAGE' AND linkedTo LIKE '%5e6f7081-0006-%'",
+        "UPDATE files SET source = 'GENERATED' WHERE category = 'IMAGE' AND source = 'UPLOADED' AND linkedTo LIKE '%5e6f7081-0002-%'"
+      ],
+      "mountSql": [
+        "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('7c7c7c7c-0001-4000-8000-000000000001', '3c4d5e6f-0001-4000-8000-000000000001', '1a2b3c4d-0001-4000-8000-000000000001', '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')",
+        "UPDATE doc_mount_documents SET content = replace(content, 'createdAt: 2026-02-01T00:00:00.000Z', 'archivedAt: 2026-03-02T00:00:00.000Z' || char(10) || 'createdAt: 2026-02-01T00:00:00.000Z') WHERE content LIKE '%id: 5e6f7081-0002-4000-8000-000000000002%'"
+      ]
+    },
+    {
+      "name": "live_unplanted",
+      "op": "route",
+      "character": "@character"
+    },
+    {
+      "name": "archived_char",
+      "op": "route",
+      "character": "@archived"
+    },
+    {
+      "name": "absent_char",
+      "op": "route",
+      "character": "99999999-1111-4000-8000-000000000000"
+    },
+    {
+      "name": "stranger",
+      "op": "route",
+      "character": "@stranger",
+      "sql": [
+        "UPDATE files SET source = 'GENERATED', generationPrompt = 'A canvas apron, product photograph', generationModel = 'gpt-image-1', width = 512, height = 768 WHERE category = 'IMAGE' AND linkedTo LIKE '%5e6f7081-0005-%'"
+      ]
+    },
+    {
+      "name": "stranger_unplanted",
+      "op": "route",
+      "character": "@stranger"
+    },
+    {
+      "name": "empty_pool",
+      "op": "route",
+      "character": "@stranger",
+      "mountSql": [
+        "DELETE FROM doc_mount_file_links WHERE relativePath = 'Wardrobe/Canvas Apron.md'"
+      ]
+    },
+    {
+      "name": "created_at_tie",
+      "op": "route",
+      "character": "@character",
+      "sql": [
+        "UPDATE files SET source = 'GENERATED', generationPrompt = 'A canvas apron, product photograph', generationModel = 'gpt-image-1', width = 512, height = 768 WHERE category = 'IMAGE' AND linkedTo LIKE '%5e6f7081-0005-%'",
+        "UPDATE files SET createdAt = '2026-02-01T00:00:03.000Z' WHERE category = 'IMAGE' AND linkedTo LIKE '%5e6f7081-0007-%'"
+      ],
+      "mountSql": [
+        "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('7c7c7c7c-0001-4000-8000-000000000001', '3c4d5e6f-0001-4000-8000-000000000001', '1a2b3c4d-0001-4000-8000-000000000001', '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')"
+      ]
+    },
+    {
+      "name": "two_pool_items",
+      "op": "route",
+      "character": "@character",
+      "sql": [
+        "UPDATE files SET linkedTo = '[\"5e6f7081-0001-4000-8000-000000000001\",\"5e6f7081-0002-4000-8000-000000000002\"]', source = 'GENERATED' WHERE category = 'IMAGE' AND source = 'UPLOADED' AND linkedTo LIKE '%5e6f7081-0002-%'"
+      ]
+    },
+    {
+      "name": "non_pool_first",
+      "op": "route",
+      "character": "@character",
+      "sql": [
+        "UPDATE files SET linkedTo = '[\"5e6f7081-0006-4000-8000-000000000006\",\"5e6f7081-0002-4000-8000-000000000002\"]', source = 'GENERATED' WHERE category = 'IMAGE' AND source = 'UPLOADED' AND linkedTo LIKE '%5e6f7081-0002-%'"
+      ]
+    },
+    {
+      "name": "non_pool_only",
+      "op": "route",
+      "character": "@character",
+      "sql": [
+        "UPDATE files SET linkedTo = '[\"99999999-2222-4000-8000-000000000000\"]', source = 'GENERATED' WHERE category = 'IMAGE' AND source = 'UPLOADED' AND linkedTo LIKE '%5e6f7081-0002-%'"
+      ]
+    },
+    {
+      "name": "schema_failure_row",
+      "op": "route",
+      "character": "@character",
+      "sql": [
+        "UPDATE files SET sha256 = 'abc' WHERE source = 'IMPORTED' AND linkedTo LIKE '%5e6f7081-0001-%'"
+      ]
+    },
+    {
+      "name": "read_failure",
+      "op": "route",
+      "character": "@character",
+      "mountSql": [
+        "DELETE FROM doc_mount_file_links WHERE relativePath = 'properties.json' AND mountPointId IN (SELECT id FROM doc_mount_points WHERE name = 'Abigail Pennyworth Character Vault')"
+      ]
+    }
+  ]
+}

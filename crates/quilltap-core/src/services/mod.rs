@@ -207,6 +207,7 @@ pub mod user_identity_resolver;
 pub mod wardrobe_container;
 pub mod wardrobe_folder_filing;
 pub mod wardrobe_folder_mutations;
+pub mod wardrobe_gallery_images;
 pub mod wardrobe_image_bridge;
 pub mod wardrobe_image_paths;
 pub mod wardrobe_item_image_generation;

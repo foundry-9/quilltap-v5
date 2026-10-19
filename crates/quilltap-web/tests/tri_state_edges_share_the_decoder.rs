@@ -512,7 +512,9 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     ("brahma_routes.rs", 7),
     // P4.D281: 11 → 12 hits — the collection GET's `?action=folders` builds
     // `WardrobeFoldersList` (typed-only).
-    ("characters_routes.rs", 11), // 12 hits minus the 1 CharacterRename exception
+    // P4.D321: 12 → 13 hits — the wardrobe-pictures GET builds
+    // `CharacterWardrobeImages { character_id }` (typed-only; a body-less GET).
+    ("characters_routes.rs", 12), // 13 hits minus the 1 CharacterRename exception
     ("chats_routes.rs", 1),
     ("custom_tools_routes.rs", 4),
     ("embedding_profiles_routes.rs", 9),
@@ -614,8 +616,10 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 124,
-        "124 = 123 + P4.D316's one (`wardrobe_routes.rs`'s `ChatWardrobeRollback`, the chat \
+        total, 125,
+        "125 = 124 + P4.D321's one (`characters_routes.rs`'s `CharacterWardrobeImages`, the \
+         wardrobe-pictures GET, v4 `1cfc9b504`). \
+         124 = 123 + P4.D316's one (`wardrobe_routes.rs`'s `ChatWardrobeRollback`, the chat \
          POST's raw-body arm); \
          123 = 122 + P4.D315's one (`wardrobe_routes.rs`'s `ChatWardrobeHistory`, the chat \
          GET's `?action=wardrobe-history`, v4 `8d8618819`). \

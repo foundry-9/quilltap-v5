@@ -1779,6 +1779,75 @@ pub fn character_avatar_roll_list(
     }
 }
 
+// === P4.D321: wardrobe pictures (v4 `1cfc9b504`) ===
+
+/// v4 `GET /characters/[id]/wardrobe-images` (`route.ts`, 46 lines) —
+/// `listWardrobeGalleryImages` → the BARE `{ entries, total }`.
+///
+/// The route's two lines live HERE, not in the axum handler, so the IPC
+/// transport (which dispatches the same `Request`) logs them too — the
+/// avatar-rolls precedent above: DEBUG `[Characters/WardrobeImages v1] Listed
+/// wardrobe pictures` `{userId, characterId, total}` on success; ERROR `…
+/// Error listing wardrobe pictures` `{userId, characterId, error}` before a
+/// 500.
+///
+/// The 404 is a PREFIX match on the error's text, as v4's
+/// `message.startsWith('Character not found')` is (`route.ts:34-36`) — any
+/// failure whose message starts that way takes the 404, not only the service's
+/// own `Character not found: <id>`; it logs nothing. Every other failure is a
+/// 500 carrying the error's OWN message (a broken vault answers v4's
+/// `Character <id> has no usable vault …` sentence — the route catches before
+/// v4's middleware could map it to a 503).
+///
+/// `Missing character id` (v4 `:22`, unreachable through a URL segment) is
+/// checked here too, so a dispatch body `{ "characterId": "" }` — reachable
+/// over IPC — answers v4's 400: the transport-agnostic home of v4's guard.
+/// The `Err(e)` arm (the connection itself) has no v4 twin — v4's repos are
+/// always open; a planted read failure reaches the 500 through `Ok(Err(…))`.
+pub fn character_wardrobe_images(db: &Db, user_id: &str, character_id: &str) -> Response {
+    if character_id.is_empty() {
+        return bad_request("Missing character id");
+    }
+    let cid = character_id.to_string();
+    let out = read_main_mount(db, move |main, mount| {
+        Ok(
+            crate::services::wardrobe_gallery_images::list_wardrobe_gallery_images(
+                main, mount, &cid,
+            ),
+        )
+    });
+    match out {
+        Ok(Ok(v)) => {
+            let total = v.get("total").and_then(Value::as_u64).unwrap_or(0);
+            tracing::debug!(
+                userId = %user_id,
+                characterId = %character_id,
+                total,
+                "[Characters/WardrobeImages v1] Listed wardrobe pictures"
+            );
+            Response::CharacterWardrobeImages(v)
+        }
+        Ok(Err(e)) => wardrobe_images_failure(user_id, character_id, &e.to_string()),
+        Err(e) => db_error_response(e),
+    }
+}
+
+/// v4 `route.ts:33-42` — the catch: the 404 prefix arm, else the ERROR + 500.
+fn wardrobe_images_failure(user_id: &str, character_id: &str, message: &str) -> Response {
+    if message.starts_with("Character not found") {
+        return not_found("Character");
+    }
+    tracing::error!(
+        userId = %user_id,
+        characterId = %character_id,
+        error = %message,
+        "[Characters/WardrobeImages v1] Error listing wardrobe pictures"
+    );
+    Response::error(ErrorKind::Internal, message)
+}
+
+// === end P4.D321 ===
+
 /// v4 `POST /characters/[id]/avatar-rolls/[fileId]?action=save-to-album|set-avatar`.
 ///
 /// `set-avatar` ALWAYS goes through the save first (idempotent) and then points
@@ -3112,3 +3181,107 @@ pub async fn character_wardrobe_instructions_set_as(
     )
     .await
 }
+
+// === P4.D321: wardrobe pictures — the API fn's tests ===
+#[cfg(test)]
+mod p4d321_wardrobe_images_tests {
+    use super::*;
+    use crate::test_support::captured_with;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    fn fresh_instance() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: dir.path().join("quilltap.db"),
+                mount_index: Some(dir.path().join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    fn error_of(r: &Response) -> (ErrorKind, String) {
+        match r {
+            Response::Error(e) => (e.kind, e.message.clone()),
+            other => panic!("expected an error, got {other:?}"),
+        }
+    }
+
+    /// v4 `route.ts:22`'s guard, at its transport-agnostic home: reachable over
+    /// IPC (`{ "characterId": "" }`) where a URL segment never is.
+    #[test]
+    fn an_empty_character_id_is_v4s_400() {
+        let (_dir, db) = fresh_instance();
+        let (r, lines) = captured_with(|| character_wardrobe_images(&db, "u", ""));
+        assert_eq!(
+            error_of(&r),
+            (ErrorKind::BadRequest, "Missing character id".to_string())
+        );
+        assert!(lines.is_empty(), "{lines:#?}");
+    }
+
+    /// The service's own throw → 404 `Character not found`, with NO line.
+    #[test]
+    fn an_absent_character_is_a_silent_404() {
+        let (_dir, db) = fresh_instance();
+        let (r, lines) = captured_with(|| {
+            character_wardrobe_images(&db, "u", "99999999-1111-4000-8000-000000000000")
+        });
+        assert_eq!(
+            error_of(&r),
+            (ErrorKind::NotFound, "Character not found".to_string())
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("[Characters/WardrobeImages v1]")),
+            "{lines:#?}"
+        );
+    }
+
+    /// R-3: the 404 is v4's PREFIX test on the message — ANY failure whose
+    /// text starts `Character not found` takes it, not only the service's
+    /// variant.
+    #[test]
+    fn any_failure_starting_character_not_found_is_the_404() {
+        let e = crate::services::wardrobe_gallery_images::WardrobeGalleryError::Db(
+            DbError::Internal("Character not found in the attic".into()),
+        );
+        let (r, lines) = captured_with(|| wardrobe_images_failure("u", "c1", &e.to_string()));
+        assert_eq!(
+            error_of(&r),
+            (ErrorKind::NotFound, "Character not found".to_string())
+        );
+        assert!(lines.is_empty(), "{lines:#?}");
+    }
+
+    /// Every other failure: the ERROR line, then a 500 with the error's OWN
+    /// message.
+    #[test]
+    fn any_other_failure_is_an_error_line_and_a_500_with_its_message() {
+        let (r, lines) =
+            captured_with(|| wardrobe_images_failure("u-1", "c-1", "the vault is unwell"));
+        assert_eq!(
+            error_of(&r),
+            (ErrorKind::Internal, "the vault is unwell".to_string())
+        );
+        let line = lines
+            .iter()
+            .find(|l| l.contains("[Characters/WardrobeImages v1] Error listing wardrobe pictures"))
+            .unwrap_or_else(|| panic!("{lines:#?}"));
+        assert!(line.starts_with("ERROR "));
+        for field in [
+            " userId=u-1",
+            " characterId=c-1",
+            " error=the vault is unwell",
+        ] {
+            assert!(line.contains(field), "{field} in {line}");
+        }
+    }
+}
+// === end P4.D321 ===
