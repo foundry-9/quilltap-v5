@@ -277,3 +277,40 @@ compared through `JSON.stringify` (key order is part of the value).
 - **Recorder:** `apps/web/oracle/slash-commands.recorder.ts` (its header has
   the invocation). Expect 186 lines; a second run reproduces the file byte
   for byte (`cmp`).
+
+
+## P4.D320 — the Pascal SPA pair (`wearable-ref`, `wardrobe-vantage`, `announcement-sender-name`, `pascal-character`)
+
+Four tier-1 corpora recorded 2026-10-19 by P4.D320 at the round pin v4
+`e8e17b2d9` (`4.11.0-dev.26`, Zod 4.6.7) from a lane-unique detached worktree,
+Node 24.13.1, each through v4's REAL module. Every recorder lives under
+`apps/web/oracle/` with its invocation in its header (`cp` it into the pin,
+`npx tsx` it there, redirect into this directory, `rm -f` the output first);
+a second run reproduces each file byte for byte (`cmp`, measured).
+
+| Corpus | Rows | sha256 | v4 code | Consumer |
+|---|---|---|---|---|
+| `wearable-ref.oracle.ndjson` | 53 — 31 `resolveWearableRef`, 10 `matchWearableTitle`, 12 `isTemplatedWearableRef` | `9a2de740d1b2a0eb9af00d519911eec30376edcff8addf2e6d823e4075c87d34` | `lib/wardrobe/wearable-ref.ts` (`5cb0e0190`) | `app/wardrobe/wearable-ref.oracle.spec.ts` |
+| `wardrobe-vantage.oracle.ndjson` | 40 — 20 `defaultWardrobeVantage`, 20 `wardrobeReachLabel` | `2f2db54ec162bb5ac785eaef33ee38e9dfd31f56195f6c0833d75d347827c3ad` | `lib/pascal/tool-draft.ts` + `lib/wardrobe/wardrobe-container.ts` (`5cb0e0190`) | `app/pascal/wardrobe-vantage.oracle.spec.ts` |
+| `announcement-sender-name.oracle.ndjson` | 32 — 20 announcer rows, 12 Staff-fallback rows | `d9f75b6056ff19ad69314329ba4106c11f252438d2830220642281d5f167894b` | `app/salon/[id]/components/system-message-labels.ts` (`a05c6f755`) | `app/chat/system-message-labels.oracle.spec.ts` |
+| `pascal-character.oracle.ndjson` | 18 — 12 `definition`, 6 `placeholder` | `0c1f6c56ad5bd1092be6247116be8b060020c0177651d47bdedce9fe8fa2c4e8` | `lib/pascal/custom-tool.types.ts` + `lib/pascal/placeholders.ts` (`a05c6f755`) | `app/pascal/character-arms.oracle.spec.ts` |
+
+- **The shared definition corpus (R-F).** `pascal-custom-tool-definition.oracle.ndjson`
+  was re-recorded from the same pin through `main`'s generator
+  (`harness/oracle/cases/pascal-custom-tool-definition.ts`, `TZ=UTC`): 449 rows,
+  byte-identical to the committed copy, sha256
+  `48765f04b4132131f044758e116afb59fb5338000aeacfe86f0c82abf4780427` — nothing
+  moved, so the copy was not re-committed. The unifier's one regen of the
+  generator P4.D319 grows supersedes this copy.
+- **`pascal-character` retires at union.** Its definition row ids are the ones
+  P4.D319's grown shared generator carries (`announce-as-character-*`,
+  `effects-value-character-concat`, `effects-wardrobe-character-ref`); once the
+  unifier's regen carries them, a same-id row whose bytes differ between the two
+  files is a finding, and retiring this recorder is the unifier's call (the
+  `pascal-progress` precedent). Measured against P4.D319's lane branch
+  (`claude/p4.d319-pascal-server-workbench-wardrobe-lens-2efa2e`, its grown
+  generator run from the same pin): the four `announce-as-character-true` /
+  `-false` / `-string` / `-null` rows are byte-identical; two of its ids pose a
+  DIFFERENT input than this lane first did, so this lane's rows ride suffixed
+  ids (`unknown-keys-announce-as-character-known-persist`,
+  `announce-as-character-issue-order-reversed`) and both inputs stay pinned.

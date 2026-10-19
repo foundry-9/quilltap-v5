@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — test(pascal-spa): the Workbench wardrobe-picker e2e walk, the fixtures README section, and the pascal-character ids kept distinct from P4.D319's (P4.D320)
+
+_Versions: SPA 0.5.878._
+
+P4.D320's own-instance Playwright spec (`e2e/workbench-wardrobe-picker-flow.spec.ts`, port 4347 / mock LLM 45345) over the characters fixture pair, whose destinations and Aria's two garments were measured first: LIVE beats for the lens on a tool saved into Aria's vault (chip, advisory, Save still live), the picker (search, Reference by id, the chip's toggle), the uncovered-slot flags, the character-announces toggle through a save and reopen, and the Character name insert; three beats behind `P4D319_SERVER_LANDED` (the bench's would apply / would skip, a `{{character}}` roll, a character-announced bubble in Solo Voyage). The fixtures README gains the lane's section (four corpora with shas, the shared definition copy's unchanged regen). The `pascal-character` recorder suffixes two row ids whose base ids P4.D319's grown generator poses over a different input, so both inputs stay pinned at the union.
+
 #### 2026-10-19 — feat(pascal-spa): the Workbench wardrobe lens — reference chips, the unresolved advisory, uncovered-slot flags, the picker in the Side-effects card, the bench's would apply / would skip, and the editor's latched vantage (P4.D320)
 
 _Versions: SPA 0.5.877._

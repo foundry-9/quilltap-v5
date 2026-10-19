@@ -19,7 +19,12 @@
  * shared generator, so at the union a same-id row whose bytes differ between
  * the two files is a FINDING; once the unifier's one regen of the grown shared
  * corpus carries them, these become the redundant half and may retire (the
- * unifier's call).
+ * unifier's call). Two ids are SUFFIXED (`-persist`, `-reversed`): measured
+ * against P4.D319's grown generator on its lane branch, its rows of the same
+ * base id pose a DIFFERENT input (`"bogus":1`; the keys in schema order), so
+ * both inputs stay pinned rather than one id meaning two things — the P4.D307
+ * precedent. The four `announce-as-character-*` rows P4.D319 also carries were
+ * byte-identical there.
  *
  * Run it from a pinned v4 worktree at `e8e17b2d9` (Node 24):
  *
@@ -32,7 +37,7 @@
  * (cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH \
  *   npx tsx pascal-character.recorder.ts > "$OUT")
  * wc -l "$OUT"                                     # expect 18
- * grep -c '"id":"announce-as-character-' "$OUT"    # expect 4
+ * grep -c '"id":"announce-as-character-' "$OUT"    # expect 6
  * grep -c '"kind":"character"' "$OUT"              # > 0
  * ```
  *
@@ -65,13 +70,13 @@ const DEFINITIONS: Array<[string, string]> = [
     definition(`,"effects":[{"wardrobe":{"action":"wear","items":["{{character}}'s armour"]}}]`),
   ],
   [
-    'unknown-keys-announce-as-character-known',
+    'unknown-keys-announce-as-character-known-persist',
     definition(`,"announceAsCharacter":true,"persist":true`),
   ],
   // Issue ORDER: a bad defaultVisibility is reported before a bad
   // announceAsCharacter, which is reported before a bad parameters block.
   [
-    'announce-as-character-issue-order',
+    'announce-as-character-issue-order-reversed',
     definition(`,"parameters":7,"announceAsCharacter":0,"defaultVisibility":"loud"`),
   ],
   // Key ORDER on accept: written last, parsed into schema position.
