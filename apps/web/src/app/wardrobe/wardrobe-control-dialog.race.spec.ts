@@ -312,3 +312,135 @@ describe('WardrobeControlDialogInner — the worn-bundle claim survives the reba
     });
   });
 });
+
+/**
+ * P4.D318 Tier 2 item 16 — the History tab's rollback re-read against the
+ * reseed. v4's `onSettled` awaits the re-read THEN re-seeds; the restored
+ * snapshot can also arrive EARLIER, through the `chats` realtime hint Aurora's
+ * announcement publishes. Either way the staging must seed exactly ONCE, from
+ * the restored snapshot — never twice, never from the stale one.
+ */
+describe('WardrobeControlDialogInner — the rollback re-read vs the reseed (P4.D318)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const RESTORED: EquippedSlots = { top: [], bottom: [], footwear: ['boots'], accessories: [], hair: [] };
+  const EMPTY = { top: [], bottom: [], footwear: [], accessories: [], hair: [] };
+  const TIMELINE = {
+    currentIndex: 1,
+    entries: [0, 1].map((index) => ({
+      index, at: '2026-10-16T10:00:00.000Z', source: 'operator', actorCharacterId: null, actorName: null,
+      actorToolName: null, changedBy: 'the operator', isCurrent: index === 1, summary: 's', slots: EMPTY,
+    })),
+  };
+
+  async function renderRollbackRace() {
+    const state = { worn: WORN, rolledBack: false, holdNextRead: false };
+    let releaseRead: (() => void) | null = null;
+    const core = {
+      ...coreStreamStub(),
+      dispatchData: vi.fn(async (req: CoreRequest) => {
+        const r = req as AnyRequest;
+        switch (r.type as string) {
+          case 'chatOutfitGet': {
+            const answer = { equippedOutfit: { [CHARACTER_ID]: state.worn } };
+            if (state.holdNextRead) {
+              state.holdNextRead = false;
+              await new Promise<void>((resolve) => (releaseRead = resolve));
+            }
+            return answer;
+          }
+          case 'chatWardrobeHistory':
+            return TIMELINE;
+          case 'chatWardrobeRollback':
+            state.worn = RESTORED;
+            state.rolledBack = true;
+            return { equippedSlots: RESTORED, previousIndex: 1, restoredIndex: 0, skipped: [] };
+          case 'characterList':
+            return { characters: [{ id: CHARACTER_ID, name: 'Alice', defaultImage: null, defaultImageId: null }] };
+          case 'imageProfileList':
+            return { profiles: [] };
+          case 'chatGet':
+            return { chat: { projectId: null } };
+          case 'characterWardrobeList':
+            return { wardrobeItems: ITEMS };
+          case 'wardrobeList':
+            return { wardrobeItems: [] };
+          default:
+            return {};
+        }
+      }),
+    } as unknown as CoreClient;
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [WardrobeControlDialogInner],
+      providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: core }],
+    });
+    const fixture = TestBed.createComponent(WardrobeControlDialogInner);
+    fixture.componentRef.setInput('initialCharacterId', CHARACTER_ID);
+    fixture.componentRef.setInput('chatId', CHAT_ID);
+    const settle = async (rounds = 10) => {
+      for (let i = 0; i < rounds; i++) {
+        await new Promise((r) => setTimeout(r, 0));
+        fixture.detectChanges();
+      }
+    };
+    fixture.detectChanges();
+    await settle();
+
+    // Record every value the staging takes for the character, after each write.
+    const staged = (fixture.componentInstance as unknown as {
+      liveStagedByChar: { (): Record<string, EquippedSlots>; update(fn: unknown): void };
+    }).liveStagedByChar;
+    const writes: Array<EquippedSlots | undefined> = [];
+    const update = staged.update.bind(staged);
+    staged.update = (fn: unknown) => {
+      update(fn);
+      writes.push(staged()[CHARACTER_ID]);
+    };
+    const el = fixture.nativeElement as HTMLElement;
+    const openHistoryAndWearAgain = async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      ([...el.querySelectorAll('.qt-tab-group > button')].find(
+        (b) => b.textContent?.trim() === 'History',
+      ) as HTMLButtonElement).click();
+      await settle();
+      const entry = el.querySelector('[data-testid="outfit-history-entry-0"]')!;
+      ([...entry.querySelectorAll('button')].find(
+        (b) => b.textContent?.trim() === 'Wear again',
+      ) as HTMLButtonElement).click();
+      await settle();
+    };
+    return { fixture, state, writes, settle, openHistoryAndWearAgain, release: () => releaseRead?.() };
+  }
+
+  it('the re-read lands BEFORE the reseed: seeded once, from the restored snapshot', async () => {
+    const h = await renderRollbackRace();
+    clickWear(h.fixture, 'Straw Hat'); // a staged edit → the discard path
+    h.writes.length = 0;
+    h.state.holdNextRead = true; // the settle's own re-read
+    await h.openHistoryAndWearAgain();
+    expect(h.state.rolledBack).toBe(true);
+    // Discarded, and nothing seeded while the re-read is held.
+    expect(h.writes).toEqual([undefined]);
+    h.release();
+    await h.settle();
+    expect(h.writes).toEqual([undefined, RESTORED]);
+  });
+
+  it('the restored snapshot lands FIRST (the chats hint): seeded once, and the reseed is a no-op', async () => {
+    const h = await renderRollbackRace();
+    clickWear(h.fixture, 'Straw Hat');
+    h.writes.length = 0;
+    h.state.holdNextRead = true; // hold the settle's re-read…
+    await h.openHistoryAndWearAgain();
+    expect(h.writes).toEqual([undefined]);
+    // …while Aurora's announcement publishes `chats` and that re-read lands.
+    const stream = TestBed.inject(CoreClient) as unknown as { frames: { next(f: unknown): void } };
+    stream.frames.next({ v: 1, topic: 'chats', at: 1, id: CHAT_ID });
+    await h.settle();
+    expect(h.writes).toEqual([undefined, RESTORED]);
+    h.release();
+    await h.settle();
+    expect(h.writes).toEqual([undefined, RESTORED]);
+  });
+});

@@ -1866,3 +1866,261 @@ describe('WardrobeControlDialogInner — an archived garment cannot be put on (b
     expect(inner(component).liveStagedByChar()['c1'].top).toEqual([]);
   });
 });
+
+describe('Wardrobe dialog — the History tab and the Live staging discard (P4.D318, v4 8d8618819)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  /** The outfit the rollback restores (entry 0 of the timeline). */
+  const RESTORED: EquippedSlots = { top: [], bottom: [], footwear: [], accessories: ['hat'], hair: [] };
+  const EMPTY_SLOTS = { top: [], bottom: [], footwear: [], accessories: [], hair: [] };
+  const TIMELINE = {
+    currentIndex: 1,
+    entries: [
+      {
+        index: 0, at: '2026-10-16T10:00:00.000Z', source: 'chat-start', actorCharacterId: null, actorName: null,
+        actorToolName: null, changedBy: 'chat opened', isCurrent: false, summary: 'Hat',
+        slots: { ...EMPTY_SLOTS, accessories: [{ itemId: 'hat', title: 'Hat', archived: false, missing: false }] },
+      },
+      {
+        index: 1, at: '2026-10-16T11:00:00.000Z', source: 'operator', actorCharacterId: null, actorName: null,
+        actorToolName: null, changedBy: 'the operator', isCurrent: true, summary: 'Shirt',
+        slots: { ...EMPTY_SLOTS, top: [{ itemId: 'shirt', title: 'Shirt', archived: false, missing: false }] },
+      },
+    ],
+  };
+
+  interface HistoryDialog {
+    isLiveDirty(cid: string): boolean;
+    discardLive(cid: string, options?: { reseed?: boolean }): void;
+    liveDisplaySlots(): EquippedSlots;
+    outfit: { refreshOutfit(): Promise<unknown> };
+  }
+  const surface = (component: WardrobeControlDialogInner) => component as unknown as HistoryDialog;
+
+  /**
+   * The default route plus the two history verbs; the worn snapshot is
+   * mutable so a rollback lands the restored outfit on the next re-read
+   * (the server's one commit). `hold` keeps the rollback open until released.
+   */
+  function historyRoute(state: { worn: EquippedSlots; hold?: Promise<void> }) {
+    return (req: AnyRequest): Record<string, unknown> | Error => {
+      switch (req.type as string) {
+        case 'chatOutfitGet':
+          return { equippedOutfit: { c1: state.worn } };
+        case 'chatWardrobeHistory':
+          return TIMELINE;
+        case 'chatWardrobeRollback': {
+          const answer = async () => {
+            if (state.hold) await state.hold;
+            state.worn = RESTORED;
+            return { equippedSlots: RESTORED, previousIndex: 1, restoredIndex: req['index'], skipped: [] };
+          };
+          return answer() as unknown as Record<string, unknown>;
+        }
+        default:
+          return defaultRoute(req);
+      }
+    };
+  }
+
+  async function settleLong(fixture: ComponentFixture<unknown>, rounds = 10): Promise<void> {
+    for (let i = 0; i < rounds; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  const tabButtons = (el: HTMLElement): HTMLButtonElement[] =>
+    [...el.querySelectorAll('.qt-tab-group > button.qt-tab')] as HTMLButtonElement[];
+
+  async function openHistory(fixture: ComponentFixture<WardrobeControlDialogInner>): Promise<HTMLElement> {
+    const el = fixture.nativeElement as HTMLElement;
+    tabButtons(el).find((b) => b.textContent?.trim() === 'History')!.click();
+    await settleLong(fixture);
+    return el;
+  }
+
+  async function wearAgain(fixture: ComponentFixture<WardrobeControlDialogInner>, index: number): Promise<void> {
+    const el = fixture.nativeElement as HTMLElement;
+    const entry = el.querySelector(`[data-testid="outfit-history-entry-${index}"]`)!;
+    ([...entry.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Wear again') as HTMLButtonElement).click();
+    await settleLong(fixture);
+  }
+
+  const rollbacks = (seen: AnyRequest[]) => seen.filter((r) => (r.type as string) === 'chatWardrobeRollback');
+
+  it('the History tab exists only in chat, after Outfit Builder', async () => {
+    const { fixture, component } = await renderInner('chat-1', historyRoute({ worn: WORN }));
+    const el = fixture.nativeElement as HTMLElement;
+    const labels = tabButtons(el).map((b) => (b.textContent ?? '').replace(/\s+/g, ' ').trim());
+    expect(labels).toHaveLength(3);
+    expect(labels[0]).toMatch(/^Live outfit/);
+    expect(labels[1]).toBe('Outfit Builder');
+    expect(labels[2]).toBe('History');
+    expect(el.querySelector('qt-outfit-history-tab')).toBeNull();
+
+    await openHistory(fixture);
+    expect(inner(component).rightTab()).toBe('history');
+    expect(el.querySelector('qt-outfit-history-tab')).not.toBeNull();
+    // The Live and Builder bodies are hidden.
+    expect(el.querySelector('qt-outfit-composer')).toBeNull();
+    expect(el.querySelector('qt-avatar-generation-pane')).toBeNull();
+
+    // Out of chat (the asTab tab's chatId null): no History button at all.
+    const outOfChat = await renderInner(null);
+    const outLabels = tabButtons(outOfChat.fixture.nativeElement as HTMLElement).map((b) => b.textContent?.trim());
+    expect(outLabels).toEqual(['Outfit Builder']);
+  });
+
+  it('isDirty: clean when seeded, dirty after a gesture', async () => {
+    const { component } = await renderInner('chat-1', historyRoute({ worn: WORN }));
+    expect(surface(component).isLiveDirty('c1')).toBe(false);
+    inner(component).handleEquipItem(HAT);
+    expect(surface(component).isLiveDirty('c1')).toBe(true);
+  });
+
+  it('discard drops the staging and re-seeds from the next snapshot', async () => {
+    const state = { worn: WORN };
+    const { fixture, component } = await renderInner('chat-1', historyRoute(state));
+    inner(component).handleEquipItem(HAT);
+    surface(component).discardLive('c1');
+    await settleLong(fixture);
+    expect(surface(component).isLiveDirty('c1')).toBe(false);
+    expect(surface(component).liveDisplaySlots()).toEqual(WORN);
+    expect(inner(component).liveStagedByChar()['c1']).toBeUndefined();
+
+    state.worn = RESTORED;
+    await surface(component).outfit.refreshOutfit();
+    await settleLong(fixture);
+    expect(surface(component).liveDisplaySlots()).toEqual(RESTORED);
+    expect(inner(component).liveStagedByChar()['c1']).toEqual(RESTORED);
+    expect(surface(component).isLiveDirty('c1')).toBe(false);
+  });
+
+  it('discard with reseed re-seeds at once when no new snapshot arrived', async () => {
+    const { fixture, component } = await renderInner('chat-1', historyRoute({ worn: WORN }));
+    inner(component).handleEquipItem(HAT);
+    surface(component).discardLive('c1');
+    await settleLong(fixture);
+    expect(inner(component).liveStagedByChar()['c1']).toBeUndefined();
+    surface(component).discardLive('c1', { reseed: true });
+    await settleLong(fixture);
+    // Re-SEEDED (the staging exists again), not merely painting the fallback:
+    // only a seeding effect that READS `liveReseedTick` gets here.
+    expect(inner(component).liveStagedByChar()['c1']).toEqual(WORN);
+    expect(surface(component).liveDisplaySlots()).toEqual(WORN);
+    expect(surface(component).isLiveDirty('c1')).toBe(false);
+  });
+
+  it('Wear again with staged edits: confirm → discard → rollback → reseed; Done then flushes NOTHING', async () => {
+    const state = { worn: WORN };
+    const { fixture, component, seen } = await renderInner('chat-1', historyRoute(state));
+    const closedSpy = vi.fn();
+    component.closed.subscribe(closedSpy);
+    inner(component).handleEquipItem(HAT);
+    expect(surface(component).isLiveDirty('c1')).toBe(true);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    await openHistory(fixture);
+    await wearAgain(fixture, 0);
+
+    expect(confirm).toHaveBeenCalledWith("Discard the staged changes to Aria's outfit and return to outfit 0?");
+    expect(rollbacks(seen)).toEqual([
+      { type: 'chatWardrobeRollback', chatId: 'chat-1', characterId: 'c1', index: 0 },
+    ]);
+    inner(component).rightTab.set('live');
+    await settleLong(fixture);
+    expect(surface(component).liveDisplaySlots()).toEqual(RESTORED);
+    expect(inner(component).liveStagedByChar()['c1']).toEqual(RESTORED);
+    expect(surface(component).isLiveDirty('c1')).toBe(false);
+
+    inner(component).requestClose();
+    await settleLong(fixture);
+    expect(equips(seen)).toEqual([]);
+    expect(closedSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("after a rollback the Live tab shows the restored outfit (R-L: v4's behaviour, pending ruling)", async () => {
+    // The CLEAN path: nothing staged, so Wear again neither confirms nor
+    // discards, and the settle's `{ reseed: true }` is a no-op for a character
+    // already seeded (v4 `useStagedLiveOutfits.ts:211-213`). Measured in v4 at
+    // the pin (P4.D318 Tier 1 item 1): the Live tab keeps the PRE-rollback
+    // staging, and a later gesture + Done set_all's over the rollback.
+    const state = { worn: WORN };
+    const { fixture, component, seen } = await renderInner('chat-1', historyRoute(state));
+    const confirm = vi.spyOn(window, 'confirm');
+    await openHistory(fixture);
+    await wearAgain(fixture, 0);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(rollbacks(seen)).toHaveLength(1);
+
+    inner(component).rightTab.set('live');
+    await settleLong(fixture);
+    // v4's behaviour: the stale pre-rollback staging paints, clean.
+    expect(surface(component).liveDisplaySlots()).toEqual(WORN);
+    expect(surface(component).isLiveDirty('c1')).toBe(false);
+
+    // …and a later gesture stages onto it, so Done would undo the rollback.
+    inner(component).handleSlotAdd('accessories', 'hat');
+    inner(component).requestClose();
+    await settleLong(fixture);
+    expect(equips(seen)).toHaveLength(1);
+    expect((equips(seen)[0] as { slots: EquippedSlots }).slots.top).toEqual(['shirt']);
+  });
+
+  it('a confirm the operator declines changes nothing', async () => {
+    const { fixture, component, seen } = await renderInner('chat-1', historyRoute({ worn: WORN }));
+    inner(component).handleEquipItem(HAT);
+    const staged = inner(component).liveStagedByChar()['c1'];
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await openHistory(fixture);
+    await wearAgain(fixture, 0);
+    expect(rollbacks(seen)).toEqual([]);
+    expect(inner(component).liveStagedByChar()['c1']).toEqual(staged);
+    expect(surface(component).isLiveDirty('c1')).toBe(true);
+
+    inner(component).requestClose();
+    await settleLong(fixture);
+    expect(equips(seen)).toHaveLength(1);
+    expect((equips(seen)[0] as { slots: EquippedSlots }).slots.accessories).toEqual(['hat']);
+  });
+
+  it('a character switch mid-rollback re-seeds the character rolled back, never the newly selected one', async () => {
+    let release!: () => void;
+    const state: { worn: EquippedSlots; hold?: Promise<void> } = {
+      worn: WORN,
+      hold: new Promise<void>((r) => (release = r)),
+    };
+    const { fixture, component, seen } = await renderInner('chat-1', historyRoute(state));
+    inner(component).handleEquipItem(HAT);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await openHistory(fixture);
+    await wearAgain(fixture, 0);
+    expect(rollbacks(seen)).toEqual([
+      { type: 'chatWardrobeRollback', chatId: 'chat-1', characterId: 'c1', index: 0 },
+    ]);
+    // c1's staging was discarded before the rollback.
+    expect(inner(component).liveStagedByChar()['c1']).toBeUndefined();
+
+    // Switch to Zed and stage something there while the rollback is held.
+    inner(component).selectedContainer.set({ scope: 'character', id: 'c2' });
+    await settleLong(fixture);
+    inner(component).rightTab.set('live');
+    await settleLong(fixture);
+    const zedBefore = inner(component).liveStagedByChar()['c2'];
+    expect(zedBefore).toBeDefined();
+    inner(component).handleSlotAdd('hair', 'waves');
+    const zedStaged = inner(component).liveStagedByChar()['c2'];
+
+    release();
+    await settleLong(fixture, 16);
+    // Zed's staging is untouched by c1's settle.
+    expect(inner(component).liveStagedByChar()['c2']).toEqual(zedStaged);
+
+    // Back on Aria: she seeds from the RESTORED snapshot, clean.
+    inner(component).selectedContainer.set({ scope: 'character', id: 'c1' });
+    await settleLong(fixture);
+    expect(inner(component).liveStagedByChar()['c1']).toEqual(RESTORED);
+    expect(surface(component).isLiveDirty('c1')).toBe(false);
+  });
+});

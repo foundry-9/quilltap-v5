@@ -39,6 +39,7 @@ import {
   type StagedGesture,
 } from './staged-live-outfits';
 import { OutfitComposer } from './outfit-composer';
+import { OutfitHistoryTab } from './outfit-history-tab';
 import { WardrobeDialogService } from './wardrobe-dialog.service';
 import { WardrobeBrowser, type WardrobeRowWearControls } from './wardrobe-browser';
 import { WardrobeItemOverlays } from './wardrobe-item-overlays';
@@ -69,7 +70,7 @@ interface ContainerSummary {
   name: string;
 }
 
-type RightTab = 'live' | 'builder';
+type RightTab = 'live' | 'builder' | 'history';
 
 /**
  * The inner wardrobe dialog body — a port of v4
@@ -129,6 +130,7 @@ type RightTab = 'live' | 'builder';
     NgTemplateOutlet,
     AvatarGenerationPane,
     OutfitComposer,
+    OutfitHistoryTab,
     WardrobeBrowser,
     WardrobeInstructionsSection,
     WardrobeItemOverlays,
@@ -286,8 +288,8 @@ type RightTab = 'live' | 'builder';
               [wear]="wearControls()"
             />
 
-            <!-- RIGHT: Live outfit / Outfit Builder — Builder always present;
-                 Live outfit only when there's a chat to mutate against. -->
+            <!-- RIGHT: Live outfit / Outfit Builder / History — Builder always
+                 present; Live outfit and History only when there is a chat. -->
             @if (selectedCharacterId()) {
               <section class="flex flex-col min-h-0">
                 <div class="flex items-center gap-1 mb-2 qt-tab-group">
@@ -314,9 +316,28 @@ type RightTab = 'live' | 'builder';
                   >
                     Outfit Builder
                   </button>
+                  @if (isInChat) {
+                    <button
+                      type="button"
+                      (click)="rightTab.set('history')"
+                      class="qt-tab"
+                      [class.qt-tab-active]="rightTab() === 'history'"
+                    >History</button>
+                  }
                 </div>
 
-                @if (rightTab() === 'live' && isInChat) {
+                <!-- One chain, v4's ternary (8d8618819 :537-546): History FIRST,
+                     then Live, else the Builder body. -->
+                @if (rightTab() === 'history' && isInChat && chatId(); as cid) {
+                  <qt-outfit-history-tab
+                    [chatId]="cid"
+                    [characterId]="selectedCharacterId()!"
+                    [characterName]="selectedCharacter()?.name ?? 'this character'"
+                    [hasStagedEdits]="isLiveDirty(selectedCharacterId()!)"
+                    [discardStagedEdits]="discardFor(selectedCharacterId()!)"
+                    [requestConfirmation]="historyConfirm"
+                  />
+                } @else if (rightTab() === 'live' && isInChat) {
                   <div class="space-y-2 mb-3">
                     <p class="qt-text-xs qt-text-secondary px-1">
                       Edits stage here and apply when you click Done. Nothing happens until then.
@@ -560,6 +581,12 @@ export class WardrobeControlDialogInner {
    * deleted for a character whose commit succeeded.
    */
   private readonly liveWornBundlesByChar: Record<string, string[]> = {};
+  /**
+   * Bumped by `discardLive` so the seeding effect runs again for a character
+   * whose staging was thrown away, even if the snapshot has not changed yet
+   * (v4 `useStagedLiveOutfits` `reseedTick`, `8d8618819` `:94-96`).
+   */
+  private readonly liveReseedTick = signal(0);
 
   protected outfit!: OutfitStore;
   private booted = false;
@@ -626,6 +653,9 @@ export class WardrobeControlDialogInner {
     // list is clickable well before the snapshot arrives (Bug 61).
     effect(() => {
       const characterId = this.selectedCharacterId();
+      // v4 `reseedTick` dep (`useStagedLiveOutfits.ts:118`) — `discardLive`
+      // deletes from a plain Set, which re-runs nothing.
+      this.liveReseedTick();
       if (this.booted) this.outfit.equippedOutfit();
       if (!this.isInChat || !characterId) return;
       const wornSlots = this.wornSlotsFor(characterId);
@@ -1026,6 +1056,93 @@ export class WardrobeControlDialogInner {
     void this.data.reload();
     await this.outfit.refreshOutfit();
     return allOk;
+  }
+
+  // ---------------------------------------------------------------------------
+  // The History tab's needs (P4.D318 — v4 `8d8618819` `useStagedLiveOutfits`
+  // `isDirty` / `discard`, ported onto the INLINE staging above)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * True when a character has staged edits Done would commit — v4's `isDirty`
+   * (`useStagedLiveOutfits.ts:198-207`), NOT `classifyStagedOutfits` (which
+   * answers what Done should commit, and differs for a staged character with
+   * no baseline, a pending-only one, and an equal staging with a bundle claim).
+   */
+  protected isLiveDirty(cid: string): boolean {
+    const staged = this.liveStagedByChar()[cid];
+    if (!staged) return (this.pendingLiveMutators[cid]?.length ?? 0) > 0;
+    const baseline = this.liveBaselineByChar[cid];
+    if (!baseline) return true;
+    return (
+      !equippedSlotsEqual(staged, baseline) || (this.liveWornBundlesByChar[cid]?.length ?? 0) > 0
+    );
+  }
+
+  /**
+   * Throw away a character's staged edits — the History tab's rollback must
+   * never be flushed over on Done. The Live tab re-seeds from the next worn
+   * snapshot that arrives, or at once with `{ reseed: true }` (call that after
+   * the rollback's refetch has settled). v4 `useStagedLiveOutfits.ts:209-230`.
+   */
+  protected discardLive(cid: string, options?: { reseed?: boolean }): void {
+    const seedKey = `${cid}|${this.chatId() ?? 'no-chat'}`;
+    if (options?.reseed) {
+      // Only if nothing has re-seeded it since the staging was dropped.
+      if (!this.liveSeededByChar.has(seedKey)) this.liveReseedTick.update((t) => t + 1);
+      return;
+    }
+    this.liveSeededByChar.delete(seedKey);
+    delete this.pendingLiveMutators[cid];
+    delete this.liveBaselineByChar[cid];
+    this.liveStagedByChar.update((prev) => {
+      const next = { ...prev };
+      delete next[cid];
+      return next;
+    });
+    delete this.liveWornBundlesByChar[cid];
+  }
+
+  /**
+   * The History tab's `requestConfirmation` (v4's async prop type) over this
+   * dialog's synchronous native `window.confirm` — the recorded divergence at
+   * the top of this file (R-2). A stable field, so the binding never changes.
+   */
+  protected readonly historyConfirm = (message: string): Promise<boolean> =>
+    Promise.resolve(window.confirm(message));
+
+  private readonly historyDiscards = new Map<
+    string,
+    (options?: { reseed?: boolean }) => Promise<void>
+  >();
+
+  /**
+   * The History tab's `discardStagedEdits` for one character — v4's
+   * `(options) => live.discard(selectedCharacterId, options)` (`:537-546`),
+   * ONE cached closure per character so the binding is stable across change
+   * detection. The closure carries its character, so a rollback settles the
+   * character CLICKED even if the selection moves mid-flight (R-10).
+   *
+   * The reseed arm is v4's `onSettled` twin (R-H / R-5): v4 invalidates
+   * `wardrobe.all` (the snapshot AND every wear tally) before re-seeding; here
+   * the lists and the outfit are signal-held, so they re-read (the flush's own
+   * tail) and THEN the staging re-seeds.
+   */
+  protected discardFor(cid: string): (options?: { reseed?: boolean }) => Promise<void> {
+    let discard = this.historyDiscards.get(cid);
+    if (!discard) {
+      discard = async (options?: { reseed?: boolean }) => {
+        if (options?.reseed) {
+          void this.data.reload();
+          await this.outfit.refreshOutfit();
+          this.discardLive(cid, { reseed: true });
+          return;
+        }
+        this.discardLive(cid);
+      };
+      this.historyDiscards.set(cid, discard);
+    }
+    return discard;
   }
 
   /** v4 `:352-356` — Done: flush, then close only when every commit stuck. */

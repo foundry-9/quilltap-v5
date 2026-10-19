@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(spa): the Wardrobe dialog's History tab, isLiveDirty and discardLive with a reseed tick (P4.D318)
+
+_Versions: SPA 0.5.876._
+
+P4.D318 unit 3. The Wardrobe dialog gains its third right-hand tab, `History` (after Outfit Builder, chat only), at the head of v4's tab chain — the Live arm's `@else` is the Builder body, so the History arm joins the same `@if` chain rather than standing beside it. v4's `useStagedLiveOutfits` `isDirty` / `discard` port onto the dialog's inline staging as `isLiveDirty` (v4's predicate, not `classifyStagedOutfits`) and `discardLive`, with a `liveReseedTick` signal the Live seeding effect reads (deleting from the seeded Set alone re-runs nothing — proven by mutation). The tab's confirm is `window.confirm` wrapped in a resolved Promise (the dialog's recorded divergence); its discard callback is one cached closure per character whose reseed arm re-reads the lists and the outfit before re-seeding (v4's `wardrobe.all` invalidation twin). Pending the human's R-L ruling, the clean-path *Wear again* keeps v4's measured behaviour (the Live tab keeps the pre-rollback staging), pinned by a named dialog case. Specs: v4's three discard cases, the tab placement, the staged and declined paths, the clean path, a character switch mid-rollback, and two race rows for the rollback re-read vs the reseed.
+
 #### 2026-10-19 — feat(spa): the Wardrobe History tab component (P4.D318, v4 8d8618819)
 
 _Versions: SPA 0.5.875._
