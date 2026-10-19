@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — docs(porting): P4.D315 status header — the `HISTORY` sha and C1's final spellings
+
+_Docs-only change._
+
+Records the keystone's `HISTORY` commit and the exact module paths, types and signatures P4.D316 and P4.D317 compile against (including `changed_by_label`'s plain `self_label: &str` and the async `plantChatWardrobeHistoryTable`).
+
 #### 2026-10-19 — HISTORY: chat_wardrobe_history keystone — the table at boot, the repository, describe-entry, the history GET (P4.D315)
 
 _Versions: core 0.0.1314, host 0.0.211, web 0.0.242._
