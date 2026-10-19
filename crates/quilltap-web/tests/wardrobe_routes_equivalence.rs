@@ -125,6 +125,10 @@ struct CaseEntry {
     /// `${name}__history`.
     #[serde(default)]
     then_history: Option<String>,
+    /// [P4.D316] after the plants, delete this entry index (a timeline gap —
+    /// R-11).
+    #[serde(default)]
+    history_drop_index: Option<i64>,
     /// [P4.D316] a body `req.json()` cannot parse (the malformed-JSON 500).
     #[serde(default)]
     raw_body: Option<String>,
@@ -250,6 +254,13 @@ fn fresh_db(case: &CaseEntry) -> (Db, tempfile::TempDir) {
                     &h.character_id,
                     &WardrobeHistoryIntent::Append { provenance: prov },
                 );
+            }
+            if let Some(index) = case.history_drop_index {
+                conn.execute(
+                    r#"DELETE FROM chat_wardrobe_history WHERE "chatId" = ?1 AND "characterId" = ?2 AND "entryIndex" = ?3"#,
+                    rusqlite::params![chat_id, h.character_id, index],
+                )
+                .expect("drop a history entry");
             }
         }
     }

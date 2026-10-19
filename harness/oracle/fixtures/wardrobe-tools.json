@@ -868,7 +868,7 @@
     ]
   },
   "historyScenario": {
-    "comment": "P4.D316 Tier 1 item 17 — run AFTER the main ops' read-back and BEFORE the picture scenario, on the same copy. Plants a five-entry timeline for the caller in spec.chatId through each side's REAL repositories (the slots written through setEquippedOutfit, then settle with the plant's provenance — entry 0 an arrival, 1 an operator speaking as the recipient, 2 the caller's own tool, 3 Pascal's dice, 4 the operator speaking as the caller); `cursor` steps move the cursor through settle; `dress` writes slots without a settle. `op` steps run the REAL nine-tool table entry with a FRESH pair of turn containers per op (or none with `outside: true`), dumping the set, the map, the history rows and the equipped outfit after each. `redHatByTitle` marks the caller's archived Red Hat (minted by the main ops) by title.",
+    "comment": "P4.D316 Tier 1 item 17 — run AFTER the main ops' read-back and BEFORE the picture scenario, on the same copy. Plants a five-entry timeline for the caller in spec.chatId through each side's REAL repositories (the slots written through setEquippedOutfit, then settle with the plant's provenance — entry 0 an arrival, 1 an operator speaking as the recipient, 2 the caller's own tool, 3 Pascal's dice, 4 the operator speaking as the caller); `cursor` steps move the cursor through settle; `dress` writes slots without a settle. `op` steps run the REAL nine-tool table entry with a FRESH pair of turn containers per op (or none with `outside: true`), dumping the set, the map, the history rows and the equipped outfit after each. `redHatByTitle` marks the caller's archived Red Hat (minted by the main ops) by title. `deleteEntry` removes one row raw (a non-contiguous timeline a restored archive could carry — P4.D316 R-11): the rollback to the gap answers V8's TypeError text through the handler's catch.",
     "steps": [
       {
         "step": "plant",
@@ -1070,6 +1070,18 @@
         "name": "history_after_outside_rollback",
         "tool": "wardrobe_history",
         "args": {}
+      },
+      {
+        "step": "deleteEntry",
+        "index": 3
+      },
+      {
+        "step": "op",
+        "name": "rollback_into_a_gap",
+        "tool": "wardrobe_rollback",
+        "args": {
+          "index": 3
+        }
       }
     ]
   }

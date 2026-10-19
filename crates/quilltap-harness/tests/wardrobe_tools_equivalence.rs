@@ -556,6 +556,18 @@ fn wardrobe_tools_match_oracle() {
                         );
                     }
                 }
+                "deleteEntry" => {
+                    main_c
+                        .execute(
+                            r#"DELETE FROM chat_wardrobe_history WHERE "chatId" = ?1 AND "characterId" = ?2 AND "entryIndex" = ?3"#,
+                            rusqlite::params![
+                                spec.chat_id,
+                                spec.caller_character_id,
+                                step["index"].as_i64().unwrap()
+                            ],
+                        )
+                        .expect("drop a history entry");
+                }
                 "cursor" => {
                     history_repo.settle(
                         &spec.chat_id,
@@ -662,6 +674,7 @@ fn wardrobe_tools_match_oracle() {
             "is already in the first outfit",
             "the operator, as",
             "Rollback left a stale item off",
+            "Cannot read properties of undefined (reading 'slots')",
         ] {
             assert!(
                 all.contains(marker),

@@ -424,7 +424,8 @@ async function main(): Promise<void> {
             chatId: lc.chatId,
             userId: lc.userId,
             operatorSurface: true,
-            pendingWardrobeAnnouncements: new Set<string>(),
+            // P4.D316 (v4 fence 4): both turn containers from the ONE factory.
+            ...(await import('@/lib/wardrobe/turn-containers')).newWardrobeTurnContainers(),
           } as never,
           maxAgentTurns: lc.maxAgentTurns,
           signal: controller.signal,

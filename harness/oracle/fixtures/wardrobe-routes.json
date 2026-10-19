@@ -3489,6 +3489,60 @@
           ]
         }
       ]
+    },
+    {
+      "name": "rb_gap_in_timeline",
+      "kind": "wardrobeRollback",
+      "chatId": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "index": 1
+      },
+      "historyPlants": {
+        "characterId": "a1000000-0000-4000-8000-000000000001",
+        "steps": [
+          {
+            "slots": {
+              "top": [
+                "e1000000-0000-4000-8000-000000000001"
+              ],
+              "footwear": [
+                "e1000000-0000-4000-8000-000000000003"
+              ]
+            },
+            "provenance": {
+              "source": "chat-start"
+            }
+          },
+          {
+            "slots": {
+              "top": [
+                "e2000000-0000-4000-8000-000000000004"
+              ],
+              "accessories": [
+                "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+                "e3000000-0000-4000-8000-000000000001"
+              ]
+            },
+            "provenance": {
+              "source": "operator"
+            }
+          },
+          {
+            "slots": {
+              "top": [
+                "e1000000-0000-4000-8000-000000000002"
+              ]
+            },
+            "provenance": {
+              "source": "character",
+              "actorCharacterId": "a1000000-0000-4000-8000-000000000001"
+            }
+          }
+        ]
+      },
+      "thenHistory": "c1000000-0000-4000-8000-000000000001",
+      "historyDropIndex": 1
     }
   ],
   "$p4d256Comment": "P4.D256: every case reads the committed pair with wardrobe_wear_stats ensured (v4's migration DDL; v5 ensure_wear_ledger_on) unless `preRound`; `plants` add ledger rows. The wh_* rows are the ?action=wear-history arms on the General and character item GETs (the 404s run BEFORE the ledger is read); cw_item_get* the character item GET. The ledger rows: gCoat worn by aria (chat1, most recent), an unattributed row, a departed wearer; wTop's last-worn chat deleted (chatMissing); gLivery and gHat worn."

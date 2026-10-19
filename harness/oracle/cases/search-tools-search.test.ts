@@ -320,7 +320,8 @@ async function main(): Promise<void> {
         chatId: spec.chatAId,
         userId: spec.userId,
         projectId: spec.projectId,
-        pendingWardrobeAnnouncements: new Set<string>(),
+        // P4.D316 (v4 fence 4): both turn containers from the ONE factory.
+        ...(await import('@/lib/wardrobe/turn-containers')).newWardrobeTurnContainers(),
       };
       if (ec.operatorSurface) context.operatorSurface = true;
       if (ec.pool) context.mountPool = await buildPool();

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — test(harness): outfit-history timeline gaps + factory-minted containers in two more oracle cases (P4.D316 Tier 2)
+
+_No crate versions bumped._
+
+R-11's gap row: a timeline missing its target entry (a restored archive could carry one) answers V8's `Cannot read properties of undefined (reading 'slots')` through the tool's catch (`wardrobe_tools_equivalence`'s history scenario) and `Failed to roll back the outfit` (500) through the route (`wardrobe_routes_equivalence`'s `rb_gap_in_timeline`), both measured against v4's real code at the `e8e17b2d9` pin. The Brahma console and search-tool oracle cases now mint their tool context's containers through v4's factory (both families green, unchanged).
+
 #### 2026-10-19 — feat(chats): POST ?action=wardrobe-rollback — the operator's Wear again (P4.D316)
 
 _Versions: core 0.0.1318, web 0.0.243._

@@ -331,6 +331,14 @@ async function main(): Promise<void> {
       }
       continue;
     }
+    if (step.step === 'deleteEntry') {
+      const { rawQuery } = await import('@/lib/database/manager');
+      await rawQuery(
+        'DELETE FROM chat_wardrobe_history WHERE "chatId" = ? AND "characterId" = ? AND "entryIndex" = ?',
+        [spec.chatId, spec.callerCharacterId, step.index],
+      );
+      continue;
+    }
     if (step.step === 'cursor') {
       await repos.wardrobeHistory.settle(spec.chatId, spec.callerCharacterId, {
         kind: 'cursor',

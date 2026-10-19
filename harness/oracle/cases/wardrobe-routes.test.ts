@@ -111,6 +111,8 @@ interface CaseEntry {
   historyPlants?: { characterId: string; steps: Array<{ slots: Record<string, string[]>; provenance: unknown }> };
   /** [P4.D316] after the case, that chat's `chat_wardrobe_history` rows → `${name}__history`. */
   thenHistory?: string;
+  /** [P4.D316] after the plants, delete this entry index (a timeline gap — R-11). */
+  historyDropIndex?: number;
   /** [P4.D316] a body `req.json()` cannot parse. */
   rawBody?: string;
 }
@@ -469,6 +471,13 @@ async function runCase(
         kind: 'append',
         provenance: step.provenance,
       } as never);
+    }
+    if (c.historyDropIndex !== undefined) {
+      const { rawQuery } = await import('@/lib/database/manager');
+      await rawQuery(
+        'DELETE FROM chat_wardrobe_history WHERE "chatId" = ? AND "characterId" = ? AND "entryIndex" = ?',
+        [c.chatId, c.historyPlants.characterId, c.historyDropIndex],
+      );
     }
   }
 
