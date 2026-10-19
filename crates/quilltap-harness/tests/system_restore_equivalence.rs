@@ -89,6 +89,8 @@ fn archive_for(name: &str) -> &'static str {
         "preview_compact" => "restore-archive-compact.zip",
         // P4.D264: the 42nd key over an archive that carries the ledger.
         "preview_wardrobe_wear" => "restore-archive-wardrobe-wear.zip",
+        // P4.D317: the 43rd key over an archive that carries outfit history.
+        "preview_outfit_history" => "restore-archive-outfit-history.zip",
         other => panic!("unknown oracle case {other}"),
     }
 }
@@ -173,7 +175,8 @@ fn system_restore_equivalence() {
     }
 
     // P4.D264: + `preview_wardrobe_wear` (the 42nd key over a ledger-carrying archive).
-    assert_eq!(seen, 7, "expected all seven preview cases in the oracle");
+    // P4.D317: + `preview_outfit_history` (the 43rd key over a history-carrying one).
+    assert_eq!(seen, 8, "expected all eight preview cases in the oracle");
     assert!(
         failures.is_empty(),
         "{} restore difference(s):\n{}",

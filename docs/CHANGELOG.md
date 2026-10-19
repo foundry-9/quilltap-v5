@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(restore): restore the outfit history (step 22n-ter), count it in the preview and summary, wipe it in replace mode (P4.D317)
+
+_Versions: core 0.0.1319._
+
+Ports `7953da3a0`'s restore half. Step 22n-ter writes `data/wardrobe-history.json` after the wear ledger through the keystone's raw-row upsert: rows keep their ids, indices and cursor, the hash is recomputed, and a row that would break a timeline is skipped with the repository's warning. `restored` counts row by row and a skip adds nothing to the summary's warnings. `Restored outfit history` logs on every restore. The outer failure arm is ported with v4's two strings but stays unreachable from an archive on both sides (v4's streaming reader refuses the one row shape that could reach it). `RestoreSummary` and the preview gain `wardrobeHistory` (the preview's 43rd key), the replace-mode wipe and "delete all my data" truncate `chat_wardrobe_history`, and the restore census grows to 81 lines in both lists. Three derived archives (`restore-archive-outfit-history{,-skips,-bad-slot}.zip`, built by `derive-restore-archive-outfit-history.py`) drive five new `system_restore_state` cases and one preview case. Among them, a new-account restore re-keys the four chat columns and rejects an archive with a non-array slot before writing. `system_delete_data_equivalence` adds an orphan history row only the truncate clears. `system_restore_state` now also labels minted ids that appear as JSON object keys.
+
 #### 2026-10-19 — fix(restore): new-account restore remaps the outfit history and re-keys the chat's character-keyed columns (bug 252) (P4.D317)
 
 _Versions: core 0.0.1318._

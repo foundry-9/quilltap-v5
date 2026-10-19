@@ -2064,6 +2064,39 @@ fn restore_on_writer(
         );
     }
 
+    // ── 22n-ter. Outfit history — P4.D317, v4 `7953da3a0` `restore.ts:
+    //    1173-1190`. "After the chats it cascades from. Rows go in whole (ids,
+    //    indices, cursor); `upsertRows` logs and skips any row that would break
+    //    a timeline (a hand-edited second current row) rather than failing the
+    //    restore." `data` is the REMAPPED bundle in new-account mode. Through
+    //    the keystone's `upsert_raw_rows` (v4 hands the UNVALIDATED archive
+    //    rows to `upsertRows`): `restored` is ITS count, row by row — never
+    //    22n-bis's all-or-nothing — and a skipped row adds NO warning.
+    //    The DEBUG fires on EVERY restore (`total: 0, restored: 0` included).
+    {
+        let rows = &data.wardrobe_history;
+        if !rows.is_empty() {
+            match restore_wardrobe_history_rows(main, rows) {
+                Ok(restored) => c.wardrobe_history = restored,
+                Err(error) => {
+                    w.push(format!("Failed to restore the outfit history: {error}"));
+                    tracing::warn!(
+                        target: "quilltap::restore",
+                        rowCount = rows.len(),
+                        error = %error,
+                        "Failed to restore outfit history"
+                    );
+                }
+            }
+        }
+        tracing::debug!(
+            target: "quilltap::restore",
+            total = rows.len(),
+            restored = c.wardrobe_history,
+            "Restored outfit history"
+        );
+    }
+
     // ── 22o. Instance settings — LAST, because the mount-point keys point at
     //    the doc_mount_points restored above. Raw upsert by key (`:746`).
     //
@@ -4407,6 +4440,40 @@ fn table_exists(conn: &Connection, table: &str) -> bool {
     .is_ok()
 }
 
+/// P4.D317 — 22n-ter's `upsertRows(rows)` call, with the ONE way v4's call
+/// throws out of its own per-row catch: a JSON `null` row. v4's loop body
+/// throws on `null.slots` and its catch then reads `row.id` for the WARN —
+/// a second `TypeError` that escapes the loop, so the rows BEFORE the null
+/// are written, the null row gets no per-row WARN, nothing after it is
+/// attempted, `upsertRows` rejects, and the restore's outer catch fires (the
+/// warning sentence + `Failed to restore outfit history`) with `restored`
+/// left at 0. Every other row shape is the repository's per-row
+/// WARN-and-skip.
+///
+/// UNREACHABLE from an archive on both sides (R-7, measured): v4's streaming
+/// `readJsonArrayFile` — and v5's twin — refuse a top-level element that is not
+/// an object or an array, so no restore ever hands this a `null`. It is the
+/// v5 home of v4's outer catch, exercised by a hand-built row list
+/// (`outfit_history_restore_tests`). One residual on that unreachable path:
+/// the keystone's `upsert_raw_rows` logs its `Upserted wardrobe history rows`
+/// DEBUG for the prefix, which v4 (having thrown mid-loop) never does.
+fn restore_wardrobe_history_rows(
+    main: &rusqlite::Connection,
+    rows: &[Value],
+) -> Result<usize, String> {
+    use crate::db::chat_wardrobe_history::ChatWardrobeHistoryRepository;
+    let repo = ChatWardrobeHistoryRepository::new(main);
+    match rows.iter().position(Value::is_null) {
+        None => Ok(repo.upsert_raw_rows(rows)),
+        Some(at) => {
+            if at > 0 {
+                repo.upsert_raw_rows(&rows[..at]);
+            }
+            Err("Cannot read properties of null (reading 'id')".to_string())
+        }
+    }
+}
+
 /// The actually-restored counters. v4's summary mixes these with plain input
 /// lengths — see [`Counters::into_summary`].
 #[derive(Default)]
@@ -4453,6 +4520,9 @@ struct Counters {
     // === P4.D264 ===
     wardrobe_wear: usize,
     // === end P4.D264 ===
+    // === P4.D317 ===
+    wardrobe_history: usize,
+    // === end P4.D317 ===
 }
 
 /// P4.D264: JS truthiness for 22f-ter's tombstone filter (`c.archivedAt &&
@@ -4543,9 +4613,80 @@ impl Counters {
             text_replacement_rules: self.text_replacement_rules,
             // P4.D264 (v4 `restore.ts:1226`).
             wardrobe_wear: self.wardrobe_wear,
+            // P4.D317 (v4 `restore.ts:1422`).
+            wardrobe_history: self.wardrobe_history,
             embedding_reconcile: Some(embedding_reconcile),
             warnings,
         }
+    }
+}
+
+#[cfg(test)]
+mod outfit_history_restore_tests {
+    //! P4.D317 R-7 — 22n-ter's outer catch. Through v4's real code it is
+    //! UNREACHABLE from an archive: the only row that throws out of
+    //! `upsertRows`' own per-row catch is a JSON `null` (the catch reads
+    //! `row.id`), and v4's streaming `readJsonArrayFile` refuses a top-level
+    //! element that is not an object or an array, so no archive delivers one
+    //! (measured — the restore oracle's first try at a `null`-row archive died
+    //! in the reader). Every restore case pins the arm NEGATIVE through the
+    //! census. Its v5 home is a hand-built `BackupData` carrying a `null` row:
+    //! the rows before it written, nothing after, v4's `TypeError` text.
+    use super::restore_wardrobe_history_rows;
+    use serde_json::{json, Value};
+
+    fn row(id: &str, character: &str) -> Value {
+        json!({
+            "id": id, "chatId": "c1", "characterId": character, "entryIndex": 0,
+            "slots": {}, "slotsHash": "", "source": "seeded", "actorCharacterId": null,
+            "isCurrent": true, "createdAt": "2026-01-01T00:00:00.000Z",
+        })
+    }
+
+    fn conn() -> rusqlite::Connection {
+        let c = rusqlite::Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE chats (id TEXT PRIMARY KEY); INSERT INTO chats VALUES ('c1');",
+        )
+        .unwrap();
+        for statement in crate::db::chat_wardrobe_history::CHAT_WARDROBE_HISTORY_DDL {
+            c.execute_batch(statement).unwrap();
+        }
+        c
+    }
+
+    fn ids(c: &rusqlite::Connection) -> Vec<String> {
+        let mut stmt = c
+            .prepare("SELECT id FROM chat_wardrobe_history ORDER BY id")
+            .unwrap();
+        stmt.query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn a_null_row_throws_out_after_writing_the_rows_before_it() {
+        let c = conn();
+        let rows = vec![row("h1", "a"), Value::Null, row("h3", "b")];
+        assert_eq!(
+            restore_wardrobe_history_rows(&c, &rows),
+            Err("Cannot read properties of null (reading 'id')".to_string())
+        );
+        assert_eq!(ids(&c), ["h1"], "the row before the null only");
+    }
+
+    #[test]
+    fn every_other_row_is_counted_one_by_one() {
+        let c = conn();
+        // The second is a second cursor in one timeline: skipped, not fatal.
+        let rows = vec![row("h1", "a"), {
+            let mut r = row("h2", "a");
+            r["entryIndex"] = json!(1);
+            r
+        }];
+        assert_eq!(restore_wardrobe_history_rows(&c, &rows), Ok(1));
+        assert_eq!(ids(&c), ["h1"]);
     }
 }
 

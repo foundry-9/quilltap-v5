@@ -157,6 +157,31 @@ async function plantCursors(): Promise<void> {
   raw.exec('PRAGMA foreign_keys = ON');
 }
 
+/**
+ * [P4.D317] The outfit-history plant: one row on CHAT_1 (the chat delete's
+ * cascade takes it) and one ORPHAN naming no chat, inserted with foreign keys
+ * off — only `clearFormat3Entities`' truncate (`chat_wardrobe_history` on its
+ * list since `7953da3a0`) reaches it. The Rust family runs the same SQL.
+ */
+const HISTORY_PLANT_SQL =
+  'INSERT INTO "chat_wardrobe_history" ("id", "chatId", "characterId", "entryIndex", "slots", ' +
+  '"slotsHash", "source", "actorCharacterId", "actorToolName", "isCurrent", "createdAt") VALUES ' +
+  `('7e0000d1-0000-4000-8000-0000000000d1', '${CHAT_1}', 'a1000000-0000-4000-8000-000000000001', 0, ` +
+  `'{"top":[],"bottom":[],"footwear":[],"accessories":[],"hair":[]}', 'ef4cf6b1c6e0e3d4', 'seeded', ` +
+  `NULL, NULL, 1, '2026-01-01T00:00:00.000Z'), ` +
+  `('7e0000d2-0000-4000-8000-0000000000d2', 'c10000ee-0000-4000-8000-0000000000ee', ` +
+  `'a1000000-0000-4000-8000-000000000001', 0, ` +
+  `'{"top":[],"bottom":[],"footwear":[],"accessories":[],"hair":[]}', 'ef4cf6b1c6e0e3d4', 'seeded', ` +
+  `NULL, NULL, 1, '2026-01-01T00:00:00.000Z')`;
+
+async function plantOutfitHistory(): Promise<void> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const raw = getRawDatabase() as unknown as { exec: (sql: string) => void };
+  raw.exec('PRAGMA foreign_keys = OFF');
+  raw.exec(HISTORY_PLANT_SQL);
+  raw.exec('PRAGMA foreign_keys = ON');
+}
+
 function applyMocks(userId: string): void {
   jest.doMock('@/lib/realtime/bus', () => {
     const actual = jest.requireActual('@/lib/realtime/bus');
@@ -347,6 +372,15 @@ function buildCases(): CaseSpec[] {
       name: 'delete_data_retires_a_digest',
       run: async () => {
         await plantDigest();
+        return toolsPost('delete-data', { confirm: 'DELETE_ALL_MY_DATA' });
+      },
+    },
+    {
+      // [P4.D317] `chat_wardrobe_history` in the truncate list: a cascade-
+      // reached row and an orphan only the truncate clears.
+      name: 'delete_data_clears_outfit_history',
+      run: async () => {
+        await plantOutfitHistory();
         return toolsPost('delete-data', { confirm: 'DELETE_ALL_MY_DATA' });
       },
     },

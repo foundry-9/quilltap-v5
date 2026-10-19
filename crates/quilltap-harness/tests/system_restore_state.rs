@@ -497,6 +497,24 @@ const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
         "mountIndex",
         "doc_mount_files",
     ),
+    // [P4.D317] the outfit-history archive IS `restore-archive.zip`'s instance
+    // (+ the history file + four chat columns), so its `new-account` restore
+    // replays the same legacy disk-key `portrait.png` — the ruled placement.
+    (
+        "restore_outfit_history_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_outfit_history_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_outfit_history_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
 ];
 
 /// ## A pre-existing v5 gap, newly VISIBLE — not this lane's to fix
@@ -575,6 +593,9 @@ const V5_STATS_GAP: &[(&str, &str)] = &[
     ("restore_cursors_new_account", "Quilltap Uploads"),
     ("restore_scenario_source_new_account", "Quilltap Uploads"),
     ("restore_legacy_settings_new_account", "Quilltap Uploads"),
+    // [P4.D317] the outfit-history archive's `new-account` arm replays the same
+    // `files/portrait.png`.
+    ("restore_outfit_history_new_account", "Quilltap Uploads"),
 ];
 
 /// The columns [`V5_STATS_GAP`] makes incomparable on its named rows.
@@ -1129,6 +1150,20 @@ impl Normalizer {
                 let mut out = Map::new();
                 let mut composite_normalized = false;
                 for (k, val) in m {
+                    // [P4.D317] A minted id can be an object KEY: bug 252
+                    // re-keys a chat's character-keyed columns
+                    // (`equippedOutfit` / `characterAvatars` / …) by the
+                    // restored character's fresh id. Labelled like a value, in
+                    // walk order (the key before its value).
+                    let k = if is_uuid(k) && !self.literals.contains(k) {
+                        let next = self.minted.len();
+                        self.minted
+                            .entry(k.clone())
+                            .or_insert_with(|| format!("<minted-{next}>"))
+                            .clone()
+                    } else {
+                        k.clone()
+                    };
                     let nv = self.value(val);
                     // Did a COMPOSITE string change under normalization? A bare id
                     // or timestamp column becoming `<minted-N>` / `<ts>` does not
@@ -1143,7 +1178,7 @@ impl Normalizer {
                             composite_normalized = true;
                         }
                     }
-                    out.insert(k.clone(), nv);
+                    out.insert(k, nv);
                 }
                 // A content hash over text that itself had to be normalized is
                 // nondeterministic and holds no comparable information — but ONLY
@@ -1193,6 +1228,16 @@ fn read_cases() -> Option<Vec<Value>> {
 /// `harness/oracle/cases/system-restore.test.ts` — P4.D264's file — so it was
 /// a HANDOFF to the unifier, landed at the `f5e953a3f` round's unification.
 const EMPTY_EMBEDDING_CASE: &str = "restore_empty_embedding_replace";
+
+/// [P4.D317] Restored TWICE on both sides (the oracle's `restoreTwice`): the
+/// second `replace` restore's wipe (`chat_wardrobe_history` on the delete
+/// list) keeps a single outfit-history row from doubling; the second run's
+/// summary is compared, the lines of both runs are.
+const OUTFIT_HISTORY_REPLACE_CASE: &str = "restore_outfit_history_replace";
+/// [P4.D317 R-9 (b)] The restore REJECTS on both sides (the oracle's
+/// `expectRefusal`): v4's `remapBackupData` `.map`s a non-array slot value and
+/// throws before any write — v5's `remap_backup_data` returns the same text.
+const OUTFIT_HISTORY_REFUSAL_CASE: &str = "restore_outfit_history_bad_slot_new_account";
 
 fn archive_for(name: &str) -> &'static str {
     match name {
@@ -1338,6 +1383,16 @@ fn archive_for(name: &str) -> &'static str {
         }
         "restore_legacy_settings_own_replace" => "restore-archive-legacy-settings-own.zip",
         "restore_legacy_settings_null_replace" => "restore-archive-legacy-settings-null.zip",
+        // [P4.D317] the outfit-history carriers — `derive-restore-archive-
+        // outfit-history.py` (the timelines + bug 252's four columns; the
+        // per-row skips; the `null` row).
+        OUTFIT_HISTORY_REPLACE_CASE | "restore_outfit_history_new_account" => {
+            "restore-archive-outfit-history.zip"
+        }
+        "restore_outfit_history_row_skips_replace" => "restore-archive-outfit-history-skips.zip",
+        "restore_outfit_history_bad_slot_replace" | OUTFIT_HISTORY_REFUSAL_CASE => {
+            "restore-archive-outfit-history-bad-slot.zip"
+        }
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -1987,10 +2042,74 @@ fn system_restore_state_equivalence() {
             buf.lock().unwrap().clear();
             buf
         };
-        let summary = tokio::runtime::Builder::new_multi_thread()
+        // [P4.D317 R-9 (b)] the refusal arm: v4 rejected — so must v5, with
+        // the same text, and NEITHER side may have written a row.
+        if name == OUTFIT_HISTORY_REFUSAL_CASE {
+            let outcome = tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(restore(
+                    &db,
+                    &host,
+                    &zip,
+                    mode_for(name),
+                    SINGLE_USER_ID,
+                    Default::default(),
+                ));
+            drop(db);
+            match (outcome, case["error"].as_str()) {
+                (Err(got), Some(want)) if got == want => {}
+                (got, want) => failures.push(format!(
+                    "[{name}] expected both restores to refuse alike: rust {:?} vs oracle {want:?}",
+                    got.map(|_| "a summary")
+                )),
+            }
+            let got_post = read_state(&instance);
+            if serde_json::to_string(&got_post).unwrap() != serde_json::to_string(&got_pre).unwrap()
+            {
+                failures.push(format!("[{name}] the refused v5 restore wrote rows"));
+            }
+            if serde_json::to_string(&case["state"]).unwrap()
+                != serde_json::to_string(&case["preState"]).unwrap()
+            {
+                failures.push(format!("[{name}] the refused v4 restore wrote rows"));
+            }
+            let lines = std::mem::take(&mut *log_buf.lock().unwrap());
+            compare_outfit_history_lines(name, &lines, &case["logs"], &mut failures);
+            // The census up to the refusal (no `Restore operation completed`
+            // on either side — there is no summary to log).
+            let want_logs = case["logs"].as_array().cloned().unwrap_or_default();
+            let (g, w) = (
+                v5_log_records(&lines, RESTORE_TS_MESSAGES),
+                v4_log_records(&want_logs, RESTORE_TS_MESSAGES),
+            );
+            if g != w {
+                failures.push(format!(
+                    "[{name}] the census up to the refusal differs\n  rust:   {g:?}\n  oracle: {w:?}"
+                ));
+            }
+            restore_log_cases += 1;
+            continue;
+        }
+        let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
-            .unwrap()
+            .unwrap();
+        // [P4.D317] the twice-run case: the first restore's summary is dropped.
+        if name == OUTFIT_HISTORY_REPLACE_CASE {
+            runtime
+                .block_on(restore(
+                    &db,
+                    &host,
+                    &zip,
+                    mode_for(name),
+                    SINGLE_USER_ID,
+                    Default::default(),
+                ))
+                .expect("the first of two restores succeeded");
+        }
+        let summary = runtime
             .block_on(restore(
                 &db,
                 &host,
@@ -2137,6 +2256,8 @@ fn system_restore_state_equivalence() {
             compare_repo_logs(name, &case["repoLogs"], &lines, serde, &[], &mut failures);
             repo_log_cases += 1;
         }
+        // [P4.D317] the outfit-history lines beneath the census, every case.
+        compare_outfit_history_lines(name, &lines, &case["logs"], &mut failures);
         // [P4.147 → P4.158 R-G] the restore's own lines (the whole census) on
         // EVERY case, byte for byte.
         compare_restore_logs(
@@ -2222,15 +2343,17 @@ fn system_restore_state_equivalence() {
     // derived archives in both modes (the store claim map's arms, 22a-i, the
     // memory tiers). 51 + 10 = 61: P4.D293's carriers — the legacy-vectors,
     // cursors, scenario-source and legacy-settings archives in both modes,
-    // plus the legacy-settings `-own` and `-null` replace arms.
+    // plus the legacy-settings `-own` and `-null` replace arms. 61 + 5 = 66:
+    // P4.D317's outfit-history arms (replace twice, new-account, the per-row
+    // skips, the bad slot in both modes — the new-account one a refusal).
     assert_eq!(
         empty_embedding_seen, 1,
         "{EMPTY_EMBEDDING_CASE} is missing from the oracle — regenerate it"
     );
     assert_eq!(
         seen,
-        61,
-        "expected all sixty-one restore cases in the oracle (ten + the #58 orphan-links arm \
+        66,
+        "expected all sixty-six restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
@@ -2242,7 +2365,8 @@ fn system_restore_state_equivalence() {
          + P4.D264's five wardrobe-carrier arms + its tombstone twin + P4.D258's \
          empty-embedding arm + P4.D273's store-binding, store-row-fails and memory-tiers \
          arms in both modes + P4.D293's legacy-vectors, cursors, scenario-source and \
-         legacy-settings arms in both modes and the legacy-settings own / null arms)"
+         legacy-settings arms in both modes and the legacy-settings own / null arms \
+         + P4.D317's five outfit-history arms)"
     );
     for f in &failures {
         eprintln!("FAILURE {f}");
@@ -6040,7 +6164,9 @@ fn assert_claimed_store_warns(name: &str, lines: &[String], failures: &mut Vec<S
 /// P4.D258's `039f7017c` `Decoded index-keyed memory embedding` = 68 at
 /// `f5e953a3f`, + P4.D273's twelve from `ed8b15b50`; at `83334b9a5` 79 — 50
 /// warn, 7 info, 20 debug, 2 error: `af48f6cc2` −22j's two WARNs, +phase
-/// 9's `Restored memories`, P4.D293), recorded
+/// 9's `Restored memories`, P4.D293; at `e8e17b2d9` 81 — 51 warn, 7 info, 21
+/// debug, 2 error: `7953da3a0`'s 22n-ter `Failed to restore outfit history` +
+/// `Restored outfit history`, P4.D317), recorded
 /// by the oracle on every case with every context key. v5 must log the same
 /// lines, in the same order, with the same fields (an Error recorded as its
 /// message; an object / array through the `…Json` file-layer convention).
@@ -6093,6 +6219,8 @@ const RESTORE_TS_MESSAGES: &[&str] = &[
     // [P4.D264] v4 `3ee3b1342` / `7c8572869` — 22n-bis + 22f-ter.
     "Failed to restore wardrobe wear ledger",
     "Failed to repoint wardrobe item picture after restore",
+    // [P4.D317] v4 `7953da3a0` — 22n-ter (79 → 81): the outer catch's WARN …
+    "Failed to restore outfit history",
     "No npm plugins directory in backup",
     "No themes directory in backup",
     "Post-restore embedding reconcile complete",
@@ -6108,6 +6236,8 @@ const RESTORE_TS_MESSAGES: &[&str] = &[
     "Restored theme bundle",
     "Restored user-installed theme bundles",
     "Restored wardrobe wear ledger",
+    // [P4.D317] … and the DEBUG every restore logs (`total`, `restored`).
+    "Restored outfit history",
     "Repointed wardrobe item pictures after new-account restore",
     "Seeded connection-profile columns the archive predates",
     "Skipped duplicate folder row during restore",
@@ -6257,6 +6387,72 @@ fn v5_log_records(lines: &[String], messages: &[&str]) -> Vec<Value> {
     out
 }
 
+/// [P4.D317] The keystone repository's two per-call lines beneath 22n-ter
+/// (`Skipped a wardrobe history row that would break the timeline`,
+/// `Upserted wardrobe history rows` — their BYTES are P4.D315's, §R.5): every
+/// case, compared by PRESENCE and count per message only.
+const HISTORY_REPO_MESSAGES: &[&str] = &[
+    "Skipped a wardrobe history row that would break the timeline",
+    "Upserted wardrobe history rows",
+];
+/// [P4.D317 R-3] `uuid-remap.ts`'s module logger (`backup:uuid-remap`, v5
+/// target `quilltap::backup::uuid_remap`) — bug 252's two lines. NOT
+/// `restore.ts` lines (not in the census); every case, byte for byte, with
+/// v5's `module` field dropped (v4's child-logger binding is invisible to the
+/// oracle's `Logger.prototype` capture — the `RECONCILE_MESSAGES` rule).
+const UUID_REMAP_MESSAGES: &[&str] = &[
+    "Chat character-keyed columns unreadable; left as given",
+    "Remapped character-keyed chat fields",
+];
+
+fn compare_outfit_history_lines(
+    name: &str,
+    got_lines: &[String],
+    want: &Value,
+    failures: &mut Vec<String>,
+) {
+    let want = want.as_array().cloned().unwrap_or_default();
+    for message in HISTORY_REPO_MESSAGES {
+        let got = got_lines
+            .iter()
+            .filter(|l| {
+                let mut parts = l.splitn(3, ' ');
+                let (_, target, rest) = (parts.next(), parts.next(), parts.next().unwrap_or(""));
+                target == Some("quilltap::wardrobe_history")
+                    && (rest == *message || rest.starts_with(&format!("{message} ")))
+            })
+            .count();
+        let wanted = want
+            .iter()
+            .filter(|l| str_at(l, "message") == Some(*message))
+            .count();
+        if got != wanted {
+            failures.push(format!(
+                "[{name}] `{message}`: rust logged it {got}× vs oracle {wanted}×"
+            ));
+        }
+    }
+    let mut g = v5_log_records(
+        &got_lines
+            .iter()
+            .filter(|l| l.split(' ').nth(1) == Some("quilltap::backup::uuid_remap"))
+            .cloned()
+            .collect::<Vec<_>>(),
+        UUID_REMAP_MESSAGES,
+    );
+    for r in &mut g {
+        if let Some(o) = r.as_object_mut() {
+            o.shift_remove("module");
+        }
+    }
+    let w = v4_log_records(&want, UUID_REMAP_MESSAGES);
+    if g != w {
+        failures.push(format!(
+            "[{name}] backup:uuid-remap lines differ\n  rust:   {g:?}\n  oracle: {w:?}"
+        ));
+    }
+}
+
 /// The index of the space that starts the next ` name=` field, if any.
 fn find_field_boundary(s: &str) -> Option<usize> {
     s.char_indices()
@@ -6345,8 +6541,15 @@ fn compare_restore_logs(
     // fields leave the line diff.
     let got_summary_v = serde_json::to_value(got_summary).expect("summary serializes");
     for (side, recs, summary) in [("v5", &mut g, &got_summary_v), ("v4", &mut w, want_summary)] {
-        for r in recs.iter_mut() {
-            if r["message"] != "Restore operation completed" {
+        // [P4.D317] A twice-run case (`OUTFIT_HISTORY_REPLACE_CASE`) logs the
+        // line once per restore: only the LAST is the returned summary's; an
+        // earlier one stays in the line diff whole (v5's first-run summary
+        // against v4's).
+        let last = recs
+            .iter()
+            .rposition(|r| r["message"] == "Restore operation completed");
+        for (i, r) in recs.iter_mut().enumerate() {
+            if r["message"] != "Restore operation completed" || Some(i) != last {
                 continue;
             }
             let logged = r

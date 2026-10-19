@@ -94,6 +94,11 @@ pub struct RestoreSummary {
     /// (all or nothing — v4's ONE `upsertRows`); the archive's row count in the
     /// preview (`preview.ts:75`).
     pub wardrobe_wear: usize,
+    /// P4.D317 (v4 `7953da3a0`, `types.ts:623-624`): the outfit-history rows
+    /// written — COUNTED ROW BY ROW (the repository skips a row that would
+    /// break a timeline, never the step); the archive's row count in the
+    /// preview (`preview.ts:74`).
+    pub wardrobe_history: usize,
     /// v4 `7189a968`: the post-restore embedding reconcile's outcome (step 25).
     /// Restore ALWAYS sets it; preview never does (the key is optional in v4's
     /// type and absent from `previewRestore`'s summary).

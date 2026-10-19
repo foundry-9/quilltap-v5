@@ -56,6 +56,9 @@ const PREVIEW_CASES: PreviewCase[] = [
   // P4.D264 (v4 `3ee3b1342`, `preview.ts:75`): the 42nd key counts the
   // archive's `data/wardrobe-wear.json` (every other archive predates it → 0).
   { name: 'preview_wardrobe_wear', archive: 'restore-archive-wardrobe-wear.zip' },
+  // P4.D317 (v4 `7953da3a0`, `preview.ts:74`): the 43rd key counts
+  // `data/wardrobe-history.json` (every other archive predates it → 0).
+  { name: 'preview_outfit_history', archive: 'restore-archive-outfit-history.zip' },
 ];
 
 /**
@@ -191,6 +194,18 @@ const RESTORE_CASES: Array<{
    * fresh v5 target already carries both indexes (`migration_indexes.json`).
    */
   wearLedgerDdl?: boolean;
+  /**
+   * [P4.D317] Restore the archive TWICE (the second run's summary is the one
+   * recorded; the logs of both runs are) — a second `replace` restore must
+   * not double a single outfit-history row (the delete list's wipe).
+   */
+  restoreTwice?: boolean;
+  /**
+   * [P4.D317 R-9 (b)] The restore REJECTS (v4's `remapBackupData` throws on a
+   * null / non-array-slot history row): recorded as `error` beside the state
+   * — nothing written.
+   */
+  expectRefusal?: boolean;
 }> = [
   { name: 'restore_replace', archive: 'restore-archive.zip' },
   { name: 'restore_legacy_archive', archive: 'restore-archive-legacy.zip' },
@@ -768,6 +783,37 @@ const RESTORE_CASES: Array<{
   },
   { name: 'restore_legacy_settings_own_replace', archive: 'restore-archive-legacy-settings-own.zip' },
   { name: 'restore_legacy_settings_null_replace', archive: 'restore-archive-legacy-settings-null.zip' },
+
+  // ── P4.D317 (v4 `7953da3a0` + `e8e17b2d9`): the outfit history, step 22n-ter,
+  // and bug 252's re-key. Built by `fixtures/derive-restore-archive-outfit-
+  // history.py` (see its docstring for every planted row).
+  //
+  // `replace`, twice: the rows land under their ARCHIVE ids (the stale /
+  // four-key h02 recomputed by `upsertRows`), and the second restore's wipe
+  // (`chat_wardrobe_history` on the delete list) keeps a row from doubling.
+  { name: 'restore_outfit_history_replace', archive: 'restore-archive-outfit-history.zip', restoreTwice: true },
+  // `new-account`: the history remapped (the phantom's row MINTED), the four
+  // character-keyed columns on c1…01 RE-KEYED (the phantom's outfit entry
+  // DROPPED — `droppedEntries: 1`), the `backup:uuid-remap` DEBUG logged.
+  {
+    name: 'restore_outfit_history_new_account',
+    archive: 'restore-archive-outfit-history.zip',
+    mode: 'new-account',
+  },
+  // The repository's per-row WARN-and-skip: 4 of 8 written, `summary.warnings`
+  // untouched by the skips.
+  { name: 'restore_outfit_history_row_skips_replace', archive: 'restore-archive-outfit-history-skips.zip' },
+  // A non-array slot value: `replace` salvages it in `upsertRows` (both rows
+  // written, the bad slot read `[]`) …
+  { name: 'restore_outfit_history_bad_slot_replace', archive: 'restore-archive-outfit-history-bad-slot.zip' },
+  // … while `new-account`'s `remapBackupData` THROWS on it (R-9 (b)) — the
+  // restore rejects before any write.
+  {
+    name: 'restore_outfit_history_bad_slot_new_account',
+    archive: 'restore-archive-outfit-history-bad-slot.zip',
+    mode: 'new-account',
+    expectRefusal: true,
+  },
 ];
 
 /** jest.setup stubs the file-storage manager; the restore file phase IS the
@@ -880,8 +926,11 @@ const REPO_LOG_MESSAGES = new Set([
  * adds `ed8b15b50`'s twelve (bug 185's store binding + 23a's reconcile:
  * +6 warn, +1 info, +3 debug, +2 error). [P4.D293] At `83334b9a5`: 79 (50
  * warn, 7 info, 20 debug, 2 error) — `af48f6cc2` deletes 22j's two WARNs
- * and adds phase 9's `Restored memories` DEBUG. EVERY restore case records
- * them, at every level, so the census is compared across the whole corpus.
+ * and adds phase 9's `Restored memories` DEBUG. [P4.D317] 81 at `e8e17b2d9`
+ * (51 warn, 7 info, 21 debug, 2 error) — `7953da3a0`'s 22n-ter adds
+ * `Failed to restore outfit history` and `Restored outfit history`. EVERY
+ * restore case records them, at every level, so the census is compared across
+ * the whole corpus.
  */
 const RESTORE_TS_MESSAGES = [
   "All entities restored with preserved IDs - no reconciliation needed",
@@ -930,6 +979,8 @@ const RESTORE_TS_MESSAGES = [
   // [P4.D264] v4 `3ee3b1342` / `7c8572869` — 22n-bis + 22f-ter (63 → 67).
   "Failed to restore wardrobe wear ledger",
   "Failed to repoint wardrobe item picture after restore",
+  // [P4.D317] v4 `7953da3a0` — 22n-ter (79 → 81): the outer catch's WARN …
+  "Failed to restore outfit history",
   "No npm plugins directory in backup",
   "No themes directory in backup",
   "Post-restore embedding reconcile complete",
@@ -946,6 +997,8 @@ const RESTORE_TS_MESSAGES = [
   "Restored theme bundle",
   "Restored user-installed theme bundles",
   "Restored wardrobe wear ledger",
+  // [P4.D317] … and the DEBUG every restore logs (`total`, `restored`).
+  "Restored outfit history",
   "Repointed wardrobe item pictures after new-account restore",
   "Seeded connection-profile columns the archive predates",
   "Skipped duplicate folder row during restore",
@@ -1028,6 +1081,26 @@ const REPO_LEVEL_MESSAGES = [
 ];
 
 /**
+ * [P4.D317] The keystone repository's two per-call lines beneath 22n-ter
+ * (`chat-wardrobe-history.repository.ts` `upsertRows` — their BYTES are
+ * P4.D315's): recorded on every case, compared by PRESENCE and count only.
+ */
+const HISTORY_REPO_MESSAGES = [
+  'Skipped a wardrobe history row that would break the timeline',
+  'Upserted wardrobe history rows',
+];
+
+/**
+ * [P4.D317] `lib/backup/restore/uuid-remap.ts`'s module logger (`e8e17b2d9`,
+ * `backup:uuid-remap` — NOT `restore.ts` lines, so not in the census):
+ * bug 252's two lines, recorded on every case and compared byte for byte.
+ */
+const UUID_REMAP_MESSAGES = [
+  'Chat character-keyed columns unreadable; left as given',
+  'Remapped character-keyed chat fields',
+];
+
+/**
  * [P4.158 R-G] A recorded line carries EVERY context key, in the context's own
  * order (winston's), not a fixed list: an Error value is recorded as its
  * `message` (what v4's `error.message` renders), `undefined` is OMITTED (winston
@@ -1089,6 +1162,8 @@ async function runRestoreCase(
     renameColumnsIn?: Array<[string, string, string, string]>;
     plantSqlIn?: Array<[string, string]>;
     wearLedgerDdl?: boolean;
+    restoreTwice?: boolean;
+    expectRefusal?: boolean;
   },
   archives: string,
   scratchRoot: string,
@@ -1291,13 +1366,35 @@ async function runRestoreCase(
         targetUserId: SINGLE_USER_ID,
       });
     let summary: unknown;
+    let refusal: string | undefined;
     let repoLogs: Array<Record<string, unknown>> | undefined;
     let logs: Array<Record<string, unknown>>;
     // [P4.158 R-G] every case records the census; the refused-chat cases also
     // emit `repoLogs` (P4.143's shape), projected from the same recording.
+    // [P4.D317] a twice-run case records BOTH runs' lines and the SECOND
+    // summary; a refusal case records the rejection's message.
     ({ out: summary, logs } = await withLogs(
-      [...RESTORE_TS_MESSAGES, ...REPO_LEVEL_MESSAGES, ...BOUND_CREATE_MESSAGES, ...RECONCILE_MESSAGES],
-      run,
+      [
+        ...RESTORE_TS_MESSAGES,
+        ...REPO_LEVEL_MESSAGES,
+        ...BOUND_CREATE_MESSAGES,
+        ...RECONCILE_MESSAGES,
+        ...HISTORY_REPO_MESSAGES,
+        ...UUID_REMAP_MESSAGES,
+      ],
+      async () => {
+        if (c.expectRefusal) {
+          try {
+            await run();
+          } catch (error) {
+            refusal = error instanceof Error ? error.message : String(error);
+            return undefined;
+          }
+          throw new Error(`${c.name}: the restore was expected to reject`);
+        }
+        if (c.restoreTwice) await run();
+        return run();
+      },
     ));
     if (c.recordRepoLogs) {
       repoLogs = logs
@@ -1314,7 +1411,7 @@ async function runRestoreCase(
 
     return {
       name: c.name,
-      summary,
+      ...(refusal !== undefined ? { error: refusal } : { summary }),
       preState,
       state: dumpAll(),
       ...(repoLogs ? { repoLogs } : {}),

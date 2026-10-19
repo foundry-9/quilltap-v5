@@ -73,6 +73,9 @@ pub fn preview_restore(zip_path: &Path, temp_root: &Path) -> Result<RestoreSumma
         // P4.D264 (v4 `preview.ts:75`) — the 42nd key, between
         // `textReplacementRules` and `warnings`.
         wardrobe_wear: d.wardrobe_wear.len(),
+        // P4.D317 (v4 `preview.ts:74`) — the 43rd key, between `wardrobeWear`
+        // and `warnings`.
+        wardrobe_history: d.wardrobe_history.len(),
         embedding_reconcile: None,
         warnings: Vec::new(),
     })

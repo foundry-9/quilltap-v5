@@ -219,6 +219,12 @@ const FORMAT3_MAIN_TABLES: &[&str] = &[
     // replace-mode restore merge into stale tallies rather than replace them."
     "wardrobe_wear_stats",
     // === end P4.D264 ===
+    // === P4.D317 (v4 `7953da3a0`, `delete-service.ts:58`) ===
+    // "The outfit history. The chat delete's cascade would remove it, but
+    // clearing it here keeps a restore from colliding on the timelines of chat
+    // ids it is about to recreate (the per-timeline unique indexes)."
+    "chat_wardrobe_history",
+    // === end P4.D317 ===
 ];
 
 /// ## ⚠ DELIBERATE DIVERGENCE (dogfood #57, 2026-08-03) — v5 wipes what v4 leaks
@@ -646,6 +652,7 @@ mod p4d293_truncate_list_tests {
                 "embedding_status",
                 "text_replacement_rules",
                 "wardrobe_wear_stats",
+                "chat_wardrobe_history",
             ]
         );
         assert_eq!(super::V5_EXTRA_MAIN_TABLES, &["conversation_annotations"]);

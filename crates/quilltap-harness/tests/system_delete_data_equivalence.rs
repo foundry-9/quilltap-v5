@@ -275,6 +275,37 @@ fn plant_cursors(db: &Db) {
     .expect("plant the cursors");
 }
 
+/// [P4.D317] The oracle's `plantOutfitHistory`: a row on CHAT_1 and an orphan
+/// naming no chat, inserted with foreign keys off.
+fn plant_outfit_history(db: &Db) {
+    db.write_blocking(|ws| {
+        let row = |id: &str, chat: &str| {
+            format!(
+                "('{id}', '{chat}', 'a1000000-0000-4000-8000-000000000001', 0, \
+                 '{{\"top\":[],\"bottom\":[],\"footwear\":[],\"accessories\":[],\"hair\":[]}}', \
+                 'ef4cf6b1c6e0e3d4', 'seeded', NULL, NULL, 1, '2026-01-01T00:00:00.000Z')"
+            )
+        };
+        ws.main().connection().execute_batch(&format!(
+            "PRAGMA foreign_keys = OFF; \
+             INSERT INTO \"chat_wardrobe_history\" (\"id\", \"chatId\", \"characterId\", \"entryIndex\", \
+             \"slots\", \"slotsHash\", \"source\", \"actorCharacterId\", \"actorToolName\", \"isCurrent\", \
+             \"createdAt\") VALUES {}, {}; \
+             PRAGMA foreign_keys = ON;",
+            row(
+                "7e0000d1-0000-4000-8000-0000000000d1",
+                "c1000000-0000-4000-8000-000000000001"
+            ),
+            row(
+                "7e0000d2-0000-4000-8000-0000000000d2",
+                "c10000ee-0000-4000-8000-0000000000ee"
+            ),
+        ))?;
+        Ok(())
+    })
+    .expect("plant the outfit history");
+}
+
 /// ## `conversation_annotations` — the delete-all wipe (bug 10, v4 CONVERGED)
 ///
 /// v4 used to delete this table on no path at all: it was absent from
@@ -519,6 +550,24 @@ fn system_delete_data_matches_oracle() {
         check("delete_data_retires_a_digest", s, b, count_all(&db), retire);
     }
 
+    // 11. [P4.D317] `chat_wardrobe_history` in the truncate list: CHAT_1's
+    //     row (the chat delete's cascade takes it) and an ORPHAN only the
+    //     truncate reaches — the oracle's `HISTORY_PLANT_SQL`, byte for byte.
+    {
+        let db = fresh_db("history");
+        let ((s, b), retire) = with_retire_record(|| {
+            plant_outfit_history(&db);
+            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)))
+        });
+        check(
+            "delete_data_clears_outfit_history",
+            s,
+            b,
+            count_all(&db),
+            retire,
+        );
+    }
+
     assert!(
         failed.is_empty(),
         "{} case(s) failed:\n{}",
@@ -526,7 +575,8 @@ fn system_delete_data_matches_oracle() {
         failed.join("\n")
     );
     // [P4.D293] +2: `delete_data_clears_cursors`, `delete_data_retires_a_digest`.
-    assert_eq!(ran, 11, "expected 11 cases to run, ran {ran}");
+    // [P4.D317] +1: `delete_data_clears_outfit_history`.
+    assert_eq!(ran, 12, "expected 12 cases to run, ran {ran}");
 }
 
 // ── P4.D126 unit 1: the full-wipe deletion chokepoint (v4 `914b59e13`) ───────
