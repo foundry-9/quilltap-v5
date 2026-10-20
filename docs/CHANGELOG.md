@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(core): P4.D322 — progressions report on every turn, continue mode included (v4 bug 254, ahead of the pin)
+
+_Versions: core 0.0.1314._
+
+`buildContext`'s progressions section is now built on continue-mode turns too (a chained speaker, a nudge, Continue, an autonomous room), as v4 `102a23648` does; the Aurora Core whisper keeps its continue-mode skip. Ported ahead of the round pin `e8e17b2d9` from a second pin at `102a23648`, after an A/B regen of `build_context_tier3_equivalence` at both pins showed the unchanged corpus differing only in `progressions_continue_mode` (plus per-run `durationMs` / minted vault-id noise, matched by a control run). Only the progressions half of the hunk is ported; bug 253's Inventory section is the Inventory round's, so the `is_continue_mode` doc omits "inventory". The oracle case's stale comment is updated. From the round pin the family is red on that one row by design.
+
 #### 2026-10-19 — docs(porting): P4.D319 lane record and LANE COMPLETE
 
 _Docs-only change._

@@ -145,8 +145,9 @@ interface Op {
   /** P4.d13 retro arm: set cheapLLMSelection WITHOUT compression so the only
    * canned completion the op consumes is the distillation's. */
   distillEnabled?: boolean;
-  /** [P4.D168] `options.isContinueMode` — the model is finishing its own
-   *  sentence, so the progressions section (and the Core whisper) are skipped. */
+  /** [P4.D168] `options.isContinueMode` — any turn built without a new user
+   *  message. The Core whisper skips it; since v4 `102a23648` (bug 254, ported
+   *  by P4.D322) the progressions section does NOT. */
   isContinueMode?: boolean;
   /** [P4.D168] `options.turnSkip` — the "nothing to add" note, whose trailing
    *  slot the progressions section now shares. */

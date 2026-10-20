@@ -556,6 +556,12 @@ pub struct BuildContextInput {
     // memory recap / continue
     pub generate_memory_recap: bool,
     pub uncensored_fallback: Option<OwnedUncensoredFallback>,
+    /// v4 `options.isContinueMode`. Continue mode: any turn built without a
+    /// new user message — the Salon's Continue, a nudge, every chained speaker
+    /// after the first, and every autonomous-room turn. Never a model
+    /// finishing its own sentence. The Aurora Core whisper skips these turns
+    /// by design; the other trailing sections (recall, mail, progressions,
+    /// inform) are built on them as on any turn.
     pub is_continue_mode: bool,
     // clock seams
     pub now_ms: i64,
@@ -2911,11 +2917,11 @@ where
     // writes, so an autonomous turn in the job runner runs it exactly as an
     // interactive one does.
     //
-    // Continue mode is skipped deliberately — the model is finishing its own
-    // sentence, and the Core whisper above skips there for the same reason.
-    let progressions_llm_context = if input.is_continue_mode {
-        String::new()
-    } else {
+    // Built on every turn, continue mode included. That mode is every turn
+    // without a new user message — a chained speaker, a nudge, an autonomous
+    // room — and the design of record wants the report on all of them; each
+    // progression's own cadence decides whether this turn mentions it.
+    let progressions_llm_context = {
         let responding_id = input.responding_participant.as_ref().map(|p| p.id.clone());
         // A thunk, not a list: a character carrying no progressions — very
         // nearly all of them — must not pay for a history read they will never
@@ -2966,8 +2972,9 @@ where
     // `hasNewUserMessage` is v4's `!!newUserMessage`, so `Some("")` is NO new
     // message here (the token count above and the first-responder branch below
     // read the SAME `new_user_message` binding — P4.137); and there is
-    // NO continue-mode gate, unlike progressions above — Continue and Nudge get
-    // the note too. `is_multi_character` is this function's own predicate, which
+    // NO continue-mode gate (the Core whisper's is the only one; the progressions
+    // above have none either since v4 `102a23648`, bug 254) — Continue and
+    // Nudge get the note too. `is_multi_character` is this function's own predicate, which
     // counts the user's persona seat (the commit message's "single-character is
     // byte-identical" holds only for a seatless chat).
     let user_narration_anchor = {
