@@ -251,8 +251,10 @@ pub struct ArchiveSeams<'a> {
 const TEXT_DOCUMENT_FILE_TYPES: [&str; 4] = ["markdown", "txt", "json", "jsonl"];
 
 /// The §4.2a keep-set: vault paths that survive the prune. The ten managed-field
-/// documents, plus everything under `Wardrobe/` (checked by prefix, not listed
-/// here). Avatar links are kept by id, not path — see [`prune_vault`].
+/// documents, plus everything under `Wardrobe/` and `Inventory/` (checked by
+/// prefix, not listed here — an archived character's Inventory instances must
+/// stay countable as an archetype's dependents). Avatar links are kept by id,
+/// not path — see [`prune_vault`].
 ///
 /// v4 spells these as ten `CHARACTER_*_PATH` imports from
 /// `vault-overlay/schema.ts`. v5 has the same nine in
@@ -276,6 +278,25 @@ const KEPT_MANAGED_PATHS: [&str; 10] = [
 
 /// v4 `CHARACTER_WARDROBE_FOLDER` (`mount-index/character-vault.ts`).
 const CHARACTER_WARDROBE_FOLDER: &str = "Wardrobe";
+
+/// v4 `CHARACTER_INVENTORY_FOLDER` (`mount-index/character-vault.ts:34` — a
+/// re-export of `INVENTORY_FOLDER`, `lib/inventory/folders.ts:45`). The ONLY
+/// Inventory fact the archive reaches; nothing else of the Inventory is ported
+/// here (P4.D322 carries v4 `4fbdad186`'s keep ahead of the Inventory round).
+const CHARACTER_INVENTORY_FOLDER: &str = "Inventory";
+
+/// Vault folders kept whole, with everything beneath them. (v4 `KEPT_FOLDERS`,
+/// `archive-service.ts:128-129`; the ORDER is v4's.)
+const KEPT_FOLDERS: [&str; 2] = [CHARACTER_WARDROBE_FOLDER, CHARACTER_INVENTORY_FOLDER];
+
+/// [`KEPT_FOLDERS`] as lowercased `<folder>/` prefixes — exactly v4's
+/// `KEPT_FOLDERS.map((folder) => `${folder.toLowerCase()}/`)`.
+fn kept_prefixes() -> Vec<String> {
+    KEPT_FOLDERS
+        .iter()
+        .map(|f| format!("{}/", f.to_lowercase()))
+        .collect()
+}
 
 /// [`KEPT_MANAGED_PATHS`], lowercased — exactly as v4 lowercases the schema
 /// constants into its `Set`.
@@ -1306,7 +1327,7 @@ async fn delete_own_memories(db: &Db, character_id: &str) -> bool {
 /// keep-set, then any folder left with nothing kept beneath it.
 ///
 /// The keep-set (§4.2a): the ten managed-field documents, everything under
-/// `Wardrobe/`, and the avatar links — `defaultImageId` plus every
+/// `Wardrobe/` and `Inventory/`, and the avatar links — `defaultImageId` plus every
 /// `avatarOverrides[].imageId`. Those are ids old chat messages resolve
 /// through; keeping the rows is what keeps their faces.
 ///
@@ -1362,14 +1383,15 @@ async fn prune_vault(db: &Db, character_id: &str) -> bool {
             };
             let mount = mi.connection();
 
-            let wardrobe_prefix = format!("{}/", CHARACTER_WARDROBE_FOLDER.to_lowercase());
+            let kept_prefixes = kept_prefixes();
             let managed = kept_managed_paths();
             let is_kept = |id: &str, relative_path: &str| -> bool {
                 if kept_link_ids.contains(id) {
                     return true;
                 }
                 let path = relative_path.to_lowercase();
-                managed.contains(&path) || path.starts_with(&wardrobe_prefix)
+                managed.contains(&path)
+                    || kept_prefixes.iter().any(|p| path.starts_with(p.as_str()))
             };
 
             let links_repo = DocMountFileLinksRepository::new(mount);
@@ -1413,7 +1435,7 @@ async fn prune_vault(db: &Db, character_id: &str) -> bool {
                 ));
             }
 
-            prune_empty_folders(mount, &mount_point_id, &survivors, &wardrobe_prefix)?;
+            prune_empty_folders(mount, &mount_point_id, &survivors, &kept_prefixes)?;
 
             tracing::debug!(
                 target: "quilltap::archive",
@@ -1445,19 +1467,19 @@ async fn prune_vault(db: &Db, character_id: &str) -> bool {
 
 /// Delete folder rows with no kept content beneath them (`Mail/`,
 /// `Conversation Summaries/`, photo folders, …) — v4 `pruneEmptyFolders`. The
-/// `Wardrobe/` folder is in the keep-set explicitly — it survives even when
-/// empty — and so does any folder that still shelters a surviving link.
+/// `Wardrobe/` and `Inventory/` folders are in the keep-set explicitly — they
+/// survive even when empty — and so does any folder that still shelters a
+/// surviving link.
 fn prune_empty_folders(
     mount: &rusqlite::Connection,
     mount_point_id: &str,
     survivors: &[crate::db::doc_mount_file_links::LinkRow],
-    wardrobe_prefix: &str,
+    kept_prefixes: &[String],
 ) -> Result<(), DbError> {
     let kept_paths: Vec<String> = survivors
         .iter()
         .map(|l| l.relative_path.to_lowercase())
         .collect();
-    let wardrobe_folder = &wardrobe_prefix[..wardrobe_prefix.len() - 1];
 
     let folders_repo = DocMountFoldersRepository::new(mount);
     // P4.149 (5d #10, Ruling R-E): v4's `docMountFolders.findByMountPointId` is
@@ -1467,9 +1489,13 @@ fn prune_empty_folders(
     let folders = folders_repo.find_by_mount_point_id_or_empty(mount_point_id);
     for folder in folders {
         let folder_path = folder.path.to_lowercase();
+        // v4 `prefix.slice(0, -1)`: every prefix ends in the ASCII `/`
+        // [`kept_prefixes`] appends, so dropping its last byte is a char
+        // boundary.
         if folder_path.is_empty()
-            || folder_path == wardrobe_folder
-            || folder_path.starts_with(wardrobe_prefix)
+            || kept_prefixes
+                .iter()
+                .any(|p| folder_path == p[..p.len() - 1] || folder_path.starts_with(p.as_str()))
         {
             continue;
         }
@@ -1578,7 +1604,7 @@ mod p4149_prune_folders_tests {
             )
             .unwrap();
         let (got, lines) = crate::test_support::captured_with(|| {
-            prune_empty_folders(mount, &mp, &[], "Wardrobe/")
+            prune_empty_folders(mount, &mp, &[], &kept_prefixes())
         });
         assert!(got.is_ok(), "{got:?}");
         let after: i64 = mount
@@ -1592,6 +1618,63 @@ mod p4149_prune_folders_tests {
             ),
             "{}",
             lines[0]
+        );
+    }
+
+    /// P4.D322 (v4 `4fbdad186`): `Wardrobe/` and `Inventory/` survive the
+    /// folder sweep whole — the bare folder by EQUALITY, everything beneath by
+    /// PREFIX, even with no surviving link — while a sibling whose name merely
+    /// starts with the word (`Inventory Notes`) and an ordinary folder are
+    /// pruned.
+    #[test]
+    fn kept_folders_survive_the_sweep_by_equality_and_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        let mount = w.connection();
+        let mp: String = mount
+            .query_row(
+                "SELECT id FROM doc_mount_points WHERE mountType = 'database' LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        mount
+            .execute(
+                "DELETE FROM doc_mount_folders WHERE mountPointId = ?1",
+                [&mp],
+            )
+            .unwrap();
+        let links = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount);
+        for path in [
+            "Wardrobe",
+            "Inventory/Empty Shelf",
+            "Inventory/images/x",
+            "Inventory Notes",
+            "Mail",
+        ] {
+            links.ensure_folder_path(&mp, path).unwrap();
+        }
+        prune_empty_folders(mount, &mp, &[], &kept_prefixes()).unwrap();
+        let mut stmt = mount
+            .prepare("SELECT path FROM doc_mount_folders WHERE mountPointId = ?1 ORDER BY path")
+            .unwrap();
+        let left: Vec<String> = stmt
+            .query_map([&mp], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            left,
+            [
+                "Inventory",
+                "Inventory/Empty Shelf",
+                "Inventory/images",
+                "Inventory/images/x",
+                "Wardrobe",
+            ]
         );
     }
 }

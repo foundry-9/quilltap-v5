@@ -1,7 +1,7 @@
 //! P4.D65 — the character-archive tier-2 differential.
 //!
 //! Drives `quilltap_core::services::character_archive::service::{archive_character,
-//! rehydrate_character}` through the SAME twenty case sequences the oracle drives
+//! rehydrate_character}` through the SAME twenty-one case sequences the oracle drives
 //! v4's real `lib/characters/archive-service.ts` through, over a FRESH copy of
 //! the committed `character-archive-{main,mount}.db` pair per case, and diffs
 //! four comparands: the returned result (or the refusal's class + message), the
@@ -33,12 +33,23 @@
 //!
 //! The committed fixture is built by
 //! `harness/oracle/fixtures/build-character-archive-fixture.ts` and then EXTENDED
-//! in place, twice: by `extend-character-archive-twice-linked-blob.ts` (v4 Bug
-//! 57 / `de9f70bf` — the sha-deduped blob under two links) and by
+//! in place, THREE times: by `extend-character-archive-twice-linked-blob.ts` (v4
+//! Bug 57 / `de9f70bf` — the sha-deduped blob under two links), by
 //! `extend-character-archive-profile-and-avatars.ts` (the default embedding
 //! profile, the avatar-override face, the standalone avatar thumbnail — the §3
-//! review's corpus-undriven shapes, order item 6). Each carries its own recipe;
-//! extend by mutation, never rebuild, and run them in that order.
+//! review's corpus-undriven shapes, order item 6), and by
+//! `extend-character-archive-inventory.ts` (P4.D322 — an `Inventory/` folder
+//! under Sable's vault: a chunked object document, an object picture link, an
+//! empty subfolder, and the `Inventory Notes/` decoy, so v4 `4fbdad186`'s
+//! `Inventory/` archive keep is red-first). Each carries its own recipe; extend
+//! by mutation, never rebuild, and run them in that order.
+//!
+//! **P4.D322** (v4 `4fbdad186`, AHEAD of the round pin `e8e17b2d9`) added
+//! `archive_sable_inventory_bare`: a per-case raw-SQL plant (the SAME text both
+//! sides, [`INVENTORY_BARE_PLANT_SQL`]) strips everything beneath the bare
+//! `Inventory` folder, so only the keep's folder EQUALITY arm can save it. The
+//! proof of record is an oracle regenerated at `4fbdad186`; from the round pin
+//! every Sable-archiving case is RED by design (v4 pruned `Inventory/` there).
 //!
 //! ⚠ Regenerating this family's oracle at the P4.D65-remainder round ALSO
 //! un-mocked a stale jest.setup stub (`getDefaultEmbeddingProfile` → `null`),
@@ -134,6 +145,16 @@ fn spec_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../harness/oracle/fixtures/character-archive.json")
 }
+/// `archive_sable_inventory_bare`'s plant — byte-identical to the oracle case's
+/// `INVENTORY_BARE_PLANT_SQL`: every link under `Inventory/` (its chunks first),
+/// then every folder BENEATH the bare `Inventory` folder, FK-safe, leaving the
+/// bare folder row with nothing under it. The decoy `Inventory Notes/` does not
+/// match `inventory/%`.
+const INVENTORY_BARE_PLANT_SQL: &str = "DELETE FROM doc_mount_chunks WHERE linkId IN \
+     (SELECT id FROM doc_mount_file_links WHERE lower(relativePath) LIKE 'inventory/%'); \
+     DELETE FROM doc_mount_file_links WHERE lower(relativePath) LIKE 'inventory/%'; \
+     DELETE FROM doc_mount_folders WHERE lower(path) LIKE 'inventory/%';";
+
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
 }
@@ -808,7 +829,7 @@ async fn character_archive_tier2_equivalence() {
         .filter(|l| !l.trim().is_empty())
         .map(|l| serde_json::from_str(l).expect("oracle line"))
         .collect();
-    assert_eq!(oracle.len(), 20, "the corpus is twenty cases");
+    assert_eq!(oracle.len(), 21, "the corpus is twenty-one cases");
 
     // The extender-minted ids, read from the committed sidecar rather than
     // transcribed — the oracle case reads the same file, so a re-pin in
@@ -832,6 +853,7 @@ async fn character_archive_tier2_equivalence() {
         collect_uuids(&dump_state(&work.db), &mut set);
         assert_fixture_carries_twice_linked_blobs(&work.db);
         assert_fixture_carries_profile_and_avatars(&work.db, &spec, &avatar_thumbnail_file_id);
+        assert_fixture_carries_inventory(&work.db, &meta);
         set
     };
 
@@ -1048,6 +1070,25 @@ async fn character_archive_tier2_equivalence() {
                 })
                 .await
                 .expect("plant the delete-blocking trigger");
+                match archive_character(db, &spec.user_id, &spec.sable, &s).await {
+                    Ok(r) => r.to_value(),
+                    Err(e) => error_value(&e),
+                }
+            }
+            // ── P4.D322: the bare `Inventory/` folder survives the archive ──
+            // v4 `4fbdad186`'s `pruneEmptyFolders` keeps a kept folder by
+            // EQUALITY as well as by prefix, so the bare `Inventory` folder
+            // survives with nothing beneath it.
+            "archive_sable_inventory_bare" => {
+                db.write(|ws| {
+                    ws.mount_index()
+                        .expect("mount index")
+                        .connection()
+                        .execute_batch(INVENTORY_BARE_PLANT_SQL)
+                        .map_err(Into::into)
+                })
+                .await
+                .expect("plant the bare Inventory folder");
                 match archive_character(db, &spec.user_id, &spec.sable, &s).await {
                     Ok(r) => r.to_value(),
                     Err(e) => error_value(&e),
@@ -1357,6 +1398,41 @@ fn assert_fixture_carries_twice_linked_blobs(db: &Db) {
     assert!(
         multi.iter().all(|&n| n == 2),
         "each twice-linked blob carries exactly two links; found {multi:?}"
+    );
+}
+
+/// P4.D322: the `Inventory/` plant must be present, or every Sable-archiving
+/// case would agree with v4 for the wrong reason (nothing to keep).
+fn assert_fixture_carries_inventory(db: &Db, meta: &Value) {
+    let picture = meta["inventoryPictureLinkId"]
+        .as_str()
+        .expect("sidecar carries inventoryPictureLinkId — re-run the Inventory extender")
+        .to_string();
+    let document = meta["inventoryDocumentPath"]
+        .as_str()
+        .expect("sidecar carries inventoryDocumentPath")
+        .to_string();
+    let (links, folders): (i64, i64) = db
+        .read_mount_index(move |c| {
+            let links = c.query_row(
+                "SELECT COUNT(*) FROM doc_mount_file_links WHERE id = ?1 OR relativePath = ?2",
+                rusqlite::params![picture, document],
+                |r| r.get::<_, i64>(0),
+            )?;
+            let folders = c.query_row(
+                "SELECT COUNT(*) FROM doc_mount_folders \
+                 WHERE path IN ('Inventory', 'Inventory/Empty Shelf', 'Inventory Notes')",
+                [],
+                |r| r.get::<_, i64>(0),
+            )?;
+            Ok((links, folders))
+        })
+        .expect("read the Inventory plant");
+    assert_eq!(
+        (links, folders),
+        (2, 3),
+        "the fixture must carry the Inventory plant — re-run \
+         extend-character-archive-inventory.ts"
     );
 }
 

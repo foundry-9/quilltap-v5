@@ -137,7 +137,24 @@ type CaseName =
   // which exist only on this fixture, once `archiveCharacter` has run.
   | 'character_detail_enrichment'
   | 'rehydrate_digest_clobbered'
-  | 'rehydrate_digest_corrupt';
+  | 'rehydrate_digest_corrupt'
+  // ── P4.D322 (v4 `4fbdad186`, the `Inventory/` archive keep) ──
+  // The committed state's `Inventory` folder shelters the kept lantern, so the
+  // keep's bare-folder EQUALITY arm is reachable only once everything beneath
+  // the folder is gone.
+  | 'archive_sable_inventory_bare';
+
+/**
+ * `archive_sable_inventory_bare`'s plant, the SAME SQL text on both sides: every
+ * link under `Inventory/` (its chunks first), then every folder BENEATH the bare
+ * `Inventory` folder — FK-safe order, leaving the bare folder row with nothing
+ * under it. The decoy `Inventory Notes/` does not match `inventory/%`.
+ */
+const INVENTORY_BARE_PLANT_SQL =
+  "DELETE FROM doc_mount_chunks WHERE linkId IN " +
+  "(SELECT id FROM doc_mount_file_links WHERE lower(relativePath) LIKE 'inventory/%'); " +
+  "DELETE FROM doc_mount_file_links WHERE lower(relativePath) LIKE 'inventory/%'; " +
+  "DELETE FROM doc_mount_folders WHERE lower(path) LIKE 'inventory/%';";
 
 /**
  * The digest a `rehydrate_digest_corrupt` row is planted with: 64 hex
@@ -546,6 +563,19 @@ async function runCase(
         break;
       }
 
+      // ── P4.D322: the bare `Inventory/` folder survives the archive ─────────
+      // v4 `4fbdad186`'s `pruneEmptyFolders` keeps a kept folder by EQUALITY
+      // (`folderPath === prefix.slice(0, -1)`) as well as by prefix, so the bare
+      // `Inventory` folder survives with nothing beneath it. At `e8e17b2d9` it
+      // is pruned like any empty folder.
+      case 'archive_sable_inventory_bare': {
+        const midbPlant = getRawMountIndexDatabase();
+        if (!midbPlant) throw new Error('mount index database unavailable');
+        midbPlant.exec(INVENTORY_BARE_PLANT_SQL);
+        payload.result = await capture(() => archiveCharacter(spec.userId, spec.sable));
+        break;
+      }
+
       // ── Bug 66: `getCharacterDetail` carries the tombstone ────────────────
       // The Salon sidebar renders from the chat GET, which enriches every
       // participant through this function; without the projection the Archived
@@ -765,6 +795,7 @@ async function main(): Promise<void> {
     'character_detail_enrichment',
     'rehydrate_digest_clobbered',
     'rehydrate_digest_corrupt',
+    'archive_sable_inventory_bare',
   ];
 
   const outLines: string[] = [];

@@ -6,5 +6,9 @@
   "landscapeAgainLinkId": "e5000000-0000-4000-8000-0000000000e2",
   "overrideFaceLinkId": "e5000000-0000-4000-8000-0000000000e3",
   "embeddingProfileId": "b7000000-0000-4000-8000-0000000000b7",
-  "avatarThumbnailFileId": "f5000000-0000-4000-8000-0000000000f1"
+  "avatarThumbnailFileId": "f5000000-0000-4000-8000-0000000000f1",
+  "inventoryFolderPath": "Inventory",
+  "inventoryPictureLinkId": "e5000000-0000-4000-8000-0000000000e9",
+  "inventoryDocumentPath": "Inventory/Satchel/brass-lantern.json",
+  "inventoryDecoyPath": "Inventory Notes/ledger.md"
 }

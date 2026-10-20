@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — feat(core): P4.D322 — archiving a character keeps its vault's `Inventory/` folder (v4 `4fbdad186`, ahead of the pin)
+
+_Versions: core 0.0.1315._
+
+The archive prune now keeps everything under `Inventory/` as it keeps `Wardrobe/`: v4's `KEPT_FOLDERS` list, the lowercased prefix rule on links, and the folder sweep keeping each kept folder by equality or prefix (so an empty `Inventory/` subfolder and a bare `Inventory/` survive). `CHARACTER_INVENTORY_FOLDER = "Inventory"` is the only Inventory code ported. This retires the live-data hazard where a v5 archive deleted a character's Inventory. The committed `character-archive` fixture pair is extended by a new recipe, `extend-character-archive-inventory.ts`, which uses v4's generic writers at the round pin to plant an object document, a picture link, an empty subfolder and an `Inventory Notes/` decoy. A new case, `archive_sable_inventory_bare`, covers the bare-folder arm. `character_archive_tier2_equivalence` goes to 21 cases: green against a `4fbdad186` oracle, and red by design from the round pin on the 14 Sable-archiving cases. A new unit test pins the folder rule. The A/B regen of the unchanged corpus at both pins was clean. The reencrypt family and the passphrase archive sweep were re-run over the extended pair and stay green.
+
 #### 2026-10-19 — feat(core): P4.D322 — progressions report on every turn, continue mode included (v4 bug 254, ahead of the pin)
 
 _Versions: core 0.0.1314._
