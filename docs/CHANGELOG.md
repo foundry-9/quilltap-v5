@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-20 — docs(porting): drift check — one commit past the close probe (`5a8338b30`, the toast container's z-index)
+
+_Docs-only change._
+
+v4 landed `5a8338b30` ("Fix: toasts raised from inside a dialog were hidden behind it", `4.11.0-dev.47`) while the `e8e17b2d9` unification was cleaning up: one production line (`lib/toast.tsx` z-index 50 → 1000), no D23 move. The ledger's §1 moves its HEAD, verdict (15 commits) and stamps; the §3 row names the SPA's `_toast.css` twin and asks the port to measure v5's own stacking first. CLAUDE.md's round bullet counts it.
+
 #### 2026-10-20 — unify: the `e8e17b2d9` outfit-history + Workbench-picker + gallery + bug-252 drift catch-up round — nine lanes (P4.D315–P4.D323), the baseline moves `25b8fab6a` → `e8e17b2d9`
 
 _Docs-only change._

@@ -1020,14 +1020,15 @@ records THERE. Update this summary only when a phase or round completes.
   drift catch-up round (P4.D315 → {P4.D316 ∥ P4.D317} ∥ P4.D318 ∥ P4.D319 ∥
   P4.D320 ∥ P4.D321 ∥ P4.D322 ∥ P4.D323): UNIFIED on main (2026-10-19) — ALL
   NINE LANES LANDED WHOLE; the oracle baseline MOVES to `e8e17b2d9`. The
-  ledger's §3 holds FOURTEEN rows past the pin (the six known — the
+  ledger's §3 holds FIFTEEN rows past the pin (the six known — the
   Inventory programme, the scenario sort, a test, bug 255 — plus EIGHT the
   close `/driftcheck` classified: bug 256 + the Inventory title lint, the
   moderated-image-prompt re-ruling of bug 133, `edit_custom_tool`, the
   `/photos` album selector, vault custom tools as the character's only, **the
   Log WITH THE SIXTEENTH D23 MOVE** — `log_entries`, the first table in the
   llm-logs partition, created lazily with no migration — its date-bounds
-  rider, the Inventory icon), PIN REQUIRED.**
+  rider, the Inventory icon — plus the toast z-index one-liner `5a8338b30`
+  that landed during the cleanup), PIN REQUIRED.**
   - **Absorbed:** the TWELFTH D23 move as the first BOOT-CREATED table
     (`chat_wardrobe_history` through three ported ensures — table →
     `actorToolName` → seed, the seed stamped; `fresh_schema.json` UNMOVED;
