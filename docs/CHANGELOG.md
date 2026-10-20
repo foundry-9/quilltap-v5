@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — docs(porting): P4.D322 lane record — both ahead-of-pin riders landed
+
+_Docs-only change._
+
+The P4.D322 lane record in `status-log.md`: both A/B proofs (bug 254 at `e8e17b2d9` / `102a23648`, the archive keep at `e8e17b2d9` / `4fbdad186`), the red-first counts, the flipped row's bytes, the mutation table, the confinement verdict, the regressions by name, the gate, and the evidence for retiring the "a v5 archive deletes the Inventory" hazard. The order's status header reads LANE COMPLETE.
+
 #### 2026-10-19 — feat(core): P4.D322 — archiving a character keeps its vault's `Inventory/` folder (v4 `4fbdad186`, ahead of the pin)
 
 _Versions: core 0.0.1315._

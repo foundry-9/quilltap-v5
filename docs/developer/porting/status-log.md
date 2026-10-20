@@ -189327,3 +189327,193 @@ definition with `{{character}}` in an effect value loading on v5.
 
 core **0.0.1316** (from 0.0.1313, +1 per commit touching it); web 0.0.241,
 host 0.0.210, cli 0.0.34, SPA 0.5.873 unchanged; harness frozen 0.0.1110.
+
+## P4.D322 — the two AHEAD-OF-PIN riders: bug 254 (progressions every turn) + the `Inventory/` archive keep (lane `claude/p4.d322-ahead-of-pin-riders-e8b0cea`, round pin `e8e17b2d9`, second pins `102a23648` / `4fbdad186`, 2026-10-19)
+
+**Verdict: BOTH riders LANDED — neither A/B contaminated.** Rust core + harness only. No Inventory code beyond the one string constant; no `fresh_schema.json`, no `chats` column, no SPA, no help, no log line.
+
+### Where the session started / branch
+
+The app opened the session in its own worktree `.claude/worktrees/cranky-tesla-d9fa87` on `claude/cranky-tesla-d9fa87` at `e8b0cea6c` (the orders' commit — the order's named base), clean, no commits. Renamed in place with `git switch -c claude/p4.d322-ahead-of-pin-riders-e8b0cea` (no move needed). All tooling used the spaceless symlink path `~/source/quilltap-v5/.claude/worktrees/cranky-tesla-d9fa87` (the order's suggested `…/worktrees/p4d322` path was not created; the app's worktree is the lane's).
+
+### §2 freshness probe (an OBSERVATION, §R.2) — 2026-10-19 19:08 CDT
+
+- branch `main`; HEAD `e4a60ad9e`.
+- **v4 moved SIX commits past `a6292f169` since planning** (recorded, lane CONTINUES): `7263105c6` (Inventory title lint; bug 256), `406dbdd5a` (clean image prompts only for Moderated), `ea2cb60ab` (`edit_custom_tool`), `680b71044` (`/photos` album selector), `cfa0cba29` (vault custom tools are that character's only), `e4a60ad9e` (the Log — `log_entries` table, `log_*` tools). `e8e17b2d9..main` = 12 commits.
+- **v4 tree DIRTY** (uncommitted): `__tests__/unit/lib/tools/handlers/log-handler.test.ts`, `docs/CHANGELOG.md`, `help/the-log.md`, `lib/database/backends/sqlite/regexp-function.ts`, `lib/tools/__tests__/__snapshots__/tool-definitions-snapshot.test.ts.snap`, `lib/tools/handlers/log-handler.ts`, `lib/tools/log-read-tool.ts`. Irrelevant to every regen here (all ran from detached pins).
+- `489b228b6..bugfix` empty.
+- For `/driftcheck` (never written from a lane): the six new commits are unrecorded in the ledger.
+
+### The three pins (§R.3, R-6)
+
+```
+git -C ~/source/quilltap-server worktree add --detach /tmp/qt-v4-pin-p4d322-e8e17b2d9 e8e17b2d9   # e8e17b2d92095bda008f03bb963eb4b1c470e680  "4.11.0-dev.26"
+git -C ~/source/quilltap-server worktree add --detach /tmp/qt-v4-pin-p4d322-102a23648 102a23648   # 102a236481c6cec2869d02b74d7eea60fe49dfaf  "4.11.0-dev.36"
+git -C ~/source/quilltap-server worktree add --detach /tmp/qt-v4-pin-p4d322-4fbdad186 4fbdad186   # 4fbdad1864583b67805468e4122cd96fba51a486  "4.11.0-dev.33"
+```
+
+All three `rev-parse` / `package.json` stamps verified; the three symlink classes on each (15 plugin `node_modules` links each). Round pin: root symlink removed, `npm ci --offline --no-audit --no-fund` → 1,044 packages, `openai` 7.34.0, `zod` 4.6.7. Second pins: the root symlink kept under R-6 after the re-measure — the live install (`node_modules/.package-lock.json` stamped `4.11.0-dev.44`, reinstalled 2026-10-19 16:29) vs EACH pin's lockfile: **0 version differences**, 1 extra (`@xterm/headless`), 131 absent optional platform binaries; `git diff e8e17b2d9 102a23648 -- package-lock.json` = stamps only (`dev.21` → `dev.36` ×2); `e8e17b2d9..4fbdad186` moves only `packages/quilltap/package.json`'s stamp; `a6292f169..main` moves stamps only. `openai` 7.34.0 under the live tree.
+
+### Bug 254 — the A/B (R-1, Tier 1 item 2), BEFORE any edit
+
+Hand-copied recipe (`/tmp/p4d322/scripts/bc-regen.sh`, outputs `/tmp/p4d322/<sha>/`, `TZ=UTC` both stages), the unchanged corpus:
+
+| run | lines | sha256 |
+|---|---|---|
+| `e8e17b2d9` | 302 | `ccf84ebd781970a1298878b6943df48ca1a695ed1f89c4ad420e93b09d66f30c` |
+| `e8e17b2d9` CONTROL (second run) | 302 | `e76ee15fd257f2b64c9bb58d9f9f062a4bf7b2493bc45cc0d9c4a56d24570842` |
+| `102a23648` | 302 | `a492e3934f2aa69e4124695548e16ad5a1423c441f4029b287387b0013492e2e` |
+| `102a23648` after the item-4 comment edit | 302 | `24d8cd91253589cee794fb301b4cdad9908e63171593415be9705666e5470346` |
+
+- **The raw diff is NINE lines, not one** — the order's "deterministic — the read path mints nothing persistent" premise is false for the NDJSON as a whole. Field-level: five `deliveryLog` rows differ ONLY in `lines[2].fields.durationMs` (`Recall assembled`'s wall clock — the family masks it), three `result` rows (`mail_letter_new_message`, `mail_letter_continue_mode`, `bug199_chained_recall_mail_inform_in_order`) differ ONLY in `mailAlertsOwed.vaultId` (the vault mount point the BUILDER mints per build — the Rust side reads it from its own fixture), and **`progressions_continue_mode`'s context row** — `messages[4].content` alone.
+- **The CONTROL proves the eight are per-run noise, not v4 contamination:** two round-pin runs differ in the SAME two fields (four `durationMs` rows — a different four — and the same three `vaultId` rows), and nowhere else. Masked, the A/B differs in EXACTLY the predicted row. `progressions_continue_mode`'s `whispers` / `informLog` / `deliveryLog` rows identical; `narration_anchor_continue_mode` byte-identical; `mail_letter_continue_mode` differs only by the minted `vaultId` (noise class). **Verdict: CLEAN — bug 254 PORTED.**
+- Unported v5: vs `e8e17b2d9` **green** (1 / 1, 0.59 s); vs `102a23648` **RED**, first failure `progressions_continue_mode: built context diverges` (`build_context_tier3_equivalence.rs:1265`). v5 did NOT trip on the `102a23648` build's two extra NULL columns (`chats.equippedInventory`, `characters.canManageInventory`) — the fallback in item 2 was not needed.
+- Marker: `ggrep '"op":"progressions_continue_mode"' <ndjson> | ggrep '"kind":"result"' | ggrep -c 'Time-bound conditions you are carrying'` → **0** at `e8e17b2d9`, **1** at `102a23648`.
+
+### R-5 — the flipped row, as bytes
+
+Old (`e8e17b2d9`) `messages[-1].content` (role `user`):
+
+```
+What is your condition?
+```
+
+New (`102a23648`):
+
+```
+What is your condition?
+
+---
+
+Time-bound conditions you are carrying, as of this moment:
+- Cannon recharge: 2 minutes elapsed, 8 minutes remaining, 20% complete (0.2/1.0 MJ).
+- You are carrying a child. You are 23 weeks along; due in 15 weeks, 2 days.
+- The vigil: complete; 1 day since it finished.
+```
+
+The context-row diff is that one field (`.result.messages[4].content`). **Prediction verdict: EQUAL** — at `102a23648` the continue-mode row's `result` equals `progressions_normal_turn`'s byte for byte (at `e8e17b2d9` they differed in `messages` only). Charlie's Core whisper does not distinguish them (both `whispers` rows identical).
+
+### Bug 254 — the port (Tier 1 items 3–4)
+
+- `services/build_context.rs`: the `if input.is_continue_mode { String::new() } else { … }` wrapper dropped — the progressions block is a plain block, the argument struct and the thunk comment UNCHANGED; R-2's three comment edits (the field doc WITHOUT "inventory" per R-N, v4 `102a23648:2163-2166` verbatim, the narration-anchor note). The Core-whisper `match` (`Some(rp) if !input.is_continue_mode`) NOT touched.
+- `harness/oracle/cases/build-context-tier3.test.ts:148-150`: comment only (`git diff` — the three comment lines).
+- After the port: vs `102a23648` **GREEN** (both the original build and the post-comment build); vs `e8e17b2d9` **RED** on exactly `progressions_continue_mode` (the by-design flip §R.7 lists — for §S.2). `cargo test -p quilltap-core --lib build_context` 17 / 17.
+- Item 4's "NDJSON sha256 UNCHANGED" cannot hold — the noise above changes the sha every run. Measured instead: the post-comment `102a23648` NDJSON differs from the pre-edit one ONLY in the noise class (four `durationMs`, three `vaultId`), and the family is green against it.
+
+### The archive keep — the A/B (R-1, Tier 1 item 6), BEFORE any edit or extension
+
+Hand-copied recipe (`/tmp/p4d322/scripts/ar-regen.sh`, `--testTimeout=300000`), the UNCHANGED committed pair (`main` `05d0542b…`, `mount` `3a9ed25f…`, `.meta.json` `f4747de9…`):
+
+| run | lines | sha256 |
+|---|---|---|
+| `e8e17b2d9` base | 20 | `50b9c40d108d1d74194bce3c5bea231251dd9cd394c6d3089ae92444fb7a6b63` |
+| `4fbdad186` base | 20 | `c7e02a057b80f513e8da2d1f32b4acd4b63b2fceca8d8ab5facc237c652532ab` |
+
+- **The binding proof:** unported v5 vs EACH — **20 / 20 green both** (63.6 s / 64.6 s).
+- The masked raw diff, classified: `appVersion` (`4.11.0-dev.26` / `.33`, top-level + every manifest); minted archive / physical-description ids; `<ts>` stamps incl. the bundle `originalFilename`'s dashed stamp (`2026-10-20T00-14-19-753Z-character-archive.qtap`); and ROW-ORDER permutations of minted-id rows in three cases (`files_delete_bundle_unheld`, `rehydrate_pre_revision_avatar`, `rehydrate_digest_clobbered` — the dumps sort by content containing minted ids, so two restored markdown rows / two memory jobs swap places run to run). With ids erased and lists compared as multisets: **0 differing lines**. **Verdict: CLEAN.**
+
+### The extension (R-3, Tier 1 item 7)
+
+- Pinned ids zero-hit first: `e5000000-0000-4000-8000-0000000000e9` and `e6000000-0000-4000-8000-0000000000e1` — 0 hits across `harness/` + `crates/` and 0 in the `.meta.json` (the `e6000000-…-00000000000a/b/c` family in `build-pascal-run-custom-fixture.ts` is a different suffix).
+- NEW `harness/oracle/fixtures/extend-character-archive-inventory.ts`, run at the ROUND pin (`cd /tmp/qt-v4-pin-p4d322-e8e17b2d9`, `node --import tsx`) on a copy of the pair (`/tmp/p4d322/pair-ext/`, the original aside in `/tmp/p4d322/pair-orig/` — the unported Rust A/B still needed the untouched committed pair), then copied over the committed three files. Plants through v4's REAL `ensureFolderPath` / `writeDatabaseDocument` / `linkBlobContent` only.
+- Row counts, mount partition before → after: `doc_mount_folders` 17 → **23 (+6:** `Inventory`, `Inventory/Satchel`, `Inventory/images`, `Inventory/images/<OBJECT_ID>`, `Inventory/Empty Shelf`, `Inventory Notes`**)**; `doc_mount_file_links` 26 → 29 (+3); `doc_mount_files` 10 → 13 (+3); `doc_mount_documents` 7 → 9 (+2); `doc_mount_chunks` 9 → 11 (+2); `doc_mount_blobs` 3 → 4 (+1); `doc_mount_points` 2. Main partition: every table's row count unchanged (`embedding_status` 4, `background_jobs` 0) — writing the documents enqueued nothing.
+- **Two side effects of v4's own `initializeDatabase` at the round pin, recorded (not Inventory, not removed):** main gained four `sqlite_stat1` rows (`idx_memories_character_tier`, `idx_memories_supersededById`, the two `migrations_*` autoindexes); the MOUNT db gained v4's boot-created **`idx_doc_mount_points_name_nocase`** UNIQUE index (bug 186 — the committed pair predated it) + its `sqlite_stat1` row. Every consumer of the pair re-ran green with it present (below).
+- New fixture shas: `character-archive-main.db` `946e0705d37694ea357b8e52a61715ac98bb5971c0cee3f56d613757cb1f8c74`, `character-archive-mount.db` `a9648b8408f10d8b1778caa0e4bd321777d729fad930d8b416efca3f866738fd`, `.meta.json` `6ab13b4e748e69282404d1891b3ab063eb32c9b0a30cc313aa55d5826a9e593b` (four keys appended: `inventoryFolderPath`, `inventoryPictureLinkId`, `inventoryDocumentPath`, `inventoryDecoyPath`).
+- NEW case `archive_sable_inventory_bare` appended LAST on both sides (R-4) — the SAME SQL text both sides (`INVENTORY_BARE_PLANT_SQL`: chunks of `inventory/%` links → those links → folders `LIKE 'inventory/%'`). The Rust side also gains `assert_fixture_carries_inventory` (the plant must be present, or every case agrees for the wrong reason) and `oracle.len() == 21`.
+- Extended regens:
+
+| run | lines | sha256 |
+|---|---|---|
+| `e8e17b2d9` extended | 21 | `12d20fdff1ca900b03449d69a967ca350ffdb682716f31d2c308bdf49ebac9af` |
+| `4fbdad186` extended | 21 | `0cec38a7a0c0af984467fc6e1b7e941b08a1dcfa6e4ae90f0dc1152874c69c7d` |
+
+- **The confinement rule — PASS.** Masked, ids erased, lists as multisets, case by case: nine Sable-archiving cases differ ONLY by the plant's rows present at `4fbdad186` and absent at `e8e17b2d9` — `doc_mount_folders` +5 (`Inventory`, `…/Satchel`, `…/images`, `…/images/<id>`, `…/Empty Shelf`), `doc_mount_file_links` +2 (`Inventory/Satchel/brass-lantern.json`, `Inventory/images/<id>/lantern.webp`), `doc_mount_files` +2 (121 B json, 86 B blob), `doc_mount_documents` +1 (the lantern), `doc_mount_blobs` +1 (86 B); `archive_sable_inventory_bare` differs by ONE folder row (`Inventory`); zero rows present only at the round pin; the decoy `Inventory Notes/` pruned at BOTH; chunks and every main table identical. Three rehydrate cases (`archive_then_rehydrate`, `rehydrate_pre_revision_avatar`, `rehydrate_digest_clobbered`) differ ONLY in `result.restored` (`documents` / `blobs` 4 → 3 at `4fbdad186`): rehydrate is skip-if-present by id at both pins (`archive-service.ts:221-225`) and `git diff --stat e8e17b2d9 4fbdad186 -- lib/characters lib/export lib/import lib/mount-index/database-store.ts lib/mount-index/folder-paths.ts` is the hunk's file alone — so the count is the keep's mechanical consequence (the kept rows are not re-restored), not the rehydrate-path refactor; the port reproducing it 21 / 21 is the attribution proof.
+- Markers: `Inventory/Satchel/brass-lantern.json` in a post-op `doc_mount_file_links` dump — 20 of 21 cases at `4fbdad186`, 11 at `e8e17b2d9` (there only the non-archiving and the rehydrating cases); in a bundle — 11 at both. `Inventory Notes/ledger.md` in a post-op links dump — 11 at BOTH. `ggrep -c e5000000-0000-4000-8000-0000000000e9` — 20 lines at `4fbdad186`, 18 at `e8e17b2d9`.
+- **Red-first:** unported v5 vs the extended `4fbdad186` NDJSON — **14 RED:** `archive_sable`, `archive_sable_twice`, `archive_then_rehydrate`, `rehydrate_missing_bundle_file`, `files_delete_bundle_held`, `files_delete_bundle_force`, `files_delete_bundle_unheld`, `export_entities_after_archive`, `export_all_after_archive`, `archive_rehydrate_passphrase_mismatch`, `rehydrate_pre_revision_avatar`, `rehydrate_digest_clobbered`, `rehydrate_digest_corrupt`, `archive_sable_inventory_bare` (the prediction: every Sable-archiving case + the bare case — measured). Green: `archive_tor_no_vault`, `rehydrate_not_archived`, `archive_missing_character`, `rehydrate_no_bundle`, `archive_key_unavailable`, `archive_prune_incomplete`, `character_detail_enrichment`. Unported v5 vs the extended round-pin NDJSON — **21 / 21 GREEN** (the plant is v5-readable and v5 today prunes exactly as v4 did).
+
+### The keep — the port (Tier 1 item 8)
+
+`services/character_archive/service.rs`: `CHARACTER_INVENTORY_FOLDER = "Inventory"` (the ONLY Inventory piece), `KEPT_FOLDERS: [&str; 2]` in v4's order, `kept_prefixes()`; `KEPT_MANAGED_PATHS`' and `prune_vault`'s docs in v4's words; the link rule `kept_prefixes.iter().any(…)`; `prune_empty_folders(…, kept_prefixes: &[String])` with v4's equality-or-prefix skip (the byte-slice safety comment), the P4.149 fallback comment kept; the unit test's call → `&kept_prefixes()`. After: vs extended `4fbdad186` **21 / 21 GREEN** (72 s); vs extended `e8e17b2d9` **RED on exactly the same 14** (the by-design flip for §S.2).
+
+### Mutation proofs (Tier 1 item 9), against the extended `4fbdad186` NDJSON
+
+| # | mutant | result |
+|---|---|---|
+| 1 | `KEPT_FOLDERS = [Wardrobe]` | RED — the 14 |
+| 2 | Inventory's prefix without the trailing slash | RED — the 14 (the decoy `Inventory Notes/` kept) |
+| 3 | equality arm deleted from `prune_empty_folders` | RED — ONLY `archive_sable_inventory_bare`; the new unit test RED too |
+| 4 | `to_lowercase()` dropped on the link path | RED — the 14 |
+| 5 | `KEPT_FOLDERS` order swapped | GREEN — the one EQUIVALENT mutant: `some` / `any` over two disjoint prefixes short-circuits with no observable difference (no log line, no side effect); v4's order ported anyway |
+
+Source restored and `cmp`-verified after the run.
+
+### The pair's other consumers (Tier 1 item 10)
+
+- `archive_reencrypt_tier2_equivalence`, regenerated at the ROUND pin over the extended pair (`/tmp/p4d322/scripts/re-regen.sh`): 6 lines, `44dd2f961a1f5622c3d55812eaed8468f6ef37b15ff668ce7918698ba666e9eb` → **green**; also at `4fbdad186` (6 lines, `735aeeba54c5a0bb2ac57b61ec100f1c867c712b03adf7c713f18e0a0c837371`) → **green** — predicted (its comparands are blind to the prune).
+- `cargo test -p quilltap-web --test change_passphrase_archive_sweep` — `change_passphrase_answers_the_archive_sweep_summary` **ok**.
+- The stale sentence (not edited — not this lane's file): `extend-character-archive-profile-and-avatars.ts`'s header says "This family's ONLY consumers are `character_archive_tier2_equivalence` and its oracle case" — false since `archive_reencrypt_tier2_equivalence` and `change_passphrase_archive_sweep` read the pair; the new recipe's header names all three.
+
+### The pure unit test (Tier 1 item 11)
+
+`p4149_prune_folders_tests::kept_folders_survive_the_sweep_by_equality_and_prefix` — folders `Wardrobe`, `Inventory/Empty Shelf`, `Inventory/images/x` (which also create `Inventory`, `Inventory/images`), `Inventory Notes`, `Mail`, no survivors → exactly `Inventory`, `Inventory/Empty Shelf`, `Inventory/images`, `Inventory/images/x`, `Wardrobe` remain. Green; RED under mutant 3. `cargo test -p quilltap-core --lib character_archive` 13 / 13.
+
+### LIVE-DATA hazard retirement evidence
+
+Archiving a character whose vault holds `Inventory/**` (a text object with chunks, a picture link under `Inventory/images/`, an empty subfolder, a bare `Inventory/`) keeps all of it in v5 exactly as v4 `4fbdad186` does — `character_archive_tier2_equivalence` 21 / 21 against the `4fbdad186` oracle (NDJSON `0cec38a7…`), cases `archive_sable`, `archive_sable_twice`, `archive_then_rehydrate`, `rehydrate_missing_bundle_file`, `files_delete_bundle_held`, `files_delete_bundle_force`, `files_delete_bundle_unheld`, `export_entities_after_archive`, `export_all_after_archive`, `archive_rehydrate_passphrase_mismatch`, `rehydrate_pre_revision_avatar`, `rehydrate_digest_clobbered`, `rehydrate_digest_corrupt` (the populated folder, the picture link, the empty subfolder) and `archive_sable_inventory_bare` (the bare folder); the `Inventory Notes/` decoy and `Mail/` / `Conversation Summaries/` still pruned. The unifier may retire the ledger §1 bullet "ARCHIVING A CHARACTER IN v5 DELETES ITS INVENTORY" by this measurement (§S.6).
+
+### Tier 2 / Tier 3
+
+- **13 — no new build-context corpus row** (default kept): the continue-mode-with-a-user-message shape is `progressions_continue_mode`; the trailing-only shape is pinned for the non-continue chained turn by `progressions_chained_no_user_message` / `progressions_chained_with_turn_skip`; v4 drives the trailing-only CONTINUE turn only under a mock.
+- **14 — the continue-mode regressions from the ROUND pin**, one sweep (`recipe_sweep.py --run-all --families … --v4 /tmp/qt-v4-pin-p4d322-e8e17b2d9 --force`, results `/tmp/p4d322/sweep-regressions.json`): **ok** — `regenerate_swipe_tier3_equivalence`, `brahma_orchestrator_tier3_equivalence`, `help_chat_orchestrator_tier3_equivalence`, `message_finalizer_tier3_equivalence`, `chat_context_init_equivalence`, `carina_query_tier3_equivalence`, `initial_greeting_equivalence`. **RED, and NOT P4.D322's** — each attributed by re-running the Rust side over lane-private copies of the sweep's oracle + fixtures with `build_context.rs` reverted to HEAD and then restored: the failure output is BYTE-IDENTICAL with and without the port, and neither log mentions a progression:
+  - `orchestrator_tier3_equivalence` — first failure `simple_json_then_native_tool_call: the API keys the streams carried differ (rust left, v4 right)` (`["key-textblock"]` vs `["key-textblock", "key-textblock"]`). This is round-pin drift on unported `main`; the family is P4.D316's to re-run (§R.4 (a), §R.13 (b)).
+  - `enclave_step_tier3_equivalence` — `table llm_logs mismatch` (an autonomous-run `CHAT_MESSAGE` row), red on unported `main` at the round pin. It is in no §R.13 owner's list → **a FINDING for the unifier** (it is not P4.D322's: identical without bug 254's port). No second by-design flip from bug 254 was found in any of the nine.
+- **15 / 16 — NOT triggered** (both A/Bs clean).
+- **17 / 18** — bug 253 and the rest of `4fbdad186` stay round (2)'s; R-N's sentence regains "inventory, " then.
+- **19** — `ggrep -rn -i 'continue' help/ | ggrep -i progress` → **1** hit, `help/system-tasks-queue.md:120` "Progress continues in real time" (the job queue) — a false positive; no `HANDOFF:` owed.
+- **20** — v4's `context-management.test.ts` bug-254 `it` not transcribed (no mock seam on `build_progressions_section`; the corpus row over the real section is the stronger mirror).
+
+### What the order got wrong (measured)
+
+- "build-context is deterministic … a RAW `diff`" — false: `Recall assembled`'s `durationMs` and the builder-minted vault id differ between two runs of the SAME pin; the A/B needs a control run and a masked comparison (done).
+- Item 4's "NDJSON sha256 UNCHANGED" after the comment edit — impossible for the same reason; measured as masked-equal.
+- The extension adds SIX folder rows (the sketch's `Inventory/images` intermediate made explicit) and v4's boot adds `idx_doc_mount_points_name_nocase` to the committed mount db as a side effect.
+- The rehydrate `restored` counts move at `4fbdad186` — the confinement rule's "a rehydrate writing differently" clause, classified above as the keep's own mechanical consequence (not contamination) with the attribution evidence.
+
+### The gate (final tree, `5c8a551b2`)
+
+- `cargo fmt --all --check` ok; `cargo clippy --workspace --all-targets -- -D warnings` ok; `… --features quilltap-core/native-transport` ok (after building `apps/web/dist` — `npm ci` + `npm run build` in the lane). The first clippy pass caught my new `assert_fixture_carries_inventory` inserted between `assert_fixture_carries_profile_and_avatars`' doc block and its `fn` (it stole the doc — `doc_lazy_continuation`); moved above the block, both clippy sets re-run clean.
+- `cargo test --workspace --no-fail-fast` (background, `CARGO_INCREMENTAL=0`, full log `/tmp/p4d322/workspace-gate.log`, one sibling gate running beside it — within the cap), env: `QT_V4_CHECKOUT` / `QT_V4_ROOT` = the ROUND pin; `QT_ORACLE_BUILD_CONTEXT` + `QT_FIXTURE_BC_*` = the `102a23648` regen; `QT_ORACLE_CHARACTER_ARCHIVE` = the extended `4fbdad186` regen; `QT_ORACLE_ARCHIVE_REENCRYPT` = the extended round-pin regen: **816 binaries / 5,318 passed / 2 failed / 3 ignored, zero `SKIP:`**. The two reds are §R.3's by-design pin reds owned elsewhere: `public_schemas_vendor_guard::the_vendored_schemas_equal_the_v4_checkouts` (P4.D319) and `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts` (P4.D317). My families ran by name: `build_context_tier3_equivalence` ok, `character_archive_tier2_equivalence` ok (61 s), `archive_reencrypt_tier2_equivalence` ok.
+- Through the sweep driver from the SECOND pins (announced, one at a time): `build_context_tier3_equivalence --v4 /tmp/qt-v4-pin-p4d322-102a23648` → OK (NDJSON `/tmp/oracle-build-context.ndjson`, 302 lines, `0cf98afcc1ebf5fba420f8e0e9f0da3dc60198879a0d7b2b8023f6948ab89620`); `character_archive_tier2_equivalence --v4 /tmp/qt-v4-pin-p4d322-4fbdad186` over the extended pair → OK (21 cases, `17fa651e9ce25365a6650f92499ade8a3c10d2c645403c1ebf480f81fe662225`). The committed pair's shas unchanged after both.
+- `cargo test -p quilltap-core --lib character_archive` 13 / 13; `--lib build_context` 17 / 17; `cargo test -p quilltap-web --test change_passphrase_archive_sweep` ok.
+- `recipe_sweep.py --self-test` → 0 failures; `--list` shows no `extend-character-archive*` entry (the extender is a builder, not a family; totals `ok 640 / ok_restored 82 / no_oracle 20 / committed_corpus 15 / exempt 6 / non_extractable 2`).
+- No SPA, no Playwright, no Tier R: nothing in `apps/web` or the CLI moved.
+- **For §S.2 (from the ROUND pin, by design):** `build_context_tier3_equivalence` RED on exactly `progressions_continue_mode`; `character_archive_tier2_equivalence` RED on exactly the 14 Sable-archiving cases listed above. Re-run both from their second pins with the recipes above, never from the round pin.
+
+### Commits
+
+- `b02722ee5` feat(core): P4.D322 — progressions report on every turn, continue mode included (core 0.0.1314). That commit's tree was gated by the targeted runs (the family vs both pins, the in-file unit tests); the full workspace gate ran on the final tree.
+- `5c8a551b2` feat(core): P4.D322 — archiving a character keeps its vault's `Inventory/` folder (core 0.0.1315).
+- this record + the order's status header (docs).
+
+### Fixtures changed (and what they oblige)
+
+`crates/quilltap-web/tests/fixtures/character-archive-{main,mount}.db` + `character-archive-main.db.meta.json` EXTENDED (shas above). This obliges `character_archive_tier2_equivalence` (regenerated here), `archive_reencrypt_tier2_equivalence` (re-run green at both pins) and `change_passphrase_archive_sweep` (green). No other committed fixture moved; no schema fixture moved. A tests-only fixture bumps no crate.
+
+### Regen recipes of record (R-7)
+
+- Bug 254: the family header's recipe from a pin at `102a23648` — `cd /tmp/qt-v4-pin-…-102a23648`, `TZ=UTC` builder → `TZ=UTC` jest → `cargo test -p quilltap-harness --test build_context_tier3_equivalence` (or the sweep driver line above).
+- The keep: the family header's recipe from a pin at `4fbdad186` over the committed (extended) pair.
+- The extender: its own header — run at the ROUND pin after the builder and the two older extenders; it refuses a second run (`the Inventory plant is already present`).
+
+### Versions at close
+
+core **0.0.1315** (from 0.0.1313, +2); host 0.0.210, web 0.0.241, cli 0.0.34, SPA 0.5.873 unchanged; harness frozen 0.0.1110.
+
+### 💸 for the dogfood pass
+
+As the order's § "💸 for the dogfood pass": bug 254 live (a progression carrier in a multi-character chat — the chained second speaker, a Nudge, a Continue each show the report in the LLM Inspector; the Core whisper still absent on those turns; three or four real turns); the keep live (on a copy v4 has given an Inventory: archive from v5, `Inventory/**` + its picture links + an empty subfolder survive; `Mail/` still pruned; rehydrate opens with the Inventory intact; free).
+
+### Cleanup
+
+- The three pins removed (`git -C ~/source/quilltap-server worktree remove --force` ×3); `git worktree list` afterwards shows the main checkout (now at `a495faa26` — v4 moved again during the lane) and one SIBLING pin (`/private/tmp/qt-v4-pin-wrb-e8e17b2d9`, not this lane's), none of P4.D322's.
+- The lane's `target/` deleted at close; scratch under `/tmp/p4d322/` deleted. Nothing pushed to `main`.
