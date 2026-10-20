@@ -1,5 +1,5 @@
 {
-  "_comment": "P4.D315 chat_wardrobe_history tier-2 op corpus (UUID-shaped ids, FIXED plant createdAts) \u2014 see harness/oracle/cases/chat-wardrobe-history-tier2.ts",
+  "_comment": "P4.D315 chat_wardrobe_history tier-2 op corpus (UUID-shaped ids, FIXED plant createdAts) — see harness/oracle/cases/chat-wardrobe-history-tier2.ts",
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "chats": [
     {
@@ -835,6 +835,17 @@
           "source": "pascal",
           "actorCharacterId": "e0000101-0000-4000-8000-000000000000",
           "actorToolName": "raw_tool",
+          "isCurrent": true,
+          "createdAt": "2026-04-01T00:00:00.000Z"
+        },
+        {
+          "id": "e0000017-0000-4000-8000-000000000000",
+          "chatId": "c3000000-0000-4000-8000-000000000003",
+          "characterId": "e0000117-0000-4000-8000-000000000000",
+          "entryIndex": "abc",
+          "slots": {},
+          "source": "operator",
+          "actorCharacterId": null,
           "isCurrent": true,
           "createdAt": "2026-04-01T00:00:00.000Z"
         }

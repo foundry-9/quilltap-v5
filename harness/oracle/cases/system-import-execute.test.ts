@@ -45,6 +45,7 @@ import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { applyMemoryTiersMigration } from '../fixtures/apply-memory-tiers-migration';
 import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
+import { processSingleton } from '@/lib/utils/process-singleton';
 
 interface Spec {
   testPepperBase64: string;
@@ -141,6 +142,31 @@ function applyMocks(userId: string): void {
  */
 async function settle(): Promise<void> {
   for (let i = 0; i < 25; i++) await new Promise((r) => setImmediate(r));
+  clearRefitDebounce();
+}
+
+/**
+ * v4's import schedules a FORCED, 5 s DEBOUNCED vocabulary refit for a BUILTIN
+ * default profile (`lib/import/quilltap-import/execute.ts:402-415` →
+ * `embedding-job-scheduler.ts` `REFIT_DEBOUNCE_MS = 5000`, a `setTimeout` in
+ * the `embedding.refitDebounceTimers` process singleton). Under the real clock
+ * that timer fired into whichever LATER case happened to be dumping — one
+ * stray `EMBEDDING_REFIT {"profileId", "triggerReindex": true}` row and every
+ * minted id after it shifted: 2 of ~6 runs at P4.D317's lane close, 2 of 2
+ * once the outfit-history cases lengthened the run (the `e8e17b2d9`
+ * unification). v5's import answers the profile to refit after the write and
+ * its debounce needs a host tick the harness never gives
+ * (`quilltap_import/mod.rs`, the L-E note), so NEITHER side's refit row can
+ * belong to this family's state dump: the refit's enqueue is
+ * `builtin_refit_policy` / `embedding_job_scheduler`'s own families' to pin.
+ * Clearing the pending timers after each case makes the dump the state at
+ * `executeImport`'s return — v4's documented shape ("no job row exists when
+ * `executeImport` returns").
+ */
+function clearRefitDebounce(): void {
+  const timers = processSingleton('embedding.refitDebounceTimers', () => new Map<string, NodeJS.Timeout>());
+  for (const t of timers.values()) clearTimeout(t);
+  timers.clear();
 }
 
 /** Drain a `ReadableStream<Uint8Array>` into its raw bytes. */

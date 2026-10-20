@@ -23,6 +23,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::api::system_qtap::js_truthy;
 use crate::db::chat_wardrobe_history::{ChatWardrobeHistoryRow, WardrobeHistorySource};
 use crate::jsstr::is_js_ws;
 use crate::wardrobe::{describe_outfit, OutfitSlotValues, Slots, WARDROBE_SLOT_TYPES};
@@ -71,17 +72,6 @@ impl HistorySlots {
             "hair" => &mut self.hair,
             _ => &mut self.top,
         }
-    }
-}
-
-/// JS `Boolean(v)` over an item field.
-fn js_truthy(v: Option<&Value>) -> bool {
-    match v {
-        None | Some(Value::Null) => false,
-        Some(Value::Bool(b)) => *b,
-        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0 && !f.is_nan()),
-        Some(Value::String(s)) => !s.is_empty(),
-        Some(_) => true,
     }
 }
 

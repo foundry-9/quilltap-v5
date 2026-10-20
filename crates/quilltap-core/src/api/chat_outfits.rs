@@ -1188,10 +1188,6 @@ pub async fn chat_wardrobe_rollback(
     let Some(chat) = chat else {
         return not_found("Chat");
     };
-    // v4 evaluates `operatorWardrobeProvenance(chat)` while building the
-    // rollback's input — after the pool load, before the rollback's first
-    // read; it reads only the chat already loaded.
-    let provenance = crate::wardrobe::operator_provenance::operator_wardrobe_provenance(&chat);
     const SOURCE_CONTEXT: &str = "[Chats v1] wardrobe-rollback";
 
     let (cid, character_id, index) = (
@@ -1211,6 +1207,14 @@ pub async fn chat_wardrobe_rollback(
                 ..LoadWearablePoolOptions::default()
             },
         );
+        // v4 `outfit.ts:383-389` awaits `loadWearablePool` as its own
+        // statement and evaluates `operatorWardrobeProvenance(chat)` while
+        // building the rollback's input — so the pool's `Loaded wearable
+        // pool` DEBUG lands BEFORE `Resolved operator for an outfit change`.
+        // Resolved here, after the pool and before the rollback's first read,
+        // for the same line order (the `e8e17b2d9` unification's §3 review;
+        // the lane had resolved it before the write).
+        let provenance = crate::wardrobe::operator_provenance::operator_wardrobe_provenance(&chat);
         rollback_in_write(
             main,
             RollbackInput {
@@ -1222,11 +1226,12 @@ pub async fn chat_wardrobe_rollback(
                 source_context: SOURCE_CONTEXT,
             },
         )
+        .map(|outcome| (outcome, provenance))
     })
     .await;
-    let stage = match outcome {
-        Ok(RollbackOutcome::Rolled(stage)) => stage,
-        Ok(RollbackOutcome::Refused(refusal)) => {
+    let (stage, provenance) = match outcome {
+        Ok((RollbackOutcome::Rolled(stage), provenance)) => (stage, provenance),
+        Ok((RollbackOutcome::Refused(refusal), _)) => {
             tracing::info!(
                 chatId = chat_id,
                 characterId = parsed.character_id.as_str(),

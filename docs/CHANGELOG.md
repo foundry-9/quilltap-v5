@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — fix(unify): the `e8e17b2d9` round's §3 review — the gallery host rule, the announcer-name guards, the rollback's provenance order, one wearable-title rule, one `js_truthy`, the non-numeric `entryIndex` carve
+
+_Versions: core 0.0.1323, SPA 0.5.881._
+
+The unifier's review of the nine-lane union (six parallel readers plus the unifier) found no blocking defect; these are its should-fixes, each red-first where a test could be red. SPA: P4.D321's `qt-wardrobe-pictures-section` host class resolved to no CSS rule (`check-qt-classes` red on the union; the lane record's "lint 0" was false) — the rule now sits beside the Avatar Rolls precedent; `announcerNamesOf` regains v4's two truthiness guards so a nameless seat cannot blank an off-scene card's name; the suspected vantage-loader wedge measured false (both inner loaders fail soft) — no production change, a spec row pins the invariant. Core: the rollback POST resolves the operator provenance inside the write AFTER the pool load (v4's statement order — the lane had inverted the two DEBUG lines); `WearablePool::find_by_title` delegates to `match_wearable_title` (v4's `findByTitle → matchWearableTitle`), retiring the second copy of the trim/lower-case rule; the two new `js_truthy` copies use the crate's one; the dead `to_tool_value` is gone and the tool's unreachable state-read `Err` arm hands the landed stage out. Harness: the tier-2 corpus gains a raw row with a non-numeric `entryIndex` and the family carves `NAN_ENTRY_INDEX_READS_ZERO` both ways; the import oracle's `settle()` clears v4's 5 s refit debounce so the stray `EMBEDDING_REFIT` row (2 of 2 runs on the union) never lands in a later case's dump; the rollback route test follows the resolver line onto the writer thread.
+
 #### 2026-10-19 — docs(porting): P4.D320 lane record — the Pascal SPA pair, LANE COMPLETE
 
 _Docs-only change._

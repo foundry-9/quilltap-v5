@@ -584,6 +584,15 @@ describe('announcerNamesOf', () => {
     ).toEqual({ c1: 'Imogen' });
   });
 
+  it("a nameless seat never blanks an off-scene card's name (v4's truthiness guards)", () => {
+    expect(
+      announcerNamesOf(
+        chat({ offSceneCharacters: [card('c1', 'Imogen')], participants: [cast('c1', '')] }),
+      ),
+    ).toEqual({ c1: 'Imogen' });
+    expect(announcerNamesOf(chat({ offSceneCharacters: [card('c3', '')] }))).toEqual({});
+  });
+
   it('skips a participant without a character', () => {
     const user = { id: 'p-user', type: 'USER', character: null } as unknown as ParticipantDetail;
     expect(announcerNamesOf(chat({ participants: [user, cast('c2', 'Bertie')] }))).toEqual({

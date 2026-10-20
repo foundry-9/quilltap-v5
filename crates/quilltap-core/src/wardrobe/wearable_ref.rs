@@ -36,6 +36,18 @@ impl RefTarget for Value {
     }
 }
 
+/// A borrowed target answers for its referent, so a filtered `Vec<&Value>`
+/// (the pool's shared half minus the character's own ids) matches like a slice
+/// of owned items.
+impl<T: RefTarget> RefTarget for &T {
+    fn ref_id(&self) -> &str {
+        (**self).ref_id()
+    }
+    fn ref_title(&self) -> &str {
+        (**self).ref_title()
+    }
+}
+
 /// v4 `matchWearableTitle(pool, title)` — the first item in `pool` whose title
 /// matches `title`, the WANTED title trimmed (JS's trim) and lower-cased, each
 /// item's title lower-cased only. A blank title names nothing.

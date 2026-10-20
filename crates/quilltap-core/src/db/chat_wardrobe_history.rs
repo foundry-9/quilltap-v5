@@ -85,6 +85,7 @@ use serde_json::Value;
 
 use super::schema_probe::in_savepoint;
 use super::DbError;
+use crate::api::system_qtap::js_truthy;
 use crate::wardrobe::{hash_equipped_slots, normalize_equipped_slots, Slots};
 
 /// v4 `CHAT_WARDROBE_HISTORY_TABLE`.
@@ -412,7 +413,12 @@ fn number_cell(v: ValueRef<'_>) -> f64 {
 /// A NULL `id` (v4 writes one for a raw restore row with no `id` — the
 /// legacy non-INTEGER PRIMARY KEY admits NULL; measured) reads `""` where v4
 /// reads `null` — the recorded `NULL_ID_READS_EMPTY` divergence, reachable only
-/// through a hand-edited archive.
+/// through a hand-edited archive. Likewise a NON-NUMERIC `entryIndex` string
+/// (a raw row's `"abc"`, bound TEXT) reads `0` here where v4's `Number(…)` is
+/// `NaN` (JSON `null`) — the recorded `NAN_ENTRY_INDEX_READS_ZERO` divergence;
+/// its consequence (v4's next settle fails its `NaN + 1` INSERT and skips,
+/// v5's appends entry 1) is recorded in the tier-2 family's header, not
+/// driven.
 fn normalize_row(r: &Row<'_>) -> rusqlite::Result<ChatWardrobeHistoryRow> {
     let cell = |name: &str| -> rusqlite::Result<Option<ValueRef<'_>>> {
         match r.as_ref().column_index(name) {
@@ -506,17 +512,6 @@ fn js_bind(v: Option<&Value>) -> Result<SqlValue, String> {
         Some(Value::String(s)) => Ok(SqlValue::Text(s.clone())),
         Some(Value::Number(n)) => Ok(SqlValue::Real(n.as_f64().unwrap_or(f64::NAN))),
         Some(_) => Err(REFUSAL.to_string()),
-    }
-}
-
-/// JS truthiness of a JSON value (v4 `row.isCurrent ? 1 : 0`).
-fn js_truthy(v: Option<&Value>) -> bool {
-    match v {
-        None | Some(Value::Null) => false,
-        Some(Value::Bool(b)) => *b,
-        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0 && !f.is_nan()),
-        Some(Value::String(s)) => !s.is_empty(),
-        Some(_) => true,
     }
 }
 

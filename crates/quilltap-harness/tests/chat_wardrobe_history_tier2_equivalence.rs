@@ -47,6 +47,18 @@
 //! `normalizeRow` reads it back `id: null` where v5's typed row reads `""`. The
 //! comparand maps v4's `null` to `""` and asserts it happened.
 //!
+//! **Recorded divergence `NAN_ENTRY_INDEX_READS_ZERO`** (pinned both ways; the
+//! `e8e17b2d9` unification's §3 review — the order's item 3 named the class
+//! and no row drove it): a raw restore row whose `entryIndex` is a NON-NUMERIC
+//! string (`"abc"`) binds TEXT and INSERTs on both sides (INTEGER affinity
+//! cannot coerce it; the table has no CHECK), but v4's `normalizeRow`
+//! `Number("abc")` is `NaN`, which JSON renders `null`, where v5's typed
+//! `i64` reads `0`. The comparand maps v4's `null` `entryIndex` to `0` and
+//! asserts it happened. The consequence is RECORDED, not driven: a later
+//! `settle` on such a timeline computes `NaN + 1` in v4 (the INSERT fails →
+//! `skipped`) and `0 + 1` in v5 (an entry 1 appends). Reachable only through
+//! a hand-edited archive (the `NULL_ID_READS_EMPTY` reach).
+//!
 //! Generate (Node 24, from the pinned v4 worktree):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -264,6 +276,7 @@ fn chat_wardrobe_history_tier2_matches_oracle() {
         .unwrap();
 
     let mut null_ids_seen = 0usize;
+    let mut nan_entry_indexes_seen = 0usize;
     let mut publishes_seen = 0usize;
     for (i, (op, v4)) in ops.iter().zip(theirs).enumerate() {
         let label = op["label"].as_str().unwrap();
@@ -372,6 +385,12 @@ fn chat_wardrobe_history_tier2_matches_oracle() {
                         r["id"] = json!("");
                         null_ids_seen += 1;
                     }
+                    // NAN_ENTRY_INDEX_READS_ZERO: v4's `entryIndex: null`
+                    // (`Number("abc")` → NaN → JSON null) is v5's `0`.
+                    if r.get("entryIndex") == Some(&Value::Null) {
+                        r["entryIndex"] = json!(0);
+                        nan_entry_indexes_seen += 1;
+                    }
                 }
             }
             masks.value(&mut want_reads[key]);
@@ -402,6 +421,10 @@ fn chat_wardrobe_history_tier2_matches_oracle() {
     assert!(
         null_ids_seen > 0,
         "NULL_ID_READS_EMPTY: v4 no longer reads a NULL id back — retire the carve"
+    );
+    assert!(
+        nan_entry_indexes_seen > 0,
+        "NAN_ENTRY_INDEX_READS_ZERO: v4 no longer reads a non-numeric entryIndex as null — retire the carve"
     );
     assert!(
         publishes_seen > 0,

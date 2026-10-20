@@ -1396,8 +1396,9 @@ fn p4d281_transfer_line_is_v4s() {
 /// each with its silence leg: the success INFO `[Chats v1] Wardrobe rolled
 /// back` (v4's fields, `context` LAST), the module's DEBUG `Rolled a wardrobe
 /// back` AFTER the effects with the route's `sourceContext` and the operator
-/// provenance, the resolver's DEBUG `Resolved operator for an outfit change`
-/// naming the Speaking-As seat; a refusal's INFO `[Chats v1] Wardrobe rollback
+/// provenance (the resolver's own DEBUG `Resolved operator for an outfit
+/// change` is a WRITER-thread line since the `e8e17b2d9` unification — see
+/// the body); a refusal's INFO `[Chats v1] Wardrobe rollback
 /// refused` with no success line; and the ERROR `[Chats v1] Error rolling back
 /// wardrobe` + 500 when the history read fails (the table dropped — v4's
 /// `findEntries` throws into the same catch). The in-write `Rollback left a
@@ -1442,17 +1443,28 @@ async fn p4d316_rollback_route_lines_are_v4s() {
         )),
         "{rolled}"
     );
-    let resolved = find(&lines, "Resolved operator for an outfit change");
+    // The resolver's DEBUG `Resolved operator for an outfit change` runs INSIDE
+    // the write since the `e8e17b2d9` unification (after `load_wearable_pool`,
+    // before the rollback's first read — v4 `outfit.ts:383-389`'s statement
+    // order, which the lane had inverted by resolving before the write), so
+    // it is a writer-thread line this per-thread rig cannot see — like the
+    // in-write `Rollback left a stale item off` above. Its bytes (the
+    // Speaking-As `actorCharacterId`) are pinned by `operator_provenance`'s
+    // unit tests; its ORDER is pinned by construction (one closure: pool →
+    // provenance → `rollback_in_write`). Its ABSENCE here is the tripwire
+    // against moving it back onto the caller thread (and out of v4's order).
     assert!(
-        resolved.ends_with(&format!("chatId={chat} actorCharacterId={bram}")),
-        "{resolved}"
+        !lines
+            .iter()
+            .any(|l| l.contains("Resolved operator for an outfit change")),
+        "the resolver's line is a writer-thread line now: {lines:#?}"
     );
     let order = |needle: &str| lines.iter().position(|l| l.contains(needle)).unwrap();
     assert!(
-        order("Resolved operator") < order("Rolled a wardrobe back")
-            && order("Rolled a wardrobe back") < order("[Chats v1] Wardrobe rolled back"),
+        order("Rolled a wardrobe back") < order("[Chats v1] Wardrobe rolled back"),
         "v4's order: {lines:#?}"
     );
+    let _ = bram;
     assert!(!lines
         .iter()
         .any(|l| l.contains("Wardrobe rollback refused")));

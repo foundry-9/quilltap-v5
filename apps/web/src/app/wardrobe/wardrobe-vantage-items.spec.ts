@@ -100,6 +100,31 @@ describe('WardrobeVantageItemsLoader', () => {
     expect(loader.fetched()).toBe(true);
   });
 
+  it('a refused read answers empty and still counts as fetched (the tier reads fail soft, v4 `isFetched` is true after an error)', async () => {
+    // `loadCharacterWardrobeItems` / `loadWardrobeContainerItems` fail soft per
+    // tier (`.catch(() => null)`), as v4's per-response `.ok` checks do, so a
+    // refused dispatch never rejects here: the loader lands `[]`, `loading`
+    // false and `fetched` true — v4's `enabled && query.isFetched` after an
+    // error. Pinned at the `e8e17b2d9` unification (the review suspected a
+    // wedge on "Opening the wardrobe…"; measured: the soft arms make it
+    // unreachable).
+    const core = {
+      dispatchData: vi.fn(async () => {
+        throw new Error('the wardrobe could not be read');
+      }),
+    } as unknown as CoreClient;
+    const loader = new WardrobeVantageItemsLoader(core);
+    await loader.load({ kind: 'character', characterId: 'c' });
+    expect(loader.items()).toEqual([]);
+    expect(loader.resolutionItems()).toEqual([]);
+    expect(loader.loading()).toBe(false);
+    expect(loader.fetched()).toBe(true);
+    await loader.load({ kind: 'container', container: { scope: 'general' } } as never);
+    expect(loader.items()).toEqual([]);
+    expect(loader.loading()).toBe(false);
+    expect(loader.fetched()).toBe(true);
+  });
+
   it('discards the answer for a vantage abandoned mid-flight', async () => {
     const pending: Record<string, Array<() => void>> = { slow: [], fast: [] };
     const core = {

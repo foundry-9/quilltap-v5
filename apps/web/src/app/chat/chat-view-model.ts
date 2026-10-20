@@ -239,9 +239,14 @@ export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): Mes
  */
 export function announcerNamesOf(chat: ChatDetail): Record<string, string> {
   const names: Record<string, string> = {};
-  for (const c of chat.offSceneCharacters ?? []) names[c.id] = c.name;
+  // v4's two truthiness guards (`SalonView.tsx:256-262`): a nameless card or
+  // seat never writes — so an empty participant name cannot blank an off-scene
+  // card's name (caught at the `e8e17b2d9` unification's §3 review).
+  for (const c of chat.offSceneCharacters ?? []) {
+    if (c.name) names[c.id] = c.name;
+  }
   for (const p of chat.participants ?? []) {
-    if (p.character) names[p.character.id] = p.character.name;
+    if (p.character?.id && p.character.name) names[p.character.id] = p.character.name;
   }
   return names;
 }

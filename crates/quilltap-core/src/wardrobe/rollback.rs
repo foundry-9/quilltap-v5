@@ -60,14 +60,12 @@ pub struct RollbackSkippedItem {
 }
 
 impl RollbackSkippedItem {
-    /// The route's camelCase record (`{ itemId, title, reason }`).
+    /// The route's camelCase record (`{ itemId, title, reason }`). The tool's
+    /// snake_case twin is the typed `WardrobeRollbackSkippedItem` in
+    /// `tools/wardrobe_rollback.rs` (a `Value` twin here had no caller — removed
+    /// at the `e8e17b2d9` unification's §3 review).
     pub fn to_route_value(&self) -> Value {
         json!({ "itemId": self.item_id, "title": self.title, "reason": self.reason.as_str() })
-    }
-
-    /// The tool's snake_case record (`{ item_id, title, reason }`).
-    pub fn to_tool_value(&self) -> Value {
-        json!({ "item_id": self.item_id, "title": self.title, "reason": self.reason.as_str() })
     }
 }
 

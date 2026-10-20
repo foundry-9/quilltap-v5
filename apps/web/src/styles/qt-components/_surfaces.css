@@ -1225,6 +1225,20 @@
   }
 
   /**
+   * Wardrobe Pictures section HOST (`screens/characters/view/tabs/
+   * wardrobe-pictures-section.ts`, `host: { class: 'qt-wardrobe-pictures-section' }`,
+   * v4 `1cfc9b504`) — the Avatar Rolls shelf's twin, one `<section>` below it
+   * in the gallery tab (`EmbeddedPhotoGallery.tsx`), and the same inline-host
+   * bug class: v4 renders a plain `<section>`, v5 interposes an Angular host.
+   * Caught by `check-qt-classes` at the `e8e17b2d9` round's unification (the
+   * lane shipped the host class with no rule); declared here beside its
+   * sibling so the shelf's `mt-8 border-t pt-6` frame sits in a block box.
+   */
+  .qt-wardrobe-pictures-section {
+    display: block;
+  }
+
+  /**
    * Markdown form-field HOST element (`editor/markdown-field.ts`,
    * `host: { class: 'qt-markdown-field' }`) — the same inline-host bug class
    * as above (dogfood finding #107). Unlike the bare `display: block` fixes

@@ -38,6 +38,7 @@ use crate::db::wardrobe_read::{find_by_character_id, read_shared_tiers};
 use crate::db::{chats_read, instance_settings, DbError};
 use crate::project_roster_access::roster_gated_project_id;
 use crate::tools::wardrobe_shared::resolve_project_mount_point_ids;
+use crate::wardrobe::wearable_ref::match_wearable_title;
 
 /// v4 `WardrobeTierMounts` — the shared mounts in scope for one character:
 /// `groupMountPointIds` (weakest first) + `projectMountPointIds`. The SAME two
@@ -72,13 +73,6 @@ pub struct WearablePool {
 
 fn item_id(item: &Value) -> &str {
     item.get("id").and_then(Value::as_str).unwrap_or_default()
-}
-
-fn item_title_lower(item: &Value) -> String {
-    item.get("title")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_lowercase()
 }
 
 /// v4 `shadow(tiers)` — weakest first into one id map; `set` keeps the FIRST
@@ -160,22 +154,23 @@ impl WearablePool {
     /// archived SHARED item is never found by title. The search term is JS-
     /// trimmed; the titles are not.
     pub fn find_by_title(&self, title: &str) -> Option<&Value> {
-        let wanted = crate::jsstr::js_trim(title).to_lowercase();
-        if wanted.is_empty() {
-            return None;
-        }
+        // v4 `findByTitle` DELEGATES to `matchWearableTitle` (one trim /
+        // lower-case rule, `wardrobe::wearable_ref`); so does this.
         let own = &self.layers_weakest_first[3];
         // v4 `if (own) return own;` — the own-layer match ITSELF. Not through
         // `by_id`: the vault read is recursive and never dedupes ids, so the
         // same item file copied into two folders is two own entries with one
         // id, and `by_id` holds the LAST (the shadow's `set` overwrites) where
         // v4 answers the FIRST title match — possibly a different title.
-        if let Some(found) = own.iter().find(|item| item_title_lower(item) == wanted) {
+        if let Some(found) = match_wearable_title(own, title) {
             return Some(found);
         }
-        self.wearable()
+        let wearable = self.wearable();
+        let shared: Vec<&Value> = wearable
             .iter()
-            .find(|item| !self.own_ids.contains(item_id(item)) && item_title_lower(item) == wanted)
+            .filter(|item| !self.own_ids.contains(item_id(item)))
+            .collect();
+        match_wearable_title(&shared, title).copied()
     }
 
     /// The one "is this mine" predicate (v4 `owns`): the item lives in this

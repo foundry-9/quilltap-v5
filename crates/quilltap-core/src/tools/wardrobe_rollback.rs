@@ -143,9 +143,15 @@ pub fn execute(
 
     // v4 re-reads the slots AFTER the notify; the notify writes no slots, so
     // reading them here, after the commit, inside the same write, is the same.
+    // The outfit is COMMITTED by now and v4's notify + cursor settle have
+    // already fired inside `rollbackWardrobe`, so a failed re-read (today
+    // unreachable — `load_current_wardrobe_state` is infallible) must still
+    // hand the stage out: the announcement and the cursor intent belong to
+    // the landed change, not to this read (the `e8e17b2d9` unification's §3
+    // review).
     let current_state = match load_current_wardrobe_state(main, chat_id, character_id) {
         Ok(state) => state,
-        Err(error) => return (failed(chat_id, character_id, &error), None),
+        Err(error) => return (failed(chat_id, character_id, &error), Some(stage)),
     };
     let output = WardrobeRollbackToolOutput {
         success: true,
